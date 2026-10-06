@@ -104,7 +104,7 @@ export default function DashboardPage() {
     setSending(true)
     try {
       const d = await api<{ invoice: { eor: string; invoiceNumber: string } }>('/api/furs', { method: 'POST', body: JSON.stringify({ orderId: payingOrder.id }) })
-      setInvoice(d.invoice); setPayingOrder(null); await load()
+      setInvoice(d.invoice); await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
 
