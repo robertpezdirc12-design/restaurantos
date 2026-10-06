@@ -17,3 +17,18 @@ Stage Summary:
 - GitLab: main = recovery arhiv, reconstruction = popolna rekonstrukcija aplikacije
 - Lokalno: main tece, login admin@restaurantos.app / PIN 1234
 - Odprto: tocn Prisma schema (prisma db pull) caka na DATABASE_URL iz Neon konzole; deploy na Vercel projekt prek API se ni izveden (cakam potrditev)
+---
+Task ID: 2
+Agent: Z.ai (main)
+Task: Neon API kljuc — tocna produkcijwska schema RestavrantOS
+
+Work Log:
+- Neon API prek console.neon.tech/api/v2 (api.neon.tech ne obstaja v DNS); org account
+- 3 projekta; young-hall = ograjski ERP (75 modelov, bonus shranjen), patient-violet = RESTAURANTOS (110 modelov)
+- Ustvarjena zacasa branches (copy-on-write) + z_introspector role; prisma db pull = EXACT schema (2983 vrstic, 20 enumov)
+- Stevci podatkov (read-only): 58 narocil, 437 artiklov, 15 miz, 8 zaposlenih, 5 placil, 3 Z-porocila, 292 audit zapisov
+- Zacasa branches izbrisani (200); schema.production.prisma + RECOVERY-NOTES pushana na GitLab reconstruction (85383a3)
+
+Stage Summary:
+- Produkcijwska shema 1:1 obnovljena in na GitLabu; podatki potrjeni varni
+- Naslednja faza: preracun API rut na produkcijske modele + deploy na Vercel
