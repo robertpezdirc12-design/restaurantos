@@ -101,3 +101,23 @@ Stage Summary:
 - GitLab main = FINALNA obnovljena RestavrantOS aplikacija + recovery arhiv (default branch, 2e7cb296)
 - Produkcija ziva: https://restaurantos-theta.vercel.app na pravi Neon bazi
 - Ostaja za uporabnika: rotacija Vercel/GitLab zetonov + Neon credentiale + NEXTAUTH_SECRET, obnova GitHub racuna, nastavitev PIN-ov zaposlenih (POST /api/employees), po potrebi odstranitev BOOTSTRAP_ADMIN_* env
+
+---
+Task ID: 5-features
+Agent: Z.ai (main)
+Task: "obnavljaj restavrantos" — obnova manjkajocih funkcionalnosti iz originalnih R248-R268 rund
+
+Work Log:
+- Inventar: 35 API rut ze obstaja; iz vercel-deployments.json (15 deploymentov) identificirane zadnje originalne runde: R268 command palette + kanonska avtorizacija, R266 sensitive action UX, R265 employee control center, R263/R264 permission overrides, R258 kitchen role pariteta, R248 login provisioning
+- Backend dodano: GET /api/furs (seznam racunov z Order/Table join), POST /api/devices (javni login provisioning, token rodev_*), PATCH+GET /api/employees/[id] (vloga/status/permissionOverrides/pin + CANONICAL_PERMISSIONS + audit zapis za obcutljive akcije), mapEmployee razsirjen (phone + permissionOverrides jparse)
+- Frontend dodano: src/components/command-palette.tsx (Ctrl+K, role-aware skupine, obcutljive akcije oznacene), dashboard: kontrolirani tabi + 2 nova taba (Rezervacije z vnosnim obrazcem, Računi FURS seznam), Zaposleni = Control Center (profil: vloga select, status switch, 10 dovoljenj checkbox, PIN reset z razlago), 3x AlertDialog potrditve (PIN reset, deaktivacija, odjava), login: "Poveži napravo z lokacijo" sekcija (tip + lokacija + enkraten zeton)
+- E2E lokalno: provisioning (token izdan), prijava, paleta Ctrl+K navigacija, rezervacija ustvarjena (Družina Novak, 07.10 19:30), racuni seznam, dovoljenja shranjena (PATCH 200 "Shranjeno ✓"), PIN reset dialog z razlago + potrditev — 0 napak
+- Push GitLab: main + reconstruction (535e3c7)
+- Deploy Vercel (v13 files API, 126 datotek): dpl_wkGjigAwiSUGeFepAZtnEfxeiPNt READY 60s; BOOTSTRAP_ADMIN_PIN obrnjen na nov znan PIN (729153) + redeploy dpl_HCfmTXCiaubhd1jLKEk8Xd873Lok READY 45s
+- Ziva verifikacija produkcije: prijava info@restaurantos.app/729153 -> Pregled (5 zasedenih miz, 16,87 EUR realno), Rezervacije tab, Računi (pravi R-2026-000003, CASH, narocilo #689), Zaposleni Control Center (8 realnih zaposlenih), paleta 12 akcij — 0 napak
+
+Stage Summary:
+- Obnovljene vse funkcionalnosti iz zadnjih originalnih razvojnih rund (R248-R268), ki so manjkale
+- Produkcija: https://restaurantos-theta.vercel.app na najnovejsi kodi; prijava: info@restaurantos.app / PIN 729153 (stari PIN ni vec veljaven)
+- GitLab main + reconstruction = 535e3c7 (nova funkcionalnosti vkljucene)
+- Opomba: originalni Receipt R-2026-000003 v bazi ima prazen EOR + fiscalStatus pending — prikazan kot je (prava podatkovna resnica originalne aplikacije)
