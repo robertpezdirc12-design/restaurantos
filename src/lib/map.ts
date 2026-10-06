@@ -137,6 +137,9 @@ export function mapEmployee(e: Row) {
     role: roleToUI(e.role as string),
     active: e.status === 'active',
     locationId: (e.locationId as string) ?? null,
+    phone: (e.phone as string) || null,
+    /** DOVOLJENJA — kanonski seznam permission override-ov (R263/R264) */
+    permissionOverrides: jparse<string[]>(e.permissionOverrides, []),
   }
 }
 

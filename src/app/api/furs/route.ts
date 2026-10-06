@@ -5,6 +5,27 @@ import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { mapReceipt, nid, num, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 
 /**
+ * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
+ * Vključi povezavo na naročilo/mizo za prikaz v UI (zavihek Računi).
+ */
+export async function GET(req: NextRequest) {
+  const user = requireAuth(req)
+  if (isResponse(user)) return user
+  const receipts = await db.receipt.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: { Order: { include: { Table: true } } },
+  })
+  return ok({
+    receipts: receipts.map((r) => ({
+      ...mapReceipt(r),
+      tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? r.Order.Table.name ?? ''}` : null,
+      orderNumber: r.Order?.orderNumber ?? null,
+    })),
+  })
+}
+
+/**
  * Plačilo + FURS račun.
  * FURS v rekonstrukciji: SIMULACIJA (env FURS_ALLOW_SIMULATION na Vercel projektu je true,
  * kot v originalu). ZOI = MD5 payload (simulacija), EOR = UUID. Produkcija piše:
