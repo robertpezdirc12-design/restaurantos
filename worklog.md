@@ -32,3 +32,27 @@ Work Log:
 Stage Summary:
 - Produkcijwska shema 1:1 obnovljena in na GitLabu; podatki potrjeni varni
 - Naslednja faza: preracun API rut na produkcijske modele + deploy na Vercel
+
+---
+Task ID: 3
+Agent: Z.ai (main)
+Task: Prevezava API rut na produkcijske modele (Neon, 110 modelov) + priprava na deploy
+
+Work Log:
+- Vercel env vrednosti so write-only (neberljive); Neon z_introspector vloga mrtva (zacasne veje izbrisane) -> lokalno testiranje brez zive baze
+- Ustvarjen dvojni shemski sistem: prisma/schema.prisma = produkcijska Neon Postgres (canonical, DATABASE_URL, @updatedAt dopolnjen, validna), prisma/schema.sqlite.prisma = lokalno zrcalo (scripts/build-sqlite-mirror.py: Json->String, enumi->String, brez @db.Decimal)
+- Preverjeno: Prisma SQLite podpira Decimal (DECIMAL stolpec), ne podpira Json -> rute uporabljajo jparse/jstr (odporna na double-encoding), num()/r2() za Decimal+denar
+- src/lib/map.ts: mapper sloj (UI UPPERCASE statusi <-> produkcijski lowercase enumi; Table.number/area/capacity <-> name/zone/seats; OrderItem.quantity/price/vatRate/menuItemName <-> qty/unitPrice/taxRate/name; vloge admin/manager/staff/chef/kitchen <-> ADMIN/MANAGER/WAITER/KITCHEN)
+- 35 API rut prevezanih: orders (orderNumber stevec per lokacija, Check->Payment->Receipt flow), kitchen (PrepStation join), furs (receiptNumber YYYY-M-seq-premisesId, ZOI MD5, EOR UUID, fiscalStatus verified, vatBreakdown), shifts (CashRegisterShift), settings (RestaurantSettings singleton), employees (POST z PIN shemo), jobs (Job), devices (DeviceRegistry), haccp (HaccpEntry), expenses (AccountsPayable), monitoring (AuditLog timestamp/details)
+- auth: pin=scrypt(pin, email) + pinLookup=HMAC(pin) + BOOTSTRAP_ADMIN_EMAIL/PIN fallback (produkcija ima neznane originalne PIN-e; obnova dostopa prek env)
+- seed prevecan na produkcijsko obliko (Menu->Category->MenuItem s prepStationId, Table.number, premisID); nid() popravljen (sha1, trkaneprozoren)
+- package.json: postinstall = scripts/prisma-postinstall.cjs (izbira sheme po DATABASE_URL protokolu); db:push/db:generate na sqlite zrcalo
+- E2E (agent-browser): prijava admin/1234 -> dashboard 15,48 EUR -> mize po conah -> naročilo Miza 1 (3 artikli, 19,50 EUR) -> kuhinja PENDING->PREPARING->READY -> placilo -> racun 2026-10-3-BLG001 z EOR + FURS verified -> miza cleaning -> sticky footer gap 0 -> mobilni viewport OK -> 0 napak v dev.log
+- Popravki med testom: relacija Order (PascalCase) v groupBy; zaokrozevanje r2; FURS simulation vkljucuje fursEnvironment=test
+- Push na GitLab reconstruction (85383a3..113edb6); GitLab push zahteva User-Agent header (Cloudflare)
+
+Stage Summary:
+- Koda 100% cilja produkcijsko shemo (110 modelov); lokalno potrjena prek SQLite zrcala z ISTO kodo
+- GitLab reconstruction = popolna aplikacija + točna shema + opombe
+- Produkcija ostane nedotaknjena (demo lokalen); za obnovo dostopa: BOOTSTRAP_ADMIN_EMAIL/PIN env na Vercel
+- Naslednje: Vercel deploy (files API) + verifikacija zive strani

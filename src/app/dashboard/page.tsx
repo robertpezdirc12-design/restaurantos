@@ -117,6 +117,9 @@ export default function DashboardPage() {
   const menuByCat = categories.map((c) => ({ cat: c, items: menu.filter((m) => m.categoryId === c.id) }))
     .concat({ cat: { id: 'ostalo', name: 'Ostalo' }, items: menu.filter((m) => !m.categoryId) })
     .filter((g) => g.items.length > 0)
+  // cone dinamično iz podatkov (produkcija: main/bar/patio/private; rekonstrukcija: Glavna dvorana/Bar/Terasa)
+  const ZONE_LABELS: Record<string, string> = { main: 'Glavna dvorana', bar: 'Bar', patio: 'Terasa', private: 'Zasebna soba' }
+  const zones = [...new Set(tables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
 
   return (
     <main className="min-h-screen flex flex-col bg-stone-100">
@@ -187,12 +190,12 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="mize" className="space-y-6">
-            {['Glavna dvorana', 'Bar', 'Terasa'].map((zone) => {
+            {zones.map((zone) => {
               const zt = tables.filter((t) => t.zone === zone)
               if (zt.length === 0) return null
               return (
                 <section key={zone} className="space-y-3">
-                  <h2 className="font-semibold text-stone-700">{zone}</h2>
+                  <h2 className="font-semibold text-stone-700">{ZONE_LABELS[zone] || zone}</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {zt.map((t) => (
                       <button
