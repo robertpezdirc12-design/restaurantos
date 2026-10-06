@@ -56,3 +56,27 @@ Stage Summary:
 - GitLab reconstruction = popolna aplikacija + točna shema + opombe
 - Produkcija ostane nedotaknjena (demo lokalen); za obnovo dostopa: BOOTSTRAP_ADMIN_EMAIL/PIN env na Vercel
 - Naslednje: Vercel deploy (files API) + verifikacija zive strani
+
+---
+Task ID: 3-deploy
+Agent: Z.ai (main)
+Task: Vercel produkcija deploy + ziva verifikacija
+
+Work Log:
+- Vercel v13 files deploy: 112 datotek (base64, encoding=base64 OBLIGATORNO — prvi poskusi napak: Node version "" brez projectSettings; potem invalid JSON ker je base64 povzet kot literal)
+- Uspešen deploy dpl_DF6Xs8VMvuojjkTM5JzroS1Q2qSp (READY, alias assigned) z projectSettings: nodeVersion 24.x, buildCommand (sed standalone fix + next build), installCommand bun install
+- Dodana env na Vercel projekt: BOOTSTRAP_ADMIN_EMAIL=info@restaurantos.app + BOOTSTRAP_ADMIN_PIN=<random> (originalni PIN-i zaposlenih so v neznani originalni shemi — edina pot do prijave; token 2h, role po DB)
+- Ziva verifikacija (agent-browser na https://restaurantos-theta.vercel.app):
+  * /api/health: ok, database connected (PRAVA Neon baza)
+  * /api/auth/locations: originalna lokacija cmqih3e9e000aay5xf0nq6poh "RestaurantOS Ljubljana"
+  * Bootstrap prijava -> dashboard: 5 zasedenih miz, današnji promet 16,87 EUR (realno!)
+  * API proti produkciji: 15 miz (cone bar/main/patio/private), 437 artiklov, 39 kategorij, 8 zaposlenih ( vloge MANAGER/ADMIN/WAITER/KITCHEN), finance 16.87 EUR
+  * UI fix: cone miz dinamicne iz podatkov (ZONE_LABELS slovenščina) -> commit 6ec846f, redeploy dpl_9HAHe4KdfR5kgRAQ81aCEFRYYhFW READY
+  * Mize tab ziva: Bar (Miza 9-11), Glavna dvorana (Miza 1-5,14; 1-4 ZASEDENE), Terasa (Miza 6-7...)
+  * Meni tab ziva: originalne kategorije "Penine in Šampanjci, Hladne predjedi, Tople predjedi, Bela Vina, Juhe"
+- GitLab reconstruction: 113edb6..6ec846f (popolna aplikacija + UI fix)
+
+Stage Summary:
+- https://restaurantos-theta.vercel.app = obnovljen RestavrantOS na PRAVI produkcijski bazi (Neon)
+- Celo verigo dokončan: Vercel forenzika -> Neon introspekcija (110 modelov) -> prevezava rut -> deploy -> ziva verifikacija
+- Demo/naloge za uporabnika: rotacija zetonov (Vercel+GitLab+Neon), po potrebi odstrani BOOTSTRAP env, nastavi PIN-e zaposlenim prek POST /api/employees
