@@ -80,3 +80,24 @@ Stage Summary:
 - https://restaurantos-theta.vercel.app = obnovljen RestavrantOS na PRAVI produkcijski bazi (Neon)
 - Celo verigo dokončan: Vercel forenzika -> Neon introspekcija (110 modelov) -> prevezava rut -> deploy -> ziva verifikacija
 - Demo/naloge za uporabnika: rotacija zetonov (Vercel+GitLab+Neon), po potrebi odstrani BOOTSTRAP env, nastavi PIN-e zaposlenim prek POST /api/employees
+
+---
+Task ID: 4-final
+Agent: Z.ai (main)
+Task: Finalno konsolidacija in verifikacija (Path C zakljucek)
+
+Work Log:
+- Ziva stran potrjena se enkrat: /api/health 200, database connected, v1.26.0, commit reconstruction-1.0.0
+- Ugotovljeno stanje GitLab: main = samo arhiv (8 datotek), reconstruction = cela koda -> konsolidacija potrebna
+- Varnostni pregled sledenih datotek: .env vsebuje SAMO lokalni SQLite file: URL (NE Neon produkcije) — ni resevanja; db/custom.db (demo baza) prav tako sledena
+- Git higiena: git rm --cached .env db/custom.db + .gitignore dopolnjen (.env, .env*.local, db/*.db, db/*.db-journal)
+- Konsolidacija: fetch origin/main (a6486d9a) + merge --allow-unrelated-histories -> main = cela aplikacija + arhiv (138 datotek)
+- DEPLOYMENT-STATUS.md posodobljen (main = celotna koda + arhiv)
+- Push na GitLab: main (2e7cb296) + fast-forward reconstruction na isti commit — OBA veji zdaj identicni in popolni
+- Resen tehnicen problem: git push/fetch proti GitLabu vrne 403 ob HTTP/2 — reseno z -c http.version=HTTP/1.1 -c http.userAgent="git/2.43.0" (Cloudflare)
+- Lokalna verifikacija (agent-browser na localhost:3000): prijava admin@restaurantos.app/1234 -> Pregled (promet 40,37 EUR, 3 narocila) -> Mize (Bar/Glavna dvorana/Terasa, statusi Prosta/Za pospravit) -> Meni (Glavne jedi, Predjedi, Na zalogi) -> 0 konzolnih napak -> footer pravilno potisjen (pageH 854 > viewH 577)
+
+Stage Summary:
+- GitLab main = FINALNA obnovljena RestavrantOS aplikacija + recovery arhiv (default branch, 2e7cb296)
+- Produkcija ziva: https://restaurantos-theta.vercel.app na pravi Neon bazi
+- Ostaja za uporabnika: rotacija Vercel/GitLab zetonov + Neon credentiale + NEXTAUTH_SECRET, obnova GitHub racuna, nastavitev PIN-ov zaposlenih (POST /api/employees), po potrebi odstranitev BOOTSTRAP_ADMIN_* env
