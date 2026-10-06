@@ -1,8 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// RestavrantOS — rekonstruirana shema (osnutek 1.0)
+// REKONSTRUKCIJA iz živega API-ja (verzija 1.26.0, commit 39ca69b)
+// Local dev: SQLite. Produkcija: PostgreSQL/Neon (env ostane na Vercelu).
+// Ko pride DATABASE_URL (Neon konzola), zamenjaj provider in poženi `prisma db pull` za 1:1 shemo.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +12,316 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
+model Location {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  name      String
+  address   String?
+  city      String?
+  phone     String?
+  email     String?
+  taxId     String?
+  currency  String   @default("EUR")
+  active    Boolean  @default(true)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees   Employee[]
+  tables      Table[]
+  orders      Order[]
+  reservations Reservation[]
+  inventory   InventoryItem[]
+  haccpChecks HaccpCheck[]
+  wasteLogs   WasteLog[]
+  expenses    Expense[]
+  devices     Device[]
+  feedbacks   GuestFeedback[]
+  shifts      Shift[]
+}
+
+model Employee {
+  id         String   @id @default(cuid())
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  name       String
+  email      String   @unique
+  pinHash    String
+  pinSalt    String
+  role       String   @default("WAITER") // ADMIN | MANAGER | WAITER | KITCHEN | KIOSK
+  language   String   @default("sl")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  orders    Order[]
+  shifts    Shift[]
+  jobContexts JobContext[]
+  haccpChecks HaccpCheck[]
+  wasteLogs   WasteLog[]
+  expenses    Expense[]
+}
+
+model Shift {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  locationId  String
+  location    Location  @relation(fields: [locationId], references: [id])
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  openingCash Float     @default(0)
+  closingCash Float?
+  note        String?
+}
+
+model JobContext {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  title      String
+  permissions String   @default("") // vejica-ločene capability
+  active     Boolean   @default(true)
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+}
+
+model Table {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  name       String
+  zone       String   @default("Glavna dvorana")
+  seats      Int      @default(4)
+  posX       Float    @default(0)
+  posY       Float    @default(0)
+  status     String   @default("FREE") // FREE | OCCUPIED | RESERVED | DIRTY
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  orders       Order[]
+  reservations Reservation[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  menuItems MenuItem[]
+}
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  price       Float
+  taxRate     Float    @default(9.5) // SI: 9.5% hrana, 22% pijača
+  station     String   @default("KITCHEN") // KITCHEN | BAR
+  available   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderItems OrderItem[]
+  recipes    Recipe[]
+  wasteLogs  WasteLog[]
+}
+
+model Order {
+  id         String    @id @default(cuid())
+  locationId String
+  location   Location  @relation(fields: [locationId], references: [id])
+  tableId    String?
+  table      Table?    @relation(fields: [tableId], references: [id])
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  type       String    @default("DINE_IN") // DINE_IN | TAKEAWAY | DELIVERY
+  status     String    @default("OPEN") // OPEN | SENT | PREPARED | PAID | CANCELLED
+  guests     Int       @default(1)
+  note       String?
+  subtotal   Float     @default(0)
+  tax        Float     @default(0)
+  total      Float     @default(0)
+  fursEor    String?
+  createdAt  DateTime  @default(now())
+  closedAt   DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  items        OrderItem[]
+  fursInvoices FursInvoice[]
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id])
+  name       String
+  qty        Float    @default(1)
+  unitPrice  Float
+  taxRate    Float    @default(9.5)
+  station    String   @default("KITCHEN")
+  status     String   @default("PENDING") // PENDING | PREPARING | READY | SERVED | CANCELLED
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Reservation {
+  id         String    @id @default(cuid())
+  locationId String
+  location   Location  @relation(fields: [locationId], references: [id])
+  tableId    String?
+  table      Table?    @relation(fields: [tableId], references: [id])
+  guestName  String
+  phone      String?
+  guests     Int       @default(2)
+  reservedAt DateTime
+  status     String    @default("CONFIRMED") // CONFIRMED | SEATED | CANCELLED | NO_SHOW
+  note       String?
+  createdAt  DateTime  @default(now())
+}
+
+model InventoryItem {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  name       String
+  unit       String   @default("kg")
+  qty        Float    @default(0)
+  minQty     Float    @default(0)
+  cost       Float    @default(0)
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Supplier {
+  id      String  @id @default(cuid())
+  name    String
+  contact String?
+  phone   String?
+  email   String?
+  address String?
+
+  inventory InventoryItem[]
+}
+
+model Recipe {
+  id           String  @id @default(cuid())
+  menuItemId   String?
+  menuItem     MenuItem? @relation(fields: [menuItemId], references: [id])
+  name         String
+  instructions String?
+  items        RecipeItem[]
+}
+
+model RecipeItem {
+  id             String @id @default(cuid())
+  recipeId       String
+  recipe         Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  qty            Float  @default(0)
+}
+
+model HaccpCheck {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  type       String   @default("TEMPERATURE") // TEMPERATURE | CLEANING | DELIVERY
+  target     String?
+  value      Float?
+  ok         Boolean  @default(true)
+  note       String?
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  checkedAt  DateTime @default(now())
+}
+
+model WasteLog {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id])
+  qty        Float
+  reason     String   @default("Pokvarjeno")
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model LoyaltyAccount {
+  id        String   @id @default(cuid())
+  guestName String
+  phone     String?  @unique
+  points    Int      @default(0)
+  visits    Int      @default(0)
+  lastVisit DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id])
+  category    String   @default("OSTALO")
+  description String?
+  amount      Float
+  employeeId  String?
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  paidAt      DateTime @default(now())
+}
+
+model Device {
+  id         String    @id @default(cuid())
+  locationId String
+  location   Location  @relation(fields: [locationId], references: [id])
+  name       String
+  type       String    @default("POS") // POS | KDS | KIOSK | DRIVER
+  token      String?
+  lastSeen   DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Setting {
+  key       String   @id
+  value     String
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+model FursInvoice {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  eor       String?
+  zoi       String?
+  invoiceNumber String?
+  status    String   @default("SIMULATED") // SIMULATED | SENT | ERROR
+  payload   String?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+}
+
+model GuestFeedback {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  tableId    String?
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  employeeId String?
+  action     String
+  entity     String
+  entityId   String?
+  data       String?
+  createdAt  DateTime @default(now())
 }
