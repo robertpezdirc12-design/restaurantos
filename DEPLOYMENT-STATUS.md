@@ -10,7 +10,7 @@
    - 35+ API rut na **točni produkcijski shemi** (110 modelov, 20 enumov — prisma db pull iz Neon)
    - FURS potek: Check → Payment → Receipt (ZOI/EOR, simulacija kot v originalu — FURS_ALLOW_SIMULATION=true)
    - Mapper sloj (UI ↔ produkcijska polja), auth (PIN scrypt + pinLookup HMAC + bootstrap)
-2. **GitLab:** robert.pezdirc12/restaurantos — branch `reconstruction` (celotna koda), branch `main` (arhiv)
+2. **GitLab:** robert.pezdirc12/restaurantos — branch `main` = **celotna koda + recovery arhiv** (finalna konsolidacija), branch `reconstruction` = zgodovinska Kopija kode
 3. **Deploy na Vercel:** projekt `restaurantos` (isti kot original), produkcija, env podedovan
 
 ### Živa verifikacija (agent-browser)
