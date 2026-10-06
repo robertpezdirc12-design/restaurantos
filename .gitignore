@@ -57,3 +57,9 @@ tool-results/
 db/
 dev.log
 server.log
+
+# local env + dev database (never commit)
+.env
+.env*.local
+db/*.db
+db/*.db-journal
