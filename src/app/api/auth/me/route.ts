@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok } from '@/lib/api'
+import { roleToUI } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
@@ -15,8 +16,7 @@ export async function GET(req: NextRequest) {
       id: employee.id,
       name: employee.name,
       email: employee.email,
-      role: employee.role,
-      language: employee.language,
+      role: roleToUI(employee.role),
       location: employee.location,
     },
   })

@@ -1,15 +1,22 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { mapMenuItem, mapCategory, nid, num, stationToUI } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const [items, categories] = await Promise.all([
-    db.menuItem.findMany({ include: { category: true }, orderBy: { name: 'asc' } }),
-    db.category.findMany({ orderBy: { sortOrder: 'asc' } }),
+    db.menuItem.findMany({
+      include: { Category: true, PrepStation: true },
+      orderBy: { name: 'asc' },
+    }),
+    db.category.findMany({ orderBy: { sortOrder: 'asc' }, take: 200 }),
   ])
-  return ok({ items, categories })
+  return ok({
+    items: items.map((m) => mapMenuItem({ ...m, prepStation: m.PrepStation })),
+    categories: categories.map(mapCategory),
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -18,15 +25,26 @@ export async function POST(req: NextRequest) {
   if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj za urejanje menija.', 403)
   const body = await req.json().catch(() => null)
   if (!body?.name || body?.price === undefined) return fail('Ime in cena sta obvezna.')
+  const categoryId = body.categoryId || (await db.category.findFirst())?.id
+  if (!categoryId) return fail('Kategorija ne obstaja. Ustvari kategorijo in meni najprej.', 400)
+  let prepStationId: string | null = null
+  if (body.station) {
+    const ps = await db.prepStation.findFirst({
+      where: { type: stationToUI(body.station) === 'BAR' ? 'bar' : 'kitchen' },
+    })
+    prepStationId = ps?.id ?? null
+  }
   const item = await db.menuItem.create({
     data: {
+      id: nid(),
       name: String(body.name),
       price: Number(body.price),
-      description: body.description || null,
-      categoryId: body.categoryId || null,
-      taxRate: Number(body.taxRate) || 9.5,
-      station: ['KITCHEN', 'BAR'].includes(body.station) ? body.station : 'KITCHEN',
+      description: String(body.description || ''),
+      categoryId,
+      vatRate: Number(body.taxRate ?? body.vatRate) || 22,
+      isAvailable: body.available !== false,
+      prepStationId,
     },
   })
-  return ok({ item }, 201)
+  return ok({ item: mapMenuItem(item) }, 201)
 }

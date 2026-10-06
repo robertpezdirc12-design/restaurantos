@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { NextRequest } from 'next/server'
 
 const APP_SECRET = process.env.APP_SECRET || 'restaurantos-reconstruction-dev-secret'
+const PIN_LOOKUP_SALT = process.env.PIN_LOOKUP_SALT || 'restaurantos-pin-lookup-v1'
 
 export interface AuthPayload {
   sub: string
@@ -54,6 +55,33 @@ export function canAccessModule(user: AuthPayload | null, module: string, adminO
   return (allowed[user.role] || []).includes(module)
 }
 
+/**
+ * PIN shema (produkcijska polja Employee.pin + Employee.pinLookup):
+ *  - pin       = scryptSync(pin, email, 32).hex  (nepovratno, per-employee sol)
+ *  - pinLookup = HMAC-SHA256(pin, konstanta)     (determinističen indeks za iskanje)
+ */
 export function hashPin(pin: string, salt: string): string {
   return crypto.scryptSync(pin, salt, 32).toString('hex')
+}
+
+export function pinLookupValue(pin: string): string {
+  return crypto.createHmac('sha256', PIN_LOOKUP_SALT).update(pin).digest('hex')
+}
+
+export function employeePinFields(pin: string, email: string): { pin: string; pinLookup: string } {
+  return {
+    pin: hashPin(pin, email.trim().toLowerCase()),
+    pinLookup: pinLookupValue(pin),
+  }
+}
+
+/** Bootstrap prijava prek env (za obnovo dostopa — nastavi BOOTSTRAP_ADMIN_EMAIL/PIN na Vercelu) */
+export function matchesBootstrap(email: string, pin: string): boolean {
+  const bEmail = process.env.BOOTSTRAP_ADMIN_EMAIL
+  const bPin = process.env.BOOTSTRAP_ADMIN_PIN
+  if (!bEmail || !bPin) return false
+  if (email.trim().toLowerCase() !== bEmail.trim().toLowerCase()) return false
+  const a = Buffer.from(pin)
+  const b = Buffer.from(bPin)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
 }

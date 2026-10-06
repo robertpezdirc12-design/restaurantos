@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const locations = await db.location.findMany({
     include: {
-      _count: { select: { tables: true, employees: true, orders: true } },
+      _count: { select: { Table: true, Employee: true, Order: true } },
     },
   })
   const stats = await Promise.all(
@@ -15,18 +15,18 @@ export async function GET(req: NextRequest) {
       const startOfDay = new Date()
       startOfDay.setHours(0, 0, 0, 0)
       const today = await db.order.aggregate({
-        where: { locationId: l.id, createdAt: { gte: startOfDay }, status: { not: 'CANCELLED' } },
+        where: { locationId: l.id, createdAt: { gte: startOfDay }, status: { not: 'cancelled' } },
         _sum: { total: true },
         _count: true,
       })
       return {
         id: l.id,
         name: l.name,
-        tables: l._count.tables,
-        employees: l._count.employees,
-        orders: l._count.orders,
+        tables: l._count.Table,
+        employees: l._count.Employee,
+        orders: l._count.Order,
         todayOrders: today._count,
-        todayRevenue: today._sum.total || 0,
+        todayRevenue: today._sum.total ? Number(today._sum.total) : 0,
       }
     })
   )

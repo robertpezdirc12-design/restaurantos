@@ -1,10 +1,16 @@
+// RestavrantOS — LOKALNA SQLite zrcalna shema (AVTOMATSKO generirana)
+// Iz prisma/schema.prisma (produkcijska Neon Postgres shema, 110 modelov).
+// Ponovno generiraj: python3 scripts/build-sqlite-mirror.py
+// Razlike od produkcije: Json -> String (SQLite ne podpira Json), enumi -> String.
+// Aplikacijska koda je združljiva z obema (jparse/jstr helperji v src/lib/map.ts).
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("NEON_URI")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model AIConversation {
@@ -33,13 +39,13 @@ model AccountsPayable {
   dueDate             DateTime
   subtotal            Decimal
   vatAmount           Decimal               @default(0)
-  totalAmount         Decimal               @db.Decimal(12, 2)
-  paidAmount          Decimal               @default(0) @db.Decimal(12, 2)
+  totalAmount         Decimal               
+  paidAmount          Decimal               @default(0) 
   status              String                @default("open")
   paidAt              DateTime?
   notes               String                @default("")
   createdAt           DateTime              @default(now())
-  updatedAt           DateTime
+  updatedAt           DateTime @updatedAt
   locationId          String?
   matchStatus         String                @default("unmatched")
   Location            Location?             @relation(fields: [locationId], references: [id], onUpdate: SetNull)
@@ -58,10 +64,10 @@ model AccountsPayableLine {
   accountsPayableId   String
   purchaseOrderItemId String?
   description         String
-  quantityInvoiced    Decimal            @default(0) @db.Decimal(12, 3)
-  unitPriceInvoiced   Decimal            @default(0) @db.Decimal(12, 4)
-  vatRateInvoiced     Decimal?           @db.Decimal(5, 2)
-  lineTotal           Decimal            @default(0) @db.Decimal(12, 2)
+  quantityInvoiced    Decimal            @default(0) 
+  unitPriceInvoiced   Decimal            @default(0) 
+  vatRateInvoiced     Decimal?           
+  lineTotal           Decimal            @default(0) 
   varianceStatus      String             @default("match")
   varianceNote        String             @default("")
   createdAt           DateTime           @default(now())
@@ -86,12 +92,12 @@ model AccountsReceivable {
   subtotal      Decimal
   vatAmount     Decimal   @default(0)
   totalAmount   Decimal
-  paidAmount    Decimal   @default(0) @db.Decimal(12, 2)
+  paidAmount    Decimal   @default(0) 
   status        String    @default("open")
   paidAt        DateTime?
   notes         String    @default("")
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime
+  updatedAt     DateTime @updatedAt
   locationId    String?
   Location      Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
@@ -110,7 +116,7 @@ model AlternatePaymentType {
   isActive   Boolean   @default(true)
   sortOrder  Int       @default(0)
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   locationId String
   Location   Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
   Payment    Payment[]
@@ -132,7 +138,7 @@ model ApiKey {
   lastUsedAt     DateTime?
   expiresAt      DateTime?
   createdBy      String?
-  scopes         Json         @default("[]")
+  scopes         String         @default("[]")
   Subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
@@ -167,10 +173,10 @@ model BatchPreparation {
   locationId               String
   status                   String                 @default("DRAFT")
   outputItemId             String
-  outputQuantity           Decimal                @db.Decimal(12, 3)
+  outputQuantity           Decimal                
   outputUnit               String                 @default("")
-  outputCostPerUnit        Decimal                @default(0) @db.Decimal(12, 2)
-  totalInputCost           Decimal                @default(0) @db.Decimal(12, 2)
+  outputCostPerUnit        Decimal                @default(0) 
+  totalInputCost           Decimal                @default(0) 
   note                     String                 @default("")
   createdByName            String                 @default("")
   completedByName          String                 @default("")
@@ -179,7 +185,7 @@ model BatchPreparation {
   idempotencyKey           String?
   outputStockTransactionId String?                @unique
   createdAt                DateTime               @default(now())
-  updatedAt                DateTime
+  updatedAt                DateTime @updatedAt
   Location                 Location               @relation(fields: [locationId], references: [id])
   InventoryItem            InventoryItem          @relation(fields: [outputItemId], references: [id], onUpdate: Restrict)
   StockTransaction         StockTransaction?      @relation(fields: [outputStockTransactionId], references: [id], onUpdate: SetNull)
@@ -198,11 +204,11 @@ model BatchPreparationLine {
   inventoryItemId         String
   itemName                String            @default("")
   unit                    String            @default("")
-  quantity                Decimal           @db.Decimal(12, 3)
-  costPerUnit             Decimal           @db.Decimal(12, 2)
+  quantity                Decimal           
+  costPerUnit             Decimal           
   inputStockTransactionId String?           @unique
   createdAt               DateTime          @default(now())
-  updatedAt               DateTime
+  updatedAt               DateTime @updatedAt
   StockTransaction        StockTransaction? @relation(fields: [inputStockTransactionId], references: [id], onUpdate: SetNull)
   InventoryItem           InventoryItem     @relation(fields: [inventoryItemId], references: [id], onUpdate: Restrict)
   BatchPreparation        BatchPreparation  @relation(fields: [preparationId], references: [id], onDelete: Cascade)
@@ -222,8 +228,8 @@ model BiometricCredential {
   nickname     String    @default("")
   lastUsedAt   DateTime?
   createdAt    DateTime  @default(now())
-  updatedAt    DateTime
-  transports   Json      @default("[]")
+  updatedAt    DateTime @updatedAt
+  transports   String      @default("[]")
   Employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([credentialId])
@@ -238,7 +244,7 @@ model BlockchainAuditEntry {
   entityType   String
   entityId     String
   action       String
-  payload      Json
+  payload      String
   signature    String   @default("")
   timestamp    DateTime @default(now())
   minerId      String?
@@ -260,8 +266,7 @@ model CarbonFactor {
   landUse    Decimal?
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
-
+  updatedAt  DateTime @updatedAt
   @@unique([name, category])
   @@index([category])
   @@index([isActive])
@@ -275,24 +280,24 @@ model CashRegisterShift {
   openedAt       DateTime  @default(now())
   closedAt       DateTime?
   startingCash   Decimal   @default(0)
-  closingCash    Decimal   @default(0) @db.Decimal(12, 2)
-  expectedCash   Decimal   @default(0) @db.Decimal(12, 2)
+  closingCash    Decimal   @default(0) 
+  expectedCash   Decimal   @default(0) 
   cashSales      Decimal   @default(0)
   cardSales      Decimal   @default(0)
   mobileSales    Decimal   @default(0)
   alternateSales Decimal   @default(0)
-  splitPayments  Decimal   @default(0) @db.Decimal(12, 2)
-  totalSales     Decimal   @default(0) @db.Decimal(12, 2)
+  splitPayments  Decimal   @default(0) 
+  totalSales     Decimal   @default(0) 
   totalOrders    Int       @default(0)
-  totalDiscounts Decimal   @default(0) @db.Decimal(12, 2)
-  totalTips      Decimal   @default(0) @db.Decimal(12, 2)
-  totalVoided    Decimal   @default(0) @db.Decimal(12, 2)
-  cashDifference Decimal   @default(0) @db.Decimal(12, 2)
+  totalDiscounts Decimal   @default(0) 
+  totalTips      Decimal   @default(0) 
+  totalVoided    Decimal   @default(0) 
+  cashDifference Decimal   @default(0) 
   notes          String    @default("")
   locationId     String?
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime
-  totalRefunds   Decimal   @default(0) @db.Decimal(12, 2)
+  updatedAt      DateTime @updatedAt
+  totalRefunds   Decimal   @default(0) 
   Employee       Employee? @relation(fields: [employeeId], references: [id], onUpdate: SetNull)
   Location       Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
@@ -311,7 +316,7 @@ model Category {
   sortOrder Int        @default(0)
   menuId    String
   createdAt DateTime   @default(now())
-  updatedAt DateTime
+  updatedAt DateTime @updatedAt
   Menu      Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
   MenuItem  MenuItem[]
 
@@ -328,8 +333,8 @@ model ChartOfAccount {
   description          String           @default("")
   sortOrder            Int              @default(0)
   createdAt            DateTime         @default(now())
-  updatedAt            DateTime
-  accountType          AccountType
+  updatedAt            DateTime @updatedAt
+  accountType          String
   ChartOfAccount       ChartOfAccount?  @relation("ChartOfAccountToChartOfAccount", fields: [parentId], references: [id])
   other_ChartOfAccount ChartOfAccount[] @relation("ChartOfAccountToChartOfAccount")
   JournalLine          JournalLine[]
@@ -343,18 +348,18 @@ model Check {
   id                String        @id
   checkNumber       Int
   orderId           String
-  subtotal          Decimal       @default(0) @db.Decimal(12, 2)
-  tax               Decimal       @default(0) @db.Decimal(12, 2)
-  discount          Decimal       @default(0) @db.Decimal(12, 2)
-  serviceCharge     Decimal       @default(0) @db.Decimal(12, 2)
-  total             Decimal       @default(0) @db.Decimal(12, 2)
-  tip               Decimal       @default(0) @db.Decimal(12, 2)
-  totalWithTip      Decimal       @default(0) @db.Decimal(12, 2)
-  paymentStatus     PaymentStatus @default(unpaid)
+  subtotal          Decimal       @default(0) 
+  tax               Decimal       @default(0) 
+  discount          Decimal       @default(0) 
+  serviceCharge     Decimal       @default(0) 
+  total             Decimal       @default(0) 
+  tip               Decimal       @default(0) 
+  totalWithTip      Decimal       @default(0) 
+  paymentStatus     String @default("unpaid")
   paymentMethod     String        @default("")
   appliedDiscountId String?
   createdAt         DateTime      @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   Discount          Discount?     @relation(fields: [appliedDiscountId], references: [id], onUpdate: SetNull)
   Order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   OrderItem         OrderItem[]
@@ -384,7 +389,7 @@ model Course {
   servedAt     DateTime?
   pacingNote   String      @default("")
   createdAt    DateTime    @default(now())
-  updatedAt    DateTime
+  updatedAt    DateTime @updatedAt
   Order        Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   OrderItem    OrderItem[]
 
@@ -398,20 +403,20 @@ model DailyClose {
   locationId        String
   businessDate      DateTime
   status            String    @default("PENDING_APPROVAL")
-  expectedCash      Decimal   @default(0) @db.Decimal(12, 2)
-  countedCash       Decimal   @default(0) @db.Decimal(12, 2)
-  cashVariance      Decimal   @default(0) @db.Decimal(12, 2)
-  varianceThreshold Decimal   @default(0) @db.Decimal(12, 2)
-  totalSales        Decimal   @default(0) @db.Decimal(12, 2)
-  cashSales         Decimal   @default(0) @db.Decimal(12, 2)
-  cardSales         Decimal   @default(0) @db.Decimal(12, 2)
-  mobileSales       Decimal   @default(0) @db.Decimal(12, 2)
-  alternateSales    Decimal   @default(0) @db.Decimal(12, 2)
+  expectedCash      Decimal   @default(0) 
+  countedCash       Decimal   @default(0) 
+  cashVariance      Decimal   @default(0) 
+  varianceThreshold Decimal   @default(0) 
+  totalSales        Decimal   @default(0) 
+  cashSales         Decimal   @default(0) 
+  cardSales         Decimal   @default(0) 
+  mobileSales       Decimal   @default(0) 
+  alternateSales    Decimal   @default(0) 
   totalOrders       Int       @default(0)
-  totalDiscounts    Decimal   @default(0) @db.Decimal(12, 2)
-  totalTips         Decimal   @default(0) @db.Decimal(12, 2)
-  totalVoided       Decimal   @default(0) @db.Decimal(12, 2)
-  totalRefunds      Decimal   @default(0) @db.Decimal(12, 2)
+  totalDiscounts    Decimal   @default(0) 
+  totalTips         Decimal   @default(0) 
+  totalVoided       Decimal   @default(0) 
+  totalRefunds      Decimal   @default(0) 
   closedById        String?
   closedByName      String    @default("")
   closedAt          DateTime?
@@ -429,7 +434,7 @@ model DailyClose {
   zReportId         String?
   idempotencyKey    String
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   Location          Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@unique([locationId, businessDate])
@@ -453,12 +458,12 @@ model DeliveryInfo {
   courierName          String    @default("")
   courierPhone         String    @default("")
   status               String    @default("pending")
-  packagingFee         Decimal   @default(0) @db.Decimal(12, 2)
-  deliveryFee          Decimal   @default(0) @db.Decimal(12, 2)
+  packagingFee         Decimal   @default(0) 
+  deliveryFee          Decimal   @default(0) 
   latitude             Float?
   longitude            Float?
   createdAt            DateTime  @default(now())
-  updatedAt            DateTime
+  updatedAt            DateTime @updatedAt
   Order                Order?
 
   @@index([status])
@@ -483,7 +488,7 @@ model DeliveryTracking {
   customerFeedback String    @default("")
   locationId       String?
   createdAt        DateTime  @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   driverEmployeeId String?
   podNotes         String?
   Employee         Employee? @relation(fields: [driverEmployeeId], references: [id])
@@ -511,9 +516,9 @@ model DeliveryZone {
   sortOrder         Int       @default(0)
   locationId        String?
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime
-  postCodes         Json      @default("[]")
-  cities            Json      @default("[]")
+  updatedAt         DateTime @updatedAt
+  postCodes         String      @default("[]")
+  cities            String      @default("[]")
   Location          Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
   @@index([isActive])
@@ -530,7 +535,7 @@ model DeviceRegistry {
   lastSeenAt DateTime?
   appVersion String    @default("")
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   Location   Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
   @@index([locationId])
@@ -543,11 +548,11 @@ model DeviceSyncOperation {
   locationId        String
   clientOperationId String
   operationType     String
-  payload           Json?
+  payload           String?
   clientRetryCount  Int       @default(0)
   status            String    @default("applied")
   orderId           String?
-  ack               Json?
+  ack               String?
   lastError         String?
   employeeId        String?
   receivedAt        DateTime  @default(now())
@@ -570,7 +575,7 @@ model DiningOption {
   isActive        Boolean        @default(true)
   sortOrder       Int            @default(0)
   createdAt       DateTime       @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   locationId      String
   Location        Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
   ServiceCharge   ServiceCharge? @relation(fields: [serviceChargeId], references: [id], onUpdate: SetNull)
@@ -587,7 +592,7 @@ model Discount {
   id          String      @id
   name        String
   type        String
-  amount      Decimal     @db.Decimal(5, 2)
+  amount      Decimal     
   appliesTo   String      @default("check")
   triggerType String      @default("manual")
   promoCode   String      @default("")
@@ -598,7 +603,7 @@ model Discount {
   isActive    Boolean     @default(true)
   sortOrder   Int         @default(0)
   createdAt   DateTime    @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
   locationId  String
   Check       Check[]
   Location    Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -615,16 +620,16 @@ model Employee {
   name                                                String
   email                                               String                @unique
   phone                                               String                @default("")
-  role                                                EmployeeRole          @default(staff)
-  status                                              EmployeeStatus        @default(active)
+  role                                                String          @default("staff")
+  status                                              String        @default("active")
   hireDate                                            DateTime              @default(now())
   pin                                                 String                @unique @default("")
   pinLookup                                           String?               @unique
   locationId                                          String?
   createdAt                                           DateTime              @default(now())
-  updatedAt                                           DateTime
+  updatedAt                                           DateTime @updatedAt
   sessionVersion                                      Int                   @default(0)
-  permissionOverrides                                 Json                  @default("[]")
+  permissionOverrides                                 String                  @default("[]")
   BiometricCredential                                 BiometricCredential[]
   CashRegisterShift                                   CashRegisterShift[]
   DeliveryTracking                                    DeliveryTracking[]
@@ -660,10 +665,10 @@ model EmployeeJob {
   id         String   @id
   employeeId String
   jobId      String
-  payRate    Decimal  @default(0) @db.Decimal(12, 2)
+  payRate    Decimal  @default(0) 
   isPrimary  Boolean  @default(false)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   Employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   Job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
@@ -674,14 +679,14 @@ model EmployeeJob {
 model GiftCard {
   id                  String                @id
   cardNumber          String                @unique
-  balance             Decimal               @default(0) @db.Decimal(12, 2)
-  initialBalance      Decimal               @default(0) @db.Decimal(12, 2)
+  balance             Decimal               @default(0) 
+  initialBalance      Decimal               @default(0) 
   status              String                @default("active")
   ownerName           String                @default("")
   purchasedAt         DateTime              @default(now())
   expiresAt           DateTime?
   createdAt           DateTime              @default(now())
-  updatedAt           DateTime
+  updatedAt           DateTime @updatedAt
   locationId          String?
   Location            Location?             @relation(fields: [locationId], references: [id])
   GiftCardTransaction GiftCardTransaction[]
@@ -696,8 +701,8 @@ model GiftCardTransaction {
   id           String   @id
   giftCardId   String
   type         String
-  amount       Decimal  @db.Decimal(12, 2)
-  balanceAfter Decimal  @db.Decimal(12, 2)
+  amount       Decimal  
+  balanceAfter Decimal  
   orderId      String?
   checkId      String?
   note         String   @default("")
@@ -726,7 +731,7 @@ model GoodsReceipt {
   locationId        String?
   idempotencyKey    String?
   createdAt         DateTime           @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   Location          Location?          @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   PurchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   Employee          Employee?          @relation(fields: [receivedById], references: [id])
@@ -748,10 +753,10 @@ model GoodsReceiptItem {
   inventoryItemId     String?
   description         String
   unit                String             @default("pcs")
-  quantityAccepted    Decimal            @default(0) @db.Decimal(12, 3)
-  quantityRejected    Decimal            @default(0) @db.Decimal(12, 3)
+  quantityAccepted    Decimal            @default(0) 
+  quantityRejected    Decimal            @default(0) 
   rejectReason        String             @default("")
-  packQty             Decimal?           @db.Decimal(12, 3)
+  packQty             Decimal?           
   packUnit            String?
   unitPriceOrdered    Decimal            @default(0)
   createdAt           DateTime           @default(now())
@@ -776,18 +781,18 @@ model Guest {
   company          String          @default("")
   notes            String          @default("")
   totalVisits      Int             @default(0)
-  totalSpent       Decimal         @default(0) @db.Decimal(12, 2)
+  totalSpent       Decimal         @default(0) 
   avgCheckAmount   Decimal         @default(0)
   lastVisitAt      DateTime?
   firstVisitAt     DateTime?
   loyaltyAccountId String?         @unique
   createdAt        DateTime        @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   locationId       String?
-  allergens        Json            @default("[]")
-  dietaryPrefs     Json            @default("[]")
-  dislikes         Json            @default("[]")
-  favoriteItems    Json            @default("[]")
+  allergens        String            @default("[]")
+  dietaryPrefs     String            @default("[]")
+  dislikes         String            @default("[]")
+  favoriteItems    String            @default("[]")
   Location         Location?       @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   LoyaltyAccount   LoyaltyAccount? @relation(fields: [loyaltyAccountId], references: [id], onUpdate: SetNull)
   GuestVisit       GuestVisit[]
@@ -813,7 +818,7 @@ model GuestFeedback {
   serviceRating    Int       @default(0)
   atmosphereRating Int       @default(0)
   comment          String    @default("")
-  tags             Json      @default("[]")
+  tags             String      @default("[]")
   wouldReturn      Boolean   @default(true)
   wouldRecommend   Boolean   @default(true)
   responded        Boolean   @default(false)
@@ -822,7 +827,7 @@ model GuestFeedback {
   source           String    @default("pos")
   locationId       String?
   createdAt        DateTime  @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   orderRef         String?
   resolvedAt       DateTime?
   resolvedById     String?
@@ -848,8 +853,8 @@ model GuestVisit {
   orderId         String?
   tableId         String?
   partySize       Int       @default(1)
-  totalSpent      Decimal   @default(0) @db.Decimal(12, 2)
-  tipAmount       Decimal   @default(0) @db.Decimal(12, 2)
+  totalSpent      Decimal   @default(0) 
+  tipAmount       Decimal   @default(0) 
   feedbackScore   Int?
   feedbackComment String    @default("")
   employeeId      String?
@@ -873,18 +878,18 @@ model GuestVisit {
 model HaccpEntry {
   id               String        @id
   date             DateTime      @default(now())
-  category         HaccpCategory
+  category         String
   title            String
   description      String        @default("")
   value            String        @default("")
-  status           HaccpStatus   @default(ok)
+  status           String   @default("ok")
   correctiveAction String        @default("")
   employeeName     String        @default("")
   previousHash     String        @default("")
   chainHash        String        @default("")
   locationId       String?
   createdAt        DateTime      @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   Location         Location?     @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
   @@index([category])
@@ -908,9 +913,9 @@ model HappyHourSchedule {
   isActive       Boolean    @default(true)
   autoActivate   Boolean    @default(true)
   createdAt      DateTime   @default(now())
-  updatedAt      DateTime
-  daysOfWeek     Json       @default("[1, 2, 3, 4, 5]")
-  appliesToIds   Json       @default("[]")
+  updatedAt      DateTime @updatedAt
+  daysOfWeek     String       @default("[1, 2, 3, 4, 5]")
+  appliesToIds   String       @default("[]")
   PriceGroup     PriceGroup @relation(fields: [priceGroupId], references: [id], onDelete: Cascade)
 
   @@index([isActive])
@@ -933,10 +938,10 @@ model Integration {
   isActive         Boolean          @default(true)
   connectionStatus String           @default("disconnected")
   createdAt        DateTime         @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   locationId       String?
-  config           Json             @default("{}")
-  events           Json             @default("[]")
+  config           String             @default("{}")
+  events           String             @default("[]")
   Location         Location?        @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   IntegrationLog   IntegrationLog[]
 
@@ -957,8 +962,8 @@ model IntegrationLog {
   errorMessage  String      @default("")
   durationMs    Int         @default(0)
   createdAt     DateTime    @default(now())
-  requestData   Json        @default("{}")
-  responseData  Json        @default("{}")
+  requestData   String        @default("{}")
+  responseData  String        @default("{}")
   Integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@index([action])
@@ -976,14 +981,14 @@ model InventoryBatch {
   supplierName         String                 @default("")
   receivedAt           DateTime               @default(now())
   expiryDate           DateTime?
-  quantityInitial      Decimal                @db.Decimal(12, 3)
-  quantityRemaining    Decimal                @db.Decimal(12, 3)
+  quantityInitial      Decimal                
+  quantityRemaining    Decimal                
   unit                 String                 @default("")
-  unitCost             Decimal?               @db.Decimal(12, 2)
+  unitCost             Decimal?               
   status               String                 @default("ACTIVE")
   note                 String                 @default("")
   createdAt            DateTime               @default(now())
-  updatedAt            DateTime
+  updatedAt            DateTime @updatedAt
   InventoryItem        InventoryItem          @relation(fields: [inventoryItemId], references: [id], onUpdate: Restrict)
   Supplier             Supplier?              @relation(fields: [supplierId], references: [id], onUpdate: SetNull)
   StockBatchAllocation StockBatchAllocation[]
@@ -1001,24 +1006,24 @@ model InventoryItem {
   description          String                 @default("")
   image                String                 @default("")
   unit                 String                 @default("pcs")
-  quantity             Decimal                @default(0) @db.Decimal(12, 3)
-  minQuantity          Decimal                @default(0) @db.Decimal(12, 3)
-  costPerUnit          Decimal                @default(0) @db.Decimal(12, 2)
+  quantity             Decimal                @default(0) 
+  minQuantity          Decimal                @default(0) 
+  costPerUnit          Decimal                @default(0) 
   supplier             String                 @default("")
   category             String                 @default("general")
   location             String                 @default("main")
   expiryDate           DateTime?
-  servingsPerUnit      Decimal                @default(1) @db.Decimal(12, 3)
+  servingsPerUnit      Decimal                @default(1) 
   servingSize          String                 @default("")
-  costPerServing       Decimal                @default(0) @db.Decimal(12, 2)
+  costPerServing       Decimal                @default(0) 
   menuItemId           String?
   lastRestocked        DateTime               @default(now())
   locationId           String?
   createdAt            DateTime               @default(now())
-  updatedAt            DateTime
+  updatedAt            DateTime @updatedAt
   leadTimeDays         Int?
-  reorderPoint         Decimal?               @db.Decimal(12, 3)
-  safetyStock          Decimal?               @db.Decimal(12, 3)
+  reorderPoint         Decimal?               
+  safetyStock          Decimal?               
   BatchPreparation     BatchPreparation[]
   BatchPreparationLine BatchPreparationLine[]
   InventoryBatch       InventoryBatch[]
@@ -1047,13 +1052,13 @@ model Job {
   id           String        @id
   name         String        @unique
   code         String        @default("")
-  basePayRate  Decimal       @default(0) @db.Decimal(12, 2)
+  basePayRate  Decimal       @default(0) 
   overtimeRate Decimal       @default(0)
-  permissions  Json          @default("[]")
+  permissions  String          @default("[]")
   isActive     Boolean       @default(true)
   sortOrder    Int           @default(0)
   createdAt    DateTime      @default(now())
-  updatedAt    DateTime
+  updatedAt    DateTime @updatedAt
   workspace    String?
   EmployeeJob  EmployeeJob[]
   StaffShift   StaffShift[]
@@ -1070,11 +1075,11 @@ model JournalEntry {
   referenceType String             @default("")
   description   String             @default("")
   source        String             @default("manual")
-  status        JournalEntryStatus @default(posted)
+  status        String @default("posted")
   postedAt      DateTime?
   postedBy      String?
   createdAt     DateTime           @default(now())
-  updatedAt     DateTime
+  updatedAt     DateTime @updatedAt
   locationId    String?
   postedById    String?
   Location      Location?          @relation(fields: [locationId], references: [id], onUpdate: SetNull)
@@ -1096,9 +1101,9 @@ model JournalLine {
   journalEntryId     String
   accountCode        String
   accountName        String
-  accountType        AccountType
-  debit              Decimal         @default(0) @db.Decimal(12, 2)
-  credit             Decimal         @default(0) @db.Decimal(12, 2)
+  accountType        String
+  debit              Decimal         @default(0) 
+  credit             Decimal         @default(0) 
   description        String          @default("")
   createdAt          DateTime        @default(now())
   chartOfAccountCode String?
@@ -1131,8 +1136,8 @@ model KotDocument {
   cancelReason  String    @default("")
   previousKotId String?
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime
-  itemsJson     Json      @default("[]")
+  updatedAt     DateTime @updatedAt
+  itemsJson     String      @default("[]")
   Employee      Employee? @relation(fields: [employeeId], references: [id])
   Order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -1169,14 +1174,14 @@ model Location {
   latitude                    Float?
   longitude                   Float?
   createdAt                   DateTime                @default(now())
-  updatedAt                   DateTime
+  updatedAt                   DateTime @updatedAt
   subscriptionId              String?
   loyaltyEnabled              Boolean                 @default(false)
   loyaltyPointsPerEuro        Int                     @default(1)
-  loyaltyPointsValue          Decimal                 @default(0.01) @db.Decimal(12, 2)
-  emailReportRecipients       Json                    @default("[]")
+  loyaltyPointsValue          Decimal                 @default(0.01) 
+  emailReportRecipients       String                    @default("[]")
   emailEnabled                Boolean                 @default(false)
-  dailyCloseVarianceThreshold Decimal                 @default(5.00) @db.Decimal(12, 2)
+  dailyCloseVarianceThreshold Decimal                 @default(5.00) 
   tokenVersion                Int                     @default(0)
   AccountsPayable             AccountsPayable[]
   AccountsReceivable          AccountsReceivable[]
@@ -1249,7 +1254,7 @@ model LoyaltyAccount {
   tier               String               @default("bronze")
   isActive           Boolean              @default(true)
   createdAt          DateTime             @default(now())
-  updatedAt          DateTime
+  updatedAt          DateTime @updatedAt
   locationId         String?
   Guest              Guest?
   Location           Location?            @relation(fields: [locationId], references: [id])
@@ -1271,7 +1276,7 @@ model LoyaltyTransaction {
   reason           String         @default("")
   orderId          String?
   checkId          String?
-  monetaryValue    Decimal        @default(0) @db.Decimal(12, 2)
+  monetaryValue    Decimal        @default(0) 
   createdAt        DateTime       @default(now())
   LoyaltyAccount   LoyaltyAccount @relation(fields: [loyaltyAccountId], references: [id])
 
@@ -1292,8 +1297,8 @@ model MealtimeRule {
   isActive   Boolean  @default(true)
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
-  daysOfWeek Json     @default("[1, 2, 3, 4, 5]")
+  updatedAt  DateTime @updatedAt
+  daysOfWeek String     @default("[1, 2, 3, 4, 5]")
   MenuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
 
   @@index([isActive])
@@ -1309,7 +1314,7 @@ model Menu {
   isActive   Boolean    @default(true)
   locationId String
   createdAt  DateTime   @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   Category   Category[]
   Location   Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -1321,11 +1326,11 @@ model MenuItem {
   id                    String                  @id
   name                  String
   description           String                  @default("")
-  price                 Decimal                 @db.Decimal(12, 2)
+  price                 Decimal                 
   image                 String                  @default("")
   isAvailable           Boolean                 @default(true)
   sortOrder             Int                     @default(0)
-  vatRate               Decimal                 @default(22.00) @db.Decimal(5, 2)
+  vatRate               Decimal                 @default(22.00) 
   allergens             String                  @default("")
   categoryId            String
   salesCategoryId       String?
@@ -1333,7 +1338,7 @@ model MenuItem {
   revenueCenterId       String?
   prepStationId         String?
   createdAt             DateTime                @default(now())
-  updatedAt             DateTime
+  updatedAt             DateTime @updatedAt
   InventoryItem         InventoryItem[]
   MealtimeRule          MealtimeRule[]
   Category              Category                @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -1370,13 +1375,13 @@ model MenuItemModifierGroup {
 model Modifier {
   id              String        @id
   name            String
-  price           Decimal       @default(0) @db.Decimal(12, 2)
+  price           Decimal       @default(0) 
   isAvailable     Boolean       @default(true)
   sortOrder       Int           @default(0)
   allergens       String        @default("")
   modifierGroupId String
   createdAt       DateTime      @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   ModifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
 
   @@index([isAvailable])
@@ -1391,7 +1396,7 @@ model ModifierGroup {
   maxSelect             Int?
   sortOrder             Int                     @default(0)
   createdAt             DateTime                @default(now())
-  updatedAt             DateTime
+  updatedAt             DateTime @updatedAt
   locationId            String
   MenuItemModifierGroup MenuItemModifierGroup[]
   Modifier              Modifier[]
@@ -1407,7 +1412,7 @@ model NoSaleReason {
   isActive   Boolean  @default(true)
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   locationId String
   Location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -1425,7 +1430,7 @@ model OpeningHours {
   isClosed   Boolean   @default(false)
   locationId String?
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   Location   Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@unique([locationId, dayOfWeek])
@@ -1445,13 +1450,13 @@ model Order {
   customerName                           String             @default("")
   customerPhone                          String             @default("")
   customerEmail                          String             @default("")
-  subtotal                               Decimal            @default(0) @db.Decimal(12, 2)
-  tax                                    Decimal            @default(0) @db.Decimal(12, 2)
-  discount                               Decimal            @default(0) @db.Decimal(12, 2)
-  tip                                    Decimal            @default(0) @db.Decimal(12, 2)
-  total                                  Decimal            @default(0) @db.Decimal(12, 2)
-  totalWithTip                           Decimal            @default(0) @db.Decimal(12, 2)
-  paymentStatus                          PaymentStatus      @default(unpaid)
+  subtotal                               Decimal            @default(0) 
+  tax                                    Decimal            @default(0) 
+  discount                               Decimal            @default(0) 
+  tip                                    Decimal            @default(0) 
+  total                                  Decimal            @default(0) 
+  totalWithTip                           Decimal            @default(0) 
+  paymentStatus                          String      @default("unpaid")
   paymentMethod                          String             @default("")
   splitCount                             Int                @default(1)
   notes                                  String             @default("")
@@ -1464,7 +1469,7 @@ model Order {
   deliveryInfoId                         String?            @unique
   locationId                             String
   createdAt                              DateTime           @default(now())
-  updatedAt                              DateTime
+  updatedAt                              DateTime @updatedAt
   firedAt                                DateTime?
   cancelledById                          String?
   virtualBrandId                         String?
@@ -1509,20 +1514,20 @@ model OrderItem {
   checkId           String?
   menuItemId        String
   quantity          Int                 @default(1)
-  price             Decimal             @db.Decimal(12, 2)
-  vatRate           Decimal             @default(22.00) @db.Decimal(5, 2)
-  vatAmount         Decimal             @default(0) @db.Decimal(12, 2)
+  price             Decimal             
+  vatRate           Decimal             @default(22.00) 
+  vatAmount         Decimal             @default(0) 
   notes             String              @default("")
   modifiersJson     String              @default("[]")
   menuItemName      String              @default("")
   voided            Boolean             @default(false)
   voidReasonId      String?
-  discountAmount    Decimal             @default(0) @db.Decimal(12, 2)
+  discountAmount    Decimal             @default(0) 
   appliedDiscountId String?
   courseId          String?
-  status            OrderItemStatus     @default(pending)
+  status            String     @default("pending")
   createdAt         DateTime            @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   firedAt           DateTime?
   readyAt           DateTime?
   readyById         String?
@@ -1552,13 +1557,13 @@ model OrderItemModifier {
   id                String         @id
   orderItemId       String
   name              String
-  price             Decimal        @db.Decimal(12, 2)
+  price             Decimal        
   quantity          Int?
   modifierGroupId   String?
   modifierGroupName String         @default("")
   sortOrder         Int            @default(0)
   createdAt         DateTime       @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   ModifierGroup     ModifierGroup? @relation(fields: [modifierGroupId], references: [id])
   OrderItem         OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
@@ -1571,7 +1576,7 @@ model OutboxEvent {
   aggregateType  String
   aggregateId    String
   eventType      String
-  payload        Json
+  payload        String
   target         String
   targetEndpoint String    @default("")
   status         String    @default("pending")
@@ -1582,8 +1587,8 @@ model OutboxEvent {
   nextRetryAt    DateTime?
   processedAt    DateTime?
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime
-  response       Json?
+  updatedAt      DateTime @updatedAt
+  response       String?
   locationId     String?
 
   @@index([aggregateType, aggregateId])
@@ -1598,7 +1603,7 @@ model PackagingConfig {
   name          String
   isActive      Boolean         @default(true)
   createdAt     DateTime        @default(now())
-  updatedAt     DateTime
+  updatedAt     DateTime @updatedAt
   locationId    String
   Location      Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
   PackagingItem PackagingItem[]
@@ -1610,12 +1615,12 @@ model PackagingConfig {
 model PackagingItem {
   id                String          @id
   name              String
-  price             Decimal         @default(0) @db.Decimal(12, 2)
+  price             Decimal         @default(0) 
   packagingConfigId String
   isActive          Boolean         @default(true)
   sortOrder         Int             @default(0)
   createdAt         DateTime        @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   PackagingConfig   PackagingConfig @relation(fields: [packagingConfigId], references: [id], onDelete: Cascade)
 
   @@index([isActive])
@@ -1625,10 +1630,10 @@ model PackagingItem {
 model Payment {
   id                     String                @id
   checkId                String
-  amount                 Decimal               @db.Decimal(12, 2)
+  amount                 Decimal               
   refundAmount           Decimal               @default(0)
-  tipAmount              Decimal               @default(0) @db.Decimal(12, 2)
-  type                   PaymentType
+  tipAmount              Decimal               @default(0) 
+  type                   String
   alternatePaymentTypeId String?
   cardType               String                @default("")
   cardLast4              String                @default("")
@@ -1640,7 +1645,7 @@ model Payment {
   employeeId             String?
   idempotencyKey         String?               @unique
   createdAt              DateTime              @default(now())
-  updatedAt              DateTime
+  updatedAt              DateTime @updatedAt
   AlternatePaymentType   AlternatePaymentType? @relation(fields: [alternatePaymentTypeId], references: [id], onUpdate: SetNull)
   Check                  Check                 @relation(fields: [checkId], references: [id])
   GiftCard               GiftCard?             @relation(fields: [giftCardId], references: [id], onUpdate: SetNull)
@@ -1664,7 +1669,7 @@ model PrepStation {
   isActive    Boolean    @default(true)
   sortOrder   Int        @default(0)
   createdAt   DateTime   @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
   locationId  String
   MenuItem    MenuItem[]
   Location    Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -1681,7 +1686,7 @@ model PriceGroup {
   isActive          Boolean             @default(true)
   sortOrder         Int                 @default(0)
   createdAt         DateTime            @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   locationId        String
   HappyHourSchedule HappyHourSchedule[]
   MenuItem          MenuItem[]
@@ -1698,10 +1703,10 @@ model Printer {
   location   String   @default("")
   ipAddress  String   @default("")
   isActive   Boolean  @default(true)
-  printRules Json     @default("[]")
+  printRules String     @default("[]")
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   locationId String
   Location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -1714,12 +1719,12 @@ model PurchaseOrder {
   id                                             String                 @id
   poNumber                                       String                 @unique
   supplierId                                     String
-  status                                         PurchaseOrderStatus    @default(draft)
+  status                                         String    @default("draft")
   orderDate                                      DateTime               @default(now())
   expectedDate                                   DateTime?
   receivedDate                                   DateTime?
-  subtotal                                       Decimal                @default(0) @db.Decimal(12, 2)
-  vatAmount                                      Decimal                @default(0) @db.Decimal(12, 2)
+  subtotal                                       Decimal                @default(0) 
+  vatAmount                                      Decimal                @default(0) 
   totalAmount                                    Decimal                @default(0)
   deliveryAddress                                String                 @default("")
   deliveryNotes                                  String                 @default("")
@@ -1729,7 +1734,7 @@ model PurchaseOrder {
   notes                                          String                 @default("")
   accountsPayableId                              String?
   createdAt                                      DateTime               @default(now())
-  updatedAt                                      DateTime
+  updatedAt                                      DateTime @updatedAt
   requestedById                                  String?
   approvedById                                   String?
   invoiceStatus                                  String                 @default("none")
@@ -1761,13 +1766,13 @@ model PurchaseOrderItem {
   unitPrice           Decimal                 @default(0)
   vatRate             Decimal                 @default(22.00)
   totalPrice          Decimal                 @default(0)
-  status              PurchaseOrderItemStatus @default(pending)
+  status              String @default("pending")
   notes               String                  @default("")
   createdAt           DateTime                @default(now())
-  updatedAt           DateTime
-  packQty             Decimal?                @db.Decimal(12, 3)
+  updatedAt           DateTime @updatedAt
+  packQty             Decimal?                
   packUnit            String?
-  quantityRejected    Decimal                 @default(0) @db.Decimal(12, 3)
+  quantityRejected    Decimal                 @default(0) 
   AccountsPayableLine AccountsPayableLine[]
   GoodsReceiptItem    GoodsReceiptItem[]
   InventoryItem       InventoryItem?          @relation(fields: [inventoryItemId], references: [id], onUpdate: SetNull)
@@ -1788,7 +1793,7 @@ model PushSubscription {
   userAgent  String   @default("")
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   Employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
@@ -1813,8 +1818,7 @@ model QuickBooksSync {
   lastJournalSync       DateTime?
   isActive              Boolean   @default(true)
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime
-
+  updatedAt             DateTime @updatedAt
   @@index([isActive])
   @@index([lastSyncAt])
 }
@@ -1829,8 +1833,8 @@ model QuickBooksSyncLog {
   action          String    @default("create")
   errorCode       String    @default("")
   errorMessage    String    @default("")
-  requestPayload  Json?
-  responsePayload Json?
+  requestPayload  String?
+  responsePayload String?
   syncedAt        DateTime?
   createdAt       DateTime  @default(now())
 
@@ -1852,22 +1856,22 @@ model Receipt {
   zoi              String       @default("")
   eor              String       @default("")
   fiscalVerified   Boolean      @default(false)
-  fiscalStatus     FiscalStatus @default(none)
+  fiscalStatus     String @default("none")
   verificationDate DateTime?
-  subtotal         Decimal      @db.Decimal(12, 2)
-  vatBreakdown     Json         @default("{}")
-  totalVat         Decimal      @db.Decimal(12, 2)
-  discount         Decimal      @default(0) @db.Decimal(12, 2)
-  total            Decimal      @db.Decimal(12, 2)
-  tip              Decimal      @default(0) @db.Decimal(12, 2)
-  totalWithTip     Decimal      @default(0) @db.Decimal(12, 2)
+  subtotal         Decimal      
+  vatBreakdown     String         @default("{}")
+  totalVat         Decimal      
+  discount         Decimal      @default(0) 
+  total            Decimal      
+  tip              Decimal      @default(0) 
+  totalWithTip     Decimal      @default(0) 
   paymentMethod    String
   isCopy           Boolean      @default(false)
   isStorno         Boolean      @default(false)
   stornoOf         String       @default("")
   printedAt        DateTime?
   createdAt        DateTime     @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   locationId       String
   cisStatus        String       @default("none")
   cisZki           String       @default("")
@@ -1890,13 +1894,13 @@ model RecipeItem {
   id                 String        @id
   menuItemId         String
   inventoryItemId    String
-  quantityPerServing Decimal       @default(0) @db.Decimal(12, 3)
+  quantityPerServing Decimal       @default(0) 
   unit               String        @default("")
   notes              String        @default("")
   parentRecipeItemId String?
   createdAt          DateTime      @default(now())
-  updatedAt          DateTime
-  yieldPercent       Decimal       @default(100) @db.Decimal(5, 2)
+  updatedAt          DateTime @updatedAt
+  yieldPercent       Decimal       @default(100) 
   InventoryItem      InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   MenuItem           MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   RecipeItem         RecipeItem?   @relation("RecipeItemToRecipeItem", fields: [parentRecipeItemId], references: [id], onDelete: Cascade)
@@ -1919,7 +1923,7 @@ model ReorderRule {
   lastTriggeredAt     DateTime?
   lastOrderId         String?
   createdAt           DateTime      @default(now())
-  updatedAt           DateTime
+  updatedAt           DateTime @updatedAt
   InventoryItem       InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
   @@index([isActive])
@@ -1935,10 +1939,10 @@ model Reservation {
   partySize       Int
   duration        Int               @default(120)
   tableId         String?
-  status          ReservationStatus @default(confirmed)
+  status          String @default("confirmed")
   notes           String            @default("")
   specialRequests String            @default("")
-  source          ReservationSource @default(walk_in)
+  source          String @default("walk_in")
   employeeId      String?
   confirmedAt     DateTime?
   reminderSent    Boolean           @default(false)
@@ -1946,7 +1950,7 @@ model Reservation {
   actualDeparture DateTime?
   locationId      String?
   createdAt       DateTime          @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   reminderSentAt  DateTime?
   Location        Location?         @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   Table           Table?            @relation(fields: [tableId], references: [id], onUpdate: SetNull)
@@ -1983,7 +1987,7 @@ model RestaurantSettings {
   reducedVatRate        Decimal  @default(9.50)
   loyaltyEnabled        Boolean  @default(false)
   loyaltyPointsPerEuro  Int      @default(1)
-  loyaltyPointsValue    Decimal  @default(0.01) @db.Decimal(12, 2)
+  loyaltyPointsValue    Decimal  @default(0.01) 
   receiptFooter         String   @default("")
   currency              String   @default("EUR")
   locale                String   @default("sl-SI")
@@ -1998,10 +2002,10 @@ model RestaurantSettings {
   emailSmtpUser         String   @default("")
   emailSmtpPassword     String   @default("")
   emailFromAddress      String   @default("")
-  emailReportRecipients Json     @default("[]")
+  emailReportRecipients String     @default("[]")
   isActive              Boolean  @default(true)
   createdAt             DateTime @default(now())
-  updatedAt             DateTime
+  updatedAt             DateTime @updatedAt
   apiKeys               String   @default("[]")
   cisCertPath           String   @default("")
   cisCertPassword       String   @default("")
@@ -2015,7 +2019,7 @@ model RevenueCenter {
   isActive   Boolean    @default(true)
   sortOrder  Int        @default(0)
   createdAt  DateTime   @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   locationId String
   MenuItem   MenuItem[]
   Order      Order[]
@@ -2033,7 +2037,7 @@ model SalesCategory {
   isActive   Boolean    @default(true)
   sortOrder  Int        @default(0)
   createdAt  DateTime   @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   locationId String
   MenuItem   MenuItem[]
   Location   Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -2065,12 +2069,12 @@ model ServiceCharge {
   id           String         @id
   name         String
   type         String
-  amount       Decimal        @db.Decimal(5, 2)
+  amount       Decimal        
   isAutoApply  Boolean        @default(false)
   isActive     Boolean        @default(true)
   sortOrder    Int            @default(0)
   createdAt    DateTime       @default(now())
-  updatedAt    DateTime
+  updatedAt    DateTime @updatedAt
   locationId   String
   DiningOption DiningOption[]
   Location     Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -2087,7 +2091,7 @@ model Session {
   ipAddress      String   @default("")
   userAgent      String   @default("")
   sessionVersion Int      @default(0)
-  permissions    Json     @default("[]")
+  permissions    String     @default("[]")
   createdAt      DateTime @default(now())
   expiresAt      DateTime
   absoluteExpiry DateTime
@@ -2107,7 +2111,7 @@ model StaffAvailability {
   isPreferred Boolean  @default(true)
   notes       String   @default("")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
   Employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, dayOfWeek, startTime, endTime])
@@ -2125,14 +2129,14 @@ model StaffShift {
   locationId                                String?
   role                                      String           @default("server")
   notes                                     String           @default("")
-  status                                    StaffShiftStatus @default(scheduled)
+  status                                    String @default("scheduled")
   confirmedAt                               DateTime?
   actualStart                               DateTime?
   actualEnd                                 DateTime?
   breakMinutes                              Int              @default(0)
   createdBy                                 String?
   createdAt                                 DateTime         @default(now())
-  updatedAt                                 DateTime
+  updatedAt                                 DateTime @updatedAt
   createdById                               String?
   jobId                                     String?
   Employee_StaffShift_createdByIdToEmployee Employee?        @relation("StaffShift_createdByIdToEmployee", fields: [createdById], references: [id])
@@ -2157,7 +2161,7 @@ model StockBatchAllocation {
   batchId            String
   stockTransactionId String
   inventoryItemId    String
-  quantity           Decimal          @db.Decimal(12, 3)
+  quantity           Decimal          
   createdAt          DateTime         @default(now())
   InventoryBatch     InventoryBatch   @relation(fields: [batchId], references: [id], onUpdate: Restrict)
   StockTransaction   StockTransaction @relation(fields: [stockTransactionId], references: [id], onDelete: Cascade)
@@ -2171,11 +2175,11 @@ model StockTransaction {
   id                                                                   String                 @id
   inventoryItemId                                                      String
   type                                                                 String
-  quantity                                                             Decimal                @db.Decimal(12, 3)
-  previousQty                                                          Decimal                @db.Decimal(12, 3)
-  newQty                                                               Decimal                @db.Decimal(12, 3)
-  costPerUnit                                                          Decimal                @db.Decimal(12, 2)
-  totalCost                                                            Decimal                @db.Decimal(12, 2)
+  quantity                                                             Decimal                
+  previousQty                                                          Decimal                
+  newQty                                                               Decimal                
+  costPerUnit                                                          Decimal                
+  totalCost                                                            Decimal                
   reason                                                               String                 @default("")
   note                                                                 String                 @default("")
   supplierDoc                                                          String                 @default("")
@@ -2214,7 +2218,7 @@ model Stocktake {
   recountCount   Int             @default(0)
   idempotencyKey String?
   createdAt      DateTime        @default(now())
-  updatedAt      DateTime
+  updatedAt      DateTime @updatedAt
   Location       Location        @relation(fields: [locationId], references: [id])
   StocktakeItem  StocktakeItem[]
 
@@ -2230,17 +2234,17 @@ model StocktakeItem {
   inventoryItemId    String
   itemName           String            @default("")
   unit               String            @default("")
-  expectedQuantity   Decimal           @db.Decimal(12, 3)
-  costPerUnit        Decimal           @db.Decimal(12, 2)
-  countedQuantity    Decimal?          @db.Decimal(12, 3)
-  varianceQuantity   Decimal?          @db.Decimal(12, 3)
-  varianceValue      Decimal?          @db.Decimal(12, 2)
+  expectedQuantity   Decimal           
+  costPerUnit        Decimal           
+  countedQuantity    Decimal?          
+  varianceQuantity   Decimal?          
+  varianceValue      Decimal?          
   lineNote           String            @default("")
   countedAt          DateTime?
   countedByName      String            @default("")
   stockTransactionId String?           @unique
   createdAt          DateTime          @default(now())
-  updatedAt          DateTime
+  updatedAt          DateTime @updatedAt
   InventoryItem      InventoryItem     @relation(fields: [inventoryItemId], references: [id], onUpdate: Restrict)
   StockTransaction   StockTransaction? @relation(fields: [stockTransactionId], references: [id], onUpdate: SetNull)
   Stocktake          Stocktake         @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
@@ -2256,9 +2260,9 @@ model Subscription {
   phone               String                @default("")
   taxId               String                @default("")
   businessId          String                @default("")
-  plan                SubscriptionPlan      @default(starter)
-  status              SubscriptionStatus    @default(trial)
-  monthlyPrice        Decimal               @default(0) @db.Decimal(12, 2)
+  plan                String      @default("starter")
+  status              String    @default("trial")
+  monthlyPrice        Decimal               @default(0) 
   locationCount       Int                   @default(1)
   currency            String                @default("EUR")
   trialStartsAt       DateTime?
@@ -2269,7 +2273,7 @@ model Subscription {
   paymentMethod       String                @default("")
   stripeCustomerId    String?
   createdAt           DateTime              @default(now())
-  updatedAt           DateTime
+  updatedAt           DateTime @updatedAt
   ApiKey              ApiKey[]
   Location            Location[]
   SubscriptionInvoice SubscriptionInvoice[]
@@ -2283,10 +2287,10 @@ model SubscriptionInvoice {
   id             String       @id
   subscriptionId String
   invoiceNumber  String       @unique
-  amount         Decimal      @db.Decimal(12, 2)
-  vatRate        Decimal      @default(22) @db.Decimal(5, 2)
-  vatAmount      Decimal      @default(0) @db.Decimal(12, 2)
-  totalAmount    Decimal      @default(0) @db.Decimal(12, 2)
+  amount         Decimal      
+  vatRate        Decimal      @default(22) 
+  vatAmount      Decimal      @default(0) 
+  totalAmount    Decimal      @default(0) 
   currency       String       @default("EUR")
   periodStart    DateTime
   periodEnd      DateTime
@@ -2318,13 +2322,13 @@ model Supplier {
   iban                 String                 @default("")
   bank                 String                 @default("")
   paymentTerms         String                 @default("30 dni")
-  deliveryDays         Json                   @default("[]")
+  deliveryDays         String                   @default("[]")
   minOrderAmount       Decimal                @default(0)
   rating               Decimal                @default(0)
   isActive             Boolean                @default(true)
   notes                String                 @default("")
   createdAt            DateTime               @default(now())
-  updatedAt            DateTime
+  updatedAt            DateTime @updatedAt
   AccountsPayable      AccountsPayable[]
   GoodsReceipt         GoodsReceipt[]
   InventoryBatch       InventoryBatch[]
@@ -2341,15 +2345,15 @@ model SupplierItem {
   supplierId      String
   inventoryItemId String
   supplierSku     String        @default("")
-  packQty         Decimal       @default(1) @db.Decimal(12, 3)
+  packQty         Decimal       @default(1) 
   packUnit        String        @default("paket")
-  pricePerPack    Decimal       @default(0) @db.Decimal(12, 4)
-  vatRate         Decimal?      @db.Decimal(5, 2)
+  pricePerPack    Decimal       @default(0) 
+  vatRate         Decimal?      
   minOrderPacks   Int           @default(1)
   isActive        Boolean       @default(true)
   note            String        @default("")
   createdAt       DateTime      @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   InventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   Supplier        Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
@@ -2362,8 +2366,8 @@ model SupplierPriceHistory {
   id              String         @id
   supplierId      String
   inventoryItemId String
-  unitPrice       Decimal        @db.Decimal(12, 4)
-  vatRate         Decimal?       @db.Decimal(5, 2)
+  unitPrice       Decimal        
+  vatRate         Decimal?       
   unit            String         @default("pcs")
   source          String         @default("goods_receipt")
   purchaseOrderId String?
@@ -2409,10 +2413,9 @@ model SyncState {
   lastSyncedAt   DateTime?
   syncVersion    Int       @default(0)
   conflictStatus String    @default("none")
-  conflictData   Json?
+  conflictData   String?
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime
-
+  updatedAt      DateTime @updatedAt
   @@unique([entityType, entityId])
   @@index([conflictStatus])
   @@index([lastSyncedAt])
@@ -2422,7 +2425,7 @@ model Table {
   id              String          @id
   number          Int
   capacity        Int             @default(4)
-  status          TableStatus     @default(available)
+  status          String     @default("available")
   area            String          @default("main")
   posX            Float           @default(0)
   posY            Float           @default(0)
@@ -2433,7 +2436,7 @@ model Table {
   revenueCenterId String?
   locationId      String
   createdAt       DateTime        @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   Order           Order[]
   Reservation     Reservation[]
   Location        Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -2449,13 +2452,13 @@ model Table {
 model TaxRate {
   id           String         @id
   name         String
-  rate         Decimal        @db.Decimal(5, 2)
+  rate         Decimal        
   code         String         @default("")
   isActive     Boolean        @default(true)
   sortOrder    Int            @default(0)
   locationId   String
   createdAt    DateTime       @default(now())
-  updatedAt    DateTime
+  updatedAt    DateTime @updatedAt
   DiningOption DiningOption[]
   Location     Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -2474,14 +2477,14 @@ model TimeEntry {
   breakEnd     DateTime?
   breakMinutes Int             @default(0)
   totalMinutes Int             @default(0)
-  payRate      Decimal         @default(0) @db.Decimal(12, 2)
-  totalPay     Decimal         @default(0) @db.Decimal(12, 2)
-  type         TimeEntryType   @default(regular)
-  status       TimeEntryStatus @default(active)
+  payRate      Decimal         @default(0) 
+  totalPay     Decimal         @default(0) 
+  type         String   @default("regular")
+  status       String @default("active")
   notes        String          @default("")
   locationId   String?
   createdAt    DateTime        @default(now())
-  updatedAt    DateTime
+  updatedAt    DateTime @updatedAt
   Employee     Employee        @relation(fields: [employeeId], references: [id])
   Job          Job?            @relation(fields: [jobId], references: [id], onUpdate: SetNull)
   Location     Location?       @relation(fields: [locationId], references: [id], onUpdate: SetNull)
@@ -2505,7 +2508,7 @@ model TimeOffRequest {
   reviewedBy String?
   reviewedAt DateTime?
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   Employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
@@ -2520,9 +2523,9 @@ model TipDistribution {
   employeeName String    @default("")
   previousHash String    @default("")
   chainHash    String    @default("")
-  hoursWorked  Decimal   @default(0) @db.Decimal(12, 2)
-  points       Decimal   @default(0) @db.Decimal(12, 2)
-  amount       Decimal   @default(0) @db.Decimal(12, 2)
+  hoursWorked  Decimal   @default(0) 
+  points       Decimal   @default(0) 
+  amount       Decimal   @default(0) 
   status       String    @default("pending")
   paidAt       DateTime?
   createdAt    DateTime  @default(now())
@@ -2540,14 +2543,14 @@ model TipPool {
   id                 String            @id
   date               DateTime
   shiftId            String?
-  totalTips          Decimal           @default(0) @db.Decimal(12, 2)
-  cashTips           Decimal           @default(0) @db.Decimal(12, 2)
-  cardTips           Decimal           @default(0) @db.Decimal(12, 2)
+  totalTips          Decimal           @default(0) 
+  cashTips           Decimal           @default(0) 
+  cardTips           Decimal           @default(0) 
   distributionMethod String            @default("equal")
   status             String            @default("pending")
   locationId         String?
   createdAt          DateTime          @default(now())
-  updatedAt          DateTime
+  updatedAt          DateTime @updatedAt
   TipDistribution    TipDistribution[]
   Location           Location?         @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
@@ -2567,10 +2570,10 @@ model VideoAnalyticsSession {
   peopleOut        Int       @default(0)
   currentOccupancy Int       @default(0)
   peakOccupancy    Int       @default(0)
-  heatmapData      Json?
+  heatmapData      String?
   status           String    @default("active")
   createdAt        DateTime  @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime @updatedAt
   Location         Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
   @@index([cameraId])
@@ -2593,7 +2596,7 @@ model VirtualBrand {
   deliveryEnabled Boolean   @default(true)
   pickupEnabled   Boolean   @default(true)
   createdAt       DateTime  @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   Order           Order[]
   Location        Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
@@ -2607,7 +2610,7 @@ model VoidReason {
   isActive   Boolean     @default(true)
   sortOrder  Int         @default(0)
   createdAt  DateTime    @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime @updatedAt
   locationId String
   OrderItem  OrderItem[]
   Location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -2635,7 +2638,7 @@ model WaitlistEntry {
   notes             String       @default("")
   employeeId        String?
   createdAt         DateTime     @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   locationId        String?
   Employee          Employee?    @relation(fields: [employeeId], references: [id], onUpdate: SetNull)
   Location          Location?    @relation(fields: [locationId], references: [id], onUpdate: SetNull)
@@ -2671,7 +2674,7 @@ model WalletPayment {
   errorMessage   String    @default("")
   deviceId       String?
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime
+  updatedAt      DateTime @updatedAt
   locationId     String?
   Location       Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
 
@@ -2687,12 +2690,12 @@ model WasteRecord {
   id                                                                        String            @id
   locationId                                                                String
   inventoryItemId                                                           String
-  quantity                                                                  Decimal           @db.Decimal(12, 3)
+  quantity                                                                  Decimal           
   unit                                                                      String            @default("")
   reason                                                                    String
   note                                                                      String            @default("")
-  costPerUnit                                                               Decimal           @db.Decimal(12, 2)
-  totalCost                                                                 Decimal           @db.Decimal(12, 2)
+  costPerUnit                                                               Decimal           
+  totalCost                                                                 Decimal           
   stockTransactionId                                                        String?           @unique
   reversedAt                                                                DateTime?
   reversalStockTransactionId                                                String?           @unique
@@ -2732,13 +2735,13 @@ model Webhook {
   id              String            @id
   name            String
   url             String
-  events          Json              @default("[]")
+  events          String              @default("[]")
   isActive        Boolean           @default(true)
   secret          String            @default("")
   lastTriggered   DateTime?
   failureCount    Int               @default(0)
   createdAt       DateTime          @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   locationId      String?
   Location        Location?         @relation(fields: [locationId], references: [id], onDelete: Cascade)
   WebhookDelivery WebhookDelivery[]
@@ -2776,32 +2779,32 @@ model ZReport {
   reportDate        DateTime
   openedAt          DateTime
   closedAt          DateTime?
-  totalSales        Decimal   @default(0) @db.Decimal(12, 2)
-  totalNetSales     Decimal   @default(0) @db.Decimal(12, 2)
-  totalTax          Decimal   @default(0) @db.Decimal(12, 2)
-  cashSales         Decimal   @default(0) @db.Decimal(12, 2)
-  cardSales         Decimal   @default(0) @db.Decimal(12, 2)
-  mobileSales       Decimal   @default(0) @db.Decimal(12, 2)
-  alternateSales    Decimal   @default(0) @db.Decimal(12, 2)
-  dineInSales       Decimal   @default(0) @db.Decimal(12, 2)
-  takeoutSales      Decimal   @default(0) @db.Decimal(12, 2)
-  deliverySales     Decimal   @default(0) @db.Decimal(12, 2)
-  vatStandard       Decimal   @default(0) @db.Decimal(12, 2)
-  vatStandardAmount Decimal   @default(0) @db.Decimal(12, 2)
-  vatReduced        Decimal   @default(0) @db.Decimal(12, 2)
-  vatReducedAmount  Decimal   @default(0) @db.Decimal(12, 2)
-  vatZero           Decimal   @default(0) @db.Decimal(12, 2)
+  totalSales        Decimal   @default(0) 
+  totalNetSales     Decimal   @default(0) 
+  totalTax          Decimal   @default(0) 
+  cashSales         Decimal   @default(0) 
+  cardSales         Decimal   @default(0) 
+  mobileSales       Decimal   @default(0) 
+  alternateSales    Decimal   @default(0) 
+  dineInSales       Decimal   @default(0) 
+  takeoutSales      Decimal   @default(0) 
+  deliverySales     Decimal   @default(0) 
+  vatStandard       Decimal   @default(0) 
+  vatStandardAmount Decimal   @default(0) 
+  vatReduced        Decimal   @default(0) 
+  vatReducedAmount  Decimal   @default(0) 
+  vatZero           Decimal   @default(0) 
   totalOrders       Int       @default(0)
   totalGuests       Int       @default(0)
-  avgOrderValue     Decimal   @default(0) @db.Decimal(12, 2)
-  totalDiscounts    Decimal   @default(0) @db.Decimal(12, 2)
-  totalTips         Decimal   @default(0) @db.Decimal(12, 2)
-  totalVoided       Decimal   @default(0) @db.Decimal(12, 2)
-  totalStorno       Decimal   @default(0) @db.Decimal(12, 2)
+  avgOrderValue     Decimal   @default(0) 
+  totalDiscounts    Decimal   @default(0) 
+  totalTips         Decimal   @default(0) 
+  totalVoided       Decimal   @default(0) 
+  totalStorno       Decimal   @default(0) 
   startingCash      Decimal   @default(0)
   expectedCash      Decimal   @default(0)
   actualCash        Decimal   @default(0)
-  cashDifference    Decimal   @default(0) @db.Decimal(12, 2)
+  cashDifference    Decimal   @default(0) 
   cashDrops         Decimal   @default(0)
   totalCost         Decimal   @default(0)
   grossProfit       Decimal   @default(0)
@@ -2811,7 +2814,7 @@ model ZReport {
   notes             String    @default("")
   locationId        String?
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime
+  updatedAt         DateTime @updatedAt
   finalizedById     String?
   Employee          Employee? @relation(fields: [finalizedById], references: [id])
   Location          Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
@@ -2824,160 +2827,3 @@ model ZReport {
   @@index([status])
 }
 
-enum AccountType {
-  asset
-  liability
-  equity
-  revenue
-  expense
-  unknown
-}
-
-enum EmployeeRole {
-  admin
-  manager
-  staff
-  chef
-  kitchen
-}
-
-enum EmployeeStatus {
-  active
-  inactive
-  terminated
-  anonymized
-}
-
-enum FiscalStatus {
-  none
-  pending
-  processing
-  verifying
-  verified
-  failed
-}
-
-enum HaccpCategory {
-  temperature
-  cleaning
-  delivery
-  cooling
-  training
-}
-
-enum HaccpStatus {
-  ok
-  warning
-  critical
-  archived
-}
-
-enum JournalEntryStatus {
-  draft
-  posted
-  reversed
-}
-
-enum OrderItemStatus {
-  pending
-  fired
-  preparing
-  ready
-  served
-  cancelled
-  voided
-}
-
-enum PaymentStatus {
-  unpaid
-  partial
-  paid
-  storno
-  cancelled
-}
-
-enum PaymentType {
-  cash
-  card
-  mobile
-  voucher
-  loyalty
-  giftcard
-  alternate
-}
-
-enum PurchaseOrderItemStatus {
-  pending
-  partial
-  received
-  cancelled
-}
-
-enum PurchaseOrderStatus {
-  draft
-  submitted
-  approved
-  partial
-  received
-  cancelled
-}
-
-enum ReservationSource {
-  walk_in
-  phone
-  website
-  app
-}
-
-enum ReservationStatus {
-  confirmed
-  seated
-  completed
-  cancelled
-  no_show
-}
-
-enum StaffShiftStatus {
-  scheduled
-  confirmed
-  in_progress
-  completed
-  absent
-  cancelled
-  no_show
-}
-
-enum SubscriptionPlan {
-  starter
-  professional
-  enterprise
-}
-
-enum SubscriptionStatus {
-  trial
-  active
-  past_due
-  cancelled
-  expired
-}
-
-enum TableStatus {
-  available
-  occupied
-  reserved
-  cleaning
-}
-
-enum TimeEntryStatus {
-  active
-  approved
-  disputed
-}
-
-enum TimeEntryType {
-  regular
-  overtime
-  holiday
-  sick
-  vacation
-}

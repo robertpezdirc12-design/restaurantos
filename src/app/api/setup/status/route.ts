@@ -5,7 +5,7 @@ export async function GET() {
   const [employees, locations, settings] = await Promise.all([
     db.employee.count(),
     db.location.count(),
-    db.setting.count(),
+    db.restaurantSettings.count(),
   ])
   return NextResponse.json({
     isInitialized: employees > 0,

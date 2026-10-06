@@ -2,37 +2,28 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail, forbidden } from '@/lib/api'
 import { canAccessModule } from '@/lib/auth'
+import { mapTable, tableStatusToDB, nid, ORDER_ACTIVE_DB } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const tables = await db.table.findMany({
     include: {
-      orders: {
-        where: { status: { in: ['OPEN', 'SENT', 'PREPARED'] } },
-        include: { items: true },
+      Order: {
+        where: { status: { in: ORDER_ACTIVE_DB } },
+        include: { OrderItem: true },
       },
     },
-    orderBy: [{ zone: 'asc' }, { name: 'asc' }],
+    orderBy: [{ area: 'asc' }, { number: 'asc' }],
   })
   return ok({
-    tables: tables.map((t) => ({
-      id: t.id,
-      name: t.name,
-      zone: t.zone,
-      seats: t.seats,
-      posX: t.posX,
-      posY: t.posY,
-      status: t.orders.length > 0 ? 'OCCUPIED' : t.status,
-      activeOrder: t.orders.length
-        ? {
-            id: t.orders[0].id,
-            total: t.orders[0].total,
-            guests: t.orders[0].guests,
-            itemCount: t.orders[0].items.length,
-          }
-        : null,
-    })),
+    tables: tables.map((t) => {
+      const active = t.Order[0]
+      return mapTable(
+        { ...t, items: active?.OrderItem },
+        active ? { ...active, items: active.OrderItem } : null
+      )
+    }),
   })
 }
 
@@ -41,16 +32,23 @@ export async function POST(req: NextRequest) {
   if (isResponse(user)) return user
   if (!canAccessModule(user, 'tables', true) && user.role !== 'MANAGER') return forbidden()
   const body = await req.json().catch(() => null)
-  if (!body?.name) return fail('Ime mize je obvezno.')
+  const number = Number(body?.number ?? body?.name)
+  if (!number || number < 1) return fail('Številka mize je obvezna.')
+  const locationId = user.loc || (await db.location.findFirst())?.id
+  if (!locationId) return fail('Ni lokacije. Najprej ustvari lokacijo.', 400)
+  const exists = await db.table.findUnique({ where: { number_locationId: { number, locationId } } })
+  if (exists) return fail(`Miza s številko ${number} že obstaja.`)
   const table = await db.table.create({
     data: {
-      name: String(body.name),
-      zone: String(body.zone || 'Glavna dvorana'),
-      seats: Number(body.seats) || 4,
-      posX: Number(body.posX) || 40,
-      posY: Number(body.posY) || 40,
-      locationId: user.loc || (await db.location.findFirst())?.id || '',
+      id: nid(),
+      number,
+      capacity: Number(body?.seats ?? body?.capacity) || 4,
+      area: String(body?.zone ?? body?.area ?? 'Glavna dvorana'),
+      posX: Number(body?.posX) || 40,
+      posY: Number(body?.posY) || 40,
+      status: tableStatusToDB('FREE'),
+      locationId,
     },
   })
-  return ok({ table }, 201)
+  return ok({ table: mapTable(table) }, 201)
 }

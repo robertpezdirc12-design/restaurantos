@@ -1,58 +1,216 @@
+/**
+ * RestavrantOS seed — produkcijska shema (prisma/schema.sqlite.prisma lokalno /
+ * prisma/schema.prisma produkcija). Zaženi: bun prisma/seed.ts
+ */
 import { PrismaClient } from '@prisma/client'
-import crypto from 'crypto'
+import { createHash } from 'crypto'
+import { employeePinFields } from '../src/lib/auth'
 
 const db = new PrismaClient()
 
-function pinHash(pin: string, salt: string) {
-  return crypto.scryptSync(pin, salt, 32).toString('hex')
+/** Determinističen, trkaneprožen ID iz semena (sha1, 20 znakov) */
+function nid(seed: string): string {
+  return createHash('sha1').update(seed).digest('hex').slice(0, 20)
 }
 
 async function main() {
-  const loc = await db.location.create({ data: { name: 'RestaurantOS Ljubljana', city: 'Ljubljana', address: 'Slovenska cesta 1', phone: '+386 1 234 56 78', currency: 'EUR' } })
+  console.log('🌱 Seed začetek...')
 
-  const mkEmp = async (name: string, email: string, role: string, pin: string) => {
-    const salt = crypto.randomBytes(16).toString('hex')
-    return db.employee.create({ data: { locationId: loc.id, name, email, role, pinSalt: salt, pinHash: pinHash(pin, salt) } })
-  }
-  await mkEmp('Robert Pezdirc', 'admin@restaurantos.app', 'ADMIN', '1234')
-  await mkEmp('Ana Kovač', 'natakarica@restaurantos.app', 'WAITER', '1111')
-  await mkEmp('Kuhinja', 'kuhinja@restaurantos.app', 'KITCHEN', '2222')
-
-  const zones = ['Glavna dvorana', 'Terasa', 'Bar']
-  const names = ['T1','T2','T3','T4','T5','T6','B1','B2','P1','P2','P3','P4','P5','P6']
-  for (let i = 0; i < names.length; i++) {
-    const zone = i < 6 ? zones[0] : i < 8 ? zones[2] : zones[1]
-    await db.table.create({ data: { locationId: loc.id, name: names[i], zone, seats: 2 + (i % 4), posX: (i % 6) * 120 + 40, posY: Math.floor(i / 6) * 100 + 40 } })
+  const locationId = nid('loc-main')
+  const existing = await db.location.findUnique({ where: { id: locationId } })
+  if (existing) {
+    console.log('✅ Seed že izveden (lokacija obstaja) — preskok.')
+    return
   }
 
-  const cats = [
-    { name: 'Predjedi', items: [['Šparaška juha', 4.5], ['Kraški pršut', 9.8], ['Jajca v senčki', 6.9]] },
-    { name: 'Glavne jedi', items: [['Kranjska klobasa', 12.5], ['Bujta repa', 11.9], ['Zrezek v parmezanu', 18.9], ['Šampionska rižota', 13.5]] },
-    { name: 'Pijače', items: [['Union pivo 0,5l', 3.8], ['Zeleno štrukljev sok', 3.2], ['Kava', 1.8], ['Cviček 1dl', 2.4]] },
-    { name: 'Sladice', items: [['Potica', 4.2], ['Prekmurska gibanica', 4.8]] },
-  ] as const
-  for (let c = 0; c < cats.length; c++) {
-    const cat = await db.category.create({ data: { name: cats[c].name, sortOrder: c } })
-    for (const [name, price] of cats[c].items) {
-      await db.menuItem.create({ data: { categoryId: cat.id, name, price, taxRate: cats[c].name === 'Pijače' ? 22 : 9.5, station: cats[c].name === 'Pijače' ? 'BAR' : 'KITCHEN' } })
+  const location = await db.location.create({
+    data: {
+      id: locationId,
+      name: 'RestavrantOS Ljubljana',
+      code: 'LJU-01',
+      type: 'restaurant',
+      address: 'Slovenska cesta 1',
+      city: 'Ljubljana',
+      postCode: '1000',
+      country: 'SI',
+      phone: '+386 1 234 56 78',
+      email: 'info@restaurantos.app',
+      businessId: '1234567',
+      taxId: 'SI12345678',
+      registerNumber: 'BLG-001',
+      premisesId: 'BLG001',
+      fursEnvironment: 'test',
+      currency: 'EUR',
+      locale: 'sl-SI',
+      isOpen: true,
+      isActive: true,
+    },
+  })
+  console.log('📍 Lokacija:', location.name)
+
+  const employees = [
+    { id: nid('emp-admin'), name: 'Ana Admin', email: 'admin@restaurantos.app', role: 'admin', pin: '1234' },
+    { id: nid('emp-waiter'), name: 'Marko Natakar', email: 'natakar@restaurantos.app', role: 'staff', pin: '2345' },
+    { id: nid('emp-kitchen'), name: 'Katarina Kuhinja', email: 'kuhinja@restaurantos.app', role: 'chef', pin: '3456' },
+    { id: nid('emp-manager'), name: 'Mojca Vodja', email: 'vodja@restaurantos.app', role: 'manager', pin: '4567' },
+  ]
+  for (const e of employees) {
+    const fields = employeePinFields(e.pin, e.email)
+    await db.employee.create({
+      data: {
+        id: e.id,
+        name: e.name,
+        email: e.email,
+        role: e.role as 'admin' | 'manager' | 'staff' | 'chef' | 'kitchen',
+        status: 'active',
+        locationId,
+        pin: fields.pin,
+        pinLookup: fields.pinLookup,
+      },
+    })
+  }
+  console.log('👥 Zaposleni:', employees.length)
+
+  const menuId = nid('menu-main')
+  await db.menu.create({
+    data: { id: menuId, name: 'Glavni meni', icon: '🍽️', color: '#059669', locationId, isActive: true },
+  })
+
+  const stationKitchenId = nid('ps-kitchen')
+  const stationBarId = nid('ps-bar')
+  await db.prepStation.createMany({
+    data: [
+      { id: stationKitchenId, name: 'Kuhinja', type: 'kitchen', locationId },
+      { id: stationBarId, name: 'Bar', type: 'bar', locationId },
+    ],
+  })
+
+  const categories = [
+    { id: nid('cat-jedi'), name: 'Glavne jedi', sortOrder: 1 },
+    { id: nid('cat-predjedi'), name: 'Predjedi', sortOrder: 2 },
+    { id: nid('cat-pijace'), name: 'Pijače', sortOrder: 3 },
+    { id: nid('cat-sladice'), name: 'Sladice', sortOrder: 4 },
+  ]
+  for (const c of categories) {
+    await db.category.create({
+      data: { ...c, menuId, icon: '🍽️', color: '#059669' },
+    })
+  }
+
+  const menuItems = [
+    { id: nid('mi-burek'), name: 'Burek s sirom', price: 3.5, vatRate: 9.5, categoryId: categories[0].id, station: stationKitchenId, desc: 'Domač burek' },
+    { id: nid('mi-rybica'), name: 'Zebra pečenka', price: 18.9, vatRate: 9.5, categoryId: categories[0].id, station: stationKitchenId, desc: 'Peljska pečenka z zelenjavo' },
+    { id: nid('mi-kranjska'), name: 'Kranjska klobasa', price: 12.5, vatRate: 9.5, categoryId: categories[0].id, station: stationKitchenId, desc: 'S kislim zeljem in gorčico' },
+    { id: nid('mi-rizota'), name: 'Morska rižota', price: 14.9, vatRate: 9.5, categoryId: categories[0].id, station: stationKitchenId, desc: 'Z kozicami in mušlami' },
+    { id: nid('mi-supa'), name: 'Goveja juha', price: 4.5, vatRate: 9.5, categoryId: categories[1].id, station: stationKitchenId, desc: 'Z rezanci' },
+    { id: nid('mi-salata'), name: 'Mešana solata', price: 6.9, vatRate: 9.5, categoryId: categories[1].id, station: stationKitchenId, desc: 'Sezonska' },
+    { id: nid('mi-pivo'), name: 'Laško pivo 0,5l', price: 3.8, vatRate: 22, categoryId: categories[2].id, station: stationBarId, desc: 'Točeno' },
+    { id: nid('mi-vino'), name: 'Cviček 1dl', price: 2.9, vatRate: 22, categoryId: categories[2].id, station: stationBarId, desc: 'Domače rdeče' },
+    { id: nid('mi-kava'), name: 'Kava', price: 1.8, vatRate: 22, categoryId: categories[2].id, station: stationBarId, desc: 'Espresso' },
+    { id: nid('mi-coca'), name: 'Coca-Cola 0,33l', price: 3.2, vatRate: 22, categoryId: categories[2].id, station: stationBarId, desc: 'Plastenka' },
+    { id: nid('mi-palacinke'), name: 'Palačinke z nutello', price: 6.5, vatRate: 9.5, categoryId: categories[3].id, station: stationKitchenId, desc: 'Z oreščki' },
+    { id: nid('mi-sarlota'), name: 'Kremna rezina', price: 4.9, vatRate: 9.5, categoryId: categories[3].id, station: stationKitchenId, desc: 'Bledska' },
+  ]
+  for (const m of menuItems) {
+    await db.menuItem.create({
+      data: {
+        id: m.id,
+        name: m.name,
+        description: m.desc,
+        price: m.price,
+        vatRate: m.vatRate,
+        categoryId: m.categoryId,
+        prepStationId: m.station,
+        isAvailable: true,
+        sortOrder: 0,
+      },
+    })
+  }
+  console.log('🍽️ Artikli:', menuItems.length)
+
+  const areas = [
+    { area: 'Glavna dvorana', from: 1, to: 8 },
+    { area: 'Bar', from: 9, to: 11 },
+    { area: 'Terasa', from: 12, to: 14 },
+  ]
+  let tableCount = 0
+  for (const a of areas) {
+    for (let n = a.from; n <= a.to; n++) {
+      await db.table.create({
+        data: {
+          id: nid(`tbl-${n}`),
+          number: n,
+          capacity: n % 3 === 0 ? 6 : 4,
+          area: a.area,
+          posX: 40 + (n % 4) * 120,
+          posY: 40 + Math.floor((n - 1) / 4) * 100,
+          status: 'available',
+          locationId,
+        },
+      })
+      tableCount++
     }
   }
+  console.log('🪑 Mize:', tableCount)
 
-  await db.setting.createMany({ data: [
-    { key: 'restaurant.name', value: 'RestaurantOS Ljubljana' },
-    { key: 'restaurant.taxId', value: 'SI12345678' },
-    { key: 'furs.environment', value: 'SIMULATION' },
-    { key: 'app.version', value: '1.26.0' },
-  ]})
+  await db.restaurantSettings.create({
+    data: {
+      id: nid('settings-default'),
+      name: 'RestavrantOS',
+      address: 'Slovenska cesta 1',
+      city: 'Ljubljana',
+      postCode: '1000',
+      phone: '+386 1 234 56 78',
+      email: 'info@restaurantos.app',
+      businessId: '1234567',
+      taxId: 'SI12345678',
+      registerNumber: 'BLG-001',
+      fursEnvironment: 'test',
+      defaultVatRate: 22,
+      reducedVatRate: 9.5,
+      currency: 'EUR',
+      locale: 'sl-SI',
+      country: 'SI',
+      receiptFooter: 'Hvala za obisk! Prijava: admin@restaurantos.app',
+    },
+  })
 
-  const t1 = await db.table.findFirst({ where: { name: 'T1' } })
-  const waiter = await db.employee.findFirst({ where: { role: 'WAITER' } })
-  const items = await db.menuItem.findMany({ take: 3 })
-  if (t1 && waiter) {
-    const subtotal = items.reduce((s, i) => s + i.price, 0)
-    const order = await db.order.create({ data: { locationId: loc.id, tableId: t1.id, employeeId: waiter.id, status: 'OPEN', guests: 2, subtotal, tax: subtotal * 0.095, total: subtotal * 1.095 } })
-    for (const it of items) await db.orderItem.create({ data: { orderId: order.id, menuItemId: it.id, name: it.name, qty: 1, unitPrice: it.price, taxRate: it.taxRate, station: it.station } })
-  }
-  console.log('SEED OK', loc.id)
+  const supplierId = nid('sup-kmetija')
+  await db.supplier.create({
+    data: { id: supplierId, name: 'Kmetija Sonce', contactPerson: 'Jože Kmet', phone: '+386 41 111 222', city: 'Domžale', isActive: true },
+  })
+  await db.inventoryItem.createMany({
+    data: [
+      { id: nid('inv-moka'), name: 'MokaTip 500', unit: 'kg', quantity: 45, minQuantity: 10, costPerUnit: 1.2, supplier: 'Kmetija Sonce', locationId },
+      { id: nid('inv-govedina'), name: 'Govedina (pleče)', unit: 'kg', quantity: 18, minQuantity: 5, costPerUnit: 11.5, supplier: 'Kmetija Sonce', locationId },
+      { id: nid('inv-pivo'), name: 'Laško pivo 0,5l', unit: 'pcs', quantity: 240, minQuantity: 60, costPerUnit: 1.1, supplier: 'Kmetija Sonce', locationId },
+    ],
+  })
+
+  await db.reservation.create({
+    data: {
+      id: nid('res-demo'),
+      customerName: 'Družina Novak',
+      customerPhone: '+386 40 123 456',
+      dateTime: new Date(Date.now() + 2 * 3600_000),
+      partySize: 4,
+      status: 'confirmed',
+      source: 'phone',
+      locationId,
+      tableId: nid('tbl-3'),
+    },
+  })
+
+  await db.deviceRegistry.create({
+    data: { id: nid('dev-pos1'), deviceId: 'POS-LJU-001', name: 'Blagajna 1', type: 'pos', status: 'online', locationId },
+  })
+
+  console.log('🎉 Seed končan. Prijava: admin@restaurantos.app / PIN 1234')
 }
-main().finally(() => db.$disconnect())
+
+main()
+  .catch((e) => {
+    console.error('❌ Seed napaka:', e)
+    process.exit(1)
+  })
+  .finally(() => db.$disconnect())
