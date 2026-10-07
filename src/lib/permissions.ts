@@ -39,7 +39,8 @@ export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
 }
 
 /**
- * Privzete pravice po DB vlogi. Vloge iz sheme: owner|admin|manager|staff|waiter|bar|chef|kitchen.
+ * Privzete pravice po DB vlogi. Vloge iz sheme: owner|admin|manager|staff|waiter|bar|chef|kitchen
+ * + enterprise (issue #11 §1): group_owner|org_admin|property_manager|warehouse|accounting.
  * Legacy (staff → natakar, chef/kitchen → kuhinja) ima iste privzete pravice.
  * KONFLIKTNO PRAVILO (issue #1, komentar: vloge): override-i so vedno DODATNA dovoljenja
  * na vrhu vloge — nikoli ne odvzamejo pravic vloge. To je edino pravilo.
@@ -53,6 +54,12 @@ const ROLE_DEFAULTS: Record<string, readonly CanonicalPermission[]> = {
   bar: ['orders.create', 'apply_discounts', 'kitchen.update'],
   chef: ['kitchen.update'],
   kitchen: ['kitchen.update'],
+  // issue #11 §1 — enterprise vloge
+  group_owner: CANONICAL_PERMISSIONS,
+  org_admin: CANONICAL_PERMISSIONS,
+  property_manager: CANONICAL_PERMISSIONS,
+  warehouse: ['inventory.manage', 'reports.view'],
+  accounting: ['reports.view'],
 }
 
 /** UI vloga (UPPERCASE iz žetona) → DB vloga za privzete pravice */
@@ -63,6 +70,11 @@ const UI_ROLE_TO_DB: Record<string, string> = {
   WAITER: 'waiter',
   BAR: 'bar',
   KITCHEN: 'kitchen',
+  GROUP_OWNER: 'group_owner',
+  ORG_ADMIN: 'org_admin',
+  PROPERTY_MANAGER: 'property_manager',
+  WAREHOUSE: 'warehouse',
+  ACCOUNTING: 'accounting',
 }
 
 export function isValidPermission(p: unknown): p is CanonicalPermission {

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
 import { num, nid, jstr } from '@/lib/map'
+import { publishEvent } from '@/lib/events'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -108,5 +109,9 @@ export async function PATCH(req: NextRequest) {
   await db.auditLog.create({
     data: { id: nid(), userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, ...data }) },
   })
+  // Issue #11 §3 — dogodek spremembe zaloge (variance != 0 pomeni dejanski premik)
+  if (variance !== 0) {
+    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: item.name, variance, newQty, by: user.name } }).catch(() => undefined)
+  }
   return ok({ item: { id: updated.id, name: updated.name, qty: num(updated.quantity) } })
 }

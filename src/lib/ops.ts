@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import { mapOrder, nid, num, r2, orderTypeToDB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
+import { publishEvent } from '@/lib/events'
 
 export const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -254,6 +255,12 @@ export async function createOrderCore(
         }
         return created
       })
+      // Issue #11 §3 — dogodek za event-driven temelj (nikoli ne poruši toka)
+      await publishEvent('OrderCreated', {
+        entityType: 'Order',
+        entityId: order.id,
+        payload: { orderNumber: order.orderNumber, locationId, total: order.total, type: order.type },
+      }).catch(() => undefined)
       return { order: mapOrder(normalizeOrder(order)), replayed: false }
     } catch (e) {
       lastErr = e

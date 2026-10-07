@@ -1200,6 +1200,8 @@ model Location {
   emailEnabled                Boolean                 @default(false)
   dailyCloseVarianceThreshold Decimal                 @default(5.00) 
   tokenVersion                Int                     @default(0)
+  propertyId                  String?
+  Property                    Property?               @relation(fields: [propertyId], references: [id], onUpdate: SetNull)
   AccountsPayable             AccountsPayable[]
   AccountsReceivable          AccountsReceivable[]
   AlternatePaymentType        AlternatePaymentType[]
@@ -2040,12 +2042,15 @@ model RevenueCenter {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime @updatedAt
   locationId String
+  propertyId String?
   MenuItem   MenuItem[]
   Order      Order[]
   Location   Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
   Table      Table[]
+  Property   Property?  @relation(fields: [propertyId], references: [id], onUpdate: SetNull)
 
   @@index([isActive])
+  @@index([propertyId])
   @@index([locationId])
 }
 
@@ -2869,6 +2874,79 @@ model PrintJob {
   @@index([status])
   @@index([refId])
   @@index([kind])
+  @@index([createdAt])
+}
+
+/// Issue #11 §1 — enterprise hierarhija (faza 1: entitete; Location ostane operativno sidro)
+model Organization {
+  id        String   @id
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  Brand     Brand[]
+}
+
+model Brand {
+  id             String   @id
+  organizationId String
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  Property       Property[]
+
+  @@index([organizationId])
+}
+
+model Property {
+  id        String   @id
+  brandId   String
+  name      String
+  address   String   @default("")
+  city      String   @default("")
+  country   String   @default("SI")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  Brand         Brand           @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  Location      Location[]
+  RevenueCenter RevenueCenter[]
+  Workstation   Workstation[]
+
+  @@index([brandId])
+}
+
+model Workstation {
+  id          String    @id
+  propertyId  String
+  locationId  String?
+  name        String
+  kind        String    @default("pos")
+  stationKey  String    @default("")
+  isActive    Boolean   @default(true)
+  lastSeenAt  DateTime?
+  createdAt   DateTime  @default(now())
+  Property    Property  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId])
+  @@index([locationId])
+}
+
+/// Issue #11 §3 — event-driven temelj (faza 1): dogodki + retry + status
+model EventLog {
+  id          String    @id
+  type        String
+  entityType  String    @default("")
+  entityId    String    @default("")
+  payload     String    @default("{}")
+  status      String    @default("pending")
+  attempts    Int       @default(0)
+  error       String    @default("")
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([type])
+  @@index([status])
   @@index([createdAt])
 }
 

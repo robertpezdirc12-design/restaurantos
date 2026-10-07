@@ -47,10 +47,14 @@ export function jstr(v: unknown): string {
 const ROLE_TO_UI: Record<string, string> = {
   owner: 'OWNER', admin: 'ADMIN', manager: 'MANAGER', staff: 'WAITER', waiter: 'WAITER',
   bar: 'BAR', chef: 'KITCHEN', kitchen: 'KITCHEN',
+  group_owner: 'GROUP_OWNER', org_admin: 'ORG_ADMIN', property_manager: 'PROPERTY_MANAGER',
+  warehouse: 'WAREHOUSE', accounting: 'ACCOUNTING',
 }
 const ROLE_TO_DB: Record<string, string> = {
   OWNER: 'owner', ADMIN: 'admin', MANAGER: 'manager', WAITER: 'waiter', BAR: 'bar',
   KITCHEN: 'kitchen', KIOSK: 'staff',
+  GROUP_OWNER: 'group_owner', ORG_ADMIN: 'org_admin', PROPERTY_MANAGER: 'property_manager',
+  WAREHOUSE: 'warehouse', ACCOUNTING: 'accounting',
 }
 
 export function roleToUI(role: string): string {

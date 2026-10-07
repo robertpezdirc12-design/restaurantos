@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB } from '@/lib/map'
+import { publishEvent } from '@/lib/events'
 
 const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -132,6 +133,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const updated = await db.order.update({ where: { id }, data, include: orderInclude })
+  // Issue #11 §3 — plačilo/storno dogodki (fire-and-forget, nikoli ne vplivata na odgovor)
+  if (updated.status === 'paid') {
+    await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updated.id, payload: { total: updated.total, locationId: updated.locationId } }).catch(() => undefined)
+  }
+  if (updated.status === 'cancelled') {
+    await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updated.id, payload: { by: user.name, locationId: updated.locationId } }).catch(() => undefined)
+  }
   return ok({ order: mapOrder(normalize(updated)) })
 }
 
@@ -150,6 +158,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     where: { id },
     data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub },
   })
+  // Issue #11 §3 — storno dogodek
+  await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true } }).catch(() => undefined)
   if (order.tableId) {
     await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
   }

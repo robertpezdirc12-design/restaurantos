@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
+import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
 import { deductStockForOrderTx } from '@/lib/inventory'
@@ -412,6 +413,12 @@ export async function POST(req: NextRequest) {
         order: { id: orderPre.id, status: 'PAID' },
       }, 200)
     }
+    // Issue #11 §3 — dogodek izdaje računa (evidenca, fire-and-forget)
+    await publishEvent('InvoiceCreated', {
+      entityType: 'Receipt',
+      entityId: receipt.twin.id,
+      payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation },
+    }).catch(() => undefined)
     return ok({
       invoice: mapReceipt(receipt.twin),
       // Issue #4 §8: simulator se NIKOLI ne predstavlja kot prava fiskalizacija

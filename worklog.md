@@ -1080,3 +1080,23 @@ Work Log:
 
 Stage Summary:
 - deploy za produkcijsko migracijo je ta commit; po deployu POST /api/admin/migrate-issue10 → tabela obstaja → /api/print/* deluje v produkciji
+
+---
+Task ID: 13-main
+Agent: main (Z.ai Code)
+Task: Issue #11 — Enterprise Core Architecture v2, INKREMENT 1 (faza 1: hierarhija + dogodki + orodja)
+
+Work Log:
+- §1 hierarhija: Organization → Brand → Property → (Location ostane sidro) + Workstation; OBSTOJEČI RevenueCenter razširjen z opcijskim propertyId (§2: brez podvojevanja — začasni dvojni model odstranjen pred pushom)
+- EmployeeRole +5 enterprise vlog (group_owner/org_admin/property_manager/warehouse/accounting); permissions ROLE_DEFAULTS + map UI/DB mape razširjeni (legacy vloge nespremenjene, §18)
+- src/lib/enterprise.ts: enterpriseAllows/roleSpansEnterprise — čista hierarhična logika (isti location vedno; org vloge čez org; property_manager samo property; fail-closed brez verige)
+- §3 dogodki: EventLog model + src/lib/events.ts (publishEvent — nikoli ne meče; registerHandler; dispatchEvent; dispatchPending — retry do 5 poskusov); ožičeno v 5 tokov (OrderCreated, OrderCancelled ×2, PaymentCompleted, InvoiceCreated, KitchenCompleted, StockChanged) — vse fire-and-forget
+- API: GET /api/events (+queue številke), POST /api/events/dispatch (settings.manage), GET/POST /api/enterprise (drevo + obseg; kreacija org/brand/property + link-location)
+- migracija: /api/admin/migrate-issue11 (CREATE TABLE IF NOT EXISTS ×5 + Location/RevenueCenter propertyId + ALTER TYPE ADD VALUE ×5 — fiksne aditivne DDL, audit SCHEMA_MIGRATION_ISSUE11)
+- §8 orodja: scripts/system-health.ts (DB/vrsta/naprave/drift/izhodne kode), backup-database.sh (sqlite .backup ali pg_dump -Fc), validate-migration.ts (prisma validate ×2 + drift + obvezni modeli + vloge), sync-status.ts (git + DeviceSyncOperation + EventLog)
+- testi: tests/enterprise.test.ts (10) + tests/events.test.ts (9) — čista logika brez DB
+
+Stage Summary:
+- LOKALNI E2E DOKAZ: naročilo #43 → OrderCreated objavljen → dispatch processed (attempts=1) → viden v GET /api/events z payloadom; enterprise org→brand→property→link-location→GET drevo z myScope verigo ✓
+- tsc 0, eslint 0, bun test 81/81 (64+17), backup 3.1M, drift 116/116
+- v1.34.0; #11 ostaja ODPRT (acceptance: offline edge nadgradnja, payment adapterji, fiscal modul, KDS routing še naslednji inkrementi)
