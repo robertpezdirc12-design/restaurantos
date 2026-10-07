@@ -1,0 +1,94 @@
+name: Dvosmerna sinhronizacija GitLab <-> GitHub
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gitlab-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pridobi vsebino z obeh strani
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_PROJECT_PATH: ${{ secrets.GITLAB_PROJECT_PATH }}
+        run: |
+          git config user.name "sync-bot"
+          git config user.email "sync-bot@users.noreply.github.com"
+          git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_PROJECT_PATH}.git"
+          for i in 1 2 3; do
+            if git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune --force \
+            && git fetch gitlab '+refs/heads/*:refs/remotes/gitlab/*' --prune --force \
+            && git fetch origin '+refs/tags/*:refs/tags/*' --force \
+            && git fetch gitlab '+refs/tags/*:refs/tags/*' --force; then
+              echo "fetch OK"
+              break
+            fi
+            echo "fetch poskus $i ni uspel, cakam..."
+            sleep 15
+          done
+
+      - name: Zdruzi in poslji vse branche v obe smeri
+        run: |
+          ALLB=$( (git for-each-ref --format='%(refname:short)' refs/remotes/origin | sed 's|^origin/||'; \
+                   git for-each-ref --format='%(refname:short)' refs/remotes/gitlab | sed 's|^gitlab/||') | sort -u )
+          for BR in $ALLB; do
+            case "$BR" in HEAD) continue;; esac
+            OB=$(git rev-parse -q --verify "refs/remotes/origin/$BR" 2>/dev/null || true)
+            GB=$(git rev-parse -q --verify "refs/remotes/gitlab/$BR" 2>/dev/null || true)
+            WIN=""
+            if [ -n "$OB" ] && [ -n "$GB" ]; then
+              if [ "$OB" = "$GB" ]; then
+                echo "$BR: enaka ($OB)"
+                continue
+              elif git merge-base --is-ancestor "$OB" "$GB"; then
+                WIN="$GB"; echo "$BR: GitLab naprej -> push na GitHub"
+              elif git merge-base --is-ancestor "$GB" "$OB"; then
+                WIN="$OB"; echo "$BR: GitHub naprej -> push na GitLab"
+              else
+                git checkout --detach "$GB" || continue
+                if git merge --no-edit "$OB" -m "sync: merge brancha $BR (GitHub <-> GitLab)"; then
+                  WIN="$(git rev-parse HEAD)"; echo "$BR: divergentna -> merge ($WIN)"
+                else
+                  git merge --abort 2>/dev/null || true
+                  echo "::warning::konflikt na branchu $BR - potreben rocni merge"
+                  continue
+                fi
+              fi
+            elif [ -n "$OB" ]; then
+              WIN="$OB"; echo "$BR: samo na GitHub -> push na GitLab"
+            else
+              WIN="$GB"; echo "$BR: samo na GitLab -> push na GitHub"
+            fi
+            for i in 1 2 3; do
+              if git push origin "$WIN:refs/heads/$BR" && git push gitlab "$WIN:refs/heads/$BR"; then
+                echo "$BR: uspesno sinhroniziran"
+                break
+              fi
+              echo "$BR: push poskus $i ni uspel, cakam..."
+              sleep 12
+            done
+          done
+
+      - name: Sinhroniziraj tage (obe smeri)
+        run: |
+          git push origin 'refs/tags/*:refs/tags/*' --force 2>/dev/null || true
+          git push gitlab 'refs/tags/*:refs/tags/*' --force 2>/dev/null || true
+
+      - name: Povzetek
+        run: echo "Sinhronizacija zakljucena."
