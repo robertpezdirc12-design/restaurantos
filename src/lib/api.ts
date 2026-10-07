@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAuth, AuthPayload } from '@/lib/auth'
+import { getAuth, AuthPayload, sessionRevoked } from '@/lib/auth'
 import { resolvePermissions, CanonicalPermission } from '@/lib/permissions'
 
 export function ok(data: unknown, init?: number) {
@@ -19,9 +19,28 @@ export function forbidden() {
   return fail('Dostop zavrnjen. Ni ustreznih dovoljenj.', 403)
 }
 
-export function requireAuth(req: NextRequest): AuthPayload | NextResponse {
+/**
+ * Issue #4 D4 — session revokacija:
+ * sinhroni žeton check (HMAC + exp) + DB preverjanje statusa in sessionVersion.
+ * PIN reset / deaktivacija zaposlenega TAKOJ prekliče vse obstoječe žetone.
+ * Fail-closed: žeton brez sv (izdan pred tem deployem) → 401 (ponovna prijava).
+ * Bootstrap admin (sub='bootstrap', brez Employee vrstice) gre po fast-pathu.
+ */
+export async function requireAuth(req: NextRequest): Promise<AuthPayload | NextResponse> {
   const user = getAuth(req)
   if (!user) return unauthorized()
+  if (user.role === 'ADMIN' && user.sub === 'bootstrap') return user
+  const employee = await db.employee.findUnique({
+    where: { id: user.sub },
+    select: { status: true, sessionVersion: true },
+  })
+  if (!employee) return forbidden()
+  if (employee.status !== 'active') {
+    return fail('Račun je deaktiviran.', 401)
+  }
+  if (sessionRevoked(user.sv, employee.sessionVersion)) {
+    return fail('Seja je preklicana (sprememba PIN-a ali deaktivacija) — prijavite se ponovno.', 401)
+  }
   return user
 }
 
@@ -31,16 +50,15 @@ export function isResponse(v: unknown): v is NextResponse {
 
 /**
  * Granularna avtorizacija (issue #1): zahteva eno kanonično dovoljenje.
- * ADMIN fast-path po žetonu (bootstrap admin nima Employee vrstice).
- * Sicer DB lookup — spremembe pravic/uveljavljenih obveznic delujejo TAKOJ (12h žeton jih ne zamrzne).
+ * Fast-path SAMO za bootstrap admina (brez Employee vrstice) — vsi realni zaposleni
+ * gredo čez DB: status + sessionVersion (D4) + dovoljenja delujejo TAKOJ (12h žeton jih ne zamrzne).
  */
 export async function requirePermission(
   req: NextRequest,
   permission: CanonicalPermission
 ): Promise<AuthPayload | NextResponse> {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
-  if (user.role === 'ADMIN' || user.role === 'OWNER') return user
   const employee = await db.employee.findUnique({
     where: { id: user.sub },
     select: { role: true, permissionOverrides: true },
@@ -53,7 +71,7 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.31.0'
+export const APP_VERSION = '1.32.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
 
 // ---------- Issue #4 §1 — centralni resource/location authorization ----------

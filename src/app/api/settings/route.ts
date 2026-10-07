@@ -10,7 +10,7 @@ const EDITABLE = [
 ] as const
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const s = await db.restaurantSettings.findFirst()
   return ok({ settings: s || null })

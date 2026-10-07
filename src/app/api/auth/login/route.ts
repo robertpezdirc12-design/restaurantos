@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
         name: employee.name,
         role: roleToUI(employee.role),
         loc: employee.locationId,
+        sv: employee.sessionVersion,
       }, 2)
       return NextResponse.json({
         token,
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
     name: employee.name,
     role: roleToUI(employee.role),
     loc: employee.locationId,
+    sv: employee.sessionVersion,
   })
 
   return NextResponse.json({

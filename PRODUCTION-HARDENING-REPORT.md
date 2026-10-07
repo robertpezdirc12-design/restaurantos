@@ -63,12 +63,14 @@ Commit: glej git log (`issue-4` serija). Vsak fix ima `// Issue #4 §…` koment
 | tests/ (NOVO, §11) | 33 unit testov (bun:test): modifiers 9, location-auth 9, rate-limit 4, billing 11 | `bun test` 33/33 |
 | vercel-*.json | umaknjena iz git trackinga (.gitignore) | git status |
 | UI (page.tsx, kiosk, dashboard-tabs) | aktivacija naprave z vpisno kodo; seznam naprav maskiran; DevicesCard → »Vpisna koda« tok | E2E |
+| delivery/webhook (D6, v1.32.0) | naročila vezana na `Integration.locationId` + dovoljen sistemski fallback; cross-location cancel zavrnjen (403 + audit `DELIVERY_CANCEL_BLOCKED`) | tsc + revizija poti |
+| auth.ts + api.ts (D4, v1.32.0) | session revokacija: žeton nosi `sv` (sessionVersion); `requireAuth`/`requirePermission` preverjata status + sv v DB (fail-closed); PIN reset IN deaktivacija povečata sessionVersion → takojšnja revokacija vseh žetonov | tests/session.test.ts (4) |
 
 ## C. VERIFIED
 
 - **typecheck**: `tsc --noEmit` → **0 napak** (prej: 23 pre-existing, tudi runtime bugi — vsi popravljeni)
 - **lint**: `eslint .` → **0 napak**
-- **unit**: `bun test` → **33 pass / 0 fail**
+- **unit**: `bun test` → **37 pass / 0 fail** (33 + 4 session revokacija, v1.32.0)
 - **schema drift**: 110/110 modelov usklajenih
 - **secrets scan**: 0 najdb v kodi
 - **build/deploy**: Vercel (glej DEPLOYMENT-STATUS zapis) — produkcija po deployu verificirana prek agent-browser (prijava, POS tok, mize, E2E happy path)
@@ -77,12 +79,14 @@ Commit: glej git log (`issue-4` serija). Vsak fix ima `// Issue #4 §…` koment
 ## D. REMAINING (dejavno odprto)
 
 1. **Polno distribuiran rate limit** — trenutno bounded per-process (združljivo z Vercel deploymentom, limit × instance). Poln shared state zahteva Redis/Upstash — ko se uvede, zamenjaj samo `src/lib/rate-limit.ts` notranjost.
-2. **Integration/E2E testi v CI** — 33 unit testov pokriva čisto logiko (modifiers/auth/rate-limit/billing); DB-integration testi zahtevajo test DB runner v CI (dodati ob prvem CI zagonu: `DATABASE_URL` secret + sqlite seeded copy).
+2. **Integration/E2E testi v CI** — 37 unit testov pokriva čisto logiko (modifiers/auth/rate-limit/billing/session); DB-integration testi zahtevajo test DB runner v CI (dodati ob prvem CI zagonu: `DATABASE_URL` secret + sqlite seeded copy).
 3. **Build step v CI** — potrebuje `DATABASE_URL` v GitLab CI variables (build ne sme zahtevati DB dostopa v prerender — zaenkrat izpuščen, dokumentiran v .gitlab-ci.yml).
-4. **Session revokacija** — `Session`/`sessionVersion` modeli obstajajo, a `verifyToken` jih ne uporablja (žeton živi do 12 h tudi po PIN spremembi). Potreben obširnejši poseg v auth flow (ločen issue je upravičen).
-5. **print-agent delivery proof** — TCP uspeh = `delivered-to-kernel` ( printerski ACK ni izpelan iz ESC/POS odgovorov); realni tiskalnik lahko kljub ok:true ne natisne papirja. Realna integracija zahteva printer status callback.
-6. **Delivery cancel → lokacijska izolacija webhooka** — webhook je HMAC-gated in binda order prek idempotencyKey; lokacija je določena s strani integracije (by design), a po beef-upu vredno dodatno validirati proti Integration.locationId.
-7. **monitoring/errors** GET ostaja centralno-diagnostičen (by design).
+4. **print-agent delivery proof** — TCP uspeh = `delivered-to-kernel` (printerski ACK ni izpelan iz ESC/POS odgovorov); realni tiskalnik lahko kljub ok:true ne natisne papirja. Realna integracija zahteva printer status callback.
+5. **monitoring/errors** GET ostaja centralno-diagnostičen (by design).
+
+> Zaprti v v1.32.0:
+> - **D4 session revokacija** — žeton nosi `sv` (sessionVersion); vse requireAuth + requirePermission rute preverjajo status + sv v DB (fail-closed); PIN reset IN deaktivacija povečata sessionVersion → takojšnja revokacija. Učinek deploya: žetoni izdani prej so preklicani → enkratna ponovna prijava vseh uporabnikov.
+> - **D6 webhook lokacijska izolacija** — naročila/preklici vezani na `Integration.locationId`; cross-location cancel 403 + audit `DELIVERY_CANCEL_BLOCKED`. Hkrati popravljen P0 regresija iz ca67270: webhook je klical createOrderCore z locationId:null BREZ allowFirstLocationFallback → ustvarjanje delivery naročil je od hardeninga dalje vračalo 422 »Ni lokacije«.
 
 ## E. PRODUCTION BLOCKERS
 
@@ -92,6 +96,7 @@ Commit: glej git log (`issue-4` serija). Vsak fix ima `// Issue #4 §…` koment
 **HIGH**
 - **Rotacija Vercel `vcp_` deploy tokena** + Neon gesla + `NEXTAUTH_SECRET` (tudi glej DEPLOYMENT-STATUS.md → nujni koraki; token je krožil v klepetu/dokumentaciji).
 - **GitHub PAT mrtav** (401) → GitLab↔GitHub mirror trenutno deluje samo prek obstoječega Actions crona z GL tokenom; za push-mirror s našega GitLaba potreben nov GitHub token (Classic, scope `repo`).
+- **v1.32.0 deploy:** žetoni izdani prej so fail-closed preklicani (D4) → vsi uporabniki se enkrat ponovno prijavijo (pričakovano, kot ob APP_SECRET rotaciji).
 
 **MEDIUM**
 - **PIN_LOOKUP_SALT rotacija** — zahteva USKLJENO ponastavitev vseh 8 zaposlenih PIN-ov (en obrok: rotiraj salt + vsi nastavijo nov PIN).

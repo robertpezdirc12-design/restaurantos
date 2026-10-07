@@ -945,3 +945,26 @@ Work Log:
 Stage Summary:
 - Issue #4: P0 (§1-8) + P1 (§11-15) implementirano in produkcijsko verificirano; v1.31.0 na https://restaurantos-theta.vercel.app
 - GitHub mirror BLOKIRAN: PAT ghp_E27J… → 401 Bad credentials; potreben nov token
+
+---
+Task ID: 9-main
+Agent: main (Z.ai Code)
+Task: Issue #4 follow-up — D4 session revokacija + D6 webhook lokacijska izolacija + P0 regresija fix (v1.32.0)
+
+Work Log:
+- stanje ob prevzemu: Issue #4 P0/P1 implementiran v1.31.0 (a66f799), lokalno = origin/main, žetona GitLab ③ OK / GitHub 401 mrtav
+- D4: auth.ts + sv claim (AuthPayload) + sessionRevoked() (fail-closed: žeton brez sv = preklican)
+- D4: api.ts requireAuth → async + DB check (status active + sessionVersion); bootstrap admin fast-path zožen na sub='bootstrap'; requirePermission enaka pravila prek requireAuth
+- D4: login route vgradi sv: employee.sessionVersion (oba employee token pota)
+- D4: employees/[id] deaktivacija zdaj TUDI poveča sessionVersion (prej samo PIN reset)
+- D4: 44 klicnih mest `requireAuth(req)` → `await requireAuth(req)` po 32 datotekah (uniformen vzorec, tsc kot varovalka)
+- D6: webhook vezava na Integration.locationId (+ isActive v select); createOrderCore prejme integration.locationId + allowFirstLocationFallback:true (dokumentirana sistemska izjema §10); cross-location cancel → 403 + audit DELIVERY_CANCEL_BLOCKED
+- P0 regresija najdena in popravljena: ca67270 je webhook poklical createOrderCore z locationId:null BREZ allowFirstLocationFallback → delivery ustvarjanje naročil od hardeninga vračalo 422 'Ni lokacije'
+- tests/session.test.ts (4 testi): veljavna seja, sv odstopa, fail-closed undefined/null, fail-closed NaN/Infinity
+- PRODUCTION-HARDENING-REPORT.md: B +2 vrstici (D4, D6), C 37/37, D prenovljen (D4/D6 zaprta), E + deploy opomba
+- APP_VERSION → 1.32.0
+
+Stage Summary:
+- tsc 0 napak, lint 0, bun test 37/37 (97 expect), schema drift 110/110, secrets 0
+- D4 + D6 zaprta end-to-end; delivery webhook P0 regresija rešena (odkrita med revizijo poti)
+- ostalo iz D: Redis rate limit (infra), CI DB testi/build (GitLab secrets), print-agent ACK (hardware) — dokumentirano

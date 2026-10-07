@@ -7,7 +7,7 @@ const HACCP_TYPES = ['temperature', 'cleaning', 'delivery', 'cooling', 'training
 const HACCP_STATUSES = ['ok', 'warning', 'critical']
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.haccpEntry.findMany({
     // Issue #4 §1: HACCP zapisi po lokaciji uporabnika
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
  * ok=true → status 'ok', sicer 'warning' (ali izrazito 'critical' prek status polja).
  */
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   const type = String(body?.type || '').toLowerCase()

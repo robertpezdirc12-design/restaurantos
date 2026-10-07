@@ -4,7 +4,7 @@ import { requireAuth, isResponse, ok } from '@/lib/api'
 import { jparse } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.webhook.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
   return ok({

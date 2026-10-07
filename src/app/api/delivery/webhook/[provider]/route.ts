@@ -8,6 +8,9 @@
  * idempotencija prek Order.idempotencyKey (`glovo:<id>`/`wolt:<id>` — podvojeni
  * webhook ne ustvari dvojnega naročila), IntegrationLog (napake vidne v Dnevniku
  * napak) + AuditLog, telefon maskiran v logih.
+ * Issue #4 D6: naročila/preklici so vezani na Integration.locationId (configurirana
+ * lokacija integracije); brez nastavljene lokacije sistemski vir pade na dovoljen
+ * first-location fallback (dokumentirana izjema §10). Cross-location cancel zavrnjen.
  */
 import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
@@ -81,7 +84,10 @@ export async function POST(
 
   // Secret: Integration.apiSecret (DB) ali env; brez njega endpoint NE deluje (pravilo #2: secret ni v source)
   const secret = await getPlatformSecret(p)
-  const integration = await db.integration.findFirst({ where: { provider: p }, select: { id: true } })
+  const integration = await db.integration.findFirst({
+    where: { provider: p },
+    select: { id: true, locationId: true, isActive: true },
+  })
   const integrationId = integration?.id ?? null
 
   // Podpis preverjen PRED čim koli drugim (raw body!)
@@ -123,8 +129,16 @@ export async function POST(
 
     if (evtStatus.includes('cancel')) {
       const idem = webhookIdempotencyKey(p as 'glovo' | 'wolt', mapped.platformOrderId)
-      const existing = await db.order.findUnique({ where: { idempotencyKey: idem }, select: { id: true, status: true } })
+      const existing = await db.order.findUnique({ where: { idempotencyKey: idem }, select: { id: true, status: true, locationId: true } })
       if (existing && existing.status !== 'paid') {
+        // Issue #4 D6: preklic velja SAMO za naročilo te lokacije (cross-location zaščita)
+        if (integration?.locationId && existing.locationId && existing.locationId !== integration.locationId) {
+          await writeAudit('system', 'DELIVERY_CANCEL_BLOCKED', 'Order', existing.id, {
+            provider: p, reason: 'cross_location', orderLocation: existing.locationId, integrationLocation: integration.locationId,
+          })
+          await logIntegration(p, integrationId, 'order.cancelled', 'error', 403, 'Preklic zavrnjen — naročilo pripada drugi lokaciji.', Date.now() - t0, { platformOrderId: mapped.platformOrderId })
+          return fail('Preklic zavrnjen — naročilo pripada drugi lokaciji.', 403)
+        }
         await db.order.update({ where: { id: existing.id }, data: { status: 'cancelled', cancelReason: `Preklic prek ${p} webhooka` } })
         await db.deliveryInfo.updateMany({ where: { Order: { id: existing.id } }, data: { status: 'cancelled' } })
         await writeAudit('system', 'DELIVERY_ORDER_CANCELLED', 'Order', existing.id, { provider: p })
@@ -152,7 +166,9 @@ export async function POST(
 
     const { order, replayed } = await createOrderCore({
       employeeId,
-      locationId: null,
+      // Issue #4 D6: vezava na lokacijo integracije (ce je nastavljena) — ne zaupaj
+      // implicitni "prvi lokaciji"; brez configa sistemski vir pade na dovoljen fallback
+      locationId: integration?.locationId ?? null,
       items: mapped.items,
       type: 'DELIVERY',
       note: mapped.note,
@@ -168,7 +184,7 @@ export async function POST(
         packagingFee: num(mapped.packagingFee),
         status: 'confirmed',
       },
-    })
+    }, { allowFirstLocationFallback: true })
 
     if (replayed) {
       // Idempotenten replay — podvojeni webhook NE ustvari dvojnega naročila

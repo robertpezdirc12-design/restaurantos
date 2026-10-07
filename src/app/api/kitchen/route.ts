@@ -5,7 +5,7 @@ import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_D
 
 /** Kuhinjski prikaz (KDS) — vrsta artikel-predmetov po naročilih */
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const orders = await db.order.findMany({
     where: {

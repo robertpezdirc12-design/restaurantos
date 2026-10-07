@@ -4,7 +4,7 @@ import { requireAuth, isResponse, ok } from '@/lib/api'
 import { mapCategory } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.category.findMany({ orderBy: { sortOrder: 'asc' }, take: 100 })
   return ok({ categories: rows.map(mapCategory) })

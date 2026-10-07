@@ -5,7 +5,7 @@ import { canAccessModule } from '@/lib/auth'
 import { mapTable, tableStatusToDB, nid, ORDER_ACTIVE_DB } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const tables = await db.table.findMany({
     // Issue #4 §1: staff vidi samo mize svoje lokacije (centralne vse)
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!canAccessModule(user, 'tables', true) && user.role !== 'MANAGER') return forbidden()
   const body = await req.json().catch(() => null)

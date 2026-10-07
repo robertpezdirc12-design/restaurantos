@@ -15,7 +15,7 @@ function normalize(o: Record<string, unknown>) {
 }
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const status = req.nextUrl.searchParams.get('status')
   const base = status

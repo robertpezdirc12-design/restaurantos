@@ -4,7 +4,7 @@ import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { mapAudit, nid, jstr } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const errors = await db.auditLog.findMany({
     where: { action: { contains: 'ERROR' } },
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body?.message) return fail('message je obvezen.')

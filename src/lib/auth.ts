@@ -24,6 +24,8 @@ export interface AuthPayload {
   role: string
   loc: string | null
   exp: number
+  /** Issue #4 D4: sessionVersion ob izdaji žetona — sprememba PIN-a/deaktivacija prekliče sejo. */
+  sv?: number
 }
 
 function sign(data: string): string {
@@ -54,6 +56,17 @@ export function getAuth(req: NextRequest): AuthPayload | null {
   const header = req.headers.get('authorization') || ''
   if (!header.startsWith('Bearer ')) return null
   return verifyToken(header.slice(7))
+}
+
+/**
+ * Issue #4 D4 — session revokacija (fail-closed):
+ * žeton brez sv (starejši kot ta deploy) velja za preklicanega → prisilna ponovna prijava.
+ * Odstopanje od trenutnega Employee.sessionVersion (PIN reset / deaktivacija) → preklic.
+ * Bootstrap admin (brez Employee vrstice) te poti ne doseže (fast-path v api.ts).
+ */
+export function sessionRevoked(tokenSv: number | undefined | null, dbSv: number): boolean {
+  if (typeof tokenSv !== 'number' || !Number.isFinite(tokenSv)) return true
+  return tokenSv !== dbSv
 }
 
 /** Capability check — poenostavljen kanon (v duhu R268): FAIL-CLOSED */

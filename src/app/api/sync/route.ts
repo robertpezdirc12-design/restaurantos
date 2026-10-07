@@ -227,7 +227,7 @@ async function recalcTotals(orderId: string) {
 
 /** GET — zadnje operacije naprave (diagnostika sinhronizacije); lokacijsko omejeno */
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const deviceId = req.nextUrl.searchParams.get('deviceId') || 'unknown'
   const operations = await db.deviceSyncOperation.findMany({

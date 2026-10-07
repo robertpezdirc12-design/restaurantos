@@ -13,7 +13,7 @@ import { deductStockForOrderTx } from '@/lib/inventory'
  * Vključi povezavo na naročilo/mizo za prikaz v UI (zavihek Računi).
  */
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const receipts = await db.receipt.findMany({
     // Issue #4 §10: izdani računi so location-scoped (prej: vse lokacije)

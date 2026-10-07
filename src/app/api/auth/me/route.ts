@@ -5,7 +5,7 @@ import { roleToUI } from '@/lib/map'
 import { resolvePermissions } from '@/lib/permissions'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const employee = await db.employee.findUnique({
     where: { id: user.sub },

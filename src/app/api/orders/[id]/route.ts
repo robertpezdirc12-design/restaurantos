@@ -31,7 +31,7 @@ async function recalcTotals(orderId: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const { id } = await params
   const order = await db.order.findUnique({ where: { id }, include: orderInclude })

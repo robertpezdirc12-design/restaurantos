@@ -65,7 +65,7 @@ function discountPayload(body: Record<string, unknown>, locationId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const url = new URL(req.url)
   const locationId = url.searchParams.get('locationId')

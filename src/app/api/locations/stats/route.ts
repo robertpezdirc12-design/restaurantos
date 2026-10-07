@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, isCentralRole, isResponse, ok } from '@/lib/api'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const locations = await db.location.findMany({
     // Issue #4 §1: non-central vidi statistiko SAMO svoje lokacije (fail-closed)

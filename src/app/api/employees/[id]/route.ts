@@ -14,7 +14,7 @@ export { CANONICAL_PERMISSIONS }
  */
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const { id } = await ctx.params
@@ -60,7 +60,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return fail('Samo LASTNIK lahko deaktivira LASTNIKA.', 403)
     }
     data.status = status
-    if (status !== 'active') sensitive.push(`deaktivacija računa (${status})`)
+    if (status !== 'active') {
+      sensitive.push(`deaktivacija računa (${status})`)
+      // Issue #4 D4: deaktivacija TAKOJ prekliče vse seje (žetoni živijo do 12 h)
+      data.sessionVersion = (Number(target.sessionVersion) || 0) + 1
+    }
   }
   // DOVOLJENJA (permission overrides)
   if (body.permissionOverrides !== undefined) {
@@ -108,7 +112,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
 /** Podrobnosti profila (kanonski vir za Control Center) */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const { id } = await ctx.params
   const target = await db.employee.findUnique({ where: { id } })

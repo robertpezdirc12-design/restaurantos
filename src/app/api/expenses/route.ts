@@ -4,7 +4,7 @@ import { requireAuth, isResponse, ok, fail, locationScope, requireUserLocation }
 import { num, nid, r2 } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.accountsPayable.findMany({
     // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
  * privzetega "Razno". apNumber je unique brez defaulta → generiramo.
  */
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const body = await req.json().catch(() => null)

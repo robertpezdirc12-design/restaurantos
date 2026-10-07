@@ -4,7 +4,7 @@ import { requireAuth, isResponse, ok, locationScope } from '@/lib/api'
 import { num, ORDER_ACTIVE_DB } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const locationId = user.loc || (await db.location.findFirst())?.id
   const startOfDay = new Date()

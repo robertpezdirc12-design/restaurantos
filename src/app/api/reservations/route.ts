@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok,
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.reservation.findMany({
     // Issue #4 §1: staff vidi samo rezervacije svoje lokacije

@@ -10,7 +10,7 @@ import { num } from '@/lib/map'
  * printedAt se zapiše že pri izdaji računa v POST /api/furs).
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const { id } = await ctx.params
 

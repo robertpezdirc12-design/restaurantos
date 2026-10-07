@@ -11,7 +11,7 @@ import { jparse } from '@/lib/map'
  */
 const SECRET_KEY_PATTERN = /(secret|token|key|password)/i
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.integration.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
   const central = isCentralRole(user)

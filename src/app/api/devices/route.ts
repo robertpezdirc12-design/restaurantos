@@ -12,7 +12,7 @@ function maskDeviceToken(token: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.deviceRegistry.findMany({
     where: locationScope(user),

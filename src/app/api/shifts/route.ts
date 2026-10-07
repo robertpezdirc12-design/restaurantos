@@ -4,7 +4,7 @@ import { requireAuth, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapShift, nid, num, r2, jparse } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const shifts = await db.cashRegisterShift.findMany({
     // Issue #4 §1: izmene po lokaciji (CashRegisterShift.locationId); POST ostaja lastna izmena
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
  *  - posodobi CashRegisterShift totals + ustvari ZReport + AuditLog SHIFT_CLOSE
  */
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
 

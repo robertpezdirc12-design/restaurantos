@@ -25,7 +25,7 @@ async function posIdentity(req: NextRequest) {
     await db.deviceRegistry.update({ where: { id: device.id }, data: { status: 'online', lastSeenAt: new Date() } })
     return { kind: 'device' as const, id: device.id, name: device.name, loc: device.locationId || null }
   }
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return null
   return { kind: 'staff' as const, id: user.sub, name: user.name || 'staff', loc: user.loc }
 }

@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, requireUserLocation, assertResourceLoca
 import { mapMenuItem, mapCategory, nid, num, stationToUI } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const [items, categories] = await Promise.all([
     db.menuItem.findMany({

@@ -4,7 +4,7 @@ import { requireAuth, assertResourceLocation, isResponse, ok, locationScope } fr
 import { num, nid, jstr } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.inventoryItem.findMany({
     // Issue #4 §1: staff vidi samo zalogo svoje lokacije
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
 /** Nov artikel zaloge (sprejem blaga) — ADMIN/MANAGER. */
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
 /** Prilagoditev zaloge: prejem (delta > 0), popravek količine/min/cene — ADMIN/MANAGER. */
 export async function PATCH(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)

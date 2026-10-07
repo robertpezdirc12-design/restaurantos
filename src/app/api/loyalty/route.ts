@@ -6,7 +6,7 @@ import { nid, jstr } from '@/lib/map'
 const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : points >= 500 ? 'gold' : points >= 100 ? 'silver' : 'bronze')
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.loyaltyAccount.findMany({
     // Issue #4 §1: staff vidi samo račune zvestobe svoje lokacije
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 /** Nov član programa zvestobe — ADMIN/MANAGER. */
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
 /** Točke: prihod (delta > 0) ali obračun (delta < 0) + samodejni tier — ADMIN/MANAGER. */
 export async function PATCH(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
