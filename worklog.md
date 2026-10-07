@@ -525,3 +525,21 @@ Work Log:
 
 Stage Summary:
 - LASTNIK/BOSS zaščiten: manager/nižja vloga ne more spreminjati/deaktivirati/dodeliti (razen ADMIN prvič)
+
+---
+Task ID: 17-final
+Agent: Z.ai (main)
+Task: Deploy + produkcija + triaža komentarjev na issue #1
+
+Work Log:
+- Push bf18bc2 (issue #1 implementacija) + LASTNIK commit; push z retry vzorcem ✓
+- Deploy dpl_AEVqMVoRDLfYBNQZ3NJbMvEVxKxd READY → produkcijska verifikacija (prijava Robert Pezdirc, Online chip, 15 tabov, Tiskalnik/terminal + Revizija kartice, 0 napak)
+- Komentar na issue #1 objavljen (201); odkriti 3 duplikati (napačen regex na 201) → pobrisana 2, ostane 1 ✓
+- Prebrani VSI komentarji na #1 (4 bloki dodatnih zahtev) + issue #2 (Glovo/Wolt) + #3 (QR/kiosk)
+- LASTNIK/BOSS vloga implementirana (enum+owner, zaščita, vrata +OWNER, UI) — commit + push + deploy dpl_J3vdQigZsAiVCmH9PKZyStYqVKhE READY + verifikacija
+- Triažni komentar na #1 objavljen (status po blokih + prioritete)
+
+Stage Summary:
+- Issue #1 opis DOKONČAN + verifikiran lokalno in produkcijsko; LASTNIK dodan
+- Preostanek transparentno triažiran na issue #1 (zaloge/računovodstvo, HR fiskalizacija, i18n, 8 pod-sistemov, #2, #3)
+- Produkcija @ dpl_J3vdQigZsAiVCmH9PKZyStYqVKhE; GitLab main = reconstruction sinhroniziran

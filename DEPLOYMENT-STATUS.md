@@ -36,3 +36,22 @@
 3. **Rotiraj Neon credentiale** (DATABASE_URL gesla) + NEXTAUTH_SECRET
 4. Nadaljuj obnovitev GitHub računa (markec12345678)
 5. Preveri na Vercelu sumljive repozitorije (discord-mass-dm, gta5-mod-menu-online, spotify-playlist-downloader)
+
+## Issue #1 — produkcijska utrditev (2026-10-07, deploys dpl_AEVqMVoRDLfYBNQZ3NJbMvEVxKxd + dpl_J3vdQigZsAiVCmH9PKZyStYqVKhE)
+
+GitLab issue #1 (opis) implementiran + triaža komentarjev objavljena. Commiti bf18bc2 + LASTNIK.
+
+### Implementirano
+- **Offline/local-first**: lokalna vrsta (clientOperationId), /api/sync idempotenten ingest, Online/Offline·N/Sinhroniziram chip, samodejni flush, odjava ohrani vrsto
+- **Stabilnost**: $transaction + CAS (dvojni račun/plačilo nemogoč), Counter sekvence, idempotencyKey end-to-end
+- **Pravice**: requirePermission (orders/kitchen/furs/reports/reservations/employees), vloge waiter+bar+owner, UI tab-gating, /api/audit + kartica
+- **Naprave**: print-agent (port 3031, ESC/POS CP852), tisk cilji browser|agent|simulator, kuhinjski/bar list, terminal adapter (simulator/manual), FURS produkcija=pending ločena od simulacije
+- **E2E**: čiščenje mize (klik), Z-poročilo ob zaprtju izmene (ZReport + audit)
+
+### Verifikacija
+- API: replay naročila/plačila/sync → isti dokument (brez dvojnikov); CAS zavrne 3. plačilo; audit zapisan
+- E2E lokalno: offline naročilo → vrsta → sync → miza zasedena; plačilni tok; 0 napak; lint čist
+- Produkcija: prijava Robert Pezdirc ✓, dashboard + Online chip ✓, nove kartice v Nastavitvah ✓, 0 napak (READ-ONLY)
+
+### Ostalo odprto (triaža na issue #1)
+- Zaloge/razknjiževanje po recepturah + računovodski izvoz; HR fiskalni adapter (preveriti uradne specifikacije); i18n SL/HR; darilne kartice, napitnine, čakalna lista, delovni čas, odpiralni čas, nabava, odpad, več poslovalnic; issue #2 (Glovo/Wolt), #3 (QR/kiosk)
