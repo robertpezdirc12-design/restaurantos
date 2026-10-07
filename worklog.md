@@ -674,3 +674,22 @@ Stage Summary:
 - Varnost: vse validacije strežniško (vsota delov, max točke, veljavnost popustov, dovoljenja), idempotencija popolna (tudi z točkami), CAS zaščite, audit
 - Sprejemni kriteriji §6: izpolnjeni; §7: veliki gumbi, en dotik, preglednost brez iskanja
 - Deploy: commit → push (GitLab + GitHub) → Vercel → /api/admin/migrate-issue1-s6 → produkcijska verifikacija (sledi v Task 7)
+
+---
+Task ID: 7
+Agent: Z.ai Code (glavni)
+Task: Push + Vercel deploy + Neon migracija + produkcijska verifikacija (v1.29.0)
+
+Work Log:
+- Commit ae63b2e (Issue #1 §6–7, v1.29.0) → push GitLab main (26f988b..ae63b2e) s proaktivnim Basic auth headerjem (CF zaščita)
+- GitHub push NEUSPEL: žeton v github remote URL je tudi preklican ("Invalid username or token") — prejšnji "exit 0" ls-remote je bil lažen (exit od head). Vsi GitHub PAT-i (uporabnikov ghp_E27J... + star vgrajen) so mrtvi → za GitHub sync potreben NOV PAT; GitLab→GitHub Actions cron (30 min) ostane edina sync pot do takrat
+- Vercel deploy 1: dpl_8TnKQz45HRUL3t3oEX1VqRkbbHYb READY
+- Neon migracija: POST /api/admin/migrate-issue1-s6 → 4/4 stolpci aplicirani (happyDays/happyFromHour/happyToHour/targetCategoryIds)
+- Produkcijska verifikacija: /api/discounts 200 (obstoječi "Zgodnja ptica") · loyalty lookup 200 · varni CRUD popusta (create neaktiven→PATCH→DELETE) 200/200/200 · bill #690 gross 4.93 → totalDue 4.93 · preplačilo (parts 999) → 400 ✓
+- UGOTOVLJEN legacy tip 'percentage' pri produkcijskem popustu "Zgodnja ptica" → billing.ts alias popravek + UI prikaz; commit 1f12d53 → push → Vercel deploy 2: dpl_6ddVEU9dPdkWbruj5zrRSsBftpdS READY (PROMOTED)
+- Worklog dopolnjen, worktree čist, main = 1f12d53
+
+Stage Summary:
+- Issue #1 §6–7 ŽIVO V PRODUKCIJI (v1.29.0): kanonični račun, deljeno plačilo, zvestoba, popusti + Happy Hour, statusi miz
+- GitLab main sinhroniziran (1f12d53); GitHub čaka na nov PAT od lastnika (vsi obstoječi preklicani)
+- Sprotna opomba: zvestoba na produkcijski lokaciji je loyaltyEnabled=false — omogoči jo administrator v nastavitvah lokacije (polje že obstaja)
