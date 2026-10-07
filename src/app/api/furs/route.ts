@@ -6,6 +6,7 @@ import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } fro
 import { nextSequence } from '@/lib/sequences'
 import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
+import { deductStockForOrderTx } from '@/lib/inventory'
 
 /**
  * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
@@ -358,6 +359,10 @@ export async function POST(req: NextRequest) {
         await tx.table.update({ where: { id: orderPre.tableId }, data: { status: 'cleaning' } })
       }
 
+      // Razknjiževanje zalog po recepturah (idempotentno, v ISTI transakciji kot račun
+      // — če se račun zavrne, se razknjiževanje tudi; primanjkljaj ne blokira prodaje)
+      const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name)
+
       // Revizijski dnevnik kritične operacije (issue #1: audit)
       await tx.auditLog.create({
         data: {
@@ -379,6 +384,9 @@ export async function POST(req: NextRequest) {
             loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
             simulation,
             terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null,
+            stockDeduction: stock.deducted
+              ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length }
+              : null,
           }),
           locationId: location.id,
         },

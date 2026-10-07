@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, fmtEUR, downloadCSV } from '@/lib/client'
+import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,7 @@ export interface InventoryT { id: string; name: string; unit: string; qty: numbe
 export interface SupplierT { id: string; name: string; contact?: string | null; phone?: string | null; email?: string | null; address?: string | null }
 export interface RecipeT { id: string; name: string; instructions: string; items: { inventoryItemId: string; name: string; unit: string; qty: number }[] }
 
-export function InventoryTab({ items, suppliers, recipes, canManage, onReload }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; canManage: boolean; onReload: () => Promise<void> }) {
+export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void> }) {
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
   const totalValue = items.reduce((s, i) => s + i.qty * i.cost, 0)
   const [addItem, setAddItem] = useState(false)
@@ -30,6 +30,34 @@ export function InventoryTab({ items, suppliers, recipes, canManage, onReload }:
   const [adjBusy, setAdjBusy] = useState(false)
   const [supForm, setSupForm] = useState<{ name: string; contact: string; phone: string } | null>(null)
   const [supBusy, setSupBusy] = useState(false)
+  // Receptura urejevalnik (razknjiževanje po recepturah)
+  const [recForm, setRecForm] = useState<{ menuItemId: string; lines: { inventoryItemId: string; qty: string }[] } | null>(null)
+  const [recBusy, setRecBusy] = useState(false)
+
+  function openRecipe(r?: RecipeT) {
+    if (r) {
+      setRecForm({ menuItemId: r.id, lines: r.items.map((i) => ({ inventoryItemId: i.inventoryItemId, qty: String(i.qty) })) })
+    } else {
+      setRecForm({ menuItemId: menuItems[0]?.id || '', lines: [{ inventoryItemId: items[0]?.id || '', qty: '' }] })
+    }
+  }
+
+  async function saveRecipe() {
+    if (!recForm || !recForm.menuItemId) return
+    setRecBusy(true)
+    try {
+      await api('/api/recipes', { method: 'POST', body: JSON.stringify({ menuItemId: recForm.menuItemId, items: recForm.lines }) })
+      setRecForm(null); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setRecBusy(false) }
+  }
+
+  async function deleteRecipe(menuItemId: string) {
+    if (!confirm('Izbrišem recepturo? Razknjiževanje za ta artikel se ustavi.')) return
+    try {
+      await api(`/api/recipes?menuItemId=${encodeURIComponent(menuItemId)}`, { method: 'DELETE' })
+      await onReload()
+    } catch (err) { alert((err as Error).message) }
+  }
 
   async function createItem() {
     setNiBusy(true)
@@ -123,14 +151,27 @@ export function InventoryTab({ items, suppliers, recipes, canManage, onReload }:
       </Card>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><UtensilsCrossed className="w-4 h-4" /> Recepti (sestavine artiklov)</CardTitle></CardHeader>
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base flex items-center gap-1.5"><UtensilsCrossed className="w-4 h-4" /> Recepti (sestavine artiklov)</CardTitle>
+          {canManage && menuItems.length > 0 && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openRecipe()}><Plus className="w-3 h-3" /> Receptura</Button>
+          )}
+        </CardHeader>
         <CardContent>
-          {recipes.length === 0 && <p className="text-sm text-stone-500">Ni shranjenih receptov.</p>}
+          {recipes.length === 0 && <p className="text-sm text-stone-500">Ni shranjenih receptov — brez recepture se zaloga ob prodaji ne razknjiži.</p>}
           <ScrollArea className="max-h-80">
             <div className="grid gap-2 sm:grid-cols-2">
               {recipes.map((r) => (
                 <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3">
-                  <p className="font-medium truncate">{r.name}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium truncate">{r.name}</p>
+                    {canManage && (
+                      <div className="shrink-0 flex gap-1">
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => openRecipe(r)}>Uredi</Button>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] text-red-700 hover:text-red-800" onClick={() => deleteRecipe(r.id)}>Izbriši</Button>
+                      </div>
+                    )}
+                  </div>
                   {r.items.length === 0 ? (
                     <p className="text-xs text-stone-400">brez sestavin</p>
                   ) : (
@@ -149,6 +190,46 @@ export function InventoryTab({ items, suppliers, recipes, canManage, onReload }:
           </ScrollArea>
         </CardContent>
       </Card>
+
+      {/* Receptura: sestavine artikla menija */}
+      <Dialog open={recForm !== null} onOpenChange={(v) => !v && setRecForm(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Receptura artikla</DialogTitle></DialogHeader>
+          {recForm && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Artikel menija *</Label>
+                <Select value={recForm.menuItemId} onValueChange={(v) => setRecForm({ ...recForm, menuItemId: v })}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Izberi artikel" /></SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {menuItems.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Sestavine (količina na eno prodano enoto)</Label>
+                {recForm.lines.map((line, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <Select value={line.inventoryItemId} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, inventoryItemId: v } : l) })}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Sestavina" /></SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Input type="number" step="0.001" min="0" className="w-24" value={line.qty} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l) })} placeholder="0" />
+                    <Button size="sm" variant="outline" className="h-9 px-2 shrink-0 text-red-700 hover:text-red-800" onClick={() => setRecForm({ ...recForm, lines: recForm.lines.filter((_, i) => i !== idx) })} disabled={recForm.lines.length <= 1}>×</Button>
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setRecForm({ ...recForm, lines: [...recForm.lines, { inventoryItemId: items[0]?.id || '', qty: '' }] })}><Plus className="w-3 h-3" /> Dodaj sestavino</Button>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecForm(null)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={recBusy || !recForm?.menuItemId || recForm.lines.some((l) => !l.inventoryItemId || !(Number(l.qty.replace(',', '.')) > 0))} onClick={saveRecipe}>Shrani recepturo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Nov artikel zaloge */}
       <Dialog open={addItem} onOpenChange={(v) => !v && setAddItem(false)}>
@@ -1311,5 +1392,74 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/* ─────────────────────────── RAČUNOVODSKI IZVOZ ─────────────────────────── */
+
+export function AccountingExportCard() {
+  const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
+  const today = new Date().toISOString().slice(0, 10)
+  const [from, setFrom] = useState(firstOfMonth)
+  const [to, setTo] = useState(today)
+  const [busy, setBusy] = useState<'csv' | 'json' | null>(null)
+  const [err, setErr] = useState('')
+
+  async function download(fmt: 'csv' | 'json') {
+    setBusy(fmt); setErr('')
+    try {
+      const token = getToken()
+      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=${fmt}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error((data as { error?: string })?.error || 'Izvoz ni uspel.')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `izvoz-${from}_${to}.${fmt}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Računovodski izvoz</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">
+          Prodaja po dnevih (neto/DDV/popusti/napitnine), DDV razčlenba po stopnjah, plačila po načinih,
+          računi dobaviteljev in gibanje zalog za izbrano obdobje. CSV je pripravljen za Excel in računovodske programe.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="exp-from" className="text-xs">Od</Label>
+            <Input id="exp-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="exp-to" className="text-xs">Do</Label>
+            <Input id="exp-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+          </div>
+          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white min-h-10 gap-1.5" disabled={busy !== null || !from || !to} onClick={() => download('csv')}>
+            {busy === 'csv' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} Izvozi (CSV)
+          </Button>
+          <Button size="sm" variant="outline" className="min-h-10 gap-1.5" disabled={busy !== null || !from || !to} onClick={() => download('json')}>
+            {busy === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} Izvozi (JSON)
+          </Button>
+        </div>
+        {err && <p className="text-sm text-red-600">{err}</p>}
+      </CardContent>
+    </Card>
   )
 }

@@ -73,6 +73,30 @@ export async function PATCH(req: NextRequest) {
   if (Object.keys(data).length === 0) return ok({ error: 'Ni podatkov za posodobitev.' }, 400)
 
   const updated = await db.inventoryItem.update({ where: { id }, data })
+
+  // Evidence gibanja zaloge (razvidnost za računovodski izvoz): prejem/odpis/popravek
+  const prevQty = num(item.quantity)
+  const newQty = delta !== null ? Math.max(0, prevQty + delta) : setQty !== null ? Math.max(0, setQty) : prevQty
+  const variance = Math.round((newQty - prevQty) * 1000) / 1000
+  if (variance !== 0) {
+    const unitCost = data.costPerUnit !== undefined ? (data.costPerUnit as number) : num(item.costPerUnit)
+    await db.stockTransaction.create({
+      data: {
+        id: nid(),
+        inventoryItemId: id,
+        type: variance > 0 ? 'RECEIVE' : 'ADJUST',
+        quantity: variance,
+        previousQty: prevQty,
+        newQty,
+        costPerUnit: unitCost,
+        totalCost: Math.round(Math.abs(variance) * unitCost * 100) / 100,
+        reason: variance > 0 ? 'Prejem blaga (ročni vnos)' : 'Popravek/odpis zaloge (ročni vnos)',
+        employeeId: user.sub,
+        employeeName: user.name,
+      },
+    })
+  }
+
   await db.auditLog.create({
     data: { id: nid(), userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, ...data }) },
   })

@@ -229,7 +229,7 @@ export default function LoginPage() {
               <ShieldCheck className="w-3.5 h-3.5" /> Demo prijava: admin@restaurantos.app / PIN 1234
             </p>
             <p className="text-[11px] text-stone-400">
-              Rekonstrukcija 1.29.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
+              Rekonstrukcija 1.30.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
             </p>
           </div>
         </div>

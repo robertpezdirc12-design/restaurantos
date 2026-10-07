@@ -693,3 +693,61 @@ Stage Summary:
 - Issue #1 §6–7 ŽIVO V PRODUKCIJI (v1.29.0): kanonični račun, deljeno plačilo, zvestoba, popusti + Happy Hour, statusi miz
 - GitLab main sinhroniziran (1f12d53); GitHub čaka na nov PAT od lastnika (vsi obstoječi preklicani)
 - Sprotna opomba: zvestoba na produkcijski lokaciji je loyaltyEnabled=false — omogoči jo administrator v nastavitvah lokacije (polje že obstaja)
+
+---
+Task ID: 7
+Agent: Z.ai Code (glavni)
+Task: Ponovna verifikacija žetonov + sinhronizacija + branje issue-jev (nadaljevanje po pavzi)
+
+Work Log:
+- GitLab token ③ (glpat-i3S_...f920jw) POTRJEN: /user → robert.pezdirc12 (active, nista zaklenjena); git ls-remote deluje; API curl občasno blokiran s strani Cloudflare (retry 4x uspešen)
+- GitHub token ghp_E27J... = 401 Bad credentials (ISTI žeton, ki je bil že preklican sredi prejšnje seje — uporabnik ga je znova poslal); tudi vgrajeni žeton v github remote = "Invalid username or token"
+- Lokalni origin remote posodobljen na žeton ③; fetch uspešen; main = origin/main = 92675d6, reconstruction = origin/reconstruction = f9a49bb — LOKAL IN GITLAB POPOLNOMA SINHRONIZIRANA
+- main nastavljen na sledenje origin/main
+- Prebrani vsi 3 GitLab issue-ji (API): #1 (utrditev, §6-7 končano v 1.29.0), #2 (Glovo/Wolt, končano v 1.27.0), #3 (QR/kiosk/CFD, končano v 1.28.0) — VSI 3 ISSUE-JI ŽE IMPLEMENTIRANI
+- GitHub neposredni dostop BLOKIRAN (oba žetona mrtva); zrcaljenje z 7 repozitoriji + dvosmerna Actions sinhronizacija obstaja od opravila 3; sinhronizacija GitLab→GitHub teče prek Actions cron (30 min za restaurantos), če Actions še delujejo
+
+Stage Summary:
+- Vse strani v sinhronizaciji; vsi issue-ji izpolnjeni; za neposredne GitHub operacije (preverba Actions, prisilni push) potreben NOV GitHub PAT
+- Naslednje po triaži: zaloge/razknjiževanje po recepturah + računovodski izvoz (manjkajoči del izvenskem #1)
+
+---
+Task ID: 7 (izvedba)
+Agent: Z.ai Code (glavni)
+Task: Zaloge — razknjiževanje po recepturah + računovodski izvoz (v1.30.0, "samo kaj manjka" iz triaže issue #1)
+
+Work Log:
+- SCHEMA: brez sprememb — vsi modeli že obstajali (RecipeItem, StockTransaction, StockBatchAllocation, InventoryBatch, Order.inventoryDeducted); doslej NIKOLI uporabljeni v kodi
+- src/lib/inventory.ts (NOVO): deductStockForOrderTx — razknjiževanje znotraj FURS transakcije
+  - dvojna replay zaščita: Order.inventoryDeducted flag + StockTransaction(orderId, type='SALE')
+  - RecipeItem × OrderItem količine (voided izključene), odjem agregirane zaloge (floor 0)
+  - primanjkljaj NE blokira prodaje — opomba v transakciji + shortfall v auditu
+  - FEFO serije: InventoryBatch (najprej najzgodnejši datum poteka) + StockBatchAllocation; brez serij → samo agregat
+  - audit STOCK_DEDUCTED
+- /api/furs POST: hook deductStockForOrderTx v ISTI transakciji (atomarno z računom); summary v INVOICE_ISSUE auditu (stockDeduction)
+- /api/inventory PATCH: evidence gibanja — delta>0 → StockTransaction RECEIVE, popravek → ADJUST (previousQty/newQty/vrednost)
+- /api/recipes: DODAN POST (shranjevanje/zamenjava recepture, dedup sestavin, validacija proti zalogi, audit RECIPE_SAVED) + DELETE (audit RECIPE_DELETED) — prej samo GET
+- /api/reports/export (NOVO): računovodski izvoz (reports.view), from/to/format=csv|json
+  - prodaja po dnevih (neto/DDV/popusti/bruto/napitnine iz Receipt), DDV razčlenba po stopnjah (vatBreakdown parse)
+  - plačila po načinih (Payment), računi dobaviteljev po statusih (AccountsPayable), gibanje zalog (SALE/RECEIVE/ADJUST/WASTE)
+  - CSV: UTF-8 BOM + `;` (Excel/računovodski programi) + JSON variant
+- UI: InventoryTab — urejevalnik receptur (dialog: artikel menija + sestavine z količinami, uredi/briši), menuItems prop iz dashboarda
+- UI: AccountingExportCard v zavihku Računi (Od/Do + Izvozi CSV/JSON, download prek fetch+blob z auth)
+- FIX ui/scroll-area.tsx: Root dobi `overflow-hidden` (Radix Root je imel overflow:visible → seznam računov čez 60vh se je izlival čez naslednje kartice, prekrivanje klikov)
+- Verzija 1.30.0 (6 mest)
+
+E2E (lokalno, API):
+- receptura Kava → 0.018 kg MokaTip 500 shranjena ✓
+- naročilo Kava ×2 (#41) + plačilo FURS → zaloga 45 → 44.964, StockTransaction SALE qty −0.036 cost 0.04, Order.inventoryDeducted=true, audit ✓
+- replay plačila → replayed:true, zaloga ostane 44.964, 1 SALE transakcija ✓ (dvojni odjem nemogoč)
+- primanjkljaj: Kava ×2500 (potrebuje 45 kg, na zalogi 44.964) → prodaja NI blokirana, zaloga → 0, opomba "Primanjkljaj: zahtevano 45 kg…", audit shortfall ✓
+- PATCH +10 kg → RECEIVE transakcija (prev 0 → new 10, cost 12) ✓
+- izvoz JSON (2026-10-07): 11 računov, neto 4568.60, DDV 996.98 (9.5% + 22% razčlenba), plačila cash/loyalty, zaloge SALE/RECEIVE, stroški AP ✓; CSV z BOM ✓
+- testni artefakti počiščeni (2 testni naročili + dokumenti + stockTx; MokaTip nazaj 45; receptura Kava ostane kot demo; audit logi ostanejo)
+
+E2E (brskalnik): prijava → Zaloge → receptura kartica + urejevalnik (Kava/MokaTip naložena) ✓; Računi → izvozna kartica + Izvozi (CSV) klik → GET /api/reports/export 200 ✓; 0 konzolnih napak; mobile 390px pravilen prelom ✓
+
+Stage Summary:
+- v1.30.0: ob prodaji se zaloga SAMODEJNO razknjiži po recepturah (idempotentno, FEFO, primanjkljaj ne blokira), recepture so sedaj urejljive, računovodski izvoz CSV/JSON v zavihku Računi
+- scroll-area overflow fix velja globalno (vsi max-h ScrollArea se sedaj pravilno obrežejo)
+- GitHub: neposreden dostop še vedno brez veljavnega PAT-a; sinhronizacija teče prek Actions cron (30 min); po pushu na GitLab bo GitHub sam prevzel

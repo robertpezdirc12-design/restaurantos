@@ -43,7 +43,7 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -695,7 +695,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.29.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.30.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -1041,10 +1041,11 @@ export default function DashboardPage() {
                 </ScrollArea>
               </CardContent>
             </Card>
+            <AccountingExportCard />
           </TabsContent>
 
           <TabsContent value="zaloge">
-            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} canManage={canManage} onReload={load} />
+            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} menuItems={menu.map((m) => ({ id: m.id, name: m.name }))} canManage={canManage} onReload={load} />
           </TabsContent>
 
           <TabsContent value="izmene">
@@ -1286,7 +1287,7 @@ export default function DashboardPage() {
             </div>
             <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
-                <p>RestavrantOS — rekonstrukcija 1.29.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
+                <p>RestavrantOS — rekonstrukcija 1.30.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
                 <p>Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.</p>
                 <p>Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).</p>
               </CardContent>
@@ -1736,7 +1737,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija 1.29.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
+        RestavrantOS rekonstrukcija 1.30.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
       </footer>
     </main>
   )
