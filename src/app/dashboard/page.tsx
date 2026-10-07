@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
-  ShieldCheck, UserCog, Search, Star,
+  ShieldCheck, UserCog, Search, Star, KeyRound, Dices,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { downloadCSV } from '@/lib/client'
@@ -125,6 +125,13 @@ export default function DashboardPage() {
 
   // Employee Control Center stanje
   const [editEmployee, setEditEmployee] = useState<EmployeeT | null>(null)
+  /** Vaja PIN-ov: ali je trenutna seja prijavljena prek začasnega bootstrap dostopa (2 h)? */
+  const [bootstrapLogin, setBootstrapLogin] = useState(false)
+  /** Vaja PIN-ov: ustvarjanje trajnega profila za bootstrap e-pošto (ce profil se ne obstaja) */
+  const [bootName, setBootName] = useState('')
+  const [bootPin, setBootPin] = useState('')
+  const [bootBusy, setBootBusy] = useState(false)
+  const [bootNotice, setBootNotice] = useState('')
   const [empPerms, setEmpPerms] = useState<string[]>([])
   const [empRole, setEmpRole] = useState('WAITER')
   const [empActive, setEmpActive] = useState(true)
@@ -192,6 +199,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
+    setBootstrapLogin(localStorage.getItem('ro_bootstrap') === '1')
     const iv = setInterval(load, 15000)
     return () => clearInterval(iv)
   }, [load])
@@ -270,6 +278,17 @@ export default function DashboardPage() {
       setEmployees((list) => list.map((x) => (x.id === d.employee.id ? d.employee : x)))
       setEditEmployee(d.employee)
     } catch (err) { setEmpNotice(`Napaka: ${(err as Error).message}`) } finally { setEmpSaving(false) }
+  }
+
+  /** Vaja PIN-ov: bootstrap seja ustvari trajen admin profil z PIN-om (prehod iz env dostopa na bazo) */
+  async function createBootstrapProfile() {
+    if (!user?.email) return
+    setBootBusy(true); setBootNotice('')
+    try {
+      await api('/api/employees', { method: 'POST', body: JSON.stringify({ email: user.email, name: bootName, pin: bootPin, role: 'ADMIN' }) })
+      setBootNotice(`Profil ustvarjen ✓ — odjavi se in prijavi z naslovom ${user.email} in novim PIN-om.`)
+      setBootPin(''); await load()
+    } catch (err) { setBootNotice(`Napaka: ${(err as Error).message}`) } finally { setBootBusy(false) }
   }
 
   const cartTotal = Object.entries(cart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
@@ -559,6 +578,34 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="zaposleni" className="space-y-4">
+            {canManage && bootstrapLogin && (
+              <Card className="border-amber-300 bg-amber-50">
+                <CardContent className="py-3 flex items-start gap-2.5">
+                  <KeyRound className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                  <div className="text-sm text-amber-800 min-w-0 space-y-2">
+                    <p className="font-medium">Aktiven je začasni (bootstrap) dostop — seja poteče po 2 urah.</p>
+                    {bootNotice && <p className={`text-xs font-medium rounded-md px-2 py-1 ${bootNotice.startsWith('Napaka') ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>{bootNotice}</p>}
+                    {employees.every((e) => e.email?.toLowerCase() !== user?.email?.toLowerCase()) ? (
+                      <>
+                        <p className="text-xs text-amber-700">E-poštni naslov <span className="font-medium">{user?.email}</span> še nima profila med zaposlenimi. Ustvari trajen admin profil s PIN-om, da bo prijava potekala neposredno iz baze:</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input value={bootName} onChange={(e) => setBootName(e.target.value)} placeholder="Ime in priimek" className="max-w-48 h-9 bg-white" />
+                          <Input inputMode="numeric" maxLength={8} value={bootPin} onChange={(e) => setBootPin(e.target.value.replace(/\D/g, ''))} placeholder="PIN (4–8)" className="max-w-28 h-9 bg-white" />
+                          <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100 h-9" title="Naključni 6-mestni PIN" onClick={() => setBootPin(String(Math.floor(100000 + Math.random() * 900000)))}>
+                            <Dices className="w-4 h-4" />
+                          </Button>
+                          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 h-9" disabled={bootBusy || !bootName || bootPin.length < 4} onClick={createBootstrapProfile}>
+                            {bootBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Ustvari trajen profil'}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-amber-700">Klikni svoj profil spodaj, nastavi si trajen PIN (lahko isti kot zdaj) ter se nato odjavi in znova prijavi. Po ponovni prijavi to opozorilo izgine.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> Zaposleni{canManage ? ' — Control Center' : ''}</CardTitle>
@@ -827,6 +874,9 @@ export default function DashboardPage() {
                 <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <Label className="text-amber-800">Ponastavi PIN</Label>
                   <p className="text-xs text-amber-700">Občutljiva akcija: obstoječe seje postanejo neveljavne, akcija se zapiše v reviji (audit).</p>
+                  {editEmployee.email?.toLowerCase() === user?.email?.toLowerCase() && (
+                    <p className="text-xs font-medium text-amber-900">To je tvoj profil — s tem PIN-om bo prijava potekala neposredno iz baze (brez začasnega bootstrap dostopa).</p>
+                  )}
                   <div className="flex gap-2">
                     <Input
                       inputMode="numeric"
@@ -836,6 +886,15 @@ export default function DashboardPage() {
                       placeholder="4–8 številk"
                       className="max-w-40 bg-white"
                     />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                      title="Naključni 6-mestni PIN"
+                      onClick={() => setEmpPin(String(Math.floor(100000 + Math.random() * 900000)))}
+                    >
+                      <Dices className="w-4 h-4" />
+                    </Button>
                     <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100" disabled={empPin.length < 4} onClick={() => setConfirmPinReset(true)}>
                       Ponastavi PIN
                     </Button>
@@ -861,7 +920,11 @@ export default function DashboardPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Prekliči</AlertDialogCancel>
-            <AlertDialogAction className="bg-amber-600 hover:bg-amber-700" onClick={() => { setConfirmPinReset(false); patchEmployee({ pin: empPin }, 'PIN ponastavljen ✓') }}>
+            <AlertDialogAction className="bg-amber-600 hover:bg-amber-700" onClick={() => {
+              setConfirmPinReset(false)
+              const self = editEmployee?.email?.toLowerCase() === user?.email?.toLowerCase()
+              patchEmployee({ pin: empPin }, self ? 'PIN nastavljen ✓ — odjavi se in prijavi z novim PIN-om' : 'PIN ponastavljen ✓')
+            }}>
               Razumem, ponastavi PIN
             </AlertDialogAction>
           </AlertDialogFooter>

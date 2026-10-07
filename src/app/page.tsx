@@ -83,6 +83,9 @@ export default function LoginPage() {
       }
       localStorage.setItem('ro_token', data.token)
       localStorage.setItem('ro_user', JSON.stringify(data.employee))
+      // Vaja PIN-ov: bootstrap prijava (začasen 2-urni dostop) označimo, da dashboard lahko svetuje prehod na PIN iz baze
+      if (data.bootstrap) localStorage.setItem('ro_bootstrap', '1')
+      else localStorage.removeItem('ro_bootstrap')
       router.push('/dashboard')
     } catch {
       setError('Povezava s strežnikom ni uspela.')

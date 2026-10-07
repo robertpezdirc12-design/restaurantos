@@ -251,3 +251,31 @@ Work Log:
 Stage Summary:
 - Polno upravljanje (CRUD) + izvozi na produkciji; GitLab main = reconstruction @ a47f139
 - Produkcija dpl_9uA62acc5KSS4gyXjywZXuDPzbDJ
+
+---
+Task ID: 10-pin-setup
+Agent: Z.ai (main)
+Task: "odlicno nadaljuj z obnovo" — vaja PIN-ov za zaposlene + umik BOOTSTRAP_ADMIN_* env s produkcije
+
+Work Log:
+- Raziskava: /api/employees/[id] PATCH pin že obstaja (scrypt+pinLookup, sessionVersion bump, audit); login route: bootstrap = 2 h token + flag `bootstrap:true`, DB prijava = 12 h brez flaga → to je dokaz poti prijave
+- KLJUČNO ODKRITJE: info@restaurantos.app NI med zaposlenimi v produkcijski bazi (8 originalnih zaposlenih, vsi z PIN-i v stari neznani shemi) → bootstrap teče po prvi veji (profil ne obstaja), zato banner "klikni svoj profil" ne bi deloval — potreben UI za USTVARJANJE profila
+- page.tsx (prijava): shranjevanje/ciščenje `ro_bootstrap` flaga v localStorage glede na `data.bootstrap`
+- dashboard/page.tsx:
+  * Zaposleni tab: opozorilni banner (amber) med bootstrap sejo z DVEMA različicama — (a) e-pošta še nima profila → inline obrazec "Ustvari trajen profil" (ime + PIN + kocka za naključni 6-mestni PIN, POST /api/employees z vlogo ADMIN), (b) profil obstaja → navodilo za reset PIN-a v Control Centerju
+  * Control Center: namig "To je tvoj profil" (primerjava po e-pošti, ker bootstrap seja ima id 'bootstrap'), gub Dices za naključni PIN, self-PIN notice "odjavi se in prijavi z novim PIN-om"
+- lib/client.ts: getUser() tip razširjen z email?
+- Lokalni E2E (admin@restaurantos.app/1234): banner obe različici ✓, namig ✓, kocka ✓, self PIN 1234 ✓, staff PIN natakar/2468 ✓, nova prijava kot natakar prek UI in API brez bootstrap flaga ✓, mobilni 390px brez prelivanja ✓; testni profil Info Admin lokalno deaktiviran
+- Deploy dpl_FSGL6i46GFoQP43Fo7uFhkXKosZe READY → odkritje manjkajočega profila → nadgradnja bannerja → deploy dpl_C2ZgjMxemzt64P1YdgFjYD2ooH54 READY
+- PRODUKCIJSKI PREHOD (agent-browser, info@restaurantos.app/729153):
+  * prijava bootstrap:true (2 h) potrjena → banner z obrazcem viden → ustvarjen trajen profil "Robert Pezdirc" (ADMIN, PIN 729153 = ISTA prijava kot do sedaj) → "Profil ustvarjen ✓" → /api/employees: 9 zaposlenih, nov profil aktiven
+  * odjava → ponovna prijava 729153: bootstrap flag NULL, banner IZGINIL, 12-urni token z realnim sub
+- Umik env: DELETE /v9/projects/restaurantos/env/{3D6TCnXmYEx9v9O2,djaFH0UKu9JM7KLu} — BOOTSTRAP_ADMIN_EMAIL + BOOTSTRAP_ADMIN_PIN izbrisana
+- Finalni deploy dpl_4FkPjoW4u9CSiKG2JDbe68pmSYH2 READY → verifikacija: pravilna prijava 200 (brez bootstrap flaga, ADMIN, Robert Pezdirc), napačna PIN 401, /api/health ok + baza connected, UI pregled 0 konzolnih napak
+- DEPLOYMENT-STATUS.md posodobljen (sekcija "Prijava (trajna — bootstrap umaknjen)")
+
+Stage Summary:
+- VARNOSTNA REŽA ZAPRTA: prijava na produkciji teče izključno iz baze (scrypt+pinLookup); env fallback za vračanje ne obstaja več — kompromitiran BOOTSTRAP_ADMIN_PIN je sedaj neškodljiv
+- Uporabnikova prijava nespremenjena: info@restaurantos.app / 729153
+- Preostali zaposleni v stari shemi: admin nastavlja PIN-e prek Control Centerja (UI pripravljen); prijava zanje namerno zaprta do takrat
+- Še vedno za uporabnika: rotacija Vercel/GitLab zetonov, Neon credentiale, NEXTAUTH_SECRET, obnova GitHub računa

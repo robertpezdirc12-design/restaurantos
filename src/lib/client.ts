@@ -5,7 +5,7 @@ export function getToken(): string | null {
   return localStorage.getItem('ro_token')
 }
 
-export function getUser(): { id: string; name: string; role: string } | null {
+export function getUser(): { id: string; name: string; role: string; email?: string } | null {
   if (typeof window === 'undefined') return null
   const raw = localStorage.getItem('ro_user')
   return raw ? JSON.parse(raw) : null
