@@ -625,3 +625,21 @@ Stage Summary:
 - Varnost: token=skrivnost (revokacija=rotacija), client ID-ji/cene nikoli zaupani, rate limiting, idempotencija, ločene guest/staff seje, audit
 - Sprejemni kriteriji: vsi izpolnjeni razen E2E "QR → plačilo" (pot: gost plača na blagajni prek obstoječega POS plačilnega toka — verifikirano da naročilo iz QR doseže plačilni dialog); QR za plačilo na gostovem telefonu ni bilo v obsegu (ni payment providerja)
 - Ostalo: muzej-arhiv GitLab zaostanek + i-feel-slovenia (deletion-scheduled) — auto-retry prek Actions; nov GitHub PAT potreben za direktne GitHub operacije
+
+---
+Task ID: 5
+Agent: Z.ai Code (glavni)
+Task: Push + Vercel deploy + produkcijska migracija sheme (Neon) + produkcijska verifikacija
+
+Work Log:
+- Commit 42abc08 (Issue #3, v1.28.0) → push na GitLab main (286852d..42abc08) — 1. poskus uspel, nadaljnji 403 = prehoden CF/limit šum, "Everything up-to-date" potrjuje
+- Vercel deploy 1: dpl_HPRUXm7HZAjR2xjJULLgKbqnALtN READY — vendar /api/tables 500: Neon Postgres NIMA novih stolpcev (lokalni db:push gre samo na SQLite)
+- Neon URL ni dostopen prek Vercel API (DATABASE_URL_UNPOOLED = integration-store-secret, decrypted:false) → rešitev: /api/admin/migrate-issue3 (requirePermission employees.manage; fiksné aditivné ALTER "ADD COLUMN IF NOT EXISTS" — brez prostoformskega SQL; audit SCHEMA_MIGRATION_ISSUE3)
+- Vercel deploy 2: dpl_8qzan72CsmnLNnMcLP8TpxBoN991 READY → POST /api/admin/migrate-issue3 → vse 3 migracije aplicirane (Table qr*/DeviceRegistry cfd*/Order orderSource)
+- Produkcijska verifikacija: /api/tables 200 ✓; QR za Mizo 9 ✓; javni meni (39 kategorij, 437 artiklov, RestaurantOS Ljubljana) ✓; naročilo #690 (4.93 €) ✓; replay → replayed:true, isti order ✓; gostujoča stran /m/<token> v brskalniku (h1, 13 artiklov, dialog artikla) ✓
+- testni artefakt v produkciji: naročilo #690 Miza 9 neplačano (lahko staff prekliče)
+
+Stage Summary:
+- Issue #3 ŽIVO V PRODUKCIJI: https://restaurantos-theta.vercel.app/m/<qr> — gost lahko naroči brez prijave, naročilo teče v isti Order/KDS pipeline
+- Migracijska ruta ostane (admin-gated, idempotentna, dokumentirana) — prihodnje shema spremembe lahko isti vzorec
+- GitHub PAT preklican — za direktne GitHub operacije potreben nov PAT; sync prek Actions GITLAB_TOKEN secret teče naprej
