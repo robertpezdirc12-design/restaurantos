@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj za urejanje menija.', 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj za urejanje menija.', 403)
   const body = await req.json().catch(() => null)
   if (!body?.name || body?.price === undefined) return fail('Ime in cena sta obvezna.')
   const categoryId = body.categoryId || (await db.category.findFirst())?.id

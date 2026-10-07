@@ -42,14 +42,14 @@ export function jstr(v: unknown): string {
   return JSON.stringify(v ?? null)
 }
 
-/* ───── Vloge (DB: admin|manager|staff|waiter|bar|chef|kitchen ↔ UI: ADMIN|MANAGER|WAITER|BAR|KITCHEN) ───── */
+/* ───── Vloge (DB: owner|admin|manager|staff|waiter|bar|chef|kitchen ↔ UI: OWNER|ADMIN|MANAGER|WAITER|BAR|KITCHEN) ───── */
 
 const ROLE_TO_UI: Record<string, string> = {
-  admin: 'ADMIN', manager: 'MANAGER', staff: 'WAITER', waiter: 'WAITER',
+  owner: 'OWNER', admin: 'ADMIN', manager: 'MANAGER', staff: 'WAITER', waiter: 'WAITER',
   bar: 'BAR', chef: 'KITCHEN', kitchen: 'KITCHEN',
 }
 const ROLE_TO_DB: Record<string, string> = {
-  ADMIN: 'admin', MANAGER: 'manager', WAITER: 'waiter', BAR: 'bar',
+  OWNER: 'owner', ADMIN: 'admin', MANAGER: 'manager', WAITER: 'waiter', BAR: 'bar',
   KITCHEN: 'kitchen', KIOSK: 'staff',
 }
 

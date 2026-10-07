@@ -46,7 +46,7 @@ export function getAuth(req: NextRequest): AuthPayload | null {
 export function canAccessModule(user: AuthPayload | null, module: string, adminOnly = false): boolean {
   if (!user) return false
   if (adminOnly) return user.role === 'ADMIN'
-  if (user.role === 'ADMIN' || user.role === 'MANAGER') return true
+  if (user.role === 'OWNER' || user.role === 'ADMIN' || user.role === 'MANAGER') return true
   const allowed: Record<string, string[]> = {
     WAITER: ['tables', 'orders', 'menus', 'dashboard', 'reservations'],
     KITCHEN: ['kitchen', 'menus', 'dashboard'],

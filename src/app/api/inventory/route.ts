@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const name = String(body?.name || '').trim()
   if (!name) return ok({ error: 'Naziv artikla je obvezen.' }, 400)
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const id = String(body?.id || '')
   const item = id ? await db.inventoryItem.findUnique({ where: { id } }) : null

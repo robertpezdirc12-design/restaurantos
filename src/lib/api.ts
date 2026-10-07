@@ -40,7 +40,7 @@ export async function requirePermission(
 ): Promise<AuthPayload | NextResponse> {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (user.role === 'ADMIN') return user
+  if (user.role === 'ADMIN' || user.role === 'OWNER') return user
   const employee = await db.employee.findUnique({
     where: { id: user.sub },
     select: { role: true, permissionOverrides: true },

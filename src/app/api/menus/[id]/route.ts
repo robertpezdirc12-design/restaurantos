@@ -6,7 +6,7 @@ import { mapMenuItem, num } from '@/lib/map'
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const { id } = await params
   const body = await req.json().catch(() => null)
   const data: Record<string, unknown> = {}
@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const { id } = await params
   const inUse = await db.orderItem.count({ where: { menuItemId: id } })
   if (inUse > 0) return fail('Artikel je že uporabljen v naročilih — nastavi kot "Ni na voljo".', 409)

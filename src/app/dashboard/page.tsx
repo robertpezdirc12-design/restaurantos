@@ -80,7 +80,7 @@ const statusLabels: Record<string, string> = {
 
 /* EMPLOYEE CONTROL CENTER (R265) — kanonska dovoljenja sedaj v src/lib/permissions.ts */
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', BAR: 'Bar', KITCHEN: 'Kuhinja',
+  OWNER: 'Lastnik', ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', BAR: 'Bar', KITCHEN: 'Kuhinja',
 }
 const RES_STATUS_LABELS: Record<string, string> = {
   CONFIRMED: 'Potrjena', SEATED: 'Gost prišel', COMPLETED: 'Zaključena', CANCELLED: 'Preklicana', NO_SHOW: 'Ni prišel',
@@ -157,7 +157,7 @@ export default function DashboardPage() {
   // Rezervacije — nov vnos
   const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string } | null>(null)
 
-  const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
   // UI gating po dovoljenjih (backend uveljavlja neodvisno) — admin/manager vedno vse;
   // pred nalaganjem dovoljenj pokaži vse (permisivno, da ne utripa)
   const hasPerm = (p?: string) => !p || canManage || perms.length === 0 || perms.includes(p)
@@ -1167,8 +1167,8 @@ export default function DashboardPage() {
                     <Select value={empRole} onValueChange={(v) => setEmpRole(v)} disabled={user?.role === 'MANAGER' && empRole === 'ADMIN'}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN'].map((r) => (
-                          <SelectItem key={r} value={r} disabled={user?.role === 'MANAGER' && r === 'ADMIN'}>{ROLE_LABELS[r]}</SelectItem>
+                        {['OWNER', 'ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN'].map((r) => (
+                          <SelectItem key={r} value={r} disabled={(user?.role === 'MANAGER' && r === 'ADMIN') || (user?.role !== 'OWNER' && r === 'OWNER')}>{ROLE_LABELS[r]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

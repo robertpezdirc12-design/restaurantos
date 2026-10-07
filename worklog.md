@@ -508,3 +508,20 @@ Stage Summary:
 - Dvojni račun/plačilo/naročilo tehnično nemogoče (transakcija + CAS + unique idempotency)
 - Offline naročila varno (vrsta + idempotenten replay prek DeviceSyncOperation)
 - Print-agent mini service (port 3031) mosti HTTP → TCP 9100 ESC/POS CP852 (č/š/ž byte-exact)
+
+---
+Task ID: 16-owner-role
+Agent: Z.ai (main)
+Task: Issue #1 komentar (vloge) — LASTNIK/BOSS vloga z zaščito
+
+Work Log:
+- Enum EmployeeRole +owner (schema.prisma; sqlite string-based) + db:push
+- map.ts: owner→OWNER / OWNER→owner; permissions.ts: ROLE_DEFAULTS.owner = vse + konfliktno pravilo dokumentirano (override = vedno DODATNA pravica, nikoli odvzem — eno jasno pravilo po zahtevi)
+- api.ts requirePermission: OWNER fast-path (kot ADMIN); auth.ts canAccessModule +OWNER
+- employees/[id] PATCH: samo LASTNIK ureja/deaktivira/degradira LASTNIKA (403 za MANAGER/ADMIN); LASTNIKA dodeljuje LASTNIK ali ADMIN (prvi lastnik)
+- Vsa 13 ['ADMIN','MANAGER'] vrat (menus, loyalty, inventory, jobs, expenses, settings, employees, suppliers) → +OWNER
+- UI: ROLE_LABELS +Lastnik, role select +OWNER (disabled za ne-ownerje), canManage vključuje OWNER
+- Preverjeno: promocija ADMIN→OWNER→ADMIN ✓, owner ureja sebe ✓, employees GET ✓, lint ✓
+
+Stage Summary:
+- LASTNIK/BOSS zaščiten: manager/nižja vloga ne more spreminjati/deaktivirati/dodeliti (razen ADMIN prvič)

@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const body = await req.json().catch(() => null)
   const description = String(body?.description || '').trim()
   const amount = num(body?.amount)

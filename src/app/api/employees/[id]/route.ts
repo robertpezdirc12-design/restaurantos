@@ -16,7 +16,7 @@ export { CANONICAL_PERMISSIONS }
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
+  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const { id } = await ctx.params
   const body = await req.json().catch(() => null)
   if (!body) return fail('Manjkajo podatki.', 400)
@@ -27,6 +27,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (user.role === 'MANAGER' && targetRole === 'ADMIN') {
     return fail('MANAGER ne sme urejati ADMIN računa.', 403)
   }
+  // LASTNIK/BOSS zaščita (issue #1, komentar: vloge): samo LASTNIK ureja LASTNIKA
+  if (targetRole === 'OWNER' && user.role !== 'OWNER') {
+    return fail('Samo LASTNIK lahko ureja LASTNIKOV račun.', 403)
+  }
 
   const data: Record<string, unknown> = {}
   const sensitive: string[] = []
@@ -34,8 +38,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // vloga
   if (body.role !== undefined) {
     const role = String(body.role).toUpperCase()
-    if (!['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN'].includes(role)) return fail('Neznana vloga.', 400)
+    if (!['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'OWNER'].includes(role)) return fail('Neznana vloga.', 400)
     if (user.role === 'MANAGER' && role === 'ADMIN') return fail('MANAGER ne dodeljuje ADMIN vloge.', 403)
+    // LASTNIKA dodeljuje LASTNIK ali ADMIN (prvi lastnik); urejati/odvzeti pa samo LASTNIK
+    if (role === 'OWNER' && !['OWNER', 'ADMIN'].includes(user.role)) return fail('Samo LASTNIK dodeljuje LASTNIKA.', 403)
+    if (targetRole === 'OWNER' && role !== 'OWNER' && user.role !== 'OWNER') {
+      return fail('Samo LASTNIK lahko spremeni LASTNIKOVO vlogo.', 403)
+    }
     data.role = roleToDB(role)
     sensitive.push(`sprememba vloge v ${role}`)
   }
@@ -44,6 +53,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const status = String(body.status)
     if (!['active', 'inactive', 'suspended'].includes(status)) return fail('Neznan status.', 400)
     if (target.id === user.sub && status !== 'active') return fail('Ne morete deaktivirati sebe.', 400)
+    if (targetRole === 'OWNER' && status !== 'active' && user.role !== 'OWNER') {
+      return fail('Samo LASTNIK lahko deaktivira LASTNIKA.', 403)
+    }
     data.status = status
     if (status !== 'active') sensitive.push(`deaktivacija računa (${status})`)
   }
