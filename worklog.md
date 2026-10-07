@@ -298,3 +298,9 @@ Stage Summary:
 - Restavriran zadnji člen FURS poteka Check → Payment → Receipt → TISK; računi (tudi originalni iz 18.09.) so natisljivi ali shranljivi kot PDF
 - Brez novih odvisnosti; Unicode č/š/ž deluje izvorno (za razliko od jsPDF/pdf-lib standardnih fontov)
 - Produkcija @ dpl_AR6vu92kedUnauVmg2ag9Du7Rdq2; GitLab push sledi
+
+Opomba (Task 11): GitLab push za 63f7ce4 ni uspel — token glpat-ODvZ… je prenehal delovati
+(401 Unauthorized na /api/v4/user; push → 403). Verjetno rotiran/preklican (priporočena varnostna
+akcija). Koda je varna lokalno (main = reconstruction @ 63f7ce4) IN na produkciji
+(dpl_AR6vu92kedUnauVmg2ag9Du7Rdq2 READY + verifikirana). Push se opravi takoj, ko uporabnik
+doda nov GitLab token (git remote set-url origin https://robert.pezdirc12:<NOVI_TOKEN>@gitlab.com/robert.pezdirc12/restaurantos.git).
