@@ -144,3 +144,23 @@ Opomba (Task 6 zakljucek):
 - Worklog push ni uspel: GitLab zeton glpat-... je RAZVELJAVLJEN ("Token was revoked") — uporabnik ga je rotiral po varnostnem priporocilu (pravilno!)
 - Koda Task 6 (moduli) je bila pushana PRED revokacijo (PUSH OK), na GitLabu je torej najnovejsa koda; manjka le ta worklog zapis — pushan bo z novim zetonom, ko ga uporabnik poda
 - Deploy Vercel dpl_4BphQtbnqYNkyTNKMbRUKXAxxzST READY + ziva verifikacija OK; Vercel zeton naj bo naslednji za rotacijo, ce se ni
+
+---
+Task ID: 7-last-modules
+Agent: Z.ai (main)
+Task: "nadaljuj" — UI za vse preostale API module (dobavitelji, recepti, delovna mesta, mnenja, nastavitve)
+
+Work Log:
+- Novi tokena (GitLab + Vercel) potrjena; zamujen worklog Task 6 pushan (main + reconstruction @ 9185f48)
+- Pregledani vsi preostali API-ji brez UI: /api/suppliers, /api/recipes, /api/jobs (GET+POST), /api/guests/feedback, /api/locations/stats, /api/integrations, /api/webhooks, /api/monitoring/errors
+- Bug fix: jobs/route.ts uporabljal jstr brez uvoza (latentni ReferenceError pri POST) — popravljen, POST testiran
+- dashboard-tabs.tsx: InventoryTab razsirjen (Dobavitelji + Recepti sekcije), ShiftsTab razsirjen (Prihodki danes + promet po DDV stopnjah), nova FeedbackTab (povprecna ocena, zvezdice, seznam po mizah), nova JobsCard (seznam + vnosna obrazca za canManage)
+- dashboard: 15 tabov (nov "Mnenja"), load() razsirjen na 22 API klicev, Zaposleni tab + Delovna mesta, Nastavitve = Lokacije/Integracije/Webhooki/Dnevnik napak + O sistemu
+- command-palette: dodana navigacija "Mnenja gostov" (vse vloge)
+- E2E lokalno (agent-browser): prijava, Zaloge (Kmetija Sonce), Izmene (DDV 9.5%/22% z realnimi podatki), Mnenja (prazno stanje), Zaposleni (Delovna mesta — Sommelier viden, Barista ustvarjen prek UI), Nastavitve (Lokacije z realnimi podatki), paleta z Mnenja — 0 konzolnih napak, 0 page errors, mobilni viewport brez prelivanja
+- lint cist
+
+Stage Summary:
+- Vseh 35+ API rut zdaj ima UI pokritost — ni vec neobsluzenih endpointov
+- 15 tabov: Pregled, Mize, Narocila, Kuhinja, Meni, Rezervacije, Racuni, Zaloge, Izmene, HACCP, Stroski, Zvestoba, Mnenja, Zaposleni, Nastavitve
+- Sledi: push GitLab + Vercel deploy + produkcjska verifikacija

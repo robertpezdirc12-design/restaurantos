@@ -8,7 +8,7 @@ import {
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, CalendarDays,
   ReceiptText, Users, Settings, RefreshCw, Plus, LogOut, Search, ShieldCheck,
-  PackageSearch, Clock, Thermometer, Wallet, HeartHandshake,
+  PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Star,
 } from 'lucide-react'
 
 /**
@@ -93,6 +93,9 @@ export function CommandPalette({ open, onOpenChange, user, onNavigate, onRefresh
               <HeartHandshake className="w-4 h-4" /> Zvestoba
             </CommandItem>
           ) : null}
+          <CommandItem onSelect={() => run(() => onNavigate('mnenja'))}>
+            <Star className="w-4 h-4" /> Mnenja gostov
+          </CommandItem>
           {canManage(user?.role) ? (
             <CommandItem onSelect={() => run(() => onNavigate('zaposleni'))}>
               <Users className="w-4 h-4" /> Zaposleni

@@ -23,14 +23,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
-  ShieldCheck, UserCog, Search,
+  ShieldCheck, UserCog, Search, Star,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
+  type SupplierT, type RecipeT, type FeedbackT, type JobT,
 } from '@/components/dashboard-tabs'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug } from 'lucide-react'
+
+interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
+interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
+interface WebhookT { id: string; name: string; url: string; events: string[]; isActive: boolean; lastTriggered?: string | null; failureCount: number }
+interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
@@ -93,6 +99,14 @@ export default function DashboardPage() {
   const [haccp, setHaccp] = useState<HaccpT[]>([])
   const [expenses, setExpenses] = useState<ExpenseT[]>([])
   const [loyalty, setLoyalty] = useState<LoyaltyT[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierT[]>([])
+  const [recipes, setRecipes] = useState<RecipeT[]>([])
+  const [jobs, setJobs] = useState<JobT[]>([])
+  const [feedback, setFeedback] = useState<FeedbackT[]>([])
+  const [locStats, setLocStats] = useState<LocationStatT[]>([])
+  const [integrations, setIntegrations] = useState<IntegrationT[]>([])
+  const [webhooks, setWebhooks] = useState<WebhookT[]>([])
+  const [errLog, setErrLog] = useState<ErrLogT[]>([])
   const [newOrderTable, setNewOrderTable] = useState<TableT | null>(null)
   const [cart, setCart] = useState<Record<string, number>>({})
   const [sending, setSending] = useState(false)
@@ -122,7 +136,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy] = await Promise.all([
+      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el] = await Promise.all([
         api<{ stats: Stats }>('/api/dashboard'),
         api<{ tables: TableT[] }>('/api/tables'),
         api<{ orders: OrderT[] }>('/api/orders'),
@@ -137,12 +151,22 @@ export default function DashboardPage() {
         api<{ haccpChecks: HaccpT[] }>('/api/haccp'),
         api<{ expenses: ExpenseT[] }>('/api/expenses'),
         api<{ accounts: LoyaltyT[] }>('/api/loyalty'),
+        api<{ suppliers: SupplierT[] }>('/api/suppliers'),
+        api<{ recipes: RecipeT[] }>('/api/recipes'),
+        api<{ jobContexts: JobT[] }>('/api/jobs'),
+        api<{ feedback: FeedbackT[] }>('/api/guests/feedback'),
+        api<{ stats: LocationStatT[] }>('/api/locations/stats'),
+        api<{ integrations: IntegrationT[] }>('/api/integrations'),
+        api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks'),
+        api<{ errors: ErrLogT[] }>('/api/monitoring/errors'),
       ])
       setStats(d.stats); setTables(t.tables); setOrders(o.orders)
       setKitchen(k.queue); setMenu(m.items); setCategories(m.categories); setEmployees(e.employees)
       setReservations(r.reservations); setReceipts(rec.receipts)
       setInventory(inv.inventory); setShifts(sh.shifts); setFinancial(fin)
       setHaccp(haccpRows.haccpChecks); setExpenses(ex.expenses); setLoyalty(loy.accounts)
+      setSuppliers(sup.suppliers); setRecipes(recp.recipes); setJobs(jb.jobContexts); setFeedback(fb.feedback)
+      setLocStats(ls.stats); setIntegrations(ig.integrations); setWebhooks(wb.webhookEndpoints); setErrLog(el.errors)
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
@@ -265,7 +289,7 @@ export default function DashboardPage() {
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['mnenja', 'Mnenja', Star], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ].map(([v, label, Icon]) => (
               <TabsTrigger key={v as string} value={v as string} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
                 {Icon && <Icon className="w-4 h-4" />} {label as string}
@@ -464,7 +488,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="zaloge">
-            <InventoryTab items={inventory} />
+            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} />
           </TabsContent>
 
           <TabsContent value="izmene">
@@ -483,7 +507,11 @@ export default function DashboardPage() {
             <LoyaltyTab accounts={loyalty} />
           </TabsContent>
 
-          <TabsContent value="zaposleni">
+          <TabsContent value="mnenja">
+            <FeedbackTab feedback={feedback} tables={tables.map((t) => ({ id: t.id, name: t.name }))} />
+          </TabsContent>
+
+          <TabsContent value="zaposleni" className="space-y-4">
             <Card>
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> Zaposleni{canManage ? ' — Control Center' : ''}</CardTitle>
@@ -512,9 +540,80 @@ export default function DashboardPage() {
                 ))}
               </CardContent>
             </Card>
+            <JobsCard jobs={jobs} canManage={canManage} onReload={load} />
           </TabsContent>
 
-          <TabsContent value="nastavitve">
+          <TabsContent value="nastavitve" className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacije</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {locStats.length === 0 && <p className="text-sm text-stone-500">Ni lokacij.</p>}
+                  {locStats.map((l) => (
+                    <div key={l.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{l.name}</p>
+                        <p className="text-xs text-stone-500">{l.tables} miz · {l.employees} zaposlenih · {l.orders} naročil skupaj</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold">{fmtEUR(l.todayRevenue)}</p>
+                        <p className="text-xs text-stone-400">danes {l.todayOrders} naročil</p>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Plug className="w-4 h-4" /> Integracije</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {integrations.length === 0 && <p className="text-sm text-stone-500">Ni integracij.</p>}
+                  {integrations.map((i) => (
+                    <div key={i.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{i.name} <span className="text-xs text-stone-400">· {i.provider}</span></p>
+                        <p className="text-xs text-stone-500">{i.type}{i.syncEnabled ? ' · sinhronizacija vključena' : ''}{i.lastSyncAt ? ` · zadnja: ${new Date(i.lastSyncAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+                      </div>
+                      <Badge className={i.connectionStatus === 'connected' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{i.connectionStatus}</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Webhook className="w-4 h-4" /> Webhooki</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {webhooks.length === 0 && <p className="text-sm text-stone-500">Ni registriranih webhookov.</p>}
+                  {webhooks.map((w) => (
+                    <div key={w.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium truncate">{w.name}</p>
+                        <Badge className={w.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{w.isActive ? 'Aktiven' : 'Izklopljen'}</Badge>
+                      </div>
+                      <p className="text-xs text-stone-500 truncate">{w.url}</p>
+                      <p className="text-[11px] text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : 'brez dogodkov'}{w.failureCount > 0 ? ` · ${w.failureCount} napak` : ''}{w.lastTriggered ? ` · nazadnje sprožen ${new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Bug className="w-4 h-4" /> Dnevnik napak</CardTitle></CardHeader>
+                <CardContent>
+                  {errLog.length === 0 && <p className="text-sm text-stone-500">Ni zabeleženih napak.</p>}
+                  <ScrollArea className="max-h-72">
+                    <div className="space-y-2">
+                      {errLog.map((l) => (
+                        <div key={l.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium truncate">{l.action} <span className="text-xs font-normal text-stone-400">· {l.entity}</span></p>
+                            <span className="text-xs text-stone-400 shrink-0">{new Date(l.createdAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          {l.data && <p className="text-xs text-stone-500 break-all mt-0.5">{l.data.length > 160 ? `${l.data.slice(0, 160)}…` : l.data}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
             <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
                 <p>RestavrantOS — rekonstrukcija 1.26.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>

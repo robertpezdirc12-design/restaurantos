@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok } from '@/lib/api'
-import { jparse, nid } from '@/lib/map'
+import { jparse, jstr, nid } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)

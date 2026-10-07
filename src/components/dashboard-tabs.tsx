@@ -9,13 +9,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle } from 'lucide-react'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
 export interface InventoryT { id: string; name: string; unit: string; qty: number; minQty: number; cost: number; supplierId?: string | null }
+export interface SupplierT { id: string; name: string; contact?: string | null; phone?: string | null; email?: string | null; address?: string | null }
+export interface RecipeT { id: string; name: string; instructions: string; items: { inventoryItemId: string; name: string; unit: string; qty: number }[] }
 
-export function InventoryTab({ items }: { items: InventoryT[] }) {
+export function InventoryTab({ items, suppliers, recipes }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[] }) {
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
   const totalValue = items.reduce((s, i) => s + i.qty * i.cost, 0)
   return (
@@ -50,6 +52,52 @@ export function InventoryTab({ items }: { items: InventoryT[] }) {
           </ScrollArea>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Truck className="w-4 h-4" /> Dobavitelji</CardTitle></CardHeader>
+        <CardContent>
+          {suppliers.length === 0 && <p className="text-sm text-stone-500">Ni dodanih dobaviteljev.</p>}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {suppliers.map((s) => (
+              <div key={s.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                <p className="font-medium truncate">{s.name}</p>
+                <p className="text-xs text-stone-500 truncate">
+                  {s.contact || '—'}{s.phone ? ` · ${s.phone}` : ''}{s.email ? ` · ${s.email}` : ''}
+                </p>
+                {s.address && <p className="text-[11px] text-stone-400 truncate">{s.address}</p>}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><UtensilsCrossed className="w-4 h-4" /> Recepti (sestavine artiklov)</CardTitle></CardHeader>
+        <CardContent>
+          {recipes.length === 0 && <p className="text-sm text-stone-500">Ni shranjenih receptov.</p>}
+          <ScrollArea className="max-h-80">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {recipes.map((r) => (
+                <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                  <p className="font-medium truncate">{r.name}</p>
+                  {r.items.length === 0 ? (
+                    <p className="text-xs text-stone-400">brez sestavin</p>
+                  ) : (
+                    <ul className="mt-1 space-y-0.5">
+                      {r.items.map((line, idx) => (
+                        <li key={`${r.id}-${idx}`} className="text-xs text-stone-600 flex justify-between gap-2">
+                          <span className="truncate">{line.name}</span>
+                          <span className="shrink-0 font-medium">{line.qty} {line.unit}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -57,7 +105,7 @@ export function InventoryTab({ items }: { items: InventoryT[] }) {
 /* ─────────────────────────── IZMENE + Z-POROČILA ─────────────────────────── */
 
 export interface ShiftT { id: string; employeeId?: string | null; employee?: { name: string; role: string } | null; startedAt: string; endedAt?: string | null; openingCash: number; closingCash: number; status: string }
-export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number } }
+export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number }; taxBreakdown: { taxRate: number; qty: number }[] }
 
 export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: ShiftT[]; financial: FinancialT | null; canManage: boolean; onReload: () => Promise<void> }) {
   const [cash, setCash] = useState('')
@@ -82,6 +130,19 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> Stroški (mesec)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.month.expenses) : '—'}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Dobiček (mesec)</CardTitle></CardHeader><CardContent><p className={`text-xl font-bold ${(financial?.month.profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{financial ? fmtEUR(financial.month.profit) : '—'}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Računov (mesec)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial?.month.invoices ?? '—'}</p></CardContent></Card>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> Prihodki (danes)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.today.revenue) : '—'}</p><p className="text-xs text-stone-400">{financial?.today.invoices ?? '—'} računov · davek {financial ? fmtEUR(financial.today.tax) : '—'}</p></CardContent></Card>
+        <Card className="col-span-2 lg:col-span-3"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Promet po davčnih stopnjah (mesec)</CardTitle></CardHeader><CardContent>
+          {!financial || financial.taxBreakdown.length === 0 ? <p className="text-sm text-stone-500">Ni prometa.</p> : (
+            <div className="flex flex-wrap gap-2">
+              {financial.taxBreakdown.map((t) => (
+                <Badge key={t.taxRate} variant="outline" className="text-sm px-2.5 py-1">DDV {t.taxRate} % · {t.qty} postavk</Badge>
+              ))}
+            </div>
+          )}
+        </CardContent></Card>
       </div>
 
       {canManage && (
@@ -328,5 +389,93 @@ export function LoyaltyTab({ accounts }: { accounts: LoyaltyT[] }) {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+/* ─────────────────────────── MNENJA GOSTOV ─────────────────────────── */
+
+export interface FeedbackT { id: string; rating: number; comment?: string | null; tableId?: string | null; createdAt: string }
+
+export function FeedbackTab({ feedback, tables }: { feedback: FeedbackT[]; tables: { id: string; name: string }[] }) {
+  const avg = feedback.length > 0 ? feedback.reduce((s, f) => s + f.rating, 0) / feedback.length : 0
+  const tableName = (id?: string | null) => (id ? tables.find((t) => t.id === id)?.name || null : null)
+  const stars = (r: number) => '★'.repeat(Math.round(r)) + '☆'.repeat(Math.max(0, 5 - Math.round(r)))
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Star className="w-4 h-4" /> Povprečna ocena</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{feedback.length > 0 ? avg.toFixed(1) : '—'}<span className="text-base text-amber-500 ml-1.5">{feedback.length > 0 && stars(avg)}</span></p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Št. mnenj</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{feedback.length}</p></CardContent></Card>
+      </div>
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Mnenja gostov</CardTitle></CardHeader>
+        <CardContent>
+          {feedback.length === 0 && <p className="text-sm text-stone-500">Ni še mnenj gostov.</p>}
+          <ScrollArea className="max-h-96">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {feedback.map((f) => (
+                <div key={f.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-amber-500 text-sm">{stars(f.rating)}</span>
+                    <span className="text-xs text-stone-400 shrink-0">{new Date(f.createdAt).toLocaleDateString('sl-SI')}{tableName(f.tableId) ? ` · ${tableName(f.tableId)}` : ''}</span>
+                  </div>
+                  {f.comment && <p className="text-sm text-stone-600 mt-1 break-words">“{f.comment}”</p>}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/* ─────────────────────────── DELOVNA MESTA ─────────────────────────── */
+
+export interface JobT { id: string; title: string; permissions: string; active: boolean; startedAt: string }
+
+export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManage: boolean; onReload: () => Promise<void> }) {
+  const [title, setTitle] = useState('')
+  const [payRate, setPayRate] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setBusy(true)
+    try {
+      await api('/api/jobs', { method: 'POST', body: JSON.stringify({ title, payRate: Number(payRate.replace(',', '.')) || 0 }) })
+      setTitle(''); setPayRate(''); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Briefcase className="w-4 h-4" /> Delovna mesta</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {canManage && (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1.5 min-w-48 flex-1">
+              <Label htmlFor="job-title">Naziv</Label>
+              <Input id="job-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="npr. Sommelier" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="job-rate">Urna postavka (€)</Label>
+              <Input id="job-rate" inputMode="decimal" value={payRate} onChange={(e) => setPayRate(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="npr. 12.50" className="w-36" />
+            </div>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !title} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Dodaj'}</Button>
+          </div>
+        )}
+        {jobs.length === 0 && <p className="text-sm text-stone-500">Ni definiranih delovnih mest.</p>}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {jobs.map((j) => (
+            <div key={j.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium truncate">{j.title}</p>
+                {j.permissions && <p className="text-xs text-stone-500 truncate">{j.permissions.split(',').join(' · ')}</p>}
+              </div>
+              <Badge className={j.active ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{j.active ? 'Aktivno' : 'Neaktivno'}</Badge>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
