@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
-import { Prisma } from '@prisma/client'
+import { Prisma, OrderItemStatus } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
+
+const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
 type KitchenOrder = Prisma.OrderGetPayload<{
   include: {
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   const orders = await db.order.findMany({
-    where: { ...locationScope(user), status: { in: ORDER_ACTIVE_DB }, OrderItem: { some: { status: { in: ITEM_ACTIVE_DB } } } },
+    where: { ...locationScope(user), status: { in: ORDER_ACTIVE_DB }, OrderItem: { some: { status: { in: ITEM_ACTIVE_PRISMA } } } },
     include: {
       Table: true,
       OrderItem: {
