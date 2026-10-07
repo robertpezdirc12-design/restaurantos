@@ -32,5 +32,5 @@ quality-gate:
     - bunx tsc --noEmit
     - bun run lint
     - bun test
-    - python3 scripts/check-schema-drift.py
+    - node scripts/check-schema-drift.cjs
     - bash scripts/check-secrets.sh
