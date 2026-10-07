@@ -1033,3 +1033,20 @@ Work Log:
 Stage Summary:
 - Auto-sinhronizacija GitLab→GitHub: GLAVNI mehanizem = native push mirror (strežniško na gitlab.com, neodvisen od sandboxa, 6/6 repojev); VAROVALKA = sync-service :3032 (5 min cikel, GET /sync za takojšnji tek)
 - GitLab = canonical source; github.com/robertpezdirc12-design = samodejna kopija
+
+---
+Task ID: 11-main
+Agent: main (Z.ai Code)
+Task: Issue zapiranje sproti — #4 zaklep (reziduali v follow-up) + #2 delivery testi iz acceptance criteria
+
+Work Log:
+- GitHub mirror/auto-sync potrjen iz prejšnje seje (mirror 4131791 finished, sync-service :3032 varovalka)
+- Issue #2 acceptance criteria revizija: manjkali samo unit testi (webhook, idempotencija, podpis) → dodan tests/delivery.test.ts
+- 16 novih testov: verifyWebhookSignature (valid/tampered/fail-closed), webhookIdempotencyKey (format+64 cap), maskPhone, validateMapped, rateLimit (30/min + key isolation)
+- Popravek lastne napake v testnem pričakovanju maskPhone (9 zvezdic, ne 8)
+- bun test 53/53 (37+16), tsc 0, eslint 0
+
+Stage Summary:
+- Issue #2: vsi acceptance criteria pokriti (webhooki v1.27.0, hardening v1.32.0 D6, testi zdaj) → zaklenjen
+- Issue #4: jedro zaključeno, 3 reziduali (Redis rate limit, CI DB secrets, print-agent ACK) → follow-up issue
+- Push = hkrati E2E dokaz GitLab→GitHub mirrorja
