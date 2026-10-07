@@ -38,15 +38,24 @@ export interface CreateOrderDeliveryInput {
 }
 
 export interface CreateOrderInput {
-  employeeId: string
+  /** Issue #3: gost (QR/kiosk) nima zaposlenega → null */
+  employeeId: string | null
   locationId: string | null
-  items: { menuItemId: string; qty?: number; note?: string }[]
+  items: {
+    menuItemId: string
+    qty?: number
+    note?: string
+    /** Issue #3: opcije/modifierji — cene se štejejo v linijo, vrste se zapišejo v OrderItemModifier */
+    modifiers?: { modifierId: string; name: string; price: number; groupName?: string; modifierGroupId?: string }[]
+  }[]
   tableId?: string | null
   type?: string
   note?: string
   guests?: number
   clientOperationId?: string | null
   delivery?: CreateOrderDeliveryInput | null
+  /** Issue #3: izvor naročila (pos | qr | kiosk) */
+  orderSource?: string
 }
 
 export interface CreateOrderResult {
@@ -91,7 +100,17 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
     const qty = Math.max(1, Math.round(Number(i.qty) || 1))
     const price = num(mi.price)
     const vatRate = num(mi.vatRate, 22)
-    const line = price * qty
+    // Issue #3: opcije povečajo ceno linije (cena opcije VEDNO iz DB — resolved prek resolveGuestItems)
+    const mods = (i.modifiers || []).map((m, idx) => ({
+      id: nid(),
+      name: String(m.name).slice(0, 120),
+      price: Math.max(0, num(m.price)),
+      modifierGroupId: m.modifierGroupId || null,
+      modifierGroupName: String(m.groupName || '').slice(0, 120),
+      sortOrder: idx,
+    }))
+    const modsTotal = mods.reduce((s, m) => s + m.price, 0)
+    const line = (price + modsTotal) * qty
     const vat = (line * vatRate) / 100
     subtotal += line
     tax += vat
@@ -99,13 +118,14 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
       id: nid(),
       menuItemId: mi.id,
       quantity: qty,
-      price,
+      price: price + modsTotal,
       vatRate,
       vatAmount: vat,
       menuItemName: mi.name,
       status: 'pending' as const,
       notes: i.note || '',
       modifiersJson: '[]',
+      mods,
     }
   })
 
@@ -156,7 +176,29 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
             splitCount: Number(input.guests) || 1,
             idempotencyKey,
             deliveryInfoId,
-            OrderItem: { create: itemRows },
+            // Issue #3: izvor naročila (pos | qr | kiosk)
+            orderSource: input.orderSource || 'pos',
+            OrderItem: {
+              create: itemRows.map((r) => {
+                const { mods, ...itemData } = r
+                return {
+                  ...itemData,
+                  // Issue #3: opcije/modifierji linije (cene iz DB, ne iz clienta)
+                  OrderItemModifier: mods?.length
+                    ? {
+                        create: mods.map((m) => ({
+                          id: m.id,
+                          name: m.name,
+                          price: m.price,
+                          modifierGroupId: m.modifierGroupId,
+                          modifierGroupName: m.modifierGroupName,
+                          sortOrder: m.sortOrder,
+                        })),
+                      }
+                    : undefined,
+                }
+              }),
+            },
           },
           include: orderInclude,
         })

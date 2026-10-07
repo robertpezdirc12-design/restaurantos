@@ -599,3 +599,29 @@ Work Log:
 Stage Summary (sync):
 - POPOLNOMA SINHRONIZIRANO (dvosmerno, preverjeno): restaurantos 23898ec, discover-slovenia-ai c53bc4849, roksal-railing-manager c4d2ea930, muzej 360a9aa90, markec-project 424956fd8  → 5/7
 - GitHub-arhiv + auto-retry: i-feel-slovenia (GitLab blokira pisanje — deletion scheduled), muzej-arhiv (zaostanek 1 commit, 6h retry)
+
+---
+Task ID: 4
+Agent: Z.ai Code (glavni)
+Task: GitLab issue #3 — QR meni + self-order + kiosk + customer display + popoln device onboarding (v1.28.0)
+
+Work Log:
+- Kontekst: preverjena stanja — GitLab token ③ (glpat-i3S_...f920jw) VALIDEN (robert.pezdirc12, active); GitHub token ghp_E27J... preklican sredi seje (401 Bad credentials; deloval ob začetnem testu) — GitHub sync teče naprej prek Actions cron (30 min za restaurantos), ni blokade
+- Lokalni remote origin posodobljen na token ③; reconstruction branch ff-na origin/reconstruction (f9a49bb); main = 286852d (vsebuje Issue #1 + #2 delo prejšnjih sej)
+- SHEMA (schema.sqlite.prisma + schema.prisma, db:push): Table +qrToken(unique)/qrEnabled/qrRotatedAt; DeviceRegistry +pairingCode/pairingExpiresAt/pairedToDeviceId/displayPayload/displayUpdatedAt/revokedAt; Order +orderSource (pos|qr|kiosk, default pos)
+- src/lib/guest.ts (novo): rateLimitPublic (v pomnilniku), newQrToken (32 hex), resolveQrToken (token = skrivnost; client NIKOLI ne pošilja location/table ID), loadPublicMenu (ENOTEN vir: Menu→Category→MenuItem→ModifierGroup, samo isActive lokacija), resolveGuestItems (cene/VAT/opcije VEDNO iz DB), deviceFromToken/deviceAlive (type predicate), newPairingCode, GUEST_VISIBLE_ORDER_STATUS
+- ops.ts createOrderCore razširjen: employeeId: string|null (gost brez zaposlenega), orderSource, items.modifiers → OrderItemModifier vrste + cena opcije v linijo (fix: spread je vključil `mods` — destructured ven, sicer Prisma 500)
+- JAVNI API: GET /api/public/menu (?qr= | X-Device-Token kiosk) · POST /api/public/orders (qrToken ali kiosk token; idempotenten clientOperationId; tableNumber validiran proti lokaciji; audit GUEST_ORDER_CREATED; odgovor brez internih podatkov) · GET /api/public/orders/status (whitelist polja)
+- QR ADMIN: GET/POST /api/tables/[id]/qr (QRCode dataURL+SVG, rotate=revokacija, toggle izklop; audit QR_TOKEN_ROTATED/QR_ORDER_TOGGLE)
+- NAPRAVE: PATCH/DELETE /api/devices/[id] (revoke/restore/urejanje; audit DEVICE_REVOKED/RESTORED/DELETED); POST/GET /api/devices/display (pair [staff ali POS token] → 6-mestna koda TTL 10 min; connect [display token]; push [POS]; unpair; audit DISPLAY_PAIRED); GET /api/devices/display/state (display polling 2 s)
+- JAVNE STRANI: /m/[token] — gostujoči meni (kategorije → artikel z opcijami/modifierji → košarica z DDV razčlenbo → oddaja; clientOperationId v sessionStorage preživi refresh; jasna napaka brez lažnega uspeha; unavailable artikli izklopljeni) · /kiosk — aktivacija z device tokenom (localStorage), zaklenjen tok, auto-reset 45/90 s, temna tema · /display — paring 6-mestna koda, polling 2 s, idle/ordering/paid faze, brez podatkov zaposlenih
+- DASHBOARD: Mize tab — QR gumb na vsaki mizi (span role=button, ne gnezdenje gumbov) → dialog (QR slika, URL, Switch izklop, rotate) · Nastavitve — DevicesCard → poln onboarding (dodaj napravo vseh 7 tipov, žeton pokaže se ENKRAT, revoke/restore/delete, CFD koda) · POS → CFD push (debounce 800 ms: lines/DDV/total; po plačilu state=paid s številko naročila)
+- E2E API: QR order #13 (7.67) + replay → replayed:true ISTI orderNumber ✓; KDS vidi #13 ✓; status endpoint ✓; napačen token 404 ✓; toggle izklop → 404 ✓; rotate → stari token mrtev ✓; kiosk #14 takeaway + #15 z mizo ✓; revoke kiosk → 401 ✓; CFD pair→connect→push→state ✓; modifier 2×(3.5+1.2)=9.4×1.095=10.29, OrderItemModifier vpisan ✓; rate limit 10/min → 11. zahteva 429 ✓; orderSource qr/kiosk v DB, employeeId NULL ✓; 9 audit dogodkov ✓
+- E2E browser (agent-browser): /m/[token] — meni → artikel + jajce opcija → košarica 9,40 € → naročilo #17 (10,29 €) s statusom ✓; /kiosk — aktivacija → #18 (3,83 €) → Hvala zaslon ✓; /display — vezava + ordering stanje (Miza 4, vrstice, DDV, SKUPAJ 26,40 €) ✓; dashboard — 14 QR gumbov, dialog z QR sliko (data:image/png) + switch + rotate ✓; Nastavitve — onboarding kartica + CFD koda 639822 prikazana ✓
+- Verzija 1.28.0 (api.ts + 5 mest); lint čist; TS: moje napake popravljenе (pre-existing ops/furs/sync/dashboard napake ostajajo, niso del tega taska)
+
+Stage Summary:
+- Issue #3 izveden po pravilu "samo kaj manjka": ENOTEN meni (isti DB kot POS), ENOTEN Order pipeline (createOrderCore → KDS → Payment → FURS), NI vzporednega sistema naročil
+- Varnost: token=skrivnost (revokacija=rotacija), client ID-ji/cene nikoli zaupani, rate limiting, idempotencija, ločene guest/staff seje, audit
+- Sprejemni kriteriji: vsi izpolnjeni razen E2E "QR → plačilo" (pot: gost plača na blagajni prek obstoječega POS plačilnega toka — verifikirano da naročilo iz QR doseže plačilni dialog); QR za plačilo na gostovem telefonu ni bilo v obsegu (ni payment providerja)
+- Ostalo: muzej-arhiv GitLab zaostanek + i-feel-slovenia (deletion-scheduled) — auto-retry prek Actions; nov GitHub PAT potreben za direktne GitHub operacije

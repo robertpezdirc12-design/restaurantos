@@ -534,6 +534,13 @@ model DeviceRegistry {
   status     String    @default("offline")
   lastSeenAt DateTime?
   appVersion String    @default("")
+  // Issue #3: CFD pairing + display state + revoke
+  pairingCode      String?
+  pairingExpiresAt DateTime?
+  pairedToDeviceId String?
+  displayPayload   String?
+  displayUpdatedAt DateTime?
+  revokedAt        DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime @updatedAt
   Location   Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
@@ -1474,6 +1481,8 @@ model Order {
   cancelledById                          String?
   virtualBrandId                         String?
   idempotencyKey                         String?            @unique
+  // Issue #3: izvor naročila (pos | qr | kiosk) — isti kanonični Order pipeline
+  orderSource                            String             @default("pos")
   Check                                  Check[]
   Course                                 Course[]
   KotDocument                            KotDocument[]
@@ -2435,6 +2444,10 @@ model Table {
   rotation        Float           @default(0)
   revenueCenterId String?
   locationId      String
+  // Issue #3: QR meni / self-order po mizah — token JE skrivnost (32 hex, unguessable), revokacija = rotacija
+  qrToken         String?         @unique
+  qrEnabled       Boolean         @default(true)
+  qrRotatedAt     DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime @updatedAt
   Order           Order[]

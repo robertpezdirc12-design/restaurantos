@@ -24,6 +24,7 @@ import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
   ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer, Wifi, WifiOff, CloudUpload,
+  QrCode,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -159,6 +160,11 @@ export default function DashboardPage() {
   const [deliveryOrders, setDeliveryOrders] = useState<DeliveryOrderT[]>([])
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneT[]>([])
   const [deliveryIntegrations, setDeliveryIntegrations] = useState<PlatformIntegrationT[]>([])
+
+  // Issue #3 — QR meni po mizah + POS → customer display push
+  const [qrTable, setQrTable] = useState<{ id: string; name: string } | null>(null)
+  const [qrData, setQrData] = useState<{ dataUrl: string; url: string; qrEnabled: boolean } | null>(null)
+  const [qrBusy, setQrBusy] = useState(false)
 
   // Rezervacije — nov vnos
   const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string } | null>(null)
@@ -357,7 +363,10 @@ export default function DashboardPage() {
         terminal = { approvalCode: t.approvalCode as string }
       }
       const d = await api<{ invoice: { eor: string; invoiceNumber: string; id?: string } }>('/api/furs', { method: 'POST', body: JSON.stringify({ orderId: payingOrder.id, type: payMethod, clientOperationId: newOperationId(), terminal }) })
-      setInvoice(d.invoice); await load()
+      setInvoice(d.invoice)
+      // Issue #3: CFD pokaže "Hvala" z zneskom in številko naročila
+      void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: payingOrder.total, message: 'Plačilo uspešno — hvala!' })
+      await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
 
@@ -405,6 +414,31 @@ export default function DashboardPage() {
       await load()
     } catch (err) { alert((err as Error).message) }
   }
+
+  /* ── Issue #3: QR meni po mizah ── */
+  async function openQr(t: TableT) {
+    setQrTable({ id: t.id, name: t.name }); setQrData(null); setQrBusy(true)
+    try {
+      const d = await api<{ dataUrl: string; url: string; qrEnabled: boolean }>(`/api/tables/${t.id}/qr`)
+      setQrData(d)
+    } catch (e) { alert((e as Error).message); setQrTable(null) } finally { setQrBusy(false) }
+  }
+  async function qrAction(action: 'rotate' | 'toggle', enabled?: boolean) {
+    if (!qrTable) return
+    setQrBusy(true)
+    try {
+      await api(`/api/tables/${qrTable.id}/qr`, { method: 'POST', body: JSON.stringify({ action, enabled }) })
+      const d = await api<{ dataUrl: string; url: string; qrEnabled: boolean }>(`/api/tables/${qrTable.id}/qr`)
+      setQrData(d)
+    } catch (e) { alert((e as Error).message) } finally { setQrBusy(false) }
+  }
+
+  /* ── Issue #3: POS → customer display (CFD) push ── */
+  const pushDisplay = useCallback(async (payload: Record<string, unknown>) => {
+    try {
+      await api('/api/devices/display', { method: 'POST', body: JSON.stringify({ action: 'push', payload }) })
+    } catch { /* display push ne sme blokirati POS toka */ }
+  }, [])
 
   /** Kuhinjski/bar list prek naprave (issue #1: kuhinjski tisk) */
   async function printKitchenTicket(o: OrderT, station: 'KITCHEN' | 'BAR') {
@@ -478,6 +512,31 @@ export default function DashboardPage() {
   }
 
   const cartTotal = Object.entries(cart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
+
+  // Issue #3: POS → customer display — trenutna transakcija v realnem času (debounce 800 ms)
+  useEffect(() => {
+    if (!newOrderTable) return
+    const t = setTimeout(() => {
+      const lines = Object.entries(cart).map(([id, qty]) => {
+        const m = menu.find((x) => x.id === id)
+        const price = (m?.price || 0) * qty
+        return { name: m?.name || id, qty, price }
+      })
+      const subtotal = lines.reduce((s, l) => s + l.price, 0)
+      const tax = Math.round(subtotal * 0.22 * 100) / 100
+      void pushDisplay({
+        state: lines.length ? 'ordering' : 'idle',
+        tableName: newOrderTable.name,
+        lines,
+        subtotal: Math.round((subtotal - tax) * 100) / 100,
+        tax,
+        vatBreakdown: lines.length ? [{ rate: 22, amount: tax }] : [],
+        total: subtotal,
+      })
+    }, 800)
+    return () => clearTimeout(t)
+  }, [cart, newOrderTable, menu, pushDisplay])
+
   const menuByCat = categories.map((c) => ({ cat: c, items: menu.filter((m) => m.categoryId === c.id) }))
     .concat({ cat: { id: 'ostalo', name: 'Ostalo' }, items: menu.filter((m) => !m.categoryId) })
     .filter((g) => g.items.length > 0)
@@ -508,7 +567,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.27.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.28.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -614,26 +673,63 @@ export default function DashboardPage() {
                   <h2 className="font-semibold text-stone-700">{ZONE_LABELS[zone] || zone}</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {zt.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => {
-                          // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
-                          if (t.status === 'DIRTY' && !t.activeOrder) { void markClean(t); return }
-                          if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) setPayingOrder(o) }
-                        }}
-                        className={`rounded-xl p-4 text-left shadow transition ${statusColors[t.status]} min-h-20`}
-                      >
-                        <p className="font-bold text-lg">{t.name}</p>
-                        <p className="text-xs opacity-90">{t.seats} mest</p>
-                        {t.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(t.activeOrder.total)}</p>}
-                        <p className="text-[11px] mt-1 opacity-80">{t.activeOrder ? statusLabels.OCCUPIED : t.status === 'DIRTY' ? 'Klikni — očisti' : statusLabels[t.status]}</p>
-                      </button>
+                      <div key={t.id} className="relative">
+                        <button
+                          onClick={() => {
+                            // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
+                            if (t.status === 'DIRTY' && !t.activeOrder) { void markClean(t); return }
+                            if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) setPayingOrder(o) }
+                          }}
+                          className={`w-full rounded-xl p-4 text-left shadow transition ${statusColors[t.status]} min-h-20`}
+                        >
+                          <p className="font-bold text-lg">{t.name}</p>
+                          <p className="text-xs opacity-90">{t.seats} mest</p>
+                          {t.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(t.activeOrder.total)}</p>}
+                          <p className="text-[11px] mt-1 opacity-80">{t.activeOrder ? statusLabels.OCCUPIED : t.status === 'DIRTY' ? 'Klikni — očisti' : statusLabels[t.status]}</p>
+                        </button>
+                        {/* Issue #3: QR meni za to mizo — (span, ker gosta ne sme biti gnezdena v gumbu) */}
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`QR meni — ${t.name}`}
+                          onClick={(e) => { e.stopPropagation(); void openQr(t) }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void openQr(t) } }}
+                          className="absolute top-1.5 right-1.5 rounded-md bg-white/85 p-1 text-stone-600 hover:bg-white hover:text-stone-900 cursor-pointer shadow-sm"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </span>
+                      </div>
                     ))}
                   </div>
                 </section>
               )
             })}
           </TabsContent>
+
+          {/* Issue #3: QR meni dialog — QR slika, URL, izklop/vklop naročanja, regeneracija (revokacija) */}
+          <Dialog open={!!qrTable} onOpenChange={(o) => !o && setQrTable(null)}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5"><QrCode className="w-4 h-4" /> QR meni — {qrTable?.name}</DialogTitle>
+              </DialogHeader>
+              {qrBusy || !qrData ? (
+                <div className="flex items-center justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  <img src={qrData.dataUrl} alt={`QR meni — ${qrTable?.name}`} className="mx-auto rounded-xl border border-stone-200 w-52 h-52" />
+                  <p className="text-xs text-stone-500 break-all text-center select-all">{qrData.url}</p>
+                  <div className="flex items-center justify-between rounded-lg border border-stone-200 p-2.5">
+                    <span className="font-medium">QR naročanje</span>
+                    <Switch checked={qrData.qrEnabled} onCheckedChange={(v) => void qrAction('toggle', v)} />
+                  </div>
+                  <Button variant="outline" className="w-full" disabled={qrBusy} onClick={() => void qrAction('rotate')}>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" /> Nov QR (revokiraj stare povezave)
+                  </Button>
+                  <p className="text-[11px] text-stone-400">Gost skenira kodo → javni meni → samopostrežno naročilo. Naročilo pride v KDS po istem toku kot POS.</p>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
 
           <TabsContent value="narocila">
             <Card>
@@ -892,7 +988,7 @@ export default function DashboardPage() {
 
           <TabsContent value="nastavitve" className="space-y-4">
             <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
-            <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} />
+            <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} onChanged={load} />
             {/* Naprave te naprave (issue #1, naloga 2) — tiskalnik + plačilni terminal */}
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Printer className="w-4 h-4" /> Tiskalnik in terminal — ta naprava</CardTitle></CardHeader>
@@ -1040,7 +1136,7 @@ export default function DashboardPage() {
             </div>
             <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
-                <p>RestavrantOS — rekonstrukcija 1.27.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
+                <p>RestavrantOS — rekonstrukcija 1.28.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
                 <p>Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.</p>
                 <p>Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).</p>
               </CardContent>
@@ -1323,7 +1419,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija 1.27.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
+        RestavrantOS rekonstrukcija 1.28.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
       </footer>
     </main>
   )

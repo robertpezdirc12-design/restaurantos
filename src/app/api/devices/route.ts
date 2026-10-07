@@ -18,6 +18,11 @@ export async function GET(req: NextRequest) {
       status: r.status,
       locationId: r.locationId,
       createdAt: r.createdAt,
+      // Issue #3: onboarding/revoke/cfd stanje
+      revoked: !!r.revokedAt,
+      revokedAt: r.revokedAt,
+      pairedToDeviceId: r.pairedToDeviceId,
+      hasDisplayPayload: !!r.displayPayload,
     })),
   })
 }
@@ -27,7 +32,7 @@ export async function GET(req: NextRequest) {
  * Uporablja se na prijavni strani PRED prijavo: naprava dobi enkraten deviceId (token),
  * ki se prikaže samo enkrat. Zahteva veljavno lokacijo, ime in tip naprave.
  */
-const DEVICE_TYPES = ['pos', 'kds', 'kds_bar', 'tablet', 'kiosk', 'mobile']
+const DEVICE_TYPES = ['pos', 'kds', 'kds_bar', 'tablet', 'kiosk', 'mobile', 'customer_display']
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const name = String(body?.name || '').trim()

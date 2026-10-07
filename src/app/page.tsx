@@ -19,6 +19,7 @@ interface Location {
 const DEVICE_TYPES = [
   ['pos', 'POS blagajna'], ['kds', 'KDS kuhinja'], ['kds_bar', 'KDS bar'],
   ['tablet', 'Tablica'], ['kiosk', 'Samopostrežni kiosk'], ['mobile', 'Mobilna naprava'],
+  ['customer_display', 'Customer display (CFD)'],
 ]
 
 export default function LoginPage() {
@@ -228,7 +229,7 @@ export default function LoginPage() {
               <ShieldCheck className="w-3.5 h-3.5" /> Demo prijava: admin@restaurantos.app / PIN 1234
             </p>
             <p className="text-[11px] text-stone-400">
-              Rekonstrukcija 1.27.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
+              Rekonstrukcija 1.28.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
             </p>
           </div>
         </div>

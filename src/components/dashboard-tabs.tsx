@@ -875,32 +875,145 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
 
 /* ─────────────────────────── NAPRAVE ─────────────────────────── */
 
-export interface DeviceT { id: string; name: string; type: string; token: string; lastSeen?: string | null; status: string; locationId?: string | null }
+export interface DeviceT { id: string; name: string; type: string; token: string; lastSeen?: string | null; status: string; locationId?: string | null; revoked?: boolean; pairedToDeviceId?: string | null }
 
 const DEVICE_TYPE_LABELS: Record<string, string> = {
-  POS: 'POS blagajna', KDS: 'KDS kuhinja', KDS_BAR: 'KDS bar', TABLET: 'Tablica', KIOSK: 'Kiosk', MOBILE: 'Mobilna',
+  POS: 'POS blagajna', KDS: 'KDS kuhinja', KDS_BAR: 'KDS bar', TABLET: 'Tablica', KIOSK: 'Kiosk', MOBILE: 'Mobilna', CUSTOMER_DISPLAY: 'Customer display',
 }
 
-export function DevicesCard({ devices, locations }: { devices: DeviceT[]; locations: { id: string; name: string }[] }) {
+/**
+ * Issue #3 — popoln Device Onboarding: nov tip, lokacija, ime, funkcija, revoke/restore,
+ * CFD paring koda. Žeton se pokaže ENKRAT (prvič ob registraciji).
+ */
+export function DevicesCard({ devices, locations, onChanged }: { devices: DeviceT[]; locations: { id: string; name: string }[]; onChanged?: () => void }) {
   const locName = (id?: string | null) => (id ? locations.find((l) => l.id === id)?.name || null : null)
   const mask = (t: string) => (t && t.length > 14 ? `${t.slice(0, 14)}…` : t)
+  const [addOpen, setAddOpen] = useState(false)
+  const [nf, setNf] = useState({ name: '', type: 'pos', locationId: 'none' })
+  const [busy, setBusy] = useState(false)
+  const [newToken, setNewToken] = useState<{ name: string; token: string } | null>(null)
+  const [pairCode, setPairCode] = useState<{ device: string; code: string } | null>(null)
+  const [notice, setNotice] = useState('')
+
+  async function registerDevice() {
+    if (nf.name.trim().length < 2) { setNotice('Ime naprave: min. 2 znaka.'); return }
+    setBusy(true); setNotice('')
+    try {
+      const res = await api<{ device: { name: string; token: string } }>('/api/devices', {
+        method: 'POST',
+        body: JSON.stringify({ name: nf.name.trim(), type: nf.type, locationId: nf.locationId === 'none' ? '' : nf.locationId }),
+      })
+      setNewToken({ name: res.device.name, token: res.device.token })
+      setAddOpen(false)
+      setNf({ name: '', type: 'pos', locationId: 'none' })
+      onChanged?.()
+    } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function deviceAction(id: string, action: 'revoke' | 'restore' | 'delete') {
+    if (action === 'delete' && !confirm('Trajno izbrišem napravo?')) return
+    setBusy(true); setNotice('')
+    try {
+      if (action === 'delete') await api(`/api/devices/${id}`, { method: 'DELETE' })
+      else await api(`/api/devices/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) })
+      onChanged?.()
+    } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function showPairCode(d: DeviceT) {
+    setBusy(true); setNotice('')
+    try {
+      const res = await api<{ code: string }>('/api/devices/display', { method: 'POST', body: JSON.stringify({ action: 'pair' }) })
+      setPairCode({ device: d.name, code: res.code })
+    } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
+  }
+
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> Naprave</CardTitle>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> Naprave — onboarding</CardTitle>
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => { setAddOpen((v) => !v); setNewToken(null) }}><Plus className="w-3.5 h-3.5" /> Dodaj napravo</Button>
       </CardHeader>
       <CardContent>
-        <p className="text-xs text-stone-400 mb-2">Nove naprave se poveže na prijavni strani (“Poveži napravo z lokacijo”) — celoten žeton se pokaže le tam, enkrat.</p>
+        {addOpen && (
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 mb-3 space-y-3">
+            <p className="text-xs font-medium text-stone-500">Nova naprava — izberi tip, lokacijo in ime. Žeton se pokaže samo enkrat.</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Tip</Label>
+                <Select value={nf.type} onValueChange={(v) => setNf((f) => ({ ...f, type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pos">POS blagajna</SelectItem>
+                    <SelectItem value="kds">KDS kuhinja</SelectItem>
+                    <SelectItem value="kds_bar">KDS bar</SelectItem>
+                    <SelectItem value="tablet">Tablica</SelectItem>
+                    <SelectItem value="kiosk">Samopostrežni kiosk</SelectItem>
+                    <SelectItem value="mobile">Mobilna naprava</SelectItem>
+                    <SelectItem value="customer_display">Customer display (CFD)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Lokacija</Label>
+                <Select value={nf.locationId} onValueChange={(v) => setNf((f) => ({ ...f, locationId: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brez lokacije</SelectItem>
+                    {locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Ime</Label>
+                <Input value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder="npr. Blagajna 1" />
+              </div>
+            </div>
+            <Button size="sm" onClick={registerDevice} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} Registriraj</Button>
+          </div>
+        )}
+
+        {newToken && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 mb-3">
+            <p className="text-sm font-semibold text-amber-900">Žeton naprave “{newToken.name}” — pokaže se SAMO zdaj:</p>
+            <code className="mt-1 block text-sm bg-white border border-amber-200 rounded-lg px-3 py-2 break-all select-all">{newToken.token}</code>
+            <p className="text-xs text-amber-700 mt-1">Kiosk/display: vnesi žeton na /kiosk oz. /display strani. Kopiraj zdaj — kasneje ga ni mogoče prikazati.</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => { navigator.clipboard?.writeText(newToken.token); setNotice('Žeton kopiran ✓') }}>Kopiraj</Button>
+          </div>
+        )}
+
+        {pairCode && (
+          <div className="rounded-xl border border-stone-300 bg-stone-100 p-4 mb-3 text-center">
+            <p className="text-sm text-stone-500">Paring koda za customer display (velja 10 min, POS: {pairCode.device}):</p>
+            <p className="text-4xl font-extrabold tracking-[0.3em] my-2 select-all">{pairCode.code}</p>
+            <p className="text-xs text-stone-500">Na zaslonu displaya (/display) vnesi to kodo.</p>
+          </div>
+        )}
+
+        {notice && <p className="text-xs text-emerald-700 mb-2">{notice}</p>}
         {devices.length === 0 && <p className="text-sm text-stone-500">Ni registriranih naprav.</p>}
         <div className="grid gap-2 sm:grid-cols-2">
           {devices.map((d) => (
-            <div key={d.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+            <div key={d.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${d.revoked ? 'border-red-200 bg-red-50' : 'border-stone-200 bg-white'}`}>
               <div className="min-w-0">
                 <p className="font-medium truncate">{d.name} <Badge variant="outline" className="ml-1">{DEVICE_TYPE_LABELS[d.type] || d.type}</Badge></p>
                 <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || 'brez lokacije'} · žeton {mask(d.token)}</p>
-                <p className="text-[11px] text-stone-400">zadnja povezava: {d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'nikoli'}</p>
+                <p className="text-[11px] text-stone-400">zadnja povezava: {d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'nikoli'}{d.revoked ? ' · REVOKIRANA' : ''}</p>
               </div>
-              <Badge className={d.status === 'online' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{d.status}</Badge>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Badge className={d.revoked ? 'bg-red-600 text-white' : d.status === 'online' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{d.revoked ? 'revoked' : d.status}</Badge>
+                <div className="flex gap-1">
+                  {d.type.toUpperCase() === 'POS' && !d.revoked && (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => showPairCode(d)}>CFD koda</Button>
+                  )}
+                  {d.revoked ? (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'restore')}>Obnovi</Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'revoke')}>Revokiraj</Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] text-red-700" disabled={busy} onClick={() => deviceAction(d.id, 'delete')}>Izbriši</Button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
