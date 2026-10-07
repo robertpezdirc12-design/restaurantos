@@ -1001,3 +1001,20 @@ Work Log:
 Stage Summary:
 - GitLab = canonical source; GitHub = samodejni push-mirror (ob vsakem pushu)
 - repoji na github.com/robertpezdirc12-design; i-feel-slovenia izpuščen počakal izbris
+
+---
+Task ID: 10-b-main
+Agent: main (Z.ai Code)
+Task: sync-service (auto-sync safety net) + old sync.yml workflows disabled + merge parallel session
+
+Work Log:
+- ugotovljeno: GitLab native push-mirror se na gitlab.com ne sproži zanesljivo ob pushu (Sidekiq cadence) → zgrajen mini-services/sync-service (port 3032, interval 5 min + GET /sync /status /health, token prek env GITLAB_SYNC_TOKEN)
+- ugotovljeno: stari GitHub Actions sync.yml workflows so tekmovali z mirrorjem (divergentni commiti) → onemogočeni 4: restaurantos 377376404, discover-slovenia-ai 377376509, muzej 377376673, markec-project 377376756 (ci.yml + keep-warm.yml ostala aktivna)
+- potrjeno delovanje mirrorja: parallel push 19:03 (485da3a) → GitHub čez ~2 min brez ročnega posredovanja
+- vzporedna seja (Robert P.) potiskala type-alignment commite 19:00–19:03 (Prisma enums) — hardening (requireAuth/await, assertResourceLocation, locationScope, sessionRevoked) PREŽIVEL; poprašen 1 preostali TS error (kitchen ITEM_ACTIVE_PRISMA cast) + prisma generate (lokalni client zastarel glede enums)
+- sync-service 1. zagon mrtev (process group kill) → restart z setsid + disown (robustno)
+- verifikacija: tsc 0, lint 0, testi 37/37
+
+Stage Summary:
+- auto-sync zdaj dvoplasten: GitLab native mirror (ob pushu, ko se sproži) + sync-service (5 min force-sync varovalka)
+- GitHub = čista kopija GitLaba; GitLab = canonical source
