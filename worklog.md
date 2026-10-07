@@ -982,3 +982,22 @@ Work Log:
 
 Stage Summary:
 - tsc 0, lint 0, testi 37/37; commit + push + redeploy
+
+---
+Task ID: 10-main
+Agent: main (Z.ai Code)
+Task: GitLab → GitHub mirror + samodejna sinhronizacija (nov GitHub račun robertpezdirc12-design)
+
+Work Log:
+- nov GitHub PAT verificiran (robertpezdirc12-design, full scopes) — 6 repojev že obstajalo (delo Actions crona)
+- GitLab push mirror-ji ustvarjeni prek API (POST /projects/:id/remote_mirrors, enabled=true): restaurantos 4131791, discover-slovenia-ai 4131786, roksal-railing-manager 4131787, muzej-arhiv 4131788, muzej 4131789, markec-project 4131790
+- preskočena: i-feel-slovenia (deletion scheduled) + stariguthubmuzej (temp sync-scaffold repo)
+- CF flaky blokade med POST-i → vztrajnostna retry zanka (restaurantos uspel v 1. ponovitvi drugega kroga)
+- force-sync vseh 6 (POST .../remote_mirrors/:id/sync)
+- verifikacija HEAD-ov GitLab↔GitHub: 6/6 identično (restaurantos main 830779d + reconstruction f9a49bb; muzej-arhiv f519bd9; muzej 150d5bf; discover 7a369ce; roksal b8f206e; markec-project test-push 424956f)
+- GitHub restaurantos main je bil zastarel (286852d, Actions cron) → po force-sync trenutno na 830779d
+- test samodejnega sprožilca: ta commit push na GitLab → GitHub mora prejeti avtomatsko
+
+Stage Summary:
+- GitLab = canonical source; GitHub = samodejni push-mirror (ob vsakem pushu)
+- repoji na github.com/robertpezdirc12-design; i-feel-slovenia izpuščen počakal izbris
