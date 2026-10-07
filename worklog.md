@@ -164,3 +164,22 @@ Stage Summary:
 - Vseh 35+ API rut zdaj ima UI pokritost — ni vec neobsluzenih endpointov
 - 15 tabov: Pregled, Mize, Narocila, Kuhinja, Meni, Rezervacije, Racuni, Zaloge, Izmene, HACCP, Stroski, Zvestoba, Mnenja, Zaposleni, Nastavitve
 - Sledi: push GitLab + Vercel deploy + produkcjska verifikacija
+
+---
+Task ID: 7-deploy
+Agent: Z.ai (main)
+Task: Vercel deploy + produkcjska verifikacija (moduli Task 7-last-modules)
+
+Work Log:
+- Deploy Vercel dpl_8ZxztxnM6qsSipzkpevvSFPMvcVp READY (~36s, 128 datotek)
+- Produkcjska verifikacija (info@restaurantos.app / 729153):
+  * Zaloge: Dobavitelji = Metro Cash & Carry (Janez Metro, +386 1 234 5678, metro@slovenia.si, Šmartinska cesta 152 — REALNO), Recepti prazno (kakor v bazi)
+  * Izmene: realni finance — prihodki 16,87 EUR, davek 1,47, dobiček 16,87, 1 racun; DDV 9.5 % (2 postavki); prihodki danes 0,00
+  * Mnenja: povprecna ocena 5.0 ★★★★★, 1 mnenje "QA probe runda 38" (18.09.2026, originalni QA podatek)
+  * Zaposleni/Delovna mesta: Natakar (take_orders · void_items · apply_discounts), Vodja smene (5 dovoljenj) — originalni podaki
+  * Nastavitve: Lokacije (RestaurantOS Ljubljana, 15 miz, 58 narocil), Webhooki ("Test webhook", hooks.example.com/pos, izklopljen — originalno), Dnevnik napak (FURS_VERIFY_ERROR zapisi iz 18.09. z originalnim Prisma errorjem cisCertPath — prava revizija originalne aplikacije)
+- 0 konzolnih napak, 0 page errors, mobilni viewport (390px) brez prelivanja
+
+Stage Summary:
+- 100% API-UI pokritost; produkcija = najnovejsa koda (15 tabov)
+- GitLab main + reconstruction @ 05dc69a; produkcija dpl_8ZxztxnM6qsSipzkpevvSFPMvcVp
