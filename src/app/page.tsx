@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { UtensilsCrossed, Loader2, MapPin, ShieldCheck, MonitorSmartphone, ChevronDown } from 'lucide-react'
+import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 interface Location {
@@ -202,11 +202,8 @@ export default function LoginPage() {
           </Card>
 
           <div className="text-center space-y-1">
-            <p className="text-xs text-stone-500 inline-flex items-center gap-1 justify-center">
-              <ShieldCheck className="w-3.5 h-3.5" /> Demo prijava: admin@restaurantos.app / PIN 1234
-            </p>
             <p className="text-[11px] text-stone-400">
-              Rekonstrukcija 1.30.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
+              Rekonstrukcija 1.32.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
             </p>
           </div>
         </div>

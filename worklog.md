@@ -968,3 +968,17 @@ Stage Summary:
 - tsc 0 napak, lint 0, bun test 37/37 (97 expect), schema drift 110/110, secrets 0
 - D4 + D6 zaprta end-to-end; delivery webhook P0 regresija rešena (odkrita med revizijo poti)
 - ostalo iz D: Redis rate limit (infra), CI DB testi/build (GitLab secrets), print-agent ACK (hardware) — dokumentirano
+
+---
+Task ID: 9-b-main
+Agent: main (Z.ai Code)
+Task: UI hygiene — verzija usklajena + demo poverznice s produkcije + safe-area fix
+
+Work Log:
+- dashboard/page.tsx, page.tsx, layout.tsx: 1.30.0 → 1.32.0 (izpuščeno pri v1.31.0 bumpu)
+- dashboard footer: odstranjena lokalna poverznica 'prijava: admin@restaurantos.app / 1234' (issue #4 §15 hygiene — produkcija prikazuje test credential, ki tam sploh ne obstaja)
+- login page: odstranjen 'Demo prijava: admin@restaurantos.app / PIN 1234' (mrtva hinta v produkciji) + ShieldCheck import pospravljen
+- footer: popravljen razbit Tailwind class pb-ax(0.75rem,env(...)) → pb-[max(0.75rem,env(safe-area-inset-bottom))] (mobilni safe-area)
+
+Stage Summary:
+- tsc 0, lint 0, testi 37/37; commit + push + redeploy
