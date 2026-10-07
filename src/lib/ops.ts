@@ -7,6 +7,7 @@
 import { db } from '@/lib/db'
 import { mapOrder, nid, num, r2, orderTypeToDB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
+import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
 
 export const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -21,7 +22,7 @@ export function normalizeOrder(o: Record<string, unknown>) {
     items: o.OrderItem,
     table: o.Table,
     employee: o.Employee_Order_employeeIdToEmployee,
-  }
+  } as Parameters<typeof mapOrder>[0]
 }
 
 export interface CreateOrderDeliveryInput {
@@ -63,20 +64,43 @@ export interface CreateOrderResult {
   replayed: boolean
 }
 
+export interface CreateOrderOptions {
+  /**
+   * Issue #4 §10: findFirst() lokacijski fallback je DOVOLJEN samo za sistemske vire,
+   * ki lokacije ne poznajo (delivery webhook pred vezavo). Staff javne poti ga NIKOLI ne smejo.
+   */
+  allowFirstLocationFallback?: boolean
+}
+
 /** Idempotentno ustvarjanje naročila (transakcija: sekvenca + naročilo + artikli + miza) */
-export async function createOrderCore(input: CreateOrderInput): Promise<CreateOrderResult> {
+export async function createOrderCore(
+  input: CreateOrderInput,
+  opts?: CreateOrderOptions
+): Promise<CreateOrderResult> {
   if (!input.items || input.items.length === 0) {
     throw new OrderError('Naročilo mora vsebovati vsaj en artikel.')
   }
   const menuItemIds = input.items.map((i) => i.menuItemId)
-  const menuItems = await db.menuItem.findMany({
-    where: { id: { in: menuItemIds } },
-    include: { PrepStation: true },
-  })
-  if (menuItems.length === 0) throw new OrderError('Artikli ne obstajajo.')
-
-  const locationId = input.locationId || (await db.location.findFirst())?.id
+  const locationId = input.locationId || (opts?.allowFirstLocationFallback ? (await db.location.findFirst())?.id : null)
   if (!locationId) throw new OrderError('Ni lokacije. Najprej ustvari lokacijo.')
+
+  // Issue #4 §5: cene/imeni opcij VEDNO iz DB + relacija artikel→skupina→modifier
+  // (prej je POS pot zaupala client ceni modifierja — cena manipulacija)
+  const modIds = [...new Set(input.items.flatMap((i) => (i.modifiers || []).map((m) => String(m.modifierId || ''))))].filter(Boolean)
+  const [menuItems, modCtx] = await Promise.all([
+    db.menuItem.findMany({
+      where: { id: { in: menuItemIds }, isAvailable: true },
+      include: {
+        PrepStation: true,
+        Category: { include: { Menu: { select: { locationId: true } } } },
+      },
+    }),
+    loadModifierContext(menuItemIds, modIds),
+  ])
+  const visibleItems = menuItems.filter(
+    (mi) => (mi as unknown as { Category?: { Menu?: { locationId?: string } } })?.Category?.Menu?.locationId === locationId
+  )
+  if (menuItems.length === 0) throw new OrderError('Artikli ne obstajajo.')
 
   const idempotencyKey =
     typeof input.clientOperationId === 'string' && input.clientOperationId.trim().length >= 8
@@ -95,16 +119,30 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
   let subtotal = 0
   let tax = 0
   const itemRows = input.items.map((i) => {
-    const mi = menuItems.find((m) => m.id === i.menuItemId)
-    if (!mi) throw new OrderError('Artikel ne obstaja.')
+    const mi = visibleItems.find((m) => m.id === i.menuItemId)
+    if (!mi) {
+      throw new OrderError(
+        menuItems.some((m) => m.id === i.menuItemId)
+          ? 'Artikel ni na voljo na tej lokaciji.'
+          : 'Artikel ne obstaja ali ni več na voljo.'
+      )
+    }
     const qty = Math.max(1, Math.round(Number(i.qty) || 1))
     const price = num(mi.price)
     const vatRate = num(mi.vatRate, 22)
-    // Issue #3: opcije povečajo ceno linije (cena opcije VEDNO iz DB — resolved prek resolveGuestItems)
-    const mods = (i.modifiers || []).map((m, idx) => ({
+    // Issue #4 §5: opcije se validirajo proti relaciji in se ocenijo IZ DB
+    // (client name/price se ignorira)
+    const v = validateItemModifiers({
+      allowedGroupIds: modCtx.allowedByItem.get(mi.id) || [],
+      groupById: modCtx.groupById,
+      modById: modCtx.modById,
+      chosenIds: (i.modifiers || []).map((m) => String(m.modifierId || '')),
+    })
+    if (!v.ok) throw new OrderError(v.error || 'Opcije niso veljavne.')
+    const mods = v.resolved.map((m: ResolvedModifierOut, idx: number) => ({
       id: nid(),
-      name: String(m.name).slice(0, 120),
-      price: Math.max(0, num(m.price)),
+      name: m.name.slice(0, 120),
+      price: Math.max(0, m.price),
       modifierGroupId: m.modifierGroupId || null,
       modifierGroupName: String(m.groupName || '').slice(0, 120),
       sortOrder: idx,
@@ -203,6 +241,12 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
           include: orderInclude,
         })
         if (created.tableId) {
+          // Issue #4 §1: miza MORA pripadati lokaciji naročila (prej: naročilo loc A je zasedlo mizo loc B)
+          const table = await tx.table.findFirst({
+            where: { id: created.tableId, locationId },
+            select: { id: true },
+          })
+          if (!table) throw new OrderError('Miza ne pripada lokaciji naročila.')
           await tx.table.update({
             where: { id: created.tableId },
             data: { status: 'occupied' },

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 
 /**
  * Issue #1 §6 — identifikacija gosta (program zvestobe) v plačilnem dialogu.
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   const digits = q.replace(/\D/g, '')
   const accounts = await db.loyaltyAccount.findMany({
     where: {
+      // Issue #4 §1: iskanje gostov samo znotraj lokacije osebja (centralne = vse)
+      ...locationScope(user),
       isActive: true,
       OR: [
         { customerName: { contains: q } },

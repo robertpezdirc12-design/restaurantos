@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const items = await resolveGuestItems(Array.isArray(body.items) ? body.items : [])
+    const items = await resolveGuestItems(Array.isArray(body.items) ? body.items : [], { locationId })
     const clientOperationId = String(body.clientOperationId || '').trim()
     if (clientOperationId.length < 8) return fail('Manjka idempotency ključ (clientOperationId).', 400)
 

@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { OrderError } from '@/lib/ops'
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const receipts = await db.receipt.findMany({
+    // Issue #4 §10: izdani računi so location-scoped (prej: vse lokacije)
+    where: locationScope(user),
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: { Order: { include: { Table: true } } },
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
   return ok({
     receipts: receipts.map((r) => ({
       ...mapReceipt(r),
-      tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? r.Order.Table.name ?? ''}` : null,
+      tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? (r.Order.Table as unknown as { name?: string }).name ?? ''}` : null,
       orderNumber: r.Order?.orderNumber ?? null,
     })),
   })
@@ -71,6 +73,10 @@ export async function POST(req: NextRequest) {
     include: { OrderItem: { include: { MenuItem: { select: { categoryId: true } } } }, Table: true },
   })
   if (!orderPre) return fail('Naročilo ne obstaja.', 404)
+  // Issue #4 §1: plačilo tujega naročila je ZAVRJENO (prej: staff loc A je mogel plačati naročilo loc B
+  // in izdati račun pod tujim taxId/premisesId)
+  const payGuard = assertResourceLocation(user, orderPre.locationId)
+  if (payGuard) return payGuard
   if (!ORDER_ACTIVE_DB.includes(orderPre.status) && orderPre.status !== 'paid') {
     return fail('Naročilo ni v plačljivem stanju.', 409)
   }
@@ -142,6 +148,10 @@ export async function POST(req: NextRequest) {
     }
     const acc = await db.loyaltyAccount.findUnique({ where: { id: loyaltyAccountId } })
     if (!acc || !acc.isActive) return fail('Račun zvestobe ne obstaja ali ni aktiven.', 404)
+    // Issue #4 §1: unovčenje točk tujega gosta je ZAVRJENO (račun mora pripadati lokaciji naročila)
+    if (acc.locationId && acc.locationId !== orderPre.locationId) {
+      return fail('Račun zvestobe ne pripada tej lokaciji.', 403)
+    }
     if (redeemPoints > acc.pointsBalance) return fail('Gost nima dovolj točk za unovčenje.', 409)
     loyaltyAccount = { id: acc.id, customerName: acc.customerName, pointsBalance: acc.pointsBalance, lifetimePoints: acc.lifetimePoints }
     redeemValue = r2(redeemPoints * bill.loyalty.pointsValue)
@@ -404,6 +414,10 @@ export async function POST(req: NextRequest) {
     }
     return ok({
       invoice: mapReceipt(receipt.twin),
+      // Issue #4 §8: simulator se NIKOLI ne predstavlja kot prava fiskalizacija
+      fursEnvironment: simulation ? 'simulation' : 'production_pending',
+      fiscalVerified: receipt.twin.fiscalVerified,
+      fiscalStatus: receipt.twin.fiscalStatus,
       order: { ...orderPre, status: 'PAID', fursEor: receipt.twin.eor },
       bill: { discountTotal: bill.discountTotal, autoDiscounts: bill.autoDiscounts, totalDue: total },
       loyalty: loyaltyAccount ? { redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,

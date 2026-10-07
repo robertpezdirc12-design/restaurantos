@@ -5,7 +5,7 @@
  * plačilo/račun teče po istem FURS toku kot POS; vsaka pomembna sprememba = AuditLog.
  */
 import { NextRequest } from 'next/server'
-import { ok, fail, requirePermission, isResponse } from '@/lib/api'
+import { ok, fail, requirePermission, isResponse, locationScope, assertResourceLocation } from '@/lib/api'
 import { db } from '@/lib/db'
 import { nid, jstr, mapOrder, mapDeliveryInfo, mapDeliveryZone, ORDER_ACTIVE_DB, DELIVERY_STATUS_DB, deliveryStatusToDB } from '@/lib/map'
 import { maskPhone } from '@/lib/delivery'
@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
 
   const [orders, zones, webhookErrors] = await Promise.all([
     db.order.findMany({
-      where: { type: 'delivery' },
+      // Issue #4 §1: dostavna naročila po lokaciji uporabnika (centralne = vse)
+      where: { type: 'delivery', ...locationScope(user) },
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: {
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
         Receipt: { orderBy: { createdAt: 'desc' as const } },
       },
     }),
-    db.deliveryZone.findMany({ orderBy: { sortOrder: 'asc' } }),
+    db.deliveryZone.findMany({ where: locationScope(user), orderBy: { sortOrder: 'asc' } }),
     // Napake webhookov — IntegrationLog za glovo/wolt (za Dnevnik napak v UI)
     db.integration.findMany({
       where: { provider: { in: ['glovo', 'wolt'] } },
@@ -100,6 +101,9 @@ export async function PATCH(req: NextRequest) {
     include: { DeliveryInfo: true },
   })
   if (!order?.DeliveryInfo) return fail('Naročilo ni dostavno ali nima dostavnih podatkov.', 404)
+  // Issue #4 §1: status dostave tujega naročila (druga lokacija) je zavrnjen (fail-closed)
+  const locRes = assertResourceLocation(user, order.locationId)
+  if (locRes) return locRes
   // DeliveryTracking nima Prisma relacije na DeliveryInfo (samo deliveryInfoId @unique) — ročna poizvedba
   const tracking = await db.deliveryTracking.findUnique({ where: { deliveryInfoId: order.DeliveryInfo.id } })
 

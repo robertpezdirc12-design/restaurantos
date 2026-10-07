@@ -1,12 +1,17 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { num, nid, r2 } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  const rows = await db.accountsPayable.findMany({ orderBy: { invoiceDate: 'desc' }, take: 100 })
+  const rows = await db.accountsPayable.findMany({
+    // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
+    where: locationScope(user),
+    orderBy: { invoiceDate: 'desc' },
+    take: 100,
+  })
   return ok({
     expenses: rows.map((r) => ({
       id: r.id,
@@ -33,7 +38,9 @@ export async function POST(req: NextRequest) {
   const amount = num(body?.amount)
   if (!description) return fail('Opis je obvezen.', 400)
   if (!(amount > 0)) return fail('Znesek mora biti pozitiven.', 400)
-  const locationId = user.loc || (await db.location.findFirst())?.id || null
+  // Issue #4 §10: brez findFirst() fallback — staff = svoja lokacija, centralna poda body.locationId
+  const locationId = requireUserLocation(user, body?.locationId)
+  if (isResponse(locationId)) return locationId
 
   let supplier = await db.supplier.findFirst({ orderBy: { createdAt: 'asc' } })
   if (!supplier) {

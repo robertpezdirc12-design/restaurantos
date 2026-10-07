@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, assertResourceLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { mapEmployee, roleToDB, jstr, nid } from '@/lib/map'
 import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
 
@@ -23,6 +23,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const target = await db.employee.findUnique({ where: { id } })
   if (!target) return fail('Zaposleni ne obstaja.', 404)
+  // Issue #4 §1: PIN reset / urejanje čez lokacije = identiteta theft — fail-closed
+  const locRes = assertResourceLocation(user, target.locationId)
+  if (locRes) return locRes
   const targetRole = (target.role as string).toUpperCase()
   if (user.role === 'MANAGER' && targetRole === 'ADMIN') {
     return fail('MANAGER ne sme urejati ADMIN računa.', 403)
@@ -110,5 +113,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params
   const target = await db.employee.findUnique({ where: { id } })
   if (!target) return fail('Zaposleni ne obstaja.', 404)
+  // Issue #4 §1: staff vidi samo profile svoje lokacije (tuja = 404, ne razkrivaj obstoja)
+  if (!isCentralRole(user) && (!user.loc || target.locationId !== user.loc)) {
+    return fail('Zaposleni ne obstaja.', 404)
+  }
   return ok({ employee: mapEmployee(target) })
 }

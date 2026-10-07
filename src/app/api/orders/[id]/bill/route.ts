@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { num, r2 } from '@/lib/map'
 import { computeBill, BillItem } from '@/lib/billing'
 
@@ -19,6 +19,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     include: { OrderItem: { include: { MenuItem: { select: { categoryId: true } } } } },
   })
   if (!order) return fail('Naročilo ne obstaja.', 404)
+  // Issue #4 §1: predogled računa tujega naročila ni dovoljen
+  const guard = assertResourceLocation(user, order.locationId)
+  if (guard) return guard
   if (order.paymentStatus === 'paid') return fail('Naročilo je že plačano.', 409)
 
   const location = await db.location.findUnique({

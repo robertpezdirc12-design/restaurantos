@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import QRCode from 'qrcode'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
 import { nid } from '@/lib/map'
 import { newQrToken, qrUrl } from '@/lib/guest'
 
@@ -12,12 +12,16 @@ import { newQrToken, qrUrl } from '@/lib/guest'
  *                             { action: 'toggle', enabled } začasni izklop QR naročanja
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  // Issue #4 §1: QR token = naročilna sposobnost — zahteva orders.create + lastna lokacija
+  const user = await requirePermission(req, 'orders.create')
   if (isResponse(user)) return user
   const { id } = await params
 
   const table = await db.table.findUnique({ where: { id }, include: { Location: true } })
   if (!table) return fail('Miza ne obstaja.', 404)
+  // Issue #4 §1: pred mintanjem/razkritjem tokena preveri pripadnost lokaciji (fail-closed)
+  const locRes = assertResourceLocation(user, table.locationId)
+  if (locRes) return locRes
 
   let token = table.qrToken
   if (!token) {
@@ -47,6 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const table = await db.table.findUnique({ where: { id } })
   if (!table) return fail('Miza ne obstaja.', 404)
+  // Issue #4 §1: rotacija/izklop QR naročanja samo na mizah lastne lokacije
+  const locRes = assertResourceLocation(user, table.locationId)
+  if (locRes) return locRes
 
   if (action === 'rotate') {
     const token = newQrToken()

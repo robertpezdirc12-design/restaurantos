@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 
 const EDITABLE = [
@@ -17,9 +17,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const user = requireAuth(req)
+  // Issue #4 §1: inline role check zamenjan s kanoničnim dovoljenjem settings.manage (konsistentnost)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   if (!body) return ok({ error: 'Manjkajo podatki.' }, 400)
   const data: Record<string, unknown> = {}

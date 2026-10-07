@@ -1,12 +1,16 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
+import { requirePermission, assertResourceLocation, isCentralRole, isResponse, ok } from '@/lib/api'
 import { nid, num, jstr } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
   const rows = await db.recipeItem.findMany({
+    // Issue #4 §1: receptura nima locationId → scope prek lanca MenuItem → Category → Menu.locationId
+    where: isCentralRole(user)
+      ? {}
+      : { MenuItem: { Category: { Menu: { locationId: user.loc || '__no_location__' } } } },
     include: {
       MenuItem: { select: { id: true, name: true } },
       InventoryItem: { select: { id: true, name: true, unit: true } },
@@ -46,8 +50,17 @@ export async function POST(req: NextRequest) {
   const menuItemId = String(body?.menuItemId || '')
   const rawItems = Array.isArray(body?.items) ? body.items : []
 
-  const menuItem = await db.menuItem.findUnique({ where: { id: menuItemId }, select: { id: true, name: true } })
+  const menuItem = await db.menuItem.findUnique({
+    where: { id: menuItemId },
+    select: {
+      id: true, name: true,
+      // Issue #4 §1: lokacija artikla prek lanca do Menu.locationId
+      Category: { select: { Menu: { select: { locationId: true } } } },
+    },
+  })
   if (!menuItem) return ok({ error: 'Artikel menija ne obstaja.' }, 404)
+  const menuLocRes = assertResourceLocation(user, menuItem.Category?.Menu?.locationId)
+  if (menuLocRes) return menuLocRes
 
   // Deduplikacija po sestavini (shema: @@unique(menuItemId, inventoryItemId))
   const merged = new Map<string, { inventoryItemId: string; qty: number; unit: string }>()
@@ -109,7 +122,15 @@ export async function DELETE(req: NextRequest) {
   const url = new URL(req.url)
   const menuItemId = url.searchParams.get('menuItemId') || ''
   if (!menuItemId) return ok({ error: 'menuItemId je obvezen.' }, 400)
-  const menuItem = await db.menuItem.findUnique({ where: { id: menuItemId }, select: { name: true } })
+  const menuItem = await db.menuItem.findUnique({
+    where: { id: menuItemId },
+    select: { name: true, Category: { select: { Menu: { select: { locationId: true } } } } },
+  })
+  // Issue #4 §1: brisanje recepture samo za artikle lastne lokacije (fail-closed)
+  if (menuItem) {
+    const menuLocRes = assertResourceLocation(user, menuItem.Category?.Menu?.locationId)
+    if (menuLocRes) return menuLocRes
+  }
   const del = await db.recipeItem.deleteMany({ where: { menuItemId } })
   if (del.count > 0) {
     await db.auditLog.create({

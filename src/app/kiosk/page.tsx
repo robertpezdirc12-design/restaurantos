@@ -85,9 +85,29 @@ export default function KioskPage() {
     }
   }
 
-  function activate() {
+  async function activate() {
     const t = tokenInput.trim()
-    if (t.length < 10) { setError('Vnesi veljaven token naprave (rodev_…).'); return }
+    setError('')
+    // Issue #4 §2.2: aktivacija z ENKRATNO vpisno kodo (8 števk) ALI neposredno z rodev_ tokenom
+    if (/^\d{8}$/.test(t)) {
+      setLoading(true)
+      try {
+        const res = await fetch('/api/devices/enroll', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: t }),
+        })
+        const data = await res.json()
+        if (!res.ok || !data.device?.token) { setError(data.error || 'Aktivacija ni uspela.'); return }
+        localStorage.setItem(TOKEN_KEY, data.device.token)
+        setToken(data.device.token)
+        await loadMenu(data.device.token)
+      } catch {
+        setError('Povezava ni dosegljiva.')
+      } finally { setLoading(false) }
+      return
+    }
+    if (t.length < 10) { setError('Vnesi vpisno kodo (8 števk) ali veljaven token naprave (rodev_…).'); return }
     localStorage.setItem(TOKEN_KEY, t)
     setToken(t)
     loadMenu(t)
@@ -170,13 +190,13 @@ export default function KioskPage() {
             <h1 className="text-2xl font-bold">Kiosk aktivacija</h1>
           </div>
           <p className="text-sm text-stone-400 mb-4">
-            Vnesi token kiosk naprave (Nastavitve → Naprave → dodaj napravo tipa Kiosk).
+            Vnesi ENKRATNO vpisno kodo (Nastavitve → Naprave → Vpisna koda) ali token kiosk naprave.
           </p>
           <Input
             className="bg-stone-900 border-stone-600 text-stone-100 h-12"
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
-            placeholder="rodev_…"
+            placeholder="12345678 ali rodev_…"
           />
           {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
           <Button className="w-full mt-4 h-12 text-base" onClick={activate} disabled={loading}>

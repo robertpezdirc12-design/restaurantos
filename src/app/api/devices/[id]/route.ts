@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { nid } from '@/lib/map'
 
 const DEVICE_TYPES = ['pos', 'kds', 'kds_bar', 'tablet', 'kiosk', 'mobile', 'customer_display']
 
 /**
- * Issue #3 — Device onboarding administracija.
+ * Issue #3 — Device onboarding administracija. · Issue #4 §1/§2:
+ * lokacijski gate (naprava tuje lokacije ni upravljiva), revoke takoj onemogoči credential,
+ * revoke/restore/invalidate tudi uniči enrollment kodo.
  * PATCH  /api/devices/[id] — urejanje (ime/tip/lokacija) ali revoke/restore naprave
  * DELETE /api/devices/[id] — brisanje naprave
  * id = DeviceRegistry.id (ne deviceId token!)
@@ -19,6 +21,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const device = await db.deviceRegistry.findUnique({ where: { id } })
   if (!device) return fail('Naprava ne obstaja.', 404)
+  // Issue #4 §1: staff sme upravljati SAMO naprave svoje lokacije (OWNER/ADMIN centralno)
+  const locGuard = assertResourceLocation(user, device.locationId)
+  if (locGuard) return locGuard
 
   if (body?.action === 'revoke' || body?.action === 'restore') {
     const revoke = body.action === 'revoke'
@@ -27,9 +32,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: {
         revokedAt: revoke ? new Date() : null,
         status: revoke ? 'revoked' : 'offline',
-        // revoke tudi razveže customer display
+        // revoke tudi razveže customer display + uniči enrollment kodo (§2.2)
         pairedToDeviceId: revoke ? null : device.pairedToDeviceId,
         pairingCode: revoke ? null : device.pairingCode,
+        enrollmentCode: revoke ? null : device.enrollmentCode,
+        enrollmentExpiresAt: revoke ? null : device.enrollmentExpiresAt,
       },
     })
     await db.auditLog.create({
@@ -87,6 +94,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const device = await db.deviceRegistry.findUnique({ where: { id } })
   if (!device) return fail('Naprava ne obstaja.', 404)
+  // Issue #4 §1: lokacijski gate
+  const delGuard = assertResourceLocation(user, device.locationId)
+  if (delGuard) return delGuard
   await db.deviceRegistry.delete({ where: { id } })
   await db.auditLog.create({
     data: {

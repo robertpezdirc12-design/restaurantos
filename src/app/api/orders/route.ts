@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
 import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 
@@ -11,16 +11,18 @@ function normalize(o: Record<string, unknown>) {
     items: o.OrderItem,
     table: o.Table,
     employee: o.Employee_Order_employeeIdToEmployee,
-  }
+  } as Parameters<typeof mapOrder>[0]
 }
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const status = req.nextUrl.searchParams.get('status')
-  const where = status
+  const base = status
     ? { status: status.toLowerCase() }
     : { status: { in: ORDER_ACTIVE_DB } }
+  // Issue #4 §1: lokacijski scope (prej: vsak staff je videl naročila VSEH lokacij)
+  const where = { ...base, ...locationScope(user) }
   const orders = await db.order.findMany({
     where,
     include: orderInclude,
@@ -38,10 +40,12 @@ export async function POST(req: NextRequest) {
     return fail('Naročilo mora vsebovati vsaj en artikel.')
   }
   try {
-    const locationId = user.loc || (await db.location.findFirst())?.id || null
+    // Issue #4 §10: brez findFirst() fallbacka — staff MORA imeti lokacijo (admin lahko poda body.locationId)
+    const loc = requireUserLocation(user, body?.locationId)
+    if (typeof loc !== 'string') return loc
     const { order, replayed } = await createOrderCore({
       employeeId: user.sub,
-      locationId,
+      locationId: loc,
       items: body.items,
       tableId: body.tableId || null,
       type: body.type || 'DINE_IN',

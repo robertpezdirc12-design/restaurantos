@@ -763,12 +763,15 @@ export default function DashboardPage() {
               {[
                 ['Aktivna naročila', stats?.activeOrders, ClipboardList], ['Zasedene mize', stats?.openTables, Utensils],
                 ['Današnji promet', stats ? fmtEUR(stats.todayRevenue) : undefined, Banknote], ['Današnja naročila', stats?.todayOrders, ReceiptText],
-              ].map(([label, value, Icon], i) => (
+              ].map(([label, value, Icon], i) => {
+                const Ic = Icon as React.ComponentType<{ className?: string }> | undefined
+                return (
                 <Card key={i}>
-                  <CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5">{Icon && <Icon className="w-4 h-4" />} {label as string}</CardTitle></CardHeader>
-                  <CardContent><p className="text-2xl font-bold">{value ?? '—'}</p></CardContent>
+                  <CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5">{Ic && <Ic className="w-4 h-4" />} {label as string}</CardTitle></CardHeader>
+                  <CardContent><p className="text-2xl font-bold">{(value as React.ReactNode) ?? '—'}</p></CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
             <Card>
               <CardHeader><CardTitle className="text-base">Aktivna naročila</CardTitle></CardHeader>

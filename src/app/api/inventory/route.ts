@@ -1,12 +1,17 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
 import { num, nid, jstr } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  const rows = await db.inventoryItem.findMany({ orderBy: { name: 'asc' }, take: 100 })
+  const rows = await db.inventoryItem.findMany({
+    // Issue #4 §1: staff vidi samo zalogo svoje lokacije
+    where: locationScope(user),
+    orderBy: { name: 'asc' },
+    take: 100,
+  })
   return ok({
     inventory: rows.map((r) => ({
       id: r.id,
@@ -58,6 +63,9 @@ export async function PATCH(req: NextRequest) {
   const id = String(body?.id || '')
   const item = id ? await db.inventoryItem.findUnique({ where: { id } }) : null
   if (!item) return ok({ error: 'Artikel ne obstaja.' }, 404)
+  // Issue #4 §1: prilagoditev zaloge tujega artikla (druga lokacija) je zavrnjena (fail-closed)
+  const locRes = assertResourceLocation(user, item.locationId)
+  if (locRes) return locRes
 
   const data: Record<string, unknown> = {}
   const delta = body?.delta !== undefined && body?.delta !== null && body?.delta !== '' ? Number(String(body.delta).replace(',', '.')) : null

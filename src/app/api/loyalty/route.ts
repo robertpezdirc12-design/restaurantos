@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 
 const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : points >= 500 ? 'gold' : points >= 100 ? 'silver' : 'bronze')
@@ -8,7 +8,12 @@ const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : poin
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  const rows = await db.loyaltyAccount.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
+  const rows = await db.loyaltyAccount.findMany({
+    // Issue #4 §1: staff vidi samo račune zvestobe svoje lokacije
+    where: locationScope(user),
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  })
   return ok({
     accounts: rows.map((r) => ({
       id: r.id,
@@ -53,6 +58,10 @@ export async function PATCH(req: NextRequest) {
   const id = String(body?.id || '')
   const account = id ? await db.loyaltyAccount.findUnique({ where: { id } }) : null
   if (!account) return ok({ error: 'Račun zvestobe ne obstaja.' }, 404)
+  // Issue #4 §1: odštevanje/dodajanje točk tujemu računu (druga lokacija) je zavrnjeno;
+  // null lokacija računa = "vir brez lokacije" → 403 za non-central (fail-closed)
+  const locRes = assertResourceLocation(user, account.locationId)
+  if (locRes) return locRes
   const delta = Math.trunc(Number(body?.delta))
   if (!Number.isFinite(delta) || delta === 0) return ok({ error: 'Delta točk je obvezna (npr. 25 ali -10).' }, 400)
 

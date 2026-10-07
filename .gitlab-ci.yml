@@ -1,0 +1,36 @@
+# RestaurantOS — GitLab CI (issue #4 §12)
+#
+# Verify-only pipeline: install → typecheck → lint → unit tests → schema drift → secrets scan.
+#
+# BUILD STEP (next build) is intentionally NOT here yet: the build requires
+# DATABASE_URL (Neon) as a CI secret — add a `build` stage/job once the CI runner
+# has the project secrets configured, e.g.:
+#   build:
+#     stage: build
+#     script: bun run build
+#     environment: production
+
+image: oven/bun:1
+
+stages:
+  - verify
+
+quality-gate:
+  stage: verify
+  rules:
+    # run on merge requests and on pushes to main
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  cache:
+    key:
+      files:
+        - package.json
+    paths:
+      - node_modules/
+  script:
+    - bun install --frozen-lockfile
+    - bunx tsc --noEmit
+    - bun run lint
+    - bun test
+    - python3 scripts/check-schema-drift.py
+    - bash scripts/check-secrets.sh

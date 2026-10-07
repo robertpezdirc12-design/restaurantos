@@ -10,21 +10,12 @@
 import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { nid, num } from '@/lib/map'
+import { rateLimitBool as rateLimitPublic } from '@/lib/rate-limit'
+import { loadModifierContext, validateItemModifiers } from '@/lib/modifiers'
 
-// ---------- Rate limiting (v pomnilniku, enak vzorec kot delivery.ts) ----------
-const buckets = new Map<string, { count: number; reset: number }>()
-
-export function rateLimitPublic(key: string, limit: number, windowMs = 60_000): boolean {
-  const now = Date.now()
-  const b = buckets.get(key)
-  if (!b || b.reset < now) {
-    if (buckets.size > 5000) buckets.clear()
-    buckets.set(key, { count: 1, reset: now + windowMs })
-    return true
-  }
-  b.count++
-  return b.count <= limit
-}
+// Issue #4 §6: rate limiting je ZDAJ skupni modul z omejenim pomnilnikom + TTL
+// (prej: lokalna Map brez TTL čiščenja). Public API ostaja kompatibilen.
+export { rateLimitPublic }
 
 export function clientIp(req: Request): string {
   const fwd = req.headers.get('x-forwarded-for')
@@ -140,45 +131,51 @@ export interface ResolvedItem {
   modifiers: ResolvedModifier[]
 }
 
-export async function resolveGuestItems(items: GuestItemInput[]): Promise<ResolvedItem[]> {
+/**
+ * Issue #4 §5: polna validacija — relacija MenuItem → MenuItemModifierGroup →
+ * ModifierGroup → Modifier, required/minSelect/maxSelect, duplikati, cene iz DB.
+ * §4: če je podan locationId, mora artikel pripadati tej lokaciji (prek Category→Menu).
+ */
+export async function resolveGuestItems(
+  items: GuestItemInput[],
+  opts?: { locationId?: string | null }
+): Promise<ResolvedItem[]> {
   if (!Array.isArray(items) || items.length === 0) throw new GuestError('Naročilo mora vsebovati vsaj en artikel.')
   if (items.length > 60) throw new GuestError('Preveč postavk v enem naročilu (max 60).')
-  const ids = items.map((i) => String(i?.menuItemId || ''))
-  const menuItems = await db.menuItem.findMany({
-    where: { id: { in: ids }, isAvailable: true },
-    include: { Category: true },
-  })
-  const modIds = items.flatMap((i) => (Array.isArray(i.modifierIds) ? i.modifierIds : []).map(String))
-  const mods = modIds.length
-    ? await db.modifier.findMany({ where: { id: { in: modIds }, isAvailable: true }, include: { ModifierGroup: true } })
-    : []
+  const ids = [...new Set(items.map((i) => String(i?.menuItemId || '')))]
+  const modIds = [...new Set(items.flatMap((i) => (Array.isArray(i.modifierIds) ? i.modifierIds : []).map(String)))]
+
+  const [menuItemsRaw, ctx] = await Promise.all([
+    db.menuItem.findMany({
+      where: { id: { in: ids }, isAvailable: true },
+      include: { Category: { include: { Menu: { select: { locationId: true } } } } },
+    }),
+    loadModifierContext(ids, modIds),
+  ])
+  const menuItems = opts?.locationId
+    ? menuItemsRaw.filter((mi) => mi.Category?.Menu?.locationId === opts.locationId)
+    : menuItemsRaw
+
   const out: ResolvedItem[] = []
   for (const item of items) {
     const mi = menuItems.find((m) => m.id === item.menuItemId)
     if (!mi) throw new GuestError('Artikel ni več na voljo.')
     const qty = Math.max(1, Math.min(30, Math.round(Number(item.qty) || 1)))
-    const itemMods: ResolvedModifier[] = []
-    for (const mid of Array.isArray(item.modifierIds) ? item.modifierIds : []) {
-      const m = mods.find((x) => x.id === String(mid))
-      if (!m) throw new GuestError('Opcija ni več na voljo.')
-      // opcija mora pripadati skupini, ki je povezana s tem artiklom
-      const linked = mods.find((x) => x.id === m.id)
-      if (!linked) throw new GuestError('Opcija ni na voljo za ta artikel.')
-      itemMods.push({
-        modifierId: m.id,
-        name: m.name,
-        price: num(m.price),
-        groupName: m.ModifierGroup?.name || '',
-        modifierGroupId: m.modifierGroupId,
-      })
-    }
+    const chosen = Array.isArray(item.modifierIds) ? item.modifierIds.map(String) : []
+    const v = validateItemModifiers({
+      allowedGroupIds: ctx.allowedByItem.get(mi.id) || [],
+      groupById: ctx.groupById,
+      modById: ctx.modById,
+      chosenIds: chosen,
+    })
+    if (!v.ok) throw new GuestError(v.error || 'Opcije niso veljavne.', 400)
     out.push({
       menuItemId: mi.id,
       qty,
       note: String(item.note || '').slice(0, 200),
       price: num(mi.price),
       vatRate: num(mi.vatRate, 22),
-      modifiers: itemMods,
+      modifiers: v.resolved,
     })
   }
   return out
@@ -216,6 +213,11 @@ export function deviceAlive<T extends { revokedAt: Date | null; type: string }>(
 
 export function newPairingCode(): string {
   return String(crypto.randomInt(100000, 999999))
+}
+
+/** Issue #4 §2.2: enkratna vpisna koda (8 števk) za device enrollment — kratkotrajna. */
+export function newEnrollmentCode(): string {
+  return String(crypto.randomInt(10000000, 99999999))
 }
 
 export { nid }

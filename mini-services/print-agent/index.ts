@@ -4,7 +4,7 @@
  * The browser cannot open raw TCP sockets, so this local agent bridges:
  *   HTTP POST /print|/text  →  raw ESC/POS bytes  →  net.Socket TCP host:9100
  *
- * Endpoints (port hardcoded 3031 per spec, bound 0.0.0.0):
+ * Endpoints (port hardcoded 3031 per spec, bind PRINT_AGENT_HOST, default 127.0.0.1):
  *   GET  /health → {ok:true, service:'print-agent', ts}
  *   POST /print  → {host, port?=9100, payloadBase64}            (raw bytes passthrough)
  *   POST /text   → {host, port?, text, align?, bold?, cut?=true} (builds ESC/POS, CP852)
@@ -12,15 +12,126 @@
  *
  * All printer-attempt outcomes respond 200 with ok:true|false (caller checks `ok`).
  * No external dependencies — Bun + node:net only.
+ *
+ * ---------------------------------------------------------------------------
+ * Issue #4 §7 HARDENING (endpoint shapes unchanged — this is hardening only):
+ *  - BIND:        PRINT_AGENT_HOST (default 127.0.0.1 — NOT 0.0.0.0 anymore).
+ *  - AUTH:        PRINT_AGENT_TOKEN set → every POST requires header
+ *                 `x-agent-token` (timing-safe compare). FAIL-CLOSED: binding a
+ *                 non-loopback address WITHOUT a token refuses to start.
+ *  - HOST allow:  PRINT_AGENT_ALLOWED_HOSTS (comma-separated exact names or
+ *                 `*.suffix` wildcards). Default (env unset): ONLY private
+ *                 ranges 10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12 and `*.local`
+ *                 mDNS names. `localhost`/loopback is allowed ONLY when listed
+ *                 explicitly. Public IPs are rejected. 169.254.0.0/16 (cloud
+ *                 metadata) is ALWAYS rejected — even when explicitly allowlisted.
+ *  - PORT allow:  PRINT_AGENT_ALLOWED_PORTS (default `9100,9101,9102`).
+ *  - PAYLOAD:     decoded print payload max 64 KB → 413 {code:'payload_too_large'}.
+ *  - HONESTY:     success means bytes were flushed to the kernel socket queue —
+ *                 we cannot prove the printer physically printed → `note`.
+ * Logs contain host:port, byte count and outcome only — NEVER payload content.
+ * ---------------------------------------------------------------------------
  */
+/// <reference types="bun-types" />
 
 import net from "node:net";
+import crypto from "node:crypto";
 
 const PORT = 3031; // hardcoded per spec — do NOT read PORT env
-const HOSTNAME = "0.0.0.0";
+const HOSTNAME = (process.env.PRINT_AGENT_HOST || "127.0.0.1").trim(); // default loopback (§7)
 const CONNECT_TIMEOUT_MS = 4000; // 4s connect timeout
 const IDLE_CLOSE_MS = 1500; // printers rarely close the socket → end after 1.5s idle
 const HARD_CAP_MS = 8000; // absolute socket lifetime safety net
+const MAX_PAYLOAD_BYTES = 64 * 1024; // §7: decoded payload hard limit (64 KB)
+
+// --- §7 auth: optional shared token, timing-safe compared ------------------
+const AGENT_TOKEN = process.env.PRINT_AGENT_TOKEN || "";
+
+function isLoopbackBind(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === "localhost" || h === "::1" || h === "[::1]" || h.startsWith("127.");
+}
+
+// Fail-closed LAN: a non-loopback bind without a token would expose an open
+// TCP print relay to the whole network → refuse to start.
+if (!isLoopbackBind(HOSTNAME) && !AGENT_TOKEN) {
+  console.error(
+    `[print-agent] FATAL: PRINT_AGENT_HOST=${HOSTNAME} is not loopback and PRINT_AGENT_TOKEN is not set.\n` +
+      "[print-agent] Binding a network-reachable print bridge without auth is not allowed (fail-closed).\n" +
+      "[print-agent] Set PRINT_AGENT_TOKEN=<secret> (clients send header x-agent-token) or bind 127.0.0.1.",
+  );
+  process.exit(1);
+}
+
+// --- §7 target host allowlist ----------------------------------------------
+// Explicit allowlist (env): exact hostnames/IPs or `*.suffix` wildcard entries.
+// Unset → default policy: private IPv4 ranges + `*.local` only; `localhost`,
+// loopback and every other hostname are denied. Public IPs are denied under
+// the default policy; an explicit entry is an informed operator override.
+// 169.254.0.0/16 (cloud metadata) is ALWAYS denied regardless of config.
+const ALLOWED_HOSTS = (process.env.PRINT_AGENT_ALLOWED_HOSTS || "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase().replace(/\.$/, ""))
+  .filter(Boolean);
+
+const RE_IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+function isPrivateIPv4(h: string): boolean {
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const o = m.slice(1).map(Number);
+  if (o.some((n) => n > 255)) return false;
+  const [a, b] = o;
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  return false;
+}
+
+function isLinkLocalIPv4(h: string): boolean {
+  return h.startsWith("169.254."); // 169.254.0.0/16 — cloud metadata / link-local
+}
+
+function explicitHostMatch(h: string): boolean {
+  for (const entry of ALLOWED_HOSTS) {
+    if (entry.startsWith("*.")) {
+      const suffix = entry.slice(1); // ".local"
+      if (h.endsWith(suffix) && h.length > suffix.length) return true;
+    } else if (h === entry) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** §7: validate/normalize the requested print target host. Returns null when denied. */
+function normalizeAllowedHost(raw: string): string | null {
+  const h = raw.trim().toLowerCase().replace(/\.$/, "");
+  if (!h || h.includes("/")) return null; // empty or CIDR-ish input → deny
+  // cloud metadata / link-local — non-negotiable
+  if (isLinkLocalIPv4(h)) return null;
+  if (h === "169.254.169.254") return null;
+
+  if (RE_IPV4.test(h)) {
+    if (isPrivateIPv4(h)) return h; // LAN printer — default policy OK
+    return explicitHostMatch(h) ? h : null; // public/loopback IPv4 → explicit only
+  }
+  if (h === "localhost" || h.startsWith("127.") || h === "::1") {
+    return explicitHostMatch(h) ? h : null; // loopback target is a rarity → explicit only
+  }
+  if (h.includes(":")) return explicitHostMatch(h) ? h : null; // IPv6 → explicit only
+  if (h.endsWith(".local")) return h; // mDNS printer — default policy OK
+  return explicitHostMatch(h) ? h : null; // other hostnames → explicit only
+}
+
+// --- §7 target port allowlist -----------------------------------------------
+const DEFAULT_PORTS = "9100,9101,9102";
+const ALLOWED_PORTS: ReadonlySet<number> = new Set(
+  (process.env.PRINT_AGENT_ALLOWED_PORTS || DEFAULT_PORTS)
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 65535),
+);
 
 // ---------------------------------------------------------------------------
 // CP852 (Latin-2) — Slovenian characters MUST be encoded in CP852, not utf8.
@@ -238,7 +349,16 @@ function buildEscPosLines(title: string, lines: LayoutLine[], cut = true): Uint8
   };
 
   if (title) emitLine({ text: title, align: "center", bold: true, size: "large" });
-  for (const line of lines) emitLine({ text: "", align: "left", bold: false, size: "normal", ...line });
+  for (const raw of lines) {
+    // explicit merge (not a bare spread) — TS2783 + runtime-safe defaults
+    const line: LayoutLine = {
+      text: typeof raw?.text === "string" ? raw.text : "",
+      align: raw?.align,
+      bold: raw?.bold,
+      size: raw?.size,
+    };
+    emitLine(line);
+  }
   if (cut) push(0x1d, 0x56, 0x42, 0x00);
   return Uint8Array.from(out);
 }
@@ -391,8 +511,23 @@ function logJob(route: string, target: string, bytes: number, ms: number, ok: bo
   console.log(`[job ${n}] ${route} → ${target} ${bytes}B ${status} (${ms.toFixed(0)}ms)`);
 }
 
+/** §7: security rejections are logged too (metadata only — never payload, never token). */
+function logReject(route: string, target: string, reason: string) {
+  const n = ++jobCounter;
+  console.log(`[job ${n}] ${route} → ${target} REJECTED (${reason})`);
+}
+
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+
+/** §7: timing-safe token check — hashes both sides to a fixed length first. */
+function tokenOk(req: Request): boolean {
+  if (!AGENT_TOKEN) return true; // no token configured → loopback-only bind (enforced at boot)
+  const provided = req.headers.get("x-agent-token") || "";
+  const a = crypto.createHash("sha256").update(provided).digest();
+  const b = crypto.createHash("sha256").update(AGENT_TOKEN).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 
 async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -405,6 +540,12 @@ async function handle(req: Request): Promise<Response> {
 
   // POST /print | POST /text | POST /layout
   if (req.method === "POST" && (path === "/print" || path === "/text" || path === "/layout")) {
+    // §7 auth: token required whenever PRINT_AGENT_TOKEN is configured
+    if (!tokenOk(req)) {
+      logReject(path, "unauthenticated", "missing/invalid x-agent-token");
+      return json({ ok: false, error: "unauthorized — missing or invalid x-agent-token header", code: "unauthorized" }, 401);
+    }
+
     let body: Record<string, unknown>;
     try {
       body = (await req.json()) as Record<string, unknown>;
@@ -412,14 +553,26 @@ async function handle(req: Request): Promise<Response> {
       return json({ ok: false, error: "invalid json" }, 400);
     }
 
-    const host = typeof body.host === "string" ? body.host.trim() : "";
-    if (!host) return json({ ok: false, error: "missing host" }, 400);
+    const rawHost = typeof body.host === "string" ? body.host.trim() : "";
+    if (!rawHost) return json({ ok: false, error: "missing host" }, 400);
+
+    // §7 host allowlist (default: private LAN ranges + *.local; metadata always denied)
+    const host = normalizeAllowedHost(rawHost);
+    if (!host) {
+      logReject(path, `${rawHost}:?`, "host not allowed (allowlist)");
+      return json({ ok: false, error: "host not allowed by print-agent allowlist", code: "host_not_allowed" }, 403);
+    }
 
     let port = 9100;
     if (body.port !== undefined) {
       const p = Number(body.port);
       if (!Number.isInteger(p) || p < 1 || p > 65535) return json({ ok: false, error: "invalid port" }, 400);
       port = p;
+    }
+    // §7 port allowlist (default 9100,9101,9102)
+    if (!ALLOWED_PORTS.has(port)) {
+      logReject(path, `${host}:${port}`, "port not allowed (allowlist)");
+      return json({ ok: false, error: "port not allowed by print-agent allowlist", code: "port_not_allowed" }, 403);
     }
 
     let bytes: Uint8Array;
@@ -447,11 +600,19 @@ async function handle(req: Request): Promise<Response> {
       });
     }
 
+    // §7 payload size limit — 64 KB decoded, applies to all print endpoints
+    if (bytes.length > MAX_PAYLOAD_BYTES) {
+      logReject(path, `${host}:${port}`, `payload too large (${bytes.length}B > ${MAX_PAYLOAD_BYTES}B)`);
+      return json({ ok: false, error: `payload exceeds ${MAX_PAYLOAD_BYTES} byte limit`, code: "payload_too_large" }, 413);
+    }
+
     const t0 = performance.now();
     try {
       await sendRaw(host, port, bytes);
       logJob(path, `${host}:${port}`, bytes.length, performance.now() - t0, true);
-      return json({ ok: true, bytes: bytes.length, host, port });
+      // honest reporting: bytes are handed to the kernel socket — we CANNOT prove
+      // the printer physically printed (no out-of-band confirmation exists)
+      return json({ ok: true, bytes: bytes.length, host, port, note: "delivered-to-kernel" });
     } catch (err) {
       const e = err instanceof PrintError ? err : new PrintError(String(err), "ESOCKET");
       logJob(path, `${host}:${port}`, bytes.length, performance.now() - t0, false, e.code);
@@ -464,6 +625,11 @@ async function handle(req: Request): Promise<Response> {
 
 console.log(`[print-agent] ESC/POS bridge starting on http://${HOSTNAME}:${PORT}`);
 console.log("[print-agent] cp852 table ready:", Object.keys(CP852_SLO).join(" "), `(+${Object.keys(CP852_FULL).length} full-table entries)`);
+console.log(
+  `[print-agent] config: auth=${AGENT_TOKEN ? "token required (x-agent-token)" : "OFF (loopback bind only)"} · ` +
+    `host allowlist=${ALLOWED_HOSTS.length ? `explicit [${ALLOWED_HOSTS.length} entries]` : "default (private ranges + *.local; 169.254/16 always denied)"} · ` +
+    `ports=[${[...ALLOWED_PORTS].join(",")}] · payload≤${MAX_PAYLOAD_BYTES}B`,
+);
 
 Bun.serve({ hostname: HOSTNAME, port: PORT, fetch: handle });
 console.log(`[print-agent] listening on http://${HOSTNAME}:${PORT}`);

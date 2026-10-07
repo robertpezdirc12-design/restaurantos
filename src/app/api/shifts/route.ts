@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapShift, nid, num, r2, jparse } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const shifts = await db.cashRegisterShift.findMany({
+    // Issue #4 §1: izmene po lokaciji (CashRegisterShift.locationId); POST ostaja lastna izmena
+    where: locationScope(user),
     include: { Employee: { select: { name: true, role: true } } },
     orderBy: { openedAt: 'desc' },
     take: 30,

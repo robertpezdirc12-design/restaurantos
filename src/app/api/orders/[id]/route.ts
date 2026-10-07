@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, forbidden } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB } from '@/lib/map'
 
 const orderInclude = {
@@ -16,7 +16,7 @@ function normalize(o: Record<string, unknown>) {
     items: o.OrderItem,
     table: o.Table,
     employee: o.Employee_Order_employeeIdToEmployee,
-  }
+  } as Parameters<typeof mapOrder>[0]
 }
 
 async function recalcTotals(orderId: string) {
@@ -36,6 +36,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const order = await db.order.findUnique({ where: { id }, include: orderInclude })
   if (!order) return fail('Naročilo ne obstaja.', 404)
+  // Issue #4 §1: location gate (prej: katerikoli staff je mogel brati naročilo katerekoli lokacije)
+  const guard = assertResourceLocation(user, order.locationId)
+  if (guard) return guard
   return ok({ order: mapOrder(normalize(order)) })
 }
 
@@ -61,6 +64,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: true } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
+  // Issue #4 §1: location gate na VSAKO spremembo (prej: PATCH brez body akcije je bil prazen gate)
+  const locGuard = assertResourceLocation(user, order.locationId)
+  if (locGuard) return locGuard
+  const recognized = Array.isArray(body?.addItems) || body?.status !== undefined || body?.note !== undefined || body?.customerName !== undefined
+  if (!recognized) return fail('Ni prepoznane akcije (addItems | status | note | customerName).', 400)
 
   const data: Record<string, unknown> = {}
   if (body?.status && ['OPEN', 'SENT', 'PREPARED', 'PAID', 'CANCELLED'].includes(body.status)) {
@@ -86,10 +94,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // dodajanje artiklov v odprto naročilo
   if (Array.isArray(body?.addItems) && body.addItems.length > 0) {
     const menuItems = await db.menuItem.findMany({
-      where: { id: { in: body.addItems.map((i: { menuItemId: string }) => i.menuItemId) } },
+      where: {
+        id: { in: body.addItems.map((i: { menuItemId: string }) => i.menuItemId) },
+        isAvailable: true,
+        // Issue #4 §1: artikel mora pripadati lokaciji naročila (prek Category→Menu)
+        Category: { Menu: { locationId: order.locationId } },
+      },
     })
     const rows = body.addItems.map((i: { menuItemId: string; qty?: number; note?: string }) => {
-      const mi = menuItems.find((m) => m.id === i.menuItemId)!
+      const mi = menuItems.find((m) => m.id === i.menuItemId)
+      if (!mi) throw new Error(`Artikel ni na voljo na tej lokaciji (${i.menuItemId}).`)
       const qty = Math.max(1, Math.round(Number(i.qty) || 1))
       const price = num(mi.price)
       const vatRate = num(mi.vatRate, 22)
@@ -107,7 +121,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         notes: i.note || '',
       }
     })
-    await db.orderItem.createMany({ data: rows })
+    try {
+      await db.orderItem.createMany({ data: rows })
+    } catch {
+      return fail('Artikel ni na voljo na lokaciji naročila.', 400)
+    }
     const totals = await recalcTotals(id)
     Object.assign(data, totals)
     if (data.status === undefined && order.status === 'open') data.status = 'sent'
@@ -125,6 +143,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
+  // Issue #4 §1: lokacijski gate na storno
+  const delGuard = assertResourceLocation(user, order.locationId)
+  if (delGuard) return delGuard
   await db.order.update({
     where: { id },
     data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub },

@@ -126,7 +126,7 @@ export async function POST(
       const existing = await db.order.findUnique({ where: { idempotencyKey: idem }, select: { id: true, status: true } })
       if (existing && existing.status !== 'paid') {
         await db.order.update({ where: { id: existing.id }, data: { status: 'cancelled', cancelReason: `Preklic prek ${p} webhooka` } })
-        await db.deliveryInfo.updateMany({ where: { orderId: existing.id }, data: { status: 'cancelled' } })
+        await db.deliveryInfo.updateMany({ where: { Order: { id: existing.id } }, data: { status: 'cancelled' } })
         await writeAudit('system', 'DELIVERY_ORDER_CANCELLED', 'Order', existing.id, { provider: p })
         await logIntegration(p, integrationId, 'order.cancelled', 'success', 200, '', Date.now() - t0, { platformOrderId: mapped.platformOrderId })
         return ok({ received: true, cancelled: true })

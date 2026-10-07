@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail, forbidden } from '@/lib/api'
+import { requireAuth, requireUserLocation, isResponse, ok, fail, forbidden, locationScope } from '@/lib/api'
 import { canAccessModule } from '@/lib/auth'
 import { mapTable, tableStatusToDB, nid, ORDER_ACTIVE_DB } from '@/lib/map'
 
@@ -8,6 +8,8 @@ export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const tables = await db.table.findMany({
+    // Issue #4 §1: staff vidi samo mize svoje lokacije (centralne vse)
+    where: locationScope(user),
     include: {
       Order: {
         where: { status: { in: ORDER_ACTIVE_DB } },
@@ -34,8 +36,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const number = Number(body?.number ?? body?.name)
   if (!number || number < 1) return fail('Številka mize je obvezna.')
-  const locationId = user.loc || (await db.location.findFirst())?.id
-  if (!locationId) return fail('Ni lokacije. Najprej ustvari lokacijo.', 400)
+  // Issue #4 §10: prepovedan findFirst() fallback — staff dobi svojo lokacijo, centralna poda body.locationId
+  const locationId = requireUserLocation(user, body?.locationId)
+  if (isResponse(locationId)) return locationId
   const exists = await db.table.findUnique({ where: { number_locationId: { number, locationId } } })
   if (exists) return fail(`Miza s številko ${number} že obstaja.`)
   const table = await db.table.create({

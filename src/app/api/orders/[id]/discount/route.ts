@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { discountAmountOf } from '@/lib/billing'
 
@@ -20,6 +20,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: { where: { voided: false } } } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
+  // Issue #4 §1: popust na tujem naročilu ni dovoljen
+  const guard = assertResourceLocation(user, order.locationId)
+  if (guard) return guard
   if (order.paymentStatus === 'paid') return fail('Naročilo je že plačano.', 409)
 
   const now = new Date()

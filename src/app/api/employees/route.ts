@@ -1,12 +1,16 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapEmployee } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  const employees = await db.employee.findMany({ orderBy: { name: 'asc' } })
+  const employees = await db.employee.findMany({
+    // Issue #4 §1: non-central vidi samo zaposlene svoje lokacije
+    where: locationScope(user),
+    orderBy: { name: 'asc' },
+  })
   return ok({ employees: employees.map(mapEmployee) })
 }
 
@@ -23,6 +27,10 @@ export async function POST(req: NextRequest) {
   if (exists) return ok({ error: 'Zaposleni s to e-pošto že obstaja.' }, 409)
   const { employeePinFields } = await import('@/lib/auth')
   const { roleToDB } = await import('@/lib/map')
+  // Issue #4 §10: staff ne sme ustvarjati zaposlenega na tuji lokaciji —
+  // body.locationId je spoštovan SAMO pri centralnih vlogah, sicer user.loc (fail-closed)
+  const locationId = requireUserLocation(user, body?.locationId)
+  if (isResponse(locationId)) return locationId
   const fields = employeePinFields(pin, email)
   const employee = await db.employee.create({
     data: {
@@ -31,7 +39,7 @@ export async function POST(req: NextRequest) {
       email,
       role: roleToDB(body.role || 'WAITER'),
       status: 'active',
-      locationId: body.locationId ?? user.loc ?? null,
+      locationId,
       pin: fields.pin,
       pinLookup: fields.pinLookup,
     },

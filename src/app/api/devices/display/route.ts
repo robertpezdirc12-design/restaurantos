@@ -16,25 +16,30 @@ import { deviceFromToken, deviceAlive, newPairingCode, rateLimitPublic, clientIp
  */
 const DISPLAY_PAYLOAD_MAX = 8192
 
-/** POS identiteta: staff seja ALI device token (POS upravlja svoj display) */
+/** POS identiteta: staff seja ALI device token (POS upravlja svoj display). §3: nosi tudi lokacijo. */
 async function posIdentity(req: NextRequest) {
   const token = req.headers.get('x-device-token')
   if (token) {
     const device = await deviceFromToken(token)
     if (!deviceAlive(device, ['pos'])) return null
     await db.deviceRegistry.update({ where: { id: device.id }, data: { status: 'online', lastSeenAt: new Date() } })
-    return { kind: 'device' as const, id: device.id, name: device.name }
+    return { kind: 'device' as const, id: device.id, name: device.name, loc: device.locationId || null }
   }
   const user = requireAuth(req)
   if (isResponse(user)) return null
-  return { kind: 'staff' as const, id: user.sub, name: user.name || 'staff' }
+  return { kind: 'staff' as const, id: user.sub, name: user.name || 'staff', loc: user.loc }
 }
 
-/** Najdi ciljno POS napravo (device token → sama; staff → zadnja aktivna POS) */
-async function resolvePosRow(kind: 'device' | 'staff', id: string) {
+/**
+ * Najdi ciljno POS napravo (device token → sama; staff → zadnja aktivna POS LASTNE lokacije).
+ * Issue #4 §3: prej je bil lookup GLOBALEN (findFirst brez locationId) → staff lokacije A je
+ * paril/pushal na POS lokacije B. Fail-closed: staff brez lokacije ne dobi cilja.
+ */
+async function resolvePosRow(kind: 'device' | 'staff', id: string, loc: string | null) {
   if (kind === 'device') return { id }
+  if (!loc) return null
   const row = await db.deviceRegistry.findFirst({
-    where: { type: 'pos', revokedAt: null },
+    where: { type: 'pos', revokedAt: null, locationId: loc },
     orderBy: { lastSeenAt: 'desc' },
   })
   return row
@@ -63,6 +68,11 @@ export async function POST(req: NextRequest) {
         where: { id: device.id },
         data: { pairedToDeviceId: pos.id, locationId: pos.locationId },
       })
+      // Issue #4 §3: koda je ENKRATNA — po uspešnem connectu se izbriše (rotacija = revokacija)
+      await db.deviceRegistry.update({
+        where: { id: pos.id },
+        data: { pairingCode: null, pairingExpiresAt: null },
+      })
       await db.auditLog.create({
         data: {
           id: nid(),
@@ -90,8 +100,8 @@ export async function POST(req: NextRequest) {
   if (!pos) return fail('Avtentikacija obvezna (staff seja ali POS naprava).', 401)
 
   if (action === 'pair') {
-    const posRow = await resolvePosRow(pos.kind, pos.id)
-    if (!posRow) return fail('Ni registrirane POS naprave — najprej dodaj napravo tipa POS.', 404)
+    const posRow = await resolvePosRow(pos.kind, pos.id, pos.loc)
+    if (!posRow) return fail('Ni registrirane POS naprave na vaši lokaciji — najprej dodaj napravo tipa POS.', 404)
     const code = newPairingCode()
     await db.deviceRegistry.update({
       where: { id: posRow.id },
@@ -101,8 +111,8 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 'push') {
-    const posRow = await resolvePosRow(pos.kind, pos.id)
-    if (!posRow) return fail('Ni registrirane POS naprave za display.', 404)
+    const posRow = await resolvePosRow(pos.kind, pos.id, pos.loc)
+    if (!posRow) return fail('Ni registrirane POS naprave za display na vaši lokaciji.', 404)
     const payload = JSON.stringify(body?.payload ?? null)
     if (payload.length > DISPLAY_PAYLOAD_MAX) return fail('Prevelik payload za display.', 413)
     await db.deviceRegistry.update({

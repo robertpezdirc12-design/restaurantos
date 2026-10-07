@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { num } from '@/lib/map'
 
 /**
@@ -31,6 +31,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     db.restaurantSettings.findFirst(),
   ])
   if (!r) return fail('Račun ne obstaja.', 404)
+  // Issue #4 §1: tuj račun (DDV/operater/podatki lokacije) ni berljiv čez lokacije
+  const guard = assertResourceLocation(user, r.locationId)
+  if (guard) return guard
 
   // razčlenba DDV: JSON { "22.00": { base, vat }, ... } → seznam po stopnjah.
   // Originalni zapisi imajo lahko prazno/drugačno razčlenbo → agregiramo iz postavk
@@ -105,7 +108,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       isStorno: r.isStorno,
       vatBreakdown: breakdown,
       orderNumber: r.Order?.orderNumber ?? null,
-      tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? r.Order.Table.name ?? ''}` : null,
+      tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? (r.Order.Table as unknown as { name?: string }).name ?? ''}` : null,
       operator: r.Order?.Employee_Order_employeeIdToEmployee?.name || null,
       items,
     },

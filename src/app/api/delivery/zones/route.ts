@@ -3,7 +3,7 @@
  * znesek, aktivnost). Uporablja obstoječi DeliveryZone model — ne podvaja.
  */
 import { NextRequest } from 'next/server'
-import { ok, fail, requirePermission, isResponse } from '@/lib/api'
+import { ok, fail, requirePermission, isResponse, locationScope, assertResourceLocation, requireUserLocation } from '@/lib/api'
 import { db } from '@/lib/db'
 import { nid, num, mapDeliveryZone } from '@/lib/map'
 
@@ -12,7 +12,11 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'orders.create')
   if (isResponse(user)) return user
-  const zones = await db.deliveryZone.findMany({ orderBy: { sortOrder: 'asc' } })
+  const zones = await db.deliveryZone.findMany({
+    // Issue #4 §1: cone po lokaciji uporabnika (DeliveryZone.locationId)
+    where: locationScope(user),
+    orderBy: { sortOrder: 'asc' },
+  })
   return ok({ zones: zones.map(mapDeliveryZone) })
 }
 
@@ -25,8 +29,12 @@ export async function POST(req: NextRequest) {
     minOrderAmount?: number
     estimatedMinutes?: number
     postCodes?: string[]
+    locationId?: string
   } | null
   if (!b?.name?.trim()) return fail('Ime cone je obvezno.', 400)
+  // Issue #4 §10: cona se vedno ustvari na lokaciji uporabnika (brez globalnih con)
+  const locationId = requireUserLocation(user, b.locationId)
+  if (isResponse(locationId)) return locationId
 
   const zone = await db.deliveryZone.create({
     data: {
@@ -38,6 +46,7 @@ export async function POST(req: NextRequest) {
       postCodes: JSON.stringify((b.postCodes || []).slice(0, 50)),
       isActive: true,
       sortOrder: (await db.deliveryZone.count()) + 1,
+      locationId,
     },
   })
   await db.auditLog.create({
@@ -65,6 +74,9 @@ export async function PATCH(req: NextRequest) {
 
   const existing = await db.deliveryZone.findUnique({ where: { id: b.id } })
   if (!existing) return fail('Cona ne obstaja.', 404)
+  // Issue #4 §1: urejanje cone tuje lokacije je zavrnjeno (fail-closed)
+  const locRes = assertResourceLocation(user, existing.locationId)
+  if (locRes) return locRes
 
   const zone = await db.deliveryZone.update({
     where: { id: b.id },

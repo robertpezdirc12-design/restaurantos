@@ -535,6 +535,10 @@ model DeviceRegistry {
   displayPayload   String?
   displayUpdatedAt DateTime?
   revokedAt        DateTime?
+  // Issue #4 §2.2: one-time enrollment code ( kratka veljavnost, enkratna uporaba)
+  enrollmentCode       String?
+  enrollmentExpiresAt  DateTime?
+  enrollmentClaimedAt  DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime @updatedAt
   Location   Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)

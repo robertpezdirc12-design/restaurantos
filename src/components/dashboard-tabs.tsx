@@ -723,7 +723,7 @@ export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: Loyalt
               <p className="text-xs text-stone-500">Trenutno stanje: <b>{pts.points} točk</b> · tier {pts.tier || 'bronze'}</p>
               <div className="space-y-1.5">
                 <Label htmlFor="pt-delta">Točke (+ prihod / − obračun)</Label>
-                <Input id="pt-delta" inputMode="integer" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder="npr. 25 ali -10" />
+                <Input id="pt-delta" inputMode="numeric" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder="npr. 25 ali -10" />
                 <p className="text-[11px] text-stone-400">Tier se preračuna samodejno: silver od 100, gold od 500, platinum od 1000 točk.</p>
               </div>
               <div className="space-y-1.5">
@@ -963,28 +963,29 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
 }
 
 /**
- * Issue #3 — popoln Device Onboarding: nov tip, lokacija, ime, funkcija, revoke/restore,
- * CFD paring koda. Žeton se pokaže ENKRAT (prvič ob registraciji).
+ * Issue #3 — popoln Device Onboarding · Issue #4 §2 — VARNOSTNO HARDENED:
+ * - nova naprava → ENKRATNA VPISNA KODA (15 min) — naprava jo unovči JAVNO na /kiosk ali prijavi
+ * - žetoni v seznamu so MASKIRANI (poln token se nikoli ne vrača v GET)
+ * - CFD paring koda (10 min, enkratna)
  */
 export function DevicesCard({ devices, locations, onChanged }: { devices: DeviceT[]; locations: { id: string; name: string }[]; onChanged?: () => void }) {
   const locName = (id?: string | null) => (id ? locations.find((l) => l.id === id)?.name || null : null)
-  const mask = (t: string) => (t && t.length > 14 ? `${t.slice(0, 14)}…` : t)
   const [addOpen, setAddOpen] = useState(false)
   const [nf, setNf] = useState({ name: '', type: 'pos', locationId: 'none' })
   const [busy, setBusy] = useState(false)
-  const [newToken, setNewToken] = useState<{ name: string; token: string } | null>(null)
+  const [newCode, setNewCode] = useState<{ name: string; code: string } | null>(null)
   const [pairCode, setPairCode] = useState<{ device: string; code: string } | null>(null)
   const [notice, setNotice] = useState('')
 
-  async function registerDevice() {
+  async function createEnrollmentCode() {
     if (nf.name.trim().length < 2) { setNotice('Ime naprave: min. 2 znaka.'); return }
     setBusy(true); setNotice('')
     try {
-      const res = await api<{ device: { name: string; token: string } }>('/api/devices', {
+      const res = await api<{ code: string; device: { name: string } }>('/api/devices/enroll', {
         method: 'POST',
         body: JSON.stringify({ name: nf.name.trim(), type: nf.type, locationId: nf.locationId === 'none' ? '' : nf.locationId }),
       })
-      setNewToken({ name: res.device.name, token: res.device.token })
+      setNewCode({ name: res.device.name, code: res.code })
       setAddOpen(false)
       setNf({ name: '', type: 'pos', locationId: 'none' })
       onChanged?.()
@@ -1013,12 +1014,12 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
         <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> Naprave — onboarding</CardTitle>
-        <Button size="sm" variant="outline" className="gap-1" onClick={() => { setAddOpen((v) => !v); setNewToken(null) }}><Plus className="w-3.5 h-3.5" /> Dodaj napravo</Button>
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => { setAddOpen((v) => !v); setNewCode(null) }}><Plus className="w-3.5 h-3.5" /> Vpisna koda</Button>
       </CardHeader>
       <CardContent>
         {addOpen && (
           <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 mb-3 space-y-3">
-            <p className="text-xs font-medium text-stone-500">Nova naprava — izberi tip, lokacijo in ime. Žeton se pokaže samo enkrat.</p>
+            <p className="text-xs font-medium text-stone-500">Nova naprava — tip, lokacija in ime. Ustvari se ENKRATNA vpisna koda (15 min), ki jo naprava unovči na svojem zaslonu.</p>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Tip</Label>
@@ -1050,16 +1051,16 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
                 <Input value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder="npr. Blagajna 1" />
               </div>
             </div>
-            <Button size="sm" onClick={registerDevice} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} Registriraj</Button>
+            <Button size="sm" onClick={createEnrollmentCode} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} Ustvari vpisno kodo</Button>
           </div>
         )}
 
-        {newToken && (
+        {newCode && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 mb-3">
-            <p className="text-sm font-semibold text-amber-900">Žeton naprave “{newToken.name}” — pokaže se SAMO zdaj:</p>
-            <code className="mt-1 block text-sm bg-white border border-amber-200 rounded-lg px-3 py-2 break-all select-all">{newToken.token}</code>
-            <p className="text-xs text-amber-700 mt-1">Kiosk/display: vnesi žeton na /kiosk oz. /display strani. Kopiraj zdaj — kasneje ga ni mogoče prikazati.</p>
-            <Button size="sm" variant="outline" className="mt-2" onClick={() => { navigator.clipboard?.writeText(newToken.token); setNotice('Žeton kopiran ✓') }}>Kopiraj</Button>
+            <p className="text-sm font-semibold text-amber-900">Vpisna koda za “{newCode.name}” — velja 15 min in je enkratna:</p>
+            <p className="text-4xl font-extrabold tracking-[0.3em] my-2 text-center select-all">{newCode.code}</p>
+            <p className="text-xs text-amber-700 mt-1">Naprava vpiše kodo na /kiosk oz. prijavni strani (»Aktiviraj napravo«) in samodejno dobi svoj žeton. Žeton se vam ne prikaže — to je po pričakovanju (issue #4 §2).</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => { navigator.clipboard?.writeText(newCode.code); setNotice('Koda kopirana ✓') }}>Kopiraj kodo</Button>
           </div>
         )}
 
@@ -1078,7 +1079,7 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
             <div key={d.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${d.revoked ? 'border-red-200 bg-red-50' : 'border-stone-200 bg-white'}`}>
               <div className="min-w-0">
                 <p className="font-medium truncate">{d.name} <Badge variant="outline" className="ml-1">{DEVICE_TYPE_LABELS[d.type] || d.type}</Badge></p>
-                <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || 'brez lokacije'} · žeton {mask(d.token)}</p>
+                <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || 'brez lokacije'} · žeton {d.token}</p>
                 <p className="text-[11px] text-stone-400">zadnja povezava: {d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'nikoli'}{d.revoked ? ' · REVOKIRANA' : ''}</p>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1186,7 +1187,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
   const active = orders.filter((o) => !['PAID', 'CANCELLED'].includes(o.status) && o.delivery && o.delivery.status !== 'DELIVERED' && o.delivery.status !== 'CANCELLED')
   const history = orders.filter((o) => !active.includes(o))
 
-  async function transition(o: DeliveryOrderT, to: string, extra?: { driverName?: string; driverPhone?: string }) {
+  async function transition(o: DeliveryOrderT, to: string, extra?: { driverName?: string; driverPhone?: string; note?: string }) {
     setBusy(o.id)
     try {
       await api('/api/delivery', {

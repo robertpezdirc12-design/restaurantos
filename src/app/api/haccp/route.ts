@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num, nid } from '@/lib/map'
 
 const HACCP_TYPES = ['temperature', 'cleaning', 'delivery', 'cooling', 'training']
@@ -9,7 +9,12 @@ const HACCP_STATUSES = ['ok', 'warning', 'critical']
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
-  const rows = await db.haccpEntry.findMany({ orderBy: { date: 'desc' }, take: 100 })
+  const rows = await db.haccpEntry.findMany({
+    // Issue #4 §1: HACCP zapisi po lokaciji uporabnika
+    where: locationScope(user),
+    orderBy: { date: 'desc' },
+    take: 100,
+  })
   return ok({
     haccpChecks: rows.map((r) => ({
       id: r.id,

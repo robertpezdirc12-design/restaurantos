@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { UtensilsCrossed, Loader2, MapPin, ShieldCheck, MonitorSmartphone, ChevronDown } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -16,12 +15,6 @@ interface Location {
   name: string
 }
 
-const DEVICE_TYPES = [
-  ['pos', 'POS blagajna'], ['kds', 'KDS kuhinja'], ['kds_bar', 'KDS bar'],
-  ['tablet', 'Tablica'], ['kiosk', 'Samopostrežni kiosk'], ['mobile', 'Mobilna naprava'],
-  ['customer_display', 'Customer display (CFD)'],
-]
-
 export default function LoginPage() {
   const router = useRouter()
   const [locations, setLocations] = useState<Location[]>([])
@@ -30,13 +23,13 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
-  // LOGIN PROVISIONING (R248): „Poveži napravo z lokacijo“ — aditivna sekcija na prijavi
+  // ISSUE #4 §2.2 — device aktivacija prek ENKRATNE vpisne kode (dashboard ustvari kodo,
+  // naprava jo unovči JAVNO — brez prijave; token pride nazaj samo tukaj in se shrani lokalno)
   const [provOpen, setProvOpen] = useState(false)
-  const [provName, setProvName] = useState('')
-  const [provType, setProvType] = useState('pos')
-  const [provLoc, setProvLoc] = useState('')
+  const [provCode, setProvCode] = useState('')
   const [provBusy, setProvBusy] = useState(false)
   const [provToken, setProvToken] = useState('')
+  const [provName, setProvName] = useState('')
   const [provError, setProvError] = useState('')
 
   useEffect(() => {
@@ -52,17 +45,21 @@ export default function LoginPage() {
       .finally(() => setChecking(false))
   }, [router])
 
-  async function provisionDevice() {
+  async function claimDevice() {
     setProvBusy(true); setProvError('')
     try {
-      const res = await fetch('/api/devices', {
-        method: 'POST',
+      const res = await fetch('/api/devices/enroll', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: provName, type: provType, locationId: provLoc || locations[0]?.id || '' }),
+        body: JSON.stringify({ code: provCode.trim() }),
       })
       const data = await res.json()
-      if (!res.ok) { setProvError(data.error || 'Povezava naprave ni uspela.'); return }
+      if (!res.ok) { setProvError(data.error || 'Aktivacija ni uspela.'); return }
       setProvToken(data.device?.token || '')
+      setProvName(data.device?.name || 'naprava')
+      // shrani token lokalno (isti ključ kot kiosk prej) — naprava je TAKOJ uporabna
+      if (data.device?.type === 'KIOSK') localStorage.setItem('ro_kiosk_device_token', data.device.token)
+      if (data.device?.type === 'CUSTOMER_DISPLAY') localStorage.setItem('ro_cfd_device_token', data.device.token)
     } catch {
       setProvError('Povezava s strežnikom ni uspela.')
     } finally { setProvBusy(false) }
@@ -125,10 +122,10 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* LOGIN PROVISIONING (R248) — aditivna sekcija */}
+          {/* ISSUE #4 §2.2 — aktivacija naprave z enkratno vpisno kodo (brez prijave) */}
           <Collapsible open={provOpen} onOpenChange={setProvOpen}>
             <CollapsibleTrigger className="w-full flex items-center justify-between rounded-lg bg-white/70 border border-stone-200 px-4 py-2.5 text-sm text-stone-600 hover:bg-white transition">
-              <span className="inline-flex items-center gap-2"><MonitorSmartphone className="w-4 h-4 text-emerald-700" /> Poveži napravo z lokacijo</span>
+              <span className="inline-flex items-center gap-2"><MonitorSmartphone className="w-4 h-4 text-emerald-700" /> Aktiviraj napravo (kiosk/display)</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${provOpen ? 'rotate-180' : ''}`} />
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -136,40 +133,20 @@ export default function LoginPage() {
                 <CardContent className="pt-4 space-y-3">
                   {provToken ? (
                     <div className="space-y-1.5">
-                      <p className="text-sm font-medium text-emerald-800">✅ Naprava povezana</p>
-                      <p className="text-xs text-stone-500">Žeton naprave (prikaže se samo enkrat — zapišite si ga):</p>
-                      <p className="font-mono text-xs bg-stone-100 border border-stone-200 rounded-md px-2.5 py-2 break-all select-all">{provToken}</p>
-                      <Button size="sm" variant="outline" onClick={() => { setProvToken(''); setProvName('') }}>Poveži še eno napravo</Button>
+                      <p className="text-sm font-medium text-emerald-800">✅ Naprava aktivirana: {provName}</p>
+                      <p className="text-xs text-stone-500">Žeton je shranjen v tem brskalniku. Za customer display odprite /display, za kiosk /kiosk.</p>
+                      <Button size="sm" variant="outline" onClick={() => { setProvToken(''); setProvCode('') }}>Aktiviraj še eno napravo</Button>
                     </div>
                   ) : (
                     <>
                       <div className="space-y-1.5">
-                        <Label htmlFor="dev-name">Ime naprave</Label>
-                        <Input id="dev-name" value={provName} onChange={(e) => setProvName(e.target.value)} placeholder="npr. Blagajna 1 — dvorana" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="dev-type">Tip</Label>
-                          <Select value={provType} onValueChange={setProvType}>
-                            <SelectTrigger id="dev-type"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {DEVICE_TYPES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="dev-loc">Lokacija</Label>
-                          <Select value={provLoc || locations[0]?.id || ''} onValueChange={setProvLoc}>
-                            <SelectTrigger id="dev-loc"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <Label htmlFor="dev-code">Vpisna koda (8 števk)</Label>
+                        <Input id="dev-code" inputMode="numeric" value={provCode} onChange={(e) => setProvCode(e.target.value.replace(/[^\d]/g, '').slice(0, 8))} placeholder="npr. 12345678" className="tracking-[0.3em] font-mono" />
+                        <p className="text-[11px] text-stone-400">Kodo ustvari vodja: Dashboard → Nastavitve → Naprave → Vpisna koda. Velja 15 minut in je enkratna.</p>
                       </div>
                       {provError && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{provError}</p>}
-                      <Button size="sm" className="w-full bg-emerald-700 hover:bg-emerald-800" disabled={provBusy || provName.trim().length < 2 || locations.length === 0} onClick={provisionDevice}>
-                        {provBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Poveži napravo'}
+                      <Button size="sm" className="w-full bg-emerald-700 hover:bg-emerald-800" disabled={provBusy || provCode.length !== 8} onClick={claimDevice}>
+                        {provBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aktiviraj napravo'}
                       </Button>
                     </>
                   )}

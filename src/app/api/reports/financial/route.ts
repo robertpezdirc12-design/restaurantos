@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, locationScope } from '@/lib/api'
 import { num } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
@@ -12,24 +12,26 @@ export async function GET(req: NextRequest) {
   startOfMonth.setDate(1)
   startOfMonth.setHours(0, 0, 0, 0)
 
+  // Issue #4 §1: vsi finančni agregati so location-scoped (centralne vloge vidijo vse)
+  const scope = locationScope(user)
   const [todayPaid, monthPaid, monthExpenses, byTax] = await Promise.all([
     db.order.aggregate({
-      where: { paymentStatus: 'paid', paidAt: { gte: startOfDay } },
+      where: { paymentStatus: 'paid', paidAt: { gte: startOfDay }, ...scope },
       _sum: { total: true, tax: true },
       _count: true,
     }),
     db.order.aggregate({
-      where: { paymentStatus: 'paid', paidAt: { gte: startOfMonth } },
+      where: { paymentStatus: 'paid', paidAt: { gte: startOfMonth }, ...scope },
       _sum: { total: true, tax: true },
       _count: true,
     }),
     db.accountsPayable.aggregate({
-      where: { invoiceDate: { gte: startOfMonth } },
+      where: { invoiceDate: { gte: startOfMonth }, ...scope },
       _sum: { totalAmount: true },
     }),
     db.orderItem.groupBy({
       by: ['vatRate'],
-      where: { Order: { paymentStatus: 'paid', paidAt: { gte: startOfMonth } } },
+      where: { Order: { paymentStatus: 'paid', paidAt: { gte: startOfMonth }, ...scope } },
       _sum: { quantity: true },
     }),
   ])

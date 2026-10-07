@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
 
 /** Kuhinjski prikaz (KDS) — vrsta artikel-predmetov po naročilih */
@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const orders = await db.order.findMany({
     where: {
+      // Issue #4 §1: KDS prikazuje samo aktivna naročila lastne lokacije
+      ...locationScope(user),
       status: { in: ORDER_ACTIVE_DB },
       OrderItem: { some: { status: { in: ITEM_ACTIVE_DB } } },
     },
@@ -39,6 +41,15 @@ export async function PATCH(req: NextRequest) {
     return fail('itemId in veljaven status sta obvezna.')
   }
   const newDbStatus = itemStatusToDB(body.status)
+  // Issue #4 §1: PATCH po client itemId je bil prej povsem location-blind —
+  // najprej fetch z lokacijo nadrejenega naročila, šele nato update
+  const target = await db.orderItem.findUnique({
+    where: { id: body.itemId },
+    include: { Order: { select: { locationId: true } } },
+  })
+  if (!target) return fail('Artikel naročila ne obstaja.', 404)
+  const locRes = assertResourceLocation(user, target.Order?.locationId)
+  if (locRes) return locRes
   const item = await db.orderItem.update({
     where: { id: body.itemId },
     data: {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
 import { num } from '@/lib/map'
 
 type VatRow = { base: number; vat: number }
@@ -49,9 +49,16 @@ export async function GET(req: NextRequest) {
   const format = (url.searchParams.get('format') || 'csv').toLowerCase()
   const range = { gte: from, lte: to }
 
+  // Issue #4 §1: izvoz je location-scoped (centralne vloge = globalno).
+  // Payment nima locationId → scope prek relacije Check → Order.locationId;
+  // StockTransaction nima locationId → scope prek povezanega InventoryItem.locationId.
+  const locScope = locationScope(user)
+  const payScope = isCentralRole(user) ? {} : { Check: { Order: { locationId: user.loc || '__no_location__' } } }
+  const stockScope = isCentralRole(user) ? {} : { InventoryItem: { locationId: user.loc || '__no_location__' } }
+
   // ── 1) Računi ──
   const receipts = await db.receipt.findMany({
-    where: { createdAt: range, isStorno: false },
+    where: { createdAt: range, isStorno: false, ...locScope },
     select: { createdAt: true, subtotal: true, vatBreakdown: true, totalVat: true, discount: true, total: true, tip: true, totalWithTip: true },
     orderBy: { createdAt: 'asc' as const },
     take: 20000,
@@ -80,7 +87,7 @@ export async function GET(req: NextRequest) {
 
   // ── 2) Plačila po načinih ──
   const payments = await db.payment.findMany({
-    where: { createdAt: range, status: 'completed' },
+    where: { createdAt: range, status: 'completed', ...payScope },
     select: { type: true, amount: true, tipAmount: true },
     take: 20000,
   })
@@ -96,7 +103,7 @@ export async function GET(req: NextRequest) {
 
   // ── 3) Stroški — računi dobaviteljev ──
   const aps = await db.accountsPayable.findMany({
-    where: { invoiceDate: range },
+    where: { invoiceDate: range, ...locScope },
     select: { status: true, subtotal: true, vatAmount: true, totalAmount: true, paidAmount: true },
     take: 20000,
   })
@@ -114,7 +121,7 @@ export async function GET(req: NextRequest) {
 
   // ── 4) Gibanje zalog ──
   const stockTx = await db.stockTransaction.findMany({
-    where: { createdAt: range, type: { in: ['SALE', 'RECEIVE', 'ADJUST', 'WASTE'] } },
+    where: { createdAt: range, type: { in: ['SALE', 'RECEIVE', 'ADJUST', 'WASTE'] }, ...stockScope },
     select: { type: true, quantity: true, totalCost: true },
     take: 20000,
   })

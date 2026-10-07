@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, isCentralRole, requireUserLocation } from '@/lib/api'
 import { nid, num, r2, jstr } from '@/lib/map'
 
 /**
@@ -69,7 +69,11 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const url = new URL(req.url)
   const locationId = url.searchParams.get('locationId')
-  const where = locationId ? { locationId } : {}
+  // Issue #4 §1: za non-central ignoriraj client query locationId in forsiraj user.loc
+  // (cross-location popusti so sicer brani samo pri pisanju); centralna lahko filtrira
+  const where = isCentralRole(user)
+    ? (locationId ? { locationId } : {})
+    : { locationId: user.loc || '__no_location__' }
   const rows = await db.discount.findMany({
     where,
     orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' as const }],
@@ -85,8 +89,10 @@ export async function POST(req: NextRequest) {
   if (!body) return fail('Manjkajo podatki.', 400)
   const vErr = validateDiscountBody(body)
   if (vErr) return fail(vErr, 400)
-  const locationId = String(body?.locationId || '')
-  if (!locationId) return fail('locationId je obvezen.', 400)
+  // Issue #4 §10: popust se vedno ustvari na lokaciji uporabnika — body.locationId je
+  // spoštovan SAMO pri centralnih vlogah (prej je kadarkoli podal poljuben locationId)
+  const locationId = requireUserLocation(user, body?.locationId)
+  if (isResponse(locationId)) return locationId
   const location = await db.location.findUnique({ where: { id: locationId }, select: { id: true } })
   if (!location) return fail('Lokacija ne obstaja.', 404)
 

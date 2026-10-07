@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, isResponse, ok, locationScope } from '@/lib/api'
 import { num, ORDER_ACTIVE_DB } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
@@ -10,11 +10,15 @@ export async function GET(req: NextRequest) {
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
 
+  // Issue #4 §1: globalni števci se zožijo na lokacijo uporabnika;
+  // todayOrders/paidToday so že vezani na user.loc (nepremenjeno)
+  const scope = locationScope(user)
   const [activeOrders, openTables, menuCount, employees, todayOrders, paidToday, topItemsRaw] = await Promise.all([
-    db.order.count({ where: { status: { in: ORDER_ACTIVE_DB } } }),
-    db.table.count({ where: { status: 'occupied' } }),
+    db.order.count({ where: { status: { in: ORDER_ACTIVE_DB }, ...scope } }),
+    db.table.count({ where: { status: 'occupied', ...scope } }),
+    // MenuItem nima locationId (globalen meni prek Menu) — brez scopinga
     db.menuItem.count({ where: { isAvailable: true } }),
-    db.employee.count({ where: { status: 'active' } }),
+    db.employee.count({ where: { status: 'active', ...scope } }),
     db.order.findMany({
       where: { locationId, createdAt: { gte: startOfDay }, status: { not: 'cancelled' } },
       select: { total: true, status: true },
@@ -26,7 +30,7 @@ export async function GET(req: NextRequest) {
     }),
     db.orderItem.groupBy({
       by: ['menuItemName'],
-      where: { Order: { createdAt: { gte: new Date(Date.now() - 7 * 86400_000) }, status: { not: 'cancelled' } } },
+      where: { Order: { createdAt: { gte: new Date(Date.now() - 7 * 86400_000) }, status: { not: 'cancelled' }, ...scope } },
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
       take: 5,

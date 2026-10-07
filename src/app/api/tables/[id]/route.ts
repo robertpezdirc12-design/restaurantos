@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
 import { tableStatusToDB, tableStatusToUI } from '@/lib/map'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  // Issue #4 §1: spreminjanje statusov miz je natakrjska akcija (orders.create)
+  const user = await requirePermission(req, 'orders.create')
   if (isResponse(user)) return user
   const { id } = await params
   const body = await req.json().catch(() => null)
@@ -14,6 +15,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body?.posY !== undefined) data.posY = Number(body.posY)
   if (body?.zone !== undefined) data.area = String(body.zone)
   if (Object.keys(data).length === 0) return fail('Ni sprememb.')
+  const existing = await db.table.findUnique({ where: { id }, select: { locationId: true } })
+  if (!existing) return fail('Miza ne obstaja.', 404)
+  // Issue #4 §1: miza mora pripadati lokaciji uporabnika
+  const locRes = assertResourceLocation(user, existing.locationId)
+  if (locRes) return locRes
   const table = await db.table.update({ where: { id }, data })
   return ok({ table: { ...table, status: tableStatusToUI(table.status) } })
 }
@@ -23,6 +29,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (isResponse(user)) return user
   if (user.role !== 'ADMIN') return fail('Samo skrbnik lahko briše mize.', 403)
   const { id } = await params
+  const existing = await db.table.findUnique({ where: { id }, select: { locationId: true } })
+  if (!existing) return fail('Miza ne obstaja.', 404)
+  // Issue #4 §1: brisanje tujokra lokacijskega vira je zavrnjeno (fail-closed)
+  const locRes = assertResourceLocation(user, existing.locationId)
+  if (locRes) return locRes
   await db.table.delete({ where: { id } })
   return ok({ deleted: true })
 }

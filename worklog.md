@@ -751,3 +751,177 @@ Stage Summary:
 - v1.30.0: ob prodaji se zaloga SAMODEJNO razknjiži po recepturah (idempotentno, FEFO, primanjkljaj ne blokira), recepture so sedaj urejljive, računovodski izvoz CSV/JSON v zavihku Računi
 - scroll-area overflow fix velja globalno (vsi max-h ScrollArea se sedaj pravilno obrežejo)
 - GitHub: neposreden dostop še vedno brez veljavnega PAT-a; sinhronizacija teče prek Actions cron (30 min); po pushu na GitLab bo GitHub sam prevzel
+
+---
+Task ID: 4-c
+Agent: Explore
+Task: Inventura print-agent/CI/secrets/UI/deployment (READ-ONLY, za issue #4 §0)
+
+Work Log:
+- Prebran worklog.md (celoten, 753 vrstic) + DEPLOYMENT-STATUS.md + RECOVERY-NOTES.md
+- Analiza mini-services/print-agent/index.ts (469 vrstic, vrstica-po-vrstico: bind, endpointi, timeouti, napake)
+- Analiza .github/workflows/sync.yml (dvosmerni GitLab↔GitHub mirror, triggerji, skrivnosti)
+- Schema drift: `diff` seznamov `^model \w+` obeh shem = 0 razlik; 110/110 modelov; prešteni enumi (20 vs 0) in @db. anotacije (156 vs 0); provider postgresql vs sqlite
+- package.json scripts + scripts/prisma-postinstall.cjs (izbira sheme po DATABASE_URL) + .env (samo DATABASE_URL=file:, ni git-tracked); .env.example NE obstaja
+- Secrets scan po repoju (rg, izven node_modules/.next/.git/bun.lock): glpat-/ghp_/vcp_/postgres:// /AIza/sk-/NEXTAUTH_SECRET/password=; struktura vercel-env-variables.json + vercel-project-settings.json (32 env keys, vrednosti sensitive=EMPTY, encrypted=Vercel šifrirane ovitke)
+- UI pregled: src/app/{dashboard,display,kiosk,m/[token]}, dashboard-tabs.tsx (DevicesCard), api/devices*, api/tables/[id]/qr, lib/guest.ts, lib/devices/print.ts; grep 'token' v UI datotekah
+- Preverjanje: git ls-files (.env NI tracked; vercel-*.json SO tracked), auth.ts fallbacki, APP_VERSION, vercel-deployments.json (starejši snapshot)
+
+Stage Summary:
+- PRINT-AGENT: bind 0.0.0.0:3031 (hardcoded, index.ts:19-20,468); endpointi GET /health, POST /print|/text|/layout (print: {host,port?=9100,payloadBase64}); BREZ auth tokena; poljuben host + port 1-65535 → odprti TCP relay (SSRF/LAN zloraba); BREZ omejitve velikosti payloada (samo 0-bajtov check :430); timeouti connect 4s / idle 1.5s / hard cap 8s (:21-23); uspeh/neuspeh VEDNO HTTP 200 {ok:true|false} (:458), bajti oddani v kernel = "delivered"; Client quirk: print.ts:65 kliče RELATIVNO '/layout?XTransformPort=3031' → na Vercelu produkciji 404 (agent print cilj verjetno NE dela v produkciji, deluje samo prek sandbox proxyja)
+- SYNC.YML: dvosmerna GitLab↔GitHub sinhronizacija (push vse branche/tagi + cron */30 min + ročni); skrivnosti: secrets.GITLAB_TOKEN, secrets.GITLAB_PROJECT_PATH (samo imena); divergentni branchi → merge; konflikt → warning + ročni merge; push na oba remote-a z 3 retry
+- SCHEMA DRIFT: NE obstaja — schema.prisma (postgresql, 110 modelov, 20 enumov, 156 @db.) in schema.sqlite.prisma (sqlite, 110 modelov, 0 enumov — enumi→String, Json→String, @db. odstranjeno) imajo IZENAKA imena vseh 110 modelov (diff prazen); sqlite zrcalo je AVTOMATSKO generirano (scripts/build-sqlite-mirror.py) iz produkcije
+- PRISMA WORKFLOW: lokalno db:push/db:generate → schema.sqlite.prisma (--accept-data-loss); postinstall (prisma-postinstall.cjs) izbere shemo po DATABASE_URL (file: → sqlite, sicer produkcija postgresql) in požene prisma generate (napaka ne ragruje namestitve); produkcija (Vercel/Neon) → schema.prisma; migracije se ne uporabljajo (db push + admin runtime rute /api/admin/migrate-issue1-s6, migrate-issue3); .env vsebuje SAMO DATABASE_URL=file:/home/z/... (lokalni sqlite, ni skrivnost, ni tracked)
+- SECRETS: najhujše src/lib/auth.ts:4-5 — hardcoded fallback APP_SECRET 'restaurantos-reconstruction-dev-secret' + PIN_LOOKUP_SALT, pri čemer APP_SECRET NI med 32 Vercel env keys → produkcijski žetoni HMAC-podpisani z javno znano vrednostjo (KRITIČNO, issue #4); vercel-project-settings.json + vercel-env-variables.json sta GIT-TRACKED (32 imen env spremenljivk + 8 Vercel-šifriranih ovitkov 'eyJ2Ijoi…' — vrednosti sensitive so prazne); worklog.md:302 delni 'glpat-ODvZ…' prefix; worklog/DEPLOYMENT-STATUS/RECOVERY-REPORT večkrat omenjajo truncirane žetone (vsi javno razglašeni za revokirane); prisma/seed.ts:52-55 dev PIN-i 1234/2345/3456/4567; brez plain postgres://, AIza, sk-, vercel_ žetonov
+- UI POTI: /dashboard (11 zavihkov: pregled,mize,narocila,kuhinja,meni,rezervacije,racuni,zaloge,haccp,zaposleni,nastavitve — page.tsx:746-750); Naprave (DevicesCard, dashboard-tabs.tsx:957-1095) v Nastavitvah: nov žeton pokazan v CELOTI samo enkrat (:1060, Kopiraj :1062), seznam maskira na 14 znakov (mask :971,:1081) — ampak GET /api/devices vrača POLNE žetone (token: r.deviceId) in POST /api/devices je JAVNA ruta brez auth (registerDevice v route.ts); QR: dialog na mizi (page.tsx:818-827,859+), GET/POST /api/tables/[id]/qr (svg/dataUrl/rotate/toggle), URL = /m/{32-hex token} (guest.ts:35-43); /m/[token] javni gostujoči QR meni+naročilo; /kiosk (aktivacija z rodev_ žetonom → localStorage ro_kiosk_device_token, X-Device-Token header); /display CFD (6-mestna paring koda TTL 10 min → ro_cfd_device_token, polling 2s /api/devices/display/state)
+- DEPLOYMENT: produkcija https://restaurantos-theta.vercel.app (prava Neon baza); trenutna verzija 1.30.0 (src/lib/api.ts:56); v1.29.0 = issue #1 §6-7 (dpl_6ddVEU9dPdkWbruj5zrRSsBftpdS PROMOTED), v1.30.0 = zaloge/razknjiževanje/recepture/izvoz (dpl_Evo24cgBnRQKXn5fWQ3m1mzTuUXe), temni način (dpl_FLCJ4b3eFkkcye41xnCU6Nqqwn2x); vsi 3 GitLab issueji (#1,#2,#3) implementirani; GitHub PAT-i mrtvi → sync samo prek Actions cron; vercel-deployments.json snapshot je STARšen (zadnji vnos 2026-10-06 17:44, pred v1.29/v1.30); DEPLOYMENT-STATUS.md še vedno navaja Nujno rotacijo: vcp_ (Vercel), glpat- (GitLab), Neon credentials + NEXTAUTH_SECRET
+- Lokalni git: worktree čist, main = 26f84fe (docs v1.30.0)
+---
+Task ID: 4-b
+Agent: Explore
+Task: Inventura core libs — auth/permissions/guest/devices/rate-limit/schema
+
+Work Log:
+- Prebran worklog.md (kontekst: rekonstrukcija, issue #1 §1-7, #2 dostava, #3 QR/kiosk/CFD vse izvedeno do v1.30.0; issue #4 P0/P1 hardening sledi)
+- Prebrani v jedrni libi: auth.ts (87), api.ts (57), permissions.ts (91), guest.ts (221), billing.ts (180), inventory.ts (176), ops.ts (237), delivery.ts (236), receipt.ts (160), sequences.ts (30), offline-queue.ts (130), db.ts (12), devices/print.ts (139), devices/terminal.ts (67)
+- Prebrane rute za auth/devices flow: /api/auth/login, /api/auth/me, /api/auth/locations, /api/devices (GET/POST), /api/devices/[id], /api/devices/display, /api/devices/display/state, /api/public/orders, /api/orders, /api/furs (delno), /api/sync (delno), /api/kitchen
+- Grep rateLimit/rateLimitPublic po celem src + grep canAccessModule/user.loc/deviceId
+- prisma/schema.prisma (3001 vrstic, 110 modelov) parse z python skripto: 58 modelov z locationId, 52 brez; izpisani ključni modeli (Order, Payment, Check, Receipt, Table, DeviceRegistry, Employee, LoyaltyAccount, ModifierGroup/Modifier/MenuItemModifierGroup/OrderItemModifier, InventoryItem, StockTransaction, Session, ApiKey, Counter, DeviceSyncOperation)
+- Šumska preverba: domnevna "pokvarjena" polja v shemi (fields: enuItemId]) = transportni artefakt (base64 preverba — datoteka V REDU, [menuItemId] je prisoten); schema je validna
+- NIC spremenjeno v kodi (read-only), razen ta append
+
+Stage Summary:
+- AUTH (auth.ts): stateless HMAC-SHA256 token (base64url(JSON).sig), payload {sub, name, role(UI), loc, exp}, 12h (bootstrap 2h), NIMA revokacije (Session model + Employee.sessionVersion obstajata v shemi, a NISTA uporabljena); APP_SECRET ima dev fallback; PIN = scrypt(pin, email) + pinLookup HMAC za iskanje; bootstrap admin prek env (timing-safe). canAccessModule: coarse module check, uporabljen SAMO v /api/tables; requirePermission() v api.ts je glavni gate
+- AUTH CONTEXT: requireAuth/requirePermission vrneta AuthPayload|NextResponse (union + isResponse); requirePermission: ADMIN/OWNER fast-path BREZ DB, sicer Employee lookup + resolvePermissions na vsak klic (spremembe pravic takoj). LOKACIJA: user.loc iz tokena; skoraj vsaka ruta: `user.loc || db.location.findFirst()` — fallback na PRVO lokacijo, NI preverjanja da body.tableId/orderId pripada user.loc (cross-location luknja)
+- PERMISSIONS: 11 kanonicnih dovoljenj; defaults: owner/admin/manager=VSE, staff/waiter=orders.create+orders.pay+apply_discounts+reservations.manage, bar=orders.create+apply_discounts+kitchen.update, chef/kitchen=kitchen.update; override-i SAMO dodajajo; NI resource-level checkov (npr. "ta order moja lokacija"); KIOSK role v canAccessModule, a NE obstaja v DB enum ali mappingu
+- guest.ts resolveGuestItems — KRITICNO: line 165 `const linked = mods.find((x) => x.id === m.id)` najde SAMO SEBE → relacija MenuItem→MenuItemModifierGroup→Modifier NI preverjena (komentar obljublja, koda ne); MenuItemModifierGroup se sploh ne poisce; required/minSelect/maxSelect se NE enforsirajo (samo izpisani v loadPublicMenu); NI duplicate checka (isti modifier 2x = dvojna cena); cene/VAT iz DB (client price NI zaupan ✓); qty clamp 1-30, max 60 postavk, note 200; artikel NI preverjen proti lokaciji mize/naprave
+- DEVICES: src/lib/devices/ = SAMO client adapterja (print: browser|agent|simulator, localStorage; terminal: none|simulator|manual) — device auth ZIVE v rutah: POST /api/devices JE JAVNA (brez auth!) → kdorkoli minta rodev_ token (24B random, plaintext v DB, brez expiry/rotacije); GET /api/devices (samo requireAuth) VRNE tokene vsem zaposlenim; revoke/restore = PATCH employees.manage (revokedAt + cisti pairing + audit); display pairing: 6-mestna koda TTL 10 min, connect = customer_display token, lokacija kopirana iz POS; resolvePosRow za staff = ZADNJA aktivna POS BREZ location filtra; display/state 120/min rate limit
+- RATE LIMIT: 2 in-memory mapa — guest.ts rateLimitPublic (clear pri >5000) in delivery.ts rateLimit (30/min, BREZ size cap = unbounded); uporaba: public/menu 60/min, public/orders 10/min, public/orders/status 60/min, display 120/min, webhook 30/min; state = process memory → Vercel multi-instance = limit x instanc, cold start resetira; NI middleware.ts, NI Redis
+- BILLING: billing.ts = cista matematika (computeBill: popusti<=subtotal, totalDue>=0, happy hour okna tudi cez polnoc, dedupe po discountId; earnPointsFor; tierForPoints); CAS/idempotency/split ZIVE v /api/furs POST: CAS updateMany paymentStatus!=paid, Payment.idempotencyKey @unique s priponami #p0/#loyalty, parts vsota===totalDue±0.004, loyalty CAS pointsBalance>=redeem; location binding = iz Order.locationId (furs: location lookup po orderu), receipt sekvencia `receipt:${locationId}` + @@unique([locationId, receiptNumber])
+- INVENTORY: deductStockForOrderTx idempotentno (Order.inventoryDeducted flag + StockTransaction SALE obstoj), FEFO po InventoryBatch (expiry asc, take 50) + StockBatchAllocation, primanjkljaj NE blokira; a read-modify-write brez atomic decrement/locking (race med dvema placiloma), ni location scopinga
+- OPS: createOrderCore = idempotentni Order pipeline ($transaction: sekvenca `order:${locationId}` + Order + OrderItem + OrderItemModifier + miza occupied; P2002 retry 3x); POS POST /api/orders podaja body.items NEVALIDIRANE naprej (modifier cene od clienta, tableId ni preverjen proti lokaciji, isAvailable ni preverjen); delivery fee/packaging od clienta brez validacije
+- SCHEMA: 110 modelov, 58 z locationId (Order, Receipt, Table, DeviceRegistry, DeviceSyncOperation, Employee, Menu, ModifierGroup, InventoryItem, InventoryBatch, LoyaltyAccount, Reservation, Discount, AuditLog...), 52 brez (Payment, Check, OrderItem, OrderItemModifier, MenuItem, Category, Modifier, MenuItemModifierGroup, DeliveryInfo, StockTransaction, Session, Counter... — vse dosezene prek relacij); Order.locationId OBVEZEN, DeviceRegistry.locationId NULLABLE; Session model neupabljen; ApiKey.rateLimit polje (neuporabljeno za te rutе)
+- OSTALO: offline-queue.ts = client localStorage vrsta → /api/sync (DeviceSyncOperation @@unique[deviceId, clientOperationId], 401 ne cisti vrste); delivery.ts = HMAC webhook podpis (timingSafeEqual) + secret iz Integration.apiSecret/env + maskPhone; receipt.ts = client 80mm HTML tisk; sequences.ts = Counter upsert increment (atomic), per-location imena; db.ts log:['query'] TUDI V PRODUKCIJI (perf); NI src/middleware.ts
+
+---
+Task ID: 4-a
+Agent: Explore
+Task: Inventura API routes — resource/location authorization audit (issue #4 §0)
+
+Work Log:
+- Prebran worklog.md (Task 1–7, v1.30.0 kontekst) + src/lib/auth.ts + src/lib/api.ts: requireAuth (Bearer HMAC 12h, AuthPayload = sub/name/role/loc/exp), requirePermission (DB lookup; ADMIN/OWNER fast-path po žetonu) — PERMISSON da, resource→location pripadnost pa requirePermission NE preverja nikjer
+- Prebrani VSEH 57 route.ts datotek v src/app/api/ (95 handlerjev); 47 datotek ima requireAuth/requirePermission; 10 brez Bearer autha (health, setup/status, api root, auth/login, auth/locations, public/menu, public/orders, public/orders/status, delivery/webhook/[provider], devices/display/state — device-token auth)
+- Preverjen permissions.ts ROLE_DEFAULTS: manager dobi Vseh 11 kanoničnih pravic (tudi employees.manage) → lahko kliče admin/migrate-* (komentar pravi "samo ADMIN" — koda dovoli managerja)
+- Preverjena schema.prisma: Order/Receipt/Table/Discount.locationId REQUIRED; Employee/InventoryItem/LoyaltyAccount/Reservation/DeviceRegistry/DeliveryZone.locationId nullable; MenuItem NIMA locationId (skoz Category→Menu.locationId); RestaurantSettings global; DeliveryZone ima locationId ampak koda ga NE uporablja
+- Preverjen ops.ts createOrderCore: tableId NI validiran proti locationId (miza druge lokacije se lahko veže + tx.table.update postavi tujo mizo na occupied); user.loc fallback = db.location.findFirst() v ~8 create poteh
+- Preverjen guest.ts/delivery.ts: rate limiti in pomnilniški vedri (reset ob restart), HMAC timingSafeEqual, secret = Integration.apiSecret ali env, 503 brez secreta; QR/device tokeni = skrivnosti (32 hex / rodev_*), revokacija uveljavljena (deviceAlive)
+- Ugotovljen vzorec P0: VSI lookupi so findUnique/findFirst/findMany po ID brez locationId pogoja — user.loc uporabljen SAMO pri CREATE in dashboard danes-stats; ni middleware.ts (vsaka ruta varuje sebe)
+- NEPIŠEM/NE MENJAM kode — samo revizija + ta zapis
+
+Stage Summary:
+- GLAVNA UGOTOVITEV: sistem ima 11 kanoničnih pravic, ampak NIČ resource→location uveljavljanja — vsak prijavljen uporabnik (tudi waiter lokacije A) lahko z ID-jem bere/piše vse na lokaciji B: naročila, račune (FURS), mize, QR tokene, kuhinjo, zaloge, recepture, zvestobo (točke!), popuste, dostavo, rezervacije, poročila, audit
+- P0-branja (findMany/findUnique brez locationId): orders GET+GET[id], furs GET+GET[id], kitchen GET, tables GET, inventory GET, recipes GET, reservations GET, delivery GET, reports/financial, reports/export, audit, monitoring/errors, loyalty GET+lookup, discounts GET, employees GET+GET[id], expenses GET, shifts GET, locations/stats (prihodek vseh lokacij!), haccp GET, guests/feedback GET, webhooks GET, integrations GET, dashboard DELNO
+- P0-pisi (update/create/delete brez location checka): orders/[id] PATCH/DELETE, kitchen PATCH (orderItem.update po client itemId!), furs POST (plačilo tujega naročila + unovčenje točk tujega računa), tables/[id] PATCH (samo requireAuth!), tables/[id]/qr GET/POST (reveal/rotate QR tokena = naročilna sposobnost), sync POST (requireAuth BREZ permission: order.addItems + kitchen.status na vseh lokacijah), inventory PATCH, recipes POST/DELETE, discounts POST (locationId iz body!) + PATCH/DELETE, loyalty PATCH (odšteje točke tujemu gostu), delivery PATCH, reservations PATCH (samo requireAuth), employees PATCH (MANAGER reset PIN zaposlenega druge lokacije) + POST (body.locationId), menus/menus[id] (menuitems globalni), devices/[id] PATCH/DELETE (tudi premik naprave na tujo lokacijo), devices/display pair/push (cilj = zadnja POS globalno)
+- ŽE pravilno location-scoped: public/menu, public/orders, public/orders/status (server-side resolve iz qrToken/device tokena, cene iz DB), delivery webhook (HMAC+idempotencija), devices/display/state (samo svoja vezava), shifts POST stop (lastna izmena + receipts po lokaciji izmene), vsi CREATE (user.loc, razen discounts body.locationId + employees body.locationId)
+- Posebnosti: devices POST je JAVEN provisioning (kdorkoli minta neomejeno naprave z poljubno lokacijo — device tokeni so dostopni tudi prek devices GET, ki jih vrne VSEM prijavljenim); integrations GET vrača config (lahko vsebuje skrivnosti); settings PUT uporablja inline role namesto settings.manage; bootstrap fallback v login (napačen PIN + bootstrap PIN = 2h žeton); sessionVersion se ne preverja; in-memory rate limiti resetirajo ob restartu
+- Priporočen popravek (vzorec): centralni helper npr. assertLocation(user, resource.locationId) v src/lib/api.ts + filter locationId: user.loc v VSEH findMany (ali Owner/ADMIN bypass) + replace findUnique z findFirst({where:{id, locationId:user.loc}}) za vse lokacijske modele; sync POST naj zahteva permissione enako kot online poti; devices GET ne sme vračati deviceId tokenov; devices POST zahteva staff auth ALI naj draži kode
+- Številke: 57 rout / 95 handlerjev / 47 z Bearer auth / 10 javnih ali device-token / 0 resource→location preverjanj / 3 inline-role rute mimo permissions sistema (settings PUT, inventory POST/PATCH, loyalty POST/PATCH, employees POST, menus, jobs POST, expenses POST, suppliers POST)
+---
+Task ID: 6-a
+Agent: general-purpose
+Task: Location/permission gating na preostalih API routah (issue #4 §1/§10)
+
+Work Log:
+- SCHEMA preverba: relacije za scope brez lastnega locationId — Payment→Check→Order.locationId, StockTransaction→InventoryItem.locationId, RecipeItem→MenuItem→Category→Menu.locationId; AccountsPayable/AuditLog/CashRegisterShift/GuestFeedback/DeliveryZone/InventoryItem/LoyaltyAccount/Employee/Reservation/HaccpEntry imajo locationId; Table/Order/Receipt/Discount.locationId required
+- tables/route.ts: GET findMany + locationScope(user); POST findFirst() fallback → requireUserLocation(user, body?.locationId)
+- tables/[id]/route.ts: PATCH requirePermission('orders.create') (natakrjska akcija) + findUnique → assertResourceLocation → update (404 če miza ne obstaja); DELETE ostaja ADMIN-only + dodan assertResourceLocation
+- tables/[id]/qr/route.ts: GET preklopljen requireAuth → requirePermission('orders.create') + assertResourceLocation PRED mintanjem/razkritjem QR tokena; POST (rotate/toggle) obstoječi permission + assertResourceLocation
+- kitchen/route.ts: GET where + locationScope (Order.locationId); PATCH location-blind update odstranjen — orderItem fetch z include Order.locationId, assertResourceLocation → šele nato update (404 neznana postavka)
+- reservations/route.ts: GET + locationScope; PATCH requireAuth → requirePermission('reservations.manage') + assertResourceLocation; POST lokacija prek requireUserLocation (fallback findFirst odstranjen) + validacija, da body.tableId pripada rezervirani lokaciji (400 če ne)
+- employees/route.ts: GET findMany + locationScope; POST locationId FORSIRAN prek requireUserLocation (body.locationId spoštovan samo pri centralnih)
+- employees/[id]/route.ts: PATCH po fetchu target assertResourceLocation (PIN reset čez lokacije = identiteta theft); GET non-central vidi samo lastno lokacijo (tuja/brez-lokacije = 404, ne razkriva obstoja)
+- reports/financial/route.ts: vsi 4 agregati (order ×2, accountsPayable, orderItem.groupBy prek Order) + locationScope
+- reports/export/route.ts: receipts + accountsPayable direkt locationScope; Payment scope prek { Check: { Order: { locationId } } }; StockTransaction scope prek { InventoryItem: { locationId } } (relacija preverjena v shemi); centralne = globalno
+- audit/route.ts: findMany where (action filter + locationScope merge)
+- locations/stats/route.ts: non-central { id: user.loc || '__no_location__' } (Location model ima id, ne locationId), centralne vse
+- loyalty/route.ts: GET + locationScope; PATCH po fetchu acc assertResourceLocation (nullable locationId = fail-closed 403); POST/PATCH inline role checki puščeni (izven mandata); loyalty/lookup: GET where + locationScope (iskanje gostov samo lastna lokacija)
+- inventory/route.ts: GET + locationScope; PATCH po fetchu item assertResourceLocation
+- recipes/route.ts: GET requireAuth → requirePermission('inventory.manage') + where prek lanca MenuItem→Category→Menu.locationId; POST validacija menuItem lokacije (isti lanec) pred shranjevanjem; DELETE lokacijska preverba pred deleteMany
+- discounts/route.ts: POST locationId = requireUserLocation(user, body?.locationId) — staff ne more več podati tujega body.locationId (cross-location popusti zaprti); GET za non-central ignorira query locationId in forsira user.loc, centralna lahko filtrira
+- delivery/route.ts: GET orders where { type: 'delivery', ...locationScope } + zones query + locationScope; PATCH po fetchu order assertResourceLocation
+- delivery/zones/route.ts: GET + locationScope (DeliveryZone.locationId); POST locationId = requireUserLocation (prej cona sploh ni imela lokacije — globalna cona!); PATCH assertResourceLocation na obstoječi coni
+- dashboard/route.ts: globalni števci (activeOrders, openTables, employees) + topItems groupBy dobijo locationScope; todayOrders/paidToday (že po user.loc) in menuCount (MenuItem nima locationId) nepremenjena
+- haccp/route.ts: GET + locationScope; POST puščen (že user.loc)
+- shifts/route.ts: SAMO GET + locationScope (CashRegisterShift.locationId); POST (open/stop = lastna izmena) nepremenjen
+- guests/feedback/route.ts: GET + locationScope (GuestFeedback.locationId)
+- settings/route.ts: PUT inline ['OWNER','ADMIN','MANAGER'] check → requirePermission('settings.manage')
+- integrations/route.ts: GET za non-central maskira config vrednosti ključev, katerih ime ustreza /(secret|token|key|password)/i → vrednost '••••' + seznam maskedFields (oblika polj ohranjena; route je read-only, zato ni tveganja round-trip korupcije); OWNER/ADMIN vidijo celoten config
+- menus/route.ts: POST inline role check → requirePermission('menu.manage') + requireUserLocation + validacija, da kategorija pripada lokaciji prek lanca do Menu.locationId (MenuItem nima locationId; centralna brez body.locationId ni prisiljena v ujemanje kategorije)
+- menus/[id]/route.ts: PATCH/DELETE inline role checki → requirePermission('menu.manage') + assertResourceLocation prek lanca Category→Menu.locationId (zaprt P0 "menuitems globalni")
+- expenses/route.ts: GET + locationScope (AccountsPayable.locationId); POST findFirst fallback → requireUserLocation
+- monitoring/errors/route.ts: PREVERJENO in puščeno — GET (centralna diagnostika) in POST STA ŽE requireAuth zaščitena; brez sprememb
+- categories/route.ts: preverjeno — obstaja SAMO GET (meni potreben vsem), POST NE obstaja → brez sprememb
+- suppliers/route.ts: puščena (Supplier brez locationId by design)
+
+Stage Summary:
+- 25 datotek urejenih: tables, tables/[id], tables/[id]/qr, kitchen, reservations, employees, employees/[id], reports/financial, reports/export, audit, locations/stats, loyalty, loyalty/lookup, inventory, recipes, discounts, delivery, delivery/zones, dashboard, haccp, shifts, guests/feedback, settings, integrations, menus, menus/[id], expenses (monitoring/errors, categories, suppliers pregledani — namenoma brez sprememb)
+- Ključne odločitve: vsi read scope-i prek locationScope/isCentralRole (centralne vidijo vse — UX nedotaknjen); vsi write-i prek assertResourceLocation/requireUserLocation (fail-closed); models brez locationId scope-ani prek relacij (Payment→Check→Order, StockTransaction→InventoryItem, RecipeItem→MenuItem→Category→Menu); locations/stats filtrira po Location.id; integrations maskiranje ohranja obliko + maskedFields flag; loyalty/rezervacije POST fallbacki na findFirst odstranjeni tam, kjer jih je inventura flagala (reservations, employees, expenses, discounts, delivery zones, tables)
+- TS check (bunx tsc --noEmit): 0 napak v vseh urejenih datotekah. Preostalih 23 napak je PRED mojo sejo in IZVEN mojega obsega: glavni agentove rute (orders, orders/[id], furs, furs/[id], sync, devices, devices/enroll — rateLimitBool import iz @/lib/guest, delivery/webhook), src/lib/ops.ts, UI (dashboard/page.tsx, dashboard-tabs.tsx), examples/ + skills/ (ven iz projekta). Prijava glavnemu agentu za naslednjo sejo.
+- NE poženem build/dev strežnika, ne commitam (po navodilih).
+---
+Task ID: 6-b
+Agent: general-purpose
+Task: Print-agent hardening + GitLab CI + schema drift + unit testi + secrets hygiene (issue #4)
+
+Work Log:
+- Prebrani worklog (inventura 4-a/4-b/4-c) + vsi ciljni fajli (print-agent/index.ts, api.ts, auth.ts, modifiers.ts, rate-limit.ts, billing.ts, map.ts, build-sqlite-mirror.py, package.json, tsconfig, .env, .gitignore)
+- §7 PRINT-AGENT HARDENING (mini-services/print-agent/index.ts — oblike endpointov /health,/print,/text,/layout nespremenjene):
+  - bind PRINT_AGENT_HOST default 127.0.0.1 (prej hardcoded 0.0.0.0); POST /print|/text|/layout zahteva header x-agent-token CE je PRINT_AGENT_TOKEN nastavljen (timing-safe: sha256 obeh strani + crypto.timingSafeEqual); fail-closed: ne-loopback bind brez tokena → process.exit(1) z jasným FATAL errorjem (testirano: 0.0.0.0 in 192.168.1.10 brez tokena = exit 1)
+  - HOST allowlist PRINT_AGENT_ALLOWED_HOSTS (exact/wildcard *.suffix): default = SAMO 10/8, 192.168/16, 172.16-31/12 + *.local; localhost/loopback/IPv6/javni IP samo ce eksplicitno v allowlist; 169.254.0.0/16 (cloud metadata) VEDNO zavrnjen tudi ce eksplicitno; normalizacija (trim/lowercase/trailing dot), 403 {code:'host_not_allowed'}
+  - PORT allowlist PRINT_AGENT_ALLOWED_PORTS default '9100,9101,9102' → 403 {code:'port_not_allowed'}; payload limit 64 KB dekodiranih bajtov (vse print endpointe) → HTTP 413 {code:'payload_too_large'}; timeouti (4s/1.5s/8s) nedotaknjeni
+  - honest reporting: uspeh {ok:true, bytes, host, port, note:'delivered-to-kernel'} (nemogoce dokazati fizicen tisk); TCP napaka ostaja {ok:false, error, code} na HTTP 200; logi: host:port + bytes + ok/error/code + REJECTED vzrok — BREZ vsebine payloada in brez tokena
+  - zraven popsana 2 obstoječi TS napaki v tem fajlu: TS2783 (dup 'text' v emitLine spread → ekspliciten merge z runtime defaulti) + TS2867 ('Bun' → /// <reference types="bun-types"/>); package.json print-agenta brez novih deps
+  - E2E smoke (bun run + curl): health ok; 8.8.8.8/169.254.169.254/localhost → 403 host_not_allowed; port 22 → 403; 65 KB payload → 413; token mode: brez/napačen header 401, pravi header → TCP pot (ECONNREFUSED honest ok:false); explicit allowlist 127.0.0.1,localhost omogoči loopback target
+- §12 GITLAB CI (.gitlab-ci.yml NOVO): image oven/bun:1, stages [verify], job quality-gate (rules: merge_request_event + push main), cache node_modules po hash package.json; script: bun install --frozen-lockfile → bunx tsc --noEmit → bun run lint → bun test → python3 scripts/check-schema-drift.py → bash scripts/check-secrets.sh; build step NAMERNO izpuščen (zahteva DATABASE_URL secret na runnerju — dokumentirano v YAML komentarju z vzorcem)
+- §13 SCHEMA DRIFT (scripts/check-schema-drift.py NOVO): READ-ONLY primerjava seznamov ^model \w+ med prisma/schema.prisma in prisma/schema.sqlite.prisma; razlika → exit 1 z izpisom manjkajočih modelov + namig za regeneracijo; NE poganja build-sqlite-mirror.py v place (ta piše DST direktno — nevarno med vzporednim urejanjem shem); trenutno 110/110 usklajeno, exit 0
+- §15 SECRETS SCAN (scripts/check-secrets.sh NOVO, executable): grep -rlE 'glpat-…|ghp_…|gho_…|sk-…|vcp_…' nad src/ scripts/ mini-services/ .gitlab-ci.yml (*.ts,tsx,py,sh,yml,yaml); najdbe → izpiše SAMO datoteke, exit 1; *.md zgodovina izven scan-a; trenutno 0 najdb, exit 0
+- §11 UNIT TESTI (tests/, bun:test, vse PURE — brez DB klicev; '@/lib/api' import je OK, prisma client lazy):
+  - tests/modifiers.test.ts (9 testov): (a) veljaven → ok + DB cena/ime; (b) modifier tuje skupine → 'Opcija ni na voljo za ta artikel.'; (c) required prazna → 'obvezna'; (d) minSelect premalo; (e) maxSelect prevec; (f) duplicate → 'Podvojena opcija'; (g) neznan → 'Opcija ni več na voljo.'; (h) isAvailable false → isti error; + prazna izbira ok
+  - tests/location-auth.test.ts (9 testov): assertResourceLocation staff A/resource B → 403; A/A → null; staff brez loc → 403; resource brez loc → 403; OWNER/ADMIN → vedno null; locationScope staff → {locationId:'A'}, brez loc → '__no_location__', central → {}; isCentralRole
+  - tests/rate-limit.test.ts (4 testi): burst limit 3 → 4. false; nezavisni ključi; windowMs 30 → po 50ms spet true; bounded: 10_005 unikatnih ključev → najstarejši izrinjen (sveže vedro, remaining=limit-1), najnovejši še sleden (remaining nadaljuje), limiter po poplavi še vedno zavrača
+  - tests/billing.test.ts (11 testov): totalDue = subtotal + tax; fixed manual popust; percent auto (HH) 10% → 1.00; popust ne pod 0 (capped na subtotal); manual+auto seštevek; maxRedeemablePoints = floor(totalDue/pointsValue) in ≥ 0 (pointsValue 0 → 0); discountAmountOf percent/legacy 'percentage'/fixed cap/base 0
+- package.json: dodana SAMO scripts "test": "bun test" in "typecheck": "tsc --noEmit" (ostalo nedotaknjeno)
+- SECRETS HYGIENE: git rm --cached vercel-project-settings.json vercel-env-variables.json (fajla OSTAJATA na disku); .gitignore razširjen (dva vercel snapshot json-a); worklog zgodovina NI urejana
+- VERIFIKACIJA: bun test 33 pass / 0 fail (88 expect); bunx tsc --noEmit → 0 napak v mojih fajlih (22 vrstic preostalih napak je VSE pre-ostalih: examples/, skills/, src/app/api/* (v teku glavnega agenta), ops.ts, dashboard, dashboard-tabs); bun run lint exit 0; oba check skripta exit 0
+
+Stage Summary:
+- ARTEFAKTI: mini-services/print-agent/index.ts (hardened, 2 legacy TS napaki popsani), .gitlab-ci.yml (NOVO), scripts/check-schema-drift.py (NOVO), scripts/check-secrets.sh (NOVO), tests/{modifiers,location-auth,rate-limit,billing}.test.ts (NOVO), package.json (+2 scripts), .gitignore (+2 vnosa), git: vercel-project-settings.json + vercel-env-variables.json untracked (na disku)
+- KLJUČNE ODLOČITVE: print-agent fail-closed LAN (ne-loopback brez tokena ne starta); metadata 169.254/16 vedno zavrnjen ne glede na allowlist; explicit allowlist lahko dovoli loopback/IPv6/javni IP (informed operator override), default pa je strogo LAN; payload limit velja za vse 3 print endpointe (tudi zgrajene ESC/POS); drift check je namerno READ-ONLY (brez regeneracije zrcala); testi brez DB touch-a (location-auth samo instancira PrismaClient)
+- TEST/TS STATUS: bun test 33/33 pass; tsc --noEmit 0 novih napak (ostale so pre-ostale/izven scope-a in jih rešuje glavni agent); lint čist; schema drift 0; secrets scan 0 najdb
+- NE-DOTAKNJENO (po navodilih): src/lib/{api,guest,ops,auth,modifiers,rate-limit}.ts, src/app/api/**, page.tsx, components/**, prisma/schema*.prisma
+
+---
+Task ID: 5-6-main
+Agent: main (Z.ai Code)
+Task: Issue #4 P0/P1 — core hardening (api.ts helperji, modifiers, rate-limit, ops, auth, devices/enroll, orders/furs/sync/devices/display rute, UI vpisne kode) + koordinacija 6-a/6-b
+
+Work Log:
+- preverjena žetona: GitLab ③ deluje (API+git), GitHub PAT 401 (mrtav)
+- remote URL posodobljen na token ③; issues #1-#4 prebrani iz GitLaba
+- §0 inventura: 3 vzporedna Explore agenta (4-a API rute, 4-b core libs, 4-c print-agent/CI/secrets/UI)
+- §1: api.ts + assertResourceLocation/locationScope/requireUserLocation (fail-closed, central OWNER/ADMIN bypass)
+- §5: nov src/lib/modifiers.ts (čista validacija + loadModifierContext); guest.ts resolveGuestItems prenovljen (no-op relacija popravljena, lokacijska vezava); ops.ts createOrderCore validira modifierje iz DB (POS client price odstranjen), tableId location check
+- §6: nov src/lib/rate-limit.ts (bounded 10k + LRU + TTL sweep); guest.ts/delivery delegirajo
+- §2: devices GET maskiran + scoped; POST auth+permission+lokacija; NOV devices/enroll (POST koda + PUT javni claim, 8 števk, 15 min, enkratna, rate-limited, audited); [id] location gate + revoke uniči kodo; prisma +3 polja (mirror regeneriran, db:push)
+- §3: display resolvePosRow location-scoped; pairing koda enkratna (izbris po connectu)
+- §1: orders(+[id]+bill+discount), furs(+[id]) — lokacijski gate; loyalty acc gate; sync = celoten authorization audit (dovoljenja + lokacija + striktna lokacija + GET scope + runtime bugfixi)
+- §15: auth.ts APP_SECRET fail-closed v produkciji; APP_SECRET nastavljen na Vercel (production+preview) PRED deployem
+- §7/§12/§13/§11/§15: agent 6-b (print-agent hardening, .gitlab-ci.yml, drift+secrets check, 33 bun testov, vercel-*.json un-tracked)
+- §1/§10 dolgi rep: agent 6-a (25 rut location/permission gating)
+- UI: page.tsx (aktivacija s kodo), kiosk (koda ALI rodev_), DevicesCard (vpisna koda tok, maskiran seznam)
+- popravljene vse pre-existing TS napake (mapOrder/normalize casti, sync GET polja, deliveryInfo where, dashboard Icon/inputMode/note), tsconfig exclude examples/skills/mini-services/tests
+- verzija 1.31.0; PRODUCTION-HARDENING-REPORT.md (§17)
+
+Stage Summary:
+- tsc 0 napak, lint 0, bun test 33/33, secrets scan 0, schema drift 110/110
+- celoten P0 sklop issue #4 implementiran; P1: CI + drift + testi + integrations masking; ostalo dokumentirano v reportu (D/E)

@@ -1,15 +1,16 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
 import { createOrderCore, OrderError } from '@/lib/ops'
 
 /**
  * Sinhronizacija offline operacij (issue #1: offline/local-first).
+ * Issue #4 §1: offline pot je bila BYPASS cele avtorizacije (samo requireAuth, brez
+ * dovoljenj in brez lokacijskih preverjanj). Zdaj: ENAKA dovoljenja kot online poti
+ * (order.* → orders.create, kitchen.status → kitchen.update) + lokacijski gate na resource.
  * Klient pošlje serijo {clientOperationId, kind, payload}; strežnik vsako opravilo
- * uporabi NATANKO ENKRAT (DeviceSyncOperation @@unique[deviceId, clientOperationId])
- * in vrni rezultat per-op → klient s potrdjenimi počisti lokalno vrsto.
- * Replay istega id-ja → ack brez ponovnega izvajanja (idempotentno).
+ * uporabi NATANKO ENKRAT (DeviceSyncOperation @@unique[deviceId, clientOperationId]).
  */
 interface SyncOp {
   clientOperationId?: string
@@ -24,6 +25,20 @@ export async function POST(req: NextRequest) {
   const deviceId = typeof body?.deviceId === 'string' ? body.deviceId.slice(0, 64) : 'unknown'
   const ops: SyncOp[] = Array.isArray(body?.ops) ? body.ops.slice(0, 200) : []
   if (ops.length === 0) return fail('ops seznam je obvezen.')
+
+  // Issue #4 §1: offline operacije zahtevajo ISTA dovoljenja kot online poti
+  const kinds = new Set(ops.map((o) => String(o.kind || '')))
+  if (kinds.has('order.create') || kinds.has('order.addItems')) {
+    const gate = await requirePermission(req, 'orders.create')
+    if (isResponse(gate)) return gate
+  }
+  if (kinds.has('kitchen.status')) {
+    const gate = await requirePermission(req, 'kitchen.update')
+    if (isResponse(gate)) return gate
+  }
+  if ([...kinds].some((k) => k && !['order.create', 'order.addItems', 'kitchen.status'].includes(k))) {
+    return fail('Neznana vrsta operacije v sync seriji.')
+  }
 
   const results: { clientOperationId: string; ok: boolean; error?: string; orderId?: string; replayed?: boolean }[] = []
 
@@ -45,7 +60,9 @@ export async function POST(req: NextRequest) {
 
       const orderId = await applyOp(user, op)
 
-      const deviceLocation = user.loc || (await db.location.findFirst())?.id || null
+      // Issue #4 §10: brez findFirst() fallbacka
+      if (!user.loc) throw new OrderError('Uporabnik nima dodeljene lokacije — sync zavrnjen.')
+      const deviceLocation = user.loc
       await db.deviceSyncOperation.upsert({
         where: { deviceId_clientOperationId: { deviceId, clientOperationId } },
         create: {
@@ -68,7 +85,7 @@ export async function POST(req: NextRequest) {
       const message = e instanceof OrderError ? e.message : 'Operacija ni uspela.'
       // zapiši neuspel poskus (diagnostika), pri klientu ostane v vrsti
       try {
-        const deviceLocation = user.loc || (await db.location.findFirst())?.id || ''
+        const deviceLocation = user.loc || ''
         await db.deviceSyncOperation.upsert({
           where: { deviceId_clientOperationId: { deviceId, clientOperationId } },
           create: {
@@ -93,12 +110,13 @@ export async function POST(req: NextRequest) {
   return ok({ results })
 }
 
-/** Uporabi eno offline operacijo — ISTA logika kot online poti */
+/** Uporabi eno offline operacijo — ISTA logika + enaka avtorizacija kot online poti */
 async function applyOp(
   user: { sub: string; loc: string | null },
   op: SyncOp
 ): Promise<string | null> {
   const payload = (op.payload || {}) as Record<string, unknown>
+  if (!user.loc) throw new OrderError('Uporabnik nima dodeljene lokacije — operacija zavrnjena.', 403)
 
   switch (op.kind) {
     case 'order.create': {
@@ -122,13 +140,20 @@ async function applyOp(
       }
       const order = await db.order.findUnique({ where: { id: orderId } })
       if (!order) throw new OrderError('Naročilo ne obstaja več.', 404)
+      // Issue #4 §1: lokacijski gate (prej: offline dodajanje artiklov na TUJE naročilo)
+      const addGuard = assertResourceLocation(user as unknown as Parameters<typeof assertResourceLocation>[0], order.locationId)
+      if (addGuard) throw new OrderError('Naročilo ne pripada vaši lokaciji.', 403)
       if (!ORDER_ACTIVE_DB.includes(order.status)) throw new OrderError('Naročilo ni več odprto.', 409)
       const menuItems = await db.menuItem.findMany({
-        where: { id: { in: addItems.map((i) => i.menuItemId) } },
+        where: {
+          id: { in: addItems.map((i) => i.menuItemId) },
+          isAvailable: true,
+          Category: { Menu: { locationId: order.locationId } },
+        },
       })
       const rows = addItems.map((i) => {
         const mi = menuItems.find((m) => m.id === i.menuItemId)
-        if (!mi) throw new OrderError('Artikel ne obstaja.')
+        if (!mi) throw new OrderError('Artikel ne obstaja ali ni na voljo na lokaciji naročila.')
         const qty = Math.max(1, Math.round(Number(i.qty) || 1))
         const price = Number(mi.price)
         const vatRate = Number(mi.vatRate) || 22
@@ -155,7 +180,15 @@ async function applyOp(
       if (!itemId || !['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(status)) {
         throw new OrderError('kitchen.status: manjka itemId ali veljaven status.')
       }
-      const item = await db.orderItem.update({
+      const item = await db.orderItem.findUnique({
+        where: { id: itemId },
+        include: { Order: { select: { locationId: true } } },
+      })
+      if (!item) throw new OrderError('Postavka ne obstaja.', 404)
+      // Issue #4 §1: lokacijski gate (prej: offline sprememba KDS statusa TUJEGA naročila)
+      const ksGuard = assertResourceLocation(user as unknown as Parameters<typeof assertResourceLocation>[0], item.Order?.locationId)
+      if (ksGuard) throw new OrderError('Postavka ne pripada vaši lokaciji.', 403)
+      await db.orderItem.update({
         where: { id: itemId },
         data: { status: itemStatusToDB(status) },
       })
@@ -192,25 +225,26 @@ async function recalcTotals(orderId: string) {
   })
 }
 
-/** GET — zadnje operacije naprave (diagnostika sinhronizacije) */
+/** GET — zadnje operacije naprave (diagnostika sinhronizacije); lokacijsko omejeno */
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
   if (isResponse(user)) return user
   const deviceId = req.nextUrl.searchParams.get('deviceId') || 'unknown'
   const operations = await db.deviceSyncOperation.findMany({
-    where: { deviceId },
-    orderBy: { createdAt: 'desc' },
+    // Issue #4 §10: ne beri sync operacij poljubne naprave/lokacije
+    where: { deviceId, ...locationScope(user) },
+    orderBy: { receivedAt: 'desc' },
     take: 50,
   })
   return ok({
     operations: operations.map((o) => ({
       clientOperationId: o.clientOperationId,
-      kind: o.kind,
+      kind: o.operationType,
       status: o.status,
       orderId: o.orderId,
       lastError: o.lastError,
       retryCount: o.clientRetryCount,
-      createdAt: o.createdAt,
+      createdAt: o.receivedAt,
     })),
   })
 }

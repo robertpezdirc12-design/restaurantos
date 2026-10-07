@@ -1,7 +1,21 @@
 import crypto from 'crypto'
 import { NextRequest } from 'next/server'
 
-const APP_SECRET = process.env.APP_SECRET || 'restaurantos-reconstruction-dev-secret'
+/**
+ * Issue #4 §15 — secret hygiene:
+ * V produkciji (NODE_ENV=production) APP_SECRET MORA biti nastavljen prek env
+ * — hardkodiran dev fallback je bilo DOVOLJENO podpisovati produkcijske žetone
+ * (kdorkoli z repozitorijem je lahko koval žetone). Fail-closed: brez env se
+ * modul ne zažene (Vercel env je nastavljen pred tem deployem).
+ * Lokalni dev sme uporabiti fallback.
+ */
+const isProd = process.env.NODE_ENV === 'production'
+const APP_SECRET = process.env.APP_SECRET || (isProd ? '' : 'restaurantos-reconstruction-dev-secret')
+if (isProd && !APP_SECRET) {
+  throw new Error('APP_SECRET ni nastavljen — produkcija zahteva APP_SECRET env (issue #4 §15).')
+}
+// PIN_LOOKUP_SALT: rotacija bi zaklenila obstoječe PIN-e (scrypt hash je vezan na salt)
+// → rotacija samo z usklajeno ponastavitvijo vseh PIN-ov (glej PRODUCTION-HARDENING-REPORT.md)
 const PIN_LOOKUP_SALT = process.env.PIN_LOOKUP_SALT || 'restaurantos-pin-lookup-v1'
 
 export interface AuthPayload {

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok } from '@/lib/api'
+import { requirePermission, isResponse, ok, locationScope } from '@/lib/api'
 import { jparse } from '@/lib/map'
 
 /**
@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const action = req.nextUrl.searchParams.get('action')
   const entries = await db.auditLog.findMany({
-    where: action ? { action: { contains: action } } : {},
+    // Issue #4 §1: audit je location-scoped — staff ne vidi dogodkov tujih lokacij
+    where: { ...(action ? { action: { contains: action } } : {}), ...locationScope(user) },
     orderBy: { timestamp: 'desc' },
     take: 100,
   })
