@@ -233,3 +233,21 @@ Work Log:
 Stage Summary:
 - Aplikacija zdaj ni samo pregledovalna — polno upravljanje zalog/zvestobe/rezervacij/dobaviteljev + izvoz poročil za računovodstvo
 - Sledi: push + deploy + produkcjska verifikacija
+
+---
+Task ID: 9-deploy
+Agent: Z.ai (main)
+Task: Vercel deploy + produkcjska verifikacija (Task 9-write-ops)
+
+Work Log:
+- Deploy Vercel dpl_9uA62acc5KSS4gyXjywZXuDPzbDJ READY (~40s)
+- Produkcjska verifikacija (info@restaurantos.app / 729153, SAMO pregled — brez sprememb podatkov):
+  * Zaloge: Nov artikel + 26 Prilagodi gumbov (26 realnih artiklov) + Dodaj dobavitelja
+  * Zvestoba: Nov član + Točke gumbovi, realni tierji (silver/bronze)
+  * Rezervacije: prazno stanje ("Ni prihajajočih rezervacij" — pravilno, originalne so pretekle); akcije potrjene lokalno
+  * CSV gumbi: Izvozi poročilo ✓, Izvozi stroške ✓, Izvozi račune ✓
+- 0 napak, mobilni viewport brez prelivanja
+
+Stage Summary:
+- Polno upravljanje (CRUD) + izvozi na produkciji; GitLab main = reconstruction @ a47f139
+- Produkcija dpl_9uA62acc5KSS4gyXjywZXuDPzbDJ
