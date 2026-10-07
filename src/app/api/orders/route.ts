@@ -1,17 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
-import {
-  mapOrder, mapOrderItem, orderTypeToDB, orderStatusToUI,
-  nid, num, r2, ORDER_ACTIVE_DB,
-} from '@/lib/map'
-
-const orderInclude = {
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
-  Table: true,
-  Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
-  Receipt: { orderBy: { createdAt: 'desc' as const } },
-} as const
+import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
+import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 
 /** Normalizacija produkcijske vrstice -> mapper pričakovana oblika */
 function normalize(o: Record<string, unknown>) {
@@ -40,72 +31,27 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requirePermission(req, 'orders.create')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body?.items || !Array.isArray(body.items) || body.items.length === 0) {
     return fail('Naročilo mora vsebovati vsaj en artikel.')
   }
-  const menuItemIds = body.items.map((i: { menuItemId: string }) => i.menuItemId)
-  const menuItems = await db.menuItem.findMany({
-    where: { id: { in: menuItemIds } },
-    include: { PrepStation: true },
-  })
-  if (menuItems.length === 0) return fail('Artikli ne obstajajo.')
-
-  let subtotal = 0
-  let tax = 0
-  const itemRows = body.items.map((i: { menuItemId: string; qty?: number; note?: string }) => {
-    const mi = menuItems.find((m) => m.id === i.menuItemId)
-    if (!mi) throw new Error('Artikel ne obstaja')
-    const qty = Math.max(1, Math.round(Number(i.qty) || 1))
-    const price = num(mi.price)
-    const vatRate = num(mi.vatRate, 22)
-    const line = price * qty
-    const vat = (line * vatRate) / 100
-    subtotal += line
-    tax += vat
-    return {
-      id: nid(),
-      menuItemId: mi.id,
-      quantity: qty,
-      price,
-      vatRate,
-      vatAmount: vat,
-      menuItemName: mi.name,
-      status: 'pending' as const,
-      notes: i.note || '',
-      modifiersJson: '[]',
-    }
-  })
-
-  const locationId = user.loc || (await db.location.findFirst())?.id
-  if (!locationId) return fail('Ni lokacije. Najprej ustvari lokacijo.', 400)
-  const maxNumber = await db.order.aggregate({ where: { locationId }, _max: { orderNumber: true } })
-  const orderNumber = (maxNumber._max.orderNumber || 0) + 1
-
-  const order = await db.order.create({
-    data: {
-      id: nid(),
-      orderNumber,
-      locationId,
-      tableId: body.tableId || null,
+  try {
+    const locationId = user.loc || (await db.location.findFirst())?.id || null
+    const { order, replayed } = await createOrderCore({
       employeeId: user.sub,
-      type: orderTypeToDB(body.type || 'DINE_IN'),
-      status: 'open',
-      paymentStatus: 'unpaid',
-      notes: body.note || '',
-      subtotal: r2(subtotal),
-      tax: r2(tax),
-      total: r2(subtotal + tax),
-      splitCount: Number(body.guests) || 1,
-      OrderItem: { create: itemRows },
-    },
-    include: orderInclude,
-  })
-
-  if (order.tableId) {
-    await db.table.update({ where: { id: order.tableId }, data: { status: 'occupied' } })
+      locationId,
+      items: body.items,
+      tableId: body.tableId || null,
+      type: body.type || 'DINE_IN',
+      note: body.note,
+      guests: body.guests,
+      clientOperationId: body.clientOperationId || body.idempotencyKey || null,
+    })
+    return ok({ order, replayed }, replayed ? 200 : 201)
+  } catch (e) {
+    if (e instanceof OrderError) return fail(e.message, e.status)
+    return fail('Naročila ni bilo mogoče ustvariti.', 500)
   }
-  return ok({ order: mapOrder(normalize(order)) }, 201)
 }

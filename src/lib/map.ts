@@ -42,13 +42,15 @@ export function jstr(v: unknown): string {
   return JSON.stringify(v ?? null)
 }
 
-/* ─────────────── Vloge (DB: admin|manager|staff|chef|kitchen ↔ UI: ADMIN|MANAGER|WAITER|KITCHEN) ─────────────── */
+/* ───── Vloge (DB: admin|manager|staff|waiter|bar|chef|kitchen ↔ UI: ADMIN|MANAGER|WAITER|BAR|KITCHEN) ───── */
 
 const ROLE_TO_UI: Record<string, string> = {
-  admin: 'ADMIN', manager: 'MANAGER', staff: 'WAITER', chef: 'KITCHEN', kitchen: 'KITCHEN',
+  admin: 'ADMIN', manager: 'MANAGER', staff: 'WAITER', waiter: 'WAITER',
+  bar: 'BAR', chef: 'KITCHEN', kitchen: 'KITCHEN',
 }
 const ROLE_TO_DB: Record<string, string> = {
-  ADMIN: 'admin', MANAGER: 'manager', WAITER: 'staff', KITCHEN: 'kitchen', KIOSK: 'staff',
+  ADMIN: 'admin', MANAGER: 'manager', WAITER: 'waiter', BAR: 'bar',
+  KITCHEN: 'kitchen', KIOSK: 'staff',
 }
 
 export function roleToUI(role: string): string {

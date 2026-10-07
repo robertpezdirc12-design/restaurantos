@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
 import { num } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requirePermission(req, 'reports.view')
   if (isResponse(user)) return user
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)

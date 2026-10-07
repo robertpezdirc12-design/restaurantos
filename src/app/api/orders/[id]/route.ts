@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, forbidden } from '@/lib/api'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB } from '@/lib/map'
 
 const orderInclude = {
@@ -40,10 +40,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
   const { id } = await params
   const body = await req.json().catch(() => null)
+
+  // Granularne pravice (issue #1) — glede na vrsto spremembe:
+  if (Array.isArray(body?.addItems) && body.addItems.length > 0) {
+    const gate = await requirePermission(req, 'orders.create')
+    if (isResponse(gate)) return gate
+  } else if (body?.status) {
+    if (body.status === 'PAID' || body.status === 'CANCELLED') {
+      // plačilo/veljavnost mimo plačilnega poteka = samo vodstvo
+      if (user.role !== 'ADMIN' && user.role !== 'MANAGER') return forbidden()
+    } else {
+      const gate = await requirePermission(req, 'kitchen.update')
+      if (isResponse(gate)) return gate
+    }
+  }
 
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: true } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
@@ -104,8 +118,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = requireAuth(req)
+  const user = await requireAuth(req)
   if (isResponse(user)) return user
+  // storno naročila = samo vodstvo (issue #1: pravice na kritičnih operacijah)
+  if (user.role !== 'ADMIN' && user.role !== 'MANAGER') return forbidden()
   const { id } = await params
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)

@@ -1,0 +1,10 @@
+{
+  "name": "print-agent",
+  "version": "0.1.0",
+  "description": "ESC/POS network printer agent — bridges HTTP print jobs to raw TCP:9100 thermal printers (RestaurantOS)",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts"
+  }
+}

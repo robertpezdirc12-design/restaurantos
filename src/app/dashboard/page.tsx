@@ -23,12 +23,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
-  ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer,
+  ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer, Wifi, WifiOff, CloudUpload,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { downloadCSV } from '@/lib/client'
 import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
+import {
+  enqueueOp, flushQueue, getQueue, isNetworkError, newOperationId, subscribeQueue,
+  type QueuedOp,
+} from '@/lib/offline-queue'
+import {
+  printLines, buildKitchenTicketLines, getPrintConfig, savePrintConfig,
+  type PrintConfig, type PrintLine, type PrintTarget,
+} from '@/lib/devices/print'
+import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
+import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
   InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
@@ -40,11 +50,12 @@ interface LocationStatT { id: string; name: string; tables: number; employees: n
 interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
 interface WebhookT { id: string; name: string; url: string; events: string[]; isActive: boolean; lastTriggered?: string | null; failureCount: number }
 interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
+interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null }
-interface OrderT { id: string; type: string; status: string; guests: number; total: number; createdAt: string; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[] }
+interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; permissionOverrides: string[] }
@@ -67,21 +78,9 @@ const statusLabels: Record<string, string> = {
   PENDING: 'V vrsti', PREPARING: 'V pripravi', READY: 'Pripravljeno',
 }
 
-/* EMPLOYEE CONTROL CENTER (R265) — kanonska dovoljenja (R263/R264) */
-const PERMISSION_LABELS: Record<string, string> = {
-  'orders.create': 'Nove naročila',
-  'orders.pay': 'Plačila + računi',
-  'kitchen.update': 'Kuhinja — status postavk',
-  'reservations.manage': 'Rezervacije',
-  'menu.manage': 'Urejanje menija',
-  'inventory.manage': 'Zaloge',
-  'reports.view': 'Poročila',
-  'employees.manage': 'Upravljanje zaposlenih',
-  'settings.manage': 'Nastavitve',
-  'furs.issue': 'Izdaja FURS računov',
-}
+/* EMPLOYEE CONTROL CENTER (R265) — kanonska dovoljenja sedaj v src/lib/permissions.ts */
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', KITCHEN: 'Kuhinja',
+  ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', BAR: 'Bar', KITCHEN: 'Kuhinja',
 }
 const RES_STATUS_LABELS: Record<string, string> = {
   CONFIRMED: 'Potrjena', SEATED: 'Gost prišel', COMPLETED: 'Zaključena', CANCELLED: 'Preklicana', NO_SHOW: 'Ni prišel',
@@ -113,6 +112,7 @@ export default function DashboardPage() {
   const [integrations, setIntegrations] = useState<IntegrationT[]>([])
   const [webhooks, setWebhooks] = useState<WebhookT[]>([])
   const [errLog, setErrLog] = useState<ErrLogT[]>([])
+  const [auditLog, setAuditLog] = useState<AuditT[]>([])
   const [settings, setSettings] = useState<SettingsT | null>(null)
   const [devices, setDevices] = useState<DeviceT[]>([])
   const [newOrderTable, setNewOrderTable] = useState<TableT | null>(null)
@@ -126,6 +126,15 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('pregled')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
+
+  // Offline/local-first + pravice (issue #1)
+  const [perms, setPerms] = useState<string[]>([])
+  const [online, setOnline] = useState(true)
+  const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'mobile'>('cash')
+  const [pcfg, setPcfg] = useState<PrintConfig>({ target: 'browser', host: '192.168.1.100', port: 9100 })
+  const [termMode, setTermMode] = useState<TerminalMode>('none')
 
   // Employee Control Center stanje
   const [editEmployee, setEditEmployee] = useState<EmployeeT | null>(null)
@@ -149,67 +158,144 @@ export default function DashboardPage() {
   const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string } | null>(null)
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  // UI gating po dovoljenjih (backend uveljavlja neodvisno) — admin/manager vedno vse;
+  // pred nalaganjem dovoljenj pokaži vse (permisivno, da ne utripa)
+  const hasPerm = (p?: string) => !p || canManage || perms.length === 0 || perms.includes(p)
+  const canRes = canManage || perms.includes('reservations.manage')
 
   const load = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv] = await Promise.all([
-        api<{ stats: Stats }>('/api/dashboard'),
-        api<{ tables: TableT[] }>('/api/tables'),
-        api<{ orders: OrderT[] }>('/api/orders'),
-        api<{ queue: OrderT[] }>('/api/kitchen'),
-        api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus'),
-        api<{ employees: EmployeeT[] }>('/api/employees'),
-        api<{ reservations: ReservationT[] }>('/api/reservations'),
-        api<{ receipts: ReceiptT[] }>('/api/furs'),
-        api<{ inventory: InventoryT[] }>('/api/inventory'),
-        api<{ shifts: ShiftT[] }>('/api/shifts'),
-        api<FinancialT>('/api/reports/financial'),
-        api<{ haccpChecks: HaccpT[] }>('/api/haccp'),
-        api<{ expenses: ExpenseT[] }>('/api/expenses'),
-        api<{ accounts: LoyaltyT[] }>('/api/loyalty'),
-        api<{ suppliers: SupplierT[] }>('/api/suppliers'),
-        api<{ recipes: RecipeT[] }>('/api/recipes'),
-        api<{ jobContexts: JobT[] }>('/api/jobs'),
-        api<{ feedback: FeedbackT[] }>('/api/guests/feedback'),
-        api<{ stats: LocationStatT[] }>('/api/locations/stats'),
-        api<{ integrations: IntegrationT[] }>('/api/integrations'),
-        api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks'),
-        api<{ errors: ErrLogT[] }>('/api/monitoring/errors'),
-        api<{ settings: Record<string, unknown> | null }>('/api/settings'),
-        api<{ devices: DeviceT[] }>('/api/devices'),
+      // sveža dovoljenja (spremembe pravic/uveljavitve delujejo takoj — issue #1)
+      try {
+        const me = await api<{ employee: { permissions?: string[] } }>('/api/auth/me')
+        if (me.employee?.permissions) setPerms(me.employee.permissions)
+      } catch { /* ne blokiraj nalaganja */ }
+      // posamezne napake ne smejo pobrisati celotnega stanja (stabilnost)
+      const soft = async <T,>(p: Promise<T>): Promise<T | undefined> => {
+        try { return await p } catch (e) { if ((e as Error).message === 'unauthorized') throw e; return undefined }
+      }
+      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au] = await Promise.all([
+        soft(api<{ stats: Stats }>('/api/dashboard')),
+        soft(api<{ tables: TableT[] }>('/api/tables')),
+        soft(api<{ orders: OrderT[] }>('/api/orders')),
+        soft(api<{ queue: OrderT[] }>('/api/kitchen')),
+        soft(api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus')),
+        soft(api<{ employees: EmployeeT[] }>('/api/employees')),
+        soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
+        soft(api<{ receipts: ReceiptT[] }>('/api/furs')),
+        soft(api<{ inventory: InventoryT[] }>('/api/inventory')),
+        soft(api<{ shifts: ShiftT[] }>('/api/shifts')),
+        soft(api<FinancialT>('/api/reports/financial')),
+        soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')),
+        soft(api<{ expenses: ExpenseT[] }>('/api/expenses')),
+        soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')),
+        soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')),
+        soft(api<{ recipes: RecipeT[] }>('/api/recipes')),
+        soft(api<{ jobContexts: JobT[] }>('/api/jobs')),
+        soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')),
+        soft(api<{ stats: LocationStatT[] }>('/api/locations/stats')),
+        soft(api<{ integrations: IntegrationT[] }>('/api/integrations')),
+        soft(api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks')),
+        soft(api<{ errors: ErrLogT[] }>('/api/monitoring/errors')),
+        soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')),
+        soft(api<{ devices: DeviceT[] }>('/api/devices')),
+        soft(api<{ entries: AuditT[] }>('/api/audit')),
       ])
-      setStats(d.stats); setTables(t.tables); setOrders(o.orders)
-      setKitchen(k.queue); setMenu(m.items); setCategories(m.categories); setEmployees(e.employees)
-      setReservations(r.reservations); setReceipts(rec.receipts)
-      setInventory(inv.inventory); setShifts(sh.shifts); setFinancial(fin)
-      setHaccp(haccpRows.haccpChecks); setExpenses(ex.expenses); setLoyalty(loy.accounts)
-      setSuppliers(sup.suppliers); setRecipes(recp.recipes); setJobs(jb.jobContexts); setFeedback(fb.feedback)
-      setLocStats(ls.stats); setIntegrations(ig.integrations); setWebhooks(wb.webhookEndpoints); setErrLog(el.errors)
-      const s = se.settings
-      const num = (v: unknown, def: number) => { const x = Number(v); return Number.isFinite(x) ? x : def }
-      const str = (v: unknown) => (v === null || v === undefined ? '' : String(v))
-      setSettings(s ? {
-        name: str(s.name), address: str(s.address), city: str(s.city), postCode: str(s.postCode),
-        phone: str(s.phone), email: str(s.email), web: str(s.web), businessId: str(s.businessId),
-        taxId: str(s.taxId), registerNumber: str(s.registerNumber), fursEnvironment: str(s.fursEnvironment) || 'test',
-        defaultVatRate: String(num(s.defaultVatRate, 22)), reducedVatRate: String(num(s.reducedVatRate, 9.5)),
-        loyaltyEnabled: !!s.loyaltyEnabled, receiptFooter: str(s.receiptFooter), currency: str(s.currency) || 'EUR',
-        locale: str(s.locale) || 'sl-SI', country: str(s.country) || 'SI', emailEnabled: !!s.emailEnabled,
-      } : null)
-      setDevices(dv.devices)
+      if (d) setStats(d.stats)
+      if (t) setTables(t.tables)
+      if (o) setOrders(o.orders)
+      if (k) setKitchen(k.queue)
+      if (m) { setMenu(m.items); setCategories(m.categories) }
+      if (e) setEmployees(e.employees)
+      if (r) setReservations(r.reservations)
+      if (rec) setReceipts(rec.receipts)
+      if (inv) setInventory(inv.inventory)
+      if (sh) setShifts(sh.shifts)
+      if (fin) setFinancial(fin)
+      if (haccpRows) setHaccp(haccpRows.haccpChecks)
+      if (ex) setExpenses(ex.expenses)
+      if (loy) setLoyalty(loy.accounts)
+      if (sup) setSuppliers(sup.suppliers)
+      if (recp) setRecipes(recp.recipes)
+      if (jb) setJobs(jb.jobContexts)
+      if (fb) setFeedback(fb.feedback)
+      if (ls) setLocStats(ls.stats)
+      if (ig) setIntegrations(ig.integrations)
+      if (wb) setWebhooks(wb.webhookEndpoints)
+      if (el) setErrLog(el.errors)
+      if (se) {
+        const s = se.settings
+        const num = (v: unknown, def: number) => { const x = Number(v); return Number.isFinite(x) ? x : def }
+        const str = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+        setSettings(s ? {
+          name: str(s.name), address: str(s.address), city: str(s.city), postCode: str(s.postCode),
+          phone: str(s.phone), email: str(s.email), web: str(s.web), businessId: str(s.businessId),
+          taxId: str(s.taxId), registerNumber: str(s.registerNumber), fursEnvironment: str(s.fursEnvironment) || 'test',
+          defaultVatRate: String(num(s.defaultVatRate, 22)), reducedVatRate: String(num(s.reducedVatRate, 9.5)),
+          loyaltyEnabled: !!s.loyaltyEnabled, receiptFooter: str(s.receiptFooter), currency: str(s.currency) || 'EUR',
+          locale: str(s.locale) || 'sl-SI', country: str(s.country) || 'SI', emailEnabled: !!s.emailEnabled,
+        } : null)
+      }
+      if (dv) setDevices(dv.devices)
+      if (au) setAuditLog(au.entries)
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
   useEffect(() => {
     load()
     setBootstrapLogin(localStorage.getItem('ro_bootstrap') === '1')
+    setPcfg(getPrintConfig())
+    setTermMode(getTerminalConfig().mode)
     const iv = setInterval(load, 15000)
     return () => clearInterval(iv)
   }, [load])
 
+  // online/offline status + offline vrsta (issue #1)
+  useEffect(() => {
+    setOnline(navigator.onLine)
+    const on = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    const unsub = subscribeQueue(setQueueOps)
+    setQueueOps(getQueue())
+    return () => {
+      window.removeEventListener('online', on)
+      window.removeEventListener('offline', off)
+      unsub()
+    }
+  }, [])
+
+  const doSync = useCallback(async () => {
+    setSyncing((busy) => {
+      if (busy) return busy
+      void (async () => {
+        try {
+          const res = await flushQueue()
+          if (res.flushed > 0 || res.failed > 0) await load()
+        } catch { /* vrsta ostane ohranjena */ } finally { setSyncing(false) }
+      })()
+      return true
+    })
+  }, [load])
+
+  // flush ob povratku povezave IN ob zagonu (recovery po refresh/crash)
+  useEffect(() => {
+    if (online) void doSync()
+  }, [online, doSync])
+
+  /** Odjava NE SME izgubiti offline vrste in konfiguracije naprave (issue #1) */
   function logout() {
-    localStorage.clear(); router.push('/')
+    const preserve: [string, string | null][] = [
+      ['ro_offline_queue', localStorage.getItem('ro_offline_queue')],
+      ['ro_device_id', localStorage.getItem('ro_device_id')],
+      ['ro_print_config', localStorage.getItem('ro_print_config')],
+      ['ro_terminal_config', localStorage.getItem('ro_terminal_config')],
+    ]
+    localStorage.clear()
+    for (const [k, v] of preserve) if (v !== null) localStorage.setItem(k, v)
+    router.push('/')
   }
 
   async function createOrder() {
@@ -218,34 +304,111 @@ export default function DashboardPage() {
     try {
       const items = Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
       if (items.length === 0) return
-      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2 }) })
+      // idempotencija: isti clientOperationId ob replayu ne ustvari dvojnega naročila
+      const clientOperationId = newOperationId()
+      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2, clientOperationId }) })
       setCart({}); setNewOrderTable(null); await load()
-    } catch (err) { alert((err as Error).message) } finally { setSending(false) }
+    } catch (err) {
+      if (isNetworkError(err)) {
+        // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
+        enqueueOp('order.create', { tableId: newOrderTable.id, items: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), guests: 2, note: '' })
+        setCart({}); setNewOrderTable(null)
+        alert('Brez povezave — naročilo je shranjeno lokalno in se bo samodejno sinhroniziralo.')
+      } else {
+        alert((err as Error).message)
+      }
+    } finally { setSending(false) }
   }
 
   async function setItemStatus(itemId: string, status: string) {
-    await api('/api/kitchen', { method: 'PATCH', body: JSON.stringify({ itemId, status }) })
-    await load()
+    try {
+      await api('/api/kitchen', { method: 'PATCH', body: JSON.stringify({ itemId, status }) })
+      await load()
+    } catch (err) {
+      if (isNetworkError(err)) {
+        enqueueOp('kitchen.status', { itemId, status })
+        alert('Brez povezave — sprememba statusa je v vrsti za sinhronizacijo.')
+      } else {
+        alert((err as Error).message)
+      }
+    }
   }
 
   async function payOrder() {
     if (!payingOrder) return
     setSending(true)
     try {
-      const d = await api<{ invoice: { eor: string; invoiceNumber: string } }>('/api/furs', { method: 'POST', body: JSON.stringify({ orderId: payingOrder.id }) })
+      // terminal (issue #1): kartica/mobilno zahtevata odobritev pred zapisom
+      let terminal: { approvalCode: string } | undefined
+      if (payMethod !== 'cash') {
+        const t = await processTerminalPayment(payingOrder.total)
+        if (!t.approved) {
+          alert(t.error || 'Plačilo na terminalu ni bilo odobreno.')
+          return
+        }
+        terminal = { approvalCode: t.approvalCode as string }
+      }
+      const d = await api<{ invoice: { eor: string; invoiceNumber: string; id?: string } }>('/api/furs', { method: 'POST', body: JSON.stringify({ orderId: payingOrder.id, type: payMethod, clientOperationId: newOperationId(), terminal }) })
       setInvoice(d.invoice); await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
 
-  /** Natisljivi FURS račun: pridobi podrobnosti in odpri tiskalniški prikaz (80 mm stil) */
+  /** Natisljivi FURS račun — prek konfiguriranega cilja (brskalnik / agent ESC-POS / simulator) */
   async function printInvoice(id: string) {
     setPrinting(true)
     try {
       const d = await api<{ receipt: ReceiptDetailT }>(`/api/furs/${id}`)
-      if (!printReceipt(d.receipt, settings?.receiptFooter)) {
-        alert('Brskalnik je zavrzel pojavno okno — dovoli pojavna okna za tiskanje računov.')
+      const r = d.receipt
+      const cfg = getPrintConfig()
+      if (cfg.target === 'browser') {
+        if (!printReceipt(r, settings?.receiptFooter)) {
+          alert('Brskalnik je zavrzel pojavno okno — dovoli pojavna okna za tiskanje računov.')
+        }
+        return
       }
+      const money = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
+      const lines: PrintLine[] = [
+        { text: r.businessAddress || '' },
+        ...(r.taxId ? [{ text: `ID za DDV: ${r.taxId}` } as PrintLine] : []),
+        { text: '· · · · · · · · · · · · · · · · · ·' },
+        ...(r.tableName ? [{ text: `Miza: ${r.tableName}` } as PrintLine] : []),
+        { text: '--------------------------------' },
+        ...r.items.map((it) => ({ text: `${it.qty}x ${it.name}` } as PrintLine)),
+        ...r.items.map((it) => ({ text: `   ${money(it.amount)}`, align: 'right' } as PrintLine)),
+        { text: '--------------------------------' },
+        { text: `DDV: ${money(r.totalVat)}`, align: 'right' },
+        { text: `SKUPAJ: ${money(r.total)}`, align: 'right', bold: true, size: 'large' },
+        { text: `Plačilo: ${r.paymentMethod.toUpperCase()}` },
+        ...(r.zoi ? [{ text: `ZOI: ${r.zoi}` } as PrintLine] : []),
+        ...(r.eor ? [{ text: `EOR: ${r.eor}` } as PrintLine] : []),
+        { text: r.fiscalVerified ? 'FURS: fiskalizirano' : `FURS: ${r.fiscalStatus}` },
+        ...(settings?.receiptFooter ? [{ text: settings.receiptFooter, align: 'center' } as PrintLine] : []),
+      ]
+      const res = await printLines(`Racun ${r.invoiceNumber}`, lines)
+      if (!res.ok) alert(`Tisk ni uspel: ${res.error}`)
+      else if (res.simulated) alert('SIMULACIJA tiska — vrstice so pripravljene (vidne v konzoli brskalnika).')
     } catch (err) { alert(`Napaka pri pripravi računa: ${(err as Error).message}`) } finally { setPrinting(false) }
+  }
+
+  /** Miza za pospravit → znova na voljo (issue #1: e2e zaključek) */
+  async function markClean(t: TableT) {
+    try {
+      await api(`/api/tables/${t.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'FREE' }) })
+      await load()
+    } catch (err) { alert((err as Error).message) }
+  }
+
+  /** Kuhinjski/bar list prek naprave (issue #1: kuhinjski tisk) */
+  async function printKitchenTicket(o: OrderT, station: 'KITCHEN' | 'BAR') {
+    const res = await printLines(`Narocilo #${o.orderNumber ?? '?'}`, buildKitchenTicketLines({
+      orderNumber: o.orderNumber ?? undefined,
+      tableName: o.table?.name || null,
+      type: o.type,
+      employeeName: o.employee?.name || null,
+      items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station })),
+    }, station))
+    if (!res.ok) alert(`Tisk ni uspel: ${res.error}`)
+    else if (res.simulated) alert(`SIMULACIJA ${station === 'BAR' ? 'bar' : 'kuhinjskega'} lista — vsebina v konzoli.`)
   }
 
   async function toggleAvailable(m: MenuT) {
@@ -318,6 +481,15 @@ export default function DashboardPage() {
     .filter((r) => new Date(r.reservedAt).getTime() >= Date.now() - 36e5 && r.status !== 'CANCELLED')
     .sort((a, b) => +new Date(a.reservedAt) - +new Date(b.reservedAt))
 
+  /** Tab → zahtevano dovoljenje (issue #1, naloga 3) */
+  const TAB_PERM: Record<string, string> = {
+    mize: 'orders.create', narocila: 'orders.create', kuhinja: 'kitchen.update',
+    meni: 'menu.manage', rezervacije: 'reservations.manage', racuni: 'reports.view',
+    zaloge: 'inventory.manage', izmene: 'orders.pay', haccp: 'settings.manage',
+    stroski: 'reports.view', zvestoba: 'reports.view', mnenja: 'reservations.manage',
+    zaposleni: 'employees.manage', nastavitve: 'settings.manage',
+  }
+
   return (
     <main className="min-h-screen flex flex-col bg-stone-100">
       <header className="sticky top-0 z-20 bg-white border-b border-stone-200 shadow-sm">
@@ -330,6 +502,33 @@ export default function DashboardPage() {
             <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.26.0</Badge>
           </div>
           <div className="flex items-center gap-2">
+            {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
+            <button
+              type="button"
+              onClick={() => void doSync()}
+              title="Sinhronizacija offline sprememb — klikni za ročni poskus"
+              aria-live="polite"
+              className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                !online
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : syncing
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : queueOps.length > 0
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {syncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : !online ? (
+                <WifiOff className="w-3.5 h-3.5" />
+              ) : queueOps.length > 0 ? (
+                <CloudUpload className="w-3.5 h-3.5" />
+              ) : (
+                <Wifi className="w-3.5 h-3.5" />
+              )}
+              <span>{!online ? `Offline${queueOps.length ? ` · ${queueOps.length}` : ''}` : syncing ? 'Sinhroniziram…' : queueOps.length > 0 ? `${queueOps.length} v vrsti` : 'Online'}</span>
+            </button>
             <ThemeToggle />
             <PaletteButton onClick={() => setPaletteOpen(true)} />
             <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label="Ukazi">
@@ -347,15 +546,18 @@ export default function DashboardPage() {
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="w-full justify-start overflow-x-auto h-auto flex-nowrap bg-white border border-stone-200 p-1">
-            {[
+            {([
               ['pregled', 'Pregled', LayoutDashboard], ['mize', 'Mize', Utensils], ['narocila', 'Naročila', ClipboardList],
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
               ['mnenja', 'Mnenja', Star], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
-            ].map(([v, label, Icon]) => (
-              <TabsTrigger key={v as string} value={v as string} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
-                {Icon && <Icon className="w-4 h-4" />} {label as string}
+            ] as [string, string, typeof LayoutDashboard | null][])
+              // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
+              .filter(([v]) => hasPerm(TAB_PERM[v]))
+              .map(([v, label, Icon]) => (
+              <TabsTrigger key={v} value={v} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
+                {Icon && <Icon className="w-4 h-4" />} {label}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -405,13 +607,17 @@ export default function DashboardPage() {
                     {zt.map((t) => (
                       <button
                         key={t.id}
-                        onClick={() => { if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) setPayingOrder(o) } }}
+                        onClick={() => {
+                          // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
+                          if (t.status === 'DIRTY' && !t.activeOrder) { void markClean(t); return }
+                          if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) setPayingOrder(o) }
+                        }}
                         className={`rounded-xl p-4 text-left shadow transition ${statusColors[t.status]} min-h-20`}
                       >
                         <p className="font-bold text-lg">{t.name}</p>
                         <p className="text-xs opacity-90">{t.seats} mest</p>
                         {t.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(t.activeOrder.total)}</p>}
-                        <p className="text-[11px] mt-1 opacity-80">{t.activeOrder ? statusLabels.OCCUPIED : statusLabels[t.status]}</p>
+                        <p className="text-[11px] mt-1 opacity-80">{t.activeOrder ? statusLabels.OCCUPIED : t.status === 'DIRTY' ? 'Klikni — očisti' : statusLabels[t.status]}</p>
                       </button>
                     ))}
                   </div>
@@ -452,8 +658,16 @@ export default function DashboardPage() {
             {kitchen.map((o) => (
               <Card key={o.id}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">{new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
+                  <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                    {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
+                    <span className="ml-auto flex gap-1.5">
+                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title="Natisni kuhinjski list (ESC/POS agent ali simulator)">
+                        <Printer className="w-3 h-3" /> Kuhinjski list
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title="Natisni bar list">
+                        <Printer className="w-3 h-3" /> Bar list
+                      </Button>
+                    </span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -495,7 +709,7 @@ export default function DashboardPage() {
           <TabsContent value="rezervacije" className="space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-semibold text-stone-700">Prihajajoče rezervacije</h2>
-              {canManage && (
+              {canRes && (
                 <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '' })}>
                   <Plus className="w-3.5 h-3.5" /> Nova rezervacija
                 </Button>
@@ -514,7 +728,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Badge variant="outline">{RES_STATUS_LABELS[r.status] || r.status}</Badge>
-                        {canManage && (
+                        {canRes && (
                           <>
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>Prišel</Button>
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>Prekliči</Button>
@@ -661,6 +875,62 @@ export default function DashboardPage() {
           <TabsContent value="nastavitve" className="space-y-4">
             <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
             <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} />
+            {/* Naprave te naprave (issue #1, naloga 2) — tiskalnik + plačilni terminal */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Printer className="w-4 h-4" /> Tiskalnik in terminal — ta naprava</CardTitle></CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <p className="text-xs text-stone-500">Konfiguracija je vezana na to napravo (localStorage). Cilj “Lokalni agent” pošilja ESC/POS (CP852 — č/š/ž) prek print-agent strežnika na omrežni tiskalnik (TCP 9100).</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label>Cilj tiskanja</Label>
+                    <Select value={pcfg.target} onValueChange={(v) => setPcfg((c) => ({ ...c, target: v as PrintTarget }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="browser">Brskalnik (okno/PDF)</SelectItem>
+                        <SelectItem value="agent">Lokalni agent (ESC/POS)</SelectItem>
+                        <SelectItem value="simulator">Simulator (brez naprave)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tiskalnik — IP gostitelj</Label>
+                    <Input value={pcfg.host} onChange={(e) => setPcfg((c) => ({ ...c, host: e.target.value }))} placeholder="npr. 192.168.1.100" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tiskalnik — vrata</Label>
+                    <Input inputMode="numeric" value={String(pcfg.port)} onChange={(e) => setPcfg((c) => ({ ...c, port: Number(e.target.value.replace(/\D/g, '')) || 9100 }))} />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Plačilni terminal</Label>
+                    <Select value={termMode} onValueChange={(v) => setTermMode(v as TerminalMode)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Brez terminala</SelectItem>
+                        <SelectItem value="simulator">Simulator (avtomatska odobritev)</SelectItem>
+                        <SelectItem value="manual">Ročno (koda odobritve s terminala)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { savePrintConfig(pcfg); saveTerminalConfig({ mode: termMode }); alert('Konfiguracija naprave shranjena ✓') }}>Shrani</Button>
+                    <Button size="sm" variant="outline" className="gap-1" onClick={async () => {
+                      const res = await printLines('Testni tisk', [
+                        { text: 'RestavrantOS — test tiskalnika' },
+                        { text: 'Č Š Ž č š ž — CP852 preverjanje', bold: true },
+                        { text: new Date().toLocaleString('sl-SI') },
+                      ])
+                      if (!res.ok) alert(`Tisk ni uspel: ${res.error}`)
+                      else if (res.simulated) alert('SIMULACIJA — testne vrstice v konzoli.')
+                      else alert('Poslano na tiskalnik ✓')
+                    }}>
+                      <Printer className="w-3.5 h-3.5" /> Testni tisk
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacije</CardTitle></CardHeader>
@@ -724,6 +994,25 @@ export default function DashboardPage() {
                             <span className="text-xs text-stone-400 shrink-0">{new Date(l.createdAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                           {l.data && <p className="text-xs text-stone-500 break-all mt-0.5">{l.data.length > 160 ? `${l.data.slice(0, 160)}…` : l.data}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Revizijski dnevnik</CardTitle></CardHeader>
+                <CardContent>
+                  {auditLog.length === 0 && <p className="text-sm text-stone-500">Ni revizijskih vnosov.</p>}
+                  <ScrollArea className="max-h-72">
+                    <div className="space-y-2">
+                      {auditLog.map((a) => (
+                        <div key={a.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium truncate">{a.action} <span className="text-xs font-normal text-stone-400">· {a.entityType}</span></p>
+                            <span className="text-xs text-stone-400 shrink-0">{new Date(a.timestamp).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          {Object.keys(a.details || {}).length > 0 && <p className="text-xs text-stone-500 break-all mt-0.5">{JSON.stringify(a.details).slice(0, 160)}</p>}
                         </div>
                       ))}
                     </div>
@@ -794,6 +1083,21 @@ export default function DashboardPage() {
               <p className="text-emerald-700 break-all">EOR: {invoice.eor}</p>
             </div>
           )}
+          {!invoice && payingOrder && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Label className="text-sm">Način plačila:</Label>
+              {(['cash', 'card', 'mobile'] as const).map((pm) => (
+                <button
+                  key={pm}
+                  type="button"
+                  onClick={() => setPayMethod(pm)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${payMethod === pm ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-stone-200 bg-white text-stone-600 hover:border-emerald-400'}`}
+                >
+                  {pm === 'cash' ? 'Gotovina' : pm === 'card' ? 'Kartica (POS)' : 'Mobilno'}
+                </button>
+              ))}
+            </div>
+          )}
           <DialogFooter className="sm:items-center">
             {invoice?.id && (
               <Button variant="outline" className="mr-auto gap-1.5" disabled={printing} onClick={() => printInvoice(invoice.id!)}>
@@ -801,7 +1105,7 @@ export default function DashboardPage() {
               </Button>
             )}
             <Button variant="outline" onClick={() => { setPayingOrder(null); setInvoice(null) }}>Zapri</Button>
-            {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending} onClick={payOrder}>{sending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Izdaj račun'}</Button>}
+            {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending} onClick={() => void payOrder()}>{sending ? <Loader2 className="w-4 h-4 animate-spin" /> : payMethod === 'cash' ? 'Izdaj račun' : 'Izdaj račun (POS)'}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -863,7 +1167,7 @@ export default function DashboardPage() {
                     <Select value={empRole} onValueChange={(v) => setEmpRole(v)} disabled={user?.role === 'MANAGER' && empRole === 'ADMIN'}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {['ADMIN', 'MANAGER', 'WAITER', 'KITCHEN'].map((r) => (
+                        {['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN'].map((r) => (
                           <SelectItem key={r} value={r} disabled={user?.role === 'MANAGER' && r === 'ADMIN'}>{ROLE_LABELS[r]}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1001,7 +1305,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija 1.26.0 · FURS simulacija · EUR · prijava: admin@restaurantos.app / 1234
+        RestavrantOS rekonstrukcija 1.26.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
       </footer>
     </main>
   )

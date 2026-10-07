@@ -2834,6 +2834,8 @@ enum EmployeeRole {
   admin
   manager
   staff
+  waiter
+  bar
   chef
   kitchen
 }

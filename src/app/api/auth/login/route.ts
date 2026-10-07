@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { createToken, employeePinFields, matchesBootstrap } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { fail } from '@/lib/api'
+import { resolvePermissions, resolvePermissionsForUIRole } from '@/lib/permissions'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
       const token = createToken({ sub: 'bootstrap', name: 'Bootstrap Admin', role: 'ADMIN', loc: null }, 2)
       return NextResponse.json({
         token,
-        employee: { id: 'bootstrap', name: 'Bootstrap Admin', email, role: 'ADMIN', locationId: null },
+        employee: { id: 'bootstrap', name: 'Bootstrap Admin', email, role: 'ADMIN', locationId: null, permissions: resolvePermissionsForUIRole('ADMIN') },
         bootstrap: true,
       })
     }
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
         employee: {
           id: employee.id, name: employee.name, email: employee.email,
           role: roleToUI(employee.role), locationId: employee.locationId,
+          permissions: resolvePermissions(employee.role, employee.permissionOverrides),
         },
         bootstrap: true,
       })
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
       email: employee.email,
       role: roleToUI(employee.role),
       locationId: employee.locationId,
+      permissions: resolvePermissions(employee.role, employee.permissionOverrides),
     },
   })
 }

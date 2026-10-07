@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requirePermission(req, 'reservations.manage')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body?.guestName || !body?.reservedAt) {

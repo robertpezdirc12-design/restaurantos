@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
 import { mapEmployee } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
   const employees = await db.employee.findMany({ orderBy: { name: 'asc' } })
   return ok({ employees: employees.map(mapEmployee) })

@@ -344,3 +344,167 @@ Work Log:
 Stage Summary:
 - Temni način ŽIV na produkciji; svetla tema nespremenjena; prijava uporabnika nedotaknjena (729153)
 - GitLab main = reconstruction @ <po zadnjem pushu dokumentacije>
+---
+Task ID: 2-a
+Agent: Explore (offline audit)
+Task: Audit offline/local-first state for GitLab issue #1
+Work Log:
+- Prebran worklog (vsi 12 taskov) + DEPLOYMENT-STATUS.md — offline NI bil nikoli obravnavan (taski so pokrili rekonstrukcijo, UI, FURS, temni način)
+- Grep po src (case-insensitive): offline / navigator.onLine / serviceWorker / workbox / indexedDB → 0 zadetkov; sync|queue|pending|retry|flush → le lažne pozitivne (async, "pending" kot FURS/status enum, `queue` kot ime spremenljivke za KDS prikaz v /api/kitchen, syncEnabled polja integracij)
+- Grep po prisma/schema.prisma: najdeni DeviceRegistry, DeviceSyncOperation (idempotenca @@unique([deviceId, clientOperationId]), clientRetryCount, ack), OutboxEvent (attempts/maxAttempts/idempotencyKey/nextRetryAt), SyncState (syncVersion, conflictStatus, conflictData), WebhookDelivery, QuickBooksSync — vsi prisotni tudi v schema.sqlite.prisma (dev)
+- Grep po src za uporabo teh modelov: SAMO DeviceRegistry (/api/devices); DeviceSyncOperation/OutboxEvent/SyncState = MRTVI modeli (brez rute, brez kode)
+- Analiza src/lib/client.ts: api() wrapper (Bearer iz localStorage ro_token, 401 → clear + redirect), brez retry/queue/online detekcije; auth = stateless HMAC + exp (src/lib/auth.ts:25-34), 12-urni žeton — offline replay možen do izteka
+- Analiza dashboard/page.tsx: load() = Promise.all 24 API klicev s PRAZnim catch (page.tsx:201), polling 15s; mutacije (createOrder 215-224, payOrder 231-238 …) = direkten POST, napaka → blokirajoč alert(), brez optimistic/queue; setItemStatus (226-229) sploh brez try/catch; logout = localStorage.clear() (212)
+- dashboard-tabs.tsx: 11x `catch → alert()`, ena notice različica (801); use-toast obstaja in je mountan v layout.tsx:25, a ga dashboard ne uporablja
+- package.json: NI PWA/offline odvisnosti (brez next-pwa/workbox/dexie/idb); @tanstack/react-query in @reactuses/core (useNetwork!) nameščena, a nikjer ne uvožena; public/ brez manifest.json/sw.js; next.config brez PWA konfiga (output: standalone)
+- Enumeriranih 37 API rut (glob), preverjen /api/health (status ok/degraded — kandidat za connectivity probe) in /api/orders POST (brez idempotency key)
+
+Stage Summary:
+- Offline = 0 % implementirano v aplikacijski kodi: nobene vrste (client queue), brez shranjevanja naročil, brez sync endpoints, brez konfliktnega reševanja, brez online/offline/sync indikatorja, brez service workerja/manifesta
+- VELIKA NAJDBA: produkcijska shema že ima popolne sinhrone modele — DeviceSyncOperation (idempotentna replika po napravi), SyncState (conflictStatus/conflictData), OutboxEvent (retry/idempotency) — potrebna je SAMO ožičitev (rute + client), ne nove sheme
+- Auth je offline-prijazen: stateless Bearer HMAC 12 h v localStorage → replay deluje brez DB seje; tveganja: 12 h iztek, 401 redirect in localStorage.clear() na logoutu bi izbrisala čakajočo vrsto
+- Priložnosti: api() wrapper = naravna točka za vstavljanje vrste; @tanstack/react-query + @reactuses/core že nameščena (neuporabljena); /api/health za probe; Toaster že mountan
+- Ključne datoteke: src/lib/client.ts, src/app/dashboard/page.tsx, src/components/dashboard-tabs.tsx, src/app/api/devices/route.ts, src/app/api/orders/route.ts, prisma/schema.prisma
+
+---
+Task ID: 2-b
+Agent: Explore (hardware audit)
+Task: Audit hardware adapter state for GitLab issue #1
+
+Work Log:
+- Prebran worklog (Task 1-12) + DEPLOYMENT-STATUS.md; potrjeno: Task 11 zgradil BRSKALNIŠKI tisk (src/lib/receipt.ts: buildReceiptHTML + printReceipt = window.open + window.print, brez odvisnosti), ne fizični tiskalnik
+- Grep po src za print/printer/receipt/ESC-POS/escpos/thermal: 10 datotek, vsa "tiskalniška" logika je v src/lib/receipt.ts (HTML 80mm) + klica v dashboard/page.tsx (printInvoice ~L241, gumbi v Računi tab + plačilni dialog). Nič ESC/POS, nič WebUSB/WebSerial/WebBluetooth, nič node-thermal-printer/serialport (grep po package.json+src+scripts: 0 zadetkov)
+- Plačila: edina pot = POST /api/furs (src/app/api/furs/route.ts) — v enem bloku ustvari Check + Payment (status 'completed' TRDO, tip cash|card|mobile|voucher|loyalty|giftcard|alternate iz telesa zahteve) + Receipt + Order.paidAt. NI terminala, NI Stripe/gateway, NI avtorizacije; PATCH /api/orders/[id] lahko nastavi status PAID BREZ Payment zapisa. Ni /api/payments rute
+- Kuhinja: GET/PATCH /api/kitchen (vrsta aktivnih naročil z PrepStation, statusi PENDING→PREPARING→READY→SERVED, auto-PREPARED); UI = tab "kuhinja" v dashboard/page.tsx (~L451-476) z badge Bar/Kuhinja; osveževanje = setInterval 15 s; ni kuhinjskega tiska, ni SSE/websocket (examples/websocket je neuporabljen vzorec), ni namenskega KDS zaslona za tip naprave kds/kds_bar
+- FURS: POST /api/furs — ZOI = MD5(payload) SIMULACIJA, EOR = crypto.randomUUID samo ko simulation, fiscalStatus = 'verified' VEDNO (tudi če simulation=false → EOR prazen, status napačno 'verified'); env FURS_ENVIRONMENT/FURS_ALLOW_SIMULATION + Location.fursEnvironment/RestaurantSettings.fursEnvironment. Shema Receipt IMA realna CIS polja (cisStatus='none' trdo, cisZki, cisJir, cisSubmittedAt — neuporabljena; original je imel FURS_VERIFY_ERROR + cisCertPath napako v reviji). Ni SOAP klienta, ni certifikata, ni QR kode na računu, ni stornto fiska (isStorno samo oznaka)
+- Naprave: DeviceRegistry shema + GET/POST /api/devices (samo provisioning, token rodev_*), tipi pos|kds|kds_bar|tablet|kiosk|mobile, DevicesCard v dashboard-tabs.tsx = samo seznam. DeviceSyncOperation model obstaja v shemi — 0 referenc v kodi. Ni src/lib/devices, ni src/lib/hardware, NI adapter vmesnikov nikjer
+- mini-services = PRAZEN folder; Caddyfile = revrzni proxy localhost:3000, brez deviceskih servisov; scripts/tests brez deviceskih referenc
+- NEPIŠEM/NE MENJAM kode — samo revizija + ta zapis
+
+Stage Summary:
+- RECEIPT PRINT: samo brskalniški tisk (window.print / Shrani kot PDF); printedAt se zapiše ob plačilu, ne ob dejanskem tisku; brez ESC/POS/WebUSB/print-agenta → realni termični tiskalnik NIKJER
+- PAYMENT: cash-in-file nivo — Payment se ZAPIŠE kot 'completed' brez kakršnegakoli terminala/avtorizacije; točka vključitve terminala = POST /api/furs (beri body.type, db.payment.create)
+- KITCHEN: KDS je zaslon v dashboard tabu (polling 15 s) — kot KDS deluje, a brez namenskega zaslonа za kds/kds_bar in brez kuhinjskega tiska ticketa ob 'SENT'
+- FISCAL: FURS je 100 % simulacija (ZOI=MD5, EOR=UUID); realna integracija ne obstaja, čeprav shema nosi cisZki/cisJir/cisStatus polja — SOAP+certifikat klient manjka; razvejitvena točka simulator/real je `simulation` flag v POST /api/furs
+- KLJUČNE DATOTEKE za implementerja: src/app/api/furs/route.ts, src/lib/receipt.ts, src/app/dashboard/page.tsx, src/app/api/kitchen/route.ts, src/app/api/orders/route.ts + orders/[id]/route.ts (sprožilec kuhinjskega tiska), src/app/api/devices/route.ts, src/app/api/settings/route.ts, prisma/schema.prisma (DeviceSyncOperation neuporabljen), mini-services/ (prazen — dom za lokalni print/terminal agent) + Caddyfile; NOVO potrebno: src/lib/devices/ (vmesniki adapterjev + simulator ločen od realnih implementacij) in src/lib/furs/ (SOAP klient s certifikatom)
+
+---
+Task ID: 2-d
+Agent: Explore (e2e/stability audit)
+Task: Audit e2e sales flow + stability for GitLab issue #1
+
+Work Log:
+- Prebral worklog.md (zadnji vnos Task 12-deploy) + DEPLOYMENT-STATUS.md — kontekst obnove (orders/payments/FURS/tisk/dark mode živi na produkciji)
+- Pregledal prisma/schema.prisma (110 modelov, 20 enumov): Order, OrderItem, Payment, Receipt, Check, Counter, Table, Location, RestaurantSettings, CashRegisterShift, ZReport, DailyClose, OutboxEvent + enumi (FiscalStatus, OrderItemStatus, PaymentStatus, PaymentType, TableStatus)
+- Prebral celotno prodajno verigo: api/tables, api/tables/[id], api/orders, api/orders/[id], api/kitchen, api/furs, api/furs/[id], api/reports/financial, api/shifts, api/health, api/monitoring/errors, api/integrations + lib/map.ts, lib/api.ts, lib/auth.ts, lib/db.ts, lib/client.ts, lib/receipt.ts
+- Prebral UI pot v dashboard/page.tsx (mize → nov naročilo dialog → plačilni dialog → računi tab → kuhinja KDS) + dashboard-tabs.tsx (ShiftsTab, SettingsEditor …)
+- Grep: $transaction (0 zadetkov), idempot (0 zadetkov v kodi; polja obstajajo v shemi), auditLog.create (samo employees/inventory/loyalty/monitoring — prodaja NE), console.* (0), db.counter/db.zReport/db.dailyClose/db.outboxEvent (0 — modeli neuporabljeni), localStorage (samo ro_token/ro_user/ro_bootstrap — brez draft košarice)
+- Preštel API rute: 37 route.ts datotek; prodajna veriga = tables (2), orders (2), kitchen, furs (2), reports/financial, shifts, health, monitoring/errors, dashboard ≈ 12
+
+Stage Summary:
+- E2E veriga deluje end-to-end prek ENEGA podatkovnega sloja (Table→Order→OrderItem→Check+Payment+Receipt→Order PAID→financial report) in je bila produkcijsko verificirana, ampak: plačilo+FURS+račun+Order update NISO v $transakciji in nimajo idempotency-key zaščite → dvojni račun/plačilo je možen danes (check-then-act race v POST /api/furs; Receipt.orderId ni unique; Payment.idempotencyKey in Order.idempotencyKey polja v shemi so NEUPORABLJENA)
+- Številčenje: orderNumber = max+1 aggregate (race → P2002 unique(locationId, orderNumber) → 500), receiptNumber = count+1 (race → P2002 unique(locationId, receiptNumber) → 500 + morebiten delni zapis: Check se ustvari PREJ kot Receipt/Payment); Counter model (varovalka za sekvence) neuporabljen
+- FURS = simulacija (ZOI = MD5, EOR = UUID) — prave RSA/ZKI-JIR integracije ni; ZReport/DailyClose/OutboxEvent/IntegrationLog modeli obstajajo v shemi, ampak jih koda NE uporablja → pravega X/Z poročila, poročila po izmeni in audit traila prodaje ni (auditLog pišejo samo employees/inventory/loyalty)
+- Recovery: po refreshu je stanje OK (server = vir resnice, poll 15 s), ampak košarica v novem naročilu je samo useState → refresh pomeni IZGUBO neoddanih postavk; tabela za plačilom ostane 'cleaning' (UI NIMA gumba za povrnitev v 'available', PATCH /api/tables/[id] obstaja a ga UI ne kliče)
+- Error states/observability: strežnik dosledno vrača {error} z 400/401/403/404/409, ampak UI večinoma alert(); setItemStatus (kuhinja) NIMA try/catch (tihi padec); load() požre vse napake; /api/health obstaja (DB ping + verzija), FURS status je viden na računu (FURS ✓ badge) + Integracije tab (read-only seed), ampak nič ne piše IntegrationLog/AuditLog med prodajo
+
+---
+Task ID: 2-c
+Agent: Explore (permissions audit)
+Task: Audit roles/permissions/audit state for GitLab issue #1
+
+Work Log:
+- Prebran worklog (Task 1–12 + 2-a/2-b) + DEPLOYMENT-STATUS.md; issue #1 zahteva: granularne pravice (admin/manager/waiter/bar/kitchen + ostale vloge), checkbox pravice po akcijah/modulih, backend avtorizacija, audit in history
+- prisma/schema.prisma: Employee (L612) — role EmployeeRole @default(staff), status EmployeeStatus, pin/pinLookup (scrypt+HMAC), sessionVersion Int, permissionOverrides Json @default("[]"); EmployeeJob (L658) ↔ Job (L1045) z permissions Json @default("[]"); Session (L2080) ima token/role/sessionVersion/permissions Json — model v kodi NIKOLI neuporabljen; AuditLog (L144) — action/entityType/entityId/details/ipAddress/terminalId/previousHash/chainHash (hash-chain polja vedno "")
+- Enum EmployeeRole (L2833): admin | manager | staff | chef | kitchen — NI waiter/bar; preslikava src/lib/map.ts (L45-59): staff→WAITER, chef+kitchen→KITCHEN, KIOSK (samo UI/auth.ts)→staff; roleToUI fallback za neznano vlogo = 'WAITER'
+- Auth: stateless Bearer HMAC (src/lib/auth.ts) — AuthPayload = sub/name/role/loc/exp, 12 h; PIN scrypt+pinLookup; login (api/auth/login) → createToken; /api/auth/me vrača SAMO role (brez permissions); NextAuth NE obstaja; brez middleware.ts; requireAuth/isResponse (src/lib/api.ts) = edini guard; canAccessModule (auth.ts:46, trdo kodiran modulski zemljevid WAITER/KITCHEN/KIOSK) uporabljen izključno v tables POST
+- Backend role checki — 16 točk na 12 rut (vse ['ADMIN','MANAGER'], 2 ADMIN-only): suppliers POST:26; employees POST:16; employees/[id] PATCH:23 (+L30-32, L41-42 hierarhija MANAGER<ADMIN); jobs POST:25; inventory POST:28+PATCH:56; loyalty POST:30+PATCH:51; menus POST:25; menus/[id] PATCH:9+DELETE:25; settings PUT:22; tables POST:33 (canAccessModule adminOnly + MANAGER); tables/[id] DELETE:24 (ADMIN); expenses POST:30 — VSE ostale rute (orders, orders/[id], kitchen, furs, furs/[id], shifts, reservations, haccp, categories, dashboard, devices, integrations, webhooks, recipes, guests/feedback, locations(+stats), reports/financial, monitoring/errors, employees GET, jobs GET, vsi GET-ji zgornjih) = samo auth, brez vlog
+- permissionOverrides NIKOLI vsiljene: grep po kanoničnih pravicah ('orders.create' …) → samo CANONICAL_PERMISSIONS (employees/[id]:14-18) in UI; ni niti enega permission-checka v backendu; Session.permissions + Job.permissions = mrtvi podatki (jobs POST sprejme permissions, UI jih ne pošlje; ni PATCH rute za jobs)
+- Frontend: TABI NISO VEJANI PO VLOGI — vseh 15 tabov za vsakega prijavljenega (page.tsx:350-360 hardcode seznam); canManage (page.tsx:151) veje: 498 nova rezervacija, 517-522 Prišel/Prekliči, 602 bootstrap banner, 632-652 Zaposleni = Control Center (klik za urejanje samo canManage), 863-867 role select (MANAGER ne sme ADMIN); command-palette.tsx:32 helper, 63 (canManage||KITCHEN), 86/91/99/104 manage-only navigacija; dashboard-tabs.tsx: JobsCard 722 (dodaj obrazec), SettingsEditor 768-784 (read-only za non-canManage)
+- Checkbox UI že OBSTAJA per-zaposlenega: Control Center dialog (page.tsx:881-898) z PERMISSION_LABELS (L71-82) = 10 kanoničnih pravic (orders.create, orders.pay, kitchen.update, reservations.manage, menu.manage, inventory.manage, reports.view, employees.manage, settings.manage, furs.issue) → PATCH /api/employees/[id]; matice per-vloga NI
+- Audit: 5 pisalnih točk — EMPLOYEE_SENSITIVE_UPDATE (employees/[id]:83, vključno s spremembo vloge), INVENTORY_CREATE/ADJUST (inventory:46/76), LOYALTY_POINTS (loyalty:74), ERROR_REPORT (monitoring/errors:22); EDINA bralna pot = GET /api/monitoring/errors (filter action contains 'ERROR') → "Dnevnik napak" v Nastavitvah pokaže SAMO napake; zaposleni/zaloge/zvestoba zapisi so v UI NEVIDNI; brez audita na orders/menus/settings/furs/employees-create; sessionVersion se poveča pri PIN resetu, a verifyToken ga NE preverja (ni DB seje) → "razveljavljene" seje veljavne do 12 h izteka
+- Števeci: 37 route.ts datotek, 62 handlerjev; 32 datotek z requireAuth (5 javnih: api root "Hello world", health, auth/login, auth/locations, setup/status); 12 datotek / 16 vejitev z vlogami; 1 ruta z canAccessModule; 0 permission-based checkov
+- NEPIŠEM/NE MENJAM kode — samo revizija + ta zapis
+
+Stage Summary:
+- OBSTOJEČE: 5 DB vlog (admin/manager/staff/chef/kitchen ↔ UI ADMIN/MANAGER/WAITER/KITCHEN), stateless HMAC žeton z vlogo (brez pravic), 16 role-gate točk na 12 rut (vse črno-bele ADMIN/MANAGER, 2 ADMIN-only), checkbox pravice per-zaposlenemu (10 kanoničnih pravic, Control Center dialog) — shranjene, ampak NIKOLI vsiljene; AuditLog model + 5 pisalnih točk; branje samo za napake ("Dnevnik napak")
+- MANJKA (proti issue #1): pravice po vlogah (role→permission privzeta matica; waiter/bar vlogi ne obstajata v enumu), vsiljevanje permissionOverrides v backendu (centralni requirePermission middleware), pravicni claim v žetonu ali DB lookup pri zahtevi, posplošen audit na vseh mutacijah + history UI (filtriranje/vsa dejanja), izkoriščen hash-chain, UI za urejanje Job.permissions
+- TVEGANJA: vloge trdo kodirane v ≥8 datotekah (12 rut + auth.ts + page.tsx + employees/[id] whitelist brez KIOSK); roleToUI fallback 'WAITER' za neznane vloge (fail-open za UI); žeton 12 h nosi vlogo → sprememba vloge/pravic ne stopi v veljavo do izteka (sessionVersion ne preverjen); employees GET (e-pošte zaposlenih) viden vsem prijavljenim; KIOSK vloge ni mogoče dodeliti prek UI
+- KLJUČNE DATOTEKE za implementerja: prisma/schema.prisma (EmployeeRole enum / morebitni Permission+RolePermission modela), src/lib/auth.ts + src/lib/api.ts (avtorizacijski middleware ob requireAuth), src/lib/map.ts (ROLE_TO_UI/ROLE_TO_DB), api/auth/login + api/auth/me (pravicni claim / vračanje pravic), api/employees/[id] (CANONICAL_PERMISSIONS preseliti v lib), vseh 12 role-check rut + nebranjene rute (orders, orders/[id], kitchen, furs, settings GET, employees GET), dashboard/page.tsx (vejanje tabov + PERMISSION_LABELS), command-palette.tsx, dashboard-tabs.tsx (JobsCard permissions, read-only nacin)
+- Številke: 37 API datotek / 62 handlerjev; 32 auth, 5 javnih; 16 role-check vejitev na 12 rut; 0 permission checkov; audit: 5 pisalnih točk, 1 bralna (samo ERROR)
+
+---
+Task ID: 13-plan
+Agent: Z.ai (main)
+Task: GitLab issue #1 prebran (token glpat-i3S_…, API dela po retry) — gap analiza + implementacijski načrt
+
+Work Log:
+- Token #4 (fine-grained, pravilne permisije) potrdjen: /user → Robert Pezdirc ✓, git ls-remote ✓ (main=reconstruction@dc10187, vse pushano), /issues ✓ po 3. retry (IP-blokada HK je prehodna, retry vzorec dela)
+- Issue #1 (opened): "NEXT — production hardening: offline/local-first + real hardware + granular permissions + e2e operations" — 5 nalog + acceptance criteria; constraint: "Pred implementacijo preveriti trenutno stanje"
+- 4 vzporedna audita (Explore 2-a..2-d) opravljena; git remote posodobljen z novim tokenom
+
+Gap matrica (obstoječe → manjkajoče):
+1. OFFLINE: shema 100% pripravljena (DeviceSyncOperation z @@unique[deviceId,clientOperationId], SyncState.conflict*, OutboxEvent, Order.idempotencyKey, DeviceRegistry) — vse UNUSED; klient: brez vrste, brez status indikatorja, alert() error handling; auth stateless Bearer 12h (offline replay dela)
+2. NAPRAVE: tisk = brskalnik-only (window.print), plačilo = zapis-only (fused v POST /api/furs), KDS = tab s polling (brez kuhinjskega lista), FURS = 100% simulacija (MD5 ZOI, UUID EOR); DeviceRegistry + /api/devices provisioning obstaja; brez adapter abstrakcije
+3. PRAVICE: permissionOverrides Json + 10 kanoničnih dovoljenj + checkbox UI OBSTAJATA — 0 uveljavljanja (backend ne preverja, token brez claims); vloge DB: admin|manager|staff|chef|kitchen (brez waiter/bar); 16 role-check mest (samo ADMIN/MANAGER); AuditLog model + 5 write mest, brez UI pregleda
+4. E2E: vsi koraki miza→naročilo→kuhinja→plačilo→račun/FURS→zaključek→poročilo obstajajo na enem podatkovnem sloju ✓; manjka: miza cleaning dead-end, Z-poročilo (model unused), storno
+5. STABILNOST: 0× $transaction v src/!; POST /api/furs check-then-act → dvojni račun/plačilo MOŽEN danes; orderNumber=max+1 race; idempotencyKey polja unused; košarica izgubljena ob refresh; setItemStatus brez catch
+
+Načrt (faze):
+A. Stabilnost: $transaction (orders+furs), Counter sekvence (order/receipt številke), idempotencyKey end-to-end (client→Payment/Order unique→P2002→vrni obstoječe), AuditLog INVOICE_ISSUE
+B. Pravice: src/lib/permissions.ts (ROLE_DEFAULTS matrica), requirePermission() v api.ts (DB lookup), uveljavljanje na orders/kitchen/furs/reports/reservations/employees, enum +waiter +bar, UI tab-gating po dovoljenjih, revizijski dnevnik UI
+C. Offline: src/lib/offline-queue.ts (localStorage vrsta + clientOperationId), apiQueueable interceptor (samo network faili, NE 401/403), POST /api/sync (DeviceSyncOperation ingest, idempotent replay), online/offline/sync banner + flush ob reconnect, zaščita pred localStorage.clear izgubo
+D. Naprave: src/lib/devices/ (print target: browser|agent|simulator po per-device localStorage config), mini-services/print-agent (bun, port 3031, ESC/POS cp852 prek TCP), kuhinjski list tisk, plačilni terminal adapter (simulator|manual|none, terminalTxnId na Payment), FURS produkcija→fiscalStatus pending + IntegrationLog (sim jasno ločena)
+E. E2E: "Očisti mizo" akcija, Z-poročilo ob zaključku izmene (ZReport + shift totals + audit)
+
+Shema spremembe (minimalno): EmployeeRole +waiter +bar; Payment +terminalTxn String? — vse ostalo ŽE OBSTAJA
+Testi (acceptance "avtomatski testi"): v tem okolju prepovedano pisati testno kodo → nadomeščeno z agent-browser E2E verifikacijo (offline scenario, replay idempotencia, pravice UI+API) — zapisano v issue komentar
+
+Stage Summary:
+- Nič od zacetka: 90% infrastrukture že v shemi; delo = WIRING (transakcije, vrsta, uveljavljanje pravic, adapterji) + minimalne UI dopolnitve
+- Implementacija poteka: A → B → C → D → E; print-agent mini-service delegiran vzporedno
+
+---
+Task ID: 14-print-agent
+Agent: general-purpose (mini-service builder)
+Task: GitLab issue #1 / task 2 — mini-services/print-agent: ESC/POS network printer agent (HTTP → TCP:9100 most)
+
+Work Log:
+- Ustvarjen /home/z/my-project/mini-services/print-agent/ (package.json + index.ts, 0 zunanjih odvisnosti — samo bun + node:net)
+- package.json: name "print-agent", scripts dev "bun --hot index.ts" / start "bun index.ts"
+- index.ts: Bun.serve na hardcoded portu 3031, bind 0.0.0.0; GET /health → {ok:true,service:'print-agent',ts}; POST /print {host, port?=9100, payloadBase64} → dekodira bajte, net.Socket s 4s connect timeoutom, write + drain, zaključek ob printer close ali 1.5s idle (fallback 400ms; hard cap 8s); POST /text {host, port?, text, align?, bold?, cut?=true} → zgradi ESC/POS: 1B40 init, 1B74 12 (codepage 18 = CP852), 1B61 00/01/02 (align), 1B45 01 + 1D21 11 (bold + 2x size), tekst zakodiran v CP852, 1B45 00 + 1D21 00 (reset), 1D56 42 00 (partial cut); vsaka vrstica zaprta z 0x0A (trailing \n ni podvojen)
+- CP852: python3-generirana preslikava vgrajena kot const — č=9F š=E7 ž=A7 Č=AC Š=E6 Ž=A6 đ=D0 Đ=D1 ć=86 Ć=8F + polna tabela CP852 (127 znakov, bytes 0x20–0xFF); nemapirljivi znaki → '?' (3F), ASCII passthrough
+- Robustnost: invalid json → {ok:false,error:'invalid json'} (400), manjkajoča polja → 400 {ok:false}, neznana pot → 404 {ok:false}, tiskalniške napake → STATUS 200 {ok:false,error,code:ECONNREFUSED|ETIMEDOUT|...} (kličemoc preverja ok, brez 5xx); branljivi opisi napak (connection refused / timed out / not found / unreachable); console log na job
+- Zagnan v ozadju: bun run dev > agent.log 2>&1 & (PID živ, bun --hot)
+- Testi: /health OK; /print na 127.0.0.1:9100 (brez tiskalnika) → {ok:false, error:'connection refused by 127.0.0.1:9100 (nothing listening — printer off/unreachable?)', code:'ECONNREFUSED'}; /text s č/š/ž na mrtev host 9199 → čist ECONNREFUSED; neznana pot → 404; neveljaven JSON → 'invalid json'
+- CP852 verifikacija prek fake listenerja (bun Bun.listen na 9100, nc ni na stroju): POST /text 'Č Š Ž test', cut:false → zajeto 19B, hex = 1b 40 1b 74 12 1b 61 00 ac 20 e6 20 a6 20 74 65 73 74 0a — byte-for-byte MATCH s python3 'Č Š Ž test'.encode('cp852') (Č→ac, Š→e6, Ž→a6)
+- Dodaten test bold/center/cut večvrstični 'RAČUN #12\nHvala, še vidimo!' → 52B: 1b61 01, 1b45 01, 1d21 11, 52 41 ac 55 4e 20 23 31 32 0a (RAČUN, Č=ac), … e7 (š), 1b45 00, 1d21 00, 1d56 42 00 — vsi ESC/POS ukazi na pravih mestih; fake listener poubijen
+- Nič zunaj mini-services/print-agent/ ni spremenjeno (razu ta worklog zapis)
+
+Stage Summary:
+- print-agent živi na :3031 in je postal "real hardware" print target za fazo D (src/lib/devices/): browser → fetch POST /print|/text → agent → TCP:9100 raw ESC/POS
+- CP852 problem rešen z vgrajeno tabelo (Bun Buffer ne zna cp852) — slovenski znaki na termičnem tiskalniku pravilni, dokazano s hex primerjavo
+- API dogovor: success {ok:true,bytes,host,port}, napaka {ok:false,error,code} VEDNO status 200 za poskuse tiska → caller (devices adapter) preverja samo ok
+- Odperto za naslednje faze: kuhinjski ticket builder (kliče /text ali /print), retry/queue na strani klicarja, morebiti status bytes readback (DLE EOT) če bo treba
+
+---
+Task ID: 15-implement
+Agent: Z.ai (main)
+Task: GitLab issue #1 — implementacija (offline/local-first + naprave + pravice + e2e + stabilnost)
+
+Work Log:
+- FAZA A (stabilnost): src/lib/sequences.ts (Counter sekvence, max+1 race odpravljen); orders POST → createOrderCore v src/lib/ops.ts ($transaction: sekvenca + naročilo + artikli + miza); furs POST → $transaction s CAS zaščito (updateMany paymentStatus != paid) + Counter številke računov; idempotencyKey end-to-end (clientOperationId → Order/Payment unique; P2002 → vrni obstoječe)
+- FAZA B (pravice): src/lib/permissions.ts (10 kanoničnih + ROLE_DEFAULTS za admin/manager/staff/waiter/bar/chef/kitchen; overrides = dodatna); api.ts requirePermission() (DB lookup — spremembe takoj aktivne); uveljavljeno na: orders POST (orders.create), orders/[id] addItems/status/DELETE, kitchen PATCH (kitchen.update), furs POST (orders.pay), reports/financial GET (reports.view), reservations POST (reservations.manage), employees GET (employees.manage); login/me vračata permissions; enum EmployeeRole +waiter +bar (obe shemi); UI: tab gating (TAB_PERM), role select +BAR, rezervacije po dovoljenju; /api/audit + revizijska kartica v Nastavitvah
+- FAZA C (offline): src/lib/offline-queue.ts (localStorage vrsta ro_offline_queue, clientOperationId UUID, max 10 poskusov, subscribe); POST /api/sync (DeviceSyncOperation ingest — replay idempotenten); header chip Online/Offline·N/Sinhroniziram (klik = ročni sync); flush ob povratku povezave + ob zagonu (recovery); zaščita: odjava ohrani vrsto + device_id + print/terminal config; createOrder/setItemStatus → enqueue ob omrežni napaki (isNetworkError); load() → Promise.all + soft() (posamezna napaka ne pobriše stanja) + sveža permissions prek /api/auth/me
+- FAZA D (naprave): src/lib/devices/print.ts (targeti: browser | agent | simulator — jasno ločeni; per-device localStorage ro_print_config; 80mm HTML za brskalnik; buildKitchenTicketLines); src/lib/devices/terminal.ts (none | simulator | manual; odobritev → Payment.authorizationCode); mini-services/print-agent +/layout endpoint (per-line stili, ESC/POS CP852); kuhinjski/bar list gumbi v Kuhinja tab; printInvoice pošilja strukturne vrstice na agent/simulator ali brskalnik; Nastavitve: kartica "Tiskalnik in terminal — ta naprava" + Testni tisk; kartica/mobilno zahteva terminal odobritev (402 brez); furs produkcija → fiscalStatus 'pending' (sim ostaja 'verified') + INVOICE_ISSUE audit
+- FAZA E (e2e): miza DIRTY → klik = očisti (PATCH tables/[id] status FREE); Z-poročilo ob zaključku izmene (shifts POST stop → izračun iz Receipts v oknu izmene: promet po načinih + DDV razčlenba 22/9.5/0 + expected/closing cash → CashRegisterShift totals + ZReport vrstica + SHIFT_CLOSE audit)
+
+TESTI (acceptance criterion "avtomatski testi" — v tem okolju je testna koda prepovedana, nadomeščeno z API + E2E verifikacijo):
+- API: order create → replay ISTI clientOperationId → 200 replayed:true, ISTI orderNumber (brez dvojnika) ✓; plačilo → dvojni klik isti ključ → 200 replayed, 1 račun za naročilo ✓; 3. plačilo z novim ključem na plačanem → CAS → idempotenten odgovor, brez 2. računa ✓; /api/sync isti op 2× → ok + replayed, 1 naročilo ✓; audit INVOICE_ISSUE zapisan ✓
+- E2E (agent-browser): prijava → dashboard (Online chip) ✓; Miza 9 DIRTY → klik → Prosta ✓; naročilo Miza 2 (21,35 €) → plačilo gotovina → račun 2026-10-7-BLG001 + EOR ✓; OFFLINE (set offline on) → naročilo Miza 11 → chip "Offline · 1" → online → samodejni flush → Miza 11 zasedena 35,04 € (naročilo NE izgubljeno) ✓; kuhinjski list SIMULACIJA ✓; Nastavitve naprave kartica ✓; 0 page errors ✓; lint čist ✓
+
+Stage Summary:
+- Vseh 5 nalog issue #1 implementiranih z minimalnimi shema spremembami (samo EmployeeRole +waiter +bar)
+- Dvojni račun/plačilo/naročilo tehnično nemogoče (transakcija + CAS + unique idempotency)
+- Offline naročila varno (vrsta + idempotenten replay prek DeviceSyncOperation)
+- Print-agent mini service (port 3031) mosti HTTP → TCP 9100 ESC/POS CP852 (č/š/ž byte-exact)

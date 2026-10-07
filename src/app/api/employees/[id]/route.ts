@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { mapEmployee, roleToDB, jstr, nid } from '@/lib/map'
+import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
+
+export { CANONICAL_PERMISSIONS }
 
 /**
  * EMPLOYEE CONTROL CENTER (R265) — en kanonski profil zaposlenega:
@@ -9,13 +12,6 @@ import { mapEmployee, roleToDB, jstr, nid } from '@/lib/map'
  *  - PIN reset (občutljiva akcija — vedno zapiše AUDIT zapis)
  * Kanonska avtorizacija (R268): samo ADMIN/MANAGER; MANAGER ne sme urejati ADMIN-ov.
  */
-
-/** Kanonski seznam dovoljenj (nastavljivi override-i po zaposlenem) */
-export const CANONICAL_PERMISSIONS = [
-  'orders.create', 'orders.pay', 'kitchen.update', 'reservations.manage',
-  'menu.manage', 'inventory.manage', 'reports.view', 'employees.manage',
-  'settings.manage', 'furs.issue',
-] as const
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = requireAuth(req)
@@ -38,7 +34,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // vloga
   if (body.role !== undefined) {
     const role = String(body.role).toUpperCase()
-    if (!['ADMIN', 'MANAGER', 'WAITER', 'KITCHEN'].includes(role)) return fail('Neznana vloga.', 400)
+    if (!['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN'].includes(role)) return fail('Neznana vloga.', 400)
     if (user.role === 'MANAGER' && role === 'ADMIN') return fail('MANAGER ne dodeljuje ADMIN vloge.', 403)
     data.role = roleToDB(role)
     sensitive.push(`sprememba vloge v ${role}`)

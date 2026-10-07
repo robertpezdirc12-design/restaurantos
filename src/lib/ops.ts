@@ -1,0 +1,158 @@
+/**
+ * Jedro operacij (issue #1 — offline/local-first).
+ * Skupna logika za POST /api/orders IN POST /api/sync (replay offline operacij),
+ * da offline ustvarjena naročila gredo skozi ISTEI preverjanja kot online.
+ * Idempotencija: Order.idempotencyKey (unique) — isti clientOperationId vrne obstoječe naročilo.
+ */
+import { db } from '@/lib/db'
+import { mapOrder, nid, num, r2, orderTypeToDB } from '@/lib/map'
+import { nextSequence } from '@/lib/sequences'
+
+export const orderInclude = {
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
+  Table: true,
+  Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
+  Receipt: { orderBy: { createdAt: 'desc' as const } },
+} as const
+
+export function normalizeOrder(o: Record<string, unknown>) {
+  return {
+    ...o,
+    items: o.OrderItem,
+    table: o.Table,
+    employee: o.Employee_Order_employeeIdToEmployee,
+  }
+}
+
+export interface CreateOrderInput {
+  employeeId: string
+  locationId: string | null
+  items: { menuItemId: string; qty?: number; note?: string }[]
+  tableId?: string | null
+  type?: string
+  note?: string
+  guests?: number
+  clientOperationId?: string | null
+}
+
+export interface CreateOrderResult {
+  order: ReturnType<typeof mapOrder>
+  replayed: boolean
+}
+
+/** Idempotentno ustvarjanje naročila (transakcija: sekvenca + naročilo + artikli + miza) */
+export async function createOrderCore(input: CreateOrderInput): Promise<CreateOrderResult> {
+  if (!input.items || input.items.length === 0) {
+    throw new OrderError('Naročilo mora vsebovati vsaj en artikel.')
+  }
+  const menuItemIds = input.items.map((i) => i.menuItemId)
+  const menuItems = await db.menuItem.findMany({
+    where: { id: { in: menuItemIds } },
+    include: { PrepStation: true },
+  })
+  if (menuItems.length === 0) throw new OrderError('Artikli ne obstajajo.')
+
+  const locationId = input.locationId || (await db.location.findFirst())?.id
+  if (!locationId) throw new OrderError('Ni lokacije. Najprej ustvari lokacijo.')
+
+  const idempotencyKey =
+    typeof input.clientOperationId === 'string' && input.clientOperationId.trim().length >= 8
+      ? input.clientOperationId.trim().slice(0, 64)
+      : null
+
+  // Idempotentni replay: isti clientOperationId → vrni obstoječe naročilo (ne ustvari dvojnega)
+  if (idempotencyKey) {
+    const existing = await db.order.findUnique({
+      where: { idempotencyKey },
+      include: orderInclude,
+    })
+    if (existing) return { order: mapOrder(normalizeOrder(existing)), replayed: true }
+  }
+
+  let subtotal = 0
+  let tax = 0
+  const itemRows = input.items.map((i) => {
+    const mi = menuItems.find((m) => m.id === i.menuItemId)
+    if (!mi) throw new OrderError('Artikel ne obstaja.')
+    const qty = Math.max(1, Math.round(Number(i.qty) || 1))
+    const price = num(mi.price)
+    const vatRate = num(mi.vatRate, 22)
+    const line = price * qty
+    const vat = (line * vatRate) / 100
+    subtotal += line
+    tax += vat
+    return {
+      id: nid(),
+      menuItemId: mi.id,
+      quantity: qty,
+      price,
+      vatRate,
+      vatAmount: vat,
+      menuItemName: mi.name,
+      status: 'pending' as const,
+      notes: i.note || '',
+      modifiersJson: '[]',
+    }
+  })
+
+  const MAX_ATTEMPTS = 3
+  let lastErr: unknown
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const order = await db.$transaction(async (tx) => {
+        const maxNumber = await tx.order.aggregate({ where: { locationId }, _max: { orderNumber: true } })
+        const floor = (maxNumber._max.orderNumber || 0) + 1
+        const orderNumber = await nextSequence(tx, `order:${locationId}`, floor)
+        const created = await tx.order.create({
+          data: {
+            id: nid(),
+            orderNumber,
+            locationId,
+            tableId: input.tableId || null,
+            employeeId: input.employeeId,
+            type: orderTypeToDB(input.type || 'DINE_IN'),
+            status: 'open',
+            paymentStatus: 'unpaid',
+            notes: input.note || '',
+            subtotal: r2(subtotal),
+            tax: r2(tax),
+            total: r2(subtotal + tax),
+            splitCount: Number(input.guests) || 1,
+            idempotencyKey,
+            OrderItem: { create: itemRows },
+          },
+          include: orderInclude,
+        })
+        if (created.tableId) {
+          await tx.table.update({
+            where: { id: created.tableId },
+            data: { status: 'occupied' },
+          })
+        }
+        return created
+      })
+      return { order: mapOrder(normalizeOrder(order)), replayed: false }
+    } catch (e) {
+      lastErr = e
+      const code = (e as { code?: string })?.code
+      // P2002 na idempotencyKey → vzporedni dvojnik je zmagal: vrni njegovo naročilo
+      if (code === 'P2002' && idempotencyKey) {
+        const twin = await db.order.findUnique({ where: { idempotencyKey }, include: orderInclude })
+        if (twin) return { order: mapOrder(normalizeOrder(twin)), replayed: true }
+      }
+      // P2002 na orderNumber (sočasna sekvenca na Postgresu) → ponovi z svežim max
+      if (code !== 'P2002') break
+    }
+  }
+  throw lastErr instanceof OrderError
+    ? lastErr
+    : new OrderError('Naročila ni bilo mogoče ustvariti. Poskusite znova.')
+}
+
+export class OrderError extends Error {
+  status: number
+  constructor(message: string, status = 400) {
+    super(message)
+    this.status = status
+  }
+}

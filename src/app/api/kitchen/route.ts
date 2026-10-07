@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
 
 /** Kuhinjski prikaz (KDS) — vrsta artikel-predmetov po naročilih */
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = requireAuth(req)
+  const user = await requirePermission(req, 'kitchen.update')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body?.itemId || !['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(body.status)) {
