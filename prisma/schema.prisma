@@ -545,6 +545,7 @@ model DeviceRegistry {
 
   @@index([locationId])
   @@index([status])
+  @@index([enrollmentCode])
 }
 
 model DeviceSyncOperation {

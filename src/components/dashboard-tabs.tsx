@@ -971,7 +971,7 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
 export function DevicesCard({ devices, locations, onChanged }: { devices: DeviceT[]; locations: { id: string; name: string }[]; onChanged?: () => void }) {
   const locName = (id?: string | null) => (id ? locations.find((l) => l.id === id)?.name || null : null)
   const [addOpen, setAddOpen] = useState(false)
-  const [nf, setNf] = useState({ name: '', type: 'pos', locationId: 'none' })
+  const [nf, setNf] = useState({ name: '', type: 'pos', locationId: locations[0]?.id || 'none' })
   const [busy, setBusy] = useState(false)
   const [newCode, setNewCode] = useState<{ name: string; code: string } | null>(null)
   const [pairCode, setPairCode] = useState<{ device: string; code: string } | null>(null)
