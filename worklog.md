@@ -121,3 +121,21 @@ Stage Summary:
 - Produkcija: https://restaurantos-theta.vercel.app na najnovejsi kodi; prijava: info@restaurantos.app / PIN 729153 (stari PIN ni vec veljaven)
 - GitLab main + reconstruction = 535e3c7 (nova funkcionalnosti vkljucene)
 - Opomba: originalni Receipt R-2026-000003 v bazi ima prazen EOR + fiscalStatus pending — prikazan kot je (prava podatkovna resnica originalne aplikacije)
+
+---
+Task ID: 6-modules
+Agent: Z.ai (main)
+Task: "odlicno nadaljuj" — obnova ostalih modulov (zaloge, izmene/Z, HACCP, stroski, zvestoba)
+
+Work Log:
+- Backend: POST /api/haccp (temperature/cleaning/delivery/cooling/training, status ok/warning/critical), POST /api/expenses (AccountsPayable: apNumber generator, supplier FK fallback "Razno", dueDate +30 dni, samo ADMIN/MANAGER)
+- Frontend: nov src/components/dashboard-tabs.tsx — InventoryTab (stevci, pod-minimum opozorila, vrednost zaloge), ShiftsTab (financni pregled meseca: prihodki/stroski/dobiczek/racuni + zacetek/zakljucek izmene z blagajno + seznam Z-porocil), HaccpTab (vnos kontrole + seznam), ExpensesTab (vnos + mesecni total), LoyaltyTab (clani, tocke, tierji)
+- Dashboard: 14 tabov (dodani zaloge/izmene/haccp/stroski/zvestoba), load() razsirjen na 14 API klicev, paleta posodobljena (stroski/zvestoba samo za ADMIN/MANAGER — kanonska avtorizacija)
+- E2E lokalno: izmena zacetek (100 EUR) -> zakljucek (143,50 EUR, Z-zapis), HACCP kontrola zapisana, strosek 37,80 vnesen, zaloge 3 artikli 525 EUR — 0 napak
+- Push GitLab (main + reconstruction), deploy Vercel dpl_4BphQtbnqYNkyTNKMbRUKXAxxzST READY 30s
+- Ziva verifikacija produkcije (info@restaurantos.app / 729153): Zaloge 26 artiklov, 2 pod minimumom, vrednost 2.733,90 EUR (realno: Belo vino, File lososa...), Zvestoba 4 clani 1201 tock (tierji silver/bronze, original QA podatki), Izmene: prava izmena "Ana Demo (Manager) 18.09." + financni pregled (16,87 EUR mesec), HACCP obrazec + seznam — 0 napak
+
+Stage Summary:
+- Vsi glavni moduli originalne aplikacije zdaj obnovljeni in zivi na produkciji
+- 14 tabov: Pregled, Mize, Narocila, Kuhinja, Meni, Rezervacije, Racuni, Zaloge, Izmene, HACCP, Stroski, Zvestoba, Zaposleni, Nastavitve
+- GitLab main = reconstruction (najnovejse); produkcija dpl_4BphQtbnqYNkyTNKMbRUKXAxxzST
