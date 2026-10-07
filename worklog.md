@@ -183,3 +183,20 @@ Work Log:
 Stage Summary:
 - 100% API-UI pokritost; produkcija = najnovejsa koda (15 tabov)
 - GitLab main + reconstruction @ 05dc69a; produkcija dpl_8ZxztxnM6qsSipzkpevvSFPMvcVp
+
+---
+Task ID: 8-settings-devices
+Agent: Z.ai (main)
+Task: "odlicno nadaljuj z obnovo" — urejevalnik nastavitev + upravljanje naprav (zadnji API-ji brez UI)
+
+Work Log:
+- Pregled preostalih API-jev: /api/settings (GET+PUT, 20 polj) in /api/devices (GET) brez UI; setup/status = samo statusni endpoint (ni potreben UI)
+- dashboard-tabs.tsx: nova SettingsEditor (podatki podjetja: naziv/naslov/kontakt/davcna/matlicna/FURS okolje select z opozorilom/noga racuna/DDV stopnje/valuta/jezik + switcha za zvestobo in e-posto; read-only nacin za non-canManage; notice fix — useEffect ne brise vec sporocila, set() ga cisti pri urejanju), nova DevicesCard (seznam naprav s tip badge, lokacijo, MASKIRANIM zetonom rodev_*, statusom online, zadnjo povezavo)
+- dashboard: load() razsirjen na 24 API klicev (settings preslikan iz surove vrstice: Decimal->string, boolean), Nastavitve tab = SettingsEditor + DevicesCard + Lokacije/Integracije/Webhooki/Dnevnik + O sistemu
+- E2E lokalno: obrazec vnaprej izpolnjen s seed podatki, sprememba noge racuna -> PUT uspešen (API potrdil vrednost), notice "Nastavitve shranjene ✓" viden, vrednost povrnjena, Naprave prikazuje 2 registrirani napravi iz E2E testov z maskiranimi zetoni — 0 napak
+- lint cist
+
+Stage Summary:
+- Sedaj so VSI API-ji (razen statusnega setup/status) pokriti z UI — obnova modulov zakljucena do konca
+- Nastavitve tab zdaj = pravi urejevalnik (FURS okolje, DDV, podatki podjetja, funkcije) + naprave
+- Sledi: push + deploy + produkcjska verifikacija (na produkciji SAMO pregled, brez spreminjanja podatkov)

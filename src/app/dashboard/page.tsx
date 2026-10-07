@@ -27,9 +27,9 @@ import {
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
-  type SupplierT, type RecipeT, type FeedbackT, type JobT,
+  type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
 } from '@/components/dashboard-tabs'
 import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug } from 'lucide-react'
 
@@ -107,6 +107,8 @@ export default function DashboardPage() {
   const [integrations, setIntegrations] = useState<IntegrationT[]>([])
   const [webhooks, setWebhooks] = useState<WebhookT[]>([])
   const [errLog, setErrLog] = useState<ErrLogT[]>([])
+  const [settings, setSettings] = useState<SettingsT | null>(null)
+  const [devices, setDevices] = useState<DeviceT[]>([])
   const [newOrderTable, setNewOrderTable] = useState<TableT | null>(null)
   const [cart, setCart] = useState<Record<string, number>>({})
   const [sending, setSending] = useState(false)
@@ -136,7 +138,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el] = await Promise.all([
+      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv] = await Promise.all([
         api<{ stats: Stats }>('/api/dashboard'),
         api<{ tables: TableT[] }>('/api/tables'),
         api<{ orders: OrderT[] }>('/api/orders'),
@@ -159,6 +161,8 @@ export default function DashboardPage() {
         api<{ integrations: IntegrationT[] }>('/api/integrations'),
         api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks'),
         api<{ errors: ErrLogT[] }>('/api/monitoring/errors'),
+        api<{ settings: Record<string, unknown> | null }>('/api/settings'),
+        api<{ devices: DeviceT[] }>('/api/devices'),
       ])
       setStats(d.stats); setTables(t.tables); setOrders(o.orders)
       setKitchen(k.queue); setMenu(m.items); setCategories(m.categories); setEmployees(e.employees)
@@ -167,6 +171,18 @@ export default function DashboardPage() {
       setHaccp(haccpRows.haccpChecks); setExpenses(ex.expenses); setLoyalty(loy.accounts)
       setSuppliers(sup.suppliers); setRecipes(recp.recipes); setJobs(jb.jobContexts); setFeedback(fb.feedback)
       setLocStats(ls.stats); setIntegrations(ig.integrations); setWebhooks(wb.webhookEndpoints); setErrLog(el.errors)
+      const s = se.settings
+      const num = (v: unknown, def: number) => { const x = Number(v); return Number.isFinite(x) ? x : def }
+      const str = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+      setSettings(s ? {
+        name: str(s.name), address: str(s.address), city: str(s.city), postCode: str(s.postCode),
+        phone: str(s.phone), email: str(s.email), web: str(s.web), businessId: str(s.businessId),
+        taxId: str(s.taxId), registerNumber: str(s.registerNumber), fursEnvironment: str(s.fursEnvironment) || 'test',
+        defaultVatRate: String(num(s.defaultVatRate, 22)), reducedVatRate: String(num(s.reducedVatRate, 9.5)),
+        loyaltyEnabled: !!s.loyaltyEnabled, receiptFooter: str(s.receiptFooter), currency: str(s.currency) || 'EUR',
+        locale: str(s.locale) || 'sl-SI', country: str(s.country) || 'SI', emailEnabled: !!s.emailEnabled,
+      } : null)
+      setDevices(dv.devices)
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
@@ -544,6 +560,8 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="nastavitve" className="space-y-4">
+            <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
+            <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} />
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacije</CardTitle></CardHeader>

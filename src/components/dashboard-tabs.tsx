@@ -1,15 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, fmtEUR } from '@/lib/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase } from 'lucide-react'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -472,6 +473,166 @@ export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManag
                 {j.permissions && <p className="text-xs text-stone-500 truncate">{j.permissions.split(',').join(' · ')}</p>}
               </div>
               <Badge className={j.active ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{j.active ? 'Aktivno' : 'Neaktivno'}</Badge>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────────────────── NASTAVITVE — UREJEVALNIK ─────────────────────────── */
+
+export interface SettingsT {
+  name: string; address: string; city: string; postCode: string; phone: string; email: string; web: string
+  businessId: string; taxId: string; registerNumber: string; fursEnvironment: string
+  defaultVatRate: string; reducedVatRate: string; loyaltyEnabled: boolean
+  receiptFooter: string; currency: string; locale: string; country: string; emailEnabled: boolean
+}
+
+export function SettingsEditor({ settings, canManage, onReload }: { settings: SettingsT | null; canManage: boolean; onReload: () => Promise<void> }) {
+  const [form, setForm] = useState<SettingsT | null>(settings)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState('')
+  useEffect(() => { setForm(settings) }, [settings])
+
+  if (!form) {
+    return canManage ? (
+      <Card><CardContent className="text-sm text-stone-500">Nastavitve še niso ustvarjene — shrani obrazec za prvo inicializacijo.</CardContent></Card>
+    ) : null
+  }
+  if (!canManage) {
+    return (
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Store className="w-4 h-4" /> Podatki lokacije</CardTitle></CardHeader>
+        <CardContent className="text-sm space-y-1 text-stone-600">
+          <p className="font-medium text-stone-800">{form.name}</p>
+          <p>{[form.address, form.postCode, form.city].filter(Boolean).join(', ') || '—'}</p>
+          <p className="text-xs text-stone-500">{form.phone} · {form.email}{form.web ? ` · ${form.web}` : ''}</p>
+          <p className="text-xs text-stone-500">Davčna št. {form.taxId || '—'} · matična št. {form.businessId || '—'} · {form.registerNumber}</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const set = (k: keyof SettingsT, v: string | boolean) => { setNotice(''); setForm((f) => (f ? { ...f, [k]: v } : f)) }
+  async function save() {
+    if (!form) return
+    setSaving(true)
+    try {
+      await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          ...form,
+          defaultVatRate: Number(form.defaultVatRate.replace(',', '.')),
+          reducedVatRate: Number(form.reducedVatRate.replace(',', '.')),
+        }),
+      })
+      setNotice('Nastavitve shranjene ✓')
+      await onReload()
+    } catch (err) { setNotice(`Napaka: ${(err as Error).message}`) } finally { setSaving(false) }
+  }
+
+  const txt = (k: keyof SettingsT, label: string, placeholder = '') => (
+    <div className="space-y-1.5">
+      <Label htmlFor={`st-${k}`}>{label}</Label>
+      <Input id={`st-${k}`} value={String(form[k] ?? '')} onChange={(e) => set(k, e.target.value)} placeholder={placeholder} />
+    </div>
+  )
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><Store className="w-4 h-4" /> Nastavitve podjetja</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith('Napaka') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {txt('name', 'Naziv', 'npr. Gostilna pri Jožetu')}
+          {txt('address', 'Naslov')}
+          {txt('city', 'Kraj')}
+          {txt('postCode', 'Poštna številka')}
+          {txt('phone', 'Telefon')}
+          {txt('email', 'E-pošta')}
+          {txt('web', 'Spletna stran')}
+          {txt('businessId', 'Matična številka')}
+          {txt('taxId', 'Davčna številka')}
+          {txt('registerNumber', 'Oznaka poslovnega prostora', 'npr. BLG001')}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5"><ShieldAlert className="w-3.5 h-3.5 text-amber-600" /> FURS okolje</Label>
+            <Select value={form.fursEnvironment || 'test'} onValueChange={(v) => set('fursEnvironment', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="test">Testno okolje</SelectItem>
+                <SelectItem value="production">Produkcijsko okolje</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-amber-600">Produkcijsko okolje izdaja prave FURS račune — preklapljajte previdno.</p>
+          </div>
+          {txt('receiptFooter', 'Noga računa', 'npr. Hvala za obisk!')}
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {txt('defaultVatRate', 'Osnovni DDV (%)', '22')}
+          {txt('reducedVatRate', 'Znižani DDV (%)', '9.5')}
+          {txt('currency', 'Valuta', 'EUR')}
+          {txt('locale', 'Jezikovna oznaka', 'sl-SI')}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5">
+            <div><p className="text-sm font-medium">Program zvestobe</p><p className="text-xs text-stone-500">Zbiranje točk ob plačilu</p></div>
+            <Switch checked={form.loyaltyEnabled} onCheckedChange={(v) => set('loyaltyEnabled', v)} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5">
+            <div><p className="text-sm font-medium">E-poštna poročila</p><p className="text-xs text-stone-500">Pošiljanje poročil po e-pošti</p></div>
+            <Switch checked={form.emailEnabled} onCheckedChange={(v) => set('emailEnabled', v)} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={saving} onClick={save}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani nastavitve'}
+          </Button>
+          <span className="text-xs text-stone-400">{form.country || 'SI'} · {form.locale || 'sl-SI'} · {form.currency || 'EUR'}</span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────────────────── NAPRAVE ─────────────────────────── */
+
+export interface DeviceT { id: string; name: string; type: string; token: string; lastSeen?: string | null; status: string; locationId?: string | null }
+
+const DEVICE_TYPE_LABELS: Record<string, string> = {
+  POS: 'POS blagajna', KDS: 'KDS kuhinja', KDS_BAR: 'KDS bar', TABLET: 'Tablica', KIOSK: 'Kiosk', MOBILE: 'Mobilna',
+}
+
+export function DevicesCard({ devices, locations }: { devices: DeviceT[]; locations: { id: string; name: string }[] }) {
+  const locName = (id?: string | null) => (id ? locations.find((l) => l.id === id)?.name || null : null)
+  const mask = (t: string) => (t && t.length > 14 ? `${t.slice(0, 14)}…` : t)
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> Naprave</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-stone-400 mb-2">Nove naprave se poveže na prijavni strani (“Poveži napravo z lokacijo”) — celoten žeton se pokaže le tam, enkrat.</p>
+        {devices.length === 0 && <p className="text-sm text-stone-500">Ni registriranih naprav.</p>}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {devices.map((d) => (
+            <div key={d.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium truncate">{d.name} <Badge variant="outline" className="ml-1">{DEVICE_TYPE_LABELS[d.type] || d.type}</Badge></p>
+                <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || 'brez lokacije'} · žeton {mask(d.token)}</p>
+                <p className="text-[11px] text-stone-400">zadnja povezava: {d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'nikoli'}</p>
+              </div>
+              <Badge className={d.status === 'online' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{d.status}</Badge>
             </div>
           ))}
         </div>
