@@ -24,7 +24,9 @@ echo "$LOCS" | grep -q '"id"' && pass "lokacije dostopne" || err "lokacije niso 
 
 step "3/4 javni endpointi ne uhajajo (/api/public/menu)"
 PUB="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$BASE_URL/api/public/menu" 2>/dev/null || true)"
-[ "$PUB" = "200" ] || [ "$PUB" = "404" ] && pass "javni meni odgovarja ($PUB)" || err "public/menu HTTP $PUB"
+# 200 = javni meni odprt; 401 = zaščiten brez QR žetona/identitete naprave (issue #3 fail-closed);
+# 404 = ruta ne obstaja. Nobeden od teh ne uhaja celotnega menija.
+[ "$PUB" = "200" ] || [ "$PUB" = "401" ] || [ "$PUB" = "404" ] && pass "javni meni varno odgovarja ($PUB)" || err "public/menu HTTP $PUB"
 
 step "4/4 zaščita avtorizacije (protected route brez žetona = 401)"
 CODE="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$BASE_URL/api/orders" 2>/dev/null || true)"
