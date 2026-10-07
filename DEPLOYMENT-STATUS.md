@@ -26,6 +26,14 @@
 - Vaja PIN-ov v UI: Zaposleni tab med bootstrap sejo prikaže opozorilo (ustvarjanje profila / reset PIN-a v Control Centerju, gumb za naključni PIN). Zaposlenim nastavi PIN v Control Centerju (Zaposleni → klikni profil → Ponastavi PIN); vsak reset poveča `sessionVersion` in se zapiše v revijo.
 - Originalni zaposleni (ana@restaurant.com, eva@restaurant.com, ...) imajo še PIN-e v stari, neznani shemi → prijava zanje, dokler jim admin ne nastavi novega PIN-a, ni mogoča (namerno).
 
+### Zaloge: razknjiževanje po recepturah + računovodski izvoz (2026-10-07, deploy dpl_Evo24cgBnRQKXn5fWQ3m1mzTuUXe, v1.30.0)
+- **Razknjiževanje ob prodaji**: ob izdaji računa (FURS transakcija) se sestavine po recepturah SAMODEJNO odštejejo iz zaloge — idempotentno (Order.inventoryDeducted + StockTransaction), FEFO po serijah (InventoryBatch + StockBatchAllocation), primanjkljaj ne blokira prodaje (opomba + audit).
+- **Recepture urejljive**: Zaloge → Receptura (artikel menija + sestavine z količinami); POST/DELETE /api/recipes (permission inventory.manage, audit).
+- **Evidence gibanja**: prejemi/popravki zaloge zapisujejo StockTransaction (RECEIVE/ADJUST) z vrednostjo.
+- **Računovodski izvoz**: zavihek Računi → "Računovodski izvoz" (Od/Do) → CSV (BOM, `;`, pripravljeno za Excel/računovodske programe) ali JSON: prodaja po dnevih (neto/DDV/popusti/napitnine), DDV razčlenba po stopnjah, plačila po načinih, računi dobaviteljev, gibanje zalog.
+- **Fix**: ScrollArea Root dobi overflow-hidden (seznam računov se ni obrezal prek 60vh in je prekrival klik naslednjih kartic).
+- Produkcijska verifikacija: prijava ✓, zavihek Zaloge (26 artiklov, vrednost 2733,90 €, Receptura gumb) ✓, Računi → izvozna kartica + CSV 200 ✓, 0 konzolnih napak.
+
 ### Temni način (2026-10-07, deploy dpl_FLCJ4b3eFkkcye41xnCU6Nqqwn2x)
 - Preklop svetli/temni: prijava (zgoraj desno) in dashboard header (next-themes, class strategija; privzeto po sistemu, persistenca v localStorage).
 - Svetla tema **pikselno nespremenjena** — temna implementirana kot preslikava barvnih žetonov pod `.dark` v globals.css (ploskve/obrobe/besedila/pastelne tinte), nasičeni gumbi ostajajo z belim besedilom.
