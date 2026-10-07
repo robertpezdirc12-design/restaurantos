@@ -2,9 +2,10 @@ import crypto from 'crypto'
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { mapReceipt, nid, num, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
+import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { OrderError } from '@/lib/ops'
+import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
 
 /**
  * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
@@ -34,9 +35,22 @@ export async function GET(req: NextRequest) {
  * - Idempotencija: body.clientOperationId → Payment.idempotencyKey (unique); replay vrne
  *   ISTI račun (200, replayed) namesto novega
  * - Terminski POS: body.terminal.approvalCode → Payment.authorizationCode
+ * - Issue #1 §6 deljeno plačilo: body.parts = [{ type, amount, terminal? }] — več delov
+ *   z različnimi načini; vsota delov + vrednost unovčenih točk MORA biti = za plačanje
+ *   (preprečitev preplačila/dvojnega plačila — validirano strežniško)
+ * - Issue #1 §6 zvestoba: body.loyaltyAccountId + loyaltyPointsUsed → CAS odbitje točk +
+ *   LoyaltyTransaction (redeem) + Payment(type='loyalty'); zaslužek po plačilu (earn)
+ * - Issue #1 §6 popusti: ročni (Order.discount) + avtomatski (Happy Hour) izračunana
+ *   kanonično prek billing.ts — Check/Receipt nosita discount razčlenbo
  * - FURS: simulacija → ZOI=MD5, EOR=UUID, status 'verified'; produkcija → EOR='',
  *   status 'pending' (čaka pravo SOAP integracijo s certifikatom) + AuditLog INVOICE_ISSUE
  */
+interface PaymentPart {
+  type: string
+  amount: number
+  terminalApproval: string
+}
+
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'orders.pay')
   if (isResponse(user)) return user
@@ -53,7 +67,7 @@ export async function POST(req: NextRequest) {
   // Predhodna preverjanja (definitivni odgovori, ne transakcijski)
   const orderPre = await db.order.findUnique({
     where: { id: body.orderId },
-    include: { OrderItem: true, Table: true },
+    include: { OrderItem: { include: { MenuItem: { select: { categoryId: true } } } }, Table: true },
   })
   if (!orderPre) return fail('Naročilo ne obstaja.', 404)
   if (!ORDER_ACTIVE_DB.includes(orderPre.status) && orderPre.status !== 'paid') {
@@ -73,35 +87,128 @@ export async function POST(req: NextRequest) {
   const simulation =
     process.env.FURS_ALLOW_SIMULATION === 'true' || ['simulation', 'test'].includes(fursEnv.toLowerCase())
 
-  const subtotal = num(orderPre.subtotal)
-  const totalVat = num(orderPre.tax)
-  const total = num(orderPre.total)
+  // ── Kanonični izračun računa (ročni + avtomatski/Happy Hour popusti) — billing.ts ──
+  const now = new Date()
+  const autoCandidates = await db.discount.findMany({
+    where: {
+      locationId: orderPre.locationId,
+      isActive: true,
+      triggerType: 'auto',
+      OR: [{ validFrom: null }, { validFrom: { lte: now } }],
+      AND: [{ OR: [{ validTo: null }, { validTo: { gte: now } }] }],
+    },
+    select: { id: true, name: true, type: true, amount: true, happyDays: true, happyFromHour: true, happyToHour: true, targetCategoryIds: true },
+  })
+  const billItems: BillItem[] = orderPre.OrderItem
+    .filter((it) => !it.voided)
+    .map((it) => ({
+      id: it.id,
+      menuItemId: it.menuItemId,
+      name: it.menuItemName,
+      quantity: it.quantity,
+      unitPrice: num(it.price),
+      vatRate: num(it.vatRate, 22),
+      vatAmount: num(it.vatAmount),
+      categoryId: it.MenuItem?.categoryId || null,
+      voided: it.voided,
+    }))
+  const bill = computeBill({
+    items: billItems,
+    subtotal: r2(billItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0)),
+    tax: r2(billItems.reduce((s, it) => s + it.vatAmount, 0)),
+    manualDiscount: num(orderPre.discount),
+    autoCandidates,
+    now,
+    loyaltyEnabled: location.loyaltyEnabled,
+    pointsPerEuro: location.loyaltyPointsPerEuro,
+    pointsValue: num(location.loyaltyPointsValue, 0.01),
+  })
+  const subtotal = bill.subtotal
+  const totalVat = bill.tax
+  const total = bill.totalDue // znesek ZA PLAČANJE (po popustih)
   const tip = num(orderPre.tip)
-  const paymentMethod = PAYMENT_TYPES_DB.includes(String(body.type || '').toLowerCase())
-    ? String(body.type).toLowerCase()
-    : 'cash'
 
-  // Terminal (issue #1: realne naprave): kartica/mobilno zahteva odobritev terminala
-  const terminalApproval =
-    body?.terminal && typeof body.terminal.approvalCode === 'string'
-      ? body.terminal.approvalCode.trim().slice(0, 40)
-      : ''
-  if (['card', 'mobile'].includes(paymentMethod) && !terminalApproval) {
-    return fail('Kartično plačilo zahteva odobritev terminala (approvalCode).', 402)
+  // ── Zvestoba: unovčenje točk (validacija PRED transakcijo) ──
+  const redeemPoints = Math.max(0, Math.round(Number(body?.loyaltyPointsUsed) || 0))
+  const loyaltyAccountId = typeof body?.loyaltyAccountId === 'string' && body.loyaltyAccountId.trim() ? body.loyaltyAccountId.trim() : null
+  let redeemValue = 0
+  let loyaltyAccount: { id: string; customerName: string; pointsBalance: number; lifetimePoints: number } | null = null
+  if (redeemPoints > 0 || loyaltyAccountId) {
+    if (!loyaltyAccountId) return fail('Unovčenje točk zahteva loyaltyAccountId.', 400)
+    if (!location.loyaltyEnabled) return fail('Program zvestobe ni omogočen za to lokacijo.', 400)
+    if (redeemPoints > bill.loyalty.maxRedeemablePoints) {
+      return fail(`Največ ${bill.loyalty.maxRedeemablePoints} točk je mogoče unovčiti na tem računu.`, 400)
+    }
+    const acc = await db.loyaltyAccount.findUnique({ where: { id: loyaltyAccountId } })
+    if (!acc || !acc.isActive) return fail('Račun zvestobe ne obstaja ali ni aktiven.', 404)
+    if (redeemPoints > acc.pointsBalance) return fail('Gost nima dovolj točk za unovčenje.', 409)
+    loyaltyAccount = { id: acc.id, customerName: acc.customerName, pointsBalance: acc.pointsBalance, lifetimePoints: acc.lifetimePoints }
+    redeemValue = r2(redeemPoints * bill.loyalty.pointsValue)
   }
 
-  const now = new Date()
+  // ── Deli plačila (deljeno plačilo) ──
+  const parts: PaymentPart[] = []
+  if (Array.isArray(body?.parts) && body.parts.length > 0) {
+    if (body.parts.length > 10) return fail('Največ 10 delov plačila.', 400)
+    for (const p of body.parts as Record<string, unknown>[]) {
+      const type = String(p?.type || '').toLowerCase()
+      if (!PAYMENT_TYPES_DB.includes(type) || type === 'loyalty') {
+        return fail(`Neveljaven način plačila dela: ${type || '(prazno)'}.`, 400)
+      }
+      const amount = r2(num(p?.amount))
+      if (amount <= 0) return fail('Znesek dela plačila mora biti večji od 0.', 400)
+      const ta = p?.terminal && typeof (p.terminal as { approvalCode?: unknown }).approvalCode === 'string'
+        ? String((p.terminal as { approvalCode: string }).approvalCode).trim().slice(0, 40)
+        : ''
+      if (['card', 'mobile'].includes(type) && !ta) {
+        return fail('Kartični/mobilni del plačila zahteva odobritev terminala (approvalCode).', 402)
+      }
+      parts.push({ type, amount, terminalApproval: ta })
+    }
+  } else {
+    // klasična pot — eno plačilo preostanka (po odbitku unovčenih točk)
+    const legacyType = PAYMENT_TYPES_DB.includes(String(body.type || '').toLowerCase())
+      ? String(body.type).toLowerCase()
+      : 'cash'
+    if (legacyType === 'loyalty') return fail('Plačilo s točkami: uporabi loyaltyPointsUsed.', 400)
+    const ta = body?.terminal && typeof body.terminal.approvalCode === 'string'
+      ? body.terminal.approvalCode.trim().slice(0, 40)
+      : ''
+    if (['card', 'mobile'].includes(legacyType) && !ta) {
+      return fail('Kartično plačilo zahteva odobritev terminala (approvalCode).', 402)
+    }
+    const legacyAmount = r2(total - redeemValue)
+    if (legacyAmount > 0) parts.push({ type: legacyType, amount: legacyAmount, terminalApproval: ta })
+  }
+
+  // ── Usklajenost zneskov: deli + unovčene točke = za plačanje (preprečitev preplačila) ──
+  const partsSum = r2(parts.reduce((s, p) => s + p.amount, 0))
+  const expected = r2(redeemValue + partsSum)
+  if (Math.abs(expected - total) > 0.004) {
+    return fail(
+      `Vsota delov plačila (${partsSum.toFixed(2)} €)${redeemValue ? ` + točke (${redeemValue.toFixed(2)} €)` : ''} mora biti enaka znesku za plačanje (${total.toFixed(2)} €).`,
+      400,
+    )
+  }
+
+  const paymentMethod = parts.length === 0 ? 'loyalty' : parts.length === 1 ? parts[0].type : 'mixed'
+  const idemBase = idempotencyKey || ''
 
   // razčlenba DDV po stopnjah
   const vatMap: Record<string, { base: number; vat: number }> = {}
-  for (const it of orderPre.OrderItem) {
-    const rate = num(it.vatRate, 22).toFixed(2)
-    const base = num(it.price) * (it.quantity || 0)
-    const vat = num(it.vatAmount)
+  for (const it of billItems) {
+    const rate = it.vatRate.toFixed(2)
+    const base = it.unitPrice * it.quantity
+    const vat = it.vatAmount
     if (!vatMap[rate]) vatMap[rate] = { base: 0, vat: 0 }
     vatMap[rate].base += base
     vatMap[rate].vat += vat
   }
+
+  // zaslužene točke (kanonično pravilo) — samo identified gost + omogočen program
+  const earnedPoints = loyaltyAccount && location.loyaltyEnabled
+    ? earnPointsFor(total, location.loyaltyPointsPerEuro)
+    : 0
 
   try {
     const receipt = await db.$transaction(async (tx) => {
@@ -138,6 +245,8 @@ export async function POST(req: NextRequest) {
           orderId: orderPre.id,
           subtotal,
           tax: totalVat,
+          discount: bill.discountTotal,
+          appliedDiscountId: bill.autoDiscounts[0]?.discountId || null,
           total,
           tip,
           totalWithTip: total + tip,
@@ -164,7 +273,7 @@ export async function POST(req: NextRequest) {
           subtotal,
           vatBreakdown: jstr(vatMap),
           totalVat,
-          discount: num(orderPre.discount),
+          discount: bill.discountTotal,
           total,
           tip,
           totalWithTip: total + tip,
@@ -175,19 +284,75 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      await tx.payment.create({
-        data: {
-          id: nid(),
-          checkId: check.id,
-          amount: total,
-          tipAmount: tip,
-          type: paymentMethod as 'cash' | 'card' | 'mobile' | 'voucher' | 'loyalty' | 'giftcard' | 'alternate',
-          status: 'completed',
-          employeeId: user.sub,
-          idempotencyKey,
-          authorizationCode: terminalApproval,
-        },
-      })
+      // ── Payment vrstice: ena za vsak del + ena za unovčene točke ──
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i]
+        await tx.payment.create({
+          data: {
+            id: nid(),
+            checkId: check.id,
+            amount: p.amount,
+            tipAmount: i === 0 ? tip : 0,
+            type: p.type as 'cash' | 'card' | 'mobile' | 'voucher' | 'giftcard' | 'alternate',
+            status: 'completed',
+            employeeId: user.sub,
+            idempotencyKey: idemBase ? `${idemBase}#p${i}` : null,
+            authorizationCode: p.terminalApproval,
+          },
+        })
+      }
+      if (redeemValue > 0 && loyaltyAccount) {
+        // CAS odbitje točk: uspe SAMO če ima gost še vedno dovolj (zaščita pred dvojnim unovčenjem)
+        const dec = await tx.loyaltyAccount.updateMany({
+          where: { id: loyaltyAccount.id, pointsBalance: { gte: redeemPoints } },
+          data: { pointsBalance: { decrement: redeemPoints } },
+        })
+        if (dec.count === 0) throw new OrderError('Gost nima več dovolj točk (sočasno unovčenje).', 409)
+        await tx.payment.create({
+          data: {
+            id: nid(),
+            checkId: check.id,
+            amount: redeemValue,
+            type: 'loyalty',
+            status: 'completed',
+            employeeId: user.sub,
+            loyaltyAccountId: loyaltyAccount.id,
+            loyaltyPointsUsed: redeemPoints,
+            idempotencyKey: idemBase ? `${idemBase}#loyalty` : null,
+          },
+        })
+        await tx.loyaltyTransaction.create({
+          data: {
+            id: nid(),
+            loyaltyAccountId: loyaltyAccount.id,
+            type: 'redeem',
+            points: -redeemPoints,
+            reason: 'Unovčenje točk ob plačilu računa',
+            orderId: orderPre.id,
+            checkId: check.id,
+            monetaryValue: redeemValue,
+          },
+        })
+      }
+      if (earnedPoints > 0 && loyaltyAccount) {
+        const newLifetime = loyaltyAccount.lifetimePoints + earnedPoints
+        await tx.loyaltyAccount.update({
+          where: { id: loyaltyAccount.id },
+          data: { lifetimePoints: { increment: earnedPoints }, pointsBalance: { increment: earnedPoints }, tier: tierForPoints(newLifetime) },
+        })
+        await tx.loyaltyTransaction.create({
+          data: {
+            id: nid(),
+            loyaltyAccountId: loyaltyAccount.id,
+            type: 'earn',
+            points: earnedPoints,
+            reason: `Zaslužek ob plačilu (${location.loyaltyPointsPerEuro}/€)`,
+            orderId: orderPre.id,
+            checkId: check.id,
+            monetaryValue: total,
+          },
+        })
+      }
 
       if (orderPre.tableId) {
         await tx.table.update({ where: { id: orderPre.tableId }, data: { status: 'cleaning' } })
@@ -205,9 +370,15 @@ export async function POST(req: NextRequest) {
             receiptNumber,
             orderId: orderPre.id,
             total,
+            grossTotal: bill.grossTotal,
+            discountTotal: bill.discountTotal,
+            manualDiscount: bill.manualDiscount,
+            autoDiscounts: bill.autoDiscounts,
             paymentMethod,
+            parts: parts.map((p) => ({ type: p.type, amount: p.amount })),
+            loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
             simulation,
-            terminalApproval: terminalApproval || null,
+            terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null,
           }),
           locationId: location.id,
         },
@@ -226,6 +397,8 @@ export async function POST(req: NextRequest) {
     return ok({
       invoice: mapReceipt(receipt.twin),
       order: { ...orderPre, status: 'PAID', fursEor: receipt.twin.eor },
+      bill: { discountTotal: bill.discountTotal, autoDiscounts: bill.autoDiscounts, totalDue: total },
+      loyalty: loyaltyAccount ? { redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
     }, 201)
   } catch (e) {
     if (e instanceof OrderError) return fail(e.message, e.status)
@@ -241,11 +414,13 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Poišči račun po idempotency ključu plačila (replay podpora) */
+/** Poišči račun po idempotency ključu plačila (replay podpora).
+ *  Pokriva tudi deljeno plačilo/zvestobo, kjer so ključi priponjeni: `key#p0`, `key#loyalty`. */
 async function findReceiptByIdempotencyKey(key: string) {
-  const payment = await db.payment.findUnique({
-    where: { idempotencyKey: key },
+  const payment = await db.payment.findFirst({
+    where: { OR: [{ idempotencyKey: key }, { idempotencyKey: { startsWith: `${key}#` } }] },
     include: { Check: true },
+    orderBy: { createdAt: 'asc' as const },
   })
   if (!payment) return null
   const receipt = await db.receipt.findFirst({

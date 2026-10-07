@@ -601,6 +601,11 @@ model Discount {
   currentUses Int         @default(0)
   validFrom   DateTime?
   validTo     DateTime?
+  // Issue #1 §6: Happy Hour — časovna okna po dnevih/urah + ciljni kategoriji (CSV, prazno = cel račun)
+  happyDays        String   @default("")
+  happyFromHour    Int?
+  happyToHour      Int?
+  targetCategoryIds String  @default("")
   isActive    Boolean     @default(true)
   sortOrder   Int         @default(0)
   createdAt   DateTime    @default(now())

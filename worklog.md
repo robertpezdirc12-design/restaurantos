@@ -643,3 +643,34 @@ Stage Summary:
 - Issue #3 ŽIVO V PRODUKCIJI: https://restaurantos-theta.vercel.app/m/<qr> — gost lahko naroči brez prijave, naročilo teče v isti Order/KDS pipeline
 - Migracijska ruta ostane (admin-gated, idempotentna, dokumentirana) — prihodnje shema spremembe lahko isti vzorec
 - GitHub PAT preklican — za direktne GitHub operacije potreben nov PAT; sync prek Actions GITLAB_TOKEN secret teče naprej
+
+---
+Task ID: 6
+Agent: Z.ai Code (glavni)
+Task: GitLab issue #1 §6–7 — mize/statusi, deljeno plačilo, zvestoba pri prodaji, popusti/promocije, Happy Hour, POS UX (v1.29.0)
+
+Work Log:
+- Kontekst: prebrani vsi 3 GitLab issue-i (token ③ VALIDEN); ugotovljeno stanje: #1 §1–5, #2 (Glovo/Wolt), #3 (QR/kiosk) že izvedeni v prejšnjih sejah — OSTAJA le #1 §6–7
+- GitHub token ghp_E27J... = 401 Bad credentials (obeh formatov); GitHub mirror neporahtan — ampak `git ls-remote github` z vgrajenim žetonom v remote URL deluje → direkt push mogoč
+- LOKALNI remote origin posodobljen na token ③; main = origin/main (26f988b); reconstruction = origin/reconstruction (f9a49bb)
+- SCHEMA (schema.prisma + schema.sqlite.prisma, db:push): Discount +happyDays/happyFromHour/happyToHour/targetCategoryIds (CSV, brez seznamov — omejitev primitive)
+- src/lib/billing.ts (NOVO — kanonični izračun računa): computeBill (ročni + avtomatski popusti <= subtotal, totalDue), isHappyActive (okna po dnevih/urah, tudi čez polnoč), discountAmountOf (percent/fixed, baza = osnova brez DDV ali ciljne kategorije), earnPointsFor (Location.loyaltyPointsPerEuro), tierForPoints — EN vir za UI predogled IN FURS zaključek
+- permissions.ts: + kanonično dovoljenje 'apply_discounts' (waiter/staff/bar privzeto, izvirni podatki "Natakar: apply_discounts")
+- API: /api/discounts (GET/POST) + /api/discounts/[id] (PATCH/DELETE mehko, audit DISCOUNT_CREATED/UPDATED/DELETED, validacija okna/kategorij)
+- API: /api/orders/[id]/bill (GET — kanonični predogled za plačilni dialog, orders.pay) · /api/orders/[id]/discount (POST/DELETE ročni popust z maxUses/veljavnostjo, audit DISCOUNT_APPLIED/REMOVED) · /api/loyalty/lookup (GET q= ime/telefon, orders.pay, top 5)
+- /api/furs POST razširjen: body.parts [{type,amount,terminal?}] deljeno plačilo (max 10, vsota delov + unovčene točke === totalDue ± 0.004 — preprečitev preplačila/dvojnega), loyaltyAccountId+loyaltyPointsUsed (CAS odbitje, Payment type='loyalty', LoyaltyTransaction redeem), zaslužek earnPointsFor + tier, paymentMethod 'mixed'/'loyalty', klasična pot zamenljivo (del = total − redeemed), ZOI z zneskom za plačanje, Check.discount, audit INVOICE_ISSUE s polno razčlenbo
+- POPRAVEK replay napake: findReceiptByIdempotencyKey zdaj pokriva priponjene ključe `key#p0`/`key#loyalty` (startsWith) — replay plačila s točkami ni več 409 in NE odšteje točk dvakrat (E2E potrjeno)
+- /api/admin/migrate-issue1-s6 (admin-gated, ADD COLUMN IF NOT EXISTS, audit SCHEMA_MIGRATION_ISSUE1_S6) — za Neon
+- UI (dashboard/page.tsx): plačilni dialog prenovljen — kanonični zneski iz /bill (Skupaj/popusti razčlenjeni/ZA PLAČATI), Select ročnega popusta (samo apply_discounts), Happy Hour žigi, zvestoba blok (iskanje → izbira → unovči input z max omejitvijo in vrednostjo), načini plačila veliki gumbi min-h-11, deljeno plačilo (2 prednastavljena dela, Dodaj del/Eno plačilo, Manjka/Razdeljeno/Preveč indikator), IZDAJ RAČUN min-h-12 text-base, povzetek po plačilu (unovčeno/prisluženo točk)
+- UI: status mize — DropdownMenu na mizi (brez aktivnega naročila): Na voljo/Rezervirana/Za pospravit → PATCH /api/tables/[id]
+- Verzija 1.29.0 (api.ts + 4 mesta); lint čist; TS: 0 novih napak (vse obstoječe: ops/furs/[id]/sync/dashboard-tabs/examples/mini-services)
+- E2E API (python): kanonični račun 7.67 → ročni 10% (0.70 na osnovo brez DDV) → HH avto −1.00 → preplačilo 400 → deljeno 2.48+2.49 → 201 račun mixed discount 2.70 → replay replayed:true → PATCH/DELETE popustov → PATCH status mize; zvestoba: +50 polog, preveliko unovčenje 400 ("Največ 283 točk"), unovči 30 (−0.30) + gotovina 2.53 → 201, točke 124→96 (−30+2), replay točk nespremenjene ✓
+- E2E brskalnik (agent-browser): prijava → Mize → plačilni dialog Miza 9 (7.67, HH −1.00, ZA PLAČATI 6.67) → iskanje "Maja" → izbira → unovči omejeno na 96 → −0.96 € → deljeno 2 dela → Izdaj račun → račun 2026-10-12-BLG001 z EOR → točke 96→6 (zaslužek 6) → miza cleaning → 0 console napak (samo znan Radix aria-describedby warning)
+- DB preverba: Payment vrstice (#p0 gotovina 2.53, #loyalty 0.30/30 točk), LoyaltyTransaction redeem −30/earn +2, Check.discount, AuditLog ✓
+- Popravljen prikaz float šumnosti v delih plačila (toFixed(2)); počiščeni zapuščeni testni naročilniki (28 storniranih)
+
+Stage Summary:
+- Issue #1 §6–7 izveden po pravilu "samo kaj manjka": vsi mehanizmi (deljeno plačilo, zvestoba, popusti, Happy Hour, statusi miz) na ISTEM kanoničnem Order → Payment → Receipt/FURS → audit toku prek billing.ts — NI vzporednega sistema
+- Varnost: vse validacije strežniško (vsota delov, max točke, veljavnost popustov, dovoljenja), idempotencija popolna (tudi z točkami), CAS zaščite, audit
+- Sprejemni kriteriji §6: izpolnjeni; §7: veliki gumbi, en dotik, preglednost brez iskanja
+- Deploy: commit → push (GitLab + GitHub) → Vercel → /api/admin/migrate-issue1-s6 → produkcijska verifikacija (sledi v Task 7)

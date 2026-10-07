@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 export const metadata: Metadata = {
   title: "RestavrantOS — restavracijski sistem (rekonstrukcija)",
   description:
-    "Restavracijski POS: blagajna, naročila, mize, kuhinja. Rekonstrukcija 1.28.0 po forenzični analizi Vercel deploymenta.",
+    "Restavracijski POS: blagajna, naročila, mize, kuhinja. Rekonstrukcija 1.29.0 po forenzični analizi Vercel deploymenta.",
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },

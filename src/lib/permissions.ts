@@ -11,6 +11,7 @@ import { jparse } from '@/lib/map'
 export const CANONICAL_PERMISSIONS = [
   'orders.create',
   'orders.pay',
+  'apply_discounts',
   'kitchen.update',
   'reservations.manage',
   'menu.manage',
@@ -26,6 +27,7 @@ export type CanonicalPermission = (typeof CANONICAL_PERMISSIONS)[number]
 export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
   'orders.create': 'Naročila — ustvarjanje',
   'orders.pay': 'Naročila — plačilo izdaja',
+  'apply_discounts': 'Popusti — uporaba in upravljanje',
   'kitchen.update': 'Kuhinja/bar — status artiklov',
   'reservations.manage': 'Rezervacije — upravljanje',
   'menu.manage': 'Meni — upravljanje',
@@ -46,9 +48,9 @@ const ROLE_DEFAULTS: Record<string, readonly CanonicalPermission[]> = {
   owner: CANONICAL_PERMISSIONS,
   admin: CANONICAL_PERMISSIONS,
   manager: CANONICAL_PERMISSIONS,
-  staff: ['orders.create', 'orders.pay', 'reservations.manage'],
-  waiter: ['orders.create', 'orders.pay', 'reservations.manage'],
-  bar: ['orders.create', 'kitchen.update'],
+  staff: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage'],
+  waiter: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage'],
+  bar: ['orders.create', 'apply_discounts', 'kitchen.update'],
   chef: ['kitchen.update'],
   kitchen: ['kitchen.update'],
 }

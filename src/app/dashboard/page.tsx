@@ -20,11 +20,13 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
   ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer, Wifi, WifiOff, CloudUpload,
   QrCode,
+  MoreVertical,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -63,6 +65,15 @@ interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; permissionOverrides: string[] }
 interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null }
 interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null }
+
+// Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
+interface BillAutoDisc { discountId: string; name: string; amount: number }
+interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number } }
+interface DiscountT { id: string; name: string; type: string; amount: number; triggerType: string; isActive: boolean; happyFromHour?: number | null; happyToHour?: number | null }
+interface LoyaltyAccT { id: string; customerName: string; customerPhone: string; pointsBalance: number; lifetimePoints: number; tier: string }
+interface PayPart { type: 'cash' | 'card' | 'mobile'; amount: number }
+
+const r2v = (v: number) => Math.round(v * 100) / 100
 
 const statusColors: Record<string, string> = {
   FREE: 'bg-emerald-600 text-white hover:bg-emerald-700',
@@ -135,6 +146,15 @@ export default function DashboardPage() {
   const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
   const [syncing, setSyncing] = useState(false)
   const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'mobile'>('cash')
+  // Issue #1 §6: plačilni dialog — kanonični račun, popusti, zvestoba, deljeno plačilo
+  const [bill, setBill] = useState<BillT | null>(null)
+  const [manualDiscounts, setManualDiscounts] = useState<DiscountT[]>([])
+  const [selDiscountId, setSelDiscountId] = useState('')
+  const [loyaltyResults, setLoyaltyResults] = useState<LoyaltyAccT[]>([])
+  const [loyaltySel, setLoyaltySel] = useState<LoyaltyAccT | null>(null)
+  const [redeemPoints, setRedeemPoints] = useState(0)
+  const [parts, setParts] = useState<PayPart[]>([])
+  const [loyaltySummary, setLoyaltySummary] = useState<{ redeemedPoints: number; earnedPoints: number } | null>(null)
   const [pcfg, setPcfg] = useState<PrintConfig>({ target: 'browser', host: '192.168.1.100', port: 9100 })
   const [termMode, setTermMode] = useState<TerminalMode>('none')
 
@@ -348,24 +368,132 @@ export default function DashboardPage() {
     }
   }
 
-  async function payOrder() {
+  /** Gumb "Izdaj račun" aktiven: račun naložen in (ob delitvi) vsota delov pokrije znesek */
+  const payOrderReady = (() => {
+    if (!bill) return false
+    if (parts.length === 0) return true // implicitno eno plačilo preostanka
+    const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
+    const due = r2v(bill.totalDue - redeemValue)
+    const covered = r2v(parts.reduce((s, x) => s + x.amount, 0))
+    return Math.abs(due - covered) < 0.005
+  })()
+
+  /** Issue #1 §6: odpri plačilni dialog — kanonični predogled računa (popusti, zvestoba) prek /api/orders/[id]/bill */
+  async function openPayment(o: OrderT) {
+    setPayingOrder(o)
+    setInvoice(null)
+    setLoyaltySel(null)
+    setRedeemPoints(0)
+    setLoyaltyResults([])
+    setParts([])
+    setSelDiscountId('none')
+    setLoyaltySummary(null)
+    setBill(null)
+    try {
+      const [b, ds] = await Promise.all([
+        api<{ bill: BillT }>(`/api/orders/${o.id}/bill`),
+        api<{ discounts: DiscountT[] }>('/api/discounts'),
+      ])
+      setBill(b.bill)
+      setManualDiscounts(ds.discounts.filter((d) => d.triggerType !== 'auto' && d.isActive))
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  /** Issue #1 §6: ročni popust (iz registra) — uporabi ali odstrani, nato osveži kanonični račun */
+  async function applyManualDiscount(discountId: string) {
     if (!payingOrder) return
+    try {
+      if (!discountId || discountId === 'none') {
+        await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE' })
+      } else {
+        await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ discountId }) })
+      }
+      setSelDiscountId(discountId)
+      const b = await api<{ bill: BillT }>(`/api/orders/${payingOrder.id}/bill`)
+      setBill(b.bill)
+      await load()
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  /** Issue #1 §6: identifikacija gosta (program zvestobe) — iskanje po imenu/telefonu */
+  async function searchLoyalty(q: string) {
+    if (q.trim().length < 2) {
+      setLoyaltyResults([])
+      return
+    }
+    try {
+      const d = await api<{ results: LoyaltyAccT[] }>(`/api/loyalty/lookup?q=${encodeURIComponent(q)}`)
+      setLoyaltyResults(d.results)
+    } catch {
+      setLoyaltyResults([])
+    }
+  }
+
+  /** Issue #1 §6: status mize (con/status upravljanje) — na voljo / rezervirana / za pospravit */
+  async function setTableStatus(t: TableT, status: 'FREE' | 'RESERVED' | 'DIRTY') {
+    try {
+      await api(`/api/tables/${t.id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+      await load()
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  async function payOrder() {
+    if (!payingOrder || !bill) return
     setSending(true)
     try {
-      // terminal (issue #1): kartica/mobilno zahtevata odobritev pred zapisom
-      let terminal: { approvalCode: string } | undefined
-      if (payMethod !== 'cash') {
-        const t = await processTerminalPayment(payingOrder.total)
-        if (!t.approved) {
-          alert(t.error || 'Plačilo na terminalu ni bilo odobreno.')
-          return
+      // Issue #1 §6: kanonični zneski iz strežniškega računa — UI nikoli ne odloča o znesku
+      const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
+      const due = r2v(bill.totalDue - redeemValue)
+      const bodyParts: { type: string; amount: number; terminal?: { approvalCode: string } }[] = []
+      if (parts.length > 0) {
+        for (const p of parts) {
+          if (p.type === 'cash' || p.amount <= 0) {
+            bodyParts.push({ type: p.type, amount: r2v(p.amount) })
+            continue
+          }
+          const t = await processTerminalPayment(p.amount)
+          if (!t.approved) {
+            alert(t.error || `Terminal ni odobril plačila (${fmtEUR(p.amount)}).`)
+            return
+          }
+          bodyParts.push({ type: p.type, amount: r2v(p.amount), terminal: { approvalCode: t.approvalCode as string } })
         }
-        terminal = { approvalCode: t.approvalCode as string }
+      } else if (due > 0) {
+        // klasična pot — eno plačilo preostanka
+        if (payMethod !== 'cash') {
+          const t = await processTerminalPayment(due)
+          if (!t.approved) {
+            alert(t.error || 'Plačilo na terminalu ni bilo odobreno.')
+            return
+          }
+          bodyParts.push({ type: payMethod, amount: due, terminal: { approvalCode: t.approvalCode as string } })
+        } else {
+          bodyParts.push({ type: 'cash', amount: due })
+        }
       }
-      const d = await api<{ invoice: { eor: string; invoiceNumber: string; id?: string } }>('/api/furs', { method: 'POST', body: JSON.stringify({ orderId: payingOrder.id, type: payMethod, clientOperationId: newOperationId(), terminal }) })
+      const d = await api<{ invoice: { eor: string; invoiceNumber: string; id?: string }; loyalty: { redeemedPoints: number; earnedPoints: number } | null }>('/api/furs', {
+        method: 'POST',
+        body: JSON.stringify({
+          orderId: payingOrder.id,
+          clientOperationId: newOperationId(),
+          ...(bodyParts.length === 1
+            ? { type: bodyParts[0].type, terminal: bodyParts[0].terminal }
+            : bodyParts.length > 1
+              ? { parts: bodyParts }
+              : {}),
+          ...(loyaltySel && redeemPoints > 0 ? { loyaltyAccountId: loyaltySel.id, loyaltyPointsUsed: redeemPoints } : {}),
+        }),
+      })
       setInvoice(d.invoice)
+      if (d.loyalty) setLoyaltySummary(d.loyalty)
       // Issue #3: CFD pokaže "Hvala" z zneskom in številko naročila
-      void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: payingOrder.total, message: 'Plačilo uspešno — hvala!' })
+      void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: bill.totalDue, message: 'Plačilo uspešno — hvala!' })
       await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
@@ -567,7 +695,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.28.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.29.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -678,7 +806,7 @@ export default function DashboardPage() {
                           onClick={() => {
                             // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
                             if (t.status === 'DIRTY' && !t.activeOrder) { void markClean(t); return }
-                            if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) setPayingOrder(o) }
+                            if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) void openPayment(o) }
                           }}
                           className={`w-full rounded-xl p-4 text-left shadow transition ${statusColors[t.status]} min-h-20`}
                         >
@@ -698,6 +826,28 @@ export default function DashboardPage() {
                         >
                           <QrCode className="w-4 h-4" />
                         </span>
+                        {/* Issue #1 §6: status mize — upravljanje (na voljo / rezervirana / za pospravit) */}
+                        {!t.activeOrder && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Status mize — ${t.name}`}
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() }}
+                                className="absolute bottom-1.5 right-1.5 rounded-md bg-white/85 p-1 text-stone-600 hover:bg-white hover:text-stone-900 cursor-pointer shadow-sm"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </span>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem onClick={() => void setTableStatus(t, 'FREE')}>Na voljo</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void setTableStatus(t, 'RESERVED')}>Rezervirana</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void setTableStatus(t, 'DIRTY')}>Za pospravit</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -747,7 +897,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                       <p className="font-bold">{fmtEUR(o.total)}</p>
                       {o.status !== 'PAID' && (
-                        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setPayingOrder(o)}>
+                        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void openPayment(o)}>
                           <Banknote className="w-3.5 h-3.5" /> Plačilo + FURS
                         </Button>
                       )}
@@ -1136,7 +1286,7 @@ export default function DashboardPage() {
             </div>
             <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
-                <p>RestavrantOS — rekonstrukcija 1.28.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
+                <p>RestavrantOS — rekonstrukcija 1.29.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
                 <p>Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.</p>
                 <p>Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).</p>
               </CardContent>
@@ -1180,46 +1330,213 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Plačilo + FURS ── */}
+      {/* ── Plačilo + FURS (issue #1 §6: kanonični račun, popusti, zvestoba, deljeno plačilo; §7: večji gumbi) ── */}
       <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null) } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Plačilo {payingOrder?.table?.name || ''}</DialogTitle></DialogHeader>
-          {payingOrder && (
-            <div className="space-y-2 text-sm">
-              <ul className="space-y-1">{payingOrder.items.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
-              <div className="flex justify-between font-bold text-base pt-2 border-t border-stone-100"><span>SKUPAJ</span><span>{fmtEUR(payingOrder.total)}</span></div>
-            </div>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="text-lg">Plačilo {payingOrder?.table?.name || ''}</DialogTitle></DialogHeader>
+          {!bill && payingOrder && (
+            <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
           )}
-          {invoice && (
-            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm space-y-0.5">
-              <p className="font-semibold text-emerald-800">✅ Račun izdan (FURS simulacija)</p>
-              <p className="text-emerald-700">Št.: {invoice.invoiceNumber}</p>
-              <p className="text-emerald-700 break-all">EOR: {invoice.eor}</p>
-            </div>
-          )}
-          {!invoice && payingOrder && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Label className="text-sm">Način plačila:</Label>
-              {(['cash', 'card', 'mobile'] as const).map((pm) => (
-                <button
-                  key={pm}
-                  type="button"
-                  onClick={() => setPayMethod(pm)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${payMethod === pm ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-stone-200 bg-white text-stone-600 hover:border-emerald-400'}`}
-                >
-                  {pm === 'cash' ? 'Gotovina' : pm === 'card' ? 'Kartica (POS)' : 'Mobilno'}
-                </button>
-              ))}
+          {bill && payingOrder && (
+            <div className="space-y-3 text-sm">
+              {/* postavke + zneski (kanonično iz /api/orders/[id]/bill) */}
+              <ul className="space-y-1 max-h-36 overflow-y-auto pr-1">{payingOrder.items.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
+              <div className="rounded-xl border border-stone-200 p-3 space-y-1">
+                <div className="flex justify-between"><span>Skupaj (z DDV)</span><span>{fmtEUR(bill.grossTotal)}</span></div>
+                {bill.manualDiscount > 0 && (
+                  <div className="flex justify-between text-stone-600"><span>Ročni popust</span><span>−{fmtEUR(bill.manualDiscount)}</span></div>
+                )}
+                {bill.autoDiscounts.map((ad) => (
+                  <div key={ad.discountId} className="flex justify-between text-emerald-700"><span>🎉 {ad.name}</span><span>−{fmtEUR(ad.amount)}</span></div>
+                ))}
+                {bill.discountTotal > 0 && (
+                  <div className="flex justify-between font-medium border-t border-stone-100 pt-1"><span>Popust skupaj</span><span>−{fmtEUR(bill.discountTotal)}</span></div>
+                )}
+                <div className="flex justify-between font-bold text-lg pt-1 border-t border-stone-200"><span>ZA PLAČATI</span><span>{fmtEUR(bill.totalDue)}</span></div>
+              </div>
+
+              {!invoice && (
+                <>
+                  {/* ročni popust (registr) — samo z dovoljenjem apply_discounts */}
+                  {hasPerm('apply_discounts') && manualDiscounts.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs shrink-0">Popust:</Label>
+                      <Select value={selDiscountId} onValueChange={(v) => void applyManualDiscount(v)}>
+                        <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Brez popusta" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Brez popusta</SelectItem>
+                          {manualDiscounts.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>{d.name} ({d.type === 'percent' ? `${d.amount} %` : fmtEUR(d.amount)})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* zvestoba — iskanje gosta + unovčenje točk */}
+                  {bill.loyalty.enabled && (
+                    <div className="rounded-xl border border-stone-200 p-3 space-y-2">
+                      {loyaltySel ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate">{loyaltySel.customerName}</p>
+                            <p className="text-xs text-stone-500">{loyaltySel.pointsBalance} točk · {loyaltySel.tier}</p>
+                          </div>
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => { setLoyaltySel(null); setRedeemPoints(0) }}>Odstrani</Button>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                            <Input
+                              className="h-9 pl-8"
+                              placeholder="Gost (ime ali telefon)…"
+                              aria-label="Iskanje gosta zvestobe"
+                              onChange={(e) => void searchLoyalty(e.target.value)}
+                            />
+                          </div>
+                          {loyaltyResults.length > 0 && (
+                            <div className="absolute z-20 mt-1 w-full rounded-lg border border-stone-200 bg-white shadow-lg overflow-hidden">
+                              {loyaltyResults.map((a) => (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  className="w-full text-left px-3 py-2.5 hover:bg-stone-50 active:bg-stone-100"
+                                  onClick={() => { setLoyaltySel(a); setLoyaltyResults([]) }}
+                                >
+                                  <p className="font-medium">{a.customerName}</p>
+                                  <p className="text-xs text-stone-500">{a.customerPhone || '—'} · {a.pointsBalance} točk · {a.tier}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {loyaltySel && (
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs shrink-0">Unovči:</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={Math.min(loyaltySel.pointsBalance, bill.loyalty.maxRedeemablePoints)}
+                            value={redeemPoints || ''}
+                            onChange={(e) => setRedeemPoints(Math.max(0, Math.min(Math.min(loyaltySel!.pointsBalance, bill!.loyalty.maxRedeemablePoints), Math.round(Number(e.target.value) || 0))))}
+                            className="h-9 w-28"
+                          />
+                          <span className="text-xs text-stone-500">
+                            točk {redeemPoints > 0 && <>→ <b className="text-emerald-700">−{fmtEUR(r2v(redeemPoints * bill.loyalty.pointsValue))}</b></>}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* način plačila / deljeno plačilo */}
+                  {parts.length === 0 ? (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Način plačila:</Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['cash', 'card', 'mobile'] as const).map((pm) => (
+                          <button
+                            key={pm}
+                            type="button"
+                            onClick={() => setPayMethod(pm)}
+                            className={`min-h-11 rounded-xl border px-2 py-2.5 text-sm font-semibold transition ${payMethod === pm ? 'border-emerald-700 bg-emerald-700 text-white shadow' : 'border-stone-200 bg-white text-stone-700 hover:border-emerald-400'}`}
+                          >
+                            {pm === 'cash' ? '💵 Gotovina' : pm === 'card' ? '💳 Kartica' : '📱 Mobilno'}
+                          </button>
+                        ))}
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="w-full min-h-10"
+                        onClick={() => {
+                          const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
+                          const due = r2v(bill.totalDue - redeemValue)
+                          const half = r2v(due / 2)
+                          setParts([{ type: payMethod === 'cash' ? 'cash' : payMethod, amount: half }, { type: 'cash', amount: r2v(due - half) }])
+                        }}
+                      >
+                        ➗ Deljeno plačilo (razdeli na 2 dela)
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Deljeno plačilo — deli:</Label>
+                      {parts.map((p, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Select value={p.type} onValueChange={(v) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, type: v as PayPart['type'] } : x))}>
+                            <SelectTrigger className="h-10 w-32"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">💵 Gotovina</SelectItem>
+                              <SelectItem value="card">💳 Kartica</SelectItem>
+                              <SelectItem value="mobile">📱 Mobilno</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={p.amount ? p.amount.toFixed(2) : ''}
+                            onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: Number(e.target.value) || 0 } : x))}
+                            className="h-10"
+                            aria-label={`Znesek dela ${i + 1}`}
+                          />
+                          <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} aria-label="Odstrani del">×</Button>
+                        </div>
+                      ))}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          className="flex-1 min-h-10"
+                          onClick={() => {
+                            const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
+                            const due = r2v(bill.totalDue - redeemValue)
+                            const covered = r2v(parts.reduce((s, x) => s + x.amount, 0))
+                            setParts((ps) => [...ps, { type: 'cash', amount: Math.max(0, r2v(due - covered)) }])
+                          }}
+                        >
+                          + Dodaj del
+                        </Button>
+                        <Button variant="outline" className="flex-1 min-h-10" onClick={() => setParts([])}>Eno plačilo</Button>
+                      </div>
+                      {(() => {
+                        const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
+                        const due = r2v(bill.totalDue - redeemValue)
+                        const covered = r2v(parts.reduce((s, x) => s + x.amount, 0))
+                        const rest = r2v(due - covered)
+                        const balanced = Math.abs(rest) < 0.005
+                        return (
+                          <p className={`text-center font-semibold ${balanced ? 'text-emerald-700' : rest > 0 ? 'text-stone-600' : 'text-red-600'}`}>
+                            {balanced ? '✓ Razdeljeno' : rest > 0 ? `Manjka: ${fmtEUR(rest)}` : `Preveč: ${fmtEUR(-rest)}`}
+                          </p>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {invoice && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm space-y-0.5">
+                  <p className="font-semibold text-emerald-800">✅ Račun izdan (FURS {bill ? (bill.discountTotal > 0 ? '· popust uporabljen' : 'simulacija') : 'simulacija'})</p>
+                  <p className="text-emerald-700">Št.: {invoice.invoiceNumber}</p>
+                  <p className="text-emerald-700 break-all">EOR: {invoice.eor}</p>
+                  {loyaltySummary && (
+                    <p className="text-emerald-700">{loyaltySummary.redeemedPoints > 0 ? `Unovčeno ${loyaltySummary.redeemedPoints} točk · ` : ''}Prisluženo {loyaltySummary.earnedPoints} točk ⭐</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
           <DialogFooter className="sm:items-center">
             {invoice?.id && (
-              <Button variant="outline" className="mr-auto gap-1.5" disabled={printing} onClick={() => printInvoice(invoice.id!)}>
+              <Button variant="outline" className="mr-auto gap-1.5 min-h-11" disabled={printing} onClick={() => printInvoice(invoice.id!)}>
                 {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Natisni račun
               </Button>
             )}
-            <Button variant="outline" onClick={() => { setPayingOrder(null); setInvoice(null) }}>Zapri</Button>
-            {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending} onClick={() => void payOrder()}>{sending ? <Loader2 className="w-4 h-4 animate-spin" /> : payMethod === 'cash' ? 'Izdaj račun' : 'Izdaj račun (POS)'}</Button>}
+            <Button variant="outline" className="min-h-11" onClick={() => { setPayingOrder(null); setInvoice(null) }}>Zapri</Button>
+            {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800 min-h-12 px-6 text-base font-bold" disabled={sending || !bill || !payOrderReady} onClick={() => void payOrder()}>{sending ? <Loader2 className="w-5 h-5 animate-spin" /> : payMethod === 'cash' && parts.length === 0 ? 'Izdaj račun' : 'Izdaj račun (POS)'}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1419,7 +1736,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija 1.28.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
+        RestavrantOS rekonstrukcija 1.29.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
       </footer>
     </main>
   )
