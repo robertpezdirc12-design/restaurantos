@@ -1066,3 +1066,17 @@ Work Log:
 Stage Summary:
 - tsc 0, eslint 0, bun test 64/64 (9 novih: print ACK validacija + store-aware limiter + Upstash fallback z mock fetch)
 - Vsi 3 reziduali iz issue #4 zaključeni ali na daljinski upravljalnik (Upstash = env odločitev uporabnika, CI build = secret odločitev uporabnika)
+
+---
+Task ID: 12-b-main
+Agent: main (Z.ai Code)
+Task: Popravek produkcije — PrintJob tabela na Neon (in-app migracija, vzorec issue #3)
+
+Work Log:
+- ugotovljeno: produkcija 500 na /api/print/* — Neon DB nima PrintJob tabele (db:push gre samo na lokalni sqlite; Neon URL ni berljiv prek Vercel API, decrypted:false)
+- vzorec iz prejšnje seje: in-app migracijski endpoint → /api/admin/migrate-issue10 (requirePermission employees.manage, IZKLJUČNO fiksne aditivne DDL: CREATE TABLE IF NOT EXISTS PrintJob + 4 indeksi, audit SCHEMA_MIGRATION_ISSUE10)
+- lokalni dev server restartan (star client v pomnilniku ni imel printJob delegata — 500 lokalno) → ACK 201 + jobs 200 + migracija idempotentno ✓
+- tsc 0 (durable, prisma-types sloj), testi 64/64
+
+Stage Summary:
+- deploy za produkcijsko migracijo je ta commit; po deployu POST /api/admin/migrate-issue10 → tabela obstaja → /api/print/* deluje v produkciji
