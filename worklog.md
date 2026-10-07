@@ -1018,3 +1018,18 @@ Work Log:
 Stage Summary:
 - auto-sync zdaj dvoplasten: GitLab native mirror (ob pushu, ko se sproži) + sync-service (5 min force-sync varovalka)
 - GitHub = čista kopija GitLaba; GitLab = canonical source
+
+---
+Task ID: 10-c-main
+Agent: main (Z.ai Code)
+Task: auto-sync E2E potrjena + sync-service robustnost
+
+Work Log:
+- potrjen native GitLab push-mirror E2E 3× zapored (~1-4 min zamik): 485da3a (parallel push) → GitHub ✓, 810567f (kitchen fix) → GitHub ✓, 5f74102 (package.json) → GitHub ✓
+- sync-service: bun --hot watcher je stalno ubijal proces v sandboxu → package.json dev script brez --hot; index.ts retry z backoff na CF 403
+- vzporedna seja (Robert P.) je med delom potiskala CI commite (schema drift check brez Python runtime) → rebase a1cf9f6→810567f, tsc 0 po merge
+- kitchen/route.ts: ITEM_ACTIVE_PRISMA cast zaključil vzporedno pol-delani enum alignment
+
+Stage Summary:
+- Auto-sinhronizacija GitLab→GitHub: GLAVNI mehanizem = native push mirror (strežniško na gitlab.com, neodvisen od sandboxa, 6/6 repojev); VAROVALKA = sync-service :3032 (5 min cikel, GET /sync za takojšnji tek)
+- GitLab = canonical source; github.com/robertpezdirc12-design = samodejna kopija
