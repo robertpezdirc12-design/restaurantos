@@ -139,3 +139,8 @@ Stage Summary:
 - Vsi glavni moduli originalne aplikacije zdaj obnovljeni in zivi na produkciji
 - 14 tabov: Pregled, Mize, Narocila, Kuhinja, Meni, Rezervacije, Racuni, Zaloge, Izmene, HACCP, Stroski, Zvestoba, Zaposleni, Nastavitve
 - GitLab main = reconstruction (najnovejse); produkcija dpl_4BphQtbnqYNkyTNKMbRUKXAxxzST
+
+Opomba (Task 6 zakljucek):
+- Worklog push ni uspel: GitLab zeton glpat-... je RAZVELJAVLJEN ("Token was revoked") — uporabnik ga je rotiral po varnostnem priporocilu (pravilno!)
+- Koda Task 6 (moduli) je bila pushana PRED revokacijo (PUSH OK), na GitLabu je torej najnovejsa koda; manjka le ta worklog zapis — pushan bo z novim zetonom, ko ga uporabnik poda
+- Deploy Vercel dpl_4BphQtbnqYNkyTNKMbRUKXAxxzST READY + ziva verifikacija OK; Vercel zeton naj bo naslednji za rotacijo, ce se ni
