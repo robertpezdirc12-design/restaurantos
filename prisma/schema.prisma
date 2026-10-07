@@ -641,6 +641,11 @@ model Employee {
   updatedAt                                           DateTime @updatedAt
   sessionVersion                                      Int                   @default(0)
   permissionOverrides                                 Json                  @default("[]")
+  // Issue #12 §3 — MFA (TOTP) za privilegirane račune; PIN prijava ostane nespremenjena
+  mfaSecret                                           String?
+  mfaEnabled                                          Boolean               @default(false)
+  mfaRecoveryCodes                                    Json                  @default("[]")
+  mfaEnrolledAt                                       DateTime?
   BiometricCredential                                 BiometricCredential[]
   CashRegisterShift                                   CashRegisterShift[]
   DeliveryTracking                                    DeliveryTracking[]
