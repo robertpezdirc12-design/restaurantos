@@ -10,7 +10,7 @@
 import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { nid, num } from '@/lib/map'
-import { rateLimitBool as rateLimitPublic } from '@/lib/rate-limit'
+import { rateLimitBoolAsync as rateLimitPublic } from '@/lib/rate-limit'
 import { loadModifierContext, validateItemModifiers } from '@/lib/modifiers'
 
 // Issue #4 §6: rate limiting je ZDAJ skupni modul z omejenim pomnilnikom + TTL

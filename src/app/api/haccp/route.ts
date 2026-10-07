@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { HaccpCategory, HaccpStatus } from '@prisma/client'
+import type { HaccpCategory, HaccpStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num, nid } from '@/lib/map'

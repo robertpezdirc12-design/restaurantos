@@ -2850,3 +2850,25 @@ model ZReport {
   @@index([status])
 }
 
+/// Issue #10 P2-3 — evidence tiskalnih poskusov (ACK od client/print-agent).
+/// Vsak poskus tiska = ena vrstica; statusi: printed | failed | simulated.
+/// Ponovni tisk = nov ACK (nov poskus); napake vidne v /api/print/jobs + AuditLog (PRINT_FAILED).
+model PrintJob {
+  id         String   @id
+  userId     String   @default("")
+  locationId String?
+  kind       String   @default("other")
+  refId      String   @default("")
+  target     String   @default("agent")
+  status     String   @default("printed")
+  error      String   @default("")
+  attempts   Int      @default(1)
+  device     String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([status])
+  @@index([refId])
+  @@index([kind])
+  @@index([createdAt])
+}
+

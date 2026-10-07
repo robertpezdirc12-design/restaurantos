@@ -46,7 +46,7 @@ async function resolvePosRow(kind: 'device' | 'staff', id: string, loc: string |
 }
 
 export async function POST(req: NextRequest) {
-  if (!rateLimitPublic(`display:${clientIp(req)}`, 120)) return fail('Preveč zahtevkov.', 429)
+  if (!(await rateLimitPublic(`display:${clientIp(req)}`, 120))) return fail('Preveč zahtevkov.', 429)
   const body = await req.json().catch(() => null)
   const action = String(body?.action || '')
 

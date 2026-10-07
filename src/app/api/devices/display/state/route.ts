@@ -10,7 +10,7 @@ import { deviceFromToken, deviceAlive, rateLimitPublic, clientIp } from '@/lib/g
  * Vrne zadnji displayPayload, ki ga je POS potisnil prek POST { action: 'push' }.
  */
 export async function GET(req: NextRequest) {
-  if (!rateLimitPublic(`displaystate:${clientIp(req)}`, 120)) return fail('Preveč zahtevkov.', 429)
+  if (!(await rateLimitPublic(`displaystate:${clientIp(req)}`, 120))) return fail('Preveč zahtevkov.', 429)
   const device = await deviceFromToken(req.headers.get('x-device-token'))
   if (!deviceAlive(device, ['customer_display'])) return fail('Display naprava ni registrirana.', 401)
 

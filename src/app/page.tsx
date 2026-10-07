@@ -203,7 +203,7 @@ export default function LoginPage() {
 
           <div className="text-center space-y-1">
             <p className="text-[11px] text-stone-400">
-              Rekonstrukcija 1.32.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
+              Rekonstrukcija 1.33.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
             </p>
           </div>
         </div>

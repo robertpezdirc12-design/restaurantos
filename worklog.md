@@ -1050,3 +1050,19 @@ Stage Summary:
 - Issue #2: vsi acceptance criteria pokriti (webhooki v1.27.0, hardening v1.32.0 D6, testi zdaj) → zaklenjen
 - Issue #4: jedro zaključeno, 3 reziduali (Redis rate limit, CI DB secrets, print-agent ACK) → follow-up issue
 - Push = hkrati E2E dokaz GitLab→GitHub mirrorja
+
+---
+Task ID: 12-main
+Agent: main (Z.ai Code)
+Task: Issue #10 — P2 hardening reziduali (rate limit store seam, CI build, print ACK)
+
+Work Log:
+- P2-1: src/lib/rate-limit.ts dobil RateLimitStore vmesnik — memoryStore (privzeti, vedenje nespremenjeno) + upstashStore (REST, brez SDK, DORMANT do env UPSTASH_REDIS_REST_URL/TOKEN); napaka Upstash-a pada nazaj na memory (graceful); 7 klicnih mest preklopljenih na async store-aware verzijo; delivery.ts lastni limiter konsolidiran v enotni (30/min per provider+IP, enako vedenje)
+- P2-2: .gitlab-ci.yml dobil production-build job (prisma generate + next build), pogojno na $DATABASE_URL CI variable — aktivira se samodejno ko uporabnik doda secret
+- P2-3: PrintJob model (111/111 modelov, obe shemi) + /api/print/ack (POST, evidence poskusa, failed → AuditLog PRINT_FAILED) + /api/print/jobs (GET pregled) + client fire-and-forget ACK v printLines (opcijski ctx, nikoli ne vpliva na tisk, §18)
+- DURABLE FIX: src/lib/prisma-types.ts — string-union tipe za 7 enumov; 6 rut preklopljenih iz @prisma/client type importov (sqlite client jih nima; prod jih ima — zdaj tsc 0 z OBEH clientov, konec krhkega generate-pred-tsc plesa)
+- v1.33.0 (layout, page, dashboard, APP_VERSION)
+
+Stage Summary:
+- tsc 0, eslint 0, bun test 64/64 (9 novih: print ACK validacija + store-aware limiter + Upstash fallback z mock fetch)
+- Vsi 3 reziduali iz issue #4 zaključeni ali na daljinski upravljalnik (Upstash = env odločitev uporabnika, CI build = secret odločitev uporabnika)

@@ -3,8 +3,13 @@
  * Čist in-memory modul — brez DB/omrežja. __resetRateLimitForTests zagotavlja
  * determinističnost med testi (state je procesni, bun test pogan datoteke v istem procesu).
  */
-import { beforeEach, describe, expect, test } from 'bun:test'
-import { rateLimitShared, __resetRateLimitForTests } from '@/lib/rate-limit'
+import { beforeEach, afterEach, describe, expect, test } from 'bun:test'
+import {
+  rateLimitShared,
+  rateLimitSharedAsync,
+  __resetRateLimitForTests,
+  __resetStoreForTests,
+} from '@/lib/rate-limit'
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -72,5 +77,68 @@ describe('rateLimitShared — bounded keys (omejen pomnilnik)', () => {
     expect(rateLimitShared(k, 2, 60_000).allowed).toBe(true)
     expect(rateLimitShared(k, 2, 60_000).allowed).toBe(true)
     expect(rateLimitShared(k, 2, 60_000).allowed).toBe(false)
+  })
+})
+
+/* ───── Issue #10 P2-1 — store-aware limiter (RateLimitStore seam) ───── */
+
+describe('rateLimitSharedAsync — memory default (issue #10 P2-1)', () => {
+  beforeEach(() => { __resetRateLimitForTests(); __resetStoreForTests() })
+
+  test('brez Upstash env = enako vedenje kot sync verzija', async () => {
+    const k = 'store:kljuc1'
+    expect((await rateLimitSharedAsync(k, 2, 60_000)).allowed).toBe(true)
+    expect((await rateLimitSharedAsync(k, 2, 60_000)).allowed).toBe(true)
+    expect((await rateLimitSharedAsync(k, 2, 60_000)).allowed).toBe(false)
+  })
+})
+
+describe('rateLimitSharedAsync — Upstash store (issue #10 P2-1)', () => {
+  const realFetch = globalThis.fetch
+
+  afterEach(() => { globalThis.fetch = realFetch; __resetStoreForTests(); __resetRateLimitForTests() })
+
+  function withUpstashEnv(fn: (url: string) => Promise<Response>): void {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test-rest.upstash.io'
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token'
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = String(input)
+      return fn(url)
+    }) as typeof fetch
+  }
+
+  test('Upstash INCR/PEXPIRE pot — dovoli do limita', async () => {
+    const counts = new Map<string, number>()
+    withUpstashEnv(async (url) => {
+      const dec = decodeURIComponent(url)
+      const m = dec.match(/\/rl:([^/]+)\/(.+)$/)
+      if (dec.includes('/INCR/')) {
+        const key = dec.split('/INCR/')[1]
+        const c = (counts.get(key) || 0) + 1
+        counts.set(key, c)
+        return new Response(JSON.stringify({ result: c }), { status: 200 })
+      }
+      if (dec.includes('/PEXPIRE/')) return new Response(JSON.stringify({ result: 1 }), { status: 200 })
+      if (dec.includes('/PTTL/')) return new Response(JSON.stringify({ result: 60_000 }), { status: 200 })
+      void m
+      return new Response(JSON.stringify({ error: 'unknown' }), { status: 400 })
+    })
+
+    const k = 'up:kljuc1'
+    expect((await rateLimitSharedAsync(k, 2, 60_000)).allowed).toBe(true)
+    expect((await rateLimitSharedAsync(k, 2, 60_000)).allowed).toBe(true)
+    const third = await rateLimitSharedAsync(k, 2, 60_000)
+    expect(third.allowed).toBe(false)
+    expect(third.remaining).toBe(0)
+  })
+
+  test('Upstash napaka → graceful padec na memory store (zaščita ohranjena)', async () => {
+    withUpstashEnv(async () => new Response('upstash down', { status: 503 }))
+    const k = 'fb:kljuc1'
+    // fallback memory: 1. klic dovoljen (napaka zalogirana v konzolo, ne vržen)
+    const r1 = await rateLimitSharedAsync(k, 1, 60_000)
+    expect(r1.allowed).toBe(true)
+    const r2 = await rateLimitSharedAsync(k, 1, 60_000)
+    expect(r2.allowed).toBe(false)
   })
 })

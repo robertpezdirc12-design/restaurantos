@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
-import { Prisma, OrderItemStatus } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { OrderItemStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'

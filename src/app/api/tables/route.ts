@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { TableStatus } from '@prisma/client'
+import type { TableStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requireUserLocation, isResponse, ok, fail, forbidden, locationScope } from '@/lib/api'
 import { canAccessModule } from '@/lib/auth'

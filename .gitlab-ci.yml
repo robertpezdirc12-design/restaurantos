@@ -1,19 +1,18 @@
-# RestaurantOS — GitLab CI (issue #4 §12)
+# RestaurantOS — GitLab CI (issue #4 §12 + issue #10 P2-2)
 #
-# Verify-only pipeline: install → typecheck → lint → unit tests → schema drift → secrets scan.
+# Pipeline: verify (vedno) → build (samo ko je nastavljen DATABASE_URL secret).
 #
-# BUILD STEP (next build) is intentionally NOT here yet: the build requires
-# DATABASE_URL (Neon) as a CI secret — add a `build` stage/job once the CI runner
-# has the project secrets configured, e.g.:
-#   build:
-#     stage: build
-#     script: bun run build
-#     environment: production
+# AKTIVACIJA BUILD JOBA (issue #10 P2-2):
+#   GitLab → Settings → CI/CD → Variables → dodaj (maskiran, protected):
+#     DATABASE_URL = <produkcijski oz. testni Neon/Postgres connection string>
+#   Ko spremenljivka obstaja, se `build` job samodejno izvede na main pushih;
+#   dokler je ni, pipeline ostane verify-only (tsc/lint/testi/drift/secrets).
 
 image: oven/bun:1
 
 stages:
   - verify
+  - build
 
 quality-gate:
   stage: verify
@@ -34,3 +33,20 @@ quality-gate:
     - bun test
     - node scripts/check-schema-drift.cjs
     - bash scripts/check-secrets.sh
+
+# Issue #10 P2-2 — produkcijski build kot CI gate. Tekne SAMO, če je DATABASE_URL
+# nastavljen kot CI variable (pravilo spodaj), sicer se job preskoči (verify ostane gate).
+production-build:
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $DATABASE_URL'
+  cache:
+    key:
+      files:
+        - package.json
+    paths:
+      - node_modules/
+  script:
+    - bun install --frozen-lockfile
+    - bunx prisma generate --schema prisma/schema.prisma
+    - bun run build

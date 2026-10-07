@@ -78,7 +78,7 @@ export async function POST(
 
   // Rate limiting (javni endpoint)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  if (!rateLimit(`${p}:${ip}`)) {
+  if (!(await rateLimit(`${p}:${ip}`))) {
     return fail('Preveč zahtev — rate limit.', 429)
   }
 

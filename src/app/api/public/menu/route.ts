@@ -16,7 +16,7 @@ import {
  * Brez prijave. Rate limit 60/min na IP.
  */
 export async function GET(req: NextRequest) {
-  if (!rateLimitPublic(`menu:${clientIp(req)}`, 60)) return fail('Preveč zahtevkov. Poskusi čez minuto.', 429)
+  if (!(await rateLimitPublic(`menu:${clientIp(req)}`, 60))) return fail('Preveč zahtevkov. Poskusi čez minuto.', 429)
 
   const qrToken = req.nextUrl.searchParams.get('qr')
   const deviceToken = req.headers.get('x-device-token')

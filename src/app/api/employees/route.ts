@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { EmployeeRole } from '@prisma/client'
+import type { EmployeeRole } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapEmployee } from '@/lib/map'

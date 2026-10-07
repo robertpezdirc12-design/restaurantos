@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, requireUserLocation } from '@/lib/api'
 import { nid } from '@/lib/map'
-import { rateLimitBool } from '@/lib/rate-limit'
+import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { newEnrollmentCode, clientIp } from '@/lib/guest'
 
 /**
@@ -29,7 +29,7 @@ const ENROLLMENT_TTL_MS = 15 * 60_000
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  if (!rateLimitBool(`enroll:${clientIp(req)}`, 30)) return fail('Preveč zahtevkov.', 429)
+  if (!(await rateLimitBoolAsync(`enroll:${clientIp(req)}`, 30))) return fail('Preveč zahtevkov.', 429)
 
   const body = await req.json().catch(() => null)
   const name = String(body?.name || '').trim()
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
  * Rate limit + enkratnost + TTL. Koda brez tokena ne da ničesar.
  */
 export async function PUT(req: NextRequest) {
-  if (!rateLimitBool(`claim:${clientIp(req)}`, 10, 5 * 60_000)) {
+  if (!(await rateLimitBoolAsync(`claim:${clientIp(req)}`, 10, 5 * 60_000))) {
     return fail('Preveč poskusov. Poskusi čez nekaj minut.', 429)
   }
   const body = await req.json().catch(() => null)

@@ -114,20 +114,20 @@ describe('validateMapped (Issue #2 — validacija pred zapisom)', () => {
 })
 
 describe('rateLimit (Issue #2 §5 — javni webhook endpointi)', () => {
-  it('dovoli do 30 zahtev/min, nato blokira', () => {
+  it('dovoli do 30 zahtev/min, nato blokira', async () => {
     const key = `test:${Date.now()}:${Math.random()}`
     for (let i = 0; i < 30; i++) {
-      expect(rateLimit(key)).toBe(true)
+      expect(await rateLimit(key)).toBe(true)
     }
-    expect(rateLimit(key)).toBe(false)
-    expect(rateLimit(key)).toBe(false)
+    expect(await rateLimit(key)).toBe(false)
+    expect(await rateLimit(key)).toBe(false)
   })
 
-  it('drugi ključ je neodvisen', () => {
+  it('drugi ključ je neodvisen', async () => {
     const k1 = `t1:${Date.now()}:${Math.random()}`
     const k2 = `t2:${Date.now()}:${Math.random()}`
-    rateLimit(k1)
-    rateLimit(k1)
-    expect(rateLimit(k2)).toBe(true)
+    await rateLimit(k1)
+    await rateLimit(k1)
+    expect(await rateLimit(k2)).toBe(true)
   })
 })

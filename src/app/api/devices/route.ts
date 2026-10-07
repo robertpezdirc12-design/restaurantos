@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail, requirePermission, requireUserLocation, locationScope } from '@/lib/api'
 import { nid } from '@/lib/map'
-import { rateLimitBool } from '@/lib/rate-limit'
+import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { clientIp } from '@/lib/guest'
 
 /** Issue #4 §2.1: device token se ne vrača v polni obliki — samo masked prikaz. */
@@ -52,7 +52,7 @@ const DEVICE_TYPES = ['pos', 'kds', 'kds_bar', 'tablet', 'kiosk', 'mobile', 'cus
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  if (!rateLimitBool(`devcreate:${clientIp(req)}`, 20)) return fail('Preveč zahtevkov.', 429)
+  if (!(await rateLimitBoolAsync(`devcreate:${clientIp(req)}`, 20))) return fail('Preveč zahtevkov.', 429)
 
   const body = await req.json().catch(() => null)
   const name = String(body?.name || '').trim()

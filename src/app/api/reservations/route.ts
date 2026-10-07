@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { ReservationStatus, ReservationSource } from '@prisma/client'
+import type { ReservationStatus, ReservationSource } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid } from '@/lib/map'

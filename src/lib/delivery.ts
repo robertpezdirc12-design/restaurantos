@@ -19,6 +19,7 @@
  */
 import { createHmac, timingSafeEqual } from 'crypto'
 import { r2 } from '@/lib/map'
+import { rateLimitBoolAsync } from '@/lib/rate-limit'
 
 /* ───── Statusi dostave — kanonske mape živijo v map.ts (mapper sloj); tu re-eksport ───── */
 
@@ -58,21 +59,11 @@ export async function getPlatformSecret(provider: string): Promise<string> {
   return (envKey && process.env[envKey]) || ''
 }
 
-/* ───── Rate limiting javnih webhook endpointov (in-memory, per provider+IP) ───── */
+/* ───── Rate limiting javnih webhook endpointov (enoten limiter, issue #4 §6 + #10 P2-1) ───── */
 
-const RATE_LIMIT = 30 // zahtev / min
-const buckets = new Map<string, { count: number; resetAt: number }>()
-
-export function rateLimit(key: string): boolean {
-  const now = Date.now()
-  const b = buckets.get(key)
-  if (!b || b.resetAt < now) {
-    buckets.set(key, { count: 1, resetAt: now + 60_000 })
-    return true
-  }
-  if (b.count >= RATE_LIMIT) return false
-  b.count += 1
-  return true
+/** 30 zahtev / min per provider+IP; store-aware (Upstash, ko je konfiguriran, sicer memory). */
+export async function rateLimit(key: string): Promise<boolean> {
+  return rateLimitBoolAsync(key, 30)
 }
 
 /* ───── Maskiranje občutljivih podatkov za log/audit ───── */

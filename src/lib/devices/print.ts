@@ -53,13 +53,52 @@ export interface PrintResult {
   error?: string
 }
 
-/** Natisni dokument prek konfiguriranega cilja (posamezne vrstice + stil) */
-export async function printLines(title: string, lines: PrintLine[]): Promise<PrintResult> {
+/** Issue #10 P2-3 — opcijski kontekst ACK-evidence (nič od tega ne vpliva na tisk). */
+export interface PrintContext {
+  kind?: 'receipt' | 'kitchen' | 'bar' | 'report' | 'other'
+  refId?: string
+}
+
+/**
+ * Issue #10 P2-3 — fire-and-forget ACK na /api/print/ack (strežniška evidenca poskusov).
+ * TIHO: napaka ACK-a je ves čas ignorirana — tiskanje mora delovati tudi brez njega (§18).
+ */
+function sendPrintAck(title: string, target: PrintTarget, res: PrintResult, ctx?: PrintContext, device = ''): void {
+  try {
+    const kind = ctx?.kind || inferKindFromTitle(title)
+    void fetch('/api/print/ack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        kind,
+        refId: ctx?.refId || '',
+        target,
+        status: res.simulated ? 'simulated' : res.ok ? 'printed' : 'failed',
+        error: res.error || '',
+        device,
+      }),
+    }).catch(() => undefined)
+  } catch { /* tih — ACK nikoli ne sme vplivati na tisk */ }
+}
+
+function inferKindFromTitle(title: string): PrintContext['kind'] {
+  const t = (title || '').toUpperCase()
+  if (t.includes('KUHINJ')) return 'kitchen'
+  if (t.includes('BAR')) return 'bar'
+  if (t.includes('RAČUN') || t.includes('RACUN') || t.includes('DOKLAD')) return 'receipt'
+  return 'other'
+}
+
+/** Natisni dokument prek konfiguriranega cilja (posamezne vrstice + stil). ctx = opcijska ACK evidenca (issue #10) */
+export async function printLines(title: string, lines: PrintLine[], ctx?: PrintContext): Promise<PrintResult> {
   const cfg = getPrintConfig()
   if (cfg.target === 'simulator') {
     // jasno ločena simulacija (issue #1: "simulator mora biti jasno ločen od realne integracije")
     console.info(`[PRINT SIMULATOR] ${title}`, lines.map((l) => l.text).join('\n'))
-    return { ok: true, simulated: true }
+    const res: PrintResult = { ok: true, simulated: true }
+    sendPrintAck(title, 'simulator', res, ctx)
+    return res
   }
   if (cfg.target === 'agent') {
     const res = await fetch('/layout?XTransformPort=3031', {
@@ -73,11 +112,15 @@ export async function printLines(title: string, lines: PrintLine[]): Promise<Pri
       }),
     })
     const data = (await res.json()) as { ok: boolean; error?: string }
-    return data.ok ? { ok: true } : { ok: false, error: data.error || 'Tiskalnik ni odziven.' }
+    const out: PrintResult = data.ok ? { ok: true } : { ok: false, error: data.error || 'Tiskalnik ni odziven.' }
+    sendPrintAck(title, 'agent', out, ctx, `${cfg.host}:${cfg.port}`)
+    return out
   }
   // browser: 80mm HTML okno + window.print
   printLinesBrowser(title, lines)
-  return { ok: true }
+  const out: PrintResult = { ok: true }
+  sendPrintAck(title, 'browser', out, ctx)
+  return out
 }
 
 /** 80mm HTML izris (isti stil kot računi) */
