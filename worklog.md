@@ -326,3 +326,21 @@ Stage Summary:
 - Temni način na voljo na prijavi in dashboardu (sistemski privzeti + ročni preklop, persistenca v localStorage)
 - Svetla tema 100 % nespremenjena; brez novih odvisnosti (next-themes že obstojel)
 - Lint čist; commit sledi; push na GitLab; deploy na Vercel
+
+---
+Task ID: 12-deploy
+Agent: Z.ai (main)
+Task: Deploy temnega načina na Vercel + produkcijska verifikacija
+
+Work Log:
+- Deploy dpl_FLCJ4b3eFkkcye41xnCU6Nqqwn2x READY (~45 s)
+- Produkcijska verifikacija (agent-browser, info@restaurantos.app / 729153 — SAMO prijava in preklopi teme, brez sprememb podatkov):
+  * Prijava: toggle viden zgoraj desno, klik → html.dark + temno telo lab(16.5) ✓, screenshot potrjen
+  * Prijava DB poti: Robert Pezdirc (brez bootstrap flaga) → /dashboard ✓
+  * Dashboard: toggle v headerju, temna kartica lab(11.28) ✓, persistenca po reload = dark ✓
+  * 0 konzolnih napak, 0 page errors
+- DEPLOYMENT-STATUS.md: dodana sekcija "Temni način"
+
+Stage Summary:
+- Temni način ŽIV na produkciji; svetla tema nespremenjena; prijava uporabnika nedotaknjena (729153)
+- GitLab main = reconstruction @ <po zadnjem pushu dokumentacije>

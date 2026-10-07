@@ -26,6 +26,10 @@
 - Vaja PIN-ov v UI: Zaposleni tab med bootstrap sejo prikaže opozorilo (ustvarjanje profila / reset PIN-a v Control Centerju, gumb za naključni PIN). Zaposlenim nastavi PIN v Control Centerju (Zaposleni → klikni profil → Ponastavi PIN); vsak reset poveča `sessionVersion` in se zapiše v revijo.
 - Originalni zaposleni (ana@restaurant.com, eva@restaurant.com, ...) imajo še PIN-e v stari, neznani shemi → prijava zanje, dokler jim admin ne nastavi novega PIN-a, ni mogoča (namerno).
 
+### Temni način (2026-10-07, deploy dpl_FLCJ4b3eFkkcye41xnCU6Nqqwn2x)
+- Preklop svetli/temni: prijava (zgoraj desno) in dashboard header (next-themes, class strategija; privzeto po sistemu, persistenca v localStorage).
+- Svetla tema **pikselno nespremenjena** — temna implementirana kot preslikava barvnih žetonov pod `.dark` v globals.css (ploskve/obrobe/besedila/pastelne tinte), nasičeni gumbi ostajajo z belim besedilom.
+
 ### 🔴 Varnost (NUJNO)
 1. **Rotiraj Vercel token** (vcp_...— bil v klepetu)
 2. **Rotiraj GitLab token** (glpat-...— bil v klepetu)
