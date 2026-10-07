@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { EmployeeRole } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapEmployee } from '@/lib/map'
@@ -6,11 +7,7 @@ import { mapEmployee } from '@/lib/map'
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  const employees = await db.employee.findMany({
-    // Issue #4 §1: non-central vidi samo zaposlene svoje lokacije
-    where: locationScope(user),
-    orderBy: { name: 'asc' },
-  })
+  const employees = await db.employee.findMany({ where: locationScope(user), orderBy: { name: 'asc' } })
   return ok({ employees: employees.map(mapEmployee) })
 }
 
@@ -27,8 +24,6 @@ export async function POST(req: NextRequest) {
   if (exists) return ok({ error: 'Zaposleni s to e-pošto že obstaja.' }, 409)
   const { employeePinFields } = await import('@/lib/auth')
   const { roleToDB } = await import('@/lib/map')
-  // Issue #4 §10: staff ne sme ustvarjati zaposlenega na tuji lokaciji —
-  // body.locationId je spoštovan SAMO pri centralnih vlogah, sicer user.loc (fail-closed)
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
   const fields = employeePinFields(pin, email)
@@ -37,7 +32,7 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID().replace(/-/g, '').slice(0, 25),
       name,
       email,
-      role: roleToDB(body.role || 'WAITER'),
+      role: roleToDB(body.role || 'WAITER') as EmployeeRole,
       status: 'active',
       locationId,
       pin: fields.pin,
