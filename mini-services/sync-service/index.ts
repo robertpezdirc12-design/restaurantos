@@ -38,24 +38,39 @@ let running = false
 
 async function forceSync(pid: number): Promise<{ ok: boolean; detail: string }> {
   if (!GITLAB_TOKEN) return { ok: false, detail: "GITLAB_SYNC_TOKEN ni nastavljen" }
-  try {
-    const res = await fetch(`${GITLAB_API}/projects/${pid}/remote_mirrors`, {
-      headers: { "PRIVATE-TOKEN": GITLAB_TOKEN, "User-Agent": "git/2.43.0" },
-    })
-    if (!res.ok) return { ok: false, detail: `mirrors list HTTP ${res.status}` }
-    const mirrors = (await res.json()) as Array<{ id: number; enabled: boolean }>
-    const mirror = mirrors.find((m) => m.enabled)
-    if (!mirror) return { ok: false, detail: "ni omogočenega mirrorja" }
-    const sync = await fetch(`${GITLAB_API}/projects/${pid}/remote_mirrors/${mirror.id}/sync`, {
-      method: "POST",
-      headers: { "PRIVATE-TOKEN": GITLAB_TOKEN, "User-Agent": "git/2.43.0" },
-    })
-    // GitLab vrne 200/201/202 ob sprejeti zahtevi; 409 "mirror is being updated" = že teče (ok)
-    if (sync.ok || sync.status === 409) return { ok: true, detail: `sync HTTP ${sync.status}` }
-    return { ok: false, detail: `sync HTTP ${sync.status}` }
-  } catch (e) {
-    return { ok: false, detail: e instanceof Error ? e.message : "napaka" }
+  // CF na gitlab.com občasno 403-a API klice iz tega IP — 3 poskusi z odlogom
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${GITLAB_API}/projects/${pid}/remote_mirrors`, {
+        headers: { "PRIVATE-TOKEN": GITLAB_TOKEN, "User-Agent": "git/2.43.0" },
+      })
+      if (!res.ok) {
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 4000 * attempt))
+          continue
+        }
+        return { ok: false, detail: `mirrors list HTTP ${res.status}` }
+      }
+      const mirrors = (await res.json()) as Array<{ id: number; enabled: boolean }>
+      const mirror = mirrors.find((m) => m.enabled)
+      if (!mirror) return { ok: false, detail: "ni omogočenega mirrorja" }
+      const sync = await fetch(`${GITLAB_API}/projects/${pid}/remote_mirrors/${mirror.id}/sync`, {
+        method: "POST",
+        headers: { "PRIVATE-TOKEN": GITLAB_TOKEN, "User-Agent": "git/2.43.0" },
+      })
+      // GitLab vrne 200/201/202 ob sprejeti zahtevi; 409 "mirror is being updated" = že teče (ok)
+      if (sync.ok || sync.status === 409) return { ok: true, detail: `sync HTTP ${sync.status}` }
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 4000 * attempt))
+        continue
+      }
+      return { ok: false, detail: `sync HTTP ${sync.status}` }
+    } catch (e) {
+      if (attempt >= 3) return { ok: false, detail: e instanceof Error ? e.message : "napaka" }
+      await new Promise((r) => setTimeout(r, 4000 * attempt))
+    }
   }
+  return { ok: false, detail: "izčrpani poskusi" }
 }
 
 async function syncAll(trigger: string): Promise<{ at: string; results: SyncResult[] }> {
