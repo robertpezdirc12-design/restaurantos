@@ -89,11 +89,13 @@ function discountBase(
   return r2(base)
 }
 
-/** Znesek popusta za en Discount na podani osnovi (odstotek ali fiksni znesek). */
+/** Znesek popusta za en Discount na podani osnovi (odstotek ali fiksni znesek).
+ *  'percentage' = legacy alias za 'percent' (obstoječi produkcijski podatki). */
 export function discountAmountOf(d: { type: string; amount: number | unknown }, base: number): number {
   const a = num(d.amount)
   if (base <= 0) return 0
-  if (String(d.type).toLowerCase() === 'percent') return r2(Math.min((base * a) / 100, base))
+  const type = String(d.type).toLowerCase()
+  if (type === 'percent' || type === 'percentage') return r2(Math.min((base * a) / 100, base))
   return r2(Math.min(a, base))
 }
 

@@ -1366,7 +1366,7 @@ export default function DashboardPage() {
                         <SelectContent>
                           <SelectItem value="none">Brez popusta</SelectItem>
                           {manualDiscounts.map((d) => (
-                            <SelectItem key={d.id} value={d.id}>{d.name} ({d.type === 'percent' ? `${d.amount} %` : fmtEUR(d.amount)})</SelectItem>
+                            <SelectItem key={d.id} value={d.id}>{d.name} ({(d.type === 'percent' || d.type === 'percentage') ? `${d.amount} %` : fmtEUR(d.amount)})</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
