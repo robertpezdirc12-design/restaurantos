@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok } from '@/lib/api'
-import { num } from '@/lib/map'
+import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { num, nid, r2 } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
   const user = requireAuth(req)
@@ -17,4 +17,53 @@ export async function GET(req: NextRequest) {
       locationId: r.locationId,
     })),
   })
+}
+
+/**
+ * Nov strošek (dobaviteljev račun / AccountsPayable).
+ * opomba: supplierId je FK na Supplier — če obstajajo, vzemi prvega, sicer ustvari
+ * privzetega "Razno". apNumber je unique brez defaulta → generiramo.
+ */
+export async function POST(req: NextRequest) {
+  const user = requireAuth(req)
+  if (isResponse(user)) return user
+  if (!['ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
+  const body = await req.json().catch(() => null)
+  const description = String(body?.description || '').trim()
+  const amount = num(body?.amount)
+  if (!description) return fail('Opis je obvezen.', 400)
+  if (!(amount > 0)) return fail('Znesek mora biti pozitiven.', 400)
+  const locationId = user.loc || (await db.location.findFirst())?.id || null
+
+  let supplier = await db.supplier.findFirst({ orderBy: { createdAt: 'asc' } })
+  if (!supplier) {
+    supplier = await db.supplier.create({ data: { id: nid(), name: 'Razno' } })
+  }
+
+  const now = new Date()
+  const due = new Date(now)
+  due.setDate(due.getDate() + 30)
+  const row = await db.accountsPayable.create({
+    data: {
+      id: nid(),
+      apNumber: `AP-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${nid().slice(0, 6).toUpperCase()}`,
+      supplierId: supplier.id,
+      invoiceNumber: description.slice(0, 120),
+      invoiceDate: now,
+      dueDate: due,
+      subtotal: r2(amount),
+      totalAmount: r2(amount),
+      notes: description,
+      locationId,
+    },
+  })
+  return ok({
+    expense: {
+      id: row.id,
+      category: 'OSTALO',
+      description: row.invoiceNumber || row.notes,
+      amount: num(row.totalAmount),
+      paidAt: row.paidAt || row.invoiceDate,
+    },
+  }, 201)
 }

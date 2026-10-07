@@ -26,6 +26,11 @@ import {
   ShieldCheck, UserCog, Search,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
+import {
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab,
+  type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
+} from '@/components/dashboard-tabs'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake } from 'lucide-react'
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
@@ -82,6 +87,12 @@ export default function DashboardPage() {
   const [employees, setEmployees] = useState<EmployeeT[]>([])
   const [reservations, setReservations] = useState<ReservationT[]>([])
   const [receipts, setReceipts] = useState<ReceiptT[]>([])
+  const [inventory, setInventory] = useState<InventoryT[]>([])
+  const [shifts, setShifts] = useState<ShiftT[]>([])
+  const [financial, setFinancial] = useState<FinancialT | null>(null)
+  const [haccp, setHaccp] = useState<HaccpT[]>([])
+  const [expenses, setExpenses] = useState<ExpenseT[]>([])
+  const [loyalty, setLoyalty] = useState<LoyaltyT[]>([])
   const [newOrderTable, setNewOrderTable] = useState<TableT | null>(null)
   const [cart, setCart] = useState<Record<string, number>>({})
   const [sending, setSending] = useState(false)
@@ -111,7 +122,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [d, t, o, k, m, e, r, rec] = await Promise.all([
+      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy] = await Promise.all([
         api<{ stats: Stats }>('/api/dashboard'),
         api<{ tables: TableT[] }>('/api/tables'),
         api<{ orders: OrderT[] }>('/api/orders'),
@@ -120,10 +131,18 @@ export default function DashboardPage() {
         api<{ employees: EmployeeT[] }>('/api/employees'),
         api<{ reservations: ReservationT[] }>('/api/reservations'),
         api<{ receipts: ReceiptT[] }>('/api/furs'),
+        api<{ inventory: InventoryT[] }>('/api/inventory'),
+        api<{ shifts: ShiftT[] }>('/api/shifts'),
+        api<FinancialT>('/api/reports/financial'),
+        api<{ haccpChecks: HaccpT[] }>('/api/haccp'),
+        api<{ expenses: ExpenseT[] }>('/api/expenses'),
+        api<{ accounts: LoyaltyT[] }>('/api/loyalty'),
       ])
       setStats(d.stats); setTables(t.tables); setOrders(o.orders)
       setKitchen(k.queue); setMenu(m.items); setCategories(m.categories); setEmployees(e.employees)
       setReservations(r.reservations); setReceipts(rec.receipts)
+      setInventory(inv.inventory); setShifts(sh.shifts); setFinancial(fin)
+      setHaccp(haccpRows.haccpChecks); setExpenses(ex.expenses); setLoyalty(loy.accounts)
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
@@ -244,7 +263,9 @@ export default function DashboardPage() {
             {[
               ['pregled', 'Pregled', LayoutDashboard], ['mize', 'Mize', Utensils], ['narocila', 'Naročila', ClipboardList],
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
-              ['racuni', 'Računi', ReceiptText], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
+              ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
+              ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ].map(([v, label, Icon]) => (
               <TabsTrigger key={v as string} value={v as string} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
                 {Icon && <Icon className="w-4 h-4" />} {label as string}
@@ -440,6 +461,26 @@ export default function DashboardPage() {
                 </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="zaloge">
+            <InventoryTab items={inventory} />
+          </TabsContent>
+
+          <TabsContent value="izmene">
+            <ShiftsTab shifts={shifts} financial={financial} canManage={canManage} onReload={load} />
+          </TabsContent>
+
+          <TabsContent value="haccp">
+            <HaccpTab checks={haccp} onReload={load} />
+          </TabsContent>
+
+          <TabsContent value="stroski">
+            <ExpensesTab expenses={expenses} canManage={canManage} onReload={load} />
+          </TabsContent>
+
+          <TabsContent value="zvestoba">
+            <LoyaltyTab accounts={loyalty} />
           </TabsContent>
 
           <TabsContent value="zaposleni">

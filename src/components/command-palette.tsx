@@ -8,6 +8,7 @@ import {
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, CalendarDays,
   ReceiptText, Users, Settings, RefreshCw, Plus, LogOut, Search, ShieldCheck,
+  PackageSearch, Clock, Thermometer, Wallet, HeartHandshake,
 } from 'lucide-react'
 
 /**
@@ -73,6 +74,25 @@ export function CommandPalette({ open, onOpenChange, user, onNavigate, onRefresh
           <CommandItem onSelect={() => run(() => onNavigate('racuni'))}>
             <ReceiptText className="w-4 h-4" /> Računi (FURS)
           </CommandItem>
+          <CommandItem onSelect={() => run(() => onNavigate('zaloge'))}>
+            <PackageSearch className="w-4 h-4" /> Zaloge
+          </CommandItem>
+          <CommandItem onSelect={() => run(() => onNavigate('izmene'))}>
+            <Clock className="w-4 h-4" /> Izmene + Z-poročila
+          </CommandItem>
+          <CommandItem onSelect={() => run(() => onNavigate('haccp'))}>
+            <Thermometer className="w-4 h-4" /> HACCP kontrole
+          </CommandItem>
+          {canManage(user?.role) ? (
+            <CommandItem onSelect={() => run(() => onNavigate('stroski'))}>
+              <Wallet className="w-4 h-4" /> Stroški
+            </CommandItem>
+          ) : null}
+          {canManage(user?.role) ? (
+            <CommandItem onSelect={() => run(() => onNavigate('zvestoba'))}>
+              <HeartHandshake className="w-4 h-4" /> Zvestoba
+            </CommandItem>
+          ) : null}
           {canManage(user?.role) ? (
             <CommandItem onSelect={() => run(() => onNavigate('zaposleni'))}>
               <Users className="w-4 h-4" /> Zaposleni
