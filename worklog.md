@@ -925,3 +925,23 @@ Work Log:
 Stage Summary:
 - tsc 0 napak, lint 0, bun test 33/33, secrets scan 0, schema drift 110/110
 - celoten P0 sklop issue #4 implementiran; P1: CI + drift + testi + integrations masking; ostalo dokumentirano v reportu (D/E)
+
+---
+Task ID: 7-8-main
+Agent: main (Z.ai Code)
+Task: Deploy + produkcijska verifikacija + migracija + Issue #4 komentar
+
+Work Log:
+- commit ca67270 (v1.31.0 hardening) push na GitLab main (CF flaky 403 → retry pattern)
+- Vercel deploy 1 (dpl_DM6FPs…) READY — ugotovljen 500 na /api/devices/enroll: Neon bazi manjkajo nova polja (files-API deploy ne pusha sheme)
+- rešitev po vzorcu repoja: /api/admin/migrate-issue4 (idempotentni ALTER TABLE IF NOT EXISTS + index) — commit 818fe4a
+- Vercel deploy 2 (dpl_4WPVq7zx…) READY
+- migracija na produkciji: 200, applied=4, columns potrjene
+- E2E produkcija: enroll(8-mestna koda) → claim(rodev_ token + lokacijska vezava) → replay claim 404 (enkratna) → napačna koda 404 → GET seznam maskiran (rodev_357afc…) → testna naprava izbrisana
+- prijava + dashboard + mize + naročila delujejo, 0 konzolnih napak
+- poročilo objavljeno kot komentar na GitLab issue #4 (201)
+- agent-browser seja zaključena
+
+Stage Summary:
+- Issue #4: P0 (§1-8) + P1 (§11-15) implementirano in produkcijsko verificirano; v1.31.0 na https://restaurantos-theta.vercel.app
+- GitHub mirror BLOKIRAN: PAT ghp_E27J… → 401 Bad credentials; potreben nov token
