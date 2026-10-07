@@ -584,3 +584,18 @@ Stage Summary:
 - Issue #2 dostava obnovljena v 1.27.0 (webhook + operativa + UI), pravilo "ne podvajaj" spoštovano (Order/DeliveryInfo/DeliveryZone/DeliveryTracking/IntegrationLog/AuditLog iz obstoječe sheme)
 - Ostalo: i-feel-slovenia + muzej-arhiv GitLab push zaostanek (auto-retry preko Actions); Issue #3 (QR/kiosk/CFD) ostaja naslednji
 - Za produkcijo: nastaviti Integration.apiSecret (glovo/wolt) ali env GLOVO_WEBHOOK_SECRET/WOLT_WEBHOOK_SECRET na Vercelu
+
+---
+Task ID: 3 (dodatek — končno stanje sync-a)
+Agent: Z.ai Code
+Task: Zaključna preverba dvosmerne sinhronizacije vseh 7 repojev
+
+Work Log:
+- Konvergiran muzej (merge commit 360a9aa90 na obeh straneh)
+- token-write-test pobrisan na OBEH straneh (sync ga je rekonstruiral iz GitHuba — poučni primer za brisanje: brisi na obeh straneh)
+- i-feel-slovenia: GitLab main=4b9caf8 (produkcijski mirror, deletion-scheduled → GitLab blokira VSE pise iz nase infra: sandbox + Actions); GitHub=2d0b10e84 (nadmnožina: 4b9caf8 + sync workflow). GitLab→GitHub smer (fetch) deluje; GitHub je arhiv.
+- muzej-arhiv: GitLab zaostaja 1 commit (workflow); push prehodno 403 (rate-limit po projektu) — 6h Actions urnik bo sam prevzel; GitHub ima vso vsebino.
+
+Stage Summary (sync):
+- POPOLNOMA SINHRONIZIRANO (dvosmerno, preverjeno): restaurantos 23898ec, discover-slovenia-ai c53bc4849, roksal-railing-manager c4d2ea930, muzej 360a9aa90, markec-project 424956fd8  → 5/7
+- GitHub-arhiv + auto-retry: i-feel-slovenia (GitLab blokira pisanje — deletion scheduled), muzej-arhiv (zaostanek 1 commit, 6h retry)
