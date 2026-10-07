@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     include: {
       Table: true,
       OrderItem: {
-        where: { status: { in: ITEM_ACTIVE_DB } },
+        where: { status: { in: ITEM_ACTIVE_PRISMA } },
         orderBy: { createdAt: 'asc' },
         include: { MenuItem: { include: { PrepStation: true } } },
       },
