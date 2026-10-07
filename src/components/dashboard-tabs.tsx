@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, fmtEUR } from '@/lib/client'
+import { api, fmtEUR, downloadCSV } from '@/lib/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -18,9 +19,42 @@ export interface InventoryT { id: string; name: string; unit: string; qty: numbe
 export interface SupplierT { id: string; name: string; contact?: string | null; phone?: string | null; email?: string | null; address?: string | null }
 export interface RecipeT { id: string; name: string; instructions: string; items: { inventoryItemId: string; name: string; unit: string; qty: number }[] }
 
-export function InventoryTab({ items, suppliers, recipes }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[] }) {
+export function InventoryTab({ items, suppliers, recipes, canManage, onReload }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; canManage: boolean; onReload: () => Promise<void> }) {
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
   const totalValue = items.reduce((s, i) => s + i.qty * i.cost, 0)
+  const [addItem, setAddItem] = useState(false)
+  const [ni, setNi] = useState({ name: '', unit: 'kg', qty: '', minQty: '', cost: '' })
+  const [niBusy, setNiBusy] = useState(false)
+  const [adjust, setAdjust] = useState<InventoryT | null>(null)
+  const [adj, setAdj] = useState({ delta: '', setQty: '', minQty: '', cost: '' })
+  const [adjBusy, setAdjBusy] = useState(false)
+  const [supForm, setSupForm] = useState<{ name: string; contact: string; phone: string } | null>(null)
+  const [supBusy, setSupBusy] = useState(false)
+
+  async function createItem() {
+    setNiBusy(true)
+    try {
+      await api('/api/inventory', { method: 'POST', body: JSON.stringify({ name: ni.name, unit: ni.unit, qty: ni.qty, minQty: ni.minQty, cost: ni.cost }) })
+      setAddItem(false); setNi({ name: '', unit: 'kg', qty: '', minQty: '', cost: '' }); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setNiBusy(false) }
+  }
+  async function saveAdjust() {
+    if (!adjust) return
+    setAdjBusy(true)
+    try {
+      await api('/api/inventory', { method: 'PATCH', body: JSON.stringify({ id: adjust.id, delta: adj.delta, setQty: adj.setQty, minQty: adj.minQty, cost: adj.cost }) })
+      setAdjust(null); setAdj({ delta: '', setQty: '', minQty: '', cost: '' }); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setAdjBusy(false) }
+  }
+  async function createSupplier() {
+    if (!supForm) return
+    setSupBusy(true)
+    try {
+      await api('/api/suppliers', { method: 'POST', body: JSON.stringify(supForm) })
+      setSupForm(null); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setSupBusy(false) }
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -28,6 +62,12 @@ export function InventoryTab({ items, suppliers, recipes }: { items: InventoryT[
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Pod minimumom</CardTitle></CardHeader><CardContent><p className={`text-2xl font-bold ${low.length > 0 ? 'text-amber-600' : ''}`}>{low.length}</p></CardContent></Card>
         <Card className="col-span-2 lg:col-span-1"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Vrednost zaloge</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(totalValue)}</p></CardContent></Card>
       </div>
+
+      {canManage && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setAddItem(true)}><Plus className="w-4 h-4" /> Nov artikel</Button>
+        </div>
+      )}
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Sklad zalog</CardTitle></CardHeader>
         <CardContent>
@@ -42,9 +82,16 @@ export function InventoryTab({ items, suppliers, recipes }: { items: InventoryT[
                       <p className="font-medium truncate">{i.name}</p>
                       <p className="text-xs text-stone-500">{i.cost > 0 ? `${fmtEUR(i.cost)}/${i.unit}` : i.unit}{isLow && ' · min ' + i.minQty}</p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold">{i.qty} {i.unit}</p>
-                      {isLow && <Badge className="bg-amber-600 text-white mt-0.5">Pod minimumom</Badge>}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <p className="font-bold">{i.qty} {i.unit}</p>
+                        {isLow && <Badge className="bg-amber-600 text-white mt-0.5">Pod minimumom</Badge>}
+                      </div>
+                      {canManage && (
+                        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setAdjust(i); setAdj({ delta: '', setQty: String(i.qty), minQty: String(i.minQty), cost: String(i.cost) }) }}>
+                          Prilagodi
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )
@@ -55,7 +102,10 @@ export function InventoryTab({ items, suppliers, recipes }: { items: InventoryT[
       </Card>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Truck className="w-4 h-4" /> Dobavitelji</CardTitle></CardHeader>
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base flex items-center gap-1.5"><Truck className="w-4 h-4" /> Dobavitelji</CardTitle>
+          {canManage && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSupForm({ name: '', contact: '', phone: '' })}><Plus className="w-3 h-3" /> Dodaj</Button>}
+        </CardHeader>
         <CardContent>
           {suppliers.length === 0 && <p className="text-sm text-stone-500">Ni dodanih dobaviteljev.</p>}
           <div className="grid gap-2 sm:grid-cols-2">
@@ -99,11 +149,115 @@ export function InventoryTab({ items, suppliers, recipes }: { items: InventoryT[
           </ScrollArea>
         </CardContent>
       </Card>
+
+      {/* Nov artikel zaloge */}
+      <Dialog open={addItem} onOpenChange={(v) => !v && setAddItem(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nov artikel zaloge</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ni-name">Naziv *</Label>
+              <Input id="ni-name" value={ni.name} onChange={(e) => setNi({ ...ni, name: e.target.value })} placeholder="npr. Moka tip 500" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ni-unit">Enota</Label>
+                <Select value={ni.unit} onValueChange={(v) => setNi({ ...ni, unit: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['kg', 'l', 'pcs', 'g', 'ml'].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ni-qty">Začetna količina</Label>
+                <Input id="ni-qty" inputMode="decimal" value={ni.qty} onChange={(e) => setNi({ ...ni, qty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ni-min">Min. količina</Label>
+                <Input id="ni-min" inputMode="decimal" value={ni.minQty} onChange={(e) => setNi({ ...ni, minQty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ni-cost">Cena / enoto (€)</Label>
+                <Input id="ni-cost" inputMode="decimal" value={ni.cost} onChange={(e) => setNi({ ...ni, cost: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0.00" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddItem(false)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={niBusy || !ni.name} onClick={createItem}>{niBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani artikel'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Prilagoditev zaloge */}
+      <Dialog open={!!adjust} onOpenChange={(v) => !v && setAdjust(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Prilagodi zalogo — {adjust?.name}</DialogTitle></DialogHeader>
+          {adjust && (
+            <div className="space-y-3">
+              <p className="text-xs text-stone-500">Trenutno stanje: <b>{adjust.qty} {adjust.unit}</b></p>
+              <div className="space-y-1.5">
+                <Label htmlFor="adj-delta">Prejem / sprememba (+/- {adjust.unit})</Label>
+                <Input id="adj-delta" inputMode="decimal" value={adj.delta} onChange={(e) => setAdj({ ...adj, delta: e.target.value.replace(/[^\d.,-]/g, '').replace(',', '.') })} placeholder="npr. 12 ali -3" />
+                <p className="text-[11px] text-stone-400">Če je vneseno, se prišteje k trenutni količini (pozitivno = prejem blaga).</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="adj-set">Nastavi količino na</Label>
+                  <Input id="adj-set" inputMode="decimal" value={adj.setQty} onChange={(e) => setAdj({ ...adj, setQty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="adj-min">Min. količina</Label>
+                  <Input id="adj-min" inputMode="decimal" value={adj.minQty} onChange={(e) => setAdj({ ...adj, minQty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="adj-cost">Cena / enoto (€)</Label>
+                <Input id="adj-cost" inputMode="decimal" value={adj.cost} onChange={(e) => setAdj({ ...adj, cost: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjust(null)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={adjBusy} onClick={saveAdjust}>{adjBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani prilagoditev'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nov dobavitelj */}
+      <Dialog open={!!supForm} onOpenChange={(v) => !v && setSupForm(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nov dobavitelj</DialogTitle></DialogHeader>
+          {supForm && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="sup-name">Naziv *</Label>
+                <Input id="sup-name" value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} placeholder="npr. Kmetija Vidmar" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="sup-contact">Kontaktna oseba</Label>
+                  <Input id="sup-contact" value={supForm.contact} onChange={(e) => setSupForm({ ...supForm, contact: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sup-phone">Telefon</Label>
+                  <Input id="sup-phone" value={supForm.phone} onChange={(e) => setSupForm({ ...supForm, phone: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSupForm(null)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={supBusy || !supForm?.name} onClick={createSupplier}>{supBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani dobavitelja'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
-/* ─────────────────────────── IZMENE + Z-POROČILA ─────────────────────────── */
 
 export interface ShiftT { id: string; employeeId?: string | null; employee?: { name: string; role: string } | null; startedAt: string; endedAt?: string | null; openingCash: number; closingCash: number; status: string }
 export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number }; taxBreakdown: { taxRate: number; qty: number }[] }
@@ -144,6 +298,28 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
             </div>
           )}
         </CardContent></Card>
+      </div>
+
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => {
+          if (!financial) return
+          const d = new Date()
+          downloadCSV(`porocilo-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
+            ['Financno porocilo RestavrantOS', new Date().toLocaleDateString('sl-SI')],
+            [],
+            ['Obdobje', 'Prihodki (EUR)', 'Davek (EUR)', 'Stroski (EUR)', 'Dobicek (EUR)', 'Racunov'],
+            ['Danes', financial.today.revenue, financial.today.tax, '', '', financial.today.invoices],
+            ['Mesec', financial.month.revenue, financial.month.tax, financial.month.expenses, financial.month.profit, financial.month.invoices],
+            [],
+            ['Davcna stopnja (%)', 'Postavk'],
+            ...financial.taxBreakdown.map((t) => [t.taxRate, t.qty]),
+            [],
+            ['Izmena', 'Zaposleni', 'Vloga', 'Zacetek', 'Konec', 'Odpiranje (EUR)', 'Zakljucek (EUR)', 'Status'],
+            ...shifts.map((s) => [s.id, s.employee?.name || '', s.employee?.role || '', s.startedAt, s.endedAt || '', s.openingCash, s.closingCash, s.status]),
+          ])
+        }}>
+          Izvozi poročilo (CSV)
+        </Button>
       </div>
 
       {canManage && (
@@ -330,6 +506,17 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
         </Card>
       )}
 
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => {
+          const d = new Date()
+          downloadCSV(`stroski-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
+            ['Datum', 'Opis', 'Kategorija', 'Znesek (EUR)'],
+            ...expenses.map((e) => [new Date(e.paidAt).toLocaleDateString('sl-SI'), e.description, e.category || '', e.amount]),
+          ])
+        }}>
+          Izvozi stroške (CSV)
+        </Button>
+      </div>
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Stroški</CardTitle></CardHeader>
         <CardContent>
@@ -361,14 +548,42 @@ const TIER_COLORS: Record<string, string> = {
   BRONZE: 'bg-amber-700 text-white', SILVER: 'bg-stone-400 text-white', GOLD: 'bg-yellow-500 text-white', PLATINUM: 'bg-stone-700 text-white',
 }
 
-export function LoyaltyTab({ accounts }: { accounts: LoyaltyT[] }) {
+export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: LoyaltyT[]; canManage: boolean; onReload: () => Promise<void> }) {
   const totalPoints = accounts.reduce((s, a) => s + a.points, 0)
+  const [member, setMember] = useState<{ guestName: string; phone: string } | null>(null)
+  const [mBusy, setMBusy] = useState(false)
+  const [pts, setPts] = useState<LoyaltyT | null>(null)
+  const [pForm, setPForm] = useState({ delta: '', reason: '' })
+  const [pBusy, setPBusy] = useState(false)
+
+  async function createMember() {
+    if (!member) return
+    setMBusy(true)
+    try {
+      await api('/api/loyalty', { method: 'POST', body: JSON.stringify(member) })
+      setMember(null); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setMBusy(false) }
+  }
+  async function savePoints() {
+    if (!pts) return
+    setPBusy(true)
+    try {
+      await api('/api/loyalty', { method: 'PATCH', body: JSON.stringify({ id: pts.id, delta: Number(pForm.delta), reason: pForm.reason }) })
+      setPts(null); setPForm({ delta: '', reason: '' }); await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setPBusy(false) }
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><HeartHandshake className="w-4 h-4" /> Članov</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{accounts.length}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Skupaj točk</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{totalPoints}</p></CardContent></Card>
       </div>
+      {canManage && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setMember({ guestName: '', phone: '' })}><Plus className="w-4 h-4" /> Nov član</Button>
+        </div>
+      )}
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Zvestobni računi</CardTitle></CardHeader>
         <CardContent>
@@ -378,17 +593,70 @@ export function LoyaltyTab({ accounts }: { accounts: LoyaltyT[] }) {
               <div key={a.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-medium truncate">{a.guestName}</p>
-                  <p className="text-xs text-stone-500">{a.phone || '—'} · {a.visits} obiskov skupaj</p>
+                  <p className="text-xs text-stone-500">{a.phone || '—'} · {a.visits} točk skupaj</p>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="font-bold">{a.points} točk</p>
-                  {a.tier && <Badge className={`mt-0.5 ${TIER_COLORS[a.tier] || 'bg-stone-500 text-white'}`}>{a.tier}</Badge>}
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right">
+                    <p className="font-bold">{a.points} točk</p>
+                    {a.tier && <Badge className={`mt-0.5 ${TIER_COLORS[a.tier] || 'bg-stone-500 text-white'}`}>{a.tier}</Badge>}
+                  </div>
+                  {canManage && (
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setPts(a); setPForm({ delta: '', reason: '' }) }}>
+                      Točke
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!member} onOpenChange={(v) => !v && setMember(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nov član zvestobe</DialogTitle></DialogHeader>
+          {member && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="lo-name">Ime gosta *</Label>
+                <Input id="lo-name" value={member.guestName} onChange={(e) => setMember({ ...member, guestName: e.target.value })} placeholder="npr. Ana Kovač" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lo-phone">Telefon</Label>
+                <Input id="lo-phone" value={member.phone} onChange={(e) => setMember({ ...member, phone: e.target.value })} placeholder="041 234 567" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMember(null)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mBusy || !member?.guestName} onClick={createMember}>{mBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani člana'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pts} onOpenChange={(v) => !v && setPts(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Točke — {pts?.guestName}</DialogTitle></DialogHeader>
+          {pts && (
+            <div className="space-y-3">
+              <p className="text-xs text-stone-500">Trenutno stanje: <b>{pts.points} točk</b> · tier {pts.tier || 'bronze'}</p>
+              <div className="space-y-1.5">
+                <Label htmlFor="pt-delta">Točke (+ prihod / − obračun)</Label>
+                <Input id="pt-delta" inputMode="integer" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder="npr. 25 ali -10" />
+                <p className="text-[11px] text-stone-400">Tier se preračuna samodejno: silver od 100, gold od 500, platinum od 1000 točk.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pt-reason">Razlog</Label>
+                <Input id="pt-reason" value={pForm.reason} onChange={(e) => setPForm({ ...pForm, reason: e.target.value })} placeholder="neobvezno" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPts(null)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={pBusy || !pForm.delta || Number(pForm.delta) === 0} onClick={savePoints}>{pBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zapiši točke'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -34,3 +34,21 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
 
 export const fmtEUR = (n: number) =>
   new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR' }).format(n)
+
+/** Izvoz CSV (ločilo ; + BOM za Excel, slovenske kode) */
+export function downloadCSV(filename: string, rows: (string | number | null | undefined)[][]) {
+  const esc = (v: string | number | null | undefined) => {
+    const s = String(v ?? '')
+    return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const csv = rows.map((r) => r.map(esc).join(';')).join('\r\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}

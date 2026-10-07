@@ -26,6 +26,7 @@ import {
   ShieldCheck, UserCog, Search, Star,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
+import { downloadCSV } from '@/lib/client'
 import {
   InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
@@ -79,6 +80,9 @@ const PERMISSION_LABELS: Record<string, string> = {
 }
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', KITCHEN: 'Kuhinja',
+}
+const RES_STATUS_LABELS: Record<string, string> = {
+  CONFIRMED: 'Potrjena', SEATED: 'Gost prišel', COMPLETED: 'Zaključena', CANCELLED: 'Preklicana', NO_SHOW: 'Ni prišel',
 }
 
 export default function DashboardPage() {
@@ -235,6 +239,14 @@ export default function DashboardPage() {
         body: JSON.stringify({ guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests, reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note }),
       })
       setNewRes(null); await load()
+    } catch (err) { alert((err as Error).message) } finally { setSending(false) }
+  }
+
+  async function setReservationStatus(id: string, status: string) {
+    setSending(true)
+    try {
+      await api('/api/reservations', { method: 'PATCH', body: JSON.stringify({ id, status }) })
+      await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
 
@@ -465,7 +477,15 @@ export default function DashboardPage() {
                         <p className="text-xs text-stone-500">{new Date(r.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{r.phone ? ` · ${r.phone}` : ''}</p>
                         {r.note && <p className="text-xs text-stone-400 truncate">ℹ {r.note}</p>}
                       </div>
-                      <Badge variant="outline" className="shrink-0">{r.status}</Badge>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant="outline">{RES_STATUS_LABELS[r.status] || r.status}</Badge>
+                        {canManage && (
+                          <>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>Prišel</Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>Prekliči</Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -474,6 +494,17 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="racuni" className="space-y-4">
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => {
+                const d = new Date()
+                downloadCSV(`racuni-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
+                  ['St. racuna', 'Datum', 'Miza', 'Narocilo', 'Nacin placila', 'Znesek (EUR)', 'EOR', 'FURS'],
+                  ...receipts.map((r) => [r.invoiceNumber, new Date(r.createdAt).toLocaleString('sl-SI'), r.tableName || '', r.orderNumber ?? '', r.paymentMethod.toUpperCase(), r.total, r.eor, r.fiscalVerified ? 'verified' : r.fiscalStatus]),
+                ])
+              }}>
+                Izvozi račune (CSV)
+              </Button>
+            </div>
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Izdani računi (FURS)</CardTitle></CardHeader>
               <CardContent>
@@ -504,7 +535,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="zaloge">
-            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} />
+            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} canManage={canManage} onReload={load} />
           </TabsContent>
 
           <TabsContent value="izmene">
@@ -520,7 +551,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="zvestoba">
-            <LoyaltyTab accounts={loyalty} />
+            <LoyaltyTab accounts={loyalty} canManage={canManage} onReload={load} />
           </TabsContent>
 
           <TabsContent value="mnenja">

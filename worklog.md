@@ -217,3 +217,19 @@ Work Log:
 
 Stage Summary:
 - Obnova modulov 100% zakljucena: vsi API-ji imajo UI, produkcija tece na najnovejsi kodi
+
+---
+Task ID: 9-write-ops
+Agent: Z.ai (main)
+Task: "nadaljuj z obnovo" — zapisne operacije (inventory, loyalty, suppliers, reservations) + CSV izvoz
+
+Work Log:
+- Ugotovljene vrzeli: inventory/loyalty/suppliers imeli samo GET, reservations brez PATCH
+- Backend: POST+PATCH /api/inventory (nov artikel; prejem delta / popravek setQty/min/cost + audit INVENTORY_CREATE/INVENTORY_ADJUST), POST+PATCH /api/loyalty (nov clan; točke delta z LoyaltyTransaction zapisom + samodejni tier silver/gold/platinum + audit LOYALTY_POINTS), POST /api/suppliers (unikatna koda SUP-*, fix: prazen code je trkal z unique omejitvijo), PATCH /api/reservations (statusi SEATED/CANCELLED/COMPLETED/NO_SHOW/CONFIRMED)
+- Frontend: downloadCSV helper (ločilo ; + BOM za Excel), InventoryTab (Nov artikel dialog, Prilagodi dialog z delta/set/min/cost, Dodaj dobavitelja), LoyaltyTab (Nov član, Točke dialog z razlogom), Rezervacije (gumba Prišel/Prekliči + slovenske oznake statusov), CSV izvozi: poročilo (financni pregled + izmene), stroški, računi (EOR/FURS)
+- Fix med razvojem: 2x regex tip ([^[\d.,-] in [^^\d-]), manjkajoči uvoz Plus, JSX besedilo z < znakom (pars napaka), supplier code unique collision
+- E2E lokalno: API testi (inventory POST/PATCH 5->15, loyalty +120 silver / -50 -> 70 bronze, supplier POST, reservation SEATED/CANCELLED), brskalniški E2E (Prilagodi: govedina 18->21.5 kg, Nov član Maja Novak, točke +15, Prišel -> "Gost prišel", vsi 3 CSV gumbi klikljivi) — 0 napak, lint čist
+
+Stage Summary:
+- Aplikacija zdaj ni samo pregledovalna — polno upravljanje zalog/zvestobe/rezervacij/dobaviteljev + izvoz poročil za računovodstvo
+- Sledi: push + deploy + produkcjska verifikacija
