@@ -23,10 +23,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
-  ShieldCheck, UserCog, Search, Star, KeyRound, Dices,
+  ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { downloadCSV } from '@/lib/client'
+import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
 import {
   InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
@@ -117,7 +118,9 @@ export default function DashboardPage() {
   const [cart, setCart] = useState<Record<string, number>>({})
   const [sending, setSending] = useState(false)
   const [payingOrder, setPayingOrder] = useState<OrderT | null>(null)
-  const [invoice, setInvoice] = useState<{ eor: string; invoiceNumber: string } | null>(null)
+  const [invoice, setInvoice] = useState<{ eor: string; invoiceNumber: string; id?: string } | null>(null)
+  /** Natisljivi račun (FURS) — busy indikator za gumb Natisni */
+  const [printing, setPrinting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState('pregled')
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -231,6 +234,17 @@ export default function DashboardPage() {
       const d = await api<{ invoice: { eor: string; invoiceNumber: string } }>('/api/furs', { method: 'POST', body: JSON.stringify({ orderId: payingOrder.id }) })
       setInvoice(d.invoice); await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
+  }
+
+  /** Natisljivi FURS račun: pridobi podrobnosti in odpri tiskalniški prikaz (80 mm stil) */
+  async function printInvoice(id: string) {
+    setPrinting(true)
+    try {
+      const d = await api<{ receipt: ReceiptDetailT }>(`/api/furs/${id}`)
+      if (!printReceipt(d.receipt, settings?.receiptFooter)) {
+        alert('Brskalnik je zavrzel pojavno okno — dovoli pojavna okna za tiskanje računov.')
+      }
+    } catch (err) { alert(`Napaka pri pripravi računa: ${(err as Error).message}`) } finally { setPrinting(false) }
   }
 
   async function toggleAvailable(m: MenuT) {
@@ -545,6 +559,11 @@ export default function DashboardPage() {
                             <Badge variant="outline">{r.fiscalStatus || 'neoverjeno'}</Badge>
                           )}
                         </div>
+                        <div className="shrink-0 flex items-center gap-1 w-full sm:w-auto justify-end">
+                          <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title="Natisni račun (ali shrani kot PDF)">
+                            <Printer className="w-3.5 h-3.5" /> Natisni
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -773,7 +792,12 @@ export default function DashboardPage() {
               <p className="text-emerald-700 break-all">EOR: {invoice.eor}</p>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="sm:items-center">
+            {invoice?.id && (
+              <Button variant="outline" className="mr-auto gap-1.5" disabled={printing} onClick={() => printInvoice(invoice.id!)}>
+                {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Natisni račun
+              </Button>
+            )}
             <Button variant="outline" onClick={() => { setPayingOrder(null); setInvoice(null) }}>Zapri</Button>
             {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending} onClick={payOrder}>{sending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Izdaj račun'}</Button>}
           </DialogFooter>

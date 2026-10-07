@@ -279,3 +279,22 @@ Stage Summary:
 - Uporabnikova prijava nespremenjena: info@restaurantos.app / 729153
 - Preostali zaposleni v stari shemi: admin nastavlja PIN-e prek Control Centerja (UI pripravljen); prijava zanje namerno zaprta do takrat
 - Še vedno za uporabnika: rotacija Vercel/GitLab zetonov, Neon credentiale, NEXTAUTH_SECRET, obnova GitHub računa
+
+---
+Task ID: 11-receipt-print
+Agent: Z.ai (main)
+Task: "odlicno nadaljuj z obnovo" — natisljivi FURS račun (tiskanje / PDF prek brskalnika)
+
+Work Log:
+- Nov API: GET /api/furs/[id] — podrobnosti računa za tisk (glava podjetja, postavke naročila brez voidanih, razčlenba DDV, ZOI/EOR, operater prek Order.Employee, miza/št. naročila, printedAt)
+- Obrambna logika za ORIGINALNE zapise (produkcija): prazna/drugačna vatBreakdown → agregacija iz postavk (neto konvencija; točno 1,47 na R-2026-000003), taxId/businessId/naziv/naslov → Location → RestaurantSettings fallback, slovenske oznake FURS statusov (pending/failed/none)
+- Nov modul src/lib/receipt.ts: buildReceiptHTML (80 mm termični stil, monospace, č/š/ž izvorno) + printReceipt (pojavno okno + window.print → tiskanje ALI shrani-kot-PDF brez odvisnosti)
+- UI: Računi tab — gumb "Natisni" na vsakem računu; plačilni dialog — "Natisni račun" po uspešni izdaji (invoice.id); loading indikator; alert pri blokiranem pojavnem oknu
+- E2E lokalno (admin/1234): API pot (naročilo → plačilo → detail: 2× Burek 7,00, DDV 9,5 % 0,67, cash, ZOI/EOR) ✓; tiskanje iz Računov ✓ (vse polje: št., podjetje, postavke, DDV, SKUPAJ 7,67 €, CASH, ZOI/EOR, noga) ✓; tiskanje iz plačilnega dialoga (novo naročilo Miza 12 → izdaj račun → Natisni) ✓; 0 napak; 390px brez prelivanja
+- Deploy dpl_7DT4hRDCX4aNP4rzGLCFr38yHvo2 → produkcijska verifikacija razkrila prazne originalne zapise (taxId='', vatBreakdown neuporaben, status 'pending') → popravki → dpl_FNiM8WH2kLBBQ5itnxUYAxAkBHZH (DDV agregacija ✓) → dpl_AR6vu92kedUnauVmg2ag9Du7Rdq2 (podatki podjetja ✓)
+- PRODUKCIJSKA VERIFIKACIJA (samo branje, brez sprememb podatkov): natisnjen ORIGINALNI račun R-2026-000003 — 11/11 preveritev: št. ✓, RestaurantOS Ljubljana ✓, davčna SI12345678 ✓, matična ✓, DDV 9,5 % 1,47 ✓, SKUPAJ 16,87 € ✓, ZOI ✓, EOR ✓, FURS status ✓, operater Ana Novak ✓, postavki 4,50+10,90 ✓; 0 konzolnih napak; mobilni prikaz brez prelivanja
+
+Stage Summary:
+- Restavriran zadnji člen FURS poteka Check → Payment → Receipt → TISK; računi (tudi originalni iz 18.09.) so natisljivi ali shranljivi kot PDF
+- Brez novih odvisnosti; Unicode č/š/ž deluje izvorno (za razliko od jsPDF/pdf-lib standardnih fontov)
+- Produkcija @ dpl_AR6vu92kedUnauVmg2ag9Du7Rdq2; GitLab push sledi
