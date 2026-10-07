@@ -1100,3 +1100,26 @@ Stage Summary:
 - LOKALNI E2E DOKAZ: naročilo #43 → OrderCreated objavljen → dispatch processed (attempts=1) → viden v GET /api/events z payloadom; enterprise org→brand→property→link-location→GET drevo z myScope verigo ✓
 - tsc 0, eslint 0, bun test 81/81 (64+17), backup 3.1M, drift 116/116
 - v1.34.0; #11 ostaja ODPRT (acceptance: offline edge nadgradnja, payment adapterji, fiscal modul, KDS routing še naslednji inkrementi)
+
+---
+Task ID: 14-main
+Agent: main (Z.ai Code)
+Task: Issue #12 — P0 SaaS tenant isolation, security boundary & deployment resilience (v1.35.0)
+
+Work Log:
+- §0 inventura po issue-jevem protokolu: schema (116), api.ts/auth.ts/tenant sloji, 65 API rut, sync, payment, devices, CI, docs → gap matrica (PARTIAL/MISSING) v finalnem poročilu na #12
+- §1 tenant: src/lib/tenant.ts (assertTenantScope — cross-org 403; chainForLocation; legacy passthrough migracijsko varno); enterprise rute: GET samo lastna org (prej vse — uhajanje zaprto), POST org = samo bootstrap, brand/property/link-location = samo ista org
+- §3 MFA: src/lib/mfa.ts (TOTP RFC 6238 node crypto; base32; recovery kod SHA-256 hashi) + 4 rute (enroll/enable/disable/status) + login integracija (mfaCode/mfaRecoveryCode; 401+mfaRequired; bootstrap break-glass; PIN operativnih NESPREMENJEN)
+- Shema: Employee + mfaSecret/mfaEnabled/mfaRecoveryCodes/mfaEnrolledAt (obe shemi, drift 116/116) + /api/admin/migrate-issue12 (aditivni DDL, idempotentno)
+- §5: scripts/smoke-test.sh (health/lokacije/javni/401/prijava; exit 1 → rollback) + docs/DEPLOYMENT-RESILIENCE.md (CI gate-i, aditivne migracije, rollback tabela)
+- §8 docs: ARCHITECTURE.md + TENANT-ISOLATION.md + SECURITY-BOUNDARY.md + DEPLOYMENT-RESILIENCE.md (dejansko stanje, ne želeno)
+- testi: tests/mfa.test.ts (24, RFC 6238 vektorji) + tests/tenant.test.ts (15, cross-org deny/forged ID)
+- popravljeni lastni bugi pri razvoju: base32Encode 32-bit overflow (manjkajoči mask), RFC vektorji (cel counter, fooba≠foobar), recoveryCodeHash normalizacija ločil
+- PRISILJEN RESTART dev serverja 2×: (1) star Prisma client brez mfa polj → 500; (2) prisma generate z PRODUKCIJSKO shemo je pokvaril lokalni client (postgres URL) → regeneriran sqlite client (pouka: po vsakem generate --schema schema.prisma sledi generate sqlite)
+- PRODUKCIJSKI DEPLOY BLOKIRAN: Vercel vcp_ žeton je od včeraj (dpl_7juqxE… OK 2026-10-06 21:49) začel vračati 403 "re-authenticate to scope" (saml) — /v2/user OK, team scope zavrnjen; produkcija ostaja v1.34.0 (delujoča); potrebujem nov Vercel žeton s team scopeom (uporabniška akcija)
+
+Stage Summary:
+- commit 177251a na GitLab main; CI pipeline 2924143653 = SUCCESS; GitHub mirror 177251a avtomatsko (~1 min, 4.× E2E dokaz)
+- tsc 0 · eslint 0 · bun test 120/120 (81+39) · drift 116/116 · secrets 0
+- E2E: MFA cikel 12/12 (enroll→enable→401 brez kode→TOTP ok→recovery ok→replay recovery 401→disable) + audit vseh 6 dogodkov; tenant E2E (1 vidna org; org kreacija 403); UI agent-browser (prijava→dashboard v1.35.0, 0 napak)
+- Issue #12 ZAKLENJEN z dokazili; reziduali v poročilu: produkcijski deploy+migrate-issue12+smoke (čaka nov Vercel žeton), MFA enrollment realnih računov (uporabnik), CI build secret (uporabnik), per-tenant indeksi (#5), correlation ID (majhen follow-up)
