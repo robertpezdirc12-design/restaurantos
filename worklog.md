@@ -543,3 +543,44 @@ Stage Summary:
 - Issue #1 opis DOKONČAN + verifikiran lokalno in produkcijsko; LASTNIK dodan
 - Preostanek transparentno triažiran na issue #1 (zaloge/računovodstvo, HR fiskalizacija, i18n, 8 pod-sistemov, #2, #3)
 - Produkcija @ dpl_J3vdQigZsAiVCmH9PKZyStYqVKhE; GitLab main = reconstruction sinhroniziran
+
+---
+Task ID: 3
+Agent: Z.ai Code (glavni)
+Task: GitLab→GitHub mirror vseh repojev + dvosmerna auto-sinhronizacija + izvedba issue #2 (DOSTAVA Glovo/Wolt)
+
+Work Log:
+- Testiran 3. GitLab token (glpat-i3S_...f920jw): VALIDEN — full scopes (read+write_repository, api), poteče 2026-11-06
+- Testiran GitHub token (ghp_E27J...): VALIDEN — račun robertpezdirc12-design, full scope (repo, workflow, delete_repo)
+- GitHub API prehodno blokiral (403 Unicorn = rate limit) — po pavzi deluje
+- Mirror-clone VSEH 7 GitLab repojev: i-feel-slovenia (18M), discover-slovenia-ai (24M), restaurantos (692K, 35+ commitov), roksal-railing-manager, muzej-arhiv (32M), muzej (39 commitov), markec-project (default branch=test-push)
+- Ustvarjenih 7 privatnih repojev na GitHubu + push vseh branchov in tagov
+- Nastavljena dvosmerna sinhronizacija: GitHub Actions workflow (.github/workflows/sync.yml) na vseh 7 repojih
+  - merge-based logika (brez izgube commitov), retry ob prehodnih GitLab 403 (CF/rate-limit)
+  - seKreti GITLAB_TOKEN + GITLAB_PROJECT_PATH per repo (PyNaCl sealed box)
+  - cron: restaurantos */30 min, ostali vsakih 6h; push trigger = takojšnja sinhronizacija
+  - v1 force-sync bug (brisanje workflow commitov) → v3 merge-based, workflow file NA OBEH straneh (GitLab push via git deluje tudi ob CF blokadi POST)
+- Preverjena SHA pariteta: 5/7 v času setupa; i-feel-slovenia + muzej-arhiv prehodno zaostali (GitLab CF 403 na push) — GitHub Actions retry bo prevzel
+- Lokalni repo: remote origin posodobljen na nov token + dodan github remote; ff-merge workflow commita (1bd7d47)
+
+Issue #2 (DOSTAVA & Glovo/Wolt) — IZVEDENO (samo manjkajoče, po pravilu "ne vse od zacetka"):
+- src/lib/delivery.ts: HMAC-SHA256 signature verify (timingSafeEqual), rate limiting (30/min), tolerantni mapGlovoPayload/mapWoltPayload (rekonstruiran contract, original NOT_RECOVERABLE — označeno v kodi), maskPhone, idempotency key scheme `glovo:<id>`/`wolt:<id>`
+- src/lib/ops.ts: createOrderCore razširjen z neobveznim delivery blokom — DeliveryInfo v ISTI transakciji, pristojbine v total
+- /api/delivery/webhook/[provider] (force-dynamic): pokriva originalni poti /api/delivery/webhook/glovo + /wolt; podpis PRED zapisom; idempotenten replay (podvojen webhook NE ustvari dvojnika); platformski cancel dogodki; IntegrationLog + AuditLog; 503 brez secret-a (secret NIKOLI v source-u — Integration.apiSecret ali env)
+- /api/delivery (GET/PATCH): dostavna naročila + cone + webhook napake; statusne tranzicije s validacijo (pending→confirmed→assigned→picked_up→on_the_way→delivered, preklic kjerkoli); DeliveryTracking (ročna poizvedba — brez @relation v shemi)
+- /api/delivery/zones (GET/POST/PATCH): CRUD con (fee/min/čas/aktivnost)
+- map.ts: mapDeliveryInfo, mapDeliveryZone, deliveryStatusToUI/DB, DELIVERY_STATUS_DB
+- UI: DeliveryTab v dashboard-tabs.tsx (aktivna dostava, zgodovina, cone + switch, platforme + napake webhookov, dialog voznika); tab "Dostava" v dashboard (TAB_PERM: orders.create), loader v load()
+- Verzija 1.27.0 (api.ts + hardcoded trije kraji)
+
+E2E preverjeno (lokalno):
+- Podpisan Glovo webhook → naročilo #11; podvojen → replay:true (BREZ dvojnika); napačen podpis → 401 + audit DELIVERY_WEBHOOK_REJECTED; Wolt webhook → #12
+- Dostavni naročili AVTOMATSKO v KDS vrsti (isti Order statusni tok) — potrjeno v API in UI
+- Celotna tranzicijska veriga CONFIRMED→ASSIGNED(+voznik)→PICKED_UP→ON_THE_WAY→DELIVERED + zavrnjen nedovoljen skok
+- UI (agent-browser): Dostava tab render, dodelitev voznika prek dialoga, cone, platformne napake vidne, KDS vidi DELIVERY, 0 console napak, lint čist
+
+Stage Summary:
+- GitHub: robertpezdirc12-design/{7 repojev} = živi mirror GitLaba (dvosmerno, auto)
+- Issue #2 dostava obnovljena v 1.27.0 (webhook + operativa + UI), pravilo "ne podvajaj" spoštovano (Order/DeliveryInfo/DeliveryZone/DeliveryTracking/IntegrationLog/AuditLog iz obstoječe sheme)
+- Ostalo: i-feel-slovenia + muzej-arhiv GitLab push zaostanek (auto-retry preko Actions); Issue #3 (QR/kiosk/CFD) ostaja naslednji
+- Za produkcijo: nastaviti Integration.apiSecret (glovo/wolt) ali env GLOVO_WEBHOOK_SECRET/WOLT_WEBHOOK_SECRET na Vercelu

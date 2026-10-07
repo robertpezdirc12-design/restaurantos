@@ -908,3 +908,295 @@ export function DevicesCard({ devices, locations }: { devices: DeviceT[]; locati
     </Card>
   )
 }
+
+/* ─────────────────────────── DOSTAVA (issue #2 — Glovo/Wolt + domača dostava) ─────────────────────────── */
+
+export interface DeliveryInfoT {
+  id: string
+  address: string
+  city: string
+  postCode: string
+  recipientName: string
+  recipientPhone: string
+  instructions: string
+  status: string
+  deliveryFee: number
+  packagingFee: number
+  courierName: string
+  courierPhone: string
+  driver: { name: string; phone: string; status: string } | null
+}
+export interface DeliveryOrderT {
+  id: string
+  orderNumber: number
+  type: string
+  status: string
+  note: string | null
+  total: number
+  paymentStatus: string
+  createdAt: string
+  fursEor: string | null
+  items: { id: string; name: string; qty: number }[]
+  delivery: DeliveryInfoT | null
+}
+export interface DeliveryZoneT {
+  id: string
+  name: string
+  deliveryFee: number
+  minOrderAmount: number
+  estimatedMinutes: number
+  isActive: boolean
+}
+export interface PlatformIntegrationT {
+  id: string
+  name: string
+  provider: string
+  isActive: boolean
+  connectionStatus: string
+  logs: { id: string; action: string; status: string; statusCode: number; errorMessage: string | null; createdAt: string }[]
+}
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Nova', CONFIRMED: 'Potrjena', ASSIGNED: 'Dodeljena', PICKED_UP: 'Prevzeta',
+  ON_THE_WAY: 'Na poti', DELIVERED: 'Dostavljeno', CANCELLED: 'Preklicana',
+}
+const DELIVERY_STATUS_BG: Record<string, string> = {
+  PENDING: 'bg-amber-500 text-white', CONFIRMED: 'bg-emerald-600 text-white', ASSIGNED: 'bg-teal-600 text-white',
+  PICKED_UP: 'bg-cyan-600 text-white', ON_THE_WAY: 'bg-sky-600 text-white',
+  DELIVERED: 'bg-stone-500 text-white', CANCELLED: 'bg-red-600 text-white',
+}
+/** Naslednja tranzicija po toku (enako kot TRANSITIONS na backendu) */
+const NEXT_STATUS: Record<string, { to: string; label: string } | null> = {
+  PENDING: { to: 'CONFIRMED', label: 'Potrdi' },
+  CONFIRMED: { to: 'ASSIGNED', label: 'Dodeli voznika' },
+  ASSIGNED: { to: 'PICKED_UP', label: 'Prevzeto' },
+  PICKED_UP: { to: 'ON_THE_WAY', label: 'Na poti' },
+  ON_THE_WAY: { to: 'DELIVERED', label: 'Dostavljeno' },
+  DELIVERED: null, CANCELLED: null,
+}
+const platformOf = (note: string | null): 'GLOVO' | 'WOLT' | 'DOMAČA' =>
+  note?.includes('Glovo') ? 'GLOVO' : note?.includes('Wolt') ? 'WOLT' : 'DOMAČA'
+
+export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
+  orders: DeliveryOrderT[]
+  zones: DeliveryZoneT[]
+  platformIntegrations: PlatformIntegrationT[]
+  onReload: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [driverFor, setDriverFor] = useState<DeliveryOrderT | null>(null)
+  const [driver, setDriver] = useState({ name: '', phone: '' })
+  const [addZone, setAddZone] = useState(false)
+  const [nz, setNz] = useState({ name: '', deliveryFee: '2.50', minOrderAmount: '10', estimatedMinutes: '30' })
+
+  const active = orders.filter((o) => !['PAID', 'CANCELLED'].includes(o.status) && o.delivery && o.delivery.status !== 'DELIVERED' && o.delivery.status !== 'CANCELLED')
+  const history = orders.filter((o) => !active.includes(o))
+
+  async function transition(o: DeliveryOrderT, to: string, extra?: { driverName?: string; driverPhone?: string }) {
+    setBusy(o.id)
+    try {
+      await api('/api/delivery', {
+        method: 'PATCH',
+        body: JSON.stringify({ orderId: o.id, status: to, ...extra }),
+      })
+      await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+  }
+
+  async function createZone() {
+    setBusy('zone')
+    try {
+      await api('/api/delivery/zones', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: nz.name, deliveryFee: Number(nz.deliveryFee), minOrderAmount: Number(nz.minOrderAmount),
+          estimatedMinutes: Number(nz.estimatedMinutes),
+        }),
+      })
+      setAddZone(false); setNz({ name: '', deliveryFee: '2.50', minOrderAmount: '10', estimatedMinutes: '30' })
+      await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+  }
+
+  async function toggleZone(z: DeliveryZoneT) {
+    setBusy(z.id)
+    try {
+      await api('/api/delivery/zones', { method: 'PATCH', body: JSON.stringify({ id: z.id, isActive: !z.isActive }) })
+      await onReload()
+    } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Aktivna dostavna naročila */}
+      <div>
+        <h3 className="text-sm font-semibold text-stone-500 mb-2 flex items-center gap-1.5"><Truck className="w-4 h-4" /> Aktivna dostava ({active.length})</h3>
+        {active.length === 0 && (
+          <Card><CardContent className="p-6 text-center text-sm text-stone-500">Ni aktivnih dostavnih naročil.</CardContent></Card>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {active.map((o) => {
+            const d = o.delivery!
+            const plat = platformOf(o.note)
+            const next = NEXT_STATUS[d.status]
+            return (
+              <Card key={o.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base">#{o.orderNumber} <Badge variant="outline" className="ml-1">{plat}</Badge></CardTitle>
+                    <Badge className={DELIVERY_STATUS_BG[d.status] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_LABELS[d.status] || d.status}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-sm"><span className="text-stone-500">Prejemnik:</span> {d.recipientName || '—'} {d.recipientPhone && <span className="text-stone-500">· {d.recipientPhone}</span>}</p>
+                  <p className="text-sm"><span className="text-stone-500">Naslov:</span> {[d.address, d.postCode, d.city].filter(Boolean).join(', ') || '—'}</p>
+                  {d.instructions && <p className="text-xs text-amber-700">Opomba: {d.instructions}</p>}
+                  <p className="text-xs text-stone-500">{o.items.length} artiklov · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span> (dostava {fmtEUR(d.deliveryFee)})</p>
+                  {o.status === 'PAID' && <Badge className="bg-emerald-600 text-white">Plačano</Badge>}
+                  {o.fursEor && <p className="text-[11px] text-stone-400">FURS EOR: {o.fursEor}</p>}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {next && next.to !== 'ASSIGNED' && (
+                      <Button size="sm" disabled={busy === o.id} onClick={() => transition(o, next.to)} className="bg-emerald-700 hover:bg-emerald-800 text-white">{next.label}</Button>
+                    )}
+                    {next && next.to === 'ASSIGNED' && (
+                      <Button size="sm" disabled={busy === o.id} onClick={() => { setDriverFor(o); setDriver({ name: d.courierName || d.driver?.name || '', phone: d.courierPhone || d.driver?.phone || '' }) }} className="bg-emerald-700 hover:bg-emerald-800 text-white">Dodeli voznika</Button>
+                    )}
+                    <Button size="sm" variant="outline" disabled={busy === o.id} onClick={() => { if (confirm(`Preklicati dostavo #${o.orderNumber}?`)) transition(o, 'CANCELLED', { note: 'Preklic operaterja' }) }} className="border-red-300 text-red-700 hover:bg-red-50">Prekliči</Button>
+                  </div>
+                  {d.driver?.name && <p className="text-xs text-stone-500">Voznik: {d.driver.name} {d.driver.phone && `· ${d.driver.phone}`}</p>}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Zgodovina */}
+      {history.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Zaključene dostave</CardTitle></CardHeader>
+          <CardContent>
+            <ScrollArea className="max-h-72">
+              <div className="space-y-1.5 pr-3">
+                {history.slice(0, 30).map((o) => {
+                  const d = o.delivery
+                  return (
+                    <div key={o.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
+                      <p className="text-sm min-w-0 truncate">#{o.orderNumber} · {d?.recipientName || '—'} · {fmtEUR(o.total)}</p>
+                      <Badge className={DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_LABELS[d?.status || ''] || d?.status || o.status}</Badge>
+                    </div>
+                  )
+                })}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Cone */}
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-1.5"><Plus className="w-4 h-4" /> Dostavne cone</CardTitle>
+            <Button size="sm" variant="outline" onClick={() => setAddZone(true)}>Nova cona</Button>
+          </CardHeader>
+          <CardContent>
+            {zones.length === 0 && <p className="text-sm text-stone-500">Ni con. Dostava brez cone je vedno mogoča.</p>}
+            <div className="space-y-1.5">
+              {zones.map((z) => (
+                <div key={z.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{z.name}</p>
+                    <p className="text-xs text-stone-500">pristojbina {fmtEUR(z.deliveryFee)} · min. naročilo {fmtEUR(z.minOrderAmount)} · ~{z.estimatedMinutes} min</p>
+                  </div>
+                  <Switch checked={z.isActive} disabled={busy === z.id} onCheckedChange={() => toggleZone(z)} aria-label={`Aktivnost cone ${z.name}`} />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Platforme + napake webhookov */}
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Platforme — webhooki in napake</CardTitle></CardHeader>
+          <CardContent>
+            {platformIntegrations.length === 0 && (
+              <p className="text-sm text-stone-500">
+                Integracija Glovo/Wolt ni registrirana. V Nastavitvah → Integracije dodaj zapisa s
+                provider <code className="text-xs bg-stone-100 px-1 rounded">glovo</code> oz.
+                <code className="text-xs bg-stone-100 px-1 rounded ml-1">wolt</code> in nastavi apiSecret (webhook podpis).
+                Endpointa: <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/glovo</code>, <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/wolt</code>.
+              </p>
+            )}
+            <div className="space-y-2">
+              {platformIntegrations.map((p) => {
+                const errors = p.logs.filter((l) => l.status !== 'success')
+                return (
+                  <div key={p.id} className="rounded-lg border border-stone-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium capitalize">{p.provider}</p>
+                      <Badge className={p.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{p.isActive ? p.connectionStatus || 'aktivna' : 'neaktivna'}</Badge>
+                    </div>
+                    {errors.length === 0
+                      ? <p className="text-xs text-stone-400 mt-1">Ni napak v zadnjih dogodkih.</p>
+                      : (
+                        <div className="mt-1.5 space-y-1">
+                          {errors.slice(0, 5).map((l) => (
+                            <p key={l.id} className="text-xs text-red-700 bg-red-50 rounded px-2 py-1 truncate">
+                              {l.statusCode} · {l.action}: {l.errorMessage || 'napaka'}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Dodelitev voznika */}
+      <Dialog open={!!driverFor} onOpenChange={(v) => !v && setDriverFor(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Dodeli voznika — naročilo #{driverFor?.orderNumber}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label htmlFor="drv-name">Ime voznika</Label><Input id="drv-name" value={driver.name} onChange={(e) => setDriver({ ...driver, name: e.target.value })} placeholder="npr. Marko Novak" /></div>
+            <div><Label htmlFor="drv-phone">Telefon</Label><Input id="drv-phone" value={driver.phone} onChange={(e) => setDriver({ ...driver, phone: e.target.value })} placeholder="+386 …" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriverFor(null)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy !== null || !driver.name.trim()}
+              onClick={async () => {
+                if (!driverFor) return
+                setBusy(driverFor.id)
+                try {
+                  await api('/api/delivery', { method: 'PATCH', body: JSON.stringify({ orderId: driverFor.id, status: 'ASSIGNED', driverName: driver.name, driverPhone: driver.phone }) })
+                  setDriverFor(null); await onReload()
+                } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+              }}>Dodeli</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nova cona */}
+      <Dialog open={addZone} onOpenChange={setAddZone}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Nova dostavna cona</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label htmlFor="z-name">Ime cone</Label><Input id="z-name" value={nz.name} onChange={(e) => setNz({ ...nz, name: e.target.value })} placeholder="npr. Center" /></div>
+            <div className="grid grid-cols-3 gap-2">
+              <div><Label htmlFor="z-fee">Pristojbina (€)</Label><Input id="z-fee" type="number" step="0.01" value={nz.deliveryFee} onChange={(e) => setNz({ ...nz, deliveryFee: e.target.value })} /></div>
+              <div><Label htmlFor="z-min">Min. naročilo (€)</Label><Input id="z-min" type="number" step="0.01" value={nz.minOrderAmount} onChange={(e) => setNz({ ...nz, minOrderAmount: e.target.value })} /></div>
+              <div><Label htmlFor="z-mins">Čas (min)</Label><Input id="z-mins" type="number" value={nz.estimatedMinutes} onChange={(e) => setNz({ ...nz, estimatedMinutes: e.target.value })} /></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddZone(false)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy === 'zone' || !nz.name.trim()} onClick={createZone}>Dodaj</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

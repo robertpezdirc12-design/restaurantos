@@ -40,11 +40,12 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
+  type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
 } from '@/components/dashboard-tabs'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
@@ -154,6 +155,11 @@ export default function DashboardPage() {
   const [confirmPinReset, setConfirmPinReset] = useState(false)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
+  // Dostava (issue #2)
+  const [deliveryOrders, setDeliveryOrders] = useState<DeliveryOrderT[]>([])
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneT[]>([])
+  const [deliveryIntegrations, setDeliveryIntegrations] = useState<PlatformIntegrationT[]>([])
+
   // Rezervacije — nov vnos
   const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string } | null>(null)
 
@@ -175,7 +181,7 @@ export default function DashboardPage() {
       const soft = async <T,>(p: Promise<T>): Promise<T | undefined> => {
         try { return await p } catch (e) { if ((e as Error).message === 'unauthorized') throw e; return undefined }
       }
-      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au] = await Promise.all([
+      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl] = await Promise.all([
         soft(api<{ stats: Stats }>('/api/dashboard')),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
@@ -201,6 +207,7 @@ export default function DashboardPage() {
         soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')),
         soft(api<{ devices: DeviceT[] }>('/api/devices')),
         soft(api<{ entries: AuditT[] }>('/api/audit')),
+        soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')),
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
@@ -239,6 +246,7 @@ export default function DashboardPage() {
       }
       if (dv) setDevices(dv.devices)
       if (au) setAuditLog(au.entries)
+      if (dl) { setDeliveryOrders(dl.orders); setDeliveryZones(dl.zones); setDeliveryIntegrations(dl.platformIntegrations) }
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
@@ -487,6 +495,7 @@ export default function DashboardPage() {
     meni: 'menu.manage', rezervacije: 'reservations.manage', racuni: 'reports.view',
     zaloge: 'inventory.manage', izmene: 'orders.pay', haccp: 'settings.manage',
     stroski: 'reports.view', zvestoba: 'reports.view', mnenja: 'reservations.manage',
+    dostava: 'orders.create',
     zaposleni: 'employees.manage', nastavitve: 'settings.manage',
   }
 
@@ -499,7 +508,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.26.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.27.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -551,7 +560,7 @@ export default function DashboardPage() {
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['mnenja', 'Mnenja', Star], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
@@ -812,6 +821,15 @@ export default function DashboardPage() {
             <FeedbackTab feedback={feedback} tables={tables.map((t) => ({ id: t.id, name: t.name }))} />
           </TabsContent>
 
+          <TabsContent value="dostava">
+            <DeliveryTab
+              orders={deliveryOrders}
+              zones={deliveryZones}
+              platformIntegrations={deliveryIntegrations}
+              onReload={load}
+            />
+          </TabsContent>
+
           <TabsContent value="zaposleni" className="space-y-4">
             {canManage && bootstrapLogin && (
               <Card className="border-amber-300 bg-amber-50">
@@ -1022,7 +1040,7 @@ export default function DashboardPage() {
             </div>
             <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
-                <p>RestavrantOS — rekonstrukcija 1.26.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
+                <p>RestavrantOS — rekonstrukcija 1.27.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
                 <p>Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.</p>
                 <p>Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).</p>
               </CardContent>
@@ -1305,7 +1323,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija 1.26.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
+        RestavrantOS rekonstrukcija 1.27.0 · offline-first + FURS (sim/produkcija ločena) · EUR · prijava: admin@restaurantos.app / 1234
       </footer>
     </main>
   )

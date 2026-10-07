@@ -121,6 +121,62 @@ export const reservationStatusToDB = (s: string): string => RES_TO_DB[s?.toUpper
 const RES_SOURCE_DB: Record<string, string> = { PHONE: 'phone', WEBSITE: 'website', APP: 'app' }
 export const reservationSourceToDB = (s: string): string => RES_SOURCE_DB[s?.toUpperCase()] || 'walk_in'
 
+/* ─────────────── Dostava (issue #2): DeliveryInfo/DeliveryZone; statusi freeform String ─────────────── */
+
+const DELIVERY_TO_UI: Record<string, string> = {
+  pending: 'PENDING', confirmed: 'CONFIRMED', assigned: 'ASSIGNED', picked_up: 'PICKED_UP',
+  on_the_way: 'ON_THE_WAY', delivered: 'DELIVERED', cancelled: 'CANCELLED',
+}
+const DELIVERY_TO_DB: Record<string, string> = {
+  PENDING: 'pending', CONFIRMED: 'confirmed', ASSIGNED: 'assigned', PICKED_UP: 'picked_up',
+  ON_THE_WAY: 'on_the_way', DELIVERED: 'delivered', CANCELLED: 'cancelled',
+}
+export const deliveryStatusToUI = (s: string): string => DELIVERY_TO_UI[s] || 'PENDING'
+export const deliveryStatusToDB = (s: string): string => DELIVERY_TO_DB[s?.toUpperCase()] || 'pending'
+export const DELIVERY_STATUS_DB = [
+  'pending', 'confirmed', 'assigned', 'picked_up', 'on_the_way', 'delivered', 'cancelled',
+] as const
+
+export function mapDeliveryInfo(d: Row, tracking?: Row | null) {
+  return {
+    id: d.id as string,
+    address: d.address as string,
+    city: (d.city as string) || '',
+    postCode: (d.postCode as string) || '',
+    recipientName: (d.recipientName as string) || '',
+    recipientPhone: (d.recipientPhone as string) || '',
+    instructions: (d.deliveryInstructions as string) || '',
+    status: deliveryStatusToUI(d.status as string),
+    deliveryFee: num(d.deliveryFee),
+    packagingFee: num(d.packagingFee),
+    promisedTime: (d.promisedTime as string) || null,
+    actualTime: (d.actualTime as string) || null,
+    courierName: (d.courierName as string) || '',
+    courierPhone: (d.courierPhone as string) || '',
+    driver: tracking
+      ? {
+          name: (tracking.driverName as string) || '',
+          phone: (tracking.driverPhone as string) || '',
+          status: (tracking.status as string) || 'assigned',
+          estimatedArrival: (tracking.estimatedArrival as string) || null,
+        }
+      : null,
+  }
+}
+
+export function mapDeliveryZone(z: Row) {
+  return {
+    id: z.id as string,
+    name: z.name as string,
+    deliveryFee: num(z.deliveryFee, 2.5),
+    minOrderAmount: num(z.minOrderAmount, 10),
+    freeDeliveryAbove: num(z.freeDeliveryAbove),
+    estimatedMinutes: (z.estimatedMinutes as number) || 30,
+    isActive: z.isActive !== false,
+    postCodes: jparse<string[]>(z.postCodes, []),
+  }
+}
+
 /* ─────────────── Pripravljalne postaje (PrepStation.type: kitchen|bar ↔ UI: KITCHEN|BAR) ─────────────── */
 
 export function stationToUI(type?: string | null): string {

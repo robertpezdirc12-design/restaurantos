@@ -53,5 +53,5 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.26.0'
+export const APP_VERSION = '1.27.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'

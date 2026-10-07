@@ -24,6 +24,19 @@ export function normalizeOrder(o: Record<string, unknown>) {
   }
 }
 
+export interface CreateOrderDeliveryInput {
+  /** Kreira DeliveryInfo v ISTI transakciji (issue #2 — dostava uporablja kanonični Order) */
+  address: string
+  city?: string
+  postCode?: string
+  recipientName?: string
+  recipientPhone?: string
+  deliveryInstructions?: string
+  deliveryFee?: number
+  packagingFee?: number
+  status?: string
+}
+
 export interface CreateOrderInput {
   employeeId: string
   locationId: string | null
@@ -33,6 +46,7 @@ export interface CreateOrderInput {
   note?: string
   guests?: number
   clientOperationId?: string | null
+  delivery?: CreateOrderDeliveryInput | null
 }
 
 export interface CreateOrderResult {
@@ -95,6 +109,10 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
     }
   })
 
+  // Dostava (issue #2): pristojbine grejo v total (niso obdavčene — standardna pravila platform)
+  const deliveryFee = input.delivery ? Math.max(0, Number(input.delivery.deliveryFee) || 0) : 0
+  const packagingFee = input.delivery ? Math.max(0, Number(input.delivery.packagingFee) || 0) : 0
+
   const MAX_ATTEMPTS = 3
   let lastErr: unknown
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -103,6 +121,24 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
         const maxNumber = await tx.order.aggregate({ where: { locationId }, _max: { orderNumber: true } })
         const floor = (maxNumber._max.orderNumber || 0) + 1
         const orderNumber = await nextSequence(tx, `order:${locationId}`, floor)
+        let deliveryInfoId: string | null = null
+        if (input.delivery) {
+          const di = await tx.deliveryInfo.create({
+            data: {
+              id: nid(),
+              address: input.delivery.address || '',
+              city: input.delivery.city || '',
+              postCode: input.delivery.postCode || '',
+              recipientName: input.delivery.recipientName || '',
+              recipientPhone: input.delivery.recipientPhone || '',
+              deliveryInstructions: input.delivery.deliveryInstructions || '',
+              deliveryFee: deliveryFee,
+              packagingFee: packagingFee,
+              status: input.delivery.status || 'pending',
+            },
+          })
+          deliveryInfoId = di.id
+        }
         const created = await tx.order.create({
           data: {
             id: nid(),
@@ -110,15 +146,16 @@ export async function createOrderCore(input: CreateOrderInput): Promise<CreateOr
             locationId,
             tableId: input.tableId || null,
             employeeId: input.employeeId,
-            type: orderTypeToDB(input.type || 'DINE_IN'),
+            type: orderTypeToDB(input.delivery ? 'DELIVERY' : (input.type || 'DINE_IN')),
             status: 'open',
             paymentStatus: 'unpaid',
             notes: input.note || '',
             subtotal: r2(subtotal),
             tax: r2(tax),
-            total: r2(subtotal + tax),
+            total: r2(subtotal + tax + deliveryFee + packagingFee),
             splitCount: Number(input.guests) || 1,
             idempotencyKey,
+            deliveryInfoId,
             OrderItem: { create: itemRows },
           },
           include: orderInclude,
