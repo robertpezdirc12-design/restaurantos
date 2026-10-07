@@ -304,3 +304,25 @@ Opomba (Task 11): GitLab push za 63f7ce4 ni uspel — token glpat-ODvZ… je pre
 akcija). Koda je varna lokalno (main = reconstruction @ 63f7ce4) IN na produkciji
 (dpl_AR6vu92kedUnauVmg2ag9Du7Rdq2 READY + verifikirana). Push se opravi takoj, ko uporabnik
 doda nov GitLab token (git remote set-url origin https://robert.pezdirc12:<NOVI_TOKEN>@gitlab.com/robert.pezdirc12/restaurantos.git).
+
+---
+Task ID: 12-dark-mode
+Agent: Z.ai (main)
+Task: "nadaljuj z obnovo" + token — push čakajočih commitov, temni način (next-themes)
+
+Work Log:
+- GitLab: push main + reconstruction 8762001 → 750f97c (Task 11 FURS račun, ki je čakal na token) — token deluje za git (repository scope)
+- GitLab issue NEBERLJIV: API → 401 (tokenu manjka api/read_api scope), web/ATOM → Cloudflare challenge (blokirani IP + headless); user dobil navodilo, naj prilepi vsebino issue-ja
+- Temni način — kirurški pristop (brez pretvorbe ~200 trdo kodiranih razredov):
+  * globals.css: pod .dark preslikava Tailwind 4 barvnih žetonov (stone-50/100/200/900 → temne ploskve/obrobe/svetlo besedilo), utilitijske preglasitve (.dark .bg-white → temna kartica, text-stone-300…700 → obratna lestvica, pastelne emerald/amber/red-50/100 → temni tisti, border-* obrobe, hover: varianti)
+  * Nasičeni gumbi ostanejo zeleni/rumeni/rdeči; .dark .bg-emerald-700/800, .bg-amber-600, .bg-red-600 → vsiljeno belo besedilo (sicer podedujejo text-primary-foreground = skoraj črno v temni temi — 26 gumbov brez lastnega text-white)
+  * layout.tsx: ThemeProvider (attribute="class", defaultTheme="system", disableTransitionOnChange) + suppressHydrationWarning na <html>
+  * Novo src/components/theme-toggle.tsx: Sun/Moon oba v DOM, vidnost prek dark:/hidden: (brez mounted state-a — ni hidracijskega neskladja; lint react-hooks/set-state-in-effect sicer blokiral mounted vzorec)
+  * Toggle: prijava (zgoraj desno) + dashboard header (pred ukazno paleto)
+- TECHNIČNO ODKRITJE: Turbopack dev cache za globals.css je ohlapen — vsebinske spremembe se včasih ne preflektrirajo niti po restartu (race med watch in compile); rešitev: dodatna vsebinska sprememba (probe) + reload; produkcijski build ne prizadene
+- E2E lokalno (agent-browser): html.dark class ✓, body lab(16.5) temno ↔ lab(98.3) svetlo ✓, persistenca po reload v obe smeri ✓, kartice lab(11.28)=oklch(0.235) ✓, text-stone-500 → lab(65.2) ✓, obrobe white/12% ✓, gumbi emerald z BELOM besedilom ✓, bedži (stone-400/600, emerald-600) nedotaknjeni z belim besedilom ✓, SVETLI NAČIN PIKSELNOST ENAK (header rgb(255,255,255), main stone-100) ✓, 390px brez prelivanja ✓, 0 konzolnih napak ✓
+
+Stage Summary:
+- Temni način na voljo na prijavi in dashboardu (sistemski privzeti + ročni preklop, persistenca v localStorage)
+- Svetla tema 100 % nespremenjena; brez novih odvisnosti (next-themes že obstojel)
+- Lint čist; commit sledi; push na GitLab; deploy na Vercel

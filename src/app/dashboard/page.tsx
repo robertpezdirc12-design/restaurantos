@@ -26,6 +26,7 @@ import {
   ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { downloadCSV } from '@/lib/client'
 import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
 import {
@@ -329,6 +330,7 @@ export default function DashboardPage() {
             <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.26.0</Badge>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <PaletteButton onClick={() => setPaletteOpen(true)} />
             <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label="Ukazi">
               <Search className="w-4 h-4" />

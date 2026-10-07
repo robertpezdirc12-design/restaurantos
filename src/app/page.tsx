@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { UtensilsCrossed, Loader2, MapPin, ShieldCheck, MonitorSmartphone, ChevronDown } from 'lucide-react'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 interface Location {
   id: string
@@ -95,7 +96,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
+    <main className="relative min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
+      <div className="absolute top-3 right-3 z-10">
+        <ThemeToggle />
+      </div>
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center space-y-2">

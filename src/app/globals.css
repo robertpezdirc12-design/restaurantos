@@ -120,3 +120,66 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TEMNI NAČIN — preslikava trdo kodiranih žetonov (Tailwind 4 barvni žetoni)
+
+   Zgodovinske strani (prijava, dashboard) uporabljajo trdo kodirane razrede
+   (bg-white, text-stone-500, bg-amber-50 …). Namesto pretvorbe ~200 razredov
+   preslikamo samo žetone pod .dark. Zasada:
+   - nasičene barve gumbov (emerald-600/700/800, amber-600/700, red-600/700,
+     orange-600) ostanejo nespremenjene — delujejo na temni podlagi,
+   - svetle ploskve/obrobe (stone-50/100/200, bg-white) → temne,
+   - besedila (text-stone-300…700, stone-900) → svetlejša (obratna lestvica),
+   - pastelne ploskve (emerald/amber/red-50/100) → temne tinte z istim odtenkom.
+   ────────────────────────────────────────────────────────────────────────── */
+.dark {
+  /* ploskve in obrobe */
+  --color-stone-50: oklch(0.28 0.004 95);      /* subtilen hover na kartici */
+  --color-stone-100: oklch(0.19 0.004 95);     /* glavna podlag aplikacije */
+  --color-stone-200: oklch(1 0 0 / 12%);       /* obrobe */
+  --color-stone-900: oklch(0.97 0.004 95);     /* primarno besedilo (telo) */
+}
+.dark .bg-white { background-color: oklch(0.235 0.004 95); }          /* kartice */
+.dark .bg-white\/70 { background-color: oklch(0.235 0.004 95 / 70%); }
+.dark .hover\:bg-white:hover { background-color: oklch(0.30 0.004 95); }
+
+/* besedila — obratna lestvica */
+.dark .text-stone-300 { color: oklch(0.52 0.004 95); }
+.dark .text-stone-400 { color: oklch(0.60 0.004 95); }
+.dark .text-stone-500 { color: oklch(0.70 0.004 95); }
+.dark .text-stone-600 { color: oklch(0.78 0.004 95); }
+.dark .text-stone-700 { color: oklch(0.87 0.004 95); }
+
+/* pastelne ploskve — emerald (uspeh) */
+.dark .bg-emerald-50,
+.dark .bg-emerald-100 { background-color: oklch(0.32 0.045 155); }
+.dark .text-emerald-700,
+.dark .text-emerald-800 { color: oklch(0.80 0.12 160); }
+.dark .border-emerald-200 { border-color: oklch(0.42 0.06 155); }
+
+/* pastelne ploskve — amber (opozorila) */
+.dark .bg-amber-50,
+.dark .bg-amber-100 { background-color: oklch(0.30 0.045 78); }
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 { color: oklch(0.84 0.11 82); }
+.dark .border-amber-200,
+.dark .border-amber-300 { border-color: oklch(0.45 0.07 78); }
+.dark .hover\:bg-amber-50:hover { background-color: oklch(0.34 0.05 78); }
+.dark .hover\:bg-amber-100:hover { background-color: oklch(0.36 0.05 78); }
+
+/* nasičeni gumbi brez lastnega text-white — v temnem načinu sicer podedujejo
+   text-primary-foreground (skoraj črno) → vsilimo belo besedilo */
+.dark .bg-emerald-700,
+.dark .bg-emerald-800,
+.dark .bg-amber-600,
+.dark .bg-red-600 { color: oklch(0.985 0 0); }
+
+/* pastelne ploskve — red (napake) */
+.dark .bg-red-50,
+.dark .bg-red-100 { background-color: oklch(0.29 0.05 22); }
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-800 { color: oklch(0.76 0.14 22); }
+.dark .border-red-100 { border-color: oklch(0.40 0.07 22); }
