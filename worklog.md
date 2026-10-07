@@ -200,3 +200,20 @@ Stage Summary:
 - Sedaj so VSI API-ji (razen statusnega setup/status) pokriti z UI — obnova modulov zakljucena do konca
 - Nastavitve tab zdaj = pravi urejevalnik (FURS okolje, DDV, podatki podjetja, funkcije) + naprave
 - Sledi: push + deploy + produkcjska verifikacija (na produkciji SAMO pregled, brez spreminjanja podatkov)
+
+---
+Task ID: 8-deploy
+Agent: Z.ai (main)
+Task: Vercel deploy + produkcjska verifikacija (Task 8-settings-devices)
+
+Work Log:
+- Deploy Vercel dpl_dfJWX6M5UbT1SNpr5A1cfMADwY9X READY (~36s)
+- Produkcjska verifikacija (info@restaurantos.app / 729153, SAMO pregled — brez sprememb podatkov):
+  * Nastavitve podjetja: realni podatki — Naziv RestaurantOS, Naslov Podcetrtk 97, Davcna SI12345678, Prostor BLG-001 (ujema z racuni), DDV 22, dvojezicna noga racuna
+  * Naprave: originalne POS naprave iz produkcije (POS-dev-5eca, POS-dev-05d4, POS-dev-91cd, ...) z maskiranimi zetoni in zadnjo povezavo
+  * FURS okolje select, switche za zvestobo/e-posto — pripravljeno za urejanje (nismo shranjevali na produkciji)
+- 0 napak, mobilni viewport brez prelivanja
+- Push GitLab main + reconstruction @ c40008c (koda), worklog pushan
+
+Stage Summary:
+- Obnova modulov 100% zakljucena: vsi API-ji imajo UI, produkcija tece na najnovejsi kodi
