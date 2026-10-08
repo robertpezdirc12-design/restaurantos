@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,7 @@ import {
   QrCode,
   MoreVertical,
   ShoppingCart,
+  Gift,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -44,7 +45,7 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -72,7 +73,9 @@ interface BillAutoDisc { discountId: string; name: string; amount: number }
 interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number } }
 interface DiscountT { id: string; name: string; type: string; amount: number; triggerType: string; isActive: boolean; happyFromHour?: number | null; happyToHour?: number | null }
 interface LoyaltyAccT { id: string; customerName: string; customerPhone: string; pointsBalance: number; lifetimePoints: number; tier: string }
-interface PayPart { type: 'cash' | 'card' | 'mobile'; amount: number }
+interface PayPart { type: 'cash' | 'card' | 'mobile' | 'giftcard'; amount: number }
+/** Issue #1 triage ③: izbrana darilna kartica (POS plačilo) */
+interface GiftCardSelT { id: string; cardNumber: string; ownerName: string; balance: number; effectiveStatus: string }
 
 const r2v = (v: number) => Math.round(v * 100) / 100
 
@@ -146,7 +149,7 @@ export default function DashboardPage() {
   const [online, setOnline] = useState(true)
   const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
   const [syncing, setSyncing] = useState(false)
-  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'mobile'>('cash')
+  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'mobile' | 'giftcard'>('cash')
   // Issue #1 §6: plačilni dialog — kanonični račun, popusti, zvestoba, deljeno plačilo
   const [bill, setBill] = useState<BillT | null>(null)
   const [manualDiscounts, setManualDiscounts] = useState<DiscountT[]>([])
@@ -156,6 +159,13 @@ export default function DashboardPage() {
   const [redeemPoints, setRedeemPoints] = useState(0)
   const [parts, setParts] = useState<PayPart[]>([])
   const [tipEur, setTipEur] = useState('')
+  // Issue #1 triage ③: darilna kartica pri plačilu — eno plačilo + deli
+  const [gcSel, setGcSel] = useState<GiftCardSelT | null>(null)
+  const [gcQuery, setGcQuery] = useState('')
+  const [gcBusy, setGcBusy] = useState(false)
+  const [gcErr, setGcErr] = useState('')
+  const [gcPartSel, setGcPartSel] = useState<Record<number, GiftCardSelT | null>>({})
+  const [gcPartQuery, setGcPartQuery] = useState<Record<number, string>>({})
   const [loyaltySummary, setLoyaltySummary] = useState<{ redeemedPoints: number; earnedPoints: number } | null>(null)
   const [pcfg, setPcfg] = useState<PrintConfig>({ target: 'browser', host: '192.168.1.100', port: 9100 })
   const [termMode, setTermMode] = useState<TerminalMode>('none')
@@ -373,11 +383,21 @@ export default function DashboardPage() {
   /** Gumb "Izdaj račun" aktiven: račun naložen in (ob delitvi) vsota delov pokrije znesek */
   const payOrderReady = (() => {
     if (!bill) return false
-    if (parts.length === 0) return true // implicitno eno plačilo preostanka
     const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
     const due = r2v(bill.totalDue - redeemValue)
+    if (parts.length === 0) {
+      // implicitno eno plačilo preostanka — pri darilni kartici zahteva izbrano kartico z dovolj sredstev
+      if (payMethod === 'giftcard') {
+        if (!gcSel) return false
+        if (gcSel.effectiveStatus !== 'active') return false
+        return due <= gcSel.balance + 0.004
+      }
+      return true
+    }
     const covered = r2v(parts.reduce((s, x) => s + x.amount, 0))
-    return Math.abs(due - covered) < 0.005
+    if (Math.abs(due - covered) >= 0.005) return false
+    // vsak giftcard del MORA imeti izbrano kartico z zadostnim saldom
+    return parts.every((x, i) => x.type !== 'giftcard' || (gcPartSel[i] && x.amount <= gcPartSel[i]!.balance + 0.004))
   })()
 
   /** Issue #1 §6: odpri plačilni dialog — kanonični predogled računa (popusti, zvestoba) prek /api/orders/[id]/bill */
@@ -392,6 +412,13 @@ export default function DashboardPage() {
     setSelDiscountId('none')
     setLoyaltySummary(null)
     setBill(null)
+    // Issue #1 triage ③: ponastavi darilno kartico
+    setPayMethod('cash')
+    setGcSel(null)
+    setGcQuery('')
+    setGcErr('')
+    setGcPartSel({})
+    setGcPartQuery({})
     try {
       const [b, ds] = await Promise.all([
         api<{ bill: BillT }>(`/api/orders/${o.id}/bill`),
@@ -436,6 +463,25 @@ export default function DashboardPage() {
     }
   }
 
+  /** Issue #1 triage ③: iskanje darilne kartice po številki (POS plačilo) */
+  async function lookupGiftCard(query: string, apply: (c: GiftCardSelT) => void) {
+    const qs = query.trim()
+    if (qs.length < 4) {
+      setGcErr('Vpišite vsaj zadnjih 6 znakov številke kartice.')
+      return
+    }
+    setGcBusy(true)
+    setGcErr('')
+    try {
+      const d = await api<{ card: GiftCardSelT }>(`/api/giftcards/lookup?q=${encodeURIComponent(qs)}`)
+      apply(d.card)
+    } catch (e) {
+      setGcErr((e as Error).message)
+    } finally {
+      setGcBusy(false)
+    }
+  }
+
   /** Issue #1 §6: status mize (con/status upravljanje) — na voljo / rezervirana / za pospravit */
   async function setTableStatus(t: TableT, status: 'FREE' | 'RESERVED' | 'DIRTY') {
     try {
@@ -453,9 +499,20 @@ export default function DashboardPage() {
       // Issue #1 §6: kanonični zneski iz strežniškega računa — UI nikoli ne odloča o znesku
       const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
       const due = r2v(bill.totalDue - redeemValue)
-      const bodyParts: { type: string; amount: number; terminal?: { approvalCode: string } }[] = []
+      const bodyParts: { type: string; amount: number; terminal?: { approvalCode: string }; giftCardId?: string }[] = []
       if (parts.length > 0) {
-        for (const p of parts) {
+        for (let i = 0; i < parts.length; i++) {
+          const p = parts[i]
+          if (p.type === 'giftcard') {
+            // Issue #1 triage ③: darilna kartica — brez terminala, zahteva izbrano kartico
+            const sel = gcPartSel[i]
+            if (!sel) {
+              alert(`Del ${i + 1}: izberite darilno kartico.`)
+              return
+            }
+            bodyParts.push({ type: 'giftcard', amount: r2v(p.amount), giftCardId: sel.id })
+            continue
+          }
           if (p.type === 'cash' || p.amount <= 0) {
             bodyParts.push({ type: p.type, amount: r2v(p.amount) })
             continue
@@ -469,7 +526,14 @@ export default function DashboardPage() {
         }
       } else if (due > 0) {
         // klasična pot — eno plačilo preostanka
-        if (payMethod !== 'cash') {
+        if (payMethod === 'giftcard') {
+          // Issue #1 triage ③: plačilo z darilno kartico (celoten preostanek)
+          if (!gcSel) {
+            alert('Najprej poiščite in izberite darilno kartico.')
+            return
+          }
+          bodyParts.push({ type: 'giftcard', amount: due, giftCardId: gcSel.id })
+        } else if (payMethod !== 'cash') {
           const t = await processTerminalPayment(due)
           if (!t.approved) {
             alert(t.error || 'Plačilo na terminalu ni bilo odobreno.')
@@ -487,7 +551,12 @@ export default function DashboardPage() {
           clientOperationId: newOperationId(),
           ...(Number(tipEur) > 0 ? { tip: Number(tipEur) } : {}),
           ...(bodyParts.length === 1
-            ? { type: bodyParts[0].type, terminal: bodyParts[0].terminal }
+            ? {
+                type: bodyParts[0].type,
+                terminal: bodyParts[0].terminal,
+                // Issue #1 triage ③: darilna kartica — pošlji giftCardId (legacy enodelna pot)
+                ...(bodyParts[0].giftCardId ? { giftCardId: bodyParts[0].giftCardId } : {}),
+              }
             : bodyParts.length > 1
               ? { parts: bodyParts }
               : {}),
@@ -689,6 +758,7 @@ export default function DashboardPage() {
     dostava: 'orders.create',
     napitnine: 'reports.view',
     nabava: 'inventory.manage',
+    darilne: 'reports.view',
     zaposleni: 'employees.manage', nastavitve: 'settings.manage',
   }
 
@@ -701,7 +771,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.37.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.38.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -753,7 +823,7 @@ export default function DashboardPage() {
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['darilne', 'Darilne kartice', Gift], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
@@ -1094,6 +1164,10 @@ export default function DashboardPage() {
             <NabavaTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
           </TabsContent>
 
+          <TabsContent value="darilne">
+            <DarilneKarticeTab canPay={hasPerm('orders.pay')} canManage={hasPerm('settings.manage')} />
+          </TabsContent>
+
           <TabsContent value="zaposleni" className="space-y-4">
             {canManage && bootstrapLogin && (
               <Card className="border-amber-300 bg-amber-50">
@@ -1350,7 +1424,7 @@ export default function DashboardPage() {
 
       {/* ── Plačilo + FURS (issue #1 §6: kanonični račun, popusti, zvestoba, deljeno plačilo; §7: večji gumbi) ── */}
       <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null) } }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent aria-describedby={undefined} className="max-w-lg">
           <DialogHeader><DialogTitle className="text-lg">Plačilo {payingOrder?.table?.name || ''}</DialogTitle></DialogHeader>
           {!bill && payingOrder && (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
@@ -1474,18 +1548,56 @@ export default function DashboardPage() {
                   {parts.length === 0 ? (
                     <div className="space-y-1.5">
                       <Label className="text-xs">Način plačila:</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['cash', 'card', 'mobile'] as const).map((pm) => (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {(['cash', 'card', 'mobile', 'giftcard'] as const).map((pm) => (
                           <button
                             key={pm}
                             type="button"
                             onClick={() => setPayMethod(pm)}
                             className={`min-h-11 rounded-xl border px-2 py-2.5 text-sm font-semibold transition ${payMethod === pm ? 'border-emerald-700 bg-emerald-700 text-white shadow' : 'border-stone-200 bg-white text-stone-700 hover:border-emerald-400'}`}
                           >
-                            {pm === 'cash' ? '💵 Gotovina' : pm === 'card' ? '💳 Kartica' : '📱 Mobilno'}
+                            {pm === 'cash' ? '💵 Gotovina' : pm === 'card' ? '💳 Kartica' : pm === 'mobile' ? '📱 Mobilno' : '🎁 Darilna'}
                           </button>
                         ))}
                       </div>
+                      {/* Issue #1 triage ③: plačilo z darilno kartico — iskanje + izbira */}
+                      {payMethod === 'giftcard' && (
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-2.5 space-y-2">
+                          {!gcSel ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={gcQuery}
+                                onChange={(e) => setGcQuery(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && void lookupGiftCard(gcQuery, setGcSel)}
+                                placeholder="Št. kartice (ali zadnjih 6 znakov)"
+                                className="h-9 flex-1 font-mono"
+                                aria-label="Številka darilne kartice"
+                              />
+                              <Button variant="outline" className="h-9" disabled={gcBusy} onClick={() => void lookupGiftCard(gcQuery, setGcSel)}>
+                                {gcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Poišči'}
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm min-w-0">
+                                <p className="font-mono text-xs font-semibold truncate">{gcSel.cardNumber}</p>
+                                <p className="text-xs text-stone-500 truncate">{gcSel.ownerName || 'Brez lastnika'} · saldo <b className="text-emerald-700">{fmtEUR(gcSel.balance)}</b></p>
+                              </div>
+                              <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={() => { setGcSel(null); setGcQuery('') }}>Zamenjaj</Button>
+                            </div>
+                          )}
+                          {gcErr && <p className="text-xs text-red-600">{gcErr}</p>}
+                          {gcSel && gcSel.effectiveStatus !== 'active' && <p className="text-xs text-red-600">Kartica ni aktivna ({gcSel.effectiveStatus}) — plačilo ni mogoče.</p>}
+                          {gcSel && gcSel.effectiveStatus === 'active' && bill && (() => {
+                            const dv = loyaltySel && redeemPoints > 0 ? r2v(bill.loyalty.pointsValue * redeemPoints) : 0
+                            const dueNow = r2v(bill.totalDue - dv)
+                            if (dueNow > gcSel.balance + 0.004) {
+                              return <p className="text-xs text-amber-700">Na kartici manjka {fmtEUR(r2v(dueNow - gcSel.balance))} — uporabite deljeno plačilo.</p>
+                            }
+                            return <p className="text-xs text-emerald-700">✓ Kartica pokrije znesek {fmtEUR(dueNow)}</p>
+                          })()}
+                        </div>
+                      )}
                       <Button
                         variant="outline"
                         className="w-full min-h-10"
@@ -1494,6 +1606,7 @@ export default function DashboardPage() {
                           const due = r2v(bill.totalDue - redeemValue)
                           const half = r2v(due / 2)
                           setParts([{ type: payMethod === 'cash' ? 'cash' : payMethod, amount: half }, { type: 'cash', amount: r2v(due - half) }])
+                          if (payMethod === 'giftcard' && gcSel) setGcPartSel({ 0: gcSel })
                         }}
                       >
                         ➗ Deljeno plačilo (razdeli na 2 dela)
@@ -1503,13 +1616,15 @@ export default function DashboardPage() {
                     <div className="space-y-2">
                       <Label className="text-xs">Deljeno plačilo — deli:</Label>
                       {parts.map((p, i) => (
-                        <div key={i} className="flex items-center gap-2">
+                        <Fragment key={i}>
+                        <div className="flex items-center gap-2">
                           <Select value={p.type} onValueChange={(v) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, type: v as PayPart['type'] } : x))}>
                             <SelectTrigger className="h-10 w-32"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="cash">💵 Gotovina</SelectItem>
                               <SelectItem value="card">💳 Kartica</SelectItem>
                               <SelectItem value="mobile">📱 Mobilno</SelectItem>
+                              <SelectItem value="giftcard">🎁 Darilna</SelectItem>
                             </SelectContent>
                           </Select>
                           <Input
@@ -1523,6 +1638,32 @@ export default function DashboardPage() {
                           />
                           <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} aria-label="Odstrani del">×</Button>
                         </div>
+                        {/* Issue #1 triage ③: giftcard del zahteva izbrano kartico */}
+                        {p.type === 'giftcard' && (
+                          <div className="ml-0 sm:ml-36 rounded-lg border border-stone-200 bg-stone-50 p-2 space-y-1.5">
+                            {!gcPartSel[i] ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  value={gcPartQuery[i] || ''}
+                                  onChange={(e) => setGcPartQuery((m) => ({ ...m, [i]: e.target.value }))}
+                                  onKeyDown={(e) => e.key === 'Enter' && void lookupGiftCard(gcPartQuery[i] || '', (c) => setGcPartSel((m) => ({ ...m, [i]: c })))}
+                                  placeholder="Št. kartice za ta del"
+                                  className="h-8 flex-1 font-mono text-xs"
+                                  aria-label={`Darilna kartica za del ${i + 1}`}
+                                />
+                                <Button variant="outline" size="sm" className="h-8" disabled={gcBusy} onClick={() => void lookupGiftCard(gcPartQuery[i] || '', (c) => setGcPartSel((m) => ({ ...m, [i]: c })))}>
+                                  {gcBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Poišči'}
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-mono truncate">{gcPartSel[i]!.cardNumber} · saldo <b className="text-emerald-700">{fmtEUR(gcPartSel[i]!.balance)}</b>{p.amount > gcPartSel[i]!.balance + 0.004 && <b className="text-red-600"> · premalo za {fmtEUR(p.amount)}</b>}</p>
+                                <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={() => setGcPartSel((m) => ({ ...m, [i]: null }))}>Zamenjaj</Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        </Fragment>
                       ))}
                       <div className="flex items-center gap-2">
                         <Button

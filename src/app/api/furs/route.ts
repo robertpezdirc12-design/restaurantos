@@ -8,6 +8,7 @@ import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
 import { deductStockForOrderTx } from '@/lib/inventory'
+import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 
 /**
  * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
@@ -46,6 +47,9 @@ export async function GET(req: NextRequest) {
  *   LoyaltyTransaction (redeem) + Payment(type='loyalty'); zaslužek po plačilu (earn)
  * - Issue #1 §6 popusti: ročni (Order.discount) + avtomatski (Happy Hour) izračunana
  *   kanonično prek billing.ts — Check/Receipt nosita discount razčlenbo
+ * - Issue #1 triage ③ darilne kartice: del plačila type='giftcard' + giftCardId →
+ *   pre-validacija (obstaja/aktivna/rok/saldo) + CAS odbitje v transakciji +
+ *   GiftCardTransaction 'redeem' (podpisan −) + Payment.giftCardId; preplačilo kartice 409
  * - FURS: simulacija → ZOI=MD5, EOR=UUID, status 'verified'; produkcija → EOR='',
  *   status 'pending' (čaka pravo SOAP integracijo s certifikatom) + AuditLog INVOICE_ISSUE
  */
@@ -53,6 +57,8 @@ interface PaymentPart {
   type: string
   amount: number
   terminalApproval: string
+  // Issue #1 (triage ③): del plačila z darilno kartico — zahteva giftCardId
+  giftCardId?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -164,6 +170,25 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Deli plačila (deljeno plačilo) ──
+  // Issue #1 (triage ③): del z darilno kartico — zahteva giftCardId; kartica se
+  // validira PRED transakcijo (definitivne napake) in odbije z CAS V transakciji.
+  interface GiftCardPreload { id: string; cardNumber: string; balanceCents: number }
+  const giftCards: Map<string, GiftCardPreload> = new Map()
+  async function preloadGiftCard(id: unknown, amount: number): Promise<string | null> {
+    const cid = typeof id === 'string' && id.trim() ? id.trim() : ''
+    if (!cid) return 'Del plačila z darilno kartico zahteva giftCardId.'
+    if (!giftCards.has(cid)) {
+      const card = await db.giftCard.findUnique({ where: { id: cid } })
+      if (!card) return 'Darilna kartica ne obstaja.'
+      const check = canRedeem(
+        { cardNumber: card.cardNumber, status: card.status, balanceCents: Math.round(num(card.balance) * 100), expiresAt: card.expiresAt },
+        Math.round(amount * 100),
+      )
+      if (!check.ok) return check.reason || 'Darilna kartica ni veljavna za unovčenje.'
+      giftCards.set(cid, { id: cid, cardNumber: card.cardNumber, balanceCents: Math.round(num(card.balance) * 100) })
+    }
+    return null
+  }
   const parts: PaymentPart[] = []
   if (Array.isArray(body?.parts) && body.parts.length > 0) {
     if (body.parts.length > 10) return fail('Največ 10 delov plačila.', 400)
@@ -180,7 +205,13 @@ export async function POST(req: NextRequest) {
       if (['card', 'mobile'].includes(type) && !ta) {
         return fail('Kartični/mobilni del plačila zahteva odobritev terminala (approvalCode).', 402)
       }
-      parts.push({ type, amount, terminalApproval: ta })
+      let giftCardId: string | undefined
+      if (type === 'giftcard') {
+        const gcErr = await preloadGiftCard(p?.giftCardId, amount)
+        if (gcErr) return fail(gcErr, 409)
+        giftCardId = String(p?.giftCardId).trim()
+      }
+      parts.push({ type, amount, terminalApproval: ta, ...(giftCardId ? { giftCardId } : {}) })
     }
   } else {
     // klasična pot — eno plačilo preostanka (po odbitku unovčenih točk)
@@ -195,7 +226,15 @@ export async function POST(req: NextRequest) {
       return fail('Kartično plačilo zahteva odobritev terminala (approvalCode).', 402)
     }
     const legacyAmount = r2(total - redeemValue)
-    if (legacyAmount > 0) parts.push({ type: legacyType, amount: legacyAmount, terminalApproval: ta })
+    if (legacyAmount > 0) {
+      let legacyGc: string | undefined
+      if (legacyType === 'giftcard') {
+        const gcErr = await preloadGiftCard(body?.giftCardId, legacyAmount)
+        if (gcErr) return fail(gcErr, 409)
+        legacyGc = String(body?.giftCardId).trim()
+      }
+      parts.push({ type: legacyType, amount: legacyAmount, terminalApproval: ta, ...(legacyGc ? { giftCardId: legacyGc } : {}) })
+    }
   }
 
   // ── Usklajenost zneskov: deli + unovčene točke = za plačanje (preprečitev preplačila) ──
@@ -304,6 +343,37 @@ export async function POST(req: NextRequest) {
       // ── Payment vrstice: ena za vsak del + ena za unovčene točke ──
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i]
+        if (p.type === 'giftcard' && p.giftCardId) {
+          // CAS odbitje z darilne kartice: uspe SAMO če je še vedno dovolj sredstev
+          // (zaščita pred sočasnim/dvojnim unovčenjem — enaka politika kot pri točkah).
+          // Centno-natančna aritmetika (SQLite REAL drift) + enakostni CAS (race-safe).
+          const fresh = await tx.giftCard.findUnique({ where: { id: p.giftCardId }, select: { balance: true } })
+          const currentCents = Math.round(num(fresh?.balance) * 100)
+          const amountCents = Math.round(p.amount * 100)
+          if (!fresh || currentCents < amountCents) {
+            throw new OrderError('Darilna kartica nima več dovolj sredstev (sočasno unovčenje).', 409)
+          }
+          const newBalance = (currentCents - amountCents) / 100
+          const cas = await tx.giftCard.updateMany({
+            where: { id: p.giftCardId, balance: fresh.balance },
+            data: { balance: newBalance },
+          })
+          if (cas.count === 0) {
+            throw new OrderError('Darilna kartica je bila sočasno spremenjena (unovčenje).', 409)
+          }
+          await tx.giftCardTransaction.create({
+            data: {
+              id: nid(),
+              giftCardId: p.giftCardId,
+              type: 'redeem',
+              amount: -p.amount,
+              balanceAfter: newBalance,
+              orderId: orderPre.id,
+              checkId: check.id,
+              note: `Unovčenje ob plačilu računa ${receiptNumber}`,
+            },
+          })
+        }
         await tx.payment.create({
           data: {
             id: nid(),
@@ -315,6 +385,7 @@ export async function POST(req: NextRequest) {
             employeeId: user.sub,
             idempotencyKey: idemBase ? `${idemBase}#p${i}` : null,
             authorizationCode: p.terminalApproval,
+            ...(p.type === 'giftcard' && p.giftCardId ? { giftCardId: p.giftCardId } : {}),
           },
         })
       }
@@ -396,7 +467,14 @@ export async function POST(req: NextRequest) {
             manualDiscount: bill.manualDiscount,
             autoDiscounts: bill.autoDiscounts,
             paymentMethod,
-            parts: parts.map((p) => ({ type: p.type, amount: p.amount })),
+            parts: parts.map((p) => ({
+              type: p.type,
+              amount: p.amount,
+              // Issue #1 (triage ③): maskirana št. darilne kartice v reviziji
+              giftCard: p.giftCardId && giftCards.get(p.giftCardId)
+                ? maskCardNumber(giftCards.get(p.giftCardId)!.cardNumber)
+                : undefined,
+            })),
             loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
             simulation,
             terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
+import { newOperationId } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -2592,6 +2593,394 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/* ─────────────────────────── DARILNE KARTICE (triage ③ — izdaja → polnjenje → unovčenje) ─────────────────────────── */
+
+interface GiftCardT {
+  id: string; cardNumber: string; balance: number; initialBalance: number
+  status: string; effectiveStatus: string; ownerName: string
+  purchasedAt: string; expiresAt: string | null; locationId: string | null; createdAt: string
+}
+interface GiftCardTxT {
+  id: string; type: string; amount: number; balanceAfter: number
+  orderId?: string | null; checkId?: string | null; note: string; createdAt: string
+}
+interface GiftCardStatsT { total: number; active: number; totalBalance: number; issued30: number; redeemed30: number }
+
+const GC_STATUS: Record<string, { label: string; cls: string }> = {
+  active: { label: 'Aktivna', cls: 'border-emerald-300 bg-emerald-100 text-emerald-800' },
+  inactive: { label: 'Deaktivirana', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
+  exhausted: { label: 'Izčrpana', cls: 'border-amber-300 bg-amber-100 text-amber-800' },
+  expired: { label: 'Pretekla', cls: 'border-red-300 bg-red-100 text-red-700' },
+}
+const GC_TX: Record<string, { label: string; cls: string }> = {
+  issue: { label: 'Izdaja', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  topup: { label: 'Polnjenje', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  redeem: { label: 'Unovčenje', cls: 'border-orange-300 bg-orange-50 text-orange-800' },
+  refund: { label: 'Vračilo', cls: 'border-stone-300 bg-stone-50 text-stone-700' },
+  adjust: { label: 'Popravek', cls: 'border-stone-300 bg-stone-50 text-stone-700' },
+}
+
+const gcEur = (s: string): number => {
+  const n = Number(String(s).trim().replace(',', '.'))
+  return Number.isFinite(n) ? n : NaN
+}
+
+/** Issue #1 (triage ③): darilne kartice — pregled, izdaja, polnjenje, ledžer, deaktivacija. */
+export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canManage: boolean }) {
+  const [cards, setCards] = useState<GiftCardT[]>([])
+  const [stats, setStats] = useState<GiftCardStatsT | null>(null)
+  const [q, setQ] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [okMsg, setOkMsg] = useState('')
+
+  // izdaja
+  const [issueOpen, setIssueOpen] = useState(false)
+  const [issueForm, setIssueForm] = useState({ ownerName: '', initialBalance: '', expiresAt: '', note: '' })
+  // polnjenje
+  const [topupCard, setTopupCard] = useState<GiftCardT | null>(null)
+  const [topupForm, setTopupForm] = useState({ amount: '', note: '' })
+  // detalj + ledžer
+  const [detail, setDetail] = useState<{ card: GiftCardT; transactions: GiftCardTxT[] } | null>(null)
+
+  async function load(search = q) {
+    setLoading(true)
+    setErr('')
+    try {
+      const d = await api<{ cards: GiftCardT[]; stats: GiftCardStatsT }>(`/api/giftcards?limit=100${search ? `&q=${encodeURIComponent(search)}` : ''}`)
+      setCards(d.cards)
+      setStats(d.stats)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load('')
+  }, [])
+
+  async function submitIssue() {
+    const eur = gcEur(issueForm.initialBalance)
+    if (Number.isNaN(eur) || eur < 0) {
+      setErr('Začetni saldo mora biti ne negativno število.')
+      return
+    }
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ card: GiftCardT; replayed: boolean }>('/api/giftcards', {
+        method: 'POST',
+        body: JSON.stringify({
+          ownerName: issueForm.ownerName,
+          initialBalance: eur,
+          expiresAt: issueForm.expiresAt || null,
+          note: issueForm.note || undefined,
+          clientOperationId: newOperationId(),
+        }),
+      })
+      setOkMsg(d.replayed ? `Kartica je že obstajala (replay): ${d.card.cardNumber}` : `Kartica izdana: ${d.card.cardNumber}`)
+      setIssueOpen(false)
+      setIssueForm({ ownerName: '', initialBalance: '', expiresAt: '', note: '' })
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitTopup() {
+    if (!topupCard) return
+    const eur = gcEur(topupForm.amount)
+    if (Number.isNaN(eur) || eur <= 0) {
+      setErr('Znesek polnjenja mora biti pozitivno število.')
+      return
+    }
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ card: { balance: number }; replayed: boolean }>(`/api/giftcards/${topupCard.id}/topup`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: eur, note: topupForm.note || undefined, clientOperationId: newOperationId() }),
+      })
+      setOkMsg(d.replayed ? `Polnjenje je že bilo izvedeno (replay) — saldo ${fmtEUR(d.card.balance)}` : `Polnjeno ${fmtEUR(eur)} — nov saldo ${fmtEUR(d.card.balance)}`)
+      setTopupCard(null)
+      setTopupForm({ amount: '', note: '' })
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function openDetail(c: GiftCardT) {
+    setErr('')
+    try {
+      const d = await api<{ card: GiftCardT; transactions: GiftCardTxT[] }>(`/api/giftcards/${c.id}`)
+      setDetail(d)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  async function toggleStatus(c: GiftCardT) {
+    const next = c.status === 'active' ? 'inactive' : 'active'
+    if (!window.confirm(next === 'inactive' ? `Deaktiviram kartico ${c.cardNumber}?` : `Reaktiviram kartico ${c.cardNumber}?`)) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api(`/api/giftcards/${c.id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) })
+      setOkMsg(next === 'inactive' ? 'Kartica deaktivirana.' : 'Kartica reaktivirana.')
+      setDetail(null)
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex-1 flex items-center gap-2">
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void load()}
+            placeholder="Išči po številki kartice ali lastniku …"
+            className="max-w-xs"
+            aria-label="Iskanje darilnih kartic"
+          />
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>Išči</Button>
+          {q && <Button variant="ghost" onClick={() => { setQ(''); void load('') }}>Počisti</Button>}
+        </div>
+        {canPay && (
+          <Button className="bg-emerald-700 hover:bg-emerald-800 text-white gap-1.5" onClick={() => { setErr(''); setOkMsg(''); setIssueOpen(true) }}>
+            <Plus className="w-4 h-4" /> Novo kartico
+          </Button>
+        )}
+      </div>
+
+      {stats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {([
+            ['Aktivne kartice', String(stats.active), 'aktivne z saldom'],
+            ['Skupni saldo', fmtEUR(stats.totalBalance), 'aktivne kartice'],
+            ['Izdane (30 dni)', String(stats.issued30), 'nove kartice'],
+            ['Unovčeno (30 dni)', fmtEUR(stats.redeemed30), 'plačila s karticami'],
+          ] as [string, string, string][]).map(([label, val, sub]) => (
+            <Card key={label}>
+              <CardContent className="p-4">
+                <p className="text-xs text-stone-500">{label}</p>
+                <p className="text-xl font-bold">{val}</p>
+                <p className="text-xs text-stone-400">{sub}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {okMsg && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">{okMsg}</p>}
+      {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5">{err}</p>}
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Kartice {cards.length > 0 && <span className="text-stone-400 font-normal">({cards.length})</span>}</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <p className="p-4 text-sm text-stone-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam …</p>
+          ) : cards.length === 0 ? (
+            <p className="p-4 text-sm text-stone-500">Ni kartic{q ? ' za to iskanje' : ''}. {canPay ? 'Izdajte prvo kartico.' : ''}</p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-stone-500 border-b border-stone-200 sticky top-0 bg-white">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Številka</th>
+                    <th className="px-4 py-2 font-medium">Lastnik</th>
+                    <th className="px-4 py-2 font-medium">Saldo</th>
+                    <th className="px-4 py-2 font-medium hidden sm:table-cell">Izdana</th>
+                    <th className="px-4 py-2 font-medium hidden md:table-cell">Velja do</th>
+                    <th className="px-4 py-2 font-medium">Stanje</th>
+                    <th className="px-4 py-2 font-medium text-right">Dejanja</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cards.map((c) => (
+                    <tr key={c.id} className="border-b border-stone-100 hover:bg-stone-50 cursor-pointer" onClick={() => void openDetail(c)}>
+                      <td className="px-4 py-2.5 font-mono text-xs">{c.cardNumber}</td>
+                      <td className="px-4 py-2.5">{c.ownerName || <span className="text-stone-400">—</span>}</td>
+                      <td className="px-4 py-2.5 font-semibold">{fmtEUR(c.balance)}</td>
+                      <td className="px-4 py-2.5 hidden sm:table-cell text-xs text-stone-500">{new Date(c.purchasedAt).toLocaleDateString('sl-SI')}</td>
+                      <td className="px-4 py-2.5 hidden md:table-cell text-xs text-stone-500">{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('sl-SI') : '∞'}</td>
+                      <td className="px-4 py-2.5"><Badge variant="outline" className={GC_STATUS[c.effectiveStatus]?.cls || ''}>{GC_STATUS[c.effectiveStatus]?.label || c.effectiveStatus}</Badge></td>
+                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                        {canPay && (
+                          <Button variant="outline" size="sm" className="h-8 mr-1.5" onClick={() => { setTopupCard(c); setTopupForm({ amount: '', note: '' }); setErr(''); setOkMsg('') }}>
+                            Polni
+                          </Button>
+                        )}
+                        {canManage && c.status !== 'inactive' && (
+                          <Button variant="outline" size="sm" className="h-8 text-red-700 border-red-200 hover:bg-red-50" onClick={() => void toggleStatus(c)}>
+                            Deaktiviraj
+                          </Button>
+                        )}
+                        {canManage && c.status === 'inactive' && (
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => void toggleStatus(c)}>
+                            Reaktiviraj
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* dialog: izdaja nove kartice */}
+      <Dialog open={issueOpen} onOpenChange={setIssueOpen}>
+        <DialogContent aria-describedby={undefined} className="max-w-md">
+          <DialogHeader><DialogTitle className="text-lg">Izdaj darilno kartico</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Lastnik (opcijsko)</Label>
+              <Input value={issueForm.ownerName} onChange={(e) => setIssueForm((f) => ({ ...f, ownerName: e.target.value }))} placeholder="Ime kupca / prejemnika" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Začetni saldo (EUR)</Label>
+              <Input type="number" step="0.01" min="0" value={issueForm.initialBalance} onChange={(e) => setIssueForm((f) => ({ ...f, initialBalance: e.target.value }))} placeholder="0.00 — kartica brez vrednosti" />
+              <p className="text-xs text-stone-500">0 € = kartica brez vrednosti (polni se kasneje). Največ 5.000 €.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Velja do (opcijsko)</Label>
+              <Input type="date" value={issueForm.expiresAt} onChange={(e) => setIssueForm((f) => ({ ...f, expiresAt: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Opomba (opcijsko)</Label>
+              <Input value={issueForm.note} onChange={(e) => setIssueForm((f) => ({ ...f, note: e.target.value }))} placeholder="npr. prodaja na blagajni" />
+            </div>
+          </div>
+          <DialogFooter className="sm:items-center">
+            <Button variant="outline" onClick={() => setIssueOpen(false)} disabled={busy}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => void submitIssue()} disabled={busy}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Izdaj kartico
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* dialog: polnjenje */}
+      <Dialog open={!!topupCard} onOpenChange={(v) => !v && setTopupCard(null)}>
+        <DialogContent aria-describedby={undefined} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Polnjenje {topupCard?.cardNumber}</DialogTitle>
+          </DialogHeader>
+          {topupCard && (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-stone-50 border border-stone-200 p-3 text-sm space-y-0.5">
+                <p>Trenutni saldo: <b>{fmtEUR(topupCard.balance)}</b></p>
+                {topupCard.ownerName && <p className="text-stone-500">Lastnik: {topupCard.ownerName}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Znesek polnjenja (EUR)</Label>
+                <Input type="number" step="0.01" min="0.01" value={topupForm.amount} onChange={(e) => setTopupForm((f) => ({ ...f, amount: e.target.value }))} placeholder="10.00" autoFocus />
+                <p className="text-xs text-stone-500">Največ 5.000 € na polnjenje.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Opomba (opcijsko)</Label>
+                <Input value={topupForm.note} onChange={(e) => setTopupForm((f) => ({ ...f, note: e.target.value }))} placeholder="npr. gotovinski vnos" />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="sm:items-center">
+            <Button variant="outline" onClick={() => setTopupCard(null)} disabled={busy}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => void submitTopup()} disabled={busy}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Polni
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* dialog: detalj + ledžer transakcij */}
+      <Dialog open={!!detail} onOpenChange={(v) => !v && setDetail(null)}>
+        <DialogContent aria-describedby={undefined} className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Kartica {detail?.card.cardNumber}</DialogTitle>
+          </DialogHeader>
+          {detail && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-stone-50 border border-stone-200 p-2.5">
+                  <p className="text-xs text-stone-500">Saldo</p>
+                  <p className="text-lg font-bold">{fmtEUR(detail.card.balance)}</p>
+                  <p className="text-xs text-stone-400">začetno {fmtEUR(detail.card.initialBalance)}</p>
+                </div>
+                <div className="rounded-lg bg-stone-50 border border-stone-200 p-2.5 space-y-0.5">
+                  <p className="text-xs text-stone-500">Stanje</p>
+                  <Badge variant="outline" className={GC_STATUS[detail.card.effectiveStatus]?.cls || ''}>{GC_STATUS[detail.card.effectiveStatus]?.label || detail.card.effectiveStatus}</Badge>
+                  <p className="text-xs text-stone-400">{detail.card.ownerName ? `Lastnik: ${detail.card.ownerName}` : 'Brez lastnika'}</p>
+                  <p className="text-xs text-stone-400">{detail.card.expiresAt ? `Velja do ${new Date(detail.card.expiresAt).toLocaleDateString('sl-SI')}` : 'Brez roka veljavnosti'}</p>
+                </div>
+              </div>
+              {canManage && detail.card.status !== 'inactive' && (
+                <Button variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-50" onClick={() => void toggleStatus(detail.card)}>Deaktiviraj kartico</Button>
+              )}
+              {canManage && detail.card.status === 'inactive' && (
+                <Button variant="outline" size="sm" onClick={() => void toggleStatus(detail.card)}>Reaktiviraj kartico</Button>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">Ledžer transakcij</p>
+                {detail.transactions.length === 0 ? (
+                  <p className="text-sm text-stone-500">Ni transakcij.</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-stone-200">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-xs text-stone-500 border-b border-stone-200 bg-stone-50 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Vrsta</th>
+                          <th className="px-3 py-2 font-medium text-right">Znesek</th>
+                          <th className="px-3 py-2 font-medium text-right">Saldo po</th>
+                          <th className="px-3 py-2 font-medium hidden sm:table-cell">Opomba</th>
+                          <th className="px-3 py-2 font-medium">Datum</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.transactions.map((t) => (
+                          <tr key={t.id} className="border-b border-stone-100">
+                            <td className="px-3 py-2"><Badge variant="outline" className={GC_TX[t.type]?.cls || ''}>{GC_TX[t.type]?.label || t.type}</Badge></td>
+                            <td className={`px-3 py-2 text-right font-semibold ${t.amount < 0 ? 'text-orange-700' : 'text-emerald-700'}`}>{t.amount > 0 ? '+' : ''}{fmtEUR(t.amount)}</td>
+                            <td className="px-3 py-2 text-right">{fmtEUR(t.balanceAfter)}</td>
+                            <td className="px-3 py-2 hidden sm:table-cell text-xs text-stone-500 max-w-40 truncate" title={t.note}>{t.note}</td>
+                            <td className="px-3 py-2 text-xs text-stone-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleString('sl-SI')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="sm:items-center">
+            <Button variant="outline" onClick={() => setDetail(null)}>Zapri</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
     </div>
   )
 }
