@@ -149,6 +149,39 @@ export function validateOpeningHoursRows(
   return { ok: true, rows: out }
 }
 
+/**
+ * Delna validacija (za gatenje rezervacij): vsaka vrstica se validira posamezno,
+ * brez zahteve po 7 dnevih — nekonfigurirani dnevi preprosto ne obstajajo.
+ */
+export function validateOpeningHoursRowsPartial(rows: unknown): { ok: true; rows: ValidatedRow[] } | { ok: false; error: string } {
+  if (!Array.isArray(rows)) return { ok: false, error: 'Vrstice odpiralnega časa manjkajo.' }
+  const out: ValidatedRow[] = []
+  for (const r of rows) {
+    const row = r as Partial<OpeningRow>
+    const dow = Number(row.dayOfWeek)
+    if (!Number.isInteger(dow) || dow < 0 || dow > 6) return { ok: false, error: 'Dan v tednu mora biti med 0 (nedelja) in 6 (sobota).' }
+    if (row.isClosed) {
+      out.push({ dayOfWeek: dow, openTime: '', closeTime: '', breakStart: '', breakEnd: '', isClosed: true, openMin: 0, closeMin: 0, breakStartMin: null, breakEndMin: null })
+      continue
+    }
+    const openMin = parseHHMM(String(row.openTime ?? ''))
+    if (openMin === null) return { ok: false, error: `${DAY_NAMES_SL[dow]}: odpiralni čas ni veljaven (pričakovano HH:MM).` }
+    const closeRaw = parseHHMM(String(row.closeTime ?? ''))
+    if (closeRaw === null) return { ok: false, error: `${DAY_NAMES_SL[dow]}: zapiralni čas ni veljaven (pričakovano HH:MM).` }
+    if (openMin === closeRaw) return { ok: false, error: `${DAY_NAMES_SL[dow]}: odpiralni in zapiralni čas ne smeta biti enaka.` }
+    const closeMin = closeRaw < openMin ? closeRaw + 1440 : closeRaw
+    out.push({
+      dayOfWeek: dow,
+      openTime: fmtHHMM(openMin),
+      closeTime: fmtHHMM(closeMin),
+      breakStart: '', breakEnd: '',
+      isClosed: false,
+      openMin, closeMin, breakStartMin: null, breakEndMin: null,
+    })
+  }
+  return { ok: true, rows: out.sort((a, b) => a.dayOfWeek - b.dayOfWeek) }
+}
+
 /* ─────────────────────────── validacija posebnega dne ─────────────────────────── */
 
 export function validateSpecialDayInput(body: { date?: unknown; isClosed?: unknown; openTime?: unknown; closeTime?: unknown; note?: unknown }):
@@ -334,7 +367,9 @@ export function outsideHoursFor(rows: ValidatedRow[], specials: SpecialDay[], wh
     }
   }
   const row = rowForDay(rows, dayOfWeek)
-  if (!row || row.isClosed) return { outside: true, reason: 'closed_day', label: `${DAY_NAMES_SL[dayOfWeek]} je zaprto` }
+  // brez vnosa za ta dan = brez omejitve (delni podatki ne smejo blokirati obstoječih rezervacij)
+  if (!row) return { outside: false, reason: null, label: '' }
+  if (row.isClosed) return { outside: true, reason: 'closed_day', label: `${DAY_NAMES_SL[dayOfWeek]} je zaprto` }
   const st = isOpenAtMinute(row, minutes)
   if (st.onBreak) return { outside: true, reason: 'break', label: `Ob rezervaciji je odmor (${row.breakStart}–${row.breakEnd})` }
   if (!st.inside) return { outside: true, reason: 'outside_hours', label: `Rezervacija je izven odpiralnega časa (${row.openTime}–${row.closeTime})` }

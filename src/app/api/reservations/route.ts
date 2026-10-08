@@ -3,14 +3,14 @@ import type { ReservationStatus, ReservationSource } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
-import { outsideHoursFor, validateOpeningHoursRows, type ValidatedRow } from '@/lib/openinghours'
+import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
 
-/** Tedenske vrstice lokacije (ali org privzete); prazne → validated prazno (brez omejitev). */
+/** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
   let rows = await db.openingHours.findMany({ where: { locationId }, orderBy: { dayOfWeek: 'asc' } })
   if (rows.length === 0) rows = await db.openingHours.findMany({ where: { locationId: null }, orderBy: { dayOfWeek: 'asc' } })
   if (rows.length === 0) return []
-  const v = validateOpeningHoursRows(rows.map((r) => ({
+  const v = validateOpeningHoursRowsPartial(rows.map((r) => ({
     dayOfWeek: r.dayOfWeek, openTime: r.openTime, closeTime: r.closeTime,
     breakStart: r.breakStart, breakEnd: r.breakEnd, isClosed: r.isClosed,
   })))

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   parseHHMM, fmtHHMM, toLocalDateKey, isValidDateKey, localParts,
-  validateOpeningHoursRows, validateSpecialDayInput, isOpenAtMinute,
+  validateOpeningHoursRows, validateOpeningHoursRowsPartial, validateSpecialDayInput, isOpenAtMinute,
   currentStatus, nextChange, outsideHoursFor, slovenianHolidays, upcomingSpecialDays,
   type ValidatedRow,
 } from '../src/lib/openinghours'
@@ -290,5 +290,31 @@ describe('outsideHoursFor — poseben odprti urnik', () => {
   })
   test('znotraj posebnega urnika → dovoljeno', () => {
     expect(outsideHoursFor(rows, [{ date: '2026-03-10', isClosed: false, openTime: '17:00', closeTime: '23:00', note: '' }], at(2026, 3, 10, 20, 0)).outside).toBe(false)
+  })
+})
+
+describe('validateOpeningHoursRowsPartial + manjkajoče vrstice', () => {
+  test('delni niz (1 vrstica) je veljaven', () => {
+    const v = validateOpeningHoursRowsPartial([{ dayOfWeek: 0, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false }])
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(v.rows[0].openMin).toBe(480)
+  })
+  test('neveljavna vrstica → napaka z dnevom', () => {
+    expect(validateOpeningHoursRowsPartial([{ dayOfWeek: 3, openTime: 'xx', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false }]).ok).toBe(false)
+    expect(validateOpeningHoursRowsPartial([{ dayOfWeek: 9, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false }]).ok).toBe(false)
+  })
+  test('outsideHoursFor: manjkajoča vrstica NE blokira (§18)', () => {
+    const one = validateOpeningHoursRowsPartial([{ dayOfWeek: 0, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false }])
+    const rows = one.ok ? one.rows : []
+    // torek (1) nima vrstice → dovoljeno
+    expect(outsideHoursFor(rows, [], at(2026, 3, 10, 12, 0)).outside).toBe(false)
+    // nedelja (0) ima vrstico → znotraj časa
+    expect(outsideHoursFor(rows, [], at(2026, 3, 8, 12, 0)).outside).toBe(false)
+    // nedelja ponoči → izven
+    expect(outsideHoursFor(rows, [], at(2026, 3, 8, 23, 30)).reason).toBe('outside_hours')
+  })
+  test('validateOpeningHoursRowsPartial: prazen niz ok (brez omejitev)', () => {
+    const v = validateOpeningHoursRowsPartial([])
+    expect(v.ok).toBe(true)
   })
 })

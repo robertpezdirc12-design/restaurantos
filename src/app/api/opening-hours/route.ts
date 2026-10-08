@@ -20,13 +20,24 @@ import {
  *        Pravica: settings.manage. Audit: OPENING_HOURS_UPDATE (before/after).
  */
 
-/** Tedenske vrstice za lokacijo; če lokacija nima svojih, org privzete (locationId null). */
+/** Tedenske vrstice za lokacijo; če lokacija nima svojih, org privzete (locationId null).
+ *  Delni niz (< 7 vrstic) se normalizira: manjkajoči dnevi = izrecno zaprto (id ''),
+ *  da urejevalnik in status prikazujeta resnico, ne privzetih 08:00–22:00. */
 async function weeklyRows(locationId: string): Promise<{ rows: (OpeningRow & { id: string })[]; inherited: boolean }> {
   let rows = await db.openingHours.findMany({ where: { locationId }, orderBy: { dayOfWeek: 'asc' } })
   let inherited = false
   if (rows.length === 0) {
     rows = await db.openingHours.findMany({ where: { locationId: null }, orderBy: { dayOfWeek: 'asc' } })
     inherited = rows.length > 0
+  }
+  if (rows.length > 0 && rows.length < 7) {
+    const have = new Set(rows.map((r) => r.dayOfWeek))
+    for (let dow = 0; dow < 7; dow++) {
+      if (!have.has(dow)) {
+        rows.push({ id: '', dayOfWeek: dow, openTime: '', closeTime: '', breakStart: '', breakEnd: '', isClosed: true, locationId, createdAt: new Date(), updatedAt: new Date() } as (typeof rows)[number])
+      }
+    }
+    rows.sort((a, b) => a.dayOfWeek - b.dayOfWeek)
   }
   return {
     rows: rows.map((r) => ({
