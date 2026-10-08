@@ -32,6 +32,7 @@ import {
   Gift,
   Trash2,
   Hourglass,
+  Timer,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -48,7 +49,7 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -776,7 +777,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.40.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.41.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -827,6 +828,7 @@ export default function DashboardPage() {
               ['pregled', 'Pregled', LayoutDashboard], ['mize', 'Mize', Utensils], ['narocila', 'Naročila', ClipboardList],
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
+              ['delovnicas', 'Delovni čas', Timer],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
               ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['darilne', 'Darilne kartice', Gift], ['odpad', 'Odpad', Trash2], ['cakalna', 'Čakalna lista', Hourglass], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
@@ -1134,6 +1136,11 @@ export default function DashboardPage() {
 
           <TabsContent value="izmene">
             <ShiftsTab shifts={shifts} financial={financial} canManage={canManage} onReload={load} />
+          </TabsContent>
+
+          <TabsContent value="delovnicas">
+            {/* ura je za VSE zaposlene (brez TAB_PERM vnosa); ekipni del je gating employees.manage */}
+            <DelovniCasTab canManage={hasPerm('employees.manage')} />
           </TabsContent>
 
           <TabsContent value="haccp">

@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass } from 'lucide-react'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -3709,6 +3709,383 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
       </Dialog>
 
       {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+    </div>
+  )
+}
+
+/* ─────────────────────────── DELOVNI ČAS (clock-in/out, triage ⑥) ─────────────────────────── */
+
+export interface TimeEntryT {
+  id: string
+  employeeId: string
+  employeeName: string
+  clockIn: string
+  clockOut: string | null
+  breakStart: string | null
+  breakEnd: string | null
+  breakMinutes: number
+  totalMinutes: number
+  payRate: number
+  totalPay: number
+  type: string
+  status: string
+  notes: string
+  locationId?: string | null
+}
+
+export interface TimeclockEmployeeT { id: string; name: string; role: string }
+
+const tcTypeBadge: Record<string, string> = {
+  regular: 'bg-stone-100 text-stone-700',
+  overtime: 'bg-amber-100 text-amber-800',
+  holiday: 'bg-violet-100 text-violet-800',
+  sick: 'bg-rose-100 text-rose-800',
+  vacation: 'bg-teal-100 text-teal-800',
+}
+const tcTypeLabel: Record<string, string> = {
+  regular: 'Navadno', overtime: 'Nadure', holiday: 'Praznik', sick: 'Bolniška', vacation: 'Dopust',
+}
+const tcStatusBadge: Record<string, string> = {
+  active: 'bg-amber-100 text-amber-800',
+  approved: 'bg-emerald-100 text-emerald-800',
+  disputed: 'bg-red-100 text-red-800',
+}
+const tcStatusLabel: Record<string, string> = {
+  active: 'V čakanju', approved: 'Potrjeno', disputed: 'Sporno',
+}
+
+function tcTime(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+function tcDur(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes))
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  return rest === 0 ? `${h} h` : `${h} h ${rest} min`
+}
+function tcPay(eur: number): string {
+  return eur.toFixed(2).replace('.', ',') + ' €'
+}
+
+export function DelovniCasTab({ canManage }: { canManage: boolean }) {
+  const [mine, setMine] = useState<TimeEntryT[]>([])
+  const [activeEntry, setActiveEntry] = useState<TimeEntryT | null>(null)
+  const [myStats, setMyStats] = useState<{ totalMinutes: number; approvedMinutes: number } | null>(null)
+  const [team, setTeam] = useState<{ entries: TimeEntryT[]; employees: TimeclockEmployeeT[]; activeNow: { employeeId: string; employeeName: string; clockIn: string; breakStart: string | null }[]; stats: { totalMinutes: number; approvedMinutes: number; disputedCount: number; activeCount: number } } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [okMsg, setOkMsg] = useState('')
+  const [tick, setTick] = useState(0)
+
+  // ročni vnos (manager)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manual, setManual] = useState({ employeeId: '', clockIn: '', clockOut: '', breakMinutes: '0', type: 'regular', note: '' })
+  const [teamDays, setTeamDays] = useState('7')
+
+  async function load() {
+    setLoading(true)
+    setErr('')
+    try {
+      const own = await api<{ entries: TimeEntryT[]; activeEntry: TimeEntryT | null; stats: { totalMinutes: number; approvedMinutes: number } }>('/api/timeclock')
+      setMine(own.entries)
+      setActiveEntry(own.activeEntry)
+      setMyStats(own.stats)
+      if (canManage) {
+        const t = await api<{ entries: TimeEntryT[]; employees: TimeclockEmployeeT[]; activeNow: { employeeId: string; employeeName: string; clockIn: string; breakStart: string | null }[]; stats: { totalMinutes: number; approvedMinutes: number; disputedCount: number; activeCount: number } }>(`/api/timeclock?scope=team&days=${teamDays}`)
+        setTeam(t)
+      }
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+    const iv = setInterval(() => setTick((x) => x + 1), 30_000)
+    return () => clearInterval(iv)
+  }, [canManage, teamDays])
+
+  async function act(action: string) {
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ summary?: { label: string; totalPay: number } }>('/api/timeclock', { method: 'POST', body: JSON.stringify({ action }) })
+      if (action === 'clock-in') setOkMsg('Prijava na izmeno zabeležena — ura teče.')
+      else if (action === 'break-start') setOkMsg('Odmor začet.')
+      else if (action === 'break-end') setOkMsg('Odmor zaključen.')
+      else if (action === 'clock-out' && d.summary) setOkMsg(`Odjava zabeležena — skupaj ${d.summary.label}${d.summary.totalPay > 0 ? ` (${tcPay(d.summary.totalPay)})` : ''}.`)
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function review(id: string, status: 'approved' | 'disputed') {
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      await api(`/api/timeclock/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+      setOkMsg(status === 'approved' ? 'Vnos potrjen.' : 'Vnos označen kot sporen.')
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitManual() {
+    if (!manual.employeeId) { setErr('Izberi zaposlenega.'); return }
+    if (!manual.clockIn || !manual.clockOut) { setErr('Časa prijave in odjave sta obvezna.'); return }
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      await api('/api/timeclock', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'manual',
+          employeeId: manual.employeeId,
+          clockIn: new Date(manual.clockIn).toISOString(),
+          clockOut: new Date(manual.clockOut).toISOString(),
+          breakMinutes: Number(manual.breakMinutes) || 0,
+          type: manual.type,
+          note: manual.note || undefined,
+        }),
+      })
+      setOkMsg('Ročni vnos dodan (status: v čakanju potrditve).')
+      setManualOpen(false)
+      setManual({ employeeId: '', clockIn: '', clockOut: '', breakMinutes: '0', type: 'regular', note: '' })
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onBreak = activeEntry?.breakStart !== null && activeEntry?.breakStart !== undefined && activeEntry?.breakEnd === null
+  const nowMs = Date.now() + tick * 0 // tick sproži preracun
+  const liveMin = activeEntry ? Math.max(0, Math.round((nowMs - new Date(activeEntry.clockIn).getTime()) / 60000) - activeEntry.breakMinutes) : 0
+
+  return (
+    <div className="space-y-6">
+      {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
+      {okMsg && <p className="text-sm text-emerald-700" role="status">{okMsg}</p>}
+
+      {/* Moja ura */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Timer className="w-4 h-4" /> {activeEntry ? 'Izmena v teku' : 'Moj delovni čas'}</CardTitle>
+          <CardDescription>{activeEntry ? `Prijava ob ${tcTime(activeEntry.clockIn)}${activeEntry.payRate > 0 ? ` · ura ${tcPay(activeEntry.payRate)}` : ''}` : 'Prijava in odjava izmene — ure so osnova za napitnine po urah in plačilo.'}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {activeEntry ? (
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="text-3xl font-bold tabular-nums">{tcDur(liveMin)}</div>
+              {onBreak ? (
+                <Badge className="bg-amber-100 text-amber-800">☕ Na odmoru (od {new Date(activeEntry.breakStart!).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })})</Badge>
+              ) : (
+                <Badge className="bg-emerald-100 text-emerald-800">V teku</Badge>
+              )}
+              <div className="flex gap-2 ml-auto flex-wrap">
+                {!onBreak ? (
+                  <Button variant="outline" disabled={busy} onClick={() => void act('break-start')}><Coffee className="w-4 h-4 mr-1" /> Odmor</Button>
+                ) : (
+                  <Button variant="outline" disabled={busy} onClick={() => void act('break-end')}><Coffee className="w-4 h-4 mr-1" /> Konec odmora</Button>
+                )}
+                <Button className="bg-red-700 hover:bg-red-800" disabled={busy} onClick={() => void act('clock-out')}>
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4 mr-1" />} Odjava
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={() => void act('clock-in')}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4 mr-1" />} Prijava na izmeno
+            </Button>
+          )}
+          {myStats && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-stone-100">
+              <div><p className="text-xs text-stone-500">Zadnjih 30 dni</p><p className="font-bold">{tcDur(myStats.totalMinutes)}</p></div>
+              <div><p className="text-xs text-stone-500">Potrjeno</p><p className="font-bold">{tcDur(myStats.approvedMinutes)}</p></div>
+              <div><p className="text-xs text-stone-500">Vnosov</p><p className="font-bold">{mine.length}</p></div>
+              <div><p className="text-xs text-stone-500">Status</p><p className="font-bold">{activeEntry ? 'Na izmeni' : 'Izven izmene'}</p></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Moja zgodovina */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Moja zgodovina (30 dni)</CardTitle></CardHeader>
+        <CardContent>
+          {mine.length === 0 && <p className="text-sm text-stone-500">Ni zapisov — prijavi se na izmeno.</p>}
+          {mine.length > 0 && (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-stone-500 border-b border-stone-200">
+                  <th className="py-2 pr-3">Prijava</th><th className="py-2 pr-3">Odjava</th><th className="py-2 pr-3">Odmor</th>
+                  <th className="py-2 pr-3">Skupaj</th><th className="py-2 pr-3">Plačilo</th><th className="py-2 pr-3">Tip</th><th className="py-2">Status</th>
+                </tr></thead>
+                <tbody>
+                  {mine.map((e) => (
+                    <tr key={e.id} className="border-b border-stone-100">
+                      <td className="py-2 pr-3 whitespace-nowrap">{tcTime(e.clockIn)}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{e.clockOut ? tcTime(e.clockOut) : <span className="text-emerald-700 font-semibold">teče</span>}</td>
+                      <td className="py-2 pr-3">{e.breakMinutes > 0 ? tcDur(e.breakMinutes) : '—'}</td>
+                      <td className="py-2 pr-3 font-semibold">{e.clockOut ? tcDur(e.totalMinutes) : '—'}</td>
+                      <td className="py-2 pr-3">{e.totalPay > 0 ? tcPay(e.totalPay) : '—'}</td>
+                      <td className="py-2 pr-3"><Badge className={tcTypeBadge[e.type] || 'bg-stone-100 text-stone-700'}>{tcTypeLabel[e.type] || e.type}</Badge></td>
+                      <td className="py-2"><Badge className={tcStatusBadge[e.status] || 'bg-stone-100 text-stone-700'}>{tcStatusLabel[e.status] || e.status}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Ekipni vpogled (manager) */}
+      {canManage && team && (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2"><UserCheck className="w-4 h-4" /> Ekipa — vpogled in potrditev</CardTitle>
+              <CardDescription>Potrdi/sporen označi vnose zaposlenih; dodaj ročni vnos (popravek zgrešene ure).</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={teamDays} onValueChange={setTeamDays}>
+                <SelectTrigger className="w-32 h-8 text-xs" aria-label="Obdobje"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Danes</SelectItem>
+                  <SelectItem value="7">7 dni</SelectItem>
+                  <SelectItem value="14">14 dni</SelectItem>
+                  <SelectItem value="31">31 dni</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setManualOpen(true)}><Plus className="w-4 h-4 mr-1" /> Ročni vnos</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">Skupaj (obdobje)</p><p className="text-lg font-bold">{tcDur(team.stats.totalMinutes)}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">Potrjeno</p><p className="text-lg font-bold">{tcDur(team.stats.approvedMinutes)}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">V čakanju potrditve</p><p className="text-lg font-bold">{team.stats.activeCount}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">Trenutno na izmeni</p><p className="text-lg font-bold">{team.activeNow.length}</p></div>
+            </div>
+            {team.activeNow.length > 0 && (
+              <div className="text-sm text-stone-600">
+                <span className="font-semibold">Na izmeni: </span>
+                {team.activeNow.map((a) => `${a.employeeName}${a.breakStart ? ' ☕' : ''}`).join(', ')}
+              </div>
+            )}
+            {team.entries.length === 0 && <p className="text-sm text-stone-500">Ni vnosov v izbranem obdobju.</p>}
+            {team.entries.length > 0 && (
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-stone-500 border-b border-stone-200">
+                    <th className="py-2 pr-3">Zaposleni</th><th className="py-2 pr-3">Prijava</th><th className="py-2 pr-3">Odjava</th>
+                    <th className="py-2 pr-3">Skupaj</th><th className="py-2 pr-3">Plačilo</th><th className="py-2 pr-3">Status</th><th className="py-2">Dejanja</th>
+                  </tr></thead>
+                  <tbody>
+                    {team.entries.map((e) => (
+                      <tr key={e.id} className="border-b border-stone-100">
+                        <td className="py-2 pr-3 font-medium">{e.employeeName}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{tcTime(e.clockIn)}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{e.clockOut ? tcTime(e.clockOut) : <span className="text-emerald-700 font-semibold">teče</span>}</td>
+                        <td className="py-2 pr-3">{e.clockOut ? tcDur(e.totalMinutes) : '—'}</td>
+                        <td className="py-2 pr-3">{e.totalPay > 0 ? tcPay(e.totalPay) : '—'}</td>
+                        <td className="py-2 pr-3"><Badge className={tcStatusBadge[e.status] || 'bg-stone-100 text-stone-700'}>{tcStatusLabel[e.status] || e.status}</Badge></td>
+                        <td className="py-2">
+                          {e.status !== 'approved' && e.clockOut && (
+                            <Button size="sm" variant="outline" className="h-7 mr-1" disabled={busy} onClick={() => void review(e.id, 'approved')} title="Potrdi vnos"><CheckCircle2 className="w-3.5 h-3.5" /><span className="sr-only">Potrdi</span></Button>
+                          )}
+                          {e.status !== 'disputed' && (
+                            <Button size="sm" variant="outline" className="h-7 text-red-700" disabled={busy} onClick={() => void review(e.id, 'disputed')} title="Označi sporno"><XCircle className="w-3.5 h-3.5" /><span className="sr-only">Označi sporno</span></Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ročni vnos dialog */}
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Ročni vnos delovnega časa</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="tc-employee">Zaposleni</Label>
+              <Select value={manual.employeeId} onValueChange={(v) => setManual((m) => ({ ...m, employeeId: v }))}>
+                <SelectTrigger id="tc-employee"><SelectValue placeholder="Izberi zaposlenega …" /></SelectTrigger>
+                <SelectContent>
+                  {(team?.employees || []).map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.name} ({e.role})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="tc-in">Prijava</Label>
+                <Input id="tc-in" type="datetime-local" value={manual.clockIn} onChange={(e) => setManual((m) => ({ ...m, clockIn: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tc-out">Odjava</Label>
+                <Input id="tc-out" type="datetime-local" value={manual.clockOut} onChange={(e) => setManual((m) => ({ ...m, clockOut: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="tc-break">Odmor (min)</Label>
+                <Input id="tc-break" type="number" min="0" value={manual.breakMinutes} onChange={(e) => setManual((m) => ({ ...m, breakMinutes: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tc-type">Tip</Label>
+                <Select value={manual.type} onValueChange={(v) => setManual((m) => ({ ...m, type: v }))}>
+                  <SelectTrigger id="tc-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="regular">Navadno</SelectItem>
+                    <SelectItem value="overtime">Nadure</SelectItem>
+                    <SelectItem value="holiday">Praznik</SelectItem>
+                    <SelectItem value="sick">Bolniška</SelectItem>
+                    <SelectItem value="vacation">Dopust</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="tc-note">Opomba</Label>
+              <Input id="tc-note" value={manual.note} onChange={(e) => setManual((m) => ({ ...m, note: e.target.value }))} placeholder="npr. pozabil prijavit" />
+            </div>
+            <p className="text-xs text-stone-500">Vnos se ustvari s statusom »v čakanju« — potrdi ga v tabeli zgoraj (potek: do 31 dni nazaj, ne v prihodnost).</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualOpen(false)}>Prekliči</Button>
+            <Button onClick={() => void submitManual()} disabled={busy || !manual.employeeId || !manual.clockIn || !manual.clockOut}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj vnos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje …</p>}
+      {busy && !loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
     </div>
   )
 }
