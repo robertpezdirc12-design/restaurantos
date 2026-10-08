@@ -1187,3 +1187,26 @@ Work Log:
 Stage Summary:
 - `NabavaTab` (export, dashboard-tabs.tsx konec, vrstica 1797) pokriva celoten nabavni tok triage ②: dobavitelji (CRUD pregled) → naročilo (osnutek→oddaja→odobritev→preklic) → prevzem (delna/popolna, zavrnitve z razlogom, expiry, idempotentni GRN) → primerjava naročeno/prejeto → zgodovina cen
 - komponenta je SAMO exportana — še NI ožičena v dashboard page (namenoma; wiring je naslednji korak/skopec). Signature: `{ locations: { id; name }[]; canManage: boolean }` (enaka vzorcu NapitnineTab) — pričakuje se `<NabavaTab locations={...} canManage={...} />` z gatingom OWNER/ADMIN/MANAGER
+---
+Task ID: 17-main
+Agent: main (Z.ai Code)
+Task: Issue #1 (triage ②) — nabava + prevzem: dobavitelj → naročilo → prevzem → zaloga (v1.37.0)
+
+Work Log:
+- inventura: celotna nabavna shema obstaja (Supplier, PurchaseOrder/Item, GoodsReceipt/Item, SupplierItem, SupplierPriceHistory, InventoryItem, InventoryBatch, StockTransaction) a NIČ je ne uporablja v src/ (isti vzorec kot napitnine); /api/suppliers obstaja (osnovni GET/POST)
+- ANOMALIJA RAZISKANA: vrstica v dashboard-tabs.tsx je "videti pokvarjena" (`const ethod`) — ugotovljeno, da gre za TRANSPORTNI FILTER v seji, ki jeje 2-znakski niz `[m` iz tool izpisov; dokaz: od -c (presledki) pokaže pravilno `const [method,`; disk, git objekti, GitLab in GitHub so vsi PRAVILNI (tsc/CI/produkcija delujejo) — repo zdrav, nič popravljati; v prihodnje: debug izpise s separatorji
+- 17-a: src/lib/procurement.ts (čista logika): poNumberFor/grnNumberFor (PO-YYYYMMDD-XXXX), zaprti statusni prehodi (draft→submitted→approved→partial/received + preklic, terminali brez prehodov), točne vsote v centih (qtyToMilli integer aritmetika — brez float drifta, DDV po vrstici), validateReceiveLines (neznana/negativna/razlog pri zavrnitvi/over-receipt opozorilo/podvojena postavka), itemStatusAfter/poStatusAfter (handled = accepted + rejected), weightedAvgCostCents (uteženo povprečje), priceHistoryRows — tests/procurement.test.ts 30/30
+- 17-b: /api/purchase-orders (GET seznam + POST osnutek: validacija vrstic, referenčna integriteta artiklov, točne vsote, retry številčenja, SupplierItem katalog aditivno, audit PO_CREATE); /api/purchase-orders/[id] (GET detail z GRN + price history; PATCH prehodi submit/approve/cancel s canTransition + audit); /api/purchase-orders/[id]/receive (GRN v $transaction: GoodsReceipt/Item → zaloga += accepted + utežena cena → InventoryBatch serija (lot, rok, dobavitelj) → StockTransaction 'purchase' → SupplierPriceHistory → statusi postavk/naročila → audit GRN_RECEIVE z warnings; idempotencyKey unique replay 200; 409 napačen status); /api/suppliers +PATCH (urejanje, bogatejši GET, audit)
+- 17-c (subagent full-stack-developer, Task ID 17-c): NabavaTab pripeta na konec dashboard-tabs.tsx (~850 vrstic, samo append po navodilu — zaradi [m filter tveganja) — dobavitelji + naročila + prevzem dialogi; wiring v dashboard/page.tsx: import, TAB_PERM nabava = inventory.manage, tab vnos s ShoppingCart, TabsContent; APP_VERSION 1.37.0 + badge
+- subagentova ugotovitev potrjena in popravljena: receive ruta je odrezala expiryDate → preko side-channel mape (expiryByItem) do InventoryBatch
+- popravljena slovenska sklonska številka (1 prevzem / 2 prevzema / n prevzemov)
+- Radix a11y warning popravljen: aria-describedby={undefined} na 4 DialogContent v NabavaTab
+- 17-d E2E: API zlata pot (67,22 € točne vsote → delni prevzem → zaloga 8→18/3→7, utežena cena 1,23/6,84 → drugi prevzem → received; idempotent replay; over-receipt warning; 409 prehod) + agent-browser UI (prijava → Nabava → novo naročilo 5×6,90=34,50 → Oddaj → Odobri → Prevzemi → GRN-20261008-0004 → Prevzeto; zaloga skladna 23/14; screenshota desktop+mobilni; 0 konzolnih napak)
+- 17-e: commit 994fb9c → GitLab CI SUCCESS (pipeline 2925662411) → GitHub mirror 994fb9c → produkcija dpl_FCdGSvPRxhdjVYRsmFSbhhiA7bT9 READY (~31 s, files-API deploy 236 datotek) → health 1.37.0 → login OK → purchase-orders 401/200 (read-only, realni podatki nedotaknjeni) → smoke-test exit 0 → triage komentar na #1 (note 3976102055)
+- verifikacijska veriga: bun test 169/169 (139 + 30 novih) · tsc 0 · eslint 0
+
+Stage Summary:
+- NABAVA + PREVZEM (triage ②) DOKONČANE: kanonični tok dobavitelj → naročilo (osnutek/oddaja/odobritev) → prevzem (delna/popolna, primerjava naročeno/prejeto, over-receipt) → zaloga (uteženo povprečje + serije + StockTransaction sled) → zgodovina nabavnih cen — vse brez shematskih sprememb (§18: modeli so že obstajali, samo oživljeni)
+- Produkcija = v1.37.0 z read-only verifikacijo; uporabniški reziduali nespremenjeni (MFA enrollment, CI build secret, rotacija Neon/Vercel credencial)
+- Naslednji sklop po triage: ③ darilne kartice (izdaja/polnjenje/unovčenje + idempotencija + audit) — model GiftCard že v shemi
+- ZNANJE: session transportni filter jeje `[m` v tool izpisih — datoteke so na disku vedno pravilne; preverjaj z od -c / separatorji, ne z neposrednim Read-om sumljivih vrstic
