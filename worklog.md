@@ -1496,3 +1496,23 @@ Stage Summary:
 - i18n FAZA 2, SKUPINA F KONČANA — IN S TEM FAZA 2 CELOTNA: page.tsx inline sekcije (meni/rezervacije/računi/zaposleni/nastavitve + pregled/mize/narocila ostanki + dialogi: nova rezervacija, Employee Control Center, lokacija, aktivacija lokacije, PIN reset, deaktivacija zaposlenega) v celoti prek t(); 153 novih ključev (oba slovarja, popolna pariteta 1073 = 1073)
 - PASTI ZA NASLEDNJE: (1) `const t = await processTerminalPayment(…)` senčenje — lokalno var preimenuj, tsc ulove šele po vstavitvi t(); (2) JSX komentarji in komentarji kode so attr-regex lažni pozitivi ('Nova rezervacija', 'dovoljenj') — vnos spusti iz perFile, prevod vseeno ostane; (3) `res.error` tipa `string | undefined` → `?? ''` v t() vars; (4) prekrivajoči se ankerji v count-assertions (`alert(X)` ×3 vsebuje `if (!res.ok) alert(X)` ×1) — vzorce štej na neprekrivajočih se ankerjih; (5) mrtvi tab labeli (2. element para) so varno oviti v t() — čisti scan brez logične spremembe
 - znani ostanki (izven faze 2, ne-UI ali tehnično): statusLabels/ROLE_LABELS/ZONE_LABELS SL fallback mape (mrtve — ključi vedno najdeni), strežniška sporočila alert(err.message) ostajajo SL dokler API ne lokalizira, toLocaleString('sl-SI') tehnično ostane (locale-aware predlog za ločen task)
+---
+Task ID: 26-main
+Agent: main (Z.ai Code)
+Task: Preverjanje GitHub↔GitLab sinhronizacije z novim GitHub tokenom (uporabnikov zahtevek) + resinkronizacija lokalnega sandboksa
+
+Work Log:
+- uporabnik posredoval nov GitHub PAT (račun robertpezdirc12-design, classic, scope repo + admin) — token validiran prek /api.github.com/user (login: robertpezdirc12-design)
+- GitHub API audit repa robertpezdirc12-design/restaurantos (privaten, main): najnovejši commit 4f5bcebc 'APP_VERSION → 1.45.0 (i18n faza 2 — posodobitev oznak; ujet med produkcijskim smoke testom: health je kazal 1.44.0)', PUSHED_AT 2026-10-08T20:33Z; zgolj pred njim 6bf1fa05 'i18n faza 2 — prevod preostalih modulov (v1.45.0)' (923 novih ključev, 150 → 1073, pariteta SL=HR; 24 modulov; testi 371/371 · tsc 0 · lint 0) — torej je faza 2 (skupini E + F vključno) zaključena in SHIPANA v v1.45.0 s strani produkcijskega okolja
+- lokalni sandbox /home/z/my-project je bil ZASTAREL: HEAD fd8ff72 (era v1.39.0, triage ④) + 231 'spremenjenih' datotek — preverba: git diff HEAD ima 0 vrstic vsebine (^+++ count 0) = čisti chmod mode-noise (sandbox artefakt); rešitev: git config core.fileMode false → status čist
+- lokalni slovarski datoteki src/lib/i18n/{sl,hr}.ts v sandboxu SPLOH nista obstajali (potrjeno: direktorij ni obstajal) — vsa faza 2 se je zgodila v produkcijskem okolju
+- fetch GitHub main z novim tokenom (FETCH_HEAD = 4f5bcebc) → git reset --hard FETCH_HEAD → sandbox usklajen na v1.45.0 (253 datotek, +9450 vrstic); bun install: 941 paketov, brez sprememb
+- git remote set-url github z NOVIM tokenom; git push --dry-run github main → 'Everything up-to-date' = PISANJE POTRJENO
+- GitLab stran: shranjen glpat v origin URL NEDELOUJE (git: 'HTTP Basic: Access denied'; API: HTTP 403 'Your account has been blocked.') → račun robert.pezdirc12 je BLOKIRAN → sinhronizacija GitLab↔GitHub ni verificirljiva in push mirror (če konfiguriran na GitLab strani) je z te strani mrtav; GitLab je trenutno za GitHubom vsaj za cel faza 2 nabor (v1.45.0)
+- browser verifikacija po skoku v1.39→v1.45: / renderira prijavno stran (RestavrantOS, SL/HR jezični preklopnik viden, temni način, prijava E-pošta+PIN) — 0 konzolnih napak, 0 page errors; dev.log čist (Ready in 687ms)
+- worklog vnos commitan in PUSHAN na GitHub (dokaz pisanja v praksi)
+
+Stage Summary:
+- SINHRONIZACIJA: GitHub (robertpezdirc12-design/restaurantos) = AVTORITATIVEN, v1.45.0 @ 4f5bcebc; lokalni sandbox usklajen = GitHub main; push na GitHub DELUJE z novim tokenom (vgrajen v remote URL)
+- GitLab (robert.pezdirc12/restaurantos) = NEDOSTOPEN: račun blokiran (403) → za ponovno vzpostavitev potrebno: (1) odkleniti račun prek GitLab podpore ALI nov račun/projekt, (2) nov glpat token → potem lokalno git push origin main uskladi GitLab (iz GitHub main 4f5bcebc), (3) preveriti/ponastaviti push mirror na GitLab strani (GitHub token v mirrorju)
+- varnostna opomba: token je bil posredovan v klepetu (plaintext) — priporočena rotacija, ko GitLab sync ponovno deluje; starejši odprti reziduali ostajajo (MFA enrollment, CI build secret, rotacija Neon/Vercel credencial)
