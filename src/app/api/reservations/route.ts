@@ -2,7 +2,36 @@ import { NextRequest } from 'next/server'
 import type { ReservationStatus, ReservationSource } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
-import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid } from '@/lib/map'
+import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
+import { outsideHoursFor, validateOpeningHoursRows, type ValidatedRow } from '@/lib/openinghours'
+
+/** Tedenske vrstice lokacije (ali org privzete); prazne → validated prazno (brez omejitev). */
+async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
+  let rows = await db.openingHours.findMany({ where: { locationId }, orderBy: { dayOfWeek: 'asc' } })
+  if (rows.length === 0) rows = await db.openingHours.findMany({ where: { locationId: null }, orderBy: { dayOfWeek: 'asc' } })
+  if (rows.length === 0) return []
+  const v = validateOpeningHoursRows(rows.map((r) => ({
+    dayOfWeek: r.dayOfWeek, openTime: r.openTime, closeTime: r.closeTime,
+    breakStart: r.breakStart, breakEnd: r.breakEnd, isClosed: r.isClosed,
+  })))
+  return v.ok ? v.rows : []
+}
+
+async function specialsFor(locationId: string | undefined): Promise<{ date: string; isClosed: boolean; openTime: string; closeTime: string; note: string }[]> {
+  const where = locationId ? { OR: [{ locationId }, { locationId: null }] } : { locationId: null }
+  const rows = await db.specialOpeningDay.findMany({
+    where: { ...where, date: { gte: new Date(Date.now() - 2 * 86400_000).toISOString().slice(0, 10), lte: new Date(Date.now() + 400 * 86400_000).toISOString().slice(0, 10) } },
+    orderBy: { date: 'asc' },
+  })
+  const byDate = new Map<string, { date: string; isClosed: boolean; openTime: string; closeTime: string; note: string; loc: string | null }>()
+  for (const r of rows) {
+    const prev = byDate.get(r.date)
+    if (!prev || (prev.loc === null && r.locationId !== null)) {
+      byDate.set(r.date, { date: r.date, isClosed: r.isClosed, openTime: r.openTime, closeTime: r.closeTime, note: r.note, loc: r.locationId })
+    }
+  }
+  return [...byDate.values()].map(({ loc: _loc, ...s }) => s)
+}
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -23,6 +52,30 @@ export async function POST(req: NextRequest) {
     if (!table) return ok({ error: 'Miza ne obstaja.' }, 400)
     if (table.locationId !== locationId) return ok({ error: 'Miza ne pripada lokaciji rezervacije.' }, 400)
   }
+
+  // triage ⑦: rezervacija ne sme pasti v zaprtje — 409 z razlago, izrecen preglasi (allowOutsideHours) je dovoljen
+  const when = new Date(body.reservedAt)
+  if (!Number.isNaN(when.getTime())) {
+    const [rowsV, specials] = await Promise.all([weeklyValidated(locationId), specialsFor(locationId)])
+    const out = outsideHoursFor(rowsV, specials, when)
+    if (out.outside && !body.allowOutsideHours) {
+      return ok({
+        error: `Rezervacija pada izven odpiralnega časa: ${out.label}.`,
+        code: 'OUTSIDE_OPENING_HOURS',
+        outsideReason: out.reason,
+        overrideRequired: true,
+      }, 409)
+    }
+    if (out.outside && body.allowOutsideHours) {
+      await db.auditLog.create({
+        data: {
+          id: nid(), userId: user.sub, action: 'RESERVATION_OUTSIDE_HOURS', entityType: 'Reservation', entityId: 'pending',
+          details: jstr({ when: when.toISOString(), reason: out.reason, label: out.label, locationId }),
+        },
+      }).catch(() => {})
+    }
+  }
+
   const row = await db.reservation.create({
     data: {
       id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),

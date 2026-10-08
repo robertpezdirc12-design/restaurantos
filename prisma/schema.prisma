@@ -1228,6 +1228,7 @@ model Location {
   ModifierGroup               ModifierGroup[]
   NoSaleReason                NoSaleReason[]
   OpeningHours                OpeningHours[]
+  SpecialOpeningDay           SpecialOpeningDay[]
   Order                       Order[]
   PackagingConfig             PackagingConfig[]
   PrepStation                 PrepStation[]
@@ -1453,6 +1454,24 @@ model OpeningHours {
 
   @@unique([locationId, dayOfWeek])
   @@index([dayOfWeek])
+  @@index([locationId])
+}
+
+/// Issue #1 sklop ⑦ odpiralni čas — posebni dnevi/prazniki (aditivno, migrate-issue1-s7)
+model SpecialOpeningDay {
+  id         String    @id
+  date       String
+  isClosed   Boolean   @default(true)
+  openTime   String    @default("")
+  closeTime  String    @default("")
+  note       String    @default("")
+  locationId String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Location   Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, date])
+  @@index([date])
   @@index([locationId])
 }
 

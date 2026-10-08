@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
+import { DAY_NAMES_SL } from '@/lib/openinghours'
 import { newOperationId } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer } from 'lucide-react'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -4086,6 +4087,286 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
 
       {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje …</p>}
       {busy && !loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+    </div>
+  )
+}
+
+/* ─────────────────────────── ODPIRALNI ČAS (issue #1, triage ⑦) ─────────────────────────── */
+
+export interface OpeningHoursRowT { id: string; dayOfWeek: number; openTime: string; closeTime: string; breakStart: string; breakEnd: string; isClosed: boolean }
+export interface SpecialDayT { id: string; date: string; isClosed: boolean; openTime: string; closeTime: string; note: string }
+export interface OpenStatusT { isOpen: boolean; phase: string; label: string; detail: string; nextChangeAt: string | null; nextChangeLabel: string }
+export interface OpeningHoursDataT {
+  locationId: string
+  inherited: boolean
+  rows: OpeningHoursRowT[]
+  specialDays: SpecialDayT[]
+  status: OpenStatusT
+  holidays: { date: string; name: string }[]
+  holidaysYear: number
+}
+
+const DEFAULT_WEEK: OpeningHoursRowT[] = Array.from({ length: 7 }, (_, dow) => ({
+  id: `new-${dow}`, dayOfWeek: dow, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false,
+}))
+
+const PHASE_STYLES: Record<string, { dot: string; card: string }> = {
+  open: { dot: 'bg-emerald-500', card: 'border-emerald-200 bg-emerald-50' },
+  break: { dot: 'bg-amber-500', card: 'border-amber-200 bg-amber-50' },
+  closed_day: { dot: 'bg-red-400', card: 'border-red-200 bg-red-50' },
+  special_closed: { dot: 'bg-red-400', card: 'border-red-200 bg-red-50' },
+  special_hours: { dot: 'bg-sky-500', card: 'border-sky-200 bg-sky-50' },
+  outside_hours: { dot: 'bg-red-400', card: 'border-red-200 bg-red-50' },
+}
+
+function fmtDateSL(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('sl-SI', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
+  const [data, setData] = useState<OpeningHoursDataT | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [edit, setEdit] = useState<OpeningHoursRowT[]>(DEFAULT_WEEK)
+  const [showBreak, setShowBreak] = useState<boolean[]>(Array(7).fill(false))
+  const [spOpen, setSpOpen] = useState(false)
+  const [sp, setSp] = useState({ date: '', isClosed: true, openTime: '', closeTime: '', note: '' })
+
+  async function load() {
+    try {
+      const d = await api<OpeningHoursDataT>('/api/opening-hours')
+      setData(d)
+      const rows = d.rows.length === 7 ? d.rows : DEFAULT_WEEK
+      setEdit(rows.map((r) => ({ ...r, id: r.id || `new-${r.dayOfWeek}` })))
+      setShowBreak(Array.from({ length: 7 }, (_, i) => Boolean(rows[i]?.breakStart && rows[i]?.breakEnd)))
+    } catch { /* status ostaja — napaka v msg */ } finally { setLoading(false) }
+  }
+
+  useEffect(() => { void load() }, [])
+  // status se osveži vsake 60 s (živi odprto/zaprto indikator)
+  useEffect(() => {
+    const t = setInterval(() => { void load() }, 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  function setRow(dow: number, patch: Partial<OpeningHoursRowT>) {
+    setEdit((rows) => rows.map((r) => (r.dayOfWeek === dow ? { ...r, ...patch } : r)))
+  }
+
+  async function save() {
+    setBusy(true); setMsg('')
+    try {
+      const res = await api<{ rows: OpeningHoursRowT[]; status: OpenStatusT }>('/api/opening-hours', {
+        method: 'PUT',
+        body: JSON.stringify({ rows: edit.map((r) => ({ dayOfWeek: r.dayOfWeek, openTime: r.openTime, closeTime: r.closeTime, breakStart: r.breakStart, breakEnd: r.breakEnd, isClosed: r.isClosed })) }),
+      })
+      setData((d) => (d ? { ...d, rows: res.rows, status: res.status, inherited: false } : d))
+      setMsg('Odpiralni čas shranjen.')
+      await load()
+    } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
+  }
+
+  async function addSpecial() {
+    setBusy(true); setMsg('')
+    try {
+      await api('/api/opening-hours/special', { method: 'POST', body: JSON.stringify(sp) })
+      setSpOpen(false)
+      setSp({ date: '', isClosed: true, openTime: '', closeTime: '', note: '' })
+      setMsg('Poseben dan dodan.')
+      await load()
+    } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
+  }
+
+  async function deleteSpecial(id: string) {
+    if (!confirm('Izbrišem posebni dan?')) return
+    setBusy(true)
+    try {
+      await api(`/api/opening-hours/special?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      setMsg('Poseben dan izbrisan.')
+      await load()
+    } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
+  }
+
+  async function addHolidays() {
+    if (!data?.holidays?.length) return
+    if (!confirm(`Dodam ${data.holidays.length} slovenskih praznikov za ${data.holidaysYear} (zaprti dnevi)? Obstojeci datumi se preskocijo.`)) return
+    setBusy(true); setMsg('')
+    try {
+      const res = await api<{ added: number; skipped: string[] }>('/api/opening-hours/special', {
+        method: 'POST', body: JSON.stringify({ holidays: data.holidays.map((h) => ({ date: h.date, name: h.name })) }),
+      })
+      setMsg(`Prazniki: dodanih ${res.added}, obstoječih preskočenih ${res.skipped.length}.`)
+      await load()
+    } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
+  }
+
+  const st = data?.status
+  const phaseStyle = PHASE_STYLES[st?.phase ?? 'closed_day'] ?? PHASE_STYLES.closed_day
+
+  return (
+    <div className="space-y-4">
+      {/* trenutni status — jasen odprto/zaprto indikator */}
+      <Card className={phaseStyle.card}>
+        <CardContent className="p-4">
+          {loading ? (
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje statusa …</p>
+          ) : st ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <span aria-hidden className={`w-3 h-3 rounded-full shrink-0 ${phaseStyle.dot} ${st.isOpen ? 'animate-pulse' : ''}`} />
+              <div className="min-w-0">
+                <p className="font-semibold text-stone-800">
+                  {st.label}
+                  {st.nextChangeLabel && <span className="font-normal text-stone-600"> — {st.nextChangeLabel}</span>}
+                </p>
+                <p className="text-sm text-stone-600">{st.detail}</p>
+              </div>
+              {data?.inherited && canManage && (
+                <Badge variant="outline" className="ml-auto shrink-0">Privzeti urnik organizacije — lokacija nima svojega</Badge>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-stone-500">Status ni na voljo.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* tedenski urnik */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-emerald-700" /> Tedenski urnik</CardTitle>
+            {canManage && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void save()} disabled={busy}><CheckCircle2 className="w-3.5 h-3.5" /> Shrani urnik</Button>}
+          </div>
+          <CardDescription>Časi so lokalni (24-urni). Zapiralni čas pred odpiralnim pomeni delo čez polnoč. Odmor je izbirzen.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {edit.map((r) => (
+            <div key={r.dayOfWeek} className="rounded-lg border border-stone-200 bg-white p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-24 text-sm font-medium text-stone-700 shrink-0">{DAY_NAMES_SL[r.dayOfWeek]}</span>
+                <Switch checked={!r.isClosed} onCheckedChange={(v) => setRow(r.dayOfWeek, v ? { isClosed: false, openTime: r.openTime || '08:00', closeTime: r.closeTime || '22:00' } : { isClosed: true, breakStart: '', breakEnd: '' })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odprto`} />
+                {r.isClosed ? (
+                  <Badge variant="outline" className="text-red-600 border-red-200">Zaprto</Badge>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input type="time" className="w-28 h-8" value={r.openTime} onChange={(e) => setRow(r.dayOfWeek, { openTime: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odpre se`} />
+                    <span className="text-stone-400 text-sm">–</span>
+                    <Input type="time" className="w-28 h-8" value={r.closeTime} onChange={(e) => setRow(r.dayOfWeek, { closeTime: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: zapre se`} />
+                    {canManage && (
+                      <Button size="sm" variant={showBreak[r.dayOfWeek] ? 'secondary' : 'outline'} className="h-8 px-2 text-xs" onClick={() => setShowBreak((b) => b.map((v, i) => (i === r.dayOfWeek ? !v : v)))}>
+                        <Coffee className="w-3.5 h-3.5" /> Odmor
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {!r.isClosed && showBreak[r.dayOfWeek] && (
+                <div className="flex flex-wrap items-center gap-2 mt-2 pl-1 sm:pl-28">
+                  <span className="text-xs text-stone-500 w-auto">Odmor:</span>
+                  <Input type="time" className="w-28 h-8" value={r.breakStart} onChange={(e) => setRow(r.dayOfWeek, { breakStart: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odmor od`} />
+                  <span className="text-stone-400 text-sm">–</span>
+                  <Input type="time" className="w-28 h-8" value={r.breakEnd} onChange={(e) => setRow(r.dayOfWeek, { breakEnd: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odmor do`} />
+                </div>
+              )}
+            </div>
+          ))}
+          {msg && <p className="text-sm text-emerald-700 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {msg}</p>}
+          {err && <p className="text-sm text-red-700 flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> {err}</p>}
+        </CardContent>
+      </Card>
+
+      {/* posebni dnevi / prazniki */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <CardTitle className="text-base flex items-center gap-1.5"><CalendarDays className="w-4 h-4 text-emerald-700" /> Posebni dnevi in prazniki</CardTitle>
+              <CardDescription>Posebni dan prevlada nad tedenskim urnikom (zaprt ali drugačen čas).</CardDescription>
+            </div>
+            {canManage && (
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => void addHolidays()} disabled={busy || !data?.holidays?.length}>
+                  <Plus className="w-3.5 h-3.5" /> Slovenski prazniki {data?.holidaysYear}
+                </Button>
+                <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setSpOpen(true)} disabled={busy}>
+                  <Plus className="w-3.5 h-3.5" /> Poseben dan
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {(data?.specialDays?.length ?? 0) === 0 ? (
+            <p className="text-sm text-stone-500">Ni posebnih dni. Rezervacije sledijo tedenskemu urniku.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {data!.specialDays.map((s) => (
+                <div key={s.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-stone-800">{fmtDateSL(s.date)}</p>
+                    <p className="text-xs text-stone-500">
+                      {s.isClosed ? 'Zaprto cel dan' : `Odprto ${s.openTime}–${s.closeTime}`}
+                      {s.note ? ` · ${s.note}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant={s.isClosed ? 'destructive' : 'outline'}>{s.isClosed ? 'Zaprto' : 'Poseben urnik'}</Badge>
+                    {canManage && (
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-red-600 border-red-200 hover:bg-red-50" disabled={busy} onClick={() => void deleteSpecial(s.id)}>
+                        <Trash2 className="w-3.5 h-3.5" /><span className="sr-only">Izbriši poseben dan {s.date}</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* dialog: nov poseben dan */}
+      <Dialog open={spOpen} onOpenChange={setSpOpen}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Poseben dan / praznik</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="sp-date">Datum</Label>
+              <Input id="sp-date" type="date" value={sp.date} onChange={(e) => setSp({ ...sp, date: e.target.value })} />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-stone-200 p-3">
+              <Label htmlFor="sp-closed" className="font-normal">Zaprto cel dan</Label>
+              <Switch id="sp-closed" checked={sp.isClosed} onCheckedChange={(v) => setSp({ ...sp, isClosed: v })} />
+            </div>
+            {!sp.isClosed && (
+              <div className="flex items-center gap-2">
+                <div className="space-y-1 flex-1">
+                  <Label htmlFor="sp-open">Odpre se</Label>
+                  <Input id="sp-open" type="time" value={sp.openTime} onChange={(e) => setSp({ ...sp, openTime: e.target.value })} />
+                </div>
+                <div className="space-y-1 flex-1">
+                  <Label htmlFor="sp-close">Zapre se</Label>
+                  <Input id="sp-close" type="time" value={sp.closeTime} onChange={(e) => setSp({ ...sp, closeTime: e.target.value })} />
+                </div>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label htmlFor="sp-note">Opomba (razlog)</Label>
+              <Input id="sp-note" value={sp.note} onChange={(e) => setSp({ ...sp, note: e.target.value })} placeholder="npr. Praznik dela, zaprt zaradi dogodka" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSpOpen(false)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" onClick={() => void addSpecial()} disabled={busy || !sp.date}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {loading && !data && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje …</p>}
     </div>
   )
 }

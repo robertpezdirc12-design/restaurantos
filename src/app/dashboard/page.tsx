@@ -33,6 +33,7 @@ import {
   Trash2,
   Hourglass,
   Timer,
+  CalendarClock,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -49,7 +50,7 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -663,16 +664,27 @@ export default function DashboardPage() {
     await load()
   }
 
-  async function createReservation() {
+  async function createReservation(allowOutsideHours = false) {
     if (!newRes?.guestName || !newRes.reservedAt) return
     setSending(true)
     try {
       await api('/api/reservations', {
         method: 'POST',
-        body: JSON.stringify({ guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests, reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note }),
+        body: JSON.stringify({ guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests, reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours }),
       })
       setNewRes(null); await load()
-    } catch (err) { alert((err as Error).message) } finally { setSending(false) }
+    } catch (err) {
+      const msg = (err as Error).message
+      // triage ⑦: izven odpiralnega časa → ponudi izrecen pregled (audit RESERVATION_OUTSIDE_HOURS)
+      if (msg.includes('izven odpiralnega časa')) {
+        setSending(false)
+        if (confirm(`${msg}\n\nVseeno shrani rezervacijo? Sprememba se zabeleži v revizijski sledi.`)) {
+          await createReservation(true)
+        }
+        return
+      }
+      alert(msg)
+    } finally { setSending(false) }
   }
 
   async function setReservationStatus(id: string, status: string) {
@@ -777,7 +789,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.41.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.42.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -830,7 +842,7 @@ export default function DashboardPage() {
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['delovnicas', 'Delovni čas', Timer],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['darilne', 'Darilne kartice', Gift], ['odpad', 'Odpad', Trash2], ['cakalna', 'Čakalna lista', Hourglass], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['darilne', 'Darilne kartice', Gift], ['odpad', 'Odpad', Trash2], ['cakalna', 'Čakalna lista', Hourglass], ['odpiralnicas', 'Odpiralni čas', CalendarClock], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
@@ -1186,6 +1198,11 @@ export default function DashboardPage() {
 
           <TabsContent value="cakalna">
             <CakalnaListaTab canManage={hasPerm('reservations.manage')} />
+          </TabsContent>
+
+          <TabsContent value="odpiralnicas">
+            {/* status viden vsem; urejanje je gating settings.manage */}
+            <OdpiralniCasTab canManage={hasPerm('settings.manage')} />
           </TabsContent>
 
           <TabsContent value="zaposleni" className="space-y-4">
@@ -1773,7 +1790,7 @@ export default function DashboardPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewRes(null)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || !newRes?.guestName || !newRes?.reservedAt} onClick={createReservation}>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || !newRes?.guestName || !newRes?.reservedAt} onClick={() => void createReservation()}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani rezervacijo'}
             </Button>
           </DialogFooter>
