@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
+import { APP_VERSION } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -1390,7 +1391,7 @@ export default function DashboardPage() {
             </div>
             <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
-                <p>RestavrantOS — rekonstrukcija 1.35.0 (iz Vercel deploymenta dpl_DLuMxkW…)</p>
+                <p>RestavrantOS — različica {APP_VERSION} (offline-first rekonstrukcija)</p>
                 <p>Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.</p>
                 <p>Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).</p>
               </CardContent>
@@ -1928,7 +1929,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija 1.35.0 · offline-first + FURS (sim/produkcija ločena) · EUR
+        RestavrantOS rekonstrukcija {APP_VERSION} · offline-first + FURS (sim/produkcija ločena) · EUR
       </footer>
     </main>
   )
