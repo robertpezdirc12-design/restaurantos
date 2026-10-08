@@ -210,6 +210,8 @@ export function mapTable(t: Row, activeOrder?: Row | null) {
     id: t.id as string,
     name: `Miza ${t.number}`,
     number: t.number as number,
+    /** triage ⑧ — pogledi: lokacija mize za preklopnik */
+    locationId: (t.locationId as string) ?? null,
     zone: (t.area as string) || 'Glavna dvorana',
     seats: t.capacity as number,
     posX: num(t.posX),
@@ -276,6 +278,8 @@ export function mapOrder(o: Row & {
     tax: num(o.tax),
     total: num(o.total),
     paymentStatus: o.paymentStatus as string,
+    /** triage ⑧ — pogledi: lokacija naročila za preklopnik */
+    locationId: (o.locationId as string) ?? null,
     tableId: (o.tableId as string) ?? null,
     table: o.table ? { name: `Miza ${o.table.number}`, zone: (o.table.area as string) || 'Glavna dvorana' } : null,
     employee: o.employee ? { name: o.employee.name as string } : null,

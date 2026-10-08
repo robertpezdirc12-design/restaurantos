@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { APP_VERSION } from '@/lib/api'
@@ -34,6 +34,7 @@ import {
   Hourglass,
   Timer,
   CalendarClock,
+  Power,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -49,6 +50,7 @@ import {
 } from '@/lib/devices/print'
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
+import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import {
   InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
@@ -58,18 +60,20 @@ import {
 import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
+/** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
+interface LocationRowT { id: string; name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string; timezone: string; currency: string; isActive: boolean }
 interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
 interface WebhookT { id: string; name: string; url: string; events: string[]; isActive: boolean; lastTriggered?: string | null; failureCount: number }
 interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
 interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
-interface TableT { id: string; name: string; zone: string; seats: number; status: string; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
+interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null }
-interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[] }
+interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null }
 interface CategoryT { id: string; name: string }
-interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; permissionOverrides: string[] }
+interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null }
 interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null }
 
@@ -193,6 +197,19 @@ export default function DashboardPage() {
   const [confirmPinReset, setConfirmPinReset] = useState(false)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
+  // Triage ⑧ — več poslovalnic: preklopnik pogleda + CRUD lokacij + dodelitev lokacije zaposlenemu
+  const [viewLoc, setViewLoc] = useState('')
+  const viewLocRef = useRef('')
+  const firstRunLoc = useRef(true)
+  const [locList, setLocList] = useState<LocationRowT[]>([])
+  const [locDialogOpen, setLocDialogOpen] = useState(false)
+  const [locEditing, setLocEditing] = useState<LocationRowT | null>(null)
+  const [locForm, setLocForm] = useState<{ name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string; timezone: string; currency: string; isActive: boolean }>({ name: '', code: '', address: '', city: '', postCode: '', country: 'SI', phone: '', email: '', premisesId: '', timezone: 'Europe/Ljubljana', currency: 'EUR', isActive: true })
+  const [locSaving, setLocSaving] = useState(false)
+  const [locNotice, setLocNotice] = useState('')
+  const [confirmLocToggle, setConfirmLocToggle] = useState<LocationRowT | null>(null)
+  const [empLoc, setEmpLoc] = useState('')
+
   // Dostava (issue #2)
   const [deliveryOrders, setDeliveryOrders] = useState<DeliveryOrderT[]>([])
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneT[]>([])
@@ -224,8 +241,8 @@ export default function DashboardPage() {
       const soft = async <T,>(p: Promise<T>): Promise<T | undefined> => {
         try { return await p } catch (e) { if ((e as Error).message === 'unauthorized') throw e; return undefined }
       }
-      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl] = await Promise.all([
-        soft(api<{ stats: Stats }>('/api/dashboard')),
+      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc] = await Promise.all([
+        soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
         soft(api<{ queue: OrderT[] }>('/api/kitchen')),
@@ -251,6 +268,7 @@ export default function DashboardPage() {
         soft(api<{ devices: DeviceT[] }>('/api/devices')),
         soft(api<{ entries: AuditT[] }>('/api/audit')),
         soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')),
+        soft(api<{ locations: LocationRowT[] }>('/api/locations')),
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
@@ -290,8 +308,18 @@ export default function DashboardPage() {
       if (dv) setDevices(dv.devices)
       if (au) setAuditLog(au.entries)
       if (dl) { setDeliveryOrders(dl.orders); setDeliveryZones(dl.zones); setDeliveryIntegrations(dl.platformIntegrations) }
+      if (lc) setLocList(lc.locations)
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
+
+  // Triage ⑧ — preklop lokacije v glavi: takojšen refetch Pregled statistike
+  useEffect(() => {
+    if (firstRunLoc.current) { firstRunLoc.current = false; return }
+    viewLocRef.current = viewLoc
+    api<{ stats: Stats }>(`/api/dashboard${viewLoc ? `?locationId=${viewLoc}` : ''}`)
+      .then((d) => setStats(d.stats))
+      .catch(() => { /* stabilnost — naslednji load osveži */ })
+  }, [viewLoc])
 
   useEffect(() => {
     load()
@@ -695,6 +723,29 @@ export default function DashboardPage() {
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
 
+  /** Triage ⑧ — lokacije: shrani (POST nova / PATCH urejanje) */
+  async function saveLocation() {
+    setLocSaving(true); setLocNotice('')
+    try {
+      if (locEditing) {
+        await api(`/api/locations/${locEditing.id}`, { method: 'PATCH', body: JSON.stringify(locForm) })
+      } else {
+        await api('/api/locations', { method: 'POST', body: JSON.stringify(locForm) })
+      }
+      setLocDialogOpen(false)
+      await load()
+    } catch (err) { setLocNotice(`Napaka: ${(err as Error).message}`) } finally { setLocSaving(false) }
+  }
+
+  /** Triage ⑧ — lokacije: aktivacija/deaktivacija (podatki ostanejo) */
+  async function toggleLocationActive(l: LocationRowT) {
+    setConfirmLocToggle(null)
+    try {
+      await api(`/api/locations/${l.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !l.isActive }) })
+      await load()
+    } catch (err) { alert(`Napaka: ${(err as Error).message}`) }
+  }
+
   /* ── Employee Control Center akcije ── */
 
   function openEmployee(e: EmployeeT) {
@@ -704,6 +755,7 @@ export default function DashboardPage() {
     setEmpActive(e.active)
     setEmpPin('')
     setEmpNotice('')
+    setEmpLoc(e.locationId || '')
   }
 
   async function patchEmployee(payload: Record<string, unknown>, okMsg: string) {
@@ -759,7 +811,12 @@ export default function DashboardPage() {
     .filter((g) => g.items.length > 0)
   // cone dinamično iz podatkov (produkcija: main/bar/patio/private; rekonstrukcija: Glavna dvorana/Bar/Terasa)
   const ZONE_LABELS: Record<string, string> = { main: 'Glavna dvorana', bar: 'Bar', patio: 'Terasa', private: 'Zasebna soba' }
-  const zones = [...new Set(tables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
+  // Triage ⑧ — pogledi: preklopnik filtrira sezname (viri brez locationId ostanejo vidni)
+  const viewTables = filterByLocation(tables, viewLoc)
+  const viewOrders = filterByLocation(orders, viewLoc)
+  const viewKitchen = filterByLocation(kitchen, viewLoc)
+  const viewEmployees = filterByLocation(employees, viewLoc)
+  const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
 
   const upcomingRes = reservations
     .filter((r) => new Date(r.reservedAt).getTime() >= Date.now() - 36e5 && r.status !== 'CANCELLED')
@@ -789,7 +846,22 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.42.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">{APP_VERSION}</Badge>
+            {/* Triage ⑧ — pogledi: preklopnik lokacije za centralne vloge (OWNER/ADMIN) */}
+            {isCentralUIRole(user?.role) && locList.length > 0 && (
+              <Select value={viewLoc || 'all'} onValueChange={(v) => setViewLoc(v === 'all' ? '' : v)}>
+                <SelectTrigger className="h-8 w-[120px] sm:w-[190px] gap-1.5 text-xs" aria-label="Pogled — izbira lokacije">
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Vse lokacije</SelectItem>
+                  {locList.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? ' (neaktivna)' : ''}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -854,6 +926,11 @@ export default function DashboardPage() {
           </TabsList>
 
           <TabsContent value="pregled" className="space-y-6">
+            {viewLoc && (
+              <p className="text-sm text-stone-500 flex items-center gap-1.5" aria-live="polite">
+                <MapPin className="w-4 h-4 text-emerald-700" /> Pogled: {locList.find((l) => l.id === viewLoc)?.name || 'Lokacija'}
+              </p>
+            )}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 ['Aktivna naročila', stats?.activeOrders, ClipboardList], ['Zasedene mize', stats?.openTables, Utensils],
@@ -872,7 +949,7 @@ export default function DashboardPage() {
               <CardHeader><CardTitle className="text-base">Aktivna naročila</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {orders.slice(0, 6).map((o) => (
+                  {viewOrders.slice(0, 6).map((o) => (
                     <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-semibold truncate">{o.table?.name || o.type}</p>
@@ -884,7 +961,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ))}
-                  {orders.length === 0 && <p className="text-sm text-stone-500">Ni aktivnih naročil.</p>}
+                  {viewOrders.length === 0 && <p className="text-sm text-stone-500">Ni aktivnih naročil.</p>}
                 </div>
               </CardContent>
             </Card>
@@ -892,7 +969,7 @@ export default function DashboardPage() {
 
           <TabsContent value="mize" className="space-y-6">
             {zones.map((zone) => {
-              const zt = tables.filter((t) => t.zone === zone)
+              const zt = viewTables.filter((t) => t.zone === zone)
               if (zt.length === 0) return null
               return (
                 <section key={zone} className="space-y-3">
@@ -983,7 +1060,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader><CardTitle className="text-base">Vsa aktivna naročila</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
-                {orders.map((o) => (
+                {viewOrders.map((o) => (
                   <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-semibold">{o.table?.name || o.type} · {o.guests} osebi</p>
@@ -1002,13 +1079,13 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))}
-                {orders.length === 0 && <p className="text-sm text-stone-500">Ni aktivnih naročil.</p>}
+                {viewOrders.length === 0 && <p className="text-sm text-stone-500">Ni aktivnih naročil.</p>}
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="kuhinja" className="space-y-4">
-            {kitchen.map((o) => (
+            {viewKitchen.map((o) => (
               <Card key={o.id}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2 flex-wrap">
@@ -1040,7 +1117,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             ))}
-            {kitchen.length === 0 && <p className="text-sm text-stone-500">Kuhinjska vrsta je prazna. 🎉</p>}
+            {viewKitchen.length === 0 && <p className="text-sm text-stone-500">Kuhinjska vrsta je prazna. 🎉</p>}
           </TabsContent>
 
           <TabsContent value="meni" className="space-y-4">
@@ -1168,7 +1245,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="mnenja">
-            <FeedbackTab feedback={feedback} tables={tables.map((t) => ({ id: t.id, name: t.name }))} />
+            <FeedbackTab feedback={feedback} tables={viewTables.map((t) => ({ id: t.id, name: t.name }))} />
           </TabsContent>
 
           <TabsContent value="dostava">
@@ -1240,7 +1317,7 @@ export default function DashboardPage() {
                 {canManage && <span className="text-xs text-stone-400 hidden sm:inline">klikni profil za urejanje</span>}
               </CardHeader>
               <CardContent className="grid gap-2 sm:grid-cols-2">
-                {employees.map((e) => (
+                {viewEmployees.map((e) => (
                   <button
                     key={e.id}
                     onClick={() => canManage && openEmployee(e)}
@@ -1250,6 +1327,9 @@ export default function DashboardPage() {
                     <div className="min-w-0">
                       <p className="font-medium truncate">{e.name}{!e.active && <span className="ml-1.5 text-xs text-red-600">(neaktiven)</span>}</p>
                       <p className="text-xs text-stone-500 truncate">{e.email}</p>
+                      {locList.find((l) => l.id === e.locationId)?.name && (
+                        <p className="text-[11px] text-stone-400 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {locList.find((l) => l.id === e.locationId)?.name}</p>
+                      )}
                       {(e.permissionOverrides?.length || 0) > 0 && (
                         <p className="text-[11px] text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {e.permissionOverrides.length} dovoljenj</p>
                       )}
@@ -1326,21 +1406,48 @@ export default function DashboardPage() {
             </Card>
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacije</CardTitle></CardHeader>
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacije</CardTitle>
+                  {hasPerm('settings.manage') && (
+                    <Button size="sm" variant="outline" className="gap-1 h-8" onClick={() => { setLocEditing(null); setLocForm({ name: '', code: '', address: '', city: '', postCode: '', country: 'SI', phone: '', email: '', premisesId: '', timezone: 'Europe/Ljubljana', currency: 'EUR', isActive: true }); setLocNotice(''); setLocDialogOpen(true) }}>
+                      <Plus className="w-3.5 h-3.5" /> Nova lokacija
+                    </Button>
+                  )}
+                </CardHeader>
                 <CardContent className="space-y-2">
-                  {locStats.length === 0 && <p className="text-sm text-stone-500">Ni lokacij.</p>}
-                  {locStats.map((l) => (
-                    <div key={l.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{l.name}</p>
-                        <p className="text-xs text-stone-500">{l.tables} miz · {l.employees} zaposlenih · {l.orders} naročil skupaj</p>
+                  {locList.length === 0 && locStats.length === 0 && <p className="text-sm text-stone-500">Ni lokacij.</p>}
+                  {(locList.length > 0 ? locList : locStats.map((s) => ({ id: s.id, name: s.name, code: '', address: '', city: '', postCode: '', country: '', phone: '', email: '', premisesId: '', timezone: '', currency: '', isActive: true }))).map((l) => {
+                    const st = locStats.find((s) => s.id === l.id)
+                    return (
+                      <div key={l.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${l.isActive ? 'border-stone-200 bg-white' : 'border-stone-200 bg-stone-50'}`}>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">
+                            {l.name}
+                            {!l.isActive && <Badge variant="outline" className="ml-1.5 text-[10px]">neaktivna</Badge>}
+                          </p>
+                          <p className="text-xs text-stone-500 truncate">
+                            {st ? `${st.tables} miz · ${st.employees} zaposlenih · ${st.orders} naročil skupaj` : [l.city, l.country].filter(Boolean).join(' · ') || l.code}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 flex items-center gap-1.5">
+                          <div>
+                            <p className="font-bold">{st ? fmtEUR(st.todayRevenue) : '—'}</p>
+                            <p className="text-xs text-stone-400">danes {st ? st.todayOrders : '—'} naročil</p>
+                          </div>
+                          {hasPerm('settings.manage') && (
+                            <div className="flex flex-col gap-0.5">
+                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Uredi ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId, timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocNotice(''); setLocDialogOpen(true) }}>
+                                <Settings className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={l.isActive ? `Deaktiviraj ${l.name}` : `Aktiviraj ${l.name}`} onClick={() => setConfirmLocToggle(l)}>
+                                <Power className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-bold">{fmtEUR(l.todayRevenue)}</p>
-                        <p className="text-xs text-stone-400">danes {l.todayOrders} naročil</p>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </CardContent>
               </Card>
               <Card>
@@ -1426,7 +1533,7 @@ export default function DashboardPage() {
 
       {/* ── Novo naročilo ── */}
       <Dialog open={!!newOrderTable} onOpenChange={(v) => !v && setNewOrderTable(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader><DialogTitle>Novo naročilo — {newOrderTable?.name}</DialogTitle></DialogHeader>
           <ScrollArea className="max-h-[50vh] pr-2">
             <div className="space-y-4">
@@ -1799,7 +1906,7 @@ export default function DashboardPage() {
 
       {/* ── EMPLOYEE CONTROL CENTER (R265) ── */}
       <Dialog open={!!editEmployee} onOpenChange={(v) => { if (!v) { setEditEmployee(null); setEmpNotice('') } }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><UserCog className="w-5 h-5" /> {editEmployee?.name}</DialogTitle>
           </DialogHeader>
@@ -1844,9 +1951,23 @@ export default function DashboardPage() {
                       </label>
                     ))}
                   </div>
-                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={empSaving} onClick={() => patchEmployee({ permissionOverrides: empPerms, role: empRole, status: empActive ? 'active' : 'inactive' }, 'Shranjeno ✓')}>
+                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={empSaving} onClick={() => patchEmployee({ permissionOverrides: empPerms, role: empRole, status: empActive ? 'active' : 'inactive', ...(empLoc ? { locationId: empLoc } : {}) }, 'Shranjeno ✓')}>
                     {empSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani profil'}
                   </Button>
+                </div>
+
+                {/* Triage ⑧ — pravice po lokaciji: dodelitev poslovalnice zaposlenemu */}
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacija (poslovalnica)</Label>
+                  <Select value={empLoc} onValueChange={setEmpLoc}>
+                    <SelectTrigger aria-label="Lokacija zaposlenega"><SelectValue placeholder="(nedodeljeno)" /></SelectTrigger>
+                    <SelectContent>
+                      {locList.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? ' — neaktivna' : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-stone-400">Dostop do podatkov je vezan na lokacijo — sprememba zahteva ponovno prijavo.</p>
                 </div>
 
                 <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1886,6 +2007,108 @@ export default function DashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Triage ⑧ — lokacije: nova / urejanje ── */}
+      <Dialog open={locDialogOpen} onOpenChange={(v) => !v && setLocDialogOpen(false)}>
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><MapPin className="w-5 h-5" /> {locEditing ? `Uredi — ${locEditing.name}` : 'Nova lokacija'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {locNotice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${locNotice.startsWith('Napaka') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{locNotice}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Ime *</Label>
+                <Input value={locForm.name} onChange={(e) => setLocForm((f) => ({ ...f, name: e.target.value }))} placeholder="npr. Maribor center" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Koda</Label>
+                <Input value={locForm.code} onChange={(e) => setLocForm((f) => ({ ...f, code: e.target.value.toUpperCase().slice(0, 20) }))} placeholder="samodejno iz imena" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Naslov</Label>
+              <Input value={locForm.address} onChange={(e) => setLocForm((f) => ({ ...f, address: e.target.value }))} placeholder="Ulica in hišna številka" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>Mesto</Label>
+                <Input value={locForm.city} onChange={(e) => setLocForm((f) => ({ ...f, city: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Poštna št.</Label>
+                <Input value={locForm.postCode} onChange={(e) => setLocForm((f) => ({ ...f, postCode: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Država</Label>
+                <Select value={locForm.country} onValueChange={(v) => setLocForm((f) => ({ ...f, country: v }))}>
+                  <SelectTrigger aria-label="Država"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SI">SI — Slovenija</SelectItem>
+                    <SelectItem value="HR">HR — Hrvaška</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Telefon</Label>
+                <Input value={locForm.phone} onChange={(e) => setLocForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+386 …" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>E-pošta</Label>
+                <Input value={locForm.email} onChange={(e) => setLocForm((f) => ({ ...f, email: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>FURS poslovni prostor</Label>
+                <Input value={locForm.premisesId} onChange={(e) => setLocForm((f) => ({ ...f, premisesId: e.target.value.toUpperCase().slice(0, 40) }))} placeholder="npr. BLG002" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Valuta</Label>
+                <Input value={locForm.currency} onChange={(e) => setLocForm((f) => ({ ...f, currency: e.target.value.toUpperCase().slice(0, 3) }))} />
+              </div>
+            </div>
+            {locEditing && (
+              <div className="flex items-center justify-between rounded-lg border border-stone-200 p-2.5">
+                <div className="pr-2">
+                  <Label className="text-sm">Aktivna</Label>
+                  <p className="text-xs text-stone-400">Neaktivna lokacija izgine iz pogledov; podatki (zgodovina, FURS računi) ostanejo.</p>
+                </div>
+                <Switch checked={locForm.isActive} onCheckedChange={(v) => setLocForm((f) => ({ ...f, isActive: v }))} />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLocDialogOpen(false)}>Prekliči</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={locSaving || !locForm.name.trim()} onClick={() => void saveLocation()}>
+              {locSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani lokacijo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Triage ⑧ — potrditev aktivacije/deaktivacije lokacije ── */}
+      <AlertDialog open={!!confirmLocToggle} onOpenChange={(v) => !v && setConfirmLocToggle(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmLocToggle?.isActive ? `Deaktiviram ${confirmLocToggle?.name}?` : `Aktiviram ${confirmLocToggle?.name}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmLocToggle?.isActive
+                ? 'Neaktivna lokacija izgine iz pogledov in preklopnika. Podatki (zgodovina, FURS računi, zaposleni) ostanejo nespremenjeni.'
+                : 'Lokacija bo spet vidna v pogledih in na voljo za delo.'}
+              Akcija se zapiše v revijo sprememb.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Prekliči</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmLocToggle && void toggleLocationActive(confirmLocToggle)}>
+              {confirmLocToggle?.isActive ? 'Deaktiviraj' : 'Aktiviraj'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── SENSITIVE ACTION UX (R266) — potrditve z razlago ── */}
       <AlertDialog open={confirmPinReset} onOpenChange={setConfirmPinReset}>

@@ -89,6 +89,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     pinNote = `Zadnje številke: …${pin.slice(-2)}`
   }
 
+  // Triage ⑧ — pravice po lokaciji: dodelitev zaposlenega poslovalnici.
+  // Lokacija določa dostop do podatkov (fail-closed scoping), zato je sprememba
+  // občutljiva: + sessionVersion (žeton nosi staro lokacijo → ponovna prijava).
+  if (body.locationId !== undefined) {
+    const locId = String(body.locationId || '').trim()
+    if (!locId) return fail('Lokacija je obvezna — podaj locationId.', 400)
+    if (locId !== target.locationId) {
+      const loc = await db.location.findUnique({ where: { id: locId }, select: { id: true, name: true, isActive: true } })
+      if (!loc) return fail('Lokacija ne obstaja.', 404)
+      data.locationId = locId
+      data.sessionVersion = (Number(target.sessionVersion) || 0) + 1
+      sensitive.push(`sprememba lokacije v ${loc.name}${loc.isActive ? '' : ' (NEAKTIVNA)'}`)
+    }
+  }
+
   if (Object.keys(data).length === 0) return fail('Nič za posodobiti.', 400)
 
   const updated = await db.employee.update({ where: { id }, data })
