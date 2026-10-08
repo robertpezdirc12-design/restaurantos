@@ -71,7 +71,7 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.44.0'
+export const APP_VERSION = '1.45.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
 
 // ---------- Issue #4 §1 — centralni resource/location authorization ----------
