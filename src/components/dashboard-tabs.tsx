@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -2976,6 +2976,317 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
           )}
           <DialogFooter className="sm:items-center">
             <Button variant="outline" onClick={() => setDetail(null)}>Zapri</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+    </div>
+  )
+}
+
+/* ─────────────────────────── ODPAD (issue #1, triage ④) ─────────────────────────── */
+
+interface WasteT {
+  id: string
+  inventoryItemId: string
+  itemName: string
+  unit: string
+  quantity: number
+  reason: string
+  reasonLabel: string
+  note: string
+  costPerUnit: number
+  totalCost: number
+  reversedAt: string | null
+  recordedByUserId: string | null
+  createdAt: string
+}
+
+interface WasteReasonStatT { reason: string; label: string; count: number; totalCents: number }
+interface WasteStatsT { count: number; totalCents: number; byReason: WasteReasonStatT[]; topReason: string | null }
+
+/** Kanonični razlogi (v ravnovesju z src/lib/waste.ts) */
+const WASTE_REASON_OPTIONS: { value: string; label: string }[] = [
+  { value: 'pokvarjeno', label: 'Pokvarjeno' },
+  { value: 'preteklo', label: 'Pretekel rok' },
+  { value: 'priprava', label: 'Napaka pri pripravi' },
+  { value: 'razlitje', label: 'Razlitje / padec' },
+  { value: 'hlajenje', label: 'Okvara hladilne verige' },
+  { value: 'reklamacija', label: 'Vrnjena postavka (reklamacija)' },
+  { value: 'drugo', label: 'Drugo' },
+]
+const wasteReasonBadgeCls = (reason: string): string => ({
+  pokvarjeno: 'border-red-300 bg-red-50 text-red-800',
+  preteklo: 'border-amber-300 bg-amber-50 text-amber-800',
+  priprava: 'border-orange-300 bg-orange-50 text-orange-800',
+  razlitje: 'border-stone-300 bg-stone-50 text-stone-700',
+  hlajenje: 'border-cyan-200 bg-cyan-50 text-cyan-800',
+  reklamacija: 'border-purple-200 bg-purple-50 text-purple-800',
+  drugo: 'border-stone-300 bg-stone-50 text-stone-700',
+}[reason] ?? 'border-stone-300 bg-stone-50 text-stone-700')
+
+const wasteNum = (s: string): number => {
+  const n = Number(String(s).trim().replace(',', '.'))
+  return Number.isFinite(n) ? n : NaN
+}
+
+/** Issue #1 (triage ④): odpad hrane — evidenca (zaloga ↓, StockTransaction WASTE), statistika po razlogih, reverzija pomote. */
+export function OdpadTab({ canManage }: { canManage: boolean }) {
+  const [records, setRecords] = useState<WasteT[]>([])
+  const [stats, setStats] = useState<WasteStatsT | null>(null)
+  const [items, setItems] = useState<InventoryT[]>([])
+  const [days, setDays] = useState('30')
+  const [reasonFilter, setReasonFilter] = useState('vsi')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [okMsg, setOkMsg] = useState('')
+
+  // nov odpad
+  const [newOpen, setNewOpen] = useState(false)
+  const [form, setForm] = useState({ itemId: '', quantity: '', reason: '', note: '' })
+
+  async function load(d = days, r = reasonFilter) {
+    setLoading(true)
+    setErr('')
+    try {
+      const params = new URLSearchParams({ days: d })
+      if (r && r !== 'vsi') params.set('reason', r)
+      const [w, inv] = await Promise.all([
+        api<{ records: WasteT[]; stats: WasteStatsT }>(`/api/waste?${params.toString()}`),
+        api<{ inventory: InventoryT[] }>('/api/inventory'),
+      ])
+      setRecords(w.records)
+      setStats(w.stats)
+      setItems(inv.inventory)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  async function submitNew() {
+    const sel = items.find((i) => i.id === form.itemId)
+    if (!sel) {
+      setErr('Izberi artikel zaloge.')
+      return
+    }
+    const qty = wasteNum(form.quantity)
+    if (Number.isNaN(qty) || qty <= 0) {
+      setErr('Količina odpada mora biti število večje od 0.')
+      return
+    }
+    if (!form.reason) {
+      setErr('Izberi razlog odpada.')
+      return
+    }
+    if (qty > sel.qty) {
+      setErr(`Na zalogi je samo ${sel.qty} ${sel.unit} — količino najprej popravi v Zalogah.`)
+      return
+    }
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ record: { id: string; quantity: number; totalCost: number; newQty?: number }; replayed: boolean }>('/api/waste', {
+        method: 'POST',
+        body: JSON.stringify({ itemId: form.itemId, quantity: qty, reason: form.reason, note: form.note || undefined, idempotencyKey: newOperationId() }),
+      })
+      const idx = items.find((i) => i.id === form.itemId)
+      const newQty = d.record.newQty ?? (idx ? idx.qty - d.record.quantity : undefined)
+      setOkMsg(d.replayed
+        ? 'Odpad je bil že evidentiran (replay) — zaloga ni bila ponovno odšteta.'
+        : `Odpad evidentiran: ${d.record.quantity} ${idx?.unit ?? ''} × ${fmtEUR(idx?.cost ?? 0)} = ${fmtEUR(d.record.totalCost)}${idx && newQty !== undefined ? ` · zaloga ${idx.qty} → ${newQty}` : ''}`)
+      setNewOpen(false)
+      setForm({ itemId: '', quantity: '', reason: '', note: '' })
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function reverseRecord(w: WasteT) {
+    if (!window.confirm(`Povrnem odpad ${w.itemName} (${w.quantity} ${w.unit})? Količina se vrne na zalogo.`)) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api(`/api/waste/${w.id}/reverse`, { method: 'POST' })
+      setOkMsg(`Odpad povrnjen — ${w.quantity} ${w.unit} ${w.itemName} je nazaj na zalogi.`)
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const selected = items.find((i) => i.id === form.itemId)
+  const selQty = wasteNum(form.quantity)
+  const previewCost = selected && Number.isFinite(selQty) && selQty > 0 ? Math.round((Math.round(selQty * 1000) * Math.round(selected.cost * 100)) / 1000) / 100 : null
+  const selOver = selected && Number.isFinite(selQty) && selQty > selected.qty
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 flex-wrap">
+          <Select value={days} onValueChange={(v) => { setDays(v); void load(v, reasonFilter) }}>
+            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Zadnjih 7 dni</SelectItem>
+              <SelectItem value="30">Zadnjih 30 dni</SelectItem>
+              <SelectItem value="90">Zadnjih 90 dni</SelectItem>
+              <SelectItem value="365">Zadnjih 365 dni</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={reasonFilter} onValueChange={(v) => { setReasonFilter(v); void load(days, v) }}>
+            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vsi">Vsi razlogi</SelectItem>
+              {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {canManage && (
+          <Button onClick={() => { setErr(''); setOkMsg(''); setNewOpen(true) }} className="gap-1.5">
+            <Plus className="w-4 h-4" /> Nov odpad
+          </Button>
+        )}
+      </div>
+
+      {err && <p className="text-sm text-red-600">{err}</p>}
+      {okMsg && <p className="text-sm text-emerald-700">{okMsg}</p>}
+
+      {stats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">Odpad v obdobju</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-red-700">{fmtEUR(stats.totalCents / 100)}</p><p className="text-xs text-stone-500">{stats.count} zapisov</p></CardContent>
+          </Card>
+          {stats.byReason.slice(0, 3).map((r) => (
+            <Card key={r.reason}>
+              <CardHeader className="pb-2"><CardDescription className="text-xs">{r.label}</CardDescription></CardHeader>
+              <CardContent><p className="text-xl font-semibold">{fmtEUR(r.totalCents / 100)}</p><p className="text-xs text-stone-500">{r.count} zapisov</p></CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Zapisi odpada</CardTitle>
+          <CardDescription className="text-xs">Odpad odšteje zalogo in se vodi po razlogih; pomota se lahko povrne (zaloga se vrne).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam …</p>
+          ) : records.length === 0 ? (
+            <p className="text-sm text-stone-500">Ni zapisov odpada v izbranem obdobju.</p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-stone-500 border-b">
+                    <th className="px-3 py-2 font-medium">Datum</th>
+                    <th className="px-3 py-2 font-medium">Artikel</th>
+                    <th className="px-3 py-2 font-medium text-right">Količina</th>
+                    <th className="px-3 py-2 font-medium">Razlog</th>
+                    <th className="px-3 py-2 font-medium text-right">Strošek</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    {canManage && <th className="px-3 py-2"><span className="sr-only">Dejanja</span></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((w) => (
+                    <tr key={w.id} className="border-b last:border-0">
+                      <td className="px-3 py-2 text-xs text-stone-500 whitespace-nowrap">{new Date(w.createdAt).toLocaleString('sl-SI')}</td>
+                      <td className="px-3 py-2">
+                        <span className="font-medium">{w.itemName}</span>
+                        {w.note && <span className="block text-xs text-stone-500 max-w-56 truncate" title={w.note}>{w.note}</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{w.quantity} {w.unit}</td>
+                      <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${wasteReasonBadgeCls(w.reason)}`}>{w.reasonLabel}</Badge></td>
+                      <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{fmtEUR(w.totalCost)}</td>
+                      <td className="px-3 py-2">
+                        {w.reversedAt ? <Badge variant="outline" className="text-xs border-stone-300 bg-stone-50 text-stone-600">Povrnjen</Badge> : <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-800">V veljavi</Badge>}
+                      </td>
+                      {canManage && (
+                        <td className="px-3 py-2 text-right">
+                          {!w.reversedAt && (
+                            <Button variant="outline" size="sm" disabled={busy} onClick={() => void reverseRecord(w)}>Povrni</Button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Nov odpad */}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Evidentiraj odpad</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="waste-item">Artikel</Label>
+              <Select value={form.itemId} onValueChange={(v) => setForm({ ...form, itemId: v })}>
+                <SelectTrigger id="waste-item"><SelectValue placeholder="Izberi artikel …" /></SelectTrigger>
+                <SelectContent>
+                  {items.map((i) => (
+                    <SelectItem key={i.id} value={i.id}>{i.name} ({i.qty} {i.unit} na zalogi)</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="waste-qty">Količina {selected ? `(${selected.unit})` : ''}</Label>
+                <Input id="waste-qty" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="npr. 0,5" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="waste-reason">Razlog</Label>
+                <Select value={form.reason} onValueChange={(v) => setForm({ ...form, reason: v })}>
+                  <SelectTrigger id="waste-reason"><SelectValue placeholder="Izberi razlog …" /></SelectTrigger>
+                  <SelectContent>
+                    {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="waste-note">Opomba (neobvezno)</Label>
+              <Input id="waste-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="npr. poškodovana embalaža" />
+            </div>
+            {selected && (
+              <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 space-y-0.5">
+                <p>Na zalogi: <strong>{selected.qty} {selected.unit}</strong> · cena: {fmtEUR(selected.cost)} / {selected.unit}</p>
+                {Number.isFinite(selQty) && selQty > 0 && previewCost !== null && (
+                  <p className={selOver ? 'text-red-700 font-medium' : ''}>
+                    Ocenjeni strošek odpada: <strong>{fmtEUR(previewCost)}</strong>
+                    {selOver ? ` — na zalogi je samo ${selected.qty} ${selected.unit}!` : ` · zaloga po odpadu: ${Math.round((selected.qty - selQty) * 1000) / 1000} ${selected.unit}`}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Prekliči</Button>
+            <Button onClick={() => void submitNew()} disabled={busy || !form.itemId || !form.reason || !form.quantity}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Evidentiraj
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
