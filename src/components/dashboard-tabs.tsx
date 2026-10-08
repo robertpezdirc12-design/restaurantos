@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus } from 'lucide-react'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -3286,6 +3286,423 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
             <Button variant="outline" onClick={() => setNewOpen(false)}>Prekliči</Button>
             <Button onClick={() => void submitNew()} disabled={busy || !form.itemId || !form.reason || !form.quantity}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Evidentiraj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+    </div>
+  )
+}
+
+/* ─────────────────────────── ČAKALNA LISTA (issue #1, triage ⑤) ─────────────────────────── */
+
+interface WaitlistEntryT {
+  id: string
+  guestName: string
+  guestPhone: string
+  partySize: number
+  quotedWaitMinutes: number
+  actualWaitMinutes: number
+  preferredArea: string
+  specialNeeds: string
+  notes: string
+  status: string
+  checkedInAt: string
+  notifiedAt: string | null
+  seatedAt: string | null
+  leftAt: string | null
+  tableId: string | null
+  tableNumber: number | null
+  locationId: string | null
+}
+
+interface WaitlistStatsT { waiting: number; notified: number; seated: number; left: number; waitingParty: number; avgActualWait: number; maxActualWait: number }
+
+interface TableLiteT { id: string; name: string; number: number; zone: string; seats: number; status: string }
+
+/** Slovenska n-tev "oseba" (v ravnovesju z src/lib/waitlist.ts) */
+const wlParty = (n: number): string => {
+  const v = Math.max(0, Math.floor(n))
+  if (v === 1) return '1 oseba'
+  if (v === 2) return '2 osebi'
+  if (v === 3 || v === 4) return `${v} osebe`
+  return `${v} oseb`
+}
+const wlMin = (s: string, now: number): number => {
+  const a = new Date(s).getTime()
+  return Number.isFinite(a) && now > a ? Math.floor((now - a) / 60_000) : 0
+}
+const wlDur = (m: number): string => {
+  const v = Math.max(0, Math.floor(m))
+  return v < 60 ? `${v} min` : `${Math.floor(v / 60)} h ${v % 60} min`
+}
+const wlStatusBadge = (status: string): { label: string; cls: string } => ({
+  waiting: { label: 'Čaka', cls: 'border-amber-300 bg-amber-50 text-amber-800' },
+  notified: { label: 'Obveščen', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  seated: { label: 'Usajen', cls: 'border-green-300 bg-green-50 text-green-800' },
+  left: { label: 'Odhod', cls: 'border-stone-300 bg-stone-50 text-stone-600' },
+}[status] ?? { label: status, cls: 'border-stone-300 bg-stone-50 text-stone-700' })
+
+/** Issue #1 (triage ⑤): čakalna lista — prijava → obvestilo → usaditev (zaklene mizo) / odhod + statistika. */
+export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
+  const [active, setActive] = useState<WaitlistEntryT[]>([])
+  const [finished, setFinished] = useState<WaitlistEntryT[]>([])
+  const [stats, setStats] = useState<WaitlistStatsT | null>(null)
+  const [tables, setTables] = useState<TableLiteT[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [okMsg, setOkMsg] = useState('')
+  const [tick, setTick] = useState(0) // živo osveževanje minut čakanja
+
+  // nova prijava
+  const [newOpen, setNewOpen] = useState(false)
+  const [form, setForm] = useState({ guestName: '', guestPhone: '', partySize: '2', quotedWaitMinutes: '15', preferredArea: '', specialNeeds: '', notes: '' })
+  // usaditev
+  const [seatFor, setSeatFor] = useState<WaitlistEntryT | null>(null)
+  const [seatTableId, setSeatTableId] = useState('')
+
+  async function load() {
+    setLoading(true)
+    setErr('')
+    try {
+      const [w, t] = await Promise.all([
+        api<{ active: WaitlistEntryT[]; finished: WaitlistEntryT[]; stats: WaitlistStatsT }>('/api/waitlist?days=1'),
+        api<{ tables: TableLiteT[] }>('/api/tables'),
+      ])
+      setActive(w.active)
+      setFinished(w.finished)
+      setStats(w.stats)
+      setTables(t.tables)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+    const iv = setInterval(() => setTick((x) => x + 1), 30_000) // žive minute brez ponovnega nalaganja
+    return () => clearInterval(iv)
+  }, [])
+
+  async function submitNew() {
+    const party = Number(form.partySize)
+    if (!form.guestName.trim()) {
+      setErr('Ime gosta je obvezno.')
+      return
+    }
+    if (!Number.isInteger(party) || party < 1) {
+      setErr('Število oseb mora biti celo število vsaj 1.')
+      return
+    }
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      await api('/api/waitlist', {
+        method: 'POST',
+        body: JSON.stringify({
+          guestName: form.guestName,
+          guestPhone: form.guestPhone || undefined,
+          partySize: party,
+          quotedWaitMinutes: form.quotedWaitMinutes === '' ? 0 : Number(form.quotedWaitMinutes.replace(',', '.')),
+          preferredArea: form.preferredArea || undefined,
+          specialNeeds: form.specialNeeds || undefined,
+          notes: form.notes || undefined,
+        }),
+      })
+      setOkMsg(`${form.guestName.trim()} dodan na čakalno listo.`)
+      setNewOpen(false)
+      setForm({ guestName: '', guestPhone: '', partySize: '2', quotedWaitMinutes: '15', preferredArea: '', specialNeeds: '', notes: '' })
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function transition(w: WaitlistEntryT, status: string, tableId?: string) {
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ entry: { id: string; status: string; actualWaitMinutes?: number | null } }>('/api/waitlist', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: w.id, status, tableId: tableId || undefined }),
+      })
+      if (status === 'notified') setOkMsg(`${w.guestName} obveščen — miza se pripravlja.`)
+      else if (status === 'seated') setOkMsg(`${w.guestName} usajen${d.entry.actualWaitMinutes !== null && d.entry.actualWaitMinutes !== undefined ? ` (čakal ${wlDur(d.entry.actualWaitMinutes)})` : ''}.`)
+      else setOkMsg(`${w.guestName} — odhod zabeležen.`)
+      setSeatFor(null)
+      setSeatTableId('')
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function seatEntry() {
+    if (!seatFor) return
+    if (!seatTableId) {
+      setErr('Izberi mizo za usaditev.')
+      return
+    }
+    await transition(seatFor, 'seated', seatTableId)
+  }
+
+  async function deleteEntry(w: WaitlistEntryT) {
+    if (!window.confirm(`Izbrišem vnos za ${w.guestName}? Uporabi samo za pomotoma vnesene vnose.`)) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api(`/api/waitlist?id=${encodeURIComponent(w.id)}`, { method: 'DELETE' })
+      setOkMsg(`Vnos za ${w.guestName} izbrisan.`)
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const nowMs = Date.now() + tick * 0 // tick sproži ponovni izris živih minut
+  const freeTables = tables.filter((t) => t.status !== 'OCCUPIED')
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="text-sm text-stone-600">
+          Gosti brez rezervacije: prijava → obvestilo, ko se miza pripravlja → usaditev (miza se samodejno zaklene) ali odhod.
+        </div>
+        {canManage && (
+          <Button onClick={() => { setErr(''); setOkMsg(''); setNewOpen(true) }} className="gap-1.5 shrink-0">
+            <Plus className="w-4 h-4" /> Nova prijava
+          </Button>
+        )}
+      </div>
+
+      {err && <p className="text-sm text-red-600">{err}</p>}
+      {okMsg && <p className="text-sm text-emerald-700">{okMsg}</p>}
+
+      {stats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">Trenutno čaka</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-amber-700">{stats.waiting}</p><p className="text-xs text-stone-500">{wlParty(stats.waitingParty)} na listo</p></CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">Obveščeni</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-emerald-700">{stats.notified}</p><p className="text-xs text-stone-500">miza se pripravlja</p></CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">Usajeni danes</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-green-700">{stats.seated}</p><p className="text-xs text-stone-500">{stats.left} odhodov</p></CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">Povprečno čakanje</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold">{wlDur(stats.avgActualWait)}</p><p className="text-xs text-stone-500">najdaljše {wlDur(stats.maxActualWait)}</p></CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Aktivna lista</CardTitle>
+          <CardDescription className="text-xs">FIFO po prijavi; rdeče = presežen napovedani čas.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam …</p>
+          ) : active.length === 0 ? (
+            <p className="text-sm text-stone-500">Ni gostov na čakalni listi.</p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-stone-500 border-b">
+                    <th className="px-3 py-2 font-medium">#</th>
+                    <th className="px-3 py-2 font-medium">Gost</th>
+                    <th className="px-3 py-2 font-medium text-right">Čakanje</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    {canManage && <th className="px-3 py-2 text-right"><span className="sr-only">Dejanja</span></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {active.map((w, i) => {
+                    const mins = wlMin(w.checkedInAt, nowMs)
+                    const over = w.quotedWaitMinutes > 0 && mins > w.quotedWaitMinutes
+                    const badge = wlStatusBadge(w.status)
+                    return (
+                      <tr key={w.id} className="border-b last:border-0 align-top">
+                        <td className="px-3 py-2 text-xs text-stone-400 font-medium">{i + 1}.</td>
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{w.guestName}</span>
+                          <span className="block text-xs text-stone-500">{wlParty(w.partySize)}{w.guestPhone ? ` · ${w.guestPhone}` : ''}{w.preferredArea ? ` · ${w.preferredArea}` : ''}</span>
+                          {(w.specialNeeds || w.notes) && (
+                            <span className="block text-xs text-stone-500 max-w-64 truncate" title={w.specialNeeds || w.notes}>ℹ {w.specialNeeds || w.notes}</span>
+                          )}
+                        </td>
+                        <td className={`px-3 py-2 text-right whitespace-nowrap ${over ? 'text-red-700 font-semibold' : ''}`}>
+                          {wlDur(mins)}
+                          <span className="block text-xs text-stone-400">napoved {w.quotedWaitMinutes > 0 ? `≈ ${w.quotedWaitMinutes} min` : '—'}</span>
+                        </td>
+                        <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
+                        {canManage && (
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              {w.status === 'waiting' && (
+                                <Button variant="outline" size="sm" disabled={busy} onClick={() => void transition(w, 'notified')} title="Obvesti gosta">
+                                  <Bell className="w-3.5 h-3.5" /> Obvesti
+                                </Button>
+                              )}
+                              <Button size="sm" disabled={busy} onClick={() => { setSeatFor(w); setSeatTableId('') }} title="Usadi gosta">
+                                <UserCheck className="w-3.5 h-3.5" /> Usadi
+                              </Button>
+                              <Button variant="outline" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Zabeležim odhod ${w.guestName}?`)) void transition(w, 'left') }}>
+                                Odšel
+                              </Button>
+                              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void deleteEntry(w)} aria-label={`Izbriši vnos ${w.guestName}`} title="Izbriši (samo pomota)">
+                                <Trash2 className="w-3.5 h-3.5 text-stone-400" />
+                              </Button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {finished.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Zaključeni (danes)</CardTitle>
+            <CardDescription className="text-xs">Usaditvi in odhodi iz zadnjih 24 h.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-stone-500 border-b">
+                    <th className="px-3 py-2 font-medium">Gost</th>
+                    <th className="px-3 py-2 font-medium text-right">Čakal</th>
+                    <th className="px-3 py-2 font-medium">Miza</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finished.map((w) => {
+                    const badge = wlStatusBadge(w.status)
+                    return (
+                      <tr key={w.id} className="border-b last:border-0">
+                        <td className="px-3 py-2 font-medium">{w.guestName} <span className="text-xs text-stone-400 font-normal">{wlParty(w.partySize)}</span></td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{w.status === 'seated' ? wlDur(w.actualWaitMinutes) : '—'}</td>
+                        <td className="px-3 py-2 text-xs text-stone-600">{w.tableNumber ? `Miza ${w.tableNumber}` : '—'}</td>
+                        <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Nova prijava */}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Nova prijava na čakalno listo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="wl-name">Ime gosta *</Label>
+                <Input id="wl-name" value={form.guestName} onChange={(e) => setForm({ ...form, guestName: e.target.value })} placeholder="npr. Družina Novak" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="wl-phone">Telefon (neobvezno)</Label>
+                <Input id="wl-phone" value={form.guestPhone} onChange={(e) => setForm({ ...form, guestPhone: e.target.value })} placeholder="041 234 567" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="wl-party">Število oseb</Label>
+                <Input id="wl-party" inputMode="numeric" value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="wl-quote">Napovedani čas (min)</Label>
+                <Input id="wl-quote" inputMode="numeric" value={form.quotedWaitMinutes} onChange={(e) => setForm({ ...form, quotedWaitMinutes: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="wl-area">Željeno območje (neobvezno)</Label>
+              <Input id="wl-area" value={form.preferredArea} onChange={(e) => setForm({ ...form, preferredArea: e.target.value })} placeholder="npr. terasa, znotraj, bar" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="wl-needs">Posebne potrebe (neobvezno)</Label>
+              <Input id="wl-needs" value={form.specialNeeds} onChange={(e) => setForm({ ...form, specialNeeds: e.target.value })} placeholder="npr. otroški stol, dostop invalidskih vozičkov" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="wl-notes">Opomba (neobvezno)</Label>
+              <Input id="wl-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="npr. proslava, miza za 8" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Prekliči</Button>
+            <Button onClick={() => void submitNew()} disabled={busy || !form.guestName.trim()}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj na listo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Usaditev */}
+      <Dialog open={!!seatFor} onOpenChange={(o) => !o && setSeatFor(null)}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Usadi {seatFor?.guestName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {seatFor && (
+              <p className="text-sm text-stone-600">
+                {wlParty(seatFor.partySize)} · čaka že <strong>{wlDur(wlMin(seatFor.checkedInAt, Date.now()))}</strong>
+                {seatFor.preferredArea ? ` · želi: ${seatFor.preferredArea}` : ''}
+              </p>
+            )}
+            <div className="space-y-1">
+              <Label htmlFor="wl-table">Miza</Label>
+              <Select value={seatTableId} onValueChange={setSeatTableId}>
+                <SelectTrigger id="wl-table"><SelectValue placeholder="Izberi prosto mizo …" /></SelectTrigger>
+                <SelectContent>
+                  {freeTables.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name} ({t.seats} mest · {t.zone}{t.status !== 'FREE' ? ` · ${t.status === 'RESERVED' ? 'rezervirana' : t.status === 'DIRTY' ? 'za čiščenje' : ''}` : ''})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {seatFor && freeTables.length === 0 && (
+                <p className="text-xs text-red-600">Ni prostih miz — najprej sprosti/zaključi mizo v pregledu miz.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSeatFor(null)}>Prekliči</Button>
+            <Button onClick={() => void seatEntry()} disabled={busy || !seatTableId}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />} Usadi
             </Button>
           </DialogFooter>
         </DialogContent>
