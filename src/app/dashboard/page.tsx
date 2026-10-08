@@ -43,12 +43,12 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
 } from '@/components/dashboard-tabs'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
@@ -154,6 +154,7 @@ export default function DashboardPage() {
   const [loyaltySel, setLoyaltySel] = useState<LoyaltyAccT | null>(null)
   const [redeemPoints, setRedeemPoints] = useState(0)
   const [parts, setParts] = useState<PayPart[]>([])
+  const [tipEur, setTipEur] = useState('')
   const [loyaltySummary, setLoyaltySummary] = useState<{ redeemedPoints: number; earnedPoints: number } | null>(null)
   const [pcfg, setPcfg] = useState<PrintConfig>({ target: 'browser', host: '192.168.1.100', port: 9100 })
   const [termMode, setTermMode] = useState<TerminalMode>('none')
@@ -386,6 +387,7 @@ export default function DashboardPage() {
     setRedeemPoints(0)
     setLoyaltyResults([])
     setParts([])
+    setTipEur('')
     setSelDiscountId('none')
     setLoyaltySummary(null)
     setBill(null)
@@ -482,6 +484,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           orderId: payingOrder.id,
           clientOperationId: newOperationId(),
+          ...(Number(tipEur) > 0 ? { tip: Number(tipEur) } : {}),
           ...(bodyParts.length === 1
             ? { type: bodyParts[0].type, terminal: bodyParts[0].terminal }
             : bodyParts.length > 1
@@ -683,6 +686,7 @@ export default function DashboardPage() {
     zaloge: 'inventory.manage', izmene: 'orders.pay', haccp: 'settings.manage',
     stroski: 'reports.view', zvestoba: 'reports.view', mnenja: 'reservations.manage',
     dostava: 'orders.create',
+    napitnine: 'reports.view',
     zaposleni: 'employees.manage', nastavitve: 'settings.manage',
   }
 
@@ -695,7 +699,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.35.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.36.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -747,7 +751,7 @@ export default function DashboardPage() {
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
@@ -1080,6 +1084,10 @@ export default function DashboardPage() {
             />
           </TabsContent>
 
+          <TabsContent value="napitnine">
+            <NapitnineTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
+          </TabsContent>
+
           <TabsContent value="zaposleni" className="space-y-4">
             {canManage && bootstrapLogin && (
               <Card className="border-amber-300 bg-amber-50">
@@ -1358,6 +1366,27 @@ export default function DashboardPage() {
                 )}
                 <div className="flex justify-between font-bold text-lg pt-1 border-t border-stone-200"><span>ZA PLAČATI</span><span>{fmtEUR(bill.totalDue)}</span></div>
               </div>
+
+              {/* Issue #1 (triage ①): napitnina pri plačilu — gre v Payment.tipAmount → dnevni bazen napitnin */}
+              {!invoice && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs shrink-0">Napitnina (EUR):</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    inputMode="decimal"
+                    value={tipEur}
+                    onChange={(e) => setTipEur(e.target.value)}
+                    placeholder="0.00"
+                    className="h-9 w-28"
+                    aria-label="Napitnina v EUR"
+                  />
+                  {Number(tipEur) > 0 && (
+                    <span className="text-xs text-stone-500">→ skupaj gost: <b>{fmtEUR(bill.totalDue + Number(tipEur))}</b></span>
+                  )}
+                </div>
+              )}
 
               {!invoice && (
                 <>

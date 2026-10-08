@@ -1146,3 +1146,24 @@ Stage Summary:
 - PRODUKCIJA = v1.35.0 (restaurantos-theta.vercel.app) z usklajeno Neon shemo — deploy rezidual issue #12 ZAPRT
 - Varnost: kompromitirani avto-deploy link prekinjen; za ponovno git-integracijo: instalirati Vercel GitHub App na robertpezdirc12-design racun (uporabniska akcija), sicer files-API deploy (dokazan vzorec, ~45 s)
 - Ostali reziduali issue #12: MFA enrollment realnih racunov (uporabnik — mandatory:true je ze aktivno), CI build secret (uporabnik), rotacija Neon/Vercel credencial (bilo v ukradenem env snapshotu — PRIPOROCAMO!)
+---
+Task ID: 16-main
+Agent: main (Z.ai Code)
+Task: Issue #1 (triage ①) — napitnine: dnevni bazen + distribucija po zaposlenih (v1.36.0)
+
+Work Log:
+- inventura po triage komentarju na #1: TipPool/TipDistribution modela obstajata (z hash-chain polji!) a sta popolnoma neuporabljena; napitnine so bile samo Payment.tipAmount + shift totals — distribucija po zaposlenih NI obstajala
+- src/lib/tips.ts (čista logika, 19 testov): splitTips (največji ostanek v centih — vsota delov je TOČNO skupni znesek), tipChainHash/verifyTipChain (tamper-evident veriga), dayRange (UTC dnevno okno), entryMinutesInRange (ure iz TimeEntry), parseTipMethod
+- API: GET /api/tips?date&locationId&method (predogled: zbirke cash/non-cash, ure po zaposlenih, predogled delitve, obstoječi bazen, zgodovina 14 dni) + POST /api/tips (zaključi dan → TipPool + TipDistribution v $transaction, hash-veriga po abecedi, audit TIP_POOL_CLOSE, zaščita EN bazen na dan+lokacijo → 409) + POST /api/tips/payout (ena/vse distribucije → paid + paidAt, pool → paid, audit TIP_PAYOUT, idempotentno)
+- pravice: GET = requireAuth, zaključek/izplačilo = employees.manage; fallback: brez evidentiranih ur → enakovredno (fallbackEqual označeno v odgovoru in auditu)
+- UI: nov tab Napitnine (TAB_PERM reports.view) — predogled delitve, zaključek dneva (employees.manage), distribucije z izplačilom po vrsti/vse, zgodovina bazenov; screenshot tool-results/napitnine-tab.png
+- plačilni dialog: NOV vnos "Napitnina (EUR)" → /api/furs body.tip (ADITIVNO: body.tip override sicer orderPre.tip, nazaj-kompatibilno)
+- E2E lokalno (golden path): naročilo → plačilo z napitnino 2.50 EUR (body.tip) → predogled 2.50 → zaključek (bazen, metoda equal-fallback pravilno označena) → ponoven zaključek 409 → brez žetona 401 → izplačilo (paid, pool=paid) → TIP_POOL_CLOSE v /api/audit ✓
+- agent-browser E2E: prijava → tab Napitnine viden (gating) → živi podatki (2,50 €, distribucija izplačano) → 0 konzolnih napak
+- verifikacijska veriga: bun test 139/139 (120+19 novih) · tsc 0 · eslint 0; APP_VERSION → 1.36.0
+- sanacija repozitorija: sandbox proces je chmoddal ~192 datoteke (samo mode 100644→100755) — povrnjeno na 644, drevo čisto
+
+Stage Summary:
+- Napitnine (triage ① iz #1) DOKONČANE: vnos pri plačilu → dnevni bazen → distribucija (ure/enako/točke) → izplačilo — vse na kanoničnem Payment toku, brez podvajanja (§18)
+- Ni shematskih sprememb (TipPool/TipDistribution obstajala); ni migracije na Neon
+- Naslednji sklopi po triage: ② nabava+prevzem ③ darilne kartice ④ odpad ⑤ čakalna lista ⑥ delovni čas (UI) ⑦ odpiralni čas; + i18n SL/HR in HR fiskalni adapter (potrebujeta spec research)

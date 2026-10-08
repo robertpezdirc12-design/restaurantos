@@ -134,7 +134,12 @@ export async function POST(req: NextRequest) {
   const subtotal = bill.subtotal
   const totalVat = bill.tax
   const total = bill.totalDue // znesek ZA PLAČANJE (po popustih)
-  const tip = num(orderPre.tip)
+  // Issue #1 (triage ①): napitnina lahko pride direktno s plačilom (body.tip, iz POS dialoga)
+  // ali je bila že nastavljena na naročilu (orderPre.tip) — aditivno, nazaj-kompatibilno.
+  const tip =
+    body?.tip !== undefined && body?.tip !== null && String(body.tip).trim() !== ''
+      ? Math.max(0, num(body.tip))
+      : num(orderPre.tip)
 
   // ── Zvestoba: unovčenje točk (validacija PRED transakcijo) ──
   const redeemPoints = Math.max(0, Math.round(Number(body?.loyaltyPointsUsed) || 0))

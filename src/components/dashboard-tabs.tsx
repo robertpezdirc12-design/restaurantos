@@ -1464,3 +1464,282 @@ export function AccountingExportCard() {
     </Card>
   )
 }
+
+/* ─────────────────────────── NAPITNINE (issue #1, triage ①) ─────────────────────────── */
+
+interface TipPreviewT {
+  date: string
+  locationId: string
+  method: string
+  fallbackEqual: boolean
+  totals: { totalCents: number; cashCents: number; nonCashCents: number; payments: number }
+  employees: { employeeId: string; employeeName: string; minutes: number; points: number; previewCents: number }[]
+  pool: {
+    id: string
+    date: string
+    totalTips: number
+    cashTips: number
+    cardTips: number
+    distributionMethod: string
+    status: string
+    TipDistribution: { id: string; employeeName: string; hoursWorked: number; points: number; amount: number; status: string; paidAt: string | null }[]
+  } | null
+  history: { id: string; date: string; totalTips: number; distributionMethod: string; status: string; employees: number; paid: number }[]
+}
+
+const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
+
+export function NapitnineTab({ locations, canManage }: { locations: { id: string; name: string }[]; canManage: boolean }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [locId, setLocId] = useState('')
+  const [method, setMethod] = useState<'hours' | 'equal' | 'points'>('hours')
+  const [data, setData] = useState<TipPreviewT | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    const id = locId || locations[0]?.id || ''
+    if (!id) return
+    let alive = true
+    ;(async () => {
+      setBusy(true)
+      setErr('')
+      try {
+        const d = await api<TipPreviewT>(`/api/tips?date=${date}&locationId=${id}&method=${method}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [date, locId, method, locations.length])
+
+  const closeDay = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await api('/api/tips', { method: 'POST', body: JSON.stringify({ date, locationId: locId || locations[0]?.id, method }) })
+      await new Promise((r) => setTimeout(r, 150)) // oddih pred osvežitvijo
+      setData(await api<TipPreviewT>(`/api/tips?date=${date}&locationId=${locId || locations[0]?.id}&method=${method}`))
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const payout = async (distributionId?: string) => {
+    if (!data?.pool) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api('/api/tips/payout', { method: 'POST', body: JSON.stringify({ poolId: data.pool.id, distributionId }) })
+      setData(await api<TipPreviewT>(`/api/tips?date=${date}&locationId=${locId || locations[0]?.id}&method=${method}`))
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const t = data?.totals
+  const pool = data?.pool ?? null
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-1.5"><HeartHandshake className="w-4 h-4" /> Napitnine — dnevni bazen</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-stone-500">Napitnine iz plačil (Payment.tipAmount) se za izbrani dan zaprejo v bazen in razdelijo zaposlenim po izbrani osnovi. Delitev v centih je točna (brez izgube centov), distribucije so hash-verižene (nespremenljive), izplačila so revidirana. En bazen na dan + lokacijo.</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Dan</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Lokacija</Label>
+              <Select value={locId || undefined} onValueChange={setLocId}>
+                <SelectTrigger><SelectValue placeholder={locations[0]?.name || '—'} /></SelectTrigger>
+                <SelectContent>
+                  {locations.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Osnova delitve</Label>
+              <Select value={method} onValueChange={(v) => setMethod(v as 'hours' | 'equal' | 'points')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hours">Po urah (izmene)</SelectItem>
+                  <SelectItem value="equal">Enakovredno</SelectItem>
+                  <SelectItem value="points">Po točkah (kmalu)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {t && (
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <p className="text-xs text-stone-500">Zbrane napitnine</p>
+                <p className="text-lg font-bold">{fmtEUR(t.totalCents / 100)}</p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <p className="text-xs text-stone-500">Gotovina</p>
+                <p className="text-lg font-semibold">{fmtEUR(t.cashCents / 100)}</p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <p className="text-xs text-stone-500">Kartica/druge</p>
+                <p className="text-lg font-semibold">{fmtEUR(t.nonCashCents / 100)}</p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <p className="text-xs text-stone-500">Plačila z napitnino</p>
+                <p className="text-lg font-semibold">{t.payments}</p>
+              </div>
+            </div>
+          )}
+          {data?.fallbackEqual && (
+            <p className="text-xs text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Za ta dan ni evidentiranih ur (izmen) — delitev po urah je samodejno padla na enakovredno.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {pool ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+              Distribucija — {pool.distributionMethod === 'hours' ? 'po urah' : pool.distributionMethod === 'points' ? 'po točkah' : 'enakovredno'}
+              <Badge variant={pool.status === 'paid' ? 'default' : 'outline'} className={pool.status === 'paid' ? 'bg-emerald-700' : ''}>
+                {pool.status === 'paid' ? 'izplačano' : 'čaka izplačilo'}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
+              <table className="w-full text-sm">
+                <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+                  <tr>
+                    <th className="p-2">Zaposleni</th>
+                    <th className="p-2">Osnova</th>
+                    <th className="p-2 text-right">Znesek</th>
+                    <th className="p-2">Status</th>
+                    {canManage && <th className="p-2 text-right">Izplačaj</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pool.TipDistribution.map((d) => (
+                    <tr key={d.id} className="border-t border-stone-100">
+                      <td className="p-2 font-medium">{d.employeeName}</td>
+                      <td className="p-2 text-stone-600">
+                        {pool.distributionMethod === 'hours' && d.hoursWorked > 0 ? `${d.hoursWorked.toFixed(2)} h` : pool.distributionMethod === 'points' && d.points > 0 ? `${d.points} točk` : 'enako'}
+                      </td>
+                      <td className="p-2 text-right font-semibold">{fmtEUR(d.amount)}</td>
+                      <td className="p-2">
+                        {d.status === 'paid'
+                          ? <Badge variant="outline" className="border-emerald-600 text-emerald-700">izplačano {d.paidAt ? new Date(d.paidAt).toLocaleString('sl-SI') : ''}</Badge>
+                          : <Badge variant="outline">čaka</Badge>}
+                      </td>
+                      {canManage && (
+                        <td className="p-2 text-right">
+                          {d.status === 'pending' && (
+                            <Button size="sm" variant="outline" disabled={busy} onClick={() => payout(d.id)}>Označi izplačano</Button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {canManage && pool.status !== 'paid' && (
+              <div className="flex justify-end">
+                <Button disabled={busy} onClick={() => payout()} className="bg-emerald-700 hover:bg-emerald-800 text-white">Izplačaj vse čakajoče ({pool.TipDistribution.filter((d) => d.status === 'pending').length})</Button>
+              </div>
+            )}
+            <p className="text-xs text-stone-400">Zneski distribucij so zaščiteni z hash-verigo — vsaka sprememba bi bila vidna. Izplačila so zapisana v revizijski dnevnik (TIP_PAYOUT).</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Predogled delitve za {date}</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {data && data.employees.length > 0 ? (
+              <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+                    <tr>
+                      <th className="p-2">Zaposleni</th>
+                      <th className="p-2">Ure tega dne</th>
+                      <th className="p-2 text-right">Predvideni delež</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.employees.map((e) => (
+                      <tr key={e.employeeId} className="border-t border-stone-100">
+                        <td className="p-2 font-medium">{e.employeeName}</td>
+                        <td className="p-2 text-stone-600">{e.minutes > 0 ? fmtMin(e.minutes) : '—'}</td>
+                        <td className="p-2 text-right font-semibold">{fmtEUR(e.previewCents / 100)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-stone-500">Za ta dan ni napitnin ali zaposlenih z osnovo.</p>
+            )}
+            {canManage && t && t.totalCents > 0 && data && data.employees.length > 0 && (
+              <div className="flex justify-end">
+                <Button disabled={busy} onClick={closeDay} className="bg-emerald-700 hover:bg-emerald-800 text-white">Zaključi dan — ustvari bazen ({fmtEUR(t.totalCents / 100)})</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Zgodovina bazenov</CardTitle></CardHeader>
+        <CardContent>
+          {data && data.history.length > 0 ? (
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-stone-200">
+              <table className="w-full text-sm">
+                <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+                  <tr>
+                    <th className="p-2">Dan</th>
+                    <th className="p-2 text-right">Skupaj</th>
+                    <th className="p-2">Osnova</th>
+                    <th className="p-2 text-right">Zaposleni</th>
+                    <th className="p-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.history.map((p) => (
+                    <tr key={p.id} className="border-t border-stone-100">
+                      <td className="p-2">{new Date(p.date).toLocaleDateString('sl-SI')}</td>
+                      <td className="p-2 text-right font-semibold">{fmtEUR(Number(p.totalTips))}</td>
+                      <td className="p-2 text-stone-600">{p.distributionMethod === 'hours' ? 'po urah' : p.distributionMethod === 'points' ? 'po točkah' : 'enakovredno'}</td>
+                      <td className="p-2 text-right">{p.paid}/{p.employees} izplačano</td>
+                      <td className="p-2">
+                        <Badge variant={p.status === 'paid' ? 'default' : 'outline'} className={p.status === 'paid' ? 'bg-emerald-700' : ''}>{p.status === 'paid' ? 'izplačano' : 'v obdelavi'}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-stone-500">Še ni zaključenih dni.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {err && <p className="text-sm text-red-600">{err}</p>}
+    </div>
+  )
+}
