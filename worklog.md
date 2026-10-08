@@ -1167,3 +1167,23 @@ Stage Summary:
 - Napitnine (triage ① iz #1) DOKONČANE: vnos pri plačilu → dnevni bazen → distribucija (ure/enako/točke) → izplačilo — vse na kanoničnem Payment toku, brez podvajanja (§18)
 - Ni shematskih sprememb (TipPool/TipDistribution obstajala); ni migracije na Neon
 - Naslednji sklopi po triage: ② nabava+prevzem ③ darilne kartice ④ odpad ⑤ čakalna lista ⑥ delovni čas (UI) ⑦ odpiralni čas; + i18n SL/HR in HR fiskalni adapter (potrebujeta spec research)
+---
+Task ID: 17-c
+Agent: full-stack-developer
+Task: NabavaTab UI komponenta (triage ② nabava + prevzem)
+
+Work Log:
+- dopisana komponenta `NabavaTab` na KONEC src/components/dashboard-tabs.tsx (vrstice 1747–2597, SAMO append — obstoječih 1745 vrstic ni bilo dotaknjeno; NapitnineTab ostaja netaknjen na 1492)
+- sekcija A Dobavitelji: kompakt tabela (naziv, kontakt, telefon/e-pošta, kraj, št. naročil, št. artiklov, aktiven/neaktiven badge) + dialog Nov/Uredi dobavitelj (naziv obvezen, kontakt, telefon, e-pošta, naslov, kraj, davčna št., IBAN, plačilni pogoji) — POST/PATCH /api/suppliers, PATCH pošlje samo ne-prazna polja (backend semantika)
+- sekcija B Nabavna naročila: Select filter po statusu (Vsi/Osnutek/Oddano/Odobreno/Delno prevzeto/Prevzeto/Preklicano), kartice s poNumber + status badge (draft=stone, submitted=amber, approved=emerald, partial=orange, received=green, cancelled=red) + supplierName + fmtEUR totalAmount + datumi + št. vrstic + receiptsCount; klik kartico → detail dialog (a11y: role=button, tabIndex, Enter/Space)
+- dejanja po statusu (samo canManage): draft→Oddaj; submitted→Odobri; approved/partial→Prevzemi; vse aktivne→Prekliči (window.confirm); stopPropagation na dejanjih, preverjen proti PO_TRANSITIONS v procurement.ts (cancel dovoljen iz vseh 4 aktivnih)
+- dialog Novo naročilo: Select dobavitelj (samo aktivni), Select lokacija (locations prop, opcijsko), pričakovani datum, opomba; vrstice — dodajanje artiklov iz /api/inventory (auto enota + cena iz cost, DDV default 22, ze dodani artikli skriti iz izbire) + ročna vrstica (opis/količina/enota/cena); žive vsote (znesek vrstice, skupaj brez DDV, DDV, skupaj); UI validacija pred POST (dobavitelj, ≥1 vrstica, količina > 0, cena ≥ 0, opis pri ročnih)
+- detail dialog: GET /api/purchase-orders/[id] — kontaktni podatki dobavitelja, datumi, oddal/odobril; tabela vrstic z primerjavo naročeno/prejeto(zelena)/zavrnjeno(rdeča)/cena/skupaj/status postavke (čaka/delno/prejeto); prevzemi (grnNumber, čas, prejel, dokument dobavitelja, vrstice sprejeto/zavrnjeno+razlog); zgodovina nabavnih cen (zadnjih 10: cena, DDV, vir prevzem/naročilo, datum)
+- dialog Prevzem: za vsako vrstico naročeno/že prejeto/ostane; Sprejeto (default = ostalo), Zavrnjeno (default 0), Razlog zavrnitve (UI validacija: obvezen če zavrnjeno > 0 — pred pošiljanjem), datum uporabljivosti (expiryDate), dokument dobavitelja, opomba; POST receive → zeleni okvir z grnNumber + rumeni okvir z warnings (over-receipt) → osveži seznam (in detajl če odprt)
+- gating: canManage skrije vse mutacijske gumbe (Nov dobavitelj/Uredi, Novo naročilo, Oddaj/Odobri/Prevzemi/Prekliči) — pregled ostane; UX: Loader2 busy stanja, err (text-red-600) + okMsg (emerald), prazna stanja, max-h + overflow-y-auto na vseh dolgih seznamih, brez alert (samo window.confirm pri preklicu, po spec)
+- NAJDENI BACKEND REZIDUAL (izven mojega obsega, ni spreminjan): receive route (src/app/api/purchase-orders/[id]/receive/route.ts) v rawLines preslikavi NE prenese body.expiryDate naprej (mapira samo purchaseOrderItemId/quantityAccepted/quantityRejected/rejectReason) — UI pošilja expiryDate po kontraktu, a backend ga trenutno ignorira → InventoryBatch.expiryDate bo null. Manjši aditivni fix za naslednjega agenta: dodati `expiryDate: l?.expiryDate ? String(l.expiryDate) : undefined` v rawLines map.
+- verifikacija: bunx tsc --noEmit = 0 napak (exit 0); bun run lint = čisto; ni commitano
+
+Stage Summary:
+- `NabavaTab` (export, dashboard-tabs.tsx konec, vrstica 1797) pokriva celoten nabavni tok triage ②: dobavitelji (CRUD pregled) → naročilo (osnutek→oddaja→odobritev→preklic) → prevzem (delna/popolna, zavrnitve z razlogom, expiry, idempotentni GRN) → primerjava naročeno/prejeto → zgodovina cen
+- komponenta je SAMO exportana — še NI ožičena v dashboard page (namenoma; wiring je naslednji korak/skopec). Signature: `{ locations: { id; name }[]; canManage: boolean }` (enaka vzorcu NapitnineTab) — pričakuje se `<NabavaTab locations={...} canManage={...} />` z gatingom OWNER/ADMIN/MANAGER

@@ -27,6 +27,7 @@ import {
   ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer, Wifi, WifiOff, CloudUpload,
   QrCode,
   MoreVertical,
+  ShoppingCart,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -43,7 +44,7 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -687,6 +688,7 @@ export default function DashboardPage() {
     stroski: 'reports.view', zvestoba: 'reports.view', mnenja: 'reservations.manage',
     dostava: 'orders.create',
     napitnine: 'reports.view',
+    nabava: 'inventory.manage',
     zaposleni: 'employees.manage', nastavitve: 'settings.manage',
   }
 
@@ -699,7 +701,7 @@ export default function DashboardPage() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestavrantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.36.0</Badge>
+            <Badge variant="outline" className="hidden md:inline-flex shrink-0">1.37.0</Badge>
           </div>
           <div className="flex items-center gap-2">
             {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
@@ -751,7 +753,7 @@ export default function DashboardPage() {
               ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
               ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
               ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
@@ -1086,6 +1088,10 @@ export default function DashboardPage() {
 
           <TabsContent value="napitnine">
             <NapitnineTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
+          </TabsContent>
+
+          <TabsContent value="nabava">
+            <NabavaTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
           </TabsContent>
 
           <TabsContent value="zaposleni" className="space-y-4">
