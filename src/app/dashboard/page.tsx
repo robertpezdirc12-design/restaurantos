@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { downloadCSV } from '@/lib/client'
 import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
 import {
@@ -113,7 +114,16 @@ const RES_STATUS_LABELS: Record<string, string> = {
 }
 
 export default function DashboardPage() {
+  return (
+    <I18nProvider>
+      <DashboardInner />
+    </I18nProvider>
+  )
+}
+
+function DashboardInner() {
   const router = useRouter()
+  const { t, locale } = useI18n()
   const user = getUser()
   const [stats, setStats] = useState<Stats | null>(null)
   const [tables, setTables] = useState<TableT[]>([])
@@ -612,7 +622,7 @@ export default function DashboardPage() {
       const r = d.receipt
       const cfg = getPrintConfig()
       if (cfg.target === 'browser') {
-        if (!printReceipt(r, settings?.receiptFooter)) {
+        if (!printReceipt(r, settings?.receiptFooter, locale)) {
           alert('Brskalnik je zavrzel pojavno okno — dovoli pojavna okna za tiskanje računov.')
         }
         return
@@ -632,6 +642,9 @@ export default function DashboardPage() {
         { text: `Plačilo: ${r.paymentMethod.toUpperCase()}` },
         ...(r.zoi ? [{ text: `ZOI: ${r.zoi}` } as PrintLine] : []),
         ...(r.eor ? [{ text: `EOR: ${r.eor}` } as PrintLine] : []),
+        ...(r.zki ? [{ text: `ZKI: ${r.zki}` } as PrintLine] : []),
+        ...(r.jir ? [{ text: `JIR: ${r.jir}` } as PrintLine] : []),
+        ...(r.qr ? [{ text: r.qr } as PrintLine] : []),
         { text: r.fiscalVerified ? 'FURS: fiskalizirano' : `FURS: ${r.fiscalStatus}` },
         ...(settings?.receiptFooter ? [{ text: settings.receiptFooter, align: 'center' } as PrintLine] : []),
       ]
@@ -811,6 +824,10 @@ export default function DashboardPage() {
     .filter((g) => g.items.length > 0)
   // cone dinamično iz podatkov (produkcija: main/bar/patio/private; rekonstrukcija: Glavna dvorana/Bar/Terasa)
   const ZONE_LABELS: Record<string, string> = { main: 'Glavna dvorana', bar: 'Bar', patio: 'Terasa', private: 'Zasebna soba' }
+  // Dvojezičnost SL/HR — pomožne pretvorbe z SL fallbackom (nedefinirani statusi/vloge/zone ostanejo berljivi)
+  const stL = (s: string): string => { const v = t(`status.${s}`); return v === `status.${s}` ? (statusLabels[s] || s) : v }
+  const roleL = (r: string): string => { const v = t(`roles.${r}`); return v === `roles.${r}` ? (ROLE_LABELS[r] || r) : v }
+  const zoneL = (z: string): string => { const v = t(`zones.${z}`); return v === `zones.${z}` ? (ZONE_LABELS[z] || z) : v }
   // Triage ⑧ — pogledi: preklopnik filtrira sezname (viri brez locationId ostanejo vidni)
   const viewTables = filterByLocation(tables, viewLoc)
   const viewOrders = filterByLocation(orders, viewLoc)
@@ -850,14 +867,14 @@ export default function DashboardPage() {
             {/* Triage ⑧ — pogledi: preklopnik lokacije za centralne vloge (OWNER/ADMIN) */}
             {isCentralUIRole(user?.role) && locList.length > 0 && (
               <Select value={viewLoc || 'all'} onValueChange={(v) => setViewLoc(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 w-[120px] sm:w-[190px] gap-1.5 text-xs" aria-label="Pogled — izbira lokacije">
+                <SelectTrigger className="h-8 w-[120px] sm:w-[190px] gap-1.5 text-xs" aria-label={t('header.viewAria')}>
                   <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Vse lokacije</SelectItem>
+                  <SelectItem value="all">{t('header.allLocations')}</SelectItem>
                   {locList.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? ' (neaktivna)' : ''}</SelectItem>
+                    <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? t('header.inactive') : ''}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -868,7 +885,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => void doSync()}
-              title="Sinhronizacija offline sprememb — klikni za ročni poskus"
+              title={t('header.syncHint')}
               aria-live="polite"
               className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
                 !online
@@ -889,18 +906,19 @@ export default function DashboardPage() {
               ) : (
                 <Wifi className="w-3.5 h-3.5" />
               )}
-              <span>{!online ? `Offline${queueOps.length ? ` · ${queueOps.length}` : ''}` : syncing ? 'Sinhroniziram…' : queueOps.length > 0 ? `${queueOps.length} v vrsti` : 'Online'}</span>
+              <span>{!online ? `Offline${queueOps.length ? ` · ${queueOps.length}` : ''}` : syncing ? t('header.syncing') : queueOps.length > 0 ? t('header.queued', { n: queueOps.length }) : t('header.online')}</span>
             </button>
             <ThemeToggle />
+            <LanguageToggle />
             <PaletteButton onClick={() => setPaletteOpen(true)} />
-            <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label="Ukazi">
+            <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label={t('header.commands')}>
               <Search className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={load} aria-label="Osveži">
+            <Button variant="ghost" size="icon" onClick={load} aria-label={t('common.refresh')}>
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
             <span className="text-sm text-stone-600 hidden sm:block truncate max-w-40">{user?.name}</span>
-            <Button variant="ghost" size="icon" onClick={() => setConfirmLogout(true)} aria-label="Odjava"><LogOut className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => setConfirmLogout(true)} aria-label={t('header.logout')}><LogOut className="w-4 h-4" /></Button>
           </div>
         </div>
       </header>
@@ -918,9 +936,9 @@ export default function DashboardPage() {
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
-              .map(([v, label, Icon]) => (
+              .map(([v, , Icon]) => (
               <TabsTrigger key={v} value={v} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
-                {Icon && <Icon className="w-4 h-4" />} {label}
+                {Icon && <Icon className="w-4 h-4" />} {t(`tabs.${v}`)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -928,13 +946,13 @@ export default function DashboardPage() {
           <TabsContent value="pregled" className="space-y-6">
             {viewLoc && (
               <p className="text-sm text-stone-500 flex items-center gap-1.5" aria-live="polite">
-                <MapPin className="w-4 h-4 text-emerald-700" /> Pogled: {locList.find((l) => l.id === viewLoc)?.name || 'Lokacija'}
+                <MapPin className="w-4 h-4 text-emerald-700" /> {t('dash.viewLabel', { name: locList.find((l) => l.id === viewLoc)?.name || t('dash.locationFallback') })}
               </p>
             )}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                ['Aktivna naročila', stats?.activeOrders, ClipboardList], ['Zasedene mize', stats?.openTables, Utensils],
-                ['Današnji promet', stats ? fmtEUR(stats.todayRevenue) : undefined, Banknote], ['Današnja naročila', stats?.todayOrders, ReceiptText],
+                [t('dash.activeOrders'), stats?.activeOrders, ClipboardList], [t('dash.openTables'), stats?.openTables, Utensils],
+                [t('dash.todayRevenue'), stats ? fmtEUR(stats.todayRevenue) : undefined, Banknote], [t('dash.todayOrders'), stats?.todayOrders, ReceiptText],
               ].map(([label, value, Icon], i) => {
                 const Ic = Icon as React.ComponentType<{ className?: string }> | undefined
                 return (
@@ -957,11 +975,11 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-bold">{fmtEUR(o.total)}</p>
-                        <Badge className={`mt-1 ${statusColors[o.status]}`}>{statusLabels[o.status]}</Badge>
+                        <Badge className={`mt-1 ${statusColors[o.status]}`}>{stL(o.status)}</Badge>
                       </div>
                     </div>
                   ))}
-                  {viewOrders.length === 0 && <p className="text-sm text-stone-500">Ni aktivnih naročil.</p>}
+                  {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
                 </div>
               </CardContent>
             </Card>
@@ -973,42 +991,42 @@ export default function DashboardPage() {
               if (zt.length === 0) return null
               return (
                 <section key={zone} className="space-y-3">
-                  <h2 className="font-semibold text-stone-700">{ZONE_LABELS[zone] || zone}</h2>
+                  <h2 className="font-semibold text-stone-700">{zoneL(zone)}</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {zt.map((t) => (
-                      <div key={t.id} className="relative">
+                    {zt.map((tb) => (
+                      <div key={tb.id} className="relative">
                         <button
                           onClick={() => {
                             // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
-                            if (t.status === 'DIRTY' && !t.activeOrder) { void markClean(t); return }
-                            if (!t.activeOrder) { setCart({}); setNewOrderTable(t) } else { const o = orders.find((x) => x.id === t.activeOrder!.id); if (o) void openPayment(o) }
+                            if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
+                            if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openPayment(o) }
                           }}
-                          className={`w-full rounded-xl p-4 text-left shadow transition ${statusColors[t.status]} min-h-20`}
+                          className={`w-full rounded-xl p-4 text-left shadow transition ${statusColors[tb.status]} min-h-20`}
                         >
-                          <p className="font-bold text-lg">{t.name}</p>
-                          <p className="text-xs opacity-90">{t.seats} mest</p>
-                          {t.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(t.activeOrder.total)}</p>}
-                          <p className="text-[11px] mt-1 opacity-80">{t.activeOrder ? statusLabels.OCCUPIED : t.status === 'DIRTY' ? 'Klikni — očisti' : statusLabels[t.status]}</p>
+                          <p className="font-bold text-lg">{tb.name}</p>
+                          <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
+                          {tb.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(tb.activeOrder.total)}</p>}
+                          <p className="text-[11px] mt-1 opacity-80">{tb.activeOrder ? stL('OCCUPIED') : tb.status === 'DIRTY' ? t('tables.clickClean') : stL(tb.status)}</p>
                         </button>
                         {/* Issue #3: QR meni za to mizo — (span, ker gosta ne sme biti gnezdena v gumbu) */}
                         <span
                           role="button"
                           tabIndex={0}
-                          aria-label={`QR meni — ${t.name}`}
-                          onClick={(e) => { e.stopPropagation(); void openQr(t) }}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void openQr(t) } }}
+                          aria-label={t('tables.qrAria', { name: tb.name })}
+                          onClick={(e) => { e.stopPropagation(); void openQr(tb) }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void openQr(tb) } }}
                           className="absolute top-1.5 right-1.5 rounded-md bg-white/85 p-1 text-stone-600 hover:bg-white hover:text-stone-900 cursor-pointer shadow-sm"
                         >
                           <QrCode className="w-4 h-4" />
                         </span>
                         {/* Issue #1 §6: status mize — upravljanje (na voljo / rezervirana / za pospravit) */}
-                        {!t.activeOrder && (
+                        {!tb.activeOrder && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <span
                                 role="button"
                                 tabIndex={0}
-                                aria-label={`Status mize — ${t.name}`}
+                                aria-label={t('tables.statusAria', { name: tb.name })}
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() }}
                                 className="absolute bottom-1.5 right-1.5 rounded-md bg-white/85 p-1 text-stone-600 hover:bg-white hover:text-stone-900 cursor-pointer shadow-sm"
@@ -1017,9 +1035,9 @@ export default function DashboardPage() {
                               </span>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                              <DropdownMenuItem onClick={() => void setTableStatus(t, 'FREE')}>Na voljo</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => void setTableStatus(t, 'RESERVED')}>Rezervirana</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => void setTableStatus(t, 'DIRTY')}>Za pospravit</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void setTableStatus(tb, 'FREE')}>{t('tables.available')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void setTableStatus(tb, 'RESERVED')}>{t('tables.reserved')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void setTableStatus(tb, 'DIRTY')}>{t('tables.dirty')}</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}
@@ -1035,22 +1053,22 @@ export default function DashboardPage() {
           <Dialog open={!!qrTable} onOpenChange={(o) => !o && setQrTable(null)}>
             <DialogContent className="max-w-sm">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-1.5"><QrCode className="w-4 h-4" /> QR meni — {qrTable?.name}</DialogTitle>
+                <DialogTitle className="flex items-center gap-1.5"><QrCode className="w-4 h-4" /> {t('tables.qrMenu')} — {qrTable?.name}</DialogTitle>
               </DialogHeader>
               {qrBusy || !qrData ? (
                 <div className="flex items-center justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
               ) : (
                 <div className="space-y-3 text-sm">
-                  <img src={qrData.dataUrl} alt={`QR meni — ${qrTable?.name}`} className="mx-auto rounded-xl border border-stone-200 w-52 h-52" />
+                  <img src={qrData.dataUrl} alt={t('tables.qrAria', { name: qrTable?.name || '' })} className="mx-auto rounded-xl border border-stone-200 w-52 h-52" />
                   <p className="text-xs text-stone-500 break-all text-center select-all">{qrData.url}</p>
                   <div className="flex items-center justify-between rounded-lg border border-stone-200 p-2.5">
-                    <span className="font-medium">QR naročanje</span>
+                    <span className="font-medium">{t('tables.qrOrdering')}</span>
                     <Switch checked={qrData.qrEnabled} onCheckedChange={(v) => void qrAction('toggle', v)} />
                   </div>
                   <Button variant="outline" className="w-full" disabled={qrBusy} onClick={() => void qrAction('rotate')}>
-                    <RefreshCw className="w-3.5 h-3.5 mr-1" /> Nov QR (revokiraj stare povezave)
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" /> {t('tables.qrNew')}
                   </Button>
-                  <p className="text-[11px] text-stone-400">Gost skenira kodo → javni meni → samopostrežno naročilo. Naročilo pride v KDS po istem toku kot POS.</p>
+                  <p className="text-[11px] text-stone-400">{t('tables.qrHint')}</p>
                 </div>
               )}
             </DialogContent>
@@ -1058,13 +1076,13 @@ export default function DashboardPage() {
 
           <TabsContent value="narocila">
             <Card>
-              <CardHeader><CardTitle className="text-base">Vsa aktivna naročila</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">{t('orders.allActive')}</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
                 {viewOrders.map((o) => (
                   <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold">{o.table?.name || o.type} · {o.guests} osebi</p>
-                      <Badge className={statusColors[o.status]}>{statusLabels[o.status]}</Badge>
+                      <p className="font-semibold">{o.table?.name || o.type} · {o.guests} {t('orders.persons')}</p>
+                      <Badge className={statusColors[o.status]}>{stL(o.status)}</Badge>
                     </div>
                     <ScrollArea className="max-h-32">
                       <ul className="text-sm space-y-1">{o.items.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
@@ -1073,13 +1091,13 @@ export default function DashboardPage() {
                       <p className="font-bold">{fmtEUR(o.total)}</p>
                       {o.status !== 'PAID' && (
                         <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void openPayment(o)}>
-                          <Banknote className="w-3.5 h-3.5" /> Plačilo + FURS
+                          <Banknote className="w-3.5 h-3.5" /> {t('orders.payFurs')}
                         </Button>
                       )}
                     </div>
                   </div>
                 ))}
-                {viewOrders.length === 0 && <p className="text-sm text-stone-500">Ni aktivnih naročil.</p>}
+                {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1092,10 +1110,10 @@ export default function DashboardPage() {
                     {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
                     <span className="ml-auto flex gap-1.5">
                       <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title="Natisni kuhinjski list (ESC/POS agent ali simulator)">
-                        <Printer className="w-3 h-3" /> Kuhinjski list
+                        <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
                       </Button>
                       <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title="Natisni bar list">
-                        <Printer className="w-3 h-3" /> Bar list
+                        <Printer className="w-3 h-3" /> {t('kitchen.barTicket')}
                       </Button>
                     </span>
                   </CardTitle>
@@ -1206,7 +1224,7 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <div className="shrink-0 flex items-center gap-1 w-full sm:w-auto justify-end">
-                          <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title="Natisni račun (ali shrani kot PDF)">
+                          <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
                             <Printer className="w-3.5 h-3.5" /> Natisni
                           </Button>
                         </div>
@@ -1335,7 +1353,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <Badge variant="outline">{ROLE_LABELS[e.role] || e.role}</Badge>
+                      <Badge variant="outline">{roleL(e.role)}</Badge>
                       {canManage && <UserCog className="w-3.5 h-3.5 text-stone-300" />}
                     </div>
                   </button>
@@ -1534,7 +1552,7 @@ export default function DashboardPage() {
       {/* ── Novo naročilo ── */}
       <Dialog open={!!newOrderTable} onOpenChange={(v) => !v && setNewOrderTable(null)}>
         <DialogContent className="max-w-lg" aria-describedby={undefined}>
-          <DialogHeader><DialogTitle>Novo naročilo — {newOrderTable?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('orders.newTitle')} — {newOrderTable?.name}</DialogTitle></DialogHeader>
           <ScrollArea className="max-h-[50vh] pr-2">
             <div className="space-y-4">
               {menuByCat.map((g) => (
@@ -1545,9 +1563,9 @@ export default function DashboardPage() {
                       <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
                         <span className="text-sm min-w-0 truncate">{m.name} · <b>{fmtEUR(m.price)}</b></span>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label="Manj"><Minus className="w-3 h-3" /></Button>
+                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                           <span className="w-6 text-center text-sm font-semibold">{cart[m.id] || 0}</span>
-                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label="Več"><Plus className="w-3 h-3" /></Button>
+                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
                         </div>
                       </div>
                     ))}
@@ -1557,10 +1575,10 @@ export default function DashboardPage() {
             </div>
           </ScrollArea>
           <DialogFooter className="items-center gap-2 sm:gap-0">
-            <span className="mr-auto font-bold">Skupaj: {fmtEUR(cartTotal)}</span>
-            <Button variant="outline" onClick={() => setNewOrderTable(null)}>Prekliči</Button>
+            <span className="mr-auto font-bold">{t('orders.total', { amount: fmtEUR(cartTotal) })}</span>
+            <Button variant="outline" onClick={() => setNewOrderTable(null)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || cartTotal === 0} onClick={createOrder}>
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Oddaj naročilo'}
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('orders.submit')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1569,7 +1587,7 @@ export default function DashboardPage() {
       {/* ── Plačilo + FURS (issue #1 §6: kanonični račun, popusti, zvestoba, deljeno plačilo; §7: večji gumbi) ── */}
       <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-lg">
-          <DialogHeader><DialogTitle className="text-lg">Plačilo {payingOrder?.table?.name || ''}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">{t('payment.title', { name: payingOrder?.table?.name || '' })}</DialogTitle></DialogHeader>
           {!bill && payingOrder && (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
           )}
@@ -1578,23 +1596,23 @@ export default function DashboardPage() {
               {/* postavke + zneski (kanonično iz /api/orders/[id]/bill) */}
               <ul className="space-y-1 max-h-36 overflow-y-auto pr-1">{payingOrder.items.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
               <div className="rounded-xl border border-stone-200 p-3 space-y-1">
-                <div className="flex justify-between"><span>Skupaj (z DDV)</span><span>{fmtEUR(bill.grossTotal)}</span></div>
+                <div className="flex justify-between"><span>{t('payment.grossTotal')}</span><span>{fmtEUR(bill.grossTotal)}</span></div>
                 {bill.manualDiscount > 0 && (
-                  <div className="flex justify-between text-stone-600"><span>Ročni popust</span><span>−{fmtEUR(bill.manualDiscount)}</span></div>
+                  <div className="flex justify-between text-stone-600"><span>{t('payment.manualDiscount')}</span><span>−{fmtEUR(bill.manualDiscount)}</span></div>
                 )}
                 {bill.autoDiscounts.map((ad) => (
                   <div key={ad.discountId} className="flex justify-between text-emerald-700"><span>🎉 {ad.name}</span><span>−{fmtEUR(ad.amount)}</span></div>
                 ))}
                 {bill.discountTotal > 0 && (
-                  <div className="flex justify-between font-medium border-t border-stone-100 pt-1"><span>Popust skupaj</span><span>−{fmtEUR(bill.discountTotal)}</span></div>
+                  <div className="flex justify-between font-medium border-t border-stone-100 pt-1"><span>{t('payment.discountTotal')}</span><span>−{fmtEUR(bill.discountTotal)}</span></div>
                 )}
-                <div className="flex justify-between font-bold text-lg pt-1 border-t border-stone-200"><span>ZA PLAČATI</span><span>{fmtEUR(bill.totalDue)}</span></div>
+                <div className="flex justify-between font-bold text-lg pt-1 border-t border-stone-200"><span>{t('payment.due')}</span><span>{fmtEUR(bill.totalDue)}</span></div>
               </div>
 
               {/* Issue #1 (triage ①): napitnina pri plačilu — gre v Payment.tipAmount → dnevni bazen napitnin */}
               {!invoice && (
                 <div className="flex items-center gap-2">
-                  <Label className="text-xs shrink-0">Napitnina (EUR):</Label>
+                  <Label className="text-xs shrink-0">{t('payment.tipLabel')}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1604,10 +1622,10 @@ export default function DashboardPage() {
                     onChange={(e) => setTipEur(e.target.value)}
                     placeholder="0.00"
                     className="h-9 w-28"
-                    aria-label="Napitnina v EUR"
+                    aria-label={t('payment.tipAria')}
                   />
                   {Number(tipEur) > 0 && (
-                    <span className="text-xs text-stone-500">→ skupaj gost: <b>{fmtEUR(bill.totalDue + Number(tipEur))}</b></span>
+                    <span className="text-xs text-stone-500">{t('payment.tipGuest', { amount: fmtEUR(bill.totalDue + Number(tipEur)) })}</span>
                   )}
                 </div>
               )}
@@ -1617,11 +1635,11 @@ export default function DashboardPage() {
                   {/* ročni popust (registr) — samo z dovoljenjem apply_discounts */}
                   {hasPerm('apply_discounts') && manualDiscounts.length > 0 && (
                     <div className="flex items-center gap-2">
-                      <Label className="text-xs shrink-0">Popust:</Label>
+                      <Label className="text-xs shrink-0">{t('payment.discountLabel')}</Label>
                       <Select value={selDiscountId} onValueChange={(v) => void applyManualDiscount(v)}>
-                        <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Brez popusta" /></SelectTrigger>
+                        <SelectTrigger className="h-9 flex-1"><SelectValue placeholder={t('payment.noDiscount')} /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">Brez popusta</SelectItem>
+                          <SelectItem value="none">{t('payment.noDiscount')}</SelectItem>
                           {manualDiscounts.map((d) => (
                             <SelectItem key={d.id} value={d.id}>{d.name} ({(d.type === 'percent' || d.type === 'percentage') ? `${d.amount} %` : fmtEUR(d.amount)})</SelectItem>
                           ))}
@@ -1637,9 +1655,9 @@ export default function DashboardPage() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold truncate">{loyaltySel.customerName}</p>
-                            <p className="text-xs text-stone-500">{loyaltySel.pointsBalance} točk · {loyaltySel.tier}</p>
+                            <p className="text-xs text-stone-500">{t('payment.pointsOf', { n: loyaltySel.pointsBalance })} · {loyaltySel.tier}</p>
                           </div>
-                          <Button variant="outline" size="sm" className="h-8" onClick={() => { setLoyaltySel(null); setRedeemPoints(0) }}>Odstrani</Button>
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => { setLoyaltySel(null); setRedeemPoints(0) }}>{t('payment.remove')}</Button>
                         </div>
                       ) : (
                         <div className="relative">
@@ -1647,8 +1665,8 @@ export default function DashboardPage() {
                             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
                             <Input
                               className="h-9 pl-8"
-                              placeholder="Gost (ime ali telefon)…"
-                              aria-label="Iskanje gosta zvestobe"
+                              placeholder={t('payment.guestSearch')}
+                              aria-label={t('payment.guestSearchAria')}
                               onChange={(e) => void searchLoyalty(e.target.value)}
                             />
                           </div>
@@ -1662,7 +1680,7 @@ export default function DashboardPage() {
                                   onClick={() => { setLoyaltySel(a); setLoyaltyResults([]) }}
                                 >
                                   <p className="font-medium">{a.customerName}</p>
-                                  <p className="text-xs text-stone-500">{a.customerPhone || '—'} · {a.pointsBalance} točk · {a.tier}</p>
+                                  <p className="text-xs text-stone-500">{a.customerPhone || '—'} · {t('payment.pointsOf', { n: a.pointsBalance })} · {a.tier}</p>
                                 </button>
                               ))}
                             </div>
@@ -1671,7 +1689,7 @@ export default function DashboardPage() {
                       )}
                       {loyaltySel && (
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs shrink-0">Unovči:</Label>
+                          <Label className="text-xs shrink-0">{t('payment.redeem')}</Label>
                           <Input
                             type="number"
                             min={0}
@@ -1681,7 +1699,7 @@ export default function DashboardPage() {
                             className="h-9 w-28"
                           />
                           <span className="text-xs text-stone-500">
-                            točk {redeemPoints > 0 && <>→ <b className="text-emerald-700">−{fmtEUR(r2v(redeemPoints * bill.loyalty.pointsValue))}</b></>}
+                            {t('payment.pointsSuffix')} {redeemPoints > 0 && <>→ <b className="text-emerald-700">−{fmtEUR(r2v(redeemPoints * bill.loyalty.pointsValue))}</b></>}
                           </span>
                         </div>
                       )}
@@ -1691,7 +1709,7 @@ export default function DashboardPage() {
                   {/* način plačila / deljeno plačilo */}
                   {parts.length === 0 ? (
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Način plačila:</Label>
+                      <Label className="text-xs">{t('payment.method')}</Label>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {(['cash', 'card', 'mobile', 'giftcard'] as const).map((pm) => (
                           <button
@@ -1700,7 +1718,7 @@ export default function DashboardPage() {
                             onClick={() => setPayMethod(pm)}
                             className={`min-h-11 rounded-xl border px-2 py-2.5 text-sm font-semibold transition ${payMethod === pm ? 'border-emerald-700 bg-emerald-700 text-white shadow' : 'border-stone-200 bg-white text-stone-700 hover:border-emerald-400'}`}
                           >
-                            {pm === 'cash' ? '💵 Gotovina' : pm === 'card' ? '💳 Kartica' : pm === 'mobile' ? '📱 Mobilno' : '🎁 Darilna'}
+                            {pm === 'cash' ? t('payment.cash') : pm === 'card' ? t('payment.card') : pm === 'mobile' ? t('payment.mobile') : t('payment.giftcard')}
                           </button>
                         ))}
                       </div>
@@ -1713,32 +1731,32 @@ export default function DashboardPage() {
                                 value={gcQuery}
                                 onChange={(e) => setGcQuery(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && void lookupGiftCard(gcQuery, setGcSel)}
-                                placeholder="Št. kartice (ali zadnjih 6 znakov)"
+                                placeholder={t('payment.gcPlaceholder')}
                                 className="h-9 flex-1 font-mono"
-                                aria-label="Številka darilne kartice"
+                                aria-label={t('payment.gcAria')}
                               />
                               <Button variant="outline" className="h-9" disabled={gcBusy} onClick={() => void lookupGiftCard(gcQuery, setGcSel)}>
-                                {gcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Poišči'}
+                                {gcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('payment.search')}
                               </Button>
                             </div>
                           ) : (
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-sm min-w-0">
                                 <p className="font-mono text-xs font-semibold truncate">{gcSel.cardNumber}</p>
-                                <p className="text-xs text-stone-500 truncate">{gcSel.ownerName || 'Brez lastnika'} · saldo <b className="text-emerald-700">{fmtEUR(gcSel.balance)}</b></p>
+                                <p className="text-xs text-stone-500 truncate">{gcSel.ownerName || t('payment.noOwner')} · {t('common.saldo')} <b className="text-emerald-700">{fmtEUR(gcSel.balance)}</b></p>
                               </div>
-                              <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={() => { setGcSel(null); setGcQuery('') }}>Zamenjaj</Button>
+                              <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={() => { setGcSel(null); setGcQuery('') }}>{t('payment.swap')}</Button>
                             </div>
                           )}
                           {gcErr && <p className="text-xs text-red-600">{gcErr}</p>}
-                          {gcSel && gcSel.effectiveStatus !== 'active' && <p className="text-xs text-red-600">Kartica ni aktivna ({gcSel.effectiveStatus}) — plačilo ni mogoče.</p>}
+                          {gcSel && gcSel.effectiveStatus !== 'active' && <p className="text-xs text-red-600">{t('payment.gcInactive', { status: gcSel.effectiveStatus })}</p>}
                           {gcSel && gcSel.effectiveStatus === 'active' && bill && (() => {
                             const dv = loyaltySel && redeemPoints > 0 ? r2v(bill.loyalty.pointsValue * redeemPoints) : 0
                             const dueNow = r2v(bill.totalDue - dv)
                             if (dueNow > gcSel.balance + 0.004) {
-                              return <p className="text-xs text-amber-700">Na kartici manjka {fmtEUR(r2v(dueNow - gcSel.balance))} — uporabite deljeno plačilo.</p>
+                              return <p className="text-xs text-amber-700">{t('payment.gcMissing', { amount: fmtEUR(r2v(dueNow - gcSel.balance)) })}</p>
                             }
-                            return <p className="text-xs text-emerald-700">✓ Kartica pokrije znesek {fmtEUR(dueNow)}</p>
+                            return <p className="text-xs text-emerald-700">{t('payment.gcCovers', { amount: fmtEUR(dueNow) })}</p>
                           })()}
                         </div>
                       )}
@@ -1753,22 +1771,22 @@ export default function DashboardPage() {
                           if (payMethod === 'giftcard' && gcSel) setGcPartSel({ 0: gcSel })
                         }}
                       >
-                        ➗ Deljeno plačilo (razdeli na 2 dela)
+                        {t('payment.split2')}
                       </Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <Label className="text-xs">Deljeno plačilo — deli:</Label>
+                      <Label className="text-xs">{t('payment.splitParts')}</Label>
                       {parts.map((p, i) => (
                         <Fragment key={i}>
                         <div className="flex items-center gap-2">
                           <Select value={p.type} onValueChange={(v) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, type: v as PayPart['type'] } : x))}>
                             <SelectTrigger className="h-10 w-32"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="cash">💵 Gotovina</SelectItem>
-                              <SelectItem value="card">💳 Kartica</SelectItem>
-                              <SelectItem value="mobile">📱 Mobilno</SelectItem>
-                              <SelectItem value="giftcard">🎁 Darilna</SelectItem>
+                              <SelectItem value="cash">{t('payment.cash')}</SelectItem>
+                              <SelectItem value="card">{t('payment.card')}</SelectItem>
+                              <SelectItem value="mobile">{t('payment.mobile')}</SelectItem>
+                              <SelectItem value="giftcard">{t('payment.giftcard')}</SelectItem>
                             </SelectContent>
                           </Select>
                           <Input
@@ -1778,9 +1796,9 @@ export default function DashboardPage() {
                             value={p.amount ? p.amount.toFixed(2) : ''}
                             onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: Number(e.target.value) || 0 } : x))}
                             className="h-10"
-                            aria-label={`Znesek dela ${i + 1}`}
+                            aria-label={t('payment.partAmount', { n: i + 1 })}
                           />
-                          <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} aria-label="Odstrani del">×</Button>
+                          <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} aria-label={t('payment.removePart')}>×</Button>
                         </div>
                         {/* Issue #1 triage ③: giftcard del zahteva izbrano kartico */}
                         {p.type === 'giftcard' && (
@@ -1791,18 +1809,18 @@ export default function DashboardPage() {
                                   value={gcPartQuery[i] || ''}
                                   onChange={(e) => setGcPartQuery((m) => ({ ...m, [i]: e.target.value }))}
                                   onKeyDown={(e) => e.key === 'Enter' && void lookupGiftCard(gcPartQuery[i] || '', (c) => setGcPartSel((m) => ({ ...m, [i]: c })))}
-                                  placeholder="Št. kartice za ta del"
+                                  placeholder={t('payment.gcPartPlaceholder')}
                                   className="h-8 flex-1 font-mono text-xs"
-                                  aria-label={`Darilna kartica za del ${i + 1}`}
+                                  aria-label={t('payment.gcForPart', { n: i + 1 })}
                                 />
                                 <Button variant="outline" size="sm" className="h-8" disabled={gcBusy} onClick={() => void lookupGiftCard(gcPartQuery[i] || '', (c) => setGcPartSel((m) => ({ ...m, [i]: c })))}>
-                                  {gcBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Poišči'}
+                                  {gcBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t('payment.search')}
                                 </Button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-xs font-mono truncate">{gcPartSel[i]!.cardNumber} · saldo <b className="text-emerald-700">{fmtEUR(gcPartSel[i]!.balance)}</b>{p.amount > gcPartSel[i]!.balance + 0.004 && <b className="text-red-600"> · premalo za {fmtEUR(p.amount)}</b>}</p>
-                                <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={() => setGcPartSel((m) => ({ ...m, [i]: null }))}>Zamenjaj</Button>
+                                <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={() => setGcPartSel((m) => ({ ...m, [i]: null }))}>{t('payment.swap')}</Button>
                               </div>
                             )}
                           </div>
@@ -1820,9 +1838,9 @@ export default function DashboardPage() {
                             setParts((ps) => [...ps, { type: 'cash', amount: Math.max(0, r2v(due - covered)) }])
                           }}
                         >
-                          + Dodaj del
+                          {t('payment.addPart')}
                         </Button>
-                        <Button variant="outline" className="flex-1 min-h-10" onClick={() => setParts([])}>Eno plačilo</Button>
+                        <Button variant="outline" className="flex-1 min-h-10" onClick={() => setParts([])}>{t('payment.single')}</Button>
                       </div>
                       {(() => {
                         const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
@@ -1832,7 +1850,7 @@ export default function DashboardPage() {
                         const balanced = Math.abs(rest) < 0.005
                         return (
                           <p className={`text-center font-semibold ${balanced ? 'text-emerald-700' : rest > 0 ? 'text-stone-600' : 'text-red-600'}`}>
-                            {balanced ? '✓ Razdeljeno' : rest > 0 ? `Manjka: ${fmtEUR(rest)}` : `Preveč: ${fmtEUR(-rest)}`}
+                            {balanced ? t('payment.splitBalanced') : rest > 0 ? t('payment.splitMissing', { amount: fmtEUR(rest) }) : t('payment.splitOver', { amount: fmtEUR(-rest) })}
                           </p>
                         )
                       })()}
@@ -1843,11 +1861,11 @@ export default function DashboardPage() {
 
               {invoice && (
                 <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm space-y-0.5">
-                  <p className="font-semibold text-emerald-800">✅ Račun izdan (FURS {bill ? (bill.discountTotal > 0 ? '· popust uporabljen' : 'simulacija') : 'simulacija'})</p>
-                  <p className="text-emerald-700">Št.: {invoice.invoiceNumber}</p>
-                  <p className="text-emerald-700 break-all">EOR: {invoice.eor}</p>
+                  <p className="font-semibold text-emerald-800">{t('payment.issued', { detail: bill ? (bill.discountTotal > 0 ? t('payment.issuedDiscount') : t('payment.issuedSim')) : t('payment.issuedSim') })}</p>
+                  <p className="text-emerald-700">{t('payment.number', { number: invoice.invoiceNumber })}</p>
+                  <p className="text-emerald-700 break-all">{t('payment.eor', { code: invoice.eor })}</p>
                   {loyaltySummary && (
-                    <p className="text-emerald-700">{loyaltySummary.redeemedPoints > 0 ? `Unovčeno ${loyaltySummary.redeemedPoints} točk · ` : ''}Prisluženo {loyaltySummary.earnedPoints} točk ⭐</p>
+                    <p className="text-emerald-700">{loyaltySummary.redeemedPoints > 0 ? t('payment.loyalty', { redeemed: loyaltySummary.redeemedPoints, earned: loyaltySummary.earnedPoints }) : t('payment.loyaltyEarned', { earned: loyaltySummary.earnedPoints })}</p>
                   )}
                 </div>
               )}
@@ -1856,11 +1874,11 @@ export default function DashboardPage() {
           <DialogFooter className="sm:items-center">
             {invoice?.id && (
               <Button variant="outline" className="mr-auto gap-1.5 min-h-11" disabled={printing} onClick={() => printInvoice(invoice.id!)}>
-                {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Natisni račun
+                {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} {t('payment.print')}
               </Button>
             )}
-            <Button variant="outline" className="min-h-11" onClick={() => { setPayingOrder(null); setInvoice(null) }}>Zapri</Button>
-            {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800 min-h-12 px-6 text-base font-bold" disabled={sending || !bill || !payOrderReady} onClick={() => void payOrder()}>{sending ? <Loader2 className="w-5 h-5 animate-spin" /> : payMethod === 'cash' && parts.length === 0 ? 'Izdaj račun' : 'Izdaj račun (POS)'}</Button>}
+            <Button variant="outline" className="min-h-11" onClick={() => { setPayingOrder(null); setInvoice(null) }}>{t('common.close')}</Button>
+            {!invoice && <Button className="bg-emerald-700 hover:bg-emerald-800 min-h-12 px-6 text-base font-bold" disabled={sending || !bill || !payOrderReady} onClick={() => void payOrder()}>{sending ? <Loader2 className="w-5 h-5 animate-spin" /> : payMethod === 'cash' && parts.length === 0 ? t('payment.issue') : t('payment.issuePos')}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1923,7 +1941,7 @@ export default function DashboardPage() {
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {['OWNER', 'ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN'].map((r) => (
-                          <SelectItem key={r} value={r} disabled={(user?.role === 'MANAGER' && r === 'ADMIN') || (user?.role !== 'OWNER' && r === 'OWNER')}>{ROLE_LABELS[r]}</SelectItem>
+                          <SelectItem key={r} value={r} disabled={(user?.role === 'MANAGER' && r === 'ADMIN') || (user?.role !== 'OWNER' && r === 'OWNER')}>{roleL(r)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -2152,14 +2170,14 @@ export default function DashboardPage() {
       <AlertDialog open={confirmLogout} onOpenChange={setConfirmLogout}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Odjava iz sistema?</AlertDialogTitle>
+            <AlertDialogTitle>{t('logout.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Odjava zapre vašo sejo na tej napravi. Odprta naročila ostanejo aktivna — ne izgubijo se.
+              {t('logout.desc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Ostani</AlertDialogCancel>
-            <AlertDialogAction className="bg-emerald-700 hover:bg-emerald-800" onClick={logout}>Odjavi me</AlertDialogAction>
+            <AlertDialogCancel>{t('logout.stay')}</AlertDialogCancel>
+            <AlertDialogAction className="bg-emerald-700 hover:bg-emerald-800" onClick={logout}>{t('logout.doIt')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2176,7 +2194,7 @@ export default function DashboardPage() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        RestavrantOS rekonstrukcija {APP_VERSION} · offline-first + FURS (sim/produkcija ločena) · EUR
+        {t('dash.footer', { v: APP_VERSION })}
       </footer>
     </main>
   )

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { num } from '@/lib/map'
+import { fiscalAdapterFor } from '@/lib/fiscal'
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await requireAuth(req)
@@ -69,5 +70,19 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     orderNumber: r.Order?.orderNumber ?? null,
     tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? (r.Order.Table as unknown as { name?: string }).name ?? ''}` : null,
     operator: r.Order?.Employee_Order_employeeIdToEmployee?.name || null, items,
+    // Triage SI/HR fiskalizacija: država določa pot na izpisu (ZOI/EOR vs ZKI/JIR + QR)
+    country: r.Location?.country || 'SI',
+    zki: r.cisZki || undefined,
+    jir: r.cisJir || undefined,
+    qr: (() => {
+      const adapter = fiscalAdapterFor(r.Location?.country)
+      if (adapter.country !== 'HR') return undefined
+      return adapter.qrContent({
+        verification: r.cisJir || '',
+        protective: r.cisZki || '',
+        issuedAt: r.createdAt,
+        total: num(r.totalWithTip) > 0 ? num(r.totalWithTip) : num(r.total),
+      }) || undefined
+    })(),
   }})
 }

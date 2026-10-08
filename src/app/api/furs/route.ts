@@ -1,4 +1,3 @@
-import crypto from 'crypto'
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
@@ -9,6 +8,7 @@ import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
 import { deductStockForOrderTx } from '@/lib/inventory'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
+import { fiscalAdapterFor } from '@/lib/fiscal'
 
 /**
  * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
@@ -290,9 +290,22 @@ export async function POST(req: NextRequest) {
       const m = now.getMonth() + 1
       const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
 
-      const zoiPayload = `${location.taxId}${now.toISOString()}${receiptNumber}${location.premisesId || 'BLG001'}${total.toFixed(2)}`
-      const zoi = crypto.createHash('md5').update(zoiPayload).digest('hex')
-      const eor = simulation ? crypto.randomUUID().toUpperCase() : ''
+      // Fiskalni adapter po državi lokacije (triage SI/HR fiskalizacija):
+      //  SI → ZOI/EOR (FURS simulacija / produkcija pending) — pot MORA ostati byte-identična (§18),
+      //  HR → ZKI/JIR (Fiskalizacija 2.0, NN 89/2025 + Pravilnik NN 153/2025; QR = porezna.gov.hr/rn).
+      // Vektor byte-identičnosti SI ZOI: tests/fiscal.test.ts.
+      const fiscal = fiscalAdapterFor(location.country)
+      const isHrFiscal = fiscal.country === 'HR'
+      const codes = fiscal.computeCodes({
+        taxId: location.taxId || '',
+        issuedAt: now,
+        receiptNumber,
+        premisesId: location.premisesId || 'BLG001',
+        total,
+        simulation,
+      })
+      const zoi = isHrFiscal ? '' : codes.protective
+      const eor = isHrFiscal ? '' : codes.verification
 
       const check = await tx.check.create({
         data: {
@@ -336,7 +349,9 @@ export async function POST(req: NextRequest) {
           paymentMethod,
           printedAt: now,
           locationId: location.id,
-          cisStatus: 'none',
+          cisStatus: isHrFiscal ? (simulation ? 'verified' : 'pending') : 'none',
+          cisZki: isHrFiscal ? codes.protective : '',
+          cisJir: isHrFiscal ? codes.verification : '',
         },
       })
 
@@ -502,12 +517,35 @@ export async function POST(req: NextRequest) {
       entityId: receipt.twin.id,
       payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation },
     }).catch(() => undefined)
+    // Adapter je čista fabrika — po transakciji ga znova pridobimo in QR gradimo iz
+    // DB polj računa (resnica o shranjenem, ne o spremenljivkah iz tx obsega).
+    const fiscalOuter = fiscalAdapterFor(location.country)
+    const fiscalQr = fiscalOuter.qrContent({
+      verification: receipt.twin.cisJir || receipt.twin.eor,
+      protective: receipt.twin.cisZki || receipt.twin.zoi,
+      issuedAt: now,
+      total,
+    })
     return ok({
-      invoice: mapReceipt(receipt.twin),
+      invoice: {
+        ...mapReceipt(receipt.twin),
+        country: fiscalOuter.country,
+        zki: receipt.twin.cisZki || undefined,
+        jir: receipt.twin.cisJir || undefined,
+        qr: fiscalQr || undefined,
+      },
       // Issue #4 §8: simulator se NIKOLI ne predstavlja kot prava fiskalizacija
       fursEnvironment: simulation ? 'simulation' : 'production_pending',
       fiscalVerified: receipt.twin.fiscalVerified,
       fiscalStatus: receipt.twin.fiscalStatus,
+      // Triage SI/HR: fiskalna oznaka po državi (ZOI/EOR vs ZKI/JIR + QR)
+      fiscal: {
+        country: fiscalOuter.country,
+        codeLabel: fiscalOuter.codeLabel,
+        verifyLabel: fiscalOuter.verifyLabel,
+        simulated: simulation,
+        qr: fiscalQr,
+      },
       order: { ...orderPre, status: 'PAID', fursEor: receipt.twin.eor },
       bill: { discountTotal: bill.discountTotal, autoDiscounts: bill.autoDiscounts, totalDue: total },
       loyalty: loyaltyAccount ? { redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,

@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 
 interface Location {
   id: string
@@ -16,7 +17,16 @@ interface Location {
 }
 
 export default function LoginPage() {
+  return (
+    <I18nProvider>
+      <LoginPageInner />
+    </I18nProvider>
+  )
+}
+
+function LoginPageInner() {
   const router = useRouter()
+  const { t } = useI18n()
   const [locations, setLocations] = useState<Location[]>([])
   const [email, setEmail] = useState('')
   const [pin, setPin] = useState('')
@@ -54,14 +64,14 @@ export default function LoginPage() {
         body: JSON.stringify({ code: provCode.trim() }),
       })
       const data = await res.json()
-      if (!res.ok) { setProvError(data.error || 'Aktivacija ni uspela.'); return }
+      if (!res.ok) { setProvError(data.error || t('login.deviceFailed')); return }
       setProvToken(data.device?.token || '')
-      setProvName(data.device?.name || 'naprava')
+      setProvName(data.device?.name || t('login.deviceNameFallback'))
       // shrani token lokalno (isti ključ kot kiosk prej) — naprava je TAKOJ uporabna
       if (data.device?.type === 'KIOSK') localStorage.setItem('ro_kiosk_device_token', data.device.token)
       if (data.device?.type === 'CUSTOMER_DISPLAY') localStorage.setItem('ro_cfd_device_token', data.device.token)
     } catch {
-      setProvError('Povezava s strežnikom ni uspela.')
+      setProvError(t('login.connection'))
     } finally { setProvBusy(false) }
   }
 
@@ -77,7 +87,7 @@ export default function LoginPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Prijava ni uspela.')
+        setError(data.error || t('login.failed'))
         return
       }
       localStorage.setItem('ro_token', data.token)
@@ -87,7 +97,7 @@ export default function LoginPage() {
       else localStorage.removeItem('ro_bootstrap')
       router.push('/dashboard')
     } catch {
-      setError('Povezava s strežnikom ni uspela.')
+      setError(t('login.connection'))
     } finally {
       setLoading(false)
     }
@@ -95,7 +105,8 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
-      <div className="absolute top-3 right-3 z-10">
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        <LanguageToggle />
         <ThemeToggle />
       </div>
       <div className="flex-1 flex items-center justify-center p-4">
@@ -105,7 +116,7 @@ export default function LoginPage() {
               <UtensilsCrossed className="w-7 h-7" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight">RestavrantOS</h1>
-            <p className="text-sm text-stone-500">Blagajna · naročila · mize · kuhinja</p>
+            <p className="text-sm text-stone-500">{t('login.subtitle')}</p>
           </div>
 
           {locations.length > 0 && (
@@ -125,7 +136,7 @@ export default function LoginPage() {
           {/* ISSUE #4 §2.2 — aktivacija naprave z enkratno vpisno kodo (brez prijave) */}
           <Collapsible open={provOpen} onOpenChange={setProvOpen}>
             <CollapsibleTrigger className="w-full flex items-center justify-between rounded-lg bg-white/70 border border-stone-200 px-4 py-2.5 text-sm text-stone-600 hover:bg-white transition">
-              <span className="inline-flex items-center gap-2"><MonitorSmartphone className="w-4 h-4 text-emerald-700" /> Aktiviraj napravo (kiosk/display)</span>
+              <span className="inline-flex items-center gap-2"><MonitorSmartphone className="w-4 h-4 text-emerald-700" /> {t('login.device')}</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${provOpen ? 'rotate-180' : ''}`} />
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -133,20 +144,20 @@ export default function LoginPage() {
                 <CardContent className="pt-4 space-y-3">
                   {provToken ? (
                     <div className="space-y-1.5">
-                      <p className="text-sm font-medium text-emerald-800">✅ Naprava aktivirana: {provName}</p>
-                      <p className="text-xs text-stone-500">Žeton je shranjen v tem brskalniku. Za customer display odprite /display, za kiosk /kiosk.</p>
-                      <Button size="sm" variant="outline" onClick={() => { setProvToken(''); setProvCode('') }}>Aktiviraj še eno napravo</Button>
+                      <p className="text-sm font-medium text-emerald-800">✅ {t('login.deviceActivated')}: {provName}</p>
+                      <p className="text-xs text-stone-500">{t('login.deviceActivatedHint')}</p>
+                      <Button size="sm" variant="outline" onClick={() => { setProvToken(''); setProvCode('') }}>{t('login.deviceAnother')}</Button>
                     </div>
                   ) : (
                     <>
                       <div className="space-y-1.5">
-                        <Label htmlFor="dev-code">Vpisna koda (8 števk)</Label>
-                        <Input id="dev-code" inputMode="numeric" value={provCode} onChange={(e) => setProvCode(e.target.value.replace(/[^\d]/g, '').slice(0, 8))} placeholder="npr. 12345678" className="tracking-[0.3em] font-mono" />
-                        <p className="text-[11px] text-stone-400">Kodo ustvari vodja: Dashboard → Nastavitve → Naprave → Vpisna koda. Velja 15 minut in je enkratna.</p>
+                        <Label htmlFor="dev-code">{t('login.deviceCode')}</Label>
+                        <Input id="dev-code" inputMode="numeric" value={provCode} onChange={(e) => setProvCode(e.target.value.replace(/[^\d]/g, '').slice(0, 8))} placeholder={t('login.devicePlaceholder')} className="tracking-[0.3em] font-mono" />
+                        <p className="text-[11px] text-stone-400">{t('login.deviceCodeHint')}</p>
                       </div>
                       {provError && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{provError}</p>}
                       <Button size="sm" className="w-full bg-emerald-700 hover:bg-emerald-800" disabled={provBusy || provCode.length !== 8} onClick={claimDevice}>
-                        {provBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aktiviraj napravo'}
+                        {provBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('login.deviceSubmit')}
                       </Button>
                     </>
                   )}
@@ -157,13 +168,13 @@ export default function LoginPage() {
 
           <Card className="shadow-xl border-stone-200">
             <CardHeader>
-              <CardTitle>Prijava</CardTitle>
-              <CardDescription>Vpišite se s službenim računom in PIN kodo.</CardDescription>
+              <CardTitle>{t('login.title')}</CardTitle>
+              <CardDescription>{t('login.desc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={submit} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="email">E-pošta</Label>
+                  <Label htmlFor="email">{t('login.email')}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -176,7 +187,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="pin">PIN</Label>
+                  <Label htmlFor="pin">{t('login.pin')}</Label>
                   <Input
                     id="pin"
                     type="password"
@@ -195,7 +206,7 @@ export default function LoginPage() {
                   </p>
                 )}
                 <Button type="submit" disabled={loading} className="w-full h-11 bg-emerald-700 hover:bg-emerald-800">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Prijava'}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('login.submit')}
                 </Button>
               </form>
             </CardContent>
@@ -203,13 +214,13 @@ export default function LoginPage() {
 
           <div className="text-center space-y-1">
             <p className="text-[11px] text-stone-400">
-              Rekonstrukcija 1.35.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)
+              {t('login.reconstruction')}
             </p>
           </div>
         </div>
       </div>
       <footer className="mt-auto py-4 text-center text-xs text-stone-400 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        RestavrantOS · FURS simulacija · EUR
+        {t('login.footer')}
       </footer>
     </main>
   )

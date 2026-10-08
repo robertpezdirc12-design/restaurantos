@@ -1,8 +1,15 @@
 /**
- * NATISLJIVI FURS RAČUN — odjemalska generacija tiskalniškega prikaza (80 mm stil).
+ * NATISLJIVI FURS/HR RAČUN — odjemalska generacija tiskalniškega prikaza (80 mm stil).
  * Odpre pojavno okno z računom in sproži tiskanje (v brskalniku je mogoče izbrati
  * tudi »Shrani kot PDF«). Ne potrebuje odvisnosti; črke č/š/ž delujejo izvorno.
+ *
+ * Dvojezičnost SL/HR (issue #1 triage): jezik izpisa = parameter `locale` (privzeto
+ * 'sl' — obstoječi izpis je nespremenjen, §18). Fiskalna pot se loči po državi
+ * lokacije (fiskalizacija ni prevodna funkcija): SI → ZOI/EOR (FURS), HR → ZKI/JIR
+ * + uradna potrditvena povezava Porezne uprave (Fiskalizacija 2.0, NN 89/2025).
  */
+
+import { t, fiscalStatusLabel, type Locale } from '@/lib/i18n'
 
 export interface ReceiptItemT {
   name: string
@@ -41,27 +48,28 @@ export interface ReceiptDetailT {
   tableName: string | null
   operator: string | null
   items: ReceiptItemT[]
+  /** Država lokacije ('SI' | 'HR') — določa fiskalni tok na izpisu (privzeto SI). */
+  country?: string
+  /** HR fiskalna polja (Fiskalizacija 2.0) */
+  zki?: string
+  jir?: string
+  /** Uradna potrditvena povezava (QR vsebina) za HR račune */
+  qr?: string
 }
 
 const esc = (s: string | null | undefined) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/** Slovenska oznaka FURS stanja računa */
-function fursLabel(d: ReceiptDetailT): string {
-  if (d.fiscalVerified) return 'Račun je fiskaliziran (FURS ✓)'
-  switch ((d.fiscalStatus || '').toLowerCase()) {
-    case 'pending': return 'FURS: potrditev v obdelavi (simulacija)'
-    case 'failed': return 'FURS: potrditev ni uspela'
-    case 'none': return 'FURS: ni poslano'
-    default: return `FURS status: ${d.fiscalStatus || 'neoverjeno'}`
-  }
-}
-
 const money = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 const pct = (n: number) => `${n.toFixed(1).replace('.', ',')} %`
 const SEP = '· · · · · · · · · · · · · · · · · · ·'
 
-export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null): string {
+export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null, locale: Locale = 'sl'): string {
+  const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars)
+  const country = (d.country || 'SI').toUpperCase()
+  const isHr = country === 'HR'
+  const bcp = isHr ? 'hr-HR' : 'sl-SI'
+
   const items = d.items
     .map(
       (i) => `<tr>
@@ -75,22 +83,34 @@ export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null): str
   const vatRows = d.vatBreakdown
     .map(
       (v) => `<tr class="small">
-        <td colspan="2">DDV ${pct(v.rate)} (osnova ${money(v.base)})</td>
+        <td colspan="2">${esc(tr('receipt.vatRate', { rate: pct(v.rate), base: money(v.base) }))}</td>
         <td class="r">${money(v.vat)}</td>
       </tr>`,
     )
     .join('')
 
   const extraRows = [
-    d.discount > 0 ? `<tr><td colspan="2">Popust</td><td class="r">−${money(d.discount)}</td></tr>` : '',
-    d.tip > 0 ? `<tr><td colspan="2">Namig</td><td class="r">${money(d.tip)}</td></tr>` : '',
+    d.discount > 0 ? `<tr><td colspan="2">${esc(tr('receipt.discount'))}</td><td class="r">−${money(d.discount)}</td></tr>` : '',
+    d.tip > 0 ? `<tr><td colspan="2">${esc(tr('receipt.tip'))}</td><td class="r">${money(d.tip)}</td></tr>` : '',
   ].join('')
 
+  // Fiskalne vrstice po državi: SI (ZOI/EOR) ali HR (ZKI/JIR + potrditvena povezava)
+  const fiscalRows = isHr
+    ? `<p class="small">${esc(tr('receipt.zki'))} <span class="mono">${esc(d.zki || '—')}</span></p>
+    <p class="small">${esc(tr('receipt.jir'))} <span class="mono">${esc(d.jir || '—')}</span></p>${d.qr ? `
+    <p class="small mono">${esc(tr('receipt.hrCheck', { url: d.qr }))}</p>` : ''}`
+    : `<p class="small">ZOI: <span class="mono">${esc(d.zoi || '—')}</span></p>
+    <p class="small">EOR: <span class="mono">${esc(d.eor || '—')}</span></p>`
+
+  const taxLine = isHr
+    ? `${esc(tr('receipt.taxNo'))} ${esc(d.taxId || '—')}`
+    : `${esc(tr('receipt.taxNo'))} ${esc(d.taxId || '—')}${d.businessId ? ` · ${esc(tr('receipt.registrationNo'))} ${esc(d.businessId)}` : ''}`
+
   return `<!doctype html>
-<html lang="sl">
+<html lang="${isHr ? 'hr' : 'sl'}">
 <head>
 <meta charset="utf-8">
-<title>Račun ${esc(d.invoiceNumber)}</title>
+<title>${esc(tr('receipt.title', { number: d.invoiceNumber }))}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #111; background: #fff; padding: 8px; }
@@ -117,41 +137,40 @@ export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null): str
   <div class="rc">
     <h1>${esc(d.businessName || 'RestavrantOS')}</h1>
     ${d.businessAddress ? `<p class="c small">${esc(d.businessAddress)}</p>` : ''}
-    <p class="c small">Davčna št.: ${esc(d.taxId || '—')}${d.businessId ? ` · Matična: ${esc(d.businessId)}` : ''}</p>
-    <p class="c small">Poslovni prostor: ${esc(d.premisesId || d.businessId || 'BLG-001')} · Blagajna: ${esc(d.registerId || 'BLG-001')}</p>
+    <p class="c small">${taxLine}</p>
+    <p class="c small">${esc(tr('receipt.premises'))} ${esc(d.premisesId || d.businessId || 'BLG-001')} · ${esc(tr('receipt.register'))} ${esc(d.registerId || 'BLG-001')}</p>
     <p class="sep">${SEP}</p>
-    <p>Račun št.: <b>${esc(d.invoiceNumber)}</b><br/>
-       Datum izdaje: ${esc(new Date(d.createdAt).toLocaleString('sl-SI'))}<br/>
-       ${d.tableName ? `${esc(d.tableName)}<br/>` : ''}${d.orderNumber != null ? `Naročilo #${d.orderNumber}<br/>` : ''}${d.operator ? `Operater: ${esc(d.operator)}` : ''}</p>
+    <p>${esc(tr('receipt.number'))} <b>${esc(d.invoiceNumber)}</b><br/>
+       ${esc(tr('receipt.issuedAt'))} ${esc(new Date(d.createdAt).toLocaleString(bcp))}<br/>
+       ${d.tableName ? `${esc(d.tableName)}<br/>` : ''}${d.orderNumber != null ? `${esc(tr('receipt.order', { n: d.orderNumber }))}<br/>` : ''}${d.operator ? `${esc(tr('receipt.operator'))} ${esc(d.operator)}` : ''}</p>
     <p class="sep">${SEP}</p>
-    ${items ? `<table>${items}</table>` : '<p class="small c">(brez postavk)</p>'}
+    ${items ? `<table>${items}</table>` : `<p class="small c">${esc(tr('receipt.noItems'))}</p>`}
     <p class="sep">${SEP}</p>
     <table class="totals">
       ${extraRows}
-      <tr class="small"><td colspan="2">Vsota brez DDV</td><td class="r">${money(d.subtotal)}</td></tr>
+      <tr class="small"><td colspan="2">${esc(tr('receipt.netTotal'))}</td><td class="r">${money(d.subtotal)}</td></tr>
       ${vatRows}
-      <tr class="small"><td colspan="2">DDV skupaj</td><td class="r">${money(d.totalVat)}</td></tr>
-      <tr class="grand"><td colspan="2">SKUPAJ ZA PLAČILO</td><td class="r">${money(d.totalWithTip > 0 ? d.totalWithTip : d.total)}</td></tr>
+      <tr class="small"><td colspan="2">${esc(tr('receipt.vatTotal'))}</td><td class="r">${money(d.totalVat)}</td></tr>
+      <tr class="grand"><td colspan="2">${esc(tr('receipt.grandTotal'))}</td><td class="r">${money(d.totalWithTip > 0 ? d.totalWithTip : d.total)}</td></tr>
     </table>
-    <p>Plačilo: <b>${esc((d.paymentMethod || 'cash').toUpperCase())}</b></p>
+    <p>${esc(tr('receipt.paymentMethod'))} <b>${esc((d.paymentMethod || 'cash').toUpperCase())}</b></p>
     <p class="sep">${SEP}</p>
-    <p class="small">ZOI: <span class="mono">${esc(d.zoi || '—')}</span></p>
-    <p class="small">EOR: <span class="mono">${esc(d.eor || '—')}</span></p>
-    <p class="c small">${esc(fursLabel(d))}</p>
+    ${fiscalRows}
+    <p class="c small">${esc(fiscalStatusLabel(locale, country, d.fiscalStatus, d.fiscalVerified))}</p>
     ${footer ? `<p class="c small footer">${esc(footer)}</p>` : ''}
-    ${d.isCopy ? '<p class="copy small">KOPIJA RAČUNA</p>' : ''}
-    ${d.isStorno ? '<p class="copy small">STORNO RAČUN</p>' : ''}
+    ${d.isCopy ? `<p class="copy small">${esc(tr('receipt.copy'))}</p>` : ''}
+    ${d.isStorno ? `<p class="copy small">${esc(tr('receipt.storno'))}</p>` : ''}
   </div>
 </body>
 </html>`
 }
 
 /** Odpre pojavno okno z računom in sproži tiskanje (uporabnik lahko izbere »Shrani kot PDF«). */
-export function printReceipt(d: ReceiptDetailT, footer?: string | null): boolean {
+export function printReceipt(d: ReceiptDetailT, footer?: string | null, locale: Locale = 'sl'): boolean {
   const w = window.open('', 'ro_receipt', 'width=440,height=680')
   if (!w) return false
   w.document.open()
-  w.document.write(buildReceiptHTML(d, footer))
+  w.document.write(buildReceiptHTML(d, footer, locale))
   w.document.close()
   setTimeout(() => {
     try { w.focus(); w.print() } catch { /* headless / zavrzeno okno — vsebina ostane odprta */ }
