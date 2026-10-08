@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
-import { DAY_NAMES_SL } from '@/lib/openinghours'
 import { newOperationId } from '@/lib/offline-queue'
+import { useI18n } from '@/components/i18n'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,7 @@ export interface SupplierT { id: string; name: string; contact?: string | null; 
 export interface RecipeT { id: string; name: string; instructions: string; items: { inventoryItemId: string; name: string; unit: string; qty: number }[] }
 
 export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
   const totalValue = items.reduce((s, i) => s + i.qty * i.cost, 0)
   const [addItem, setAddItem] = useState(false)
@@ -54,7 +55,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
   }
 
   async function deleteRecipe(menuItemId: string) {
-    if (!confirm('Izbrišem recepturo? Razknjiževanje za ta artikel se ustavi.')) return
+    if (!confirm(t('inv.deleteRecipeConfirm'))) return
     try {
       await api(`/api/recipes?menuItemId=${encodeURIComponent(menuItemId)}`, { method: 'DELETE' })
       await onReload()
@@ -88,20 +89,20 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><PackageSearch className="w-4 h-4" /> Artiklov</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{items.length}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Pod minimumom</CardTitle></CardHeader><CardContent><p className={`text-2xl font-bold ${low.length > 0 ? 'text-amber-600' : ''}`}>{low.length}</p></CardContent></Card>
-        <Card className="col-span-2 lg:col-span-1"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Vrednost zaloge</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(totalValue)}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><PackageSearch className="w-4 h-4" /> {t('inv.itemCount')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{items.length}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {t('inv.belowMin')}</CardTitle></CardHeader><CardContent><p className={`text-2xl font-bold ${low.length > 0 ? 'text-amber-600' : ''}`}>{low.length}</p></CardContent></Card>
+        <Card className="col-span-2 lg:col-span-1"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('inv.stockValue')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(totalValue)}</p></CardContent></Card>
       </div>
 
       {canManage && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setAddItem(true)}><Plus className="w-4 h-4" /> Nov artikel</Button>
+          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setAddItem(true)}><Plus className="w-4 h-4" /> {t('inv.newItem')}</Button>
         </div>
       )}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Sklad zalog</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('inv.stockList')}</CardTitle></CardHeader>
         <CardContent>
-          {items.length === 0 && <p className="text-sm text-stone-500">Zaloga je prazna.</p>}
+          {items.length === 0 && <p className="text-sm text-stone-500">{t('inv.empty')}</p>}
           <ScrollArea className="max-h-[55vh]">
             <div className="grid gap-2 sm:grid-cols-2">
               {items.map((i) => {
@@ -110,16 +111,16 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                   <div key={i.id} className={`rounded-lg border bg-white p-3 flex items-center justify-between gap-2 ${isLow ? 'border-amber-300 bg-amber-50/60' : 'border-stone-200'}`}>
                     <div className="min-w-0">
                       <p className="font-medium truncate">{i.name}</p>
-                      <p className="text-xs text-stone-500">{i.cost > 0 ? `${fmtEUR(i.cost)}/${i.unit}` : i.unit}{isLow && ' · min ' + i.minQty}</p>
+                      <p className="text-xs text-stone-500">{i.cost > 0 ? `${fmtEUR(i.cost)}/${i.unit}` : i.unit}{isLow && ` · ${t('inv.minShort')} ${i.minQty}`}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
                         <p className="font-bold">{i.qty} {i.unit}</p>
-                        {isLow && <Badge className="bg-amber-600 text-white mt-0.5">Pod minimumom</Badge>}
+                        {isLow && <Badge className="bg-amber-600 text-white mt-0.5">{t('inv.belowMin')}</Badge>}
                       </div>
                       {canManage && (
                         <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setAdjust(i); setAdj({ delta: '', setQty: String(i.qty), minQty: String(i.minQty), cost: String(i.cost) }) }}>
-                          Prilagodi
+                          {t('inv.adjust')}
                         </Button>
                       )}
                     </div>
@@ -133,11 +134,11 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       <Card>
         <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base flex items-center gap-1.5"><Truck className="w-4 h-4" /> Dobavitelji</CardTitle>
-          {canManage && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSupForm({ name: '', contact: '', phone: '' })}><Plus className="w-3 h-3" /> Dodaj</Button>}
+          <CardTitle className="text-base flex items-center gap-1.5"><Truck className="w-4 h-4" /> {t('inv.suppliers')}</CardTitle>
+          {canManage && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSupForm({ name: '', contact: '', phone: '' })}><Plus className="w-3 h-3" /> {t('inv.add')}</Button>}
         </CardHeader>
         <CardContent>
-          {suppliers.length === 0 && <p className="text-sm text-stone-500">Ni dodanih dobaviteljev.</p>}
+          {suppliers.length === 0 && <p className="text-sm text-stone-500">{t('inv.noSuppliers')}</p>}
           <div className="grid gap-2 sm:grid-cols-2">
             {suppliers.map((s) => (
               <div key={s.id} className="rounded-lg border border-stone-200 bg-white p-3">
@@ -154,13 +155,13 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       <Card>
         <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base flex items-center gap-1.5"><UtensilsCrossed className="w-4 h-4" /> Recepti (sestavine artiklov)</CardTitle>
+          <CardTitle className="text-base flex items-center gap-1.5"><UtensilsCrossed className="w-4 h-4" /> {t('inv.recipes')}</CardTitle>
           {canManage && menuItems.length > 0 && (
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openRecipe()}><Plus className="w-3 h-3" /> Receptura</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openRecipe()}><Plus className="w-3 h-3" /> {t('inv.recipe')}</Button>
           )}
         </CardHeader>
         <CardContent>
-          {recipes.length === 0 && <p className="text-sm text-stone-500">Ni shranjenih receptov — brez recepture se zaloga ob prodaji ne razknjiži.</p>}
+          {recipes.length === 0 && <p className="text-sm text-stone-500">{t('inv.noRecipes')}</p>}
           <ScrollArea className="max-h-80">
             <div className="grid gap-2 sm:grid-cols-2">
               {recipes.map((r) => (
@@ -169,13 +170,13 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                     <p className="font-medium truncate">{r.name}</p>
                     {canManage && (
                       <div className="shrink-0 flex gap-1">
-                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => openRecipe(r)}>Uredi</Button>
-                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] text-red-700 hover:text-red-800" onClick={() => deleteRecipe(r.id)}>Izbriši</Button>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => openRecipe(r)}>{t('common.edit')}</Button>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] text-red-700 hover:text-red-800" onClick={() => deleteRecipe(r.id)}>{t('common.delete')}</Button>
                       </div>
                     )}
                   </div>
                   {r.items.length === 0 ? (
-                    <p className="text-xs text-stone-400">brez sestavin</p>
+                    <p className="text-xs text-stone-400">{t('inv.noIngredients')}</p>
                   ) : (
                     <ul className="mt-1 space-y-0.5">
                       {r.items.map((line, idx) => (
@@ -196,24 +197,24 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       {/* Receptura: sestavine artikla menija */}
       <Dialog open={recForm !== null} onOpenChange={(v) => !v && setRecForm(null)}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Receptura artikla</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('inv.recipeTitle')}</DialogTitle></DialogHeader>
           {recForm && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label>Artikel menija *</Label>
+                <Label>{t('inv.menuItem')}</Label>
                 <Select value={recForm.menuItemId} onValueChange={(v) => setRecForm({ ...recForm, menuItemId: v })}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Izberi artikel" /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder={t('inv.selectItem')} /></SelectTrigger>
                   <SelectContent className="max-h-72">
                     {menuItems.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Sestavine (količina na eno prodano enoto)</Label>
+                <Label>{t('inv.ingredients')}</Label>
                 {recForm.lines.map((line, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
                     <Select value={line.inventoryItemId} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, inventoryItemId: v } : l) })}>
-                      <SelectTrigger className="flex-1"><SelectValue placeholder="Sestavina" /></SelectTrigger>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder={t('inv.ingredient')} /></SelectTrigger>
                       <SelectContent className="max-h-72">
                         {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>)}
                       </SelectContent>
@@ -222,13 +223,13 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                     <Button size="sm" variant="outline" className="h-9 px-2 shrink-0 text-red-700 hover:text-red-800" onClick={() => setRecForm({ ...recForm, lines: recForm.lines.filter((_, i) => i !== idx) })} disabled={recForm.lines.length <= 1}>×</Button>
                   </div>
                 ))}
-                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setRecForm({ ...recForm, lines: [...recForm.lines, { inventoryItemId: items[0]?.id || '', qty: '' }] })}><Plus className="w-3 h-3" /> Dodaj sestavino</Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setRecForm({ ...recForm, lines: [...recForm.lines, { inventoryItemId: items[0]?.id || '', qty: '' }] })}><Plus className="w-3 h-3" /> {t('inv.addIngredient')}</Button>
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRecForm(null)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={recBusy || !recForm?.menuItemId || recForm.lines.some((l) => !l.inventoryItemId || !(Number(l.qty.replace(',', '.')) > 0))} onClick={saveRecipe}>Shrani recepturo</Button>
+            <Button variant="outline" onClick={() => setRecForm(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={recBusy || !recForm?.menuItemId || recForm.lines.some((l) => !l.inventoryItemId || !(Number(l.qty.replace(',', '.')) > 0))} onClick={saveRecipe}>{t('inv.saveRecipe')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -236,15 +237,15 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       {/* Nov artikel zaloge */}
       <Dialog open={addItem} onOpenChange={(v) => !v && setAddItem(false)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nov artikel zaloge</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('inv.newItemTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ni-name">Naziv *</Label>
-              <Input id="ni-name" value={ni.name} onChange={(e) => setNi({ ...ni, name: e.target.value })} placeholder="npr. Moka tip 500" />
+              <Label htmlFor="ni-name">{t('inv.name')}</Label>
+              <Input id="ni-name" value={ni.name} onChange={(e) => setNi({ ...ni, name: e.target.value })} placeholder={t('inv.namePlaceholder')} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="ni-unit">Enota</Label>
+                <Label htmlFor="ni-unit">{t('inv.unit')}</Label>
                 <Select value={ni.unit} onValueChange={(v) => setNi({ ...ni, unit: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -253,24 +254,24 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ni-qty">Začetna količina</Label>
+                <Label htmlFor="ni-qty">{t('inv.initQty')}</Label>
                 <Input id="ni-qty" inputMode="decimal" value={ni.qty} onChange={(e) => setNi({ ...ni, qty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="ni-min">Min. količina</Label>
+                <Label htmlFor="ni-min">{t('inv.minQty')}</Label>
                 <Input id="ni-min" inputMode="decimal" value={ni.minQty} onChange={(e) => setNi({ ...ni, minQty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ni-cost">Cena / enoto (€)</Label>
+                <Label htmlFor="ni-cost">{t('inv.costPerUnit')}</Label>
                 <Input id="ni-cost" inputMode="decimal" value={ni.cost} onChange={(e) => setNi({ ...ni, cost: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0.00" />
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddItem(false)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={niBusy || !ni.name} onClick={createItem}>{niBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani artikel'}</Button>
+            <Button variant="outline" onClick={() => setAddItem(false)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={niBusy || !ni.name} onClick={createItem}>{niBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.saveItem')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -278,34 +279,34 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       {/* Prilagoditev zaloge */}
       <Dialog open={!!adjust} onOpenChange={(v) => !v && setAdjust(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Prilagodi zalogo — {adjust?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('inv.adjustTitle', { name: adjust?.name ?? '' })}</DialogTitle></DialogHeader>
           {adjust && (
             <div className="space-y-3">
-              <p className="text-xs text-stone-500">Trenutno stanje: <b>{adjust.qty} {adjust.unit}</b></p>
+              <p className="text-xs text-stone-500">{t('inv.currentStock')} <b>{adjust.qty} {adjust.unit}</b></p>
               <div className="space-y-1.5">
-                <Label htmlFor="adj-delta">Prejem / sprememba (+/- {adjust.unit})</Label>
-                <Input id="adj-delta" inputMode="decimal" value={adj.delta} onChange={(e) => setAdj({ ...adj, delta: e.target.value.replace(/[^\d.,-]/g, '').replace(',', '.') })} placeholder="npr. 12 ali -3" />
-                <p className="text-[11px] text-stone-400">Če je vneseno, se prišteje k trenutni količini (pozitivno = prejem blaga).</p>
+                <Label htmlFor="adj-delta">{t('inv.deltaLabel', { unit: adjust.unit })}</Label>
+                <Input id="adj-delta" inputMode="decimal" value={adj.delta} onChange={(e) => setAdj({ ...adj, delta: e.target.value.replace(/[^\d.,-]/g, '').replace(',', '.') })} placeholder={t('inv.deltaPlaceholder')} />
+                <p className="text-[11px] text-stone-400">{t('inv.deltaHint')}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="adj-set">Nastavi količino na</Label>
+                  <Label htmlFor="adj-set">{t('inv.setQtyTo')}</Label>
                   <Input id="adj-set" inputMode="decimal" value={adj.setQty} onChange={(e) => setAdj({ ...adj, setQty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="adj-min">Min. količina</Label>
+                  <Label htmlFor="adj-min">{t('inv.minQty')}</Label>
                   <Input id="adj-min" inputMode="decimal" value={adj.minQty} onChange={(e) => setAdj({ ...adj, minQty: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="adj-cost">Cena / enoto (€)</Label>
+                <Label htmlFor="adj-cost">{t('inv.costPerUnit')}</Label>
                 <Input id="adj-cost" inputMode="decimal" value={adj.cost} onChange={(e) => setAdj({ ...adj, cost: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAdjust(null)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={adjBusy} onClick={saveAdjust}>{adjBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani prilagoditev'}</Button>
+            <Button variant="outline" onClick={() => setAdjust(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={adjBusy} onClick={saveAdjust}>{adjBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.saveAdjust')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -313,28 +314,28 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       {/* Nov dobavitelj */}
       <Dialog open={!!supForm} onOpenChange={(v) => !v && setSupForm(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nov dobavitelj</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('inv.newSupplier')}</DialogTitle></DialogHeader>
           {supForm && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="sup-name">Naziv *</Label>
-                <Input id="sup-name" value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} placeholder="npr. Kmetija Vidmar" />
+                <Label htmlFor="sup-name">{t('inv.name')}</Label>
+                <Input id="sup-name" value={supForm.name} onChange={(e) => setSupForm({ ...supForm, name: e.target.value })} placeholder={t('inv.supplierNamePlaceholder')} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="sup-contact">Kontaktna oseba</Label>
+                  <Label htmlFor="sup-contact">{t('inv.contactPerson')}</Label>
                   <Input id="sup-contact" value={supForm.contact} onChange={(e) => setSupForm({ ...supForm, contact: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="sup-phone">Telefon</Label>
+                  <Label htmlFor="sup-phone">{t('inv.phone')}</Label>
                   <Input id="sup-phone" value={supForm.phone} onChange={(e) => setSupForm({ ...supForm, phone: e.target.value })} />
                 </div>
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSupForm(null)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={supBusy || !supForm?.name} onClick={createSupplier}>{supBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani dobavitelja'}</Button>
+            <Button variant="outline" onClick={() => setSupForm(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={supBusy || !supForm?.name} onClick={createSupplier}>{supBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.saveSupplier')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -346,6 +347,7 @@ export interface ShiftT { id: string; employeeId?: string | null; employee?: { n
 export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number }; taxBreakdown: { taxRate: number; qty: number }[] }
 
 export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: ShiftT[]; financial: FinancialT | null; canManage: boolean; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [cash, setCash] = useState('')
   const [busy, setBusy] = useState(false)
   const openShift = shifts.find((s) => s.status === 'open')
@@ -364,19 +366,19 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> Prihodki (mesec)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.month.revenue) : '—'}</p><p className="text-xs text-stone-400">davek {financial ? fmtEUR(financial.month.tax) : '—'}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> Stroški (mesec)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.month.expenses) : '—'}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Dobiček (mesec)</CardTitle></CardHeader><CardContent><p className={`text-xl font-bold ${(financial?.month.profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{financial ? fmtEUR(financial.month.profit) : '—'}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Računov (mesec)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial?.month.invoices ?? '—'}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> {t('shifts.revenueMonth')}</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.month.revenue) : '—'}</p><p className="text-xs text-stone-400">{t('shifts.tax')} {financial ? fmtEUR(financial.month.tax) : '—'}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> {t('exp.month')}</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.month.expenses) : '—'}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('shifts.profitMonth')}</CardTitle></CardHeader><CardContent><p className={`text-xl font-bold ${(financial?.month.profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{financial ? fmtEUR(financial.month.profit) : '—'}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('shifts.invoicesMonth')}</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial?.month.invoices ?? '—'}</p></CardContent></Card>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> Prihodki (danes)</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.today.revenue) : '—'}</p><p className="text-xs text-stone-400">{financial?.today.invoices ?? '—'} računov · davek {financial ? fmtEUR(financial.today.tax) : '—'}</p></CardContent></Card>
-        <Card className="col-span-2 lg:col-span-3"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Promet po davčnih stopnjah (mesec)</CardTitle></CardHeader><CardContent>
-          {!financial || financial.taxBreakdown.length === 0 ? <p className="text-sm text-stone-500">Ni prometa.</p> : (
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> {t('shifts.revenueToday')}</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.today.revenue) : '—'}</p><p className="text-xs text-stone-400">{t('shifts.todayDetail', { n: financial?.today.invoices ?? '—', tax: financial ? fmtEUR(financial.today.tax) : '—' })}</p></CardContent></Card>
+        <Card className="col-span-2 lg:col-span-3"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('shifts.taxBreakdown')}</CardTitle></CardHeader><CardContent>
+          {!financial || financial.taxBreakdown.length === 0 ? <p className="text-sm text-stone-500">{t('shifts.noTraffic')}</p> : (
             <div className="flex flex-wrap gap-2">
-              {financial.taxBreakdown.map((t) => (
-                <Badge key={t.taxRate} variant="outline" className="text-sm px-2.5 py-1">DDV {t.taxRate} % · {t.qty} postavk</Badge>
+              {financial.taxBreakdown.map((tb) => (
+                <Badge key={tb.taxRate} variant="outline" className="text-sm px-2.5 py-1">{t('shifts.vatBadge', { rate: tb.taxRate, qty: tb.qty })}</Badge>
               ))}
             </div>
           )}
@@ -388,46 +390,46 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
           if (!financial) return
           const d = new Date()
           downloadCSV(`porocilo-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
-            ['Financno porocilo RestavrantOS', new Date().toLocaleDateString('sl-SI')],
+            [t('shifts.csvTitle'), new Date().toLocaleDateString('sl-SI')],
             [],
-            ['Obdobje', 'Prihodki (EUR)', 'Davek (EUR)', 'Stroski (EUR)', 'Dobicek (EUR)', 'Racunov'],
-            ['Danes', financial.today.revenue, financial.today.tax, '', '', financial.today.invoices],
-            ['Mesec', financial.month.revenue, financial.month.tax, financial.month.expenses, financial.month.profit, financial.month.invoices],
+            [t('shifts.csvPeriod'), t('shifts.csvRevenue'), t('shifts.csvTax'), t('shifts.csvExpenses'), t('shifts.csvProfit'), t('shifts.csvInvoices')],
+            [t('shifts.csvToday'), financial.today.revenue, financial.today.tax, '', '', financial.today.invoices],
+            [t('shifts.csvMonth'), financial.month.revenue, financial.month.tax, financial.month.expenses, financial.month.profit, financial.month.invoices],
             [],
-            ['Davcna stopnja (%)', 'Postavk'],
+            [t('shifts.csvTaxRate'), t('shifts.csvItems')],
             ...financial.taxBreakdown.map((t) => [t.taxRate, t.qty]),
             [],
-            ['Izmena', 'Zaposleni', 'Vloga', 'Zacetek', 'Konec', 'Odpiranje (EUR)', 'Zakljucek (EUR)', 'Status'],
+            [t('shifts.csvShift'), t('shifts.csvEmployee'), t('shifts.csvRole'), t('shifts.csvStart'), t('shifts.csvEnd'), t('shifts.csvOpening'), t('shifts.csvClosing'), t('shifts.csvStatus')],
             ...shifts.map((s) => [s.id, s.employee?.name || '', s.employee?.role || '', s.startedAt, s.endedAt || '', s.openingCash, s.closingCash, s.status]),
           ])
         }}>
-          Izvozi poročilo (CSV)
+          {t('shifts.exportCsv')}
         </Button>
       </div>
 
       {canManage && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2"><Clock className="w-4 h-4" /> {openShift ? `Odprta izmena — ${openShift.employee?.name || ''}` : 'Ni odprte izmene'}</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2"><Clock className="w-4 h-4" /> {openShift ? t('shifts.openShift', { name: openShift.employee?.name || '' }) : t('shifts.noOpenShift')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-end gap-2">
             <div className="space-y-1.5">
-              <Label htmlFor="cash">{openShift ? 'Blagajna ob zaključku (€)' : 'Začetno stanje blagajne (€)'}</Label>
+              <Label htmlFor="cash">{openShift ? t('shifts.closingCashLabel') : t('shifts.openingCashLabel')}</Label>
               <Input id="cash" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.'))} placeholder="0.00" className="w-44" />
             </div>
             {openShift ? (
-              <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={stopShift}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zaključi izmeno (Z)'}</Button>
+              <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={stopShift}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('shifts.stopShift')}</Button>
             ) : (
-              <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={startShift}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Začni izmeno'}</Button>
+              <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={startShift}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('shifts.startShift')}</Button>
             )}
           </CardContent>
         </Card>
       )}
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Zadnje izmene (Z-poročila)</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('shifts.recent')}</CardTitle></CardHeader>
         <CardContent>
-          {shifts.length === 0 && <p className="text-sm text-stone-500">Ni zapisov izmen.</p>}
+          {shifts.length === 0 && <p className="text-sm text-stone-500">{t('shifts.none')}</p>}
           <ScrollArea className="max-h-80">
             <div className="space-y-2">
               {shifts.map((s) => (
@@ -437,9 +439,9 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
                     <p className="text-xs text-stone-500">{new Date(s.startedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{s.endedAt ? ` → ${new Date(s.endedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-stone-500">odpiranje {fmtEUR(s.openingCash)}</span>
-                    {s.status === 'closed' && <span className="text-xs font-semibold">zaključek {fmtEUR(s.closingCash)}</span>}
-                    <Badge className={s.status === 'open' ? 'bg-amber-600 text-white' : 'bg-stone-500 text-white'}>{s.status === 'open' ? 'Odprta' : 'Zaključena'}</Badge>
+                    <span className="text-xs text-stone-500">{t('shifts.opening')} {fmtEUR(s.openingCash)}</span>
+                    {s.status === 'closed' && <span className="text-xs font-semibold">{t('shifts.closing')} {fmtEUR(s.closingCash)}</span>}
+                    <Badge className={s.status === 'open' ? 'bg-amber-600 text-white' : 'bg-stone-500 text-white'}>{s.status === 'open' ? t('shifts.openF') : t('shifts.closedF')}</Badge>
                   </div>
                 </div>
               ))}
@@ -455,11 +457,12 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
 
 export interface HaccpT { id: string; type: string; target: string; value: number | null; ok: boolean; note?: string | null; employeeId?: string | null; checkedAt: string }
 
-const HACCP_TYPE_LABELS: Record<string, string> = {
-  TEMPERATURE: 'Temperatura', CLEANING: 'Čiščenje', DELIVERY: 'Prevzem', COOLING: 'Hlajenje', TRAINING: 'Usposabljanje',
+const HACCP_TYPE_KEYS: Record<string, string> = {
+  TEMPERATURE: 'haccp.type.TEMPERATURE', CLEANING: 'haccp.type.CLEANING', DELIVERY: 'haccp.type.DELIVERY', COOLING: 'haccp.type.COOLING', TRAINING: 'haccp.type.TRAINING',
 }
 
 export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [type, setType] = useState('TEMPERATURE')
   const [target, setTarget] = useState('')
   const [value, setValue] = useState('')
@@ -478,62 +481,62 @@ export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Thermometer className="w-4 h-4" /> Nova kontrola</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Thermometer className="w-4 h-4" /> {t('haccp.newCheck')}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Vrsta kontrole</Label>
+              <Label>{t('haccp.typeLabel')}</Label>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(HACCP_TYPE_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                  {Object.entries(HACCP_TYPE_KEYS).map(([v, k]) => <SelectItem key={v} value={v}>{t(k)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="h-target">Cilj (naprava / prostor)</Label>
-              <Input id="h-target" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="npr. Hladilna vitrina 1" />
+              <Label htmlFor="h-target">{t('haccp.target')}</Label>
+              <Input id="h-target" value={target} onChange={(e) => setTarget(e.target.value)} placeholder={t('haccp.targetPlaceholder')} />
             </div>
           </div>
           <div className="grid sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="h-value">Vrednost (°C)</Label>
-              <Input id="h-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.,-]/g, ''))} placeholder="npr. 4.5" />
+              <Label htmlFor="h-value">{t('haccp.value')}</Label>
+              <Input id="h-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.,-]/g, ''))} placeholder={t('haccp.valuePlaceholder')} />
             </div>
             <div className="space-y-1.5">
-              <Label>Rezultat</Label>
+              <Label>{t('haccp.result')}</Label>
               <Select value={ok ? 'ok' : 'warn'} onValueChange={(v) => setOk(v === 'ok')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ok">✅ V redu</SelectItem>
-                  <SelectItem value="warn">⚠️ Opomba</SelectItem>
+                  <SelectItem value="ok">{t('haccp.okSelect')}</SelectItem>
+                  <SelectItem value="warn">{t('haccp.noteSelect')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="h-note">Opomba</Label>
-              <Input id="h-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="neobvezno" />
+              <Label htmlFor="h-note">{t('haccp.note')}</Label>
+              <Input id="h-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('haccp.optional')} />
             </div>
           </div>
-          <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !target} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zapiši kontrolo'}</Button>
+          <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !target} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('haccp.submit')}</Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Zadnje kontrole</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('haccp.recent')}</CardTitle></CardHeader>
         <CardContent>
-          {checks.length === 0 && <p className="text-sm text-stone-500">Ni zapisov HACCP kontrol.</p>}
+          {checks.length === 0 && <p className="text-sm text-stone-500">{t('haccp.none')}</p>}
           <ScrollArea className="max-h-80">
             <div className="grid gap-2 sm:grid-cols-2">
               {checks.map((c) => (
                 <div key={c.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{c.target} <Badge variant="outline" className="ml-1">{HACCP_TYPE_LABELS[c.type] || c.type}</Badge></p>
+                    <p className="font-medium truncate">{c.target} <Badge variant="outline" className="ml-1">{HACCP_TYPE_KEYS[c.type] ? t(HACCP_TYPE_KEYS[c.type]) : c.type}</Badge></p>
                     <p className="text-xs text-stone-500">{new Date(c.checkedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{c.employeeId ? ` · ${c.employeeId}` : ''}{c.note ? ` · ${c.note}` : ''}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     {c.value !== null && <p className="font-bold">{c.value}°</p>}
-                    <Badge className={c.ok ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'}>{c.ok ? 'V redu' : 'Opomba'}</Badge>
+                    <Badge className={c.ok ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'}>{c.ok ? t('haccp.ok') : t('haccp.note')}</Badge>
                   </div>
                 </div>
               ))}
@@ -550,6 +553,7 @@ export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () 
 export interface ExpenseT { id: string; category: string; description: string; amount: number; paidAt: string }
 
 export function ExpensesTab({ expenses, canManage, onReload }: { expenses: ExpenseT[]; canManage: boolean; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
@@ -568,23 +572,23 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> Stroški (mesec)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(monthTotal)}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Vseh zapisov</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{expenses.length}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> {t('exp.month')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(monthTotal)}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('exp.totalRecords')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{expenses.length}</p></CardContent></Card>
       </div>
 
       {canManage && (
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Nov strošek</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">{t('exp.new')}</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap items-end gap-2">
             <div className="space-y-1.5 min-w-48 flex-1">
-              <Label htmlFor="ex-desc">Opis</Label>
-              <Input id="ex-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="npr. Zelje in krompir — Kmetija Vidmar" />
+              <Label htmlFor="ex-desc">{t('exp.description')}</Label>
+              <Input id="ex-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('exp.descPlaceholder')} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ex-amount">Znesek (€)</Label>
+              <Label htmlFor="ex-amount">{t('exp.amount')}</Label>
               <Input id="ex-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0.00" className="w-32" />
             </div>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !description || !(Number(amount.replace(',', '.')) > 0)} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zapiši strošek'}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !description || !(Number(amount.replace(',', '.')) > 0)} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('exp.submit')}</Button>
           </CardContent>
         </Card>
       )}
@@ -593,17 +597,17 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
         <Button size="sm" variant="outline" onClick={() => {
           const d = new Date()
           downloadCSV(`stroski-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
-            ['Datum', 'Opis', 'Kategorija', 'Znesek (EUR)'],
+            [t('exp.csvDate'), t('exp.description'), t('exp.csvCategory'), t('exp.csvAmount')],
             ...expenses.map((e) => [new Date(e.paidAt).toLocaleDateString('sl-SI'), e.description, e.category || '', e.amount]),
           ])
         }}>
-          Izvozi stroške (CSV)
+          {t('exp.exportCsv')}
         </Button>
       </div>
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Stroški</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('exp.title')}</CardTitle></CardHeader>
         <CardContent>
-          {expenses.length === 0 && <p className="text-sm text-stone-500">Ni zapisov stroškov.</p>}
+          {expenses.length === 0 && <p className="text-sm text-stone-500">{t('exp.none')}</p>}
           <ScrollArea className="max-h-80">
             <div className="space-y-2">
               {expenses.map((e) => (
@@ -632,6 +636,7 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: LoyaltyT[]; canManage: boolean; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const totalPoints = accounts.reduce((s, a) => s + a.points, 0)
   const [member, setMember] = useState<{ guestName: string; phone: string } | null>(null)
   const [mBusy, setMBusy] = useState(false)
@@ -659,33 +664,33 @@ export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: Loyalt
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><HeartHandshake className="w-4 h-4" /> Članov</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{accounts.length}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Skupaj točk</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{totalPoints}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><HeartHandshake className="w-4 h-4" /> {t('loy.members')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{accounts.length}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('loy.totalPoints')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{totalPoints}</p></CardContent></Card>
       </div>
       {canManage && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setMember({ guestName: '', phone: '' })}><Plus className="w-4 h-4" /> Nov član</Button>
+          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setMember({ guestName: '', phone: '' })}><Plus className="w-4 h-4" /> {t('loy.newMember')}</Button>
         </div>
       )}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Zvestobni računi</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('loy.accounts')}</CardTitle></CardHeader>
         <CardContent>
-          {accounts.length === 0 && <p className="text-sm text-stone-500">Ni članov programa zvestobe.</p>}
+          {accounts.length === 0 && <p className="text-sm text-stone-500">{t('loy.none')}</p>}
           <div className="grid gap-2 sm:grid-cols-2">
             {accounts.map((a) => (
               <div key={a.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-medium truncate">{a.guestName}</p>
-                  <p className="text-xs text-stone-500">{a.phone || '—'} · {a.visits} točk skupaj</p>
+                  <p className="text-xs text-stone-500">{a.phone || '—'} · {t('loy.visitsSuffix', { n: a.visits })}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="text-right">
-                    <p className="font-bold">{a.points} točk</p>
+                    <p className="font-bold">{t('payment.pointsOf', { n: a.points })}</p>
                     {a.tier && <Badge className={`mt-0.5 ${TIER_COLORS[a.tier] || 'bg-stone-500 text-white'}`}>{a.tier}</Badge>}
                   </div>
                   {canManage && (
                     <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setPts(a); setPForm({ delta: '', reason: '' }) }}>
-                      Točke
+                      {t('loy.pointsBtn')}
                     </Button>
                   )}
                 </div>
@@ -697,46 +702,46 @@ export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: Loyalt
 
       <Dialog open={!!member} onOpenChange={(v) => !v && setMember(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Nov član zvestobe</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('loy.newMemberTitle')}</DialogTitle></DialogHeader>
           {member && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="lo-name">Ime gosta *</Label>
-                <Input id="lo-name" value={member.guestName} onChange={(e) => setMember({ ...member, guestName: e.target.value })} placeholder="npr. Ana Kovač" />
+                <Label htmlFor="lo-name">{t('loy.guestName')}</Label>
+                <Input id="lo-name" value={member.guestName} onChange={(e) => setMember({ ...member, guestName: e.target.value })} placeholder={t('loy.namePlaceholder')} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="lo-phone">Telefon</Label>
-                <Input id="lo-phone" value={member.phone} onChange={(e) => setMember({ ...member, phone: e.target.value })} placeholder="041 234 567" />
+                <Label htmlFor="lo-phone">{t('inv.phone')}</Label>
+                <Input id="lo-phone" value={member.phone} onChange={(e) => setMember({ ...member, phone: e.target.value })} placeholder={t('loy.phonePlaceholder')} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMember(null)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mBusy || !member?.guestName} onClick={createMember}>{mBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani člana'}</Button>
+            <Button variant="outline" onClick={() => setMember(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mBusy || !member?.guestName} onClick={createMember}>{mBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('loy.saveMember')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!pts} onOpenChange={(v) => !v && setPts(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Točke — {pts?.guestName}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('loy.pointsTitle', { name: pts?.guestName ?? '' })}</DialogTitle></DialogHeader>
           {pts && (
             <div className="space-y-3">
-              <p className="text-xs text-stone-500">Trenutno stanje: <b>{pts.points} točk</b> · tier {pts.tier || 'bronze'}</p>
+              <p className="text-xs text-stone-500">{t('inv.currentStock')} <b>{t('payment.pointsOf', { n: pts.points })}</b> · {t('loy.tierLabel')} {pts.tier || 'bronze'}</p>
               <div className="space-y-1.5">
-                <Label htmlFor="pt-delta">Točke (+ prihod / − obračun)</Label>
-                <Input id="pt-delta" inputMode="numeric" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder="npr. 25 ali -10" />
-                <p className="text-[11px] text-stone-400">Tier se preračuna samodejno: silver od 100, gold od 500, platinum od 1000 točk.</p>
+                <Label htmlFor="pt-delta">{t('loy.pointsDelta')}</Label>
+                <Input id="pt-delta" inputMode="numeric" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder={t('loy.deltaPlaceholder')} />
+                <p className="text-[11px] text-stone-400">{t('loy.tierHint')}</p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pt-reason">Razlog</Label>
-                <Input id="pt-reason" value={pForm.reason} onChange={(e) => setPForm({ ...pForm, reason: e.target.value })} placeholder="neobvezno" />
+                <Label htmlFor="pt-reason">{t('loy.reason')}</Label>
+                <Input id="pt-reason" value={pForm.reason} onChange={(e) => setPForm({ ...pForm, reason: e.target.value })} placeholder={t('haccp.optional')} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPts(null)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={pBusy || !pForm.delta || Number(pForm.delta) === 0} onClick={savePoints}>{pBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zapiši točke'}</Button>
+            <Button variant="outline" onClick={() => setPts(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={pBusy || !pForm.delta || Number(pForm.delta) === 0} onClick={savePoints}>{pBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('loy.savePoints')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -749,19 +754,20 @@ export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: Loyalt
 export interface FeedbackT { id: string; rating: number; comment?: string | null; tableId?: string | null; createdAt: string }
 
 export function FeedbackTab({ feedback, tables }: { feedback: FeedbackT[]; tables: { id: string; name: string }[] }) {
+  const { t } = useI18n()
   const avg = feedback.length > 0 ? feedback.reduce((s, f) => s + f.rating, 0) / feedback.length : 0
   const tableName = (id?: string | null) => (id ? tables.find((t) => t.id === id)?.name || null : null)
   const stars = (r: number) => '★'.repeat(Math.round(r)) + '☆'.repeat(Math.max(0, 5 - Math.round(r)))
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Star className="w-4 h-4" /> Povprečna ocena</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{feedback.length > 0 ? avg.toFixed(1) : '—'}<span className="text-base text-amber-500 ml-1.5">{feedback.length > 0 && stars(avg)}</span></p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">Št. mnenj</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{feedback.length}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Star className="w-4 h-4" /> {t('fb.avgRating')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{feedback.length > 0 ? avg.toFixed(1) : '—'}<span className="text-base text-amber-500 ml-1.5">{feedback.length > 0 && stars(avg)}</span></p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('fb.count')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{feedback.length}</p></CardContent></Card>
       </div>
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Mnenja gostov</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('fb.title')}</CardTitle></CardHeader>
         <CardContent>
-          {feedback.length === 0 && <p className="text-sm text-stone-500">Ni še mnenj gostov.</p>}
+          {feedback.length === 0 && <p className="text-sm text-stone-500">{t('fb.none')}</p>}
           <ScrollArea className="max-h-96">
             <div className="grid gap-2 sm:grid-cols-2">
               {feedback.map((f) => (
@@ -786,6 +792,7 @@ export function FeedbackTab({ feedback, tables }: { feedback: FeedbackT[]; table
 export interface JobT { id: string; title: string; permissions: string; active: boolean; startedAt: string }
 
 export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManage: boolean; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [title, setTitle] = useState('')
   const [payRate, setPayRate] = useState('')
   const [busy, setBusy] = useState(false)
@@ -800,22 +807,22 @@ export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManag
 
   return (
     <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Briefcase className="w-4 h-4" /> Delovna mesta</CardTitle></CardHeader>
+      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Briefcase className="w-4 h-4" /> {t('jobs.title')}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         {canManage && (
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1.5 min-w-48 flex-1">
-              <Label htmlFor="job-title">Naziv</Label>
-              <Input id="job-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="npr. Sommelier" />
+              <Label htmlFor="job-title">{t('jobs.name')}</Label>
+              <Input id="job-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('jobs.titlePlaceholder')} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="job-rate">Urna postavka (€)</Label>
-              <Input id="job-rate" inputMode="decimal" value={payRate} onChange={(e) => setPayRate(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="npr. 12.50" className="w-36" />
+              <Label htmlFor="job-rate">{t('jobs.hourlyRate')}</Label>
+              <Input id="job-rate" inputMode="decimal" value={payRate} onChange={(e) => setPayRate(e.target.value.replace(/[^\d.,]/g, ''))} placeholder={t('jobs.ratePlaceholder')} className="w-36" />
             </div>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !title} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Dodaj'}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !title} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.add')}</Button>
           </div>
         )}
-        {jobs.length === 0 && <p className="text-sm text-stone-500">Ni definiranih delovnih mest.</p>}
+        {jobs.length === 0 && <p className="text-sm text-stone-500">{t('jobs.none')}</p>}
         <div className="grid gap-2 sm:grid-cols-2">
           {jobs.map((j) => (
             <div key={j.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
@@ -823,7 +830,7 @@ export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManag
                 <p className="font-medium truncate">{j.title}</p>
                 {j.permissions && <p className="text-xs text-stone-500 truncate">{j.permissions.split(',').join(' · ')}</p>}
               </div>
-              <Badge className={j.active ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{j.active ? 'Aktivno' : 'Neaktivno'}</Badge>
+              <Badge className={j.active ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{j.active ? t('jobs.activeF') : t('jobs.inactiveF')}</Badge>
             </div>
           ))}
         </div>
@@ -842,6 +849,7 @@ export interface SettingsT {
 }
 
 export function SettingsEditor({ settings, canManage, onReload }: { settings: SettingsT | null; canManage: boolean; onReload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [form, setForm] = useState<SettingsT | null>(settings)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
@@ -849,18 +857,18 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
 
   if (!form) {
     return canManage ? (
-      <Card><CardContent className="text-sm text-stone-500">Nastavitve še niso ustvarjene — shrani obrazec za prvo inicializacijo.</CardContent></Card>
+      <Card><CardContent className="text-sm text-stone-500">{t('set.notCreated')}</CardContent></Card>
     ) : null
   }
   if (!canManage) {
     return (
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Store className="w-4 h-4" /> Podatki lokacije</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Store className="w-4 h-4" /> {t('set.locationData')}</CardTitle></CardHeader>
         <CardContent className="text-sm space-y-1 text-stone-600">
           <p className="font-medium text-stone-800">{form.name}</p>
           <p>{[form.address, form.postCode, form.city].filter(Boolean).join(', ') || '—'}</p>
           <p className="text-xs text-stone-500">{form.phone} · {form.email}{form.web ? ` · ${form.web}` : ''}</p>
-          <p className="text-xs text-stone-500">Davčna št. {form.taxId || '—'} · matična št. {form.businessId || '—'} · {form.registerNumber}</p>
+          <p className="text-xs text-stone-500">{t('set.idsLine', { tax: form.taxId || '—', business: form.businessId || '—', register: form.registerNumber })}</p>
         </CardContent>
       </Card>
     )
@@ -879,9 +887,9 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
           reducedVatRate: Number(form.reducedVatRate.replace(',', '.')),
         }),
       })
-      setNotice('Nastavitve shranjene ✓')
+      setNotice(t('set.saved'))
       await onReload()
-    } catch (err) { setNotice(`Napaka: ${(err as Error).message}`) } finally { setSaving(false) }
+    } catch (err) { setNotice(`${t('common.error')}: ${(err as Error).message}`) } finally { setSaving(false) }
   }
 
   const txt = (k: keyof SettingsT, label: string, placeholder = '') => (
@@ -894,60 +902,60 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-1.5"><Store className="w-4 h-4" /> Nastavitve podjetja</CardTitle>
+        <CardTitle className="text-base flex items-center gap-1.5"><Store className="w-4 h-4" /> {t('set.company')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith('Napaka') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith(t('common.error')) ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {txt('name', 'Naziv', 'npr. Gostilna pri Jožetu')}
-          {txt('address', 'Naslov')}
-          {txt('city', 'Kraj')}
-          {txt('postCode', 'Poštna številka')}
-          {txt('phone', 'Telefon')}
-          {txt('email', 'E-pošta')}
-          {txt('web', 'Spletna stran')}
-          {txt('businessId', 'Matična številka')}
-          {txt('taxId', 'Davčna številka')}
-          {txt('registerNumber', 'Oznaka poslovnega prostora', 'npr. BLG001')}
+          {txt('name', t('jobs.name'), t('set.namePlaceholder'))}
+          {txt('address', t('set.address'))}
+          {txt('city', t('set.city'))}
+          {txt('postCode', t('set.postCode'))}
+          {txt('phone', t('inv.phone'))}
+          {txt('email', t('set.email'))}
+          {txt('web', t('set.web'))}
+          {txt('businessId', t('set.businessId'))}
+          {txt('taxId', t('set.taxId'))}
+          {txt('registerNumber', t('set.registerNumber'), t('set.registerPlaceholder'))}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5"><ShieldAlert className="w-3.5 h-3.5 text-amber-600" /> FURS okolje</Label>
+            <Label className="flex items-center gap-1.5"><ShieldAlert className="w-3.5 h-3.5 text-amber-600" /> {t('set.fursEnv')}</Label>
             <Select value={form.fursEnvironment || 'test'} onValueChange={(v) => set('fursEnvironment', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="test">Testno okolje</SelectItem>
-                <SelectItem value="production">Produkcijsko okolje</SelectItem>
+                <SelectItem value="test">{t('set.envTest')}</SelectItem>
+                <SelectItem value="production">{t('set.envProduction')}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-amber-600">Produkcijsko okolje izdaja prave FURS račune — preklapljajte previdno.</p>
+            <p className="text-[11px] text-amber-600">{t('set.fursWarning')}</p>
           </div>
-          {txt('receiptFooter', 'Noga računa', 'npr. Hvala za obisk!')}
+          {txt('receiptFooter', t('set.receiptFooter'), t('set.receiptFooterPlaceholder'))}
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {txt('defaultVatRate', 'Osnovni DDV (%)', '22')}
-          {txt('reducedVatRate', 'Znižani DDV (%)', '9.5')}
-          {txt('currency', 'Valuta', 'EUR')}
-          {txt('locale', 'Jezikovna oznaka', 'sl-SI')}
+          {txt('defaultVatRate', t('set.vatBasic'), '22')}
+          {txt('reducedVatRate', t('set.vatReduced'), '9.5')}
+          {txt('currency', t('set.currency'), 'EUR')}
+          {txt('locale', t('set.localeLabel'), 'sl-SI')}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5">
-            <div><p className="text-sm font-medium">Program zvestobe</p><p className="text-xs text-stone-500">Zbiranje točk ob plačilu</p></div>
+            <div><p className="text-sm font-medium">{t('set.loyaltyProgram')}</p><p className="text-xs text-stone-500">{t('set.loyaltyDesc')}</p></div>
             <Switch checked={form.loyaltyEnabled} onCheckedChange={(v) => set('loyaltyEnabled', v)} />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5">
-            <div><p className="text-sm font-medium">E-poštna poročila</p><p className="text-xs text-stone-500">Pošiljanje poročil po e-pošti</p></div>
+            <div><p className="text-sm font-medium">{t('set.emailReports')}</p><p className="text-xs text-stone-500">{t('set.emailReportsDesc')}</p></div>
             <Switch checked={form.emailEnabled} onCheckedChange={(v) => set('emailEnabled', v)} />
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={saving} onClick={save}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani nastavitve'}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('set.save')}
           </Button>
           <span className="text-xs text-stone-400">{form.country || 'SI'} · {form.locale || 'sl-SI'} · {form.currency || 'EUR'}</span>
         </div>
@@ -960,8 +968,8 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
 
 export interface DeviceT { id: string; name: string; type: string; token: string; lastSeen?: string | null; status: string; locationId?: string | null; revoked?: boolean; pairedToDeviceId?: string | null }
 
-const DEVICE_TYPE_LABELS: Record<string, string> = {
-  POS: 'POS blagajna', KDS: 'KDS kuhinja', KDS_BAR: 'KDS bar', TABLET: 'Tablica', KIOSK: 'Kiosk', MOBILE: 'Mobilna', CUSTOMER_DISPLAY: 'Customer display',
+const DEVICE_TYPE_KEYS: Record<string, string> = {
+  POS: 'dev.type.pos', KDS: 'dev.type.kds', KDS_BAR: 'dev.type.kdsBar', TABLET: 'dev.type.tablet', KIOSK: 'dev.type.kiosk', MOBILE: 'dev.type.mobile', CUSTOMER_DISPLAY: 'dev.type.customerDisplay',
 }
 
 /**
@@ -971,6 +979,7 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
  * - CFD paring koda (10 min, enkratna)
  */
 export function DevicesCard({ devices, locations, onChanged }: { devices: DeviceT[]; locations: { id: string; name: string }[]; onChanged?: () => void }) {
+  const { t } = useI18n()
   const locName = (id?: string | null) => (id ? locations.find((l) => l.id === id)?.name || null : null)
   const [addOpen, setAddOpen] = useState(false)
   const [nf, setNf] = useState({ name: '', type: 'pos', locationId: locations[0]?.id || 'none' })
@@ -980,7 +989,7 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
   const [notice, setNotice] = useState('')
 
   async function createEnrollmentCode() {
-    if (nf.name.trim().length < 2) { setNotice('Ime naprave: min. 2 znaka.'); return }
+    if (nf.name.trim().length < 2) { setNotice(t('dev.nameMin')); return }
     setBusy(true); setNotice('')
     try {
       const res = await api<{ code: string; device: { name: string } }>('/api/devices/enroll', {
@@ -995,7 +1004,7 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
   }
 
   async function deviceAction(id: string, action: 'revoke' | 'restore' | 'delete') {
-    if (action === 'delete' && !confirm('Trajno izbrišem napravo?')) return
+    if (action === 'delete' && !confirm(t('dev.deleteConfirm'))) return
     setBusy(true); setNotice('')
     try {
       if (action === 'delete') await api(`/api/devices/${id}`, { method: 'DELETE' })
@@ -1015,87 +1024,87 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
   return (
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> Naprave — onboarding</CardTitle>
-        <Button size="sm" variant="outline" className="gap-1" onClick={() => { setAddOpen((v) => !v); setNewCode(null) }}><Plus className="w-3.5 h-3.5" /> Vpisna koda</Button>
+        <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> {t('dev.title')}</CardTitle>
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => { setAddOpen((v) => !v); setNewCode(null) }}><Plus className="w-3.5 h-3.5" /> {t('dev.enrollCode')}</Button>
       </CardHeader>
       <CardContent>
         {addOpen && (
           <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 mb-3 space-y-3">
-            <p className="text-xs font-medium text-stone-500">Nova naprava — tip, lokacija in ime. Ustvari se ENKRATNA vpisna koda (15 min), ki jo naprava unovči na svojem zaslonu.</p>
+            <p className="text-xs font-medium text-stone-500">{t('dev.newHint')}</p>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
-                <Label>Tip</Label>
+                <Label>{t('dev.typeLabel')}</Label>
                 <Select value={nf.type} onValueChange={(v) => setNf((f) => ({ ...f, type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pos">POS blagajna</SelectItem>
-                    <SelectItem value="kds">KDS kuhinja</SelectItem>
-                    <SelectItem value="kds_bar">KDS bar</SelectItem>
-                    <SelectItem value="tablet">Tablica</SelectItem>
-                    <SelectItem value="kiosk">Samopostrežni kiosk</SelectItem>
-                    <SelectItem value="mobile">Mobilna naprava</SelectItem>
-                    <SelectItem value="customer_display">Customer display (CFD)</SelectItem>
+                    <SelectItem value="pos">{t('dev.type.pos')}</SelectItem>
+                    <SelectItem value="kds">{t('dev.type.kds')}</SelectItem>
+                    <SelectItem value="kds_bar">{t('dev.type.kdsBar')}</SelectItem>
+                    <SelectItem value="tablet">{t('dev.type.tablet')}</SelectItem>
+                    <SelectItem value="kiosk">{t('dev.sel.kiosk')}</SelectItem>
+                    <SelectItem value="mobile">{t('dev.sel.mobile')}</SelectItem>
+                    <SelectItem value="customer_display">{t('dev.sel.cfd')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Lokacija</Label>
+                <Label>{t('dev.location')}</Label>
                 <Select value={nf.locationId} onValueChange={(v) => setNf((f) => ({ ...f, locationId: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Brez lokacije</SelectItem>
+                    <SelectItem value="none">{t('dev.noLocation')}</SelectItem>
                     {locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Ime</Label>
-                <Input value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder="npr. Blagajna 1" />
+                <Label>{t('dev.name')}</Label>
+                <Input value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder={t('dev.namePlaceholder')} />
               </div>
             </div>
-            <Button size="sm" onClick={createEnrollmentCode} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} Ustvari vpisno kodo</Button>
+            <Button size="sm" onClick={createEnrollmentCode} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} {t('dev.createCode')}</Button>
           </div>
         )}
 
         {newCode && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 mb-3">
-            <p className="text-sm font-semibold text-amber-900">Vpisna koda za “{newCode.name}” — velja 15 min in je enkratna:</p>
+            <p className="text-sm font-semibold text-amber-900">{t('dev.codeFor', { name: newCode.name })}</p>
             <p className="text-4xl font-extrabold tracking-[0.3em] my-2 text-center select-all">{newCode.code}</p>
-            <p className="text-xs text-amber-700 mt-1">Naprava vpiše kodo na /kiosk oz. prijavni strani (»Aktiviraj napravo«) in samodejno dobi svoj žeton. Žeton se vam ne prikaže — to je po pričakovanju (issue #4 §2).</p>
-            <Button size="sm" variant="outline" className="mt-2" onClick={() => { navigator.clipboard?.writeText(newCode.code); setNotice('Koda kopirana ✓') }}>Kopiraj kodo</Button>
+            <p className="text-xs text-amber-700 mt-1">{t('dev.codeHint')}</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => { navigator.clipboard?.writeText(newCode.code); setNotice(t('dev.copied')) }}>{t('dev.copyCode')}</Button>
           </div>
         )}
 
         {pairCode && (
           <div className="rounded-xl border border-stone-300 bg-stone-100 p-4 mb-3 text-center">
-            <p className="text-sm text-stone-500">Paring koda za customer display (velja 10 min, POS: {pairCode.device}):</p>
+            <p className="text-sm text-stone-500">{t('dev.pairCode', { device: pairCode.device })}</p>
             <p className="text-4xl font-extrabold tracking-[0.3em] my-2 select-all">{pairCode.code}</p>
-            <p className="text-xs text-stone-500">Na zaslonu displaya (/display) vnesi to kodo.</p>
+            <p className="text-xs text-stone-500">{t('dev.pairHint')}</p>
           </div>
         )}
 
         {notice && <p className="text-xs text-emerald-700 mb-2">{notice}</p>}
-        {devices.length === 0 && <p className="text-sm text-stone-500">Ni registriranih naprav.</p>}
+        {devices.length === 0 && <p className="text-sm text-stone-500">{t('dev.none')}</p>}
         <div className="grid gap-2 sm:grid-cols-2">
           {devices.map((d) => (
             <div key={d.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${d.revoked ? 'border-red-200 bg-red-50' : 'border-stone-200 bg-white'}`}>
               <div className="min-w-0">
-                <p className="font-medium truncate">{d.name} <Badge variant="outline" className="ml-1">{DEVICE_TYPE_LABELS[d.type] || d.type}</Badge></p>
-                <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || 'brez lokacije'} · žeton {d.token}</p>
-                <p className="text-[11px] text-stone-400">zadnja povezava: {d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'nikoli'}{d.revoked ? ' · REVOKIRANA' : ''}</p>
+                <p className="font-medium truncate">{d.name} <Badge variant="outline" className="ml-1">{DEVICE_TYPE_KEYS[d.type] ? t(DEVICE_TYPE_KEYS[d.type]) : d.type}</Badge></p>
+                <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || t('dev.withoutLocation')} · {t('dev.token', { token: d.token })}</p>
+                <p className="text-[11px] text-stone-400">{t('dev.lastSeen', { when: d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : t('dev.never') })}{d.revoked ? t('dev.revoked') : ''}</p>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <Badge className={d.revoked ? 'bg-red-600 text-white' : d.status === 'online' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{d.revoked ? 'revoked' : d.status}</Badge>
                 <div className="flex gap-1">
                   {d.type.toUpperCase() === 'POS' && !d.revoked && (
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => showPairCode(d)}>CFD koda</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => showPairCode(d)}>{t('dev.cfdCode')}</Button>
                   )}
                   {d.revoked ? (
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'restore')}>Obnovi</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'restore')}>{t('dev.restore')}</Button>
                   ) : (
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'revoke')}>Revokiraj</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'revoke')}>{t('dev.revoke')}</Button>
                   )}
-                  <Button size="sm" variant="outline" className="h-7 text-[11px] text-red-700" disabled={busy} onClick={() => deviceAction(d.id, 'delete')}>Izbriši</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] text-red-700" disabled={busy} onClick={() => deviceAction(d.id, 'delete')}>{t('common.delete')}</Button>
                 </div>
               </div>
             </div>
@@ -1153,9 +1162,9 @@ export interface PlatformIntegrationT {
   logs: { id: string; action: string; status: string; statusCode: number; errorMessage: string | null; createdAt: string }[]
 }
 
-const DELIVERY_STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Nova', CONFIRMED: 'Potrjena', ASSIGNED: 'Dodeljena', PICKED_UP: 'Prevzeta',
-  ON_THE_WAY: 'Na poti', DELIVERED: 'Dostavljeno', CANCELLED: 'Preklicana',
+const DELIVERY_STATUS_KEYS: Record<string, string> = {
+  PENDING: 'dost.status.PENDING', CONFIRMED: 'dost.status.CONFIRMED', ASSIGNED: 'dost.status.ASSIGNED', PICKED_UP: 'dost.status.PICKED_UP',
+  ON_THE_WAY: 'dost.status.ON_THE_WAY', DELIVERED: 'dost.status.DELIVERED', CANCELLED: 'dost.status.CANCELLED',
 }
 const DELIVERY_STATUS_BG: Record<string, string> = {
   PENDING: 'bg-amber-500 text-white', CONFIRMED: 'bg-emerald-600 text-white', ASSIGNED: 'bg-teal-600 text-white',
@@ -1164,11 +1173,11 @@ const DELIVERY_STATUS_BG: Record<string, string> = {
 }
 /** Naslednja tranzicija po toku (enako kot TRANSITIONS na backendu) */
 const NEXT_STATUS: Record<string, { to: string; label: string } | null> = {
-  PENDING: { to: 'CONFIRMED', label: 'Potrdi' },
-  CONFIRMED: { to: 'ASSIGNED', label: 'Dodeli voznika' },
-  ASSIGNED: { to: 'PICKED_UP', label: 'Prevzeto' },
-  PICKED_UP: { to: 'ON_THE_WAY', label: 'Na poti' },
-  ON_THE_WAY: { to: 'DELIVERED', label: 'Dostavljeno' },
+  PENDING: { to: 'CONFIRMED', label: 'common.confirm' },
+  CONFIRMED: { to: 'ASSIGNED', label: 'dost.assignDriver' },
+  ASSIGNED: { to: 'PICKED_UP', label: 'dost.pickedUpBtn' },
+  PICKED_UP: { to: 'ON_THE_WAY', label: 'dost.status.ON_THE_WAY' },
+  ON_THE_WAY: { to: 'DELIVERED', label: 'dost.status.DELIVERED' },
   DELIVERED: null, CANCELLED: null,
 }
 const platformOf = (note: string | null): 'GLOVO' | 'WOLT' | 'DOMAČA' =>
@@ -1180,6 +1189,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
   platformIntegrations: PlatformIntegrationT[]
   onReload: () => Promise<void>
 }) {
+  const { t } = useI18n()
   const [busy, setBusy] = useState<string | null>(null)
   const [driverFor, setDriverFor] = useState<DeliveryOrderT | null>(null)
   const [driver, setDriver] = useState({ name: '', phone: '' })
@@ -1227,9 +1237,9 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
     <div className="space-y-6">
       {/* Aktivna dostavna naročila */}
       <div>
-        <h3 className="text-sm font-semibold text-stone-500 mb-2 flex items-center gap-1.5"><Truck className="w-4 h-4" /> Aktivna dostava ({active.length})</h3>
+        <h3 className="text-sm font-semibold text-stone-500 mb-2 flex items-center gap-1.5"><Truck className="w-4 h-4" /> {t('dost.active', { n: active.length })}</h3>
         {active.length === 0 && (
-          <Card><CardContent className="p-6 text-center text-sm text-stone-500">Ni aktivnih dostavnih naročil.</CardContent></Card>
+          <Card><CardContent className="p-6 text-center text-sm text-stone-500">{t('dost.activeNone')}</CardContent></Card>
         )}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {active.map((o) => {
@@ -1241,26 +1251,26 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-base">#{o.orderNumber} <Badge variant="outline" className="ml-1">{plat}</Badge></CardTitle>
-                    <Badge className={DELIVERY_STATUS_BG[d.status] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_LABELS[d.status] || d.status}</Badge>
+                    <Badge className={DELIVERY_STATUS_BG[d.status] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_KEYS[d.status] ? t(DELIVERY_STATUS_KEYS[d.status]) : d.status}</Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <p className="text-sm"><span className="text-stone-500">Prejemnik:</span> {d.recipientName || '—'} {d.recipientPhone && <span className="text-stone-500">· {d.recipientPhone}</span>}</p>
-                  <p className="text-sm"><span className="text-stone-500">Naslov:</span> {[d.address, d.postCode, d.city].filter(Boolean).join(', ') || '—'}</p>
-                  {d.instructions && <p className="text-xs text-amber-700">Opomba: {d.instructions}</p>}
-                  <p className="text-xs text-stone-500">{o.items.length} artiklov · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span> (dostava {fmtEUR(d.deliveryFee)})</p>
-                  {o.status === 'PAID' && <Badge className="bg-emerald-600 text-white">Plačano</Badge>}
+                  <p className="text-sm"><span className="text-stone-500">{t('dost.recipient')}</span> {d.recipientName || '—'} {d.recipientPhone && <span className="text-stone-500">· {d.recipientPhone}</span>}</p>
+                  <p className="text-sm"><span className="text-stone-500">{t('dost.address')}</span> {[d.address, d.postCode, d.city].filter(Boolean).join(', ') || '—'}</p>
+                  {d.instructions && <p className="text-xs text-amber-700">{t('dost.note', { note: d.instructions })}</p>}
+                  <p className="text-xs text-stone-500">{t('dost.itemsCount', { n: o.items.length })} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span> ({t('dost.deliveryFeeShort', { fee: fmtEUR(d.deliveryFee) })})</p>
+                  {o.status === 'PAID' && <Badge className="bg-emerald-600 text-white">{t('status.PAID')}</Badge>}
                   {o.fursEor && <p className="text-[11px] text-stone-400">FURS EOR: {o.fursEor}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     {next && next.to !== 'ASSIGNED' && (
-                      <Button size="sm" disabled={busy === o.id} onClick={() => transition(o, next.to)} className="bg-emerald-700 hover:bg-emerald-800 text-white">{next.label}</Button>
+                      <Button size="sm" disabled={busy === o.id} onClick={() => transition(o, next.to)} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t(next.label)}</Button>
                     )}
                     {next && next.to === 'ASSIGNED' && (
-                      <Button size="sm" disabled={busy === o.id} onClick={() => { setDriverFor(o); setDriver({ name: d.courierName || d.driver?.name || '', phone: d.courierPhone || d.driver?.phone || '' }) }} className="bg-emerald-700 hover:bg-emerald-800 text-white">Dodeli voznika</Button>
+                      <Button size="sm" disabled={busy === o.id} onClick={() => { setDriverFor(o); setDriver({ name: d.courierName || d.driver?.name || '', phone: d.courierPhone || d.driver?.phone || '' }) }} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t('dost.assignDriver')}</Button>
                     )}
-                    <Button size="sm" variant="outline" disabled={busy === o.id} onClick={() => { if (confirm(`Preklicati dostavo #${o.orderNumber}?`)) transition(o, 'CANCELLED', { note: 'Preklic operaterja' }) }} className="border-red-300 text-red-700 hover:bg-red-50">Prekliči</Button>
+                    <Button size="sm" variant="outline" disabled={busy === o.id} onClick={() => { if (confirm(t('dost.cancelConfirm', { n: o.orderNumber }))) transition(o, 'CANCELLED', { note: t('dost.cancelNote') }) }} className="border-red-300 text-red-700 hover:bg-red-50">{t('common.cancel')}</Button>
                   </div>
-                  {d.driver?.name && <p className="text-xs text-stone-500">Voznik: {d.driver.name} {d.driver.phone && `· ${d.driver.phone}`}</p>}
+                  {d.driver?.name && <p className="text-xs text-stone-500">{t('dost.driver', { name: d.driver.name })} {d.driver.phone && `· ${d.driver.phone}`}</p>}
                 </CardContent>
               </Card>
             )
@@ -1271,7 +1281,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
       {/* Zgodovina */}
       {history.length > 0 && (
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Zaključene dostave</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">{t('dost.history')}</CardTitle></CardHeader>
           <CardContent>
             <ScrollArea className="max-h-72">
               <div className="space-y-1.5 pr-3">
@@ -1280,7 +1290,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                   return (
                     <div key={o.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
                       <p className="text-sm min-w-0 truncate">#{o.orderNumber} · {d?.recipientName || '—'} · {fmtEUR(o.total)}</p>
-                      <Badge className={DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_LABELS[d?.status || ''] || d?.status || o.status}</Badge>
+                      <Badge className={DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_KEYS[d?.status || ''] ? t(DELIVERY_STATUS_KEYS[d?.status || '']) : d?.status || o.status}</Badge>
                     </div>
                   )
                 })}
@@ -1294,19 +1304,19 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
         {/* Cone */}
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-1.5"><Plus className="w-4 h-4" /> Dostavne cone</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setAddZone(true)}>Nova cona</Button>
+            <CardTitle className="text-base flex items-center gap-1.5"><Plus className="w-4 h-4" /> {t('dost.zones')}</CardTitle>
+            <Button size="sm" variant="outline" onClick={() => setAddZone(true)}>{t('dost.newZone')}</Button>
           </CardHeader>
           <CardContent>
-            {zones.length === 0 && <p className="text-sm text-stone-500">Ni con. Dostava brez cone je vedno mogoča.</p>}
+            {zones.length === 0 && <p className="text-sm text-stone-500">{t('dost.noZones')}</p>}
             <div className="space-y-1.5">
               {zones.map((z) => (
                 <div key={z.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{z.name}</p>
-                    <p className="text-xs text-stone-500">pristojbina {fmtEUR(z.deliveryFee)} · min. naročilo {fmtEUR(z.minOrderAmount)} · ~{z.estimatedMinutes} min</p>
+                    <p className="text-xs text-stone-500">{t('dost.zoneMeta', { fee: fmtEUR(z.deliveryFee), min: fmtEUR(z.minOrderAmount), mins: z.estimatedMinutes })}</p>
                   </div>
-                  <Switch checked={z.isActive} disabled={busy === z.id} onCheckedChange={() => toggleZone(z)} aria-label={`Aktivnost cone ${z.name}`} />
+                  <Switch checked={z.isActive} disabled={busy === z.id} onCheckedChange={() => toggleZone(z)} aria-label={t('dost.zoneActiveAria', { name: z.name })} />
                 </div>
               ))}
             </div>
@@ -1315,14 +1325,11 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
 
         {/* Platforme + napake webhookov */}
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Platforme — webhooki in napake</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> {t('dost.platforms')}</CardTitle></CardHeader>
           <CardContent>
             {platformIntegrations.length === 0 && (
               <p className="text-sm text-stone-500">
-                Integracija Glovo/Wolt ni registrirana. V Nastavitvah → Integracije dodaj zapisa s
-                provider <code className="text-xs bg-stone-100 px-1 rounded">glovo</code> oz.
-                <code className="text-xs bg-stone-100 px-1 rounded ml-1">wolt</code> in nastavi apiSecret (webhook podpis).
-                Endpointa: <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/glovo</code>, <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/wolt</code>.
+                {t('dost.noIntegrationA')} <code className="text-xs bg-stone-100 px-1 rounded">glovo</code>{t('dost.or')} <code className="text-xs bg-stone-100 px-1 rounded ml-1">wolt</code> {t('dost.noIntegrationB')} <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/glovo</code>, <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/wolt</code>.
               </p>
             )}
             <div className="space-y-2">
@@ -1332,15 +1339,15 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                   <div key={p.id} className="rounded-lg border border-stone-200 bg-white p-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium capitalize">{p.provider}</p>
-                      <Badge className={p.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{p.isActive ? p.connectionStatus || 'aktivna' : 'neaktivna'}</Badge>
+                      <Badge className={p.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{p.isActive ? p.connectionStatus || t('dost.activeF') : t('dost.inactiveF')}</Badge>
                     </div>
                     {errors.length === 0
-                      ? <p className="text-xs text-stone-400 mt-1">Ni napak v zadnjih dogodkih.</p>
+                      ? <p className="text-xs text-stone-400 mt-1">{t('dost.noErrors')}</p>
                       : (
                         <div className="mt-1.5 space-y-1">
                           {errors.slice(0, 5).map((l) => (
                             <p key={l.id} className="text-xs text-red-700 bg-red-50 rounded px-2 py-1 truncate">
-                              {l.statusCode} · {l.action}: {l.errorMessage || 'napaka'}
+                              {l.statusCode} · {l.action}: {l.errorMessage || t('dost.error')}
                             </p>
                           ))}
                         </div>
@@ -1356,13 +1363,13 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
       {/* Dodelitev voznika */}
       <Dialog open={!!driverFor} onOpenChange={(v) => !v && setDriverFor(null)}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Dodeli voznika — naročilo #{driverFor?.orderNumber}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('dost.assignDriverTitle', { n: driverFor?.orderNumber ?? '' })}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label htmlFor="drv-name">Ime voznika</Label><Input id="drv-name" value={driver.name} onChange={(e) => setDriver({ ...driver, name: e.target.value })} placeholder="npr. Marko Novak" /></div>
-            <div><Label htmlFor="drv-phone">Telefon</Label><Input id="drv-phone" value={driver.phone} onChange={(e) => setDriver({ ...driver, phone: e.target.value })} placeholder="+386 …" /></div>
+            <div><Label htmlFor="drv-name">{t('dost.driverName')}</Label><Input id="drv-name" value={driver.name} onChange={(e) => setDriver({ ...driver, name: e.target.value })} placeholder={t('dost.driverPlaceholder')} /></div>
+            <div><Label htmlFor="drv-phone">{t('inv.phone')}</Label><Input id="drv-phone" value={driver.phone} onChange={(e) => setDriver({ ...driver, phone: e.target.value })} placeholder={t('dost.phonePlaceholder')} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDriverFor(null)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setDriverFor(null)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy !== null || !driver.name.trim()}
               onClick={async () => {
                 if (!driverFor) return
@@ -1371,7 +1378,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                   await api('/api/delivery', { method: 'PATCH', body: JSON.stringify({ orderId: driverFor.id, status: 'ASSIGNED', driverName: driver.name, driverPhone: driver.phone }) })
                   setDriverFor(null); await onReload()
                 } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
-              }}>Dodeli</Button>
+              }}>{t('dost.assign')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1379,18 +1386,18 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
       {/* Nova cona */}
       <Dialog open={addZone} onOpenChange={setAddZone}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Nova dostavna cona</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('dost.newZoneTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label htmlFor="z-name">Ime cone</Label><Input id="z-name" value={nz.name} onChange={(e) => setNz({ ...nz, name: e.target.value })} placeholder="npr. Center" /></div>
+            <div><Label htmlFor="z-name">{t('dost.zoneName')}</Label><Input id="z-name" value={nz.name} onChange={(e) => setNz({ ...nz, name: e.target.value })} placeholder={t('dost.zonePlaceholder')} /></div>
             <div className="grid grid-cols-3 gap-2">
-              <div><Label htmlFor="z-fee">Pristojbina (€)</Label><Input id="z-fee" type="number" step="0.01" value={nz.deliveryFee} onChange={(e) => setNz({ ...nz, deliveryFee: e.target.value })} /></div>
-              <div><Label htmlFor="z-min">Min. naročilo (€)</Label><Input id="z-min" type="number" step="0.01" value={nz.minOrderAmount} onChange={(e) => setNz({ ...nz, minOrderAmount: e.target.value })} /></div>
-              <div><Label htmlFor="z-mins">Čas (min)</Label><Input id="z-mins" type="number" value={nz.estimatedMinutes} onChange={(e) => setNz({ ...nz, estimatedMinutes: e.target.value })} /></div>
+              <div><Label htmlFor="z-fee">{t('dost.fee')}</Label><Input id="z-fee" type="number" step="0.01" value={nz.deliveryFee} onChange={(e) => setNz({ ...nz, deliveryFee: e.target.value })} /></div>
+              <div><Label htmlFor="z-min">{t('dost.minOrder')}</Label><Input id="z-min" type="number" step="0.01" value={nz.minOrderAmount} onChange={(e) => setNz({ ...nz, minOrderAmount: e.target.value })} /></div>
+              <div><Label htmlFor="z-mins">{t('dost.time')}</Label><Input id="z-mins" type="number" value={nz.estimatedMinutes} onChange={(e) => setNz({ ...nz, estimatedMinutes: e.target.value })} /></div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddZone(false)}>Prekliči</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy === 'zone' || !nz.name.trim()} onClick={createZone}>Dodaj</Button>
+            <Button variant="outline" onClick={() => setAddZone(false)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy === 'zone' || !nz.name.trim()} onClick={createZone}>{t('inv.add')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1401,6 +1408,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
 /* ─────────────────────────── RAČUNOVODSKI IZVOZ ─────────────────────────── */
 
 export function AccountingExportCard() {
+  const { t } = useI18n()
   const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
   const today = new Date().toISOString().slice(0, 10)
   const [from, setFrom] = useState(firstOfMonth)
@@ -1417,7 +1425,7 @@ export function AccountingExportCard() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error((data as { error?: string })?.error || 'Izvoz ni uspel.')
+        throw new Error((data as { error?: string })?.error || t('acct.exportFailed'))
       }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -1438,27 +1446,26 @@ export function AccountingExportCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Računovodski izvoz</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-4 h-4" /> {t('acct.title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-stone-500">
-          Prodaja po dnevih (neto/DDV/popusti/napitnine), DDV razčlenba po stopnjah, plačila po načinih,
-          računi dobaviteljev in gibanje zalog za izbrano obdobje. CSV je pripravljen za Excel in računovodske programe.
+          {t('acct.desc')}
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
-            <Label htmlFor="exp-from" className="text-xs">Od</Label>
+            <Label htmlFor="exp-from" className="text-xs">{t('acct.from')}</Label>
             <Input id="exp-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="exp-to" className="text-xs">Do</Label>
+            <Label htmlFor="exp-to" className="text-xs">{t('acct.to')}</Label>
             <Input id="exp-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
           </div>
           <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white min-h-10 gap-1.5" disabled={busy !== null || !from || !to} onClick={() => download('csv')}>
-            {busy === 'csv' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} Izvozi (CSV)
+            {busy === 'csv' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} {t('acct.exportCsv')}
           </Button>
           <Button size="sm" variant="outline" className="min-h-10 gap-1.5" disabled={busy !== null || !from || !to} onClick={() => download('json')}>
-            {busy === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} Izvozi (JSON)
+            {busy === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} {t('acct.exportJson')}
           </Button>
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
@@ -1492,6 +1499,7 @@ interface TipPreviewT {
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
 
 export function NapitnineTab({ locations, canManage }: { locations: { id: string; name: string }[]; canManage: boolean }) {
+  const { t } = useI18n()
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [locId, setLocId] = useState('')
   const [method, setMethod] = useState<'hours' | 'equal' | 'points'>('hours')
@@ -1546,24 +1554,24 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
     }
   }
 
-  const t = data?.totals
+  const tot = data?.totals
   const pool = data?.pool ?? null
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-1.5"><HeartHandshake className="w-4 h-4" /> Napitnine — dnevni bazen</CardTitle>
+          <CardTitle className="text-base flex items-center gap-1.5"><HeartHandshake className="w-4 h-4" /> {t('tips.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs text-stone-500">Napitnine iz plačil (Payment.tipAmount) se za izbrani dan zaprejo v bazen in razdelijo zaposlenim po izbrani osnovi. Delitev v centih je točna (brez izgube centov), distribucije so hash-verižene (nespremenljive), izplačila so revidirana. En bazen na dan + lokacijo.</p>
+          <p className="text-xs text-stone-500">{t('tips.desc')}</p>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label>Dan</Label>
+              <Label>{t('tips.day')}</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Lokacija</Label>
+              <Label>{t('dev.location')}</Label>
               <Select value={locId || undefined} onValueChange={setLocId}>
                 <SelectTrigger><SelectValue placeholder={locations[0]?.name || '—'} /></SelectTrigger>
                 <SelectContent>
@@ -1574,40 +1582,40 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Osnova delitve</Label>
+              <Label>{t('tips.basis')}</Label>
               <Select value={method} onValueChange={(v) => setMethod(v as 'hours' | 'equal' | 'points')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hours">Po urah (izmene)</SelectItem>
-                  <SelectItem value="equal">Enakovredno</SelectItem>
-                  <SelectItem value="points">Po točkah (kmalu)</SelectItem>
+                  <SelectItem value="hours">{t('tips.basisHours')}</SelectItem>
+                  <SelectItem value="equal">{t('tips.basisEqual')}</SelectItem>
+                  <SelectItem value="points">{t('tips.basisPoints')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {t && (
+          {tot && (
             <div className="grid gap-3 sm:grid-cols-4">
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <p className="text-xs text-stone-500">Zbrane napitnine</p>
-                <p className="text-lg font-bold">{fmtEUR(t.totalCents / 100)}</p>
+                <p className="text-xs text-stone-500">{t('tips.collected')}</p>
+                <p className="text-lg font-bold">{fmtEUR(tot.totalCents / 100)}</p>
               </div>
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <p className="text-xs text-stone-500">Gotovina</p>
-                <p className="text-lg font-semibold">{fmtEUR(t.cashCents / 100)}</p>
+                <p className="text-xs text-stone-500">{t('tips.cash')}</p>
+                <p className="text-lg font-semibold">{fmtEUR(tot.cashCents / 100)}</p>
               </div>
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <p className="text-xs text-stone-500">Kartica/druge</p>
-                <p className="text-lg font-semibold">{fmtEUR(t.nonCashCents / 100)}</p>
+                <p className="text-xs text-stone-500">{t('tips.cardOther')}</p>
+                <p className="text-lg font-semibold">{fmtEUR(tot.nonCashCents / 100)}</p>
               </div>
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <p className="text-xs text-stone-500">Plačila z napitnino</p>
-                <p className="text-lg font-semibold">{t.payments}</p>
+                <p className="text-xs text-stone-500">{t('tips.paymentsWithTip')}</p>
+                <p className="text-lg font-semibold">{tot.payments}</p>
               </div>
             </div>
           )}
           {data?.fallbackEqual && (
-            <p className="text-xs text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Za ta dan ni evidentiranih ur (izmen) — delitev po urah je samodejno padla na enakovredno.</p>
+            <p className="text-xs text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> {t('tips.noHoursFallback')}</p>
           )}
         </CardContent>
       </Card>
@@ -1616,9 +1624,9 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
-              Distribucija — {pool.distributionMethod === 'hours' ? 'po urah' : pool.distributionMethod === 'points' ? 'po točkah' : 'enakovredno'}
+              {t('tips.distribution')} — {pool.distributionMethod === 'hours' ? t('tips.mHours') : pool.distributionMethod === 'points' ? t('tips.mPoints') : t('tips.mEqual')}
               <Badge variant={pool.status === 'paid' ? 'default' : 'outline'} className={pool.status === 'paid' ? 'bg-emerald-700' : ''}>
-                {pool.status === 'paid' ? 'izplačano' : 'čaka izplačilo'}
+                {pool.status === 'paid' ? t('tips.paid') : t('tips.awaitingPayout')}
               </Badge>
             </CardTitle>
           </CardHeader>
@@ -1627,11 +1635,11 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
               <table className="w-full text-sm">
                 <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                   <tr>
-                    <th className="p-2">Zaposleni</th>
-                    <th className="p-2">Osnova</th>
-                    <th className="p-2 text-right">Znesek</th>
-                    <th className="p-2">Status</th>
-                    {canManage && <th className="p-2 text-right">Izplačaj</th>}
+                    <th className="p-2">{t('shifts.csvEmployee')}</th>
+                    <th className="p-2">{t('tips.basisShort')}</th>
+                    <th className="p-2 text-right">{t('tips.amount')}</th>
+                    <th className="p-2">{t('shifts.csvStatus')}</th>
+                    {canManage && <th className="p-2 text-right">{t('tips.payoutCol')}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1639,18 +1647,18 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
                     <tr key={d.id} className="border-t border-stone-100">
                       <td className="p-2 font-medium">{d.employeeName}</td>
                       <td className="p-2 text-stone-600">
-                        {pool.distributionMethod === 'hours' && d.hoursWorked > 0 ? `${d.hoursWorked.toFixed(2)} h` : pool.distributionMethod === 'points' && d.points > 0 ? `${d.points} točk` : 'enako'}
+                        {pool.distributionMethod === 'hours' && d.hoursWorked > 0 ? `${d.hoursWorked.toFixed(2)} h` : pool.distributionMethod === 'points' && d.points > 0 ? t('payment.pointsOf', { n: d.points }) : t('tips.equalShort')}
                       </td>
                       <td className="p-2 text-right font-semibold">{fmtEUR(d.amount)}</td>
                       <td className="p-2">
                         {d.status === 'paid'
-                          ? <Badge variant="outline" className="border-emerald-600 text-emerald-700">izplačano {d.paidAt ? new Date(d.paidAt).toLocaleString('sl-SI') : ''}</Badge>
-                          : <Badge variant="outline">čaka</Badge>}
+                          ? <Badge variant="outline" className="border-emerald-600 text-emerald-700">{t('tips.paid')} {d.paidAt ? new Date(d.paidAt).toLocaleString('sl-SI') : ''}</Badge>
+                          : <Badge variant="outline">{t('tips.pending')}</Badge>}
                       </td>
                       {canManage && (
                         <td className="p-2 text-right">
                           {d.status === 'pending' && (
-                            <Button size="sm" variant="outline" disabled={busy} onClick={() => payout(d.id)}>Označi izplačano</Button>
+                            <Button size="sm" variant="outline" disabled={busy} onClick={() => payout(d.id)}>{t('tips.markPaid')}</Button>
                           )}
                         </td>
                       )}
@@ -1661,24 +1669,24 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
             </div>
             {canManage && pool.status !== 'paid' && (
               <div className="flex justify-end">
-                <Button disabled={busy} onClick={() => payout()} className="bg-emerald-700 hover:bg-emerald-800 text-white">Izplačaj vse čakajoče ({pool.TipDistribution.filter((d) => d.status === 'pending').length})</Button>
+                <Button disabled={busy} onClick={() => payout()} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t('tips.payAllPending', { n: pool.TipDistribution.filter((d) => d.status === 'pending').length })}</Button>
               </div>
             )}
-            <p className="text-xs text-stone-400">Zneski distribucij so zaščiteni z hash-verigo — vsaka sprememba bi bila vidna. Izplačila so zapisana v revizijski dnevnik (TIP_PAYOUT).</p>
+            <p className="text-xs text-stone-400">{t('tips.hashNote')}</p>
           </CardContent>
         </Card>
       ) : (
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Predogled delitve za {date}</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">{t('tips.previewFor', { date })}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {data && data.employees.length > 0 ? (
               <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
                 <table className="w-full text-sm">
                   <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                     <tr>
-                      <th className="p-2">Zaposleni</th>
-                      <th className="p-2">Ure tega dne</th>
-                      <th className="p-2 text-right">Predvideni delež</th>
+                      <th className="p-2">{t('shifts.csvEmployee')}</th>
+                      <th className="p-2">{t('tips.hoursToday')}</th>
+                      <th className="p-2 text-right">{t('tips.expectedShare')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1693,11 +1701,11 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-stone-500">Za ta dan ni napitnin ali zaposlenih z osnovo.</p>
+              <p className="text-sm text-stone-500">{t('tips.emptyDay')}</p>
             )}
-            {canManage && t && t.totalCents > 0 && data && data.employees.length > 0 && (
+            {canManage && tot && tot.totalCents > 0 && data && data.employees.length > 0 && (
               <div className="flex justify-end">
-                <Button disabled={busy} onClick={closeDay} className="bg-emerald-700 hover:bg-emerald-800 text-white">Zaključi dan — ustvari bazen ({fmtEUR(t.totalCents / 100)})</Button>
+                <Button disabled={busy} onClick={closeDay} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t('tips.closeDay', { amount: fmtEUR(tot.totalCents / 100) })}</Button>
               </div>
             )}
           </CardContent>
@@ -1705,18 +1713,18 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
       )}
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Zgodovina bazenov</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('tips.history')}</CardTitle></CardHeader>
         <CardContent>
           {data && data.history.length > 0 ? (
             <div className="max-h-72 overflow-y-auto rounded-xl border border-stone-200">
               <table className="w-full text-sm">
                 <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                   <tr>
-                    <th className="p-2">Dan</th>
-                    <th className="p-2 text-right">Skupaj</th>
-                    <th className="p-2">Osnova</th>
-                    <th className="p-2 text-right">Zaposleni</th>
-                    <th className="p-2">Status</th>
+                    <th className="p-2">{t('tips.day')}</th>
+                    <th className="p-2 text-right">{t('tips.total')}</th>
+                    <th className="p-2">{t('tips.basisShort')}</th>
+                    <th className="p-2 text-right">{t('shifts.csvEmployee')}</th>
+                    <th className="p-2">{t('shifts.csvStatus')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1724,10 +1732,10 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
                     <tr key={p.id} className="border-t border-stone-100">
                       <td className="p-2">{new Date(p.date).toLocaleDateString('sl-SI')}</td>
                       <td className="p-2 text-right font-semibold">{fmtEUR(Number(p.totalTips))}</td>
-                      <td className="p-2 text-stone-600">{p.distributionMethod === 'hours' ? 'po urah' : p.distributionMethod === 'points' ? 'po točkah' : 'enakovredno'}</td>
-                      <td className="p-2 text-right">{p.paid}/{p.employees} izplačano</td>
+                      <td className="p-2 text-stone-600">{p.distributionMethod === 'hours' ? t('tips.mHours') : p.distributionMethod === 'points' ? t('tips.mPoints') : t('tips.mEqual')}</td>
+                      <td className="p-2 text-right">{p.paid}/{p.employees} {t('tips.paid')}</td>
                       <td className="p-2">
-                        <Badge variant={p.status === 'paid' ? 'default' : 'outline'} className={p.status === 'paid' ? 'bg-emerald-700' : ''}>{p.status === 'paid' ? 'izplačano' : 'v obdelavi'}</Badge>
+                        <Badge variant={p.status === 'paid' ? 'default' : 'outline'} className={p.status === 'paid' ? 'bg-emerald-700' : ''}>{p.status === 'paid' ? t('tips.paid') : t('tips.processing')}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -1735,12 +1743,12 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
               </table>
             </div>
           ) : (
-            <p className="text-sm text-stone-500">Še ni zaključenih dni.</p>
+            <p className="text-sm text-stone-500">{t('tips.noHistory')}</p>
           )}
         </CardContent>
       </Card>
 
-      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.processing')}</p>}
       {err && <p className="text-sm text-red-600">{err}</p>}
     </div>
   )
@@ -1777,17 +1785,17 @@ interface NabavaNewLine { inventoryItemId: string; description: string; quantity
 interface NabavaRecvLine { accept: string; reject: string; reason: string; expiry: string }
 
 const NABAVA_STATUS: Record<string, { label: string; cls: string }> = {
-  draft: { label: 'Osnutek', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
-  submitted: { label: 'Oddano', cls: 'border-amber-300 bg-amber-100 text-amber-800' },
-  approved: { label: 'Odobreno', cls: 'border-emerald-300 bg-emerald-100 text-emerald-800' },
-  partial: { label: 'Delno prevzeto', cls: 'border-orange-300 bg-orange-100 text-orange-800' },
-  received: { label: 'Prevzeto', cls: 'border-green-300 bg-green-100 text-green-800' },
-  cancelled: { label: 'Preklicano', cls: 'border-red-300 bg-red-100 text-red-700' },
+  draft: { label: 'proc.stDraft', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
+  submitted: { label: 'proc.stSubmitted', cls: 'border-amber-300 bg-amber-100 text-amber-800' },
+  approved: { label: 'proc.stApproved', cls: 'border-emerald-300 bg-emerald-100 text-emerald-800' },
+  partial: { label: 'proc.stPartial', cls: 'border-orange-300 bg-orange-100 text-orange-800' },
+  received: { label: 'proc.stReceived', cls: 'border-green-300 bg-green-100 text-green-800' },
+  cancelled: { label: 'proc.stCancelled', cls: 'border-red-300 bg-red-100 text-red-700' },
 }
 const NABAVA_ITEM_STATUS: Record<string, { label: string; cls: string }> = {
-  pending: { label: 'čaka', cls: 'border-stone-300 text-stone-600' },
-  partial: { label: 'delno', cls: 'border-orange-300 bg-orange-50 text-orange-800' },
-  received: { label: 'prejeto', cls: 'border-green-300 bg-green-50 text-green-800' },
+  pending: { label: 'proc.itPending', cls: 'border-stone-300 text-stone-600' },
+  partial: { label: 'proc.itPartial', cls: 'border-orange-300 bg-orange-50 text-orange-800' },
+  received: { label: 'proc.itReceived', cls: 'border-green-300 bg-green-50 text-green-800' },
 }
 
 const nabavaNum = (s: string): number => {
@@ -1797,6 +1805,7 @@ const nabavaNum = (s: string): number => {
 const nabavaDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('sl-SI') : '—')
 
 export function NabavaTab({ locations, canManage }: { locations: { id: string; name: string }[]; canManage: boolean }) {
+  const { t } = useI18n()
   const [suppliers, setSuppliers] = useState<NabavaSupplier[]>([])
   const [invItems, setInvItems] = useState<NabavaInvItem[]>([])
   const [orders, setOrders] = useState<NabavaPo[]>([])
@@ -1881,11 +1890,11 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
 
   /* statusni prehodi naročila: oddaja / odobritev / preklic */
   const poAction = async (id: string, action: 'submit' | 'approve' | 'cancel') => {
-    if (action === 'cancel' && !window.confirm('Res želiš preklicati to nabavno naročilo?')) return
+    if (action === 'cancel' && !window.confirm(t('proc.cancelConfirm'))) return
     setBusy(true); setErr(''); setOkMsg('')
     try {
       await api(`/api/purchase-orders/${id}`, { method: 'PATCH', body: JSON.stringify({ action }) })
-      setOkMsg(action === 'submit' ? 'Naročilo oddano dobavitelju.' : action === 'approve' ? 'Naročilo odobreno — čaka prevzem.' : 'Naročilo preklicano.')
+      setOkMsg(action === 'submit' ? t('proc.msgSubmitted') : action === 'approve' ? t('proc.msgApproved') : t('proc.msgCancelled'))
       await loadOrders()
       if (detailId === id) await fetchDetail(id)
     } catch (e) {
@@ -1904,7 +1913,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   }
   const saveSupplier = async () => {
     if (!supDialog) return
-    if (!supDialog.name.trim()) { setSupErr('Naziv dobavitelja je obvezen.'); return }
+    if (!supDialog.name.trim()) { setSupErr(t('proc.supNameRequired')); return }
     setSupBusy(true); setSupErr('')
     const body = {
       name: supDialog.name.trim(),
@@ -1920,10 +1929,10 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
     try {
       if (supDialog.editingId) {
         await api('/api/suppliers', { method: 'PATCH', body: JSON.stringify({ id: supDialog.editingId, ...body }) })
-        setOkMsg('Dobavitelj posodobljen.')
+        setOkMsg(t('proc.supUpdated'))
       } else {
         await api('/api/suppliers', { method: 'POST', body: JSON.stringify(body) })
-        setOkMsg('Dobavitelj dodan.')
+        setOkMsg(t('proc.supAdded'))
       }
       setSupDialog(null)
       await loadSuppliers()
@@ -1965,15 +1974,15 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   const poVatTotal = poLines.reduce((s, l) => s + poLineVat(l), 0)
 
   const savePo = async () => {
-    if (!poSupplierId) { setPoErr('Izberi dobavitelja.'); return }
-    if (poLines.length === 0) { setPoErr('Dodaj vsaj eno vrstico (artikel zaloge ali ročni vnos).'); return }
+    if (!poSupplierId) { setPoErr(t('proc.chooseSupplierErr')); return }
+    if (poLines.length === 0) { setPoErr(t('proc.addLineRequired')); return }
     for (let i = 0; i < poLines.length; i++) {
       const l = poLines[i]
-      if (!l.inventoryItemId && !l.description.trim()) { setPoErr(`Vrstica ${i + 1}: opis je obvezen.`); return }
+      if (!l.inventoryItemId && !l.description.trim()) { setPoErr(t('proc.lineDescRequired', { n: i + 1 })); return }
       const q = nabavaNum(l.quantity)
-      if (!Number.isFinite(q) || q <= 0) { setPoErr(`Vrstica ${i + 1}: količina mora biti večja od 0.`); return }
+      if (!Number.isFinite(q) || q <= 0) { setPoErr(t('proc.lineQtyRequired', { n: i + 1 })); return }
       const p = nabavaNum(l.unitPrice)
-      if (!Number.isFinite(p) || p < 0) { setPoErr(`Vrstica ${i + 1}: cena ne sme biti negativna.`); return }
+      if (!Number.isFinite(p) || p < 0) { setPoErr(t('proc.linePriceRequired', { n: i + 1 })); return }
     }
     setPoBusy(true); setPoErr('')
     try {
@@ -1994,7 +2003,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
           })),
         }),
       })
-      setPoDialog(false); setPoLines([]); setOkMsg('Nabavno naročilo ustvarjeno (osnutek).')
+      setPoDialog(false); setPoLines([]); setOkMsg(t('proc.poCreated'))
       await loadOrders()
     } catch (e) {
       setPoErr(String((e as Error).message || e))
@@ -2021,9 +2030,9 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
     for (const it of recvOrder.items) {
       const l = recvLines[it.id] || { accept: '0', reject: '0', reason: '', expiry: '' }
       const a = nabavaNum(l.accept), r = nabavaNum(l.reject)
-      if (!Number.isFinite(a) || a < 0 || !Number.isFinite(r) || r < 0) { setRecvErr(`Vrstica „${it.description}": količini morata biti števili ≥ 0.`); return }
+      if (!Number.isFinite(a) || a < 0 || !Number.isFinite(r) || r < 0) { setRecvErr(t('proc.lineQtyNumbers', { name: it.description })); return }
       if (a === 0 && r === 0) continue
-      if (r > 0 && !l.reason.trim()) { setRecvErr(`Vrstica „${it.description}": razlog zavrnitve je obvezen, če je zavrnjeno > 0.`); return }
+      if (r > 0 && !l.reason.trim()) { setRecvErr(t('proc.lineReasonRequired', { name: it.description })); return }
       payloadLines.push({
         purchaseOrderItemId: it.id,
         quantityAccepted: a,
@@ -2032,7 +2041,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
         expiryDate: l.expiry || undefined,
       })
     }
-    if (payloadLines.length === 0) { setRecvErr('Vnesi vsaj eno količino (sprejeto ali zavrnjeno).'); return }
+    if (payloadLines.length === 0) { setRecvErr(t('proc.enterQty')); return }
     setRecvBusy(true); setRecvErr('')
     try {
       const res = await api<{ receipt: { id: string; grnNumber: string; status: string; poStatus: string; warnings?: string[] } }>(`/api/purchase-orders/${recvOrder.id}/receive`, {
@@ -2053,36 +2062,36 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-stone-500">Nabavni tok: dobavitelj → naročilo (osnutek → oddaja → odobritev) → prevzem (delna ali popolna dobava) → primerjava naročeno/prejeto in zgodovina nabavnih cen. Prevzem samodejno posodobi zalogo (uteženo povprečje) in zapiše serijo (batch) ter revizijski sled.</p>
+      <p className="text-xs text-stone-500">{t('proc.desc')}</p>
 
       {/* A — DOBAVITELJI */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
-            <Truck className="w-4 h-4" /> Dobavitelji
+            <Truck className="w-4 h-4" /> {t('inv.suppliers')}
             {canManage && (
               <Button size="sm" className="ml-auto bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => openSupDialog()}>
-                <Plus className="w-3.5 h-3.5" /> Nov dobavitelj
+                <Plus className="w-3.5 h-3.5" /> {t('inv.newSupplier')}
               </Button>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {suppliers.length === 0 ? (
-            <p className="text-sm text-stone-500">Ni dobaviteljev — {canManage ? 'dodaj prvega.' : 'naroči skrbnika, da doda prvega.'}</p>
+            <p className="text-sm text-stone-500">{t('proc.noSuppliers')} {canManage ? t('proc.noSuppliersAdd') : t('proc.noSuppliersManager')}</p>
           ) : (
             <div className="max-h-72 overflow-y-auto rounded-xl border border-stone-200">
               <table className="w-full text-sm">
                 <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                   <tr>
-                    <th className="p-2">Naziv</th>
-                    <th className="p-2">Kontakt</th>
-                    <th className="p-2">Telefon / e-pošta</th>
-                    <th className="p-2">Kraj</th>
-                    <th className="p-2 text-right">Naročila</th>
-                    <th className="p-2 text-right">Artikli</th>
-                    <th className="p-2">Status</th>
-                    {canManage && <th className="p-2 text-right">Uredi</th>}
+                    <th className="p-2">{t('jobs.name')}</th>
+                    <th className="p-2">{t('proc.contact')}</th>
+                    <th className="p-2">{t('proc.phoneEmail')}</th>
+                    <th className="p-2">{t('set.city')}</th>
+                    <th className="p-2 text-right">{t('proc.ordersCount')}</th>
+                    <th className="p-2 text-right">{t('proc.itemsCol')}</th>
+                    <th className="p-2">{t('shifts.csvStatus')}</th>
+                    {canManage && <th className="p-2 text-right">{t('common.edit')}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -2096,12 +2105,12 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                       <td className="p-2 text-right">{s.itemsCount}</td>
                       <td className="p-2">
                         {s.isActive
-                          ? <Badge variant="outline" className="border-emerald-600 text-emerald-700">aktiven</Badge>
-                          : <Badge variant="outline" className="text-stone-500">neaktiven</Badge>}
+                          ? <Badge variant="outline" className="border-emerald-600 text-emerald-700">{t('proc.activeF')}</Badge>
+                          : <Badge variant="outline" className="text-stone-500">{t('proc.inactiveF')}</Badge>}
                       </td>
                       {canManage && (
                         <td className="p-2 text-right">
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => openSupDialog(s)}>Uredi</Button>
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => openSupDialog(s)}>{t('common.edit')}</Button>
                         </td>
                       )}
                     </tr>
@@ -2117,31 +2126,31 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
-            <PackageSearch className="w-4 h-4" /> Nabavna naročila
+            <PackageSearch className="w-4 h-4" /> {t('proc.ordersTitle')}
             {canManage && (
               <Button size="sm" className="ml-auto bg-emerald-700 hover:bg-emerald-800 text-white" onClick={openPoDialog}>
-                <Plus className="w-3.5 h-3.5" /> Novo naročilo
+                <Plus className="w-3.5 h-3.5" /> {t('proc.newOrder')}
               </Button>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="sm:max-w-xs space-y-1.5">
-            <Label>Filter statusa</Label>
+            <Label>{t('proc.statusFilter')}</Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Vsi statusi</SelectItem>
+                <SelectItem value="all">{t('proc.allStatuses')}</SelectItem>
                 {Object.entries(NABAVA_STATUS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                  <SelectItem key={k} value={k}>{t(v.label)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           {loading ? (
-            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam nabavne podatke …</p>
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('proc.loading')}</p>
           ) : filteredOrders.length === 0 ? (
-            <p className="text-sm text-stone-500">{orders.length === 0 ? 'Ni še naročil — ustvari prvo nabavno naročilo.' : 'Ni naročil za izbrani status.'}</p>
+            <p className="text-sm text-stone-500">{orders.length === 0 ? t('proc.noOrders') : t('proc.noOrdersStatus')}</p>
           ) : (
             <div className="max-h-96 overflow-y-auto space-y-2 pr-1">
               {filteredOrders.map((o) => {
@@ -2159,29 +2168,29 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{o.poNumber}</span>
-                        <Badge variant="outline" className={st?.cls || ''}>{st?.label || o.status}</Badge>
+                        <Badge variant="outline" className={st?.cls || ''}>{st?.label ? t(st.label) : o.status}</Badge>
                       </div>
                       <span className="font-bold">{fmtEUR(o.totalAmount)}</span>
                     </div>
                     <p className="text-xs text-stone-500 mt-1">
-                      {o.supplierName || '—'} · naročeno {nabavaDate(o.orderDate)}
-                      {o.expectedDate ? ` · pričakovano ${nabavaDate(o.expectedDate)}` : ''}
-                      {' · '}{o.items.length} vrstic · {o.receiptsCount === 1 ? '1 prevzem' : o.receiptsCount === 2 ? '2 prevzema' : `${o.receiptsCount} prevzemov`}
+                      {o.supplierName || '—'} · {t('proc.ordered')} {nabavaDate(o.orderDate)}
+                      {o.expectedDate ? ` · ${t('proc.expected')} ${nabavaDate(o.expectedDate)}` : ''}
+                      {' · '}{t('proc.linesCount', { n: o.items.length })} · {o.receiptsCount === 1 ? t('proc.receiptOne') : o.receiptsCount === 2 ? t('proc.receiptTwo') : t('proc.receiptMany', { n: o.receiptsCount })}
                     </p>
                     {canManage && active && (
                       <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                         {o.status === 'draft' && (
-                          <Button size="sm" variant="outline" disabled={busy} onClick={() => poAction(o.id, 'submit')}>Oddaj</Button>
+                          <Button size="sm" variant="outline" disabled={busy} onClick={() => poAction(o.id, 'submit')}>{t('proc.submitBtn')}</Button>
                         )}
                         {o.status === 'submitted' && (
-                          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy} onClick={() => poAction(o.id, 'approve')}>Odobri</Button>
+                          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy} onClick={() => poAction(o.id, 'approve')}>{t('proc.approveBtn')}</Button>
                         )}
                         {(o.status === 'approved' || o.status === 'partial') && (
                           <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy} onClick={() => openReceive(o)}>
-                            <Truck className="w-3.5 h-3.5" /> Prevzemi
+                            <Truck className="w-3.5 h-3.5" /> {t('proc.receiveBtn')}
                           </Button>
                         )}
-                        <Button size="sm" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => poAction(o.id, 'cancel')}>Prekliči</Button>
+                        <Button size="sm" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => poAction(o.id, 'cancel')}>{t('common.cancel')}</Button>
                       </div>
                     )}
                   </div>
@@ -2192,61 +2201,61 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
         </CardContent>
       </Card>
 
-      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.processing')}</p>}
       {okMsg && <p className="text-sm text-emerald-700">{okMsg}</p>}
       {err && <p className="text-sm text-red-600">{err}</p>}
 
       {/* Dialog: dobavitelj (nov / uredi) */}
       <Dialog open={supDialog !== null} onOpenChange={(v) => { if (!v) setSupDialog(null) }}>
         <DialogContent aria-describedby={undefined} className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{supDialog?.editingId ? 'Uredi dobavitelja' : 'Nov dobavitelj'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{supDialog?.editingId ? t('proc.editSupplier') : t('inv.newSupplier')}</DialogTitle></DialogHeader>
           {supDialog && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="nb-sup-name">Naziv *</Label>
-                <Input id="nb-sup-name" value={supDialog.name} onChange={(e) => setSupDialog({ ...supDialog, name: e.target.value })} placeholder="npr. Mlinarstvo Kranj d.o.o." />
+                <Label htmlFor="nb-sup-name">{t('inv.name')}</Label>
+                <Input id="nb-sup-name" value={supDialog.name} onChange={(e) => setSupDialog({ ...supDialog, name: e.target.value })} placeholder={t('proc.supNamePlaceholder')} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-contact">Kontaktna oseba</Label>
+                  <Label htmlFor="nb-sup-contact">{t('inv.contactPerson')}</Label>
                   <Input id="nb-sup-contact" value={supDialog.contact} onChange={(e) => setSupDialog({ ...supDialog, contact: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-phone">Telefon</Label>
+                  <Label htmlFor="nb-sup-phone">{t('inv.phone')}</Label>
                   <Input id="nb-sup-phone" value={supDialog.phone} onChange={(e) => setSupDialog({ ...supDialog, phone: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-email">E-pošta</Label>
+                  <Label htmlFor="nb-sup-email">{t('set.email')}</Label>
                   <Input id="nb-sup-email" type="email" value={supDialog.email} onChange={(e) => setSupDialog({ ...supDialog, email: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-city">Kraj</Label>
+                  <Label htmlFor="nb-sup-city">{t('set.city')}</Label>
                   <Input id="nb-sup-city" value={supDialog.city} onChange={(e) => setSupDialog({ ...supDialog, city: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-tax">Davčna številka</Label>
+                  <Label htmlFor="nb-sup-tax">{t('set.taxId')}</Label>
                   <Input id="nb-sup-tax" value={supDialog.taxId} onChange={(e) => setSupDialog({ ...supDialog, taxId: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-iban">IBAN</Label>
+                  <Label htmlFor="nb-sup-iban">{t('proc.iban')}</Label>
                   <Input id="nb-sup-iban" value={supDialog.iban} onChange={(e) => setSupDialog({ ...supDialog, iban: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-sup-terms">Plačilni pogoji</Label>
-                  <Input id="nb-sup-terms" value={supDialog.paymentTerms} onChange={(e) => setSupDialog({ ...supDialog, paymentTerms: e.target.value })} placeholder="npr. 30 dni" />
+                  <Label htmlFor="nb-sup-terms">{t('proc.paymentTerms')}</Label>
+                  <Input id="nb-sup-terms" value={supDialog.paymentTerms} onChange={(e) => setSupDialog({ ...supDialog, paymentTerms: e.target.value })} placeholder={t('proc.termsPlaceholder')} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="nb-sup-addr">Naslov</Label>
+                <Label htmlFor="nb-sup-addr">{t('set.address')}</Label>
                 <Input id="nb-sup-addr" value={supDialog.address} onChange={(e) => setSupDialog({ ...supDialog, address: e.target.value })} />
               </div>
               {supErr && <p className="text-sm text-red-600">{supErr}</p>}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSupDialog(null)} disabled={supBusy}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setSupDialog(null)} disabled={supBusy}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={saveSupplier} disabled={supBusy}>
-              {supBusy && <Loader2 className="w-4 h-4 animate-spin" />} Shrani
+              {supBusy && <Loader2 className="w-4 h-4 animate-spin" />} {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2255,26 +2264,26 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
       {/* Dialog: novo nabavno naročilo */}
       <Dialog open={poDialog} onOpenChange={(v) => { if (!v) setPoDialog(false) }}>
         <DialogContent aria-describedby={undefined} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Novo nabavno naročilo</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('proc.newOrderTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Dobavitelj *</Label>
+                <Label>{t('proc.supplierLabel')}</Label>
                 <Select value={poSupplierId} onValueChange={setPoSupplierId}>
-                  <SelectTrigger><SelectValue placeholder={suppliers[0]?.name || 'Izberi dobavitelja'} /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={suppliers[0]?.name || t('proc.chooseSupplier')} /></SelectTrigger>
                   <SelectContent className="max-h-64">
                     {suppliers.filter((s) => s.isActive).map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {suppliers.length === 0 && <p className="text-xs text-amber-700">Ni aktivnih dobaviteljev — najprej dodaj dobavitelja v sekciji zgoraj.</p>}
+                {suppliers.length === 0 && <p className="text-xs text-amber-700">{t('proc.noActiveSuppliers')}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label>Lokacija</Label>
+                <Label>{t('dev.location')}</Label>
                 {locations.length > 0 ? (
                   <Select value={poLocationId} onValueChange={setPoLocationId}>
-                    <SelectTrigger><SelectValue placeholder="Privzeta (prijava)" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={t('proc.defaultLocation')} /></SelectTrigger>
                     <SelectContent>
                       {locations.map((l) => (
                         <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
@@ -2282,24 +2291,24 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Input disabled value="Privzeta (prijava)" />
+                  <Input disabled value={t('proc.defaultLocation')} />
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="nb-po-expected">Pričakovani datum</Label>
+                <Label htmlFor="nb-po-expected">{t('proc.expectedDate')}</Label>
                 <Input id="nb-po-expected" type="date" value={poExpected} onChange={(e) => setPoExpected(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="nb-po-notes">Opomba</Label>
-                <Input id="nb-po-notes" value={poNotes} onChange={(e) => setPoNotes(e.target.value)} placeholder="npr. dostava do 8. ure" />
+                <Label htmlFor="nb-po-notes">{t('proc.note')}</Label>
+                <Input id="nb-po-notes" value={poNotes} onChange={(e) => setPoNotes(e.target.value)} placeholder={t('proc.notePlaceholder')} />
               </div>
             </div>
 
             <div className="flex items-end gap-2 flex-wrap">
               <div className="space-y-1.5 grow min-w-48">
-                <Label>Dodaj artikel zaloge</Label>
+                <Label>{t('proc.addInvItem')}</Label>
                 <Select value="" onValueChange={addPoLineFromInventory}>
-                  <SelectTrigger><SelectValue placeholder="Izberi artikel …" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t('proc.itemPlaceholder')} /></SelectTrigger>
                   <SelectContent className="max-h-64">
                     {invItems.filter((i) => !poLines.some((l) => l.inventoryItemId === i.id)).map((i) => (
                       <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>
@@ -2308,31 +2317,31 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                 </Select>
               </div>
               <Button variant="outline" size="sm" className="h-9" onClick={addManualPoLine}>
-                <Plus className="w-3.5 h-3.5" /> Ročna vrstica
+                <Plus className="w-3.5 h-3.5" /> {t('proc.manualLine')}
               </Button>
             </div>
 
             {poLines.length === 0 ? (
-              <p className="text-xs text-stone-500">Ni vrstic — dodaj artikel zaloge ali ročno vrstico. Artikel samodejno prenese enoto in privzeto nabavno ceno.</p>
+              <p className="text-xs text-stone-500">{t('proc.noLines')}</p>
             ) : (
               <div className="space-y-2">
                 {poLines.map((l, idx) => (
                   <div key={l.inventoryItemId || `m${idx}`} className="rounded-lg border border-stone-200 bg-stone-50 p-2">
                     <div className="grid gap-2 sm:grid-cols-12 items-end">
                       <div className="sm:col-span-4 space-y-1">
-                        <Label className="text-xs text-stone-500">Artikel / opis</Label>
+                        <Label className="text-xs text-stone-500">{t('proc.itemDesc')}</Label>
                         {l.inventoryItemId ? (
                           <p className="text-sm font-medium py-1.5">{l.description}</p>
                         ) : (
-                          <Input value={l.description} onChange={(e) => updatePoLine(idx, { description: e.target.value })} placeholder="npr. svež kruh" />
+                          <Input value={l.description} onChange={(e) => updatePoLine(idx, { description: e.target.value })} placeholder={t('proc.lineDescPlaceholder')} />
                         )}
                       </div>
                       <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-xs text-stone-500">Količina</Label>
+                        <Label className="text-xs text-stone-500">{t('proc.qty')}</Label>
                         <Input inputMode="decimal" value={l.quantity} onChange={(e) => updatePoLine(idx, { quantity: e.target.value })} />
                       </div>
                       <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-xs text-stone-500">Enota</Label>
+                        <Label className="text-xs text-stone-500">{t('inv.unit')}</Label>
                         {l.inventoryItemId ? (
                           <p className="text-sm py-1.5 text-stone-600">{l.unit}</p>
                         ) : (
@@ -2340,35 +2349,35 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                         )}
                       </div>
                       <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-xs text-stone-500">Cena/enota (€)</Label>
+                        <Label className="text-xs text-stone-500">{t('proc.pricePerUnit')}</Label>
                         <Input inputMode="decimal" value={l.unitPrice} onChange={(e) => updatePoLine(idx, { unitPrice: e.target.value })} />
                       </div>
                       <div className="sm:col-span-1 space-y-1">
-                        <Label className="text-xs text-stone-500">DDV %</Label>
+                        <Label className="text-xs text-stone-500">{t('proc.vatPercent')}</Label>
                         <Input inputMode="decimal" value={l.vatRate} onChange={(e) => updatePoLine(idx, { vatRate: e.target.value })} />
                       </div>
                       <div className="sm:col-span-1 flex justify-end">
-                        <Button size="sm" variant="outline" className="h-9 w-9 p-0 text-red-600" aria-label="Odstrani vrstico" onClick={() => removePoLine(idx)}>×</Button>
+                        <Button size="sm" variant="outline" className="h-9 w-9 p-0 text-red-600" aria-label={t('proc.removeLine')} onClick={() => removePoLine(idx)}>×</Button>
                       </div>
                     </div>
-                    <p className="text-xs text-stone-500 mt-1 text-right">Znesek vrstice: <b>{fmtEUR(poLineNet(l))}</b></p>
+                    <p className="text-xs text-stone-500 mt-1 text-right">{t('proc.lineAmount')} <b>{fmtEUR(poLineNet(l))}</b></p>
                   </div>
                 ))}
               </div>
             )}
 
             <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-stone-600">Skupaj brez DDV</span><span>{fmtEUR(poSubtotal)}</span></div>
-              <div className="flex justify-between"><span className="text-stone-600">DDV</span><span>{fmtEUR(poVatTotal)}</span></div>
-              <div className="flex justify-between font-bold"><span>Skupaj</span><span>{fmtEUR(poSubtotal + poVatTotal)}</span></div>
+              <div className="flex justify-between"><span className="text-stone-600">{t('proc.netTotal')}</span><span>{fmtEUR(poSubtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-stone-600">{t('proc.vat')}</span><span>{fmtEUR(poVatTotal)}</span></div>
+              <div className="flex justify-between font-bold"><span>{t('proc.total')}</span><span>{fmtEUR(poSubtotal + poVatTotal)}</span></div>
             </div>
 
             {poErr && <p className="text-sm text-red-600">{poErr}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPoDialog(false)} disabled={poBusy}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setPoDialog(false)} disabled={poBusy}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={savePo} disabled={poBusy}>
-              {poBusy && <Loader2 className="w-4 h-4 animate-spin" />} Ustvari osnutek
+              {poBusy && <Loader2 className="w-4 h-4 animate-spin" />} {t('proc.createDraft')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2379,45 +2388,45 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
         <DialogContent aria-describedby={undefined} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
-              Naročilo {detail?.poNumber || '…'}
+              {t('proc.order')} {detail?.poNumber || '…'}
               {detail && (
                 <Badge variant="outline" className={NABAVA_STATUS[detail.status]?.cls || ''}>
-                  {NABAVA_STATUS[detail.status]?.label || detail.status}
+                  {NABAVA_STATUS[detail.status]?.label ? t(NABAVA_STATUS[detail.status].label) : detail.status}
                 </Badge>
               )}
             </DialogTitle>
           </DialogHeader>
           {detailBusy && !detail && (
-            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam detajl …</p>
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('proc.loadingDetail')}</p>
           )}
           {detailErr && <p className="text-sm text-red-600">{detailErr}</p>}
           {detail && (
             <div className="space-y-4">
               <div className="text-xs text-stone-600 space-y-0.5">
                 <p>
-                  Dobavitelj: <b>{detail.supplier?.name || '—'}</b>
+                  {t('proc.supplierColon')} <b>{detail.supplier?.name || '—'}</b>
                   {detail.supplier?.contactPerson ? ` · ${detail.supplier.contactPerson}` : ''}
                   {detail.supplier?.phone ? ` · ${detail.supplier.phone}` : ''}
                   {detail.supplier?.email ? ` · ${detail.supplier.email}` : ''}
                 </p>
-                <p>Naročeno: {nabavaDate(detail.orderDate)} · Pričakovano: {nabavaDate(detail.expectedDate)} · Prevzeto: {nabavaDate(detail.receivedDate)}</p>
-                <p>Oddal: {detail.requestedBy || '—'} · Odobril: {detail.approvedBy || '—'}</p>
-                {detail.notes && <p>Opomba: {detail.notes}</p>}
+                <p>{t('proc.orderedColon')} {nabavaDate(detail.orderDate)} · {t('proc.expectedColon')} {nabavaDate(detail.expectedDate)} · {t('proc.receivedColon')} {nabavaDate(detail.receivedDate)}</p>
+                <p>{t('proc.submittedBy')} {detail.requestedBy || '—'} · {t('proc.approvedByLabel')} {detail.approvedBy || '—'}</p>
+                {detail.notes && <p>{t('proc.noteColon')} {detail.notes}</p>}
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-stone-500 mb-1">Vrstice — naročeno / prejeto / zavrnjeno</p>
+                <p className="text-xs font-semibold text-stone-500 mb-1">{t('proc.linesHeader')}</p>
                 <div className="max-h-64 overflow-y-auto rounded-xl border border-stone-200">
                   <table className="w-full text-sm">
                     <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                       <tr>
-                        <th className="p-2">Postavka</th>
-                        <th className="p-2 text-right">Naročeno</th>
-                        <th className="p-2 text-right">Prejeto</th>
-                        <th className="p-2 text-right">Zavrnjeno</th>
-                        <th className="p-2 text-right">Cena/en.</th>
-                        <th className="p-2 text-right">Skupaj</th>
-                        <th className="p-2">Status</th>
+                        <th className="p-2">{t('proc.item')}</th>
+                        <th className="p-2 text-right">{t('proc.thOrdered')}</th>
+                        <th className="p-2 text-right">{t('proc.thReceived')}</th>
+                        <th className="p-2 text-right">{t('proc.thRejected')}</th>
+                        <th className="p-2 text-right">{t('proc.thPriceUnit')}</th>
+                        <th className="p-2 text-right">{t('proc.total')}</th>
+                        <th className="p-2">{t('shifts.csvStatus')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2432,7 +2441,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                             <td className="p-2 text-right">{fmtEUR(it.unitPrice)}</td>
                             <td className="p-2 text-right font-semibold">{fmtEUR(it.totalPrice)}</td>
                             <td className="p-2">
-                              <Badge variant="outline" className={ist?.cls || ''}>{ist?.label || it.status}</Badge>
+                              <Badge variant="outline" className={ist?.cls || ''}>{ist?.label ? t(ist.label) : it.status}</Badge>
                             </td>
                           </tr>
                         )
@@ -2441,14 +2450,14 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                   </table>
                 </div>
                 <p className="text-xs text-stone-600 mt-2 text-right">
-                  Brez DDV: {fmtEUR(detail.subtotal)} · DDV: {fmtEUR(detail.vatAmount)} · <b>Skupaj: {fmtEUR(detail.totalAmount)}</b>
+                  {t('proc.netLabel')} {fmtEUR(detail.subtotal)} · {t('proc.vat')}: {fmtEUR(detail.vatAmount)} · <b>{t('proc.total')}: {fmtEUR(detail.totalAmount)}</b>
                 </p>
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-stone-500 mb-1">Prevzemi ({detail.receipts.length})</p>
+                <p className="text-xs font-semibold text-stone-500 mb-1">{t('proc.receiptsCount', { n: detail.receipts.length })}</p>
                 {detail.receipts.length === 0 ? (
-                  <p className="text-sm text-stone-500">Ni še prevzemov.</p>
+                  <p className="text-sm text-stone-500">{t('proc.noReceipts')}</p>
                 ) : (
                   <div className="max-h-56 overflow-y-auto space-y-2">
                     {detail.receipts.map((g) => (
@@ -2459,12 +2468,12 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                             {g.receivedAt ? new Date(g.receivedAt).toLocaleString('sl-SI') : '—'}{g.receivedByName ? ` · ${g.receivedByName}` : ''}
                           </span>
                         </div>
-                        {g.supplierDocNumber && <p className="text-xs text-stone-500">Dokument dobavitelja: {g.supplierDocNumber}</p>}
+                        {g.supplierDocNumber && <p className="text-xs text-stone-500">{t('proc.supplierDoc')} {g.supplierDocNumber}</p>}
                         <ul className="text-xs text-stone-600 mt-1 space-y-0.5">
                           {g.items.map((gi, i) => (
                             <li key={i}>
-                              {gi.description}: sprejeto {gi.quantityAccepted} {gi.unit}
-                              {gi.quantityRejected > 0 ? ` · zavrnjeno ${gi.quantityRejected}${gi.rejectReason ? ` (${gi.rejectReason})` : ''}` : ''}
+                              {gi.description}: {t('proc.acceptedShort')} {gi.quantityAccepted} {gi.unit}
+                              {gi.quantityRejected > 0 ? ` · ${t('proc.rejectedShort')} ${gi.quantityRejected}${gi.rejectReason ? ` (${gi.rejectReason})` : ''}` : ''}
                             </li>
                           ))}
                         </ul>
@@ -2475,19 +2484,19 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-stone-500 mb-1">Zgodovina nabavnih cen</p>
+                <p className="text-xs font-semibold text-stone-500 mb-1">{t('proc.priceHistory')}</p>
                 {detail.priceHistory.length === 0 ? (
-                  <p className="text-sm text-stone-500">Ni zapisov o cenah za artikle tega naročila.</p>
+                  <p className="text-sm text-stone-500">{t('proc.noPriceHistory')}</p>
                 ) : (
                   <div className="max-h-48 overflow-y-auto rounded-xl border border-stone-200">
                     <table className="w-full text-sm">
                       <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                         <tr>
-                          <th className="p-2">Artikel</th>
-                          <th className="p-2 text-right">Cena/en.</th>
-                          <th className="p-2 text-right">DDV</th>
-                          <th className="p-2">Vir</th>
-                          <th className="p-2 text-right">Opazovano</th>
+                          <th className="p-2">{t('proc.article')}</th>
+                          <th className="p-2 text-right">{t('proc.thPriceUnit')}</th>
+                          <th className="p-2 text-right">{t('proc.vat')}</th>
+                          <th className="p-2">{t('proc.source')}</th>
+                          <th className="p-2 text-right">{t('proc.observed')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2498,7 +2507,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                               <td className="p-2">{inv?.name || h.inventoryItemId || '—'}</td>
                               <td className="p-2 text-right font-semibold">{fmtEUR(h.unitPrice)}</td>
                               <td className="p-2 text-right">{h.vatRate != null ? `${h.vatRate} %` : '—'}</td>
-                              <td className="p-2 text-stone-600">{h.source === 'goods_receipt' ? 'prevzem' : h.source === 'purchase_order' ? 'naročilo' : h.source}</td>
+                              <td className="p-2 text-stone-600">{h.source === 'goods_receipt' ? t('proc.srcReceipt') : h.source === 'purchase_order' ? t('proc.srcOrder') : h.source}</td>
                               <td className="p-2 text-right text-stone-500">{new Date(h.observedAt).toLocaleDateString('sl-SI')}</td>
                             </tr>
                           )
@@ -2516,15 +2525,15 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
       {/* Dialog: prevzem (GRN) */}
       <Dialog open={recvOrder !== null} onOpenChange={(v) => { if (!v) setRecvOrder(null) }}>
         <DialogContent aria-describedby={undefined} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Prevzem blaga — {recvOrder?.poNumber || ''}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('proc.receiveTitle', { po: recvOrder?.poNumber || '' })}</DialogTitle></DialogHeader>
           {recvDone ? (
             <div className="space-y-3">
               <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">
-                Prevzem shranjen: <b>{recvDone.grnNumber}</b>. Zaloga je posodobljena (uteženo povprečje), serije in zgodovina cen so zapisane.
+                {t('proc.recvSavedA')} <b>{recvDone.grnNumber}</b>{t('proc.recvSavedB')}
               </div>
               {recvDone.warnings.length > 0 && (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                  <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Opozorila</p>
+                  <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {t('proc.warnings')}</p>
                   <ul className="list-disc pl-5 mt-1 space-y-0.5">
                     {recvDone.warnings.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
@@ -2535,11 +2544,11 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
             <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-recv-doc">Dokument dobavitelja</Label>
-                  <Input id="nb-recv-doc" value={recvDoc} onChange={(e) => setRecvDoc(e.target.value)} placeholder="npr. št. računa dobavitelja" />
+                  <Label htmlFor="nb-recv-doc">{t('proc.supplierDocLabel')}</Label>
+                  <Input id="nb-recv-doc" value={recvDoc} onChange={(e) => setRecvDoc(e.target.value)} placeholder={t('proc.docPlaceholder')} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nb-recv-notes">Opomba</Label>
+                  <Label htmlFor="nb-recv-notes">{t('proc.note')}</Label>
                   <Input id="nb-recv-notes" value={recvNotes} onChange={(e) => setRecvNotes(e.target.value)} />
                 </div>
               </div>
@@ -2552,24 +2561,24 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                     <div key={it.id} className="rounded-lg border border-stone-200 bg-stone-50 p-2">
                       <p className="text-sm font-medium">{it.description}</p>
                       <p className="text-xs text-stone-500 mb-2">
-                        Naročeno: {it.quantityOrdered} {it.unit} · že prejeto: {it.quantityReceived}
-                        {it.quantityRejected > 0 ? ` · zavrnjeno: ${it.quantityRejected}` : ''} · ostane: {remaining} {it.unit}
+                        {t('proc.orderedColon')} {it.quantityOrdered} {it.unit} · {t('proc.alreadyReceived')} {it.quantityReceived}
+                        {it.quantityRejected > 0 ? ` · ${t('proc.rejectedColon')} ${it.quantityRejected}` : ''} · {t('proc.remaining')} {remaining} {it.unit}
                       </p>
                       <div className="grid gap-2 sm:grid-cols-4 items-end">
                         <div className="space-y-1">
-                          <Label className="text-xs text-stone-500">Sprejeto</Label>
+                          <Label className="text-xs text-stone-500">{t('proc.accepted')}</Label>
                           <Input inputMode="decimal" value={l.accept} onChange={(e) => updateRecvLine(it.id, { accept: e.target.value })} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-stone-500">Zavrnjeno</Label>
+                          <Label className="text-xs text-stone-500">{t('proc.thRejected')}</Label>
                           <Input inputMode="decimal" value={l.reject} onChange={(e) => updateRecvLine(it.id, { reject: e.target.value })} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-stone-500">Razlog zavrnitve{rejNum > 0 ? ' *' : ''}</Label>
-                          <Input value={l.reason} onChange={(e) => updateRecvLine(it.id, { reason: e.target.value })} placeholder="npr. poškodovano" />
+                          <Label className="text-xs text-stone-500">{t('proc.rejectReason')}{rejNum > 0 ? ' *' : ''}</Label>
+                          <Input value={l.reason} onChange={(e) => updateRecvLine(it.id, { reason: e.target.value })} placeholder={t('proc.reasonPlaceholder')} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-stone-500">Datum uporabljivosti</Label>
+                          <Label className="text-xs text-stone-500">{t('proc.expiry')}</Label>
                           <Input type="date" value={l.expiry} onChange={(e) => updateRecvLine(it.id, { expiry: e.target.value })} />
                         </div>
                       </div>
@@ -2582,12 +2591,12 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
           ) : null}
           <DialogFooter>
             {recvDone ? (
-              <Button variant="outline" onClick={() => setRecvOrder(null)}>Zapri</Button>
+              <Button variant="outline" onClick={() => setRecvOrder(null)}>{t('common.close')}</Button>
             ) : (
               <>
-                <Button variant="outline" onClick={() => setRecvOrder(null)} disabled={recvBusy}>Prekliči</Button>
+                <Button variant="outline" onClick={() => setRecvOrder(null)} disabled={recvBusy}>{t('common.cancel')}</Button>
                 <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={submitReceive} disabled={recvBusy}>
-                  {recvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />} Posreduj prevzem
+                  {recvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />} {t('proc.submitReceive')}
                 </Button>
               </>
             )}
@@ -2612,17 +2621,17 @@ interface GiftCardTxT {
 interface GiftCardStatsT { total: number; active: number; totalBalance: number; issued30: number; redeemed30: number }
 
 const GC_STATUS: Record<string, { label: string; cls: string }> = {
-  active: { label: 'Aktivna', cls: 'border-emerald-300 bg-emerald-100 text-emerald-800' },
-  inactive: { label: 'Deaktivirana', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
-  exhausted: { label: 'Izčrpana', cls: 'border-amber-300 bg-amber-100 text-amber-800' },
-  expired: { label: 'Pretekla', cls: 'border-red-300 bg-red-100 text-red-700' },
+  active: { label: 'gc.stActive', cls: 'border-emerald-300 bg-emerald-100 text-emerald-800' },
+  inactive: { label: 'gc.stInactive', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
+  exhausted: { label: 'gc.stExhausted', cls: 'border-amber-300 bg-amber-100 text-amber-800' },
+  expired: { label: 'gc.stExpired', cls: 'border-red-300 bg-red-100 text-red-700' },
 }
 const GC_TX: Record<string, { label: string; cls: string }> = {
-  issue: { label: 'Izdaja', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
-  topup: { label: 'Polnjenje', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
-  redeem: { label: 'Unovčenje', cls: 'border-orange-300 bg-orange-50 text-orange-800' },
-  refund: { label: 'Vračilo', cls: 'border-stone-300 bg-stone-50 text-stone-700' },
-  adjust: { label: 'Popravek', cls: 'border-stone-300 bg-stone-50 text-stone-700' },
+  issue: { label: 'gc.txIssue', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  topup: { label: 'gc.txTopup', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  redeem: { label: 'gc.txRedeem', cls: 'border-orange-300 bg-orange-50 text-orange-800' },
+  refund: { label: 'gc.txRefund', cls: 'border-stone-300 bg-stone-50 text-stone-700' },
+  adjust: { label: 'gc.txAdjust', cls: 'border-stone-300 bg-stone-50 text-stone-700' },
 }
 
 const gcEur = (s: string): number => {
@@ -2632,6 +2641,7 @@ const gcEur = (s: string): number => {
 
 /** Issue #1 (triage ③): darilne kartice — pregled, izdaja, polnjenje, ledžer, deaktivacija. */
 export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canManage: boolean }) {
+  const { t } = useI18n()
   const [cards, setCards] = useState<GiftCardT[]>([])
   const [stats, setStats] = useState<GiftCardStatsT | null>(null)
   const [q, setQ] = useState('')
@@ -2670,7 +2680,7 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
   async function submitIssue() {
     const eur = gcEur(issueForm.initialBalance)
     if (Number.isNaN(eur) || eur < 0) {
-      setErr('Začetni saldo mora biti ne negativno število.')
+      setErr(t('gc.errInitialBalance'))
       return
     }
     setBusy(true)
@@ -2687,7 +2697,7 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
           clientOperationId: newOperationId(),
         }),
       })
-      setOkMsg(d.replayed ? `Kartica je že obstajala (replay): ${d.card.cardNumber}` : `Kartica izdana: ${d.card.cardNumber}`)
+      setOkMsg(d.replayed ? t('gc.okReplayIssue', { num: d.card.cardNumber }) : t('gc.okIssued', { num: d.card.cardNumber }))
       setIssueOpen(false)
       setIssueForm({ ownerName: '', initialBalance: '', expiresAt: '', note: '' })
       await load()
@@ -2702,7 +2712,7 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
     if (!topupCard) return
     const eur = gcEur(topupForm.amount)
     if (Number.isNaN(eur) || eur <= 0) {
-      setErr('Znesek polnjenja mora biti pozitivno število.')
+      setErr(t('gc.errTopupAmount'))
       return
     }
     setBusy(true)
@@ -2713,7 +2723,7 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
         method: 'POST',
         body: JSON.stringify({ amount: eur, note: topupForm.note || undefined, clientOperationId: newOperationId() }),
       })
-      setOkMsg(d.replayed ? `Polnjenje je že bilo izvedeno (replay) — saldo ${fmtEUR(d.card.balance)}` : `Polnjeno ${fmtEUR(eur)} — nov saldo ${fmtEUR(d.card.balance)}`)
+      setOkMsg(d.replayed ? t('gc.okReplayTopup', { balance: fmtEUR(d.card.balance) }) : t('gc.okTopped', { amount: fmtEUR(eur), balance: fmtEUR(d.card.balance) }))
       setTopupCard(null)
       setTopupForm({ amount: '', note: '' })
       await load()
@@ -2736,12 +2746,12 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
 
   async function toggleStatus(c: GiftCardT) {
     const next = c.status === 'active' ? 'inactive' : 'active'
-    if (!window.confirm(next === 'inactive' ? `Deaktiviram kartico ${c.cardNumber}?` : `Reaktiviram kartico ${c.cardNumber}?`)) return
+    if (!window.confirm(next === 'inactive' ? t('gc.confirmDeactivate', { num: c.cardNumber }) : t('gc.confirmReactivate', { num: c.cardNumber }))) return
     setBusy(true)
     setErr('')
     try {
       await api(`/api/giftcards/${c.id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) })
-      setOkMsg(next === 'inactive' ? 'Kartica deaktivirana.' : 'Kartica reaktivirana.')
+      setOkMsg(next === 'inactive' ? t('gc.okDeactivated') : t('gc.okReactivated'))
       setDetail(null)
       await load()
     } catch (e) {
@@ -2759,16 +2769,16 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void load()}
-            placeholder="Išči po številki kartice ali lastniku …"
+            placeholder={t('gc.searchPlaceholder')}
             className="max-w-xs"
-            aria-label="Iskanje darilnih kartic"
+            aria-label={t('gc.searchAria')}
           />
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>Išči</Button>
-          {q && <Button variant="ghost" onClick={() => { setQ(''); void load('') }}>Počisti</Button>}
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>{t('gc.searchBtn')}</Button>
+          {q && <Button variant="ghost" onClick={() => { setQ(''); void load('') }}>{t('gc.clearBtn')}</Button>}
         </div>
         {canPay && (
           <Button className="bg-emerald-700 hover:bg-emerald-800 text-white gap-1.5" onClick={() => { setErr(''); setOkMsg(''); setIssueOpen(true) }}>
-            <Plus className="w-4 h-4" /> Novo kartico
+            <Plus className="w-4 h-4" /> {t('gc.newCard')}
           </Button>
         )}
       </div>
@@ -2776,10 +2786,10 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {([
-            ['Aktivne kartice', String(stats.active), 'aktivne z saldom'],
-            ['Skupni saldo', fmtEUR(stats.totalBalance), 'aktivne kartice'],
-            ['Izdane (30 dni)', String(stats.issued30), 'nove kartice'],
-            ['Unovčeno (30 dni)', fmtEUR(stats.redeemed30), 'plačila s karticami'],
+            [t('gc.statActive'), String(stats.active), t('gc.statActiveSub')],
+            [t('gc.statTotal'), fmtEUR(stats.totalBalance), t('gc.statTotalSub')],
+            [t('gc.statIssued'), String(stats.issued30), t('gc.statIssuedSub')],
+            [t('gc.statRedeemed'), fmtEUR(stats.redeemed30), t('gc.statRedeemedSub')],
           ] as [string, string, string][]).map(([label, val, sub]) => (
             <Card key={label}>
               <CardContent className="p-4">
@@ -2796,24 +2806,24 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
       {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5">{err}</p>}
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Kartice {cards.length > 0 && <span className="text-stone-400 font-normal">({cards.length})</span>}</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('gc.cards')} {cards.length > 0 && <span className="text-stone-400 font-normal">({cards.length})</span>}</CardTitle></CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <p className="p-4 text-sm text-stone-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam …</p>
+            <p className="p-4 text-sm text-stone-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> {t('gc.loading')}</p>
           ) : cards.length === 0 ? (
-            <p className="p-4 text-sm text-stone-500">Ni kartic{q ? ' za to iskanje' : ''}. {canPay ? 'Izdajte prvo kartico.' : ''}</p>
+            <p className="p-4 text-sm text-stone-500">{t('gc.none')}{q ? t('gc.noneSearch') : ''}. {canPay ? t('gc.noneFirst') : ''}</p>
           ) : (
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs text-stone-500 border-b border-stone-200 sticky top-0 bg-white">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Številka</th>
-                    <th className="px-4 py-2 font-medium">Lastnik</th>
-                    <th className="px-4 py-2 font-medium">Saldo</th>
-                    <th className="px-4 py-2 font-medium hidden sm:table-cell">Izdana</th>
-                    <th className="px-4 py-2 font-medium hidden md:table-cell">Velja do</th>
-                    <th className="px-4 py-2 font-medium">Stanje</th>
-                    <th className="px-4 py-2 font-medium text-right">Dejanja</th>
+                    <th className="px-4 py-2 font-medium">{t('gc.thNumber')}</th>
+                    <th className="px-4 py-2 font-medium">{t('gc.thOwner')}</th>
+                    <th className="px-4 py-2 font-medium">{t('gc.thSaldo')}</th>
+                    <th className="px-4 py-2 font-medium hidden sm:table-cell">{t('gc.thIssued')}</th>
+                    <th className="px-4 py-2 font-medium hidden md:table-cell">{t('gc.thValidUntil')}</th>
+                    <th className="px-4 py-2 font-medium">{t('gc.thStatus')}</th>
+                    <th className="px-4 py-2 font-medium text-right">{t('common.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2824,21 +2834,21 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
                       <td className="px-4 py-2.5 font-semibold">{fmtEUR(c.balance)}</td>
                       <td className="px-4 py-2.5 hidden sm:table-cell text-xs text-stone-500">{new Date(c.purchasedAt).toLocaleDateString('sl-SI')}</td>
                       <td className="px-4 py-2.5 hidden md:table-cell text-xs text-stone-500">{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('sl-SI') : '∞'}</td>
-                      <td className="px-4 py-2.5"><Badge variant="outline" className={GC_STATUS[c.effectiveStatus]?.cls || ''}>{GC_STATUS[c.effectiveStatus]?.label || c.effectiveStatus}</Badge></td>
+                      <td className="px-4 py-2.5"><Badge variant="outline" className={GC_STATUS[c.effectiveStatus]?.cls || ''}>{GC_STATUS[c.effectiveStatus] ? t(GC_STATUS[c.effectiveStatus].label) : c.effectiveStatus}</Badge></td>
                       <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         {canPay && (
                           <Button variant="outline" size="sm" className="h-8 mr-1.5" onClick={() => { setTopupCard(c); setTopupForm({ amount: '', note: '' }); setErr(''); setOkMsg('') }}>
-                            Polni
+                            {t('gc.topupBtn')}
                           </Button>
                         )}
                         {canManage && c.status !== 'inactive' && (
                           <Button variant="outline" size="sm" className="h-8 text-red-700 border-red-200 hover:bg-red-50" onClick={() => void toggleStatus(c)}>
-                            Deaktiviraj
+                            {t('gc.deactivateBtn')}
                           </Button>
                         )}
                         {canManage && c.status === 'inactive' && (
                           <Button variant="outline" size="sm" className="h-8" onClick={() => void toggleStatus(c)}>
-                            Reaktiviraj
+                            {t('gc.reactivateBtn')}
                           </Button>
                         )}
                       </td>
@@ -2854,30 +2864,30 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
       {/* dialog: izdaja nove kartice */}
       <Dialog open={issueOpen} onOpenChange={setIssueOpen}>
         <DialogContent aria-describedby={undefined} className="max-w-md">
-          <DialogHeader><DialogTitle className="text-lg">Izdaj darilno kartico</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">{t('gc.issueTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Lastnik (opcijsko)</Label>
-              <Input value={issueForm.ownerName} onChange={(e) => setIssueForm((f) => ({ ...f, ownerName: e.target.value }))} placeholder="Ime kupca / prejemnika" />
+              <Label className="text-xs">{t('gc.ownerOptional')}</Label>
+              <Input value={issueForm.ownerName} onChange={(e) => setIssueForm((f) => ({ ...f, ownerName: e.target.value }))} placeholder={t('gc.ownerPlaceholder')} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Začetni saldo (EUR)</Label>
-              <Input type="number" step="0.01" min="0" value={issueForm.initialBalance} onChange={(e) => setIssueForm((f) => ({ ...f, initialBalance: e.target.value }))} placeholder="0.00 — kartica brez vrednosti" />
-              <p className="text-xs text-stone-500">0 € = kartica brez vrednosti (polni se kasneje). Največ 5.000 €.</p>
+              <Label className="text-xs">{t('gc.initialBalance')}</Label>
+              <Input type="number" step="0.01" min="0" value={issueForm.initialBalance} onChange={(e) => setIssueForm((f) => ({ ...f, initialBalance: e.target.value }))} placeholder={t('gc.initialBalancePlaceholder')} />
+              <p className="text-xs text-stone-500">{t('gc.initialBalanceHint')}</p>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Velja do (opcijsko)</Label>
+              <Label className="text-xs">{t('gc.validUntilOptional')}</Label>
               <Input type="date" value={issueForm.expiresAt} onChange={(e) => setIssueForm((f) => ({ ...f, expiresAt: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Opomba (opcijsko)</Label>
-              <Input value={issueForm.note} onChange={(e) => setIssueForm((f) => ({ ...f, note: e.target.value }))} placeholder="npr. prodaja na blagajni" />
+              <Label className="text-xs">{t('gc.noteOptional')}</Label>
+              <Input value={issueForm.note} onChange={(e) => setIssueForm((f) => ({ ...f, note: e.target.value }))} placeholder={t('gc.noteIssuePlaceholder')} />
             </div>
           </div>
           <DialogFooter className="sm:items-center">
-            <Button variant="outline" onClick={() => setIssueOpen(false)} disabled={busy}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setIssueOpen(false)} disabled={busy}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => void submitIssue()} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Izdaj kartico
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('gc.issueBtn')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2887,29 +2897,29 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
       <Dialog open={!!topupCard} onOpenChange={(v) => !v && setTopupCard(null)}>
         <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg">Polnjenje {topupCard?.cardNumber}</DialogTitle>
+            <DialogTitle className="text-lg">{t('gc.topupTitle')} {topupCard?.cardNumber}</DialogTitle>
           </DialogHeader>
           {topupCard && (
             <div className="space-y-3">
               <div className="rounded-lg bg-stone-50 border border-stone-200 p-3 text-sm space-y-0.5">
-                <p>Trenutni saldo: <b>{fmtEUR(topupCard.balance)}</b></p>
-                {topupCard.ownerName && <p className="text-stone-500">Lastnik: {topupCard.ownerName}</p>}
+                <p>{t('gc.currentSaldo')} <b>{fmtEUR(topupCard.balance)}</b></p>
+                {topupCard.ownerName && <p className="text-stone-500">{t('gc.ownerColon')} {topupCard.ownerName}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Znesek polnjenja (EUR)</Label>
+                <Label className="text-xs">{t('gc.topupAmount')}</Label>
                 <Input type="number" step="0.01" min="0.01" value={topupForm.amount} onChange={(e) => setTopupForm((f) => ({ ...f, amount: e.target.value }))} placeholder="10.00" autoFocus />
-                <p className="text-xs text-stone-500">Največ 5.000 € na polnjenje.</p>
+                <p className="text-xs text-stone-500">{t('gc.topupMaxHint')}</p>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Opomba (opcijsko)</Label>
-                <Input value={topupForm.note} onChange={(e) => setTopupForm((f) => ({ ...f, note: e.target.value }))} placeholder="npr. gotovinski vnos" />
+                <Label className="text-xs">{t('gc.noteOptional')}</Label>
+                <Input value={topupForm.note} onChange={(e) => setTopupForm((f) => ({ ...f, note: e.target.value }))} placeholder={t('gc.noteTopupPlaceholder')} />
               </div>
             </div>
           )}
           <DialogFooter className="sm:items-center">
-            <Button variant="outline" onClick={() => setTopupCard(null)} disabled={busy}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setTopupCard(null)} disabled={busy}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => void submitTopup()} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Polni
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('gc.topupBtn')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2919,53 +2929,53 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
       <Dialog open={!!detail} onOpenChange={(v) => !v && setDetail(null)}>
         <DialogContent aria-describedby={undefined} className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg">Kartica {detail?.card.cardNumber}</DialogTitle>
+            <DialogTitle className="text-lg">{t('gc.detailTitle')} {detail?.card.cardNumber}</DialogTitle>
           </DialogHeader>
           {detail && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-lg bg-stone-50 border border-stone-200 p-2.5">
-                  <p className="text-xs text-stone-500">Saldo</p>
+                  <p className="text-xs text-stone-500">{t('gc.thSaldo')}</p>
                   <p className="text-lg font-bold">{fmtEUR(detail.card.balance)}</p>
-                  <p className="text-xs text-stone-400">začetno {fmtEUR(detail.card.initialBalance)}</p>
+                  <p className="text-xs text-stone-400">{t('gc.initialLower')} {fmtEUR(detail.card.initialBalance)}</p>
                 </div>
                 <div className="rounded-lg bg-stone-50 border border-stone-200 p-2.5 space-y-0.5">
-                  <p className="text-xs text-stone-500">Stanje</p>
-                  <Badge variant="outline" className={GC_STATUS[detail.card.effectiveStatus]?.cls || ''}>{GC_STATUS[detail.card.effectiveStatus]?.label || detail.card.effectiveStatus}</Badge>
-                  <p className="text-xs text-stone-400">{detail.card.ownerName ? `Lastnik: ${detail.card.ownerName}` : 'Brez lastnika'}</p>
-                  <p className="text-xs text-stone-400">{detail.card.expiresAt ? `Velja do ${new Date(detail.card.expiresAt).toLocaleDateString('sl-SI')}` : 'Brez roka veljavnosti'}</p>
+                  <p className="text-xs text-stone-500">{t('gc.thStatus')}</p>
+                  <Badge variant="outline" className={GC_STATUS[detail.card.effectiveStatus]?.cls || ''}>{GC_STATUS[detail.card.effectiveStatus] ? t(GC_STATUS[detail.card.effectiveStatus].label) : detail.card.effectiveStatus}</Badge>
+                  <p className="text-xs text-stone-400">{detail.card.ownerName ? t('gc.ownerLine', { name: detail.card.ownerName }) : t('payment.noOwner')}</p>
+                  <p className="text-xs text-stone-400">{detail.card.expiresAt ? t('gc.validUntilLine', { date: new Date(detail.card.expiresAt).toLocaleDateString('sl-SI') }) : t('gc.noExpiry')}</p>
                 </div>
               </div>
               {canManage && detail.card.status !== 'inactive' && (
-                <Button variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-50" onClick={() => void toggleStatus(detail.card)}>Deaktiviraj kartico</Button>
+                <Button variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-50" onClick={() => void toggleStatus(detail.card)}>{t('gc.deactivateCardBtn')}</Button>
               )}
               {canManage && detail.card.status === 'inactive' && (
-                <Button variant="outline" size="sm" onClick={() => void toggleStatus(detail.card)}>Reaktiviraj kartico</Button>
+                <Button variant="outline" size="sm" onClick={() => void toggleStatus(detail.card)}>{t('gc.reactivateCardBtn')}</Button>
               )}
               <div>
-                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">Ledžer transakcij</p>
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">{t('gc.ledger')}</p>
                 {detail.transactions.length === 0 ? (
-                  <p className="text-sm text-stone-500">Ni transakcij.</p>
+                  <p className="text-sm text-stone-500">{t('gc.noTx')}</p>
                 ) : (
                   <div className="max-h-64 overflow-y-auto rounded-lg border border-stone-200">
                     <table className="w-full text-sm">
                       <thead className="text-left text-xs text-stone-500 border-b border-stone-200 bg-stone-50 sticky top-0">
                         <tr>
-                          <th className="px-3 py-2 font-medium">Vrsta</th>
-                          <th className="px-3 py-2 font-medium text-right">Znesek</th>
-                          <th className="px-3 py-2 font-medium text-right">Saldo po</th>
-                          <th className="px-3 py-2 font-medium hidden sm:table-cell">Opomba</th>
-                          <th className="px-3 py-2 font-medium">Datum</th>
+                          <th className="px-3 py-2 font-medium">{t('gc.thType')}</th>
+                          <th className="px-3 py-2 font-medium text-right">{t('tips.amount')}</th>
+                          <th className="px-3 py-2 font-medium text-right">{t('gc.thBalanceAfter')}</th>
+                          <th className="px-3 py-2 font-medium hidden sm:table-cell">{t('proc.note')}</th>
+                          <th className="px-3 py-2 font-medium">{t('exp.csvDate')}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {detail.transactions.map((t) => (
-                          <tr key={t.id} className="border-b border-stone-100">
-                            <td className="px-3 py-2"><Badge variant="outline" className={GC_TX[t.type]?.cls || ''}>{GC_TX[t.type]?.label || t.type}</Badge></td>
-                            <td className={`px-3 py-2 text-right font-semibold ${t.amount < 0 ? 'text-orange-700' : 'text-emerald-700'}`}>{t.amount > 0 ? '+' : ''}{fmtEUR(t.amount)}</td>
-                            <td className="px-3 py-2 text-right">{fmtEUR(t.balanceAfter)}</td>
-                            <td className="px-3 py-2 hidden sm:table-cell text-xs text-stone-500 max-w-40 truncate" title={t.note}>{t.note}</td>
-                            <td className="px-3 py-2 text-xs text-stone-500 whitespace-nowrap">{new Date(t.createdAt).toLocaleString('sl-SI')}</td>
+                        {detail.transactions.map((tx) => (
+                          <tr key={tx.id} className="border-b border-stone-100">
+                            <td className="px-3 py-2"><Badge variant="outline" className={GC_TX[tx.type]?.cls || ''}>{GC_TX[tx.type] ? t(GC_TX[tx.type].label) : tx.type}</Badge></td>
+                            <td className={`px-3 py-2 text-right font-semibold ${tx.amount < 0 ? 'text-orange-700' : 'text-emerald-700'}`}>{tx.amount > 0 ? '+' : ''}{fmtEUR(tx.amount)}</td>
+                            <td className="px-3 py-2 text-right">{fmtEUR(tx.balanceAfter)}</td>
+                            <td className="px-3 py-2 hidden sm:table-cell text-xs text-stone-500 max-w-40 truncate" title={tx.note}>{tx.note}</td>
+                            <td className="px-3 py-2 text-xs text-stone-500 whitespace-nowrap">{new Date(tx.createdAt).toLocaleString('sl-SI')}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2976,12 +2986,12 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
             </div>
           )}
           <DialogFooter className="sm:items-center">
-            <Button variant="outline" onClick={() => setDetail(null)}>Zapri</Button>
+            <Button variant="outline" onClick={() => setDetail(null)}>{t('common.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.processing')}</p>}
     </div>
   )
 }
@@ -3009,13 +3019,13 @@ interface WasteStatsT { count: number; totalCents: number; byReason: WasteReason
 
 /** Kanonični razlogi (v ravnovesju z src/lib/waste.ts) */
 const WASTE_REASON_OPTIONS: { value: string; label: string }[] = [
-  { value: 'pokvarjeno', label: 'Pokvarjeno' },
-  { value: 'preteklo', label: 'Pretekel rok' },
-  { value: 'priprava', label: 'Napaka pri pripravi' },
-  { value: 'razlitje', label: 'Razlitje / padec' },
-  { value: 'hlajenje', label: 'Okvara hladilne verige' },
-  { value: 'reklamacija', label: 'Vrnjena postavka (reklamacija)' },
-  { value: 'drugo', label: 'Drugo' },
+  { value: 'pokvarjeno', label: 'waste.rPokvareno' },
+  { value: 'preteklo', label: 'waste.rPretekelRok' },
+  { value: 'priprava', label: 'waste.rPriprava' },
+  { value: 'razlitje', label: 'waste.rRazlitje' },
+  { value: 'hlajenje', label: 'waste.rHlajenje' },
+  { value: 'reklamacija', label: 'waste.rReklamacija' },
+  { value: 'drugo', label: 'waste.rDrugo' },
 ]
 const wasteReasonBadgeCls = (reason: string): string => ({
   pokvarjeno: 'border-red-300 bg-red-50 text-red-800',
@@ -3027,6 +3037,11 @@ const wasteReasonBadgeCls = (reason: string): string => ({
   drugo: 'border-stone-300 bg-stone-50 text-stone-700',
 }[reason] ?? 'border-stone-300 bg-stone-50 text-stone-700')
 
+/** i18n ključi razlogov (vzorec DEVICE_TYPE_KEYS — neznani razlog → surovi label iz API-ja) */
+const WASTE_REASON_KEYS: Record<string, string> = {
+  pokvarjeno: 'waste.rPokvareno', preteklo: 'waste.rPretekelRok', priprava: 'waste.rPriprava', razlitje: 'waste.rRazlitje', hlajenje: 'waste.rHlajenje', reklamacija: 'waste.rReklamacija', drugo: 'waste.rDrugo',
+}
+
 const wasteNum = (s: string): number => {
   const n = Number(String(s).trim().replace(',', '.'))
   return Number.isFinite(n) ? n : NaN
@@ -3034,6 +3049,7 @@ const wasteNum = (s: string): number => {
 
 /** Issue #1 (triage ④): odpad hrane — evidenca (zaloga ↓, StockTransaction WASTE), statistika po razlogih, reverzija pomote. */
 export function OdpadTab({ canManage }: { canManage: boolean }) {
+  const { t } = useI18n()
   const [records, setRecords] = useState<WasteT[]>([])
   const [stats, setStats] = useState<WasteStatsT | null>(null)
   const [items, setItems] = useState<InventoryT[]>([])
@@ -3075,20 +3091,20 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
   async function submitNew() {
     const sel = items.find((i) => i.id === form.itemId)
     if (!sel) {
-      setErr('Izberi artikel zaloge.')
+      setErr(t('waste.errSelectItem'))
       return
     }
     const qty = wasteNum(form.quantity)
     if (Number.isNaN(qty) || qty <= 0) {
-      setErr('Količina odpada mora biti število večje od 0.')
+      setErr(t('waste.errQty'))
       return
     }
     if (!form.reason) {
-      setErr('Izberi razlog odpada.')
+      setErr(t('waste.errReason'))
       return
     }
     if (qty > sel.qty) {
-      setErr(`Na zalogi je samo ${sel.qty} ${sel.unit} — količino najprej popravi v Zalogah.`)
+      setErr(t('waste.errOverStock', { qty: sel.qty, unit: sel.unit }))
       return
     }
     setBusy(true)
@@ -3102,8 +3118,8 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
       const idx = items.find((i) => i.id === form.itemId)
       const newQty = d.record.newQty ?? (idx ? idx.qty - d.record.quantity : undefined)
       setOkMsg(d.replayed
-        ? 'Odpad je bil že evidentiran (replay) — zaloga ni bila ponovno odšteta.'
-        : `Odpad evidentiran: ${d.record.quantity} ${idx?.unit ?? ''} × ${fmtEUR(idx?.cost ?? 0)} = ${fmtEUR(d.record.totalCost)}${idx && newQty !== undefined ? ` · zaloga ${idx.qty} → ${newQty}` : ''}`)
+        ? t('waste.okReplay')
+        : `${t('waste.okRecord', { qty: d.record.quantity, unit: idx?.unit ?? '', cost: fmtEUR(idx?.cost ?? 0), total: fmtEUR(d.record.totalCost) })}${idx && newQty !== undefined ? t('waste.okRecordTail', { qty: idx.qty, newQty: newQty ?? '' }) : ''}`)
       setNewOpen(false)
       setForm({ itemId: '', quantity: '', reason: '', note: '' })
       await load()
@@ -3115,12 +3131,12 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
   }
 
   async function reverseRecord(w: WasteT) {
-    if (!window.confirm(`Povrnem odpad ${w.itemName} (${w.quantity} ${w.unit})? Količina se vrne na zalogo.`)) return
+    if (!window.confirm(t('waste.confirmReverse', { name: w.itemName, qty: w.quantity, unit: w.unit }))) return
     setBusy(true)
     setErr('')
     try {
       await api(`/api/waste/${w.id}/reverse`, { method: 'POST' })
-      setOkMsg(`Odpad povrnjen — ${w.quantity} ${w.unit} ${w.itemName} je nazaj na zalogi.`)
+      setOkMsg(t('waste.okReversed', { qty: w.quantity, unit: w.unit, name: w.itemName }))
       await load()
     } catch (e) {
       setErr((e as Error).message)
@@ -3141,23 +3157,23 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
           <Select value={days} onValueChange={(v) => { setDays(v); void load(v, reasonFilter) }}>
             <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="7">Zadnjih 7 dni</SelectItem>
-              <SelectItem value="30">Zadnjih 30 dni</SelectItem>
-              <SelectItem value="90">Zadnjih 90 dni</SelectItem>
-              <SelectItem value="365">Zadnjih 365 dni</SelectItem>
+              <SelectItem value="7">{t('waste.days7')}</SelectItem>
+              <SelectItem value="30">{t('waste.days30')}</SelectItem>
+              <SelectItem value="90">{t('waste.days90')}</SelectItem>
+              <SelectItem value="365">{t('waste.days365')}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={reasonFilter} onValueChange={(v) => { setReasonFilter(v); void load(days, v) }}>
             <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="vsi">Vsi razlogi</SelectItem>
-              {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+              <SelectItem value="vsi">{t('waste.allReasons')}</SelectItem>
+              {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{t(r.label)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
         {canManage && (
           <Button onClick={() => { setErr(''); setOkMsg(''); setNewOpen(true) }} className="gap-1.5">
-            <Plus className="w-4 h-4" /> Nov odpad
+            <Plus className="w-4 h-4" /> {t('waste.newBtn')}
           </Button>
         )}
       </div>
@@ -3168,13 +3184,13 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
-            <CardHeader className="pb-2"><CardDescription className="text-xs">Odpad v obdobju</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-red-700">{fmtEUR(stats.totalCents / 100)}</p><p className="text-xs text-stone-500">{stats.count} zapisov</p></CardContent>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">{t('waste.inPeriod')}</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-red-700">{fmtEUR(stats.totalCents / 100)}</p><p className="text-xs text-stone-500">{t('waste.recordsCount', { n: stats.count })}</p></CardContent>
           </Card>
           {stats.byReason.slice(0, 3).map((r) => (
             <Card key={r.reason}>
-              <CardHeader className="pb-2"><CardDescription className="text-xs">{r.label}</CardDescription></CardHeader>
-              <CardContent><p className="text-xl font-semibold">{fmtEUR(r.totalCents / 100)}</p><p className="text-xs text-stone-500">{r.count} zapisov</p></CardContent>
+              <CardHeader className="pb-2"><CardDescription className="text-xs">{WASTE_REASON_KEYS[r.reason] ? t(WASTE_REASON_KEYS[r.reason]) : r.label}</CardDescription></CardHeader>
+              <CardContent><p className="text-xl font-semibold">{fmtEUR(r.totalCents / 100)}</p><p className="text-xs text-stone-500">{t('waste.recordsCount', { n: r.count })}</p></CardContent>
             </Card>
           ))}
         </div>
@@ -3182,26 +3198,26 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Zapisi odpada</CardTitle>
-          <CardDescription className="text-xs">Odpad odšteje zalogo in se vodi po razlogih; pomota se lahko povrne (zaloga se vrne).</CardDescription>
+          <CardTitle className="text-base">{t('waste.title')}</CardTitle>
+          <CardDescription className="text-xs">{t('waste.desc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam …</p>
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('waste.loading')}</p>
           ) : records.length === 0 ? (
-            <p className="text-sm text-stone-500">Ni zapisov odpada v izbranem obdobju.</p>
+            <p className="text-sm text-stone-500">{t('waste.none')}</p>
           ) : (
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-stone-500 border-b">
-                    <th className="px-3 py-2 font-medium">Datum</th>
-                    <th className="px-3 py-2 font-medium">Artikel</th>
-                    <th className="px-3 py-2 font-medium text-right">Količina</th>
-                    <th className="px-3 py-2 font-medium">Razlog</th>
-                    <th className="px-3 py-2 font-medium text-right">Strošek</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    {canManage && <th className="px-3 py-2"><span className="sr-only">Dejanja</span></th>}
+                    <th className="px-3 py-2 font-medium">{t('exp.csvDate')}</th>
+                    <th className="px-3 py-2 font-medium">{t('proc.article')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('proc.qty')}</th>
+                    <th className="px-3 py-2 font-medium">{t('loy.reason')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('waste.thCost')}</th>
+                    <th className="px-3 py-2 font-medium">{t('shifts.csvStatus')}</th>
+                    {canManage && <th className="px-3 py-2"><span className="sr-only">{t('common.actions')}</span></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -3213,15 +3229,15 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
                         {w.note && <span className="block text-xs text-stone-500 max-w-56 truncate" title={w.note}>{w.note}</span>}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">{w.quantity} {w.unit}</td>
-                      <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${wasteReasonBadgeCls(w.reason)}`}>{w.reasonLabel}</Badge></td>
+                      <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${wasteReasonBadgeCls(w.reason)}`}>{WASTE_REASON_KEYS[w.reason] ? t(WASTE_REASON_KEYS[w.reason]) : w.reasonLabel}</Badge></td>
                       <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{fmtEUR(w.totalCost)}</td>
                       <td className="px-3 py-2">
-                        {w.reversedAt ? <Badge variant="outline" className="text-xs border-stone-300 bg-stone-50 text-stone-600">Povrnjen</Badge> : <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-800">V veljavi</Badge>}
+                        {w.reversedAt ? <Badge variant="outline" className="text-xs border-stone-300 bg-stone-50 text-stone-600">{t('waste.reversedBadge')}</Badge> : <Badge variant="outline" className="text-xs border-emerald-300 bg-emerald-50 text-emerald-800">{t('waste.validBadge')}</Badge>}
                       </td>
                       {canManage && (
                         <td className="px-3 py-2 text-right">
                           {!w.reversedAt && (
-                            <Button variant="outline" size="sm" disabled={busy} onClick={() => void reverseRecord(w)}>Povrni</Button>
+                            <Button variant="outline" size="sm" disabled={busy} onClick={() => void reverseRecord(w)}>{t('waste.reverseBtn')}</Button>
                           )}
                         </td>
                       )}
@@ -3238,61 +3254,61 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>Evidentiraj odpad</DialogTitle>
+            <DialogTitle>{t('waste.dialogTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="waste-item">Artikel</Label>
+              <Label htmlFor="waste-item">{t('proc.article')}</Label>
               <Select value={form.itemId} onValueChange={(v) => setForm({ ...form, itemId: v })}>
-                <SelectTrigger id="waste-item"><SelectValue placeholder="Izberi artikel …" /></SelectTrigger>
+                <SelectTrigger id="waste-item"><SelectValue placeholder={t('waste.itemPlaceholder')} /></SelectTrigger>
                 <SelectContent>
                   {items.map((i) => (
-                    <SelectItem key={i.id} value={i.id}>{i.name} ({i.qty} {i.unit} na zalogi)</SelectItem>
+                    <SelectItem key={i.id} value={i.id}>{i.name} ({i.qty} {i.unit} {t('waste.onStock')})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="waste-qty">Količina {selected ? `(${selected.unit})` : ''}</Label>
-                <Input id="waste-qty" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="npr. 0,5" />
+                <Label htmlFor="waste-qty">{t('proc.qty')} {selected ? `(${selected.unit})` : ''}</Label>
+                <Input id="waste-qty" inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder={t('waste.qtyPlaceholder')} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="waste-reason">Razlog</Label>
+                <Label htmlFor="waste-reason">{t('loy.reason')}</Label>
                 <Select value={form.reason} onValueChange={(v) => setForm({ ...form, reason: v })}>
-                  <SelectTrigger id="waste-reason"><SelectValue placeholder="Izberi razlog …" /></SelectTrigger>
+                  <SelectTrigger id="waste-reason"><SelectValue placeholder={t('waste.reasonPlaceholder')} /></SelectTrigger>
                   <SelectContent>
-                    {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                    {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{t(r.label)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="waste-note">Opomba (neobvezno)</Label>
-              <Input id="waste-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="npr. poškodovana embalaža" />
+              <Label htmlFor="waste-note">{t('waste.noteOptional')}</Label>
+              <Input id="waste-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder={t('waste.notePlaceholder')} />
             </div>
             {selected && (
               <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 space-y-0.5">
-                <p>Na zalogi: <strong>{selected.qty} {selected.unit}</strong> · cena: {fmtEUR(selected.cost)} / {selected.unit}</p>
+                <p>{t('waste.onStockColon')} <strong>{selected.qty} {selected.unit}</strong> {t('waste.priceColon')} {fmtEUR(selected.cost)} / {selected.unit}</p>
                 {Number.isFinite(selQty) && selQty > 0 && previewCost !== null && (
                   <p className={selOver ? 'text-red-700 font-medium' : ''}>
-                    Ocenjeni strošek odpada: <strong>{fmtEUR(previewCost)}</strong>
-                    {selOver ? ` — na zalogi je samo ${selected.qty} ${selected.unit}!` : ` · zaloga po odpadu: ${Math.round((selected.qty - selQty) * 1000) / 1000} ${selected.unit}`}
+                    {t('waste.estimatedCost')} <strong>{fmtEUR(previewCost)}</strong>
+                    {selOver ? t('waste.overStockSuffix', { qty: selected.qty, unit: selected.unit }) : t('waste.afterWasteSuffix', { qty: Math.round((selected.qty - selQty) * 1000) / 1000, unit: selected.unit })}
                   </p>
                 )}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewOpen(false)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={() => void submitNew()} disabled={busy || !form.itemId || !form.reason || !form.quantity}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Evidentiraj
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('waste.submitBtn')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.processing')}</p>}
     </div>
   )
 }
@@ -3324,12 +3340,12 @@ interface WaitlistStatsT { waiting: number; notified: number; seated: number; le
 interface TableLiteT { id: string; name: string; number: number; zone: string; seats: number; status: string }
 
 /** Slovenska n-tev "oseba" (v ravnovesju z src/lib/waitlist.ts) */
-const wlParty = (n: number): string => {
+const wlParty = (n: number, tx: (key: string, vars?: Record<string, string | number>) => string): string => {
   const v = Math.max(0, Math.floor(n))
-  if (v === 1) return '1 oseba'
-  if (v === 2) return '2 osebi'
-  if (v === 3 || v === 4) return `${v} osebe`
-  return `${v} oseb`
+  if (v === 1) return tx('wl.party1')
+  if (v === 2) return tx('wl.party2')
+  if (v === 3 || v === 4) return tx('wl.party34', { n: v })
+  return tx('wl.partyN', { n: v })
 }
 const wlMin = (s: string, now: number): number => {
   const a = new Date(s).getTime()
@@ -3339,15 +3355,16 @@ const wlDur = (m: number): string => {
   const v = Math.max(0, Math.floor(m))
   return v < 60 ? `${v} min` : `${Math.floor(v / 60)} h ${v % 60} min`
 }
-const wlStatusBadge = (status: string): { label: string; cls: string } => ({
-  waiting: { label: 'Čaka', cls: 'border-amber-300 bg-amber-50 text-amber-800' },
-  notified: { label: 'Obveščen', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
-  seated: { label: 'Usajen', cls: 'border-green-300 bg-green-50 text-green-800' },
-  left: { label: 'Odhod', cls: 'border-stone-300 bg-stone-50 text-stone-600' },
+const wlStatusBadge = (status: string, tx: (key: string) => string): { label: string; cls: string } => ({
+  waiting: { label: tx('wl.stWaiting'), cls: 'border-amber-300 bg-amber-50 text-amber-800' },
+  notified: { label: tx('wl.stNotified'), cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  seated: { label: tx('wl.stSeated'), cls: 'border-green-300 bg-green-50 text-green-800' },
+  left: { label: tx('wl.stLeft'), cls: 'border-stone-300 bg-stone-50 text-stone-600' },
 }[status] ?? { label: status, cls: 'border-stone-300 bg-stone-50 text-stone-700' })
 
 /** Issue #1 (triage ⑤): čakalna lista — prijava → obvestilo → usaditev (zaklene mizo) / odhod + statistika. */
 export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
+  const { t } = useI18n()
   const [active, setActive] = useState<WaitlistEntryT[]>([])
   const [finished, setFinished] = useState<WaitlistEntryT[]>([])
   const [stats, setStats] = useState<WaitlistStatsT | null>(null)
@@ -3393,11 +3410,11 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
   async function submitNew() {
     const party = Number(form.partySize)
     if (!form.guestName.trim()) {
-      setErr('Ime gosta je obvezno.')
+      setErr(t('wl.errName'))
       return
     }
     if (!Number.isInteger(party) || party < 1) {
-      setErr('Število oseb mora biti celo število vsaj 1.')
+      setErr(t('wl.errParty'))
       return
     }
     setBusy(true)
@@ -3416,7 +3433,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
           notes: form.notes || undefined,
         }),
       })
-      setOkMsg(`${form.guestName.trim()} dodan na čakalno listo.`)
+      setOkMsg(t('wl.okAdded', { name: form.guestName.trim() }))
       setNewOpen(false)
       setForm({ guestName: '', guestPhone: '', partySize: '2', quotedWaitMinutes: '15', preferredArea: '', specialNeeds: '', notes: '' })
       await load()
@@ -3436,9 +3453,9 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
         method: 'PATCH',
         body: JSON.stringify({ id: w.id, status, tableId: tableId || undefined }),
       })
-      if (status === 'notified') setOkMsg(`${w.guestName} obveščen — miza se pripravlja.`)
-      else if (status === 'seated') setOkMsg(`${w.guestName} usajen${d.entry.actualWaitMinutes !== null && d.entry.actualWaitMinutes !== undefined ? ` (čakal ${wlDur(d.entry.actualWaitMinutes)})` : ''}.`)
-      else setOkMsg(`${w.guestName} — odhod zabeležen.`)
+      if (status === 'notified') setOkMsg(t('wl.okNotified', { name: w.guestName }))
+      else if (status === 'seated') setOkMsg(t('wl.okSeated', { name: w.guestName, wait: d.entry.actualWaitMinutes !== null && d.entry.actualWaitMinutes !== undefined ? t('wl.okSeatedWait', { dur: wlDur(d.entry.actualWaitMinutes) }) : '' }))
+      else setOkMsg(t('wl.okLeft', { name: w.guestName }))
       setSeatFor(null)
       setSeatTableId('')
       await load()
@@ -3452,19 +3469,19 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
   async function seatEntry() {
     if (!seatFor) return
     if (!seatTableId) {
-      setErr('Izberi mizo za usaditev.')
+      setErr(t('wl.errSelectTable'))
       return
     }
     await transition(seatFor, 'seated', seatTableId)
   }
 
   async function deleteEntry(w: WaitlistEntryT) {
-    if (!window.confirm(`Izbrišem vnos za ${w.guestName}? Uporabi samo za pomotoma vnesene vnose.`)) return
+    if (!window.confirm(t('wl.confirmDelete', { name: w.guestName }))) return
     setBusy(true)
     setErr('')
     try {
       await api(`/api/waitlist?id=${encodeURIComponent(w.id)}`, { method: 'DELETE' })
-      setOkMsg(`Vnos za ${w.guestName} izbrisan.`)
+      setOkMsg(t('wl.okDeleted', { name: w.guestName }))
       await load()
     } catch (e) {
       setErr((e as Error).message)
@@ -3480,11 +3497,11 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="text-sm text-stone-600">
-          Gosti brez rezervacije: prijava → obvestilo, ko se miza pripravlja → usaditev (miza se samodejno zaklene) ali odhod.
+          {t('wl.desc')}
         </div>
         {canManage && (
           <Button onClick={() => { setErr(''); setOkMsg(''); setNewOpen(true) }} className="gap-1.5 shrink-0">
-            <Plus className="w-4 h-4" /> Nova prijava
+            <Plus className="w-4 h-4" /> {t('wl.newBtn')}
           </Button>
         )}
       </div>
@@ -3495,81 +3512,81 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
-            <CardHeader className="pb-2"><CardDescription className="text-xs">Trenutno čaka</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-amber-700">{stats.waiting}</p><p className="text-xs text-stone-500">{wlParty(stats.waitingParty)} na listo</p></CardContent>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statWaiting')}</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-amber-700">{stats.waiting}</p><p className="text-xs text-stone-500">{wlParty(stats.waitingParty, t)} {t('wl.naListo')}</p></CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-2"><CardDescription className="text-xs">Obveščeni</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-emerald-700">{stats.notified}</p><p className="text-xs text-stone-500">miza se pripravlja</p></CardContent>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statNotified')}</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-emerald-700">{stats.notified}</p><p className="text-xs text-stone-500">{t('wl.preparingTable')}</p></CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-2"><CardDescription className="text-xs">Usajeni danes</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-green-700">{stats.seated}</p><p className="text-xs text-stone-500">{stats.left} odhodov</p></CardContent>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statSeated')}</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold text-green-700">{stats.seated}</p><p className="text-xs text-stone-500">{t('wl.leftCount', { n: stats.left })}</p></CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-2"><CardDescription className="text-xs">Povprečno čakanje</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold">{wlDur(stats.avgActualWait)}</p><p className="text-xs text-stone-500">najdaljše {wlDur(stats.maxActualWait)}</p></CardContent>
+            <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statAvgWait')}</CardDescription></CardHeader>
+            <CardContent><p className="text-2xl font-bold">{wlDur(stats.avgActualWait)}</p><p className="text-xs text-stone-500">{t('wl.longest', { dur: wlDur(stats.maxActualWait) })}</p></CardContent>
           </Card>
         </div>
       )}
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Aktivna lista</CardTitle>
-          <CardDescription className="text-xs">FIFO po prijavi; rdeče = presežen napovedani čas.</CardDescription>
+          <CardTitle className="text-base">{t('wl.activeTitle')}</CardTitle>
+          <CardDescription className="text-xs">{t('wl.activeDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalagam …</p>
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('gc.loading')}</p>
           ) : active.length === 0 ? (
-            <p className="text-sm text-stone-500">Ni gostov na čakalni listi.</p>
+            <p className="text-sm text-stone-500">{t('wl.empty')}</p>
           ) : (
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-stone-500 border-b">
                     <th className="px-3 py-2 font-medium">#</th>
-                    <th className="px-3 py-2 font-medium">Gost</th>
-                    <th className="px-3 py-2 font-medium text-right">Čakanje</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    {canManage && <th className="px-3 py-2 text-right"><span className="sr-only">Dejanja</span></th>}
+                    <th className="px-3 py-2 font-medium">{t('wl.thGuest')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('wl.thWait')}</th>
+                    <th className="px-3 py-2 font-medium">{t('shifts.csvStatus')}</th>
+                    {canManage && <th className="px-3 py-2 text-right"><span className="sr-only">{t('common.actions')}</span></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {active.map((w, i) => {
                     const mins = wlMin(w.checkedInAt, nowMs)
                     const over = w.quotedWaitMinutes > 0 && mins > w.quotedWaitMinutes
-                    const badge = wlStatusBadge(w.status)
+                    const badge = wlStatusBadge(w.status, t)
                     return (
                       <tr key={w.id} className="border-b last:border-0 align-top">
                         <td className="px-3 py-2 text-xs text-stone-400 font-medium">{i + 1}.</td>
                         <td className="px-3 py-2">
                           <span className="font-medium">{w.guestName}</span>
-                          <span className="block text-xs text-stone-500">{wlParty(w.partySize)}{w.guestPhone ? ` · ${w.guestPhone}` : ''}{w.preferredArea ? ` · ${w.preferredArea}` : ''}</span>
+                          <span className="block text-xs text-stone-500">{wlParty(w.partySize, t)}{w.guestPhone ? ` · ${w.guestPhone}` : ''}{w.preferredArea ? ` · ${w.preferredArea}` : ''}</span>
                           {(w.specialNeeds || w.notes) && (
                             <span className="block text-xs text-stone-500 max-w-64 truncate" title={w.specialNeeds || w.notes}>ℹ {w.specialNeeds || w.notes}</span>
                           )}
                         </td>
                         <td className={`px-3 py-2 text-right whitespace-nowrap ${over ? 'text-red-700 font-semibold' : ''}`}>
                           {wlDur(mins)}
-                          <span className="block text-xs text-stone-400">napoved {w.quotedWaitMinutes > 0 ? `≈ ${w.quotedWaitMinutes} min` : '—'}</span>
+                          <span className="block text-xs text-stone-400">{t('wl.forecast')} {w.quotedWaitMinutes > 0 ? `≈ ${w.quotedWaitMinutes} min` : '—'}</span>
                         </td>
                         <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
                         {canManage && (
                           <td className="px-3 py-2">
                             <div className="flex flex-wrap justify-end gap-1.5">
                               {w.status === 'waiting' && (
-                                <Button variant="outline" size="sm" disabled={busy} onClick={() => void transition(w, 'notified')} title="Obvesti gosta">
-                                  <Bell className="w-3.5 h-3.5" /> Obvesti
+                                <Button variant="outline" size="sm" disabled={busy} onClick={() => void transition(w, 'notified')} title={t('wl.notifyTitle')}>
+                                  <Bell className="w-3.5 h-3.5" /> {t('wl.notifyBtn')}
                                 </Button>
                               )}
-                              <Button size="sm" disabled={busy} onClick={() => { setSeatFor(w); setSeatTableId('') }} title="Usadi gosta">
-                                <UserCheck className="w-3.5 h-3.5" /> Usadi
+                              <Button size="sm" disabled={busy} onClick={() => { setSeatFor(w); setSeatTableId('') }} title={t('wl.seatTitle')}>
+                                <UserCheck className="w-3.5 h-3.5" /> {t('wl.seatBtn')}
                               </Button>
-                              <Button variant="outline" size="sm" disabled={busy} onClick={() => { if (window.confirm(`Zabeležim odhod ${w.guestName}?`)) void transition(w, 'left') }}>
-                                Odšel
+                              <Button variant="outline" size="sm" disabled={busy} onClick={() => { if (window.confirm(t('wl.confirmLeft', { name: w.guestName }))) void transition(w, 'left') }}>
+                                {t('wl.leftBtn')}
                               </Button>
-                              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void deleteEntry(w)} aria-label={`Izbriši vnos ${w.guestName}`} title="Izbriši (samo pomota)">
+                              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void deleteEntry(w)} aria-label={t('wl.deleteAria', { name: w.guestName })} title={t('wl.deleteTitle')}>
                                 <Trash2 className="w-3.5 h-3.5 text-stone-400" />
                               </Button>
                             </div>
@@ -3588,28 +3605,28 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
       {finished.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Zaključeni (danes)</CardTitle>
-            <CardDescription className="text-xs">Usaditvi in odhodi iz zadnjih 24 h.</CardDescription>
+            <CardTitle className="text-base">{t('wl.finishedTitle')}</CardTitle>
+            <CardDescription className="text-xs">{t('wl.finishedDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="max-h-64 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-stone-500 border-b">
-                    <th className="px-3 py-2 font-medium">Gost</th>
-                    <th className="px-3 py-2 font-medium text-right">Čakal</th>
-                    <th className="px-3 py-2 font-medium">Miza</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">{t('wl.thGuest')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('wl.thWaited')}</th>
+                    <th className="px-3 py-2 font-medium">{t('wl.thTable')}</th>
+                    <th className="px-3 py-2 font-medium">{t('shifts.csvStatus')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {finished.map((w) => {
-                    const badge = wlStatusBadge(w.status)
+                    const badge = wlStatusBadge(w.status, t)
                     return (
                       <tr key={w.id} className="border-b last:border-0">
-                        <td className="px-3 py-2 font-medium">{w.guestName} <span className="text-xs text-stone-400 font-normal">{wlParty(w.partySize)}</span></td>
+                        <td className="px-3 py-2 font-medium">{w.guestName} <span className="text-xs text-stone-400 font-normal">{wlParty(w.partySize, t)}</span></td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{w.status === 'seated' ? wlDur(w.actualWaitMinutes) : '—'}</td>
-                        <td className="px-3 py-2 text-xs text-stone-600">{w.tableNumber ? `Miza ${w.tableNumber}` : '—'}</td>
+                        <td className="px-3 py-2 text-xs text-stone-600">{w.tableNumber ? t('wl.tableN', { n: w.tableNumber }) : '—'}</td>
                         <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
                       </tr>
                     )
@@ -3625,46 +3642,46 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>Nova prijava na čakalno listo</DialogTitle>
+            <DialogTitle>{t('wl.newTitle')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="wl-name">Ime gosta *</Label>
-                <Input id="wl-name" value={form.guestName} onChange={(e) => setForm({ ...form, guestName: e.target.value })} placeholder="npr. Družina Novak" />
+                <Label htmlFor="wl-name">{t('loy.guestName')}</Label>
+                <Input id="wl-name" value={form.guestName} onChange={(e) => setForm({ ...form, guestName: e.target.value })} placeholder={t('wl.namePlaceholder')} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="wl-phone">Telefon (neobvezno)</Label>
+                <Label htmlFor="wl-phone">{t('wl.phoneOptional')}</Label>
                 <Input id="wl-phone" value={form.guestPhone} onChange={(e) => setForm({ ...form, guestPhone: e.target.value })} placeholder="041 234 567" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="wl-party">Število oseb</Label>
+                <Label htmlFor="wl-party">{t('wl.partyLabel')}</Label>
                 <Input id="wl-party" inputMode="numeric" value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="wl-quote">Napovedani čas (min)</Label>
+                <Label htmlFor="wl-quote">{t('wl.quoteLabel')}</Label>
                 <Input id="wl-quote" inputMode="numeric" value={form.quotedWaitMinutes} onChange={(e) => setForm({ ...form, quotedWaitMinutes: e.target.value })} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="wl-area">Željeno območje (neobvezno)</Label>
-              <Input id="wl-area" value={form.preferredArea} onChange={(e) => setForm({ ...form, preferredArea: e.target.value })} placeholder="npr. terasa, znotraj, bar" />
+              <Label htmlFor="wl-area">{t('wl.areaLabel')}</Label>
+              <Input id="wl-area" value={form.preferredArea} onChange={(e) => setForm({ ...form, preferredArea: e.target.value })} placeholder={t('wl.areaPlaceholder')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="wl-needs">Posebne potrebe (neobvezno)</Label>
-              <Input id="wl-needs" value={form.specialNeeds} onChange={(e) => setForm({ ...form, specialNeeds: e.target.value })} placeholder="npr. otroški stol, dostop invalidskih vozičkov" />
+              <Label htmlFor="wl-needs">{t('wl.needsLabel')}</Label>
+              <Input id="wl-needs" value={form.specialNeeds} onChange={(e) => setForm({ ...form, specialNeeds: e.target.value })} placeholder={t('wl.needsPlaceholder')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="wl-notes">Opomba (neobvezno)</Label>
-              <Input id="wl-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="npr. proslava, miza za 8" />
+              <Label htmlFor="wl-notes">{t('waste.noteOptional')}</Label>
+              <Input id="wl-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={t('wl.notesPlaceholder')} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewOpen(false)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={() => void submitNew()} disabled={busy || !form.guestName.trim()}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj na listo
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('wl.submitBtn')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3674,42 +3691,42 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
       <Dialog open={!!seatFor} onOpenChange={(o) => !o && setSeatFor(null)}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>Usadi {seatFor?.guestName}</DialogTitle>
+            <DialogTitle>{t('wl.seatTitleDialog', { name: seatFor?.guestName ?? '' })}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {seatFor && (
               <p className="text-sm text-stone-600">
-                {wlParty(seatFor.partySize)} · čaka že <strong>{wlDur(wlMin(seatFor.checkedInAt, Date.now()))}</strong>
-                {seatFor.preferredArea ? ` · želi: ${seatFor.preferredArea}` : ''}
+                {wlParty(seatFor.partySize, t)} {t('wl.waitingSince')} <strong>{wlDur(wlMin(seatFor.checkedInAt, Date.now()))}</strong>
+                {seatFor.preferredArea ? t('wl.wantsSuffix', { area: seatFor.preferredArea }) : ''}
               </p>
             )}
             <div className="space-y-1">
-              <Label htmlFor="wl-table">Miza</Label>
+              <Label htmlFor="wl-table">{t('wl.thTable')}</Label>
               <Select value={seatTableId} onValueChange={setSeatTableId}>
-                <SelectTrigger id="wl-table"><SelectValue placeholder="Izberi prosto mizo …" /></SelectTrigger>
+                <SelectTrigger id="wl-table"><SelectValue placeholder={t('wl.tablePlaceholder')} /></SelectTrigger>
                 <SelectContent>
-                  {freeTables.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name} ({t.seats} mest · {t.zone}{t.status !== 'FREE' ? ` · ${t.status === 'RESERVED' ? 'rezervirana' : t.status === 'DIRTY' ? 'za čiščenje' : ''}` : ''})
+                  {freeTables.map((tbl) => (
+                    <SelectItem key={tbl.id} value={tbl.id}>
+                      {tbl.name} ({t('tables.seats', { n: tbl.seats })} · {tbl.zone}{tbl.status !== 'FREE' ? ` · ${tbl.status === 'RESERVED' ? t('wl.tblReserved') : tbl.status === 'DIRTY' ? t('wl.tblDirty') : ''}` : ''})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {seatFor && freeTables.length === 0 && (
-                <p className="text-xs text-red-600">Ni prostih miz — najprej sprosti/zaključi mizo v pregledu miz.</p>
+                <p className="text-xs text-red-600">{t('wl.noFreeTables')}</p>
               )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSeatFor(null)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setSeatFor(null)}>{t('common.cancel')}</Button>
             <Button onClick={() => void seatEntry()} disabled={busy || !seatTableId}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />} Usadi
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />} {t('wl.seatBtn')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {busy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.processing')}</p>}
     </div>
   )
 }
@@ -3743,16 +3760,16 @@ const tcTypeBadge: Record<string, string> = {
   sick: 'bg-rose-100 text-rose-800',
   vacation: 'bg-teal-100 text-teal-800',
 }
-const tcTypeLabel: Record<string, string> = {
-  regular: 'Navadno', overtime: 'Nadure', holiday: 'Praznik', sick: 'Bolniška', vacation: 'Dopust',
+const tcTypeKeys: Record<string, string> = {
+  regular: 'tc.typeRegular', overtime: 'tc.typeOvertime', holiday: 'tc.typeHoliday', sick: 'tc.typeSick', vacation: 'tc.typeVacation',
 }
 const tcStatusBadge: Record<string, string> = {
   active: 'bg-amber-100 text-amber-800',
   approved: 'bg-emerald-100 text-emerald-800',
   disputed: 'bg-red-100 text-red-800',
 }
-const tcStatusLabel: Record<string, string> = {
-  active: 'V čakanju', approved: 'Potrjeno', disputed: 'Sporno',
+const tcStatusKeys: Record<string, string> = {
+  active: 'tc.stPending', approved: 'tc.stApproved', disputed: 'tc.stDisputed',
 }
 
 function tcTime(iso: string | null): string {
@@ -3771,6 +3788,7 @@ function tcPay(eur: number): string {
 }
 
 export function DelovniCasTab({ canManage }: { canManage: boolean }) {
+  const { t } = useI18n()
   const [mine, setMine] = useState<TimeEntryT[]>([])
   const [activeEntry, setActiveEntry] = useState<TimeEntryT | null>(null)
   const [myStats, setMyStats] = useState<{ totalMinutes: number; approvedMinutes: number } | null>(null)
@@ -3817,10 +3835,10 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
     setOkMsg('')
     try {
       const d = await api<{ summary?: { label: string; totalPay: number } }>('/api/timeclock', { method: 'POST', body: JSON.stringify({ action }) })
-      if (action === 'clock-in') setOkMsg('Prijava na izmeno zabeležena — ura teče.')
-      else if (action === 'break-start') setOkMsg('Odmor začet.')
-      else if (action === 'break-end') setOkMsg('Odmor zaključen.')
-      else if (action === 'clock-out' && d.summary) setOkMsg(`Odjava zabeležena — skupaj ${d.summary.label}${d.summary.totalPay > 0 ? ` (${tcPay(d.summary.totalPay)})` : ''}.`)
+      if (action === 'clock-in') setOkMsg(t('tc.okClockIn'))
+      else if (action === 'break-start') setOkMsg(t('tc.okBreakStart'))
+      else if (action === 'break-end') setOkMsg(t('tc.okBreakEnd'))
+      else if (action === 'clock-out' && d.summary) setOkMsg(t('tc.okClockOut', { label: d.summary.label, pay: d.summary.totalPay > 0 ? t('tc.okClockOutPay', { pay: tcPay(d.summary.totalPay) }) : '' }))
       await load()
     } catch (e) {
       setErr((e as Error).message)
@@ -3835,7 +3853,7 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
     setOkMsg('')
     try {
       await api(`/api/timeclock/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
-      setOkMsg(status === 'approved' ? 'Vnos potrjen.' : 'Vnos označen kot sporen.')
+      setOkMsg(status === 'approved' ? t('tc.okApproved') : t('tc.okDisputed'))
       await load()
     } catch (e) {
       setErr((e as Error).message)
@@ -3845,8 +3863,8 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
   }
 
   async function submitManual() {
-    if (!manual.employeeId) { setErr('Izberi zaposlenega.'); return }
-    if (!manual.clockIn || !manual.clockOut) { setErr('Časa prijave in odjave sta obvezna.'); return }
+    if (!manual.employeeId) { setErr(t('tc.errEmployee')); return }
+    if (!manual.clockIn || !manual.clockOut) { setErr(t('tc.errTimes')); return }
     setBusy(true)
     setErr('')
     setOkMsg('')
@@ -3863,7 +3881,7 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
           note: manual.note || undefined,
         }),
       })
-      setOkMsg('Ročni vnos dodan (status: v čakanju potrditve).')
+      setOkMsg(t('tc.okManual'))
       setManualOpen(false)
       setManual({ employeeId: '', clockIn: '', clockOut: '', breakMinutes: '0', type: 'regular', note: '' })
       await load()
@@ -3886,40 +3904,40 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
       {/* Moja ura */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Timer className="w-4 h-4" /> {activeEntry ? 'Izmena v teku' : 'Moj delovni čas'}</CardTitle>
-          <CardDescription>{activeEntry ? `Prijava ob ${tcTime(activeEntry.clockIn)}${activeEntry.payRate > 0 ? ` · ura ${tcPay(activeEntry.payRate)}` : ''}` : 'Prijava in odjava izmene — ure so osnova za napitnine po urah in plačilo.'}</CardDescription>
+          <CardTitle className="text-base flex items-center gap-2"><Timer className="w-4 h-4" /> {activeEntry ? t('tc.shiftActive') : t('tc.myTitle')}</CardTitle>
+          <CardDescription>{activeEntry ? t('tc.clockedInAt', { time: tcTime(activeEntry.clockIn), rate: activeEntry.payRate > 0 ? t('tc.rateSuffix', { pay: tcPay(activeEntry.payRate) }) : '' }) : t('tc.myDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {activeEntry ? (
             <div className="flex flex-wrap items-center gap-4">
               <div className="text-3xl font-bold tabular-nums">{tcDur(liveMin)}</div>
               {onBreak ? (
-                <Badge className="bg-amber-100 text-amber-800">☕ Na odmoru (od {new Date(activeEntry.breakStart!).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })})</Badge>
+                <Badge className="bg-amber-100 text-amber-800">{t('tc.onBreakBadge', { time: new Date(activeEntry.breakStart!).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }) })}</Badge>
               ) : (
-                <Badge className="bg-emerald-100 text-emerald-800">V teku</Badge>
+                <Badge className="bg-emerald-100 text-emerald-800">{t('tc.inProgress')}</Badge>
               )}
               <div className="flex gap-2 ml-auto flex-wrap">
                 {!onBreak ? (
-                  <Button variant="outline" disabled={busy} onClick={() => void act('break-start')}><Coffee className="w-4 h-4 mr-1" /> Odmor</Button>
+                  <Button variant="outline" disabled={busy} onClick={() => void act('break-start')}><Coffee className="w-4 h-4 mr-1" /> {t('tc.breakBtn')}</Button>
                 ) : (
-                  <Button variant="outline" disabled={busy} onClick={() => void act('break-end')}><Coffee className="w-4 h-4 mr-1" /> Konec odmora</Button>
+                  <Button variant="outline" disabled={busy} onClick={() => void act('break-end')}><Coffee className="w-4 h-4 mr-1" /> {t('tc.breakEndBtn')}</Button>
                 )}
                 <Button className="bg-red-700 hover:bg-red-800" disabled={busy} onClick={() => void act('clock-out')}>
-                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4 mr-1" />} Odjava
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4 mr-1" />} {t('tc.clockOutBtn')}
                 </Button>
               </div>
             </div>
           ) : (
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={() => void act('clock-in')}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4 mr-1" />} Prijava na izmeno
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4 mr-1" />} {t('tc.clockInBtn')}
             </Button>
           )}
           {myStats && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-stone-100">
-              <div><p className="text-xs text-stone-500">Zadnjih 30 dni</p><p className="font-bold">{tcDur(myStats.totalMinutes)}</p></div>
-              <div><p className="text-xs text-stone-500">Potrjeno</p><p className="font-bold">{tcDur(myStats.approvedMinutes)}</p></div>
-              <div><p className="text-xs text-stone-500">Vnosov</p><p className="font-bold">{mine.length}</p></div>
-              <div><p className="text-xs text-stone-500">Status</p><p className="font-bold">{activeEntry ? 'Na izmeni' : 'Izven izmene'}</p></div>
+              <div><p className="text-xs text-stone-500">{t('waste.days30')}</p><p className="font-bold">{tcDur(myStats.totalMinutes)}</p></div>
+              <div><p className="text-xs text-stone-500">{t('tc.stApproved')}</p><p className="font-bold">{tcDur(myStats.approvedMinutes)}</p></div>
+              <div><p className="text-xs text-stone-500">{t('tc.entriesCount')}</p><p className="font-bold">{mine.length}</p></div>
+              <div><p className="text-xs text-stone-500">{t('shifts.csvStatus')}</p><p className="font-bold">{activeEntry ? t('tc.onShift') : t('tc.offShift')}</p></div>
             </div>
           )}
         </CardContent>
@@ -3927,26 +3945,26 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
 
       {/* Moja zgodovina */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Moja zgodovina (30 dni)</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">{t('tc.myHistory')}</CardTitle></CardHeader>
         <CardContent>
-          {mine.length === 0 && <p className="text-sm text-stone-500">Ni zapisov — prijavi se na izmeno.</p>}
+          {mine.length === 0 && <p className="text-sm text-stone-500">{t('tc.myEmpty')}</p>}
           {mine.length > 0 && (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-stone-500 border-b border-stone-200">
-                  <th className="py-2 pr-3">Prijava</th><th className="py-2 pr-3">Odjava</th><th className="py-2 pr-3">Odmor</th>
-                  <th className="py-2 pr-3">Skupaj</th><th className="py-2 pr-3">Plačilo</th><th className="py-2 pr-3">Tip</th><th className="py-2">Status</th>
+                  <th className="py-2 pr-3">{t('tc.thIn')}</th><th className="py-2 pr-3">{t('tc.thOut')}</th><th className="py-2 pr-3">{t('tc.thBreak')}</th>
+                  <th className="py-2 pr-3">{t('tc.thTotal')}</th><th className="py-2 pr-3">{t('tc.thPay')}</th><th className="py-2 pr-3">{t('dev.typeLabel')}</th><th className="py-2">{t('shifts.csvStatus')}</th>
                 </tr></thead>
                 <tbody>
                   {mine.map((e) => (
                     <tr key={e.id} className="border-b border-stone-100">
                       <td className="py-2 pr-3 whitespace-nowrap">{tcTime(e.clockIn)}</td>
-                      <td className="py-2 pr-3 whitespace-nowrap">{e.clockOut ? tcTime(e.clockOut) : <span className="text-emerald-700 font-semibold">teče</span>}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{e.clockOut ? tcTime(e.clockOut) : <span className="text-emerald-700 font-semibold">{t('tc.running')}</span>}</td>
                       <td className="py-2 pr-3">{e.breakMinutes > 0 ? tcDur(e.breakMinutes) : '—'}</td>
                       <td className="py-2 pr-3 font-semibold">{e.clockOut ? tcDur(e.totalMinutes) : '—'}</td>
                       <td className="py-2 pr-3">{e.totalPay > 0 ? tcPay(e.totalPay) : '—'}</td>
-                      <td className="py-2 pr-3"><Badge className={tcTypeBadge[e.type] || 'bg-stone-100 text-stone-700'}>{tcTypeLabel[e.type] || e.type}</Badge></td>
-                      <td className="py-2"><Badge className={tcStatusBadge[e.status] || 'bg-stone-100 text-stone-700'}>{tcStatusLabel[e.status] || e.status}</Badge></td>
+                      <td className="py-2 pr-3"><Badge className={tcTypeBadge[e.type] || 'bg-stone-100 text-stone-700'}>{tcTypeKeys[e.type] ? t(tcTypeKeys[e.type]) : e.type}</Badge></td>
+                      <td className="py-2"><Badge className={tcStatusBadge[e.status] || 'bg-stone-100 text-stone-700'}>{tcStatusKeys[e.status] ? t(tcStatusKeys[e.status]) : e.status}</Badge></td>
                     </tr>
                   ))}
                 </tbody>
@@ -3961,58 +3979,58 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
         <Card>
           <CardHeader className="flex-row items-start justify-between space-y-0">
             <div>
-              <CardTitle className="text-base flex items-center gap-2"><UserCheck className="w-4 h-4" /> Ekipa — vpogled in potrditev</CardTitle>
-              <CardDescription>Potrdi/sporen označi vnose zaposlenih; dodaj ročni vnos (popravek zgrešene ure).</CardDescription>
+              <CardTitle className="text-base flex items-center gap-2"><UserCheck className="w-4 h-4" /> {t('tc.teamTitle')}</CardTitle>
+              <CardDescription>{t('tc.teamDesc')}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Select value={teamDays} onValueChange={setTeamDays}>
-                <SelectTrigger className="w-32 h-8 text-xs" aria-label="Obdobje"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-32 h-8 text-xs" aria-label={t('tc.periodAria')}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Danes</SelectItem>
-                  <SelectItem value="7">7 dni</SelectItem>
-                  <SelectItem value="14">14 dni</SelectItem>
-                  <SelectItem value="31">31 dni</SelectItem>
+                  <SelectItem value="1">{t('shifts.csvToday')}</SelectItem>
+                  <SelectItem value="7">{t('tc.day7')}</SelectItem>
+                  <SelectItem value="14">{t('tc.day14')}</SelectItem>
+                  <SelectItem value="31">{t('tc.day31')}</SelectItem>
                 </SelectContent>
               </Select>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => setManualOpen(true)}><Plus className="w-4 h-4 mr-1" /> Ročni vnos</Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setManualOpen(true)}><Plus className="w-4 h-4 mr-1" /> {t('tc.manualBtn')}</Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">Skupaj (obdobje)</p><p className="text-lg font-bold">{tcDur(team.stats.totalMinutes)}</p></div>
-              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">Potrjeno</p><p className="text-lg font-bold">{tcDur(team.stats.approvedMinutes)}</p></div>
-              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">V čakanju potrditve</p><p className="text-lg font-bold">{team.stats.activeCount}</p></div>
-              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">Trenutno na izmeni</p><p className="text-lg font-bold">{team.activeNow.length}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">{t('tc.totalPeriod')}</p><p className="text-lg font-bold">{tcDur(team.stats.totalMinutes)}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">{t('tc.stApproved')}</p><p className="text-lg font-bold">{tcDur(team.stats.approvedMinutes)}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">{t('tc.pendingApproval')}</p><p className="text-lg font-bold">{team.stats.activeCount}</p></div>
+              <div className="rounded-lg border border-stone-200 p-3"><p className="text-xs text-stone-500">{t('tc.nowOnShift')}</p><p className="text-lg font-bold">{team.activeNow.length}</p></div>
             </div>
             {team.activeNow.length > 0 && (
               <div className="text-sm text-stone-600">
-                <span className="font-semibold">Na izmeni: </span>
+                <span className="font-semibold">{t('tc.onShiftColon')}</span>
                 {team.activeNow.map((a) => `${a.employeeName}${a.breakStart ? ' ☕' : ''}`).join(', ')}
               </div>
             )}
-            {team.entries.length === 0 && <p className="text-sm text-stone-500">Ni vnosov v izbranem obdobju.</p>}
+            {team.entries.length === 0 && <p className="text-sm text-stone-500">{t('tc.teamEmpty')}</p>}
             {team.entries.length > 0 && (
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="text-left text-stone-500 border-b border-stone-200">
-                    <th className="py-2 pr-3">Zaposleni</th><th className="py-2 pr-3">Prijava</th><th className="py-2 pr-3">Odjava</th>
-                    <th className="py-2 pr-3">Skupaj</th><th className="py-2 pr-3">Plačilo</th><th className="py-2 pr-3">Status</th><th className="py-2">Dejanja</th>
+                    <th className="py-2 pr-3">{t('shifts.csvEmployee')}</th><th className="py-2 pr-3">{t('tc.thIn')}</th><th className="py-2 pr-3">{t('tc.thOut')}</th>
+                    <th className="py-2 pr-3">{t('tc.thTotal')}</th><th className="py-2 pr-3">{t('tc.thPay')}</th><th className="py-2 pr-3">{t('shifts.csvStatus')}</th><th className="py-2">{t('common.actions')}</th>
                   </tr></thead>
                   <tbody>
                     {team.entries.map((e) => (
                       <tr key={e.id} className="border-b border-stone-100">
                         <td className="py-2 pr-3 font-medium">{e.employeeName}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{tcTime(e.clockIn)}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{e.clockOut ? tcTime(e.clockOut) : <span className="text-emerald-700 font-semibold">teče</span>}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{e.clockOut ? tcTime(e.clockOut) : <span className="text-emerald-700 font-semibold">{t('tc.running')}</span>}</td>
                         <td className="py-2 pr-3">{e.clockOut ? tcDur(e.totalMinutes) : '—'}</td>
                         <td className="py-2 pr-3">{e.totalPay > 0 ? tcPay(e.totalPay) : '—'}</td>
-                        <td className="py-2 pr-3"><Badge className={tcStatusBadge[e.status] || 'bg-stone-100 text-stone-700'}>{tcStatusLabel[e.status] || e.status}</Badge></td>
+                        <td className="py-2 pr-3"><Badge className={tcStatusBadge[e.status] || 'bg-stone-100 text-stone-700'}>{tcStatusKeys[e.status] ? t(tcStatusKeys[e.status]) : e.status}</Badge></td>
                         <td className="py-2">
                           {e.status !== 'approved' && e.clockOut && (
-                            <Button size="sm" variant="outline" className="h-7 mr-1" disabled={busy} onClick={() => void review(e.id, 'approved')} title="Potrdi vnos"><CheckCircle2 className="w-3.5 h-3.5" /><span className="sr-only">Potrdi</span></Button>
+                            <Button size="sm" variant="outline" className="h-7 mr-1" disabled={busy} onClick={() => void review(e.id, 'approved')} title={t('tc.approveTitle')}><CheckCircle2 className="w-3.5 h-3.5" /><span className="sr-only">{t('tc.approveSr')}</span></Button>
                           )}
                           {e.status !== 'disputed' && (
-                            <Button size="sm" variant="outline" className="h-7 text-red-700" disabled={busy} onClick={() => void review(e.id, 'disputed')} title="Označi sporno"><XCircle className="w-3.5 h-3.5" /><span className="sr-only">Označi sporno</span></Button>
+                            <Button size="sm" variant="outline" className="h-7 text-red-700" disabled={busy} onClick={() => void review(e.id, 'disputed')} title={t('tc.disputeTitle')}><XCircle className="w-3.5 h-3.5" /><span className="sr-only">{t('tc.disputeTitle')}</span></Button>
                           )}
                         </td>
                       </tr>
@@ -4028,12 +4046,12 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
       {/* Ročni vnos dialog */}
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogHeader><DialogTitle>Ročni vnos delovnega časa</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('tc.manualTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="tc-employee">Zaposleni</Label>
+              <Label htmlFor="tc-employee">{t('shifts.csvEmployee')}</Label>
               <Select value={manual.employeeId} onValueChange={(v) => setManual((m) => ({ ...m, employeeId: v }))}>
-                <SelectTrigger id="tc-employee"><SelectValue placeholder="Izberi zaposlenega …" /></SelectTrigger>
+                <SelectTrigger id="tc-employee"><SelectValue placeholder={t('tc.employeePlaceholder')} /></SelectTrigger>
                 <SelectContent>
                   {(team?.employees || []).map((e) => (
                     <SelectItem key={e.id} value={e.id}>{e.name} ({e.role})</SelectItem>
@@ -4043,50 +4061,50 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="tc-in">Prijava</Label>
+                <Label htmlFor="tc-in">{t('tc.thIn')}</Label>
                 <Input id="tc-in" type="datetime-local" value={manual.clockIn} onChange={(e) => setManual((m) => ({ ...m, clockIn: e.target.value }))} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="tc-out">Odjava</Label>
+                <Label htmlFor="tc-out">{t('tc.thOut')}</Label>
                 <Input id="tc-out" type="datetime-local" value={manual.clockOut} onChange={(e) => setManual((m) => ({ ...m, clockOut: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="tc-break">Odmor (min)</Label>
+                <Label htmlFor="tc-break">{t('tc.breakMinutes')}</Label>
                 <Input id="tc-break" type="number" min="0" value={manual.breakMinutes} onChange={(e) => setManual((m) => ({ ...m, breakMinutes: e.target.value }))} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="tc-type">Tip</Label>
+                <Label htmlFor="tc-type">{t('dev.typeLabel')}</Label>
                 <Select value={manual.type} onValueChange={(v) => setManual((m) => ({ ...m, type: v }))}>
                   <SelectTrigger id="tc-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="regular">Navadno</SelectItem>
-                    <SelectItem value="overtime">Nadure</SelectItem>
-                    <SelectItem value="holiday">Praznik</SelectItem>
-                    <SelectItem value="sick">Bolniška</SelectItem>
-                    <SelectItem value="vacation">Dopust</SelectItem>
+                    <SelectItem value="regular">{t('tc.typeRegular')}</SelectItem>
+                    <SelectItem value="overtime">{t('tc.typeOvertime')}</SelectItem>
+                    <SelectItem value="holiday">{t('tc.typeHoliday')}</SelectItem>
+                    <SelectItem value="sick">{t('tc.typeSick')}</SelectItem>
+                    <SelectItem value="vacation">{t('tc.typeVacation')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="tc-note">Opomba</Label>
-              <Input id="tc-note" value={manual.note} onChange={(e) => setManual((m) => ({ ...m, note: e.target.value }))} placeholder="npr. pozabil prijavit" />
+              <Label htmlFor="tc-note">{t('haccp.note')}</Label>
+              <Input id="tc-note" value={manual.note} onChange={(e) => setManual((m) => ({ ...m, note: e.target.value }))} placeholder={t('tc.notePlaceholder')} />
             </div>
-            <p className="text-xs text-stone-500">Vnos se ustvari s statusom »v čakanju« — potrdi ga v tabeli zgoraj (potek: do 31 dni nazaj, ne v prihodnost).</p>
+            <p className="text-xs text-stone-500">{t('tc.manualHint')}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setManualOpen(false)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setManualOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={() => void submitManual()} disabled={busy || !manual.employeeId || !manual.clockIn || !manual.clockOut}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj vnos
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('tc.addEntryBtn')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje …</p>}
-      {busy && !loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Obdelava …</p>}
+      {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('tc.loading')}</p>}
+      {busy && !loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.processing')}</p>}
     </div>
   )
 }
@@ -4125,6 +4143,7 @@ function fmtDateSL(dateKey: string): string {
 }
 
 export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
+  const { t } = useI18n()
   const [data, setData] = useState<OpeningHoursDataT | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -4164,7 +4183,7 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
         body: JSON.stringify({ rows: edit.map((r) => ({ dayOfWeek: r.dayOfWeek, openTime: r.openTime, closeTime: r.closeTime, breakStart: r.breakStart, breakEnd: r.breakEnd, isClosed: r.isClosed })) }),
       })
       setData((d) => (d ? { ...d, rows: res.rows, status: res.status, inherited: false } : d))
-      setMsg('Odpiralni čas shranjen.')
+      setMsg(t('oh.okSaved'))
       await load()
     } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
   }
@@ -4175,30 +4194,30 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
       await api('/api/opening-hours/special', { method: 'POST', body: JSON.stringify(sp) })
       setSpOpen(false)
       setSp({ date: '', isClosed: true, openTime: '', closeTime: '', note: '' })
-      setMsg('Poseben dan dodan.')
+      setMsg(t('oh.okSpecialAdded'))
       await load()
     } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
   }
 
   async function deleteSpecial(id: string) {
-    if (!confirm('Izbrišem posebni dan?')) return
+    if (!confirm(t('oh.confirmDeleteSpecial'))) return
     setBusy(true)
     try {
       await api(`/api/opening-hours/special?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-      setMsg('Poseben dan izbrisan.')
+      setMsg(t('oh.okSpecialDeleted'))
       await load()
     } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
   }
 
   async function addHolidays() {
     if (!data?.holidays?.length) return
-    if (!confirm(`Dodam ${data.holidays.length} slovenskih praznikov za ${data.holidaysYear} (zaprti dnevi)? Obstojeci datumi se preskocijo.`)) return
+    if (!confirm(t('oh.confirmHolidays', { n: data.holidays.length, year: data.holidaysYear }))) return
     setBusy(true); setMsg('')
     try {
       const res = await api<{ added: number; skipped: string[] }>('/api/opening-hours/special', {
         method: 'POST', body: JSON.stringify({ holidays: data.holidays.map((h) => ({ date: h.date, name: h.name })) }),
       })
-      setMsg(`Prazniki: dodanih ${res.added}, obstoječih preskočenih ${res.skipped.length}.`)
+      setMsg(t('oh.okHolidays', { added: res.added, skipped: res.skipped.length }))
       await load()
     } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
   }
@@ -4212,7 +4231,7 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
       <Card className={phaseStyle.card}>
         <CardContent className="p-4">
           {loading ? (
-            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje statusa …</p>
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('oh.loadingStatus')}</p>
           ) : st ? (
             <div className="flex flex-wrap items-center gap-3">
               <span aria-hidden className={`w-3 h-3 rounded-full shrink-0 ${phaseStyle.dot} ${st.isOpen ? 'animate-pulse' : ''}`} />
@@ -4224,11 +4243,11 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
                 <p className="text-sm text-stone-600">{st.detail}</p>
               </div>
               {data?.inherited && canManage && (
-                <Badge variant="outline" className="ml-auto shrink-0">Privzeti urnik organizacije — lokacija nima svojega</Badge>
+                <Badge variant="outline" className="ml-auto shrink-0">{t('oh.inheritedBadge')}</Badge>
               )}
             </div>
           ) : (
-            <p className="text-sm text-stone-500">Status ni na voljo.</p>
+            <p className="text-sm text-stone-500">{t('oh.noStatus')}</p>
           )}
         </CardContent>
       </Card>
@@ -4237,27 +4256,27 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-base flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-emerald-700" /> Tedenski urnik</CardTitle>
-            {canManage && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void save()} disabled={busy}><CheckCircle2 className="w-3.5 h-3.5" /> Shrani urnik</Button>}
+            <CardTitle className="text-base flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-emerald-700" /> {t('oh.weekTitle')}</CardTitle>
+            {canManage && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void save()} disabled={busy}><CheckCircle2 className="w-3.5 h-3.5" /> {t('oh.saveBtn')}</Button>}
           </div>
-          <CardDescription>Časi so lokalni (24-urni). Zapiralni čas pred odpiralnim pomeni delo čez polnoč. Odmor je izbirzen.</CardDescription>
+          <CardDescription>{t('oh.weekDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {edit.map((r) => (
             <div key={r.dayOfWeek} className="rounded-lg border border-stone-200 bg-white p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="w-24 text-sm font-medium text-stone-700 shrink-0">{DAY_NAMES_SL[r.dayOfWeek]}</span>
-                <Switch checked={!r.isClosed} onCheckedChange={(v) => setRow(r.dayOfWeek, v ? { isClosed: false, openTime: r.openTime || '08:00', closeTime: r.closeTime || '22:00' } : { isClosed: true, breakStart: '', breakEnd: '' })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odprto`} />
+                <span className="w-24 text-sm font-medium text-stone-700 shrink-0">{t(`oh.day${r.dayOfWeek}`)}</span>
+                <Switch checked={!r.isClosed} onCheckedChange={(v) => setRow(r.dayOfWeek, v ? { isClosed: false, openTime: r.openTime || '08:00', closeTime: r.closeTime || '22:00' } : { isClosed: true, breakStart: '', breakEnd: '' })} disabled={!canManage} aria-label={t('oh.ariaOpen', { day: t(`oh.day${r.dayOfWeek}`) })} />
                 {r.isClosed ? (
-                  <Badge variant="outline" className="text-red-600 border-red-200">Zaprto</Badge>
+                  <Badge variant="outline" className="text-red-600 border-red-200">{t('oh.closed')}</Badge>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2">
-                    <Input type="time" className="w-28 h-8" value={r.openTime} onChange={(e) => setRow(r.dayOfWeek, { openTime: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odpre se`} />
+                    <Input type="time" className="w-28 h-8" value={r.openTime} onChange={(e) => setRow(r.dayOfWeek, { openTime: e.target.value })} disabled={!canManage} aria-label={t('oh.ariaOpens', { day: t(`oh.day${r.dayOfWeek}`) })} />
                     <span className="text-stone-400 text-sm">–</span>
-                    <Input type="time" className="w-28 h-8" value={r.closeTime} onChange={(e) => setRow(r.dayOfWeek, { closeTime: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: zapre se`} />
+                    <Input type="time" className="w-28 h-8" value={r.closeTime} onChange={(e) => setRow(r.dayOfWeek, { closeTime: e.target.value })} disabled={!canManage} aria-label={t('oh.ariaCloses', { day: t(`oh.day${r.dayOfWeek}`) })} />
                     {canManage && (
                       <Button size="sm" variant={showBreak[r.dayOfWeek] ? 'secondary' : 'outline'} className="h-8 px-2 text-xs" onClick={() => setShowBreak((b) => b.map((v, i) => (i === r.dayOfWeek ? !v : v)))}>
-                        <Coffee className="w-3.5 h-3.5" /> Odmor
+                        <Coffee className="w-3.5 h-3.5" /> {t('tc.breakBtn')}
                       </Button>
                     )}
                   </div>
@@ -4265,10 +4284,10 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
               </div>
               {!r.isClosed && showBreak[r.dayOfWeek] && (
                 <div className="flex flex-wrap items-center gap-2 mt-2 pl-1 sm:pl-28">
-                  <span className="text-xs text-stone-500 w-auto">Odmor:</span>
-                  <Input type="time" className="w-28 h-8" value={r.breakStart} onChange={(e) => setRow(r.dayOfWeek, { breakStart: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odmor od`} />
+                  <span className="text-xs text-stone-500 w-auto">{t('oh.breakColon')}</span>
+                  <Input type="time" className="w-28 h-8" value={r.breakStart} onChange={(e) => setRow(r.dayOfWeek, { breakStart: e.target.value })} disabled={!canManage} aria-label={t('oh.ariaBreakFrom', { day: t(`oh.day${r.dayOfWeek}`) })} />
                   <span className="text-stone-400 text-sm">–</span>
-                  <Input type="time" className="w-28 h-8" value={r.breakEnd} onChange={(e) => setRow(r.dayOfWeek, { breakEnd: e.target.value })} disabled={!canManage} aria-label={`${DAY_NAMES_SL[r.dayOfWeek]}: odmor do`} />
+                  <Input type="time" className="w-28 h-8" value={r.breakEnd} onChange={(e) => setRow(r.dayOfWeek, { breakEnd: e.target.value })} disabled={!canManage} aria-label={t('oh.ariaBreakTo', { day: t(`oh.day${r.dayOfWeek}`) })} />
                 </div>
               )}
             </div>
@@ -4283,16 +4302,16 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <CardTitle className="text-base flex items-center gap-1.5"><CalendarDays className="w-4 h-4 text-emerald-700" /> Posebni dnevi in prazniki</CardTitle>
-              <CardDescription>Posebni dan prevlada nad tedenskim urnikom (zaprt ali drugačen čas).</CardDescription>
+              <CardTitle className="text-base flex items-center gap-1.5"><CalendarDays className="w-4 h-4 text-emerald-700" /> {t('oh.specialTitle')}</CardTitle>
+              <CardDescription>{t('oh.specialDesc')}</CardDescription>
             </div>
             {canManage && (
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="gap-1" onClick={() => void addHolidays()} disabled={busy || !data?.holidays?.length}>
-                  <Plus className="w-3.5 h-3.5" /> Slovenski prazniki {data?.holidaysYear}
+                  <Plus className="w-3.5 h-3.5" /> {t('oh.holidaysBtn', { year: data?.holidaysYear ?? '' })}
                 </Button>
                 <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setSpOpen(true)} disabled={busy}>
-                  <Plus className="w-3.5 h-3.5" /> Poseben dan
+                  <Plus className="w-3.5 h-3.5" /> {t('oh.specialBtn')}
                 </Button>
               </div>
             )}
@@ -4300,7 +4319,7 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
         </CardHeader>
         <CardContent>
           {(data?.specialDays?.length ?? 0) === 0 ? (
-            <p className="text-sm text-stone-500">Ni posebnih dni. Rezervacije sledijo tedenskemu urniku.</p>
+            <p className="text-sm text-stone-500">{t('oh.specialEmpty')}</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {data!.specialDays.map((s) => (
@@ -4308,15 +4327,15 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-stone-800">{fmtDateSL(s.date)}</p>
                     <p className="text-xs text-stone-500">
-                      {s.isClosed ? 'Zaprto cel dan' : `Odprto ${s.openTime}–${s.closeTime}`}
+                      {s.isClosed ? t('oh.closedAllDay') : t('oh.openHours', { range: `${s.openTime}–${s.closeTime}` })}
                       {s.note ? ` · ${s.note}` : ''}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge variant={s.isClosed ? 'destructive' : 'outline'}>{s.isClosed ? 'Zaprto' : 'Poseben urnik'}</Badge>
+                    <Badge variant={s.isClosed ? 'destructive' : 'outline'}>{s.isClosed ? t('oh.closed') : t('oh.specialSchedule')}</Badge>
                     {canManage && (
                       <Button size="sm" variant="outline" className="h-7 px-2 text-red-600 border-red-200 hover:bg-red-50" disabled={busy} onClick={() => void deleteSpecial(s.id)}>
-                        <Trash2 className="w-3.5 h-3.5" /><span className="sr-only">Izbriši poseben dan {s.date}</span>
+                        <Trash2 className="w-3.5 h-3.5" /><span className="sr-only">{t('oh.deleteSpecialAria', { date: s.date })}</span>
                       </Button>
                     )}
                   </div>
@@ -4330,43 +4349,43 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
       {/* dialog: nov poseben dan */}
       <Dialog open={spOpen} onOpenChange={setSpOpen}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogHeader><DialogTitle>Poseben dan / praznik</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('oh.dialogTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="sp-date">Datum</Label>
+              <Label htmlFor="sp-date">{t('exp.csvDate')}</Label>
               <Input id="sp-date" type="date" value={sp.date} onChange={(e) => setSp({ ...sp, date: e.target.value })} />
             </div>
             <div className="flex items-center justify-between rounded-lg border border-stone-200 p-3">
-              <Label htmlFor="sp-closed" className="font-normal">Zaprto cel dan</Label>
+              <Label htmlFor="sp-closed" className="font-normal">{t('oh.closedAllDay')}</Label>
               <Switch id="sp-closed" checked={sp.isClosed} onCheckedChange={(v) => setSp({ ...sp, isClosed: v })} />
             </div>
             {!sp.isClosed && (
               <div className="flex items-center gap-2">
                 <div className="space-y-1 flex-1">
-                  <Label htmlFor="sp-open">Odpre se</Label>
+                  <Label htmlFor="sp-open">{t('oh.opensAt')}</Label>
                   <Input id="sp-open" type="time" value={sp.openTime} onChange={(e) => setSp({ ...sp, openTime: e.target.value })} />
                 </div>
                 <div className="space-y-1 flex-1">
-                  <Label htmlFor="sp-close">Zapre se</Label>
+                  <Label htmlFor="sp-close">{t('oh.closesAt')}</Label>
                   <Input id="sp-close" type="time" value={sp.closeTime} onChange={(e) => setSp({ ...sp, closeTime: e.target.value })} />
                 </div>
               </div>
             )}
             <div className="space-y-1">
-              <Label htmlFor="sp-note">Opomba (razlog)</Label>
-              <Input id="sp-note" value={sp.note} onChange={(e) => setSp({ ...sp, note: e.target.value })} placeholder="npr. Praznik dela, zaprt zaradi dogodka" />
+              <Label htmlFor="sp-note">{t('oh.noteReason')}</Label>
+              <Input id="sp-note" value={sp.note} onChange={(e) => setSp({ ...sp, note: e.target.value })} placeholder={t('oh.notePlaceholder')} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSpOpen(false)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setSpOpen(false)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800" onClick={() => void addSpecial()} disabled={busy || !sp.date}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Dodaj
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('inv.add')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {loading && !data && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Nalaganje …</p>}
+      {loading && !data && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('tc.loading')}</p>}
     </div>
   )
 }

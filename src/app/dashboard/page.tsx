@@ -109,8 +109,8 @@ const statusLabels: Record<string, string> = {
 const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Lastnik', ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', BAR: 'Bar', KITCHEN: 'Kuhinja',
 }
-const RES_STATUS_LABELS: Record<string, string> = {
-  CONFIRMED: 'Potrjena', SEATED: 'Gost prišel', COMPLETED: 'Zaključena', CANCELLED: 'Preklicana', NO_SHOW: 'Ni prišel',
+const RES_STATUS_KEYS: Record<string, string> = {
+  CONFIRMED: 'resv.stConfirmed', SEATED: 'resv.stSeated', COMPLETED: 'resv.stCompleted', CANCELLED: 'resv.stCancelled', NO_SHOW: 'resv.stNoShow',
 }
 
 export default function DashboardPage() {
@@ -402,7 +402,7 @@ function DashboardInner() {
         // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
         enqueueOp('order.create', { tableId: newOrderTable.id, items: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), guests: 2, note: '' })
         setCart({}); setNewOrderTable(null)
-        alert('Brez povezave — naročilo je shranjeno lokalno in se bo samodejno sinhroniziralo.')
+        alert(t('net.offlineOrderQueued'))
       } else {
         alert((err as Error).message)
       }
@@ -416,7 +416,7 @@ function DashboardInner() {
     } catch (err) {
       if (isNetworkError(err)) {
         enqueueOp('kitchen.status', { itemId, status })
-        alert('Brez povezave — sprememba statusa je v vrsti za sinhronizacijo.')
+        alert(t('net.offlineStatusQueued'))
       } else {
         alert((err as Error).message)
       }
@@ -510,7 +510,7 @@ function DashboardInner() {
   async function lookupGiftCard(query: string, apply: (c: GiftCardSelT) => void) {
     const qs = query.trim()
     if (qs.length < 4) {
-      setGcErr('Vpišite vsaj zadnjih 6 znakov številke kartice.')
+      setGcErr(t('payment.gcMinChars'))
       return
     }
     setGcBusy(true)
@@ -550,7 +550,7 @@ function DashboardInner() {
             // Issue #1 triage ③: darilna kartica — brez terminala, zahteva izbrano kartico
             const sel = gcPartSel[i]
             if (!sel) {
-              alert(`Del ${i + 1}: izberite darilno kartico.`)
+              alert(t('payment.partGcRequired', { n: i + 1 }))
               return
             }
             bodyParts.push({ type: 'giftcard', amount: r2v(p.amount), giftCardId: sel.id })
@@ -560,29 +560,29 @@ function DashboardInner() {
             bodyParts.push({ type: p.type, amount: r2v(p.amount) })
             continue
           }
-          const t = await processTerminalPayment(p.amount)
-          if (!t.approved) {
-            alert(t.error || `Terminal ni odobril plačila (${fmtEUR(p.amount)}).`)
+          const term = await processTerminalPayment(p.amount)
+          if (!term.approved) {
+            alert(term.error || t('payment.terminalDeclined', { amount: fmtEUR(p.amount) }))
             return
           }
-          bodyParts.push({ type: p.type, amount: r2v(p.amount), terminal: { approvalCode: t.approvalCode as string } })
+          bodyParts.push({ type: p.type, amount: r2v(p.amount), terminal: { approvalCode: term.approvalCode as string } })
         }
       } else if (due > 0) {
         // klasična pot — eno plačilo preostanka
         if (payMethod === 'giftcard') {
           // Issue #1 triage ③: plačilo z darilno kartico (celoten preostanek)
           if (!gcSel) {
-            alert('Najprej poiščite in izberite darilno kartico.')
+            alert(t('payment.gcChooseFirst'))
             return
           }
           bodyParts.push({ type: 'giftcard', amount: due, giftCardId: gcSel.id })
         } else if (payMethod !== 'cash') {
-          const t = await processTerminalPayment(due)
-          if (!t.approved) {
-            alert(t.error || 'Plačilo na terminalu ni bilo odobreno.')
+          const term = await processTerminalPayment(due)
+          if (!term.approved) {
+            alert(term.error || t('payment.terminalNotApproved'))
             return
           }
-          bodyParts.push({ type: payMethod, amount: due, terminal: { approvalCode: t.approvalCode as string } })
+          bodyParts.push({ type: payMethod, amount: due, terminal: { approvalCode: term.approvalCode as string } })
         } else {
           bodyParts.push({ type: 'cash', amount: due })
         }
@@ -609,7 +609,7 @@ function DashboardInner() {
       setInvoice(d.invoice)
       if (d.loyalty) setLoyaltySummary(d.loyalty)
       // Issue #3: CFD pokaže "Hvala" z zneskom in številko naročila
-      void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: bill.totalDue, message: 'Plačilo uspešno — hvala!' })
+      void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: bill.totalDue, message: t('payment.pushPaid') })
       await load()
     } catch (err) { alert((err as Error).message) } finally { setSending(false) }
   }
@@ -623,35 +623,35 @@ function DashboardInner() {
       const cfg = getPrintConfig()
       if (cfg.target === 'browser') {
         if (!printReceipt(r, settings?.receiptFooter, locale)) {
-          alert('Brskalnik je zavrzel pojavno okno — dovoli pojavna okna za tiskanje računov.')
+          alert(t('print.popupBlocked'))
         }
         return
       }
       const money = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
       const lines: PrintLine[] = [
         { text: r.businessAddress || '' },
-        ...(r.taxId ? [{ text: `ID za DDV: ${r.taxId}` } as PrintLine] : []),
+        ...(r.taxId ? [{ text: t('print.taxIdLine', { tax: r.taxId }) } as PrintLine] : []),
         { text: '· · · · · · · · · · · · · · · · · ·' },
-        ...(r.tableName ? [{ text: `Miza: ${r.tableName}` } as PrintLine] : []),
+        ...(r.tableName ? [{ text: t('print.tableLine', { name: r.tableName }) } as PrintLine] : []),
         { text: '--------------------------------' },
         ...r.items.map((it) => ({ text: `${it.qty}x ${it.name}` } as PrintLine)),
         ...r.items.map((it) => ({ text: `   ${money(it.amount)}`, align: 'right' } as PrintLine)),
         { text: '--------------------------------' },
-        { text: `DDV: ${money(r.totalVat)}`, align: 'right' },
-        { text: `SKUPAJ: ${money(r.total)}`, align: 'right', bold: true, size: 'large' },
-        { text: `Plačilo: ${r.paymentMethod.toUpperCase()}` },
+        { text: t('print.vatLine', { amount: money(r.totalVat) }), align: 'right' },
+        { text: t('print.totalLine', { amount: money(r.total) }), align: 'right', bold: true, size: 'large' },
+        { text: t('print.payLine', { method: r.paymentMethod.toUpperCase() }) },
         ...(r.zoi ? [{ text: `ZOI: ${r.zoi}` } as PrintLine] : []),
         ...(r.eor ? [{ text: `EOR: ${r.eor}` } as PrintLine] : []),
         ...(r.zki ? [{ text: `ZKI: ${r.zki}` } as PrintLine] : []),
         ...(r.jir ? [{ text: `JIR: ${r.jir}` } as PrintLine] : []),
         ...(r.qr ? [{ text: r.qr } as PrintLine] : []),
-        { text: r.fiscalVerified ? 'FURS: fiskalizirano' : `FURS: ${r.fiscalStatus}` },
+        { text: r.fiscalVerified ? t('print.fursOk') : t('print.fursColon', { status: r.fiscalStatus }) },
         ...(settings?.receiptFooter ? [{ text: settings.receiptFooter, align: 'center' } as PrintLine] : []),
       ]
       const res = await printLines(`Racun ${r.invoiceNumber}`, lines)
-      if (!res.ok) alert(`Tisk ni uspel: ${res.error}`)
-      else if (res.simulated) alert('SIMULACIJA tiska — vrstice so pripravljene (vidne v konzoli brskalnika).')
-    } catch (err) { alert(`Napaka pri pripravi računa: ${(err as Error).message}`) } finally { setPrinting(false) }
+      if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
+      else if (res.simulated) alert(t('print.simInvoice'))
+    } catch (err) { alert(t('print.prepareError', { error: (err as Error).message })) } finally { setPrinting(false) }
   }
 
   /** Miza za pospravit → znova na voljo (issue #1: e2e zaključek) */
@@ -696,8 +696,8 @@ function DashboardInner() {
       employeeName: o.employee?.name || null,
       items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station })),
     }, station))
-    if (!res.ok) alert(`Tisk ni uspel: ${res.error}`)
-    else if (res.simulated) alert(`SIMULACIJA ${station === 'BAR' ? 'bar' : 'kuhinjskega'} lista — vsebina v konzoli.`)
+    if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
+    else if (res.simulated) alert(station === 'BAR' ? t('print.simBar') : t('print.simKitchen'))
   }
 
   async function toggleAvailable(m: MenuT) {
@@ -719,7 +719,7 @@ function DashboardInner() {
       // triage ⑦: izven odpiralnega časa → ponudi izrecen pregled (audit RESERVATION_OUTSIDE_HOURS)
       if (msg.includes('izven odpiralnega časa')) {
         setSending(false)
-        if (confirm(`${msg}\n\nVseeno shrani rezervacijo? Sprememba se zabeleži v revizijski sledi.`)) {
+        if (confirm(`${msg}\n\n${t('resv.confirmOutside')}`)) {
           await createReservation(true)
         }
         return
@@ -747,7 +747,7 @@ function DashboardInner() {
       }
       setLocDialogOpen(false)
       await load()
-    } catch (err) { setLocNotice(`Napaka: ${(err as Error).message}`) } finally { setLocSaving(false) }
+    } catch (err) { setLocNotice(`${t('common.error')}: ${(err as Error).message}`) } finally { setLocSaving(false) }
   }
 
   /** Triage ⑧ — lokacije: aktivacija/deaktivacija (podatki ostanejo) */
@@ -756,7 +756,7 @@ function DashboardInner() {
     try {
       await api(`/api/locations/${l.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !l.isActive }) })
       await load()
-    } catch (err) { alert(`Napaka: ${(err as Error).message}`) }
+    } catch (err) { alert(`${t('common.error')}: ${(err as Error).message}`) }
   }
 
   /* ── Employee Control Center akcije ── */
@@ -779,7 +779,7 @@ function DashboardInner() {
       setEmpNotice(okMsg)
       setEmployees((list) => list.map((x) => (x.id === d.employee.id ? d.employee : x)))
       setEditEmployee(d.employee)
-    } catch (err) { setEmpNotice(`Napaka: ${(err as Error).message}`) } finally { setEmpSaving(false) }
+    } catch (err) { setEmpNotice(`${t('common.error')}: ${(err as Error).message}`) } finally { setEmpSaving(false) }
   }
 
   /** Vaja PIN-ov: bootstrap seja ustvari trajen admin profil z PIN-om (prehod iz env dostopa na bazo) */
@@ -788,9 +788,9 @@ function DashboardInner() {
     setBootBusy(true); setBootNotice('')
     try {
       await api('/api/employees', { method: 'POST', body: JSON.stringify({ email: user.email, name: bootName, pin: bootPin, role: 'ADMIN' }) })
-      setBootNotice(`Profil ustvarjen ✓ — odjavi se in prijavi z naslovom ${user.email} in novim PIN-om.`)
+      setBootNotice(t('emp.bootCreated', { email: user.email }))
       setBootPin(''); await load()
-    } catch (err) { setBootNotice(`Napaka: ${(err as Error).message}`) } finally { setBootBusy(false) }
+    } catch (err) { setBootNotice(`${t('common.error')}: ${(err as Error).message}`) } finally { setBootBusy(false) }
   }
 
   const cartTotal = Object.entries(cart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
@@ -820,7 +820,7 @@ function DashboardInner() {
   }, [cart, newOrderTable, menu, pushDisplay])
 
   const menuByCat = categories.map((c) => ({ cat: c, items: menu.filter((m) => m.categoryId === c.id) }))
-    .concat({ cat: { id: 'ostalo', name: 'Ostalo' }, items: menu.filter((m) => !m.categoryId) })
+    .concat({ cat: { id: 'ostalo', name: t('menu.other') }, items: menu.filter((m) => !m.categoryId) })
     .filter((g) => g.items.length > 0)
   // cone dinamično iz podatkov (produkcija: main/bar/patio/private; rekonstrukcija: Glavna dvorana/Bar/Terasa)
   const ZONE_LABELS: Record<string, string> = { main: 'Glavna dvorana', bar: 'Bar', patio: 'Terasa', private: 'Zasebna soba' }
@@ -906,7 +906,7 @@ function DashboardInner() {
               ) : (
                 <Wifi className="w-3.5 h-3.5" />
               )}
-              <span>{!online ? `Offline${queueOps.length ? ` · ${queueOps.length}` : ''}` : syncing ? t('header.syncing') : queueOps.length > 0 ? t('header.queued', { n: queueOps.length }) : t('header.online')}</span>
+              <span>{!online ? `${t('header.offline')}${queueOps.length ? ` · ${queueOps.length}` : ''}` : syncing ? t('header.syncing') : queueOps.length > 0 ? t('header.queued', { n: queueOps.length }) : t('header.online')}</span>
             </button>
             <ThemeToggle />
             <LanguageToggle />
@@ -927,12 +927,12 @@ function DashboardInner() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="w-full justify-start overflow-x-auto h-auto flex-nowrap bg-white border border-stone-200 p-1">
             {([
-              ['pregled', 'Pregled', LayoutDashboard], ['mize', 'Mize', Utensils], ['narocila', 'Naročila', ClipboardList],
-              ['kuhinja', 'Kuhinja', ChefHat], ['meni', 'Meni', BookOpen], ['rezervacije', 'Rezervacije', CalendarDays],
-              ['racuni', 'Računi', ReceiptText], ['zaloge', 'Zaloge', PackageSearch], ['izmene', 'Izmene', Clock],
-              ['delovnicas', 'Delovni čas', Timer],
-              ['haccp', 'HACCP', Thermometer], ['stroski', 'Stroški', Wallet], ['zvestoba', 'Zvestoba', HeartHandshake],
-              ['mnenja', 'Mnenja', Star], ['dostava', 'Dostava', Truck], ['napitnine', 'Napitnine', Coins], ['nabava', 'Nabava', ShoppingCart], ['darilne', 'Darilne kartice', Gift], ['odpad', 'Odpad', Trash2], ['cakalna', 'Čakalna lista', Hourglass], ['odpiralnicas', 'Odpiralni čas', CalendarClock], ['zaposleni', 'Zaposleni', Users], ['nastavitve', 'Nastavitve', Settings],
+              ['pregled', t('tabs.pregled'), LayoutDashboard], ['mize', t('tabs.mize'), Utensils], ['narocila', t('tabs.narocila'), ClipboardList],
+              ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
+              ['racuni', t('tabs.racuni'), ReceiptText], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
+              ['delovnicas', t('tabs.delovnicas'), Timer],
+              ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
+              ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
               .filter(([v]) => hasPerm(TAB_PERM[v]))
@@ -964,14 +964,14 @@ function DashboardInner() {
               })}
             </div>
             <Card>
-              <CardHeader><CardTitle className="text-base">Aktivna naročila</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">{t('dash.activeOrders')}</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {viewOrders.slice(0, 6).map((o) => (
                     <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-semibold truncate">{o.table?.name || o.type}</p>
-                        <p className="text-xs text-stone-500">{o.items.length} artiklov · {o.employee?.name || '—'}</p>
+                        <p className="text-xs text-stone-500">{t('dash.itemsCount', { n: o.items.length, name: o.employee?.name || '—' })}</p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-bold">{fmtEUR(o.total)}</p>
@@ -1109,10 +1109,10 @@ function DashboardInner() {
                   <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                     {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
                     <span className="ml-auto flex gap-1.5">
-                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title="Natisni kuhinjski list (ESC/POS agent ali simulator)">
+                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
                         <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title="Natisni bar list">
+                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
                         <Printer className="w-3 h-3" /> {t('kitchen.barTicket')}
                       </Button>
                     </span>
@@ -1122,20 +1122,20 @@ function DashboardInner() {
                   {o.items.map((it) => (
                     <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? 'Bar' : 'Kuhinja'}</Badge></p>
+                        <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge></p>
                         {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
                       </div>
                       <div className="flex gap-1.5 shrink-0">
-                        {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>Začni</Button>}
-                        {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setItemStatus(it.id, 'READY')}>Pripravljeno</Button>}
-                        {it.status === 'READY' && <Badge className={statusColors.READY}>{statusLabels.READY}</Badge>}
+                        {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
+                        {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setItemStatus(it.id, 'READY')}>{t('status.PREPARED')}</Button>}
+                        {it.status === 'READY' && <Badge className={statusColors.READY}>{t('status.READY')}</Badge>}
                       </div>
                     </div>
                   ))}
                 </CardContent>
               </Card>
             ))}
-            {viewKitchen.length === 0 && <p className="text-sm text-stone-500">Kuhinjska vrsta je prazna. 🎉</p>}
+            {viewKitchen.length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
           </TabsContent>
 
           <TabsContent value="meni" className="space-y-4">
@@ -1145,8 +1145,8 @@ function DashboardInner() {
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {g.items.map((m) => (
                     <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0"><p className="font-medium truncate">{m.name}</p><p className="text-sm text-stone-500">{fmtEUR(m.price)} · {m.station === 'BAR' ? 'Bar' : 'Kuhinja'}</p></div>
-                      <Button size="sm" variant={m.available ? 'outline' : 'secondary'} onClick={() => toggleAvailable(m)}>{m.available ? 'Na zalogi' : 'Ni na voljo'}</Button>
+                      <div className="min-w-0"><p className="font-medium truncate">{m.name}</p><p className="text-sm text-stone-500">{fmtEUR(m.price)} · {m.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</p></div>
+                      <Button size="sm" variant={m.available ? 'outline' : 'secondary'} onClick={() => toggleAvailable(m)}>{m.available ? t('menu.inStock') : t('menu.outOfStock')}</Button>
                     </div>
                   ))}
                 </div>
@@ -1156,30 +1156,30 @@ function DashboardInner() {
 
           <TabsContent value="rezervacije" className="space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-semibold text-stone-700">Prihajajoče rezervacije</h2>
+              <h2 className="font-semibold text-stone-700">{t('resv.upcoming')}</h2>
               {canRes && (
                 <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '' })}>
-                  <Plus className="w-3.5 h-3.5" /> Nova rezervacija
+                  <Plus className="w-3.5 h-3.5" /> {t('resv.new')}
                 </Button>
               )}
             </div>
             <Card>
               <CardContent className="pt-4">
-                {upcomingRes.length === 0 && <p className="text-sm text-stone-500">Ni prihajajočih rezervacij.</p>}
+                {upcomingRes.length === 0 && <p className="text-sm text-stone-500">{t('resv.empty')}</p>}
                 <div className="grid gap-2 sm:grid-cols-2">
                   {upcomingRes.map((r) => (
                     <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{r.guestName} <span className="text-xs text-stone-400">· {r.guests} osebi</span></p>
+                        <p className="font-medium truncate">{r.guestName} <span className="text-xs text-stone-400">· {r.guests} {t('orders.persons')}</span></p>
                         <p className="text-xs text-stone-500">{new Date(r.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{r.phone ? ` · ${r.phone}` : ''}</p>
                         {r.note && <p className="text-xs text-stone-400 truncate">ℹ {r.note}</p>}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge variant="outline">{RES_STATUS_LABELS[r.status] || r.status}</Badge>
+                        <Badge variant="outline">{RES_STATUS_KEYS[r.status] ? t(RES_STATUS_KEYS[r.status]) : r.status}</Badge>
                         {canRes && (
                           <>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>Prišel</Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>Prekliči</Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>{t('resv.seatedBtn')}</Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>{t('common.cancel')}</Button>
                           </>
                         )}
                       </div>
@@ -1195,24 +1195,24 @@ function DashboardInner() {
               <Button size="sm" variant="outline" onClick={() => {
                 const d = new Date()
                 downloadCSV(`racuni-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
-                  ['St. racuna', 'Datum', 'Miza', 'Narocilo', 'Nacin placila', 'Znesek (EUR)', 'EOR', 'FURS'],
+                  [t('rcpt.csvNumber'), t('exp.csvDate'), t('wl.thTable'), t('rcpt.csvOrder'), t('rcpt.csvPayMethod'), t('exp.csvAmount'), 'EOR', 'FURS'],
                   ...receipts.map((r) => [r.invoiceNumber, new Date(r.createdAt).toLocaleString('sl-SI'), r.tableName || '', r.orderNumber ?? '', r.paymentMethod.toUpperCase(), r.total, r.eor, r.fiscalVerified ? 'verified' : r.fiscalStatus]),
                 ])
               }}>
-                Izvozi račune (CSV)
+                {t('rcpt.exportCsv')}
               </Button>
             </div>
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-base">Izdani računi (FURS)</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-base">{t('rcpt.title')}</CardTitle></CardHeader>
               <CardContent>
-                {receipts.length === 0 && <p className="text-sm text-stone-500">Ni izdanih računov.</p>}
+                {receipts.length === 0 && <p className="text-sm text-stone-500">{t('rcpt.none')}</p>}
                 <ScrollArea className="max-h-[60vh]">
                   <div className="space-y-2">
                     {receipts.map((r) => (
                       <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex flex-wrap items-center justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium truncate">{r.invoiceNumber}{r.tableName ? ` · ${r.tableName}` : ''}</p>
-                          <p className="text-xs text-stone-500">{new Date(r.createdAt).toLocaleString('sl-SI')} · {r.paymentMethod.toUpperCase()}{r.orderNumber ? ` · naročilo #${r.orderNumber}` : ''}</p>
+                          <p className="text-xs text-stone-500">{new Date(r.createdAt).toLocaleString('sl-SI')} · {r.paymentMethod.toUpperCase()}{r.orderNumber ? ` · ${t('rcpt.orderShort', { n: r.orderNumber })}` : ''}</p>
                           <p className="text-[11px] text-stone-400 font-mono truncate max-w-xs sm:max-w-md">EOR: {r.eor}</p>
                         </div>
                         <div className="text-right shrink-0">
@@ -1220,12 +1220,12 @@ function DashboardInner() {
                           {r.fiscalVerified ? (
                             <Badge className="bg-emerald-600 text-white">FURS ✓</Badge>
                           ) : (
-                            <Badge variant="outline">{r.fiscalStatus || 'neoverjeno'}</Badge>
+                            <Badge variant="outline">{r.fiscalStatus || t('rcpt.unverified')}</Badge>
                           )}
                         </div>
                         <div className="shrink-0 flex items-center gap-1 w-full sm:w-auto justify-end">
                           <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
-                            <Printer className="w-3.5 h-3.5" /> Natisni
+                            <Printer className="w-3.5 h-3.5" /> {t('common.print')}
                           </Button>
                         </div>
                       </div>
@@ -1306,24 +1306,24 @@ function DashboardInner() {
                 <CardContent className="py-3 flex items-start gap-2.5">
                   <KeyRound className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
                   <div className="text-sm text-amber-800 min-w-0 space-y-2">
-                    <p className="font-medium">Aktiven je začasni (bootstrap) dostop — seja poteče po 2 urah.</p>
-                    {bootNotice && <p className={`text-xs font-medium rounded-md px-2 py-1 ${bootNotice.startsWith('Napaka') ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>{bootNotice}</p>}
+                    <p className="font-medium">{t('emp.bootstrapActive')}</p>
+                    {bootNotice && <p className={`text-xs font-medium rounded-md px-2 py-1 ${bootNotice.startsWith(t('common.error')) ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>{bootNotice}</p>}
                     {employees.every((e) => e.email?.toLowerCase() !== user?.email?.toLowerCase()) ? (
                       <>
-                        <p className="text-xs text-amber-700">E-poštni naslov <span className="font-medium">{user?.email}</span> še nima profila med zaposlenimi. Ustvari trajen admin profil s PIN-om, da bo prijava potekala neposredno iz baze:</p>
+                        <p className="text-xs text-amber-700">{t('emp.bootNoProfileA')} <span className="font-medium">{user?.email}</span> {t('emp.bootNoProfileB')}</p>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Input value={bootName} onChange={(e) => setBootName(e.target.value)} placeholder="Ime in priimek" className="max-w-48 h-9 bg-white" />
-                          <Input inputMode="numeric" maxLength={8} value={bootPin} onChange={(e) => setBootPin(e.target.value.replace(/\D/g, ''))} placeholder="PIN (4–8)" className="max-w-28 h-9 bg-white" />
-                          <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100 h-9" title="Naključni 6-mestni PIN" onClick={() => setBootPin(String(Math.floor(100000 + Math.random() * 900000)))}>
+                          <Input value={bootName} onChange={(e) => setBootName(e.target.value)} placeholder={t('emp.bootNamePlaceholder')} className="max-w-48 h-9 bg-white" />
+                          <Input inputMode="numeric" maxLength={8} value={bootPin} onChange={(e) => setBootPin(e.target.value.replace(/\D/g, ''))} placeholder={t('emp.bootPinPlaceholder')} className="max-w-28 h-9 bg-white" />
+                          <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100 h-9" title={t('emp.randomPinTitle')} onClick={() => setBootPin(String(Math.floor(100000 + Math.random() * 900000)))}>
                             <Dices className="w-4 h-4" />
                           </Button>
                           <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 h-9" disabled={bootBusy || !bootName || bootPin.length < 4} onClick={createBootstrapProfile}>
-                            {bootBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Ustvari trajen profil'}
+                            {bootBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('emp.bootCreate')}
                           </Button>
                         </div>
                       </>
                     ) : (
-                      <p className="text-xs text-amber-700">Klikni svoj profil spodaj, nastavi si trajen PIN (lahko isti kot zdaj) ter se nato odjavi in znova prijavi. Po ponovni prijavi to opozorilo izgine.</p>
+                      <p className="text-xs text-amber-700">{t('emp.bootExisting')}</p>
                     )}
                   </div>
                 </CardContent>
@@ -1331,8 +1331,8 @@ function DashboardInner() {
             )}
             <Card>
               <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> Zaposleni{canManage ? ' — Control Center' : ''}</CardTitle>
-                {canManage && <span className="text-xs text-stone-400 hidden sm:inline">klikni profil za urejanje</span>}
+                <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> {t('tabs.zaposleni')}{canManage ? t('emp.controlCenter') : ''}</CardTitle>
+                {canManage && <span className="text-xs text-stone-400 hidden sm:inline">{t('emp.clickToEdit')}</span>}
               </CardHeader>
               <CardContent className="grid gap-2 sm:grid-cols-2">
                 {viewEmployees.map((e) => (
@@ -1343,13 +1343,13 @@ function DashboardInner() {
                     className={`flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2 bg-white text-left ${canManage ? 'hover:border-emerald-600 hover:shadow-sm transition' : 'cursor-default'}`}
                   >
                     <div className="min-w-0">
-                      <p className="font-medium truncate">{e.name}{!e.active && <span className="ml-1.5 text-xs text-red-600">(neaktiven)</span>}</p>
+                      <p className="font-medium truncate">{e.name}{!e.active && <span className="ml-1.5 text-xs text-red-600">{t('emp.inactiveSuffix')}</span>}</p>
                       <p className="text-xs text-stone-500 truncate">{e.email}</p>
                       {locList.find((l) => l.id === e.locationId)?.name && (
                         <p className="text-[11px] text-stone-400 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {locList.find((l) => l.id === e.locationId)?.name}</p>
                       )}
                       {(e.permissionOverrides?.length || 0) > 0 && (
-                        <p className="text-[11px] text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {e.permissionOverrides.length} dovoljenj</p>
+                        <p className="text-[11px] text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {t('emp.permsCount', { n: e.permissionOverrides.length })}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -1368,55 +1368,55 @@ function DashboardInner() {
             <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} onChanged={load} />
             {/* Naprave te naprave (issue #1, naloga 2) — tiskalnik + plačilni terminal */}
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Printer className="w-4 h-4" /> Tiskalnik in terminal — ta naprava</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Printer className="w-4 h-4" /> {t('print.deviceTitle')}</CardTitle></CardHeader>
               <CardContent className="space-y-4 text-sm">
-                <p className="text-xs text-stone-500">Konfiguracija je vezana na to napravo (localStorage). Cilj “Lokalni agent” pošilja ESC/POS (CP852 — č/š/ž) prek print-agent strežnika na omrežni tiskalnik (TCP 9100).</p>
+                <p className="text-xs text-stone-500">{t('print.deviceDesc')}</p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-1.5">
-                    <Label>Cilj tiskanja</Label>
+                    <Label>{t('print.target')}</Label>
                     <Select value={pcfg.target} onValueChange={(v) => setPcfg((c) => ({ ...c, target: v as PrintTarget }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="browser">Brskalnik (okno/PDF)</SelectItem>
-                        <SelectItem value="agent">Lokalni agent (ESC/POS)</SelectItem>
-                        <SelectItem value="simulator">Simulator (brez naprave)</SelectItem>
+                        <SelectItem value="browser">{t('print.targetBrowser')}</SelectItem>
+                        <SelectItem value="agent">{t('print.targetAgent')}</SelectItem>
+                        <SelectItem value="simulator">{t('print.targetSim')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Tiskalnik — IP gostitelj</Label>
-                    <Input value={pcfg.host} onChange={(e) => setPcfg((c) => ({ ...c, host: e.target.value }))} placeholder="npr. 192.168.1.100" />
+                    <Label>{t('print.hostLabel')}</Label>
+                    <Input value={pcfg.host} onChange={(e) => setPcfg((c) => ({ ...c, host: e.target.value }))} placeholder={t('print.hostPlaceholder')} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Tiskalnik — vrata</Label>
+                    <Label>{t('print.portLabel')}</Label>
                     <Input inputMode="numeric" value={String(pcfg.port)} onChange={(e) => setPcfg((c) => ({ ...c, port: Number(e.target.value.replace(/\D/g, '')) || 9100 }))} />
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label>Plačilni terminal</Label>
+                    <Label>{t('print.terminal')}</Label>
                     <Select value={termMode} onValueChange={(v) => setTermMode(v as TerminalMode)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Brez terminala</SelectItem>
-                        <SelectItem value="simulator">Simulator (avtomatska odobritev)</SelectItem>
-                        <SelectItem value="manual">Ročno (koda odobritve s terminala)</SelectItem>
+                        <SelectItem value="none">{t('print.termNone')}</SelectItem>
+                        <SelectItem value="simulator">{t('print.termSim')}</SelectItem>
+                        <SelectItem value="manual">{t('print.termManual')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="flex items-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { savePrintConfig(pcfg); saveTerminalConfig({ mode: termMode }); alert('Konfiguracija naprave shranjena ✓') }}>Shrani</Button>
+                    <Button size="sm" variant="outline" onClick={() => { savePrintConfig(pcfg); saveTerminalConfig({ mode: termMode }); alert(t('print.saved')) }}>{t('common.save')}</Button>
                     <Button size="sm" variant="outline" className="gap-1" onClick={async () => {
-                      const res = await printLines('Testni tisk', [
-                        { text: 'RestavrantOS — test tiskalnika' },
-                        { text: 'Č Š Ž č š ž — CP852 preverjanje', bold: true },
+                      const res = await printLines(t('print.testBtn'), [
+                        { text: t('print.testLine1') },
+                        { text: t('print.testLine2'), bold: true },
                         { text: new Date().toLocaleString('sl-SI') },
                       ])
-                      if (!res.ok) alert(`Tisk ni uspel: ${res.error}`)
-                      else if (res.simulated) alert('SIMULACIJA — testne vrstice v konzoli.')
-                      else alert('Poslano na tiskalnik ✓')
+                      if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
+                      else if (res.simulated) alert(t('print.simTest'))
+                      else alert(t('print.sent'))
                     }}>
-                      <Printer className="w-3.5 h-3.5" /> Testni tisk
+                      <Printer className="w-3.5 h-3.5" /> {t('print.testBtn')}
                     </Button>
                   </div>
                 </div>
@@ -1425,15 +1425,15 @@ function DashboardInner() {
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacije</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {t('loc.title')}</CardTitle>
                   {hasPerm('settings.manage') && (
                     <Button size="sm" variant="outline" className="gap-1 h-8" onClick={() => { setLocEditing(null); setLocForm({ name: '', code: '', address: '', city: '', postCode: '', country: 'SI', phone: '', email: '', premisesId: '', timezone: 'Europe/Ljubljana', currency: 'EUR', isActive: true }); setLocNotice(''); setLocDialogOpen(true) }}>
-                      <Plus className="w-3.5 h-3.5" /> Nova lokacija
+                      <Plus className="w-3.5 h-3.5" /> {t('loc.new')}
                     </Button>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {locList.length === 0 && locStats.length === 0 && <p className="text-sm text-stone-500">Ni lokacij.</p>}
+                  {locList.length === 0 && locStats.length === 0 && <p className="text-sm text-stone-500">{t('loc.none')}</p>}
                   {(locList.length > 0 ? locList : locStats.map((s) => ({ id: s.id, name: s.name, code: '', address: '', city: '', postCode: '', country: '', phone: '', email: '', premisesId: '', timezone: '', currency: '', isActive: true }))).map((l) => {
                     const st = locStats.find((s) => s.id === l.id)
                     return (
@@ -1441,23 +1441,23 @@ function DashboardInner() {
                         <div className="min-w-0">
                           <p className="font-medium truncate">
                             {l.name}
-                            {!l.isActive && <Badge variant="outline" className="ml-1.5 text-[10px]">neaktivna</Badge>}
+                            {!l.isActive && <Badge variant="outline" className="ml-1.5 text-[10px]">{t('dost.inactiveF')}</Badge>}
                           </p>
                           <p className="text-xs text-stone-500 truncate">
-                            {st ? `${st.tables} miz · ${st.employees} zaposlenih · ${st.orders} naročil skupaj` : [l.city, l.country].filter(Boolean).join(' · ') || l.code}
+                            {st ? t('loc.meta', { tables: st.tables, employees: st.employees, orders: st.orders }) : [l.city, l.country].filter(Boolean).join(' · ') || l.code}
                           </p>
                         </div>
                         <div className="text-right shrink-0 flex items-center gap-1.5">
                           <div>
                             <p className="font-bold">{st ? fmtEUR(st.todayRevenue) : '—'}</p>
-                            <p className="text-xs text-stone-400">danes {st ? st.todayOrders : '—'} naročil</p>
+                            <p className="text-xs text-stone-400">{t('loc.today', { n: st ? st.todayOrders : '—' })}</p>
                           </div>
                           {hasPerm('settings.manage') && (
                             <div className="flex flex-col gap-0.5">
-                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Uredi ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId, timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocNotice(''); setLocDialogOpen(true) }}>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${t('common.edit')} ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId, timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocNotice(''); setLocDialogOpen(true) }}>
                                 <Settings className="w-3.5 h-3.5" />
                               </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={l.isActive ? `Deaktiviraj ${l.name}` : `Aktiviraj ${l.name}`} onClick={() => setConfirmLocToggle(l)}>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${l.isActive ? t('loc.deactivate') : t('loc.activate')} ${l.name}`} onClick={() => setConfirmLocToggle(l)}>
                                 <Power className="w-3.5 h-3.5" />
                               </Button>
                             </div>
@@ -1469,14 +1469,14 @@ function DashboardInner() {
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Plug className="w-4 h-4" /> Integracije</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Plug className="w-4 h-4" /> {t('integ.title')}</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
-                  {integrations.length === 0 && <p className="text-sm text-stone-500">Ni integracij.</p>}
+                  {integrations.length === 0 && <p className="text-sm text-stone-500">{t('integ.none')}</p>}
                   {integrations.map((i) => (
                     <div key={i.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{i.name} <span className="text-xs text-stone-400">· {i.provider}</span></p>
-                        <p className="text-xs text-stone-500">{i.type}{i.syncEnabled ? ' · sinhronizacija vključena' : ''}{i.lastSyncAt ? ` · zadnja: ${new Date(i.lastSyncAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+                        <p className="text-xs text-stone-500">{i.type}{i.syncEnabled ? t('integ.syncOn') : ''}{i.lastSyncAt ? t('integ.lastSync', { when: new Date(i.lastSyncAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : ''}</p>
                       </div>
                       <Badge className={i.connectionStatus === 'connected' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{i.connectionStatus}</Badge>
                     </div>
@@ -1484,25 +1484,25 @@ function DashboardInner() {
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Webhook className="w-4 h-4" /> Webhooki</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Webhook className="w-4 h-4" /> {t('integ.webhooks')}</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
-                  {webhooks.length === 0 && <p className="text-sm text-stone-500">Ni registriranih webhookov.</p>}
+                  {webhooks.length === 0 && <p className="text-sm text-stone-500">{t('integ.noWebhooks')}</p>}
                   {webhooks.map((w) => (
                     <div key={w.id} className="rounded-lg border border-stone-200 bg-white p-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-medium truncate">{w.name}</p>
-                        <Badge className={w.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{w.isActive ? 'Aktiven' : 'Izklopljen'}</Badge>
+                        <Badge className={w.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{w.isActive ? t('integ.activeF') : t('integ.offF')}</Badge>
                       </div>
                       <p className="text-xs text-stone-500 truncate">{w.url}</p>
-                      <p className="text-[11px] text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : 'brez dogodkov'}{w.failureCount > 0 ? ` · ${w.failureCount} napak` : ''}{w.lastTriggered ? ` · nazadnje sprožen ${new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+                      <p className="text-[11px] text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : t('integ.noEvents')}{w.failureCount > 0 ? t('integ.errorsCount', { n: w.failureCount }) : ''}{w.lastTriggered ? t('integ.lastTriggered', { when: new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : ''}</p>
                     </div>
                   ))}
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Bug className="w-4 h-4" /> Dnevnik napak</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Bug className="w-4 h-4" /> {t('errlog.title')}</CardTitle></CardHeader>
                 <CardContent>
-                  {errLog.length === 0 && <p className="text-sm text-stone-500">Ni zabeleženih napak.</p>}
+                  {errLog.length === 0 && <p className="text-sm text-stone-500">{t('errlog.none')}</p>}
                   <ScrollArea className="max-h-72">
                     <div className="space-y-2">
                       {errLog.map((l) => (
@@ -1519,9 +1519,9 @@ function DashboardInner() {
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Revizijski dnevnik</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> {t('audit.title')}</CardTitle></CardHeader>
                 <CardContent>
-                  {auditLog.length === 0 && <p className="text-sm text-stone-500">Ni revizijskih vnosov.</p>}
+                  {auditLog.length === 0 && <p className="text-sm text-stone-500">{t('audit.none')}</p>}
                   <ScrollArea className="max-h-72">
                     <div className="space-y-2">
                       {auditLog.map((a) => (
@@ -1538,11 +1538,11 @@ function DashboardInner() {
                 </CardContent>
               </Card>
             </div>
-            <Card><CardHeader><CardTitle className="text-base">O sistemu</CardTitle></CardHeader>
+            <Card><CardHeader><CardTitle className="text-base">{t('sys.title')}</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
-                <p>RestavrantOS — različica {APP_VERSION} (offline-first rekonstrukcija)</p>
-                <p>Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.</p>
-                <p>Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).</p>
+                <p>{t('sys.version', { v: APP_VERSION })}</p>
+                <p>{t('sys.modules')}</p>
+                <p>{t('sys.db')}</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1886,37 +1886,37 @@ function DashboardInner() {
       {/* ── Nova rezervacija ── */}
       <Dialog open={!!newRes} onOpenChange={(v) => !v && setNewRes(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nova rezervacija</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('resv.new')}</DialogTitle></DialogHeader>
           {newRes && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="res-name">Ime gosta *</Label>
-                <Input id="res-name" value={newRes.guestName} onChange={(e) => setNewRes({ ...newRes, guestName: e.target.value })} placeholder="npr. Družina Novak" />
+                <Label htmlFor="res-name">{t('loy.guestName')}</Label>
+                <Input id="res-name" value={newRes.guestName} onChange={(e) => setNewRes({ ...newRes, guestName: e.target.value })} placeholder={t('wl.namePlaceholder')} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="res-phone">Telefon</Label>
-                  <Input id="res-phone" value={newRes.phone} onChange={(e) => setNewRes({ ...newRes, phone: e.target.value })} placeholder="041 234 567" />
+                  <Label htmlFor="res-phone">{t('inv.phone')}</Label>
+                  <Input id="res-phone" value={newRes.phone} onChange={(e) => setNewRes({ ...newRes, phone: e.target.value })} placeholder={t('loy.phonePlaceholder')} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="res-guests">Št. oseb</Label>
+                  <Label htmlFor="res-guests">{t('resv.guestsLabel')}</Label>
                   <Input id="res-guests" type="number" min={1} value={newRes.guests} onChange={(e) => setNewRes({ ...newRes, guests: Number(e.target.value) || 2 })} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="res-time">Datum in čas *</Label>
+                <Label htmlFor="res-time">{t('resv.dateTime')}</Label>
                 <Input id="res-time" type="datetime-local" value={newRes.reservedAt} onChange={(e) => setNewRes({ ...newRes, reservedAt: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="res-note">Opomba</Label>
-                <Input id="res-note" value={newRes.note} onChange={(e) => setNewRes({ ...newRes, note: e.target.value })} placeholder="npr. otroški stol" />
+                <Label htmlFor="res-note">{t('proc.note')}</Label>
+                <Input id="res-note" value={newRes.note} onChange={(e) => setNewRes({ ...newRes, note: e.target.value })} placeholder={t('resv.notePlaceholder')} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewRes(null)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setNewRes(null)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || !newRes?.guestName || !newRes?.reservedAt} onClick={() => void createReservation()}>
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani rezervacijo'}
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('resv.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1931,12 +1931,12 @@ function DashboardInner() {
           {editEmployee && (
             <ScrollArea className="max-h-[60vh] pr-2">
               <div className="space-y-5">
-                {empNotice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${empNotice.startsWith('Napaka') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{empNotice}</p>}
+                {empNotice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${empNotice.startsWith(t('common.error')) ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{empNotice}</p>}
                 <p className="text-xs text-stone-500">{editEmployee.email}</p>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>Vloga</Label>
+                    <Label>{t('shifts.csvRole')}</Label>
                     <Select value={empRole} onValueChange={(v) => setEmpRole(v)} disabled={user?.role === 'MANAGER' && empRole === 'ADMIN'}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -1947,17 +1947,17 @@ function DashboardInner() {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Status</Label>
+                    <Label>{t('shifts.csvStatus')}</Label>
                     <div className="flex items-center gap-2 h-9">
                       <Switch id="emp-active" checked={empActive} onCheckedChange={(v) => { if (!v) setConfirmDeactivate(true); else setEmpActive(true) }} />
-                      <Label htmlFor="emp-active" className="text-sm font-normal">{empActive ? 'Aktiven' : 'Neaktiven'}</Label>
+                      <Label htmlFor="emp-active" className="text-sm font-normal">{empActive ? t('emp.activeF') : t('emp.inactiveF')}</Label>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Dovoljenja (override-ji)</Label>
-                  <p className="text-xs text-stone-400">Kanonska avtorizacija: prazno = privzeto po vlogi.</p>
+                  <Label className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> {t('emp.permsLabel')}</Label>
+                  <p className="text-xs text-stone-400">{t('emp.permsHint')}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {Object.entries(PERMISSION_LABELS).map(([perm, label]) => (
                       <label key={perm} className="flex items-center gap-2 rounded-md border border-stone-200 px-2.5 py-2 text-sm cursor-pointer hover:bg-stone-50">
@@ -1969,30 +1969,30 @@ function DashboardInner() {
                       </label>
                     ))}
                   </div>
-                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={empSaving} onClick={() => patchEmployee({ permissionOverrides: empPerms, role: empRole, status: empActive ? 'active' : 'inactive', ...(empLoc ? { locationId: empLoc } : {}) }, 'Shranjeno ✓')}>
-                    {empSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani profil'}
+                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={empSaving} onClick={() => patchEmployee({ permissionOverrides: empPerms, role: empRole, status: empActive ? 'active' : 'inactive', ...(empLoc ? { locationId: empLoc } : {}) }, t('emp.savedOk'))}>
+                    {empSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('emp.saveProfile')}
                   </Button>
                 </div>
 
                 {/* Triage ⑧ — pravice po lokaciji: dodelitev poslovalnice zaposlenemu */}
                 <div className="space-y-1.5">
-                  <Label className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Lokacija (poslovalnica)</Label>
+                  <Label className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {t('emp.locationLabel')}</Label>
                   <Select value={empLoc} onValueChange={setEmpLoc}>
-                    <SelectTrigger aria-label="Lokacija zaposlenega"><SelectValue placeholder="(nedodeljeno)" /></SelectTrigger>
+                    <SelectTrigger aria-label={t('emp.locAria')}><SelectValue placeholder={t('emp.unassigned')} /></SelectTrigger>
                     <SelectContent>
                       {locList.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? ' — neaktivna' : ''}</SelectItem>
+                        <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? t('emp.locInactiveSuffix') : ''}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-stone-400">Dostop do podatkov je vezan na lokacijo — sprememba zahteva ponovno prijavo.</p>
+                  <p className="text-xs text-stone-400">{t('emp.locHint')}</p>
                 </div>
 
                 <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <Label className="text-amber-800">Ponastavi PIN</Label>
-                  <p className="text-xs text-amber-700">Občutljiva akcija: obstoječe seje postanejo neveljavne, akcija se zapiše v reviji (audit).</p>
+                  <Label className="text-amber-800">{t('emp.pinResetLabel')}</Label>
+                  <p className="text-xs text-amber-700">{t('emp.pinResetHint')}</p>
                   {editEmployee.email?.toLowerCase() === user?.email?.toLowerCase() && (
-                    <p className="text-xs font-medium text-amber-900">To je tvoj profil — s tem PIN-om bo prijava potekala neposredno iz baze (brez začasnega bootstrap dostopa).</p>
+                    <p className="text-xs font-medium text-amber-900">{t('emp.pinSelfHint')}</p>
                   )}
                   <div className="flex gap-2">
                     <Input
@@ -2000,20 +2000,20 @@ function DashboardInner() {
                       maxLength={8}
                       value={empPin}
                       onChange={(e) => setEmpPin(e.target.value.replace(/\D/g, ''))}
-                      placeholder="4–8 številk"
+                      placeholder={t('emp.pinPlaceholder')}
                       className="max-w-40 bg-white"
                     />
                     <Button
                       size="sm"
                       variant="outline"
                       className="border-amber-300 text-amber-800 hover:bg-amber-100"
-                      title="Naključni 6-mestni PIN"
+                      title={t('emp.randomPinTitle')}
                       onClick={() => setEmpPin(String(Math.floor(100000 + Math.random() * 900000)))}
                     >
                       <Dices className="w-4 h-4" />
                     </Button>
                     <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100" disabled={empPin.length < 4} onClick={() => setConfirmPinReset(true)}>
-                      Ponastavi PIN
+                      {t('emp.pinResetLabel')}
                     </Button>
                   </div>
                 </div>
@@ -2021,7 +2021,7 @@ function DashboardInner() {
             </ScrollArea>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditEmployee(null); setEmpNotice('') }}>Zapri</Button>
+            <Button variant="outline" onClick={() => { setEditEmployee(null); setEmpNotice('') }}>{t('common.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2030,78 +2030,78 @@ function DashboardInner() {
       <Dialog open={locDialogOpen} onOpenChange={(v) => !v && setLocDialogOpen(false)}>
         <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><MapPin className="w-5 h-5" /> {locEditing ? `Uredi — ${locEditing.name}` : 'Nova lokacija'}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><MapPin className="w-5 h-5" /> {locEditing ? t('loc.editTitle', { name: locEditing.name }) : t('loc.new')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {locNotice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${locNotice.startsWith('Napaka') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{locNotice}</p>}
+            {locNotice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${locNotice.startsWith(t('common.error')) ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{locNotice}</p>}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Ime *</Label>
-                <Input value={locForm.name} onChange={(e) => setLocForm((f) => ({ ...f, name: e.target.value }))} placeholder="npr. Maribor center" />
+                <Label>{t('loc.nameLabel')}</Label>
+                <Input value={locForm.name} onChange={(e) => setLocForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('loc.namePlaceholder')} />
               </div>
               <div className="space-y-1.5">
-                <Label>Koda</Label>
-                <Input value={locForm.code} onChange={(e) => setLocForm((f) => ({ ...f, code: e.target.value.toUpperCase().slice(0, 20) }))} placeholder="samodejno iz imena" />
+                <Label>{t('loc.codeLabel')}</Label>
+                <Input value={locForm.code} onChange={(e) => setLocForm((f) => ({ ...f, code: e.target.value.toUpperCase().slice(0, 20) }))} placeholder={t('loc.codePlaceholder')} />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Naslov</Label>
-              <Input value={locForm.address} onChange={(e) => setLocForm((f) => ({ ...f, address: e.target.value }))} placeholder="Ulica in hišna številka" />
+              <Label>{t('set.address')}</Label>
+              <Input value={locForm.address} onChange={(e) => setLocForm((f) => ({ ...f, address: e.target.value }))} placeholder={t('loc.addressPlaceholder')} />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label>Mesto</Label>
+                <Label>{t('loc.cityLabel')}</Label>
                 <Input value={locForm.city} onChange={(e) => setLocForm((f) => ({ ...f, city: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Poštna št.</Label>
+                <Label>{t('loc.postCode')}</Label>
                 <Input value={locForm.postCode} onChange={(e) => setLocForm((f) => ({ ...f, postCode: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Država</Label>
+                <Label>{t('loc.country')}</Label>
                 <Select value={locForm.country} onValueChange={(v) => setLocForm((f) => ({ ...f, country: v }))}>
-                  <SelectTrigger aria-label="Država"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('loc.country')}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="SI">SI — Slovenija</SelectItem>
-                    <SelectItem value="HR">HR — Hrvaška</SelectItem>
+                    <SelectItem value="SI">{t('loc.countrySI')}</SelectItem>
+                    <SelectItem value="HR">{t('loc.countryHR')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Telefon</Label>
-                <Input value={locForm.phone} onChange={(e) => setLocForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+386 …" />
+                <Label>{t('inv.phone')}</Label>
+                <Input value={locForm.phone} onChange={(e) => setLocForm((f) => ({ ...f, phone: e.target.value }))} placeholder={t('dost.phonePlaceholder')} />
               </div>
               <div className="space-y-1.5">
-                <Label>E-pošta</Label>
+                <Label>{t('set.email')}</Label>
                 <Input value={locForm.email} onChange={(e) => setLocForm((f) => ({ ...f, email: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>FURS poslovni prostor</Label>
-                <Input value={locForm.premisesId} onChange={(e) => setLocForm((f) => ({ ...f, premisesId: e.target.value.toUpperCase().slice(0, 40) }))} placeholder="npr. BLG002" />
+                <Label>{t('loc.premisesLabel')}</Label>
+                <Input value={locForm.premisesId} onChange={(e) => setLocForm((f) => ({ ...f, premisesId: e.target.value.toUpperCase().slice(0, 40) }))} placeholder={t('loc.premisesPlaceholder')} />
               </div>
               <div className="space-y-1.5">
-                <Label>Valuta</Label>
+                <Label>{t('set.currency')}</Label>
                 <Input value={locForm.currency} onChange={(e) => setLocForm((f) => ({ ...f, currency: e.target.value.toUpperCase().slice(0, 3) }))} />
               </div>
             </div>
             {locEditing && (
               <div className="flex items-center justify-between rounded-lg border border-stone-200 p-2.5">
                 <div className="pr-2">
-                  <Label className="text-sm">Aktivna</Label>
-                  <p className="text-xs text-stone-400">Neaktivna lokacija izgine iz pogledov; podatki (zgodovina, FURS računi) ostanejo.</p>
+                  <Label className="text-sm">{t('gc.stActive')}</Label>
+                  <p className="text-xs text-stone-400">{t('loc.activeHint')}</p>
                 </div>
                 <Switch checked={locForm.isActive} onCheckedChange={(v) => setLocForm((f) => ({ ...f, isActive: v }))} />
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLocDialogOpen(false)}>Prekliči</Button>
+            <Button variant="outline" onClick={() => setLocDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={locSaving || !locForm.name.trim()} onClick={() => void saveLocation()}>
-              {locSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Shrani lokacijo'}
+              {locSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('loc.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2111,18 +2111,18 @@ function DashboardInner() {
       <AlertDialog open={!!confirmLocToggle} onOpenChange={(v) => !v && setConfirmLocToggle(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{confirmLocToggle?.isActive ? `Deaktiviram ${confirmLocToggle?.name}?` : `Aktiviram ${confirmLocToggle?.name}?`}</AlertDialogTitle>
+            <AlertDialogTitle>{confirmLocToggle?.isActive ? t('loc.confirmDeactivate', { name: confirmLocToggle?.name || '' }) : t('loc.confirmActivate', { name: confirmLocToggle?.name || '' })}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmLocToggle?.isActive
-                ? 'Neaktivna lokacija izgine iz pogledov in preklopnika. Podatki (zgodovina, FURS računi, zaposleni) ostanejo nespremenjeni.'
-                : 'Lokacija bo spet vidna v pogledih in na voljo za delo.'}
-              Akcija se zapiše v revijo sprememb.
+                ? t('loc.deactivateDesc')
+                : t('loc.activateDesc')}
+              {t('loc.auditNote')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Prekliči</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => confirmLocToggle && void toggleLocationActive(confirmLocToggle)}>
-              {confirmLocToggle?.isActive ? 'Deaktiviraj' : 'Aktiviraj'}
+              {confirmLocToggle?.isActive ? t('loc.deactivate') : t('loc.activate')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2132,19 +2132,19 @@ function DashboardInner() {
       <AlertDialog open={confirmPinReset} onOpenChange={setConfirmPinReset}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Ponastavim PIN za {editEmployee?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>{t('emp.confirmPinReset', { name: editEmployee?.name || '' })}</AlertDialogTitle>
             <AlertDialogDescription>
-              To je občutljiva akcija: nov PIN bo edini način prijave za tega zaposlenega, vse obstoječe seje bodo preklicane, akcija pa bo zapisana v reviji sprememb.
+              {t('emp.pinResetDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Prekliči</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction className="bg-amber-600 hover:bg-amber-700" onClick={() => {
               setConfirmPinReset(false)
               const self = editEmployee?.email?.toLowerCase() === user?.email?.toLowerCase()
-              patchEmployee({ pin: empPin }, self ? 'PIN nastavljen ✓ — odjavi se in prijavi z novim PIN-om' : 'PIN ponastavljen ✓')
+              patchEmployee({ pin: empPin }, self ? t('emp.pinSelfOk') : t('emp.pinResetOk'))
             }}>
-              Razumem, ponastavi PIN
+              {t('emp.pinResetConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2153,15 +2153,15 @@ function DashboardInner() {
       <AlertDialog open={confirmDeactivate} onOpenChange={setConfirmDeactivate}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Deaktiviram račun {editEmployee?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>{t('emp.confirmDeactivate', { name: editEmployee?.name || '' })}</AlertDialogTitle>
             <AlertDialogDescription>
-              To je občutljiva akcija: zaposleni ne bo se mogel več prijaviti, odprte izmene ostanejo odprte. Akcija se zapiše v reviji sprememb.
+              {t('emp.deactivateDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Prekliči</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => { setConfirmDeactivate(false); setEmpActive(false); patchEmployee({ status: 'inactive' }, 'Račun deaktiviran ✓') }}>
-              Razumem, deaktiviraj
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => { setConfirmDeactivate(false); setEmpActive(false); patchEmployee({ status: 'inactive' }, t('emp.deactivatedOk')) }}>
+              {t('emp.deactivateConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
