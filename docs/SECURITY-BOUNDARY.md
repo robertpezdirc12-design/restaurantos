@@ -19,7 +19,7 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 | Session revokacija | `sessionVersion` v DB; PIN reset/deaktivacija → takojšen preklic vseh žetonov (fail-closed tudi za stare žetone brez `sv`) | `requireAuth` |
 | Authorization | RBAC kanonična dovoljenja (`requirePermission`) + per-employee `permissionOverrides` | rutine z obsegi |
 | Location scope | `assertResourceLocation` (posamezen vir), `locationScope` (seznami), `requireUserLocation` (create) | vse lokacijske rute |
-| Tenant scope | `assertTenantScope` — cross-org → 403 | enterprise + cross-location poti (v1.35.0) |
+| Tenant scope | org meja INLINE v enterprise rutah (GET filtrira org, POST cross-org → 403); `assertTenantScope` (src/lib/tenant.ts) definiran, **še ni povezan v rute** (rezerva — glej TENANT-ISOLATION.md) | enterprise rute (`/api/enterprise`) |
 | Rate limit | `RateLimitStore` (memory; Upstash env-ready); delivery 30/min, javni naročilni 10/min | delivery, public/* |
 | Audit | `AuditLog` (+ `EventLog` #11) | ob pomembnih akcijah |
 | Input validacija | ročna per ruta (`typeof`, `.slice()` cap-i); delivery `validateMapped` | vse rute |

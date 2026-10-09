@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid } from '@/lib/map'
 
 /**
  * Issue #10 P2-3 — enkratna produkcijska migracija sheme (Neon Postgres nima PrintJob tabele).
- * Samo za ADMIN (requirePermission employees.manage). Idempotentno (IF NOT EXISTS).
+ * Samo za centralne vloge (requireCentralRole — DB vloga owner/admin; N4 audit P1).
+ * Idempotentno (IF NOT EXISTS).
  * Brez prostoformskega SQL — izvajajo se IZKLJUČNO fiksné, aditivne DDL izjave
  * (enaka politika kot migrate-issue3). Audit: SCHEMA_MIGRATION_ISSUE10.
  */
@@ -36,7 +37,7 @@ const MIGRATIONS: { id: string; ddl: string[] }[] = [
 ]
 
 export async function POST(req: NextRequest) {
-  const user = await requirePermission(req, 'employees.manage')
+  const user = await requireCentralRole(req)
   if (isResponse(user)) return user
 
   const results: { id: string; applied: string[]; skipped: boolean }[] = []

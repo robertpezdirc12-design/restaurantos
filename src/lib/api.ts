@@ -74,6 +74,29 @@ export async function requirePermission(
 export const APP_VERSION = '1.45.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
 
+/**
+ * N4 (audit P1): DDL rute (`/api/admin/migrate-*`, $executeRawUnsafe) zahtevajo
+ * CENTRALNI VLOGI na nivoju DB (owner/admin) — dovoljenja (npr. employees.manage)
+ * ima tudi MANAGER, zato so permission-based gate-i za DDL premajhni.
+ * Vloga se preveri proti DB (živ vir resnice — padec vloge velja takoj),
+ * seja/revoke pa varuje requireAuth (status + sessionVersion, D4).
+ * Bootstrap admin (brez Employee vrstice) gre skozi kot break-glass
+ * (isti fast-path pogoj kot v requireAuth).
+ */
+export async function requireCentralRole(req: NextRequest): Promise<AuthPayload | NextResponse> {
+  const user = await requireAuth(req)
+  if (isResponse(user)) return user
+  if (user.role === 'ADMIN' && user.sub === 'bootstrap') return user
+  const employee = await db.employee.findUnique({
+    where: { id: user.sub },
+    select: { role: true },
+  })
+  if (!employee) return forbidden()
+  const roleDB = String(employee.role).toLowerCase()
+  if (roleDB !== 'admin' && roleDB !== 'owner') return forbidden()
+  return user
+}
+
 // ---------- Issue #4 §1 — centralni resource/location authorization ----------
 
 /**

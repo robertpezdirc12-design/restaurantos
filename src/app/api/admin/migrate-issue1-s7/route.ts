@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok } from '@/lib/api'
+import { requireCentralRole, isResponse, ok } from '@/lib/api'
 import { nid } from '@/lib/map'
 
 /**
  * Issue #1 sklop ⑦ — enkratna produkcijska migracija sheme (Neon Postgres):
  * tabela SpecialOpeningDay (posebni dnevi/prazniki odpiralnega časa).
- * Samo za ADMIN (requirePermission settings.manage). Idempotentno (IF NOT EXISTS).
+ * Samo za centralne vloge (requireCentralRole — DB vloga owner/admin; N4 audit P1).
+ * Idempotentno (IF NOT EXISTS).
  * Brez prostoformskega SQL — izvajajo se IZKLJUČNO fiksne, aditivne DDL izjave
  * (politika migrate-issue3/#10/#11/#12). Audit: SCHEMA_MIGRATION_ISSUE1_S7.
  */
@@ -38,7 +39,7 @@ const MIGRATIONS: { id: string; ddl: string[] }[] = [
 ]
 
 export async function POST(req: NextRequest) {
-  const user = await requirePermission(req, 'settings.manage')
+  const user = await requireCentralRole(req)
   if (isResponse(user)) return user
 
   const applied: string[] = []

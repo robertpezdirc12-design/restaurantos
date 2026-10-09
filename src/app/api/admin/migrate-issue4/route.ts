@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 
 /**
@@ -15,7 +15,9 @@ import { nid, jstr } from '@/lib/map'
  * Ponovni klic je VAREN (IF NOT EXISTS).
  */
 export async function POST(req: NextRequest) {
-  const user = await requirePermission(req, 'employees.manage')
+  // N4 (audit P1): DDL zahteva centralno vlogo (owner/admin na nivoju DB) —
+  // dovoljenje employees.manage ima tudi MANAGER, kar je za $executeRawUnsafe premalo.
+  const user = await requireCentralRole(req)
   if (isResponse(user)) return user
 
   const statements: string[] = [

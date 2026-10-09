@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 
 const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : points >= 500 ? 'gold' : points >= 100 ? 'silver' : 'bronze')
@@ -28,11 +28,10 @@ export async function GET(req: NextRequest) {
   })
 }
 
-/** Nov član programa zvestobe — ADMIN/MANAGER. */
+/** Nov član programa zvestobe — N3 (audit P1): kanonično dovoljenje `settings.manage` (DB lookup). */
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const guestName = String(body?.guestName || '').trim()
   if (!guestName) return ok({ error: 'Ime gosta je obvezno.' }, 400)
@@ -49,11 +48,14 @@ export async function POST(req: NextRequest) {
   return ok({ account: { id: row.id, guestName: row.customerName } }, 201)
 }
 
-/** Točke: prihod (delta > 0) ali obračun (delta < 0) + samodejni tier — ADMIN/MANAGER. */
+/**
+ * Točke: prihod (delta > 0) ali obračun (delta < 0) + samodejni tier.
+ * N3 (audit P1): kanonično dovoljenje `settings.manage` namesto trdo kodiranih vlog;
+ * lokacijski gate na tujem računu ostaja fail-closed.
+ */
 export async function PATCH(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const id = String(body?.id || '')
   const account = id ? await db.loyaltyAccount.findUnique({ where: { id } }) : null

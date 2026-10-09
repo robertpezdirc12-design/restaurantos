@@ -20,8 +20,12 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
 2. **Enterprise vloge** (group_owner/org_admin/property_manager): preklok čez
    lokacije SAMO znotraj istega org/property — `enterpriseAllows`
    (src/lib/enterprise.ts, issue #11), fail-closed brez verige.
-3. **Centralne vloge** (ADMIN/OWNER) — cross-location dostop je od v1.35.0
-   dodatno omejen z tenant mejo: `assertTenantScope` (src/lib/tenant.ts):
+3. **Centralne vloge** (ADMIN/OWNER) — cross-location dostop je omejen z lokacijskim
+   modelom; org meja pa je na nivoju enterprise rut izvedena INLINE (glej točki 4 in 5).
+   Pomožna funkcija `assertTenantScope` (src/lib/tenant.ts) je **definirana in
+   pokrita s testi (prek `tenantAllows`), TRENUTNO pa ŠE NI povezana v splošne
+   API rute** — rezervirana za tren, ko bodo vse lokacije povezane v org drevo.
+   Pravila, ki jih bo izvajala (in ki jih enterprise rute danes izvajajo inline):
    - org uporabnika ≠ org vira (obe znani) → **403**;
    - org uporabnika ali vira neznana (legacy, nevezani podatki) → obstoječe
      lokacijsko vedenje (migracijsko varno — ne odrežemo produkcije);

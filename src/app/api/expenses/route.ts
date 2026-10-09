@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { num, nid, r2 } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
@@ -26,13 +26,14 @@ export async function GET(req: NextRequest) {
 
 /**
  * Nov strošek (dobaviteljev račun / AccountsPayable).
+ * N3 (audit P1): kanonično dovoljenje `settings.manage` namesto trdo kodiranih vlog —
+ * enterprise vloge s to pravico in permissionOverrides delujejo na pisanje (DB lookup).
  * opomba: supplierId je FK na Supplier — če obstajajo, vzemi prvega, sicer ustvari
  * privzetega "Razno". apNumber je unique brez defaulta → generiramo.
  */
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const body = await req.json().catch(() => null)
   const description = String(body?.description || '').trim()
   const amount = num(body?.amount)

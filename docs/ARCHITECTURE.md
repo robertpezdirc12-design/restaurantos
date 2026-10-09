@@ -73,7 +73,7 @@ Tenant/Organization → Brand → Property → Location (operativno sidro)
 | Žeton (HMAC, exp) + revokacija | src/lib/auth.ts (`createToken`, `sessionRevoked`) |
 | requireAuth / requirePermission | src/lib/api.ts |
 | Location scope | src/lib/api.ts (`assertResourceLocation`, `locationScope`, `requireUserLocation`) |
-| Tenant scope | src/lib/tenant.ts (`assertTenantScope`, `chainForLocation`) |
+| Tenant scope | src/lib/tenant.ts (`assertTenantScope` — definiran, še ni povezan v rute; `chainForLocation`) |
 | Enterprise hierarhija | src/lib/enterprise.ts (`enterpriseAllows`) |
 | Rate limit (store seam) | src/lib/rate-limit.ts |
 | MFA (TOTP + recovery) | src/lib/mfa.ts, /api/auth/mfa/* |

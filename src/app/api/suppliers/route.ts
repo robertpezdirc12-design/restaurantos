@@ -1,14 +1,14 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 
 /**
  * Dobavitelji. Issue #1 (triage ②) — aditivne razširitve za nabavni tok:
  *  - GET: vrne bogatejši profil (davčna, IBAN, pogoji, aktivnost, št. naročil)
  *  - POST: ustvarjanje (obstojače, nedotaknjeno — zdaj z auditom)
- *  - PATCH: urejanje profila dobavitelja (inventory.manage po pravici
- *    requirePermission; tu preko vloge OWNER/ADMIN/MANAGER enako kot POST)
+ *  - PATCH: urejanje profila dobavitelja (N3/audit P1: kanonično dovoljenje
+ *    `settings.manage` prek requirePermission — enako kot POST)
  * §18: obstoječi odgovorni ključi (id, name, contact, phone, email, address)
  * ostanejo nespremenjeni — samo dopolnjeno.
  */
@@ -46,11 +46,10 @@ export async function GET(req: NextRequest) {
   })
 }
 
-/** Nov dobavitelj — ADMIN/MANAGER. */
+/** Nov dobavitelj — N3 (audit P1): kanonično dovoljenje `settings.manage` (DB lookup). */
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const name = String(body?.name || '').trim()
   if (!name) return ok({ error: 'Naziv dobavitelja je obvezen.' }, 400)
@@ -90,11 +89,10 @@ export async function POST(req: NextRequest) {
   return ok({ supplier: { id: row.id, name: row.name } }, 201)
 }
 
-/** Urejanje dobavitelja (triage ②) — enaka pravica kot ustvarjanje. */
+/** Urejanje dobavitelja (triage ②) — enaka pravica kot ustvarjanje (`settings.manage`). */
 export async function PATCH(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const body = await req.json().catch(() => null)
   const id = String(body?.id || '').trim()
   if (!id) return fail('Manjka id dobavitelja.', 400)

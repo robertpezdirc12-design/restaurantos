@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 
@@ -27,11 +27,15 @@ export async function GET(req: NextRequest) {
   })
 }
 
-/** Nov artikel zaloge (sprejem blaga) — ADMIN/MANAGER. */
+/**
+ * Nov artikel zaloge (sprejem blaga).
+ * N3 (audit P1): kanonično dovoljenje `inventory.manage` namesto trdo kodiranih vlog —
+ * tudi vloga warehouse (in enterprise vloge s to pravico) lahko zdaj sprejema blago;
+ * permissionOverrides delujejo na pisanje (DB lookup na vsak klic).
+ */
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const name = String(body?.name || '').trim()
   if (!name) return ok({ error: 'Naziv artikla je obvezen.' }, 400)
@@ -55,11 +59,14 @@ export async function POST(req: NextRequest) {
   return ok({ item: { id: row.id, name: row.name } }, 201)
 }
 
-/** Prilagoditev zaloge: prejem (delta > 0), popravek količine/min/cene — ADMIN/MANAGER. */
+/**
+ * Prilagoditev zaloge: prejem (delta > 0), popravek količine/min/cene.
+ * N3 (audit P1): kanonično dovoljenje `inventory.manage` namesto trdo kodiranih vlog
+ * (warehouse/enterprise + override-i delujejo); lokacijski gate ostaja fail-closed.
+ */
 export async function PATCH(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const id = String(body?.id || '')
   const item = id ? await db.inventoryItem.findUnique({ where: { id } }) : null

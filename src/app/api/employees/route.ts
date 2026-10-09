@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { EmployeeRole } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapEmployee } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
@@ -11,10 +11,14 @@ export async function GET(req: NextRequest) {
   return ok({ employees: employees.map(mapEmployee) })
 }
 
+/**
+ * Nov zaposleni.
+ * N3 (audit P1): kanonično dovoljenje `employees.manage` namesto trdo kodiranih vlog —
+ * enterprise vloge s to pravico in permissionOverrides delujejo na pisanje (DB lookup).
+ */
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return ok({ error: 'Ni dovoljenj.' }, 403)
   const body = await req.json().catch(() => null)
   const email = String(body?.email || '').trim().toLowerCase()
   const name = String(body?.name || '').trim()

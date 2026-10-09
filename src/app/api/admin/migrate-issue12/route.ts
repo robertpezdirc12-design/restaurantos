@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid } from '@/lib/map'
 
 /**
  * Issue #12 §3 — enkratna produkcijska migracija sheme (Neon Postgres): MFA polja
  * na Employee (mfaSecret, mfaEnabled, mfaRecoveryCodes, mfaEnrolledAt).
- * Samo za ADMIN (requirePermission employees.manage). Idempotentno (IF NOT EXISTS).
+ * Samo za centralne vloge (requireCentralRole — DB vloga owner/admin; N4 audit P1).
+ * Idempotentno (IF NOT EXISTS).
  * Brez prostoformskega SQL — izvajajo se IZKLJUČNO fiksne, aditivne DDL izjave
  * (politika migrate-issue3/#10/#11). Audit: SCHEMA_MIGRATION_ISSUE12.
  */
@@ -23,7 +24,7 @@ const MIGRATIONS: { id: string; ddl: string[] }[] = [
 ]
 
 export async function POST(req: NextRequest) {
-  const user = await requirePermission(req, 'employees.manage')
+  const user = await requireCentralRole(req)
   if (isResponse(user)) return user
 
   const applied: string[] = []

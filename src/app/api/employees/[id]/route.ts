@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, assertResourceLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, assertResourceLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { mapEmployee, roleToDB, jstr, nid } from '@/lib/map'
 import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
 
@@ -10,13 +10,16 @@ export { CANONICAL_PERMISSIONS }
  * EMPLOYEE CONTROL CENTER (R265) — en kanonski profil zaposlenega:
  *  - PATCH podatkov: vloga, status, DOVOLJENJA (permission overrides, R263/R264)
  *  - PIN reset (občutljiva akcija — vedno zapiše AUDIT zapis)
- * Kanonska avtorizacija (R268): samo ADMIN/MANAGER; MANAGER ne sme urejati ADMIN-ov.
+ * Kanonska avtorizacija (R268 + N3 audit P1): dovoljenje `employees.manage`
+ * (DB lookup — override-i delujejo); MANAGER ne sme urejati ADMIN-ov,
+ * LASTNIKove zaščite ostajajo nespremenjene.
  */
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const user = await requireAuth(req)
+  // N3 (audit P1): kanonično dovoljenje namesto trdo kodiranih vlog; pravila o stopnjevanju
+  // (MANAGER↛ADMIN, LASTNIKA ureja samo LASTNIK) ostajajo nespremenjena spodaj.
+  const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  if (!['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) return fail('Ni dovoljenj.', 403)
   const { id } = await ctx.params
   const body = await req.json().catch(() => null)
   if (!body) return fail('Manjkajo podatki.', 400)
