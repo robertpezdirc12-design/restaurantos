@@ -67,3 +67,6 @@ db/*.db-journal
 # vercel project snapshots (issue #4 §15 — env imena + encrypted blobs ne grejo v git)
 vercel-project-settings.json
 vercel-env-variables.json
+
+# local process IDs (never version-control)
+.zscripts/*.pid
