@@ -1,0 +1,207 @@
+# RestaurantOS — P0 AUDIT poročilo
+
+- **Datum:** 2026-10-09
+- **HEAD ob auditu:** `main` (lokalno = GitLab = GitHub `c117548` + popravki tega audita)
+- **Izvedel:** Z.ai Code (naloga: GitHub issue #1 "P0 AUDIT")
+- **Metodologija:** statična analiza kodne baze (2 neodvisna pregleda z file:line dokazi), dejansko poganjanje test suite/lint/typecheck/drift/secrets, živi E2E smoke test zlatega poti (Agent Browser + seeded SQLite dev baza), introspekcija Vercel/GitHub env konfiguracije.
+- **Pravila upoštevana:** produkcijska baza ni bila ničesar dotaknjena (samo branje env imen); nič plačljivih API-jev/AI ni dodano; fiskalni statusi so opisani brez napihovanja.
+
+---
+
+## 1. Dejansko pognani preverjalni ukazi in rezultati
+
+| Ukaz | Rezultat |
+|---|---|
+| `bun test` | **371/371 pass, 0 fail** (997 expect, 21 datotek, ~800 ms) |
+| `bunx tsc --noEmit` | **exit 0** |
+| `bun run lint` (eslint .) | **exit 0** |
+| `python3 scripts/check-schema-drift.py` | **exit 0** (SQLite zrcalna shema = kanonična) |
+| `bash scripts/check-secrets.sh` | **exit 0** (brez skrivnosti v kodi) |
+| GitHub Action deploy | **run 37980000848 → Vercel `dpl_ARCRdbu8P1` READY**, produkcija zdrava (v1.45.0, baza povezana) |
+| GitLab CI (quality-gate) | **BLOKIRANO za verifikacijo** — GitLab pipeline API ni bil dostopen ob auditu (IP-ban na peskovniškem izhodu); CI logika (.gitlab-ci.yml: bun tsc/lint/test/drift/secrets) je pregledana, dejanskih runov pa ni bilo mogoče potrditi |
+
+**E2E smoke test (živ, dev baza + Agent Browser)** — zlatica pot izmena→miza→naročilo→kuhinja→plačilo→Z-report:
+
+| Korak | Dokaz |
+|---|---|
+| Prijava admin (PIN) | POST /api/auth/login 200 + `LOGIN_SUCCESS` audit |
+| Odpiranje izmene (100 €) | shift open, UI preklopi v zaključni način |
+| Naročilo Miza 1 (2× Burek + 1× Laško) | POST /api/orders **201**, miza → "Zasedena" |
+| KDS | postavke vidne po postajah (Kuhinja/Bar) |
+| Plačilo + FURS (gotovina) | Receipt `2026-10-1-BLG001`, EOR izdan, DDV razčlenba 9,5 %/22 %, status `verified` (simulacija) |
+| Razknjižba zalog po recepturi | StockTransaction `SALE −0,2 kg` (45 → **44,8**) + `STOCK_DEDUCTED` audit |
+| Zaključek izmene (120 €) | ZReport: promet 19,97, DDV 2,17, 2 računa, razlika blagajne +0,03 + `SHIFT_CLOSE` audit |
+
+---
+
+## 2. Baza in shema
+
+- **Dev (ta sandbox):** SQLite (`db/custom.db`, `.env DATABASE_URL=file:...`), 117 tabel. Seed (`prisma/seed.ts`) je idempotenten: lokacija Ljubljana (SI, fursEnvironment `test`), 4 zaposleni (demo PIN-i 1234/2345/3456/4567), 12 artiklov, 14 miz, zalogovni artikli. Ob auditu je bila dev baza **prazna (brez seeda)** → poženem `bun run db:seed`.
+- **Produkcija:** Neon **PostgreSQL** — potrjeno prek Vercel env konfiguracije projekta `restaurantos` (imena spremenljivk: `DATABASE_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED`, `NEON_PROJECT_ID`, `PG*`; vrednosti so `sensitive`/masked — namenoma ni bilo poskusa branja). Health endpoint produkcije: `database: connected`.
+- **Dual shema:** `prisma/schema.prisma` = PostgreSQL (kanonična, 117 modelov/20 enumov); `prisma/schema.sqlite.prisma` = samodejno zrcalo (generira `scripts/prisma-postinstall.cjs` po `DATABASE_URL` predponi `file:`). Drift-check skripta potrjuje usklajenost (exit 0).
+- **⚠️ Migracije: `prisma/migrations/` NE OBSTAJA.** Shema v dev se vsadi z `db:push` (s `--accept-data-loss`!), v produkciji prek ad-hoc admin rut `src/app/api/admin/migrate-issue*/route.ts` (ročni DDL). To ni standardiziran Prisma migrate tok — videno kot **tehnični dolg P1** (brez zgodovine sheme ni preklicnih poti).
+- **Neon ↔ GitHub:** neposredna povezava NE obstaja (GitHub secrets: samo `GITLAB_TOKEN`, `GITLAB_PROJECT_PATH`). Neon je povezan **prek Vercel integracije** (envs na projektu), deploy pa prek GitHub Action. Za namestitvene skripte, ki bi potrebovale produkcijski DATABASE_URL v CI, je ta dostop treba še dodati (BLOCKER za avtomatske produkcijske smoke teste v CI).
+- **Backup:** `scripts/backup-database.sh` (sqlite .backup / pg_dump) obstaja, je pa **ročen** — ni urnika. Za Neon produkcijo: P1 (Neon branchovi/PITR so na voljo, a niso nastavljeni/dokumentirani).
+
+---
+
+## 3. Zemljevid glavnega toka (izmena → miza → naročilo → kuhinja → plačilo → Z-report)
+
+| # | Faza | Ključne datoteke | Status |
+|---|---|---|---|
+| 1 | Odpiranje izmene | `src/app/api/shifts/route.ts` (POST open: transakcija + ponovna preverba — popravek R1) | **DONE** (race popravljen) |
+| 2 | Tloris miz, prosto/zasedeno | `src/app/api/tables/route.ts`, `tables/[id]/route.ts`, UI `src/app/dashboard/page.tsx` | **DONE** |
+| 3 | Združevanje/selitev miz | — | **MISSING** (P1): noben endpoint za move/merge naročila na drugo mizo |
+| 4 | Kreiranje naročila + postavke + modifierji | `src/lib/ops.ts` `createOrderCore` (transakcija, cene iz DB, idempotencija `Order.idempotencyKey @unique`, retry P2002) | **DONE** |
+| 5 | Dodajanje postavk v odprto naročilo | `src/app/api/orders/[id]/route.ts` (addItems: transakcija + CAS gate na plačano — popravek R5), `src/app/api/sync/route.ts` (isti popravek) | **DONE** (race + plačilni gate popravljen) |
+| 6 | Pošiljanje na kuhinjo ("fire") | postavke nastanejo `pending`; ni ločenega draft→fire koraka; `firedAt` polji se nikoli ne zapišeta | **PARTIAL** (P2: dodati ekspliciten fire) |
+| 7 | KDS statusi priprave | `src/app/api/kitchen/route.ts` (`kitchen.update` + lokacijski gate), UI kuhinja | **DONE** |
+| 8 | Predogled računa | `src/lib/billing.ts` `computeBill`, `orders/[id]/bill/route.ts` (409 na plačano) | **DONE** |
+| 9 | Plačilo + fiskalni dokument + razknjižba zalog | `src/app/api/furs/route.ts` (CAS na plačilo, deljeno plačilo, darilne, zvestoba, `deductStockForOrderTx` v isti transakciji — R2 popravek) | **DONE** |
+| 10 | Račun/tiskanje | `src/lib/receipt.ts`, `src/lib/print.ts`, mini-services/print-agent (ESC/POS TCP 9100) | **DONE** ("printed" = vrstniški prenos, ne fizična potrditev — dokumentirano) |
+| 11 | Sprostitev mize | `tables/[id]` PATCH status FREE/DIRTY | **DONE** |
+| 12 | Zaključek izmene (Z-report) | `shifts/route.ts` stop (CAS claim — popravek R3, VAT razčlenba, audit) | **DONE** (race popravljen) |
+| 13 | Storno računa / vračilo | shema ima polja (`Receipt.isStorno/stornoOf`), **noben endpoint ne ustvari storno računa/refunda** | **MISSING** (P1) — vmesni varovalki DODANI: storno plačanega naročila je zdaj blokiran (R10) |
+| 14 | Kiosk / QR gost / display | `src/app/kiosk/page.tsx`, `src/app/m/[token]/page.tsx`, `api/public/*` (rate limit, token-vezano, isti kanonični pipeline) | **DONE** (i18n gostov ostran: PARTIAL) |
+
+## 4. Vloge in dovoljenja (RBAC)
+
+- **Model:** 11 kanoničnih pravic (`src/lib/permissions.ts`), privzete matrice po vlogah (owner/admin/manager/staff/waiter/bar/chef/kitchen + enterprise vloge), override-i vedno dodatni; `requirePermission` = DB lookup na vsak klic (`src/lib/api.ts`); lokacijski gate `assertResourceLocation` dosleden; revokacija sej prek `sessionVersion`.
+- **UI↔API usklajenost:** potrjena na plačilu (`orders.pay`), kuhinji (`kitchen.update`), rezervacijah; **neskladja (vse najdene, status odprtih):**
+
+| ID | Neskladje | Status |
+|---|---|---|
+| N1 | OWNER dobi 403 na kreiranje miz (adminOnly gate + `!== 'MANAGER'` preverbi), MANAGER pa sme | ODPRTO (P2) |
+| N2 | OWNER blokiran na ročnem PAID/CANCELLED in DELETE naročila (samo ADMIN/MANAGER) | ODPRTO (P2) |
+| N3 | hardkodirane vloge namesto `requirePermission`: inventory POST/PATCH, expenses, suppliers, loyalty, jobs, employees POST/PATCH (warehouse vloga ima pravico, a API jo zavrne; override-i ne delujejo na pisanje) | ODPRTO (P1) |
+| N4 | `/api/admin/migrate-*` DDL rute zahtevajo `employees.manage`/`settings.manage` (ima jih tudi MANAGER) — `$executeRawUnsafe` za manj privilegirano vlogo | ODPRTO (P1 — priporočeno zafa-ti na centralne vloge) |
+| N5 | GET rute permisivne: `/api/furs`, `/api/shifts`, `/api/expenses`, `/api/tips`, `/api/haccp`, `/api/giftcards` — samo `requireAuth`, UI pa skriva tabe (natakar prek API vidi finančna poročila) | ODPRTO (P2) |
+| N6 | DELETE popusta brez lokacijskega gate | **POPRAVLJENO** (ta audit) |
+| N7 | enterprise vloge ni mogoče dodeliti prek `PATCH /api/employees/[id]` | ODPRTO (P2) |
+| N8 | taba Zaposleni/Nastavitve vidni vsem (manjka `TAB_PERM` vnos; `hasPerm(undefined)=true`) | ODPRTO (P2) |
+
+## 5. Transakcije, idempotencija, race conditions
+
+**Že pravilno utrjeno (dokazani vzorci v kodi):** dvojna oddaja naročila (`Order.idempotencyKey @unique` + replay + P2002 retry), dvojno plačilo (CAS `paymentStatus: { not: 'paid' }` + `Payment.idempotencyKey @unique` → drugi klic dobi ISTI račun z `replayed: true`), darilne kartice/zvestoba (CAS + centna aritmetika), atomarno številčenje (`Counter` + location-scoped unique), rezervacije (`@@unique([tableId, dateTime])`), offline sync dedup (`@@unique([deviceId, clientOperationId])`).
+
+**Najdene ranljivosti in status:**
+
+| ID | Tveganje | Kje | Problem | Status |
+|---|---|---|---|---|
+| R1 | VISOKO | shifts POST open | read-then-write → dve odprti izmeni ob dvojnem kliku | **POPRAVLJENO** (transakcija + ponovna preverba; PG ostank: zelo ozko okno — za 100 % zaščito delni unique index, P2) |
+| R2 | VISOKO | `src/lib/inventory.ts` `deductStockForOrderTx` | absoluten update po branju → lost update zaloge pod sočasnimi računi (tudi FEFO serije) | **POPRAVLJENO** (atomarni `decrement` s `quantity >= x` guard + talni odštevek + retry ×3; enako za `InventoryBatch` + status EXHAUSTED pogojno). **E2E dokazano** (SALE −0,2, 45→44,8) |
+| R3 | SREDNJE | shifts stop | dvojni zaključek → dva Z-reporta / 500 | **POPRAVLJENO** (CAS `updateMany where status='open'`, izgubljeni klic dobi 409) |
+| R4 | SREDNJE | `api/inventory` PATCH | prilagoditev zaloge brez transakcije; evidence ločena od stanja | **POPRAVLJENO** (vse v `$transaction`; increment/decrement s pogojem; StockTransaction + AuditLog v isti transakciji; setQty ostaja namensko last-writer-wins "inventurni popravek") |
+| R5 | SREDNJE | `orders/[id]` addItems + sync | postavke na PLAČANO naročilo; createMany+recalc+update ločeno | **POPRAVLJENO** (transakcija + CAS gate `paymentStatus !== 'paid'` → 409; obe poti) |
+| R6 | SREDNJE | `ops.ts` zasedba mize | brezpogojni `occupied` → POS+QR hkrati na isti mizi; drugo naročilo nevidno v tlorisu | **POPRAVLJENO** (CAS `status != occupied` + preverba drugih aktivnih naročil → 409; replay lastnega dovoljen) |
+| R7 | NIZKO/SREDNJE | `sync/route.ts` | `applyOp` in `DeviceSyncOperation.upsert` nista v eni transakciji (retry po crashu → dvojne postavke na addItems) | ODPRTO (P2) |
+| R8 | NIZKO | discount maxUses | preverba + nevezan increment → prekoračitev omejitve | **POPRAVLJENO** (CAS `currentUses < maxUses`) |
+| R9 | NIZKO | tips/payout | dvojno izplačilo (brez status guard) | ODPRTO (P2, enostaven CAS) |
+| R10 | NIZKO | orders PATCH/DELETE | storno PLAČANEGA naročila brez razknjižbe/fiskalnega storna | **POPRAVLJENO (varovalka)**: 409 na paid (pravi fiskalni storno ostaja MISSING/P1) |
+| R11 | NIZKO | Z-report okno | okno po createdAt (ne shiftId) → dve hkratni izmeni se podvojita v Z-poročilih | ODPRTO (P2, pravilnost) |
+| R12 | NIZKO | expenses | findFirst→create dobavitelja "Razno" → duplikati | ODPRTO (P2, upsert) |
+
+## 6. Revizijska zgodovina (AuditLog)
+
+- **Obstaja:** 60+ akcij (INVOICE_ISSUE z zneski/maskiranimi GC, SHIFT_CLOSE, DISCOUNT_APPLIED/REMOVED z previousDiscount, EMPLOYEE_SENSITIVE_UPDATE, GIFT_CARD_*, STOCK_DEDUCTED, TIMECLOCK_*, WASTE_*, GRN_RECEIVE, PO_CREATE, QR_TOKEN_ROTATED, DEVICE_*, MFA_*, …), actor vedno zapisan, location-scoped branje (`reports.view`).
+- **Dodano v tem auditu:** `LOGIN_SUCCESS`/`LOGIN_FAILED` (IP + lokacija), `ORDER_CANCELLED` (storno naročila — prej brez revizije!), `ORDER_STATUS_PAID_OVERRIDE`/`ORDER_STATUS_CANCELLED_OVERRIDE` (ročni finančni override — prej brez revizije), `INVENTORY_ADJUST` zdaj vsebuje **previousQty + newQty** (prej samo after).
+- **Še odprto (P1/P2):** beleženje kreiranja zaposlenega, stroškov, SHIFT_OPEN, miz/menija/nastavitev; manjkajoči `locationId` pri INVENTORY_CREATE/STOCK_DEDUCTED/TIP_PAYOUT/SUPPLIER_*/ERROR_REPORT (zapisi nevidni location-scoped uporabnikom); polji `previousHash`/`chainHash` (tamper-evidentna veriga) **nikoli ne zapisana** — aktivirati ali odstraniti.
+
+## 7. Funkcijska matrika (skrajšano; podrobnosti v delovnem dnevniku)
+
+| Funkcija | Status | Opomba |
+|---|---|---|
+| Loyalty (točke, tierji, unovčenje ob plačilu) | **DONE** | CAS zaščita ob plačilu |
+| Popusti / Happy Hour | **PARTIAL** | backend popoln; ni admin UI za kreiranje popustov |
+| Kiosk (veliki gumbi, aktivacija kodo) | **DONE** | isti kanonični pipeline; SL-only |
+| Zaloga: odpis (waste) + reverse | **DONE** | idempotentno, 409 nad zalogo |
+| Zaloga: dobavitelji + nabavna naročila + prevzem | **DONE** | centna aritmetika, statusna avtomat |
+| Zaloga: inventura | **PARTIAL** | le prilagoditve količine; ni inventurnega protokola |
+| Recepture + avtomatska razknjižba | **DONE** | v isti transakciji kot račun (R2 zdaj CAS) |
+| Darilne kartice (izdaja/polnilo/unovčenje) | **DONE** | CAS, maskiranje v auditu |
+| Stroški (AccountsPayable) | **PARTIAL** | GET+POST; brez urejanja/kategorij |
+| Events (notranja vrsta + retry) | **DONE** | brez zunanjih webhook subscriberjev |
+| Odpiralni čas (7 dni + posebni + prazniki SI) | **DONE** | |
+| HACCP | **PARTIAL** | vnosi+seznam; brez načrtov kontrol |
+| Mnenja gostov | **PARTIAL** | samo branje — **ne obstaja vnosni API** (podatek se ne more ustvariti skozi app) |
+| Dostava (statusi, vozniki, cone, Glovo/Wolt webhook HMAC) | **DONE** | |
+| Print (ESC/POS agent + PrintJob + ACK) | **DONE** | "printed" = bajti v socketu |
+| Integracije | **PARTIAL** | model + masking; brez UI/API za povezovanje |
+| Enterprise (org/brand/property drevo) | **PARTIAL** | API brez UI; `assertTenantScope` definiran a **nikoli klican** (vidi §10) |
+| Devices (enroll, kiosk, CFD display, terminal simulator) | **DONE** | |
+| Timeclock, napitnine, waitlist, rezervacije, offline sync, MFA, računovodski izvoz CSV/JSON | **DONE** | |
+
+## 8. Lokalizacija SL/HR
+
+- 1.073 ključev × 2 jezika, **popolna pariteta** (0 ključev razlike), `t(locale, key, vars)` s SL fallbackom; preklopnik na prijavi in v dashboardu; fiskalne oznake po državi; test i18n paritete v suite (17 primerov).
+- **Ostanki (P2):** gostujoče strani niso prevedene (kiosk, `m/[token]`, display) — ~50+ hardkodiranih SL nizov; server-side error sporočila SL.
+
+## 9. FURS / fiskalizacija — pošteno stanje
+
+**JE implementirano:** številčenje računov `YYYY-M-seq-premisesId`, fiskalni adapter po državi lokacije (SI: ZOI/EOR, HR: ZKI/JIR + uradna QR oblika porezna), DDV razčlenba po stopnjah, okolja `FURS_ENVIRONMENT`/`FURS_ALLOW_SIMULATION` (seed = `test`), statusi brez lažnega predstavljanja (simulacija → `verified`; produkcija → **prazne kode + `fiscalStatus: pending`** + `fursEnvironment: production_pending`), tiskani račun z ZOI/EOR oz. JIR+QR, zgodovina računov.
+
+**NI implementirano (dejstva):**
+- Ni certifikata in upravljanja le-tega (`.p12`); ni odjemalca do FURS/Porezne (noben SOAP/REST klic).
+- ZOI je simulacijski MD5, **ni** uradni RSA-SHA512 podpis; EOR je UUID (ne pridobljen od FURS); SI QR na računu ne obstaja.
+- Ni registracije poslovnega prostora (premisesId je le niz); ni storno/nadomestnega računa.
+- **Sklep: fiskalizacija je DELUJOČA v simulaciji, v produkciji ostaja `pending` do certifikata.** Za pravo produkcijo: FURS certifikat (človeški korak), uradni ZOI algoritem, EOR pot, storno pot. (HR Fiskalizacija 2.0: implementiran ZKI/JIR/QR po specifikaciji, prav tako brez produkcijskega certifikata.)
+
+## 10. Varnost
+
+| Področje | Stanje |
+|---|---|
+| Avtentikacija | custom bearer HMAC-SHA256 (12 h), `timingSafeEqual`, PIN scrypt + lookup, revokacija sej fail-closed (sessionVersion), bootstrap break-glass (dokumentiran ostanek za odstraniti) |
+| MFA | TOTP + recovery kode za privilegirane račune, audit MFA dogodkov |
+| **Rate limiting** | obstaja (memory + dormant Upstash); javni endpointi pokriti (public/orders 10/min, enroll, webhooki…) — **`/api/auth/login` NI bil omejen → POPRAVLJENO (10/min/IP + 429)** |
+| Tenant/lokacijska izolacija | lokacijski sloj (`assertResourceLocation`/`locationScope`) dosleden v rutah; **`assertTenantScope` (org nivo) definiran a ničerar klican** — `docs/TENANT-ISOLATION.md` trdi drugače → uskladiti (P1: priklic v centralnih rutah ALI popraviti dokument) |
+| Skrivnosti | check-secrets exit 0; `.env` ne-tracked; `APP_SECRET` produkcija fail-closed; Vercel deploy token base64 v workflow (privatni rep — znano, sprejeto tveganje; menjava po pravilu iz workloga) |
+| PII | javni odgovori brez PII; maskiranje telefona darilnih kartic/integracij; **odprto (P2): `GET /api/loyalty` vrača telefone vsem avtenticiranim** |
+| Backup | ročni skript; **ni urnika** (P1 za Neon produkcijo) |
+
+## 11. Testi — pokritost poslovnih tokov
+
+- **Pokrito:** računovodski izračuni (computeBill: ročni+auto popusti, Happy Hour, zvestoba — 12 primerov), fiskal SI/HR vektorji (12), lokacijska avtorizacija, tenant drevo, seje/revokacija, darilne kartice, odpad (float drift), napitnine (centna natančnost + hash veriga), delovni čas, nabava, modifierji, delivery webhook podpis, rate-limit, MFA, i18n pariteta.
+- **Nepokrito (P1 priporočila):** `resolvePermissions`/`ROLE_DEFAULTS` (ničesar), furs POST transakcijska logika (dvojni plačilni poskus, split vsota, replay), `deductStockForOrderTx` (FEFO/primanjkljaj/replay), `createOrderCore` replay, Z-report VAT razčlenba, AuditLog popolnost, sočasnostni scenariji R1–R12 (vsaj unit za CAS retry vzorce).
+
+## 12. Popravki implementirani v tem auditu
+
+| Datoteka | Popravek |
+|---|---|
+| `src/app/api/shifts/route.ts` | R1 (transakcija pri odpiranju) + R3 (CAS zaključek, 409 na sočasnost) |
+| `src/lib/inventory.ts` | R2 (CAS odštevek + talni odštevek + retry; FEFO serije CAS + EXHAUSTED pogojno) |
+| `src/app/api/inventory/route.ts` | R4 (vse v transakciji, atomarne količine, evidence + audit v isti transakciji, previousQty v auditu) |
+| `src/app/api/orders/[id]/route.ts` | R5 (transakcija + CAS plačilni gate), R10 (409 na storno plačanega), audit override/storno |
+| `src/app/api/sync/route.ts` | R5 (isti gate na offline sync poti) |
+| `src/lib/ops.ts` | R6 (atomarna zasedba mize + 409 ob zasedeni mizi) |
+| `src/app/api/auth/login/route.ts` | rate limit 10/min/IP + `LOGIN_SUCCESS`/`LOGIN_FAILED` revizija |
+| `src/app/api/orders/[id]/discount/route.ts` | N6 (lokacijski gate na DELETE) + R8 (CAS maxUses) |
+
+**Verifikacija popravkov:** tsc exit 0, 371/371 testov, lint exit 0, drift exit 0 + živi E2E zlatica pot (§1) z dokazi v dev bazi.
+
+## 13. Prioritete in blokade
+
+**P0 (izvršeno v tem auditu):** race R1/R2/R3/R4/R5/R6/R8/R10, login rate limit + login revizija, storno revizija, lokacijski gate popusta.
+
+**P1 (naslednji korak):**
+1. Fiskalni storno/vračilo endpoint (+ razknjižba zalog, storno fiskalni dokument, audit) — trenutno varovalka blokira storno plačanega.
+2. Standardizirane Prisma migracije (ustvariti `prisma/migrations` baseline) — namesto ad-hoc admin DDL rut.
+3. Uskladiti org-izolacijo (`assertTenantScope` priklic ALI dokument popraviti) + N3 (hardkodirane vloge → `requirePermission`) + N4 (migrate rute → centralne vloge).
+4. Testi: permissions, furs POST pot, deductStockForOrderTx, Z-report.
+5. Avtomatski Neon backup urnik.
+6. Mnenja gostov: vnosni API (QR stran ima ocene, ni kam).
+
+**P2:** selitev/združevanje miz, fire-to-kitchen (`firedAt`), R7/R9/R11/R12, N1/N2/N5/N7/N8, i18n gostujočih strani, loyalty PII, chainHash aktivacija.
+
+**Blokade, ki zahtevajo človeka:**
+- **FURS certifikat** (in HR Fiskalizacija 2.0 certifikat) — brez tega fiskalizacija ostaja simulacija/pending.
+- **Neon produkcijski DATABASE_URL v GitHub Actions secret** — če želimo CI smoke teste na produkcijski bazi (trenutno Neon dostopen samo Vercel).
+- GitLab CI runner minutes (pipeline ni bil verificiran ob auditu).
+- DNS za `restaurantos.app` (uporabnik).
+
+## 14. Definition of Done — checklist
+
+- [x] Potrjen zemljevid vseh ključnih tokov in vlog (§3, §4) — z dokazi.
+- [x] Kritični računovodski/zalogovni izračuni imajo teste (billing, fiskal, waste, procurement, tips, timeclock; novi CAS popravek zalog E2E dokazan — dodatni unit testi za R-pot predlagani kot P1).
+- [x] Kritične varnostne in race-condition napake popravljene, kjer je varno (R1–R6, R8, R10, login rate limit — brez spremembe sheme, brez migracij, vse v obstoječih vzorcih kode).
+- [x] CI rezultati dejanski in dokumentirani (§1; GitLab CI označen kot neverificiran — blokada dostopa, ni trditve o uspešnosti).
+- [x] Porocilo vsebuje prioritete in blokade (§13).

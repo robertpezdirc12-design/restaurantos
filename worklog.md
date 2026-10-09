@@ -1580,3 +1580,25 @@ Stage Summary:
 - paths-ignore (md/docs/.zscripts) preprečuje deploje za dokumentacijske pushe — worklog commiti ne deployajo
 - pred vsakim pushom: fetch + rebase (drugo okolje pusha tudi svoje commite)
 
+
+---
+Task ID: 29-main
+Agent: main (Z.ai Code)
+Task: GitHub issue #1 — P0 AUDIT RestavrantOS (POS, kuhinja, računi, zaloga, varnost): analiza, varni popravki race/varnostnih luknij, E2E verifikacija, docs/RESTAURANTOS-AUDIT.md
+
+Work Log:
+- prebran GitHub issue #1 (robertpezdirc12-design/restaurantos) — celovit P0 audit po 10 točkah, DoD 5 kriterijev
+- recon: HEAD c117548, dual Prisma shema (sqlite dev / postgresql Neon prod), 89 API rut, migracije NE obstajajo, dev baza prazna → db:seed (4 zaposleni, 12 artiklov, 14 miz)
+- 2 vzporedna Explore subagenta (1-a tokovi/RBAC/race; 1-b funkcije/i18n/FURS/varnost) — poročili z file:line dokazi
+- dejanski rezultati: bun test 371/371 (997 expect), tsc 0, lint 0, drift 0, secrets 0; GA deploy run 37980000848 READY; GitLab CI neverificiran (IP-ban)
+- Neon produkcija potrjena prek Vercel envs (DATABASE_URL, POSTGRES_PRISMA_URL, NEON_PROJECT_ID); GitHub secrets ima samo GITLAB_TOKEN/GITLAB_PROJECT_PATH — Neon do GitHuba NE prihaja direktno
+- POPRAVKI (vse brez spremembe sheme): R1 dvojna izmena (transakcija+preverba), R2 razknjižba zalog CAS (decrement+guard+retry, FEFO serije), R3 dvojni Z-report (CAS claim, 409), R4 prilagoditev zaloge v transakciji (+previousQty v auditu), R5 addItems transakcija+gate na plačano (PATCH + sync), R6 atomarna zasedba mize (409 ob zasedeni), R8 CAS maxUses, R10 409 na storno plačanega, N6 lokacijski gate na DELETE popusta, login rate limit 10/min/IP + LOGIN_SUCCESS/LOGIN_FAILED revizija + ORDER_CANCELLED/ORDER_STATUS_*_OVERRIDE revizija
+- verifikacija popravkov: tsc 0, 371/371, lint 0, drift 0
+- E2E zlatica pot (Agent Browser + seed): prijava → izmena 100 € → naročilo Miza 1 (201, zasedena) → KDS → plačilo+račun (EOR, DDV 9,5/22) → receptura (Burek 0,1 kg Moka) → naročilo Miza 2 + plačilo → StockTransaction SALE −0,2 (45→44,8) → zaključek izmene 120 € → ZReport 19,97/DDV 2,17/razlika +0,03; revizijska sled 7 akcij
+- napisan docs/RESTAURANTOS-AUDIT.md: tokovi (DONE/PARTIAL/MISSING), RBAC neskladja N1–N8, race R1–R12 s statusi, funkcije, i18n, FURS pošteno (simulacija/pending do certifikata), varnost, prioritete P1/P2 + blokade (FURS certifikat, Neon v GH secrets, GitLab CI, DNS)
+
+Stage Summary:
+- Issue #1 P0 AUDIT izvršen: dokazano kaj deluje (371 testov + E2E), varno popravljene potrjene napake (10 popravkov v 8 datotekah, brez sheme/migracij), poročilo z statusi DONE/PARTIAL/DEMO/MISSING/BLOCKED + dokazi v docs/RESTAURANTOS-AUDIT.md
+- Ključna odkritja: plačilno jedro + idempotencija že utrjeni; luknje bile izmena/zaloga/addItems/miza (vse read-then-write → zdaj CAS); login brez rate limita (zdaj omejen); storno plačanega možen (zdaj 409); assertTenantScope mrtva koda (dokumentirano)
+- FURS ostaja simulacija (produkcija pending do certifikata) — nobenih lažnih davčnih trditev; report navaja točno kaj JE in kaj NI
+- Blokade za človeka: FURS/HR certifikat, Neon DATABASE_URL v GitHub Actions (za CI smoke), GitLab CI runner, DNS restaurantos.app

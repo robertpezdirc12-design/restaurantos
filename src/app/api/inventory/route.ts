@@ -68,50 +68,74 @@ export async function PATCH(req: NextRequest) {
   const locRes = assertResourceLocation(user, item.locationId)
   if (locRes) return locRes
 
-  const data: Record<string, unknown> = {}
   const delta = body?.delta !== undefined && body?.delta !== null && body?.delta !== '' ? Number(String(body.delta).replace(',', '.')) : null
   const setQty = body?.setQty !== undefined && body?.setQty !== null && body?.setQty !== '' ? Number(String(body.setQty).replace(',', '.')) : null
-  if (delta !== null) {
-    data.quantity = Math.max(0, num(item.quantity) + delta)
-    if (delta > 0) data.lastRestocked = new Date()
-  } else if (setQty !== null) {
-    data.quantity = Math.max(0, setQty)
-  }
-  if (body?.minQty !== undefined && body?.minQty !== '') data.minQuantity = Number(String(body.minQty).replace(',', '.')) || 0
-  if (body?.cost !== undefined && body?.cost !== '') data.costPerUnit = Number(String(body.cost).replace(',', '.')) || 0
-  if (Object.keys(data).length === 0) return ok({ error: 'Ni podatkov za posodobitev.' }, 400)
+  const minQty = body?.minQty !== undefined && body?.minQty !== '' ? (Number(String(body.minQty).replace(',', '.')) || 0) : null
+  const cost = body?.cost !== undefined && body?.cost !== '' ? (Number(String(body.cost).replace(',', '.')) || 0) : null
+  if (delta === null && setQty === null && minQty === null && cost === null) return ok({ error: 'Ni podatkov za posodobitev.' }, 400)
 
-  const updated = await db.inventoryItem.update({ where: { id }, data })
+  // R4 popravek (P0 audit): transakcija + atomarne spremembe količine (increment/decrement
+  // s pogojem) — brez lost update; StockTransaction + AuditLog v ISTI transakciji,
+  // da evidence gibanja ne odstopa od dejanskega stanja (prej: trije ločeni klici).
+  const result = await db.$transaction(async (tx) => {
+    const prevQty = num(item.quantity)
+    let newQty = prevQty
+    let variance = 0
+    if (delta !== null && delta > 0) {
+      await tx.inventoryItem.updateMany({ where: { id }, data: { quantity: { increment: delta }, lastRestocked: new Date() } })
+      const after = await tx.inventoryItem.findUnique({ where: { id }, select: { quantity: true } })
+      newQty = num(after?.quantity)
+      variance = Math.round((newQty - prevQty) * 1000) / 1000
+    } else if (delta !== null && delta < 0) {
+      const dec = -delta
+      const res = await tx.inventoryItem.updateMany({ where: { id, quantity: { gte: dec } }, data: { quantity: { decrement: dec } } })
+      if (res.count === 0) {
+        // talna omejitev na 0 (enako kot prejšnji max(0, qty + delta))
+        const cur = await tx.inventoryItem.findUnique({ where: { id }, select: { quantity: true } })
+        const avail = Math.max(0, num(cur?.quantity))
+        if (avail > 0) await tx.inventoryItem.updateMany({ where: { id, quantity: { gte: avail } }, data: { quantity: { decrement: avail } } })
+      }
+      const after = await tx.inventoryItem.findUnique({ where: { id }, select: { quantity: true } })
+      newQty = num(after?.quantity)
+      variance = Math.round((newQty - prevQty) * 1000) / 1000
+    } else if (setQty !== null) {
+      // inventurni popravek (absolutna vrednost) — namenoma last-writer-wins
+      newQty = Math.max(0, setQty)
+      await tx.inventoryItem.updateMany({ where: { id }, data: { quantity: newQty } })
+      variance = Math.round((newQty - prevQty) * 1000) / 1000
+    }
+    if (minQty !== null) await tx.inventoryItem.updateMany({ where: { id }, data: { minQuantity: minQty } })
+    if (cost !== null) await tx.inventoryItem.updateMany({ where: { id }, data: { costPerUnit: cost } })
 
-  // Evidence gibanja zaloge (razvidnost za računovodski izvoz): prejem/odpis/popravek
-  const prevQty = num(item.quantity)
-  const newQty = delta !== null ? Math.max(0, prevQty + delta) : setQty !== null ? Math.max(0, setQty) : prevQty
-  const variance = Math.round((newQty - prevQty) * 1000) / 1000
-  if (variance !== 0) {
-    const unitCost = data.costPerUnit !== undefined ? (data.costPerUnit as number) : num(item.costPerUnit)
-    await db.stockTransaction.create({
-      data: {
-        id: nid(),
-        inventoryItemId: id,
-        type: variance > 0 ? 'RECEIVE' : 'ADJUST',
-        quantity: variance,
-        previousQty: prevQty,
-        newQty,
-        costPerUnit: unitCost,
-        totalCost: Math.round(Math.abs(variance) * unitCost * 100) / 100,
-        reason: variance > 0 ? 'Prejem blaga (ročni vnos)' : 'Popravek/odpis zaloge (ročni vnos)',
-        employeeId: user.sub,
-        employeeName: user.name,
-      },
+    // Evidence gibanja zaloge (razvidnost za računovodski izvoz): prejem/odpis/popravek
+    if (variance !== 0) {
+      const unitCost = cost !== null ? cost : num(item.costPerUnit)
+      await tx.stockTransaction.create({
+        data: {
+          id: nid(),
+          inventoryItemId: id,
+          type: variance > 0 ? 'RECEIVE' : 'ADJUST',
+          quantity: variance,
+          previousQty: prevQty,
+          newQty,
+          costPerUnit: unitCost,
+          totalCost: Math.round(Math.abs(variance) * unitCost * 100) / 100,
+          reason: variance > 0 ? 'Prejem blaga (ročni vnos)' : 'Popravek/odpis zaloge (ročni vnos)',
+          employeeId: user.sub,
+          employeeName: user.name,
+        },
+      })
+    }
+
+    await tx.auditLog.create({
+      data: { id: nid(), userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }) },
     })
-  }
-
-  await db.auditLog.create({
-    data: { id: nid(), userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, ...data }) },
+    return { newQty, variance, name: item.name }
   })
+
   // Issue #11 §3 — dogodek spremembe zaloge (variance != 0 pomeni dejanski premik)
-  if (variance !== 0) {
-    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: item.name, variance, newQty, by: user.name } }).catch(() => undefined)
+  if (result.variance !== 0) {
+    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: result.name, variance: result.variance, newQty: result.newQty, by: user.name } }).catch(() => undefined)
   }
-  return ok({ item: { id: updated.id, name: updated.name, qty: num(updated.quantity) } })
+  return ok({ item: { id, name: item.name, qty: result.newQty } })
 }

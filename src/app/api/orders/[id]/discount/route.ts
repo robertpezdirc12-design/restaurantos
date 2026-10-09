@@ -43,7 +43,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     amount = discountAmountOf(d, subtotal)
     discountName = d.name
     discountId = d.id
-    await db.discount.update({ where: { id: d.id }, data: { currentUses: { increment: 1 } } })
+    // R8 popravek (P0 audit): atomarno povečanje števca uporabe (CAS guard maxUses) —
+    // prej: preverba + nevezan increment → sočasna uporaba bi prekorazila omejitev
+    if (d.maxUses != null) {
+      const bump = await db.discount.updateMany({
+        where: { id: d.id, currentUses: { lt: d.maxUses } },
+        data: { currentUses: { increment: 1 } },
+      })
+      if (bump.count === 0) return fail('Popust je dosegel omejitev uporabe.', 409)
+    }
   } else {
     const type = String(body?.type || '').toLowerCase()
     const val = num(body?.amount)
@@ -81,6 +89,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
+  // N6 popravek (P0 audit): lokacijski gate tudi na odstranjevanju popusta (kot ga ima POST) —
+  // prej: natakar lokacije A je lahko odstranil popust naročilu lokacije B
+  const delGuard = assertResourceLocation(user, order.locationId)
+  if (delGuard) return delGuard
   if (order.paymentStatus === 'paid') return fail('Naročilo je že plačano.', 409)
   const previous = num(order.discount)
   await db.order.update({ where: { id }, data: { discount: 0 } })

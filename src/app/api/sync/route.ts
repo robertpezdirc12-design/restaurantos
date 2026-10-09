@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import type { OrderItemStatus } from '@/lib/prisma-types'
+import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
@@ -89,7 +90,20 @@ async function applyOp(user: { sub: string; loc: string | null }, op: SyncOp): P
         const price = Number(mi.price); const vatRate = Number(mi.vatRate) || 22
         return { id: nid(), orderId, menuItemId: mi.id, quantity: qty, price, vatRate, vatAmount: (price * qty * vatRate) / 100, menuItemName: mi.name, status: itemStatusToDB('PENDING') as OrderItemStatus, notes: i.note || '' }
       })
-      await db.orderItem.createMany({ data: rows }); await recalcTotals(orderId); return orderId
+      // R5 popravek (P0 audit): createMany + recalcTotals + update v ISTI transakciji s CAS
+      // gate na plačano naročilo (enako kot PATCH /api/orders/[id])
+      try {
+        await db.$transaction(async (tx) => {
+          await tx.orderItem.createMany({ data: rows })
+          const totals = await recalcTotals(orderId, tx)
+          const claim = await tx.order.updateMany({ where: { id: orderId, paymentStatus: { not: 'paid' } }, data: { subtotal: totals.subtotal, tax: totals.tax, total: totals.total } })
+          if (claim.count === 0) throw new OrderError('Naročilo je že plačano — postavk ni mogoče dodati.', 409)
+        })
+      } catch (e) {
+        if (e instanceof OrderError) throw e
+        throw new OrderError('Dodajanje postavk ni uspelo (artikel ni na voljo na lokaciji naročila).', 400)
+      }
+      return orderId
     }
     case 'kitchen.status': {
       const itemId = String(payload.itemId || ''); const status = String(payload.status || '')
@@ -108,11 +122,14 @@ async function applyOp(user: { sub: string; loc: string | null }, op: SyncOp): P
   }
 }
 
-async function recalcTotals(orderId: string) {
-  const items = await db.orderItem.findMany({ where: { orderId, voided: false } })
+async function recalcTotals(orderId: string, tx?: Prisma.TransactionClient) {
+  const dbx = tx ?? db
+  const items = await dbx.orderItem.findMany({ where: { orderId, voided: false } })
   let subtotal = 0; let tax = 0
   for (const it of items) { subtotal += Number(it.price) * (it.quantity || 0); tax += Number(it.vatAmount) }
-  await db.order.update({ where: { id: orderId }, data: { subtotal: Math.round(subtotal * 100) / 100, tax: Math.round(tax * 100) / 100, total: Math.round((subtotal + tax) * 100) / 100 } })
+  const totals = { subtotal: Math.round(subtotal * 100) / 100, tax: Math.round(tax * 100) / 100, total: Math.round((subtotal + tax) * 100) / 100 }
+  await dbx.order.update({ where: { id: orderId }, data: totals })
+  return totals
 }
 
 export async function GET(req: NextRequest) {

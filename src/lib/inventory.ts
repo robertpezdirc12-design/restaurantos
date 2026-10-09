@@ -88,10 +88,35 @@ export async function deductStockForOrderTx(
   for (const item of invItems) {
     const req = needed.get(item.id) || 0
     const prev = Math.max(0, num(item.quantity))
-    const actual = Math.min(req, prev) // primanjkljaj ne blokira prodaje
+    const requested = Math.min(req, prev) // ciljani odjem (primanjkljaj ne blokira prodaje)
+    const unitCost = num(item.costPerUnit)
+
+    // ── R2 popravek (P0 audit): CAS odštevek — atomarno (quantity >= x → decrement),
+    // brez lost update pod sočasnimi računi (prej: read-then-write z absolutno vrednostjo) ──
+    let deducted = 0
+    const full = await tx.inventoryItem.updateMany({
+      where: { id: item.id, quantity: { gte: requested } },
+      data: { quantity: { decrement: requested } },
+    })
+    if (full.count === 1) {
+      deducted = requested
+    } else {
+      // talni odštevek: toliko, kolikor je dejansko na voljo (retry ob sočasnosti)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cur = await tx.inventoryItem.findUnique({ where: { id: item.id }, select: { quantity: true } })
+        const avail = Math.max(0, num(cur?.quantity))
+        const take = Math.min(requested, avail)
+        if (take <= 0) break
+        const res = await tx.inventoryItem.updateMany({
+          where: { id: item.id, quantity: { gte: take } },
+          data: { quantity: { decrement: take } },
+        })
+        if (res.count === 1) { deducted = take; break }
+      }
+    }
+    const actual = deducted
     const newQty = r3(prev - actual)
     const shortfall = r3(req - actual)
-    const unitCost = num(item.costPerUnit)
     const lineCost = r2(unitCost * actual)
 
     if (shortfall > 0) {
@@ -113,22 +138,33 @@ export async function deductStockForOrderTx(
       let remaining = toAllocateFromBatches
       for (const b of batches) {
         if (remaining <= 0.0005) break
-        const avail = Math.max(0, num(b.quantityRemaining))
-        const alloc = Math.min(avail, remaining)
-        if (alloc <= 0) continue
+        let avail = Math.max(0, num(b.quantityRemaining))
+        let alloc = Math.min(avail, remaining)
+        let ok = false
+        // R2 popravek (P0 audit): CAS po seriji (decrement z gte guard + retry)
+        for (let attempt = 0; attempt < 3 && alloc > 0.0005; attempt++) {
+          const res = await tx.inventoryBatch.updateMany({
+            where: { id: b.id, quantityRemaining: { gte: alloc } },
+            data: { quantityRemaining: { decrement: alloc } },
+          })
+          ok = res.count === 1
+          if (!ok) {
+            const fresh = await tx.inventoryBatch.findUnique({ where: { id: b.id }, select: { quantityRemaining: true } })
+            avail = Math.max(0, num(fresh?.quantityRemaining))
+            alloc = Math.min(avail, remaining)
+          }
+        }
+        if (!ok || alloc <= 0.0005) continue
         const bNew = r3(avail - alloc)
-        await tx.inventoryBatch.update({
-          where: { id: b.id },
-          data: { quantityRemaining: bNew, status: bNew <= 0.0005 ? 'EXHAUSTED' : b.status },
-        })
+        if (bNew <= 0.0005) {
+          await tx.inventoryBatch.updateMany({ where: { id: b.id, quantityRemaining: { lte: 0.0005 } }, data: { status: 'EXHAUSTED' } })
+        }
         await tx.stockBatchAllocation.create({
           data: { id: nid(), batchId: b.id, stockTransactionId: txId, inventoryItemId: item.id, quantity: r3(alloc) },
         })
         remaining = r3(remaining - alloc)
       }
     }
-
-    await tx.inventoryItem.update({ where: { id: item.id }, data: { quantity: newQty } })
 
     const noteParts: string[] = []
     if (shortfall > 0) noteParts.push(`Primanjkljaj: zahtevano ${req} ${item.unit}, na zalogi ${prev} ${item.unit} — odšteto ${actual}`)

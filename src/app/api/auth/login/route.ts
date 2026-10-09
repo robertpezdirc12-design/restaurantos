@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { createToken, employeePinFields, matchesBootstrap } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { fail } from '@/lib/api'
+import { rateLimitBool } from '@/lib/rate-limit'
 import { resolvePermissions, resolvePermissionsForUIRole } from '@/lib/permissions'
 import { totpVerify, consumeRecoveryCode, roleRequiresMfa } from '@/lib/mfa'
 import { nid, jparse } from '@/lib/map'
@@ -12,6 +13,13 @@ export async function POST(req: NextRequest) {
   const email = String(body?.email || '').trim().toLowerCase()
   const pin = String(body?.pin || '')
   if (!email || !pin) return fail('E-pošta in PIN sta obvezna.', 400)
+
+  // P0 audit popravek: rate limit na JAVNEM prijavnem endpointu — prej je PIN brute-force
+  // bil neomejen (samo 4-mestni demo PIN-i v seedu). 10 poskusov/min/IP.
+  const ip = ipOf(req)
+  if (!rateLimitBool(`login:${ip}`, 10, 60_000)) {
+    return fail('Preveč poskusov prijave. Poskusite znova čez minuto.', 429)
+  }
 
   const employee = await db.employee.findUnique({ where: { email } })
   if (!employee || employee.status !== 'active') {
@@ -23,6 +31,10 @@ export async function POST(req: NextRequest) {
         bootstrap: true,
       })
     }
+    // P0 audit (C1): neuspešne prijave se beležijo (prej: brute-force neviden v reviziji)
+    await db.auditLog.create({
+      data: { id: nid(), userId: 'anonymous', action: 'LOGIN_FAILED', entityType: 'Employee', entityId: email, details: `Neuspešna prijava (neznan/deaktiviran račun: ${email}).`, ipAddress: ip },
+    }).catch(() => {})
     return fail('Napačen e-poštni naslov ali PIN.', 401)
   }
 
@@ -32,6 +44,10 @@ export async function POST(req: NextRequest) {
     (employee.pin && employee.pin === expected.pin)
 
   if (!pinOk) {
+    // P0 audit (C1): neuspešna PIN prijava se beleži
+    await db.auditLog.create({
+      data: { id: nid(), userId: employee.id, action: 'LOGIN_FAILED', entityType: 'Employee', entityId: employee.id, details: `Neuspešna prijava (napačen PIN): ${email}.`, ipAddress: ip, locationId: employee.locationId },
+    }).catch(() => {})
     if (matchesBootstrap(email, pin)) {
       const token = createToken({
         sub: employee.id,
@@ -94,6 +110,11 @@ export async function POST(req: NextRequest) {
     loc: employee.locationId,
     sv: employee.sessionVersion,
   })
+
+  // P0 audit (C1): uspešna prijava se beleži (actor + IP)
+  await db.auditLog.create({
+    data: { id: nid(), userId: employee.id, action: 'LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: `Prijava uspešna.`, ipAddress: ip, locationId: employee.locationId },
+  }).catch(() => {})
 
   return NextResponse.json({
     token,

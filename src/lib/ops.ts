@@ -248,10 +248,19 @@ export async function createOrderCore(
             select: { id: true },
           })
           if (!table) throw new OrderError('Miza ne pripada lokaciji naročila.')
-          await tx.table.update({
-            where: { id: created.tableId },
+          // R6 popravek (P0 audit): atomarna zasedba mize (CAS: samo nezasedena miza) —
+          // prej: brezpogojni update → POS + QR gost sta lahko hkrati "zasedla" isto mizo
+          const claim = await tx.table.updateMany({
+            where: { id: created.tableId, status: { not: 'occupied' } },
             data: { status: 'occupied' },
           })
+          if (claim.count === 0) {
+            // dovoljeno le, če je drugo aktivno naročilo na mizi replay istega klika
+            const activeOthers = await tx.order.count({
+              where: { tableId: created.tableId, id: { not: created.id }, paymentStatus: { not: 'paid' }, status: { not: 'cancelled' } },
+            })
+            if (activeOthers > 0) throw new OrderError('Miza je že zasedena (aktivno naročilo).', 409)
+          }
         }
         return created
       })

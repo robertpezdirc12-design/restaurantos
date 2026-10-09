@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
-import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB } from '@/lib/map'
+import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
+import type { Prisma } from '@prisma/client'
 
 const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -20,8 +21,9 @@ function normalize(o: Record<string, unknown>) {
   } as Parameters<typeof mapOrder>[0]
 }
 
-async function recalcTotals(orderId: string) {
-  const items = await db.orderItem.findMany({ where: { orderId, voided: false } })
+async function recalcTotals(orderId: string, tx?: Prisma.TransactionClient) {
+  const dbx = tx ?? db
+  const items = await dbx.orderItem.findMany({ where: { orderId, voided: false } })
   let subtotal = 0
   let tax = 0
   for (const it of items) {
@@ -73,6 +75,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const data: Record<string, unknown> = {}
   if (body?.status && ['OPEN', 'SENT', 'PREPARED', 'PAID', 'CANCELLED'].includes(body.status)) {
+    // R10 popravek (P0 audit): plačanega naročila ni mogoče ročno stornirati (prej: možno
+    // brez razknjižbe zalog, brez fiskalnega storna in brez audita — tveganje pregreška evidence)
+    if (body.status === 'CANCELLED' && order.paymentStatus === 'paid') {
+      return fail('Plačanega naročila ni mogoče stornirati prek statusa — fiskalni storno/vračilo je v pripravi.', 409)
+    }
     data.status = body.status.toLowerCase()
     if (body.status === 'PAID') {
       data.paidAt = new Date()
@@ -87,6 +94,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.cancelledAt = new Date()
       data.cancelledBy = user.name
       data.cancelledById = user.sub
+    }
+    // P0 audit (C2): ročni override statusa PAID/CANCELLED = finančna akcija → obvezen audit
+    if (body.status === 'PAID' || body.status === 'CANCELLED') {
+      await db.auditLog.create({
+        data: {
+          id: nid(),
+          userId: user.sub,
+          action: body.status === 'PAID' ? 'ORDER_STATUS_PAID_OVERRIDE' : 'ORDER_STATUS_CANCELLED_OVERRIDE',
+          entityType: 'Order',
+          entityId: id,
+          details: jstr({ orderNumber: order.orderNumber, previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name }),
+          locationId: order.locationId,
+        },
+      })
     }
   }
   if (body?.note !== undefined) data.notes = body.note
@@ -122,14 +143,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         notes: i.note || '',
       }
     })
+    // R5 popravek (P0 audit): createMany + recalcTotals + update v ISTI transakciji s CAS
+    // gate (paymentStatus !== 'paid') — prej: trije ločeni klici brez plačilne preverbe
+    // (postavke na plačano naročilo bi spremenile total, račun pa ostal star).
     try {
-      await db.orderItem.createMany({ data: rows })
-    } catch {
+      await db.$transaction(async (tx) => {
+        await tx.orderItem.createMany({ data: rows })
+        const totals = await recalcTotals(id, tx)
+        const patch: Record<string, unknown> = { ...totals, ...data }
+        if (data.status === undefined && order.status === 'open') patch.status = 'sent'
+        const claim = await tx.order.updateMany({
+          where: { id, paymentStatus: { not: 'paid' } },
+          data: patch,
+        })
+        if (claim.count === 0) throw new Error('ORDER_PAID_GATE')
+      })
+    } catch (e) {
+      if (e instanceof Error && e.message === 'ORDER_PAID_GATE') {
+        return fail('Naročilo je že plačano — postavk ni mogoče dodati.', 409)
+      }
       return fail('Artikel ni na voljo na lokaciji naročila.', 400)
     }
-    const totals = await recalcTotals(id)
-    Object.assign(data, totals)
-    if (data.status === undefined && order.status === 'open') data.status = 'sent'
+    const updatedAfterAdd = await db.order.findUnique({ where: { id }, include: orderInclude })
+    if (!updatedAfterAdd) return fail('Naročilo ne obstaja.', 404)
+    if (updatedAfterAdd.status === 'paid') {
+      await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updatedAfterAdd.id, payload: { total: updatedAfterAdd.total, locationId: updatedAfterAdd.locationId } }).catch(() => undefined)
+    }
+    if (updatedAfterAdd.status === 'cancelled') {
+      await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updatedAfterAdd.id, payload: { by: user.name, locationId: updatedAfterAdd.locationId } }).catch(() => undefined)
+    }
+    return ok({ order: mapOrder(normalize(updatedAfterAdd)) })
   }
 
   const updated = await db.order.update({ where: { id }, data, include: orderInclude })
@@ -154,9 +197,25 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Issue #4 §1: lokacijski gate na storno
   const delGuard = assertResourceLocation(user, order.locationId)
   if (delGuard) return delGuard
+  // R10 popravek (P0 audit): storno plačanega naročila brez razknjižbe/fiskalnega storna je zavrnjen
+  if (order.paymentStatus === 'paid') {
+    return fail('Plačanega naročila ni mogoče stornirati — fiskalni storno/vračilo je v pripravi.', 409)
+  }
   await db.order.update({
     where: { id },
     data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub },
+  })
+  // P0 audit (C2): storno naročila je finančna akcija → obvezen revizijski zapis
+  await db.auditLog.create({
+    data: {
+      id: nid(),
+      userId: user.sub,
+      action: 'ORDER_CANCELLED',
+      entityType: 'Order',
+      entityId: id,
+      details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }),
+      locationId: order.locationId,
+    },
   })
   // Issue #11 §3 — storno dogodek
   await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true } }).catch(() => undefined)

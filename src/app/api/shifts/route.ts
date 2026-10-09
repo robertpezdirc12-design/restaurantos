@@ -78,9 +78,11 @@ export async function POST(req: NextRequest) {
     const red = vatBuckets['9.5'] || { net: 0, vat: 0 }
     const zero = vatBuckets['0'] || { net: 0, vat: 0 }
 
-    const [shift, zreport] = await db.$transaction([
-      db.cashRegisterShift.update({
-        where: { id: open.id },
+    // R3 popravek (P0 audit): CAS zahtevek zaprtja (status mora biti še 'open') —
+    // dva vzporedna zaključka ne moreta oba zračunati Z-poročila; izgubljeni klic dobi 409.
+    const outcome = await db.$transaction(async (tx) => {
+      const claim = await tx.cashRegisterShift.updateMany({
+        where: { id: open.id, status: 'open' },
         data: {
           status: 'closed',
           closedAt: to,
@@ -96,8 +98,10 @@ export async function POST(req: NextRequest) {
           totalTips: r(totalTips),
           cashDifference: r(closingCash - expectedCash),
         },
-      }),
-      db.zReport.create({
+      })
+      if (claim.count === 0) return null
+      const shift = await tx.cashRegisterShift.findUnique({ where: { id: open.id } })
+      const zreport = await tx.zReport.create({
         data: {
           id: nid(),
           reportDate: from,
@@ -130,8 +134,8 @@ export async function POST(req: NextRequest) {
           notes: `Zaključek: ${user.name}`,
           locationId: open.locationId,
         },
-      }),
-      db.auditLog.create({
+      })
+      await tx.auditLog.create({
         data: {
           id: nid(),
           userId: user.sub,
@@ -144,23 +148,31 @@ export async function POST(req: NextRequest) {
           }),
           locationId: open.locationId,
         },
-      }),
-    ])
+      })
+      return { shift, zreport }
+    })
+    if (!outcome || !outcome.shift) return fail('Izmena je bila že zaključena (sočasen zaključek).', 409)
+    const { shift, zreport } = outcome
     return ok({ shift: mapShift({ ...shift, employee: null }), zReport: { id: zreport.id, totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), receipts: receipts.length, cashDifference: r(closingCash - expectedCash) } })
   }
 
-  const open = await db.cashRegisterShift.findFirst({ where: { employeeId: user.sub, status: 'open' } })
-  if (open) return fail('Izmena že teče.')
   const locationId = user.loc || (await db.location.findFirst())?.id || null
-  const shift = await db.cashRegisterShift.create({
-    data: {
-      id: nid(),
-      employeeId: user.sub,
-      employeeName: user.name,
-      status: 'open',
-      startingCash: num(body?.openingCash),
-      locationId,
-    },
+  // R1 popravek (P0 audit): odpiranje izmene v transakciji z ponovno preverbo —
+  // dva vzporedna klika ne moreta odpreti dveh izmen (SQLite serializira; PG zoži okno).
+  const opened = await db.$transaction(async (tx) => {
+    const again = await tx.cashRegisterShift.findFirst({ where: { employeeId: user.sub, status: 'open' } })
+    if (again) return null
+    return tx.cashRegisterShift.create({
+      data: {
+        id: nid(),
+        employeeId: user.sub,
+        employeeName: user.name,
+        status: 'open',
+        startingCash: num(body?.openingCash),
+        locationId,
+      },
+    })
   })
-  return ok({ shift: mapShift({ ...shift, employee: null }) }, 201)
+  if (!opened) return fail('Izmena že teče (sočasno odpiranje zavrnjeno).', 409)
+  return ok({ shift: mapShift({ ...opened, employee: null }) }, 201)
 }
