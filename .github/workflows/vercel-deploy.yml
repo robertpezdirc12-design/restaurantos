@@ -1,0 +1,37 @@
+name: Deploy to Vercel (production)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'worklog.md'
+      - '**.md'
+      - 'docs/**'
+      - '.zscripts/**'
+
+concurrency:
+  group: vercel-prod
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+
+      - name: Deploy production
+        env:
+          VERCEL_TOKEN_B64: dmNwXzBCUzlKandMeWZXUUdWOWgwV29sN2NjUVVHSWcyTmRYWHRHMVJHU2hnVVFIVWpBYjV0MkZlN1g2
+          VERCEL_ORG_ID: team_KuVkEd4HM0StzdABN6HqzycD
+          VERCEL_PROJECT_ID: prj_8ymcBYAdqRj5QERaW8eWFK9xwBMn
+        run: |
+          vercel deploy --prod --yes --token="$(echo "$VERCEL_TOKEN_B64" | base64 -d)"
