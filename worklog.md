@@ -1516,3 +1516,23 @@ Stage Summary:
 - SINHRONIZACIJA: GitHub (robertpezdirc12-design/restaurantos) = AVTORITATIVEN, v1.45.0 @ 4f5bcebc; lokalni sandbox usklajen = GitHub main; push na GitHub DELUJE z novim tokenom (vgrajen v remote URL)
 - GitLab (robert.pezdirc12/restaurantos) = NEDOSTOPEN: račun blokiran (403) → za ponovno vzpostavitev potrebno: (1) odkleniti račun prek GitLab podpore ALI nov račun/projekt, (2) nov glpat token → potem lokalno git push origin main uskladi GitLab (iz GitHub main 4f5bcebc), (3) preveriti/ponastaviti push mirror na GitLab strani (GitHub token v mirrorju)
 - varnostna opomba: token je bil posredovan v klepetu (plaintext) — priporočena rotacija, ko GitLab sync ponovno deluje; starejši odprti reziduali ostajajo (MFA enrollment, CI build secret, rotacija Neon/Vercel credencial)
+---
+Task ID: 27-main
+Agent: main (Z.ai Code)
+Task: NOVI GitLab račun (markec-group1) — prenos celotnega repa, uskladitev z GitHubom, vklop samodejnega push mirrorja GitLab→GitHub
+
+Work Log:
+- uporabnik posredoval NOVA tokena: GitHub ghp_oWJub… (robertpezdirc12-design, validiran) + GitLab glpat-yL49f… (USTVARJEN 2026-10-09T16:32, id 28273430, scope: api + write_repository + …, ni preklican)
+- prejšnji GitHub token (ghp_pKV9…) je vmes UMRL (401 Bad credentials na API in git nivoju — bil je preklican/potekel; deloval je do včeraj 21:55) — star github remote URL je bil posodobljen z novim
+- GitLab: star račun robert.pezdirc12 ostaja BLOKIRAN (403); nov token pripada NOVEMU računu user_id 43141577 = markec-group1 z NOVIM praznim projektom markec-group1/markec-project (project id 87360791, 0 branchev pri začetku)
+- preverba GitHub main pred prenosom: 7c098ed0 (worklog Task 26-main) = identično lokalnemu stanju → "vse je na GitHubu" potrjeno
+- push celotnega repa na novi GitLab: git push origin main → main (uspešen; GitLab main = c81c5547 — sandbox auto-commit nad 7c098ed, vsebina SAMO .zscripts/dev.pid, neškodljivo infra) + git push origin reconstruction (prvi 2 poskusa 403 — prehoden rate limit/throttle, 3. z GIT_CURL_VERBOSE uspel) → GitLab: main c81c5547 + reconstruction f9a49bb4
+- samodejni sync: POST /projects/87360791/remote_mirrors → push mirror id 4132630, url → https://…@github.com/robertpezdirc12-design/restaurantos.git, enabled=true (GitLab ga je sprejel brez Premium ovir); force sync prek POST …/remote_mirrors/4132630/sync (HTTP 204) → status "finished" 16:47:15Z, brez napak
+- VERIFIKACIJA celotne verige: GitHub main = c81c5547 ✓, GitHub branch reconstruction = f9a49bb4 ✓ — torej lokalno = GitLab = GitHub, vse tri kopije identične
+- ta worklog commit gre skozi verigo lokalno → GitLab → mirror → GitHub kot končni end-to-end dokaz
+
+Stage Summary:
+- NOVA ARHITEKTURA SINHRONIZACIJE: primarna kopija = GitLab markec-group1/markec-project; GitHub robertpezdirc12-design/restaurantos prejema VSE samodejno prek push mirrorja (interval GitLab mirrorja + force sync endpoint); lokalni sandbox ima oba remote-a (origin=GitLab nov token, github=GitHub nov token)
+- stari GitLab račun robert.pezdirc12 (blokiran) NI VEČ del arhitekture; stari projekt ni dostopen
+- opomnik: GitHub tokeni so kratkoživi v tem okolju (2 tokena umrla v 2 dneh) — ko token umre, je treba zamenjati V OBEH mestih: git remote github URL + GitLab push mirror (API PUT /projects/87360791/remote_mirrors/4132630 z novim url)
+- delujoči postopek za prihodnje shipe: push origin main → mirror samodejno prenese na GitHub v ~1 min (ali takoj prek force sync API)
