@@ -13,9 +13,10 @@ stages:
 
 quality-gate:
   stage: verify
-  # Always include at least one job so GitLab cannot create an empty pipeline.
   rules:
-    - when: always
+    # Run on merge requests and pushes to main.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
   cache:
     key:
       files:
