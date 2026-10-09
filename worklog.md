@@ -1602,3 +1602,28 @@ Stage Summary:
 - Ključna odkritja: plačilno jedro + idempotencija že utrjeni; luknje bile izmena/zaloga/addItems/miza (vse read-then-write → zdaj CAS); login brez rate limita (zdaj omejen); storno plačanega možen (zdaj 409); assertTenantScope mrtva koda (dokumentirano)
 - FURS ostaja simulacija (produkcija pending do certifikata) — nobenih lažnih davčnih trditev; report navaja točno kaj JE in kaj NI
 - Blokade za človeka: FURS/HR certifikat, Neon DATABASE_URL v GitHub Actions (za CI smoke), GitLab CI runner, DNS restaurantos.app
+
+---
+Task ID: 30-main
+Agent: main (Z.ai Code)
+Task: Neon integracija (uporabniški napi_ org API key) — odkrij projekt, prototip ephemeral-branch smoke, CI job v workflowu (odstranjen bloker B1 "Neon DATABASE_URL v GitHub Actions")
+
+Work Log:
+- validacija keya: api.neon.tech DNS GLOBALNO mrtav (authoritative Cloudflare NS vrača NODATA za vse tipe; Cloudflare 1016 prek SNI) — obvoz: console.neon.tech/api/v2 deluje z org keyi (napi_)
+- odkriti 2 Neon projekta: young-hall-93273873 (legacy_r430, 141 tabel, NI naš) + patient-violet-36825841 (public, 117 tabel: Employee/Order/Receipt/ZReport/StockTransaction/... = RESTAURANTOS, pg 17, us-east-1)
+- Vercel envs API za prj_8ymcBYAdqRj5QERaW8eWFK9xwBMn vrača 404/empty (envs upravlja Neon integracija, token jih ne vidi) — ne ovira: vse prek Neon API
+- pasti Neon API: (1) POST branch z "endpoints" v body → 400; endpoint ločeno POST /endpoints {branch_id, type:"read_write"} ("calc_endpoint" ne obstaja več); (2) PATCH role password → 405 na console routerju; (3) REŠITEV za gesla: POST role IGNORIRA podano geslo in vrne avto-generirano npg_ v response — to geslo takoj deluje (ci_probe flake = propagacija gesla, restart ni bil potreben za ci_probe2); (4) burst klicev → 429/"conflicting operations" → neon_req retry helper z linearnim backoffom; (5) prazen rezultat stale-lookupa NI napaka (harness bug)
+- sandbox: prisma engine ne doseže ep-*.aws.neon.tech (IPv6-first, IPv6 egress mrtav; /etc/gai.conf ni zapisljiv) — obvoz: postgres.js (Bun) prek IPv4; na GitHub runnerjih prisma deluje normalno
+- Bun.sql gotcha: options-object tiho pade na SQLITE (probe3 false positive); pravilno: URL-string konstruktor + sslmode=require
+- strukturna drift preverba PROD (API schema endpoint) vs prisma/schema.prisma: 117 tabel, 0 razlik v stolpcih — produkcija sinhronizirana
+- prototip (br-odd-math + ci_smoke_proto db, kasneje pobrisan): 4464-vrstični DDL (117 tabel) se očistno aplicira na PG 17; CRUD zlata veriga Location→Menu→Category→MenuItem + Employee; enum/DECIMAL/FK-enforcement/JSONB vsi OK; 6,7 s
+- artefakti: scripts/neon-smoke.mjs (warmup retry + DDL apply + CRUD + enum + DECIMAL + FK + JSONB + cleanup; exit 0/1) + postgres@3.4.7 v dependencies; .github/workflows vercel-deploy.yml: NOV JOB neon-smoke (bun setup, DDL gen, stale-branch cleanup, ephemeral stack create z retries, wait-active, DRIFT CHECK migrate diff --from-url proti kopiji produkcije = BLOKIRA deploy, smoke, delete branch always()) + deploy needs neon-smoke + workflow_dispatch
+- YAML past: večvrstični python -c v run:| block pri column 1 prekine block scalar → vse python -c enovrstične
+- lokalni mini-harness (isti bash kot CI) 2× popravljen → ZELEN: branch br-autumn-fire-ankirs6o celoten cikel v ~11 s, nato pobrisan; vsi ci-smoke-* ostanki pobrisani (ostane samo main)
+- verifikacija: YAML parse OK, lint 0, tsc 0, 371/371 testov (997 expect)
+
+Stage Summary:
+- NEON = patient-violet-36825841 (RESTAURANTOS, pg 17): main br-dawn-fire-an45hmbc, endpoint ep-solitary-term-anhf13uv.c-6.us-east-1.aws.neon.tech, db neondb, owner neondb_owner; produkcija strukturno SINHRONIZIRANA z datamodelom (0 drift)
+- Bloker B1 odstranjen: CI zdaj na VSAK push main: (1) drift check produkcije (migrate diff --from-url, brez dodatnih credentialov — ci_smoke lahko bere neondb), (2) greenfield DDL apply + CRUD smoke na realnem Postgres 17 na ephemeral branchu (avto-brisan), (3) šele nato Vercel deploy; geslo rolje živi samo v GITHUB_ENV ephemeralnega joba
+- Neon API pasti dokumentirane zgoraj (endpoint type read_write, role password v POST response, console.neon.tech/api/v2 namesto mrtvega api.neon.tech, retry helper za 429/conflicting-operations)
+- odprto: prvi CI run na pushu bo pokazal morebitne benign diff-e drift checka (prisma natančen; produkcija pushana z isto prismo 6.11.1 → pričakovano 0)

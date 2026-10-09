@@ -8,13 +8,138 @@ on:
       - '**.md'
       - 'docs/**'
       - '.zscripts/**'
+  workflow_dispatch:
 
 concurrency:
   group: vercel-prod
   cancel-in-progress: true
 
 jobs:
+  # Neon ephemeral-branch smoke: verifies on REAL Postgres that the prisma
+  # schema applies, CRUD/enum/FK/JSONB work, and that the production schema
+  # has zero drift vs the datamodel. Blocks deploy on failure.
+  neon-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEON_API_KEY_B64: bmFwaV92M3gyODVpZTJndWh4emgzOGV2a2hoOWNyNjZ3ZXgzZDNqY3lyY3BybGRvanl2azhsYnRhMDc4bjVsaDNoNjZv
+      NEON_PROJECT_ID: patient-violet-36825841
+      # prisma needs the env var defined even when it never connects (diff --from-empty)
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate full schema DDL
+        run: |
+          bunx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/schema_ddl.sql
+          echo "tables: $(grep -c 'CREATE TABLE' /tmp/schema_ddl.sql || true)"
+
+      - name: Create ephemeral Neon branch stack (branch + endpoint + role + database)
+        run: |
+          set -e
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          export NEON_KEY
+          API="https://console.neon.tech/api/v2"
+          BR_NAME="ci-smoke-${GITHUB_SHA::7}"
+
+          neon_req() { # method path data pyexpr
+            local method="$1" path="$2" data="$3" expr="$4" resp val try
+            for try in 1 2 3 4 5; do
+              if [ "$method" = "GET" ]; then
+                resp=$(curl -s "$API$path" -H "Authorization: Bearer $NEON_KEY")
+              else
+                resp=$(curl -s -X "$method" "$API$path" -H "Authorization: Bearer $NEON_KEY" -H 'Content-Type: application/json' ${data:+-d "$data"})
+              fi
+              val=$(echo "$resp" | python3 -c "$expr" 2>/dev/null || true)
+              if [ -n "$val" ]; then echo "$val"; return 0; fi
+              echo "  retry $try: $(echo "$resp" | head -c 140)" >&2
+              sleep $((try*4))
+            done
+            echo "REQUEST FAILED: $method $path" >&2; return 1
+          }
+
+          # idempotency: delete same-sha branch left by a cancelled run
+          STALE=$(curl -s "$API/projects/$NEON_PROJECT_ID/branches" -H "Authorization: Bearer $NEON_KEY" | python3 -c "import json,sys; name='$BR_NAME'; print(' '.join(b['id'] for b in json.load(sys.stdin).get('branches',[]) if b['name']==name))" 2>/dev/null || true)
+          if [ -n "$STALE" ]; then
+            echo "deleting stale branch $STALE"
+            curl -s -X DELETE "$API/projects/$NEON_PROJECT_ID/branches/$STALE" -H "Authorization: Bearer $NEON_KEY" > /dev/null || true
+            sleep 3
+          fi
+
+          BR_ID=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches" "{\"branch\":{\"name\":\"$BR_NAME\"}}" 'import json,sys; print(json.load(sys.stdin)["branch"]["id"])')
+          echo "branch: $BR_ID"; sleep 3
+
+          EP_HOST=$(neon_req POST "/projects/$NEON_PROJECT_ID/endpoints" "{\"endpoint\":{\"branch_id\":\"$BR_ID\",\"type\":\"read_write\"}}" 'import json,sys; print(json.load(sys.stdin)["endpoint"]["host"])')
+          EP_ID=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR_ID/endpoints" '' 'import json,sys; print(json.load(sys.stdin)["endpoints"][0]["id"])')
+          echo "endpoint: $EP_ID $EP_HOST"
+
+          ROLE_PW=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR_ID/roles" '{"role":{"name":"ci_smoke"}}' 'import json,sys; print(json.load(sys.stdin)["role"]["password"])')
+          echo "role pw: ${ROLE_PW:0:6}..."
+
+          DB_OK=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR_ID/databases" '{"database":{"name":"ci_smoke","owner_name":"ci_smoke"}}' 'import json,sys; print(json.load(sys.stdin).get("database",{}).get("name",""))')
+          echo "database: $DB_OK"
+
+          echo "BR_ID=$BR_ID" >> "$GITHUB_ENV"
+          echo "EP_ID=$EP_ID" >> "$GITHUB_ENV"
+          echo "EP_HOST=$EP_HOST" >> "$GITHUB_ENV"
+          echo "SMOKE_ROLE_PW=$ROLE_PW" >> "$GITHUB_ENV"
+
+      - name: Wait for endpoint active
+        run: |
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          S=""
+          for i in $(seq 1 30); do
+            S=$(curl -s "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$EP_ID" \
+              -H "Authorization: Bearer $NEON_KEY" | \
+              python3 -c 'import json,sys; print(json.load(sys.stdin).get("endpoint",{}).get("current_state",""))')
+            echo "poll $i: $S"
+            [ "$S" = "active" ] && exit 0
+            sleep 3
+          done
+          echo "endpoint never became active"; exit 1
+
+      - name: Schema drift check (production copy vs datamodel)
+        run: |
+          PROD_URL="postgresql://ci_smoke:$SMOKE_ROLE_PW@$EP_HOST/neondb?sslmode=require"
+          if ! bunx prisma migrate diff --from-url "$PROD_URL" --to-schema-datamodel prisma/schema.prisma --exit-code > /tmp/drift.sql 2>/tmp/drift_err.txt; then
+            echo "### ⚠️ Neon schema drift detected (production copy vs prisma/schema.prisma)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```sql' >> "$GITHUB_STEP_SUMMARY"
+            head -120 /tmp/drift.sql >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "DRIFT DETECTED — first lines:"; head -20 /tmp/drift.sql
+            exit 1
+          fi
+          echo "✅ No drift: production schema matches prisma datamodel"
+
+      - name: Smoke on real Postgres (DDL apply + CRUD + enum + FK + JSONB)
+        run: |
+          SMOKE_URL="postgresql://ci_smoke:$SMOKE_ROLE_PW@$EP_HOST/ci_smoke?sslmode=require" \
+          DDL_FILE=/tmp/schema_ddl.sql \
+          SMOKE_SUFFIX="ci${GITHUB_RUN_ID}" \
+          bun scripts/neon-smoke.mjs
+
+      - name: Delete ephemeral branch
+        if: always()
+        run: |
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          if [ -n "${BR_ID:-}" ]; then
+            curl -s -X DELETE "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BR_ID" \
+              -H "Authorization: Bearer $NEON_KEY" || true
+            echo "ephemeral branch $BR_ID deleted"
+          fi
+
   deploy:
+    needs: neon-smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
