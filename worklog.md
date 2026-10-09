@@ -1650,3 +1650,5 @@ Stage Summary:
 - CI veriga: ephemeral branch iz prod-v2 → drift check proti /restaurantos (pričakovano 0) → smoke → deploy
 - Rollback v 1 koraku: Vercel env PATCH nazaj na stari URL + redeploy
 - Neon pasti (dodatne): default_branch_id ni preklopljiv prek PATCH; schema endpoint (db_name) za ne-default bazo vrne prazno (uporabi direktno SQL); role geslo DOBIŠ samo ob kreaciji (POST response)
+- E2E verifikacija produkcije po preklopu (Agent Browser): login stran rendra (SL/HR, dark mode), /api/auth/locations → 200, /api/auth/login (ana@restaurant.com + napačen PIN) → 401 z lokalizirano napako "Napačen e-poštni naslov ali PIN." — pomeni: branje Location, auth poizvedba Employee, audit + rate-limit zapisi delujejo na NOVI bazi (pokvarjena baza bi dala 500); pravi PIN-i so hash-ani → polna prijava ni browser-verificirana (pošteno navedeno)
+- Neon higiena: ostane samo main (rollback) + prod-v2 (produkcija); CI ephemeral branchi se samodejno brišejo
