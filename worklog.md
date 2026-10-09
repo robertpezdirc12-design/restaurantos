@@ -1703,3 +1703,22 @@ Stage Summary:
 - guardi fail-closed: 404 / 403 (lokacija) / 409 (storno storna, kopija, neplačano, dvojni storno — race varno znotraj transakcije); dovoljenje furs.issue (owner/admin/manager + override-i; waiter/bar/kitchen zavrnjeni)
 - testi 9 novih (skupaj 380/380, 1067 expect), tsc 0, lint 0; UI: minimalen "Storno" gumb v zavihku Računi s confirm dialogom (skrit za storniranimi/kopijami/brez dovoljenja); i18n SL/HR v pariteti (1076 ključev)
 - artefakti: src/app/api/receipts/[id]/storno/route.ts (nov), tests/receipt-storno.test.ts (nov), spremembe v src/app/api/furs/route.ts (GET +isStorno/stornoOf), src/app/api/reports/export/route.ts (+STORNO_RETURN v filter), src/app/dashboard/page.tsx (Storno akcija), src/lib/i18n/sl.ts + hr.ts (3 ključa)
+
+---
+Task ID: 31-c
+Agent: main (Z.ai Code)
+Task: Infra P1 — Prisma migrations baseline + avtomatski Neon backup urnik; sinhronizacija GitLab↔GitHub po rotaciji GitHub tokena; integracija 31-a/31-b
+
+Work Log:
+- SINHRONIZACIJA: uporabnik rotiral GitHub token (stari prenehal delovati = "zgublen gitlab") → github remote posodobljen na nov token (ghp_oWJ…); GitLab↔GitHub primerjava: origin=github=859d7b8 (sinhronizirana), lokalno 1 commit naprej (2dc35f4, md-only)
+- GitLab REST API iz sandboxa spet neodziven (prazen odgovor Cloudflare) — push mirror konfiguracija ni berljiva prek API; end-to-end preverba: push 859d7b8..e0934e1 → mirror v ~110 s prenesel na GitHub (github/main=e0934e1 POTRJENO) → CI run 38004961220 SUCCESS → produkcija health ok/1.45.0/db connected
+- COMMIT integracije 31-a/31-b (oba agenta zaključila, vzporedno, 380/380 testov skupaj): fa39b33 (P1 RBAC 31-b: 18 datotek) + e0934e1 (P1 fiskalni storno 31-a: storno ruta + testi + UI + i18n 1076/1076)
+- 31-c-a BASELINE: prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script → prisma/migrations/00000000000000_init/migration.sql (4464 vrstic: 117 CREATE TABLE, 20 enum op, 176 FK = 1:1 s prod-v2) + migration_lock.toml (postgresql); varnost: postinstall = samo prisma generate, build ne poganja migrate deploy, CI drift check primerja datamodel↔produkcija (baseline ne vpliva), lokalni dev ostaja na schema.sqlite.prisma db:push
+- 31-c-b BACKUP: .github/workflows/neon-backup.yml (schedule '30 2 * * *' + workflow_dispatch, concurrency neon-backup): PG17 client prek PGDG repozitorija (runnerjev pg_dump 16 ne zmore PG17 serverja) → higiena starih backup_* vlog → efemerna backup_<STAMP> vloga na prod-v2 (geslo iz POST response, SELECT prek neon_superuser) → pg_dump --format=custom --no-owner --no-acl → validacija (pg_restore --list: ≥100 CREATE TABLE + ≥1 TABLE DATA) → artifact retention 90 dni + BACKUP_INFO.txt → DELETE role always(); isti neon_req retry helper kot deploy (429/conflicting-operations); brez novih secrets
+- YAML validiran (python yaml.safe_load); audit §13 P1 statusi posodobljeni (1,2,3,5 IZVRŠENO; 4 DELNO; 6 ODPRTO — potrebuje DDL na produkciji)
+
+Stage Summary:
+- Produkcija pognana iz 3 novih commitov (2dc35f4+fa39b33+e0934e1), CI zelen, health ok
+- P1 seznam iz audita: 4/6 točk zaprtih (storno, migracije baseline, RBAC N3+N4+tenant-docs, backup urnik); ostajata testi (delno) + feedback API (blokiran na DDL do prod-v2)
+- GitLab↔GitHub povezava POTRJENA z novim tokenom (mirror ~110 s, CI→Vercel deluje)
+- Backup urnik: prvi dejanski pg_dump bo potrdil workflow (workflow_dispatch test sledi); artifacti zasebni repo, retention 90 dni

@@ -183,12 +183,12 @@
 **P0 (izvršeno v tem auditu):** race R1/R2/R3/R4/R5/R6/R8/R10, login rate limit + login revizija, storno revizija, lokacijski gate popusta.
 
 **P1 (naslednji korak):**
-1. Fiskalni storno/vračilo endpoint (+ razknjižba zalog, storno fiskalni dokument, audit) — trenutno varovalka blokira storno plačanega.
-2. Standardizirane Prisma migracije (ustvariti `prisma/migrations` baseline) — namesto ad-hoc admin DDL rut.
-3. Uskladiti org-izolacijo (`assertTenantScope` priklic ALI dokument popraviti) + N3 (hardkodirane vloge → `requirePermission`) + N4 (migrate rute → centralne vloge).
-4. Testi: permissions, furs POST pot, deductStockForOrderTx, Z-report.
-5. Avtomatski Neon backup urnik.
-6. Mnenja gostov: vnosni API (QR stran ima ocene, ni kam).
+1. ~~Fiskalni storno/vračilo endpoint~~ — **IZVRŠENO (Task 31-a):** `POST /api/receipts/[id]/storno` — storno račun (negacija originala, isti Counter/fiskalni režim), `paymentStatus='storno'` (CAS), popolno povračilo zaloge (InventoryItem + serije FEFO, EXHAUSTED→ACTIVE), revizija `RECEIPT_STORNO` v isti transakciji; guardi fail-closed (404/403/409 dvojni storno·storno storna·kopija·neplačano); UI Storno gumb; 9 testov. Znana omejitev: ponovno plačilo storniranega naročila tehnično mogoče prek /api/furs (CAS zahteva != 'paid'; replay zaščita deductStock zadrži dvojno razknjižbo) — priporočen gate na 'storno' v naslednji iteraciji.
+2. ~~Standardizirane Prisma migracije~~ — **IZVRŠENO (Task 31-c):** `prisma/migrations/00000000000000_init/migration.sql` (117 tabel, 176 FK, iz datamodela = 1:1 s prod-v2) + `migration_lock.toml` (postgresql). Baseline je dokumentacija/rešitvena pot (`migrate deploy` na novem okolju); drift check v CI še vedno primerja datamodel ↔ produkcija.
+3. ~~Uskladiti org-izolacijo + N3 + N4~~ — **IZVRŠENO (Task 31-b):** N3 = 9 pisalnih operacij preklopljeno na `requirePermission` (inventory/employees→`inventory.manage`/`employees.manage`; expenses/suppliers/loyalty/jobs→`settings.manage`; warehouse odblockiran, override-i delujejo na pisanje); N4 = 7 `/api/admin/migrate-*` rut na novi `requireCentralRole` (samo DB owner/admin; MANAGER brez `$executeRawUnsafe`); assertTenantScope = usklađena dokumentacija (TENANT-ISOLATION/SECURITY-BOUNDARY/ARCHITECTURE) — enterprise rute izvajajo org preverbo inline, helper ostane rezerva.
+4. Testi: permissions, furs POST pot, deductStockForOrderTx, Z-report — **DELNO (9 novih storno testov; preostanek odprt)**.
+5. ~~Avtomatski Neon backup urnik~~ — **IZVRŠENO (Task 31-c):** `.github/workflows/neon-backup.yml` — dnevno 02:30 UTC + workflow_dispatch; efemerna `backup_*` vloga na prod-v2 (geslo samo v POST response), `pg_dump --format=custom` (PG17 client), validacija (≥100 tabel + podatkovne sekcije), artifact retention 90 dni, vloga izbrisana `always()`; higiena starih vlog na startu.
+6. Mnenja gostov: vnosni API (QR stran ima ocene, ni kam) — **ODPRTO** (potrebuje spremembo sheme → nov model + DDL na produkciji; brez app_owner gesla za prod-v2 neposreden DDL ni mogoč, glej blokade).
 
 **P2:** selitev/združevanje miz, fire-to-kitchen (`firedAt`), R7/R9/R11/R12, N1/N2/N5/N7/N8, i18n gostujočih strani, loyalty PII, chainHash aktivacija.
 

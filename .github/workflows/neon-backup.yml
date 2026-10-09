@@ -1,0 +1,119 @@
+name: Neon backup (pg_dump production)
+
+# Dnevni logični backup produkcijske baze (P1 iz audita §13 točka 5).
+# Mehanizem: efemerna backup_ vloga na prod-v2 branchu (geslo dobi SAMO v
+# response POST role klica — Neon ne dovoljuje bralnega dostopa brez nje),
+# pg_dump custom format, validacija strukture+podatkov, artifact 90 dni,
+# vloga se izbriše vedno (always()).
+# Brez dodatnih GitHub secrets — uporablja isti Neon org key kot deploy.
+
+on:
+  schedule:
+    - cron: '30 2 * * *' # dnevno 02:30 UTC (03:30/04:30 po Ljubljani)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEON_API_KEY_B64: bmFwaV92M3gyODVpZTJndWh4emgzOGV2a2hoOWNyNjZ3ZXgzZDNqY3lyY3BybGRvanl2azhsYnRhMDc4bjVsaDNoNjZv
+      NEON_PROJECT_ID: patient-violet-36825841
+      # produkcija = prod-v2 branch, baza restaurantos (gl. worklog Task 30-b)
+      NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
+      BACKUP_DB: restaurantos
+    steps:
+      - name: Install PostgreSQL 17 client (pg_dump >= server version)
+        run: |
+          set -e
+          CODENAME=$(lsb_release -cs)
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $CODENAME-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          /usr/lib/postgresql/17/bin/pg_restore --version
+
+      - name: Ephemeral backup role + pg_dump + validation
+        run: |
+          set -e
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          export NEON_KEY
+          API="https://console.neon.tech/api/v2"
+          BR="$NEON_PROD_BRANCH_ID"
+          STAMP=$(date -u +%Y%m%d%H%M)
+          ROLE_NAME="backup_${STAMP}"
+
+          neon_req() { # method path data pyexpr
+            local method="$1" path="$2" data="$3" expr="$4" resp val try
+            for try in 1 2 3 4 5; do
+              if [ "$method" = "GET" ]; then
+                resp=$(curl -s "$API$path" -H "Authorization: Bearer $NEON_KEY")
+              else
+                resp=$(curl -s -X "$method" "$API$path" -H "Authorization: Bearer $NEON_KEY" -H 'Content-Type: application/json' ${data:+-d "$data"})
+              fi
+              val=$(echo "$resp" | python3 -c "$expr" 2>/dev/null || true)
+              if [ -n "$val" ]; then echo "$val"; return 0; fi
+              echo "  retry $try: $(echo "$resp" | head -c 140)" >&2
+              sleep $((try*4))
+            done
+            echo "REQUEST FAILED: $method $path" >&2; return 1
+          }
+
+          # higiena: pobriši morebitne backup_* ostanke po zrušenih prejšnjih runih
+          STALE=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR/roles" '' 'import json,sys; print(" ".join(r["name"] for r in json.load(sys.stdin).get("roles",[]) if r["name"].startswith("backup_")))' 2>/dev/null || true)
+          for R in $STALE; do
+            echo "brisem staro backup vlogo: $R"
+            curl -s -X DELETE "$API/projects/$NEON_PROJECT_ID/branches/$BR/roles/$R" -H "Authorization: Bearer $NEON_KEY" > /dev/null || true
+            sleep 2
+          done
+
+          EP_HOST=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR/endpoints" '' 'import json,sys; print(json.load(sys.stdin)["endpoints"][0]["host"])')
+          echo "endpoint: $EP_HOST"
+
+          ROLE_PW=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR/roles" "{\"role\":{\"name\":\"$ROLE_NAME\"}}" 'import json,sys; print(json.load(sys.stdin)["role"]["password"])')
+          echo "role: $ROLE_NAME (geslo v GITHUB_ENV, dump-only SELECT)"
+          echo "ROLE_NAME=$ROLE_NAME" >> "$GITHUB_ENV"
+
+          mkdir -p backup
+          DUMP="backup/neon-backup-$STAMP.dump"
+          /usr/lib/postgresql/17/bin/pg_dump "postgresql://$ROLE_NAME:$ROLE_PW@$EP_HOST/$BACKUP_DB?sslmode=require" \
+            --format=custom --no-owner --no-acl --file="$DUMP"
+          echo "dump: $DUMP ($(stat -c%s "$DUMP") bytes)"
+
+          # validacija: struktura (117 tabel) + podatkovne sekcije
+          TABLES=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c 'CREATE TABLE' || true )
+          DATAITEMS=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c 'TABLE DATA' || true )
+          echo "validacija: $TABLES tabel, $DATAITEMS podatkovnih sekcij"
+          if [ "$TABLES" -lt 100 ] || [ "$DATAITEMS" -lt 1 ]; then
+            echo "INVALID DUMP — struktur ali podatkov premalo"; exit 1
+          fi
+
+          printf 'neon-backup %s (UTC)\nbranch: %s\nendpoint: %s\ndatabase: %s\ntables: %s\ntable-data sekcije: %s\ncommit: %s\nformat: pg_dump custom (pg_restore -d <url> file)\n' \
+            "$STAMP" "$BR" "$EP_HOST" "$BACKUP_DB" "$TABLES" "$DATAITEMS" "${GITHUB_SHA::7}" > backup/BACKUP_INFO.txt
+
+      - name: Upload backup artifact (retention 90 dni)
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-backup-${{ github.run_id }}
+          path: backup/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Delete ephemeral backup role
+        if: always()
+        run: |
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          if [ -n "${ROLE_NAME:-}" ]; then
+            curl -s -X DELETE "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_PROD_BRANCH_ID/roles/$ROLE_NAME" \
+              -H "Authorization: Bearer $NEON_KEY" || true
+            echo "backup vloga $ROLE_NAME izbrisana"
+          fi
