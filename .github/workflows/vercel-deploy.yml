@@ -24,6 +24,8 @@ jobs:
     env:
       NEON_API_KEY_B64: bmFwaV92M3gyODVpZTJndWh4emgzOGV2a2hoOWNyNjZ3ZXgzZDNqY3lyY3BybGRvanl2azhsYnRhMDc4bjVsaDNoNjZv
       NEON_PROJECT_ID: patient-violet-36825841
+      # produkcija teče na prod-v2 branchu (db "restaurantos"); main = stara shema = rollback
+      NEON_PARENT_BRANCH_ID: br-little-waterfall-anolkwr6
       # prisma needs the env var defined even when it never connects (diff --from-empty)
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
     steps:
@@ -75,7 +77,7 @@ jobs:
             sleep 3
           fi
 
-          BR_ID=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches" "{\"branch\":{\"name\":\"$BR_NAME\"}}" 'import json,sys; print(json.load(sys.stdin)["branch"]["id"])')
+          BR_ID=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches" "{\"branch\":{\"name\":\"$BR_NAME\",\"parent_id\":\"$NEON_PARENT_BRANCH_ID\"}}" 'import json,sys; print(json.load(sys.stdin)["branch"]["id"])')
           echo "branch: $BR_ID"; sleep 3
 
           EP_HOST=$(neon_req POST "/projects/$NEON_PROJECT_ID/endpoints" "{\"endpoint\":{\"branch_id\":\"$BR_ID\",\"type\":\"read_write\"}}" 'import json,sys; print(json.load(sys.stdin)["endpoint"]["host"])')
@@ -109,7 +111,7 @@ jobs:
 
       - name: Schema drift check (production copy vs datamodel)
         run: |
-          PROD_URL="postgresql://ci_smoke:$SMOKE_ROLE_PW@$EP_HOST/neondb?sslmode=require"
+          PROD_URL="postgresql://ci_smoke:$SMOKE_ROLE_PW@$EP_HOST/restaurantos?sslmode=require"
           if ! bunx prisma migrate diff --from-url "$PROD_URL" --to-schema-datamodel prisma/schema.prisma --exit-code > /tmp/drift.sql 2>/tmp/drift_err.txt; then
             echo "### ⚠️ Neon schema drift detected (production copy vs prisma/schema.prisma)" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
