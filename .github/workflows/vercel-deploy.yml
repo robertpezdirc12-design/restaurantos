@@ -41,4 +41,4 @@ jobs:
           VERCEL_ORG_ID: team_KuVkEd4HM0StzdABN6HqzycD
           VERCEL_PROJECT_ID: prj_8ymcBYAdqRj5QERaW8eWFK9xwBMn
         run: |
-          vercel deploy --prod --yes --token="$(echo "$VERCEL_TOKEN_B64" | base64 -d)" --meta "commit=${GITHUB_SHA::7}" --meta "workflow-run=${{ github.run_id }}"
+          vercel deploy --prod --yes --token="$(echo "$VERCEL_TOKEN_B64" | base64 -d)" --meta "commit=${GITHUB_SHA::7}" --meta "workflow_run=${{ github.run_id }}"
