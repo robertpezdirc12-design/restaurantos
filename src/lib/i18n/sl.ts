@@ -1017,6 +1017,10 @@ export const sl: Record<string, string> = {
   'rcpt.none': 'Ni izdanih računov.',
   'rcpt.orderShort': 'naročilo #{n}',
   'rcpt.unverified': 'neoverjeno',
+  // Storno računa (P1 audit točka 1)
+  'rcpt.stornoBtn': 'Storno',
+  'rcpt.stornoConfirm': 'Storniram račun {n} ({a})? Ustvari se storno račun z negativnim zneskom, razknjižena zaloga se povrne in naročilo označi kot storno. Akcija se zabeleži v revizijski sledi.',
+  'rcpt.stornoDone': 'Storno račun {n} je izdan. Povrnjenih zalog: {s}.',
   // Zaposleni (inline kartica + Control Center dialog)
   'emp.bootstrapActive': 'Aktiven je začasni (bootstrap) dostop — seja poteče po 2 urah.',
   'emp.bootNoProfileA': 'E-poštni naslov',

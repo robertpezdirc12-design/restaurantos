@@ -58,7 +58,7 @@ import {
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
 } from '@/components/dashboard-tabs'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
@@ -76,7 +76,7 @@ interface MenuT { id: string; name: string; price: number; station: string; avai
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null }
-interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null }
+interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null; isStorno?: boolean; stornoOf?: string | null }
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
 interface BillAutoDisc { discountId: string; name: string; amount: number }
@@ -158,6 +158,7 @@ function DashboardInner() {
   const [invoice, setInvoice] = useState<{ eor: string; invoiceNumber: string; id?: string } | null>(null)
   /** Natisljivi račun (FURS) — busy indikator za gumb Natisni */
   const [printing, setPrinting] = useState(false)
+  const [stornoing, setStornoing] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState('pregled')
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -653,6 +654,20 @@ function DashboardInner() {
       else if (res.simulated) alert(t('print.simInvoice'))
     } catch (err) { alert(t('print.prepareError', { error: (err as Error).message })) } finally { setPrinting(false) }
   }
+
+  /** Fiskalni storno računa (P1 audit točka 1) — storno račun + povračilo zaloge + revizija */
+  async function stornoReceipt(r: ReceiptT) {
+    if (!confirm(t('rcpt.stornoConfirm', { n: r.invoiceNumber, a: fmtEUR(Math.abs(r.total)) }))) return
+    setStornoing(r.id)
+    try {
+      const d = await api<{ invoice: { invoiceNumber: string }; storno: { restoredStockItems: number } }>(`/api/receipts/${r.id}/storno`, { method: 'POST' })
+      await load()
+      alert(t('rcpt.stornoDone', { n: d.invoice.invoiceNumber, s: d.storno.restoredStockItems }))
+    } catch (err) { alert((err as Error).message) } finally { setStornoing(null) }
+  }
+
+  /** Ali je ta original že storniran (storno račun je med izdanimi)? — skrije Storno akcijo */
+  const isStorned = (id: string) => receipts.some((x) => x.stornoOf === id)
 
   /** Miza za pospravit → znova na voljo (issue #1: e2e zaključek) */
   async function markClean(t: TableT) {
@@ -1227,6 +1242,12 @@ function DashboardInner() {
                           <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
                             <Printer className="w-3.5 h-3.5" /> {t('common.print')}
                           </Button>
+                          {!r.isStorno && !isStorned(r.id) && hasPerm('furs.issue') && (
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-red-700 border-red-200 hover:bg-red-50" disabled={stornoing === r.id}
+                              onClick={() => stornoReceipt(r)} title={t('rcpt.stornoBtn')}>
+                              <Ban className="w-3.5 h-3.5" /> {stornoing === r.id ? t('common.processing') : t('rcpt.stornoBtn')}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
 
   // ── 4) Gibanje zalog ──
   const stockTx = await db.stockTransaction.findMany({
-    where: { createdAt: range, type: { in: ['SALE', 'RECEIVE', 'ADJUST', 'WASTE'] }, ...stockScope },
+    where: { createdAt: range, type: { in: ['SALE', 'RECEIVE', 'ADJUST', 'WASTE', 'STORNO_RETURN'] }, ...stockScope },
     select: { type: true, quantity: true, totalCost: true },
     take: 20000,
   })

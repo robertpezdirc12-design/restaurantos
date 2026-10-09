@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
       ...mapReceipt(r),
       tableName: r.Order?.Table ? `Miza ${r.Order.Table.number ?? (r.Order.Table as unknown as { name?: string }).name ?? ''}` : null,
       orderNumber: r.Order?.orderNumber ?? null,
+      // storno označba (P1 audit točka 1): UI skrije storno akcijo za že stornirane
+      isStorno: r.isStorno === true,
+      stornoOf: r.stornoOf || null,
     })),
   })
 }
