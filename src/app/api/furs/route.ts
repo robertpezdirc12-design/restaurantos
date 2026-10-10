@@ -9,6 +9,7 @@ import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billi
 import { deductStockForOrderTx } from '@/lib/inventory'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 import { fiscalAdapterFor } from '@/lib/fiscal'
+import { certFromEnv, signZoi, fursInvoice } from '@/lib/furs/client'
 import { auditChainFields } from '@/lib/audit-chain'
 
 /**
@@ -279,6 +280,11 @@ export async function POST(req: NextRequest) {
     ? earnPointsFor(total, location.loyaltyPointsPerEuro)
     : 0
 
+  // Naloga 36: vezava FURS certifikata IZVEN transakcije (P12 parsing enkrat na zahtevek;
+  // referenca potrebna tako znotraj tx — ZOI — kot po tx — EOR SOAP klic).
+  const isHrFiscal = fiscalAdapterFor(location.country).country === 'HR'
+  const fursProd = !simulation && !isHrFiscal ? certFromEnv() : null
+
   try {
     const receipt = await db.$transaction(async (tx) => {
       // CAS zaščita: posodobi naročilo SAMO če še ni plačano → dvojni klic izgubi dirko
@@ -308,7 +314,6 @@ export async function POST(req: NextRequest) {
       //  HR → ZKI/JIR (Fiskalizacija 2.0, NN 89/2025 + Pravilnik NN 153/2025; QR = porezna.gov.hr/rn).
       // Vektor byte-identičnosti SI ZOI: tests/fiscal.test.ts.
       const fiscal = fiscalAdapterFor(location.country)
-      const isHrFiscal = fiscal.country === 'HR'
       const codes = fiscal.computeCodes({
         taxId: location.taxId || '',
         issuedAt: now,
@@ -317,8 +322,18 @@ export async function POST(req: NextRequest) {
         total,
         simulation,
       })
-      const zoi = isHrFiscal ? '' : codes.protective
+      let zoi = isHrFiscal ? '' : codes.protective
       const eor = isHrFiscal ? '' : codes.verification
+
+      // Naloga 36: produkcija s certifikatom → PRAVI ZOI (RSA-SHA256 podpis,
+      // lokalna kripto — varno v transakciji). Brez certifikata ostane dozdajšnje
+      // vedenje (prazne kode → 'pending'). HR poteka ločeno (runbook).
+      if (fursProd) {
+        zoi = signZoi(
+          { taxId: location.taxId || '', issuedAt: now, receiptNumber, premisesId: location.premisesId || 'BLG001', total },
+          fursProd.cert.keyPem
+        )
+      }
 
       const check = await tx.check.create({
         data: {
@@ -525,6 +540,36 @@ export async function POST(req: NextRequest) {
         order: { id: orderPre.id, status: 'PAID' },
       }, 200)
     }
+
+    // Naloga 36: EOR — FURS SOAP klic PO transakciji (omrežje ne sme držati DB tx).
+    // Fail-safe: ob napaki račun ostane 'pending' (plačilo je že urejeno; poznejša
+    // fiskalizacija gre prek SubsequentSubmit — runbook korak 5). Uspeh → verified.
+    if (fursProd) {
+      try {
+        const taxNum = parseInt((location.taxId || '').replace(/\D/g, ''), 10)
+        const resp = await fursInvoice(fursProd.env, fursProd.cert, {
+          taxNumber: taxNum,
+          issueDateTime: now.toISOString().slice(0, 19),
+          invoiceNumber: String(Number(receipt.twin.receiptNumber.split('-')[2]) || 0),
+          businessPremiseId: location.premisesId || 'BLG001',
+          electronicDeviceId: location.registerNumber || 'BLG-001',
+          invoiceAmount: total,
+          paymentAmount: total,
+          taxesPerSeller: Object.entries(vatMap).map(([rate, v]) => ({
+            vatRate: Number(rate), basis: v.base, taxAmount: v.vat,
+          })),
+          operatorTaxNumber: taxNum, // rezidual: ločen OperatorTaxNumber (Location) pride z validacijo testnega okolja
+          protectedID: receipt.twin.zoi,
+          subsequentSubmit: false,
+        })
+        receipt.twin = await db.receipt.update({
+          where: { id: receipt.twin.id },
+          data: { eor: resp.eor, fiscalStatus: 'verified', fiscalVerified: true, verificationDate: new Date() },
+        })
+      } catch (e) {
+        console.warn('[furs] produkcija EOR ni uspel — račun ostane pending:', (e as Error).message)
+      }
+    }
     // Issue #11 §3 — dogodek izdaje računa (evidenca, fire-and-forget)
     await publishEvent('InvoiceCreated', {
       entityType: 'Receipt',
@@ -550,7 +595,7 @@ export async function POST(req: NextRequest) {
         qr: fiscalQr || undefined,
       },
       // Issue #4 §8: simulator se NIKOLI ne predstavlja kot prava fiskalizacija
-      fursEnvironment: simulation ? 'simulation' : 'production_pending',
+      fursEnvironment: simulation ? 'simulation' : receipt.twin.fiscalStatus === 'verified' ? 'production' : 'production_pending',
       fiscalVerified: receipt.twin.fiscalVerified,
       fiscalStatus: receipt.twin.fiscalStatus,
       // Triage SI/HR: fiskalna oznaka po državi (ZOI/EOR vs ZKI/JIR + QR)

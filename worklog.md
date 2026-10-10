@@ -477,3 +477,23 @@ Work Log:
 Stage Summary:
 - CI veriga zdaj: push → [neon-smoke (real PG drift+CRUD) + tests (530) + deploy] — celoten quality gate v GitHub Actions; dnevno še backup (02:30) + prod-smoke (05:00)
 - GitLab: samo push mirror (CI disabled do nadaljnega)
+
+---
+Task ID: 36-main
+Agent: main (Z.ai Code)
+Task: FURS SI SOAP odjemalec (kodekska priprava na certifikat — zadnja kodekska naloga brez certifikata) + DNS re-check
+
+Work Log:
+- DNS re-check: TXT zapisi še NISO dodani (dig _vercel prazen; Vercel API obe domeni pending_domain_verification) — ostaja za Cloudflare panel
+- NOVO src/lib/furs/client.ts (node-forge dep): loadCertMaterial (P12 base64+geslo → PEM cert/ključ/certB64/CN/notAfter, fail-closed), certExpiringSoon, signZoi (RSA-SHA256 RSASSA-PKCS1-v1_5 nad MD5 digesta kanoničnega niza — FURS spec 1.13; kanonični niz = siZoiPayload, byte-identičen simulaciji), buildSoapEnvelope (XML-DSig: exclusive C14N + SHA256 digest + SignatureValue + BinarySecurityToken + KeyInfo ref), buildEchoRequestXml + buildInvoiceRequestXml (vsa polja spec 1.13, xmlEscape), parseEchoResponse/parseInvoiceResponse (namespace-tolerantno: <fu:eor> ali <eor>), soapPost (node https mTLS, timeout, ca opcija), fursEcho/fursInvoice, fursEndpoint (test :9002 / produkcija :9003, override FURS_ENDPOINT_URL), certFromEnv (FURS_CERT_P12_B64/PASSWORD → null pomeni dozdajšnje vedenje)
+- fiscal/index.ts: siZoiPayload izvožen (computeZoi refaktoriran da uporablja isti niz — byte-identičnost ohranjena, regresijski testi fiscal.test.ts zeleni)
+- INTEGRACIJA /api/furs POST: (1) isHrFiscal + fursProd vezava IZVEN tx (P12 parsing enkrat); (2) znotraj tx: produkcija s cert → zoi = signZoi (lokalna kripto, varno); (3) PO tx: fursInvoice SOAP klic (omrežje NE drži DB tx; taxNumber/issueDateTime/invoiceNumber=seq/premises/electronicDevice/vatMap→taxesPerSeller/protectedID=zoi/subsequentSubmit=false) → uspeh: receipt.update eor + fiscalStatus='verified' + fiscalVerified + verificationDate; napaka: fail-safe console.warn, račun ostane 'pending' (SubsequentSubmit pozneje — runbook korak 5); odziv fursEnvironment: 'production' ob verified / 'production_pending' sicer; brez cert env vedenje 1:1 nespremenjeno (fursProd=null)
+- testi tests/furs-client.test.ts (16, PASS): in-memory samopodpisan P12 (node-forge, RSA 2048, SAN 127.0.0.1/localhost za TLS hostname verifikacijo v mock testih): P12 round-trip + fail-closed (napačno geslo/pokvarjen) + notAfter; ZOI: kanonični niz byte-identičen, podpis verifikiran z javnim ključem nad MD5 digesta, determinističen (PKCS1 v1.5), ≠ simulacija, tampering zaznan; envelope: BinarySecurityToken/DigestValue/SignatureValue, SignatureValue verifikiran nad SignedInfo; InvoiceRequest vsa polja + XML escape; parsanje echo/invoices (prefiks tolerantno); mock HTTPS strežnik (Bun.serve TLS) → soapPost mTLS 200 + fursEcho povratek + fursInvoice EOR/ZOI round-trip
+- popravki med razvojem: parseEchoResponse (vrednost v vgnezdenem <echoRequest>), extractElement namespace-tolerantno, fursEcho/fursInvoice ca param (mock TLS), 127.0.0.1 namesto localhost (IPv6 mismatch), fursProd+isHrFiscal hoist izven tx (TS scope)
+- verifikacija: bunx tsc --noEmit 0 · bun run lint 0 · bun test 546/546 (+16: furs-client; fiscal/furs-post/receipt-storno vsi zeleni — simulacijska pot nespremenjena) · dev strežnik zdrav (locations 200)
+- runbook + audit posodobljena: korak 1 runbooka (SOAP odjemalec) KONČAN; ob prihodu certifikata ostane le env nastavitev + validacija C14N točnosti v FURS testnem okolju (echo z testnim certifikatom); HR adapter sledi po SI validaciji
+
+Stage Summary:
+- FURS SI SOAP KODEKSKO 100 % PRIPRAVLJEN: ob certifikatu le FURS_CERT_P12_B64/FURS_CERT_PASSWORD/FURS_ENVIRONMENT na Vercelu + testno-okoljska validacija; produkcija ZOI podpisan takoj, EOR sledi prek SOAP (fail-safe pending)
+- 546 testov; značilnost: nič se ne spremeni, dokler cert env ni nastavljen (potrjeno z obstoječimi + novimi testi)
+- ostajata le 2 fizična človeška koraka: FURS/FINA certifikat + 2 TXT zapisa v Cloudflare

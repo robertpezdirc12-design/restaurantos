@@ -21,17 +21,26 @@
 
 ## 2. Kaj pripravim (kodeksko) takoj, ko je certifikat tu
 
-1. **SOAP odjemalec** (`src/lib/fiscal/`): podpis ZOI s certifikatom (RSA-SHA256
-   nad kanoničnim nizom — vgradnja je že byte-kompatibilna z obstoječim izračunom),
-   FURS `echo`/`invoices` SOAP klic (mTLS z .p12), Porezna Fiskalizacija 2.0 REST/SOAP
-   (JIR/ZKI). Testno okolje prej, produkcija po.
+> **Task 36 (2026-10-10): odjemalec je ŽE implementiran** — `src/lib/furs/client.ts`
+> (P12 via node-forge, ZOI = RSA-SHA256 podpis MD5 digesta, XML-DSig SOAP envelope,
+> echo + invoices, mTLS https, fail-safe integracija v /api/furs — 16 testov z
+> in-memory samopodpisanim P12). Ob prihodu certifikata ostane SAMO nastavitev env.
+
+1. ~~**SOAP odjemalec**~~ — **KONČANO (Task 36):** `src/lib/furs/client.ts` —
+   `loadCertMaterial` (P12→PEM), `signZoi` (kanonični niz byte-identičen simulaciji),
+   `buildSoapEnvelope` (XML-DSig exclusive C14N + SHA256 + BinarySecurityToken),
+   `buildEchoRequestXml`/`buildInvoiceRequestXml`, `parseEchoResponse`/`parseInvoiceResponse`,
+   `soapPost` (mTLS, timeout, ca), `fursEcho`/`fursInvoice`, `certFromEnv`.
+   Testi: `tests/furs-client.test.ts` (16). **Validacija C14N točnosti v FURS testnem
+   okolju obvezna pred produkcijo** (glej korak 3).
 2. **Vercel env** (dobim vrednosti od tebe, ali sam posodobim prek Vercel API-ja, če mi
    daš datoteki):
    - `FURS_CERT_P12_B64` (base64 .p12) + `FURS_CERT_PASSWORD`
    - `FURS_ENVIRONMENT=production` (ali `test` najprej) — globalno ali per-location
      (`Location.fursEnvironment`)
    - `FURS_ALLOW_SIMULATION=false` (produkcija: simulacija prepovedana)
-   - HR: `FINA_CERT_*` analogno (ločeno per lokacija glede na `Location.country`)
+   - HR: `FINA_CERT_*` analogno (ločeno per lokacija glede na `Location.country`) —
+     HR adapter še NI implementiran (Task 36 je SI SOAP; HR sledi po validaciji SI)
 
 ## 3. Kaj se dogaja DO aktivacije (trenutno vedenje — varno)
 

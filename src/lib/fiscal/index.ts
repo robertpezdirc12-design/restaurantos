@@ -82,10 +82,16 @@ export interface SiFiscalInput {
   total: number
 }
 
+/** Kanonični niz za ZOI (FURS spec 1.13: davčna|datum|številka|prostor|znesek) — javen,
+ * ker ga produkcija (src/lib/furs/client.ts) podpiše z RSA-SHA256. Simulacija ostaja
+ * byte-identična: computeZoi nad tem istim nizom. */
+export function siZoiPayload(input: SiFiscalInput): string {
+  return `${input.taxId}${input.issuedAt.toISOString()}${input.receiptNumber}${input.premisesId}${input.total.toFixed(2)}`
+}
+
 /** ZOI — izvlečena 1:1 iz /api/furs (SI simulacija). */
 export function computeZoi(input: SiFiscalInput): string {
-  const payload = `${input.taxId}${input.issuedAt.toISOString()}${input.receiptNumber}${input.premisesId}${input.total.toFixed(2)}`
-  return crypto.createHash('md5').update(payload).digest('hex')
+  return crypto.createHash('md5').update(siZoiPayload(input)).digest('hex')
 }
 
 const siAdapter: FiscalAdapter = {
