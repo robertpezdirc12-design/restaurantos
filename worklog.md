@@ -497,3 +497,17 @@ Stage Summary:
 - FURS SI SOAP KODEKSKO 100 % PRIPRAVLJEN: ob certifikatu le FURS_CERT_P12_B64/FURS_CERT_PASSWORD/FURS_ENVIRONMENT na Vercelu + testno-okoljska validacija; produkcija ZOI podpisan takoj, EOR sledi prek SOAP (fail-safe pending)
 - 546 testov; značilnost: nič se ne spremeni, dokler cert env ni nastavljen (potrjeno z obstoječimi + novimi testi)
 - ostajata le 2 fizična človeška koraka: FURS/FINA certifikat + 2 TXT zapisa v Cloudflare
+
+---
+Task ID: 36-main (produkcijska verifikacija — dodatek)
+Agent: main (Z.ai Code)
+Task: Potrditev verige po pushu 50dd492 (Task 36)
+
+Work Log:
+- push origin + github 09c411f..50dd492 OK (oba sinhronizirana)
+- GitHub Actions run 38059328408 (50dd492): VSI 3 jobs SUCCESS — neon-smoke, tests (546 testov vključno z 16 novimi FURS), deploy (node-forge dep odložen brez težav)
+- produkcija health: ok / 1.45.0 / database connected
+
+Stage Summary:
+- Task 36 ŽIV V PRODUKCIJI; FURS SI SOAP odjemalec čaka le certifikat (env) + testno-okoljsko validacijo
+- končno stanje blokad: FURS/FINA certifikat (nakup) + 2 TXT zapisa Cloudflare — vse ostalo iz audita §13 zaprto
