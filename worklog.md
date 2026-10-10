@@ -646,3 +646,24 @@ Work Log:
 Stage Summary:
 - audit §14 DoD: vse točke zaprte, tudi mehki P1 predlog za R-pot; 582 testov
 - ops: health endpoint = realen deploy commit (preverljivost produkcije brez ugibanja); verzija 1.46.0
+
+---
+Task ID: 40-main (dodatek — incident poverilnic #2, identičen podpis)
+Agent: main (Z.ai Code)
+Task: CI run 38072369859 (8654bba / Task 40) — deploy FAILURE »Could not retrieve Project Settings«; diagnostika ponovitve izgube Vercel team scope
+
+Work Log:
+- CI: neon-smoke SUCCESS + tests SUCCESS (582, tudi novi race-fixes-p1) — deploy FAILED ob »Retrieving project… Error: Could not retrieve Project Settings« (vercel CLI 63.1.2)
+- reprodukcija iz sandboxa z ISTIM tokenom:
+  * 16:58–17:21 UTC je token DELOVAL: /v2/user 200 (defaultTeamId team_KuVk…), /v2/teams/{id} 200 (OWNER, limited:false), /v9/projects/{id}/domains 200, env GET+DELETE 200, /v4/domains 200
+  * 17:10–17:12 CI deploy SUCCESS (10c960f → produkcija) z ISTIM tokenom prek secrets
+  * 17:21: /domains še 200; med 17:21 in 17:36 je token IZGUBIL team dostop
+  * 17:40: /v2/user še 200 (token živ), /v2/teams → PRAZEN seznam, /v9/projects → 403, CLI whoami → »Not authorized: scope robertpezdirc12-designs-projects« — IDENTIČEN podpis incidentu 15:07–16:16 (stari token)
+- Neon org ključ ŠE VEDNO ŽIV (GET /v2/projects 200; neon-smoke zelen tudi ob 17:36) → sistematično umirajo SAMO Vercel tokene, oba v ~30 min po prvi uporabi
+- posledica: produkcija ostaja na 10c960f (v1.45.0); Task 40 commit-an + CI-zelen (tests/neon-smoke), NE-deployan; gate deluje po zasnovi
+- ni mogoče diagnosticirati vzroka iz sandboxa (audit log zahteva team scope, ki ga token ne vidi več)
+
+Stage Summary:
+- vzorci, ki jih mora uporabnik preveriti v Vercel UI: (1) Ali token še obstaja v Settings→Tokens? (2) Ali je imel nastavljen EXPIRY? (3) Team audit log — kdo/česa je odstranil dostop; (4) verify email (uporabnik ima flag limited:true)
+- robustna rešitev za prihodnost: povezati Vercel projekt na GitHub repo (Git integration) → push samodejno deploya brez CLI tokena; CI deploy korak ostane kot gate ali se umakne
+- ob NOVEM tokenu (brez expirya, team scope, full access): posodobitev VERCEL_TOKEN_B64 secret (sealed-box, 2 min) + re-run failed jobs → Task 40 gre v produkcijo
