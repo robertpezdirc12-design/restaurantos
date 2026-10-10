@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      NEON_API_KEY_B64: bmFwaV92M3gyODVpZTJndWh4emgzOGV2a2hoOWNyNjZ3ZXgzZDNqY3lyY3BybGRvanl2azhsYnRhMDc4bjVsaDNoNjZv
+      NEON_API_KEY_B64: ${{ secrets.NEON_API_KEY_B64 }}
       NEON_PROJECT_ID: patient-violet-36825841
       # produkcija teče na prod-v2 branchu (db "restaurantos"); main = stara shema = rollback
       NEON_PARENT_BRANCH_ID: br-little-waterfall-anolkwr6
@@ -201,8 +201,8 @@ jobs:
 
       - name: Deploy production
         env:
-          VERCEL_TOKEN_B64: dmNwXzBCUzlKandMeWZXUUdWOWgwV29sN2NjUVVHSWcyTmRYWHRHMVJHU2hnVVFIVWpBYjV0MkZlN1g2
-          VERCEL_ORG_ID: team_KuVkEd4HM0StzdABN6HqzycD
-          VERCEL_PROJECT_ID: prj_8ymcBYAdqRj5QERaW8eWFK9xwBMn
+          VERCEL_TOKEN_B64: ${{ secrets.VERCEL_TOKEN_B64 }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           vercel deploy --prod --yes --token="$(echo "$VERCEL_TOKEN_B64" | base64 -d)" --meta "commit=${GITHUB_SHA::7}" --meta "workflow_run=${{ github.run_id }}"

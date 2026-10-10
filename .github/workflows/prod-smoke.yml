@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      NEON_API_KEY_B64: bmFwaV92M3gyODVpZTJndWh4emgzOGV2a2hoOWNyNjZ3ZXgzZDNqY3lyY3BybGRvanl2azhsYnRhMDc4bjVsaDNoNjZv
+      NEON_API_KEY_B64: ${{ secrets.NEON_API_KEY_B64 }}
       NEON_PROJECT_ID: patient-violet-36825841
       NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
       PROD_DB: restaurantos

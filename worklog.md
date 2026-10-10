@@ -567,3 +567,22 @@ Stage Summary:
 - FISKALIZACIJA KODEŠKO 100 % PRIPRAVLJENA ZA OBÉ DRŽAVI: SI (Task 36) + HR (Task 38); ob certifikatih le env + validacija v testnih okoljih
 - 576 testov; brez cert env se NIČ ne spremeni (cisCertFromEnv null → cisZkiVal simulacija/prazno, brez SOAP klicev — potrjeno z obstoječimi testi)
 - ostajata le 2 fizična človeška koraka: certifikata (FURS SI + FINA HR) + 2 TXT zapisa v Cloudflare
+
+---
+Task ID: 38-main (produkcijska verifikacija — dodatek + incident poverilnic)
+Agent: main (Z.ai Code)
+Task: Potrditev verige po pushu f709043 + preiskava odpovedi neon-smoke (run 17)
+
+Work Log:
+- push origin + github dafd23b..f709043 OK (GitLab v prvem poskusu v 403 oknu, uspešno po ponovnem poskusu)
+- CI run 38066981589 (f709043): tests SUCCESS (576 testov, vključno z 26 novimi CIS) — neon-smoke FAILURE pri "Create ephemeral Neon branch stack": Neon API "supplied credentials do not pass authentication" (5 retry) → deploy skipped (gate deluje pravilno)
+- DIAGNOZA: Neon API ključ RAZVELJAVLJEN (potrjeno direktno iz sandboxa: GET /users/me → auth fail; deloval je še ob run 16 ob 15:05 UTC). Repo je PRIVATEN (potrjeno z API) → GitHub secret-scanning avtorevokacija IZKLJUČENA kot vzrok; ključ revokiran strežniško (ročno/veljavnost/rotacija)
+- DODATNO odkrito: tudi VERCEL token (vcp_...) je izgubil team scope ("Not authorized: scope robertpezdirc12-designs-projects"; GET /v2/teams prazen; GET /v9/projects → 403) — isti časovni okni 15:07–16:16 UTC. Zato ročni Vercel CLI deploy Task 38 iz sandboxa tudi ni mogoč ("No teams available" / "Could not retrieve Project Settings")
+- POSLEDICA: produkcija ostaja na d569ab3 (Task 37); Task 38 je commit-an + CI-zelen (tests), NE-deployan; deploy blokiran do novih poverilnic (gate deluje po zasnovi)
+- MITIGACIJA (izvedeno): 4 GitHub Actions secrets ustvarjeni prek API (sealed-box, repo admin): NEON_API_KEY_B64 (trenutno stari revociran — placeholder), VERCEL_TOKEN_B64, VERCEL_ORG_ID, VERCEL_PROJECT_ID; vsi 3 workflow-i (vercel-deploy/prod-smoke/neon-backup) preklopljeni z vgrajenih vrednosti na ${{ secrets.* }} (YAML validiran; check-secrets.sh scan nehamo — workflows tokene zdaj sploh nimajo v kodi)
+- ob novih poverilnicah: LE posodobitev vrednosti 2 secrets (NEON_API_KEY_B64, VERCEL_TOKEN_B64) — brez commitov, brez sprememb workflow
+
+Stage Summary:
+- ključni vir Task 38: uradna specifikacija v2.7 (215 str PDF) — ZKI/endpointi/XML-DSig vse iz primarnega vira
+- CI: tests job zelen (576), neon-smoke čaka nov Neon API ključ, deploy čaka zelen neon-smoke + nov team-scoped Vercel token
+- UPORABNIKU 2 ukaza: (1) nov Neon API ključ (console.neon.tech → Account → API keys), (2) nov Vercel token z ekipo scope (vercel.com → settings → tokens, scope = workspace); plus še vedno 2 TXT zapisa v Cloudflare
