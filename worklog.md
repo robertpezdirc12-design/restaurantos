@@ -404,3 +404,23 @@ Work Log:
 
 Stage Summary:
 - P2 paket 33 ŽIV V PRODUKCIJI (74dcfd5): move/merge/fire + i18n gostov + chainHash; P1 6/6 + P2 4/4 = celoten §13 iz audita zaprt (ostajajo samo človeške blokade: FURS cert, DNS, Neon secret v GH, GitLab CI minutes)
+
+---
+Task ID: 34-main
+Agent: main (Z.ai Code)
+Task: GitHub token rotacija (ghp_s1O3…) + zadnji kodekski rezidual iz audita — bootstrap admin fast-path v requirePermission
+
+Work Log:
+- NOV GitHub token validiran (robertpezdirc12-design, ls-remote OK, HEAD=90083b4 = lokalni HEAD → GitHub mirror sinhroniziran); GitLab origin takrat 403 (Cloudflare okno) — push origin je vseeno uspel kasneje (glej spodaj)
+- identificiran ZADNJI kodekski rezidual iz audita (§10 vrstica "bootstrap break-glass — dokumentiran ostanek") + worklog 33-main "naslednji koraki": requirePermission je bil edini gate BREZ bootstrap fast-patha — break-glass žeton (sub='bootstrap', role='ADMIN', brez Employee vrstice) je dobival 403 na VSEH permission rutah (DB lookup na neobstoječega zaposlenega), medtem ko requireAuth in requireCentralRole žeton spustita
+- FIX src/lib/api.ts: fast-path v requirePermission — dovoljenja rešena prek resolvePermissionsForUIRole('ADMIN') (ISTI resolver, ki jih vrača /api/auth/login prijava → pravila vedno usklajena; admin defaults = vse canonical); guardi fail-closed: fast-path SAMO za sub='bootstrap' IN role='ADMIN' (lažni žeton z neobstoječim sub → 403, sub=bootstrap z role=WAITER → 403); import + JSDoc posodobljena
+- testi tests/bootstrap-admin.test.ts (6, PASS, 21 expect): requireAuth/requirePermission/requireCentralRole z bootstrap žetonom (vsa 11 canonical dovoljenj) + 2 GUARD testa (fail-closed) + INTEGRACIJA GET /api/expenses 200
+- verifikacija: bunx tsc --noEmit EXIT 0 · bun run lint EXIT 0 · bun test 530/530 (+6)
+- E2E brskalnik (dev): bootstrap prijava (BOOTSTRAP_ADMIN_* iz dev .env, gitignored) → dashboard rendra → zavihek Naročila rendra naročila z akcijami move/merge/fire (PREJ 403!) → zavihek Stroški rendra podatke; edini console vpis = znan kozmetičen next-themes hydration warning (ni povezan); odjava + browser close
+- E2E curl (dev): /api/orders 200 s podatki, /api/expenses 200, /api/settings 200 z bootstrap žetonom
+- audit dokument posodobljen: §10 vrstica avtentikacije (ostanek odstranjen, Task 34 referenca) + §13 nov vnos "Rezidual iz §10 (Task 34)"
+
+Stage Summary:
+- BOOTSTRAP ADMIN FAST-PATH ZAPRT: vseh 3 gate-i (requireAuth/requirePermission/requireCentralRole) zdaj enotno spustijo break-glass žeton; 530 testov; dokumentacija usklajena
+- §13 iz audita je zdaj 100 % zaprt tudi za reziduale — ostajajo SAMO človeške blokade: FURS certifikat (+ HR Fiskalizacija 2.0), Neon DATABASE_URL v GH secrets (CI smoke), GitLab CI runner minutes, DNS restaurantos.app
+- deployment veriga: glej naslednji commit/push vnos

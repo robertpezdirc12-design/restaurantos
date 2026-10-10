@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuth, AuthPayload, sessionRevoked } from '@/lib/auth'
-import { resolvePermissions, CanonicalPermission } from '@/lib/permissions'
+import { resolvePermissions, resolvePermissionsForUIRole, CanonicalPermission } from '@/lib/permissions'
 
 export function ok(data: unknown, init?: number) {
   return NextResponse.json(data, { status: init ?? 200 })
@@ -50,8 +50,11 @@ export function isResponse(v: unknown): v is NextResponse {
 
 /**
  * Granularna avtorizacija (issue #1): zahteva eno kanonično dovoljenje.
- * Fast-path SAMO za bootstrap admina (brez Employee vrstice) — vsi realni zaposleni
- * gredo čez DB: status + sessionVersion (D4) + dovoljenja delujejo TAKOJ (12h žeton jih ne zamrzne).
+ * Fast-path za bootstrap admina (brez Employee vrstice): break-glass ADMIN ima
+ * vsa kanonična dovoljenja — rešena prek istega resolverja, ki jih vrača tudi
+ * prijava (resolvePermissionsForUIRole('ADMIN')), da se pravila vedno ujemata.
+ * Vsi realni zaposleni gredo čez DB: status + sessionVersion (D4) + dovoljenja
+ * delujejo TAKOJ (12h žeton jih ne zamrzne).
  */
 export async function requirePermission(
   req: NextRequest,
@@ -59,6 +62,13 @@ export async function requirePermission(
 ): Promise<AuthPayload | NextResponse> {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  if (user.role === 'ADMIN' && user.sub === 'bootstrap') {
+    const bootstrapPermissions = resolvePermissionsForUIRole('ADMIN')
+    if (!bootstrapPermissions.includes(permission)) {
+      return fail(`Dostop zavrnjen — manjka dovoljenje: ${permission}.`, 403)
+    }
+    return user
+  }
   const employee = await db.employee.findUnique({
     where: { id: user.sub },
     select: { role: true, permissionOverrides: true },
