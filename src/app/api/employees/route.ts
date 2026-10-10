@@ -32,18 +32,27 @@ export async function POST(req: NextRequest) {
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
   const fields = employeePinFields(pin, email)
-  const employee = await db.employee.create({
-    data: {
-      id: crypto.randomUUID().replace(/-/g, '').slice(0, 25),
-      name,
-      email,
-      role: roleToDB(body.role || 'WAITER') as EmployeeRole,
-      status: 'active',
-      locationId,
-      pin: fields.pin,
-      pinLookup: fields.pinLookup,
-    },
-  })
+  let employee
+  try {
+    employee = await db.employee.create({
+      data: {
+        id: crypto.randomUUID().replace(/-/g, '').slice(0, 25),
+        name,
+        email,
+        role: roleToDB(body.role || 'WAITER') as EmployeeRole,
+        status: 'active',
+        locationId,
+        pin: fields.pin,
+        pinLookup: fields.pinLookup,
+      },
+    })
+  } catch (e: unknown) {
+    // Task 42: race okno med findUnique in create (email @unique) — P2002 → 409, ne 500
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002') {
+      return ok({ error: 'Zaposleni s to e-pošto že obstaja.' }, 409)
+    }
+    throw e
+  }
   // 33-c (audit §6): kreiranje zaposlenega je zdaj revidirano (prej brez revizije)
   const __aId = nid(); const __chain = await auditChainFields(db, {
     id: __aId,

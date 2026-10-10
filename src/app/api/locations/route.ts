@@ -77,6 +77,17 @@ export async function POST(req: NextRequest) {
 
     return ok({ location: row }, 201)
   } catch (e: unknown) {
+    // Task 42: natančno P2002 razlikovanje (meta.target) — zavajajoče splošno
+    // sporočilo zamenja akcijsko; pokrije tudi race okna med taken()/dupPremises()
+    // preverjanjem in create() (unique+default("") latentne kolizije).
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002') {
+      const meta = (e as { meta?: { target?: string[] | string } }).meta?.target
+      const fields = Array.isArray(meta) ? meta.join(',') : String(meta || '')
+      if (fields.includes('premisesId')) {
+        return fail('FURS poslovni prostor že obstaja. Če oznake niste vnesli: druga lokacija že zaseda prazno (privzeto) oznako — vnesite FURS oznako poslovnega prostora.', 409)
+      }
+      return fail('Koda lokacije že obstaja — poskusite z drugo kodo.', 409)
+    }
     const msg = e instanceof Error ? e.message : String(e)
     if (msg.includes('Unique')) return fail('Koda ali FURS poslovni prostor že obstaja.', 409)
     return fail(`Ustvarjanje ni uspelo: ${msg}`, 500)
