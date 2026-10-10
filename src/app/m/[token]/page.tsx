@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2 } from 'lucide-react'
+import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -40,6 +40,18 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState<{ orderNumber: number; status: string; total: number } | null>(null)
   const [online, setOnline] = useState(true)
+
+  // Mnenje gosta (P1 audit točka 6) — vnos končno ima kam (POST /api/public/feedback)
+  const [fbOpen, setFbOpen] = useState(false)
+  const [fbOverall, setFbOverall] = useState(0)
+  const [fbFood, setFbFood] = useState(0)
+  const [fbService, setFbService] = useState(0)
+  const [fbAtmos, setFbAtmos] = useState(0)
+  const [fbComment, setFbComment] = useState('')
+  const [fbName, setFbName] = useState('')
+  const [fbSending, setFbSending] = useState(false)
+  const [fbDone, setFbDone] = useState(false)
+  const [fbError, setFbError] = useState('')
 
   const opIdRef = useRef<string>('')
   if (!opIdRef.current && typeof window !== 'undefined') {
@@ -180,6 +192,38 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
     }
   }
 
+  // Mnenje gosta — pošlji prek javnega vnosa (token = edina identifikacija mize)
+  async function submitFeedback() {
+    if (fbOverall < 1 || fbSending) return
+    setFbSending(true)
+    setFbError('')
+    try {
+      const res = await fetch('/api/public/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          overallRating: fbOverall,
+          foodRating: fbFood,
+          serviceRating: fbService,
+          atmosphereRating: fbAtmos,
+          comment: fbComment.trim() || undefined,
+          guestName: fbName.trim() || undefined,
+          wouldReturn: fbOverall >= 4,
+          wouldRecommend: fbOverall >= 4,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setFbError(data.error || 'Mnenja ni bilo mogoče oddati.'); return }
+      setFbDone(true)
+      setFbOpen(false)
+    } catch {
+      setFbError('Povezava ni dosegljiva — mnenje NI oddano. Poskusi znova.')
+    } finally {
+      setFbSending(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50">
@@ -231,6 +275,63 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
           </div>
         </div>
       )}
+
+      {/* Mnenje gosta (P1 audit točka 6) — prikazan tudi po oddanem naročilu */}
+      <div className="max-w-lg mx-auto px-4 pt-4">
+        {fbDone ? (
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 flex items-center gap-2 text-green-800 text-sm font-medium">
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            Hvala za mnenje — upoštevali ga bomo pri izboljšavah.
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-stone-200 bg-white p-4">
+            {!fbOpen ? (
+              <button type="button" className="w-full flex items-center justify-between text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
+                <span>Kako je bilo? Pustite nam mnenje</span>
+                <Star className="h-4 w-4 text-amber-500" />
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-stone-800">Vaše mnenje</p>
+                {([
+                  ['Skupaj', fbOverall, setFbOverall],
+                  ['Hrana', fbFood, setFbFood],
+                  ['Storitev', fbService, setFbService],
+                  ['Vzdušje', fbAtmos, setFbAtmos],
+                ] as const).map(([label, val, set]) => (
+                  <div key={label} className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-stone-600">{label}</span>
+                    <span className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button key={n} type="button" aria-label={`${label}: ${n} od 5`} onClick={() => set(n)} className="p-0.5">
+                          <Star className={`h-5 w-5 ${n <= val ? 'fill-amber-400 text-amber-400' : 'text-stone-300'}`} />
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+                <textarea
+                  value={fbComment}
+                  onChange={(e) => setFbComment(e.target.value)}
+                  placeholder="Komentar (neobvezno)"
+                  maxLength={1000}
+                  rows={3}
+                  className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                />
+                <Input value={fbName} onChange={(e) => setFbName(e.target.value)} placeholder="Ime (neobvezno)" maxLength={80} />
+                {fbError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{fbError}</div>}
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => { setFbOpen(false); setFbError('') }}>Zapri</Button>
+                  <Button className="flex-1" onClick={submitFeedback} disabled={fbOverall < 1 || fbSending}>
+                    {fbSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {fbSending ? 'Pošiljam …' : 'Pošlji mnenje'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {error && menu && (
         <div className="max-w-lg mx-auto px-4 pt-4">

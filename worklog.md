@@ -255,3 +255,43 @@ Stage Summary:
 - P2 RBAC N1/N2/N7/N8 + loyalty PII KONČANO: OWNER/ADMIN/MANAGER upravljajo mize (POST/DELETE menu.manage) in ročno override-ajo/storno-ajo naročila (isCentralRole + MANAGER); enterprise vloge dodeljive samo centralnim aktrom (MANAGER blokade ostanejo); UI zavihki fail-closed (undefined/neznan → skrit, vsi 23 zavihkov z izrecnim vnosom, '*' za vse-zaposlene zavihke); /api/loyalty seznam vedno maskiran, ?full=1 za settings.manage
 - datoteke: M src/app/api/tables/route.ts, src/app/api/tables/[id]/route.ts, src/app/api/orders/[id]/route.ts, src/app/api/employees/[id]/route.ts, src/app/api/loyalty/route.ts, src/app/dashboard/page.tsx (samo tab-permission koda); N src/lib/tab-permissions.ts, src/lib/pii.ts, tests/rbac-p2.test.ts; permissions.ts/api.ts/prisma/i18n/tuji testi NEDOTAKNJENI
 - PASTI ZA NASLEDNJE: (1) bootstrap admin je na requirePermission rutah 403 (brez Employee vrstice) — centralni popravek gre v src/lib/api.ts requirePermission (fast-path sub='bootstrap'), ne po rutah; (2) nov zavihek v page.tsx TabsList MORA dobiti vnos v src/lib/tab-permissions.ts (regresijski test uveljavlja); (3) employees/[id] zunanja vrata še niso requirePermission('employees.manage') — pri N3-stil prevajanju ohrani ENTERPRISE_ROLES + isCentralRole akterja + MANAGER blokade; (4) /api/loyalty/lookup polni telefon = rezidual (plačilni dialog); (5) podrobnosti v agent-ctx/32-b-full-stack-developer.md
+---
+Task ID: 32-main (RECOVERY + integracija)
+Agent: main (Z.ai Code)
+Task: Obnova po sandbox resetu (repo vrnil na 7c098ed/Task 26-main era — stari remote URL-ji + stari git objekti), 3-way merge 32-x dela na pravo bazo 776e3a5, popravki odkritih bugov
+
+Work Log:
+- DIAGNOZA: sandbox restore je repo postavil nazaj na 7c098ed (Task 26-main era): reflog "reset: moving to FETCH_HEAD", origin URL padel na blokirani račun robert.pezdirc12, github remote na star token, 776e3a5 NI več v lokalnih objektih; 32-a/32-b/32-c so agenti med tem delali NA STARI BAZI
+- VARNOST: vsi commiti 27–31 (2dc35f4..776e3a5) so bili že pushani in potrjeni na GitLab+GitHub — nič izgubljeno
+- RECOVERY: origin URL popravljen nazaj na markec-group1/markec-project (glpat), fetch → origin/main=776e3a5 (objekti obnovljeni); github remote z novim tokenom trenutno 401 (uporabnik je verjetno spet rotiral — mirror z GitLabom pelje GitHub, lokalni github remote samo za verifikacijo)
+- 3-WAY MERGE: tmp-32work branch (32-x delo na stari bazi, commit b144f00) → main reset na origin/main → merge; merge-base 7c098ed; 7 konfliktov rešenih semantično:
+  - worklog.md: HEAD (superset 27–31) + pripet 32-b sekcija iz tmp
+  - inventory.ts: R2 CAS dekrement (HEAD) + moj plannedAllocations FK-red (theirs) — EXHAUSTED z lte guardom, količine NE prepisujemo
+  - sync/route.ts: R5 CAS (HEAD) + recalcTotals(orderId, tx?) podpis (HEAD); duplikat Prisma import odstranjen
+  - shifts/route.ts: vzet theirs v celoti (R11 struktura vključno s CAS prevzemom = R3 semantika, okno veriženo, agregacija v tx)
+  - orders/[id]: union importov (isCentralRole + jstr); employees/[id]: union doc (31-b N3 + 32-b N7 obe logiki prisotni); loyalty: union importov (fail)
+- NOV REALNI BUG (kritičen, odkrit s testi 32-c po mergeu): R2 CAS zanka po USPEŠNEM dekrementu NI prekinila — ponovni poskus faila (ok=false) → continue je ZAVRGEL uspešno delo (brez alokacije/EXHAUSTED/remaining), pri seriji večji od odjema pa bi dekrementiral VEČKRAT (izguba podatkov!). Fix: break ob uspehu (inventory.ts:150-165)
+- potrdil tudi FK-red bug fix (plannedAllocations → stockTransaction.create → alokacije) — zdaj na pravi bazi z R2 CAS
+- napisal tests/race-fixes.test.ts (32-a deliverable, ki ga agent ni utegnil): R9 dvojni payout (200+EN audit+409), R12 konkurenčni stroški (Razno ≤1), R7 sync fail+replay (EN failed zapis, retryCount raste), N5 (waiter 403 na financial GET, manager 200)
+- verifikacija: tsc 0, 468/468, lint 0
+
+Stage Summary:
+- Repo popolnoma obnovljen: main = 776e3a5 + merge 32-x dela (b6733fa) — vse NALOGE 27–31 + 32-a/b/c v enem drevesu
+- 2 kritična produkcijska buga popravljena (inventory FK-red + CAS break) — plačila artiklov s serijami zdaj delujejo pravilno
+- 468 testov zeleno pred 32-d
+
+---
+Task ID: 32-d
+Agent: main (Z.ai Code)
+Task: P1 točka 6 — mnenja gostov: vnosni API (POST /api/public/feedback) + UI na QR strani + testi
+
+Work Log:
+- ugotovitev: model GuestFeedback ŽE obstaja v shemi (overall/food/service/atmosphere rating, comment, tags, wouldReturn/Recommend, source, tableNumber, status) + seznam stran že deluje (GET /api/guests/feedback + Mnenja tab) — manjkalo je TOČNO to, kar je audit zapisal: vnos ni imel kam
+- NOVA ruta src/app/api/public/feedback/route.ts: rate limit 5/min/IP PRVA preverba (tudi 404/400 klici štejejo), token = skrivnost mize → resolveQrToken (locationId/tableId/tableNumber rešeni SERVER-side — gost ne pošilja ID-jev), ocene clamp 0–5 + overall ≥ 1 obvezna, komentar ≤1000, ime ≤80, tags ≤10×30 (JSON), orderId sprejet SAMO če pripada isti mizi+lokaciji (anti-spoofing, sicer null), source='qr', status='new'; 201 { ok, feedbackId }
+- UI: m/[token] stran — zavihek "Kako je bilo?" (zvezdice 1–5 za Skupaj/Hrana/Storitev/Vzdušje + komentar + ime), pošlje prek javnega vnaša; po uspehu zelen potrditveni karton; wouldReturn/wouldRecommend izvedena iz overall (≥4); hardkodirano SL (konvencija gostujočih strani — i18n gostov ostaja P2)
+- testi tests/guest-feedback.test.ts: 404 napačen token, 400 brez ocene, srečna pot (lokacija/miza iz tokena, clamp 9→5, '3'→3, trim, tags filtrirani, source=qr, tableNumber), orderId tujega naročila ignoriran (null), rate limit → 429 (edinstveni IP-ji na test, da kvota ne pušča)
+- verifikacija: tsc 0, 473/473 (1712 expect), lint 0
+
+Stage Summary:
+- P1 točka 6 ZAPRTA: mnenja gostov imajo vnos (QR → GuestFeedback → Mnenja tab v dashboardu)
+- javni vnos varnostno usklajen s preostalim gostujočim tokom (token-vezano, rate-limited, brez zaupanja client ID-jem)

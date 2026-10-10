@@ -147,18 +147,21 @@ export async function deductStockForOrderTx(
         let avail = Math.max(0, num(b.quantityRemaining))
         let alloc = Math.min(avail, remaining)
         let ok = false
-        // R2 popravek (P0 audit): CAS po seriji (decrement z gte guard + retry)
+        // R2 popravek (P0 audit): CAS po seriji (decrement z gte guard + retry).
+        // KRITIČNO (bug odkrit s testi 32-c): ob USPEHU takoj prekini — brez breaka
+        // zanka ponovi poskus (serija je že dekrementirana), drugi poskus nato
+        // faila (ok=false) → `continue` zavže uspešno delo (brez alokacije in
+        // EXHAUSTED), pri večji seriji pa bi dekrementiral VEČKRAT!
         for (let attempt = 0; attempt < 3 && alloc > 0.0005; attempt++) {
           const res = await tx.inventoryBatch.updateMany({
             where: { id: b.id, quantityRemaining: { gte: alloc } },
             data: { quantityRemaining: { decrement: alloc } },
           })
           ok = res.count === 1
-          if (!ok) {
-            const fresh = await tx.inventoryBatch.findUnique({ where: { id: b.id }, select: { quantityRemaining: true } })
-            avail = Math.max(0, num(fresh?.quantityRemaining))
-            alloc = Math.min(avail, remaining)
-          }
+          if (ok) break
+          const fresh = await tx.inventoryBatch.findUnique({ where: { id: b.id }, select: { quantityRemaining: true } })
+          avail = Math.max(0, num(fresh?.quantityRemaining))
+          alloc = Math.min(avail, remaining)
         }
         if (!ok || alloc <= 0.0005) continue
         const bNew = r3(avail - alloc)
