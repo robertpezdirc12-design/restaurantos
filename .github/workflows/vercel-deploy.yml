@@ -140,8 +140,45 @@ jobs:
             echo "ephemeral branch $BR_ID deleted"
           fi
 
+  # Hosted quality gate: tsc + lint + celoten test suite (530) na sveži SQLite
+  # bazi (testi so samozadostni — potrjeno lokalno na prazni bazi). Nadomešča
+  # GitLab CI quality-gate (GitLab compute minutes izčrpane — gl. worklog Task 35);
+  # deployment se NE izvede, če testi padejo.
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # file: URL → postinstall + db push uporabita SQLite shemo (schema.sqlite.prisma)
+      DATABASE_URL: file:./db/ci-fresh.db
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Fresh SQLite database (schema push)
+        run: bunx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
+
+      - name: TypeScript check
+        run: bunx tsc --noEmit
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Full test suite
+        run: bun test
+
+      - name: Secrets hygiene
+        run: bash scripts/check-secrets.sh
+
   deploy:
-    needs: neon-smoke
+    needs: [neon-smoke, tests]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

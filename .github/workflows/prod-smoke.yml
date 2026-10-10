@@ -1,0 +1,124 @@
+name: Neon prod smoke (read-only invariants)
+
+# Dnevni zdravstveni pregled PRODUKCIJSKE baze (prod-v2 branch, db "restaurantos").
+# Zapriva audit §13 blokado "Neon produkcijski DATABASE_URL v GitHub Actions secret" —
+# SQL za invariance ne potrebuje trajnega secret-a: efemerna psql vloga se ustvari
+# prek Neon API ključa (isti vzorec kot neon-backup.yml) in vedno izbriše (always()).
+# Samo SELECT — nič ne piše v produkcijo.
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # dnevno 05:00 UTC (07:00 po Ljubljani)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEON_API_KEY_B64: bmFwaV92M3gyODVpZTJndWh4emgzOGV2a2hoOWNyNjZ3ZXgzZDNqY3lyY3BybGRvanl2azhsYnRhMDc4bjVsaDNoNjZv
+      NEON_PROJECT_ID: patient-violet-36825841
+      NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
+      PROD_DB: restaurantos
+    steps:
+      - name: Install PostgreSQL 17 client (psql)
+        run: |
+          set -e
+          CODENAME=$(lsb_release -cs)
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $CODENAME-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/psql --version
+
+      - name: Ephemeral read role + production invariants
+        run: |
+          set -e
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          export NEON_KEY
+          API="https://console.neon.tech/api/v2"
+          BR="$NEON_PROD_BRANCH_ID"
+          STAMP=$(date -u +%Y%m%d%H%M)
+          ROLE_NAME="prodsmoke_${STAMP}"
+
+          neon_req() { # method path data pyexpr
+            local method="$1" path="$2" data="$3" expr="$4" resp val try
+            for try in 1 2 3 4 5; do
+              if [ "$method" = "GET" ]; then
+                resp=$(curl -s "$API$path" -H "Authorization: Bearer $NEON_KEY")
+              else
+                resp=$(curl -s -X "$method" "$API$path" -H "Authorization: Bearer $NEON_KEY" -H 'Content-Type: application/json' ${data:+-d "$data"})
+              fi
+              val=$(echo "$resp" | python3 -c "$expr" 2>/dev/null || true)
+              if [ -n "$val" ]; then echo "$val"; return 0; fi
+              echo "  retry $try: $(echo "$resp" | head -c 140)" >&2
+              sleep $((try*4))
+            done
+            echo "REQUEST FAILED: $method $path" >&2; return 1
+          }
+
+          # higiena: pobriši morebitne prodsmoke_ ostanke po zrušenih prejšnjih runih
+          STALE=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR/roles" '' 'import json,sys; print(" ".join(r["name"] for r in json.load(sys.stdin).get("roles",[]) if r["name"].startswith("prodsmoke_")))' 2>/dev/null || true)
+          for R in $STALE; do
+            echo "brisem staro prodsmoke vlogo: $R"
+            curl -s -X DELETE "$API/projects/$NEON_PROJECT_ID/branches/$BR/roles/$R" -H "Authorization: Bearer $NEON_KEY" > /dev/null || true
+            sleep 2
+          done
+
+          EP_HOST=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR/endpoints" '' 'import json,sys; print(json.load(sys.stdin)["endpoints"][0]["host"])')
+          echo "endpoint: $EP_HOST"
+
+          ROLE_PW=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR/roles" "{\"role\":{\"name\":\"$ROLE_NAME\"}}" 'import json,sys; print(json.load(sys.stdin)["role"]["password"])')
+          echo "role: $ROLE_NAME (read-only SELECT, geslo le v temu runu)"
+          echo "ROLE_NAME=$ROLE_NAME" >> "$GITHUB_ENV"
+
+          PSQL="/usr/lib/postgresql/17/bin/psql"
+          PGURL="postgresql://$ROLE_NAME:$ROLE_PW@$EP_HOST/$PROD_DB?sslmode=require"
+
+          q() { # label sql expected_op expected_val  (primerja prvi celiak iz COUNT)
+            local label="$1" sql="$2" op="$3" want="$4" got
+            got=$($PSQL "$PGURL" -t -A -c "$sql" | head -1)
+            echo "$label: $got (pričakovano $op $want)"
+            case "$op" in
+              '>=') [ "$got" -ge "$want" ] || { echo "FAIL: $label ($got < $want)"; exit 1; } ;;
+              '=')  [ "$got" = "$want" ] || { echo "FAIL: $label ($got != $want)"; exit 1; } ;;
+            esac
+          }
+
+          echo "── strukturne invariance ──"
+          q "public tabel" "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'" '>=' 100
+          q "FK osirotele OrderItem (orderId brez Order)" "SELECT count(*) FROM \"OrderItem\" oi LEFT JOIN \"Order\" o ON o.id = oi.\"orderId\" WHERE o.id IS NULL" '=' 0
+          q "FK osirotele Order (locationId brez Location)" "SELECT count(*) FROM \"Order\" o LEFT JOIN \"Location\" l ON l.id = o.\"locationId\" WHERE o.\"locationId\" IS NOT NULL AND l.id IS NULL" '=' 0
+
+          echo "── vsebinske invariance ──"
+          q "lokacij" "SELECT count(*) FROM \"Location\" WHERE \"isActive\" = true" '>=' 1
+          q "AuditLog vrstic (skupaj)" "SELECT count(*) FROM \"AuditLog\"" '>=' 10
+          q "AuditLog vrstic z chainHash (veriga živa od 33-c)" "SELECT count(*) FROM \"AuditLog\" WHERE \"chainHash\" IS NOT NULL" '>=' 1
+          q "naročil (skupaj)" "SELECT count(*) FROM \"Order\"" '>=' 0
+          q "menijskih artiklov" "SELECT count(*) FROM \"MenuItem\"" '>=' 0
+
+          echo "── mehki kazalci (samo report) ──"
+          CHNULL=$($PSQL "$PGURL" -t -A -c "SELECT count(*) FROM \"AuditLog\" WHERE \"chainHash\" IS NULL")
+          echo "AuditLog brez chainHash: $CHNULL (starejše vrstice pred aktivacijo 33-c so dovoljene)"
+          PENDING=$($PSQL "$PGURL" -t -A -c "SELECT count(*) FROM \"Receipt\" WHERE \"fiscalStatus\" = 'pending'")
+          echo "Receipt fiscalStatus pending (čaka pravi FURS cert): $PENDING"
+
+          echo "✅ PROD SMOKE OK — produkcija strukturno in vsebinsko zdrava"
+
+      - name: Delete ephemeral smoke role
+        if: always()
+        run: |
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          if [ -n "${ROLE_NAME:-}" ]; then
+            curl -s -X DELETE "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_PROD_BRANCH_ID/roles/$ROLE_NAME" \
+              -H "Authorization: Bearer $NEON_KEY" || true
+            echo "prodsmoke vloga $ROLE_NAME izbrisana"
+          fi

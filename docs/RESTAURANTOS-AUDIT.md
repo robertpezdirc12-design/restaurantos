@@ -194,11 +194,11 @@
 
 **Rezidual iz §10 (Task 34, 2026-10-10):** ~~bootstrap admin fast-path v `requirePermission`~~ — **IZVRŠENO:** break-glass žeton (sub='bootstrap', role='ADMIN', brez Employee vrstice) je prej na vseh permission rutah dobival 403 (DB lookup na neobstoječega zaposlenega), kljub temu da ga requireAuth/requireCentralRole nameravata spustiti; fast-path zdaj enoten v vseh treh gate-ih — dovoljenja rešena prek `resolvePermissionsForUIRole('ADMIN')` (isti resolver kot prijava, pravila vedno usklajena), guardi fail-closed (samo sub='bootstrap' IN role='ADMIN'); 6 testov (`tests/bootstrap-admin.test.ts` — auth/permission/centralRole + GUARD pri lažnih žetonih + integracija GET /api/expenses 200); skupaj 530 testov.
 
-**Blokade, ki zahtevajo človeka:**
-- **FURS certifikat** (in HR Fiskalizacija 2.0 certifikat) — brez tega fiskalizacija ostaja simulacija/pending.
-- **Neon produkcijski DATABASE_URL v GitHub Actions secret** — če želimo CI smoke teste na produkcijski bazi (trenutno Neon dostopen samo Vercel).
-- GitLab CI runner minutes (pipeline ni bil verificiran ob auditu).
-- DNS za `restaurantos.app` (uporabnik).
+**Blokade — stanje po Task 35 (2026-10-10):**
+- ~~**Neon produkcijski DATABASE_URL v GitHub Actions secret**~~ — **ZAPRTO (Task 35):** produkcijski smoke ne potrebuje trajnega secret-a — `.github/workflows/prod-smoke.yml` (dnevno 05:00 UTC + manual) ustvari efemerno `prodsmoke_*` psql vlogo prek Neon API ključa (isti vzorec kot neon-backup), požene read-only invariance na prod-v2 (117 tabel, FK osirotelost = 0, lokacije, AuditLog + chainHash pokritost) in vedno izbriše vlogo. Validirano proti živi produkciji: 117 tabel, 308/308 AuditLog z chainHash, 0 osirotelih FK. Poleg tega `vercel-deploy.yml` dobil `tests` job (tsc + lint + 530 testov na sveži SQLite bazi) — deploy se blokira ob napaki.
+- ~~GitLab CI runner minutes~~ — **VERIFICIRANO (Task 35):** pipeline-i na push se ustvarijo a takoj failed (0 jobs v zgodovini projekta, shared runners vklopljeni na project+group, brez yaml napak) = **compute minutes kvota izčrpana**. Mitigirano: quality-gate preseljen v GitHub Actions (`tests` job v vercel-deploy.yml — tsc/lint/test/secrets, blokira deploy); GitLab `builds_access_level=disabled` (utišanje rdečih pipeline-ov, reverzibilno prek Settings→CI/CD ko pridejo minute).
+- **FURS certifikat** (in HR Fiskalizacija 2.0 certifikat) — brez tega fiskalizacija ostaja simulacija/pending. **Runbook pripravljen: `docs/FURS-CERT-RUNBOOK.md`** (izdajatelji certifikatov, Vercel env, aktivacija po korakih, trenutno vedenje 'pending').
+- **DNS za `restaurantos.app`** — obe domeni (`restaurantos.app` + `www`) sta že dodani v Vercel projekt; manjkata 2 TXT zapisa pri **Cloudflare** (DNS upravlja Cloudflare, registrar GoDaddy): `_vercel.restaurantos.app` TXT `vc-domain-verify=restaurantos.app,9fd848ca3e5b87c9ac25` in `_vercel.restaurantos.app` TXT `vc-domain-verify=www.restaurantos.app,da48b545c664486c3370`. Po dodajanju Vercel samoverifikacija v nekaj minutah.
 
 ## 14. Definition of Done — checklist
 

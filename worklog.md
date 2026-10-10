@@ -439,3 +439,26 @@ Work Log:
 Stage Summary:
 - Task 34 ŽIV V PRODUKCIJI; celoten audit (§13 P1 6/6 + P2 4/4 + rezidual §10) ZAPRT brez odprtih kodekskih točk
 - ostajajo izključno človeške blokade: FURS certifikat (+ HR Fiskalizacija 2.0), Neon DATABASE_URL v GH secrets (CI smoke), GitLab CI runner minutes, DNS restaurantos.app
+
+---
+Task ID: 35-main
+Agent: main (Z.ai Code)
+Task: Neon↔GitHub verifikacija + zaprtje vseh preostalih samodejnih blokad iz audita §13 (po ukazu uporabnika: "neon je github povezan preveri avtomatsko preko plugin, vse ostalo pa ti lahko sam naredis")
+
+Work Log:
+- NOV GitHub token (ghp_s1O3…) potrjen delujoč (Task 34 push veriga zeleno); repo secrets: samo GITLAB_TOKEN + GITLAB_PROJECT_PATH (sync.yml) — Neon DATABASE_URL secret NE obstaja, a ni potreben (glej spodaj)
+- NEON↔GITHUB VERIFIKACIJA (3 neodvisni dokazi): (1) Neon API ključ iz neon-backup.yml validiran neposredno (GET /projects/patient-violet-36825841 OK, org-frosty-tooth-88055236); (2) dnevni backup run 38039176363 (schedule 08:48) SUCCESS; (3) deploy pipeline neon-smoke job SUCCESS — vsak deploy kreira efemerno Neon branch iz prod-v2, drift check + CRUD na pravem Postgresu, blokira deploy
+- Task 34 deploy run 38052338103: neon-smoke SUCCESS + deploy SUCCESS (produkcija health ok)
+- GITLAB CI DIAGNOSTIKA: pipeline-i (5 zadnjih, vse failed) so ustvarjeni a takoj failed z started_at=null in 0 jobs; projekt ima 0 jobs v zgodovini; shared_runners_enabled=True (project+group), shared_runners_setting=enabled, yaml_errors=null → diagnoza: compute minutes kvota izčrpana. Mitigacija: (a) quality-gate preseljen v GitHub Actions — vercel-deploy.yml dobi `tests` job (bun install + fresh SQLite db push + tsc + lint + bun test 530 + check-secrets), deploy `needs: [neon-smoke, tests]` — blokira deploy ob padu; (b) GitLab PUT /projects/87360791 builds_access_level=disabled (utišanje rdeče vrste, reverzibilno ko pridejo minute)
+- TESTI NA PRAZNI BAZI (lokalno, eksperiment za CI): sveža SQLite file:/tmp/ci-fresh.db + prisma db push (schema.sqlite.prisma) → bun test 530/530 PASS — testi 100 % samozadostni, CI bo deloval brez seeda
+- PROD-SMOKE WORKFLOW (.github/workflows/prod-smoke.yml): dnevno 05:00 UTC + manual; efemerna prodsmoke_* vloga prek Neon API (isti vzorec kot backup) → read-only invariance na prod-v2 → vloga vedno izbrisana (always()); invariance: ≥100 tabel, FK osirotelost OrderItem/Order = 0, ≥1 aktivna lokacija, AuditLog ≥10 + chainHash ≥1; mehki: chainHash null count, Receipt pending
+- VALIDACIJA PROD-SMOKE NAPROTI ŽIVI PRODUKCIJI (iz sandboxa, efemerna vloga prodsmoke_dev1259, izbrisana HTTP 200 po testu): 117 tabel, 0 osirotelih FK (oba), 1 aktivna lokacija, AuditLog 308/308 z chainHash (0 brez — veriga 100 % pokritost tudi v produkciji!), 59 naročil, 437 menijskih artiklov, 2 Receipt fiscalStatus pending (pričakovano — FURS cert). UJET IN POPRAVLJEN BUG v prvotnem workflowu: Receipt NIMA paymentStatus (to je na Order) → fiscalStatus
+- DNS restaurantos.app: obe domeni ŽE v Vercel projektu (restaurantos.app + www), obe neverificirani — čakata _vercel TXT zapisa (Cloudflare upravlja DNS; registrar GoDaddy — apex TXT kaže GoDaddy/Office365 SPF); točni TXT vrednosti dokumentirane v auditu §13; Cloudflare kredencialov ni v sandboxu → uporabnik doda 2 TXT zapisa (ctrl-c/v ready)
+- FURS RUNBOOK: docs/FURS-CERT-RUNBOOK.md — izdajatelji (SI: CERTIPOST/Originata/SIGEN-CA/Tris-S; HR: FINA), Vercel env (FURS_CERT_P12_B64/PASSWORD, FURS_ENVIRONMENT, FURS_ALLOW_SIMULATION=false), aktivacija po korakih (testno okolje prej), trenutno vedenje (fiscalStatus='pending', ni lažiranih kod), kaj kodeksko ostane (SOAP odjemalec z mTLS — 1 seja ko pride cert)
+- audit §13 "Blokade" prepisana: Neon DATABASE_URL ZAPRTO, GitLab minutes VERIFICIRANO+mitigirano, FURS runbook povezava, DNS točni TXT zapisi
+- YAML validacija: vercel-deploy.yml jobs [neon-smoke, tests, deploy] (deploy needs oboje), prod-smoke.yml job [smoke]
+
+Stage Summary:
+- AUDIT §13: P1 6/6 + P2 4/4 + rezidual §10 (Task 34) + 2 od 4 blokad (Neon, GitLab CI) ZAPRTO/VERIFICIRANO
+- ostajata 2 FIZIČNI človeški koraka: (1) FURS/FINA certifikat (nakup — runbook pripravljen), (2) 2 TXT zapisa v Cloudflare (copy-paste, vrednosti v audit §13 + sporočilu uporabniku)
+- veriga: lokalni push → GitLab + GitHub (paralelno) → Actions [neon-smoke + tests] → Vercel; GitLab CI utišan do nadaljnjega
