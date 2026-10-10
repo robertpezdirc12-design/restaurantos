@@ -722,3 +722,25 @@ Work Log:
 
 Stage Summary:
 - Task 40 (v1.46.0) E2E dokazan v živem brskalniku na trenutnem main — produkcijski deploy ostaja edini manjkajoči korak (blokiran z uporabniškimi koraki: email verification + Git integration/nov token; nato DNS + certifikata)
+
+---
+Task ID: 41-main
+Agent: main (Z.ai Code)
+Task: Nov Vercel token (3.) → VERCEL_TOKEN_B64 update + re-run deploy → Task 40 v produkcijo; nato poliraj: R12/lost race bug v expenses + realen deploy commit v health + v1.47.0 + dev-DB čiščenje fiksatur
+
+Work Log:
+- 19:29 UTC: nov token vcp_7ByDUd2Q… (user) — verifikacija: /v9/projects/{id} 200 (team scope OK; /v2/user vrne skromno obliko = team-scoped token), sealed-box update VERCEL_TOKEN_B64 (204), re-run-failed-jobs runa 38072369859 (201) → attempt 2 SUCCESS ~19:34 → produkcija 1.46.0 (Task 40 deployan!)
+- PRIPOMBA: produkcija je takrat pokazala commit fallback "reconstruction-1.0.0" (CLI deployi nimajo VERCEL_GIT_COMMIT_SHA) → Task 41 to zapira.
+- Task 41a — R12/lost race bug (najden ob lokalen test-failu, ki ga je sprožil uporabnikov "Kmetija Sonce" dobavitelj v dev bazi):
+  * star koda: findFirst(katerikoli dobavitelj) → pri obstoječih dobaviteljih se "Razno" sploh ne ustvari (strošek semantično napačno na najstarejšem dobavitelju); brez dobaviteljev pa findFirst→create race
+  * globlja odkritija: (1) Prisma upsert na SQLite NI vedno native INSERT ON CONFLICT (dva vzporedna upserta = 2× SELECT-none → INSERT→INSERT) in (2) `code @unique @default("")` = latentni kolizijski bug: vsak INSERT dobavitelja s praznim code trči, ko že obstaja dobavitelj s praznim code (Kmetija Sonce ima code="") — to pojasni P2002→P2025 verigo
+  * popravek: VEDNO upsert "Razno" (unique name) z eksplicitnim code 'RAZNO' + P2002 re-read/retry zanka (3 poskusa, retry z novim naključnim code) — airtight pod konkurenco; tests/race-fixes.test.ts R12 zdaj 5× zapored deterministično zeleno
+- Task 41b — realen deploy commit v health (CLI deploji): nov workflow korak "Generate deploy info" prepiše src/lib/deploy-commit.ts (placeholder v repo) z GITHUB_SHA::7/run_id pred `vercel deploy` → compile v bundle → DEPLOY_COMMIT = VERCEL_GIT_COMMIT_SHA || CI_DEPLOY_COMMIT || APP_COMMIT
+- Task 41c — dev-DB čiščenje (preview kvaliteta): 5× "rp1-Kategorija" + 5× "rp1-Jed" (R-pot fiksatur ostanki) + 5 odprtih testnih naročil 41003 — FK-preslikana brisanja v EN transakciji (OrderItem→Order→MenuItem→Category; StockTx/Check/Receipt/KotDoc/Course = 0 referenc); preostanki 0
+- verifikacija: tsc 0 · lint 0 · 582/582 testov · CI run 38080935029 (de68b75) SUCCESS (neon-smoke + tests + deploy) · produkcija 19:47: {"status":"ok","version":"1.47.0","commit":"de68b75","database":"connected"} — PRAVI commit SHA v produkciji!
+- opomba: uporabnikov "Kmetija Sonce" dobavitelj (code="") ostaja v dev bazi kot legitimni podatki; endpoint znan elegantno rešuje code-kolizijo
+
+Stage Summary:
+- 3 Vercel tokeni umrli/enako podpis → 4. token deluje (team scope) — CI deploy veriga spet 100 % operativna
+- produkcija de68b75 / v1.47.0: Task 40 (R-pot testi + health verzija) + Task 41 (R12 race fix + deploy commit + čiščenje)
+- health endpoint zdaj vedno pokaže točen deployan commit (Git IN CLI deploji) — polna sledljivost produkcije
