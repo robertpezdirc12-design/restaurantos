@@ -703,3 +703,22 @@ Work Log:
 Stage Summary:
 - Git integration = ZERO-RISK za ta repo (build pipeline že dokazan v produkciji; prisma okolje-zaveden; bun lockfile podprt)
 - vse ostalo nespremenjeno: čaka se (1) email verification, (2) Git integration ALI nov token, (3) GoDaddy DNS, (4) certifikata
+
+---
+Task ID: 40-main (dodatek 4 — Agent Browser E2E verifikacija na main 8654bba+, 19:18 UTC)
+Agent: main (Z.ai Code)
+Task: Zlati tok E2E v živem brskalniku (dev server port 3000), ker produkcija še čaka na uporabniške korake
+
+Work Log:
+- 19:17 UTC re-check: DNS še prazen, Vercel token še limited (403 projects), produkcija še 1.45.0 → vsi 3 blokatorji še uporabniški.
+- lokalni health: v1.46.0 + database connected → Task 40 verzija + DEPLOY_COMMIT logika delujeta (lokalno fallback APP_COMMIT; v produkciji VERCEL_GIT_COMMIT_SHA).
+- Agent Browser E2E zlati tok (preko obstoječe prijave Ana Admin):
+  * / → redirect /dashboard, title ok, 24 tabov izrisanih, header kaže verzijo 1.46.0 (Task 40 vidno v UI)
+  * tab Mize → mreža miz s živimi DB podatki (Bar: Miza 9-11 prosta; Glavna dvorana: Miza 1 zasedena 7,67 €, ostale prosta)
+  * klik prosto mizo → dialog "Novo naročilo" z živimi meni postavkami (rp1-Jed, Burek s sirom 3,50 €, Kranjska klobasa 12,50 €), vsota 0,00 € — brez pošiljanja (brez mutacije)
+  * klik zasedena Miza 1 → dialog "Plačilo Miza 1" (spinner ~2 s = dev-compile latency, nato polno): 2× Burek s sirom 7,00 €, Skupaj z DDV 7,67 €, ZA PLAČATI 7,67 €, napitnina input, načini plačila Gotovina/Kartica/Mobilno/Darilna + deljeno plačilo — BRALNA verifikacija, račun NI izdan
+  * zaprtje dialoga ok; page errors: 2 prazna vnosa (HMR/Fast Refresh artefakti, ne realne napake); konzola brez error/warning
+- opomba: v dev DB obstajata 2 kategoriji z istim imenom "RP1-KATEGORIJA" (ostanki R-pot ročnih fiksatur v dev bazi; kozmetično, samo dev, ni kodna napaka, ni v produkciji)
+
+Stage Summary:
+- Task 40 (v1.46.0) E2E dokazan v živem brskalniku na trenutnem main — produkcijski deploy ostaja edini manjkajoči korak (blokiran z uporabniškimi koraki: email verification + Git integration/nov token; nato DNS + certifikata)
