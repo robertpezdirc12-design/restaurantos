@@ -27,6 +27,8 @@ import { createToken } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { nid, num } from '@/lib/map'
 import { POST as fursPOST } from '../src/app/api/furs/route'
+import { POST as stornoPOST } from '../src/app/api/receipts/[id]/storno/route'
+import { PATCH as ordersPATCH } from '../src/app/api/orders/[id]/route'
 
 const PREFIX = 'furspost'
 const PREMISES_A = 'BLGFPOSTA'
@@ -506,5 +508,109 @@ describe('POST /api/furs — deljeno plačilo (parts)', () => {
     })
     expect(res.status).toBe(402)
     expect(await db.receipt.count({ where: { orderId: order.id } })).toBe(0)
+  })
+})
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Naloga 37 (audit priporočilo Task 31-a) — terminalna stanja so KONČNA:
+ *  - storno naročila → ponovno plačilo prek /api/furs je ZAVRJENO (409) — prej:
+ *    CAS '!= paid' je spustil 'storno' → NOV fiskalni račun nad že negirano prodajo
+ *    (deductStock replay zaščita sicer zadrži dvojno razknjižbo, a račun bi bil izdan);
+ *  - 'cancelled' paymentStatus → prav tako zavrnjeno (bela lista CAS);
+ *  - ročni PAID override (/api/orders/[id]) na stornoed naročilu → 409 (prej: override
+ *    je prepisal 'storno' → 'paid' brez računa/plačila — računovodsko nekonsistentno);
+ *  - "twin" replay (izguba CAS dirke) išče IZKLJUČNO originalni račun (isStorno=false).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Naloga 37)', () => {
+  test('stornirano naročilo → ponovno plačilo 409, BREZ novega računa/plačila', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 10, vatRate: 22 },
+    ])
+    // 1. plačilo (originalni račun)
+    const res1 = await payA({ orderId: order.id, type: 'cash', clientOperationId: `${PREFIX}-storno37-${TS}` })
+    expect(res1.status).toBe(201)
+    const inv1 = (await res1.json()).invoice
+    // 2. fiskalni storno (koti /api/furs: isti furs.issue dovoljenje, lokacija A)
+    const stornoToken = createToken({ sub: mgrA.id, name: mgrA.name, role: 'MANAGER', loc: locA.id, sv: 0 })
+    const resS = await stornoPOST(
+      new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' } }),
+      { params: Promise.resolve({ id: inv1.id }) },
+    )
+    expect(resS.status).toBe(201)
+    expect((await resS.json()).order.paymentStatus).toBe('storno')
+    // 3. ponovni plačilni poskus → ZAVRJEN (terminalno stanje)
+    const res2 = await payA({ orderId: order.id, type: 'cash', clientOperationId: `${PREFIX}-storno37-retry-${TS}` })
+    expect(res2.status).toBe(409)
+    expect(String((await res2.json()).error)).toContain('stornirano')
+    // invarianta: točno 2 računa (original + storno negacija), brez tretjega; brez novega Check/Payment
+    const receipts = await db.receipt.findMany({ where: { orderId: order.id }, select: { id: true, isStorno: true } })
+    expect(receipts).toHaveLength(2)
+    expect(receipts.filter((r) => r.isStorno)).toHaveLength(1)
+    expect(await db.check.count({ where: { orderId: order.id } })).toBe(1)
+    const dbOrder = await db.order.findUnique({ where: { id: order.id } })
+    expect(dbOrder?.paymentStatus).toBe('storno')
+  })
+
+  test('paymentStatus=cancelled → 409 (preklicano)', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 10, vatRate: 22 },
+    ])
+    await db.order.update({ where: { id: order.id }, data: { paymentStatus: 'cancelled' } })
+    const res = await payA({ orderId: order.id, type: 'cash' })
+    expect(res.status).toBe(409)
+    expect(String((await res.json()).error)).toContain('preklicano')
+    expect(await db.receipt.count({ where: { orderId: order.id } })).toBe(0)
+  })
+
+  test('ročni PAID override na stornoed naročilu → 409 (paymentStatus ostane storno)', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 10, vatRate: 22 },
+    ])
+    const res1 = await payA({ orderId: order.id, type: 'cash', clientOperationId: `${PREFIX}-ovr37-${TS}` })
+    expect(res1.status).toBe(201)
+    const inv1 = (await res1.json()).invoice
+    const stornoToken = createToken({ sub: mgrA.id, name: mgrA.name, role: 'MANAGER', loc: locA.id, sv: 0 })
+    const resS = await stornoPOST(
+      new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' } }),
+      { params: Promise.resolve({ id: inv1.id }) },
+    )
+    expect(resS.status).toBe(201)
+    // override poskus → 409
+    const resO = await ordersPATCH(
+      new NextRequest(`http://localhost/api/orders/${order.id}`, { method: 'PATCH', headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'PAID' }) }),
+      { params: Promise.resolve({ id: order.id }) },
+    )
+    expect(resO.status).toBe(409)
+    expect(String((await resO.json()).error)).toContain('ponovno plačati')
+    const dbOrder = await db.order.findUnique({ where: { id: order.id } })
+    expect(dbOrder?.paymentStatus).toBe('storno')
+    expect(dbOrder?.status).toBe('paid') // status nespremenjen — override zavrnjen v celoti
+  })
+
+  test('"twin" replay išče samo originalni račun (isStorno=false), ne storno negacije', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 10, vatRate: 22 },
+    ])
+    const res1 = await payA({ orderId: order.id, type: 'cash', clientOperationId: `${PREFIX}-twin37-${TS}` })
+    expect(res1.status).toBe(201)
+    const original = (await res1.json()).invoice
+    // simuliraj storno račun BREZ spreminjanja order.paymentStatus (tj. okno dirke
+    // med storno transakcijo in plačilnim klicem — order je še 'paid', storno račun obstaja)
+    await db.receipt.create({
+      data: {
+        id: nid(), receiptNumber: `2026-1-999999-T37`, orderId: order.id, locationId: locA.id,
+        isStorno: true, stornoOf: original.id, businessName: 'T37', businessAddress: 'T37',
+        businessId: 'T37', taxId: 'SI12345678', subtotal: -12.2, totalVat: -2.2, discount: 0,
+        total: -12.2, vatBreakdown: JSON.stringify({ '22.00': { base: -10, vat: -2.2 } }),
+        paymentMethod: 'cash', fiscalStatus: 'verified', fiscalVerified: true,
+      },
+    })
+    // drugi klic brez ključa → CAS izgubi dirko (paymentStatus='paid') → twin lookup:
+    // mora vrniti ORIGINALNI račun, ne storno negacije
+    const res2 = await payA({ orderId: order.id, type: 'cash' })
+    expect(res2.status).toBe(200)
+    const body2 = await res2.json()
+    expect(body2.replayed).toBe(true)
+    expect(body2.invoice.id).toBe(original.id)
   })
 })

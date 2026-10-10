@@ -82,6 +82,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.status === 'CANCELLED' && order.paymentStatus === 'paid') {
       return fail('Plačanega naročila ni mogoče stornirati prek statusa — fiskalni storno/vračilo je v pripravi.', 409)
     }
+    // Naloga 37 (audit priporočilo Task 31-a): storniranega naročila ni mogoče "re-plačati"
+    // prek ročnega PAID override-a — prej je override prepisal paymentStatus 'storno' → 'paid'
+    // brez računa/plačila/dohodnine (računostvo: naročilo 'paid', na fiskalni strani storno
+    // negacija — nekonsistentno). Storno je terminalno; po potrebi novo naročilo.
+    if (body.status === 'PAID' && order.paymentStatus === 'storno') {
+      return fail('Storniranega naročila ni mogoče ponovno plačati — ustvarite novo naročilo.', 409)
+    }
     data.status = body.status.toLowerCase()
     if (body.status === 'PAID') {
       data.paidAt = new Date()

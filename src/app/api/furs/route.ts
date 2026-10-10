@@ -49,8 +49,17 @@ export async function GET(req: NextRequest) {
 
 /**
  * Plačilo + FURS račun — ATOMARNO (issue #1: stabilnost/idempotencija).
- * - $transaction: CAS zaščita (order.paymentStatus != paid) + Check + Receipt + Payment + miza
+ * - $transaction: CAS zaščita (order.paymentStatus IN ['unpaid','partial'] — Naloga 37:
+ *   ojačano iz '!= paid', ki je spustilo tudi terminalna stanja 'storno'/'cancelled')
+ *   + Check + Receipt + Payment + miza
  *   → dvojni račun/plačilo za isti naročilo NI več mogoč (tudi ob dvojnem kliku/retry)
+ * - Naloga 37 (audit priporočilo Task 31-a): terminalna stanja ('storno', 'cancelled')
+ *   so ZAVRJENA že v pred-transakcijski guardi (fail fast, nedvoumno sporočilo) —
+ *   ponovno plačilo/fakturacija storniranega naročila NI več mogoča (prej: CAS '!= paid'
+ *   je spustil 'storno' → nov fiskalni račun nad že negirano prodajo; replay zaščita
+ *   deductStock sicer zadrži dvojno razknjižbo, a račun bi bil izdan). "Twin" replay
+ *   (CAS izguba dirke) išče IZKLJUČNO originalni račun (isStorno=false) — nikoli
+ *   storno negacije.
  * - Idempotencija: body.clientOperationId → Payment.idempotencyKey (unique); replay vrne
  *   ISTI račun (200, replayed) namesto novega
  * - Terminski POS: body.terminal.approvalCode → Payment.authorizationCode
@@ -100,6 +109,16 @@ export async function POST(req: NextRequest) {
   if (payGuard) return payGuard
   if (!ORDER_ACTIVE_DB.includes(orderPre.status) && orderPre.status !== 'paid') {
     return fail('Naročilo ni v plačljivem stanju.', 409)
+  }
+  // Naloga 37: terminalna stanja so KONČNA — plačilo/fakturacija ni več mogoča.
+  // Storno = popolna negacija prodaje (fiskalni storno račun izdan, zaloga povrnjena);
+  // ponovni PRE /api/furs bi izdal NOV račun nad že negirano prodajo. Gate je PRED
+  // idempotenčnim replayem (terminalno stanje mora biti vidno, ne zamaskirano kot 'replayed').
+  if (orderPre.paymentStatus === 'storno') {
+    return fail('Naročilo je stornirano — ponovno plačilo ni mogoče. Ustvarite novo naročilo.', 409)
+  }
+  if (orderPre.paymentStatus === 'cancelled') {
+    return fail('Naročilo je preklicano — plačilo ni mogoče.', 409)
   }
 
   // Idempotentni replay — plačilo za ta clientOperationId že obstaja?
@@ -287,15 +306,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const receipt = await db.$transaction(async (tx) => {
-      // CAS zaščita: posodobi naročilo SAMO če še ni plačano → dvojni klic izgubi dirko
+      // CAS zaščita (Naloga 37: eksplicitna bela lista plačljivih stanj — fail-closed
+      // tudi ob prihodnjih novih terminalnih vrednostih enuma) → dvojni klic izgubi dirko
       const cas = await tx.order.updateMany({
-        where: { id: orderPre.id, paymentStatus: { not: 'paid' } },
+        where: { id: orderPre.id, paymentStatus: { in: ['unpaid', 'partial'] } },
         data: { status: 'paid', paymentStatus: 'paid', paidAt: now, paymentMethod },
       })
       if (cas.count === 0) {
         // drug klic je že plačal → vrni njegov račun (idempotentno)
+        // Naloga 37: SAMO original (isStorno=false) — storno negacija ni "plačilni" račun
         const twin = await tx.receipt.findFirst({
-          where: { orderId: orderPre.id },
+          where: { orderId: orderPre.id, isStorno: false },
           orderBy: { createdAt: 'desc' },
         })
         if (twin) return { twin, duplicate: true as const }

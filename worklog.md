@@ -511,3 +511,25 @@ Work Log:
 Stage Summary:
 - Task 36 ŽIV V PRODUKCIJI; FURS SI SOAP odjemalec čaka le certifikat (env) + testno-okoljsko validacijo
 - končno stanje blokad: FURS/FINA certifikat (nakup) + 2 TXT zapisa Cloudflare — vse ostalo iz audita §13 zaprto
+
+---
+Task ID: 37-main
+Agent: main (Z.ai Code)
+Task: Gate na ponovno plačilo storniranega/preklicanega naročila (audit priporočilo Task 31-a — zadnja znana dokumentirana omejitev) + DNS re-check
+
+Work Log:
+- DNS re-check (nadaljuj): TXT zapisa _vercel.restaurantos.app / _vercel.www.restaurantos.app ŠE VEDNO nista dodana (dig prazen; apex še vedno GoDaddy/Office365 SPF; A → 162.159.143.30/172.66.3.26 = Cloudflare proxy). Vercel kredencial v workflow ni dostopen za API klic. Ostaja za Cloudflare panel (vrednosti v auditu §13).
+- Izbira naloge: audit §13 P1.1 + worklog 31-a priporočata gate v /api/furs na paymentStatus='storno' — zadnja dokumentirana kodekska omejitev.
+- RAZŠIRITEV obsega (najden 2. primerek iste vrzeli): ročni PAID override v /api/orders/[id] je prepisal paymentStatus 'storno' → 'paid' BREZ računa/plačila (računostvo: naročilo paid, fiskalno storno negacija — nekonsistentno).
+- enum PaymentStatus = unpaid|partial|paid|storno|cancelled → stari CAS `paymentStatus: { not: 'paid' }` je spuščal TUDI 'storno' IN 'cancelled'.
+- src/app/api/furs/route.ts: (1) JSDoc dopolnjena; (2) EARLY GATE po payGuard, PRED idempotenčnim replayem — 'storno' → 409 "Naročilo je stornirano — ponovno plačilo ni mogoče. Ustvarite novo naročilo.", 'cancelled' → 409 "Naročilo je preklicano — plačilo ni mogoče." (terminalno stanje mora biti vidno, ne zamaskirano kot replayed); (3) CAS ojačan: `{ not: 'paid' }` → `{ in: ['unpaid','partial'] }` (bela lista — fail-closed tudi ob prihodnjih novih terminalnih vrednostih enuma); (4) "twin" replay lookup oženj na `isStorno: false` (storno negacija NI "plačilni" račun — sicer bi okno dirke med storno tx in plačilnim klicem vrnilo NEGATIVNO negacijo kot idempotentni odgovor).
+- src/app/api/orders/[id]/route.ts: PAID override na stornoed naročilu → 409 "Storniranega naročila ni mogoče ponovno plačati — ustvarite novo naročilo." (zrcalni guard R10 CANCELLED blokadi).
+- tests/furs-post.test.ts: nov sklop "terminalna stanja so KONČNA (Naloga 37)" — 4 testi: (1) plačaj→storno→replat 409 + invarianta (točno 2 računa: original+negacija, 1 Check, paymentStatus ostane 'storno'); (2) cancelled → 409 + 0 računov; (3) PAID override na stornoed → 409 + DB nespremenjen (paymentStatus 'storno', status 'paid'); (4) simulirano okno dirke: plačano naročilo + ročno vstavljen storno račun → twin replay vrne ORIGINALNI račun (isStorno=false), ne negacije. Popravek med razvojem: Receipt NIMA paymentStatus/issuedAt (izkušnja Task 35!), businessId obvezen — create fixture očiščen.
+- verifikacija: bunx tsc --noEmit 0 · bun run lint 0 · bun test 550/550 (546 + 4 novi; furs-post 17/17 vključno s storno replatom — obstoječe simulacijske poti nespremenjene)
+- audit §13 P1.1: "znana omejitev" prečrtana → ZAPRTO (Task 37) z razčlenbo.
+
+Stage Summary:
+- ZADNJA dokumentirana kodekska omejitev iz audita ZAPRTA: storno je zdaj terminalno v celotni verigi (/api/furs gate + CAS bela lista + twin filter + PAID override blokada)
+- prej: nov fiskalni račun nad že negirano prodajo + override brez računa; zdaj: fail-closed na vseh 4 stopnjah (pre-guard, replay, CAS, override)
+- 550 testov; SI pot byte-identična (fiscal.test nespremenjen zelen)
+- ostajata le 2 FIZIČNA človeška koraka: FURS/FINA certifikat (Task 36 kodeksko 100 % pripravljen) + 2 TXT zapisa v Cloudflare (vrednosti v audit §13)
