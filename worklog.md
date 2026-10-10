@@ -586,3 +586,22 @@ Stage Summary:
 - ključni vir Task 38: uradna specifikacija v2.7 (215 str PDF) — ZKI/endpointi/XML-DSig vse iz primarnega vira
 - CI: tests job zelen (576), neon-smoke čaka nov Neon API ključ, deploy čaka zelen neon-smoke + nov team-scoped Vercel token
 - UPORABNIKU 2 ukaza: (1) nov Neon API ključ (console.neon.tech → Account → API keys), (2) nov Vercel token z ekipo scope (vercel.com → settings → tokens, scope = workspace); plus še vedno 2 TXT zapisa v Cloudflare
+
+---
+Task ID: 39-main
+Agent: main (Z.ai Code)
+Task: Obnovitev CI poverilnic — uporabnik posredoval nov Neon org API ključ + nov Vercel token; posodobitev 2 GitHub Actions secrets (po navodilu 38-main), korekcija DNS navodil (GoDaddy, ne Cloudflare), higiena env, deploy Task 38 v produkcijo
+
+Work Log:
+- preverjava poverilnic PRED uporabo:
+  - Vercel (vcp_...): GET /v2/user 200 (robertpezdirc12-design, defaultTeamId team_KuVkEd4HM0StzdABN6HqzycD); GET /v2/teams/{team} 200 role OWNER limited:false = team scope POTRJEN (vzrok stare okvare odpravljen); GET /v9/projects/{id}/domains 200 (obe domeni verified:false, TXT vrednosti iz API se ujemajo z audit §13)
+  - Neon (napi_...): /v2/users/me → 404 "not allowed for organization API keys" (ORG ključ); GET /v2/projects 200 (org-frosty-tooth-88055236: patient-violet-36825841 + young-hall-93273873; prod-v2 + main branch "ready"); neon-smoke workflow uporablja izključno project-scoped endpointe (branches/endpoints/roles/databases — brez /users/me) → org ključ KOMPATIBILEN
+- SECRETS posodobljena prek GitHub API (pynacl sealed-box, repo public key 3380204578043523366): NEON_API_KEY_B64 in VERCEL_TOKEN_B64 = base64(token) — obe PUT 204, updated_at 2026-10-10T17:05 UTC (točno po navodilu 38-main: »LE posodobitev 2 secret vrednosti — brez commitov, brez sprememb workflow«)
+- ENV HIGIENA (Vercel API): izbrisan zastarel VERCEL_TOKEN_TMP (R240-b pooler-switch one-shot, lasten komentar »DELETE after pooler switch confirmed«, 0 referenc v kodi) — DELETE /v9/projects/{id}/env/a8N0WyhNnguiHQqQ 200
+- DNS KOREKCIJA (pomembno odkritje): avtoritativna cona za restaurantos.app je GO DADDY (ns17/ns18.domaincontrol.com — dig potrjuje, da servira A Cloudflare-proxy IP-ja + MX Outlook), NE Cloudflare; urejanje v CF panelu je INERTNO dokler NS ostane na domaincontrol.com. Prejšnja navodila (»2 TXT v Cloudflare«) so bila napačna ciljna cona. Audit §13 prepisan: TXT vrednosti (obe na istem imenu _vercel.restaurantos.app — potrjeno z živim Vercel API) + ROUTING zapisi (A @ → 76.76.21.21, CNAME www → cname.vercel-dns.com; trenutno CF proxy vrača 403)
+- commit + push origin (GitLab) + github → CI run na novem commitu (neon-smoke + tests + deploy z novima poverilnicama) — [rezultat v dodatku]
+
+Stage Summary:
+- CI poverilnice OBNOVENE (4 secrets: 2 posodobljena, 2 ID-ja nespremenjena); gate veriga neon-smoke → tests → deploy spet operativna
+- DNS navodila korigirana na pravo ciljno cono (GoDaddy) — uporabnikov ročni korak je zdaj 1 panel + 4 zapisi (2 TXT + A + CNAME)
+- produkcija: [se gl. dodatek 39-main]
