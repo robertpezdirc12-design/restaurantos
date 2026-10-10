@@ -34,14 +34,17 @@ export async function GET(req: NextRequest) {
  * Nov strošek (dobaviteljev račun / AccountsPayable).
  * N3 (audit P1): kanonično dovoljenje `settings.manage` namesto trdo kodiranih vlog —
  * enterprise vloge s to pravico in permissionOverrides delujejo na pisanje (DB lookup).
- * opomba: supplierId je FK na Supplier — če obstajajo, vzemi prvega, sicer ustvari
- * privzetega "Razno". apNumber je unique brez defaulta → generiramo.
+ * opomba: supplierId je FK na Supplier — strošek brez dobavitelja se VEDNO veže na
+ * privzetega "Razno" (idempotentno, race-varno). apNumber je unique brez defaulta → generiramo.
  *
- * R12 (revizija §6): prejšnji findFirst→create je pod konkurenco ustvaril več
- * dobaviteljev "Razno" (dve zahtevi sta oba prebrali prazen seznam in oba ustvarili).
- * Supplier.name je @unique → upsert po unique ključu je ATOMAREN (INSERT ON CONFLICT):
- * če "Razno" že obstaja (ali ga je vzporedna zahteva pravkar ustvarila), upsert vrne
- * obstoječo vrstico — pod konkurenco obstaja natanko EN "Razno" dobavitelj.
+ * R12 (revizija §6 + Task 41 popavek): dve težavi zapored —
+ *  (1) prejšnji findFirst→create je pod konkurenco ustvaril več "Razno" (dve zahtevi
+ *      sta oba prebrali prazen seznam in oba ustvarili),
+ *  (2) findFirst je iskal KATERIKOLI dobavitelj (brez filtra imena) — pri obstoječih
+ *      dobaviteljih (npr. "Kmetija Sonce" v dev bazi) se "Razno" sploh ni ustvaril in
+ *      je strošek semantično napačno visel na najstarejšem dobavitelju.
+ * Zdaj: VEDNO upsert po unique ključu name + P2002 re-read fallback → pod konkurenco
+ * obstaja natanko EN "Razno" dobavitelj, nanj pa so vezani vsi stroški brez dobavitelja.
  */
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'settings.manage')
@@ -55,15 +58,29 @@ export async function POST(req: NextRequest) {
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
 
-  let supplier = await db.supplier.findFirst({ orderBy: { createdAt: 'asc' } })
-  if (!supplier) {
-    // R12: upsert (ne create) — unique name ključ odpravi duplikate "Razno" pod konkurenco
-    supplier = await db.supplier.upsert({
-      where: { name: 'Razno' },
-      update: {},
-      create: { id: nid(), name: 'Razno' },
-    })
-  }
+  // R12 + Task 41: vedno "Razno" — unique name upsert + P2002 re-read/retry zanka.
+  // Dve P2002 possibilities: (a) name-'Razno' kolizija (vzporedna zahteva ga je
+  // pravkar ustvarila) → re-read po imenu vrne obstoječega; (b) code-kolizija —
+  // `code @unique @default("")` pomeni, da INSERT s praznim code trči, če že
+  // obstaja dobavitelj s privzetim praznim code (npr. ročen/uvožen vnos), zato
+  // eksplicitno code 'RAZNO' (attempt 0) oziroma naključna pripona (retry).
+  const supplier = await (async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await db.supplier.upsert({
+          where: { name: 'Razno' },
+          update: {},
+          create: { id: nid(), name: 'Razno', code: attempt === 0 ? 'RAZNO' : `RAZNO-${nid().slice(0, 6).toUpperCase()}` },
+        })
+      } catch (e) {
+        if ((e as { code?: string }).code !== 'P2002') throw e
+        const byName = await db.supplier.findUnique({ where: { name: 'Razno' } })
+        if (byName) return byName
+        // sicer: code-kolizija → naslednji poskus z novim code
+      }
+    }
+    throw new Error('Razno dobavitelj ni bil mogoče razrešiti (P2002 zanka izčrpana).')
+  })()
 
   const now = new Date()
   const due = new Date(now)

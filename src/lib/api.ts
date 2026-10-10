@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { CI_DEPLOY_COMMIT } from '@/lib/deploy-commit'
 import { db } from '@/lib/db'
 import { getAuth, AuthPayload, sessionRevoked } from '@/lib/auth'
 import { resolvePermissions, resolvePermissionsForUIRole, CanonicalPermission } from '@/lib/permissions'
@@ -81,15 +82,17 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.46.0'
+export const APP_VERSION = '1.47.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
 /**
- * Realen deployan commit (Task 40): Vercel vbrizga VERCEL_GIT_COMMIT_SHA v runtime
- * vsakega deploymenta — health endpoint tako vedno pokaže TOČNO to verzijo kode,
- * ki teče v produkciji (prej: statični APP_COMMIT, ki ni odražal deployov).
- * Lokalno/CI (brez Vercel env) ostane statični fallback.
+ * Realen deployan commit (Task 40 + Task 41): 
+ *  - Git-integration deployi: Vercel vbrizga VERCEL_GIT_COMMIT_SHA v runtime.
+ *  - CLI deployi (vercel-deploy.yml): CI prepiše src/lib/deploy-commit.ts z realnim
+ *    GITHUB_SHA/run_id pred `vercel deploy` (prilepi se v bundle).
+ * Health endpoint tako vedno pokaže TOČNO verzijo kode, ki teče v produkciji.
+ * Lokalno/CI (brez obeh) ostane statični fallback APP_COMMIT.
  */
-export const DEPLOY_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || APP_COMMIT
+export const DEPLOY_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || CI_DEPLOY_COMMIT || APP_COMMIT
 
 /**
  * N4 (audit P1): DDL rute (`/api/admin/migrate-*`, $executeRawUnsafe) zahtevajo
