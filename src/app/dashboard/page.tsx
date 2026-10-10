@@ -129,7 +129,11 @@ export default function DashboardPage() {
 function DashboardInner() {
   const router = useRouter()
   const { t, locale } = useI18n()
-  const user = getUser()
+  // Hydration-safe (Task 41): localStorage ni dosegljiv na strežniku, zato se uporabnik
+  // prebere šele po mountu — sicer SSR naredi null, klient ime → hydration mismatch
+  // (span z imenom uporabnika v headerju). Varen, ker ta komponenta nima redirecta na !user.
+  const [user, setUser] = useState<ReturnType<typeof getUser>>(null)
+  useEffect(() => { setUser(getUser()) }, [])
   const [stats, setStats] = useState<Stats | null>(null)
   const [tables, setTables] = useState<TableT[]>([])
   const [orders, setOrders] = useState<OrderT[]>([])
