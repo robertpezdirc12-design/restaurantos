@@ -605,3 +605,20 @@ Stage Summary:
 - CI poverilnice OBNOVENE (4 secrets: 2 posodobljena, 2 ID-ja nespremenjena); gate veriga neon-smoke → tests → deploy spet operativna
 - DNS navodila korigirana na pravo ciljno cono (GoDaddy) — uporabnikov ročni korak je zdaj 1 panel + 4 zapisi (2 TXT + A + CNAME)
 - produkcija: [se gl. dodatek 39-main]
+
+---
+Task ID: 39-main (dodatek — produkcija)
+Agent: main (Z.ai Code)
+Task: Verifikacija CI re-runa z novimi poverilnicami + produkcija
+
+Work Log:
+- re-run runa 38067943886 (attempt 2; docs-only push f64fd10 po paths-ignore namenoma ne sproži CI) → completed SUCCESS, vsi 3 jobs:
+  - neon-smoke SUCCESS (17:09:28→17:10:12) — efemerna Neon grana z NOVIM org API ključem = auth deluje
+  - tests SUCCESS (17:09:28→17:10:35) — tsc + lint + 576 testov
+  - deploy SUCCESS (17:10:38→17:12:06) — Vercel prod deploy z NOVIM team tokenom
+- produkcija: restaurantos-theta.vercel.app/api/health → ok / database connected / na 10c960f — Task 38 (HR CIS) + CI remediacija KONČNO deployana (prej obstala na d569ab3)
+- domeni restaurantos.app + www še vedno verified:false (pričakovano — TXT zapisi še niso v GoDaddy coni; navodila v audit §13 zdaj točna)
+
+Stage Summary:
+- CI veriga 100 % operativna; produkcija na 10c960f (fiskalizacija SI Task 36 + HR Task 38 v produkcijski kodi)
+- ostajata 2 fizična človeška koraka: (1) certifikata FURS SI + FINA HR, (2) 4 DNS zapisi v GoDaddy coni (2 TXT + A @ 76.76.21.21 + CNAME www cname.vercel-dns.com — natančna navodila v audit §13)
