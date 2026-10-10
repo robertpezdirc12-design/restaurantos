@@ -3,7 +3,9 @@
 # sproži produkcijski deployment NA VERCELU (push → build → produkcija).
 # Ta workflow je zgolj quality gate:
 #
-#   neon-smoke : prisma shema na resničnem Postgresu brez drifta
+#   neon-smoke : prisma shema na resničnem Postgresu brez NEPRIČAKOVANEGA drifta
+#                (znani pending drifti — gl. scripts/drift-check.ts KNOWN_DRIFTS —
+#                dovoljeni z ::warning:: anotacijo, vse ostalo je hard fail)
 #   tests      : tsc + lint + cel testni suite na sveži SQLite
 #
 # Produkcija: GitHub push → Vercel build (meta.githubCommitSha → health).
@@ -122,19 +124,14 @@ jobs:
           done
           echo "endpoint never became active"; exit 1
 
-      - name: Schema drift check (production copy vs datamodel)
+      # Task 45: drift-check z known-issue allowlist (scripts/drift-check.ts).
+      # Loči TRI izide: brez drifta (green) / SAMO znani pending drift, npr.
+      # issue-13 premisesId nullable, ki čaka na uporabniški DDL korak (warning,
+      # green) / nepričakovan drift ALI infra napaka (red, blokator).
+      - name: Schema drift check (production copy vs datamodel, known-issue allowlist)
         run: |
           PROD_URL="postgresql://ci_smoke:$SMOKE_ROLE_PW@$EP_HOST/restaurantos?sslmode=require"
-          if ! bunx prisma migrate diff --from-url "$PROD_URL" --to-schema-datamodel prisma/schema.prisma --exit-code > /tmp/drift.sql 2>/tmp/drift_err.txt; then
-            echo "### ⚠️ Neon schema drift detected (production copy vs prisma/schema.prisma)" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo '```sql' >> "$GITHUB_STEP_SUMMARY"
-            head -120 /tmp/drift.sql >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            echo "DRIFT DETECTED — first lines:"; head -20 /tmp/drift.sql
-            exit 1
-          fi
-          echo "✅ No drift: production schema matches prisma datamodel"
+          bun scripts/drift-check.ts "$PROD_URL" prisma/schema.prisma
 
       - name: Smoke on real Postgres (DDL apply + CRUD + enum + FK + JSONB)
         run: |

@@ -822,3 +822,30 @@ Work Log:
 
 Stage Summary:
 - Task 44 funkcionalnost dokazana end-to-end (API + UI): multi-lokacija brez FURS oznake deluje v dev; produkcija čaka le še DDL korak (admin session + 1 fetch).
+
+---
+Task ID: 45-main
+Agent: main (Z.ai Code)
+Task: "odlicno nadaljuj" — poliranje: CI drift-check z known-issue allowlist (rdeči main → zelena z opozorilom) + profesionalni README.md
+
+Work Log:
+- re-verifikacija: produkcija v1.50.0 @ fb66119 database connected ✓; GitLab mirror sinhroniziran (fb66119 na obeh, 0/0) ✓; CI run 38085264021 (fd14ad8) rdeč SAMO na neon-smoke driftu — pričakovano do uporabniškega DDL koraka issue #13; Vercel token nekritičen (Git integration deploya).
+- DIAGNOZA rdečega maina: neon-smoke hard-faila na vsakem znanim driftu, tudi na dokumentiranem pending driftu issue-13 (Location.premisesId NOT NULL DEFAULT '' na produkciji vs. String? @unique v datamodelu). Rdeči CI na vsakem commitu uči tim ignoriranja rdečega CI in utiša prave regresije → profesionalna higiena zahteva ločevanje "znan pending" od "nepričakovan".
+- REŠITEV scripts/drift-check.ts (CI step uporablja skripto, ne več inline shell):
+  * prisma migrate diff --script --exit-code → strojno-berljiv SQL (prej human-readable summary brez --script — /tmp/drift.sql ni bil SQL!)
+  * exit-code semantika eksplicitno razdvojena: 0 = brez drifta (green), 2 = drift (klasificiraj), 1 = INFRA NAPAKA (npr. P1001 unreachable — vedno blokator, ločeno od drifta)
+  * KNOWN_DRIFTS register (data-driven): issue-13 prepozna KOMBINIRANO obliko (ALTER TABLE "Location" ALTER COLUMN "premisesId" DROP NOT NULL, ALTER COLUMN "premisesId" DROP DEFAULT;) IN razdvojeno (2 stavka); mešane klavzule z drugimi stolpci = unexpected (strog)
+  * izid: samo znani → ::warning:: anotacija + GITHUB_STEP_SUMMARY ⚠️ + exit 0 (ZELEN); nepričakovan → ::error:: + 🔴 + exit 1; unparseable exit-2 stdout → varnostno hard fail
+  * allowlist avtomatsko utihne, ko uporabnik aplikira DDL (drift izgine, workflow ostane)
+- GROUND TRUTH: realni drift SQL iz CI logov (job 114310350061) + lokalna replikacija prek datamodel diff (stari schema z NOT NULL DEFAULT '' → novi nullable) — natančno ujemanje kombinirane oblike.
+- TESTI tests/drift-check.test.ts (14, čisti unit — brez DB): parse (komentarji/; razdelitev/normalizacija), issue-13 kombinirano+razdvojeno, tuja tabela, tuja klavzula (SET DATA TYPE), mešane klavzule → unexpected, mešano klasificiranje, prazen register-check. 602/602 skupaj.
+- DRY-RUN izvedljivih poti: infra napaka (unreachable URL) → exit 1 s sporočilom; usage (brez argumentov) → exit 2. (LEKCIJA: $? po pipeline z | tail ujame exit od tail — PIPESTATUS ali brez pipe.)
+- README.md (prvi, profesionalen): status tabela (produkcija/health/deploy/CI), CI badge (privaten repo — izrise lastniku), funkcije, sklad, hitri začetek, testiranje disciplina, deployment+rollback kazalci, docs index, licenca zaprta koda. 2 tipkarski napaki popravljeni ob nastanku (zmešani znaki "细化" → "s fino razdeljenimi", "natragčasnika" → "natakarja").
+- ci.yml: header komentar usklajen (neon-smoke = "brez NEPRIČAKOVANEGA drifta"); drift step → bun scripts/drift-check.ts. YAML validiran.
+- docs §13 issue-13 dopisan (Task 45 CI higiena blok). APP_VERSION ostaja 1.50.0 (ni spremembe app kode — semantična verzija diskiplina; health pokaže nov SHA prek VERCEL_GIT_COMMIT_SHA).
+- verifikacija: tsc 0 · lint 0 · 602/602 (+14) · YAML OK · dry-run poti OK.
+
+Stage Summary:
+- main CI: rdeč (znan drift = fail) → ZELEN z rumeno anotacijo ⚠️ — kakovost gate spet objektivna: vsak NOV/drugačen drift je še vedno hard fail, infra napake ločene
+- repo dobi profesionalen README (status/deploy/rollback/docs index) — vstopna točka za nove sodelavce
+- preostaja uporabniški korak (10 s): prijavljen admin na produkciji → POST /api/admin/migrate-issue13 → drift izgine, anotacija utihne, neon-smoke popolnoma zelen brez opozoril
