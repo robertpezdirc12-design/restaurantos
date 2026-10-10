@@ -89,10 +89,12 @@ jobs:
             --format=custom --no-owner --no-acl --file="$DUMP"
           echo "dump: $DUMP ($(stat -c%s "$DUMP") bytes)"
 
-          # validacija: struktura (117 tabel) + podatkovne sekcije
-          # (custom format TOC vnosi: '215; 1259 16421 TABLE "X" owner' /
-          #  '216; 1259 16421 TABLE DATA "X" owner' — brez CREATE TABLE besedila!)
-          TABLES=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c ' TABLE "' || true )
+          # validacija: (1) pg_restore zna prebrati TOC in izpisati DDL,
+          # (2) število CREATE TABLE v plain SQL, (3) podatkovne sekcije
+          # (robustno: TOC identitetni format ni stabilen za grep — zato
+          #  grejemo izpisano --schema-only SQL, ne TOC vrstic)
+          /usr/lib/postgresql/17/bin/pg_restore --schema-only --no-owner --no-acl --file=/tmp/check.sql "$DUMP"
+          TABLES=$( grep -c '^CREATE TABLE' /tmp/check.sql || true )
           DATAITEMS=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c 'TABLE DATA' || true )
           echo "validacija: $TABLES tabel, $DATAITEMS podatkovnih sekcij"
           if [ "$TABLES" -lt 100 ] || [ "$DATAITEMS" -lt 1 ]; then
