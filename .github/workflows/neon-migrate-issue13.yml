@@ -1,0 +1,130 @@
+name: Neon prod migrate — issue13 premisesId nullable (ONE-OFF)
+
+# Task 44 — enkratna produkcijska shemska migracija (issue #13 P2):
+#   Location.premisesId String @unique @default("")  →  String? @unique
+#
+# Zakaj v CI in ne prek /api/admin/migrate-issue13: produkcijski bootstrap PIN
+# ni (in ne sme biti) razpoložljiv agentu; efemerna Neon vloga (isti vzorec kot
+# prod-smoke) omogoča DDL direktno, z geslom le v času runa in vedno izbrisano.
+#
+# VAROVANJA:
+#  - izvajajo se IZKLJUČNO 3 fiksne DDL izjave (identične ruti migrate-issue13) —
+#    brez prostoformskega SQL iz vhodov.
+#  - vse 3 so metadata-only/ozko-scoped in idempotentne; ALTER NAMESTO UPDATE
+#    ne pusti podatkovnih sprememb, UPDATE se dotakne samo vrstic z ''.
+#  - AuditLog se iz CI NE piše (zunanja vrstica brez chainHash bi desinhronizirala
+#    verigo) — revizija je ta workflow log + worklog Task 44.
+#  - po uspehu pomeni CI neon-smoke drift check zelen (re-run).
+#  - idempotentno: DROP DEFAULT/DROP NOT NULL ne spodletita, če že opravljeno;
+#    UPDATE se ujema le s preostalimi ''.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-prod-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEON_API_KEY_B64: ${{ secrets.NEON_API_KEY_B64 }}
+      NEON_PROJECT_ID: patient-violet-36825841
+      NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
+      PROD_DB: restaurantos
+    steps:
+      - name: Install PostgreSQL 17 client (psql)
+        run: |
+          set -e
+          CODENAME=$(lsb_release -cs)
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $CODENAME-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/psql --version
+
+      - name: Ephemeral role + fixed DDL (issue13 premisesId nullable)
+        run: |
+          set -e
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          export NEON_KEY
+          API="https://console.neon.tech/api/v2"
+          BR="$NEON_PROD_BRANCH_ID"
+          STAMP=$(date -u +%Y%m%d%H%M)
+          ROLE_NAME="mig13_${STAMP}"
+
+          neon_req() { # method path data pyexpr
+            local method="$1" path="$2" data="$3" expr="$4" resp val try
+            for try in 1 2 3 4 5; do
+              if [ "$method" = "GET" ]; then
+                resp=$(curl -s "$API$path" -H "Authorization: Bearer $NEON_KEY")
+              else
+                resp=$(curl -s -X "$method" "$API$path" -H "Authorization: Bearer $NEON_KEY" -H 'Content-Type: json' ${data:+-d "$data"})
+              fi
+              val=$(echo "$resp" | python3 -c "$expr" 2>/dev/null || true)
+              if [ -n "$val" ]; then echo "$val"; return 0; fi
+              echo "  retry $try: $(echo "$resp" | head -c 140)" >&2
+              sleep $((try*4))
+            done
+            echo "REQUEST FAILED: $method $path" >&2; return 1
+          }
+
+          # higiena: pobriši morebitne mig13_ ostanke po zrušenih prejšnjih runih
+          STALE=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR/roles" '' 'import json,sys; print(" ".join(r["name"] for r in json.load(sys.stdin).get("roles",[]) if r["name"].startswith("mig13_")))' 2>/dev/null || true)
+          for R in $STALE; do
+            echo "brišem staro mig13 vlogo: $R"
+            curl -s -X DELETE "$API/projects/$NEON_PROJECT_ID/branches/$BR/roles/$R" -H "Authorization: Bearer $NEON_KEY" > /dev/null || true
+            sleep 2
+          done
+
+          EP_HOST=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR/endpoints" '' 'import json,sys; print(json.load(sys.stdin)["endpoints"][0]["host"])')
+          echo "endpoint: $EP_HOST"
+
+          ROLE_PW=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR/roles" "{\"role\":{\"name\":\"$ROLE_NAME\"}}" 'import json,sys; print(json.load(sys.stdin)["role"]["password"])')
+          echo "role: $ROLE_NAME (geslo le v temu runu)"
+          echo "ROLE_NAME=$ROLE_NAME" >> "$GITHUB_ENV"
+
+          PSQL="/usr/lib/postgresql/17/bin/psql"
+          PGURL="postgresql://$ROLE_NAME:$ROLE_PW@$EP_HOST/$PROD_DB?sslmode=require"
+
+          echo "── pred-migracija ──"
+          OWNER=$($PSQL "$PGURL" -t -A -c "SELECT tableowner FROM pg_tables WHERE tablename='Location'")
+          echo "Location tableowner: $OWNER"
+          $PSQL "$PGURL" -c "SELECT is_nullable, column_default, count(*) FILTER (WHERE \"Location\".\"premisesId\" = '') AS empty_rows FROM information_schema.columns c JOIN \"Location\" ON true WHERE c.table_name='Location' AND c.column_name='premisesId' GROUP BY 1,2" || true
+
+          echo "── migracija (3 fiksne DDL izjave, identične ruti /api/admin/migrate-issue13) ──"
+          $PSQL "$PGURL" -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER TABLE "Location" ALTER COLUMN "premisesId" DROP DEFAULT;
+          ALTER TABLE "Location" ALTER COLUMN "premisesId" DROP NOT NULL;
+          UPDATE "Location" SET "premisesId" = NULL WHERE "premisesId" = '';
+          SQL
+
+          echo "── post-verifikacija ──"
+          NULLABLE=$($PSQL "$PGURL" -t -A -c "SELECT is_nullable FROM information_schema.columns WHERE table_name='Location' AND column_name='premisesId'")
+          DEFVAL=$($PSQL "$PGURL" -t -A -c "SELECT column_default FROM information_schema.columns WHERE table_name='Location' AND column_name='premisesId'")
+          EMPTY=$($PSQL "$PGURL" -t -A -c "SELECT count(*) FROM \"Location\" WHERE \"premisesId\" = ''")
+          NULLS=$($PSQL "$PGURL" -t -A -c "SELECT count(*) FROM \"Location\" WHERE \"premisesId\" IS NULL")
+          echo "is_nullable: $NULLABLE (pričakovano YES)"
+          echo "column_default: ${DEFVAL:-NULL} (pričakovano prazno/NULL)"
+          echo "praznih '' vrstic: $EMPTY (pričakovano 0)"
+          echo "NULL vrstic: $NULLS"
+          [ "$NULLABLE" = "YES" ] || { echo "FAIL: stolpec še vedno NOT NULL"; exit 1; }
+          [ -z "$DEFVAL" ] || { echo "FAIL: default še vedno obstaja"; exit 1; }
+          [ "$EMPTY" = "0" ] || { echo "FAIL: ostale so '' vrstice"; exit 1; }
+          echo "✅ MIGRACIJA ISSUE13 USPEŠNA — premisesId je nullable, prazne vrednosti = NULL"
+
+      - name: Delete ephemeral migration role
+        if: always()
+        run: |
+          NEON_KEY=$(echo "$NEON_API_KEY_B64" | base64 -d)
+          if [ -n "${ROLE_NAME:-}" ]; then
+            curl -s -X DELETE "https://console.neon.tech/api/v2/projects/patient-violet-36825841/branches/br-little-waterfall-anolkwr6/roles/$ROLE_NAME" \
+              -H "Authorization: Bearer $NEON_KEY" > /dev/null || true
+            echo "efemerna vloga $ROLE_NAME izbrisana"
+          fi
