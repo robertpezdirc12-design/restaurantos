@@ -1178,7 +1178,7 @@ model Location {
   businessId                  String                  @default("")
   taxId                       String                  @default("")
   registerNumber              String                  @default("")
-  premisesId                  String                  @unique @default("")
+  premisesId                  String?                 @unique
   fursCertPath                String                  @default("")
   fursCertPassword            String                  @default("")
   fursEnvironment             String                  @default("test")

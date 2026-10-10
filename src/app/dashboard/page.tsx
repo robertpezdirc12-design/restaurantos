@@ -67,7 +67,7 @@ import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, M
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
-interface LocationRowT { id: string; name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string; timezone: string; currency: string; isActive: boolean }
+interface LocationRowT { id: string; name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string | null; timezone: string; currency: string; isActive: boolean }
 interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
 interface WebhookT { id: string; name: string; url: string; events: string[]; isActive: boolean; lastTriggered?: string | null; failureCount: number }
 interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
@@ -1603,7 +1603,7 @@ function DashboardInner() {
                           </div>
                           {hasPerm('settings.manage') && (
                             <div className="flex flex-col gap-0.5">
-                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${t('common.edit')} ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId, timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocNotice(''); setLocDialogOpen(true) }}>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${t('common.edit')} ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId || '', timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocNotice(''); setLocDialogOpen(true) }}>
                                 <Settings className="w-3.5 h-3.5" />
                               </Button>
                               <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${l.isActive ? t('loc.deactivate') : t('loc.activate')} ${l.name}`} onClick={() => setConfirmLocToggle(l)}>

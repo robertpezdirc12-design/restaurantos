@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (body?.country !== undefined) data.country = v.value.country
   if (body?.phone !== undefined) data.phone = v.value.phone
   if (body?.email !== undefined) data.email = v.value.email
-  if (body?.premisesId !== undefined) data.premisesId = v.value.premisesId
+  if (body?.premisesId !== undefined) data.premisesId = v.value.premisesId || null // Task 44: nullable — prazno briše oznako
   if (body?.timezone !== undefined) data.timezone = v.value.timezone
   if (body?.currency !== undefined) data.currency = v.value.currency
   if (body?.isActive !== undefined) {

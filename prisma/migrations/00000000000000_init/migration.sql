@@ -1019,7 +1019,7 @@ CREATE TABLE "Location" (
     "businessId" TEXT NOT NULL DEFAULT '',
     "taxId" TEXT NOT NULL DEFAULT '',
     "registerNumber" TEXT NOT NULL DEFAULT '',
-    "premisesId" TEXT NOT NULL DEFAULT '',
+    "premisesId" TEXT,
     "fursCertPath" TEXT NOT NULL DEFAULT '',
     "fursCertPassword" TEXT NOT NULL DEFAULT '',
     "fursEnvironment" TEXT NOT NULL DEFAULT 'test',

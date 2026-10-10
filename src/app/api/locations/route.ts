@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         country: v.value.country,
         phone: v.value.phone,
         email: v.value.email,
-        premisesId: v.value.premisesId,
+        premisesId: v.value.premisesId || null, // Task 44: nullable — FURS oznaka je opcijska (dodana ob registraciji proračuna)
         timezone: v.value.timezone,
         currency: v.value.currency,
         type: 'restaurant',
@@ -77,14 +77,16 @@ export async function POST(req: NextRequest) {
 
     return ok({ location: row }, 201)
   } catch (e: unknown) {
-    // Task 42: natančno P2002 razlikovanje (meta.target) — zavajajoče splošno
-    // sporočilo zamenja akcijsko; pokrije tudi race okna med taken()/dupPremises()
-    // preverjanjem in create() (unique+default("") latentne kolizije).
+      // Task 42 + 44: natančno P2002 razlikovanje (meta.target) — zavajajoče splošno
+      // sporočilo zamenja akcijsko; pokrije race okno med taken()/dupPremises()
+      // preverjanjem in create(). premisesId je od Task 44 nullable ('' → NULL).
     if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002') {
       const meta = (e as { meta?: { target?: string[] | string } }).meta?.target
       const fields = Array.isArray(meta) ? meta.join(',') : String(meta || '')
       if (fields.includes('premisesId')) {
-        return fail('FURS poslovni prostor že obstaja. Če oznake niste vnesli: druga lokacija že zaseda prazno (privzeto) oznako — vnesite FURS oznako poslovnega prostora.', 409)
+        // Task 44: prazne oznake so NULL (unique indeks dovoljuje več NULL) —
+        // kolizija je torej ZOREZ pravi dupliciran FURS poslovni prostor.
+        return fail('FURS poslovni prostor s to oznako že obstaja — preverite oznako poslovnega prostora.', 409)
       }
       return fail('Koda lokacije že obstaja — poskusite z drugo kodo.', 409)
     }
