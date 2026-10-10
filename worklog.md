@@ -547,3 +547,23 @@ Work Log:
 Stage Summary:
 - Task 37 ŽIV V PRODUKCIJI; storno zdaj terminalno v celotni verigi (gate + CAS bela lista + twin filter + override blokada)
 - končno stanje: kodeško NI več nobene odprte točke iz audita §13 — ostajata le 2 fizična človeška koraka (FURS/FINA certifikat + 2 TXT zapisa Cloudflare)
+
+---
+Task ID: 38-main
+Agent: main (Z.ai Code)
+Task: HR CIS odjemalec (kodekska priprava na FINA certifikat — zrcalno Task 36 za SI) po URAJNI specifikaciji Porezne uprave v2.7
+
+Work Log:
+- DNS re-check: TXT zapisa še vedno nista dodana (dig prazen) — ostaja za Cloudflare panel
+- SPEC RAZISKAVA (ne ugibanje — vir: uradni PDF): prenesena "Fiskalizacija - Tehnicka specifikacija za korisnike_v2.7 (21.07.2026).pdf" (215 str, porezna-uprava.gov.hr) + pdftotext; potvrdeno: ZKI algoritem (pogl. 12, str. 208): MD5(RSA-SHA256 podpis nad OIB + 'dd.MM.yyyy HH:mm:ss' (PRESLEDEK!) + BrOznRac + OznPosPr + OznNapUr + iznos s PIKO) → 32 malih hex; endpointi (§6.1): test https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest, prod https://cis.porezna-uprava.hr:8449/FiskalizacijaService; transport 1-way TLS (brez mTLS!), SOAP 1.1 document-literal; XML-DSig (§7): enveloped Signature ZNOTRAJ korenskega elementa (Id="RacunZahtjev"), exc-c14n + sha256 + rsa-sha256, KeyInfo X509Certificate; timeline: RSA-SHA1 zavrnjen v testu od 01.07.2026, v produkciji od 01.01.2027 → implementiran takoj rsa-sha256; RacunZahtjev vrstni red + decimalne oblike (Decimal(3,2)/(15,2) s piko); NacinPlac G|K|T|O (več načinov → O); odgovor: RacunOdgovor{Jir(36)} ali Greske{Greska{SifraGreske sXXX, PorukaGreske}}; echo brez podpisa (§2.4)
+- NOVO src/lib/cis/client.ts: hrZkiDateTime/hrMessageDateTime (dve obliki datuma!), hrDeviceId/hrPremisesId/hrInvoiceNumber sanitizacija (številke brez vodilnih ničel / alnum, varni privzetki), hrZkiPayload (javen za teste) + signZki (MD5hex(RSA-SHA256)), hrNacinPlac (cash→G, card/mobile→K, ostalo→O), buildRacunZahtjevContent (brez Signature — byte-identičen digest inputu; BREZ xmlns:xsi — exc-c14n odstrani neuporabljene!), buildSignedEnvelope (enveloped XML-DSig), buildEchoRequestXml, parseEchoResponse/parseRacunResponse (namespace-tolerantno, Greske lista), cisPost (1-way https, SOAPAction '""'), cisEndpoint + cisCaFromEnv (FINA CA veriga — FINA CA NI v Node trust store-ih → fail-closed brez), cisEcho/cisInvoice, cisCertFromEnv (FURS_HR_CERT_P12_B64/PASSWORD, env fallback FURS_HR_ENVIRONMENT→FURS_ENVIRONMENT)
+- INTEGRACIJA /api/furs: hrProd vezava IZVEN tx (par fursProd); ZKI (realen) v tx za receipt.create (cisZkiVal); JIR SOAP klic PO tx (zrcalno FURS EOR): uspeh → cisJir + cisStatus verified + cisSubmittedAt + fiscalStatus verified; napaka → fail-safe pending (console.warn); NacinPlac iz paymentMethod; operatorOib = OIB izdajalca (Employee nima OIB — rezidual za testno okolje)
+- testi tests/cis-client.test.ts (26, PASS): oblike podatkov (2 obliki datuma, sanitizacija, NacinPlac), ZKI (kanonični niz exact, verifikacija podpisa z javnim ključem, determinističen, ≠ simulacija, tampering), RacunZahtjev (vrstni red/escape/Pdv izpuščen/xsi odsoten), envelope (Signature znotraj korena, DigestValue = sha256(content brez Signature), SignatureValue verifikiran nad SignedInfo, tampering), parsanje (JIR uspeh s/brez prefiksa, 2 greški s002+s004), mock CIS (Bun.serve TLS 1-way: echo round-trip, JIR round-trip, unsigned→400, s002→throw), endpointi + env vezava (uradni URL, override, cert env, CA PEM/base64)
+- popravki med razvojem: JSDoc `*/` v FURS_HR_CERT_*/... (prezgoden zaključek komentarja), ZKI rekonstrukcija nemogoča (MD5hex = 16B ≠ podpis 256B) → primerjava z direktnim podpisom, Zaglavlje.DatumVrijeme = now (regex trditev), sanitarizacija OznPosPr PRED escape, override env regeneracija (restoreEnv helper za undefined)
+- runbook prepisan (§1 HR napredni cert eIDAS/ETSI EN 319 412-3 + FINA DEMO CA + timeline RSA-SHA1, §2 HR env, §4 koraki), audit §13 blokada FURS/HR posodobljena (odjemalec za OBÉ državi implementiran)
+- verifikacija: bunx tsc --noEmit 0 · bun run lint 0 · bun test 576/576 (+26: cis-client; furs-post/fiscal/receipt-storno vsi zeleni — SI pot nespremenjena)
+
+Stage Summary:
+- FISKALIZACIJA KODEŠKO 100 % PRIPRAVLJENA ZA OBÉ DRŽAVI: SI (Task 36) + HR (Task 38); ob certifikatih le env + validacija v testnih okoljih
+- 576 testov; brez cert env se NIČ ne spremeni (cisCertFromEnv null → cisZkiVal simulacija/prazno, brez SOAP klicev — potrjeno z obstoječimi testi)
+- ostajata le 2 fizična človeška koraka: certifikata (FURS SI + FINA HR) + 2 TXT zapisa v Cloudflare
