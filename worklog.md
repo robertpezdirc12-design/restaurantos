@@ -390,3 +390,17 @@ Stage Summary:
 - P2 IZ AUDITA 100 % ZAPRTO (selitev/združevanje miz, fire-to-kitchen, i18n gostov, chainHash + eventi + locationId) — P1 6/6 (prej) + P2 4/4 (zdaj)
 - veriga lokalno → GitLab → GitHub → Vercel spet živa; mirror z novim tokenom
 - naslednji koraki (P3/human blockers): FURS certifikat, DNS restaurantos.app, Neon DATABASE_URL v GH secrets (CI smoke), GitLab CI runner verify; bootstrap admin fast-path v requirePermission (mali, neblokirajoč)
+
+---
+Task ID: 33-main (produkcijska verifikacija — dodatek)
+Agent: main (Z.ai Code)
+Task: Končna verifikacija verige po pushu 74dcfd5
+
+Work Log:
+- push origin (GitLab) efc547d..74dcfd5 OK; direkten push github efc547d..74dcfd5 OK (mirror še to_retry — token popravljen, sync 204 sprejet, GitLabova periodična retry ga zeleni)
+- GitHub Actions: run 38045444788 (efc547d) SUCCESS; run 38049199473 (74dcfd5 — P2 paket) SUCCESS
+- produkcija health: ok / 1.45.0 / database connected
+- E2E produkcija: kiosk rendra z NOVIM SL|HR preklopnikom; klik Hrvaščina → "Aktivacija kioska" (prevod živ); 0 page errors
+
+Stage Summary:
+- P2 paket 33 ŽIV V PRODUKCIJI (74dcfd5): move/merge/fire + i18n gostov + chainHash; P1 6/6 + P2 4/4 = celoten §13 iz audita zaprt (ostajajo samo človeške blokade: FURS cert, DNS, Neon secret v GH, GitLab CI minutes)
