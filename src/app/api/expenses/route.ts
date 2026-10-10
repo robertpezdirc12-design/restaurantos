@@ -3,8 +3,13 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { num, nid, r2 } from '@/lib/map'
 
+/**
+ * N5 (revizija §4): GET je finančni seznam (dobaviteljski računi) — UI prikazuje
+ * zavihek Stroški samo z 'reports.view' (TAB_PERM.stroski), zato backend uveljavlja
+ * isto kanonično dovoljenje (prej: requireAuth — natakar je prek API-ja videl finance).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'reports.view')
   if (isResponse(user)) return user
   const rows = await db.accountsPayable.findMany({
     // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
@@ -30,6 +35,12 @@ export async function GET(req: NextRequest) {
  * enterprise vloge s to pravico in permissionOverrides delujejo na pisanje (DB lookup).
  * opomba: supplierId je FK na Supplier — če obstajajo, vzemi prvega, sicer ustvari
  * privzetega "Razno". apNumber je unique brez defaulta → generiramo.
+ *
+ * R12 (revizija §6): prejšnji findFirst→create je pod konkurenco ustvaril več
+ * dobaviteljev "Razno" (dve zahtevi sta oba prebrali prazen seznam in oba ustvarili).
+ * Supplier.name je @unique → upsert po unique ključu je ATOMAREN (INSERT ON CONFLICT):
+ * če "Razno" že obstaja (ali ga je vzporedna zahteva pravkar ustvarila), upsert vrne
+ * obstoječo vrstico — pod konkurenco obstaja natanko EN "Razno" dobavitelj.
  */
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'settings.manage')
@@ -45,7 +56,12 @@ export async function POST(req: NextRequest) {
 
   let supplier = await db.supplier.findFirst({ orderBy: { createdAt: 'asc' } })
   if (!supplier) {
-    supplier = await db.supplier.create({ data: { id: nid(), name: 'Razno' } })
+    // R12: upsert (ne create) — unique name ključ odpravi duplikate "Razno" pod konkurenco
+    supplier = await db.supplier.upsert({
+      where: { name: 'Razno' },
+      update: {},
+      create: { id: nid(), name: 'Razno' },
+    })
   }
 
   const now = new Date()

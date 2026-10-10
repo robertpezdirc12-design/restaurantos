@@ -134,6 +134,12 @@ export async function deductStockForOrderTx(
     const useBatches = batches.length > 0 && batchStock > 0
     const toAllocateFromBatches = useBatches ? Math.min(actual, batchStock) : 0
 
+    // KRITIČEN popravek vrstnega reda (bug odkrit z testi, Task 32-c): alokacije
+    // (StockBatchAllocation, FK → StockTransaction) se NE smejo zapisovati, preden
+    // obstaja StockTransaction vrstica — sicer P2003 pada CELO plačilno transakcijo
+    // (500) za vsak artikel z aktivnimi serijami. Zato: NAČRT alokacij (čista
+    // matematika) → zapis StockTransaction → ŠELE nato batch update + alokacije.
+    const plannedAllocations: { batchId: string; alloc: number; bNew: number; status: string }[] = []
     if (useBatches) {
       let remaining = toAllocateFromBatches
       for (const b of batches) {
@@ -156,12 +162,7 @@ export async function deductStockForOrderTx(
         }
         if (!ok || alloc <= 0.0005) continue
         const bNew = r3(avail - alloc)
-        if (bNew <= 0.0005) {
-          await tx.inventoryBatch.updateMany({ where: { id: b.id, quantityRemaining: { lte: 0.0005 } }, data: { status: 'EXHAUSTED' } })
-        }
-        await tx.stockBatchAllocation.create({
-          data: { id: nid(), batchId: b.id, stockTransactionId: txId, inventoryItemId: item.id, quantity: r3(alloc) },
-        })
+        plannedAllocations.push({ batchId: b.id, alloc: r3(alloc), bNew, status: bNew <= 0.0005 ? 'EXHAUSTED' : b.status })
         remaining = r3(remaining - alloc)
       }
     }
@@ -187,6 +188,18 @@ export async function deductStockForOrderTx(
         orderId,
       },
     })
+
+    // FK-varni vrstni red: StockTransaction obstaja → zdaj so alokacije veljavne.
+    // EXHAUSTED status z lte guard-om (R2 semantika — race-varno); količino je že
+    // dekrementiral CAS updateMany v zanki (tu je NE prepisujemo).
+    for (const p of plannedAllocations) {
+      if (p.status === 'EXHAUSTED') {
+        await tx.inventoryBatch.updateMany({ where: { id: p.batchId, quantityRemaining: { lte: 0.0005 } }, data: { status: 'EXHAUSTED' } })
+      }
+      await tx.stockBatchAllocation.create({
+        data: { id: nid(), batchId: p.batchId, stockTransactionId: txId, inventoryItemId: item.id, quantity: p.alloc },
+      })
+    }
 
     lines += 1
     totalCost = r2(totalCost + lineCost)

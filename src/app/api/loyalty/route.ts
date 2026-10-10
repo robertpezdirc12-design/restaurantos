@@ -1,13 +1,26 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
+import { maskPhone } from '@/lib/pii'
 
 const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : points >= 500 ? 'gold' : points >= 100 ? 'silver' : 'bronze')
 
+/**
+ * Seznam računov zvestobe.
+ * P2 audit PII: telefonske številke so VEDNO maskirane (npr. »+386 *** 567«) —
+ * seznam je berljiv vsem avtenticiranim, polna številka pa za delo s seznamom
+ * ni potrebna (GDPR). Nezakrit pogled (?full=1 — izvoz/admin potreba) zahteva
+ * dovoljenje settings.manage, sicer 403.
+ */
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  const wantsFull = new URL(req.url).searchParams.get('full') === '1'
+  if (wantsFull) {
+    const gate = await requirePermission(req, 'settings.manage')
+    if (isResponse(gate)) return gate
+  }
   const rows = await db.loyaltyAccount.findMany({
     // Issue #4 §1: staff vidi samo račune zvestobe svoje lokacije
     where: locationScope(user),
@@ -18,7 +31,7 @@ export async function GET(req: NextRequest) {
     accounts: rows.map((r) => ({
       id: r.id,
       guestName: r.customerName,
-      phone: r.customerPhone || null,
+      phone: wantsFull ? (r.customerPhone || null) : maskPhone(r.customerPhone),
       points: r.pointsBalance,
       visits: r.lifetimePoints,
       tier: r.tier,

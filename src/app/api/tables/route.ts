@@ -1,8 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { TableStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requireUserLocation, isResponse, ok, fail, forbidden, locationScope } from '@/lib/api'
-import { canAccessModule } from '@/lib/auth'
+import { requireAuth, requirePermission, requireUserLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapTable, tableStatusToDB, nid, ORDER_ACTIVE_DB } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
@@ -20,9 +19,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  // P2 audit N1: kreiranje miz = konfiguracija prostora — kanonično dovoljenje menu.manage
+  // (ROLE_DEFAULTS: owner/admin/manager imajo vsa dovoljenja → OWNER NI VEČ blokiran;
+  // staff/waiter/bar/chef/kitchen → 403). Usklajeno z menus/categories po 31-b.
+  const user = await requirePermission(req, 'menu.manage')
   if (isResponse(user)) return user
-  if (!canAccessModule(user, 'tables', true) && user.role !== 'MANAGER') return forbidden()
   const body = await req.json().catch(() => null)
   const number = Number(body?.number ?? body?.name)
   if (!number || number < 1) return fail('Številka mize je obvezna.')

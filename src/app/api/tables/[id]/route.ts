@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
 import { tableStatusToDB, tableStatusToUI } from '@/lib/map'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -25,9 +25,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requireAuth(req)
+  // P2 audit N1: brisanje miz = konfiguracija prostora — kanonično dovoljenje menu.manage
+  // (ROLE_DEFAULTS: owner/admin/manager → OWNER/MANAGER nista več blokirana, ADMIN ostane;
+  // staff/waiter/bar/chef/kitchen → 403). Lokacijski gate ostaja.
+  const user = await requirePermission(req, 'menu.manage')
   if (isResponse(user)) return user
-  if (user.role !== 'ADMIN') return fail('Samo skrbnik lahko briše mize.', 403)
   const { id } = await params
   const existing = await db.table.findUnique({ where: { id }, select: { locationId: true } })
   if (!existing) return fail('Miza ne obstaja.', 404)

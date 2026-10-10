@@ -8,11 +8,14 @@ export { CANONICAL_PERMISSIONS }
 
 /**
  * EMPLOYEE CONTROL CENTER (R265) — en kanonski profil zaposlenega:
- *  - PATCH podatkov: vloga, status, DOVOLJENJA (permission overrides, R263/R264)
+ *  - PATCH podatkov: vloga (tudi enterprise vloge — P2 N7), status, DOVOLJENJA (permission overrides, R263/R264)
  *  - PIN reset (občutljiva akcija — vedno zapiše AUDIT zapis)
  * Kanonska avtorizacija (R268 + N3 audit P1): dovoljenje `employees.manage`
  * (DB lookup — override-i delujejo); MANAGER ne sme urejati ADMIN-ov,
  * LASTNIKove zaščite ostajajo nespremenjene.
+ * P2 audit N7: enterprise vloge (group_owner|org_admin|property_manager|warehouse|accounting)
+ * dodeljujejo SAMO centralne vloge (OWNER/ADMIN; bootstrap admin je ADMIN); MANAGER ne sme
+ * dodeliti nobene vloge nad MANAGER.
  */
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -44,7 +47,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // vloga
   if (body.role !== undefined) {
     const role = String(body.role).toUpperCase()
-    if (!['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'OWNER'].includes(role)) return fail('Neznana vloga.', 400)
+    // P2 audit N7: enterprise vloge (issue #11 §1 — kanonični seznam iz ROLE_DEFAULTS)
+    const BASE_ROLES = ['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'OWNER']
+    const ENTERPRISE_ROLES = ['GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER', 'WAREHOUSE', 'ACCOUNTING']
+    if (!BASE_ROLES.includes(role) && !ENTERPRISE_ROLES.includes(role)) return fail('Neznana vloga.', 400)
+    // N7: enterprise vloge dodeljuje SAMO centralna vloga (OWNER/ADMIN) — MANAGER ne
+    if (ENTERPRISE_ROLES.includes(role) && !isCentralRole(user)) {
+      return fail('Enterprise vloge dodeljujejo samo OWNER ali ADMIN.', 403)
+    }
     if (user.role === 'MANAGER' && role === 'ADMIN') return fail('MANAGER ne dodeljuje ADMIN vloge.', 403)
     // LASTNIKA dodeljuje LASTNIK ali ADMIN (prvi lastnik); urejati/odvzeti pa samo LASTNIK
     if (role === 'OWNER' && !['OWNER', 'ADMIN'].includes(user.role)) return fail('Samo LASTNIK dodeljuje LASTNIKA.', 403)

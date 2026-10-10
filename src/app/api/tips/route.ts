@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange, type TipMethod } from '@/lib/tips'
 
@@ -10,7 +10,9 @@ import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange,
  * GET  /api/tips?date=YYYY-MM-DD&locationId=&method=hours|equal|points
  *   → predogled dneva (zbirke cash/non-cash, ure po zaposlenih, predogled delitve)
  *     + obstoječi bazen za dan (z distribucijami) + zgodovina zadnjih bazenov.
- *     Bralna pravica: requireAuth (vsak prijavljen zaposleni vidi povzetke).
+ *     N5 (revizija §4): finančni podatki (zneski napitnin, distribucije) — UI prikaže
+ *     zavihek Napitnine samo z 'reports.view' (TAB_PERM.napitnine), zato backend
+ *     uveljavlja isto kanonično dovoljenje (prej: requireAuth).
  *
  * POST /api/tips  { date, locationId?, method, points?, shiftId? }
  *   → zaključi dan: ustvari TipPool + TipDistribution (hash-veriga), audit TIP_POOL_CLOSE.
@@ -81,7 +83,8 @@ function methodWeights(method: TipMethod, rows: BasisRow[], points: Record<strin
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  // N5: finančni seznam (bazeni, zneski, distribucije) → 'reports.view' (skladen z UI zavihkom)
+  const user = await requirePermission(req, 'reports.view')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)
