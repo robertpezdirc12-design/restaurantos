@@ -65,7 +65,7 @@ jobs:
               if [ "$method" = "GET" ]; then
                 resp=$(curl -s "$API$path" -H "Authorization: Bearer $NEON_KEY")
               else
-                resp=$(curl -s -X "$method" "$API$path" -H "Authorization: Bearer $NEON_KEY" -H 'Content-Type: json' ${data:+-d "$data"})
+                resp=$(curl -s -X "$method" "$API$path" -H "Authorization: Bearer $NEON_KEY" -H 'Content-Type: application/json' ${data:+-d "$data"})
               fi
               val=$(echo "$resp" | python3 -c "$expr" 2>/dev/null || true)
               if [ -n "$val" ]; then echo "$val"; return 0; fi
