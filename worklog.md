@@ -667,3 +667,22 @@ Stage Summary:
 - vzorci, ki jih mora uporabnik preveriti v Vercel UI: (1) Ali token še obstaja v Settings→Tokens? (2) Ali je imel nastavljen EXPIRY? (3) Team audit log — kdo/česa je odstranil dostop; (4) verify email (uporabnik ima flag limited:true)
 - robustna rešitev za prihodnost: povezati Vercel projekt na GitHub repo (Git integration) → push samodejno deploya brez CLI tokena; CI deploy korak ostane kot gate ali se umakne
 - ob NOVEM tokenu (brez expirya, team scope, full access): posodobitev VERCEL_TOKEN_B64 secret (sealed-box, 2 min) + re-run failed jobs → Task 40 gre v produkcijo
+
+---
+Task ID: 40-main (dodatek 2 — re-verifikacija + trajni runbook)
+Agent: main (Z.ai Code)
+Task: Re-verifikacija blokatorjev ob 18:05 UTC + zaključek preostalih dejanj brez team scope-a
+
+Work Log:
+- DNS re-check proti GoDaddy avtoritativni coni (ns17.domaincontrol.com): TXT _vercel (apex + www) ŠE VEDNO PRAZNA; apex A še vedno Cloudflare proxy IP (162.159.143.30 / 172.66.3.26); www CNAME → restaurantos.app → CF proxy. = uporabnik še ni dodal 4 zapisov (navodila audit §13 točna, čakajo).
+- Vercel token incident #2 še AKTIVEN ob 18:05 UTC: /v2/user 200 (token živ, limited:true), /v2/teams → PRAZEN seznam, projects 403. Produkcija še na 10c960f / v1.45.0 (health ok, database connected).
+- CI re-check (pravilna repo pot robertpezdirc12-design/restaurantos): run #19 38072369859 (8654bba) failure = SAMO deploy job; neon-smoke + tests zeleni → Task 40 čaka na tokene/Git integration.
+- audit §13 dopolnjen z novim blokatorjem: "Vercel tokeni umirajo z identičnim podpisom (2× incident)" + root cause (limited:true = nepotrjen email) + 2 rešitvi: (1) trajna Vercel Git integration runbook (click-by-click: Project Settings → Git → GitHub App → repo) — push samodejno deploya brez CLI tokena; (2) alternativa nov token PO email verifikaciji → sealed-box secret update → re-run 38072369859.
+- env hygiene: nobenega novega secret-a ni bilo treba pisati; tokeni uporabljeni le v curl (disk: /tmp vuser.json + /tmp vteams.json, izbrisana).
+
+Stage Summary:
+- koda 100 % zaprta (Task 40 = 8654bba CI-zelen, čaka deploy); vse preostalo so uporabniški fizični koraki, po prednosti:
+  1. Vercel email verification (root cause obeh incidentov, 2 min)
+  2. Vercel Git integration (trajna rešitev, 5 min) ALI nov token + sealed-box secret update + re-run
+  3. 4 DNS zapisi v GoDaddy coni (audit §13 tabela)
+  4. certifikata FURS SI + FINA HR (runbook docs/FURS-CERT-RUNBOOK.md)
