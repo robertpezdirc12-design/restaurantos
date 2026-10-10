@@ -849,3 +849,18 @@ Stage Summary:
 - main CI: rdeč (znan drift = fail) → ZELEN z rumeno anotacijo ⚠️ — kakovost gate spet objektivna: vsak NOV/drugačen drift je še vedno hard fail, infra napake ločene
 - repo dobi profesionalen README (status/deploy/rollback/docs index) — vstopna točka za nove sodelavce
 - preostaja uporabniški korak (10 s): prijavljen admin na produkciji → POST /api/admin/migrate-issue13 → drift izgine, anotacija utihne, neon-smoke popolnoma zelen brez opozoril
+
+---
+Task ID: 45-main (dodatek)
+Agent: main (Z.ai Code)
+Task: CI run 38086350682 verifikacija + checkout v4→v5 bump (Node 20 deprecation higiena)
+
+Work Log:
+- CI run 38086350682 (dcaa43f): tests SUCCESS + neon-smoke SUCCESS — prvi run nove drift-check skripte proti realnemu produkcijskem driftu.
+- Log potrdil obnašanje po zasnovi: "### ⚠️ Znan pending drift: issue-13 (dovoljen — NI blokator)" + točen SQL stavek + GitHub anotacija "##[warning]Schema drift (KNOWN): issue-13 — 1 stavek, nepričakovanih: 0" + "✅ Drift check PASSED".
+- checkout@v4 sproža "Node.js 20 is deprecated" runner warning → bump na @v5 (obe jobi) — proactive higiena pred GitHub runtime prehodom. YAML validiran.
+- produkcija po pushu dcaa43f: {"status":"ok","version":"1.50.0","commit":"dcaa43f...","database":"connected"} (polni SHA prek VERCEL_GIT_COMMIT_SHA, ~30 s build).
+
+Stage Summary:
+- main CI 100 % zelen (kakovostni gate objektiven: znani pending drift = rumena anotacija, vse ostalo = rdeče)
+- produkcija v1.50.0 @ dcaa43f database connected; checkout deprecation warning odstranjen
