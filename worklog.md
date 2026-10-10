@@ -1722,3 +1722,36 @@ Stage Summary:
 - P1 seznam iz audita: 4/6 točk zaprtih (storno, migracije baseline, RBAC N3+N4+tenant-docs, backup urnik); ostajata testi (delno) + feedback API (blokiran na DDL do prod-v2)
 - GitLab↔GitHub povezava POTRJENA z novim tokenom (mirror ~110 s, CI→Vercel deluje)
 - Backup urnik: prvi dejanski pg_dump bo potrdil workflow (workflow_dispatch test sledi); artifacti zasebni repo, retention 90 dni
+
+---
+Task ID: 31-d
+Agent: main (Z.ai Code)
+Task: Integracija 31-a/31-b/31-c → produkcija + testiranje Neon backup workflowa (workflow_dispatch)
+
+Work Log:
+- push 993bba4 (migrations baseline + backup workflow + audit P1 statusi) ob 00:04 UTC → mirror → CI run 38007466518 SUCCESS → produkcija health ok/1.45.0/db connected
+- backup run 1 (38007603420) FAILURE — diagnoza iz logov: pg_dump USPEŠEN (537 185 bytes, 117 'TABLE DATA' sekcij), odpovedala moja validacija: grep -c 'CREATE TABLE' nad `pg_restore --list` = 0 (custom format TOC ne vsebuje SQL besedila); vloga backup_202610100007 izbrisana prek always() ✓
+- fix 1 (e49e72b): ' TABLE "' pattern → push ob 00:35 → run 2 (38009878112) ŠE VEDNO 0 tabel (TOC identity format ni ' TABLE "..."'; 'TABLE DATA' pattern deluje = 117)
+- fix 2 (debeleen): validacija = pg_restore --schema-only izpis SQL (pg_restore mora znati brati archive) + grep -c '^CREATE TABLE' nad tem izpisom + TABLE DATA count; čaka push okno (~01:07 UTC) → workflow_dispatch → pričakovano zelen
+- higiena backup vlog deluje v obeh runih (always() delete)
+
+Stage Summary:
+- backup workflow: pg_dump dokazano deluje 2× (identen 537 KB dump, 117 podatkovnih sekcij = vse tabele s podatki); popravljena samo validacijska logika; artifact upload še ni dokazan (stekel šele za validacijo)
+- Push cadence držan: 23:33 → 00:04 → 00:35 (30-min okna, brez IP-bana)
+
+---
+Task ID: 31-d (zaključek)
+Agent: main (Z.ai Code)
+Task: Neon backup GREEN + E2E preverba produkcije + sinhronizacija vseh kopij
+
+Work Log:
+- push 4f5a5d5 (fix 2 validacije: pg_restore --schema-only SQL izpis + ^CREATE TABLE count) ob 01:07 UTC → mirror → workflow_dispatch → backup run 38012074016 **SUCCESS**
+- ARTIFACT POTRJEN: neon-backup-38012074016, 154 404 bytes (custom format, kompresiran), expires 2027-01-08 (retention 90 dni) — prvi dejanski pg_dump backup produkcije
+- E2E produkcija (Agent Browser): naslovna stran rendra čisto — Prijava (e-pošta+PIN), SL/HR izbira jezika, temni način, kiosk aktivacija; 0 page errors, 0 konzolnih napak; health ok/1.45.0/db connected
+- končno stanje kopij: lokalno=GitLab=GitHub (vsi kodni commiti; sledi samo md-only push tega zapisa)
+
+Stage Summary:
+- NEON BACKUP URNIK ŽIVI: dnevno 02:30 UTC (03:30/04:30 Ljubljana) + ročni dispatch; efemerna backup_* vloga (SELECT-only, izbrisana always()), pg_dump --format=custom, validacija (pg_restore TOC parse + CREATE TABLE count + TABLE DATA), artifact 90 dni
+- P1 iz audita: 4/6 zaprtih (storno endpoint, migrations baseline, RBAC N3+N4+tenant-docs, backup urnik); ostaja delno testiranje (točka 4) + feedback API (točka 6, blokiran na DDL do prod-v2 brez app_owner gesla)
+- nauk za prihodnje: pg_restore --list TOC identity formata NI varno grep-at (2 poizkusa); robustno = --schema-only izpis in štetje ^CREATE TABLE; pg_dump 16 ne zmore PG17 serverja (PGDG repo obvezen)
+- push cadence: 23:33 → 00:04 → 00:35 → 01:07 UTC (vse brez IP-bana, 30-min okna držana)
