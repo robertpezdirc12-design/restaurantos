@@ -462,3 +462,18 @@ Stage Summary:
 - AUDIT §13: P1 6/6 + P2 4/4 + rezidual §10 (Task 34) + 2 od 4 blokad (Neon, GitLab CI) ZAPRTO/VERIFICIRANO
 - ostajata 2 FIZIČNI človeški koraka: (1) FURS/FINA certifikat (nakup — runbook pripravljen), (2) 2 TXT zapisa v Cloudflare (copy-paste, vrednosti v audit §13 + sporočilu uporabniku)
 - veriga: lokalni push → GitLab + GitHub (paralelno) → Actions [neon-smoke + tests] → Vercel; GitLab CI utišan do nadaljnjega
+
+---
+Task ID: 35-main (produkcijska verifikacija — dodatek)
+Agent: main (Z.ai Code)
+Task: Živo potrditev nove CI verige po pushu 1307595
+
+Work Log:
+- push origin + github c196faa..1307595 OK (oba sinhronizirana)
+- GitHub Actions run 38054286680 (Neon prod smoke, manual dispatch): SUCCESS — prod-smoke workflow živo zelen proti produkciji
+- GitHub Actions run 38054275354 (Deploy to Vercel): VSI 3 jobs SUCCESS — tests (NOVO: tsc+lint+530 testov na sveži SQLite v CI), neon-smoke, deploy
+- produkcija health: ok / 1.45.0 / database connected
+
+Stage Summary:
+- CI veriga zdaj: push → [neon-smoke (real PG drift+CRUD) + tests (530) + deploy] — celoten quality gate v GitHub Actions; dnevno še backup (02:30) + prod-smoke (05:00)
+- GitLab: samo push mirror (CI disabled do nadaljnega)
