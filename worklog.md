@@ -807,3 +807,18 @@ Stage Summary:
 - koda 100 % izvršena + testirana (588 testov): multi-lokacija brez FURS oznake deluje v dev; produkcija v1.50.0 deluje normalno (DDL je aditiven-safe, stara koda ne trči)
 - produkcijski DDL = EDINI preostanek in je 10-sekundni uporabniški korak (admin session + 1 fetch) — avtomatizacija onemogočena po načelu: ne rotiram uporabnikovih kredencialov brez soglasja, ownership DDL gre prek appove povezave
 - varnostna disciplina obdržana: ni bilo poskusa ugibanja PIN-ov, resetiranja Neon vlog, pisanja AuditLog iz CI (chainHash veriga!) ali spreminjanja Vercel env
+
+---
+Task ID: 44-main (dodatek — E2E dokaz)
+Agent: main (Z.ai Code)
+Task: Agent Browser + API E2E dokaz Task 44 (lokacija brez FURS oznake)
+
+Work Log:
+- restart dev strežnika (star prisma client v spominu po regenerate = 500 na create z null; po restartu čisto).
+- API E2E: POST /api/locations brez premisesId → 201 (premisesId: null); DRUGA lokacija brez oznake → 201 (prej nemogoče — P2002). 
+- Agent Browser UI E2E: prijava → Nastavitve → Nova lokacija → izpolnjeno SAMO ime (FURS oznaka prazna) → Shrani → lokacija vidna na seznamu; page errors: 0; console: brez error/warning; screenshot /tmp/task44-e2e-locations.png.
+- čiščenje: 3× E2E44 lokacije izbrisane (dev baza čista, 11 lokacij = legitimni podatki).
+- GitLab mirror push: ponavljajoči se 403 anti-abuse (GitHub primary; GitLab mirror retry kasneje).
+
+Stage Summary:
+- Task 44 funkcionalnost dokazana end-to-end (API + UI): multi-lokacija brez FURS oznake deluje v dev; produkcija čaka le še DDL korak (admin session + 1 fetch).
