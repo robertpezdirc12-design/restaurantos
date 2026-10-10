@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope } from '@/lib/api'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -53,8 +54,10 @@ export async function POST(req: NextRequest) {
       locationId,
     },
   })
+  // 33-c (audit §6): INVENTORY_CREATE dobi locationId (prej neviden location-scoped uporabnikom)
+  const __aId1 = nid(); const __chain1 = await auditChainFields(db, { action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }), locationId, id: __aId1 })
   await db.auditLog.create({
-    data: { id: nid(), userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }) },
+    data: { ...__chain1, id: __aId1, userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }), locationId },
   })
   return ok({ item: { id: row.id, name: row.name } }, 201)
 }
@@ -134,15 +137,17 @@ export async function PATCH(req: NextRequest) {
       })
     }
 
+    const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }), id: __aId2 })
     await tx.auditLog.create({
-      data: { id: nid(), userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }) },
+      data: { ...__chain2, id: __aId2, userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }) },
     })
     return { newQty, variance, name: item.name }
   })
 
   // Issue #11 §3 — dogodek spremembe zaloge (variance != 0 pomeni dejanski premik)
   if (result.variance !== 0) {
-    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: result.name, variance: result.variance, newQty: result.newQty, by: user.name } }).catch(() => undefined)
+    // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
+    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: result.name, variance: result.variance, newQty: result.newQty, by: user.name, locationId: item.locationId } }).catch(() => undefined)
   }
   return ok({ item: { id, name: item.name, qty: result.newQty } })
 }

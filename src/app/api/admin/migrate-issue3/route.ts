@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #3 — enkratna produkcijska migracija sheme (Neon Postgres nima teh stolpcev).
@@ -62,9 +63,10 @@ export async function POST(req: NextRequest) {
     return fail(`Migracija ni uspela: ${(e as Error).message}`, 500)
   }
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'SCHEMA_MIGRATION_ISSUE3', entityType: 'Database', entityId: 'production', details: `izvedenih migracij: ${results.filter((r) => !r.skipped).length}/${results.length}`, id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'SCHEMA_MIGRATION_ISSUE3',
       entityType: 'Database',

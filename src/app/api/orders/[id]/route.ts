@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
+import { auditChainFields } from '@/lib/audit-chain'
 import type { Prisma } from '@prisma/client'
 
 const orderInclude = {
@@ -98,9 +99,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     // P0 audit (C2): ročni override statusa PAID/CANCELLED = finančna akcija → obvezen audit
     if (body.status === 'PAID' || body.status === 'CANCELLED') {
+      const __aIdO = nid()
+      const __chainO = await auditChainFields(db, { action: body.status === 'PAID' ? 'ORDER_STATUS_PAID_OVERRIDE' : 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name }), locationId: order.locationId, id: __aIdO })
       await db.auditLog.create({
         data: {
-          id: nid(),
+          ...__chainO,
+          id: __aIdO,
           userId: user.sub,
           action: body.status === 'PAID' ? 'ORDER_STATUS_PAID_OVERRIDE' : 'ORDER_STATUS_CANCELLED_OVERRIDE',
           entityType: 'Order',
@@ -208,17 +212,22 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub },
   })
   // P0 audit (C2): storno naročila je finančna akcija → obvezen revizijski zapis
-  await db.auditLog.create({
-    data: {
-      id: nid(),
-      userId: user.sub,
-      action: 'ORDER_CANCELLED',
-      entityType: 'Order',
-      entityId: id,
-      details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }),
-      locationId: order.locationId,
-    },
-  })
+  {
+    const __aIdC = nid()
+    const __chainC = await auditChainFields(db, { action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }), locationId: order.locationId, id: __aIdC })
+    await db.auditLog.create({
+      data: {
+        ...__chainC,
+        id: __aIdC,
+        userId: user.sub,
+        action: 'ORDER_CANCELLED',
+        entityType: 'Order',
+        entityId: id,
+        details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }),
+        locationId: order.locationId,
+      },
+    })
+  }
   // Issue #11 §3 — storno dogodek
   await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true } }).catch(() => undefined)
   if (order.tableId) {

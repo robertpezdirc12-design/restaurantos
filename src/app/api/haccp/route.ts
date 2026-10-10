@@ -3,6 +3,7 @@ import type { HaccpCategory, HaccpStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num, nid } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const HACCP_TYPES = ['temperature', 'cleaning', 'delivery', 'cooling', 'training'] as const
 const HACCP_STATUSES = ['ok', 'warning', 'critical'] as const
@@ -39,9 +40,21 @@ export async function POST(req: NextRequest) {
     : (body?.ok === false ? 'warning' : 'ok')
   const value = body?.value !== undefined && body?.value !== null && String(body.value) !== '' ? String(num(body.value)) : ''
   const locationId = user.loc || (await db.location.findFirst())?.id || null
+  // 33-c: HaccpEntry dobí tamper-evidentno verigo (model 'haccpEntry' — audit §6/§193)
+  const __aId = nid()
+  const __chain = await auditChainFields(db, {
+    id: __aId,
+    model: 'haccpEntry',
+    action: 'HACCP_ENTRY',
+    entityType: 'HaccpEntry',
+    entityId: __aId,
+    details: { category: type, title: target, value, status, description: String(body?.note || ''), correctiveAction: String(body?.correctiveAction || ''), employeeName: user.name || '' },
+    locationId,
+  })
   const row = await db.haccpEntry.create({
     data: {
-      id: nid(), category: type as HaccpCategory, title: target, value, status: status as HaccpStatus,
+      ...__chain,
+      id: __aId, category: type as HaccpCategory, title: target, value, status: status as HaccpStatus,
       description: String(body?.note || ''), correctiveAction: String(body?.correctiveAction || ''),
       employeeName: user.name || '', date: new Date(), locationId,
     },

@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server'
 import type { TableStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, requireUserLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
-import { mapTable, tableStatusToDB, nid, ORDER_ACTIVE_DB } from '@/lib/map'
+import { mapTable, tableStatusToDB, nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -36,6 +37,27 @@ export async function POST(req: NextRequest) {
       id: nid(), number, capacity: Number(body?.seats ?? body?.capacity) || 4,
       area: String(body?.zone ?? body?.area ?? 'Glavna dvorana'), posX: Number(body?.posX) || 40, posY: Number(body?.posY) || 40,
       status: tableStatusToDB('FREE') as TableStatus, locationId,
+    },
+  })
+  // 33-c (audit §6): kreiranje mize je zdaj revidirano (prej brez revizije)
+  const __aId = nid(); const __chain = await auditChainFields(db, {
+    id: __aId,
+    action: 'TABLE_CREATE',
+    entityType: 'Table',
+    entityId: table.id,
+    details: jstr({ number, capacity: table.capacity, area: table.area }),
+    locationId,
+  })
+  await db.auditLog.create({
+    data: {
+      ...__chain,
+      id: __aId,
+      userId: user.sub,
+      action: 'TABLE_CREATE',
+      entityType: 'Table',
+      entityId: table.id,
+      details: jstr({ number, capacity: table.capacity, area: table.area }),
+      locationId,
     },
   })
   return ok({ table: mapTable(table) }, 201)

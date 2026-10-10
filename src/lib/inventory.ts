@@ -1,5 +1,6 @@
 import { nid, num } from '@/lib/map'
 import type { Prisma } from '@prisma/client'
+import { auditChainFields } from '@/lib/audit-chain'
 
 type Tx = Prisma.TransactionClient
 
@@ -46,7 +47,7 @@ export async function deductStockForOrderTx(
   const empty: StockDeductionResult = { deducted: false, lines: 0, totalCost: 0, shortfalls: [] }
 
   // ── Replay zaščita 1: flag na naročilu ──
-  const order = await tx.order.findUnique({ where: { id: orderId }, select: { id: true, inventoryDeducted: true } })
+  const order = await tx.order.findUnique({ where: { id: orderId }, select: { id: true, inventoryDeducted: true, locationId: true } })
   if (order?.inventoryDeducted) return empty
 
   // ── Replay zaščita 2: StockTransaction (orderId, type='SALE') ──
@@ -210,14 +211,26 @@ export async function deductStockForOrderTx(
 
   await tx.order.update({ where: { id: orderId }, data: { inventoryDeducted: true } })
 
+  // 33-c: chain polja (tamper-evidentna veriga) + locationId naročila (audit §6)
+  const __aId = nid(); const __chain = await auditChainFields(tx, {
+    id: __aId,
+    action: 'STOCK_DEDUCTED',
+    entityType: 'Order',
+    entityId: orderId,
+    details: JSON.stringify({ lines, totalCost, shortfalls: shortfalls.map((s) => ({ item: s.name, requested: s.requested, available: s.available })) }),
+    locationId: order?.locationId ?? null,
+  })
   await tx.auditLog.create({
     data: {
-      id: nid(),
+      ...__chain,
+      id: __aId,
       userId: employeeId,
       action: 'STOCK_DEDUCTED',
       entityType: 'Order',
       entityId: orderId,
       details: JSON.stringify({ lines, totalCost, shortfalls: shortfalls.map((s) => ({ item: s.name, requested: s.requested, available: s.available })) }),
+      // 33-c (audit §6): STOCK_DEDUCTED dobi locationId naročila (prej neviden location-scoped uporabnikom)
+      locationId: order?.locationId ?? null,
     },
   })
 

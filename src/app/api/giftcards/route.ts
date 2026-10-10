@@ -10,6 +10,7 @@ import {
   giftCardTxId,
   validateIssueCents,
 } from '@/lib/giftcards'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #1 (triage ③) — darilne kartice: izdaja + seznam.
@@ -189,9 +190,10 @@ export async function POST(req: NextRequest) {
       return card
     })
 
+    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'GIFT_CARD_ISSUE', entityType: 'GiftCard', entityId: created.id, details: JSON.stringify({ cardNumber: created.cardNumber, initialBalance, ownerName, expiresAt, locationId: loc, note, idempotent: Boolean(clientOperationId), }), locationId: loc, id: __aId2 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain2,
+        id: __aId2,
         userId: user.sub,
         action: 'GIFT_CARD_ISSUE',
         entityType: 'GiftCard',

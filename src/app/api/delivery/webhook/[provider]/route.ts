@@ -21,6 +21,7 @@ import {
   rateLimit, verifyWebhookSignature, getPlatformSecret, maskPhone,
   mapGlovoPayload, mapWoltPayload, validateMapped, webhookIdempotencyKey,
 } from '@/lib/delivery'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -62,8 +63,11 @@ async function logIntegration(
 async function writeAudit(
   userId: string, action: string, entityType: string, entityId: string | null, details: unknown,
 ) {
+  // 33-c: chain polja (tamper-evidentna veriga); veriga je globalna — locationId ostane '' (webhook nima konteksta akterja)
+  const id = nid()
+  const chain = await auditChainFields(db, { id, action, entityType, entityId: entityId ?? '', details: jstr(details).slice(0, 2000) })
   await db.auditLog.create({
-    data: { id: nid(), userId, action, entityType, entityId, details: jstr(details).slice(0, 2000) },
+    data: { ...chain, id, userId, action, entityType, entityId, details: jstr(details).slice(0, 2000) },
   }).catch(() => null)
 }
 

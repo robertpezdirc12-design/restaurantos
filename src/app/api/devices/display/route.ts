@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { ok, fail, requireAuth, isResponse } from '@/lib/api'
 import { nid } from '@/lib/map'
 import { deviceFromToken, deviceAlive, newPairingCode, rateLimitPublic, clientIp } from '@/lib/guest'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #3 — Customer-facing display (CFD): parjenje + push stanja.
@@ -73,9 +74,10 @@ export async function POST(req: NextRequest) {
         where: { id: pos.id },
         data: { pairingCode: null, pairingExpiresAt: null },
       })
+      const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DISPLAY_PAIRED', entityType: 'DeviceRegistry', entityId: pos.id, details: `display=${device.name} → POS=${pos.name}`, locationId: pos.locationId, id: __aId2 })
       await db.auditLog.create({
-        data: {
-          id: nid(),
+        data: { ...__chain2,
+          id: __aId2,
           userId: null,
           action: 'DISPLAY_PAIRED',
           entityType: 'DeviceRegistry',

@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
 import { nid } from '@/lib/map'
 import { newQrToken, qrUrl } from '@/lib/guest'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #3 — QR meni po mizah (administracija).
@@ -58,9 +59,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (action === 'rotate') {
     const token = newQrToken()
     await db.table.update({ where: { id }, data: { qrToken: token, qrRotatedAt: new Date() } })
+    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'QR_TOKEN_ROTATED', entityType: 'Table', entityId: id, details: `miza=${table.number} — stari token revokiran, QR povezave pred rotacijo ne delujejo več`, locationId: table.locationId, id: __aId2 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain2,
+        id: __aId2,
         userId: user.sub,
         action: 'QR_TOKEN_ROTATED',
         entityType: 'Table',
@@ -75,9 +77,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (action === 'toggle') {
     const enabled = Boolean(body?.enabled)
     await db.table.update({ where: { id }, data: { qrEnabled: enabled } })
+    const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'QR_ORDER_TOGGLE', entityType: 'Table', entityId: id, details: `miza=${table.number} QR naročanje ${enabled ? 'vklopljeno' : 'izklopljeno'}`, locationId: table.locationId, id: __aId4 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain4,
+        id: __aId4,
         userId: user.sub,
         action: 'QR_ORDER_TOGGLE',
         entityType: 'Table',

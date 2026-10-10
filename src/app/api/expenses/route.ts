@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
-import { num, nid, r2 } from '@/lib/map'
+import { num, nid, r2, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * N5 (revizija §4): GET je finančni seznam (dobaviteljski računi) — UI prikazuje
@@ -78,6 +79,27 @@ export async function POST(req: NextRequest) {
       subtotal: r2(amount),
       totalAmount: r2(amount),
       notes: description,
+      locationId,
+    },
+  })
+  // 33-c (audit §6): ustvarjanje stroška je zdaj revidirano (prej brez revizije)
+  const __aId = nid(); const __chain = await auditChainFields(db, {
+    id: __aId,
+    action: 'EXPENSE_CREATE',
+    entityType: 'AccountsPayable',
+    entityId: row.id,
+    details: jstr({ category: 'OSTALO', amount: r2(amount), supplier: supplier.name, description: description.slice(0, 120), apNumber: row.apNumber }),
+    locationId,
+  })
+  await db.auditLog.create({
+    data: {
+      ...__chain,
+      id: __aId,
+      userId: user.sub,
+      action: 'EXPENSE_CREATE',
+      entityType: 'AccountsPayable',
+      entityId: row.id,
+      details: jstr({ category: 'OSTALO', amount: r2(amount), supplier: supplier.name, description: description.slice(0, 120), apNumber: row.apNumber }),
       locationId,
     },
   })

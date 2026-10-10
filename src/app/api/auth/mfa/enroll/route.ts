@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { generateSecret, otpauthUri } from '@/lib/mfa'
 import { nid } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function POST(req: NextRequest) {
   const user = await requireAuth(req)
@@ -27,8 +28,9 @@ export async function POST(req: NextRequest) {
     where: { id: employee.id },
     data: { mfaSecret: secret },
   })
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'MFA_ENROLL_STARTED', entityType: 'Employee', entityId: employee.id, details: 'Generirana TOTP skrivnost (aktivacija šele z /enable).', locationId: user.loc, id: __aId2 })
   await db.auditLog.create({
-    data: { id: nid(), userId: employee.id, action: 'MFA_ENROLL_STARTED', entityType: 'Employee', entityId: employee.id,
+    data: { ...__chain2, id: __aId2, userId: employee.id, action: 'MFA_ENROLL_STARTED', entityType: 'Employee', entityId: employee.id,
       details: 'Generirana TOTP skrivnost (aktivacija šele z /enable).', locationId: user.loc },
   }).catch(() => {})
 

@@ -6,6 +6,7 @@ import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Fiskalni storno (umnik/povračilo) računa — P1 točka 1 iz docs/RESTAURANTOS-AUDIT.md.
@@ -266,9 +267,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
 
       // ── Revizija znotraj transakcije (isti vzorec kot INVOICE_ISSUE v /api/furs) ──
+      const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'RECEIPT_STORNO', entityType: 'Receipt', entityId: created.id, details: jstr({ originalReceiptId: original.id, originalReceiptNumber: original.receiptNumber, stornoReceiptId: created.id, stornoReceiptNumber: receiptNumber, orderId: order.id, total, stockReversalCount, simulation, }), locationId: original.locationId, id: __aId2 })
       await tx.auditLog.create({
-        data: {
-          id: nid(),
+        data: { ...__chain2,
+          id: __aId2,
           userId: user.sub,
           action: 'RECEIPT_STORNO',
           entityType: 'Receipt',
@@ -301,6 +303,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           receiptNumber: result.created.receiptNumber,
           orderId: order.id,
           by: user.name,
+          // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
+          locationId: original.locationId,
         },
       }).catch(() => undefined)
     }

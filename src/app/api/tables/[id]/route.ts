@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
 import { tableStatusToDB, tableStatusToUI } from '@/lib/map'
+import { nid, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Issue #4 §1: spreminjanje statusov miz je natakrjska akcija (orders.create)
@@ -31,11 +33,32 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const user = await requirePermission(req, 'menu.manage')
   if (isResponse(user)) return user
   const { id } = await params
-  const existing = await db.table.findUnique({ where: { id }, select: { locationId: true } })
+  const existing = await db.table.findUnique({ where: { id }, select: { locationId: true, number: true } })
   if (!existing) return fail('Miza ne obstaja.', 404)
   // Issue #4 §1: brisanje tujokra lokacijskega vira je zavrnjeno (fail-closed)
   const locRes = assertResourceLocation(user, existing.locationId)
   if (locRes) return locRes
   await db.table.delete({ where: { id } })
+  // 33-c (audit §6): brisanje mize je zdaj revidirano (prej brez revizije)
+  const __aId = nid(); const __chain = await auditChainFields(db, {
+    id: __aId,
+    action: 'TABLE_DELETE',
+    entityType: 'Table',
+    entityId: id,
+    details: jstr({ number: existing.number }),
+    locationId: existing.locationId,
+  })
+  await db.auditLog.create({
+    data: {
+      ...__chain,
+      id: __aId,
+      userId: user.sub,
+      action: 'TABLE_DELETE',
+      entityType: 'Table',
+      entityId: id,
+      details: jstr({ number: existing.number }),
+      locationId: existing.locationId,
+    },
+  })
   return ok({ deleted: true })
 }

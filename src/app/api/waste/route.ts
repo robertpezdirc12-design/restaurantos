@@ -13,6 +13,7 @@ import {
   wasteStats,
   wasteTotalCents,
 } from '@/lib/waste'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
@@ -184,9 +185,10 @@ export async function POST(req: NextRequest) {
   }
   if (!created) return fail('Zaloga je bila sočasno spremenjena — količina ni več na voljo, osveži in poskusi znova.', 409)
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'WASTE_RECORD', entityType: 'WasteRecord', entityId: created.recordId, details: jstr({ item: item.name, itemId: item.id, quantity: qty, unit: item.unit, reason: v.value.reason, note: v.value.note, totalCost: totalCents / 100, newQty: created.newQty }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'WASTE_RECORD',
       entityType: 'WasteRecord',
@@ -197,7 +199,8 @@ export async function POST(req: NextRequest) {
   await publishEvent('StockChanged', {
     entityType: 'InventoryItem',
     entityId: item.id,
-    payload: { name: item.name, variance: -qty, newQty: created.newQty, by: user.name, cause: 'waste' },
+    // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
+    payload: { name: item.name, variance: -qty, newQty: created.newQty, by: user.name, cause: 'waste', locationId: item.locationId },
   }).catch(() => undefined)
 
   return ok(

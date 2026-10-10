@@ -5,6 +5,7 @@ import { requirePermission, isResponse, ok, fail, requireUserLocation } from '@/
 import { nid } from '@/lib/map'
 import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { newEnrollmentCode, clientIp } from '@/lib/guest'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #4 §2.2 — device enrollment z ENKRATNO vpisno kodo.
@@ -58,9 +59,10 @@ export async function POST(req: NextRequest) {
       enrollmentClaimedAt: null,
     },
   })
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DEVICE_ENROLLMENT_CREATED', entityType: 'DeviceRegistry', entityId: row.id, details: `name=${name} type=${type} location=${location.id} ttl=${ENROLLMENT_TTL_MS / 1000}s`, locationId: location.id, id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'DEVICE_ENROLLMENT_CREATED',
       entityType: 'DeviceRegistry',
@@ -106,9 +108,10 @@ export async function PUT(req: NextRequest) {
       enrollmentClaimedAt: new Date(),
     },
   })
+  const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'DEVICE_CLAIMED', entityType: 'DeviceRegistry', entityId: device.id, details: `name=${device.name} type=${device.type} location=${device.locationId || 'brez'}`, locationId: device.locationId, id: __aId4 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain4,
+      id: __aId4,
       userId: null,
       action: 'DEVICE_CLAIMED',
       entityType: 'DeviceRegistry',

@@ -6,6 +6,7 @@ import { NextRequest } from 'next/server'
 import { ok, fail, requirePermission, isResponse, locationScope, assertResourceLocation, requireUserLocation } from '@/lib/api'
 import { db } from '@/lib/db'
 import { nid, num, mapDeliveryZone } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,9 +50,10 @@ export async function POST(req: NextRequest) {
       locationId,
     },
   })
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DELIVERY_ZONE_CREATE', entityType: 'DeliveryZone', entityId: zone.id, details: JSON.stringify({ name: zone.name }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(), userId: user.sub, action: 'DELIVERY_ZONE_CREATE',
+    data: { ...__chain2,
+      id: __aId2, userId: user.sub, action: 'DELIVERY_ZONE_CREATE',
       entityType: 'DeliveryZone', entityId: zone.id,
       details: JSON.stringify({ name: zone.name }),
     },
@@ -88,9 +90,10 @@ export async function PATCH(req: NextRequest) {
       ...(b.name?.trim() ? { name: b.name.trim().slice(0, 80) } : {}),
     },
   })
+  const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'DELIVERY_ZONE_UPDATE', entityType: 'DeliveryZone', entityId: zone.id, details: JSON.stringify({ fee: num(zone.deliveryFee), active: zone.isActive }), id: __aId4 })
   await db.auditLog.create({
-    data: {
-      id: nid(), userId: user.sub, action: 'DELIVERY_ZONE_UPDATE',
+    data: { ...__chain4,
+      id: __aId4, userId: user.sub, action: 'DELIVERY_ZONE_UPDATE',
       entityType: 'DeliveryZone', entityId: zone.id,
       details: JSON.stringify({ fee: num(zone.deliveryFee), active: zone.isActive }),
     },

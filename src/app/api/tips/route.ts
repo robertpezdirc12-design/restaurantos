@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange, type TipMethod } from '@/lib/tips'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #1 (triage ①) — napitnine: dnevni bazen + distribucija po zaposlenih.
@@ -225,9 +226,10 @@ export async function POST(req: NextRequest) {
       },
     })
     await tx.tipDistribution.createMany({ data: distributions })
+    const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'TIP_POOL_CLOSE', entityType: 'TipPool', entityId: poolId, details: jstr({ date, locationId, method: effectiveMethod, requestedMethod: method, fallbackEqual, totalCents, cashCents, nonCashCents, payments: payments.length, employees: distributions.length, sumOfParts: distributions.reduce((a, d) => a + d.amount * 100, 0), }), id: __aId2 })
     await tx.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain2,
+        id: __aId2,
         userId: user.sub,
         action: 'TIP_POOL_CLOSE',
         entityType: 'TipPool',

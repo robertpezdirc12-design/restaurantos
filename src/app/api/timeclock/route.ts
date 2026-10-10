@@ -13,6 +13,7 @@ import {
   totalPayCents,
   validateManualEntry,
 } from '@/lib/timeclock'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Delovni čas — clock-in/clock-out (GitLab issue #1, triage ⑥).
@@ -184,9 +185,10 @@ export async function POST(req: NextRequest) {
         locationId: employee.locationId,
       },
     })
+    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'TIMECLOCK_MANUAL', entityType: 'TimeEntry', entityId: entry.id, details: jstr({ employee: employee.name, employeeId, clockIn: new Date(val.clockInMs).toISOString(), clockOut: new Date(val.clockOutMs).toISOString(), breakMinutes: val.breakMinutes, type: val.type, totalMinutes: minutes, totalPay: cents / 100, }), id: __aId2 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain2,
+        id: __aId2,
         userId: perm.sub,
         action: 'TIMECLOCK_MANUAL',
         entityType: 'TimeEntry',
@@ -226,9 +228,10 @@ export async function POST(req: NextRequest) {
         locationId: user.loc || employee.locationId,
       },
     })
+    const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'TIMECLOCK_IN', entityType: 'TimeEntry', entityId: entry.id, details: jstr({ employee: employee.name, clockIn: now.toISOString(), payRate, jobId }), id: __aId4 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain4,
+        id: __aId4,
         userId: user.sub,
         action: 'TIMECLOCK_IN',
         entityType: 'TimeEntry',
@@ -245,9 +248,10 @@ export async function POST(req: NextRequest) {
     if (active.breakStart && !active.breakEnd) return fail('Odmor že teče.', 409)
     const now = new Date()
     await db.timeEntry.update({ where: { id: active.id }, data: { breakStart: now, breakEnd: null } })
+    const __aId6 = nid(); const __chain6 = await auditChainFields(db, { action: 'TIMECLOCK_BREAK_START', entityType: 'TimeEntry', entityId: active.id, details: jstr({ at: now.toISOString() }), id: __aId6 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain6,
+        id: __aId6,
         userId: user.sub,
         action: 'TIMECLOCK_BREAK_START',
         entityType: 'TimeEntry',
@@ -266,9 +270,10 @@ export async function POST(req: NextRequest) {
       where: { id: active.id },
       data: { breakEnd: now, breakMinutes: { increment: delta } },
     })
+    const __aId8 = nid(); const __chain8 = await auditChainFields(db, { action: 'TIMECLOCK_BREAK_END', entityType: 'TimeEntry', entityId: active.id, details: jstr({ at: now.toISOString(), deltaMinutes: delta, breakMinutes: entry.breakMinutes }), id: __aId8 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain8,
+        id: __aId8,
         userId: user.sub,
         action: 'TIMECLOCK_BREAK_END',
         entityType: 'TimeEntry',
@@ -298,9 +303,10 @@ export async function POST(req: NextRequest) {
       where: { id: active.id },
       data: { totalMinutes: minutes, totalPay: cents / 100 },
     })
+    const __aId10 = nid(); const __chain10 = await auditChainFields(db, { action: 'TIMECLOCK_OUT', entityType: 'TimeEntry', entityId: active.id, details: jstr({ employee: employee.name, clockIn: active.clockIn.toISOString(), clockOut: now.toISOString(), breakMinutes, totalMinutes: minutes, totalPay: cents / 100, autoBreakEnded: autoBreak, }), id: __aId10 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain10,
+        id: __aId10,
         userId: user.sub,
         action: 'TIMECLOCK_OUT',
         entityType: 'TimeEntry',

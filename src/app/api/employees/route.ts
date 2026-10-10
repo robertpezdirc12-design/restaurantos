@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server'
 import type { EmployeeRole } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
-import { mapEmployee } from '@/lib/map'
+import { mapEmployee, nid, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
@@ -41,6 +42,27 @@ export async function POST(req: NextRequest) {
       locationId,
       pin: fields.pin,
       pinLookup: fields.pinLookup,
+    },
+  })
+  // 33-c (audit §6): kreiranje zaposlenega je zdaj revidirano (prej brez revizije)
+  const __aId = nid(); const __chain = await auditChainFields(db, {
+    id: __aId,
+    action: 'EMPLOYEE_CREATE',
+    entityType: 'Employee',
+    entityId: employee.id,
+    details: jstr({ name: employee.name, email: employee.email, role: employee.role, status: employee.status }),
+    locationId,
+  })
+  await db.auditLog.create({
+    data: {
+      ...__chain,
+      id: __aId,
+      userId: user.sub,
+      action: 'EMPLOYEE_CREATE',
+      entityType: 'Employee',
+      entityId: employee.id,
+      details: jstr({ name: employee.name, email: employee.email, role: employee.role, status: employee.status }),
+      locationId,
     },
   })
   return ok({ employee: mapEmployee(employee) }, 201)

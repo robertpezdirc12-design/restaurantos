@@ -12,6 +12,7 @@ import {
   type TimeclockStatus,
   type TimeclockType,
 } from '@/lib/timeclock'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const FUTURE_SKEW_MS = 5 * 60 * 1000
 
@@ -95,9 +96,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const updated = await db.timeEntry.update({ where: { id }, data })
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'TIMECLOCK_UPDATE', entityType: 'TimeEntry', entityId: id, details: jstr({ employee: entry.Employee?.name ?? entry.employeeId, before, after: { status: updated.status, clockIn: updated.clockIn.toISOString(), clockOut: updated.clockOut ? updated.clockOut.toISOString() : null, breakMinutes: updated.breakMinutes, type: updated.type, totalMinutes: updated.totalMinutes, totalPay: num(updated.totalPay), }, }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'TIMECLOCK_UPDATE',
       entityType: 'TimeEntry',

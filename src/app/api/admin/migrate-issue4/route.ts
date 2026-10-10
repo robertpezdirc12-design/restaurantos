@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #4 §2.2 — produkcijska shematska migracija (idempotentna).
@@ -40,9 +41,10 @@ export async function POST(req: NextRequest) {
   const cols = await db.$queryRawUnsafe<{ column_name: string }[]>(
     `SELECT column_name FROM information_schema.columns WHERE table_name = 'DeviceRegistry' AND column_name LIKE 'enrollment%'`
   )
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'MIGRATE_ISSUE4', entityType: 'DeviceRegistry', entityId: 'DeviceRegistry', details: jstr({ applied: applied.length, columns: cols.map((c) => c.column_name) }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'MIGRATE_ISSUE4',
       entityType: 'DeviceRegistry',

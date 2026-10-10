@@ -13,6 +13,7 @@ import {
   deviceAlive,
   GUEST_VISIBLE_ORDER_STATUS,
 } from '@/lib/guest'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #3 — JAVNO oddajanje naročila (QR self-order + kiosk).
@@ -93,9 +94,12 @@ export async function POST(req: NextRequest) {
     })
 
     if (!replayed) {
+      // 33-c: chain polja (tamper-evidentna veriga)
+      const __aId = nid(); const __chain = await auditChainFields(db, { id: __aId, action: 'GUEST_ORDER_CREATED', entityType: 'Order', entityId: order.id, details: `vir=${orderSource} naročilo=#${order.orderNumber} postavke=${items.length}`, locationId })
       await db.auditLog.create({
         data: {
-          id: nid(),
+          ...__chain,
+          id: __aId,
           userId: null,
           action: 'GUEST_ORDER_CREATED',
           entityType: 'Order',

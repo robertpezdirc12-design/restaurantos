@@ -4,6 +4,7 @@ import { requirePermission, isResponse, ok, fail, assertResourceLocation } from 
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { WASTE_REVERSAL_TX_TYPE, canReverseWaste, wasteReversalReason } from '@/lib/waste'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const locRes = assertResourceLocation(user, rec.locationId)
   if (locRes) return locRes
 
-  const item = await db.inventoryItem.findUnique({ where: { id: rec.inventoryItemId }, select: { name: true } })
+  const item = await db.inventoryItem.findUnique({ where: { id: rec.inventoryItemId }, select: { name: true, locationId: true } })
   const qty = num(rec.quantity)
 
   let reversalStockTransactionId: string | null = null
@@ -82,9 +83,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return fail(`Reverzija ni uspela: ${msg}`, 500)
   }
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'WASTE_REVERSE', entityType: 'WasteRecord', entityId: rec.id, details: jstr({ item: item?.name ?? rec.inventoryItemId, quantity: qty, unit: rec.unit, totalCost: num(rec.totalCost), newQty, reversalStockTransactionId }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'WASTE_REVERSE',
       entityType: 'WasteRecord',
@@ -95,7 +97,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   await publishEvent('StockChanged', {
     entityType: 'InventoryItem',
     entityId: rec.inventoryItemId,
-    payload: { name: item?.name ?? rec.inventoryItemId, variance: qty, newQty, by: user.name, cause: 'waste-reversal' },
+    // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
+    payload: { name: item?.name ?? rec.inventoryItemId, variance: qty, newQty, by: user.name, cause: 'waste-reversal', locationId: item?.locationId ?? rec.locationId ?? null },
   }).catch(() => undefined)
 
   const fresh = await db.wasteRecord.findUnique({ where: { id: rec.id }, select: { reversedAt: true, reversalStockTransactionId: true } })

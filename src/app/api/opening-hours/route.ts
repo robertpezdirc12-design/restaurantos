@@ -49,6 +49,7 @@ async function weeklyRows(locationId: string): Promise<{ rows: (OpeningRow & { i
 }
 
 import type { OpeningRow } from '@/lib/openinghours'
+import { auditChainFields } from '@/lib/audit-chain'
 
 interface SpecialDayRow extends SpecialDay { id: string; locationId: string | null }
 
@@ -136,9 +137,10 @@ export async function PUT(req: NextRequest) {
   }
 
   const after = (await weeklyRows(locRes)).rows
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'OPENING_HOURS_UPDATE', entityType: 'OpeningHours', entityId: locRes, details: jstr({ locationId: locRes, before, after }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: perm.sub,
       action: 'OPENING_HOURS_UPDATE',
       entityType: 'OpeningHours',

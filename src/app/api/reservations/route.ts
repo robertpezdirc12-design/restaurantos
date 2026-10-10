@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
 import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
@@ -67,9 +68,10 @@ export async function POST(req: NextRequest) {
       }, 409)
     }
     if (out.outside && body.allowOutsideHours) {
+      const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'RESERVATION_OUTSIDE_HOURS', entityType: 'Reservation', entityId: 'pending', details: jstr({ when: when.toISOString(), reason: out.reason, label: out.label, locationId }), id: __aId2 })
       await db.auditLog.create({
-        data: {
-          id: nid(), userId: user.sub, action: 'RESERVATION_OUTSIDE_HOURS', entityType: 'Reservation', entityId: 'pending',
+        data: { ...__chain2,
+          id: __aId2, userId: user.sub, action: 'RESERVATION_OUTSIDE_HOURS', entityType: 'Reservation', entityId: 'pending',
           details: jstr({ when: when.toISOString(), reason: out.reason, label: out.label, locationId }),
         },
       }).catch(() => {})

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { discountAmountOf } from '@/lib/billing'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #1 §6 — ročni popust na naročilo (check-level).
@@ -69,9 +70,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     data: { discount: amount },
   })
+  const __aIdD1 = nid()
+  const __chainD1 = await auditChainFields(db, { action: 'DISCOUNT_APPLIED', entityType: 'Order', entityId: id, details: jstr({ discountId, name: discountName, amount, orderNumber: order.orderNumber, previousDiscount: num(order.discount) }), locationId: order.locationId, id: __aIdD1 })
   await db.auditLog.create({
     data: {
-      id: nid(),
+      ...__chainD1,
+      id: __aIdD1,
       userId: user.sub,
       action: 'DISCOUNT_APPLIED',
       entityType: 'Order',
@@ -96,9 +100,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (order.paymentStatus === 'paid') return fail('Naročilo je že plačano.', 409)
   const previous = num(order.discount)
   await db.order.update({ where: { id }, data: { discount: 0 } })
+  const __aIdD2 = nid()
+  const __chainD2 = await auditChainFields(db, { action: 'DISCOUNT_REMOVED', entityType: 'Order', entityId: id, details: jstr({ removedAmount: previous, orderNumber: order.orderNumber }), locationId: order.locationId, id: __aIdD2 })
   await db.auditLog.create({
     data: {
-      id: nid(),
+      ...__chainD2,
+      id: __aIdD2,
       userId: user.sub,
       action: 'DISCOUNT_REMOVED',
       entityType: 'Order',

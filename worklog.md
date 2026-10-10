@@ -314,3 +314,79 @@ Stage Summary:
 - Produkcija ima P2 paket + mnenja gostov + 2 kritična inventory popravka (direkten deploy, ker mirror mrtav)
 - OTA: GitLab push mirror potrebuje TRENUTNI GitHub token (GitLab UI → Settings → Repository → Mirroring) — dokler tega ne uporabnik popravi, pushi ne sprožijo CI/deploy; za revizijo: tudi lokalni github remote URL čaka nov token
 - 473/473 testov, tsc 0, lint 0; vse P1 točke iz audita zaprte (6/6), P2 zaprto (R7/R9/R11/R12, N1/N2/N5/N7/N8, loyalty PII) — ostaja: selitev miz, fire-to-kitchen, i18n gostov, chainHash (nizke P2)
+
+---
+Task ID: 33-b
+Agent: full-stack-developer
+Task: P2 iz audita (§65/§193) — dvojezičnost SL/HR gostujočih strani (kiosk /kiosk + QR meni /m/<token>) z izbiro jezika
+
+Work Log:
+- prebran worklog (31-x/32-x) + obstoječa i18n infrastruktura (src/lib/i18n/index.ts, src/components/i18n.tsx — auth-free vzorec z mikro-storom + useSyncExternalStore); kiosk in QR stran inspektrirana (obe 'use client', samostojni, brez dashboard providerja)
+- NOVA src/components/guest-i18n.tsx: lahkoten 'use client' GuestI18nProvider + useGuestT() (deluje tudi brez providerja), GuestLanguageToggle (pill SL | HR, varianti dark/light, role=group + aria-pressed + aria-label, gumbi h-[44px] min-w-[44px]), guestStatusKey() — preslikava fiksno SL statusov iz javnega API-ja (GUEST_VISIBLE_ORDER_STATUS 'prejeto/v pripravi/pripravljeno/postreženo/plačano/preklicano' + enum rezerva) v guest.status.* ključe; isti localStorage ključ LOCALE_STORAGE_KEY ('restaurantos.locale') = jezik povezan z glavno aplikacijo; prvi obisk normalizeLocale(navigator.language); SSR snapshot 'sl' (brez hidracijskega razpada); manjkajoč ključ → SL vrednost, manjka povsod → ključ + console.warn (samo dev)
+- src/lib/i18n/sl.ts + hr.ts: PRIPETA sekcija '// ==== 33-b: gostujoče strani ====' na KONCU obeh — 75 novih ključev (guest.lang 3, guest.common 19, guest.error 6, guest.status 6, guest.kiosk 14, guest.menu 10, guest.cart 7, guest.feedback 11), SL/HR pariteta, obstoječih ~1085 ključev NISEM stikal; src/lib/i18n/index.ts NEDOTAKNJEN (samo uvoz)
+- kiosk/page.tsx: vsi UI nizi → t() (aktivacija: poziv, navodila, placeholder, gumb; glavni tok: podnaslov, kategorije DB, 'Ni na voljo', prazna košarica, 'Oddaj · znesek', zaklepni naslov; done zaslon: 'Hvala!', številka, znesek/plačilo na blagajni, samodejni reset; napake: nedosegljivo/neaktiviran/neuspela aktivacija/token namig/naročilo NI oddano; dialog: opcije '(neobvezno)', Opomba, placeholder, 'Dodaj · znesek'); toggle v glavi poleg zaklepa (variant dark) + fiksiran top-right na aktivaciji; lokalna 't' (token) preimenovana v val/tok — senca bi prevzrla prevajalno funkcijo (runtime crash); imena artikelov/kategorij ostajajo DB (niso prevajana)
+- m/[token]/page.tsx: vsi UI nizi → t() (nalaganje, napaka+Poskusi znova, glava 'Miza {n} · samopostrežno naročanje'/'Samopostrežno naročanje', offline badge, done karton 'Naročilo #številka: {n}' + Status (preveden prek guestStatusKey!) + znesek, Novo naročilo; košarica: 'Košarica · N artikel/artikli · znesek', 'Tvoja košarica', brez DDV/DDV/Skupaj, Ime (neobvezno)/'Za klic na ime', 'Oddaj naročilo · znesek', 'Oddajam …'; dialog: neobvezno, 'brez doplačila', Opomba kuhinji, 'npr. brez čebule', Dodaj; mnenje: CTA 'Kako je bilo?', 'Vaše mnenje', zvezdice Skupaj/Hrana/Storitev/Vzdušje + aria '{label}: {n} od 5', komentar/ime placeholder, Zapri, 'Pošlji mnenje'/'Pošiljam …', 'Hvala za mnenje …', napake); toggle v sticky glavi (variant light; sticky nav top-[57px]→top-[70px] zaraj višje glave, ime truncate); tRef (latest-t) da loadMenu (useCallback [token]) NE refetcha ob preklopu jezika
+- testi tests/i18n-guest.test.ts (14, PASS 377 expect): pariteta 33-b sekcije (identičen set guest.* v obeh, >60), brez praznih vrednosti, HR≠SL razen dokumentiranih SHARED_EQUAL (skupni izrazi: 'Hvala!', 'Dodaj', 'Status', 'Aktiviraj kiosk', 'Alergeni: {allergens}', 'Košarica', 'Tvoja košarica', 'Hrana', '{label}: {n} od 5'), HR brez slovenskih besed, interpolacija SL+HR, guestStatusKey (12 vnosov + toleranca case/whitespace + null + ključi v obeh slovarjih), regresija: 17 (kiosk) + 27 (QR) prevedenih nizov NE sme biti več hardcodirano v source-u, obe strani uporabljata Provider/useGuestT/Toggle, toggle a11y + skupna shramba
+- verifikacija: bunx tsc --noEmit EXIT 0 ✓ · bun run lint EXIT 0 ✓ · bun test tests/i18n-guest.test.ts 14/14 ✓ · bun test tests/i18n.test.ts (globalna pariteta) 17/17 ✓ · bun build izolirano kiosk+QR OK · celoten bun test NISEM poganjal (deljena baza) · dev strežnika NISEM poganjal/restartiral (bil down ob zaključku — sistemski; med sejo 500 za vse rute IZKLJUČNO zaraj vzporednega agenta, ki je ~4 min urejal api/furs/route.ts — mojih datotek ni bilo med tsc/lint napakami nikoli)
+
+Stage Summary:
+- i18n gostov KONČANO: kiosk in QR stran popolnoma dvojezični (SL/HR), diskreten SL|HR preklopnik (zgornji desni kot, ≥44px dotik, aria, keyboard), preklop brez reload-a in brez izgube podatkov, jezik povezan z glavno aplikacijo prek istega localStorage ključa; 75 novih ključev v OBEH slovarjih v označeni 33-b sekciji (pariteta testirana); statusi naročil prevedeni client-side (strežniški SL nizi → ključi, z enum rezervo)
+- datoteke: M src/app/kiosk/page.tsx, src/app/m/[token]/page.tsx, src/lib/i18n/sl.ts, src/lib/i18n/hr.ts; N src/components/guest-i18n.tsx, tests/i18n-guest.test.ts, agent-ctx/33-b-full-stack-developer.md; i18n/index.ts, src/lib/guest.ts, dashboard/**, api/orders/** NEDOTAKNJENI
+- reziduali (dokumentirani): (1) strežniška sporočila napak javnih API-jev ostanejo SL (data.error — popolna HR-pariteta bi zahtevala i18n na /api/public rutah); (2) GUEST_VISIBLE_ORDER_STATUS naj dolgoročno vrača enum, ne SL nizov (preslikava na clientu že podpre oboje); (3) Hrvaščina za artikle: 1 'artikl' / N 'artikla' (poenostavljeno, kot obstoječa SL 1/N konvencija)
+- pasti za naslednje: novi ključi v sekcijo '// ==== 33-b ====' (testi iščejo guest.* prefiks; globalni paritetni test i18n.test.ts ostaja zelen); podrobnosti v agent-ctx/33-b-full-stack-developer.md
+
+---
+Task ID: 33-a
+Agent: full-stack-developer (rekonstrukcija) + main (verifikacija)
+Task: P2 iz audita (§54/§57) — selitev/združevanje miz (move/merge) + fire-to-kitchen (firedAt)
+
+Work Log:
+- OPOZORILO: agentova seja je padla na context deadline pred zaključnim logiranjem — ta sekcija je REKONSTRUKCIJA iz artefaktov + integratorjeve verifikacije
+- NOVE rute: src/app/api/orders/[id]/move/route.ts (requirePermission('orders.create'), samo odprto naročilo, ciljna miza ista lokacija + brez drugega odprtega naročila 409, tableId==trenutni 400, CAS status miz — nova occupied, stara prosta če brez drugih odprtih, revizija ORDER_MOVE + publishEvent OrderMoved), merge/route.ts (prenos postavk na cilj + preklic vira + recalcTotals v tx + ORDER_MERGE), fire/route.ts (idempotenten: order.firedAt ??= now, pending postavke → status 'fired' + firedAt, ORDER_FIRED + OrderFired)
+- UI page.tsx: gumba "Premakni mizo" (dialog z izbiro proste mize — freeTablesFor filter po UI statusu FREE) + "Združi naročila" (izbira drugega odprtega naročila) + gumb "Pošlji na kuhinjo" (viden pri pending postavkah); i18n ključi mmv.* v obeh slovarjih (sekcija 33-a)
+- testi tests/orders-move-merge-fire.test.ts: 23 testov (permissions, srečne poti, 409/400, merge recalc, fire idempotencia)
+- VERIFIKACIJA (integrator): tsc 0, lint 0, 23/23 testov; E2E v brskalniku kot dev admin: gumbi vidni v SL in HR, move dialog rendra (naslov, hint z imenom mize, combobox), IZVEDENA prava selitev naročila na mizo 3502 → DB order.tableId spremenjen + revizija ORDER_MOVE z locationId; izveden fire → order.firedAt + item status 'fired' + firedAt + ORDER_FIRED revizija — vse potrjeno v dev bazi
+- past: freeTablesFor uporablja UI status 'FREE' (mapTable zazi OCCUPIED, če ima miza aktivno naročilo NE glede na DB status mize) — miza brez odprtega naročila s DB statusom 'occupied' se NE pokaže kot prosta; dokumentirano obnašanje, ne bug
+
+Stage Summary:
+- P2 točki "selitev/združevanje miz" + "fire-to-kitchen" ZAPRTI: endpoint + UI + testi + E2E dokaz
+- agent je med sejo ustvaril UI-verify podatke (33a-ui-* tabele/naročila/lokacija), ki jih je integrator počistil (0 preostalih)
+- podrobnosti datotek: git diff na commitu 33 paketa
+
+---
+Task ID: 33-c
+Agent: full-stack-developer (rekonstrukcija) + main (zaključek)
+Task: P2 iz audita (§108) — tamper-evidentna veriga (previousHash/chainHash) + manjkajoči audit eventi + locationId
+
+Work Log:
+- OPOZORILO: agentova seja je padla pred zaključnim logiranjem — rekonstrukcija iz artefaktov + integratorjev zaključek
+- NOVO src/lib/audit-chain.ts: auditChainFields(prisma, { id, action, entityType, entityId, details, locationId, model? }) → { previousHash, chainHash } (sha256 nad kanoničnim nizom model|prev|id|date|action|type|entityId|loc|details, details deterministično sortirani ključi); verifyAuditChain(db, { limit, after, model? }) → { ok, brokenAt, reason: 'hash'|'link', checked } — zazna tampering vsebine IN izbris/vstavek vrstice; ChainModel: 'auditLog' | 'haccpEntry' (veriga globalna, ne per-location; omejitve konkurence dokumentirane v JSDoc)
+- codemod (scripts/codemod-audit-chain.py) + ročni urejanji: auditChainFields NA VSAH auditLog.create mestih izven orders/** (waitlist, timeclock, auth/login LOGIN_FAILED, shifts, reservations, employees, expenses, tables, menus, settings, suppliers, inventory, tips/payout, monitoring/errors, receipts/storno, furs INVOICE_ISSUE, giftcards, discounts, devices, delivery, haccp, public/orders GUEST_ORDER_CREATED, purchase-orders GRN/PO_*) + HaccpEntry writer
+- novo beleženje: EMPLOYEE_CREATE, EXPENSE_CREATE, SHIFT_OPEN, TABLE_CREATE (+DELETE), MENU_ITEM_CREATE/UPDATE, SETTINGS_UPDATE
+- locationId dopolnjen: INVENTORY_CREATE, STOCK_DEDUCTED (locationId naročila), TIP_PAYOUT (locationId bazena), SUPPLIER_CREATE/UPDATE (locationId akterja), ERROR_REPORT (locationId akterja)
+- testi tests/audit-chain.test.ts: 14 testov (unit determinističnost + prva vrstica; integracija 2-zaporedna povezava, verify ok/tamper/link-break, haccp par)
+- INTEGRATOR ZAKLJUČEK: 2 failana testa popravljena (testna koda, ne implementacija: (1) prva vrstica okna kaže na vrstico IZVEN okna na deljeni dev bazi — povezovalna preverba od i=1, enako semantiko ima verifikator; (2) tamper test je ročno prepisoval previousHash čez helper vrednost → vrstica sama-tamperana; odstranjen override); nato 14/14 zeleno
+- INTEGRATOR KONVERZIJA ostanka: orders/** (7 mest: move, merge, fire, discount×2, orders/[id] override + storno) — agenta 33-a/33-c lastniška meja je pustila orders brez chain; globalna preverba zdaj: NI več nobenega auditLog.create brez auditChainFields (0 ostankov)
+
+Stage Summary:
+- P2 točka "chainHash aktivacija" ZAPRTA: 100 % pokritost chain polj + verifyAuditChain + manjkajoči eventi + locationId
+- potrditev v produkciji bo sledila ob naslednjem INVOICE_ISSUE (furs) — chain polja se pišejo vseh 60+ akcij
+
+---
+Task ID: 33-main (integracija)
+Agent: main (Z.ai Code)
+Task: Integracija P2 paketa 33-a/b/c + GitHub token rotacija + mirror obnova + E2E verifikacija
+
+Work Log:
+- NOV GitHub token (ghp_s1O3…) validiran (robertpezdirc12-design); posodobljen lokalni github remote; GitLab push mirror (id 4132630) je bil mrtav (stari token, update_status failed od 06:47) — URL posodobljen prek PUT /remote_mirrors/4132630 (GitLab API zopet dostopen, Cloudflare ban potekel), ročni sync sprožen (204); SKPENDO: najhitrejša pot direkten push lokal→GitHub (776e3a5..efc547d) → Deploy to Vercel workflow sprožen (in_progress, run 38045444788); dnevni Neon backup schedule uspel sam (run 38039176363, SUCCESS ob 08:48)
+- vzporedni agenti 33-a/33-b/33-c: 33-b zaključil celoto (i18n gostov: kiosk + QR dvojezični, 75 ključev, GuestI18nProvider, 14 testov); 33-a in 33-c implementirala a padla pred verifikacijo/loggingom → integrator nadaljeval
+- integracija: audit-chain testi 2 faila popravljena (test bugs — glej 33-c sekcijo), orders/** chain konverzija (7 mest), tsc 0, lint 0, 524/524 testov (+51: 23 move-merge-fire, 14 audit-chain, 14 i18n-guest)
+- E2E brskalnik: kiosk rendra z SL|HR preklopnikom (klik HR → "Aktivacija kioska"), QR stran /m/<hex token> rendra meni + mnenje CTA + preklopnik, jezik preživi med stranmi (isti localStorage ključ — kiosk HR → QR HR → dashboard HR!); dashboard: prijava (dev admin), Narudžbe tab — vseh 5 gumbov (Plačilo + FURS, Pošlji na kuhinjo, Premakni mizo, Združi naročila), move dialog + PRAVA selitev izvedena (DB potrjena), fire izveden (DB potrjena: firedAt + item 'fired' + revizija z locationId)
+- diagnosticirano in rešeno: (1) Turbopack stale cache prikazoval napačen parse error furs/route.ts:483 — bun build + touch potrdila čisto datoteko, touch rešilo; (2) move dialog sprva prazen — vzrok: ostanki 33a-ui-* naročil iz agentove mrtve seje (miza "zasedena"), ne bug; počitščeno; (3) bootstrap admin 403 na /api/orders — znan dokumentiran rezidual (fast-path sub='bootstrap' še ni implementiran); za UI verifikacijo uporabljen pravi dev admin račun (počitščen po testu)
+- audit dokument posodobljen (§6 "Še odprto" → vse zaprto; §13 P2 → vse 4 točke prečrtane s Task referencami); dev .env dobil dev-only BOOTSTRAP_ADMIN_* (gitignored — v repo ne pušča)
+- pushed: glej naslednji commit
+
+Stage Summary:
+- P2 IZ AUDITA 100 % ZAPRTO (selitev/združevanje miz, fire-to-kitchen, i18n gostov, chainHash + eventi + locationId) — P1 6/6 (prej) + P2 4/4 (zdaj)
+- veriga lokalno → GitLab → GitHub → Vercel spet živa; mirror z novim tokenom
+- naslednji koraki (P3/human blockers): FURS certifikat, DNS restaurantos.app, Neon DATABASE_URL v GH secrets (CI smoke), GitLab CI runner verify; bootstrap admin fast-path v requirePermission (mali, neblokirajoč)

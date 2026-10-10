@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
-import { mapShift, nid, num, r2, jparse } from '@/lib/map'
+import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * N5 (revizija §4): seznam izmen (z začetnim/končnim stanjem blagajne) — UI prikaže
@@ -188,9 +189,10 @@ export async function POST(req: NextRequest) {
             locationId: claimed.locationId,
           },
         })
+        const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'SHIFT_CLOSE', entityType: 'CashRegisterShift', entityId: claimed.id, details: JSON.stringify({ totalSales: r(totalSales), cash: r(cash), card: r(card), receipts: receipts.length, cashDifference: r(closingCash - expectedCash), windowFrom: from.toISOString(), windowTo: to.toISOString(), }), locationId: claimed.locationId, id: __aId2 })
         await tx.auditLog.create({
-          data: {
-            id: nid(),
+          data: { ...__chain2,
+            id: __aId2,
             userId: user.sub,
             action: 'SHIFT_CLOSE',
             entityType: 'CashRegisterShift',
@@ -222,7 +224,7 @@ export async function POST(req: NextRequest) {
   const opened = await db.$transaction(async (tx) => {
     const again = await tx.cashRegisterShift.findFirst({ where: { employeeId: user.sub, status: 'open' } })
     if (again) return null
-    return tx.cashRegisterShift.create({
+    const shift = await tx.cashRegisterShift.create({
       data: {
         id: nid(),
         employeeId: user.sub,
@@ -232,6 +234,28 @@ export async function POST(req: NextRequest) {
         locationId,
       },
     })
+    // 33-c (audit §6): odpiranje izmene je zdaj revidirano (SHIFT_OPEN) — v ISTI transakciji
+    const __aId = nid(); const __chain = await auditChainFields(tx, {
+      id: __aId,
+      action: 'SHIFT_OPEN',
+      entityType: 'CashRegisterShift',
+      entityId: shift.id,
+      details: jstr({ startingCash: num(body?.openingCash), employeeName: user.name }),
+      locationId,
+    })
+    await tx.auditLog.create({
+      data: {
+        ...__chain,
+        id: __aId,
+        userId: user.sub,
+        action: 'SHIFT_OPEN',
+        entityType: 'CashRegisterShift',
+        entityId: shift.id,
+        details: jstr({ startingCash: num(body?.openingCash), employeeName: user.name }),
+        locationId,
+      },
+    })
+    return shift
   })
   if (!opened) return fail('Izmena že teče (sočasno odpiranje zavrnjeno).', 409)
   return ok({ shift: mapShift({ ...opened, employee: null }) }, 201)

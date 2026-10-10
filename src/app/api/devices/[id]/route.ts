@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
 import { nid } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const DEVICE_TYPES = ['pos', 'kds', 'kds_bar', 'tablet', 'kiosk', 'mobile', 'customer_display']
 
@@ -39,9 +40,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         enrollmentExpiresAt: revoke ? null : device.enrollmentExpiresAt,
       },
     })
+    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: revoke ? 'DEVICE_REVOKED' : 'DEVICE_RESTORED', entityType: 'DeviceRegistry', entityId: id, details: `naprava=${device.name} (${device.type})`, locationId: device.locationId, id: __aId2 })
     await db.auditLog.create({
-      data: {
-        id: nid(),
+      data: { ...__chain2,
+        id: __aId2,
         userId: user.sub,
         action: revoke ? 'DEVICE_REVOKED' : 'DEVICE_RESTORED',
         entityType: 'DeviceRegistry',
@@ -98,9 +100,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const delGuard = assertResourceLocation(user, device.locationId)
   if (delGuard) return delGuard
   await db.deviceRegistry.delete({ where: { id } })
+  const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'DEVICE_DELETED', entityType: 'DeviceRegistry', entityId: id, details: `naprava=${device.name} (${device.type})`, locationId: device.locationId, id: __aId4 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain4,
+      id: __aId4,
       userId: user.sub,
       action: 'DEVICE_DELETED',
       entityType: 'DeviceRegistry',

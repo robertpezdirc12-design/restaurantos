@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #1 (triage ①) — izplačilo napitnin iz bazena.
@@ -52,9 +53,25 @@ export async function POST(req: NextRequest) {
       // tudi prehod bazena je CAS — samo iz 'pending' (nikoli ne prevrišči tuje spremembe)
       await tx.tipPool.updateMany({ where: { id: poolId, status: 'pending' }, data: { status: poolStatus } })
     }
+    // 33-c: chain polja + locationId bazena (audit §6)
+    const __aId = nid(); const __chain = await auditChainFields(tx, {
+      id: __aId,
+      action: 'TIP_PAYOUT',
+      entityType: 'TipPool',
+      entityId: poolId,
+      details: jstr({
+        distributionId,
+        markedPaid: count,
+        poolStatus,
+        total: pool.totalTips,
+        by: user.name,
+      }),
+      locationId: pool.locationId,
+    })
     await tx.auditLog.create({
       data: {
-        id: nid(),
+        ...__chain,
+        id: __aId,
         userId: user.sub,
         action: 'TIP_PAYOUT',
         entityType: 'TipPool',
@@ -66,6 +83,8 @@ export async function POST(req: NextRequest) {
           total: pool.totalTips,
           by: user.name,
         }),
+        // 33-c (audit §6): TIP_PAYOUT dobi locationId bazena (prej neviden location-scoped uporabnikom)
+        locationId: pool.locationId,
       },
     })
     return { count, poolStatus }

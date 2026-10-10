@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { jstr, nid } from '@/lib/map'
 import { validateLocationInput, codeCandidateFromName } from '@/lib/multilocation'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Več poslovalnic (GitLab issue #1, triage ⑧).
@@ -66,9 +67,10 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'LOCATION_CREATE', entityType: 'Location', entityId: row.id, details: jstr({ name: row.name, code: row.code, country: row.country, currency: row.currency, premisesId: row.premisesId || null }), id: __aId2 })
     await db.auditLog.create({
-      data: {
-        id: nid(), userId: user.sub, action: 'LOCATION_CREATE', entityType: 'Location', entityId: row.id,
+      data: { ...__chain2,
+        id: __aId2, userId: user.sub, action: 'LOCATION_CREATE', entityType: 'Location', entityId: row.id,
         details: jstr({ name: row.name, code: row.code, country: row.country, currency: row.currency, premisesId: row.premisesId || null }),
       },
     }).catch(() => null)

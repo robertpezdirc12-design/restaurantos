@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const EDITABLE = [
   'name', 'address', 'city', 'postCode', 'phone', 'email', 'web', 'businessId', 'taxId',
@@ -31,5 +32,30 @@ export async function PUT(req: NextRequest) {
   const settings = existing
     ? await db.restaurantSettings.update({ where: { id: existing.id }, data })
     : await db.restaurantSettings.create({ data: { id: nid(), ...data } })
+  // 33-c (audit §6): spremembe nastavitev so zdaj revidirane — SAMO ključi (NI vrednosti,
+  // ker so med njimi poslovni podatki; pin/skrivnosti v Editable sploh niso)
+  const changedKeys = Object.keys(data)
+  if (changedKeys.length > 0) {
+    const __aId = nid(); const __chain = await auditChainFields(db, {
+      id: __aId,
+      action: 'SETTINGS_UPDATE',
+      entityType: 'RestaurantSettings',
+      entityId: settings.id,
+      details: jstr({ changed: changedKeys }),
+      locationId: user.loc,
+    })
+    await db.auditLog.create({
+      data: {
+        ...__chain,
+        id: __aId,
+        userId: user.sub,
+        action: 'SETTINGS_UPDATE',
+        entityType: 'RestaurantSettings',
+        entityId: settings.id,
+        details: jstr({ changed: changedKeys }),
+        locationId: user.loc,
+      },
+    })
+  }
   return ok({ settings })
 }

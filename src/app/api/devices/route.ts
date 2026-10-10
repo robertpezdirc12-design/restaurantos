@@ -5,6 +5,7 @@ import { requireAuth, isResponse, ok, fail, requirePermission, requireUserLocati
 import { nid } from '@/lib/map'
 import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { clientIp } from '@/lib/guest'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /** Issue #4 §2.1: device token se ne vrača v polni obliki — samo masked prikaz. */
 function maskDeviceToken(token: string): string {
@@ -79,9 +80,10 @@ export async function POST(req: NextRequest) {
       lastSeenAt: new Date(),
     },
   })
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DEVICE_CREATED', entityType: 'DeviceRegistry', entityId: row.id, details: `name=${name} type=${type} location=${location.id}`, locationId: location.id, id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'DEVICE_CREATED',
       entityType: 'DeviceRegistry',

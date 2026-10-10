@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { maskPhone } from '@/lib/pii'
+import { auditChainFields } from '@/lib/audit-chain'
 
 const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : points >= 500 ? 'gold' : points >= 100 ? 'silver' : 'bronze')
 
@@ -95,8 +96,9 @@ export async function PATCH(req: NextRequest) {
       reason: String(body?.reason || (delta > 0 ? 'Prihod točk' : 'Obračun točk')).slice(0, 200),
     },
   })
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'LOYALTY_POINTS', entityType: 'LoyaltyAccount', entityId: id, details: jstr({ guest: account.customerName, delta, newBalance }), id: __aId2 })
   await db.auditLog.create({
-    data: { id: nid(), userId: user.sub, action: 'LOYALTY_POINTS', entityType: 'LoyaltyAccount', entityId: id, details: jstr({ guest: account.customerName, delta, newBalance }) },
+    data: { ...__chain2, id: __aId2, userId: user.sub, action: 'LOYALTY_POINTS', entityType: 'LoyaltyAccount', entityId: id, details: jstr({ guest: account.customerName, delta, newBalance }) },
   })
   return ok({ account: { id: updated.id, guestName: updated.customerName, points: updated.pointsBalance, tier: updated.tier } })
 }

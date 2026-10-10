@@ -9,6 +9,7 @@ import { ok, fail, requirePermission, isResponse, locationScope, assertResourceL
 import { db } from '@/lib/db'
 import { nid, jstr, mapOrder, mapDeliveryInfo, mapDeliveryZone, ORDER_ACTIVE_DB, DELIVERY_STATUS_DB, deliveryStatusToDB } from '@/lib/map'
 import { maskPhone } from '@/lib/delivery'
+import { auditChainFields } from '@/lib/audit-chain'
 export const dynamic = 'force-dynamic'
 
 /** Dovoljene tranzicije dostave (naprej po toku; preklic kadarkoli pred dostavo). */
@@ -167,9 +168,10 @@ export async function PATCH(req: NextRequest) {
     return di
   })
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DELIVERY_STATUS_UPDATE', entityType: 'DeliveryInfo', entityId: t.id, details: jstr({ orderId: order.id, orderNumber: order.orderNumber, from: current, to: status, driver: body.driverName || undefined, driverPhone: body.driverPhone ? maskPhone(body.driverPhone) : undefined, }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'DELIVERY_STATUS_UPDATE',
       entityType: 'DeliveryInfo',

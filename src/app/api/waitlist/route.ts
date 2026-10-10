@@ -11,6 +11,7 @@ import {
   validateEntryInput,
   waitlistStats,
 } from '@/lib/waitlist'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Čakalna lista (GitLab issue #1, triage ⑤).
@@ -108,13 +109,16 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  // 33-c: chain polja (tamper-evidentna veriga)
+  const __aId1 = nid(); const __chain1 = await auditChainFields(db, { id: __aId1, action: 'WAITLIST_ADD', entityType: 'WaitlistEntry', entityId: row.id, details: jstr({ guestName: row.guestName, partySize: row.partySize, quotedWaitMinutes: row.quotedWaitMinutes, locationId }), locationId })
   await db.auditLog.create({
-    data: { id: nid(), userId: user.sub, action: 'WAITLIST_ADD', entityType: 'WaitlistEntry', entityId: row.id, details: jstr({ guestName: row.guestName, partySize: row.partySize, quotedWaitMinutes: row.quotedWaitMinutes, locationId }), locationId },
+    data: { ...__chain1, id: __aId1, userId: user.sub, action: 'WAITLIST_ADD', entityType: 'WaitlistEntry', entityId: row.id, details: jstr({ guestName: row.guestName, partySize: row.partySize, quotedWaitMinutes: row.quotedWaitMinutes, locationId }), locationId },
   })
   await publishEvent('ReservationCreated', {
     entityType: 'WaitlistEntry',
     entityId: row.id,
-    payload: { guestName: row.guestName, partySize: row.partySize, kind: 'waitlist', by: user.name },
+    // 33-c: locationId v payloadu (lokacijsko vidni dogodki)
+    payload: { guestName: row.guestName, partySize: row.partySize, kind: 'waitlist', by: user.name, locationId },
   }).catch(() => undefined)
 
   return ok({ entry: { id: row.id, guestName: row.guestName, status: row.status, checkedInAt: row.checkedInAt } }, 201)
@@ -151,8 +155,9 @@ export async function PATCH(req: NextRequest) {
     }
     if (Object.keys(data).length === 0) return fail('Ni podatkov za posodobitev.', 400)
     const updated = await db.waitlistEntry.update({ where: { id }, data })
+    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'WAITLIST_UPDATE', entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, ...data }), locationId: rec.locationId, id: __aId2 })
     await db.auditLog.create({
-      data: { id: nid(), userId: user.sub, action: 'WAITLIST_UPDATE', entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, ...data }), locationId: rec.locationId },
+      data: { ...__chain2, id: __aId2, userId: user.sub, action: 'WAITLIST_UPDATE', entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, ...data }), locationId: rec.locationId },
     })
     return ok({ entry: { id: updated.id, status: updated.status, quotedWaitMinutes: updated.quotedWaitMinutes } })
   }
@@ -200,9 +205,10 @@ export async function PATCH(req: NextRequest) {
     if (!updated) return fail('Miza je bila vmes zasedena — osveži in poskusi znova.', 409)
 
     const auditAction = to === 'seated' ? 'WAITLIST_SEAT' : to === 'left' ? 'WAITLIST_LEFT' : 'WAITLIST_NOTIFY'
+    const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: auditAction, entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, partySize: rec.partySize, status: to, tableId: data.tableId ?? null, actualWaitMinutes: data.actualWaitMinutes ?? null, }), locationId: rec.locationId, id: __aId4 })
     await db.auditLog.create({
-      data: {
-        id: nid(), userId: user.sub, action: auditAction, entityType: 'WaitlistEntry', entityId: id,
+      data: { ...__chain4,
+        id: __aId4, userId: user.sub, action: auditAction, entityType: 'WaitlistEntry', entityId: id,
         details: jstr({
           guestName: rec.guestName, partySize: rec.partySize, status: to,
           tableId: data.tableId ?? null, actualWaitMinutes: data.actualWaitMinutes ?? null,
@@ -242,8 +248,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   await db.waitlistEntry.delete({ where: { id } })
+  const __aId6 = nid(); const __chain6 = await auditChainFields(db, { action: 'WAITLIST_DELETE', entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, partySize: rec.partySize, status: rec.status }), locationId: rec.locationId, id: __aId6 })
   await db.auditLog.create({
-    data: { id: nid(), userId: user.sub, action: 'WAITLIST_DELETE', entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, partySize: rec.partySize, status: rec.status }), locationId: rec.locationId },
+    data: { ...__chain6, id: __aId6, userId: user.sub, action: 'WAITLIST_DELETE', entityType: 'WaitlistEntry', entityId: id, details: jstr({ guestName: rec.guestName, partySize: rec.partySize, status: rec.status }), locationId: rec.locationId },
   })
   return ok({ deleted: id })
 }

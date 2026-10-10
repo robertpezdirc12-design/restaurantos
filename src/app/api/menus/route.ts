@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, requireUserLocation, assertResourceLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
-import { mapMenuItem, mapCategory, nid, num, stationToUI } from '@/lib/map'
+import { mapMenuItem, mapCategory, nid, num, jstr, stationToUI } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -59,6 +60,27 @@ export async function POST(req: NextRequest) {
       vatRate: Number(body.taxRate ?? body.vatRate) || 22,
       isAvailable: body.available !== false,
       prepStationId,
+    },
+  })
+  // 33-c (audit §6): kreiranje artikla menija je zdaj revidirano (prej brez revizije)
+  const __aId = nid(); const __chain = await auditChainFields(db, {
+    id: __aId,
+    action: 'MENU_ITEM_CREATE',
+    entityType: 'MenuItem',
+    entityId: item.id,
+    details: jstr({ name: item.name, price: Number(item.price), vatRate: Number(item.vatRate), categoryId }),
+    locationId: cat.Menu?.locationId ?? locId,
+  })
+  await db.auditLog.create({
+    data: {
+      ...__chain,
+      id: __aId,
+      userId: user.sub,
+      action: 'MENU_ITEM_CREATE',
+      entityType: 'MenuItem',
+      entityId: item.id,
+      details: jstr({ name: item.name, price: Number(item.price), vatRate: Number(item.vatRate), categoryId }),
+      locationId: cat.Menu?.locationId ?? locId,
     },
   })
   return ok({ item: mapMenuItem(item) }, 201)

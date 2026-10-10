@@ -9,6 +9,7 @@ import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billi
 import { deductStockForOrderTx } from '@/lib/inventory'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 import { fiscalAdapterFor } from '@/lib/fiscal'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
@@ -478,9 +479,10 @@ export async function POST(req: NextRequest) {
       const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name)
 
       // Revizijski dnevnik kritične operacije (issue #1: audit)
+      const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVOICE_ISSUE', entityType: 'Receipt', entityId: created.id, details: jstr({ receiptNumber, orderId: orderPre.id, total, grossTotal: bill.grossTotal, discountTotal: bill.discountTotal, manualDiscount: bill.manualDiscount, autoDiscounts: bill.autoDiscounts, paymentMethod, parts: parts.map((p) => ({ type: p.type, amount: p.amount, giftCard: p.giftCardId && giftCards.get(p.giftCardId) ? maskCardNumber(giftCards.get(p.giftCardId)!.cardNumber) : undefined, })), loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null, simulation, terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null, stockDeduction: stock.deducted ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length } : null, }), locationId: location.id, id: __aId2 })
       await tx.auditLog.create({
-        data: {
-          id: nid(),
+        data: { ...__chain2,
+          id: __aId2,
           userId: user.sub,
           action: 'INVOICE_ISSUE',
           entityType: 'Receipt',
@@ -527,7 +529,8 @@ export async function POST(req: NextRequest) {
     await publishEvent('InvoiceCreated', {
       entityType: 'Receipt',
       entityId: receipt.twin.id,
-      payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation },
+      // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
+      payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation, locationId: orderPre.locationId },
     }).catch(() => undefined)
     // Adapter je čista fabrika — po transakciji ga znova pridobimo in QR gradimo iz
     // DB polj računa (resnica o shranjenem, ne o spremenljivkah iz tx obsega).

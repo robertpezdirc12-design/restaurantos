@@ -5,6 +5,9 @@
  * Javna gostujoča stran: brez prijave, mobilna, ENOTEN meni (isti DB kot POS).
  * Naročilo gre skozi ISTI kanonični pipeline (createOrderCore) → KDS/Bar → plačilo → račun.
  * Idempotencija: clientOperationId v sessionStorage — refresh NE ustvari dvojnika.
+ * i18n (33-b): dvojezičnost SL/HR prek GuestI18nProvider (isti slovar + isti
+ * localStorage ključ kot glavna aplikacija; preklop brez reload-a). Imena
+ * artikelov/kategorij ostanejo podatki iz baze (niso prevajana).
  */
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -14,6 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey } from '@/components/guest-i18n'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -24,7 +28,16 @@ interface CartLine { key: string; item: MenuItem; qty: number; note: string; mod
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 
 export default function GuestMenuPage({ params }: { params: Promise<{ token: string }> }) {
+  return (
+    <GuestI18nProvider>
+      <GuestMenuInner params={params} />
+    </GuestI18nProvider>
+  )
+}
+
+function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
+  const { t } = useGuestT()
   const [menu, setMenu] = useState<MenuPayload | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -53,6 +66,16 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
   const [fbDone, setFbDone] = useState(false)
   const [fbError, setFbError] = useState('')
 
+  // Status naročila, viden gostu — javni API vrne fiksne SL nize; preslikava v i18n ključe
+  const statusLabel = useCallback((raw: string) => {
+    const k = guestStatusKey(raw)
+    return k ? t(k) : raw
+  }, [t])
+
+  // Zadnji t v ref-u — loadMenu se NE znova sproži ob preklopu jezika (brez reload-a podatkov)
+  const tRef = useRef(t)
+  tRef.current = t
+
   const opIdRef = useRef<string>('')
   if (!opIdRef.current && typeof window !== 'undefined') {
     // Isti clientOperationId preživi refresh → idempotenten replay (brez dvojnika)
@@ -68,11 +91,11 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
     try {
       const res = await fetch(`/api/public/menu?qr=${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Meni ni na voljo.'); return }
+      if (!res.ok) { setError(data.error || tRef.current('guest.menu.unavailable')); return }
       setMenu(data)
       setActiveCat(data.categories?.[0]?.id || '')
     } catch {
-      setError('Povezava ni dosegljiva. Preveri internet in poskusi znova.')
+      setError(tRef.current('guest.error.unreachableRetry'))
     } finally {
       setLoading(false)
     }
@@ -178,7 +201,7 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Naročila ni bilo mogoče oddati.'); return }
+      if (!res.ok) { setError(data.error || t('guest.error.orderFailed')); return }
       setDone({ orderNumber: data.orderNumber, status: data.status, total: data.total })
       setCart([])
       setCartOpen(false)
@@ -186,7 +209,7 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
       opIdRef.current = ''
     } catch {
       // NE ustvari lažno uspešnega naročila (issue #8: jasna napaka)
-      setError('Povezava ni dosegljiva — naročilo NI oddano. Poskusi znova.')
+      setError(t('guest.error.orderNotSubmittedRetry'))
     } finally {
       setSubmitting(false)
     }
@@ -214,11 +237,11 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { setFbError(data.error || 'Mnenja ni bilo mogoče oddati.'); return }
+      if (!res.ok) { setFbError(data.error || t('guest.feedback.failed')); return }
       setFbDone(true)
       setFbOpen(false)
     } catch {
-      setFbError('Povezava ni dosegljiva — mnenje NI oddano. Poskusi znova.')
+      setFbError(t('guest.error.feedbackNotSubmitted'))
     } finally {
       setFbSending(false)
     }
@@ -229,7 +252,7 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
       <div className="min-h-screen flex items-center justify-center bg-stone-50">
         <div className="flex flex-col items-center gap-3 text-stone-500">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="text-sm">Nalagam meni …</span>
+          <span className="text-sm">{t('guest.menu.loading')}</span>
         </div>
       </div>
     )
@@ -238,10 +261,11 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
   if (error && !menu) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
+        <GuestLanguageToggle variant="light" className="fixed top-3 right-3 z-50" />
         <div className="max-w-sm w-full rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <WifiOff className="h-10 w-10 mx-auto text-stone-400" />
           <h1 className="mt-3 font-semibold text-stone-900">{error}</h1>
-          <Button className="mt-4 w-full" onClick={loadMenu}><RefreshCw className="mr-2 h-4 w-4" />Poskusi znova</Button>
+          <Button className="mt-4 w-full" onClick={loadMenu}><RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}</Button>
         </div>
       </div>
     )
@@ -251,15 +275,18 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
     <div className="min-h-screen bg-stone-50 pb-28">
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
-          <div>
-            <h1 className="font-bold text-stone-900 leading-tight">{menu?.restaurant}</h1>
+          <div className="min-w-0">
+            <h1 className="font-bold text-stone-900 leading-tight truncate">{menu?.restaurant}</h1>
             <p className="text-xs text-stone-500">
-              {menu?.tableNumber != null ? `Miza ${menu.tableNumber} · samopostrežno naročanje` : 'Samopostrežno naročanje'}
+              {menu?.tableNumber != null ? t('guest.menu.tableSelfOrder', { n: menu.tableNumber }) : t('guest.menu.selfOrder')}
             </p>
           </div>
-          {!online && (
-            <Badge variant="destructive" className="shrink-0"><WifiOff className="h-3 w-3 mr-1" />Brez povezave</Badge>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {!online && (
+              <Badge variant="destructive" className="shrink-0"><WifiOff className="h-3 w-3 mr-1" />{t('guest.common.offline')}</Badge>
+            )}
+            <GuestLanguageToggle variant="light" />
+          </div>
         </div>
       </header>
 
@@ -268,10 +295,10 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
           <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
             <div className="flex items-center gap-2 text-green-800">
               <CheckCircle2 className="h-5 w-5" />
-              <span className="font-semibold">Naročilo #številka: {done.orderNumber}</span>
+              <span className="font-semibold">{t('guest.menu.orderDone', { n: done.orderNumber })}</span>
             </div>
-            <p className="text-sm text-green-700 mt-1">Status: <b>{done.status}</b> · Znesek: <b>{fmt(done.total)}</b> — plačilo na blagajni.</p>
-            <Button variant="outline" size="sm" className="mt-2" onClick={() => setDone(null)}>Novo naročilo</Button>
+            <p className="text-sm text-green-700 mt-1">Status: <b>{statusLabel(done.status)}</b> · {t('guest.common.amount')}: <b>{fmt(done.total)}</b> {t('guest.common.payAtCashier')}</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => setDone(null)}>{t('guest.menu.newOrder')}</Button>
           </div>
         </div>
       )}
@@ -281,29 +308,29 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
         {fbDone ? (
           <div className="rounded-2xl border border-green-200 bg-green-50 p-4 flex items-center gap-2 text-green-800 text-sm font-medium">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
-            Hvala za mnenje — upoštevali ga bomo pri izboljšavah.
+            {t('guest.feedback.thanks')}
           </div>
         ) : (
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             {!fbOpen ? (
               <button type="button" className="w-full flex items-center justify-between text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
-                <span>Kako je bilo? Pustite nam mnenje</span>
+                <span>{t('guest.feedback.cta')}</span>
                 <Star className="h-4 w-4 text-amber-500" />
               </button>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-stone-800">Vaše mnenje</p>
+                <p className="text-sm font-semibold text-stone-800">{t('guest.feedback.title')}</p>
                 {([
-                  ['Skupaj', fbOverall, setFbOverall],
-                  ['Hrana', fbFood, setFbFood],
-                  ['Storitev', fbService, setFbService],
-                  ['Vzdušje', fbAtmos, setFbAtmos],
+                  [t('guest.feedback.overall'), fbOverall, setFbOverall],
+                  [t('guest.feedback.food'), fbFood, setFbFood],
+                  [t('guest.feedback.service'), fbService, setFbService],
+                  [t('guest.feedback.atmosphere'), fbAtmos, setFbAtmos],
                 ] as const).map(([label, val, set]) => (
                   <div key={label} className="flex items-center justify-between gap-3">
                     <span className="text-sm text-stone-600">{label}</span>
                     <span className="flex gap-1">
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <button key={n} type="button" aria-label={`${label}: ${n} od 5`} onClick={() => set(n)} className="p-0.5">
+                        <button key={n} type="button" aria-label={t('guest.feedback.starAria', { label, n })} onClick={() => set(n)} className="p-0.5">
                           <Star className={`h-5 w-5 ${n <= val ? 'fill-amber-400 text-amber-400' : 'text-stone-300'}`} />
                         </button>
                       ))}
@@ -313,18 +340,18 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
                 <textarea
                   value={fbComment}
                   onChange={(e) => setFbComment(e.target.value)}
-                  placeholder="Komentar (neobvezno)"
+                  placeholder={t('guest.feedback.commentPlaceholder')}
                   maxLength={1000}
                   rows={3}
                   className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
                 />
-                <Input value={fbName} onChange={(e) => setFbName(e.target.value)} placeholder="Ime (neobvezno)" maxLength={80} />
+                <Input value={fbName} onChange={(e) => setFbName(e.target.value)} placeholder={t('guest.common.nameOptional')} maxLength={80} />
                 {fbError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{fbError}</div>}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { setFbOpen(false); setFbError('') }}>Zapri</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => { setFbOpen(false); setFbError('') }}>{t('guest.common.close')}</Button>
                   <Button className="flex-1" onClick={submitFeedback} disabled={fbOverall < 1 || fbSending}>
                     {fbSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    {fbSending ? 'Pošiljam …' : 'Pošlji mnenje'}
+                    {fbSending ? t('guest.common.sending') : t('guest.feedback.submit')}
                   </Button>
                 </div>
               </div>
@@ -339,7 +366,7 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
         </div>
       )}
 
-      <nav className="sticky top-[57px] z-10 bg-stone-50 border-b border-stone-200">
+      <nav className="sticky top-[70px] z-10 bg-stone-50 border-b border-stone-200">
         <div className="max-w-lg mx-auto flex gap-2 overflow-x-auto px-4 py-2 no-scrollbar">
           {menu?.categories.map((c) => (
             <button
@@ -365,18 +392,18 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
               <div className="min-w-0">
                 <p className="font-semibold text-stone-900">{it.name}</p>
                 {it.description && <p className="text-sm text-stone-500 line-clamp-2 mt-0.5">{it.description}</p>}
-                {it.allergens && <p className="text-xs text-stone-400 mt-1">Alergeni: {it.allergens}</p>}
-                {!it.isAvailable && <p className="text-xs text-red-500 mt-1 font-medium">Trenutno ni na voljo</p>}
+                {it.allergens && <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergens', { allergens: it.allergens })}</p>}
+                {!it.isAvailable && <p className="text-xs text-red-500 mt-1 font-medium">{t('guest.common.unavailableNow')}</p>}
               </div>
               <span className="shrink-0 font-bold text-stone-900">{fmt(it.price)}</span>
             </div>
           </button>
         ))}
         {(itemsByCat.get(activeCat) || []).length === 0 && (
-          <p className="text-center text-stone-400 text-sm py-10">V tej kategoriji ni razpoložljivih artiklov.</p>
+          <p className="text-center text-stone-400 text-sm py-10">{t('guest.menu.emptyCategory')}</p>
         )}
         <p className="text-center text-[11px] text-stone-400 pt-4">
-          Cene vsebujejo DDV (razčlenjeno v košarici). Naročanje brez aplikacije in prijave.
+          {t('guest.menu.vatNote')}
         </p>
       </main>
 
@@ -387,12 +414,12 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
             <SheetTrigger asChild>
               <Button size="lg" className="w-full h-14 rounded-2xl text-base shadow-lg" disabled={cartCount === 0}>
                 <ShoppingCart className="mr-2 h-5 w-5" />
-                Košarica · {cartCount} {cartCount === 1 ? 'artikel' : 'artikli'} · {fmt(subtotal)}
+                {t('guest.cart.button')} · {cartCount} {cartCount === 1 ? t('guest.cart.itemOne') : t('guest.cart.itemMany')} · {fmt(subtotal)}
               </Button>
             </SheetTrigger>
             <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl p-0 flex flex-col">
               <SheetHeader className="px-4 pt-4 pb-2 border-b border-stone-100">
-                <SheetTitle>Tvoja košarica</SheetTitle>
+                <SheetTitle>{t('guest.cart.title')}</SheetTitle>
               </SheetHeader>
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                 {cart.map((l) => (
@@ -419,20 +446,20 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
                   </div>
                 ))}
                 <div className="rounded-xl bg-stone-100 p-3 text-sm space-y-1">
-                  <div className="flex justify-between"><span>Seznam brez DDV</span><span>{fmt(subtotal - vatTotal)}</span></div>
-                  <div className="flex justify-between"><span>DDV</span><span>{fmt(vatTotal)}</span></div>
-                  <div className="flex justify-between font-bold text-base pt-1 border-t border-stone-200"><span>Skupaj</span><span>{fmt(subtotal)}</span></div>
+                  <div className="flex justify-between"><span>{t('guest.cart.vatExcl')}</span><span>{fmt(subtotal - vatTotal)}</span></div>
+                  <div className="flex justify-between"><span>{t('guest.common.vat')}</span><span>{fmt(vatTotal)}</span></div>
+                  <div className="flex justify-between font-bold text-base pt-1 border-t border-stone-200"><span>{t('guest.common.total')}</span><span>{fmt(subtotal)}</span></div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-stone-500">Ime (neobvezno)</label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Za klic na ime" maxLength={80} />
+                  <label className="text-xs font-medium text-stone-500">{t('guest.common.nameOptional')}</label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('guest.cart.nameHint')} maxLength={80} />
                 </div>
                 {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{error}</div>}
               </div>
               <div className="p-4 border-t border-stone-100">
                 <Button size="lg" className="w-full h-14 rounded-2xl text-base" onClick={submitOrder} disabled={submitting || cart.length === 0}>
                   {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-                  {submitting ? 'Oddajam …' : `Oddaj naročilo · ${fmt(subtotal)}`}
+                  {submitting ? t('guest.common.submitting') : `${t('guest.cart.submit')} · ${fmt(subtotal)}`}
                 </Button>
               </div>
             </SheetContent>
@@ -453,7 +480,7 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
                 {detail.modifierGroups.map((g) => (
                   <div key={g.id}>
                     <p className="text-sm font-semibold mb-2">
-                      {g.name} {g.required ? <span className="text-red-500">*</span> : <span className="text-stone-400 font-normal">(neobvezno)</span>}
+                      {g.name} {g.required ? <span className="text-red-500">*</span> : <span className="text-stone-400 font-normal">({t('guest.common.optional')})</span>}
                     </p>
                     <div className="space-y-2">
                       {g.options.map((o) => (
@@ -465,22 +492,22 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
                             />
                             {o.name}
                           </span>
-                          <span className="text-sm text-stone-500">{o.price > 0 ? `+${fmt(o.price)}` : 'brez doplačila'}</span>
+                          <span className="text-sm text-stone-500">{o.price > 0 ? `+${fmt(o.price)}` : t('guest.common.noSurcharge')}</span>
                         </label>
                       ))}
                     </div>
                   </div>
                 ))}
                 <div>
-                  <label className="text-xs font-medium text-stone-500">Opomba kuhinji</label>
-                  <Input value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder="npr. brez čebule" maxLength={200} />
+                  <label className="text-xs font-medium text-stone-500">{t('guest.common.noteKitchen')}</label>
+                  <Input value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.menu.notePlaceholder')} maxLength={200} />
                 </div>
                 <div className="flex items-center gap-3">
                   <Button variant="outline" size="icon" onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-4 w-4" /></Button>
                   <span className="font-bold text-lg w-8 text-center">{detailQty}</span>
                   <Button variant="outline" size="icon" onClick={() => setDetailQty((q) => Math.min(30, q + 1))}><Plus className="h-4 w-4" /></Button>
                   <Button className="flex-1 ml-auto" onClick={addToCart}>
-                    Dodaj · {fmt(detailLineTotal())}
+                    {t('guest.common.add')} · {fmt(detailLineTotal())}
                   </Button>
                 </div>
               </div>

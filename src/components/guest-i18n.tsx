@@ -1,0 +1,190 @@
+'use client'
+
+/**
+ * Dvojezičnost SL/HR za GOSTUJOČE strani (audit §65/§193 — 33-b).
+ *
+ * Kiosk (/kiosk) in QR meni (/m/<token>) NE hodita skozi dashboard (in njegov
+ * I18nProvider), zato imata lahkoten samostojen provider — brez odvisnosti od
+ * prijave/auth, a z ISTO infrastrukturo:
+ *  - isti centralni slovar prek `t()` (src/lib/i18n/index.ts) — manjkajoč ključ
+ *    v HR → SL vrednost; manjka povsod → ključ + console.warn v dev;
+ *  - isti localStorage ključ (LOCALE_STORAGE_KEY = 'restaurantos.locale') —
+ *    izbira jezika je povezana z glavno aplikacijo (gost in osebje si delita
+ *    nastavitev na isti napravi; kiosk terminal si jo zapomni med ponovitvami);
+ *  - preklop BREZ reload-a (mikro-store + useSyncExternalStore, isti vzorec kot
+ *    src/components/i18n.tsx — SSR snapshot 'sl', po hidraciji shranjena vrednost).
+ *
+ * Izvoz: GuestI18nProvider, useGuestT(), GuestLanguageToggle (prenosljiv pill
+ * SL | HR — varianti 'light' (QR) in 'dark' (kiosk)), guestStatusKey() za
+ * prevod statusov naročil, ki jih javni API vrne kot fiksne SL nize.
+ */
+
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import {
+  DEFAULT_LOCALE,
+  LOCALE_STORAGE_KEY,
+  isLocale,
+  normalizeLocale,
+  t as coreT,
+  type Locale,
+} from '@/lib/i18n'
+
+// ── Mikro-store okoli localStorage (isti vzorec kot dashboard i18n) ──
+let currentLocale: Locale = DEFAULT_LOCALE
+let initialized = false
+const listeners = new Set<() => void>()
+
+function loadStoredLocale(): void {
+  if (initialized) return
+  initialized = true
+  try {
+    const saved = localStorage.getItem(LOCALE_STORAGE_KEY)
+    if (isLocale(saved)) { currentLocale = saved; return }
+    // prvi obisk: jezik brskalnika (sl/hr) — hrvaški gost dobi HR, privzeto sl
+    currentLocale = normalizeLocale(navigator.language)
+  } catch { /* zasebni način/shramba onemogočena — ostane 'sl' */ }
+}
+
+function subscribe(cb: () => void): () => void {
+  loadStoredLocale() // varno tudi ob pozni naročnini
+  listeners.add(cb)
+  return () => { listeners.delete(cb) }
+}
+
+function getClientSnapshot(): Locale {
+  loadStoredLocale()
+  return currentLocale
+}
+
+function getServerSnapshot(): Locale {
+  return DEFAULT_LOCALE
+}
+
+/** Preklopi jezik gostujočih strani (in glavne aplikacije — isti ključ shrambe). */
+export function setGuestLocale(l: Locale): void {
+  loadStoredLocale()
+  if (l === currentLocale) return
+  currentLocale = l
+  try { localStorage.setItem(LOCALE_STORAGE_KEY, l) } catch { /* ignoriraj */ }
+  listeners.forEach((cb) => cb())
+}
+
+/** Prevod z diagnostiko: manjkajoč ključ povsod → console.warn v dev (vidljivost). */
+function translate(locale: Locale, key: string, vars?: Record<string, string | number>): string {
+  const out = coreT(locale, key, vars)
+  if (process.env.NODE_ENV !== 'production' && out === key) {
+    console.warn(`[guest-i18n] Manjkajoči i18n ključ: "${key}" (ni niti v SL niti v HR slovarju)`)
+  }
+  return out
+}
+
+// ── Context ──
+interface GuestI18nValue {
+  locale: Locale
+  setLocale: (l: Locale) => void
+  t: (key: string, vars?: Record<string, string | number>) => string
+}
+
+const GuestI18nContext = createContext<GuestI18nValue | null>(null)
+
+export function GuestI18nProvider({ children }: { children: ReactNode }) {
+  const locale = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot)
+  const setLocale = useCallback((l: Locale) => setGuestLocale(l), [])
+  const value = useMemo<GuestI18nValue>(
+    () => ({ locale, setLocale, t: (key, vars) => translate(locale, key, vars) }),
+    [locale, setLocale],
+  )
+  return <GuestI18nContext.Provider value={value}>{children}</GuestI18nContext.Provider>
+}
+
+/**
+ * Jezik + prevajalna funkcija za gostujoče strani.
+ * Deluje tudi BREZ providerja (fallback na mikro-store) — provider je priporočen.
+ */
+export function useGuestT(): GuestI18nValue {
+  const ctx = useContext(GuestI18nContext)
+  const locale = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot)
+  return useMemo(
+    () => ctx ?? { locale, setLocale: setGuestLocale, t: (key, vars) => translate(locale, key, vars) },
+    [ctx, locale],
+  )
+}
+
+// ── SL | HR preklopnik (prenosljiv med kiosk in QR stranjo) ──
+
+/**
+ * Diskreten pill "SL | HR" — fiksiran zgornji desni kot po izbiri strani
+ * (kiosk: v glavi poleg zaklepa / na aktivaciji fiksiran; QR: v lepljivi glavi).
+ * - `variant="dark"` za kiosk (temna ozadja), `"light"` za QR stran (svetla ozadja)
+ * - aria-pressed + aria-label + tipkovnica dostopno (pravi <button> elementi)
+ * - dotik: vsak gumb ≥ 44 px (h-[44px] min-w-[44px])
+ */
+export function GuestLanguageToggle({
+  variant = 'light',
+  className = '',
+}: {
+  variant?: 'light' | 'dark'
+  className?: string
+}) {
+  const { locale, setLocale, t } = useGuestT()
+  const shell =
+    variant === 'dark'
+      ? 'border-stone-700 bg-stone-800/90 text-stone-300'
+      : 'border-stone-200 bg-white/95 text-stone-600'
+  const active =
+    variant === 'dark'
+      ? 'bg-white text-stone-900 shadow-sm'
+      : 'bg-stone-900 text-white shadow-sm'
+  return (
+    <div
+      className={`inline-flex shrink-0 items-center rounded-full border p-0.5 text-xs font-semibold ${shell} ${className}`}
+      role="group"
+      aria-label={t('guest.lang.aria')}
+    >
+      {(['sl', 'hr'] as Locale[]).map((l) => (
+        <button
+          key={l}
+          type="button"
+          aria-pressed={locale === l}
+          aria-label={t(`guest.lang.${l}`)}
+          onClick={() => setLocale(l)}
+          className={`h-[44px] min-w-[44px] rounded-full px-2.5 transition ${locale === l ? active : 'hover:opacity-80'}`}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Statusi naročil za gosta ──
+
+/**
+ * Javni API (GET /api/public/orders/status) vrne status kot fiksni SL niz iz
+ * GUEST_VISIBLE_ORDER_STATUS (src/lib/guest.ts) — npr. 'v pripravi', 'plačano'.
+ * Preslikava v i18n ključe; kot varnostni rezervi sprejmemo tudi surove
+ * enum vrednosti (open/in_progress/…), če API kdaj vrne tiste.
+ * Nepoznan status → null (stran prikaže surovi niz — nikoli ne strmoglavi).
+ */
+const GUEST_STATUS_KEY_MAP: Record<string, string> = {
+  // strežniški SL nizi (GUEST_VISIBLE_ORDER_STATUS)
+  prejeto: 'guest.status.received',
+  'v pripravi': 'guest.status.preparing',
+  pripravljeno: 'guest.status.ready',
+  postreženo: 'guest.status.served',
+  plačano: 'guest.status.paid',
+  preklicano: 'guest.status.cancelled',
+  // surovi enum vrednosti (rezerva, če API vrne namesto njih)
+  open: 'guest.status.received',
+  in_progress: 'guest.status.preparing',
+  ready: 'guest.status.ready',
+  served: 'guest.status.served',
+  paid: 'guest.status.paid',
+  cancelled: 'guest.status.cancelled',
+}
+
+export function guestStatusKey(status: string): string | null {
+  return GUEST_STATUS_KEY_MAP[(status || '').trim().toLowerCase()] ?? null
+}
+
+export type { GuestI18nValue }

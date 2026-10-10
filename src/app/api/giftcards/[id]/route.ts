@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num } from '@/lib/map'
 import { effectiveCardStatus } from '@/lib/giftcards'
+import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * Issue #1 (triage ③) — detalj + urejanje darilne kartice.
@@ -125,9 +126,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const updated = await db.giftCard.update({ where: { id }, data })
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'GIFT_CARD_UPDATE', entityType: 'GiftCard', entityId: id, details: JSON.stringify({ cardNumber: card.cardNumber, changes, note: String(body?.note ?? '').slice(0, 200) }), locationId: card.locationId, id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'GIFT_CARD_UPDATE',
       entityType: 'GiftCard',

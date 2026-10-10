@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, assertResourceLocation, isCentralRole, isResponse, ok } from '@/lib/api'
 import { nid, num, jstr } from '@/lib/map'
+import { auditChainFields } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'inventory.manage')
@@ -101,9 +102,10 @@ export async function POST(req: NextRequest) {
     for (const r of rows) await tx.recipeItem.create({ data: r })
   })
 
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'RECIPE_SAVED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lines: rows.map((r) => ({ item: invItems.find((i) => i.id === r.inventoryItemId)?.name, qty: r.quantityPerServing, unit: r.unit })) }), id: __aId2 })
   await db.auditLog.create({
-    data: {
-      id: nid(),
+    data: { ...__chain2,
+      id: __aId2,
       userId: user.sub,
       action: 'RECIPE_SAVED',
       entityType: 'MenuItem',
@@ -133,8 +135,9 @@ export async function DELETE(req: NextRequest) {
   }
   const del = await db.recipeItem.deleteMany({ where: { menuItemId } })
   if (del.count > 0) {
+    const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'RECIPE_DELETED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem?.name || menuItemId, removed: del.count }), id: __aId4 })
     await db.auditLog.create({
-      data: { id: nid(), userId: user.sub, action: 'RECIPE_DELETED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem?.name || menuItemId, removed: del.count }) },
+      data: { ...__chain4, id: __aId4, userId: user.sub, action: 'RECIPE_DELETED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem?.name || menuItemId, removed: del.count }) },
     })
   }
   return ok({ deleted: del.count })

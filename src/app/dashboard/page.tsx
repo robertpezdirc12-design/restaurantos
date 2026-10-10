@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
+import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/api'
 import { tabHasPerm } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
@@ -36,6 +37,9 @@ import {
   Timer,
   CalendarClock,
   Power,
+  ArrowRightLeft,
+  GitMerge,
+  Flame,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -71,8 +75,8 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null }
-interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[] }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean }
+interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
@@ -160,6 +164,12 @@ function DashboardInner() {
   /** Natisljivi račun (FURS) — busy indikator za gumb Natisni */
   const [printing, setPrinting] = useState(false)
   const [stornoing, setStornoing] = useState<string | null>(null)
+  // ==== 33-a: selitev/združevanje/fire (P2 audit §54/§57) ====
+  const [mmvBusy, setMmvBusy] = useState(false)
+  const [moveOrder, setMoveOrder] = useState<OrderT | null>(null)
+  const [moveTableId, setMoveTableId] = useState('')
+  const [mergeOrder, setMergeOrder] = useState<OrderT | null>(null)
+  const [mergeTargetId, setMergeTargetId] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState('pregled')
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -671,6 +681,57 @@ function DashboardInner() {
   /** Ali je ta original že storniran (storno račun je med izdanimi)? — skrije Storno akcijo */
   const isStorned = (id: string) => receipts.some((x) => x.stornoOf === id)
 
+  /* ── 33-a: fire / move / merge (P2 audit §54/§57) ── */
+  /** UI odprto naročilo: status != PAID/CANCELLED in ni plačano (paymentStatus iz mapOrder) */
+  const isOrderOpenUi = (o: OrderT) => o.status !== 'PAID' && o.status !== 'CANCELLED' && (o.paymentStatus ?? 'unpaid') !== 'paid'
+  /** Proste mize iste lokacije (za selitev) — obstoječi `tables` state (statusi UI oblike) */
+  const freeTablesFor = (o: OrderT | null) => o
+    ? tables.filter((tb) => tb.status === 'FREE' && tb.id !== o.tableId && (!o.locationId || !tb.locationId || tb.locationId === o.locationId))
+    : []
+  /** Druga odprta naročila iste lokacije (za združevanje) */
+  const mergeTargetsFor = (o: OrderT) => orders.filter((x) =>
+    x.id !== o.id && isOrderOpenUi(x) && (!o.locationId || !x.locationId || x.locationId === o.locationId))
+
+  /** Fire: pošlje vse pending postavke na kuhinjo (Order.firedAt + OrderItem.status='fired') */
+  async function fireOrder(o: OrderT) {
+    setMmvBusy(true)
+    try {
+      const d = await api<{ firedCount: number }>(`/api/orders/${o.id}/fire`, { method: 'POST' })
+      await load()
+      toast({ title: t('mmv.fireDone', { n: d.firedCount }) })
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    } finally { setMmvBusy(false) }
+  }
+
+  /** Move: selitev naročila na izbrano prosto mizo (stara miza se sprosti) */
+  async function moveOrderToTable() {
+    if (!moveOrder || !moveTableId) return
+    setMmvBusy(true)
+    try {
+      await api(`/api/orders/${moveOrder.id}/move`, { method: 'POST', body: JSON.stringify({ tableId: moveTableId }) })
+      setMoveOrder(null); setMoveTableId('')
+      await load()
+      toast({ title: t('mmv.moveDone') })
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    } finally { setMmvBusy(false) }
+  }
+
+  /** Merge: postavke tega naročila (vira) se prenesejo na izbrano ciljno naročilo, vir se prekliče */
+  async function mergeOrderInto() {
+    if (!mergeOrder || !mergeTargetId) return
+    setMmvBusy(true)
+    try {
+      const d = await api<{ mergedItems: number }>(`/api/orders/${mergeOrder.id}/merge`, { method: 'POST', body: JSON.stringify({ targetOrderId: mergeTargetId }) })
+      setMergeOrder(null); setMergeTargetId('')
+      await load()
+      toast({ title: t('mmv.mergeDone', { n: d.mergedItems }) })
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    } finally { setMmvBusy(false) }
+  }
+
   /** Miza za pospravit → znova na voljo (issue #1: e2e zaključek) */
   async function markClean(t: TableT) {
     try {
@@ -1099,12 +1160,86 @@ function DashboardInner() {
                         </Button>
                       )}
                     </div>
+                    {/* 33-a: fire / move / merge — samo za odprta, neplačana naročila (backend uveljavlja orders.create) */}
+                    {hasPerm('orders.create') && isOrderOpenUi(o) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {o.items.some((it) => it.status === 'PENDING' && !it.voided) && (
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                            disabled={mmvBusy} onClick={() => void fireOrder(o)} title={t('mmv.fire')}>
+                            <Flame className="w-3 h-3" /> {t('mmv.fire')}
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" disabled={mmvBusy}
+                          onClick={() => { setMoveTableId(''); setMoveOrder(o) }} title={t('mmv.move')}>
+                          <ArrowRightLeft className="w-3 h-3" /> {t('mmv.move')}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                          disabled={mmvBusy || mergeTargetsFor(o).length === 0}
+                          onClick={() => { setMergeTargetId(''); setMergeOrder(o) }} title={t('mmv.merge')}>
+                          <GitMerge className="w-3 h-3" /> {t('mmv.merge')}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* 33-a: selitev naročila na drugo mizo (P2 audit §54) */}
+          <Dialog open={!!moveOrder} onOpenChange={(op) => { if (!op) { setMoveOrder(null); setMoveTableId('') } }}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5"><ArrowRightLeft className="w-4 h-4" /> {t('mmv.moveTitle')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p className="text-stone-500">{t('mmv.moveHint', { name: moveOrder?.table?.name || moveOrder?.type || '' })}</p>
+                <Select value={moveTableId} onValueChange={setMoveTableId}>
+                  <SelectTrigger aria-label={t('mmv.targetPlaceholder')}><SelectValue placeholder={t('mmv.targetPlaceholder')} /></SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {freeTablesFor(moveOrder).map((tb) => (
+                      <SelectItem key={tb.id} value={tb.id}>{tb.name} · {t('tables.seats', { n: tb.seats })}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {moveOrder && freeTablesFor(moveOrder).length === 0 && <p className="text-xs text-stone-400">{t('mmv.noFreeTables')}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setMoveOrder(null); setMoveTableId('') }}>{t('common.cancel')}</Button>
+                <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mmvBusy || !moveTableId} onClick={() => void moveOrderToTable()}>
+                  {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mmv.moveConfirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* 33-a: združevanje naročil (P2 audit §54) — vir (ta kartica) se prenese na izbrano ciljno naročilo */}
+          <Dialog open={!!mergeOrder} onOpenChange={(op) => { if (!op) { setMergeOrder(null); setMergeTargetId('') } }}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5"><GitMerge className="w-4 h-4" /> {t('mmv.mergeTitle')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p className="text-stone-500">{t('mmv.mergeHint')}</p>
+                <Select value={mergeTargetId} onValueChange={setMergeTargetId}>
+                  <SelectTrigger aria-label={t('mmv.mergePlaceholder')}><SelectValue placeholder={t('mmv.mergePlaceholder')} /></SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {mergeOrder && mergeTargetsFor(mergeOrder).map((x) => (
+                      <SelectItem key={x.id} value={x.id}>{x.table?.name || x.type} · {fmtEUR(x.total)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {mergeOrder && mergeTargetsFor(mergeOrder).length === 0 && <p className="text-xs text-stone-400">{t('mmv.noOtherOrders')}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setMergeOrder(null); setMergeTargetId('') }}>{t('common.cancel')}</Button>
+                <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mmvBusy || !mergeTargetId} onClick={() => void mergeOrderInto()}>
+                  {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mmv.mergeConfirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <TabsContent value="kuhinja" className="space-y-4">
             {viewKitchen.map((o) => (

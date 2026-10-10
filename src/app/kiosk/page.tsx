@@ -6,6 +6,8 @@
  * Tok: meni (ENOTEN vir) → artikel + opcije → košarica → naročilo → številka → samodejni reset.
  * Timeout/reset: po oddaji 45 s ali 90 s nedejavnosti v košarici — prejšnji gost ni ostane prijavljen.
  * Naročilo gre skozi ISTI createOrderCore pipeline → KDS.
+ * i18n (33-b): dvojezičnost SL/HR prek GuestI18nProvider (isti slovar + isti
+ * localStorage ključ kot glavna aplikacija; preklop brez reload-a).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -13,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, Plus, Minus, Monitor, CheckCircle2, Lock } from 'lucide-react'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/guest-i18n'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -24,6 +27,15 @@ const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 const IDLE_RESET_SEC = 45
 
 export default function KioskPage() {
+  return (
+    <GuestI18nProvider>
+      <KioskInner />
+    </GuestI18nProvider>
+  )
+}
+
+function KioskInner() {
+  const { t } = useGuestT()
   const [token, setToken] = useState('')
   const [tokenInput, setTokenInput] = useState('')
   const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[] } | null>(null)
@@ -69,48 +81,48 @@ export default function KioskPage() {
     return () => clearInterval(iv)
   }, [done, resetAll])
 
-  async function loadMenu(t: string) {
+  async function loadMenu(tok: string) {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/public/menu', { headers: { 'X-Device-Token': t }, cache: 'no-store' })
+      const res = await fetch('/api/public/menu', { headers: { 'X-Device-Token': tok }, cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Kiosk ni aktiviran.'); return }
+      if (!res.ok) { setError(data.error || t('guest.kiosk.notActivated')); return }
       setMenu(data)
       setActiveCat(data.categories?.[0]?.id || '')
     } catch {
-      setError('Povezava ni dosegljiva.')
+      setError(t('guest.error.unreachable'))
     } finally {
       setLoading(false)
     }
   }
 
   async function activate() {
-    const t = tokenInput.trim()
+    const val = tokenInput.trim()
     setError('')
     // Issue #4 §2.2: aktivacija z ENKRATNO vpisno kodo (8 števk) ALI neposredno z rodev_ tokenom
-    if (/^\d{8}$/.test(t)) {
+    if (/^\d{8}$/.test(val)) {
       setLoading(true)
       try {
         const res = await fetch('/api/devices/enroll', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: t }),
+          body: JSON.stringify({ code: val }),
         })
         const data = await res.json()
-        if (!res.ok || !data.device?.token) { setError(data.error || 'Aktivacija ni uspela.'); return }
+        if (!res.ok || !data.device?.token) { setError(data.error || t('guest.kiosk.activationFailed')); return }
         localStorage.setItem(TOKEN_KEY, data.device.token)
         setToken(data.device.token)
         await loadMenu(data.device.token)
       } catch {
-        setError('Povezava ni dosegljiva.')
+        setError(t('guest.error.unreachable'))
       } finally { setLoading(false) }
       return
     }
-    if (t.length < 10) { setError('Vnesi vpisno kodo (8 števk) ali veljaven token naprave (rodev_…).'); return }
-    localStorage.setItem(TOKEN_KEY, t)
-    setToken(t)
-    loadMenu(t)
+    if (val.length < 10) { setError(t('guest.kiosk.tokenHint')); return }
+    localStorage.setItem(TOKEN_KEY, val)
+    setToken(val)
+    loadMenu(val)
   }
 
   function openDetail(it: MenuItem) {
@@ -170,11 +182,11 @@ export default function KioskPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Naročila ni bilo mogoče oddati.'); return }
+      if (!res.ok) { setError(data.error || t('guest.error.orderFailed')); return }
       setDone({ orderNumber: data.orderNumber, total: data.total })
       setCart([])
     } catch {
-      setError('Povezava ni dosegljiva — naročilo NI oddano.')
+      setError(t('guest.error.orderNotSubmitted'))
     } finally {
       setSubmitting(false)
     }
@@ -184,24 +196,25 @@ export default function KioskPage() {
   if (!token || (!menu && !loading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-900 p-6">
+        <GuestLanguageToggle variant="dark" className="fixed top-3 right-3 z-50" />
         <div className="w-full max-w-md rounded-3xl bg-stone-800 border border-stone-700 p-8 text-stone-100">
           <div className="flex items-center gap-3 mb-4">
             <Monitor className="h-8 w-8" />
-            <h1 className="text-2xl font-bold">Kiosk aktivacija</h1>
+            <h1 className="text-2xl font-bold">{t('guest.kiosk.title')}</h1>
           </div>
           <p className="text-sm text-stone-400 mb-4">
-            Vnesi ENKRATNO vpisno kodo (Nastavitve → Naprave → Vpisna koda) ali token kiosk naprave.
+            {t('guest.kiosk.instructions')}
           </p>
           <Input
             className="bg-stone-900 border-stone-600 text-stone-100 h-12"
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
-            placeholder="12345678 ali rodev_…"
+            placeholder={t('guest.kiosk.tokenPlaceholder')}
           />
           {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
           <Button className="w-full mt-4 h-12 text-base" onClick={activate} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
-            Aktiviraj kiosk
+            {t('guest.kiosk.activate')}
           </Button>
         </div>
       </div>
@@ -214,28 +227,31 @@ export default function KioskPage() {
 
   return (
     <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col">
-      <header className="px-6 py-4 border-b border-stone-800 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{menu?.restaurant}</h1>
-          <p className="text-sm text-stone-400">Samopostrežni kiosk — izberi artikle in oddaj naročilo</p>
+      <header className="px-6 py-4 border-b border-stone-800 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold truncate">{menu?.restaurant}</h1>
+          <p className="text-sm text-stone-400">{t('guest.kiosk.subtitle')}</p>
         </div>
-        <button
-          title="Zakleni/ponastavi kiosk (zahteva dolg pritisk)"
-          className="text-stone-600 hover:text-stone-400"
-          onDoubleClick={() => { localStorage.removeItem(TOKEN_KEY); resetAll(); setToken('') }}
-        >
-          <Lock className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <GuestLanguageToggle variant="dark" />
+          <button
+            title={t('guest.kiosk.lockTitle')}
+            className="text-stone-600 hover:text-stone-400"
+            onDoubleClick={() => { localStorage.removeItem(TOKEN_KEY); resetAll(); setToken('') }}
+          >
+            <Lock className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       {done && (
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
           <CheckCircle2 className="h-24 w-24 text-green-500" />
-          <h2 className="mt-6 text-4xl font-bold">Hvala!</h2>
-          <p className="mt-2 text-2xl text-stone-300">Tvoja številka naročila:</p>
+          <h2 className="mt-6 text-4xl font-bold">{t('guest.common.thanks')}</h2>
+          <p className="mt-2 text-2xl text-stone-300">{t('guest.kiosk.yourNumber')}</p>
           <p className="mt-4 text-7xl font-extrabold tracking-tight text-white">#{done.orderNumber}</p>
-          <p className="mt-4 text-xl text-stone-400">Znesek: <b className="text-white">{fmt(done.total)}</b> · plačilo na blagajni</p>
-          <p className="mt-8 text-sm text-stone-500">Kiosk se samodejno ponastavi …</p>
+          <p className="mt-4 text-xl text-stone-400">{t('guest.common.amount')}: <b className="text-white">{fmt(done.total)}</b> {t('guest.common.payAtCashier')}</p>
+          <p className="mt-8 text-sm text-stone-500">{t('guest.kiosk.autoReset')}</p>
         </div>
       )}
 
@@ -265,7 +281,7 @@ export default function KioskPage() {
                   <p className="text-xl font-semibold leading-snug">{it.name}</p>
                   {it.description && <p className="text-sm text-stone-400 mt-1 line-clamp-2">{it.description}</p>}
                   <p className="mt-3 text-2xl font-bold">{fmt(it.price)}</p>
-                  {!it.isAvailable && <p className="text-sm text-red-400 mt-1">Ni na voljo</p>}
+                  {!it.isAvailable && <p className="text-sm text-red-400 mt-1">{t('guest.common.unavailable')}</p>}
                 </button>
               ))}
             </div>
@@ -274,7 +290,7 @@ export default function KioskPage() {
           <footer className="border-t border-stone-800 p-4">
             <div className="max-w-6xl mx-auto flex items-center gap-4">
               <div className="flex-1 min-h-[56px] flex items-center gap-3 overflow-x-auto no-scrollbar">
-                {cart.length === 0 && <span className="text-stone-500">Košarica je prazna — tapni artikel za začetek.</span>}
+                {cart.length === 0 && <span className="text-stone-500">{t('guest.kiosk.cartEmpty')}</span>}
                 {cart.map((l) => (
                   <div key={l.key} className="shrink-0 rounded-xl bg-stone-800 border border-stone-700 px-3 py-2 flex items-center gap-2">
                     <span className="font-medium">{l.qty}× {l.item.name}</span>
@@ -286,7 +302,7 @@ export default function KioskPage() {
               </div>
               <Button size="lg" className="h-16 px-10 text-xl rounded-2xl" onClick={submit} disabled={submitting || cart.length === 0}>
                 {submitting ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : null}
-                Oddaj · {fmt(total)}
+                {t('guest.kiosk.submit')} · {fmt(total)}
               </Button>
             </div>
             {error && <p className="max-w-6xl mx-auto mt-2 text-red-400">{error}</p>}
@@ -302,7 +318,7 @@ export default function KioskPage() {
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (
                   <div key={g.id}>
-                    <p className="font-semibold mb-2">{g.name} {g.required ? <span className="text-red-400">*</span> : <span className="text-stone-400 font-normal text-sm">(neobvezno)</span>}</p>
+                    <p className="font-semibold mb-2">{g.name} {g.required ? <span className="text-red-400">*</span> : <span className="text-stone-400 font-normal text-sm">({t('guest.common.optional')})</span>}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {g.options.map((o) => (
                         <label key={o.id} className="flex items-center justify-between rounded-xl border border-stone-600 px-3 py-2.5 cursor-pointer has-[:checked]:border-white">
@@ -317,8 +333,8 @@ export default function KioskPage() {
                   </div>
                 ))}
                 <div>
-                  <p className="text-sm font-medium text-stone-400 mb-1">Opomba</p>
-                  <Input className="bg-stone-900 border-stone-600 text-stone-100" value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder="npr. brez ledenika" maxLength={200} />
+                  <p className="text-sm font-medium text-stone-400 mb-1">{t('guest.common.note')}</p>
+                  <Input className="bg-stone-900 border-stone-600 text-stone-100" value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.kiosk.notePlaceholder')} maxLength={200} />
                 </div>
                 <div className="flex items-center gap-3">
                   <Button variant="outline" size="icon" className="h-12 w-12" onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-5 w-5" /></Button>
@@ -328,7 +344,7 @@ export default function KioskPage() {
                     className="flex-1 ml-auto h-12 text-lg"
                     onClick={addToCart}
                   >
-                    Dodaj · {fmt(detailLineTotal())}
+                    {t('guest.common.add')} · {fmt(detailLineTotal())}
                   </Button>
                 </div>
               </div>
