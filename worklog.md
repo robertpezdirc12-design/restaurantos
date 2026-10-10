@@ -744,3 +744,22 @@ Stage Summary:
 - 3 Vercel tokeni umrli/enako podpis → 4. token deluje (team scope) — CI deploy veriga spet 100 % operativna
 - produkcija de68b75 / v1.47.0: Task 40 (R-pot testi + health verzija) + Task 41 (R12 race fix + deploy commit + čiščenje)
 - health endpoint zdaj vedno pokaže točen deployan commit (Git IN CLI deploji) — polna sledljivost produkcije
+
+---
+Task ID: 42-main
+Agent: main (Z.ai Code)
+Task: "Opravi vse korake" — Phase 1: avtomatizacija uporabniških korakov (Git integration poskus prek API) + Phase 2: sistematski audit latentnih razredov bugov iz Task 41 (unique+default("") kolizije, findFirst→create race) + popravki + 3 testi, v1.48.0
+
+Work Log:
+- Phase 1 — poskus samodejne Git integration: GET /v9/projects/{id}/link → not_found; POST /v10/.../link → repo_not_found = Vercel GitHub App NI nameščen (namestitev zahteva GitHub web-flow z uporabniško prijavo — programatsko ni mogoče z PAT). Email verification: iz tokena ne preverljivo (team-scoped oblika). ZAKLJUČEK: 3 koraki ostajo fizično uporabniški (GitHub App install, GoDaddy DNS, FURS/FINA certifikata — kvalificirana certifikata zahtevata identifikacijo osebe).
+- Phase 2a — audit @unique+@default("") (obe shemi): 3 zadetki → Employee.pin @unique @default("") (vsi create poti vedno nastavijo non-empty pin → varno), Location.premisesId @unique @default("") (REALNI BUG: 2. lokacija brez FURS oznake = P2002; multi-lokacija = osnovni use case!), Supplier.code (Task 41 že pokrit; UI route generira SUP-xxxx → varno).
+- Phase 2b — audit findFirst→create race: edini resnični je bil expenses (Task 41 popravljen); ostali zadetki so location.findFirst() fallback za locationId (read-only, benigni).
+- popravek locations POST: catch P2002 z meta.target razlikovanjem → premisesId kolizija: akcijski 409 ("...vnesite FURS oznako poslovnega prostora"), koda kolizija: 409 z jasnim sporočilom — pokrije tudi race okna med taken()/dupPremises() in create() (prej: generično/zavajajoče sporočilo).
+- popravek employees POST: race okno findUnique(email)→create → P2002 → 409 'že obstaja' (prej 500 na izgubljeno dirko).
+- testi tests/unique-collision.test.ts (3, DB-backed, fiksature uc-): U1 2 vzporedna POST istega emaila → TOČNO [201,409] + 1 vrstica; U2 lokacija brez premisesId (fiksatura zaseda prazno oznako) → 409 akcijsko; U3 lokacija z unikatno kodo+FURS oznako → 201 (multi-lokacija deluje). LEKCIJA: fiksatura lokacija sama zaseda premisesId="" → '1. lokacija uspe' scenarij netestabilen brez nullable migracije (P2 priporočilo v audit).
+- verifikacija: tsc 0 · lint 0 · 585/585 (+3) · CI 38081634520 (a921510) SUCCESS · produkcija 19:57: v1.48.0 @ a921510, database connected · token vcp_7ByD… še živ (33 min — preživel vzorec ~30 min; možno, da je email zdaj verificiran)
+
+Stage Summary:
+- vse tri unique+default("") kolizije zdaj pokrite (Supplier=Task 41, Location+Employee=Task 42); edini preostali temeljni fix = premisesId nullable migracija (P2, zahteva prod migracijski korak)
+- Git integration/dns/certifikati: potrjeno fizikalno uporabniški koraki — navodila v audit §13
+- produkcija a921510 / v1.48.0: 585 testov, health s pravim commitom, polna sledljivost
