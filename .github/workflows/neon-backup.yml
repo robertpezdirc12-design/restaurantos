@@ -90,7 +90,9 @@ jobs:
           echo "dump: $DUMP ($(stat -c%s "$DUMP") bytes)"
 
           # validacija: struktura (117 tabel) + podatkovne sekcije
-          TABLES=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c 'CREATE TABLE' || true )
+          # (custom format TOC vnosi: '215; 1259 16421 TABLE "X" owner' /
+          #  '216; 1259 16421 TABLE DATA "X" owner' — brez CREATE TABLE besedila!)
+          TABLES=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c ' TABLE "' || true )
           DATAITEMS=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c 'TABLE DATA' || true )
           echo "validacija: $TABLES tabel, $DATAITEMS podatkovnih sekcij"
           if [ "$TABLES" -lt 100 ] || [ "$DATAITEMS" -lt 1 ]; then
