@@ -424,3 +424,18 @@ Stage Summary:
 - BOOTSTRAP ADMIN FAST-PATH ZAPRT: vseh 3 gate-i (requireAuth/requirePermission/requireCentralRole) zdaj enotno spustijo break-glass žeton; 530 testov; dokumentacija usklajena
 - §13 iz audita je zdaj 100 % zaprt tudi za reziduale — ostajajo SAMO človeške blokade: FURS certifikat (+ HR Fiskalizacija 2.0), Neon DATABASE_URL v GH secrets (CI smoke), GitLab CI runner minutes, DNS restaurantos.app
 - deployment veriga: glej naslednji commit/push vnos
+
+---
+Task ID: 34-main (produkcijska verifikacija — dodatek)
+Agent: main (Z.ai Code)
+Task: Potrditev verige po pushu 5f866d2 (Task 34)
+
+Work Log:
+- push origin (GitLab) 90083b4..5f866d2 OK (403 Cloudflare okno minilo); direkten push github 90083b4..5f866d2 OK
+- oba remote HEAD = 5f866d21 (GitLab == GitHub == lokalni)
+- GitHub Actions: run 38052338103 (5f866d2) SUCCESS
+- produkcija health: ok / 1.45.0 / database connected; /api/auth/login odgovarja 401 za napačne kredenciale (normalno)
+
+Stage Summary:
+- Task 34 ŽIV V PRODUKCIJI; celoten audit (§13 P1 6/6 + P2 4/4 + rezidual §10) ZAPRT brez odprtih kodekskih točk
+- ostajajo izključno človeške blokade: FURS certifikat (+ HR Fiskalizacija 2.0), Neon DATABASE_URL v GH secrets (CI smoke), GitLab CI runner minutes, DNS restaurantos.app
