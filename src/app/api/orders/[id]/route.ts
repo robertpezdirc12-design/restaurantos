@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 
@@ -56,7 +56,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   } else if (body?.status) {
     if (body.status === 'PAID' || body.status === 'CANCELLED') {
       // plačilo/veljavnost mimo plačilnega poteka = samo vodstvo
-      if (user.role !== 'ADMIN' && user.role !== 'MANAGER') return forbidden()
+      // P2 audit N2: OWNER je centralna vloga — sme tudi ročno override (prej samo ADMIN/MANAGER)
+      if (!isCentralRole(user) && user.role !== 'MANAGER') return forbidden()
     } else {
       const gate = await requirePermission(req, 'kitchen.update')
       if (isResponse(gate)) return gate
@@ -147,7 +148,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   // storno naročila = samo vodstvo (issue #1: pravice na kritičnih operacijah)
-  if (user.role !== 'ADMIN' && user.role !== 'MANAGER') return forbidden()
+  // P2 audit N2: OWNER je centralna vloga — sme tudi storno (prej samo ADMIN/MANAGER)
+  if (!isCentralRole(user) && user.role !== 'MANAGER') return forbidden()
   const { id } = await params
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)

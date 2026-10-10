@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { APP_VERSION } from '@/lib/api'
+import { tabHasPerm } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -235,8 +236,9 @@ function DashboardInner() {
 
   const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
   // UI gating po dovoljenjih (backend uveljavlja neodvisno) — admin/manager vedno vse;
-  // pred nalaganjem dovoljenj pokaži vse (permisivno, da ne utripa)
-  const hasPerm = (p?: string) => !p || canManage || perms.length === 0 || perms.includes(p)
+  // pred nalaganjem dovoljenj pokaži vse (permisivno, da ne utripa);
+  // N8 fail-closed: neznano/undefined dovoljenje → false (prej `!p` → true)
+  const hasPerm = (p?: string) => !!p && (canManage || perms.length === 0 || perms.includes(p))
   const canRes = canManage || perms.includes('reservations.manage')
 
   const load = useCallback(async () => {
@@ -839,21 +841,6 @@ function DashboardInner() {
     .filter((r) => new Date(r.reservedAt).getTime() >= Date.now() - 36e5 && r.status !== 'CANCELLED')
     .sort((a, b) => +new Date(a.reservedAt) - +new Date(b.reservedAt))
 
-  /** Tab → zahtevano dovoljenje (issue #1, naloga 3) */
-  const TAB_PERM: Record<string, string> = {
-    mize: 'orders.create', narocila: 'orders.create', kuhinja: 'kitchen.update',
-    meni: 'menu.manage', rezervacije: 'reservations.manage', racuni: 'reports.view',
-    zaloge: 'inventory.manage', izmene: 'orders.pay', haccp: 'settings.manage',
-    stroski: 'reports.view', zvestoba: 'reports.view', mnenja: 'reservations.manage',
-    dostava: 'orders.create',
-    napitnine: 'reports.view',
-    nabava: 'inventory.manage',
-    darilne: 'reports.view',
-    odpad: 'inventory.manage',
-    cakalna: 'reservations.manage',
-    zaposleni: 'employees.manage', nastavitve: 'settings.manage',
-  }
-
   return (
     <main className="min-h-screen flex flex-col bg-stone-100">
       <header className="sticky top-0 z-20 bg-white border-b border-stone-200 shadow-sm">
@@ -934,8 +921,10 @@ function DashboardInner() {
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
               ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings],
             ] as [string, string, typeof LayoutDashboard | null][])
-              // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno
-              .filter(([v]) => hasPerm(TAB_PERM[v]))
+              // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno;
+              // N8 fail-closed: vsak zavihek ima izrecen vnos v TAB_PERM (src/lib/tab-permissions.ts),
+              // neznan/undefined id → zavihek NI viden
+              .filter(([v]) => tabHasPerm(v, { canManage, perms }))
               .map(([v, , Icon]) => (
               <TabsTrigger key={v} value={v} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
                 {Icon && <Icon className="w-4 h-4" />} {t(`tabs.${v}`)}
@@ -1246,7 +1235,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="delovnicas">
-            {/* ura je za VSE zaposlene (brez TAB_PERM vnosa); ekipni del je gating employees.manage */}
+            {/* ura je za VSE zaposlene (TAB_PERM: '*'); ekipni del je gating employees.manage */}
             <DelovniCasTab canManage={hasPerm('employees.manage')} />
           </TabsContent>
 

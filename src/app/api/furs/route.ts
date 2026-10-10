@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
@@ -13,9 +13,18 @@ import { fiscalAdapterFor } from '@/lib/fiscal'
 /**
  * Seznam izdanih računov (FURS). Najnovejši prvi, zadnjih 100.
  * Vključi povezavo na naročilo/mizo za prikaz v UI (zavihek Računi).
+ *
+ * N5 (revizija §4): finančni seznam izdanih računov — UI prikaže zavihek Računi
+ * samo z 'reports.view' (TAB_PERM.racuni), zato backend uveljavlja isto kanonično
+ * dovoljenje (prej: requireAuth — natakar je prek API-ja videl vse račune).
+ * Izbira 'reports.view' (in ne 'furs.issue'): zavihek je ZA VPOGLED v izdane račune
+ * (seznam + CSV izvoz), ne za izdajo — izdaja gre skozi POST z lastnim gatingom;
+ * 'furs.issue' bi po nepotrebnem zaprl seznam tudi financial/accounting rolam,
+ * ki izdajajo ne, a poročila smejo videti. Podrobnost računa (tisk po plačilu,
+ * GET /api/furs/[id]) ostaja dostopna blagajni — ni del tega popravka.
  */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'reports.view')
   if (isResponse(user)) return user
   const receipts = await db.receipt.findMany({
     // Issue #4 §10: izdani računi so location-scoped (prej: vse lokacije)

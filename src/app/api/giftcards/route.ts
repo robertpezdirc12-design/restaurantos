@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { nid, num, r2 } from '@/lib/map'
 import {
   cardNumberFor,
@@ -16,7 +16,14 @@ import {
  *
  * GET /api/giftcards?q=&status=&limit=
  *   → seznam kartic (lokacijsko omejen po §10) + statistika (aktivne, saldo,
- *     izdane 30 dni, unovčeno 30 dni). Bralna pravica: requireAuth.
+ *     izdane 30 dni, unovčeno 30 dni).
+ *     N5 (revizija §4): polni seznam + saldo statistika so finančni podatki — UI
+ *     prikaže zavihek Darilne kartice samo z 'reports.view' (TAB_PERM.darilne),
+ *     zato backend uveljavlja isto kanonično dovoljenje (prej: requireAuth).
+ *     POS plačilni tok je ohranjen: iskanje ENE kartice ob plačilu gre prek
+ *     GET /api/giftcards/lookup (requireAuth — blagajnik/natakar jo potrebuje
+ *     v plačilnem dialogu), ki ostaja odprt; podrobnost kartice (GET /api/giftcards/[id])
+ *     ni del tega popravka (N5 za darilne gate-a samo polni seznam).
  *
  * POST /api/giftcards { ownerName?, initialBalance, expiresAt?, locationId?, note?, clientOperationId? }
  *   → izdaja kartice: GC-YYYYMMDD-XXXXXX številka, začetni saldo (0 = brez vrednosti),
@@ -57,7 +64,9 @@ function mapCard(c: {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  // N5: polni seznam + saldo statistika → 'reports.view' (skladen z UI zavihkom);
+  // plačilni tok ne gre skozi ta seznam (glej /api/giftcards/lookup — requireAuth)
+  const user = await requirePermission(req, 'reports.view')
   if (isResponse(user)) return user
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim()

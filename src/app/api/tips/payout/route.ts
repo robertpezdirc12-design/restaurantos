@@ -12,6 +12,11 @@ import { nid, jstr } from '@/lib/map'
  *     Pravica: employees.manage. Idempotentno: že izplačane vrstice se preskočijo.
  *     Distribucije bazena so hash-verižene (nespremenljivi zneski) — izplačilo
  *     ne spreminja zneskov, samo status (revizijsko varno).
+ *
+ * R9 (revizija §6): CAS prehod pending → paid — vsaka distribucija in bazen se
+ * prevzemata z updateMany({ where: { id, status: 'pending' } }). Dvojni klik ali
+ * vzporedna zahteva: drugi poskus šteje 0 vrstic → 409 'Tips so že izplačani.',
+ * brez drugega izplačila in brez drugega revizijskega vnosa (točno EN audit TIP_PAYOUT).
  */
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
@@ -30,16 +35,22 @@ export async function POST(req: NextRequest) {
 
   const now = new Date()
   const paid = await db.$transaction(async (tx) => {
+    // R9: CAS guard — updateMany z statusom 'pending' v where. Podvojeni/vzporedni poskus
+    // dobi count 0 → brez spremembe, brez audita (revizija vidi točno eno izplačilo).
     let count = 0
     for (const d of targets) {
-      if (d.status !== 'pending') continue
-      await tx.tipDistribution.update({ where: { id: d.id }, data: { status: 'paid', paidAt: now } })
-      count++
+      const r = await tx.tipDistribution.updateMany({
+        where: { id: d.id, status: 'pending' },
+        data: { status: 'paid', paidAt: now },
+      })
+      count += r.count
     }
+    if (count === 0) return { count: 0, poolStatus: pool.status }
     const all = await tx.tipDistribution.findMany({ where: { tipPoolId: poolId } })
     const poolStatus = all.every((d) => d.status === 'paid') ? 'paid' : 'pending'
     if (poolStatus !== pool.status) {
-      await tx.tipPool.update({ where: { id: poolId }, data: { status: poolStatus } })
+      // tudi prehod bazena je CAS — samo iz 'pending' (nikoli ne prevrišči tuje spremembe)
+      await tx.tipPool.updateMany({ where: { id: poolId, status: 'pending' }, data: { status: poolStatus } })
     }
     await tx.auditLog.create({
       data: {
@@ -59,6 +70,9 @@ export async function POST(req: NextRequest) {
     })
     return { count, poolStatus }
   })
+
+  // R9: drugi (podvojeni) poskus — nič izplačano → 409, brez drugega revizijskega vnosa
+  if (paid.count === 0) return fail('Tips so že izplačani.', 409)
 
   return ok({ paid: paid.count, poolStatus: paid.poolStatus, paidAt: now.toISOString() }, 200)
 }

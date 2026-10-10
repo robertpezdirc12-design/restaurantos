@@ -1,14 +1,23 @@
 import { NextRequest } from 'next/server'
 import type { HaccpCategory, HaccpStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num, nid } from '@/lib/map'
 
 const HACCP_TYPES = ['temperature', 'cleaning', 'delivery', 'cooling', 'training'] as const
 const HACCP_STATUSES = ['ok', 'warning', 'critical'] as const
 
+/**
+ * N5 (revizija §4): HACCP zapisi so interni kontrolni seznam — UI prikaže zavihek
+ * HACCP samo z 'settings.manage' (TAB_PERM.haccp), zato backend uveljavlja isto
+ * kanonično dovoljenje (prej: requireAuth). Odstopanje od predloga 'kitchen.update'
+ * je namerno in preverjeno proti UI: kuhinjske vloge (chef/kitchen, dovoljenje
+ * 'kitchen.update') zavihka HACCP v dashboardu NE vidijo (TAB_PERM ga vezuje na
+ * settings.manage), zato bi 'kitchen.update' pustil API odprtejšega kot UI;
+ * 'settings.manage' je minimalno dovoljenje, ki se ujema z vidnostjo vmesnika.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
   const rows = await db.haccpEntry.findMany({ where: locationScope(user), orderBy: { date: 'desc' }, take: 100 })
   return ok({ haccpChecks: rows.map((r) => ({
