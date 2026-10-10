@@ -533,3 +533,17 @@ Stage Summary:
 - prej: nov fiskalni račun nad že negirano prodajo + override brez računa; zdaj: fail-closed na vseh 4 stopnjah (pre-guard, replay, CAS, override)
 - 550 testov; SI pot byte-identična (fiscal.test nespremenjen zelen)
 - ostajata le 2 FIZIČNA človeška koraka: FURS/FINA certifikat (Task 36 kodeksko 100 % pripravljen) + 2 TXT zapisa v Cloudflare (vrednosti v audit §13)
+
+---
+Task ID: 37-main (produkcijska verifikacija — dodatek)
+Agent: main (Z.ai Code)
+Task: Potrditev verige po pushu d569ab3 (Task 37)
+
+Work Log:
+- push origin + github a619e04..d569ab3 OK (oba PRVIČ, brez 403 okna — Cloudflare trenutno spustil)
+- GitHub Actions run 38062052733 (d569ab3): VSI 3 jobs SUCCESS — neon-smoke, tests (550 testov vključno s 4 novimi terminalno-stanje testi), deploy
+- produkcija health: ok / 1.45.0 / database connected
+
+Stage Summary:
+- Task 37 ŽIV V PRODUKCIJI; storno zdaj terminalno v celotni verigi (gate + CAS bela lista + twin filter + override blokada)
+- končno stanje: kodeško NI več nobene odprte točke iz audita §13 — ostajata le 2 fizična človeška koraka (FURS/FINA certifikat + 2 TXT zapisa Cloudflare)
