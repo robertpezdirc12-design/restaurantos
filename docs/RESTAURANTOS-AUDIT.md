@@ -207,7 +207,7 @@
 ## 14. Definition of Done — checklist
 
 - [x] Potrjen zemljevid vseh ključnih tokov in vlog (§3, §4) — z dokazi.
-- [x] Kritični računovodski/zalogovni izračuni imajo teste (billing, fiskal, waste, procurement, tips, timeclock; novi CAS popravek zalog E2E dokazan — dodatni unit testi za R-pot predlagani kot P1).
+- [x] Kritični računovodski/zalogovni izračuni imajo teste (billing, fiskal, waste, procurement, tips, timeclock; novi CAS popravek zalog E2E dokazan — dodatni unit testi za R-pot ~~predlagani kot P1~~ **IZVRŠENO (Task 40):** `tests/race-fixes-p1.test.ts` — R1 (odprta izmena → 2. odpiranje 409, brez dvojne izmene), R3 (2 vzporedna zaključka → točno EN Z-poročilo + EN SHIFT_CLOSE), R4 (StockTransaction evidence = dejansko stanje: odštevek, talna omejitev na 0, inventurni setQty — 3 vnosi, vsota = delta), R5 (addItems na plačano naročilo → 409; na odprto → postavka + recalc), R6 (CAS zasedba mize → 409 drugemu aktivnemu naročilu, replay istega klika dovoljen), R8 (maxUses prekoračitev → 409, števec ostane 1); 582 testov skupaj).
 - [x] Kritične varnostne in race-condition napake popravljene, kjer je varno (R1–R6, R8, R10, login rate limit — brez spremembe sheme, brez migracij, vse v obstoječih vzorcih kode).
 - [x] CI rezultati dejanski in dokumentirani (§1; GitLab CI označen kot neverificiran — blokada dostopa, ni trditve o uspešnosti).
 - [x] Porocilo vsebuje prioritete in blokade (§13).

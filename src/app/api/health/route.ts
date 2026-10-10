@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { APP_VERSION, APP_COMMIT } from '@/lib/api'
+import { APP_VERSION, DEPLOY_COMMIT } from '@/lib/api'
 
 export async function GET() {
   let database = 'connected'
@@ -13,7 +13,7 @@ export async function GET() {
     status: database === 'connected' ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     version: APP_VERSION,
-    commit: APP_COMMIT,
+    commit: DEPLOY_COMMIT,
     database,
   })
 }

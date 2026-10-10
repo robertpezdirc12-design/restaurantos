@@ -81,8 +81,15 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.45.0'
+export const APP_VERSION = '1.46.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
+/**
+ * Realen deployan commit (Task 40): Vercel vbrizga VERCEL_GIT_COMMIT_SHA v runtime
+ * vsakega deploymenta — health endpoint tako vedno pokaže TOČNO to verzijo kode,
+ * ki teče v produkciji (prej: statični APP_COMMIT, ki ni odražal deployov).
+ * Lokalno/CI (brez Vercel env) ostane statični fallback.
+ */
+export const DEPLOY_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || APP_COMMIT
 
 /**
  * N4 (audit P1): DDL rute (`/api/admin/migrate-*`, $executeRawUnsafe) zahtevajo

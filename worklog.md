@@ -622,3 +622,27 @@ Work Log:
 Stage Summary:
 - CI veriga 100 % operativna; produkcija na 10c960f (fiskalizacija SI Task 36 + HR Task 38 v produkcijski kodi)
 - ostajata 2 fizična človeška koraka: (1) certifikata FURS SI + FINA HR, (2) 4 DNS zapisi v GoDaddy coni (2 TXT + A @ 76.76.21.21 + CNAME www cname.vercel-dns.com — natančna navodila v audit §13)
+
+---
+Task ID: 40-main
+Agent: main (Z.ai Code)
+Task: Zapreti zadnji mehki predlog iz audit §14 — dodatni unit testi za R-pot (R1/R3/R4/R5/R6/R8, ki jih Task 32-c/stock-deduction/furs-post niso pokrili) + ops izboljšava: health endpoint poroča realen deployan commit + verzija 1.46.0
+
+Work Log:
+- obseg: preverjena pokritost obstoječih testov — R2 (stock-deduction: FEFO/talna/primanjkljaj/replay), R7/R9/R11/R12 + N5 (race-fixes.test.ts), R10 + plačilni CAS (furs-post.test.ts) — MANJKALO: R1, R3, R4, R5, R6, R8
+- tests/race-fixes-p1.test.ts (6 testov, DB-backed dev SQLite, fiksature `rp1-`, cleanup reverse-FK):
+  * R1: odprta izmena → 2. POST open 409 (ni dvojne izmene); po zaključku → 201 + SHIFT_OPEN revizija v isti tx
+  * R3: 2 vzporedna `action:stop` → točno EN 200 + EN Z-poročilo (filter po unikatnem openedAt) + EN SHIFT_CLOSE revizija + shift closed
+  * R4: PATCH delta −3 → qty 7 + StockTransaction(ADJUST,−3); delta −50 → talna omejitev 0 + evidence −7; setQty 5 → inventurni popravek +5; skupaj 3 vnosi, vsota = delta (10→5) + 3× INVENTORY_ADJUST revizija (evidence = stanje, jedro R4)
+  * R5: addItems na plačano → 409 (0 postavk); na odprto → 200 + postavka + total recalc
+  * R6: prosta miza → occupied; 2. aktivno naročilo (drugi clientOperationId) → OrderError 409 »zasedena«; replay istega klika → replayed:true, ista order.id; točno 1 aktivno naročilo na mizi
+  * R8: maxUses=1 → 1. uporaba 200 (discount 0.5, števec 1); 2. uporaba → 409, števec 1, orderB.discount 0, EN DISCOUNT_APPLIED revizija
+- LEKCIJA (P2002): Order @@unique([locationId, orderNumber]) + createOrderCore pobira max+1 → seed orderNumber za vsako testno skupino lastna široka baza (41000 R5 / 43000 R8), da se območja ne sekata
+- Task 40-b ops izboljšava: `src/lib/api.ts` — APP_VERSION '1.46.0' + nov DEPLOY_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || APP_COMMIT; health route uporablja DEPLOY_COMMIT → produkcija pokaže TOČNO deployan commit (prej statični 'reconstruction-1.0.0')
+- verifikacija: bunx tsc --noEmit 0 · bun run lint 0 · bun test 582/582 (+6 race-fixes-p1; vsi ostali zeleni — ni cross-file interference)
+- audit §14: R-pot predlog označen IZVRŠENO (Task 40)
+- push origin + github → CI (koda!) → [produkcija v dodatku]
+
+Stage Summary:
+- audit §14 DoD: vse točke zaprte, tudi mehki P1 predlog za R-pot; 582 testov
+- ops: health endpoint = realen deploy commit (preverljivost produkcije brez ugibanja); verzija 1.46.0
