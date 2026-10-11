@@ -1149,3 +1149,24 @@ Povzetek faze:
 - Task 57 NI dostavljen (prekinjen pred prvim commitom) — produkcija OSTANE v1.55.0 @ e2d97d5, nič spremenjeno, nič ogroženo.
 - Vrednost vseeno nastala: byte-točna raziskava (mrtva shema potrjena, 117=117, BREZ DDL) + popoln dizajn + vzorec neuspeha dokumentiran — naslednja seja lahko začne PONOVNO raziskave v ~5 min namesto ~30.
 - Lekcija (4. potrditev): dolga generacija v zasitenem kontekstu GARBELIRA — stopiti PRVO, čiščenje, sveža seja; ne boriti se.
+
+---
+Task ID: 57
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Inventurni protokol — aktivacija mrtve sheme Stocktake/StocktakeItem (audit §7 inventura PARTIAL→DONE) + v1.56.0
+
+Delovni dnevnik:
+- Ovire: baza 9d32497 (v1.55.0, 652/652, tsc 0) čista; GitLab žeton mrtev (403) — ne blokira.
+- RAZISKAVA (byte-točno, repr-potrjeno): prisma/schema.prisma ŽE vsebuje model Stocktake (@2250) + StocktakeItem (@2273) — polna inventurna oblika (status default DRAFT, note, createdByName, approvedByName, submittedAt?, approvedAt?, cancelledAt?, recountCount, idempotencyKey?; item: inventoryItemId, itemName, unit, expectedQuantity Decimal(12,3), costPerUnit Decimal(12,2), countedQuantity Decimal(12,3)?, varianceQuantity Decimal(12,3)?, varianceValue Decimal(12,2)?, lineNote, countedAt?, countedByName, stockTransactionId? @unique, @@unique([stocktakeId, inventoryItemId])); 0 referenc v src/ = mrtva shema; 117 modelov = 117 tabel v produkciji (drift zelen dokazuje da tabele obstajajo tudi v Neon) → Task 57 NI potreboval DDL/allowlist/migrate-rute. db:push 0 (dev SQLite sync).
+- LEKCIJA (4. potrditev): dolga generacija GARBELIRA — 5× zapored garbliranih poskusov routa v prejšnjem nadaljevanju (mešanice izmišljenih modulov). REŠITEV ta seja: datoteke ≤ 155 vrstic, ENA naenkrat, takoj tsc; garble v ECHO-ju ≠ garble v DATOTEKI (tsc edini arbiter — recount route je bil "vidno garbliran" v echo, dejansko čist, tsc 0).
+- API (6 rut, vse tsc=0): stocktakes/route.ts (GET seznam + POST odpri: snapshot artiklov lokacije, en odprt popis/lokacija → 409, idempotencyKey replay, assertOrgScope Task 52); [id]/route.ts (GET detail + PATCH vnosov: samo DRAFT → 409, lastništvo vrstic, prevalidacija → 400, transaction); submit (CAS DRAFT→SUBMITTED updateMany, 0 → 409 R3 vzorec); approve (NAJSLOŽENJEJŠA: $transaction, CAS SUBMITTED→APPROVED, na vrstico z vnosom: quantity := countedQuantity (inventurni popravek R4 last-writer-wins), StockTransaction type STOCKTAKE previousQty = stanje ob odobritvi — sočasna prodaja VIDNA v evidence, varianceQuantity := counted − expected (proti snapshotu), varianceValue := variansa × costPerUnit, vrstice brez vnosa NESPREMENJENE); cancel (CAS DRAFT|SUBMITTED→CANCELLED, odobrenega NI preklicati → 409); recount (CAS SUBMITTED→DRAFT, recountCount++). Vse: audit chain (STOCKTAKE_OPEN/SUBMIT/APPROVE/CANCEL/RECOUNT) + publishEvent.
+- TESTI (tests/stocktake.test.ts, 11, DB-backed): odpri 201 snapshot → 409 drugi odprti → vnos saved=2 → 400 negativno → oddaj + 409 vnos po oddaji → recount DRAFT recountCount=1 → sočasna prodaja 10→9 med štetjem in odobritvijo → approve previousQty=9, newQty=9.5, varianceValue=−6 (R4 poštenost DOKAZANA) → 409 dvojni approve → 409 cancel odobrenega → nov popis → cancel → 409 recount preklicanega → org izolacija 403 → waiter 403. Popravki med teki: Location.code obvezen (P2002 anchor), test logika isResp (ok() je TUDI Response — enoten .status vzorec), PATCH prevalidacija (throw→500 zamenjan z fail 400), approve adjusted šteje SAMO dejanske popravke.
+- STATIČNA REGRESIJA: Task 54 pin "TOČNO 27 rut z await locationScope" → 28 (stocktakes GET je nov org-obsegan seznamski endpoint) — pin dvignjen z komentarjem (Task 54 sam ga je zasnoval proti regresiji await-umika, ne proti rasti).
+- UI: dashboard-tabs.tsx InventoryTab — 18 i18n ključev st.* (SL/HR pariteta, byte-točna vstavitev za inv.noIngredients); stanje + 7 upravljalnikov (loadStocktakes useEffect mount, stAction uniformni wrapper, open/save/submit/approve/cancel/recount); JSX Card (PackageSearch, status Badge, ScrollArea max-h-56 vrstice z vnosnimi polji disabled ob SUBMITTED, akcijski gumbi po statusu, seznam preteklih z variansa vrednostjo + Badge). tsc 0, lint 0, 663/663 (652 + 11 novih).
+- DOKUMENTACIJA: audit §7 "Zaloga: inventura PARTIAL" → DONE (Task 57, v1.56.0, celoten ciklus + semantika); APP_VERSION 1.55.0 → 1.56.0.
+
+Povzetek faze:
+- Zadnja VELIKA funkcionalna vrzel iz audit §7 ZAPRTA: inventura od PARTIAL (le prilagoditve) do polnega protokola BREZ ene DDL spremembe (mrtva shema aktivirana).
+- Produkcija: v1.56.0; preostalo §7 PARTIAL: popusti brez admin UI, stroški brez urejanja, HACCP brez načrtov, integracije brez UI (vse manjše).
+- Uporabniški koraki: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-pošta, GitLab žeton (mirror zaostaja).

@@ -161,7 +161,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
   it('codemod je dejansko potrdil ≥ 20 rut z await locationScope', () => {
     const routes = walkRoutes(join(process.cwd(), 'src/app/api'))
     const wired = routes.filter((f) => readFileSync(f, 'utf8').includes('await locationScope('))
-    expect(wired.length).toBe(27)
+    // Task 57: stocktakes GET je 28. org-obsegan seznamski endpoint (async locationScope) —
+    // pin se dviga samo z NOVO ruto, nikoli z umikom await (regresija ostaja zaščiten).
+    expect(wired.length).toBe(28)
   })
 })
 

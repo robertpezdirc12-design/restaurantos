@@ -21,6 +21,18 @@ export interface InventoryT { id: string; name: string; unit: string; qty: numbe
 export interface SupplierT { id: string; name: string; contact?: string | null; phone?: string | null; email?: string | null; address?: string | null }
 export interface RecipeT { id: string; name: string; instructions: string; items: { inventoryItemId: string; name: string; unit: string; qty: number }[] }
 
+type StRow = {
+  id: string; status: string; note: string; createdByName: string
+  counted: number; total: number; varianceValue: number
+  recountCount: number; createdAt: string; approvedByName: string | null
+}
+type StItemRow = {
+  id: string; name: string; unit: string; expectedQty: number
+  countedQty: number | null; varianceQty: number | null
+  varianceValue: number | null; note: string
+}
+type StFull = StRow & { items: StItemRow[] }
+
 export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void> }) {
   const { t } = useI18n()
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
@@ -31,6 +43,46 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
   const [adjust, setAdjust] = useState<InventoryT | null>(null)
   const [adj, setAdj] = useState({ delta: '', setQty: '', minQty: '', cost: '' })
   const [adjBusy, setAdjBusy] = useState(false)
+  const [stList, setStList] = useState<StRow[]>([])
+  const [stOpen, setStOpen] = useState<StFull | null>(null)
+  const [stInputs, setStInputs] = useState<Record<string, string>>({})
+  const [stNote, setStNote] = useState('')
+  const [stBusy, setStBusy] = useState(false)
+  const [stErr, setStErr] = useState('')
+
+  async function loadStocktakes() {
+    try {
+      const r = await api<{ stocktakes: StRow[] }>('/api/stocktakes')
+      const rows = r.stocktakes ?? []
+      setStList(rows)
+      const open = rows.find((s) => s.status === 'DRAFT' || s.status === 'SUBMITTED')
+      if (open) {
+        const d = await api<{ stocktake: StFull }>(`/api/stocktakes/${open.id}`)
+        setStOpen(d.stocktake)
+        const inp: Record<string, string> = {}
+        for (const it of d.stocktake.items) inp[it.id] = it.countedQty == null ? '' : String(it.countedQty)
+        setStInputs(inp)
+      } else { setStOpen(null); setStInputs({}) }
+    } catch { /* seznam ni kritičen — tiho */ }
+  }
+  useEffect(() => { loadStocktakes() }, [])
+
+  async function stAction(method: 'POST' | 'PATCH', url: string, body?: unknown) {
+    setStBusy(true); setStErr('')
+    try {
+      await api(url, { method, body: body === undefined ? undefined : JSON.stringify(body) })
+      await loadStocktakes()
+      if (method === 'POST') await onReload()
+    } catch (err) { setStErr((err as Error).message) } finally { setStBusy(false) }
+  }
+  const openStocktake = () => stAction('POST', '/api/stocktakes', { note: stNote })
+  const saveCounts = () => stAction('PATCH', `/api/stocktakes/${stOpen?.id}`, {
+    items: (stOpen?.items ?? []).filter((it) => stInputs[it.id] !== '').map((it) => ({ id: it.id, countedQuantity: stInputs[it.id] === '' ? null : Number(stInputs[it.id].replace(',', '.')) })),
+  })
+  const submitSt = () => stAction('POST', `/api/stocktakes/${stOpen?.id}/submit`)
+  const approveSt = () => stAction('POST', `/api/stocktakes/${stOpen?.id}/approve`)
+  const cancelSt = () => stAction('POST', `/api/stocktakes/${stOpen?.id}/cancel`)
+  const recountSt = () => stAction('POST', `/api/stocktakes/${stOpen?.id}/recount`)
   const [supForm, setSupForm] = useState<{ name: string; contact: string; phone: string } | null>(null)
   const [supBusy, setSupBusy] = useState(false)
   // Receptura urejevalnik (razknjiževanje po recepturah)
@@ -129,6 +181,81 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               })}
             </div>
           </ScrollArea>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base flex items-center gap-1.5"><PackageSearch className="w-4 h-4" /> {t('st.title')}</CardTitle>
+          {canManage && !stOpen && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={stBusy} onClick={openStocktake}>
+              <Plus className="w-3 h-3" /> {t('st.open')}
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {stErr && <p className="text-xs text-red-600">{stErr}</p>}
+          {stOpen ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge className={stOpen.status === 'DRAFT' ? 'bg-stone-600 text-white' : 'bg-amber-600 text-white'}>{t(`st.status.${stOpen.status}`)}</Badge>
+                <span className="text-xs text-stone-500">{stOpen.counted}/{stOpen.total} · {t('st.counted')}</span>
+                {stOpen.recountCount > 0 && <Badge variant="outline" className="text-[10px]">{t('st.recounts')}: {stOpen.recountCount}</Badge>}
+              </div>
+              <ScrollArea className="max-h-56">
+                <div className="space-y-1.5">
+                  {stOpen.items.map((it) => (
+                    <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 p-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{it.name}</p>
+                        <p className="text-xs text-stone-500">{t('st.expected')}: {it.expectedQty} {it.unit}</p>
+                      </div>
+                      <Input
+                        className="h-8 w-24 text-right text-sm"
+                        inputMode="decimal"
+                        placeholder="—"
+                        disabled={!canManage || stBusy || stOpen.status !== 'DRAFT'}
+                        value={stInputs[it.id] ?? ''}
+                        onChange={(e) => setStInputs((prev) => ({ ...prev, [it.id]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              {canManage && (
+                <div className="flex flex-wrap gap-1.5">
+                  {stOpen.status === 'DRAFT' && (<>
+                    <Button size="sm" className="h-7 text-xs" disabled={stBusy} onClick={saveCounts}>{t('st.save')}</Button>
+                    <Button size="sm" className="h-7 bg-emerald-700 text-xs text-white hover:bg-emerald-800" disabled={stBusy} onClick={submitSt}>{t('st.submit')}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={stBusy} onClick={cancelSt}>{t('st.cancel')}</Button>
+                  </>)}
+                  {stOpen.status === 'SUBMITTED' && (<>
+                    <Button size="sm" className="h-7 bg-emerald-700 text-xs text-white hover:bg-emerald-800" disabled={stBusy} onClick={approveSt}>{t('st.approve')}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={stBusy} onClick={recountSt}>{t('st.recount')}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={stBusy} onClick={cancelSt}>{t('st.cancel')}</Button>
+                  </>)}
+                </div>
+              )}
+            </div>
+          ) : stList.length === 0 ? (
+            <p className="text-sm text-stone-500">{t('st.empty')}</p>
+          ) : (
+            <div className="space-y-1.5">
+              {stList.slice(0, 5).map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 p-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm">{s.createdByName} · {new Date(s.createdAt).toLocaleDateString()}</p>
+                    {s.note && <p className="truncate text-xs text-stone-500">{s.note}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="text-xs text-stone-500">{s.counted}/{s.total}</span>
+                    {s.varianceValue !== 0 && <span className={`text-xs font-medium ${s.varianceValue > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{s.varianceValue > 0 ? '+' : ''}{s.varianceValue.toFixed(2)} €</span>}
+                    <Badge variant="outline" className="text-[10px]">{t(`st.status.${s.status}`)}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

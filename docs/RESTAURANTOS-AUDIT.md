@@ -116,7 +116,7 @@
 | Kiosk (veliki gumbi, aktivacija kodo) | **DONE** | isti kanonični pipeline; SL-only |
 | Zaloga: odpis (waste) + reverse | **DONE** | idempotentno, 409 nad zalogo |
 | Zaloga: dobavitelji + nabavna naročila + prevzem | **DONE** | centna aritmetika, statusna avtomat |
-| Zaloga: inventura | **PARTIAL** | le prilagoditve količine; ni inventurnega protokola |
+| Zaloga: inventura | **DONE** | **ŽE OD Task 57 (v1.56.0):** polni protokol — odpri (snapshot zaloge) → oddaj (CAS zakleni) → potrdi (inventurni popravek v transakciji: quantity := counted, StockTransaction STOCKTAKE s previousQty/newQty pokaže sočasno prodajo, variansa proti snapshotu) | prekliči; recount (SUBMITTED→DRAFT, recountCount++); en odprt popis/lokacija (409), idempotencyKey replay, 6 rut + 11 DB testov + UI kartica v Zalogi tabu |
 | Recepture + avtomatska razknjižba | **DONE** | v isti transakciji kot račun (R2 zdaj CAS) |
 | Darilne kartice (izdaja/polnilo/unovčenje) | **DONE** | CAS, maskiranje v auditu |
 | Stroški (AccountsPayable) | **PARTIAL** | GET+POST; brez urejanja/kategorij |
