@@ -1,12 +1,13 @@
 /**
- * Testi i18n za GOSTUJOČE strani (33-b — audit §65/§193: kiosk + QR meni).
+ * Testi i18n za GOSTUJOČE strani (33-b — audit §65/§193: kiosk + QR meni;
+ * 49 — customer display, zadnji ostanek audit §137).
  *
  * Acceptance:
  *  - pariteta SL/HR slovarjev za sekcijo 33-b ('guest.*' ključi — identičen set v obeh);
  *  - HR vrednosti niso prazne in se razlikujejo od SL (razen dokumentiranih skupnih izrazov);
  *  - preslikava statusov naročil (javni API vrača fiksne SL nize) v i18n ključe;
  *  - regresija: prevedena besedila se ne vrnejo v trdo kodirano obliko na
- *    gostujočih straneh (kiosk + QR meni), preklopnik jezika je prisoten.
+ *    gostujočih straneh (kiosk + QR meni + display), preklopnik jezika je prisoten.
  */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
@@ -24,7 +25,8 @@ function guestKeys(dict: Record<string, string>): string[] {
 
 // Skupni izrazi, ki so v SL in HR vsebinsko identični (dokumentirane izjeme
 // za zahtevo »hr se razlikuje od sl«): 'Hvala!', 'Dodaj', 'Aktiviraj kiosk',
-// 'Hrana', 'Košarica', 'Tvoja košarica', 'Alergeni: …', '{label}: {n} od 5'.
+// 'Hrana', 'Košarica', 'Tvoja košarica', 'Alergeni: …', '{label}: {n} od 5'
+// ter display izrazi, ki so v obeh jezikih naravno enaki (49).
 const SHARED_EQUAL = new Set([
   'guest.common.thanks',
   'guest.common.add',
@@ -35,6 +37,12 @@ const SHARED_EQUAL = new Set([
   'guest.cart.title',
   'guest.feedback.food',
   'guest.feedback.starAria',
+  'guest.display.title',
+  'guest.display.showScreen',
+  'guest.display.connect',
+  'guest.display.online',
+  'guest.display.unpair',
+  'guest.display.welcome',
 ])
 
 describe('i18n gostov — pariteta slovarjev (sekcija 33-b)', () => {
@@ -95,6 +103,23 @@ describe('i18n gostov — pariteta slovarjev (sekcija 33-b)', () => {
     expect(t('hr', 'guest.common.vat')).toBe('PDV')
     expect(t('hr', 'guest.kiosk.submit')).toBe('Pošalji')
     expect(t('sl', 'guest.kiosk.submit')).toBe('Oddaj')
+    // display interpolacija (49)
+    expect(t('sl', 'guest.display.vatRate', { rate: 9.5 })).toBe('DDV 9.5 %')
+    expect(t('hr', 'guest.display.vatRate', { rate: 9.5 })).toBe('PDV 9.5 %')
+    expect(t('sl', 'guest.display.orderNo', { n: 12 })).toBe('Naročilo #12')
+    expect(t('hr', 'guest.display.orderNo', { n: 12 })).toBe('Narudžba #12')
+  })
+
+  test('display stran je integrirana z guest-i18n (49 — regresija trdo kodiranih)', () => {
+    const page = readFileSync(join(import.meta.dir, '../src/app/display/page.tsx'), 'utf8')
+    expect(page).toContain('GuestI18nProvider')
+    expect(page).toContain('useGuestT')
+    expect(page).toContain('GuestLanguageToggle')
+    // nobenih novih trdo kodiranih uporabniških nizov (izjeme: tehnični nizi)
+    for (const slOnly of ['Dobrodošli!', 'SKUPAJ', 'Uživajte v obroku!', 'Čakam na podatke POS-a']) {
+      expect(page).not.toContain(`"${slOnly}`)
+      expect(page).not.toContain(`'${slOnly}`)
+    }
   })
 })
 

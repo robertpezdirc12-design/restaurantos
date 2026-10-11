@@ -951,3 +951,22 @@ Stage Summary:
 - ci.yml zdrav (byte-verified); CI gate deluje kot zasnovan — docs pushi brez CI, koda pushi z gate-om
 - LEKCIJA: pred "popravilom" navidezne korupcije vedno hex-dump verifikacija (python3 byte codes) — bash izpisi lahko požrejo `[m` sekvenco
 - trojica popolnoma poravnana @ af6e2ea
+
+---
+Task ID: 49-main
+Agent: main (Z.ai Code)
+Task: "odlicno nadaljuj" — zadnja gostujoča stran (display) dvojezična (audit §137 ostanek) + varnostne glave + v1.51.0
+
+Work Log:
+- re-verifikacija: vse P1/P2 iz audita že zaprte (6/6 P1, R-race, N-neskladja, selitev/fire, chainHash, feedback API); preostanek = display stran z ~18 hardkodiranimi SL nizi (zadnja gostujoča stran — audit §137) + next.config brez varnostnih glav.
+- i18n: 22 ključev 'guest.display.*' v sl.ts + hr.ts (pariteta; HR: PDV/UKUPNO/Narudžba — test "brez slovenščine v HR" zelen); 6 naravno identičnih par (Customer display, Prikaži zaslon, Poveži, povezan, Razveži, Dobrodošli!) v SHARED_EQUAL izjeme; ponovna uporaba guest.common.thanks ('Hvala!').
+- display/page.tsx: GuestI18nProvider + useGuestT + GuestLanguageToggle (varianta 'dark' — 3 ekrana: token, parjenje, glavni); interpolacija vatRate {rate} / orderNo {n}; server napake ostanejo SL (fallback preveden — dokumentirana omejitev).
+- next.config.ts: securityHeaders export (HSTS max-age=31536000; includeSubDomains, nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy camera/microphone/geolocation=()) prek headers() '/(.*)'. Kamera/mikrofon/geolokacija zavrnjeni (grep: 0 uporab). Frame zaščita NAMENOMA odložena (preview panel iframe embed — origin neverificiran; audit §13 zapis).
+- testi +4 (615/615): i18n-guest interpolacija display + regresija trdo kodiranih nizov na strani (readFileSync check) + 3× security-headers (vrednosti, floor, frame odsoten — pin obnašanja).
+- živa preverba: dev server 200, VSE 4 glave prisotne na /display (curl -I); agent-browser: stran rendra, klik HR → "Unesi token uređaja tipa customer_display…", localStorage restaurantos.locale='hr' (isti ključ kot kiosk/QR/dashboard — jezik preživi), 0 konzolnih napak.
+- fix med razvojem: sencenje imena 't' (token string vs translate) v refresh callbacku → tok (tsc TS2349); LEKCIJA: $? po pipe (tsc | head) spet lažno 0 — meritve z redirect v datoteko.
+
+Stage Summary:
+- audit §137 gostujoče strani: 100 % prevedene (kiosk + QR + feedback + display) — P2 ostanek zaprt
+- varnostni floor na vseh rutah (4 glave); frame zaščita dokumentirana kot odložena
+- v1.51.0; 615/615 testov, tsc 0, lint 0; živa browser verifikacija SL→HR preklopa

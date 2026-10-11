@@ -134,7 +134,7 @@
 ## 8. Lokalizacija SL/HR
 
 - 1.073 ključev × 2 jezika, **popolna pariteta** (0 ključev razlike), `t(locale, key, vars)` s SL fallbackom; preklopnik na prijavi in v dashboardu; fiskalne oznake po državi; test i18n paritete v suite (17 primerov).
-- **Ostanki (P2):** gostujoče strani niso prevedene (kiosk, `m/[token]`, display) — ~50+ hardkodiranih SL nizov; server-side error sporočila SL.
+- **Ostanki (P2):** ~~gostujoče strani niso prevedene (kiosk, `m/[token]`, display) — ~50+ hardkodiranih SL nizov~~ — **ZAPRTO v dveh korakih:** 33-b (kiosk + `m/[token]` + feedback, GuestI18nProvider infrastruktura) in **49 (customer display — zadnja stran, 22 ključev `guest.display.*`, SL/HR pariteta + regresijski test na trdo kodirane nize)**; server-side error sporočila ostajajo SL (dokumentirana omejitev — fallbacki na straneh so prevedeni). — **49 dodatek: varnostne glave** (next.config `headers()` za vse rute: HSTS `max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()` — koda ne uporablja nobenega od teh API-jev, preverjeno z grepom). Frame zaščita (X-Frame-Options/CSP frame-ancestors) **namenoma odložena**: peskovni preview panel vgrajuje app v iframe, embed-origin ni verifikiran — dodati šele s preverjenim seznamom origin-ov.
 
 ## 9. FURS / fiskalizacija — pošteno stanje
 
