@@ -52,6 +52,7 @@ export const TEST_PREFIXES = [
   'ent62-', // enterprise-admin (Task 62)
   'zst63-', // zreport-storno (Task 63)
   'hcp64-', // haccp-plans (Task 64)
+  'mig65-', // migrations-console (Task 65)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

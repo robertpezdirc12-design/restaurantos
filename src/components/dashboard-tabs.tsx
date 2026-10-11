@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -5447,6 +5447,122 @@ function emptyEntForm() {
 type EntForm = ReturnType<typeof emptyEntForm>
 type EntKind = 'organization' | 'brand' | 'property' | 'link'
 
+/* ─────────────────────────── MIGRACIJSKA KONZOLA (Task 65) ─────────────────────────── */
+
+interface MigItem { id: string; descKey: string; endpoint: string; applied: boolean; error?: string }
+interface MigResp { migrations: MigItem[]; pending: number; allApplied: boolean }
+interface MigApplyResult { id: string; ok: boolean; status: number; detail?: string }
+
+/**
+ * Task 65 (v1.63.0) — DDL konzola: 9 idempotentnih produkcijskih migracij na enem mestu
+ * (prej 9 ročnih POST klicev). Status probe + en klik "uporabi vse čakajoče"; delegacija
+ * na obstoječe /api/admin/migrate-* rute (ENAK DDL vir + audit chain). Samo centralne
+ * vloge — 403 → sekcija se skrije (backend je vir resnice).
+ */
+export function MigrationsConsoleSection() {
+  const { t } = useI18n()
+  const [items, setItems] = useState<MigItem[] | null>(null)
+  const [hidden, setHidden] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function load() {
+    try {
+      const d = await api<MigResp>('/api/admin/migrations')
+      setItems(d.migrations); setErr('')
+    } catch (e) {
+      const msg = (e as Error).message
+      // 403 (non-central) → tiho skrij; infra napaka → pokaži besedilo
+      if (msg.includes('Dostop zavrnjen') || msg.includes('unauthorized')) setHidden(true)
+      else setErr(msg)
+    }
+  }
+  useEffect(() => { void load() }, [])
+
+  async function apply(id?: string) {
+    setBusy(true); setErr('')
+    try {
+      const d = await api<MigResp & { applied: MigApplyResult[] }>('/api/admin/migrations', {
+        method: 'POST',
+        body: JSON.stringify(id ? { id } : {}),
+      })
+      const okN = d.applied.filter((r) => r.ok).length
+      const bad = d.applied.filter((r) => !r.ok)
+      if (bad.length > 0) {
+        toast({
+          title: t('mig.partialToast', { n: okN }),
+          description: bad.map((b) => `${b.id}: ${b.detail ?? b.status}`).join(' · '),
+          variant: 'destructive',
+        })
+      } else if (okN > 0) {
+        toast({ title: t('mig.appliedToast', { n: okN }) })
+      } else {
+        toast({ title: t('mig.nothingPending') })
+      }
+      await load()
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  if (hidden) return null
+  const pending = items?.filter((m) => !m.applied) ?? []
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><Database className="w-4 h-4" /> {t('mig.title')}</CardTitle>
+        <CardDescription>{t('mig.description')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items === null ? (
+          <div className="flex items-center gap-2 text-sm text-stone-500 py-2"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.loading')}</div>
+        ) : (
+          <>
+            {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
+            {pending.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 flex items-center justify-between gap-3 flex-wrap">
+                <span>{t('mig.pendingBanner', { n: pending.length })}</span>
+                <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" disabled={busy} onClick={() => void apply()}>
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mig.applyAll')}
+                </Button>
+              </div>
+            )}
+            {pending.length === 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" /> {t('mig.allDone')}
+              </div>
+            )}
+            <div className="grid gap-2">
+              {items.map((m) => (
+                <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                      {t(m.descKey)}
+                      {m.applied ? (
+                        <Badge className="gap-1 bg-emerald-700 text-white"><CheckCircle2 className="h-3 w-3" />{t('mig.status.applied')}</Badge>
+                      ) : m.error ? (
+                        <Badge variant="destructive">{t('mig.status.error')}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-300 text-amber-700">{t('mig.status.pending')}</Badge>
+                      )}
+                    </p>
+                    <p className="text-xs text-stone-500 font-mono truncate">{m.endpoint}</p>
+                    {m.error && <p className="text-xs text-red-600">{m.error}</p>}
+                  </div>
+                  {!m.applied && !m.error && (
+                    <Button size="sm" variant="outline" className="shrink-0" disabled={busy} onClick={() => void apply(m.id)}>
+                      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mig.apply')}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function EnterpriseTab({ canManage }: { canManage: boolean }) {
   const { t } = useI18n()
   const [data, setData] = useState<EntData | null>(null)
@@ -5692,6 +5808,8 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MigrationsConsoleSection />
     </div>
   )
 }
