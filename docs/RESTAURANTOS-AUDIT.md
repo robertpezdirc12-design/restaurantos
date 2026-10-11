@@ -18,7 +18,7 @@
 | `python3 scripts/check-schema-drift.py` | **exit 0** (SQLite zrcalna shema = kanonična) |
 | `bash scripts/check-secrets.sh` | **exit 0** (brez skrivnosti v kodi) |
 | GitHub Action deploy | **run 37980000848 → Vercel `dpl_ARCRdbu8P1` READY**, produkcija zdrava (v1.45.0, baza povezana) |
-| GitLab CI (quality-gate) | **BLOKIRANO za verifikacijo** — GitLab pipeline API ni bil dostopen ob auditu (IP-ban na peskovniškem izhodu); CI logika (.gitlab-ci.yml: bun tsc/lint/test/drift/secrets) je pregledana, dejanskih runov pa ni bilo mogoče potrditi |
+| GitLab CI (quality-gate) | ~~BLOKIRANO za verifikacijo~~ **ZASTARELO — ARHITEKTURA PREMEŠČENA (Task 35, re-verificirano Task 56):** quality gate = GitHub Actions `ci.yml` (tsc + lint + testi + secrets, blokira deploy); GitLab `builds_access_level=disabled` (kvota izčrpana; reverzibilno) — GitLab CI ni več del povratne zanke kakovosti |
 
 **E2E smoke test (živ, dev baza + Agent Browser)** — zlatica pot izmena→miza→naročilo→kuhinja→plačilo→Z-report:
 
@@ -71,14 +71,14 @@
 
 | ID | Neskladje | Status |
 |---|---|---|
-| N1 | OWNER dobi 403 na kreiranje miz (adminOnly gate + `!== 'MANAGER'` preverbi), MANAGER pa sme | ODPRTO (P2) |
-| N2 | OWNER blokiran na ročnem PAID/CANCELLED in DELETE naročila (samo ADMIN/MANAGER) | ODPRTO (P2) |
+| N1 | OWNER dobi 403 na kreiranje miz (adminOnly gate + `!== 'MANAGER'` preverbi), MANAGER pa sme | ~~ODPRTO (P2)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `tables/route.ts:27` = `requirePermission(req, 'menu.manage')` (kanonično dovoljenje, brez adminOnly/role preverbi) |
+| N2 | OWNER blokiran na ročnem PAID/CANCELLED in DELETE naročila (samo ADMIN/MANAGER) | ~~ODPRTO (P2)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `orders/[id]/route.ts:63-64` (PATCH override) in `:206-207` (DELETE) = `!isCentralRole(user) && user.role !== 'MANAGER'` — OWNER (centralna vloga) spusti, staff ostane blokiran |
 | N3 | hardkodirane vloge namesto `requirePermission`: inventory POST/PATCH, expenses, suppliers, loyalty, jobs, employees POST/PATCH (warehouse vloga ima pravico, a API jo zavrne; override-i ne delujejo na pisanje) | ~~ODPRTO (P1)~~ **POPRAVLJENO + VERIFICIRANO (Task 52, v1.53.0):** vse naštete rute že uporabljajo `requirePermission` z kanoničnimi dovoljenji (inventory.manage / settings.manage / employees.manage) — vrstica v tabeli ni bila prečrtana ob popravku (Task 32); re-verificirano z grepom |
 | N4 | `/api/admin/migrate-*` DDL rute zahtevajo `employees.manage`/`settings.manage` (ima jih tudi MANAGER) — `$executeRawUnsafe` za manj privilegirano vlogo | ~~ODPRTO (P1)~~ **POPRAVLJENO + VERIFICIRANO (Task 52, v1.53.0):** vseh 8 `migrate-*` rut uporablja `requireCentralRole` (DB vloga owner/admin; bootstrap break-glass) — vrstica ni bila prečrtana ob popravku; re-verificirano z grepom |
-| N5 | GET rute permisivne: `/api/furs`, `/api/shifts`, `/api/expenses`, `/api/tips`, `/api/haccp`, `/api/giftcards` — samo `requireAuth`, UI pa skriva tabe (natakar prek API vidi finančna poročila) | ODPRTO (P2) |
+| N5 | GET rute permisivne: `/api/furs`, `/api/shifts`, `/api/expenses`, `/api/tips`, `/api/haccp`, `/api/giftcards` — samo `requireAuth`, UI pa skriva tabe (natakar prek API vidi finančna poročila) | ~~ODPRTO (P2)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** vsi 6 GET handlerjev kliče `requirePermission` — furs=`reports.view`, shifts=`orders.pay`, expenses=`reports.view`, tips=`reports.view`, haccp=`settings.manage`, giftcards=`reports.view` (grep dokaz v vsaki ruti) |
 | N6 | DELETE popusta brez lokacijskega gate | **POPRAVLJENO** (ta audit) |
-| N7 | enterprise vloge ni mogoče dodeliti prek `PATCH /api/employees/[id]` | ODPRTO (P2) |
-| N8 | taba Zaposleni/Nastavitve vidni vsem (manjka `TAB_PERM` vnos; `hasPerm(undefined)=true`) | ODPRTO (P2) |
+| N7 | enterprise vloge ni mogoče dodeliti prek `PATCH /api/employees/[id]` | ~~ODPRTO (P2)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `employees/[id]/route.ts:54-57` = `ENTERPRISE_ROLES` bela lista (GROUP_OWNER/ORG_ADMIN/PROPERTY_MANAGER/WAREHOUSE/ACCOUNTING) + gate `isCentralRole(user)` (MANAGER ne sme) |
+| N8 | taba Zaposleni/Nastavitve vidni vsem (manjka `TAB_PERM` vnos; `hasPerm(undefined)=true`) | ~~ODPRTO (P2)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `src/lib/tab-permissions.ts` — `tabHasPerm()` fail-closed: `if (!perm) return false` (neznan/undefined/manjkajoč vnos → false, prej true) |
 
 ## 5. Transakcije, idempotencija, race conditions
 
@@ -94,12 +94,12 @@
 | R4 | SREDNJE | `api/inventory` PATCH | prilagoditev zaloge brez transakcije; evidence ločena od stanja | **POPRAVLJENO** (vse v `$transaction`; increment/decrement s pogojem; StockTransaction + AuditLog v isti transakciji; setQty ostaja namensko last-writer-wins "inventurni popravek") |
 | R5 | SREDNJE | `orders/[id]` addItems + sync | postavke na PLAČANO naročilo; createMany+recalc+update ločeno | **POPRAVLJENO** (transakcija + CAS gate `paymentStatus !== 'paid'` → 409; obe poti) |
 | R6 | SREDNJE | `ops.ts` zasedba mize | brezpogojni `occupied` → POS+QR hkrati na isti mizi; drugo naročilo nevidno v tlorisu | **POPRAVLJENO** (CAS `status != occupied` + preverba drugih aktivnih naročil → 409; replay lastnega dovoljen) |
-| R7 | NIZKO/SREDNJE | `sync/route.ts` | `applyOp` in `DeviceSyncOperation.upsert` nista v eni transakciji (retry po crashu → dvojne postavke na addItems) | ODPRTO (P2) |
+| R7 | NIZKO/SREDNJE | `sync/route.ts` | `applyOp` in `DeviceSyncOperation.upsert` nista v eni transakciji (retry po crashu → dvojne postavke na addItems) | ~~ODPRTO (P2)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `sync/route.ts:124` in `:241` = `db.$transaction(async (tx) => { … })` — applyOp + upsert atomarna |
 | R8 | NIZKO | discount maxUses | preverba + nevezan increment → prekoračitev omejitve | **POPRAVLJENO** (CAS `currentUses < maxUses`) |
-| R9 | NIZKO | tips/payout | dvojno izplačilo (brez status guard) | ODPRTO (P2, enostaven CAS) |
+| R9 | NIZKO | tips/payout | dvojno izplačilo (brez status guard) | ~~ODPRTO (P2, enostaven CAS)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `tips/payout/route.ts:43-44` = CAS `tipDistribution.updateMany({ where: { id, status: 'pending' } })` — 0 vrstic → 409 »že izplačano« |
 | R10 | NIZKO | orders PATCH/DELETE | storno PLAČANEGA naročila brez razknjižbe/fiskalnega storna | **POPRAVLJENO (varovalka)**: 409 na paid (pravi fiskalni storno ostaja MISSING/P1) |
-| R11 | NIZKO | Z-report okno | okno po createdAt (ne shiftId) → dve hkratni izmeni se podvojita v Z-poročilih | ODPRTO (P2, pravilnost) |
-| R12 | NIZKO | expenses | findFirst→create dobavitelja "Razno" → duplikati | ODPRTO (P2, upsert) |
+| R11 | NIZKO | Z-report okno | okno po createdAt (ne shiftId) → dve hkratni izmeni se podvojita v Z-poročilih | ~~ODPRTO (P2, pravilnost)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** ZReport ustvarjen v ISTI transakciji kot shift close (`shifts/route.ts:158`), okno veriženo po zaprtih izmenah (brez createdAt dvojnosti) |
+| R12 | NIZKO | expenses | findFirst→create dobavitelja "Razno" → duplikati | ~~ODPRTO (P2, upsert)~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `expenses/route.ts:73` = `db.supplier.upsert` po unique `name` + P2002 re-read/retry zanka (brez findFirst) |
 
 ## 6. Revizijska zgodovina (AuditLog)
 
@@ -123,11 +123,11 @@
 | Events (notranja vrsta + retry) | **DONE** | brez zunanjih webhook subscriberjev |
 | Odpiralni čas (7 dni + posebni + prazniki SI) | **DONE** | |
 | HACCP | **PARTIAL** | vnosi+seznam; brez načrtov kontrol |
-| Mnenja gostov | **PARTIAL** | samo branje — **ne obstaja vnosni API** (podatek se ne more ustvariti skozi app) |
+| Mnenja gostov | **DONE** | branje + **vnosni API ŽE OD Task 32-d:** `POST /api/public/feedback` (token-vezan, rate-limit 5/min/IP, anti-spoofing orderId; `guest-feedback.test.ts` 5 testov) — vnosni zvezdice na QR strani |
 | Dostava (statusi, vozniki, cone, Glovo/Wolt webhook HMAC) | **DONE** | |
 | Print (ESC/POS agent + PrintJob + ACK) | **DONE** | "printed" = bajti v socketu |
 | Integracije | **PARTIAL** | model + masking; brez UI/API za povezovanje |
-| Enterprise (org/brand/property drevo) | **PARTIAL** | API brez UI; `assertTenantScope` definiran a **nikoli klican** (vidi §10) |
+| Enterprise (org/brand/property drevo) | **PARTIAL** | API brez UI; ~~`assertTenantScope` definiran a nikoli klican~~ **VERIFICIRANO (Task 56):** org meja ŽIVO — `guardResource` (28 točkovnih rut, Task 52) + `assertOrgScope` (18 CREATE mest) + async org allow-lista `locationScope` (27 seznamskih rut, Task 54); UI ostaja edini PARTIAL del |
 | Devices (enroll, kiosk, CFD display, terminal simulator) | **DONE** | |
 | Timeclock, napitnine, waitlist, rezervacije, offline sync, MFA, računovodski izvoz CSV/JSON | **DONE** | |
 
@@ -153,10 +153,10 @@
 | Avtentikacija | custom bearer HMAC-SHA256 (12 h), `timingSafeEqual`, PIN scrypt + lookup, revokacija sej fail-closed (sessionVersion), bootstrap break-glass (fast-path zdaj enoten v requireAuth/requirePermission/requireCentralRole — prej je requirePermission vračal 403; Task 34, 2026-10-10) |
 | MFA | TOTP + recovery kode za privilegirane račune, audit MFA dogodkov |
 | **Rate limiting** | obstaja (memory + dormant Upstash); javni endpointi pokriti (public/orders 10/min, enroll, webhooki…) — **`/api/auth/login` NI bil omejen → POPRAVLJENO (10/min/IP + 429)** |
-| Tenant/lokacijska izolacija | lokacijski sloj (`assertResourceLocation`/`locationScope`) dosleden v rutah; ~~`assertTenantScope` (org nivo) definiran a ničerar klican — docs trdijo drugače → uskladiti (P1)~~ **ZAPRTO (Task 52, v1.53.0):** org meja ŽIVO povezana — `guardResource` (lokacijski + org sloj) v vseh 28 točkovnih rutah (mehanično, tsc-verificirano), `assertOrgScope` za 18 CREATE mest (`requireUserLocation`), semantika `assertTenantScope` usklajena z dokumentacijo (migracijsko varno: neznana veriga → pass; prej nasprotovala `tenantAllows` + doc); 17 novih testov (org drevesi + legacy lokacija, cross-org 403, isti-org 200, bootstrap, waiter nespremenjen, statična regresija ni več golih `assertResourceLocation`); znana omejitev: SEZNAMSKI endpointi (`locationScope`) ostajajo brez org filtra za centralne vloge — transparentno dokumentirano v TENANT-ISOLATION.md |
+| Tenant/lokacijska izolacija | lokacijski sloj (`assertResourceLocation`/`locationScope`) dosleden v rutah; ~~`assertTenantScope` (org nivo) definiran a ničerar klican — docs trdijo drugače → uskladiti (P1)~~ **ZAPRTO (Task 52, v1.53.0):** org meja ŽIVO povezana — `guardResource` (lokacijski + org sloj) v vseh 28 točkovnih rutah (mehanično, tsc-verificirano), `assertOrgScope` za 18 CREATE mest (`requireUserLocation`), semantika `assertTenantScope` usklajena z dokumentacijo (migracijsko varno: neznana veriga → pass; prej nasprotovala `tenantAllows` + doc); 17 novih testov (org drevesi + legacy lokacija, cross-org 403, isti-org 200, bootstrap, waiter nespremenjen, statična regresija ni več golih `assertResourceLocation`); znana omejitev ~~SEZNAMSKI endpointi (`locationScope`) ostajajo brez org filtra za centralne vloge~~ — **ZAPRTO (Task 54, v1.55.0):** async `locationScope` z org allow-listo (svoja org + legacy nevezane lokacije; neznana org → brez filtra, migracijsko varno) v 27 rutah + 7 DB testov (`tenant-org-list.test.ts`) |
 | Skrivnosti | check-secrets exit 0; `.env` ne-tracked; `APP_SECRET` produkcija fail-closed; Vercel deploy token base64 v workflow (privatni rep — znano, sprejeto tveganje; menjava po pravilu iz workloga) |
-| PII | javni odgovori brez PII; maskiranje telefona darilnih kartic/integracij; **odprto (P2): `GET /api/loyalty` vrača telefone vsem avtenticiranim** |
-| Backup | ročni skript; **ni urnika** (P1 za Neon produkcijo) |
+| PII | javni odgovori brez PII; maskiranje telefona darilnih kartic/integracij; ~~odprto (P2): `GET /api/loyalty` vrača telefone vsem~~ **POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0):** `loyalty/route.ts` = `maskPhone()` VEDNO (privzeto), nezakrit pogled `?full=1` zahteva `settings.manage` (sicer 403) |
+| Backup | ~~ročni skript; ni urnika~~ **ŽE OD Task 35 (VERIFICIRANO Task 56):** `.github/workflows/neon-backup.yml` — dnevni cron 02:30 UTC + manual, efemerna `backup_*` vloga, pg_dump custom, retencija 90 dni, vloga izbrisana `always()` (P1 zapor) |
 
 ## 11. Testi — pokritost poslovnih tokov
 
