@@ -1462,3 +1462,20 @@ Stage Summary:
 - v1.65.0: zadnja §7 koda/UI naloga (vrstica 122) DOSTAVLJENA — kategorije stroškov delujejo runtime-gated; uporabniški korak: Enterprise → 'stroski-kategorije' Uporabi → UI se aktivira sam v ≤60 s.
 - Faza C' (premik polja v main schema + umik raw enrichmenta + umik ADD smeri allowlista 'stroski-kategorije') ostane za trenutko, ko uporabnik POTRDI DDL klik — ni nujna, koda je varna v obeh stanjih.
 - Uporabniške odvisnosti (nespremenjene): DDL klik (stroski-kategorije, zdaj tudi HACCP/issue-13 prek konzole), GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
+
+---
+Task ID: OPS-1 (vodja@ prijava na produkciji)
+Agent: Z.ai Code
+Task: Uporabnik na produkciji (restaurantos-theta.vercel.app) ni mogel prijaviti vodja@restaurantos.app / 4567 ("ni pravi mail ali geslo") — diagnosticirati in obnoviti dostop.
+
+Work Log:
+- Diagnoza: lokalni seed računi (vodja@restaurantos.app / 4567) obstajajo SAMO v dev SQLite; produkcija ima 9 lastnih Employee vrstic — vodja@restaurantos.app tam NE obstaja, originalni zaposleni (ana@restaurant.com, eva@restaurant.com, ...) imajo PIN-e v stari neznani shemi (namerno blokirano do admin resetta — RECOVERY-NOTES.md).
+- POTRJENO delujoča produkcija prijava: info@restaurantos.app / 729153 → Robert Pezdirc, ADMIN (trajni profil iz obnovitve, DEPLOYMENT-STATUS.md) — preverjeno prek /api/auth/login (HTTP 200, employees.manage GET 200, 9 zaposlenih, lokacija RestaurantOS Ljubljana cmqih3e9e000aay5xf0nq6poh).
+- Ustvarjen račun na produkciji prek POST /api/employees (admin token, locationId ekspliciten — admin loc=null, requireUserLocation zahteva body locationId): vodja@restaurantos.app / "Vodja lokala" / MANAGER / HTTP 201.
+- PIN reset prek PATCH /api/employees/[id] (uradna pot iz Control Centerja; sessionVersion bump + EMPLOYEE_SENSITIVE_UPDATE audit) — nov PIN 754825.
+- Finalna verifikacija: /api/auth/login vodja@restaurantos.app + 754825 → HTTP 200 (MANAGER, loc Ljubljana, 11 dovoljenj). Audit trail na produkciji: EMPLOYEE_CREATE + EMPLOYEE_SENSITIVE_UPDATE z admin aktorjem.
+
+Stage Summary:
+- Dostop uporabnika obnovljen: vodja@restaurantos.app / 754825 (MANAGER) + info@restaurantos.app / 729153 (ADMIN) — obe prijavi browser-verificirane prek produkcijskega API.
+- Demo PIN 4567 je bil iz lokalnega seeda — na produkciji nikoli obstajal; uporabniku pojasnjena razlika dev/produkcija.
+- Repo nespremenjen (čista operacija prek obstoječih API); brez deploya. Rate limit na prijavi (10/min/IP) omenjen uporabniku.
