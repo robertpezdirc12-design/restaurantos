@@ -934,3 +934,20 @@ Stage Summary:
 - GitLab mirror živ z novim tokenom; trojica lokal/mirror/produkcija 100 % poravnana
 - CI (neon-smoke + tests + drift allowlist) in Vercel auto-deploy operativna; infrastrukturni blokatorji vseh 3 push kanalov rešeni
 - preostanek: uporabniški koraki (DDL issue-13, GoDaddy DNS, FURS/FINA certifikata)
+
+---
+Task ID: 48-main (dodatek)
+Agent: main (Z.ai Code)
+Task: Preiskava manjkajočega CI runa za docs commit af6e2ea — false alarm + lekcija
+
+Work Log:
+- CI run za af6e2ea se ni registriral → preiskava: "branches: ain]" v bash izpisih (sed|cat -A, git show|rg) — videti kot pokvarjen YAML.
+- Hex dump prek python3 (imunski na ANSI artefakte): vrstica 20 = čist ASCII `branches: [main]`, 0 ESC bajtov v datoteki → "ain]" je bil ARTIFAKT UPODABLJANJA bash orodja (sanoitizer pogoltnil `[m` kot ANSI SGR reset), NE korupcija datoteke.
+- Pravi vzorec: paths-ignore (worklog.md, **.md, docs/**, .zscripts/**) — docs-only pushi (7f06034, af6e2ea) v celoti ignorirani = NOBEN CI run, po zasnovi (Task 45 higiena). 5601d19 je sprožil run (dotaknil scripts/sync-check.ts).
+- Produkcija neodvisna od CI (Vercel Git integration): health @ af6e2ea db connected že ~20 s po pushu.
+- Final sync-check: SYNCED trojica @ af6e2ea (lokal = GitLab mirror = produkcija v1.50.0).
+
+Stage Summary:
+- ci.yml zdrav (byte-verified); CI gate deluje kot zasnovan — docs pushi brez CI, koda pushi z gate-om
+- LEKCIJA: pred "popravilom" navidezne korupcije vedno hex-dump verifikacija (python3 byte codes) — bash izpisi lahko požrejo `[m` sekvenco
+- trojica popolnoma poravnana @ af6e2ea
