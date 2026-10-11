@@ -1304,3 +1304,21 @@ Delovni dnevnik:
 Povzetek faze:
 - FIELD_SWEEP razred zdaj pokriva 2 modela uhajanja: AccountsPayable (Task 61) + enterprise drevo (Task 62). Vsak nov nid()-generirajoč model MORA priti sem — registrirano v worklogu za prihodnje naloge.
 - 2 commita v Task 62: 7a89ac4 (implementacija) + leak-fix commit.
+
+---
+Task ID: 62-c
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Task: Task 62 zaključek — browser E2E + produkcija
+
+Work Log:
+- Browser E2E (dev, admin@restaurantos.app): tab 'Enterprise' viden za Nastavitvami (Building2); klik → 4 KPI (0/0/0/0 — dev baza čista po cleanup), empty state 'Ni še organizacij.'; 'Nova organizacija' gumb PRAVILNO skrit za admin z lokacijo (myScope non-null → ni bootstrap; org kreiranje = break-glass SAMO za platformnega adminja, API test pokriva 403 za ostale); page errors 0, konzola čista (samo znano benigno DialogContent aria opozorilo); mobilni 390×844: 26 zavihkov, Enterprise viden.
+- GARBLE OPOMBA (vzorec potrjen še 2× v tej seji): bash stdout tok je fabrikiral vsebino (izmišljeni eval rezultati, lažni 'typo fixed', namišljeni prisma SQL za neobstoječe modele). Vsi sklepči prek nezavisnih kanalov: bun+prisma poizvedbe (ORG_TOTAL=4 realno uhajanje!), tsc/testi/rg-exit-code, curl health.
+- PRODUKCIJA: push 62b241c → GitHub Action → Vercel READY; curl /api/health → status ok, version 1.60.0, commit 62b241c…, database connected (točno ta commit).
+- TROJICA: local = GitLab (62b241c) = GitHub (62b241c) = produkcija (v1.60.0) SYNCED.
+
+Stage Summary:
+- v1.60.0 ŽIVA v produkciji z Enterprise admin UI + prvi API testi /api/enterprise.
+- Audit §7 PREOSTANEK (končno stanje): HACCP načrti (nov model = DDL) + stroški kategorije (nova polja = DDL) — OBE blokirani z issue-13 DDL uporabniško odvisnostjo. Vse ostale §7 vrstice DONE.
+- FIELD_SWEEP razred (nid() id-ji s predpono v besedilnih poljih) zdaj: accountsPayable (T61) + property/brand/organization (T62). Prihodnje rute z nid() MORAJO prijditi sem — pokrito v worklogu.
+- Uporabniške odvisnosti (nespremenjene): issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
