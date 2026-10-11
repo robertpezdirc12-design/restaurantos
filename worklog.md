@@ -1085,3 +1085,26 @@ Povzetek faze:
 - Org meja (tenant boundary) je ZDAJ POPOLNA v treh slojih: točkovne rute (guardResource, 28 mest, Task 52) + CREATE rute (assertOrgScope, 18 mest, Task 52) + SEZNAMSKI endpointi (locationScope async org allow-lista, 27 rut, Task 54) — transparentno odprto P1 iz audita §13 ZAPRTO.
 - Migracijsko varno: produkcija (1 org, lokacije brez propertyId) se NE regresira — neznana org → brez filtra; legacy lokacije vidne vsem centralnim (dokumentiran pravilnik); bootstrap break-glass nespremenjen.
 - v1.55.0; 652/652 testov; preostalo: uporabniški koraki (issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-pošta, GitLab nov žeton)
+
+---
+Task ID: 55
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Org allow-lista na seznamskih endpointih (lokacijski sloj) — zaprtje zadnje znane org meje (P1 residuum Task 52) + v1.55.0
+
+Delovni dnevnik:
+- Ovire: lokal cist @ c46e57d (Task 53 v1.54.0), produkcija v1.54.0 db connected, GitLab zeton mrtev (403) — nic ne blokira.
+- Cilj byte-tocno najden v TENANT-ISOLATION.md: "Seznamski endpointi (locationScope): centralne vloge vidijo vse lokacije — org filter na seznamih NI implementiran (znana omejitev; zaprtje z org allow-listo, sledi ob vec-org onboardingu)".
+- JEDRO (src/lib/api.ts): locationScope -> async + org allow-lista za centralne vloge — locationId IN [lokacije svoje org (Property->Brand->organizationId) + nevezane legacy (propertyId null)]; bootstrap break-glass vidi vse; neznana org uporabnika -> {} brez filtra (migracijsko varno, produkcija z nevezanimi lokacijami se NE regresira — isti pravilnik kot assertTenantScope v1.53.0); staff lokacijski sloj NESPREMENJEN (fail-closed sentinel '__no_location__').
+- Helper userOrgIdForScope: Location->Property->Brand->organizationId; null = neznana org -> brez filtra.
+- Codemod: 27 API rut locationScope(user) -> await locationScope(user) (python3 regex: spread najprej ...(await locationScope(x)), potem splosni await); staticna regresija pinana na TOCNO 27.
+- TIP-ODMEV: print/ack route bral scope.locationId kot string za printJob.create — popravljeno v typeof scope.locationId === 'string' ? scope.locationId : null (stara semantika: centralna brez org = null kot prej, staff = svoja lokacija kot prej) — tsc ulovil (TS2322), reseno byte-tocno.
+- NOVI TESTI (tests/tenant-org-list.test.ts, 7): DB-backed orgA/orgB drevesi + legacy lokacija — centralna orgA vidi orgA (obe lokaciji) + legacy, NE orgB; orgB obratno; legacy admin (org neznana) vidi VSE; bootstrap vse; waiter IZKLJUCNO svojo lokacijo; staticna regresija x2 (0 sinhronih klicev, tocno 27 await mest). Uvoz fix: employeePinFields iz src/lib/auth.
+- DOKUMENTACIJA: RESTAURANTOS-AUDIT.md omejitev precrtana -> ZAPRTO (Task 54, v1.55.0) z obsegom + semantiko + testi; TENANT-ISOLATION.md bullet dopolnjen (org allow-lista ZIVO); APP_VERSION 1.54.0 -> 1.55.0.
+- LEKCIJA (3.× ta seja): izpisi orodij GARBELIRAJO — kljucno odkritje prek python3 tracebacka: FileNotFoundError 'src/lib/tenant-isolation.ts' -> jedro je v src/lib/api.ts VES CAS (moja predpostavka o tenant.ts = garblirana iluzija); preverba "async: False" na NAPACNI datoteki je skoraj sprozila dvojno implementacijo. Resnica = traceback + exit kode + byte dump na PRAVI poti. TUDI: worklog dopis je bil 3x lazen echo uspeha (T55=0 po byte-preverbi) — resnicen zapis sele zdaj.
+- Verifikacija: bun test 652/652 (645 + 7 novih), tsc --noEmit 0, lint 0 — meritve prek redirect v datoteko.
+
+Povzetek faze:
+- Org meja POPOLNA v treh slojih: tocakovne rute (guardResource, 28 mest, Task 52) + CREATE rute (assertOrgScope, 18 mest, Task 52) + SEZNAMSKI endpointi (locationScope async org allow-lista, 27 rut, Task 54) — ZAPRTO P1 iz audita §13.
+- Migracijsko varno: produkcija (1 org, lokacije brez propertyId) se NE regresira; legacy lokacije vidne vsem centralnim (dokumentiran pravilnik); bootstrap break-glass nespremenjen.
+- v1.55.0; 652/652 testov; preostalo: uporabniski koraki (issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-posta, GitLab nov zeton)
