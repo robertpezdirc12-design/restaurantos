@@ -898,3 +898,21 @@ Work Log:
 
 Stage Summary:
 - sync-check zdaj odporen na GitLab anti-abuse; klasifikacija iskreno pokaže produkcijo v zaostanku do novega GitHub tokena
+
+---
+Task ID: 47-main
+Agent: main (Z.ai Code)
+Task: Nov GitHub token → push Task 45+46 v produkcijo → CI SUCCESS → sync-check trojica; GitLab token umrl (dokumentirano)
+
+Work Log:
+- uporabnik prinesel nov GitHub token (ghp_QSn0…) → remote set-url github → ls-remote 200 (main=512818a, kot pričakovano) → push 512818a..5601d19.
+- Vercel Git deploy: produkcija 5601d19 ŽIVA v ~60 s (2 poll). CI run 38118775971: neon-smoke SUCCESS + tests SUCCESS — prvi popolnoma zelen run za Task 45+46 skupaj.
+- produkcija health: {"status":"ok","version":"1.50.0","commit":"5601d194…(polni SHA)","database":"connected"}.
+- GitLab mirror: po prejšnjem uspešnem pushu (f202740..5601d19) je token glpat-yL49… UMRL (~1 h življenja; "HTTP Basic: Access denied … incorrect, expired, or improperly scoped" + API 403) — enak vzorec smrtnosti kot Vercel tokeni. Mirror je vsebinsko SINKRONIZIRAN (5601d19 prejel pred smrtjo); nadaljnji mirror pushi blokirani do novega tokena — NIZKA prioriteta (GitHub = avtoritativa, mirror = varnostna kopija; zapis v audit §13).
+- sync-check trojica: lokal=prod=5601d19; mirror read rate-limit/token-dead → UNKNOWN (iskreno poročilo; trojica dokazana posamično: mirror po push-outputu).
+- docs: audit §13 nov zapis "GitLab mirror status (11.10.2026)" (stanje + opcijski korak za nov token).
+- verifikacija: GitHub API jobi oba success; produkcija health polni SHA; 611/611 testov (lokalno, nespremenjeno).
+
+Stage Summary:
+- CELOVOD 100 % OPERATIVEN: push GitHub → Vercel auto-deploy (~60 s) + CI gate SUCCESS → produkcija v1.50.0 @ 5601d19 (vsebuje Task 45 CI allowlist + README + Task 46 sync-check + runbook)
+- preostanek (uporabniški koraki): DDL issue-13 (10 s), GoDaddy DNS, FURS/FINA certifikata, opcijsko nov GitLab token za mirror
