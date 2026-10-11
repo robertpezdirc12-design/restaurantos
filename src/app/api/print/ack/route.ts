@@ -20,12 +20,12 @@ export async function POST(req: NextRequest) {
   if (!parsed.ok) return ok({ error: parsed.error }, 400)
   const d = parsed.data
 
-  const scope = locationScope(user)
+  const scope = await locationScope(user)
   const row = await db.printJob.create({
     data: {
       id: nid(),
       userId: user.sub,
-      locationId: scope.locationId ?? null,
+      locationId: typeof scope.locationId === 'string' ? scope.locationId : null,
       kind: d.kind,
       refId: d.refId,
       target: d.target,

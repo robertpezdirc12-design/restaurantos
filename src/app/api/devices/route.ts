@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   const rows = await db.deviceRegistry.findMany({
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { createdAt: 'desc' },
     take: 100,
   })

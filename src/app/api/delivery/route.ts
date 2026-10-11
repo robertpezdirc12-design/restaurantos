@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const [orders, zones, webhookErrors] = await Promise.all([
     db.order.findMany({
       // Issue #4 §1: dostavna naročila po lokaciji uporabnika (centralne = vse)
-      where: { type: 'delivery', ...locationScope(user) },
+      where: { type: 'delivery', ...(await locationScope(user)) },
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: {
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         Receipt: { orderBy: { createdAt: 'desc' as const } },
       },
     }),
-    db.deliveryZone.findMany({ where: locationScope(user), orderBy: { sortOrder: 'asc' } }),
+    db.deliveryZone.findMany({ where: await locationScope(user), orderBy: { sortOrder: 'asc' } }),
     // Napake webhookov — IntegrationLog za glovo/wolt (za Dnevnik napak v UI)
     db.integration.findMany({
       where: { provider: { in: ['glovo', 'wolt'] } },

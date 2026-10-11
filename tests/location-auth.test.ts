@@ -55,16 +55,16 @@ describe('assertResourceLocation', () => {
 })
 
 describe('locationScope', () => {
-  test('staff → filter na svojo lokacijo', () => {
-    expect(locationScope(staffA)).toEqual({ locationId: 'A' })
+  test('staff → filter na svojo lokacijo', async () => {
+    expect(await locationScope(staffA)).toEqual({ locationId: 'A' })
   })
 
-  test('staff brez lokacije → fail-closed sentinel (ne vidi nič)', () => {
-    expect(locationScope(staffNoLoc)).toEqual({ locationId: '__no_location__' })
+  test('staff brez lokacije → fail-closed sentinel (ne vidi nič)', async () => {
+    expect(await locationScope(staffNoLoc)).toEqual({ locationId: '__no_location__' })
   })
 
-  test('centralna vloga → brez filtra (vidi vse)', () => {
-    expect(locationScope(owner)).toEqual({})
-    expect(locationScope(admin)).toEqual({})
+  test('centralna vloga → brez filtra (vidi vse)', async () => {
+    expect(await locationScope(owner)).toEqual({})
+    expect(await locationScope(admin)).toEqual({})
   })
 })

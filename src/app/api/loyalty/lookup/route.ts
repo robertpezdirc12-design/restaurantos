@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const accounts = await db.loyaltyAccount.findMany({
     where: {
       // Issue #4 §1: iskanje gostov samo znotraj lokacije osebja (centralne = vse)
-      ...locationScope(user),
+      ...(await locationScope(user)),
       isActive: true,
       OR: [
         { customerName: { contains: q } },

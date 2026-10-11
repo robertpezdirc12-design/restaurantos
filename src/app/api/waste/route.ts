@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const where: Prisma.WasteRecordWhereInput = {
     createdAt: { gte: new Date(Date.now() - days * 86400_000) },
     ...(reasonRaw && isWasteReason(reasonRaw) ? { reason: reasonRaw } : {}),
-    ...locationScope(user),
+    ...(await locationScope(user)),
   }
 
   const rows = await db.wasteRecord.findMany({

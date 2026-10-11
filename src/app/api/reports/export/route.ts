@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
   // Issue #4 §1: izvoz je location-scoped (centralne vloge = globalno).
   // Payment nima locationId → scope prek relacije Check → Order.locationId;
   // StockTransaction nima locationId → scope prek povezanega InventoryItem.locationId.
-  const locScope = locationScope(user)
+  const locScope = await locationScope(user)
   const payScope = isCentralRole(user) ? {} : { Check: { Order: { locationId: user.loc || '__no_location__' } } }
   const stockScope = isCentralRole(user) ? {} : { InventoryItem: { locationId: user.loc || '__no_location__' } }
 

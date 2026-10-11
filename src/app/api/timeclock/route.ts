@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
     const statusRaw = String(url.searchParams.get('status') || '')
     const where: Prisma.TimeEntryWhereInput = {
       clockIn: { gte: new Date(Date.now() - days * DAY_MS) },
-      ...locationScope(perm),
+      ...(await locationScope(perm)),
       ...(employeeId ? { employeeId } : {}),
       ...(isTimeclockStatus(statusRaw) ? { status: statusRaw } : {}),
     }
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
       include: { Employee: { select: { name: true } } },
     })
     const employees = await db.employee.findMany({
-      where: { status: 'active', ...locationScope(perm) },
+      where: { status: 'active', ...(await locationScope(perm)) },
       select: { id: true, name: true, role: true },
       orderBy: { name: 'asc' },
     })

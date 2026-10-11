@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get('action')
   const entries = await db.auditLog.findMany({
     // Issue #4 §1: audit je location-scoped — staff ne vidi dogodkov tujih lokacij
-    where: { ...(action ? { action: { contains: action } } : {}), ...locationScope(user) },
+    where: { ...(action ? { action: { contains: action } } : {}), ...(await locationScope(user)) },
     orderBy: { timestamp: 'desc' },
     take: 100,
   })

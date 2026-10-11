@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
 
-  const counterScope = selectedLocation ? { locationId: selectedLocation } : locationScope(user)
+  const counterScope = selectedLocation ? { locationId: selectedLocation } : await locationScope(user)
   const todayWhere = {
     createdAt: { gte: startOfDay },
     status: { not: 'cancelled' as const },

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const rows = await db.inventoryItem.findMany({
     // Issue #4 §1: staff vidi samo zalogo svoje lokacije
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { name: 'asc' },
     take: 100,
   })

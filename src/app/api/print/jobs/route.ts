@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const takeRaw = Number(url.searchParams.get('take'))
   const take = Number.isFinite(takeRaw) ? Math.min(200, Math.max(1, Math.round(takeRaw))) : 50
 
-  const scope = locationScope(user)
+  const scope = await locationScope(user)
   const rows = await db.printJob.findMany({
     where: {
       ...(scope.locationId ? { locationId: scope.locationId } : {}),

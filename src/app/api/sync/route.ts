@@ -281,7 +281,7 @@ export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   const deviceId = req.nextUrl.searchParams.get('deviceId') || 'unknown'
-  const operations = await db.deviceSyncOperation.findMany({ where: { deviceId, ...locationScope(user) }, orderBy: { receivedAt: 'desc' }, take: 50 })
+  const operations = await db.deviceSyncOperation.findMany({ where: { deviceId, ...(await locationScope(user)) }, orderBy: { receivedAt: 'desc' }, take: 50 })
   return ok({ operations: operations.map((o) => ({
     clientOperationId: o.clientOperationId, kind: o.operationType, status: o.status, orderId: o.orderId,
     lastError: o.lastError, retryCount: o.clientRetryCount, createdAt: o.receivedAt,

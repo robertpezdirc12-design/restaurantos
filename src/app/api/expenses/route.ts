@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const rows = await db.accountsPayable.findMany({
     // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { invoiceDate: 'desc' },
     take: 100,
   })

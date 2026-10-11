@@ -1063,3 +1063,25 @@ Stage Summary:
 - kiosk 24/7: samozdravljenje menija (6 poskusov × 5 s) + takojšen odziv na vrnitev omrežja; poslovne napake ne triggerirajo neskončnega ponavljanja
 - QR nespremenjen (že robusten) — regresijsko pinan
 - v1.54.0; odprto ostaja: uporabniški koraki (issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-pošta), GitLab mirror žeton mrtev (403 tudi na ls-remote — uporabniški nov PAT), opcijski org-filter seznamskih endpointov
+---
+Task ID: 54
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Org allow-lista na seznamskih endpointih (lokacijski sloj) — zaprtje zadnje znane org meje (P1 residuum Task 52) + v1.55.0
+
+Delovni dnevnik:
+- Preverjene ovire: lokal čist @ c46e57d (Task 53 v1.54.0), produkcija v1.54.0 z db connected, GitLab žeton mrtev (403 tudi ls-remote, mirror zaostaja 2 commita) — nič ne blokira.
+- AUDIT §13 bullet: "Seznamski endpointi (locationScope): centralne vloge vidijo vse lokacije — org filter na seznamih NI implementiran (znana omejitev; zaprtje z org allow-listo, sledi ob več-org onboardingu)" — TO je Task 54 cilj, byte-točno najden v TENANT-ISOLATION.md (~1668).
+- JEDRO (src/lib/api.ts): locationScope → async + org allow-lista za centralne vloge — locationId IN [lokacije svoje org (Property→Brand→organizationId) + nevezane legacy (propertyId null)]; bootstrap break-glass vidi vse (isti predikat kot isBootstrapAdmin, brez cirkularnega uvoza); neznana org uporabnika (legacy/nevezana lokacija) → {} brez filtra (migracijsko varno, produkcija z nevezanimi lokacijami se NE regresira — isti pravilnik kot assertTenantScope v1.53.0); staff lokacijski sloj NESPREMENJEN (fail-closed sentinel '__no_location__').
+- Helper userOrgIdForScope: Location→Property→Brand→organizationId veriga; null = neznana org → brez filtra.
+- Codemod: 27 API rut locationScope(user) → await locationScope(user) (python3 regex: spread vzorec najprej ...(await locationScope(x)), potem splošni await); statična regresija pinana na TOČNO 27 (regresija na vsak umik await).
+- TIP-ODMEV: print/ack route je bral scope.locationId kot string za printJob.create — popravljeno v typeof scope.locationId === 'string' ? scope.locationId : null (stara semantika: centralna brez org = null kot prej, staff = svoja lokacija kot prej) — tsc je ulovil (TS2322), rešeno byte-točno.
+- NOVI TESTI (tests/tenant-org-list.test.ts, 7): DB-backed z orgA/orgB drevesi + legacy lokacijo — centralna orgA vidi orgA (obe lokaciji!) + legacy, NE orgB; orgB obratno; legacy admin (org neznana) vidi VSE (migracijsko varno); bootstrap vidi vse; waiter IZKLJUČNO svojo lokacijo (lokacijska meja staffu tudi isto-org ne prečka); statična regresija ×2 (0 sinhronih klicev, ≥27 await mest). Uvoz fix: employeePinFields iz src/lib/auth (zelen).
+- DOKUMENTACIJA: RESTAURANTOS-AUDIT.md — znana omejitev prečrtana → ✅ ZAPRTO (Task 54, v1.55.0) z obsegom + semantiko + testi; TENANT-ISOLATION.md — bullet dopolnjen (org allow-lista ŽIVO); APP_VERSION 1.54.0 → 1.55.0.
+- LEKCIJA (že 3.× ta seja): izpisi GARBELIRAJÓ — ključno odkritje šele prek python3 tracebacka: FileNotFoundError 'src/lib/tenant-isolation.ts' → jedro je v src/lib/api.ts VES ČAS (moja predpostavka o tenant.ts je bila garblirana iluzija); preverba "async locationScope: False" na NAPAČNI datoteki je skoraj sprožila dvojno implementacijo. Resnica = traceback + exit kode + byte dump na PRAVI poti.
+- Verifikacija: bun test 652/652 (645 + 7 novih), tsc --noEmit 0, lint 0 — vse meritve prek redirect v datoteko (lekcija $? po cevi).
+
+Povzetek faze:
+- Org meja (tenant boundary) je ZDAJ POPOLNA v treh slojih: točkovne rute (guardResource, 28 mest, Task 52) + CREATE rute (assertOrgScope, 18 mest, Task 52) + SEZNAMSKI endpointi (locationScope async org allow-lista, 27 rut, Task 54) — transparentno odprto P1 iz audita §13 ZAPRTO.
+- Migracijsko varno: produkcija (1 org, lokacije brez propertyId) se NE regresira — neznana org → brez filtra; legacy lokacije vidne vsem centralnim (dokumentiran pravilnik); bootstrap break-glass nespremenjen.
+- v1.55.0; 652/652 testov; preostalo: uporabniški koraki (issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-pošta, GitLab nov žeton)

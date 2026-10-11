@@ -9,7 +9,7 @@ import { auditChainFields } from '@/lib/audit-chain'
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
-  const employees = await db.employee.findMany({ where: locationScope(user), orderBy: { name: 'asc' } })
+  const employees = await db.employee.findMany({ where: await locationScope(user), orderBy: { name: 'asc' } })
   return ok({ employees: employees.map(mapEmployee) })
 }
 

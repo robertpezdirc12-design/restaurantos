@@ -82,7 +82,7 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.54.0'
+export const APP_VERSION = '1.55.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
 /**
  * Realen deployan commit (Task 40 + Task 41): 
@@ -144,12 +144,39 @@ export function assertResourceLocation(
 }
 
 /**
- * §10: where-filter za findMany nad lokacijskimi modeli.
- * Centralne vloge vidijo vse; ostali samo svojo lokacijo (fail-closed — brez lokacije ne vidijo nič).
+ * §10: where-filter za findMany nad lokacijskimi modeli (Task 54 — org allow-lista).
+ *  - staff: izključno svoja lokacija (fail-closed — brez lokacije ne vidijo nič);
+ *  - centralne vloge: lokacije svoje organizacije + nevezane legacy lokacije
+ *    (propertyId null — migracijsko varno, isti pravilnik kot assertTenantScope/
+ *    assertOrgScope v1.53.0); neznana org uporabnika → brez org filtra (produkcija
+ *    z nevezanimi lokacijami se ne regresira — lokacijski sloj ostaja varovalka);
+ *  - bootstrap admin: break-glass, vidi vse.
  */
-export function locationScope(user: AuthPayload): { locationId?: string } {
-  if (isCentralRole(user)) return {}
+export async function locationScope(
+  user: AuthPayload
+): Promise<{ locationId?: string | { in: string[] } }> {
+  if (isCentralRole(user)) {
+    // bootstrap break-glass — isti predikat kot isBootstrapAdmin (tenant.ts), brez cirkularnega uvoza
+    if (user.role === 'ADMIN' && user.sub === 'bootstrap') return {}
+    const orgId = await userOrgIdForScope(user.loc)
+    if (!orgId) return {}
+    const rows = await db.location.findMany({
+      where: { OR: [{ Property: { Brand: { organizationId: orgId } } }, { propertyId: null }] },
+      select: { id: true },
+    })
+    return { locationId: { in: rows.map((r) => r.id) } }
+  }
   return { locationId: user.loc || '__no_location__' }
+}
+
+/** org uporabnikove lokacije (Location → Property → Brand → Organization); null = neznana. */
+async function userOrgIdForScope(locId: string | null | undefined): Promise<string | null> {
+  if (!locId) return null
+  const loc = await db.location.findUnique({
+    where: { id: locId },
+    select: { Property: { select: { Brand: { select: { organizationId: true } } } } },
+  })
+  return loc?.Property?.Brand?.organizationId ?? null
 }
 
 /**

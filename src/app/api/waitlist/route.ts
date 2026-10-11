@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - days * 86400_000)
 
   const rows = await db.waitlistEntry.findMany({
-    where: { checkedInAt: { gte: since }, ...locationScope(user) },
+    where: { checkedInAt: { gte: since }, ...(await locationScope(user)) },
     orderBy: { checkedInAt: 'desc' },
     take: 300,
     include: { Table: { select: { number: true, area: true } } },

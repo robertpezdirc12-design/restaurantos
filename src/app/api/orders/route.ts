@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     ? { status: status.toLowerCase() }
     : { status: { in: ORDER_ACTIVE_DB } }
   // Issue #4 §1: lokacijski scope (prej: vsak staff je videl naročila VSEH lokacij)
-  const where = { ...base, ...locationScope(user) }
+  const where = { ...base, ...(await locationScope(user)) }
   const orders = await db.order.findMany({
     where,
     include: orderInclude,

@@ -20,7 +20,7 @@ const HACCP_STATUSES = ['ok', 'warning', 'critical'] as const
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  const rows = await db.haccpEntry.findMany({ where: locationScope(user), orderBy: { date: 'desc' }, take: 100 })
+  const rows = await db.haccpEntry.findMany({ where: await locationScope(user), orderBy: { date: 'desc' }, take: 100 })
   return ok({ haccpChecks: rows.map((r) => ({
     id: r.id, type: r.category.toUpperCase(), target: r.title, value: r.value ? num(r.value) : null,
     ok: r.status === 'ok', note: r.description || null, employeeId: r.employeeName || null, checkedAt: r.date, locationId: r.locationId,

@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const rows = await db.guestFeedback.findMany({
     // Issue #4 §1: povratne informacije gostov po lokaciji (GuestFeedback.locationId)
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { createdAt: 'desc' },
     take: 100,
   })

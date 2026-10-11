@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const zones = await db.deliveryZone.findMany({
     // Issue #4 §1: cone po lokaciji uporabnika (DeliveryZone.locationId)
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { sortOrder: 'asc' },
   })
   return ok({ zones: zones.map(mapDeliveryZone) })

@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const receipts = await db.receipt.findMany({
     // Issue #4 §10: izdani računi so location-scoped (prej: vse lokacije)
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: { Order: { include: { Table: true } } },

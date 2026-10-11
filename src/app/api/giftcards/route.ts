@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 100))
 
   const where = {
-    ...locationScope(user),
+    ...(await locationScope(user)),
     ...(q
       ? {
           OR: [

@@ -221,3 +221,7 @@
 - [x] Kritične varnostne in race-condition napake popravljene, kjer je varno (R1–R6, R8, R10, login rate limit — brez spremembe sheme, brez migracij, vse v obstoječih vzorcih kode).
 - [x] CI rezultati dejanski in dokumentirani (§1; GitLab CI označen kot neverificiran — blokada dostopa, ni trditve o uspešnosti).
 - [x] Porocilo vsebuje prioritete in blokade (§13).
+
+- **Org meja na seznamskih endpointih za centralne vloge (znana omejitev Task 52: seznamski endpointi brez org filtra).** — **✅ ZAPRTO (Task 54, v1.55.0):** `locationScope` zdaj async + org allow-lista za centralne vloge — `locationId IN [lokacije svoje org + nevezane legacy (propertyId null)]`; migracijsko varno (neznana org uporabnika → brez filtra, produkcija z nevezanimi lokacijami se ne regresira), bootstrap break-glass vidi vse, staff lokacijski sloj nespremenjen (fail-closed sentinel). Mehanično povezano v 27 API rut (`await locationScope(user)` codemod + tsc arbiter); print/ack type-najozja rešitev z ekstaktno staro semantiko (centralna → null kot prej). DB-backed testi (orgA/orgB + legacy): orgA vidi orgA+legacy NE orgB, orgB obratno, legacy admin vidi vse, bootstrap vse, waiter izključno svojo lokacijo (tudi isto-org ne); statična regresija: 0 sinhronih klicev, ≥20 rut z await. 7 novih testov (652/652).
+
+

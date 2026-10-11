@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   startOfMonth.setHours(0, 0, 0, 0)
 
   // Issue #4 §1: vsi finančni agregati so location-scoped (centralne vloge vidijo vse)
-  const scope = locationScope(user)
+  const scope = await locationScope(user)
   const [todayPaid, monthPaid, monthExpenses, byTax] = await Promise.all([
     db.order.aggregate({
       where: { paymentStatus: 'paid', paidAt: { gte: startOfDay }, ...scope },

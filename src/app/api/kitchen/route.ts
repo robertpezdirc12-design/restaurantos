@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   const orders = await db.order.findMany({
-    where: { ...locationScope(user), status: { in: ORDER_ACTIVE_DB }, OrderItem: { some: { status: { in: ITEM_ACTIVE_PRISMA } } } },
+    where: { ...(await locationScope(user)), status: { in: ORDER_ACTIVE_DB }, OrderItem: { some: { status: { in: ITEM_ACTIVE_PRISMA } } } },
     include: {
       Table: true,
       OrderItem: {

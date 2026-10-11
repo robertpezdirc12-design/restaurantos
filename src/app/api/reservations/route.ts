@@ -38,7 +38,7 @@ async function specialsFor(locationId: string | undefined): Promise<{ date: stri
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
-  const rows = await db.reservation.findMany({ where: locationScope(user), orderBy: { dateTime: 'desc' }, take: 100 })
+  const rows = await db.reservation.findMany({ where: await locationScope(user), orderBy: { dateTime: 'desc' }, take: 100 })
   return ok({ reservations: rows.map(mapReservation) })
 }
 

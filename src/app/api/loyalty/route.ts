@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   }
   const rows = await db.loyaltyAccount.findMany({
     // Issue #4 §1: staff vidi samo račune zvestobe svoje lokacije
-    where: locationScope(user),
+    where: await locationScope(user),
     orderBy: { createdAt: 'desc' },
     take: 100,
   })

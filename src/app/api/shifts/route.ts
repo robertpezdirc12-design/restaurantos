@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const shifts = await db.cashRegisterShift.findMany({
     // Issue #4 §1: izmene po lokaciji (CashRegisterShift.locationId); POST ostaja lastna izmena
-    where: locationScope(user),
+    where: await locationScope(user),
     include: { Employee: { select: { name: true, role: true } } },
     orderBy: { openedAt: 'desc' },
     take: 30,

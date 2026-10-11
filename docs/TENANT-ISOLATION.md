@@ -30,9 +30,14 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
      `assertResourceLocation` klic v src/app).
    - **CREATE rute**: `assertOrgScope(user, locationId)` tik za `requireUserLocation`
      (18 mest) — blokira kreiranje virov na lokaciji tuje org (forged locationId).
-   - **Seznamski endpointi** (`locationScope`): centralne vloge vidijo vse lokacije —
-     org filter na seznamih NI implementiran (znana omejitev, transparentno; zaprtje
-     je mogoče z org allow-listo, sledi ob več-org onboardingu).
+   - **Seznamski endpointi** (`locationScope`): **✅ org allow-lista ŽIVO (Task 54,
+     v1.55.0)** — centralne vloge vidijo lokacije SVOJE organizacije + nevezane legacy
+     (`propertyId null`, migracijsko varno — isti pravilnik kot assertTenantScope/
+     assertOrgScope); neznana org uporabnika → brez filtra (produkcija z nevezanimi
+     lokacijami se ne regresira), bootstrap break-glass vidi vse; staff lokacijski
+     sloj nespremenjen. Async (`await locationScope(user)`) — povezano v 27 API rutah
+     (tsc-verificirano); testi: `tests/tenant-org-list.test.ts` (orgA vidi orgA+legacy
+     NE orgB, obratno; legacy admin brez filtra; bootstrap vse; waiter fail-closed).
    Semantika `assertTenantScope` (in `assertOrgScope`) — migracijsko varno, usklajeno
    z oglavjem tenant.ts in `tenantAllows`:
    - org uporabnika ≠ org vira (obe znani) → **403**;
@@ -68,6 +73,11 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
   bootstrap break-glass, migracijsko varni scenariji (legacy lokacija/vir → pass),
   statična regresija (ni več golih `assertResourceLocation` klicev v src/app).
 - `tests/enterprise.test.ts` — drevo + obseg (#11).
+- `tests/tenant-org-list.test.ts` (v1.55.0) — org allow-lista na seznamskih
+  endpointih (locationScope async): centralna vloga orgA vidi orgA + legacy, NE
+  orgB (in obratno); legacy admin (org neznana) → brez filtra (migracijsko varno);
+  bootstrap vse; waiter izključno svojo lokacijo; statična regresija (vsi
+  `locationScope` klici v src/app/api so `await`, ≥ 20 rut).
 
 ## Znane meje (transparentno)
 
