@@ -66,10 +66,52 @@ zaščiteni ruti, (opcijsko) prijavo.
 - `bun run scripts/system-health.ts` — DB/vrsta/naprave/drift/izhodne kode (#11 §8).
 - `scripts/sync-status.ts` — git + DeviceSyncOperation + EventLog stanje.
 
-## Eksterna struktura
+## Sandbox rollback resync (Task 46)
 
-- **GitLab = canonical** (robert.pezdirc12/restaurantos)
-- **GitHub = samodejni push-mirror** (GitLab push mirror + sync-service :3032
-  kot varovalka) — mirror nikoli ni vir sprememb.
-- **Vercel** files-API deploy iz te seje (produkcija); env: APP_SECRET,
-  BOOTSTRAP_ADMIN_*, PIN_LOOKUP_SALT, Neon DATABASE_URL.
+Peskovno okolje lahko **vrne git refse na star snapshot**, medtem ko je GitHub
+avtoritativa novojevanska (incident 2×: Task 26, Task 46). Simptom: lokal
+`git log` kaže star commit, `git fetch github` pa "Authentication failed"
+(stari token v rollbackanem `.git/config`).
+
+**Diagnoza (1 ukaz):**
+
+```bash
+bun scripts/sync-check.ts
+# local / mirror / prod trojica + klasifikacija:
+#   synced       — vse pike isti commit (exit 0)
+#   local-behind — mirror+prod naprej → --fix
+#   local-ahead  — mirror zaostaja → git push origin main
+#   diverged     — mirror != prod → ročni pregled avtoritativnosti
+#   unknown      — katera pika nedosegljiva → infra diagnoza
+```
+
+**Resync lokalnega repoja (ko je klasifikacija `local-behind`):**
+
+```bash
+bun scripts/sync-check.ts --fix        # fetch origin + reset --hard origin/main
+# --fix blokira samo spremembe na SLEDENIH datotekah (untracked ostanejo);
+# uporabi --force izrecno, če veš kaj delaš.
+```
+
+**Pomni po rollbacku (checklist):**
+1. `git config user.name / user.email` — rollback povrne peskovno identiteto
+   `Z User <z@container>`; nujno nazaj na GitHub noreply identiteto
+   (`249648337+robertpezdirc12-design@users.noreply.github.com`), sicer Vercel
+   Git deploy BLOCKED ("couldn't find a Git account for the commit author" — Task 43).
+2. Remote URL-i v `.git/config` so lahko stari (mrtev GitHub PAT, blokiran
+   GitLab račun) — osveži z veljavnimi tokeni.
+3. Untracked ostanki stare ere (npr. `vercel-deploy.yml`, `schema.production.prisma`)
+   — počisti po primerjavi z `git status` na resyncanem HEAD.
+4. Dev strežnik: restart, če prisma client drži staro shemo v spominu (Task 44 lekcija).
+
+## Eksterna struktura (usklajeno z Task 43+)
+
+- **GitHub = AVTORITATIVA** (`robertpezdirc12-design/restaurantos`) — Vercel Git
+  integration builda produkcijo iz GitHub main (push → deploy ~30 s; Task 43).
+- **GitLab = mirror** (markec-group1/markec-project) — zrcalo istih SHA-jev;
+  push po vsakem GitHub pushu (403 anti-abuse → retry po ~30 s).
+- **Vercel** produkcija: env APP_SECRET, BOOTSTRAP_ADMIN_*, PIN_LOOKUP_SALT,
+  Neon DATABASE_URL. Token `VERCEL_TOKEN_B64` ostane v GitHub secrets kot
+  rezervni CLI mehanizem — deploy ne potrebuje več tokena.
+- `bun scripts/sync-check.ts` — dokaz trojice lokal/mirror/prod (glej zgoraj).
+

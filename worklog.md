@@ -864,3 +864,24 @@ Work Log:
 Stage Summary:
 - main CI 100 % zelen (kakovostni gate objektiven: znani pending drift = rumena anotacija, vse ostalo = rdeče)
 - produkcija v1.50.0 @ dcaa43f database connected; checkout deprecation warning odstranjen
+
+---
+Task ID: 46-main
+Agent: main (Z.ai Code)
+Task: "nadaljuj" — SANDBOX ROLLBACK OKUPE (2. incident): forenzika + resync + scripts/sync-check.ts (desink-detekcija lokal/mirror/prod z --fix) + docs runbook
+
+Work Log:
+- 05:45 UTC re-verifikacija: produkcija v1.50.0 @ 512818a ZDRAVA ✓, a lokalni git HEAD = 7c098ed (Task 26 era!) in "M" na 125 datotekah. DIAGNOZA: peskovni rollback je povrnil .git refs+index+config na star snapshot; working tree vsebina pa ostala Task-45 era (worklog z Task 43-45, drift-check.ts, README.md, APP_VERSION 1.50.0). Znan vzorec (Task 26 — 1. incident).
+- forenzika remote-ov: GitHub token v rollbackanem configu (ghp_pKV9...) MRTVEN ("Invalid username or token"); GitLab remote URL = star blokiran račun robert.pezdirc12 (403). Task-45 GitLab token (markec-group1) iz konteksta → ls-remote → main = 512818a (ISTI SHA kot GitHub/produkcija!) → mirror ohranil celotno zgodovino.
+- resync (determinističen): origin URL → markec-group1; fetch; verifikacija da disk vsebina == 512818a (receipt-storno 465=465 vrstic; vse M-datoteke diff-vs-origin=0; "izbrisane" v diffu = artefakt starega indeksa, disk jih ima) → reset --hard origin/main → HEAD=512818a, 0/0 vs. origin. Čiščenje untracked ostankov stare ere: vercel-deploy.yml (pre-Task 43, git-log potrjen), schema.production.prisma (Oct 6 era).
+- KRITIČEN fix: rollback je git identity povrnil na peskovno (Z User <z@container>) → nazaj na GitHub noreply identiteto (sicer bi bil naslednji Vercel Git deploy BLOCKED — Task 43 lekcija).
+- GitHub push trenutno NEDELUJOČ (nov PAT potreben od uporabnika — check-secrets nima alternativ, gh CLI ni nameščen, env prazno). Produkcija neodvisna (Vercel builda iz GitHuba neposredno); GitLab mirror push deluje → varnostna kopija dela do novega tokena.
+- INTEGRITETA po rollbacku: tsc 0 · lint 0 · 602/602 testov — working tree 100 % zdrav.
+- NOVO scripts/sync-check.ts (incident se je ponovil 2× → orodje): preveri 3 pike (lokal rev-parse, mirror ls-remote, prod /api/health commit) neodvisno z null-failure; classifySync čista funkcija: synced / local-behind (mirror==prod, lokal zaostaja — tipičen rollback; --fix = fetch + reset --hard origin/main, blokira LE spremembe na sledenih datotekah, untracked varne) / local-ahead (mirror zaostaja → push) / diverged (mirror != prod → ročni pregled avtoritativnosti) / unknown (infra). 9 unit testov (fiktivni SHA, unknown-prednost, akcije v vsakem stanju). Live run: SYNCED @ 512818a, exit 0.
+- docs/DEPLOYMENT-RESILIENCE.md: nov razdelek "Sandbox rollback resync (Task 46)" — diagnoza 1 ukaz + checklist po rollbacku (git identity!, remote URL-i, untracked ostanki, prisma client restart); popravljen zastarel "Eksterna struktura" (GitLab=canonical → GitHub=AVTORITATIVA po Task 43).
+- verifikacija: tsc 0 · lint 0 · 611/611 (+9) · sync-check live SYNCED.
+
+Stage Summary:
+- lokal/produkcija/mirror spet konsistentni @ 512818a; peskovni rollback zdaj pokrit z orodjem + runbookom (diagnoza iz ~15 min diagnoze na 1 ukaz)
+- BLOCKER za deploye: GitHub PAT mrtev → potreben nov token od uporabnika (nato: git remote set-url github + push → Vercel auto-deploy); do takrat pushi gredo na GitLab mirror
+- app koda nespremenjena → verzija ostaja 1.50.0
