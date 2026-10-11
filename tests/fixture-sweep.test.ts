@@ -118,7 +118,7 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
   })
 
   test('znane testne predpone so pokrite (uhajanje nove fiksurne datoteke = vidna lokacija na prijavi)', () => {
-    for (const p of ['rp1-', 'rfix-', 'rbac-p2-', '33a-', '33c-', 'uc-', 'gfb-', 'tst57-', 'stockded', 'zrepvat', 'furspost', 'storno-test-', 'torg-', 'torgl-']) {
+    for (const p of ['rp1-', 'rfix-', 'rbac-p2-', '33a-', '33c-', 'uc-', 'gfb-', 'tst57-', 'stockded', 'zrepvat', 'furspost', 'storno-test-', 'torg-', 'torgl-', 'disc59-']) {
       expect(TEST_PREFIXES).toContain(p)
     }
   })

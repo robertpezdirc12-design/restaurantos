@@ -112,7 +112,7 @@
 | Funkcija | Status | Opomba |
 |---|---|---|
 | Loyalty (točke, tierji, unovčenje ob plačilu) | **DONE** | CAS zaščita ob plačilu |
-| Popusti / Happy Hour | **PARTIAL** | backend popoln; ni admin UI za kreiranje popustov |
+| Popusti / Happy Hour | **DONE** (Task 59) | backend popoln (GET/POST/PATCH/DELETE + audit veriga); admin UI DiscountsTab (novo/uredi/preklop/mehko brisanje, Happy okno, promo, maxUses, ciljne kategorije, SL/HR) |
 | Kiosk (veliki gumbi, aktivacija kodo) | **DONE** | isti kanonični pipeline; SL-only |
 | Zaloga: odpis (waste) + reverse | **DONE** | idempotentno, 409 nad zalogo |
 | Zaloga: dobavitelji + nabavna naročila + prevzem | **DONE** | centna aritmetika, statusna avtomat |

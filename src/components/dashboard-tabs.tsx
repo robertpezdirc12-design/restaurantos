@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays } from 'lucide-react'
+import { Loader2, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -4513,6 +4513,316 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
       </Dialog>
 
       {loading && !data && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('tc.loading')}</p>}
+    </div>
+  )
+}
+
+/* ─────────────────────────── POPUSTI (admin upravljanje, Task 59) ─────────────────────────── */
+
+export interface DiscountRowT {
+  id: string
+  name: string
+  type: string
+  amount: number
+  appliesTo: string
+  triggerType: string
+  promoCode: string
+  maxUses: number | null
+  currentUses: number
+  validFrom: string | null
+  validTo: string | null
+  happyDays: string
+  happyFromHour: number | null
+  happyToHour: number | null
+  targetCategoryIds: string
+  isActive: boolean
+  sortOrder: number
+}
+
+interface CatLiteT { id: string; name: string }
+
+const DAY_KEYS = ['disc.day0', 'disc.day1', 'disc.day2', 'disc.day3', 'disc.day4', 'disc.day5', 'disc.day6'] as const
+
+interface DiscForm {
+  name: string; type: string; amount: string; triggerType: string; promoCode: string
+  maxUses: string; validFrom: string; validTo: string
+  happy: boolean; days: number[]; fromHour: string; toHour: string; cats: string[]
+}
+
+const emptyForm = (): DiscForm => ({
+  name: '', type: 'percent', amount: '', triggerType: 'manual', promoCode: '',
+  maxUses: '', validFrom: '', validTo: '', happy: false, days: [1, 2, 3, 4, 5], fromHour: '16', toHour: '18', cats: [],
+})
+
+const rowToForm = (d: DiscountRowT): DiscForm => ({
+  name: d.name,
+  type: d.type,
+  amount: String(d.amount),
+  triggerType: d.triggerType,
+  promoCode: d.promoCode || '',
+  maxUses: d.maxUses == null ? '' : String(d.maxUses),
+  validFrom: d.validFrom ? d.validFrom.slice(0, 10) : '',
+  validTo: d.validTo ? d.validTo.slice(0, 10) : '',
+  happy: d.happyFromHour != null,
+  days: d.happyDays ? d.happyDays.split(',').map(Number) : [1, 2, 3, 4, 5],
+  fromHour: d.happyFromHour == null ? '16' : String(d.happyFromHour),
+  toHour: d.happyToHour == null ? '18' : String(d.happyToHour),
+  cats: d.targetCategoryIds ? d.targetCategoryIds.split(',') : [],
+})
+
+const formPayload = (f: DiscForm) => ({
+  name: f.name,
+  type: f.type,
+  amount: Number(f.amount.replace(',', '.')),
+  triggerType: f.triggerType,
+  promoCode: f.promoCode,
+  maxUses: f.maxUses === '' ? null : Number(f.maxUses),
+  validFrom: f.validFrom || null,
+  validTo: f.validTo || null,
+  happyDays: f.happy ? [...f.days].sort().join(',') : '',
+  happyFromHour: f.happy ? Number(f.fromHour) : null,
+  happyToHour: f.happy ? Number(f.toHour) : null,
+  targetCategoryIds: f.cats.join(','),
+  isActive: true,
+})
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i))
+
+export function DiscountsTab({ canManage }: { canManage: boolean }) {
+  const { t } = useI18n()
+  const [rows, setRows] = useState<DiscountRowT[]>([])
+  const [cats, setCats] = useState<CatLiteT[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [open, setOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [form, setForm] = useState<DiscForm>(emptyForm())
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [ds, ms] = await Promise.all([
+        api<{ discounts: DiscountRowT[] }>('/api/discounts'),
+        api<{ categories: CatLiteT[] }>('/api/menus').catch(() => ({ categories: [] })),
+      ])
+      setRows(ds.discounts || [])
+      setCats(ms.categories || [])
+      setErr('')
+    } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
+  }
+  useEffect(() => { void load() }, [])
+
+  const setF = (p: Partial<DiscForm>) => setForm((f) => ({ ...f, ...p }))
+  const valid = form.name.trim().length > 0 && Number(form.amount.replace(',', '.')) > 0 && (!form.happy || form.fromHour !== form.toHour)
+
+  function openCreate() { setEditId(null); setForm(emptyForm()); setErr(''); setOpen(true) }
+  function openEdit(d: DiscountRowT) { setEditId(d.id); setForm(rowToForm(d)); setErr(''); setOpen(true) }
+
+  async function save() {
+    if (!valid) return
+    setBusy(true); setErr('')
+    try {
+      if (editId) await api(`/api/discounts/${editId}`, { method: 'PATCH', body: JSON.stringify(formPayload(form)) })
+      else await api('/api/discounts', { method: 'POST', body: JSON.stringify(formPayload(form)) })
+      setOpen(false); await load()
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function toggle(d: DiscountRowT) {
+    setBusy(true)
+    try { await api(`/api/discounts/${d.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !d.isActive }) }); await load() }
+    catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function remove(d: DiscountRowT) {
+    if (!window.confirm(t('disc.deleteConfirm', { name: d.name }))) return
+    setBusy(true)
+    try { await api(`/api/discounts/${d.id}`, { method: 'DELETE' }); await load() }
+    catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const happyText = (d: DiscountRowT) => {
+    if (d.happyFromHour == null || d.happyToHour == null) return null
+    const days = d.happyDays ? d.happyDays.split(',').map((n) => t(DAY_KEYS[Number(n)] || 'disc.day0')).join(', ') : t('disc.everyDay')
+    return `${days} · ${d.happyFromHour}–${d.happyToHour}`
+  }
+
+  const active = rows.filter((d) => d.isActive).length
+  const auto = rows.filter((d) => d.triggerType === 'auto').length
+  const promo = rows.filter((d) => d.promoCode).length
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Percent className="w-4 h-4" /> {t('disc.kpiActive')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{active}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Clock className="w-4 h-4" /> {t('disc.kpiAuto')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{auto}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Ticket className="w-4 h-4" /> {t('disc.kpiPromo')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{promo}</p></CardContent></Card>
+      </div>
+
+      {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
+
+      {canManage && (
+        <div className="flex justify-end">
+          <Button className="bg-emerald-700 hover:bg-emerald-800" onClick={openCreate}><Plus className="w-4 h-4 mr-1" /> {t('disc.new')}</Button>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">{t('disc.list')}</CardTitle></CardHeader>
+        <CardContent>
+          {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('disc.loading')}</p>}
+          {!loading && rows.length === 0 && <p className="text-sm text-stone-500">{t('disc.none')}</p>}
+          <ScrollArea className="max-h-96">
+            <div className="space-y-2">
+              {rows.map((d) => {
+                const hw = happyText(d)
+                return (
+                  <div key={d.id} className={`rounded-lg border p-3 flex items-center justify-between gap-3 ${d.isActive ? 'border-stone-200 bg-white' : 'border-stone-200 bg-stone-50 opacity-75'}`}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium truncate">{d.name}</p>
+                        <Badge className="bg-emerald-700 text-white">{d.type === 'percent' ? `−${d.amount} %` : `−${fmtEUR(d.amount)}`}</Badge>
+                        {d.triggerType === 'auto' && <Badge variant="outline">{t('disc.auto')}</Badge>}
+                        {!d.isActive && <Badge variant="outline" className="text-stone-500">{t('disc.inactive')}</Badge>}
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">
+                        {d.appliesTo === 'item' ? t('disc.appliesItems') : t('disc.appliesCheck')}
+                        {d.promoCode ? ` · ${t('disc.promo')}: ${d.promoCode}` : ''}
+                        {d.maxUses != null ? ` · ${t('disc.uses', { n: d.currentUses, m: d.maxUses })}` : ` · ${t('disc.unlimited', { n: d.currentUses })}`}
+                        {hw ? ` · ${hw}` : ''}
+                      </p>
+                    </div>
+                    {canManage && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Switch checked={d.isActive} disabled={busy} onCheckedChange={() => void toggle(d)} aria-label={t('disc.toggleAria', { name: d.name })} />
+                        <Button size="sm" variant="outline" onClick={() => openEdit(d)}>{t('disc.edit')}</Button>
+                        <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" disabled={busy} onClick={() => void remove(d)} aria-label={t('disc.deleteAria', { name: d.name })}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editId ? t('disc.editTitle') : t('disc.newTitle')}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="dc-name">{t('disc.name')}</Label>
+              <Input id="dc-name" value={form.name} onChange={(e) => setF({ name: e.target.value })} placeholder={t('disc.namePh')} maxLength={120} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-type">{t('disc.type')}</Label>
+                <Select value={form.type} onValueChange={(v) => setF({ type: v })}>
+                  <SelectTrigger id="dc-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>{['percent', 'fixed'].map((v) => <SelectItem key={v} value={v}>{v === 'percent' ? t('disc.percent') : t('disc.fixed')}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-amount">{t('disc.amount')}</Label>
+                <Input id="dc-amount" inputMode="decimal" value={form.amount} onChange={(e) => setF({ amount: e.target.value.replace(/[^\d.,]/g, '') })} placeholder={form.type === 'percent' ? t('disc.amountPercentPh') : t('disc.amountEurPh')} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-trig">{t('disc.trigger')}</Label>
+                <Select value={form.triggerType} onValueChange={(v) => setF({ triggerType: v })}>
+                  <SelectTrigger id="dc-trig"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">{t('disc.manual')}</SelectItem>
+                    <SelectItem value="auto">{t('disc.auto')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-promo">{t('disc.promo')}</Label>
+                <Input id="dc-promo" value={form.promoCode} onChange={(e) => setF({ promoCode: e.target.value.toUpperCase() })} placeholder={t('disc.promoPh')} maxLength={40} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-max">{t('disc.maxUses')}</Label>
+                <Input id="dc-max" inputMode="numeric" value={form.maxUses} onChange={(e) => setF({ maxUses: e.target.value.replace(/\D/g, '') })} placeholder={t('disc.maxUsesPh')} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-vf">{t('disc.validFrom')}</Label>
+                <Input id="dc-vf" type="date" value={form.validFrom} onChange={(e) => setF({ validFrom: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dc-vt">{t('disc.validTo')}</Label>
+                <Input id="dc-vt" type="date" value={form.validTo} onChange={(e) => setF({ validTo: e.target.value })} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-stone-200 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="dc-happy">{t('disc.happy')}</Label>
+                <Switch id="dc-happy" checked={form.happy} onCheckedChange={(v) => setF({ happy: v })} />
+              </div>
+              {form.happy && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAY_KEYS.map((k, i) => (
+                      <button
+                        key={k} type="button"
+                        className={`rounded-full px-2.5 py-1 text-xs border transition ${form.days.includes(i) ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'}`}
+                        aria-pressed={form.days.includes(i)}
+                        onClick={() => setF({ days: form.days.includes(i) ? form.days.filter((x) => x !== i) : [...form.days, i] })}
+                      >{t(k)}</button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="dc-hf">{t('disc.from')}</Label>
+                      <Select value={form.fromHour} onValueChange={(v) => setF({ fromHour: v })}>
+                        <SelectTrigger id="dc-hf"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-56">{HOURS.map((h) => <SelectItem key={h} value={h}>{h}:00</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="dc-ht">{t('disc.to')}</Label>
+                      <Select value={form.toHour} onValueChange={(v) => setF({ toHour: v })}>
+                        <SelectTrigger id="dc-ht"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-56">{HOURS.map((h) => <SelectItem key={h} value={h}>{h}:00</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {cats.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>{t('disc.cats')}</Label>
+                <p className="text-[11px] text-stone-400">{t('disc.catsHint')}</p>
+                <ScrollArea className="max-h-32 rounded-lg border border-stone-200 p-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {cats.map((c) => (
+                      <button
+                        key={c.id} type="button"
+                        className={`rounded-full px-2.5 py-1 text-xs border transition ${form.cats.includes(c.id) ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'}`}
+                        aria-pressed={form.cats.includes(c.id)}
+                        onClick={() => setF({ cats: form.cats.includes(c.id) ? form.cats.filter((x) => x !== c.id) : [...form.cats, c.id] })}
+                      >{c.name}</button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+            {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t('disc.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !valid} onClick={() => void save()}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('disc.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

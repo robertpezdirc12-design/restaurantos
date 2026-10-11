@@ -46,6 +46,7 @@ export const TEST_PREFIXES = [
   'storno-test-', // receipt-storno
   'torg-', // tenant-org
   'torgl-', // tenant-org-list
+  'disc59-', // discounts-admin (Task 59)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

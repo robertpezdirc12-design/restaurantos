@@ -24,6 +24,7 @@ export const TAB_PERM: Record<string, string> = {
   meni: 'menu.manage',
   rezervacije: 'reservations.manage',
   racuni: 'reports.view',
+  popusti: 'apply_discounts', // Task 59 — admin upravljanje popustov (backend requirePermission apply_discounts)
   zaloge: 'inventory.manage',
   izmene: 'orders.pay',
   delovnicas: TAB_PERM_ALL, // Delovni čas — ura je za VSE zaposlene (samooskrba; ekipni del notri gating employees.manage)

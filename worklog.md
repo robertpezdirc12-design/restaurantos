@@ -1192,3 +1192,25 @@ Povzetek faze:
 - Uporabniški vidni bug RAZREŠEN: preview prijava pokaže 1 lokacijo; produkcija NI bila nikoli prizadeta (dokazano curl pred popravki).
 - Sistemsko: testna higiena je zdaj samoceljiva (crashani teki se počistijo ob naslednjem teku), z varnostno ključavnico proti produkcijski bazi.
 - Ostanek (uporabniški): GitLab žeton za mirror.
+
+---
+Task ID: 59
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Popusti admin UI (audit §7 vrstica 115 PARTIAL→DONE) — DiscountsTab + v1.57.0
+
+Delovni dnevnik:
+- Baseline: trojica 24136d4 (v1.56.1) SYNCED — GitLab mirror samozdravljen (žeton spet živ, 5 commitov), produkcija health ok.
+- RAZISKAVA: PATCH/DELETE /api/discounts/[id] ŽE obstajata (popolna validacija + audit veriga DISCOUNT_UPDATED before/after, DISCOUNT_DELETED mehko) — vrzel je bila ČISTO UI.
+- IMPLEMENTACIJA: DiscountsTab v src/components/dashboard-tabs.tsx (~310 vrstic, self-fetch vzorec CakalnaListaTab): 3 KPI kartice (aktivni / samodejni / promo kode), seznam z Badge vrsto (−15 % / −3,50 €), trigger, happy okno, uporabe n/m ali neomejeno, veljavnost; Dialog forma (create+edit skupaj): ime, vrsta percent/fixed, znesek, sprožitev ročno/samodejno, promo koda, maxUses, velja od/do, Happy okno (Switch + dnevi chip 0=ned..6=sob po billing.ts semantiki + uri Select 0–23), ciljne kategorije (chip multi-izbor iz /api/menus, prazno = cel račun); akcije: Switch aktivnost (PATCH isActive), Uredi (dialog), Trash2 mehko brisanje (confirm). Responsivno: KPI grid-cols-1 sm:grid-cols-3, ScrollArea max-h-96 seznam / max-h-32 kategorije.
+- ŽIČENJE: page.tsx tab 'popusti' (ikona Percent) med Računi in Zaloge + TabsContent; TAB_PERM['popusti']='apply_discounts' (N8 fail-closed disciplina); DiscountsTab import.
+- i18n: 45 disc.* ključev + tabs.popusti, SL/HR pariteta (day0..day6 Ned/Pon/Tor/Sre/Čet/Pet/Sob vs Ned/Pon/Uto/Sri/Čet/Pet/Sub). LEKCIJA: python vstavljanje je prvo ključ bloka pomotoma podvojilo tabs.popusti → TS1117 (tsc točno pokazal vrstico 395) — odstranjen duplikat.
+- TESTI (tests/discounts-admin.test.ts, 7, DB-backed, PREFIX disc59-, pre-sweep Task 58 disciplina): POST 201 + audit DISCOUNT_CREATED; validacija percent>100 + happy ena ura → 400; chef brez apply_discounts → 403; PATCH amount/maxUses + audit before/after; PATCH kategorije (neobstoječa 400 / obstoječa → appliesTo item); DELETE mehko (isActive false + audit + še vedno na seznamu); DELETE 404; GET scoping non-central (samo svoja lokacija). LEKCIJA: [id] route handlerji v testih rabijo 2. argument { params: Promise.resolve({ id }) }.
+- fixture-sweep: TEST_PREFIXES + 'disc59-' + pokritostni test posodobljen.
+- VALIDACIJA: 674/674 (667 + 7), tsc 0, lint 0.
+- BROWSER E2E (agent-browser, admin@restaurantos.app): tab viden med zavihki (N8), KPI 0/0/0, prazno stanje; "Nov popust" → dialog → "Testni Happy Hour" 15 % → Shrani → vrstica "−15 % · na cel račun · uporabe: 0 (neomejeno)", KPI Aktivni 1; Switch off → "Neaktiven" + KPI 0; Uredi dialog odpre vnaprej izpolnjen; brez konzolnih/page napak; testna vrstica počaščena iz dev baze. (Lažni alarm: snapshot -c je stiskal tabpanel — eval innerText dokazal polno vsebino.)
+- DOKUMENTACIJA: audit §7 Popusti/Happy Hour PARTIAL → DONE (Task 59); APP_VERSION 1.56.1 → 1.57.0.
+
+Povzetek faze:
+- §7 PARTIAL ostanki: fire draft→fired (P2, jedro toka), stroški brez urejanja/kategorij, HACCP brez načrtov, integracije brez UI, enterprise brez UI.
+- Vsi uporabniški odvisnosti razrešeni razen: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
