@@ -4,6 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
+import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
 
 /**
  * Task 61 (revizija §7 vrstica 122): urejanje/mehko brisanje stroška (AccountsPayable).
@@ -24,7 +25,9 @@ import { auditChainFields } from '@/lib/audit-chain'
  *    (lokacijski sloj fail-closed: staff samo svoja lokacija; org meja za centralne).
  */
 
-/** Skupni odzivni mapping — enak obliki, ki jo UI pričakuje od GET /api/expenses. */
+/** Skupni odzivni mapping — enak obliki, ki jo UI pričakuje od GET /api/expenses.
+ *  Task 67: categoryOverride — realna kategorija (raw stolpec ni v tipiziranem
+ *  vrstici); undefined → legacy 'OSTALO' (probe off / ni podano). */
 function expenseView(r: {
   id: string
   apNumber: string
@@ -38,11 +41,11 @@ function expenseView(r: {
   dueDate: Date
   locationId: string | null
   Supplier?: { name: string } | null
-}) {
+}, categoryOverride?: string) {
   return {
     id: r.id,
     apNumber: r.apNumber,
-    category: 'OSTALO',
+    category: categoryOverride ?? 'OSTALO',
     description: r.invoiceNumber || r.notes || 'Dobaviteljev račun',
     amount: num(r.totalAmount),
     paidAmount: num(r.paidAmount),
@@ -115,25 +118,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  if (!Object.keys(data).length) return fail('Ni sprememb.', 400)
+  // Task 67: kategorija (opcijsko, runtime-gated) — '' pomeni brisanje kategorije.
+  const catsEnabled = await expenseCategoriesAvailable()
+  let categoryValue: string | null = null // null = ključ ni podan
+  let categoryPrevious: string | null = null
+  if (catsEnabled) {
+    // prejšnja vrednost (raw — tipizirani client stolpca ne pozna); beremo VEDNO,
+    // da je odziv pravilen tudi pri PATCH, ki kategorije ne dotakne
+    const prevRows = await db.$queryRaw<{ category: string }[]>`
+      SELECT "category" FROM "AccountsPayable" WHERE "id" = ${id}`
+    categoryPrevious = prevRows[0]?.category ?? ''
+  }
+  if (body?.category !== undefined) {
+    const normalized = normalizeExpenseCategory(body.category)
+    if (normalized === null) return fail('Kategorija je predolga (največ 60 znakov).', 400)
+    if (normalized && !catsEnabled) {
+      return fail('Kategorije stroškov čakajo DDL korak (Enterprise → Shema migracije → stroski-kategorije).', 503)
+    }
+    categoryValue = normalized
+  }
+  const categoryChanged = categoryValue !== null && categoryValue !== categoryPrevious
 
-  const updated = await db.accountsPayable.update({ where: { id }, data })
+  if (!Object.keys(data).length && !categoryChanged) return fail('Ni sprememb.', 400)
+
+  // Task 67: update + kategorija v ENI interaktivni transakciji (oba ali noben)
+  const updated = await db.$transaction(async (tx) => {
+    const u = await tx.accountsPayable.update({ where: { id }, data })
+    if (categoryChanged && categoryValue !== null) {
+      await tx.$executeRaw`UPDATE "AccountsPayable" SET "category" = ${categoryValue} WHERE "id" = ${id}`
+    }
+    return u
+  })
 
   const __aId = nid()
-  const __details = jstr({
-    before: {
-      description: existing.invoiceNumber || existing.notes,
-      amount: num(existing.totalAmount),
-      status: existing.status,
-      dueDate: existing.dueDate,
-    },
-    after: {
-      description: (data.invoiceNumber as string) || existing.invoiceNumber,
-      amount: data.totalAmount !== undefined ? num(data.totalAmount) : num(existing.totalAmount),
-      status: (data.status as string) || existing.status,
-      dueDate: data.dueDate !== undefined ? data.dueDate : existing.dueDate,
-    },
-  })
+  const __before: Record<string, unknown> = {
+    description: existing.invoiceNumber || existing.notes,
+    amount: num(existing.totalAmount),
+    status: existing.status,
+    dueDate: existing.dueDate,
+  }
+  const __after: Record<string, unknown> = {
+    description: (data.invoiceNumber as string) || existing.invoiceNumber,
+    amount: data.totalAmount !== undefined ? num(data.totalAmount) : num(existing.totalAmount),
+    status: (data.status as string) || existing.status,
+    dueDate: data.dueDate !== undefined ? data.dueDate : existing.dueDate,
+  }
+  if (catsEnabled) {
+    __before.category = categoryPrevious ?? ''
+    __after.category = categoryChanged ? categoryValue : (categoryPrevious ?? '')
+  }
+  const __details = jstr({ before: __before, after: __after })
   const __chain = await auditChainFields(db, {
     id: __aId,
     action: 'EXPENSE_UPDATED',
@@ -155,7 +189,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   })
 
-  return ok({ expense: expenseView(updated) })
+  return ok({ expense: expenseView(updated, catsEnabled ? (categoryChanged ? categoryValue! : (categoryPrevious ?? '')) : undefined) })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

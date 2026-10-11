@@ -79,6 +79,9 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(await db.deliveryZone.count({ where: { id: autoChildId } })).toBe(0)
   })
 
+  // 20 s proračun (privzeto 5 s): test izvede DVA polna sweepa po ~117 modelih;
+  // v celotnem suitskem teku (748 testov, vzporedni datoteki) je 5 s premalo —
+  // izolirano teče v ~4 s (raste z modeli, proračun pa ni) — Task 67 lekcija.
   test('realni podatki (brez testnih predpon) ostanejo nedotaknjeni', async () => {
     const before = await countRealLocations()
     // LEKCIJA Task 64 (CI rdeča od Task 60 neodkrita): CI tests job uporablja SVEŽO
@@ -105,7 +108,7 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(res2.remainingLocations).toBe(0)
     const after2 = await countRealLocations()
     expect(after2).toBe(before)
-  })
+  }, 20_000)
 
   test('ključavnica: oddaljena baza (DATABASE_URL brez "file:") je zavrnjena', () => {
     const orig = process.env.DATABASE_URL

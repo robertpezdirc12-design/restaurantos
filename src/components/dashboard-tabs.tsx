@@ -914,15 +914,22 @@ export interface ExpenseT {
  * oznake + zapadlost KPI. API: PATCH/DELETE /api/expenses/[id] (settings.manage +
  * lokacijski gate). Knjigovodska varnost: znesek plačanega zapisa se ureja šele po
  * odprtju plačila (backend 409) — UI onemogoči vnos v dialogu.
+ *
+ * Task 67 (v1.65.0): kategorije stroškov (runtime-gated na categoriesEnabled — API
+ * vrne true, ko stolpec AccountsPayable.category obstaja; do uporabnikovega DDL klika
+ * se UI polja/filter NE prikažejo). Vnos: datalist iz obstoječih kategorij (prost
+ * tekst, ≤60), urejanje + brisanje kategorije v dialogu, oznaka v seznamu + filter.
  */
-export function ExpensesTab({ expenses, canManage, onReload }: { expenses: ExpenseT[]; canManage: boolean; onReload: () => Promise<void> }) {
+export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }: { expenses: ExpenseT[]; canManage: boolean; onReload: () => Promise<void>; categoriesEnabled?: boolean }) {
   const { t } = useI18n()
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
+  const [category, setCategory] = useState('')
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ description: '', amount: '', dueDate: '' })
+  const [editForm, setEditForm] = useState({ description: '', amount: '', dueDate: '', category: '' })
+  const [catFilter, setCatFilter] = useState('all')
   const [err, setErr] = useState('')
   const monthTotal = expenses
     .filter((e) => e.status !== 'void' && new Date(e.paidAt).getMonth() === new Date().getMonth() && new Date(e.paidAt).getFullYear() === new Date().getFullYear())
@@ -930,6 +937,11 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
   const openTotal = expenses.filter((e) => e.status === 'open').reduce((s, e) => s + e.amount, 0)
   const overdueCount = expenses.filter((e) => e.status === 'open' && e.dueDate && new Date(e.dueDate) < new Date()).length
   const isPaid = (e: ExpenseT) => e.status === 'paid' || (e.paidAmount ?? 0) >= e.amount
+  // Task 67: distinct kategorije (iz GET okna) + klienti filter prikaza
+  const categories = categoriesEnabled
+    ? Array.from(new Set(expenses.map((e) => e.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'sl'))
+    : []
+  const visible = catFilter && catFilter !== 'all' ? expenses.filter((e) => e.category === catFilter) : expenses
 
   function openEdit(e: ExpenseT) {
     setEditId(e.id)
@@ -937,6 +949,7 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
       description: e.description,
       amount: String(e.amount).replace('.', ','),
       dueDate: e.dueDate ? new Date(e.dueDate).toISOString().slice(0, 10) : '',
+      category: e.category && e.category !== 'OSTALO' ? e.category : '',
     })
     setErr('')
     setOpen(true)
@@ -949,7 +962,13 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
     try {
       await api(`/api/expenses/${editId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ description: editForm.description, amount: amt, dueDate: editForm.dueDate || undefined }),
+        body: JSON.stringify({
+          description: editForm.description,
+          amount: amt,
+          dueDate: editForm.dueDate || undefined,
+          // Task 67: kategorija samo ko je funkcija aktivna ('' = brisanje)
+          ...(categoriesEnabled ? { category: editForm.category.trim() } : {}),
+        }),
       })
       setOpen(false); await onReload()
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
@@ -973,8 +992,16 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
   async function submit() {
     setBusy(true)
     try {
-      await api('/api/expenses', { method: 'POST', body: JSON.stringify({ description, amount: Number(amount.replace(',', '.')) }) })
-      setDescription(''); setAmount(''); await onReload()
+      await api('/api/expenses', {
+        method: 'POST',
+        body: JSON.stringify({
+          description,
+          amount: Number(amount.replace(',', '.')),
+          // Task 67: kategorija samo ko je funkcija aktivna
+          ...(categoriesEnabled && category.trim() ? { category: category.trim() } : {}),
+        }),
+      })
+      setDescription(''); setAmount(''); setCategory(''); await onReload()
     } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
   }
 
@@ -1007,6 +1034,15 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
               <Label htmlFor="ex-amount">{t('exp.amount')}</Label>
               <Input id="ex-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0.00" className="w-32" />
             </div>
+            {categoriesEnabled && (
+              <div className="space-y-1.5">
+                <Label htmlFor="ex-cat">{t('exp.category')}</Label>
+                <Input id="ex-cat" list="ex-cats" value={category} onChange={(e) => setCategory(e.target.value.slice(0, 60))} placeholder={t('exp.categoryPlaceholder')} className="w-44" maxLength={60} />
+                <datalist id="ex-cats">
+                  {categories.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+            )}
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !description || !(Number(amount.replace(',', '.')) > 0)} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('exp.submit')}</Button>
           </CardContent>
         </Card>
@@ -1026,13 +1062,24 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
       <Card>
         <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">{t('exp.title')}</CardTitle>
-          <span className="text-xs text-stone-500">{t('exp.totalRecords')}: {expenses.length}</span>
+          <div className="flex items-center gap-3">
+            {categories.length > 0 && (
+              <Select value={catFilter} onValueChange={setCatFilter}>
+                <SelectTrigger className="h-8 w-44 text-xs" aria-label={t('exp.category')}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('exp.allCategories')}</SelectItem>
+                  {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <span className="text-xs text-stone-500">{t('exp.totalRecords')}: {visible.length}{catFilter !== 'all' ? ` / ${expenses.length}` : ''}</span>
+          </div>
         </CardHeader>
         <CardContent>
-          {expenses.length === 0 && <p className="text-sm text-stone-500">{t('exp.none')}</p>}
+          {visible.length === 0 && <p className="text-sm text-stone-500">{t('exp.none')}</p>}
           <ScrollArea className="max-h-96">
             <div className="space-y-2">
-              {expenses.map((e) => {
+              {visible.map((e) => {
                 const voided = e.status === 'void'
                 return (
                   <div key={e.id} className={`rounded-lg border p-3 flex flex-wrap items-center justify-between gap-2 ${voided ? 'border-stone-200 bg-stone-50 opacity-70' : 'border-stone-200 bg-white'}`}>
@@ -1040,6 +1087,7 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
                       <div className="flex flex-wrap items-center gap-2">
                         <p className={`font-medium truncate ${voided ? 'line-through text-stone-400' : ''}`}>{e.description}</p>
                         {statusBadge(e)}
+                        {categoriesEnabled && e.category && e.category !== 'OSTALO' && <Badge variant="outline" className="text-stone-600 border-stone-300">{e.category}</Badge>}
                       </div>
                       <p className="text-xs text-stone-500 mt-1">
                         {new Date(e.paidAt).toLocaleDateString('sl-SI')}
@@ -1086,6 +1134,15 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
                 <Input id="ex-edit-due" type="date" value={editForm.dueDate} onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))} />
               </div>
             </div>
+            {categoriesEnabled && (
+              <div className="space-y-1.5">
+                <Label htmlFor="ex-edit-cat">{t('exp.category')}</Label>
+                <Input id="ex-edit-cat" list="ex-cats-edit" value={editForm.category} onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value.slice(0, 60) }))} placeholder={t('exp.categoryPlaceholder')} maxLength={60} />
+                <datalist id="ex-cats-edit">
+                  {categories.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+            )}
             {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
           </div>
           <DialogFooter>

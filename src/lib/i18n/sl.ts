@@ -571,6 +571,10 @@ export const sl: Record<string, string> = {
   'exp.deleteAria': 'Prekliči strošek {d}',
   'exp.save': 'Shrani',
   'exp.cancel': 'Prekliči',
+  // Task 67: kategorije stroškov (runtime-gated — polja se pokažejo, ko stolpec obstaja)
+  'exp.category': 'Kategorija',
+  'exp.categoryPlaceholder': 'npr. Hrana, Vino, Embalaža …',
+  'exp.allCategories': 'Vse kategorije',
   // Zvestoba
   'loy.members': 'Članov',
   'loy.totalPoints': 'Skupaj točk',

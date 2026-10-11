@@ -148,6 +148,7 @@ function DashboardInner() {
   const [financial, setFinancial] = useState<FinancialT | null>(null)
   const [haccp, setHaccp] = useState<HaccpT[]>([])
   const [expenses, setExpenses] = useState<ExpenseT[]>([])
+  const [expCatsEnabled, setExpCatsEnabled] = useState(false)
   const [loyalty, setLoyalty] = useState<LoyaltyT[]>([])
   const [suppliers, setSuppliers] = useState<SupplierT[]>([])
   const [recipes, setRecipes] = useState<RecipeT[]>([])
@@ -281,7 +282,7 @@ function DashboardInner() {
         soft(api<{ shifts: ShiftT[] }>('/api/shifts')),
         soft(api<FinancialT>('/api/reports/financial')),
         soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')),
-        soft(api<{ expenses: ExpenseT[] }>('/api/expenses')),
+        soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')),
         soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')),
         soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')),
         soft(api<{ recipes: RecipeT[] }>('/api/recipes')),
@@ -309,7 +310,7 @@ function DashboardInner() {
       if (sh) setShifts(sh.shifts)
       if (fin) setFinancial(fin)
       if (haccpRows) setHaccp(haccpRows.haccpChecks)
-      if (ex) setExpenses(ex.expenses)
+      if (ex) { setExpenses(ex.expenses); setExpCatsEnabled(ex.categoriesEnabled === true) }
       if (loy) setLoyalty(loy.accounts)
       if (sup) setSuppliers(sup.suppliers)
       if (recp) setRecipes(recp.recipes)
@@ -1427,7 +1428,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="stroski">
-            <ExpensesTab expenses={expenses} canManage={canManage} onReload={load} />
+            <ExpensesTab expenses={expenses} canManage={canManage} onReload={load} categoriesEnabled={expCatsEnabled} />
           </TabsContent>
 
           <TabsContent value="zvestoba">

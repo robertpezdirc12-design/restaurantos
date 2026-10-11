@@ -571,6 +571,10 @@ export const hr: Record<string, string> = {
   'exp.deleteAria': 'Otkaži trošak {d}',
   'exp.save': 'Spremi',
   'exp.cancel': 'Odustani',
+  // Task 67: kategorije troškova (runtime-gated — polja se pokažu kad stupac postoji)
+  'exp.category': 'Kategorija',
+  'exp.categoryPlaceholder': 'npr. Hrana, Vino, Ambalaža …',
+  'exp.allCategories': 'Sve kategorije',
   // Vjernost
   'loy.members': 'Članova',
   'loy.totalPoints': 'Ukupno bodova',
