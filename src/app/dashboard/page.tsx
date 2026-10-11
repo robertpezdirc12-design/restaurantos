@@ -58,7 +58,7 @@ import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type Ter
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1009,7 +1009,7 @@ function DashboardInner() {
             {([
               ['pregled', t('tabs.pregled'), LayoutDashboard], ['mize', t('tabs.mize'), Utensils], ['narocila', t('tabs.narocila'), ClipboardList],
               ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
-              ['racuni', t('tabs.racuni'), ReceiptText], ['popusti', t('tabs.popusti'), Percent], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
+              ['racuni', t('tabs.racuni'), ReceiptText], ['popusti', t('tabs.popusti'), Percent], ['integracije', t('tabs.integracije'), Plug], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
               ['delovnicas', t('tabs.delovnicas'), Timer],
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
               ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings],
@@ -1348,6 +1348,9 @@ function DashboardInner() {
 
           <TabsContent value="popusti" className="space-y-4">
             <DiscountsTab canManage={canManage} />
+          </TabsContent>
+          <TabsContent value="integracije" className="space-y-4">
+            <IntegracijeTab canManage={canManage} />
           </TabsContent>
 
           <TabsContent value="racuni" className="space-y-4">

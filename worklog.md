@@ -1214,3 +1214,30 @@ Delovni dnevnik:
 Povzetek faze:
 - §7 PARTIAL ostanki: fire draft→fired (P2, jedro toka), stroški brez urejanja/kategorij, HACCP brez načrtov, integracije brez UI, enterprise brez UI.
 - Vsi uporabniški odvisnosti razrešeni razen: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
+
+---
+Task ID: 60
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Integracije admin (audit §7 vrstica 129 PARTIAL→DONE — API za povezovanje + UI) + doc-truth vrstica 6 (fire) + v1.58.0
+
+Delovni dnevnik:
+- Baseline: trojica 8a0b1fa (v1.57.0) SYNCED (origin=GitLab + github), working tree čist.
+- DOC-TRUTH najdba (preverba vseh 5 preostalih §7 PARTIAL vrstic pred izbiro): vrstica 6 (fire) je bila ZASTARELA — POST /api/orders/[id]/fire že obstaja (78 vrstic: idempotenten firedAt ??= now, CAS pending→fired, guardResource, 409, ORDER_FIRED + OrderFired) in je testiran v tests/orders-move-merge-fire.test.ts → prečrtana z file:line dokazom (isti vzorec kot Task 56). Preostale 4 res realne: stroški (brez [id] rute), HACCP (brez modela načrtov = DDL blokada), integracije (model KOMPLETEN, le GET z maskiranjem), enterprise UI.
+- IZBIRA: integracije — edina, ki zapira vrstico POPOLNOSTI brez DDL (stroški kategorije + HACCP načrti zahtevata nova polja/modela = issue-13 DDL uporabniška odvisnost).
+- IMPLEMENTACIJA (4 API + 1 lib + UI):
+  1. src/lib/integration-mask.ts — skupni mask helper (SECRET_KEY_PATTERN iz obstoječe GET rute izvlečen; MASK='••••'; maskIntegrationConfig/stripMaskedConfig). Maskni sentinel: vrednost '••••' pri zapisu izpuščena → urednik brez pravic ne more prepisati prave skrivnosti z masko.
+  2. integrations/route.ts — GET obogateten (baseUrl, isActive, syncInterval, lastSyncStatus/Error — Error le centralnim; locationId) + POST (settings.manage, validacija imena/baseUrl/config ≤ 8 kB, lokacija validirana, audit INTEGRATION_CREATED + dogodek IntegrationCreated).
+  3. integrations/[id]/route.ts — PATCH (delne posodobitve; config = dopolnilni zapis: prejšnji + novi ključi, maske izpuščene; syncInterval 30–86400; lokacija validirana; audit INTEGRATION_UPDATED) + DELETE (MEHKO: isActive/syncEnabled false + disconnected; idempotentno; audit INTEGRATION_DISABLED — trdo bi s FK Cascade izgubilo IntegrationLog zgodovino).
+  4. integrations/[id]/test/route.ts — POST test povezave: SSRF varovalo (localhost/.local/.internal/RFC1918/CGNAT/link-local/loopback/ULA zavrnjeni → 400), samo javni http(s), 5 s timeout, vsak HTTP odgovor = connected (statusCode < 400 → lastSyncStatus ok), omrežna napaka → disconnected + lastSyncError; IntegrationLog vrstica (test_connection) + audit INTEGRATION_TESTED + dogodek.
+  5. UI IntegracijeTab (dashboard-tabs.tsx, DiscountsTab vzorec): 3 KPI (Skupaj/Aktivne/Povezane), seznam kartic z Badge vrsta/ponudnik/status (Povezano zeleno/Prekinjeno rdeče/secondary), lastSync + interval, maskirana polja opomba; akcije: Testiraj povezavo (spinner + toast rezultat), Switch aktivnost, Uredi (dialog create+edit: ime/vrsta Select 5 možnosti/ponudnik/baseUrl/syncEnabled/interval/config Textarea s hintom), Trash2 mehko z confirm. page.tsx: tab 'integracije' (Plug ikona) med Popusti in Zaloge + TabsContent; TAB_PERM['integracije']='settings.manage'.
+- i18n: 36 novih integ.* ključev + tabs.integracije, SL/HR pariteta byte-točno (46=46 obstoječih+novih — KLJUČNA LEKCIJA: 'integ.lastSync' je že obstajal kot fragment ' · zadnja: {when}' iz DeliveryTab → moj preimenovan v lastSyncLabel; python vstavljanje za vrstico tabs.popusti, breh duplikatov).
+- TESTI (tests/integrations-admin.test.ts, 10, PREFIX integ60-, pre-sweep): POST 201 + audit + maska izpuščena pri kreiranju; validacija 400; GET maskiranje (waiter •••• + maskedFields + brez lastSyncError, owner prave vrednosti); PATCH maska NE prepiše skrivnosti + audit + 400 interval; SSRF 400 zasebni gostitelj; .invalid (RFC 2606, deterministično brez omrežja) → disconnected + IntegrationLog failed + audit; test 404; DELETE mehko + idempotentno + še na seznamu; PATCH/DELETE 404; waiter 403 na vse pisalne. LEKCIJE iz runa: (1) [id] handlerji v testih rabijo 2. argument { params: Promise.resolve({ id }) } (znano iz Task 59); (2) auditChainFields samo IZRAČUNA verigo — pisalec MORA sam napisati auditLog vrstico z ...chain (3 rute sprva brez auditLog.create → count 0); (3) žetoni v testih = UPPERCASE UI vloge ('OWNER'/'WAITER' kot produkcija roleToUI) — isCentralRole primerja 'ADMIN'/'OWNER' strict-case, lowercase 'owner' token → maskiran tudi ownerju.
+- fixture-sweep: TEST_PREFIXES + 'integ60-' (sweep že pokriva integration/integrationLog modele) + pokritostni test posodobljen.
+- VALIDACIJA: 684/684 (674 + 10), tsc 0, lint 0. GARBLE OPOMBA: 2× lažni alarm med urejanjem (MultiEdit echo kazal namišljene vsebine) — python3 byte-preverba + tsc + testi potrdili čiste datoteke; edini realni fix bil dobesedni '\n' (backslash+n) na spoju appenda v dashboard-tabs.tsx (TS1127) in regex dvojni escape.
+- BROWSER E2E (admin@restaurantos.app): tab 'Integracije' med Popusti/Zaloge; KPI 44/39/—; 'Nova povezava' dialog (ime/vrsta/ponudnik/URL/config) → 'Testni Glovo' z config {region:eu, apiKey_prod:'••••'} → shranjeno BREZ maske (sentinel izpuščen); 'Testiraj povezavo' na .invalid URL → badge 'Prekinjeno' + 'Zadnja sinhronizacija: 10/11/2026, 12:17:32' posodobljena; Switch off → 'Neaktivna'; Trash2 → mehko (API potrdil isActive:false, vrstica ostane vidna — by design); mobilni 390×844: 25 zavihkov vključno Integracije; console samo znano benigno DialogContent aria opozorilo; testna vrstica POČIŠČENA iz dev baze (44 → 44).
+- DOKUMENTACIJA: audit §7 Integracije PARTIAL → DONE (Task 60, API+UI) + vrstica 6 fire PARTIAL → DONE (doc-truth, dokaz routes+tests); APP_VERSION 1.57.0 → 1.58.0.
+
+Povzetek faze:
+- Audit §7 preostanek: stroški (urejanje brez DDL MOŽNO: PATCH/DELETE; kategorije = DDL), HACCP načrti (DDL), enterprise UI, fire je bil že rešen (doc-truth).
+- Vse uporabniške odvisnosti nespremenjene: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.

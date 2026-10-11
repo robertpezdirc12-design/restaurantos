@@ -54,7 +54,7 @@
 | 3 | Združevanje/selitev miz | — | **MISSING** (P1): noben endpoint za move/merge naročila na drugo mizo |
 | 4 | Kreiranje naročila + postavke + modifierji | `src/lib/ops.ts` `createOrderCore` (transakcija, cene iz DB, idempotencija `Order.idempotencyKey @unique`, retry P2002) | **DONE** |
 | 5 | Dodajanje postavk v odprto naročilo | `src/app/api/orders/[id]/route.ts` (addItems: transakcija + CAS gate na plačano — popravek R5), `src/app/api/sync/route.ts` (isti popravek) | **DONE** (race + plačilni gate popravljen) |
-| 6 | Pošiljanje na kuhinjo ("fire") | postavke nastanejo `pending`; ni ločenega draft→fire koraka; `firedAt` polji se nikoli ne zapišeta | **PARTIAL** (P2: dodati ekspliciten fire) |
+| 6 | Pošiljanje na kuhinjo ("fire") | postavke nastanejo `pending`; ni ločenega draft→fire koraka; `firedAt` polji se nikoli ne zapišeta | ~~PARTIAL~~ **DONE + VERIFICIRANO (Task 60 doc-truth, v1.58.0):** `orders/[id]/fire/route.ts` — ekspliciten fire (idempotenten: `order.firedAt ??= now`, CAS `updateMany pending→fired` + `firedAt`, audit ORDER_FIRED + dogodek OrderFired, guardResource, 409 na zaključenem naročilu); testi `tests/orders-move-merge-fire.test.ts` (33-a) |
 | 7 | KDS statusi priprave | `src/app/api/kitchen/route.ts` (`kitchen.update` + lokacijski gate), UI kuhinja | **DONE** |
 | 8 | Predogled računa | `src/lib/billing.ts` `computeBill`, `orders/[id]/bill/route.ts` (409 na plačano) | **DONE** |
 | 9 | Plačilo + fiskalni dokument + razknjižba zalog | `src/app/api/furs/route.ts` (CAS na plačilo, deljeno plačilo, darilne, zvestoba, `deductStockForOrderTx` v isti transakciji — R2 popravek) | **DONE** |
@@ -126,7 +126,7 @@
 | Mnenja gostov | **DONE** | branje + **vnosni API ŽE OD Task 32-d:** `POST /api/public/feedback` (token-vezan, rate-limit 5/min/IP, anti-spoofing orderId; `guest-feedback.test.ts` 5 testov) — vnosni zvezdice na QR strani |
 | Dostava (statusi, vozniki, cone, Glovo/Wolt webhook HMAC) | **DONE** | |
 | Print (ESC/POS agent + PrintJob + ACK) | **DONE** | "printed" = bajti v socketu |
-| Integracije | **PARTIAL** | model + masking; brez UI/API za povezovanje |
+| Integracije | ~~PARTIAL~~ **DONE (Task 60, v1.58.0)** | GET+POST+PATCH+DELETE+test (SSRF varovalo, maskni sentinel) + IntegracijeTab (KPI, dialog, test povezave, mehko brisanje); audit INTEGRATION_CREATED/UPDATED/TESTED/DISABLED |
 | Enterprise (org/brand/property drevo) | **PARTIAL** | API brez UI; ~~`assertTenantScope` definiran a nikoli klican~~ **VERIFICIRANO (Task 56):** org meja ŽIVO — `guardResource` (28 točkovnih rut, Task 52) + `assertOrgScope` (18 CREATE mest) + async org allow-lista `locationScope` (27 seznamskih rut, Task 54); UI ostaja edini PARTIAL del |
 | Devices (enroll, kiosk, CFD display, terminal simulator) | **DONE** | |
 | Timeclock, napitnine, waitlist, rezervacije, offline sync, MFA, računovodski izvoz CSV/JSON | **DONE** | |
