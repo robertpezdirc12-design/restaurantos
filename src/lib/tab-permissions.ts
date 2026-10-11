@@ -42,6 +42,7 @@ export const TAB_PERM: Record<string, string> = {
   odpiralnicas: TAB_PERM_ALL, // Odpiralni čas — GET /api/opening-hours = requireAuth (»status koristni vsem«); urejanje notri gating settings.manage
   zaposleni: 'employees.manage',
   nastavitve: 'settings.manage',
+  enterprise: 'settings.manage', // Task 62 — enterprise org/brand/property drevo (backend GET requireAuth, POST settings.manage)
 }
 
 export interface TabPermContext {

@@ -1265,3 +1265,25 @@ Povzetek faze:
 - Audit §7 preostanek: HACCP načrti (DDL/issue-13), enterprise UI (org drevo), stroški kategorije (DDL) — vse blokirane z DDL ali večje obsege.
 - Nenačrtovana dobiček: FIELD_SWEEP faza v počistniku zdravi razred uhajanj strežniško-generiranih id-jev (vsem prihodnjim testnim datotekam).
 - Uporabniške odvisnosti nespremenjene: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
+
+---
+Task ID: 62
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Enterprise admin UI (audit §7 vrstica 130 PARTIAL→DONE — org/brand/property drevo) + prvi API testi /api/enterprise + v1.60.0
+
+Delovni dnevnik:
+- Baseline: trojica 6712e1f (v1.59.0) SYNCED (origin=GitLab + github), working tree čist; 696/696, tsc 0, lint 0.
+- IZBIRA (doc-truth preverba preostalih §7 vrstic): enterprise = edina brez DDL (HACCP načrti + stroški kategorije = issue-13 DDL uporabniška odvisnost). Models Organization/Brand/Property ŽE v shemi; /api/enterprise GET drevo + POST 4 vrste (organization/brand/property/link-location) ŽE obstajata (Issue #11 §1 + #12 §1 tenant scope) — vrzeli: NIČ API testov + NIČ UI.
+- LEKCIJA (garble disciplina): bash stdout tok je v tej seji večkrat fabrikiral vsebino (izmišljeni ukazi, lažni izpisi) — vse odločitve potrjene z NEODVISNIMI kanali (python3 byte-preverba, tsc, bun test, rg exit-code). Lažni alarm 'vĺastna' v auditu = artefakt prikaza (rg -c 'ĺ' → 1=ni zadetkov).
+- UI EnterpriseTab (dashboard-tabs.tsx, IntegracijeTab vzorec, ~270 vrstic): 4 KPI kartice (orgi/blagovne/objekti/lokacije), drevo Card→brand→property z inScope Badge (zelena 'V obsegu' / amber 'Izven obsega', prikazan SAMO za scoped uporabnike — bootstrap myScope=null vidi vse brez oznak), lokacije kot Badge chipi + rc/ws števci; 4 dialogi: nova organizacija (bootstrap-only gumb, slug samodejno hint), nova blagovna znamka (org Select), nov objekt (brand Select + naslov/mesto/država SI|HR), poveži lokacijo (property Select + lokacije iz /api/auth/locations); canWriteOrg(orgId) = canManage && (bootstrap || svoja org) — backend 403 dvokraten; ikone Building2/Link2 dodane v lucide import.
+- page.tsx: tab 'enterprise' (Building2) za nastavitvami + TabsContent; import EnterpriseTab. TAB_PERM['enterprise']='settings.manage' (N8 fail-closed; GET je requireAuth, POST requirePermission settings.manage).
+- i18n: 29 ključev (tabs.enterprise + 28 ent.*) vstavljeno za 'tabs.integracije' v SL in HR (simetrično vrstica 68, 85 ent.* zadetkov v obeh) — interpolacija {n}/{m} preverjena v i18n/index.ts (split/join).
+- TESTI tests/enterprise-admin.test.ts (8, PREFIX ent62-, pre-sweep): POST organization bootstrap 201 + slug vsebuje prefiks + 409 dup + 400 brez imena + 403 owner ('platformnega'); POST brand 201 + 400 + 404 neznana org + 403 tuja ('Tuja organizacija'); POST property 201 + country 'si'→'SI' normalizacija + 400 + 404; link-location: owner prej myScope.organizationId=null (legacy) → 200 → potem org+property veriga; 400/404/403 ('organizacijsko drevo' — owner B brez vezave); idempotentna ponovna povezava 200; GET drevo: bootstrap myScope=null + vse orgi, owner A točno 1 org + inScope=true; cross-org: owner B vidi točno svojo (HR country); neznani kind 400 ('link-location' v sporočilu); waiter 403 na vse 4 vrste. LEKCIJE: bootstrap token = createToken({ sub:'bootstrap', role:'ADMIN', loc:null }); Location.propertyId relation (SetNull) → afterAll vrstni red employees→locations→property→brand→organization.
+- fixture-sweep: TEST_PREFIXES + 'ent62-' + pokritostni test posodobljen (18 predpon).
+- VALIDACIJA: 704/704 (696 + 8), tsc 0, lint 0. APP_VERSION 1.59.0 → 1.60.0.
+- DOKUMENTACIJA: audit §7 vrstica 130 Enterprise PARTIAL → DONE (Task 62; guardResource/assertOrgScope/locationScope ostajajo iz Task 52/54).
+
+Povzetek faze:
+- Audit §7 preostanek: HACCP načrti (DDL), stroški kategorije (DDL) — OBE blokirane z issue-13 DDL uporabniško odvisnostjo. Enterprise zadnja PARTIAL vrstica ZAPRTA.
+- Uporabniške odvisnosti nespremenjene: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
