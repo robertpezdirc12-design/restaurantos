@@ -147,6 +147,35 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(await db.supplier.count({ where: { id: { startsWith: P } } })).toBe(0)
   })
 
+  test('FIELD_SWEEP enterprise: nid() id-ji + predpona v name/slug → org/brand/property izbrisani, realni nedotaknjeni (Task 62)', async () => {
+    await seedJunk()
+    const realSlug = `realna-${RUN}`
+    const realOrg = await db.organization.create({
+      data: { id: 'org-real-sweep', name: 'Realna restavracija', slug: realSlug },
+    })
+    // simuliraj strežniško ustvarjeno drevo: id z nid(), predpona v name (org tudi slug)
+    const org = await db.organization.create({
+      data: { id: `nid${RUN}e2o`, name: `${P}Holding`, slug: `${P}holding` },
+    })
+    const brand = await db.brand.create({
+      data: { id: `nid${RUN}e2b`, organizationId: org.id, name: `${P}Znamka` },
+    })
+    const prop = await db.property.create({
+      data: { id: `nid${RUN}e2p`, brandId: brand.id, name: `${P}Objekt` },
+    })
+    expect(await db.organization.count({ where: { id: org.id } })).toBe(1)
+
+    const res: SweepResult = await sweepTestFixtures(db, [P])
+
+    expect(res.errors).toEqual([])
+    expect(await db.property.count({ where: { id: prop.id } })).toBe(0)
+    expect(await db.brand.count({ where: { id: brand.id } })).toBe(0)
+    expect(await db.organization.count({ where: { id: org.id } })).toBe(0)
+    // realna organizacija (brez testne predpone v name/slug/id) nedotaknjena
+    expect(await db.organization.count({ where: { id: realOrg.id } })).toBe(1)
+    await db.organization.delete({ where: { id: realOrg.id } })
+  })
+
   test('znane testne predpone so pokrite (uhajanje nove fiksurne datoteke = vidna lokacija na prijavi)', () => {
     for (const p of ['rp1-', 'rfix-', 'rbac-p2-', '33a-', '33c-', 'uc-', 'gfb-', 'tst57-', 'stockded', 'zrepvat', 'furspost', 'storno-test-', 'torg-', 'torgl-', 'disc59-', 'integ60-', 'exp61-', 'ent62-']) {
       expect(TEST_PREFIXES).toContain(p)

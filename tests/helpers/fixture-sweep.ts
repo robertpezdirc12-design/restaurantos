@@ -188,6 +188,14 @@ type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Prom
  */
 const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[] }> = [
   { model: 'accountsPayable', fields: ['invoiceNumber', 'notes', 'apNumber'] },
+  // Task 62: enterprise drevo (property → brand → organization) — POST /api/enterprise
+  // ustvarja id z nid(), testna predpona živi v name (org tudi slug). Restriktivne FK
+  // (Property→Brand, Brand→Organization) diktirajo vrstni red otroci → starši.
+  // Location→property je opciona (SetNull) — brisanje testnega property ne ovira
+  // lokacijskih prehodov (testne lokacije nosijo predpono v id).
+  { model: 'property', fields: ['name'] },
+  { model: 'brand', fields: ['name'] },
+  { model: 'organization', fields: ['name', 'slug'] },
 ]
 
 /**

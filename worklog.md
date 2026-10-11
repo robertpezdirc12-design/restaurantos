@@ -1287,3 +1287,20 @@ Delovni dnevnik:
 Povzetek faze:
 - Audit §7 preostanek: HACCP načrti (DDL), stroški kategorije (DDL) — OBE blokirane z issue-13 DDL uporabniško odvisnostjo. Enterprise zadnja PARTIAL vrstica ZAPRTA.
 - Uporabniške odvisnosti nespremenjene: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
+
+---
+Task ID: 62-b
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Enterprise uhajanje fiksur — FIELD_SWEEP podaljšek (org/brand/property) + regresija
+
+Delovni dnevnik:
+- Browser E2E v verifikaciji JE ULovil realno uhajanje: dev baza je imela 4× ent62- organizacije (2 teka: mv3ufw9g + mv3ug15g). Potrjeno prek prisma poizvedbe (ORG_TOTAL=4, LEAKED=4) — NE display artefakt.
+- VZROK (isti razred kot Task 61 FIELD_SWEEP): POST /api/enterprise rute ustvarjajo id z nid() — testna predpona ostane LE v name (org tudi slug); afterAll deleteMany({ id startsWith }) ne ujame ničesar. Vseh 8 testov je v prvem teku USPELO (afterAll je tekel) — uhajanje je bilo TAKOJ, ne crash artefakt: ključ je v id-generaciji rute.
+- FIX: (1) tests/enterprise-admin.test.ts afterAll — OR pogoj po id + name (+ slug za org); (2) tests/helpers/fixture-sweep.ts FIELD_SWEEP + property(name)/brand(name)/organization(name,slug) v vrstnem redu otroci→starši (Restriktivni FK Property→Brand, Brand→Organization; Location→property opciona SetNull); (3) regresijski test v fixture-sweep.test.ts (nid() id-ji + predpona v name/slug → izbrisani, realna org 'Realna restavracija' nedotaknjena + počiščena).
+- scripts/cleanup-test-fixtures.ts: property 4, brand 4, organization 4, remainingLocations 0, errors 0 — dev baza spet čista (orgs=[]).
+- VALIDACIJA: 705/705 (704 + 1 regresija), tsc 0, lint 0.
+
+Povzetek faze:
+- FIELD_SWEEP razred zdaj pokriva 2 modela uhajanja: AccountsPayable (Task 61) + enterprise drevo (Task 62). Vsak nov nid()-generirajoč model MORA priti sem — registrirano v worklogu za prihodnje naloge.
+- 2 commita v Task 62: 7a89ac4 (implementacija) + leak-fix commit.

@@ -86,9 +86,11 @@ afterAll(async () => {
   await db.eventLog.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { entityId: { startsWith: PREFIX } }] } }).catch(() => null)
   await db.employee.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
-  await db.property.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
-  await db.brand.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
-  await db.organization.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
+  // LEKCIJA Task 62 (isti razred uhajanja kot Task 61): POST rute ustvarjajo id z
+  // nid() — predpona živi v name/slug, NE v id → brisanje tudi po besedilnih poljih.
+  await db.property.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { name: { startsWith: PREFIX } }] } }).catch(() => null)
+  await db.brand.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { name: { startsWith: PREFIX } }] } }).catch(() => null)
+  await db.organization.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { name: { startsWith: PREFIX } }, { slug: { startsWith: PREFIX } }] } }).catch(() => null)
 })
 
 const isErr = async (p: Promise<Response>, status: number) => {
