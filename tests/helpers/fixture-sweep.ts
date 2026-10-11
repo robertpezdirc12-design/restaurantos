@@ -50,6 +50,7 @@ export const TEST_PREFIXES = [
   'integ60-', // integrations-admin (Task 60)
   'exp61-', // expenses-admin (Task 61)
   'ent62-', // enterprise-admin (Task 62)
+  'zst63-', // zreport-storno (Task 63)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

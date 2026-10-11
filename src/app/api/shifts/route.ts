@@ -105,9 +105,22 @@ export async function POST(req: NextRequest) {
         let cash = 0, card = 0, mobile = 0, alternate = 0, totalSales = 0, totalTax = 0
         let totalTips = 0, totalDiscounts = 0, guests = 0
         let dineIn = 0, takeout = 0, delivery = 0
+        // Task 63 (storno celovitost): storno račun (isStorno=true, negativni zneski) se
+        // NOETNO prišteje k vsem vsotam (promet/DDV/načini plačila/vedri — pravilna negacija
+        // FURS prometa), NE pa k števcem naročij/gostov (storno NI novo naročilo; gost je
+        // že štet pri originalu). totalStorno = absolutna vsota storno računov v oknu —
+        // polje obstaja v shemi (ZReport.totalStorno), doslej pa ni bilo nikoli zapisano.
+        let totalStorno = 0
+        let originalOrders = 0
         const vatBuckets: Record<string, { net: number; vat: number }> = {}
         for (const rc of receipts) {
           const amount = num(rc.total)
+          if (rc.isStorno) {
+            totalStorno += Math.abs(amount)
+          } else {
+            originalOrders += 1
+            guests += rc.Order?.splitCount || 0
+          }
           totalSales += amount
           totalTax += num(rc.totalVat)
           totalTips += num(rc.tip)
@@ -122,7 +135,6 @@ export async function POST(req: NextRequest) {
           if (orderType === 'takeaway') takeout += amount
           else if (orderType === 'delivery') delivery += amount
           else dineIn += amount
-          guests += rc.Order?.splitCount || 0
           // DDV razčlenba iz vatBreakdown (neto konvencija — ključi so stopnje)
           const vb = jparse<Record<string, { base: number; vat: number }>>(rc.vatBreakdown, {})
           for (const [rate, v] of Object.entries(vb)) {
@@ -149,7 +161,7 @@ export async function POST(req: NextRequest) {
             mobileSales: r(mobile),
             alternateSales: r(alternate),
             totalSales: r(totalSales),
-            totalOrders: receipts.length,
+            totalOrders: originalOrders, // Task 63: storno računov ne štejemo kot naročila
             totalDiscounts: r(totalDiscounts),
             totalTips: r(totalTips),
             cashDifference: r(closingCash - expectedCash),
@@ -176,9 +188,10 @@ export async function POST(req: NextRequest) {
             vatReduced: 9.5,
             vatReducedAmount: r(red.vat),
             vatZero: 0,
-            totalOrders: receipts.length,
-            totalGuests: guests,
-            avgOrderValue: r(receipts.length ? totalSales / receipts.length : 0),
+            totalStorno: r(totalStorno), // Task 63: prvič dejansko zapisano (bilo vedno 0)
+            totalOrders: originalOrders, // Task 63: brez storno računov
+            totalGuests: guests, // Task 63: gostje samo iz originalov (brez podvojenih)
+            avgOrderValue: r(originalOrders ? totalSales / originalOrders : 0), // Task 63: neto / originali
             totalDiscounts: r(totalDiscounts),
             totalTips: r(totalTips),
             startingCash: num(claimed.startingCash),
@@ -205,12 +218,12 @@ export async function POST(req: NextRequest) {
             locationId: claimed.locationId,
           },
         })
-        return { shift, zreport, receipts: receipts.length, totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash) }
+        return { shift, zreport, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash) }
       })
 
       return ok({
         shift: mapShift({ ...result.shift, employee: null }),
-        zReport: { id: result.zreport.id, totalSales: result.totalSales, cash: result.cash, card: result.card, totalTax: result.totalTax, receipts: result.receipts, cashDifference: result.cashDifference },
+        zReport: { id: result.zreport.id, totalSales: result.totalSales, cash: result.cash, card: result.card, totalTax: result.totalTax, receipts: result.receipts, totalStorno: result.totalStorno, cashDifference: result.cashDifference },
       })
     } catch (e) {
       if (e instanceof ShiftCloseConflictError) return fail(e.message, 409)
