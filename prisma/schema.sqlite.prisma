@@ -48,6 +48,12 @@ model AccountsPayable {
   updatedAt           DateTime @updatedAt
   locationId          String?
   matchStatus         String                @default("unmatched")
+  // Task 66 (v1.64.0): stroški kategorije — DEV ONLY do uporabniškega DDL koraka.
+  // Main schema.prisma (produkcija) polja NIMA, dokler centralna vloga ne aplicira
+  // /api/admin/migrate-stroski-kategorije (konzola Enterprise) — sicer bi Prisma
+  // client na produkciji SELECT-al neobstoječ stolpec (P2022 zastrupitev živih
+  // poizvedb). Naslednja naloga (koda/UI kategorij) doda polje v main schema.
+  category            String                @default("")
   Location            Location?             @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   Supplier            Supplier              @relation(fields: [supplierId], references: [id])
   AccountsPayableLine AccountsPayableLine[]

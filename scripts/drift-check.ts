@@ -71,6 +71,31 @@ export interface KnownDrift {
 }
 
 /**
+ * Task 66 (v1.64.0): stroški kategorije — stolpec "category" na AccountsPayable
+ * je v fazi DDL-drafta (main schema.prisma polja ŠE nima; dev zrcalo ga ima).
+ * Diff (Neon → main schema) lahko generira DVA smeri, odvisno od faze:
+ *  - faza B (uporabnik je apliciral DDL, main schema še brez polja):
+ *      ALTER TABLE "AccountsPayable" DROP COLUMN "category";
+ *  - faza C' (naslednja naloga doda polje v main schema, DDL še ni apliciran):
+ *      ALTER TABLE "AccountsPayable" ADD COLUMN "category" TEXT NOT NULL DEFAULT '';
+ * Matcher je STROG (po vzoru isIssue13Statement): tabela + VSAKA klavzula mora
+ * biti točno ADD/DROP COLUMN "category" — kombiniran ALTER z dodatnimi stolpci
+ * ostane unexpected. Narekovaji preprečujejo lažne ujeme ("AccountsPayableLine",
+ * "category_id"). Ko sta polje in DDL usklajena (faza C), drift izgine in vnos
+ * postane mrtva koda.
+ */
+export function isStroskiKategorijeStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"AccountsPayable"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = m[1]
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+  if (clauses.length === 0) return false
+  return clauses.every((c) => /^(ADD|DROP)\s+COLUMN\s+"category"(\s|$)/i.test(c))
+}
+
+/**
  * Task 64 (v1.62.0): HaccpPlan tabela — prisma diff generira CREATE TABLE +
  * 2× CREATE INDEX + ADD CONSTRAINT (FK na Location). Vsi 4 stavki vsebujejo
  * "HaccpPlan" (noben drug model se nanjo veže), zato je matcher preprost in
@@ -100,6 +125,18 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'nobena živa funkcionalnost ne uporablja nove tabele. Ko je DDL apliciran, ' +
       'drift izgine in ta vnos postane mrtva koda (brez spremembe workflowa).',
     matches: isHaccpPlanStatement,
+  },
+  {
+    id: 'stroski-kategorije',
+    reason:
+      'Stroški kategorije — stolpec AccountsPayable."category" (Task 66, v1.64.0, ' +
+      'DDL draft): admin ruta /api/admin/migrate-stroski-kategorije (konzola ' +
+      'Enterprise → en klik). Faza je dvosmerna (glej isStroskiKategorijeStatement): ' +
+      'po uporabniškem DDL (stolpec v Neonu, main schema še brez) diff generira ' +
+      'DROP COLUMN; po naslednji nalogi (polje v main schema, DDL še ne apliciran) ' +
+      'ADD COLUMN. Nobena živa poizvedba ne uporablja stolpca v obeh fazah — ' +
+      'produkcija deluje normalno. Ko je oboje usklajeno, drift izgine (mrtva koda).',
+    matches: isStroskiKategorijeStatement,
   },
 ]
 

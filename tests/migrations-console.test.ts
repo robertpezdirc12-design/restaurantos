@@ -10,9 +10,10 @@ import { sweepTestFixtures } from './helpers/fixture-sweep'
 
 /**
  * Task 65 — Migracijska konzola (v1.63.0):
- *  - register: 9 migracij, unikatni id-ji, vsak endpoint kaže na obstoječo rutо na disku
+ *  - register: 10 migracij (od Task 66 tudi stroski-kategorije), unikatni id-ji,
+ *    vsak endpoint kaže na obstoječo rutо na disku
  *  - probe: dialekt-agnostične (dev SQLite = vse aplicirano po db push)
- *  - GET: waiter/manager 403 (samo centralne vloge); owner 200 z 9 vnosi, allApplied
+ *  - GET: waiter/manager 403 (samo centralne vloge); owner 200 z 10 vnosi, allApplied
  *  - POST: brez body = vse čakajoče (dev: nič); {id:'nope'} 400; {id} že apliciran → alreadyApplied
  *  - delegacija: {id:<vsak iz registra>} → 200 (mapa HANDLERS pokriva ves register)
  *  - PENDING simulacija (issue10 — DDL je SQLite-kompatibilen): DROP TABLE → probe
@@ -94,10 +95,10 @@ afterAll(async () => {
 })
 
 describe('register shematskih migracij', () => {
-  test('9 migracij z unikatnimi id-ji in metapodatki', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(9)
+  test('10 migracij z unikatnimi id-ji in metapodatki', () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(10)
     const ids = SCHEMA_MIGRATIONS.map((m) => m.id)
-    expect(new Set(ids).size).toBe(9)
+    expect(new Set(ids).size).toBe(10)
     for (const m of SCHEMA_MIGRATIONS) {
       expect(m.descKey.startsWith('mig.')).toBe(true)
       expect(m.endpoint.startsWith('/api/admin/migrate-')).toBe(true)
@@ -115,7 +116,7 @@ describe('register shematskih migracij', () => {
 
   test('status na dev SQLite: vse aplicirano (schema je pushana)', async () => {
     const status = await schemaMigrationsStatus()
-    expect(status.length).toBe(9)
+    expect(status.length).toBe(10)
     expect(status.every((s) => s.applied)).toBe(true)
     expect(status.every((s) => s.error === undefined)).toBe(true)
   })
@@ -135,12 +136,12 @@ describe('migracijska konzola — avtorizacija', () => {
 })
 
 describe('migracijska konzola — status in delegacija', () => {
-  test('GET owner: 9 vnosov, vse aplicirano na dev, oblika vnosa', async () => {
+  test('GET owner: 10 vnosov, vse aplicirano na dev, oblika vnosa', async () => {
     const { owner } = await setupP
     const r = await consoleGET(req('/api/admin/migrations', owner))
     expect(r.status).toBe(200)
     const j = (await r.json()) as MigResp
-    expect(j.migrations.length).toBe(9)
+    expect(j.migrations.length).toBe(10)
     expect(j.allApplied).toBe(true)
     expect(j.pending).toBe(0)
     for (const m of j.migrations) {

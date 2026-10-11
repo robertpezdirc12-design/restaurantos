@@ -1411,3 +1411,32 @@ Stage Summary:
 - v1.63.0: uporabniški DDL korak je zdaj prijava → Enterprise → 1 klik (pokriva migrate-issue13 + migrate-haccp-plans + vse prihodnje — register raste z novimi migracijami, konzola sama dobi nov vnos).
 - Kvadrica: local = GitHub = GitLab = Vercel @ 890a28b, v1.63.0, db connected.
 - §7 preostanek nespremenjen: SAMO stroški kategorije (nov stolpec = DDL, uporabniško odvisen; konzola bo pokrila tudi to, ko bo DDL Draft pripravljen). GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta nespremenjeni.
+
+---
+Task ID: 66
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Task: Stroški kategorije — DDL draft (zadnja §7 postavka, vrstica 122) + register #10 (v1.64.0)
+
+Work Log:
+- Baseline: HEAD 72c510d (Task 65 worklog), kvadrica synced, 729/729, tsc 0, lint 0. §7 preostanek = SAMO stroški kategorije (DDL); konzola čaka draft → izbrana naloga.
+- KLJUČNA VARNOSTNA ODLOČITEV (razširitev lekcije Task 64): nov STOLPEC na živeči tabeli zastrupi produkcijo (P2022), če pride v main schema.prisma PREJ kot DDL na Neonu → polje je SAMO v dev zrcalu (schema.sqlite.prisma, komentar v modelu); main schema NIMA polja. Produkcija (build iz main schema) ne pozná stolpca → dodaten stolpec v Neonu po uporabnikovem kliku je aditivno-varno (Prisma SELECT-a samo deklarirana polja). Naslednja naloga (koda/UI kategorij) doda polje v main schema ŠELE ko je probe applied.
+- Shema: mirror AccountsPayable + `category String @default("")` (usklajeno s konvencijo tabel); db:push → dev stolpec obstaja.
+- Ruta /api/admin/migrate-stroski-kategorije (haccp vzorec): requireCentralRole, pre-check `SELECT "category" … LIMIT 1` (uspeh → alreadyApplied; P2021/P2022 → DDL; druge napake → 500 infra resnica), FIKSNA DDL `ALTER TABLE "AccountsPayable" ADD COLUMN "category" TEXT NOT NULL DEFAULT ''` (PG 11+ instant, SQLite ✓), apCountAfter sanity, audit SCHEMA_MIGRATION_STROSKI_KATEGORIJE.
+- Register #10: {id 'stroski-kategorije', descKey 'mig.stroskiKategorije.desc', probe columnExists('AccountsPayable','category')} + konzola HANDLERS vnos (delegacija samodejna) + i18n SL/HR (pariteta ✓ globalni i18n test).
+- Drift allowlist 'stroski-kategorije' z DVOSMERNNIM matchrom isStroskiKategorijeStatement (po vzoru isIssue13 — STROGE klavzule): faza B po uporabnikovem DDL = `DROP COLUMN "category"` (Neon ima, main schema še ne); faza C' po naslednji nalogi = `ADD COLUMN "category"` (main schema ima, Neon še ne). Narekovaji preprečijo lažne ujeme ("AccountsPayableLine", "category_id"); kombinirani ALTER z dodatnimi stolpci ostane unexpected. Ko je oboje usklajeno → mrtva koda.
+- Testi tests/stroski-ddl.test.ts (5, sk66- v TEST_PREFIXES): register + i18n; dev status probe applied + direkten POST alreadyApplied; 403 waiter/manager; STATIČNO varovanje DDL vira (ruta vsebuje točno pričakovano DDL, brez DROP/DELETE) + realna shema (sqlite_master deklarira stolpec, 7 indeksov nedotaknjenih); probe override konzolni tok (GET pending vsiljen → POST delegira → alreadyApplied ok:true + allApplied false = override je resnica o statusu, ne o DDL; audit CONSOLE). migrations-console.test.ts 9→10 (4 mesta). VALIDACIJA: 741/741 (729+5+7 drift), tsc 0, lint 0. APP_VERSION 1.63.0 → 1.64.0.
+- LEKCIJE (raziskane do dna, ~2h forenzika — navedene tudi v test headerju):
+  (1) DROP COLUMN v sandboxu NEPREDVIDLJIV — SQLite parsira SHRANJENO CREATE stavko iz sqlite_master; ko je zastarela, javi `no such column: ""category""` (podvojeni narekovaji!) tudi nad konsistentno shemo; quoted in unquoted varianti failata, včasih pa stolpec vseeno izgine.
+  (2) Prisma SQLite engine cache-a shemo ob PRVEM dostopu do tabele in je NE osveži več v življenju procesa: DDL zunanjega pisatelja (bun:sqlite na isti datoteki) neviden; rename+klon z istim imenom ne prebudi read-view-a; $disconnect NE pomaga; HKRATI njegovo branje sqlite_master vrne REALNO stanje (krvava mešanica: raw sqlite_master = resnica, raw SELECT na cache-ani tabeli = zamišljen pogled — dokazano z marker-tabelo prek meje + diagnostiko v child procesu). Fresh proces vidi ... prav tako zamišljeno (engine cache je per-proces, zgrajen ob prvem stiku z modele — vseeno kdaj je bil DDL izveden).
+  (3) Realni pending→apply tok za TABELE ostane pokrit z mig65 PrintJob vzorcem ($executeRawUnsafe lastnega engine-a); za STOLPEC je statično varovanje DDL vira + produkcija (Neon PG, sveže lambda instance) standardna.
+  (4) MultiEdit ni atomičen (ponovno): import replace je tiho spodletel na ciriličnem 'о' v "rutо" (latinična vs cirilična črka!) → vedno verifikiraj stanje po vsaki zamenjavi; python replace vsebuje lekcijo.
+  (5) Bun spawnSync: proc.stdout je Buffer (ne funkcija kot v Node); bun:sqlite nima opcije fileMustExist (API misuse → ročen existsSync).
+  (6) dev.sh poganja db:push ob zagonu → po dropu stolpca za E2E pending stanja uporabi direkten `bun run dev` (brez db:push) — in vseeno: engine cache naredi pending stanje na dev neopazljivo → E2E verificira shipped stanje (vse aplicirano).
+- Browser E2E živo (admin@restaurantos.app / PIN 1234): prijava → Enterprise → "Shema migracije (DDL)" sekcija: 10 vrstic, stroski-kategorije = "Uporabljeno" + endpoint /api/admin/migrate-stroski-kategorije, "Vse migracije so aplicirane."; 0 page errors; konzola čista (samo React DevTools/HMR info); mobilni 390×844 = 26 tabov; footer v1.64.0. (Realen pending→apply klik se bo zgodil na produkciji, kjer je engine obnašanje standardno — konzola je za ta tok generična in že preizkušena z mig65.)
+- Push: GitHub + GitLab. CI + produkcija: spremljanje (drift-check: na Neonu STOLPCA ŠE NI in main schema ga nima → allowlist vnos MRTAV do uporabnikovega klika ali naslednje naloge — noben ::warning:: takoj po pushu).
+
+Stage Summary:
+- v1.64.0: zadnja §7 postavka (stroški kategorije) ima DDL draft v konzoli — uporabniški korak: Enterprise → 1 klik 'Uporabi' ob "stroski-kategorije čaka" (ali "Uporabi vse čakajoče").
+- §7 preostanek: 0 kodnih nalog — samo uporabniški DDL klik (stroski-kategorije) + naslednja naloga (koda/UI kategorij, pod pogojem applied probe). GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta nespremenjeni.
+- Produkcija po pushu: v1.64.0; konzola bo na produkciji pokazala "1 migracija čaka" (stroski-kategorije) — to je PRIČAKOVANO in pravilno stanje do uporabnikovega klika.

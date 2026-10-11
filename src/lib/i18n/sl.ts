@@ -489,6 +489,7 @@ export const sl: Record<string, string> = {
   'mig.issue12.desc': 'MFA polja zaposlenih',
   'mig.issue13.desc': 'Location.premisesId → NULL-able (več lokacij brez FURS oznake)',
   'mig.haccpPlans.desc': 'Tabela HaccpPlan (načrti kontrol)',
+  'mig.stroskiKategorije.desc': 'Stroški: stolpec kategorije na AccountsPayable (kategorizacija stroškov)',
   // Stroški
   'exp.month': 'Stroški (mesec)',
   'exp.totalRecords': 'Vseh zapisov',

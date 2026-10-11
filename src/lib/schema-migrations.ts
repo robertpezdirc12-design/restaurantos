@@ -183,6 +183,17 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-haccp-plans',
     probe: () => tableExists('HaccpPlan'),
   },
+  {
+    // Task 66 (v1.64.0): stroški kategorije — NOV STOLPEC na živeči tabeli.
+    // Main schema.prisma polja še NIMA (zastrupitev P2022 do DDL) — polje je samo
+    // v dev zrcalu. Ko je DDL apliciran, NASLEDNJA naloga doda polje v main schema
+    // (koda/UI kategorij); do takrat drift-check prikaže ::warning:: (DROP COLUMN
+    // faza — glej isStroskiKategorijeStatement v scripts/drift-check.ts).
+    id: 'stroski-kategorije',
+    descKey: 'mig.stroskiKategorije.desc',
+    endpoint: '/api/admin/migrate-stroski-kategorije',
+    probe: () => columnExists('AccountsPayable', 'category'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */
