@@ -136,10 +136,24 @@ function readLocal(): { head: SyncPoint; dirtyTracked: number; dirtyUntracked: n
   return { head, dirtyTracked, dirtyUntracked }
 }
 
-function readMirror(remote: string): SyncPoint {
-  const out = sh('git', ['ls-remote', remote, 'refs/heads/main'])
-  if (!out) return null
-  return out.split('\t')[0]?.trim() || null
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * GitLab 403 anti-abuse je DOKUMENTIRAN tranzični vzorec (Task 26/44/46):
+ * hitra zaporedna klica = 403, retry čez ~30 s uspešen. readMirror zato
+ * retry-a z rastnim zamikom (5 s / 15 s) preden vrne null.
+ */
+async function readMirror(remote: string, attempts = 3): Promise<SyncPoint> {
+  for (let i = 0; i < attempts; i++) {
+    const out = sh('git', ['ls-remote', remote, 'refs/heads/main'])
+    if (out) return out.split('\t')[0]?.trim() || null
+    if (i < attempts - 1) {
+      const delay = i === 0 ? 5_000 : 15_000
+      console.error(`  mirror poskus ${i + 1}/${attempts} nič (403 anti-abuse?) — retry čez ${delay / 1000}s`)
+      await sleep(delay)
+    }
+  }
+  return null
 }
 
 interface ProdHealth {
@@ -177,7 +191,7 @@ async function main(): Promise<number> {
   const prodUrl = process.env.PROD_URL ?? 'https://restaurantos-theta.vercel.app'
 
   const { head, dirtyTracked, dirtyUntracked } = readLocal()
-  const mirror = readMirror(remote)
+  const mirror = await readMirror(remote)
   const prod = await readProd(prodUrl)
 
   const state: SyncState = {

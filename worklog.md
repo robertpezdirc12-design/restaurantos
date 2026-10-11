@@ -885,3 +885,16 @@ Stage Summary:
 - lokal/produkcija/mirror spet konsistentni @ 512818a; peskovni rollback zdaj pokrit z orodjem + runbookom (diagnoza iz ~15 min diagnoze na 1 ukaz)
 - BLOCKER za deploye: GitHub PAT mrtev → potreben nov token od uporabnika (nato: git remote set-url github + push → Vercel auto-deploy); do takrat pushi gredo na GitLab mirror
 - app koda nespremenjena → verzija ostaja 1.50.0
+
+---
+Task ID: 46-main (dodatek)
+Agent: main (Z.ai Code)
+Task: sync-check refinament — retry za GitLab 403 anti-abuse + live validacija DIVERGED stanja
+
+Work Log:
+- live validacija je zadel realni vzorec: takoj po pushu je ls-remote (10 s kasneje) vrnil 403 anti-abuse → skripta UNKNOWN. Refinament: readMirror retry (3 poskusa, 5 s / 15 s rastni zamik) — dokumentiran tranzični vzorec.
+- ponovni live run: mirror uspešno prebran; stanje DIVERGED (lokal=mirror=f202740, prod=512818a) — ISTEREN prikaz realnosti: produkcija zaostaja, ker GitHub push čaka nov PAT. Akcija: "preveri, zakaj Vercel ni zgradil (GitHub token/App)" — točno zadetek.
+- tsc 0 · 9/9 sync-check testov.
+
+Stage Summary:
+- sync-check zdaj odporen na GitLab anti-abuse; klasifikacija iskreno pokaže produkcijo v zaostanku do novega GitHub tokena
