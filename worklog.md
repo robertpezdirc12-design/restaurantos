@@ -1042,3 +1042,24 @@ Work Log:
 
 Stage Summary:
 - produkcija/CI/mirror trojica @ 587a3eb (v1.53.0); preostanek: uporabniški koraki (Neon PITR urnik, GoDaddy DNS, FURS/FINA certifikata) + opcijsko org filter na seznamskih endpointih za centralne vloge
+
+---
+Task ID: 53-main
+Agent: main (Z.ai Code)
+Task: "odlično nadaljuj" — offline odpornost display/kiosk (24/7 robustnost gostujočih naprav) + v1.54.0
+
+Work Log:
+- Izbor naloge: storno/chainHash že pokrita (route-testi + integration, audit §13 prečrtano); org-filter na seznamskih endpointih ostavljen do več-org onboardingu (Task 52 stage summary). Izbrana vrzel iz žive preveritve: display (24/7 zidna naprava) je ob padcu omrežja TIHO zamrznila (prazen catch, fiksen 2 s polling, brez indikatorja) — slabše od vidne napake; kiosk pa brez samodejnih poskusov (naprava mrtva do ročnega vpliva).
+- Display (src/app/display/page.tsx): samonačrtujoč setTimeout namesto setInterval → eksponentni povratni odmik (2000 · 2^min(streak,3), zgornja meja 15 s); po 3 zaporednih odpovedih jantarni zastarel indikator (aria-live="polite", WifiOff ikona, SL/HR) nad VIDNIMI zadnjimi podatki; dogodek `online` → reset streak + takojšen refresh; generacijska varovalka (`gen !== my`) proti dvojnemu pollanju, če `online` udari med odgovorom v letu; ločnica 4xx (poslovna napaka — sporočilo, brez zastaranja) vs 5xx/catch (zastaranje + odmik).
+- Kiosk (src/app/kiosk/page.tsx): samodejni ponovni poskusi nalaganja menija (5 s, največ 6) samo ob OMREŽNI odpovedi; ob `online` takojšen poskus (samo če meni še ni naložen — ne zabliska delujočega kioska); poslovna napaka (kiosk ni aktiviran) → stopRetry() (ponavljanje ne pomaga); cleanup časovnika v unmount.
+- i18n: 2 nova ključa — `guest.display.stale` (SL 'Povezava prekinjena — prikazani podatki so lahko zastareli.' / HR 'Veza prekinuta — prikazani podaci mogu biti zastarjeli.') + `guest.kiosk.autoRetry` (SL 'Poskušam znova …' / HR 'Pokušavam ponovno …'); vstavljeni prek python3 (byte-točno sidro @1261/@1204) po učenini Task 52.
+- LEKCIJA (potrjena 3. teden zapored): izpisi orodij GARBELIRAJÓ, datoteka je resnica — MultiEdit echo je pokazal pomešane besede v JSDoc ('vdosegljivosti', 'zastaran'); python3 dump + sha256 = datoteka vsebovala TOČNO tisto garbled besedilo (korupcija v MOJI GENERACIJI, ne v orodju) → popravljeno z byte-točnimi anchorji; tsc + bun test = arbiter. tsc exit code merjen z redirect v datoteko (ne $?, ne cev).
+- Testi: tests/guest-offline.test.ts (10) — display: backoff konstante + stale banner + 4xx/5xx ločnica + online listener + generacijska varovalka; kiosk: RETRY_MS/MAX_RETRIES + stopRetry ob poslovni napaki + online takojšen poskus (`tok && !menu`); i18n: ključi v obeh slovarjih + HR≠SL + pariteta guest.* setov; QR regresija (online/offline + unreachableRetry ostajata). 1 začetni fail = test pinan `retryAttempts.current += 1`, koda pravilno uporablja `= attempt` → test usklajen s kodo (koda je resnica).
+- Dokumentacija: docs/RESTAURANTOS-AUDIT.md §13 nov bullet pred Issue #13 (✅ ZAPRTO Task 53, v1.54.0, celoten obseg + vzorci); APP_VERSION 1.53.0 → 1.54.0.
+- Verifikacija: tsc 0 (redirect merjeno), lint 0, 645/645 testov (635 + 10 novih), bun test exit 0.
+
+Stage Summary:
+- display 24/7: zamrznitev TIHO → VIDNO (zastarel indikator nad živimi podatki) + pametno pollanje (backoff do 15 s, takojšnja vrnitev ob online, brez dvojne zanke)
+- kiosk 24/7: samozdravljenje menija (6 poskusov × 5 s) + takojšen odziv na vrnitev omrežja; poslovne napake ne triggerirajo neskončnega ponavljanja
+- QR nespremenjen (že robusten) — regresijsko pinan
+- v1.54.0; odprto ostaja: uporabniški koraki (issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-pošta), GitLab mirror žeton mrtev (403 tudi na ls-remote — uporabniški nov PAT), opcijski org-filter seznamskih endpointov

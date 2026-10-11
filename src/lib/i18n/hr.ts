@@ -1201,6 +1201,7 @@ export const hr: Record<string, string> = {
   'guest.kiosk.tokenPlaceholder': '12345678 ili rodev_…',
   'guest.kiosk.activate': 'Aktiviraj kiosk',
   'guest.kiosk.notActivated': 'Kiosk nije aktiviran.',
+  'guest.kiosk.autoRetry': 'Pokušavam ponovno …',
   'guest.kiosk.activationFailed': 'Aktivacija nije uspjela.',
   'guest.kiosk.tokenHint': 'Unesite kod za upis (8 znamenki) ili valjan token uređaja (rodev_…).',
   // Kiosk — glavni tok
@@ -1258,6 +1259,7 @@ export const hr: Record<string, string> = {
   'guest.display.online': 'povezan',
   'guest.display.offline': 'bez povezave',
   'guest.display.unpair': 'Razveži',
+  'guest.display.stale': 'Veza prekinuta — prikazani podaci mogu biti zastarjeli.',
   'guest.display.welcome': 'Dobrodošli!',
   'guest.display.followHint': 'Vašu narudžbu možete pratiti na ovom zaslonu.',
   'guest.display.currentOrder': 'Trenutna narudžba',

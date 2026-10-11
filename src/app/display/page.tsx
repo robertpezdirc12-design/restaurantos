@@ -8,15 +8,28 @@
  * i18n (49): dvojezičnost SL/HR prek GuestI18nProvider (isti slovar + isti
  * localStorage ključ kot kiosk/QR; zadnji ostanek audit §137 "gostujoče strani").
  * Server-side napake ostajajo SL (dokumentirana omejitev) — fallbacki so prevedeni.
+ * Offline odpornost (53): zidni zaslon 24/7 — ob odpovedi omrežja NE zamrzne
+ * tiho: zadnji podatki ostanejo vidni, nad njimi jantarni zastarel
+ * indikator, pollanje pa z eksponentnim povratnim odmikom (2s→4s→8s→15s max),
+ * takojšnja obnovitev ob dogodku `online`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Monitor, CheckCircle2, Link2, Unlink } from 'lucide-react'
+import { Loader2, Monitor, CheckCircle2, Link2, Unlink, WifiOff } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/guest-i18n'
 
 const TOKEN_KEY = 'ro_cfd_device_token'
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
+
+/** Navadni interval pollanja (ms), dokler je povezava zdrava. */
+const POLL_MS = 2000
+/** Po toliko zaporednih odpovedeh povezave pokažemo zastarel indikator. */
+const STALE_AFTER = 3
+/** Zgornja meja povratnega odmika (ms). */
+const MAX_BACKOFF_MS = 15000
+/** Povratni odmik: 2000 · 2^min(zaporedneNapake, 3) — 2 s, 4 s, 8 s, nato 15 s. */
+const backoffMs = (failStreak: number) => Math.min(POLL_MS * 2 ** Math.min(failStreak, 3), MAX_BACKOFF_MS)
 
 interface DisplayPayload {
   state?: 'idle' | 'ordering' | 'paid'
@@ -46,30 +59,73 @@ function DisplayInner() {
   const [state, setState] = useState<{ payload: DisplayPayload | null; posOnline: boolean; updatedAt?: string } | null>(null)
   const [error, setError] = useState('')
   const [connecting, setConnecting] = useState(false)
+  const [stale, setStale] = useState(false)
+  const failStreak = useRef(0)
 
   useEffect(() => {
     const tok = localStorage.getItem(TOKEN_KEY) || ''
     setToken(tok)
   }, [])
 
-  const refresh = useCallback(async (tok: string) => {
+  /**
+   * Vrne true ob uspešnem odgovoru strežnika, false ob odpovedi.
+   * Kot odpoved povezave štejeta SAMO padec omrežja (catch) in 5xx —
+   * poslovne napake (4xx, npr. neregistrirana naprava) pokažejo sporočilo
+   * in NE sprožijo zastarelega indikatorja.
+   */
+  const refresh = useCallback(async (tok: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/devices/display/state', { headers: { 'X-Device-Token': tok }, cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || t('guest.display.notRegistered')); return }
+      if (!res.ok) {
+        if (res.status >= 500) {
+          failStreak.current += 1
+          if (failStreak.current >= STALE_AFTER) setStale(true)
+        }
+        setError(data.error || t('guest.display.notRegistered'))
+        return false
+      }
+      failStreak.current = 0
+      setStale(false)
       setError('')
       setInfo({ paired: data.paired, posName: data.posName, posOnline: data.posOnline })
       setState({ payload: data.payload, posOnline: data.posOnline, updatedAt: data.updatedAt })
+      return true
     } catch {
-      // povezava nedosegljiva — pusti zadnje stanje, ne lažnega
+      // povezava nedosegljiva — pusti zadnje stanje (ne lažnega), a obvesti:
+      // po STALE_AFTER zaporednih odpovedeh pokaži zastarel indikator
+      failStreak.current += 1
+      if (failStreak.current >= STALE_AFTER) setStale(true)
+      return false
     }
   }, [t])
 
   useEffect(() => {
     if (!token) return
-    refresh(token)
-    const iv = setInterval(() => refresh(token), 2000)
-    return () => clearInterval(iv)
+    let cancelled = false
+    // generacija — ščiti pred dvojnim zankanjem, če `online` udari med letom
+    let gen = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const tick = async () => {
+      const my = ++gen
+      const ok = await refresh(token)
+      if (cancelled || gen !== my) return
+      timer = setTimeout(tick, ok ? POLL_MS : backoffMs(failStreak.current))
+    }
+    tick()
+    // takojšnja obnovitev ob vrnitvi omrežja (reset povratnega odmika)
+    const onOnline = () => {
+      failStreak.current = 0
+      setStale(false)
+      if (timer) clearTimeout(timer)
+      tick()
+    }
+    window.addEventListener('online', onOnline)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('online', onOnline)
+    }
   }, [token, refresh])
 
   async function connect() {
@@ -169,6 +225,12 @@ function DisplayInner() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
+      {stale && (
+        <div role="status" aria-live="polite" className="fixed top-0 left-0 right-0 z-50 bg-amber-900/90 text-amber-200 text-sm font-medium px-4 py-2 flex items-center justify-center gap-2">
+          <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {t('guest.display.stale')}
+        </div>
+      )}
       <header className="px-8 py-5 border-b border-stone-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Monitor className="h-6 w-6 text-stone-500" />

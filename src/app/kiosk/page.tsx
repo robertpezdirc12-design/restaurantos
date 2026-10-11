@@ -26,6 +26,11 @@ const TOKEN_KEY = 'ro_kiosk_device_token'
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 const IDLE_RESET_SEC = 45
 
+/** Samodejni ponovni poskus nalaganja menija ob odpovedi omrežja (ms). */
+const RETRY_MS = 5000
+/** Največje število zaporednih samodejnih poskusov (nato čaka na `online`). */
+const MAX_RETRIES = 6
+
 export default function KioskPage() {
   return (
     <GuestI18nProvider>
@@ -50,12 +55,28 @@ function KioskInner() {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState<{ orderNumber: number; total: number } | null>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttempts = useRef(0)
 
   useEffect(() => {
     const t = localStorage.getItem(TOKEN_KEY) || ''
     setToken(t)
     if (t) loadMenu(t)
   }, [])
+
+  // vrnitev omrežja — takojšen poskus (svež budget poskusov), če meni še ni naložen
+  useEffect(() => {
+    const onOnline = () => {
+      stopRetry()
+      const tok = localStorage.getItem(TOKEN_KEY) || ''
+      if (tok && !menu) loadMenu(tok)
+    }
+    window.addEventListener('online', onOnline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+    }
+  }, [menu])
 
   const resetAll = useCallback(() => {
     setCart([])
@@ -87,14 +108,36 @@ function KioskInner() {
     try {
       const res = await fetch('/api/public/menu', { headers: { 'X-Device-Token': tok }, cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || t('guest.kiosk.notActivated')); return }
+      if (!res.ok) {
+        // poslovna napaka (npr. kiosk ni aktiviran) — ponavljanje ne pomaga
+        stopRetry()
+        setError(data.error || t('guest.kiosk.notActivated'))
+        return
+      }
+      stopRetry()
       setMenu(data)
       setActiveCat(data.categories?.[0]?.id || '')
     } catch {
-      setError(t('guest.error.unreachable'))
+      // omrežje nedosegljivo — kiosk (24/7 naprava) naj se sam pozdravi:
+      // omejeno število samodejnih poskusov, ob `online` dogodku takoj znova
+      const attempt = retryAttempts.current + 1
+      retryAttempts.current = attempt
+      setError(attempt <= MAX_RETRIES
+        ? `${t('guest.error.unreachable')} ${t('guest.kiosk.autoRetry')}`
+        : t('guest.error.unreachable'))
+      if (attempt <= MAX_RETRIES) {
+        if (retryTimer.current) clearTimeout(retryTimer.current)
+        retryTimer.current = setTimeout(() => loadMenu(tok), RETRY_MS)
+      }
     } finally {
       setLoading(false)
     }
+  }
+
+  /** Ponastavi samodejne poskuse nalaganja menija (uspeh ali poslovna napaka). */
+  function stopRetry() {
+    retryAttempts.current = 0
+    if (retryTimer.current) { clearTimeout(retryTimer.current); retryTimer.current = null }
   }
 
   async function activate() {
