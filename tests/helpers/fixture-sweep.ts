@@ -51,6 +51,7 @@ export const TEST_PREFIXES = [
   'exp61-', // expenses-admin (Task 61)
   'ent62-', // enterprise-admin (Task 62)
   'zst63-', // zreport-storno (Task 63)
+  'hcp64-', // haccp-plans (Task 64)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -197,6 +198,11 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[] }> =
   { model: 'property', fields: ['name'] },
   { model: 'brand', fields: ['name'] },
   { model: 'organization', fields: ['name', 'slug'] },
+  // Task 64: HACCP načrti (POST /api/haccp/plans) — nid() id, predpona živi v
+  // name (tudi target/responsible). Brez FK otrok; Location→plan je opciona
+  // (SetNull s plan strani) → plan gre lahko v glavni prehod, tu je FIELD_SWEEP
+  // zaradi besedilnih polj (id-predpona ni v id).
+  { model: 'haccpPlan', fields: ['name', 'target', 'responsible'] },
 ]
 
 /**

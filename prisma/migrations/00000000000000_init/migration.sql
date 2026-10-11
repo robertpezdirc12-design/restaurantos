@@ -4462,3 +4462,31 @@ ALTER TABLE "Property" ADD CONSTRAINT "Property_brandId_fkey" FOREIGN KEY ("bran
 -- AddForeignKey
 ALTER TABLE "Workstation" ADD CONSTRAINT "Workstation_propertyId_fkey" FOREIGN KEY ("propertyId") REFERENCES "Property"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+
+-- CreateTable (Task 64, v1.62.0 — HACCP načrti kontrol; produkcija čaka admin
+-- rutо /api/admin/migrate-haccp-plans, issue-13 vzorec — do takrat drift allowlist)
+CREATE TABLE "HaccpPlan" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "category" "HaccpCategory" NOT NULL,
+    "frequency" TEXT NOT NULL DEFAULT 'daily',
+    "target" TEXT NOT NULL DEFAULT '',
+    "threshold" TEXT NOT NULL DEFAULT '',
+    "steps" JSONB NOT NULL DEFAULT '[]',
+    "responsible" TEXT NOT NULL DEFAULT '',
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "locationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HaccpPlan_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "HaccpPlan_locationId_idx" ON "HaccpPlan"("locationId");
+
+-- CreateIndex
+CREATE INDEX "HaccpPlan_active_idx" ON "HaccpPlan"("active");
+
+-- AddForeignKey
+ALTER TABLE "HaccpPlan" ADD CONSTRAINT "HaccpPlan_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;

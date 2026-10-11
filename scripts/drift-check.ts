@@ -70,6 +70,17 @@ export interface KnownDrift {
   matches(stmt: string): boolean
 }
 
+/**
+ * Task 64 (v1.62.0): HaccpPlan tabela — prisma diff generira CREATE TABLE +
+ * 2× CREATE INDEX + ADD CONSTRAINT (FK na Location). Vsi 4 stavki vsebujejo
+ * "HaccpPlan" (noben drug model se nanjo veže), zato je matcher preprost in
+ * strog hkrati: samo DDL-ključne besede + ime tabele.
+ */
+export function isHaccpPlanStatement(stmt: string): boolean {
+  if (!/"HaccpPlan"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -79,6 +90,16 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'DDL korak: admin ruta /api/admin/migrate-issue13 (docs/RESTAURANTOS-AUDIT.md §13). ' +
       'Produkcija deluje normalno (aditivno-varno).',
     matches: isIssue13Statement,
+  },
+  {
+    id: 'haccp-plans',
+    reason:
+      'HaccpPlan tabela (Task 64, v1.62.0) — produkcija čaka DDL korak: admin ruta ' +
+      '/api/admin/migrate-haccp-plans (issue-13 vzorec, requireCentralRole). Rute ' +
+      '/api/haccp/plans** graceful degradirajo (capability probe → ddlPending/503); ' +
+      'nobena živa funkcionalnost ne uporablja nove tabele. Ko je DDL apliciran, ' +
+      'drift izgine in ta vnos postane mrtva koda (brez spremembe workflowa).',
+    matches: isHaccpPlanStatement,
   },
 ]
 
