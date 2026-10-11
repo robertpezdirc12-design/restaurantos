@@ -1029,3 +1029,16 @@ Stage Summary:
 - migracijsko varno: legacy (nevezane) lokacije/viri ostanejo dostopni — produkcija (1 org, lokacije brez propertyId) NI regresirala (618 starih testov zelenih brez sprememb)
 - N3/N4 revizijske vrstice prečrtane (koda že popravljena, tabela zaostala); docs-koda usklajena na 4 mestih
 - v1.53.0; preostanek: uporabniški koraki (DDL issue-13, GoDaddy DNS, FURS/FINA certifikata) + opcijsko org filter na seznamskih endpointih
+
+---
+Task ID: 52-main (deploy verify)
+Agent: main (Z.ai Code)
+Task: produkcija + CI monitoring po pushu 587a3eb (Task 52 org meja)
+
+Work Log:
+- gh API 401 (token mrtev — znani vzorec Task 47/48); fallback verifikacija: git ls-remote ×3 + Vercel health poll.
+- troj-robova verifikacija: LOCAL/GitHub/GitLab(origin) vsi = 587a3eb — trojica MATCH; sync-check: vse tri pike 1.53.0, db connected.
+- Vercel produkcija: v1.53.0 @ 587a3eb, db connected, regija fra1 — org meja ŽIVO v produkciji. GitLab mirror CI zelen (627/627).
+
+Stage Summary:
+- produkcija/CI/mirror trojica @ 587a3eb (v1.53.0); preostanek: uporabniški koraki (Neon PITR urnik, GoDaddy DNS, FURS/FINA certifikata) + opcijsko org filter na seznamskih endpointih za centralne vloge
