@@ -15,6 +15,7 @@ import { NextRequest } from 'next/server'
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { GET as ordersGET } from '../src/app/api/orders/route'
 
@@ -84,6 +85,8 @@ async function listOrderIds(token: string): Promise<string[]> {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   orgA = `${PREFIX}orgA-${RUN}`; brandA = `${PREFIX}brandA-${RUN}`; propA = `${PREFIX}propA-${RUN}`
   orgB = `${PREFIX}orgB-${RUN}`; brandB = `${PREFIX}brandB-${RUN}`; propB = `${PREFIX}propB-${RUN}`
   locA1 = `${PREFIX}locA1-${RUN}`; locA2 = `${PREFIX}locA2-${RUN}`

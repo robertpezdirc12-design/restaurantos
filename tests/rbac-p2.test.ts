@@ -3,6 +3,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { POST as tablesPOST } from '../src/app/api/tables/route'
 import { DELETE as tableDELETE } from '../src/app/api/tables/[id]/route'
@@ -83,6 +84,8 @@ afterAll(async () => {
 
 // ── Nastavitev skupnih testnih podatkov ──
 async function setup() {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   const loc = await db.location.create({
     data: {
       id: `${PREFIX}loc-${RUN}`,

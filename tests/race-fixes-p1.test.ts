@@ -1,6 +1,7 @@
 import { describe, expect, test, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { POST as shiftsPOST } from '../src/app/api/shifts/route'
 import { PATCH as inventoryPATCH } from '../src/app/api/inventory/route'
@@ -141,6 +142,8 @@ afterAll(async () => {
 })
 
 async function setup() {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   const loc = await db.location.create({
     data: {
       id: `${PREFIX}loc-${RUN}`,

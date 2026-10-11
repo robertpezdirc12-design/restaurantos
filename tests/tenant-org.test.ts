@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { assertTenantScope, assertOrgScope, guardResource, chainForLocation, type TenantChain } from '../src/lib/tenant'
 import { GET as orderGET, PATCH as orderPATCH } from '../src/app/api/orders/[id]/route'
@@ -78,6 +79,8 @@ function walkRoutes(dir: string): string[] {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   // drevo orgA → brandA → propA → locA1 + locA2; drevo orgB → brandB → propB → locB1; legacy lokacija brez propertyId
   orgA = `${PREFIX}orgA-${RUN}`; brandA = `${PREFIX}brandA-${RUN}`; propA = `${PREFIX}propA-${RUN}`
   orgB = `${PREFIX}orgB-${RUN}`; brandB = `${PREFIX}brandB-${RUN}`; propB = `${PREFIX}propB-${RUN}`

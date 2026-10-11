@@ -1,6 +1,7 @@
 import { describe, expect, test, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { POST as movePOST } from '../src/app/api/orders/[id]/move/route'
 import { POST as mergePOST } from '../src/app/api/orders/[id]/merge/route'
@@ -121,6 +122,8 @@ afterAll(async () => {
 })
 
 async function setup() {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   const a = await db.location.create({
     data: { id: `${PREFIX}loc-a-${RUN}`, name: `${PREFIX}Lokacija A`, code: `33AA-${RUN.toUpperCase()}`, premisesId: `33a-prem-a-${RUN}` },
   })

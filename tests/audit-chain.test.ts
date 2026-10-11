@@ -1,6 +1,7 @@
 import { describe, expect, test, afterAll } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import {
   auditChainFields,
   auditCanonicalString,
@@ -25,6 +26,8 @@ import { tipChainHash, verifyTipChain } from '../src/lib/tips'
  */
 
 const PREFIX = '33c-'
+// Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+await sweepTestFixtures(db, [PREFIX])
 const ACTION = 'CHAIN33C_TEST'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

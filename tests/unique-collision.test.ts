@@ -1,6 +1,7 @@
 import { describe, expect, test, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken } from '../src/lib/auth'
 import { POST as employeesPOST } from '../src/app/api/employees/route'
 import { POST as locationsPOST } from '../src/app/api/locations/route'
@@ -40,6 +41,7 @@ const tokenFor = (sub: string, name: string, role: string, loc: string | null) =
   createToken({ sub, name, role, loc, sv: 0 })
 
 // fiksature: lokacija (premisesId ostane NULL — od Task 44 brez default("")) + OWNER
+await sweepTestFixtures(db, [PREFIX])
 const loc = await db.location.create({
   data: { id: `${PREFIX}loc-${RUN}`, name: `${PREFIX}lokacija`, code: `${PREFIX}LC${RUN.slice(-4)}`, country: 'SI' },
 })

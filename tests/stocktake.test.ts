@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { GET as listGET, POST as openPOST } from '../src/app/api/stocktakes/route'
 import { GET as detailGET, PATCH as itemsPATCH } from '../src/app/api/stocktakes/[id]/route'
@@ -54,6 +55,8 @@ async function seedEmployee(name: string, role: string, loc: string | null, seq:
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [P])
   locA = `${P}locA-${RUN}`
   locB = `${P}locB-${RUN}`
   await db.location.create({ data: { id: locA, code: `${P}LA`, name: `${P}Lokacija A` } })

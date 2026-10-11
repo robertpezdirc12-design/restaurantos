@@ -17,6 +17,7 @@
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken } from '@/lib/auth'
 import { POST } from '../src/app/api/receipts/[id]/storno/route'
 
@@ -243,6 +244,8 @@ afterAll(async () => {
 })
 
 async function cleanup() {
+  // Task 58: počisti tudi ostanke crashanih tekov (širše kot predponski cleanup zgoraj)
+  await sweepTestFixtures(db, [P])
   // Vse vrstice testov imajo predpono `storno-test-` (ali lokacijski scope) —
   // čiščenje je PREDPONSKO (ne izvedeno iz FK povezav), da prenese tudi ostanke
   // prejšnjega prekinjenega teka (npr. storno računi routе z naključnim id).

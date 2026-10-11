@@ -1170,3 +1170,25 @@ Povzetek faze:
 - Zadnja VELIKA funkcionalna vrzel iz audit §7 ZAPRTA: inventura od PARTIAL (le prilagoditve) do polnega protokola BREZ ene DDL spremembe (mrtva shema aktivirana).
 - Produkcija: v1.56.0; preostalo §7 PARTIAL: popusti brez admin UI, stroški brez urejanja, HACCP brez načrtov, integracije brez UI (vse manjše).
 - Uporabniški koraki: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-pošta, GitLab žeton (mirror zaostaja).
+
+---
+Task ID: 58
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Uporabnikovo poročilo "zakaj toliko lokacij na vmesniku" (slika: ~20× chip "rp1-Lokacija" na prijavnem zaslonu preview strežnika) — diagnoza + higiena testnih fiksur + v1.56.1
+
+Delovni dnevnik:
+- DIAGNOZA (pred animacijo kakršnihkoli popravkov): produkcija (Neon) je ČISTA — curl /api/auth/locations na restaurantos-theta.vercel.app vrača NATANKO 1 lokacijo "RestaurantOS Ljubljana". Screenshot je bil sandbox PREVIEW = lokalni dev strežnik. Lokalna dev SQLite: 26 lokacij = 1 realna + 25× "rp1-Lokacija" (vsi id `rp1-*`) + 25× meni/kategorija/jed + 25 naročil = OSTANKI TESTNIH FIKSUR iz tests/race-fixes-p1.test.ts (PREFIX='rp1-', ime `${PREFIX}Lokacija` BREZ RUN → iso imena), kjer afterAll cleanup ni stekel (crash/kill pred koncem teka; seja je imela 5× garbliranih generacij + kili po timeoutu). Prejšnja čiščenja (Task 41c) niso brisala lokacij.
+- REŠITEV (samoceljiva disciplina, 3 deli):
+  1. tests/helpers/fixture-sweep.ts — sweepTestFixtures(db, prefixes): brisanje IZKLJUČNO po id-predponah testnih fiksur, FK-urejeno (otroci→starši), 5 prehodov: (A) id-prehod BREZ location, (B) odkleni prehod po locationId (aplikacijsko ustvarjeni otroci testnih lokacij z samodejnimi id-ji), (C) ponovni id-prehod, (D) location ZADNJA, (E) varovalka za morebitne SetNull sirote. KLJUČAVNICA assertDevDatabase(): zavrne DATABASE_URL brez "file:" — testi/čiščenje nikoli ne smejo poseči oddaljene/produkcijske baze. TEST_PREFIXES: vseh 14 testnih predpon (rp1-, rfix-, rbac-p2-, 33a-, 33c-, uc-, gfb-, tst57-, stockded, zrepvat, furspost, storno-test-, torg-, torgl-).
+  2. scripts/cleanup-test-fixtures.ts — one-time čiščenje: 25× location/menu/category + menuitem/order... POČIŠČENO → remainingLocations: 0, errors: 0; dev baza zdaj natanko 1 lokacija.
+  3. Pre-sweep povezan v VSE 14 DB-backed testnih datotek (setup()/beforeAll()/cleanup()/top-level) — vsak tek najprej počisti ostanke prejšnjih crashanih tekov istih predpon.
+- NAJDBA (empirično dokazana): DeliveryZone → Location je opciona relacija = onDelete: SetNull. PRVOTNI vrstni red (id-prehod z location zadnjo, ŠELE nato locationId-prehod) je izbrisal lokacijo PREZ otrok → otroku SetNull locationId → sirota, ki je locationId-prehod ne vidi več. POPRAVEK: locationId-prehod PREJ brisanja lokacije (prehod B pred D). Regresijski test pokrije natanko ta primer (deliveryZone z id BREZ predpone).
+- TESTI: tests/fixture-sweep.test.ts (4): (1) pobere komplet fiksur + aplikacijskega otroka; (2) realni podatki nedotaknjeni (števec lokacij brez testnih predpon enak prej/po) + prava idempotenca (drugi sweep → remaining 0); v celotnem suitskem teku sme pobrati ostanke crashanih tekov drugih datotek (ŽELJENO — v živo dokazano: pobral 1 komplet order/shift/menu/category/menuItem/location od prejšnje datoteke); (3) ključavnica zavrne postgresql/mysql/prazno, sprejeme file:; (4) TEST_PREFIXES pokritost. 667/667 (663 + 4), tsc 0, lint 0.
+- BROWSER VERIFIKACIJA (agent-browser): landing localhost:3000 — natanko EN chip "RestavrantOS Ljubljana", 0× rp1; brez konzolnih/page napak; mobilni viewport 390×844 render OK; "Aktiviraj napravo" zložljiv se odpre (vnos 8 števk + namig). Footer mt-auto ostaja.
+- Verzija: APP_VERSION 1.56.0 → 1.56.1. GitLab push poskus (žeton domnevno mrtev).
+
+Povzetek faze:
+- Uporabniški vidni bug RAZREŠEN: preview prijava pokaže 1 lokacijo; produkcija NI bila nikoli prizadeta (dokazano curl pred popravki).
+- Sistemsko: testna higiena je zdaj samoceljiva (crashani teki se počistijo ob naslednjem teku), z varnostno ključavnico proti produkcijski bazi.
+- Ostanek (uporabniški): GitLab žeton za mirror.

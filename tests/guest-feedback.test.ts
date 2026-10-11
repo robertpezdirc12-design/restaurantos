@@ -1,6 +1,7 @@
 import { describe, expect, test, afterAll, beforeAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { POST as feedbackPOST } from '../src/app/api/public/feedback/route'
 
 /**
@@ -30,6 +31,8 @@ function post(body: unknown, ip = '10.7.7.7'): NextRequest {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   const loc = await db.location.create({
     data: {
       id: `${PREFIX}loc-${RUN}`,

@@ -1,6 +1,7 @@
 import { describe, expect, test, afterAll, beforeAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { POST as payoutPOST } from '../src/app/api/tips/payout/route'
 import { POST as expensesPOST } from '../src/app/api/expenses/route'
@@ -56,6 +57,8 @@ async function seedEmployee(name: string, role: string, pin: string) {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   const loc = await db.location.create({
     data: {
       id: `${PREFIX}loc-${RUN}`,

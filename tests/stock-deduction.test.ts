@@ -21,6 +21,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { db } from '@/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { deductStockForOrderTx } from '@/lib/inventory'
 import { nid, num } from '@/lib/map'
 import type { Prisma } from '@prisma/client'
@@ -144,6 +145,8 @@ async function cleanupFixtures() {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   await cleanupFixtures()
   locId = (await db.location.create({
     data: { id: nid(), name: `${PREFIX} lokacija`, code: `${PREFIX}-${TS}`, premisesId: `BLG${PREFIX.toUpperCase().slice(0, 6)}${TS % 100000}`, country: 'SI' },

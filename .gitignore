@@ -70,3 +70,4 @@ vercel-env-variables.json
 
 # local process IDs (never version-control)
 .zscripts/*.pid
+upload/

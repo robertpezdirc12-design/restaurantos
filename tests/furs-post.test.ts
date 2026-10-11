@@ -25,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { createToken } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { nid, num } from '@/lib/map'
 import { POST as fursPOST } from '../src/app/api/furs/route'
 import { POST as stornoPOST } from '../src/app/api/receipts/[id]/storno/route'
@@ -160,6 +161,8 @@ async function cleanupFixtures() {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   process.env.FURS_ENVIRONMENT = 'simulation'
   await cleanupFixtures()
 

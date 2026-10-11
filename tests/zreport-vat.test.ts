@@ -29,6 +29,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { createToken } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { nid, num } from '@/lib/map'
 import { POST as shiftsPOST } from '../src/app/api/shifts/route'
 
@@ -88,6 +89,8 @@ async function cleanupFixtures() {
 }
 
 beforeAll(async () => {
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
+  await sweepTestFixtures(db, [PREFIX])
   await cleanupFixtures()
   locId = (await db.location.create({
     data: { id: nid(), name: `${PREFIX} lokacija`, code: `${PREFIX}-${TS}`, premisesId: `BLGZRV${TS % 1000000}`, country: 'SI' },
