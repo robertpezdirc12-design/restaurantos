@@ -1369,3 +1369,23 @@ Work Log:
 - Browser E2E živo (admin@restaurantos.app, PIN 1234): prijava → HACCP zavihek → "Načrti kontrol" sekcija → Nov načrt → dialog (vsa polja) → Ustvari → načrt v seznamu (kategorija/frekvenca Badge, 3 korakov, prag) → Switch toggle (DB active:false) → Izbriši → confirm dialog "Res želiš izbrisati ta načrt?" → accept → prazno stanje; DB dokaz create/toggle/delete; API log: GET/POST/PATCH/DELETE vse 200; 0 konzolnih napak; mobilni 390×844 = 26 zavihkov.
 - LEKCIJA (dev runtime): db:push regenerira Prisma Client na disku, a ŽIVEČ dev strežnik drži stari v spominu → /api/haccp/plans 500 "Cannot read properties of undefined (reading 'findMany')" (testi zeleni — svež proces). Rešitev: restart dev (kill 22182/22195 → setsid nohup bash .zscripts/dev.sh; `next` NI v PATH — samo ./node_modules/.bin/next ali dev.sh). Sandbox ubija nohup ozadje med klici (ponovitev lekcije T28-b) → setsid + disown.
 - Povzetek faze: §7 preostanek = SAMO stroški kategorije (nov stolpec = DDL) + 2 uporabniška DDL klica zdaj: migrate-issue13 + migrate-haccp-plans (oba en POST z centralno vlogo). GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta nespremenjeni.
+
+---
+Task ID: 64-b
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Task: gitignore lekcija — goli vzorec 'test' pogoltnil integracijsko test rutо (CI rdeča od Task 60 neodkrita; produkcija 404 na "Testiraj povezavo") (v1.62.1)
+
+Work Log:
+- Sprožilec: spremljanje CI po pushu Task 64 — run 24 FAILURE @ b53accf; run 23 (T63) in run 22 (T62-c) TUDI failure → vnaprejšnje stanje, ne regresija. Deploy (vercel-deploy workflow) neodvisen → produkcija deluje, zato rdeča CI nihče ne opazil.
+- Diagnoza 1: `Cannot find module '../src/app/api/integrations/[id]/test/route'` — datoteka OBSTAJA na disku, ampak `git ls-files` = PRAZNO → NI trackana; `git status` čist → IGNORIRANA. `git check-ignore -v` → `.gitignore:49: test` (goli vzorec = KATERIKOL imenik 'test' v drevesu). Task 60 commit message navaja "[id]/test (SSRF varovalo...)" kot shippáno — v resnici NIKOLI v gitu → CI module-not-found od v1.58.0 + PRODUKCIJA brez endpointa (gumb "Testiraj povezavo" = 404). Scan celega drevesa: edina žrtev (ostali ignored = .next/.env/db/logs — namenjeno).
+- Diagnoza 2: fixture-sweep "realni podatki > 0" — CI tests job uporablja SVEŽO bazo (DATABASE_URL=file:./db/ci-fresh.db + db push BREZ seeda) → countRealLocations()=0 → assert neuspešen po zasnovi CI env-a, ne regresija.
+- FIX: (1) .gitignore vrstici 49/50 anchorani `/test/` + `/prompt/` (isti hazard razred) + lekcija v komentarju; `git add src/app/api/integrations/[id]/test/route.ts` → trackana; (2) fixture-sweep test: if (before === 0) log + trivialna invarianta (CI), sicer polna preverba (lokalno dev.db s seedom).
+- VALIDACIJA: 717/717, tsc 0, lint 0. Push b53accf..211136e (GitHub + GitLab).
+- REZULTAT: CI run 25 SUCCESS @ 211136e — PRVIČ ZELEN od Task 60 (v1.58.0); neon-smoke ZELEN z novim allowlistom 'haccp-plans' (Task 64 drift pravilno utišan kot ::warning::); produkcija v1.62.1 @ 211136e db connected; /api/integrations/[id]/test na produkciji sedaj OBSTAJA (401 auth namesto 404 — dokaz).
+- Trojica: local = GitHub = GitLab = produkcija @ 211136e.
+
+Stage Summary:
+- REPO INTEGRITETNA LEKCIJA (za prihodnje naloge): po vsaki novi rutи preveriti `git ls-files <nova_datoteka>` — git status čist NE pomeni, da je vse trackano (ignored ≠ deleted). Bare gitignore vzorci brez / anchoringa so minsko polje.
+- CI je zdaj zaupanja vreden signal (zelena od 211136e) — regresije bodo spet VIDNE.
+- Uporabniški DDL klici še vedno čakata: migrate-issue13 + migrate-haccp-plans. §7 preostanek: SAMO stroški kategorije (DDL).
