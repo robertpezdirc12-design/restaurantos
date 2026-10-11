@@ -48,6 +48,7 @@ export const TEST_PREFIXES = [
   'torgl-', // tenant-org-list
   'disc59-', // discounts-admin (Task 59)
   'integ60-', // integrations-admin (Task 60)
+  'exp61-', // expenses-admin (Task 61)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -179,6 +180,16 @@ const LOCATION_CHILD_SWEEP = [
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }
 
 /**
+ * Task 61: modeli s strežniško generiranimi id-ji (nid()) — testna predpona je
+ * zapisana v besedilnih poljih (opis/opomba/številka), ne v id. Takšnih vrstic
+ * id- in lokacijski prehod ne smetijo (locationId postane NULL po izbrisu
+ * lokacije — SetNull) → potrebujejo lasten prehod po besedilnih poljih.
+ */
+const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[] }> = [
+  { model: 'accountsPayable', fields: ['invoiceNumber', 'notes', 'apNumber'] },
+]
+
+/**
  * Počisti vse vrstice z id-predpono (ali znano alternativo) iz `prefixes`.
  * Vrne povzetek; NIKOLI ne meče napak posameznih tabel (samo jih zbere).
  * Ključavnica assertDevDatabase() mora preiti — sicer vrže napako PREZ brisanja.
@@ -208,6 +219,18 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   }
 
   for (const p of prefixes) {
+    // 0. FIELD_SWEEP: strežniško generirani id-ji (nid()) — testna predpona živi v
+    //    BESEDILOVIH poljih, ne v id. Lekcija Task 61: AccountsPayable POST ruta ustvari
+    //    id z nid(), predpona ostane le v invoiceNumber/notes; po izbrisu testne lokacije
+    //    je še locationId NULL (SetNull) → sirota, nevidna za id- in lokacijske prehode.
+    //    Dokaz: 128 stroškov v dev bazi (72 rfix- + 56 exp61-) — vsi testni odpadki.
+    //    Teko PRVI (pred id- prehodom), ker je AP list — sicer FK do dobavitelja
+    //    pokvari starševski prehod (supplier deleteMany P2003).
+    for (const spec of FIELD_SWEEP) {
+      await dele(spec.model, {
+        OR: spec.fields.map((f) => ({ [f]: { startsWith: p } })),
+      })
+    }
     // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
     //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
     //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil

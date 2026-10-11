@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw } from 'lucide-react'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -679,16 +679,80 @@ export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () 
 
 /* ─────────────────────────── STROŠKI ─────────────────────────── */
 
-export interface ExpenseT { id: string; category: string; description: string; amount: number; paidAt: string }
+export interface ExpenseT {
+  id: string
+  category: string
+  description: string
+  amount: number
+  paidAt: string
+  status?: string
+  apNumber?: string
+  dueDate?: string | null
+  paidAmount?: number
+  supplierName?: string | null
+}
 
+/**
+ * Task 61 (revizija §7 vrstica 122): admin nadzor nad stroški — prej samo vnos+seznam (PARTIAL),
+ * zdaj: urejanje (dialog), plačilo/odprtje, mehko preklicanje (status 'void') + status
+ * oznake + zapadlost KPI. API: PATCH/DELETE /api/expenses/[id] (settings.manage +
+ * lokacijski gate). Knjigovodska varnost: znesek plačanega zapisa se ureja šele po
+ * odprtju plačila (backend 409) — UI onemogoči vnos v dialogu.
+ */
 export function ExpensesTab({ expenses, canManage, onReload }: { expenses: ExpenseT[]; canManage: boolean; onReload: () => Promise<void> }) {
   const { t } = useI18n()
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ description: '', amount: '', dueDate: '' })
+  const [err, setErr] = useState('')
   const monthTotal = expenses
-    .filter((e) => new Date(e.paidAt).getMonth() === new Date().getMonth() && new Date(e.paidAt).getFullYear() === new Date().getFullYear())
+    .filter((e) => e.status !== 'void' && new Date(e.paidAt).getMonth() === new Date().getMonth() && new Date(e.paidAt).getFullYear() === new Date().getFullYear())
     .reduce((s, e) => s + e.amount, 0)
+  const openTotal = expenses.filter((e) => e.status === 'open').reduce((s, e) => s + e.amount, 0)
+  const overdueCount = expenses.filter((e) => e.status === 'open' && e.dueDate && new Date(e.dueDate) < new Date()).length
+  const isPaid = (e: ExpenseT) => e.status === 'paid' || (e.paidAmount ?? 0) >= e.amount
+
+  function openEdit(e: ExpenseT) {
+    setEditId(e.id)
+    setEditForm({
+      description: e.description,
+      amount: String(e.amount).replace('.', ','),
+      dueDate: e.dueDate ? new Date(e.dueDate).toISOString().slice(0, 10) : '',
+    })
+    setErr('')
+    setOpen(true)
+  }
+
+  async function saveEdit() {
+    if (!editId) return
+    const amt = Number(editForm.amount.replace(',', '.'))
+    setBusy(true); setErr('')
+    try {
+      await api(`/api/expenses/${editId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ description: editForm.description, amount: amt, dueDate: editForm.dueDate || undefined }),
+      })
+      setOpen(false); await onReload()
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function togglePaid(e: ExpenseT) {
+    setBusy(true); setErr('')
+    try {
+      await api(`/api/expenses/${e.id}`, { method: 'PATCH', body: JSON.stringify({ status: isPaid(e) ? 'open' : 'paid' }) })
+      await onReload()
+    } catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
+  }
+
+  async function remove(e: ExpenseT) {
+    if (!window.confirm(t('exp.deleteConfirm', { d: e.description }))) return
+    setBusy(true); setErr('')
+    try { await api(`/api/expenses/${e.id}`, { method: 'DELETE' }); await onReload() }
+    catch (err) { setErr((err as Error).message) } finally { setBusy(false) }
+  }
 
   async function submit() {
     setBusy(true)
@@ -698,12 +762,22 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
     } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
   }
 
+  const statusBadge = (e: ExpenseT) => {
+    if (e.status === 'void') return <Badge variant="outline" className="text-stone-400 line-through">{t('exp.statusVoid')}</Badge>
+    if (isPaid(e)) return <Badge className="bg-emerald-700 text-white">{t('exp.statusPaid')}</Badge>
+    if (e.dueDate && new Date(e.dueDate) < new Date()) return <Badge variant="outline" className="text-red-600 border-red-300">{t('exp.statusOverdue')}</Badge>
+    return <Badge variant="outline" className="text-amber-700 border-amber-300">{t('exp.statusOpen')}</Badge>
+  }
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> {t('exp.month')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(monthTotal)}</p></CardContent></Card>
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('exp.totalRecords')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{expenses.length}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Hourglass className="w-4 h-4" /> {t('exp.kpiOpen')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(openTotal)}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {t('exp.kpiOverdue')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{overdueCount}</p></CardContent></Card>
       </div>
+
+      {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
 
       {canManage && (
         <Card>
@@ -734,24 +808,78 @@ export function ExpensesTab({ expenses, canManage, onReload }: { expenses: Expen
         </Button>
       </div>
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">{t('exp.title')}</CardTitle></CardHeader>
+        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">{t('exp.title')}</CardTitle>
+          <span className="text-xs text-stone-500">{t('exp.totalRecords')}: {expenses.length}</span>
+        </CardHeader>
         <CardContent>
           {expenses.length === 0 && <p className="text-sm text-stone-500">{t('exp.none')}</p>}
-          <ScrollArea className="max-h-80">
+          <ScrollArea className="max-h-96">
             <div className="space-y-2">
-              {expenses.map((e) => (
-                <div key={e.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{e.description}</p>
-                    <p className="text-xs text-stone-500">{new Date(e.paidAt).toLocaleDateString('sl-SI')}</p>
+              {expenses.map((e) => {
+                const voided = e.status === 'void'
+                return (
+                  <div key={e.id} className={`rounded-lg border p-3 flex flex-wrap items-center justify-between gap-2 ${voided ? 'border-stone-200 bg-stone-50 opacity-70' : 'border-stone-200 bg-white'}`}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={`font-medium truncate ${voided ? 'line-through text-stone-400' : ''}`}>{e.description}</p>
+                        {statusBadge(e)}
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">
+                        {new Date(e.paidAt).toLocaleDateString('sl-SI')}
+                        {e.supplierName ? ` · ${e.supplierName}` : ''}
+                        {e.apNumber ? ` · ${e.apNumber}` : ''}
+                        {e.dueDate && !voided && !isPaid(e) ? ` · ${t('exp.dueDate')}: ${new Date(e.dueDate).toLocaleDateString('sl-SI')}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <p className={`font-bold ${voided ? 'line-through text-stone-400' : ''}`}>{fmtEUR(e.amount)}</p>
+                      {canManage && !voided && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => void togglePaid(e)} disabled={busy} aria-label={isPaid(e) ? t('exp.markOpen') : t('exp.markPaid')}>
+                            {isPaid(e) ? <RotateCcw className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => openEdit(e)} disabled={busy} aria-label={t('exp.editAria', { d: e.description })}><Pencil className="w-4 h-4" /></Button>
+                          <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => void remove(e)} disabled={busy} aria-label={t('exp.deleteAria', { d: e.description })}><Trash2 className="w-4 h-4" /></Button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <p className="font-bold shrink-0">{fmtEUR(e.amount)}</p>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </ScrollArea>
         </CardContent>
       </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{t('exp.editTitle')}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ex-edit-desc">{t('exp.description')}</Label>
+              <Input id="ex-edit-desc" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} maxLength={120} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ex-edit-amount">{t('exp.amount')}</Label>
+                <Input id="ex-edit-amount" inputMode="decimal" value={editForm.amount} onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, '') }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ex-edit-due">{t('exp.dueDate')}</Label>
+                <Input id="ex-edit-due" type="date" value={editForm.dueDate} onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))} />
+              </div>
+            </div>
+            {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>{t('exp.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !editForm.description.trim() || !(Number(editForm.amount.replace(',', '.')) > 0)} onClick={saveEdit}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('exp.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

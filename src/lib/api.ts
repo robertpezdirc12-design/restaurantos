@@ -82,7 +82,7 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.58.0'
+export const APP_VERSION = '1.59.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'
 /**
  * Realen deployan commit (Task 40 + Task 41): 

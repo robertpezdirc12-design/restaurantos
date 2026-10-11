@@ -80,7 +80,11 @@ afterAll(async () => {
   await db.auditLog.deleteMany({ where: { OR: [{ entityId: { startsWith: `${PREFIX}pool` } }, { entityType: 'AccountsPayable' }] } }).catch(() => null)
   await db.tipDistribution.deleteMany({ where: { tipPoolId: { startsWith: `${PREFIX}pool` } } }).catch(() => null)
   await db.tipPool.deleteMany({ where: { id: { startsWith: `${PREFIX}pool` } } }).catch(() => null)
-  await db.accountsPayable.deleteMany({ where: { id: { startsWith: `${PREFIX}ap` } } }).catch(() => null)
+  // Task 61 LEKCIJA: AP id je nid() (rute), ne prefiks — prejšnji pogoj ni ujel ničesar
+  // (72 sirot v dev bazi); brišemo po besedilnih poljih, ki nosijo predpono
+  await db.accountsPayable.deleteMany({
+    where: { OR: [{ id: { startsWith: `${PREFIX}` } }, { invoiceNumber: { startsWith: `${PREFIX}` } }, { notes: { startsWith: `${PREFIX}` } }, { apNumber: { startsWith: `${PREFIX}` } }] },
+  }).catch(() => null)
   await db.employee.deleteMany({ where: { email: { contains: `${PREFIX}` } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: locId || '__x__' } }).catch(() => null)
 })

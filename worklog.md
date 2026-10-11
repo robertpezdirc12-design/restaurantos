@@ -1241,3 +1241,27 @@ Delovni dnevnik:
 Povzetek faze:
 - Audit §7 preostanek: stroški (urejanje brez DDL MOŽNO: PATCH/DELETE; kategorije = DDL), HACCP načrti (DDL), enterprise UI, fire je bil že rešen (doc-truth).
 - Vse uporabniške odvisnosti nespremenjene: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
+
+---
+Task ID: 61
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Stroški admin (audit §7 vrstica 122 PARTIAL→DONE) — expenses/[id] PATCH/DELETE + ExpensesTab + FIELD_SWEEP + v1.59.0
+
+Delovni dnevnik:
+- Baseline: trojica c011a5b (v1.58.0) SYNCED (github + origin=GitLab), working tree čist.
+- IZBIRA (doc-truth preverba vseh preostalih §7 vrstic): stroški = edina brez DDL (HACCP načrti = nov model, enterprise = UI za org drevo, kategorije stroškov = DDL). Prej: samo GET+POST.
+- BACKEND src/app/api/expenses/[id]/route.ts (nov): PATCH (settings.manage + guardResource iz '@/lib/tenant' — Task 52 konvencija, 34 rut): opis (invoiceNumber+notes), znesek (>0; na plačanem → 409 'najprej odpri plačilo'), dueDate (validacija datuma), status open↔paid (paid → paidAmount=totalAmount + paidAt ob prvem plačilu; open → 0/null); PATCH na 'void' → 409; prazna sprememba → 400; audit EXPENSE_UPDATED (before/after, __details konstanta — auditChainFields NE vrne details, TS2339 lekcija). DELETE: MEHKO — status 'void', idempotentno (že void → ok BREZ duplikata revizije), audit EXPENSE_DELETED (softDelete:true); hard delete bi s AccountsPayableLine Cascade izgubil vrstice. expenseView() = skupni mapping z GET.
+- GET obogaten (expenses/route.ts): apNumber/status/paidAmount/dueDate/supplierName (include Supplier) — nazajkompatibilno. reports/financial: AP agregat dobi status:{not:'void'} (preklicani ne bodo mesecnih stroškov); reports/export grupira po statusu dinamično (void = svoj bucket, brez spremembe).
+- UI ExpensesTab (dashboard-tabs.tsx): 3 KPI (mesec brez void / odprti znesek / zapadli števec), statusBadge (Plačan zeleno/Odprt amber/Zapadel rdeče/Preklican prečrtan), vrstica: datum · dobavitelj · AP-številka · zapadlost; akcije canManage: označi plačano/odpri (CheckCircle2/RotateCcw), Uredi (Pencil, dialog: opis+znesek+dueDate; znesek na plačanem backend blokira 409), Prekliči (Trash2 + window.confirm). ExpenseT razširjen z optional polji. Ikone Pencil/RotateCcw dodane.
+- i18n: 15 novih exp.* ključev (SL/HR 28=28 pariteta, python vstavitev za 'exp.none' brez duplikatov).
+- TESTI tests/expenses-admin.test.ts (11, PREFIX exp61-, pre-sweep): PATCH opis/znesek/dueDate + audit before/after; validacija (0/-5/neveljaven datum/status void/prazno → 400); 404; paid flow (paidAmount=300, 409 na znesek); reopen (0/null, znesek spet urejljiv); void + EN audit + PATCH 409; DELETE idempotenten; 404; guardResource tuja lokacija → 403 (AP fiksatura direktno v DB, lowercase 'owner' ni centralen); chef 403; GET obogaten (supplierName='Razno', waiter BREZ reports.view → 403 fail-closed). Lekcije: num() uvoz v test; Prisma Decimal toBe('60') ne dela → num(); waiter ima reports.view SAMO če je v matrici (ni → 403).
+- LEKCIJA (glavna najdba): 128 stroškov v dev bazi (72 rfix- + 56 exp61-) = VSI testni odpadki. VZROK: POST ruta generira AccountsPayable.id z nid() — testna predpona ostane LE v invoiceNumber/notes; id-predponski prehod počistnika ne ujame ničesar, po izbrisu testne lokacije pa je še locationId NULL (SetNull) → nevidna sirota. FIX: fixture-sweep faza 0 FIELD_SWEEP (accountsPayable po invoiceNumber/notes/apNumber, teče PRVI — pred supplier starševskim prehodom, sicer FK P2003); tests/expenses-admin + race-fixes afterAll popravljena na besedilni pogoj; regresijski test v fixture-sweep.test.ts (strežniški id + predpona v besedilu + NULL lokacija → izbrisan); bun run scripts/cleanup-test-fixtures.ts → accountsPayable: 128, errors 0. Dev baza zdaj 0 testnih stroškov.
+- VALIDACIJA: 696/696 (684 + 11 + 1), tsc 0, lint 0. GARBLE opomba: bash stdout tok je večkrat fabrikiral vsebino (lažni snapshot vrstice 'rfix-racun', namišljeni test fail) — vse odločitve potrjene z nezavisnimi kanali (sqlite3 direktno, curl API, bun test, agent-browser dialog/state).
+- BROWSER E2E (admin@restaurantos.app, živo): tab Stroški → KPI + forma; 'E2E preverba strošek' 12,50 → vrstica 'Odprt' + 'AP-… · Razno · Zapadlost:'; Označi plačano → DB status/paidAmount/paidAt ✓; Uredi na plačanem → znesek 99 → DB NEspremenjen (409 zavral); Prekliči → JS confirm 'ostane v reviziji' → accept → DB 'void' + EXPENSE_DELETED audit; E2E vrstica počiščena (audit+event+AP); mobilni 390×844 25 zavihkov; konzola samo znano benigno DialogContent aria opozorilo; screenshot: 3 KPI + čist prazen seznam 'Vseh zapisov: 0'.
+- DOKUMENTACIJA: audit §7 vrstica 122 Stroški PARTIAL → DONE (Task 61; kategorije izrecno izven v1 — DDL/issue-13); APP_VERSION 1.58.0 → 1.59.0.
+
+Povzetek faze:
+- Audit §7 preostanek: HACCP načrti (DDL/issue-13), enterprise UI (org drevo), stroški kategorije (DDL) — vse blokirane z DDL ali večje obsege.
+- Nenačrtovana dobiček: FIELD_SWEEP faza v počistniku zdravi razred uhajanj strežniško-generiranih id-jev (vsem prihodnjim testnim datotekam).
+- Uporabniške odvisnosti nespremenjene: issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.

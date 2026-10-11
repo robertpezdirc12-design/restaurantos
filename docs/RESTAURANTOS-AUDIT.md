@@ -119,7 +119,7 @@
 | Zaloga: inventura | **DONE** | **ŽE OD Task 57 (v1.56.0):** polni protokol — odpri (snapshot zaloge) → oddaj (CAS zakleni) → potrdi (inventurni popravek v transakciji: quantity := counted, StockTransaction STOCKTAKE s previousQty/newQty pokaže sočasno prodajo, variansa proti snapshotu) | prekliči; recount (SUBMITTED→DRAFT, recountCount++); en odprt popis/lokacija (409), idempotencyKey replay, 6 rut + 11 DB testov + UI kartica v Zalogi tabu |
 | Recepture + avtomatska razknjižba | **DONE** | v isti transakciji kot račun (R2 zdaj CAS) |
 | Darilne kartice (izdaja/polnilo/unovčenje) | **DONE** | CAS, maskiranje v auditu |
-| Stroški (AccountsPayable) | **PARTIAL** | GET+POST; brez urejanja/kategorij |
+| Stroški (AccountsPayable) | ~~PARTIAL~~ **DONE (Task 61, v1.59.0)** | GET+POST+PATCH+DELETE (`expenses/[id]`: urejanje opisa/zneska/zapadlosti, status open↔paid z paidAmount/paidAt sinhronizacijo, knjigovodska zaklen zneska na plačanem → 409, mehko brisanje = status 'void' z EN audit vnosom, idempotentno, guardResource) + obogaten GET (apNumber/status/dueDate/paidAmount/supplierName) + ExpensesTab (3 KPI vklj. zapadli, status oznake Odprt/Plačan/Zapadel/Preklican, urejanje dialog, plačilo/odprtje, mehki preklic z potrditvijo) + audit EXPENSE_UPDATED/DELETED; reports/financial izključuje 'void'; (kategorije ostajajo izven v1 — zahtevajo DDL, glej issue-13) |
 | Events (notranja vrsta + retry) | **DONE** | brez zunanjih webhook subscriberjev |
 | Odpiralni čas (7 dni + posebni + prazniki SI) | **DONE** | |
 | HACCP | **PARTIAL** | vnosi+seznam; brez načrtov kontrol |

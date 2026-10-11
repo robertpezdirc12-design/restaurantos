@@ -18,15 +18,23 @@ export async function GET(req: NextRequest) {
     where: await locationScope(user),
     orderBy: { invoiceDate: 'desc' },
     take: 100,
+    include: { Supplier: { select: { name: true } } },
   })
   return ok({
+    // Task 61: obogateno mapping — status/apNumber/dueDate/paidAmount/supplierName
+    // (UI: plačilo, zapadlost, preklic, urejanje). Zadnji 2 polji sta nazajkompatibilni.
     expenses: rows.map((r) => ({
       id: r.id,
+      apNumber: r.apNumber,
       category: 'OSTALO',
       description: r.invoiceNumber || r.notes || 'Dobaviteljev račun',
       amount: num(r.totalAmount),
+      paidAmount: num(r.paidAmount),
+      status: r.status || 'open',
       paidAt: r.paidAt || r.invoiceDate,
+      dueDate: r.dueDate,
       locationId: r.locationId,
+      supplierName: r.Supplier?.name || null,
     })),
   })
 }

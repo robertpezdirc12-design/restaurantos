@@ -117,8 +117,38 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     process.env.DATABASE_URL = orig
   })
 
+  test('FIELD_SWEEP: strežniški id (nid()) + predpona v besedilu + NULL lokacija → najden in izbrisan (Task 61 sirote)', async () => {
+    await seedJunk()
+    // AccountsPayable POST ruta ustvari id z nid() — simuliraj pošteno siroto:
+    // naključen id, testna predpona v invoiceNumber/notes, locationId NULL (SetNull po izbrisu lokacije)
+    const supplier = await db.supplier.create({
+      data: { id: `${P}dob-fs`, name: `${P}Dobavitelj FS`, code: `FS-${Date.now().toString(36).toUpperCase()}` },
+    })
+    const ap = await db.accountsPayable.create({
+      data: {
+        id: `nid${Date.now().toString(36)}fs`, // strežniški vzorec — BREZ testne predpone
+        apNumber: 'AP-FSWEEP-SIM',
+        supplierId: supplier.id,
+        invoiceNumber: `${P}FStrošek`,
+        notes: `${P}FStrošek`,
+        dueDate: new Date(),
+        subtotal: 7,
+        totalAmount: 7,
+        locationId: null, // SetNull sirota — id- in lokacijski prehod je ne vidita
+      },
+    })
+    expect(await db.accountsPayable.count({ where: { id: ap.id } })).toBe(1)
+
+    const res: SweepResult = await sweepTestFixtures(db, [P])
+
+    expect(res.errors).toEqual([])
+    // FIELD_SWEEP prehod (6. faza) najde siroto po besedilnih poljih
+    expect(await db.accountsPayable.count({ where: { id: ap.id } })).toBe(0)
+    expect(await db.supplier.count({ where: { id: { startsWith: P } } })).toBe(0)
+  })
+
   test('znane testne predpone so pokrite (uhajanje nove fiksurne datoteke = vidna lokacija na prijavi)', () => {
-    for (const p of ['rp1-', 'rfix-', 'rbac-p2-', '33a-', '33c-', 'uc-', 'gfb-', 'tst57-', 'stockded', 'zrepvat', 'furspost', 'storno-test-', 'torg-', 'torgl-', 'disc59-', 'integ60-']) {
+    for (const p of ['rp1-', 'rfix-', 'rbac-p2-', '33a-', '33c-', 'uc-', 'gfb-', 'tst57-', 'stockded', 'zrepvat', 'furspost', 'storno-test-', 'torg-', 'torgl-', 'disc59-', 'integ60-', 'exp61-']) {
       expect(TEST_PREFIXES).toContain(p)
     }
   })

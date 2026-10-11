@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
       _count: true,
     }),
     db.accountsPayable.aggregate({
-      where: { invoiceDate: { gte: startOfMonth }, ...scope },
+      // Task 61: preklicani stroški (status 'void' — mehki DELETE) ne smejo bati
+      // mesečnih stroškov; izključeni so tudi iz reports/export (status bucket je ločen).
+      where: { invoiceDate: { gte: startOfMonth }, status: { not: 'void' }, ...scope },
       _sum: { totalAmount: true },
     }),
     db.orderItem.groupBy({
