@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import type { ReservationStatus, ReservationSource } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
+import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
 import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -48,6 +49,8 @@ export async function POST(req: NextRequest) {
   if (!body?.guestName || !body?.reservedAt) return ok({ error: 'Ime gosta in čas rezervacije sta obvezna.' }, 400)
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
   if (body.tableId) {
     const table = await db.table.findUnique({ where: { id: String(body.tableId) }, select: { locationId: true } })
     if (!table) return ok({ error: 'Miza ne obstaja.' }, 400)
@@ -101,7 +104,7 @@ export async function PATCH(req: NextRequest) {
   if (!ALLOWED_STATUSES.includes(status as typeof ALLOWED_STATUSES[number])) return ok({ error: 'Neznan status rezervacije.' }, 400)
   const existing = await db.reservation.findUnique({ where: { id } })
   if (!existing) return ok({ error: 'Rezervacija ne obstaja.' }, 404)
-  const locRes = assertResourceLocation(user, existing.locationId)
+  const locRes = await guardResource(user, existing.locationId)
   if (locRes) return locRes
   const row = await db.reservation.update({ where: { id }, data: { status: reservationStatusToDB(status) as ReservationStatus } })
   return ok({ reservation: mapReservation(row) })

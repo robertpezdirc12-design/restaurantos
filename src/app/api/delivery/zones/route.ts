@@ -3,7 +3,8 @@
  * znesek, aktivnost). Uporablja obstoječi DeliveryZone model — ne podvaja.
  */
 import { NextRequest } from 'next/server'
-import { ok, fail, requirePermission, isResponse, locationScope, assertResourceLocation, requireUserLocation } from '@/lib/api'
+import { ok, fail, requirePermission, isResponse, locationScope, requireUserLocation } from '@/lib/api'
+import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { db } from '@/lib/db'
 import { nid, num, mapDeliveryZone } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -36,6 +37,8 @@ export async function POST(req: NextRequest) {
   // Issue #4 §10: cona se vedno ustvari na lokaciji uporabnika (brez globalnih con)
   const locationId = requireUserLocation(user, b.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
 
   const zone = await db.deliveryZone.create({
     data: {
@@ -77,7 +80,7 @@ export async function PATCH(req: NextRequest) {
   const existing = await db.deliveryZone.findUnique({ where: { id: b.id } })
   if (!existing) return fail('Cona ne obstaja.', 404)
   // Issue #4 §1: urejanje cone tuje lokacije je zavrnjeno (fail-closed)
-  const locRes = assertResourceLocation(user, existing.locationId)
+  const locRes = await guardResource(user, existing.locationId)
   if (locRes) return locRes
 
   const zone = await db.deliveryZone.update({

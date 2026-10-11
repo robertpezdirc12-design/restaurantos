@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import type { TableStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, requireUserLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { mapTable, tableStatusToDB, nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
   if (!number || number < 1) return fail('Številka mize je obvezna.')
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
   const exists = await db.table.findUnique({ where: { number_locationId: { number, locationId } } })
   if (exists) return fail(`Miza s številko ${number} že obstaja.`)
   const table = await db.table.create({

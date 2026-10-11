@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, assertResourceLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapEmployee, roleToDB, jstr, nid } from '@/lib/map'
 import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -31,7 +32,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const target = await db.employee.findUnique({ where: { id } })
   if (!target) return fail('Zaposleni ne obstaja.', 404)
   // Issue #4 §1: PIN reset / urejanje čez lokacije = identiteta theft — fail-closed
-  const locRes = assertResourceLocation(user, target.locationId)
+  const locRes = await guardResource(user, target.locationId)
   if (locRes) return locRes
   const targetRole = (target.role as string).toUpperCase()
   if (user.role === 'MANAGER' && targetRole === 'ADMIN') {

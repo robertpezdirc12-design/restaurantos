@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation, locationScope, requireUserLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import {
@@ -91,6 +92,8 @@ export async function POST(req: NextRequest) {
 
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
 
   const row = await db.waitlistEntry.create({
     data: {
@@ -135,7 +138,7 @@ export async function PATCH(req: NextRequest) {
 
   const rec = await db.waitlistEntry.findUnique({ where: { id } })
   if (!rec) return fail('Vnos ne obstaja.', 404)
-  const locRes = assertResourceLocation(user, rec.locationId)
+  const locRes = await guardResource(user, rec.locationId)
   if (locRes) return locRes
 
   const to = body?.status !== undefined && body?.status !== null && String(body.status) !== '' ? String(body.status).toLowerCase() : null
@@ -240,7 +243,7 @@ export async function DELETE(req: NextRequest) {
 
   const rec = await db.waitlistEntry.findUnique({ where: { id } })
   if (!rec) return fail('Vnos ne obstaja.', 404)
-  const locRes = assertResourceLocation(user, rec.locationId)
+  const locRes = await guardResource(user, rec.locationId)
   if (locRes) return locRes
 
   if (isTerminalWaitlistStatus(rec.status)) {

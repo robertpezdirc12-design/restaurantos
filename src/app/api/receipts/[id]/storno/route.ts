@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, num, r2, jparse, jstr, mapReceipt } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
@@ -18,7 +19,7 @@ import { auditChainFields } from '@/lib/audit-chain'
  *
  * Pravila (fail-closed):
  *  - 404: originalni račun ne obstaja / pripadajoče naročilo ne obstaja.
- *  - 403: tuja lokacija (assertResourceLocation — centralne vloge OWNER/ADMIN bypass).
+ *  - 403: tuja lokacija (guardResource — lokacijska + org meja; centralne vloge prej bypass).
  *  - 409: storno računa (isStorno=true) — storna ni mogoče še enkrat stornirati.
  *  - 409: kopija računa (isCopy=true) — storno je mogoč SAMO za originalni račun
  *         (kopija je reprint brez lastnega življenja; storno kopije bi podvojil umik).
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!original) return fail('Račun ne obstaja.', 404)
 
   // Issue #4 §1 vzorec: storno tujega računa (druga lokacija) je ZAVRJENO
-  const locGuard = assertResourceLocation(user, original.locationId)
+  const locGuard = await guardResource(user, original.locationId)
   if (locGuard) return locGuard
 
   if (original.isStorno) {

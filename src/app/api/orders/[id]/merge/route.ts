@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapOrder, nid, jstr, num, r2 } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const source = await db.order.findUnique({ where: { id } })
   if (!source) return fail('Naročilo (vir) ne obstaja.', 404)
-  const guard = assertResourceLocation(user, source.locationId)
+  const guard = await guardResource(user, source.locationId)
   if (guard) return guard
   if (source.status === 'paid' || source.status === 'cancelled' || source.paymentStatus === 'paid') {
     return fail('Zaključenega (plačanega/storniranega) naročila ni mogoče združiti.', 409)

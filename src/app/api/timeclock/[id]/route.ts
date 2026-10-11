@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import {
   canTransitionStatus,
@@ -39,7 +40,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   })
   if (!entry) return fail('Vnos delovnega časa ne obstaja.', 404)
 
-  const locRes = assertResourceLocation(user, entry.Employee?.locationId ?? entry.locationId)
+  const locRes = await guardResource(user, entry.Employee?.locationId ?? entry.locationId)
   if (locRes) return locRes
 
   const before = {

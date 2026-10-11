@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { num, nid, r2, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -57,6 +58,8 @@ export async function POST(req: NextRequest) {
   // Issue #4 §10: brez findFirst() fallback — staff = svoja lokacija, centralna poda body.locationId
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
 
   // R12 + Task 41: vedno "Razno" — unique name upsert + P2002 re-read/retry zanka.
   // Dve P2002 possibilities: (a) name-'Razno' kolizija (vzporedna zahteva ga je

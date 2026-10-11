@@ -21,14 +21,25 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
    lokacije SAMO znotraj istega org/property — `enterpriseAllows`
    (src/lib/enterprise.ts, issue #11), fail-closed brez verige.
 3. **Centralne vloge** (ADMIN/OWNER) — cross-location dostop je omejen z lokacijskim
-   modelom; org meja pa je na nivoju enterprise rut izvedena INLINE (glej točki 4 in 5).
-   Pomožna funkcija `assertTenantScope` (src/lib/tenant.ts) je **definirana in
-   pokrita s testi (prek `tenantAllows`), TRENUTNO pa ŠE NI povezana v splošne
-   API rute** — rezervirana za tren, ko bodo vse lokacije povezane v org drevo.
-   Pravila, ki jih bo izvajala (in ki jih enterprise rute danes izvajajo inline):
+   modelom; org meja pa je ŽIVO povezana v splošne API rute (v1.53.0, Task 52 —
+   zaprto P1 iz audita: prej je bil `assertTenantScope` definiran a ničerar klican).
+   - **Točkovne rute** (branje/posodabljanje/brisanje virov z lokacijo): `guardResource`
+     (src/lib/tenant.ts) = `assertResourceLocation` (lokacijski sloj) + `assertOrgScope`
+     (org sloj za centralne vloge) — povezano v vseh 28 točkovnih rutah (mehanična
+     migracija, tsc-verificirana; statični regresijski test prepoveduje goli
+     `assertResourceLocation` klic v src/app).
+   - **CREATE rute**: `assertOrgScope(user, locationId)` tik za `requireUserLocation`
+     (18 mest) — blokira kreiranje virov na lokaciji tuje org (forged locationId).
+   - **Seznamski endpointi** (`locationScope`): centralne vloge vidijo vse lokacije —
+     org filter na seznamih NI implementiran (znana omejitev, transparentno; zaprtje
+     je mogoče z org allow-listo, sledi ob več-org onboardingu).
+   Semantika `assertTenantScope` (in `assertOrgScope`) — migracijsko varno, usklajeno
+   z oglavjem tenant.ts in `tenantAllows`:
    - org uporabnika ≠ org vira (obe znani) → **403**;
    - org uporabnika ali vira neznana (legacy, nevezani podatki) → obstoječe
-     lokacijsko vedenje (migracijsko varno — ne odrežemo produkcije);
+     lokacijsko vedenje (migracijsko varno — ne odrežemo produkcije; to pravilo
+     je bilo v kodi POPRAVLJENO v1.53.0 — prej je `assertTenantScope` pri
+     neznani uporabnikovi verigi vrnil 403 v nasprotju s tem dokumentom);
    - **bootstrap admin** (`sub='bootstrap'`) = break-glass za obnovo dostopa, gre
      skozi (izrecno odločitev, dokumentirana tudi v SECURITY-BOUNDARY.md).
 4. **Kreiranje organizacij** = platformna operacija (SaaS onboarding): samo
@@ -52,6 +63,10 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
 
 - `tests/tenant.test.ts` — cross-org READ/WRITE DENY, forged org/location ID,
   legacy passthrough, hierarhična pravila ostanejo (regresijski guard).
+- `tests/tenant-org.test.ts` (v1.53.0) — org meja ŽIVO: dve org drevesi + legacy
+  lokacija; cross-org READ/WRITE/CREATE → 403, isti-org čez lokacije → 200,
+  bootstrap break-glass, migracijsko varni scenariji (legacy lokacija/vir → pass),
+  statična regresija (ni več golih `assertResourceLocation` klicev v src/app).
 - `tests/enterprise.test.ts` — drevo + obseg (#11).
 
 ## Znane meje (transparentno)

@@ -1006,3 +1006,26 @@ Stage Summary:
 - celoten zlati tok (prijava → plačilo → račun) živo preverjen v brskalniku — brez regresij
 - meni dialog zdaj lokacijsko pravilen (fix + živ dokaz), mikrokopija DIRTY mize jasnejša v obeh jezikih
 - v1.52.1; produkcija/CI/mirror disciplina kot v Taskih 45–50
+
+---
+Task ID: 52-main
+Agent: main (Z.ai Code)
+Task: "odlicno nadaljuj" — org meja (tenant boundary) ŽIVO povezana v rute (audit P1) + N3/N4 revizija tabele + v1.53.0
+
+Work Log:
+- re-verifikacija blokader: sync-check SYNCED trojica @ 7f94df5 (v1.52.1); 618/615+3 testov zelenih; preostanek po auditu: assertTenantScope definiran a NIČERAR klican (P1, docs so trdile drugače), N3/N4 vrstici v tabeli "ODPRTO" čeprav popravljeni v kodi.
+- N3/N4 re-verifikacija z grepom: vse rute iz N3 že uporabljajo requirePermission (inventory/expenses/suppliers/loyalty/jobs/employees), vseh 8 migrate-* rut requireCentralRole → vrstici prečrtani z zapisom POPRAVLJENO + VERIFICIRANO (kodne popravke je izvedel prejšnji task, tabela ni bila posodobljena).
+- JEDRO (src/lib/tenant.ts): assertTenantScope SEMANTIKO usklajena z dokumentacijo — migracijsko varno (neznana veriga uporabnika ALI vira → pass; prej: `!userChain → 403` v nasprotju z oglavjem + TENANT-ISOLATION.md + tenantAllows, ki vrača true); NOVA assertOrgScope (org meja za centralne vloge, fast-path za staff/enterprise brez DB poizvedb; bootstrap break-glass) + guardResource (assertResourceLocation + assertOrgScope — združena varovalka za točkovne rute).
+- ŽIČNANJE mehanično (codemod + tsc-verifikacija): 28 točkovnih rut assertResourceLocation → await guardResource (28 datotek, 30 klicev; sync/route.ts posebej — ožji tip user → AuthPayload cast); 18 CREATE mest (14 datotek) dobi `const orgGuard = await assertOrgScope(user, locId)` tik za requireUserLocation resolution — cross-org forged locationId pri kreiranju zdaj 403 ŠE PRED zapisom.
+- KNANA OMEJITEV (transparentno): seznamski endpointi (locationScope, 27 datotek) ostajajo brez org filtra za centralne vloge — zaprtje zahteva org allow-listo (locationId IN org locations + unlinked), pripravljeno kot naslednji korak ob več-org onboardingu; točkovno branje je že zaprto, seznam pa izpostavlja samo agregate/sezname.
+- TESTI +17 (635/635, tests/tenant-org.test.ts): DB-backed z dvema org drevesoma (orgA/orgB) + legacy lokacijo brez propertyId — enote (assertTenantScope 403/ist-org pass/migracijsko varno pass/bootstrap/golo jedro za nestralčne vloge; assertOrgScope neznana lokacija → pass; chainForLocation legacy → null orgi; guardResource staff fast-path) + RUTE ŽIVO (cross-org READ/PATCH/CREATE → 403, isti-org čez lokacije → 200, legacy admin → povezana orgB 200, legacy vir → 200, bootstrap 200, waiter nespremenjen 403, statična regresija: ni več golih assertResourceLocation klicev v src/app).
+- LEKCIJE (2): ① test dvojno ovijal žeton (seedEmployee je vračal token, testi so klicali token(tokenStr,…)) → sub = JWT string → employee lookup fail → lažni 403; cross-org 403 testi so prehajali VAKUJSKO (pričakovan 403, dobljen iz auth sloja) — popravljeno: seed vrača ID, žetone gradi test; ② python3 seedOrder vračal objekt, delete z objektom → Prisma "Expected String, provided Object".
+- ECHO-KORUPCIJA spet (3. ta seja): MultiEdit/Read izpisi med urejanjem audita halucinirali vrstice (N3/N4 z izmišljenimi besedili) — re-verifikacija z python3 + sha256 (2834a11257e7bc8c stabilna čez 3 branja) = datoteka ZDRAVA, korupcija samo v prikazu; worklog pravilo #2 znova potrjeno.
+- docs usklajeni (4 datoteke): RESTAURANTOS-AUDIT.md (N3/N4 prečrtani + vrstica 156 ZAPRTO z znano omejitvijo seznamov), TENANT-ISOLATION.md §3 (ŽIVO povezana — 28 točkovnih + 18 CREATE mest + semantika migracijsko varno + tests), SECURITY-BOUNDARY.md vrstica Tenant scope, ARCHITECTURE.md vrstica Tenant scope; APP_VERSION 1.53.0.
+- verifikacija: tsc 0, lint 0, 635/635 (618 starih + 17 novih), dev baza čista (test cleanup v afterAll).
+
+Stage Summary:
+- org meja (tenant boundary) ŽIVO povezana: centralna vloga org A ne more več brati/pisati/ustvarjati virov org B prek točkovnih rut (prej: lokacijski sloj je centralne vloge spustil brez org preverbe) — P1 iz audita (vrstica 156) ZAPRTO
+- migracijsko varno: legacy (nevezane) lokacije/viri ostanejo dostopni — produkcija (1 org, lokacije brez propertyId) NI regresirala (618 starih testov zelenih brez sprememb)
+- N3/N4 revizijske vrstice prečrtane (koda že popravljena, tabela zaostala); docs-koda usklajena na 4 mestih
+- v1.53.0; preostanek: uporabniški koraki (DDL issue-13, GoDaddy DNS, FURS/FINA certifikata) + opcijsko org filter na seznamskih endpointih

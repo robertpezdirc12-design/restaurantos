@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import QRCode from 'qrcode'
 import { db } from '@/lib/db'
-import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid } from '@/lib/map'
 import { newQrToken, qrUrl } from '@/lib/guest'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const table = await db.table.findUnique({ where: { id }, include: { Location: true } })
   if (!table) return fail('Miza ne obstaja.', 404)
   // Issue #4 §1: pred mintanjem/razkritjem tokena preveri pripadnost lokaciji (fail-closed)
-  const locRes = assertResourceLocation(user, table.locationId)
+  const locRes = await guardResource(user, table.locationId)
   if (locRes) return locRes
 
   let token = table.qrToken
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const table = await db.table.findUnique({ where: { id } })
   if (!table) return fail('Miza ne obstaja.', 404)
   // Issue #4 §1: rotacija/izklop QR naročanja samo na mizah lastne lokacije
-  const locRes = assertResourceLocation(user, table.locationId)
+  const locRes = await guardResource(user, table.locationId)
   if (locRes) return locRes
 
   if (action === 'rotate') {

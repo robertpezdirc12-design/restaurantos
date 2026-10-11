@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid } from '@/lib/map'
 import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { newEnrollmentCode, clientIp } from '@/lib/guest'
@@ -40,6 +41,8 @@ export async function POST(req: NextRequest) {
 
   const loc = requireUserLocation(user, body?.locationId)
   if (typeof loc !== 'string') return loc
+  const orgGuard = await assertOrgScope(user, loc)
+  if (orgGuard) return orgGuard
   const location = await db.location.findUnique({ where: { id: loc } })
   if (!location) return fail('Lokacija ne obstaja.', 400)
 

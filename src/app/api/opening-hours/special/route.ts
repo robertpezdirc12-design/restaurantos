@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { validateSpecialDayInput, isValidDateKey, toLocalDateKey } from '@/lib/openinghours'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -20,6 +21,8 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const locRes = requireUserLocation(user, url.searchParams.get('locationId') ?? undefined)
   if (isResponse(locRes)) return locRes
+  const orgGuard = await assertOrgScope(user, locRes)
+  if (orgGuard) return orgGuard
 
   const from = toLocalDateKey(new Date(Date.now() - 7 * 86400_000))
   const to = toLocalDateKey(new Date(Date.now() + 180 * 86400_000))
@@ -37,6 +40,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const locRes = requireUserLocation(perm, body?.locationId)
   if (isResponse(locRes)) return locRes
+  const orgGuard = await assertOrgScope(perm, locRes)
+  if (orgGuard) return orgGuard
 
   // množični vnos predlogov praznikov: { holidays: [{date, name}] } — obstoječi datumi se preskočijo
   if (Array.isArray(body?.holidays)) {
@@ -101,6 +106,8 @@ export async function DELETE(req: NextRequest) {
   if (!row) return fail('Poseben dan ne obstaja.', 404)
   const locRes = requireUserLocation(perm, row.locationId ?? undefined)
   if (isResponse(locRes)) return locRes
+  const orgGuard = await assertOrgScope(perm, locRes)
+  if (orgGuard) return orgGuard
   if (row.locationId && row.locationId !== locRes) return fail('Poseben dan ne pripada tej lokaciji.', 403)
 
   await db.specialOpeningDay.delete({ where: { id } })
@@ -126,6 +133,8 @@ export async function PATCH(req: NextRequest) {
   if (!row) return fail('Poseben dan ne obstaja.', 404)
   const locRes = requireUserLocation(perm, row.locationId ?? undefined)
   if (isResponse(locRes)) return locRes
+  const orgGuard = await assertOrgScope(perm, locRes)
+  if (orgGuard) return orgGuard
   if (row.locationId && row.locationId !== locRes) return fail('Poseben dan ne pripada tej lokaciji.', 403)
 
   const v = validateSpecialDayInput({

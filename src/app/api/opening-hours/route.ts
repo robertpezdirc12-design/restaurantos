@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import {
   validateOpeningHoursRows,
@@ -89,6 +90,8 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const locRes = requireUserLocation(user, url.searchParams.get('locationId') ?? undefined)
   if (isResponse(locRes)) return locRes
+  const orgGuard = await assertOrgScope(user, locRes)
+  if (orgGuard) return orgGuard
 
   const [{ rows: weekly, inherited }, specialsRaw] = await Promise.all([
     weeklyRows(locRes),
@@ -115,6 +118,8 @@ export async function PUT(req: NextRequest) {
   if (!Array.isArray(body?.rows)) return fail('Manjkajo vrstice odpiralnega časa.', 400)
   const locRes = requireUserLocation(perm, body?.locationId)
   if (isResponse(locRes)) return locRes
+  const orgGuard = await assertOrgScope(perm, locRes)
+  if (orgGuard) return orgGuard
 
   const v = validateOpeningHoursRows(body.rows)
   if (!v.ok) return fail(v.error, 400)

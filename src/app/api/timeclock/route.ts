@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, assertResourceLocation, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { Prisma } from '@prisma/client'
 import {
@@ -155,7 +156,7 @@ export async function POST(req: NextRequest) {
     if (!employeeId) return fail('Zaposleni je obvezen.', 400)
     const employee = await db.employee.findUnique({ where: { id: employeeId } })
     if (!employee) return fail('Zaposleni ne obstaja.', 404)
-    const locRes = assertResourceLocation(perm, employee.locationId)
+    const locRes = await guardResource(perm, employee.locationId)
     if (locRes) return locRes
     const clockInMs = Date.parse(String(body?.clockIn || ''))
     const clockOutMs = Date.parse(String(body?.clockOut || ''))

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid, num, r2 } from '@/lib/map'
 import {
   cardNumberFor,
@@ -138,6 +139,8 @@ export async function POST(req: NextRequest) {
   // lokacija prodaje — §10: staff MORA imeti lokacijo; centralne jo lahko podajo
   const loc = requireUserLocation(user, body?.locationId)
   if (isResponse(loc)) return loc
+  const orgGuard = await assertOrgScope(user, loc)
+  if (orgGuard) return orgGuard
 
   // Idempotentni replay — kartica za ta clientOperationId že obstaja?
   const cardId = clientOperationId ? giftCardIssueId(clientOperationId) : nid()

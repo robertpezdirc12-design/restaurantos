@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { tableStatusToDB, tableStatusToUI } from '@/lib/map'
 import { nid, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -20,7 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = await db.table.findUnique({ where: { id }, select: { locationId: true } })
   if (!existing) return fail('Miza ne obstaja.', 404)
   // Issue #4 §1: miza mora pripadati lokaciji uporabnika
-  const locRes = assertResourceLocation(user, existing.locationId)
+  const locRes = await guardResource(user, existing.locationId)
   if (locRes) return locRes
   const table = await db.table.update({ where: { id }, data })
   return ok({ table: { ...table, status: tableStatusToUI(table.status) } })
@@ -36,7 +37,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const existing = await db.table.findUnique({ where: { id }, select: { locationId: true, number: true } })
   if (!existing) return fail('Miza ne obstaja.', 404)
   // Issue #4 §1: brisanje tujokra lokacijskega vira je zavrnjeno (fail-closed)
-  const locRes = assertResourceLocation(user, existing.locationId)
+  const locRes = await guardResource(user, existing.locationId)
   if (locRes) return locRes
   await db.table.delete({ where: { id } })
   // 33-c (audit §6): brisanje mize je zdaj revidirano (prej brez revizije)

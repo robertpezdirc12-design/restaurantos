@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import type { OrderItemStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
+import type { AuthPayload } from '@/lib/auth'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
 import { createOrderCore, OrderError } from '@/lib/ops'
 
@@ -219,7 +221,7 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
       if (!orderId || !Array.isArray(addItems) || addItems.length === 0) throw new OrderError('order.addItems: manjka orderId ali addItems.')
       const order = await client.order.findUnique({ where: { id: orderId } })
       if (!order) throw new OrderError('Naročilo ne obstaja več.', 404)
-      const addGuard = assertResourceLocation(user as unknown as Parameters<typeof assertResourceLocation>[0], order.locationId)
+      const addGuard = await guardResource(user as unknown as AuthPayload, order.locationId)
       if (addGuard) throw new OrderError('Naročilo ne pripada vaši lokaciji.', 403)
       if (!ORDER_ACTIVE_DB.includes(order.status)) throw new OrderError('Naročilo ni več odprto.', 409)
       const menuItems = await client.menuItem.findMany({ where: { id: { in: addItems.map((i) => i.menuItemId) }, isAvailable: true, Category: { Menu: { locationId: order.locationId } } } })
@@ -253,7 +255,7 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
       if (!itemId || !['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(status)) throw new OrderError('kitchen.status: manjka itemId ali veljaven status.')
       const item = await client.orderItem.findUnique({ where: { id: itemId }, include: { Order: { select: { locationId: true } } } })
       if (!item) throw new OrderError('Postavka ne obstaja.', 404)
-      const ksGuard = assertResourceLocation(user as unknown as Parameters<typeof assertResourceLocation>[0], item.Order?.locationId)
+      const ksGuard = await guardResource(user as unknown as AuthPayload, item.Order?.locationId)
       if (ksGuard) throw new OrderError('Postavka ne pripada vaši lokaciji.', 403)
       await client.orderItem.update({ where: { id: itemId }, data: { status: itemStatusToDB(status) as OrderItemStatus } })
       const remaining = await client.orderItem.count({ where: { orderId: item.orderId, status: { in: ['pending', 'fired', 'preparing'] } } })

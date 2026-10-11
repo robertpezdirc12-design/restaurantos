@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
 import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 
@@ -43,6 +44,8 @@ export async function POST(req: NextRequest) {
     // Issue #4 §10: brez findFirst() fallbacka — staff MORA imeti lokacijo (admin lahko poda body.locationId)
     const loc = requireUserLocation(user, body?.locationId)
     if (typeof loc !== 'string') return loc
+    const orgGuard = await assertOrgScope(user, loc)
+    if (orgGuard) return orgGuard
     const { order, replayed } = await createOrderCore({
       employeeId: user.sub,
       locationId: loc,

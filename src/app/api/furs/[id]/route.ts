@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { num } from '@/lib/map'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     db.restaurantSettings.findFirst(),
   ])
   if (!r) return fail('Račun ne obstaja.', 404)
-  const guard = assertResourceLocation(user, r.locationId)
+  const guard = await guardResource(user, r.locationId)
   if (guard) return guard
 
   let raw: unknown = {}

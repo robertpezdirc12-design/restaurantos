@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, locationScope, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
   if (!orderPre) return fail('Naročilo ne obstaja.', 404)
   // Issue #4 §1: plačilo tujega naročila je ZAVRJENO (prej: staff loc A je mogel plačati naročilo loc B
   // in izdati račun pod tujim taxId/premisesId)
-  const payGuard = assertResourceLocation(user, orderPre.locationId)
+  const payGuard = await guardResource(user, orderPre.locationId)
   if (payGuard) return payGuard
   if (!ORDER_ACTIVE_DB.includes(orderPre.status) && orderPre.status !== 'paid') {
     return fail('Naročilo ni v plačljivem stanju.', 409)

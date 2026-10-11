@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -23,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const device = await db.deviceRegistry.findUnique({ where: { id } })
   if (!device) return fail('Naprava ne obstaja.', 404)
   // Issue #4 §1: staff sme upravljati SAMO naprave svoje lokacije (OWNER/ADMIN centralno)
-  const locGuard = assertResourceLocation(user, device.locationId)
+  const locGuard = await guardResource(user, device.locationId)
   if (locGuard) return locGuard
 
   if (body?.action === 'revoke' || body?.action === 'restore') {
@@ -97,7 +98,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const device = await db.deviceRegistry.findUnique({ where: { id } })
   if (!device) return fail('Naprava ne obstaja.', 404)
   // Issue #4 §1: lokacijski gate
-  const delGuard = assertResourceLocation(user, device.locationId)
+  const delGuard = await guardResource(user, device.locationId)
   if (delGuard) return delGuard
   await db.deviceRegistry.delete({ where: { id } })
   const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'DEVICE_DELETED', entityType: 'DeviceRegistry', entityId: id, details: `naprava=${device.name} (${device.type})`, locationId: device.locationId, id: __aId4 })

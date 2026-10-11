@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { WASTE_REVERSAL_TX_TYPE, canReverseWaste, wasteReversalReason } from '@/lib/waste'
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!rev.ok) return fail(rev.reason ?? 'Odpad je že povrnjen.', 409)
 
   // Issue #4 §1 vzorec: reverzija tujega zapisa (druga lokacija) je zavrnjena (fail-closed)
-  const locRes = assertResourceLocation(user, rec.locationId)
+  const locRes = await guardResource(user, rec.locationId)
   if (locRes) return locRes
 
   const item = await db.inventoryItem.findUnique({ where: { id: rec.inventoryItemId }, select: { name: true, locationId: true } })

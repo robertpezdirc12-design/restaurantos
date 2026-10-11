@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import type { EmployeeRole } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { mapEmployee, nid, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -31,6 +32,8 @@ export async function POST(req: NextRequest) {
   const { roleToDB } = await import('@/lib/map')
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
   const fields = employeePinFields(pin, email)
   let employee
   try {

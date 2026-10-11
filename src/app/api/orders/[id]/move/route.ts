@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapOrder, nid, jstr } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
-  const guard = assertResourceLocation(user, order.locationId)
+  const guard = await guardResource(user, order.locationId)
   if (guard) return guard
   // selitev je mogoča samo za odprto naročilo (plačanega/storniranega ne premikamo)
   if (order.status === 'paid' || order.status === 'cancelled' || order.paymentStatus === 'paid') {

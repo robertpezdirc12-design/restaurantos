@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail, requirePermission, requireUserLocation, locationScope } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid } from '@/lib/map'
 import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { clientIp } from '@/lib/guest'
@@ -65,6 +66,8 @@ export async function POST(req: NextRequest) {
   // §2.2: server-side vezava na dovoljeno lokacijo — staff NE sme izbrati tuje lokacije
   const loc = requireUserLocation(user, locationId || undefined)
   if (typeof loc !== 'string') return loc
+  const orgGuard = await assertOrgScope(user, loc)
+  if (orgGuard) return orgGuard
   const location = await db.location.findUnique({ where: { id: loc } })
   if (!location) return fail('Lokacija ne obstaja.', 400)
 

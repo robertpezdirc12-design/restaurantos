@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, assertResourceLocation, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapMenuItem, num, nid, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -22,7 +23,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     select: { Category: { select: { Menu: { select: { locationId: true } } } } },
   })
   if (!existing) return fail('Artikel ne obstaja.', 404)
-  const locRes = assertResourceLocation(user, existing.Category?.Menu?.locationId)
+  const locRes = await guardResource(user, existing.Category?.Menu?.locationId)
   if (locRes) return locRes
   const item = await db.menuItem.update({ where: { id }, data, include: { PrepStation: true, Category: true } })
   // 33-c (audit §6): urejanje artikla menija je zdaj revidirano (prej brez revizije)
@@ -60,7 +61,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     select: { name: true, Category: { select: { Menu: { select: { locationId: true } } } } },
   })
   if (!existing) return fail('Artikel ne obstaja.', 404)
-  const locRes = assertResourceLocation(user, existing.Category?.Menu?.locationId)
+  const locRes = await guardResource(user, existing.Category?.Menu?.locationId)
   if (locRes) return locRes
   const inUse = await db.orderItem.count({ where: { menuItemId: id } })
   if (inUse > 0) return fail('Artikel je že uporabljen v naročilih — nastavi kot "Ni na voljo".', 409)

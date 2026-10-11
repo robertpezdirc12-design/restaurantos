@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, assertResourceLocation, isCentralRole, isResponse, ok } from '@/lib/api'
+import { requirePermission, isCentralRole, isResponse, ok } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     },
   })
   if (!menuItem) return ok({ error: 'Artikel menija ne obstaja.' }, 404)
-  const menuLocRes = assertResourceLocation(user, menuItem.Category?.Menu?.locationId)
+  const menuLocRes = await guardResource(user, menuItem.Category?.Menu?.locationId)
   if (menuLocRes) return menuLocRes
 
   // Deduplikacija po sestavini (shema: @@unique(menuItemId, inventoryItemId))
@@ -130,7 +131,7 @@ export async function DELETE(req: NextRequest) {
   })
   // Issue #4 §1: brisanje recepture samo za artikle lastne lokacije (fail-closed)
   if (menuItem) {
-    const menuLocRes = assertResourceLocation(user, menuItem.Category?.Menu?.locationId)
+    const menuLocRes = await guardResource(user, menuItem.Category?.Menu?.locationId)
     if (menuLocRes) return menuLocRes
   }
   const del = await db.recipeItem.deleteMany({ where: { menuItemId } })

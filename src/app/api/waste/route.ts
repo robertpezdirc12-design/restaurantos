@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, assertResourceLocation, locationScope } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { Prisma } from '@prisma/client'
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
   const item = await db.inventoryItem.findUnique({ where: { id: itemId } })
   if (!item) return fail('Artikel zaloge ne obstaja.', 404)
   // Issue #4 §1 vzorec: odpad tujega artikla (druga lokacija) je zavrnjen (fail-closed)
-  const locRes = assertResourceLocation(user, item.locationId)
+  const locRes = await guardResource(user, item.locationId)
   if (locRes) return locRes
 
   const locationId = item.locationId || user.loc || (await db.location.findFirst({ select: { id: true } }))?.id

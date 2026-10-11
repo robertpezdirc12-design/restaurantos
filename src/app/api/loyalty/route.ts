@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { maskPhone } from '@/lib/pii'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -76,7 +77,7 @@ export async function PATCH(req: NextRequest) {
   if (!account) return ok({ error: 'Račun zvestobe ne obstaja.' }, 404)
   // Issue #4 §1: odštevanje/dodajanje točk tujemu računu (druga lokacija) je zavrnjeno;
   // null lokacija računa = "vir brez lokacije" → 403 za non-central (fail-closed)
-  const locRes = assertResourceLocation(user, account.locationId)
+  const locRes = await guardResource(user, account.locationId)
   if (locRes) return locRes
   const delta = Math.trunc(Number(body?.delta))
   if (!Number.isFinite(delta) || delta === 0) return ok({ error: 'Delta točk je obvezna (npr. 25 ali -10).' }, 400)

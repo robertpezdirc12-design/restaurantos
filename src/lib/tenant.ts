@@ -18,7 +18,7 @@
  */
 
 import { db } from '@/lib/db'
-import { fail } from '@/lib/api'
+import { assertResourceLocation, fail, isCentralRole } from '@/lib/api'
 import type { NextResponse } from 'next/server'
 import type { AuthPayload } from '@/lib/auth'
 
@@ -76,21 +76,67 @@ export type TenantGuardResult = NextResponse | null
 
 /**
  * API varovalka (fail-closed na različne org): 403 če je vir v TUJI organizaciji.
- * Bootstrap admin gre skozi (break-glass). Uporabnik brez lokacije + ni bootstrap → 403
- * kadar vir ima znano org (centralna vloga MORA biti vezana v drevo za cross-location dostop).
+ * Bootstrap admin gre skozi (break-glass).
+ *
+ * MIGRACIJSKO VARNO (v1.53.0 — uskladitev z oglavjem datoteke + docs/TENANT-ISOLATION.md
+ * + čistim jedrom `tenantAllows`, ki za neznano verigo vrača true): neznana veriga
+ * uporabnika ALI vira (legacy/nevezani podatki) → pass — lokacijski sloj
+ * (assertResourceLocation/locationScope) ostane edina varovalka. Prejšnja strožja
+ * veja (`!userChain → 403`) je bila v nasprotju z dokumentacijo in bi nevezane
+ * produkcije lokacije odrezala od centralnih vlog (regresija, §0 AI pravilo 6/10).
  */
 export async function assertTenantScope(
   user: AuthPayload,
   resourceChain: TenantChain | null
 ): Promise<TenantGuardResult> {
   if (isBootstrapAdmin(user)) return null
-  const userChain = await chainForLocation(user.loc)
   if (!resourceChain) return null
-  if (!userChain) return fail('Uporabnik ni vezan v organizacijsko drevo — dostop do vira zavrnjen.', 403)
+  const userChain = await chainForLocation(user.loc)
+  if (!userChain) return null
   if (!tenantAllows(userChain, resourceChain)) {
     return fail('Vir pripada drugi organizaciji — dostop zavrnjen.', 403)
   }
   return null
+}
+
+/**
+ * Org meja za CENTRALNE vloge (audit P1 — priklic assertTenantScope v rutah):
+ * staff/enterprise vloge so že pokrite z lokacijskim oziroma enterprise slojem,
+ * zato ta funkcija zanje takoj vrne null (brez DB poizvedb).
+ * Centralni uporabnik z znano org ne sme brati/pisati virov tuje org — 403.
+ * Migracijsko varno: neznana veriga (uporabnik ali vir) → null (lokacijski sloj varuje).
+ */
+export async function assertOrgScope(
+  user: AuthPayload,
+  resourceLocationId: string | null | undefined
+): Promise<TenantGuardResult> {
+  if (!isCentralRole(user)) return null
+  if (isBootstrapAdmin(user)) return null
+  if (!resourceLocationId) return null
+  const [userChain, resourceChain] = await Promise.all([
+    chainForLocation(user.loc),
+    chainForLocation(resourceLocationId),
+  ])
+  if (!userChain || !resourceChain) return null
+  if (!tenantAllows(userChain, resourceChain)) {
+    return fail('Vir pripada drugi organizaciji — dostop zavrnjen.', 403)
+  }
+  return null
+}
+
+/**
+ * Združena varovalka za točkovne rute (branje/posodabljanje/brisanje na vire z lokacijo):
+ *  1. assertResourceLocation — lokacijski sloj (staff = izključno svoja lokacija, fail-closed);
+ *  2. assertOrgScope — org meja za centralne vloge (403 na tujo organizacijo).
+ * Nadomesti gole `assertResourceLocation` klice v rutah (v1.53.0, mehanično povezano).
+ */
+export async function guardResource(
+  user: AuthPayload,
+  resourceLocationId: string | null | undefined
+): Promise<TenantGuardResult> {
+  const local = assertResourceLocation(user, resourceLocationId)
+  if (local) return local
+  return assertOrgScope(user, resourceLocationId)
 }
 
 /** org filter za sezname centralnih vlog (bootstrap vidi vse — break-glass). */

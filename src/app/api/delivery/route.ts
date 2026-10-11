@@ -5,7 +5,8 @@
  * plačilo/račun teče po istem FURS toku kot POS; vsaka pomembna sprememba = AuditLog.
  */
 import { NextRequest } from 'next/server'
-import { ok, fail, requirePermission, isResponse, locationScope, assertResourceLocation } from '@/lib/api'
+import { ok, fail, requirePermission, isResponse, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { db } from '@/lib/db'
 import { nid, jstr, mapOrder, mapDeliveryInfo, mapDeliveryZone, ORDER_ACTIVE_DB, DELIVERY_STATUS_DB, deliveryStatusToDB } from '@/lib/map'
 import { maskPhone } from '@/lib/delivery'
@@ -103,7 +104,7 @@ export async function PATCH(req: NextRequest) {
   })
   if (!order?.DeliveryInfo) return fail('Naročilo ni dostavno ali nima dostavnih podatkov.', 404)
   // Issue #4 §1: status dostave tujega naročila (druga lokacija) je zavrnjen (fail-closed)
-  const locRes = assertResourceLocation(user, order.locationId)
+  const locRes = await guardResource(user, order.locationId)
   if (locRes) return locRes
   // DeliveryTracking nima Prisma relacije na DeliveryInfo (samo deliveryInfoId @unique) — ročna poizvedba
   const tracking = await db.deliveryTracking.findUnique({ where: { deliveryInfoId: order.DeliveryInfo.id } })

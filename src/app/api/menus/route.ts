@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, requireUserLocation, assertResourceLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, requireUserLocation, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapMenuItem, mapCategory, nid, num, jstr, stationToUI } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
   // Issue #4 §10: forsiraj lokacijo — staff = svoja, centralna lahko poda body.locationId
   const locId = requireUserLocation(user, body?.locationId)
   if (isResponse(locId)) return locId
+  const orgGuard = await assertOrgScope(user, locId)
+  if (orgGuard) return orgGuard
   const categoryId = body.categoryId || (await db.category.findFirst())?.id
   if (!categoryId) return fail('Kategorija ne obstaja. Ustvari kategorijo in meni najprej.', 400)
   // Issue #4 §1: kategorija mora pripadati lokaciji (MenuItem nima locationId — lanec do Menu.locationId)
@@ -53,7 +56,7 @@ export async function POST(req: NextRequest) {
   })
   if (!cat) return fail('Kategorija ne obstaja. Ustvari kategorijo in meni najprej.', 400)
   if (!isCentralRole(user)) {
-    const catLocRes = assertResourceLocation(user, cat.Menu?.locationId)
+    const catLocRes = await guardResource(user, cat.Menu?.locationId)
     if (catLocRes) return catLocRes
   } else if (body?.locationId && cat.Menu?.locationId !== locId) {
     return fail('Kategorija ne pripada podani lokaciji.', 400)

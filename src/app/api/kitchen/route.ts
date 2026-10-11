@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import type { OrderItemStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, assertResourceLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 
@@ -48,7 +49,7 @@ export async function PATCH(req: NextRequest) {
   const newDbStatus = itemStatusToDB(body.status)
   const target = await db.orderItem.findUnique({ where: { id: body.itemId }, include: { Order: { select: { locationId: true } } } })
   if (!target) return fail('Artikel naročila ne obstaja.', 404)
-  const locRes = assertResourceLocation(user, target.Order?.locationId)
+  const locRes = await guardResource(user, target.Order?.locationId)
   if (locRes) return locRes
   const item = await db.orderItem.update({
     where: { id: body.itemId },

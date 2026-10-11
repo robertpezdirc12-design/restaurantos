@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, isCentralRole, requireUserLocation } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -94,6 +95,8 @@ export async function POST(req: NextRequest) {
   // spoštovan SAMO pri centralnih vlogah (prej je kadarkoli podal poljuben locationId)
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
   const location = await db.location.findUnique({ where: { id: locationId }, select: { id: true } })
   if (!location) return fail('Lokacija ne obstaja.', 404)
 

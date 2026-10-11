@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail, forbidden, assertResourceLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail, forbidden } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const order = await db.order.findUnique({ where: { id }, include: orderInclude })
   if (!order) return fail('Naročilo ne obstaja.', 404)
   // Issue #4 §1: location gate (prej: katerikoli staff je mogel brati naročilo katerekoli lokacije)
-  const guard = assertResourceLocation(user, order.locationId)
+  const guard = await guardResource(user, order.locationId)
   if (guard) return guard
   return ok({ order: mapOrder(normalize(order)) })
 }
@@ -70,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: true } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
   // Issue #4 §1: location gate na VSAKO spremembo (prej: PATCH brez body akcije je bil prazen gate)
-  const locGuard = assertResourceLocation(user, order.locationId)
+  const locGuard = await guardResource(user, order.locationId)
   if (locGuard) return locGuard
   const recognized = Array.isArray(body?.addItems) || body?.status !== undefined || body?.note !== undefined || body?.customerName !== undefined
   if (!recognized) return fail('Ni prepoznane akcije (addItems | status | note | customerName).', 400)
@@ -208,7 +209,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
   // Issue #4 §1: lokacijski gate na storno
-  const delGuard = assertResourceLocation(user, order.locationId)
+  const delGuard = await guardResource(user, order.locationId)
   if (delGuard) return delGuard
   // R10 popravek (P0 audit): storno plačanega naročila brez razknjižbe/fiskalnega storna je zavrnjen
   if (order.paymentStatus === 'paid') {
