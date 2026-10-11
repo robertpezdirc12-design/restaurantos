@@ -916,3 +916,21 @@ Work Log:
 Stage Summary:
 - CELOVOD 100 % OPERATIVEN: push GitHub → Vercel auto-deploy (~60 s) + CI gate SUCCESS → produkcija v1.50.0 @ 5601d19 (vsebuje Task 45 CI allowlist + README + Task 46 sync-check + runbook)
 - preostanek (uporabniški koraki): DDL issue-13 (10 s), GoDaddy DNS, FURS/FINA certifikata, opcijsko nov GitLab token za mirror
+
+---
+Task ID: 48-main
+Agent: main (Z.ai Code)
+Task: Nov GitLab token → mirror obnovljen → sync-check SYNCED trojica; audit §13 zaključen
+
+Work Log:
+- vhodno stanje (Task 47 zapuščina): produkcija + lokal @ 7f06034 (CI SUCCESS), mirror @ 5601d19 z MRTVIM tokenom (glpat-yL49… umrl v Task 47; audit §13).
+- uporabnik prinesel nov GitLab token (glpat-PkgT…) → `git remote set-url origin https://oauth2:<TOKEN>@gitlab.com/markec-group1/markec-project.git` → ls-remote 200 = 5601d19 (točno pričakovano: Task 47 worklog commit ni bil na mirrorju).
+- push 7f06034: 2× "403" (35 s/60 s zamik; tudi GitLab API `/user` in `/personal_access_tokens/self` vračata Cloudflare "Blocked" HTML → potrjeno IP-based anti-abuse blokada, NE token problem). KLJUČNA LEKCIJA: po ~150 s ls-remote pokazal 7f06034 na mirrorju — 403 je blokiral le ODGOVOR, push je bil server-side SPREJET; naslednji push "Everything up-to-date". Podvojeni push ni tvegal divergence (fast-forward), a je odveč — po 403 pushu vedno najprej ls-remote.
+- sync-check trojica: local=mirror=prod=7f06034 (v1.50.0, db: connected), exit 0 — prvi popolnoma SYNCED verdict z živim mirrorjem od smrti prvega tokena.
+- docs: audit §13 mirror zapis dopolnjen z "✅ OBNOVITENO (Task 48)" + učenina o 403-odgovor-vs-sprejem; ta worklog.
+- push doc commit na GitHub (avtoritativa → Vercel auto-deploy + CI) IN GitLab mirror — trojica ostane poravnana.
+
+Stage Summary:
+- GitLab mirror živ z novim tokenom; trojica lokal/mirror/produkcija 100 % poravnana
+- CI (neon-smoke + tests + drift allowlist) in Vercel auto-deploy operativna; infrastrukturni blokatorji vseh 3 push kanalov rešeni
+- preostanek: uporabniški koraki (DDL issue-13, GoDaddy DNS, FURS/FINA certifikata)
