@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
@@ -77,7 +77,7 @@ interface Stats { activeOrders: number; openTables: number; todayOrders: number;
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
-interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null }
+interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null }
@@ -273,7 +273,7 @@ function DashboardInner() {
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
         soft(api<{ queue: OrderT[] }>('/api/kitchen')),
-        soft(api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus')),
+        soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ employees: EmployeeT[] }>('/api/employees')),
         soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
         soft(api<{ receipts: ReceiptT[] }>('/api/furs')),
@@ -901,9 +901,22 @@ function DashboardInner() {
     return () => clearTimeout(t)
   }, [cart, newOrderTable, menu, pushDisplay])
 
-  const menuByCat = categories.map((c) => ({ cat: c, items: menu.filter((m) => m.categoryId === c.id) }))
+  const menuByCat = categories
+    .map((c) => ({ cat: c, items: menu.filter((m) => m.categoryId === c.id) }))
     .concat({ cat: { id: 'ostalo', name: t('menu.other') }, items: menu.filter((m) => !m.categoryId) })
     .filter((g) => g.items.length > 0)
+  // Task 51 (UX pregled): naročilni dialog pokaže SAMO artikle lokacije mize —
+  // v pogledu vseh lokacij je prej mešal menije različnih lokacij (naročanje
+  // tujega artikla = zavrnjeno šele na strežniku → izgubljen klik). Server
+  // (ops.ts) ostane avtoritativa; to je UX scoping. Artikli brez lokacije
+  // (legacy) ostanejo.
+  const orderDialogMenu = useMemo(() => {
+    const loc = newOrderTable?.locationId
+    if (!loc) return menuByCat
+    return menuByCat
+      .map((g) => ({ cat: g.cat, items: g.items.filter((m) => !m.locationId || m.locationId === loc) }))
+      .filter((g) => g.items.length > 0)
+  }, [menuByCat, newOrderTable])
   // cone dinamično iz podatkov (produkcija: main/bar/patio/private; rekonstrukcija: Glavna dvorana/Bar/Terasa)
   const ZONE_LABELS: Record<string, string> = { main: 'Glavna dvorana', bar: 'Bar', patio: 'Terasa', private: 'Zasebna soba' }
   // Dvojezičnost SL/HR — pomožne pretvorbe z SL fallbackom (nedefinirani statusi/vloge/zone ostanejo berljivi)
@@ -1704,7 +1717,10 @@ function DashboardInner() {
           <DialogHeader><DialogTitle>{t('orders.newTitle')} — {newOrderTable?.name}</DialogTitle></DialogHeader>
           <ScrollArea className="max-h-[50vh] pr-2">
             <div className="space-y-4">
-              {menuByCat.map((g) => (
+              {orderDialogMenu.length === 0 && (
+                <p className="py-6 text-center text-sm text-stone-500">{t('orders.noMenuItems')}</p>
+              )}
+              {orderDialogMenu.map((g) => (
                 <div key={g.cat.id}>
                   <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{g.cat.name}</p>
                   <div className="space-y-1.5">

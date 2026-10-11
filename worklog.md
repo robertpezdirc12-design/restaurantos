@@ -987,3 +987,22 @@ Work Log:
 Stage Summary:
 - crash v KATERI KOLI ruti zdaj pokaže branded dvojezično obnovljivo napako (kiosk/QR/display/dashboard pokriti), 404 branded; digest ID podpira produkcijsko diagnostiko
 - preostali uporabniški koraki nespremenjeni (DDL issue-13, GoDaddy DNS, FURS/FINA certifikata)
+
+---
+Task ID: 51-main
+Agent: main (Z.ai Code)
+Task: "odlicno nadaljuj" — brskalniški UX pregled zlatega toka (prijava → mize → naročilo → KDS → plačilo → račun) + 2 popravka
+
+Work Log:
+- agent-browser E2E kot admin (PIN prijava): prijava ✓, dashboard 23 zavihkov ✓, zemljevid miz po conah (Bar/Glavna dvorana) ✓, mobilni viewport 390px ✓ (tabi scrollajo, kartice 2×2), kiosk mobilni ✓ (44px tarče, SL|HR).
+- ZLATI TOK ŽIVO: Miza 2 → novo naročilo → 2× Burek s sirom + 1× Kranjska klobasa → oddaja → miza ZASEDENA 21,35 € (DDV 9,5 % točen) → KDS kartica z imenom mize ✓ → Plačilo + FURS (Gotovina) → RAČUN IZDAN (FURS simulacija): Št. 2026-10-4-BLG001 (kanonično številčenje) + EOR. Celoten tok brez ene same napake.
+- 🔴 NAJDBA+FIX 1 (meni dialog meša lokacije): naročilni dialog pri pogledu vseh lokacij je pokaže artikle VSEH lokacij (rp1 testni items namesto Ljubljanskih) — naročanje tujega artikla zavrnjeno šele na strežniku (ops.ts pravilno filtrira, integriteta varna) = izgubljen klik. FIX: GET /api/menus dobi opcijski ?locationId= (staff VEDNO svoja lokacija, centralna = param ali vse; kjer Menu.locationId), mapMenuItem nosi locationId (Category→Menu), dialog filtrira na lokacijo mize + prazno stanje z novim ključem orders.noMenuItems (SL/HR). ŽIVO POTRJENO: dialog zdaj pokaže Ljubljanske artikle (Burek 3,50, Kranjska 12,50, Zebra pečenka 18,90...).
+- NAJDBA+FIX 2 (mikrokopija DIRTY mize): "Klikni — očisti" je navodilo, ne status; HR identičen SL. FIX: SL "Za pospraviti — klikni" / HR "Za pospremiti — klikni" (semantika stanja + namig, en-klik očisti ostaja).
+- LAŽNI ALARM (dokumentiran za prihodnost): KDS "brez imena mize" — prvi eval-filter (children.length===0) je izpustil h4+span strukturo; body.textContent potrjuje "Miza 2" v KDS. Vidne DINE_IN kartice brez mize = rp1 testni naročila brez mize (pravilen fallback na tip).
+- LEKCIJA (3× ta seja): statični regresijski testi i18n/sljivar ulovijo TUDI komentarje — literal "Vse lokacije" v mojem JSDoc → test fail; preformulirano ("v pogledu vseh lokacij").
+- verifikacija: tsc 0, lint 0, 618/618; QR tok NI ponovno preverjen (živo potrjen v Task 34, nespremenjen; dev baza nima aktivnih tokenov).
+
+Stage Summary:
+- celoten zlati tok (prijava → plačilo → račun) živo preverjen v brskalniku — brez regresij
+- meni dialog zdaj lokacijsko pravilen (fix + živ dokaz), mikrokopija DIRTY mize jasnejša v obeh jezikih
+- v1.52.1; produkcija/CI/mirror disciplina kot v Taskih 45–50

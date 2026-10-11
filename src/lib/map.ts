@@ -230,7 +230,12 @@ export function mapTable(t: Row, activeOrder?: Row | null) {
   }
 }
 
-export function mapMenuItem(m: Row & { prepStation?: { type?: string } | null }) {
+export function mapMenuItem(m: Row & { prepStation?: { type?: string } | null; Category?: unknown }) {
+  // Task 51: lokacija artikla (prek Category → Menu, kadar je include podala ruta)
+  // — klient filtrira meni naročilnega dialoga na lokacijo mize (server v ops.ts
+  // ostane avtoritativa). Category je unknown: rute podajajo različne oblike
+  // (z in brez Menu include) — varno ožanje znotraj.
+  const catMenuLoc = (m.Category as { Menu?: { locationId?: string } | null } | undefined)?.Menu?.locationId
   return {
     id: m.id as string,
     name: m.name as string,
@@ -240,6 +245,7 @@ export function mapMenuItem(m: Row & { prepStation?: { type?: string } | null })
     available: m.isAvailable !== false,
     categoryId: (m.categoryId as string) ?? null,
     vatRate: num(m.vatRate, 22),
+    locationId: catMenuLoc ?? null,
   }
 }
 

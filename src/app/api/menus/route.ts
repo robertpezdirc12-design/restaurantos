@@ -7,12 +7,27 @@ import { auditChainFields } from '@/lib/audit-chain'
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  // Task 51 (UX pregled): opcijski filter lokacije — naročilni dialog naj ne bi
+  // mešal menijev različnih lokacij (server v ops.ts ostane avtoritativa; tukaj
+  // samo UX scoping). staff = VEDNO svoja lokacija; centralna vloga = ?locationId=
+  // ali vse (Vse lokacije — upravljanje menija ostaja nespremenjeno).
+  let locFilter: string | null = null
+  if (!isCentralRole(user)) {
+    locFilter = user.loc ?? null
+  } else {
+    const q = req.nextUrl.searchParams.get('locationId')
+    if (q && q.trim()) locFilter = q.trim()
+  }
   const [items, categories] = await Promise.all([
     db.menuItem.findMany({
-      include: { Category: true, PrepStation: true },
+      where: locFilter ? { Category: { Menu: { locationId: locFilter } } } : undefined,
+      include: { Category: { include: { Menu: { select: { locationId: true } } } }, PrepStation: true },
       orderBy: { name: 'asc' },
     }),
-    db.category.findMany({ orderBy: { sortOrder: 'asc' }, take: 200 }),
+    db.category.findMany({
+      where: locFilter ? { Menu: { locationId: locFilter } } : undefined,
+      orderBy: { sortOrder: 'asc' }, take: 200,
+    }),
   ])
   return ok({
     items: items.map((m) => mapMenuItem({ ...m, prepStation: m.PrepStation })),

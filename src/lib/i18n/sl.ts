@@ -103,7 +103,7 @@ export const sl: Record<string, string> = {
 
   // ── Mize ──
   'tables.seats': '{n} mest',
-  'tables.clickClean': 'Klikni — očisti',
+  'tables.clickClean': 'Za pospraviti — klikni',
   'tables.available': 'Na voljo',
   'tables.reserved': 'Rezervirana',
   'tables.dirty': 'Za pospravit',
@@ -181,6 +181,7 @@ export const sl: Record<string, string> = {
   // ── Novo naročilo (dialog) ──
   'orders.total': 'Skupaj: {amount}',
   'orders.submit': 'Oddaj naročilo',
+  'orders.noMenuItems': 'Za lokacijo te mize ni razpoložljivih artiklov na meniju.',
   'orders.less': 'Manj',
   'orders.more': 'Več',
 

@@ -103,7 +103,7 @@ export const hr: Record<string, string> = {
 
   // ── Stolovi ──
   'tables.seats': '{n} mjesta',
-  'tables.clickClean': 'Klikni — očisti',
+  'tables.clickClean': 'Za pospremiti — klikni',
   'tables.available': 'Slobodan',
   'tables.reserved': 'Rezerviran',
   'tables.dirty': 'Za čišćenje',
@@ -181,6 +181,7 @@ export const hr: Record<string, string> = {
   // ── Nova narudžba (dijalog) ──
   'orders.total': 'Ukupno: {amount}',
   'orders.submit': 'Podnesi narudžbu',
+  'orders.noMenuItems': 'Za lokaciju ovog stola nema dostupnih artikala na jelovniku.',
   'orders.less': 'Manje',
   'orders.more': 'Više',
 
