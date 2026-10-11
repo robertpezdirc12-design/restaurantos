@@ -1108,3 +1108,25 @@ Povzetek faze:
 - Org meja POPOLNA v treh slojih: tocakovne rute (guardResource, 28 mest, Task 52) + CREATE rute (assertOrgScope, 18 mest, Task 52) + SEZNAMSKI endpointi (locationScope async org allow-lista, 27 rut, Task 54) — ZAPRTO P1 iz audita §13.
 - Migracijsko varno: produkcija (1 org, lokacije brez propertyId) se NE regresira; legacy lokacije vidne vsem centralnim (dokumentiran pravilnik); bootstrap break-glass nespremenjen.
 - v1.55.0; 652/652 testov; preostalo: uporabniski koraki (issue-13 DDL, GoDaddy DNS, FURS/FINA certifikata, Vercel e-posta, GitLab nov zeton)
+
+---
+Task ID: 56
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Naloga: Audit doc-truth sync — 9 tabelskih vrstic prečrtano z grep/test dokazi + 3 zastarele pripovedi (v1.55.0, docs-only)
+
+Delovni dnevnik:
+- Stanje: lokal = GitHub = produkcija @ e5024a0 (v1.55.0), 652/652 testov, tsc 0 — osnova zelena. GitLab mirror @ e5024a0 (žeton iz prejšnje seje deloval).
+- AUDIT resnica-vzorec: tabela §4/§5 je imela 9 vrstic "ODPRTO (P2)", medtem ko pripoved §13 pravi POPRAVLJENO (Task 32-a/b) — identičen doc-lag kot N3/N4 pred Task 52. Ker je audit varnostna nadzorna plošča, so lažne "odprte" varnostne vrstice zavajajoče.
+- NAČELO: najprej KODA-verifikacija (pripoved je lahko tista napačna) — grep dokazi za vseh 9: N1 tables/route.ts:27 requirePermission('menu.manage'); N2 orders/[id]/route.ts:63-64+206-207 isCentralRole gate; N5 vseh 6 GET handlerjev requirePermission (furs=reports.view, shifts=orders.pay, expenses=reports.view, tips=reports.view, haccp=settings.manage, giftcards=reports.view); N7 employees/[id]/route.ts:54-57 ENTERPRISE_ROLES + isCentralRole; N8 tab-permissions.ts tabHasPerm fail-closed (if (!perm) return false); R7 sync/route.ts:124+241 db.$transaction; R9 tips/payout/route.ts:43-44 CAS updateMany status='pending' → 409; R11 shifts/route.ts:158 ZReport v isti tx kot shift close; R12 expenses/route.ts:73 supplier.upsert + P2002 re-read.
+- Testni dokaz: 4 ciljni datoteke (race-fixes + rbac-p2 + zreport-vat + guest-feedback) = 41/41 pass, exit 0.
+- PREČRTANO (9 vrstic): N1, N2, N5, N7, N8, R7, R9, R11, R12 — vsaka s "POPRAVLJENO + VERIFICIRANO (Task 56, v1.55.0)" + file:line dokazom (vzorec N3/N4 iz Task 52).
+- 3 ZASTARELE Pripovedi: §7 "Mnenja gostov — ne obstaja vnosni API" → PARTIAL→DONE (POST /api/public/feedback @ Task 32-d, route.ts:23 + rateLimitPublic 5/min); §10 PII "loyalty vrača telefone vsem" → maskPhone() VEDNO + ?full=1 settings.manage gate; §10 Backup "ni urnika" → neon-backup.yml cron 02:30 UTC (Task 35, P1 zapor).
+- 3 arhitekturne usklajenosti: §7 Enterprise "assertTenantScope nikoli klican" → guardResource 28 + assertOrgScope 18 + locationScope 27 (Task 52+54); §10 "znana omejitev: seznamski endpointi brez org filtra" → ZAPRTO Task 54 (async org allow-lista, 27 rut, 7 DB testov); §1 GitLab CI "BLOKIRANO za verifikacijo" → ZASTARELO, quality gate = GitHub Actions ci.yml (Task 35), GitLab builds disabled.
+- Rezultat: 12 edits (15 vrstic ±), 0 unstruck ODPRTO v N/R tabelah (python3 byte-preverba), 0 mojibake, 228 vrstic. Docs-only → APP_VERSION ostaja 1.55.0 (brez kode, brez bumpa).
+- CI/tranzit: GitHub push OK (e5024a0..6f30478); GitLab push 403 anti-abuse, ls-remote po 90 s še e5024a0 = NI tiho sprejet (drugače od Task 48 vzorca) → mirror zaostaja 1 commit, uporabniška odvisnost (nov žeton ali poskus pozneje), GitHub = avtoritativa (Vercel + CI).
+
+Povzetek faze:
+- Audit doc-truth: 12 vrstic usklajenih s kodo — varnostna tabela ni več zavajajoča; vsaka prečrtana vrstica ima file:line grep dokaz + 41/41 testni dokaz; vzorec N3/N4 permanentno razširjen na vseh 11 re-verificiranih vrstic.
+- Ostalo odprto (kode): §7 PARTIAL — popusti brez admin UI, inventura brez protokola, stroški brez urejanja, HACCP brez načrtov, integracije brez UI (kandidati za naslednje naloge).
+- Uporabniški koraki: issue-13 DDL (POST /api/admin/migrate-issue13), GoDaddy DNS (TXT _vercel ×2 + A @ + CNAME www), FURS/FINA certifikata, Vercel e-pošta, GitLab žeton (mirror zaostaja 1 commit).
