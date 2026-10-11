@@ -1322,3 +1322,26 @@ Stage Summary:
 - Audit §7 PREOSTANEK (končno stanje): HACCP načrti (nov model = DDL) + stroški kategorije (nova polja = DDL) — OBE blokirani z issue-13 DDL uporabniško odvisnostjo. Vse ostale §7 vrstice DONE.
 - FIELD_SWEEP razred (nid() id-ji s predpono v besedilnih poljih) zdaj: accountsPayable (T61) + property/brand/organization (T62). Prihodnje rute z nid() MORAJO prijditi sem — pokrito v worklogu.
 - Uporabniške odvisnosti (nespremenjene): issue-13 DDL, GoDaddy DNS, FURS/FINA certifikati, Vercel e-pošta.
+
+---
+Task ID: 63
+Datum: 2026-10-11
+Agent: GLM (Z.ai)
+Task: Storno celovitost — doc-truth vrstica 13 + Z-poročilo agregacija (v1.61.0)
+
+Work Log:
+- Analiza repo (uporabniška zahteva): local = GitHub = GitLab = produkcija @ 3c459d5 (v1.60.0), 0/0 razlik; GitLab 403 = anti-abuse (retry uspel); repo 117 modelov, 102 API rut, 54 testnih datotek, ~36.9k LOC.
+- Kandidati za Task 63: HACCP načrti (DDL blokada), stroški kategorije (DDL blokada) → izbrana doc-truth + realna vrzel: storno celovitost (edini P1 MISSING v auditu BREZ DDL odvisnosti).
+- NAJDBA doc-truth: audit vrstica 13 je lažala — POST /api/receipts/[id]/storno OBSTAJA od Task 31-a (e0934e1), popolna implementacija (negacija, CAS, povračilo zaloge, audit veriga, guardResource) + 9 testov PASS; UI Storno gumb že vezan. Enak vzorec kot Task 60 (vrstica 6 fire).
+- REALNA vrzel najdena z grepom: ZReport.totalStorno (polje v shemi) NIKOLI zapisano — grep po src/ = 0 zadetkov; Z-poročilo je štelo storno račune med naročila, podvajalo goste, popačilo avgOrderValue.
+- FIX shifts/route.ts stop: totalStorno = absolutna vsota storno računov v oknu (prvič zapisano); totalOrders/totalGuests/avgOrderValue izključujejo storno (originalOrders števec); neto vsote (totalSales/totalTax/načini plačila/dineIn/vedri DDV) NAMERNO vključujejo negacije — FURS konvencija (vsak izdani račun, tudi storno, prispeva k dnevnemu prometu); odgovor stop razširjen z totalStorno v zReport objektu.
+- Testi: tests/zreport-storno.test.ts (3; predpona zst63- v TEST_PREFIXES; lastno čiščenje po code predponi + Counter.name = receipt:<locId> reverse-FK) — prava ruta: shifts open → 2 plačana originala (splitCount 2+3) → PRAVI storno POST → stop → trditve: totalStorno=45, totalOrders=2, totalGuests=5 (brez podvajanja), avgOrderValue=10, totalSales neto=20, expectedCash=120, shift.totalOrders=2; invarianta totalStorno=0 brez storna; audit RECEIPT_STORNO chainHash.
+- LEKCIJE: Receipt.create zahteva businessName/businessAddress/businessId/taxId (42 polj — seeding brez njih = PrismaClientValidationError); Counter model polje je name (ne key); žetoni UPPERCASE vloge (ponovitev vzorca); stop odgovor ima totalStorno SAMO v zReport objektu (ni top-level — test najprej fabrikiral nasprotno, rg + odgovor route sta točila).
+- VALIDACIJA: 708/708 (705+3), tsc 0, lint 0; povezani testi zreport-vat (33) + receipt-storno (9) + furs-post netaknjeni.
+- Browser E2E živo (admin@restaurantos.app / PIN 1234): prijava → Miza 11 → Burek s sirom 3,50 € → Oddaj naročilo → plačilo gotovina → "✅ Račun izdan (FURS simulacija)" → Računi tab → Storno gumb → confirm → storno račun 2026-10-6-BLG001, −3,83 €, FURS ✓, EOR izdan; originalov Storno gumb SKRIT (isStorned); DB dokaz: Receipt total=-3.83, stornoOf=SET, fiscalStatus=verified, Order #5 paymentStatus='storno'; 0 konzolnih napak; mobilni 390×844 = 26 tabov.
+- Push: GitHub + GitLab (obe 3c459d5..28b97a2, GitLab tokrat brez 403).
+
+Stage Summary:
+- v1.61.0: audit vrstica 13 (zadnji P1 MISSING brez DDL) ZAPRTA — doc-truth + Z-poročilo celovitost.
+- §7 PREOSTANEK (nespremenjen): samo DDL-blokirani (HACCP načrti, stroški kategorije) — uporabniško odvisno (issue-13 DDL).
+- Produkcija: push 28b97a2 → Vercel (spremljanje); trojica local = GitHub = GitLab @ 28b97a2.
