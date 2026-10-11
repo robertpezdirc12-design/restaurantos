@@ -970,3 +970,20 @@ Stage Summary:
 - audit §137 gostujoče strani: 100 % prevedene (kiosk + QR + feedback + display) — P2 ostanek zaprt
 - varnostni floor na vseh rutah (4 glave); frame zaščita dokumentirana kot odložena
 - v1.51.0; 615/615 testov, tsc 0, lint 0; živa browser verifikacija SL→HR preklopa
+
+---
+Task ID: 50-main
+Agent: main (Z.ai Code)
+Task: "odlicno nadaljuj" — error boundaries (error/global-error/not-found) branded SL/HR + v1.52.0
+
+Work Log:
+- pregled preostalih vrzeli: rate limiti popolni (public/orders 10/min/IP+token, enoten bounded modul + Upstash seam); error boundaries NE obstajajo (crash → neobrandsana angleška privzeta stran — slabo za kiosk/gost/POS) → Task 50.
+- NOVO src/app/error.tsx (klient, role="alert", reset(), statična SL+HR, digest pogojen, console.error); src/app/global-error.tsx (ZADNJE GARANCIJE — lasten <html><body> + globals.css, lovi tudi napake root layouta); src/app/not-found.tsx (branded 404 + Link "/").
+- zasnova SAMOZADOSTNA: brez i18n kontekstov/DB/auth (crash-vzročna odvisnost je lahko prav tam); gumbi h-12 (≥44 px), aria.
+- živa verifikacija (agent-browser): temp throwing route → boundary rendra SL+HR, reset klik obstojen (re-throw pričakovan), digest v dev null (pogojen — v produkciji bo Next podal), branded 404 živo potrjena. LEKCIJA: temp route `__errtest` vrnil 404 — podčrtaj = Next.js PRIVATE FOLDER (izključen iz routinga) → preimenovan v errcheck50.
+- testi +3 (618/618): statični regresijski (klient/alert/reset/dvojezično/digest + lasten html/body + 404 link) + pinanje odsotnosti kontekstnih odvisnosti. 2 začetna faila = MOJA JSDoc komentarja vsebovala literal 'I18nProvider'/'ThemeProvider' (statični test gleda celotno datoteko) → preformulirana ("i18n ponudnik", "tematski ponudnik").
+- verifikacija: tsc 0, lint 0, 618/618, temp route izbrisan (git status čist), APP_VERSION 1.52.0.
+
+Stage Summary:
+- crash v KATERI KOLI ruti zdaj pokaže branded dvojezično obnovljivo napako (kiosk/QR/display/dashboard pokriti), 404 branded; digest ID podpira produkcijsko diagnostiko
+- preostali uporabniški koraki nespremenjeni (DDL issue-13, GoDaddy DNS, FURS/FINA certifikata)
