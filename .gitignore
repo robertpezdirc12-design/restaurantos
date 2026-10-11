@@ -46,8 +46,13 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
-prompt
+# LEKCIJA Task 64 (v1.62.1): goli vzorci 'test'/'prompt' so ujeli KATERIKOL
+# imenik tega imena v drevesu — .gitignore vrstica 49 je TIHO pogoltla
+# src/app/api/integrations/[id]/test/ (Task 60 ruta nikoli ni prišla v git →
+# CI module-not-found + produkcija brez "Testiraj povezavo" endpointa).
+# Anchorana oblika /test/ pokrije namen (root-level preizkusni imenik), brez kolizij.
+/test/
+/prompt/
 
 server.log
 # Skills directory
