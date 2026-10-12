@@ -11,12 +11,21 @@ export interface StockShortfall {
   available: number
 }
 
+export interface StockDeduction {
+  inventoryItemId: string
+  name: string
+  /** post-deduction quantity (rounded 3) — input for low-stock alerts (OPS-8 val 2) */
+  newQty: number
+}
+
 export interface StockDeductionResult {
   /** false = replay (ta naročilo je že razknjiženo) — nič se ne odšteje dvakrat */
   deducted: boolean
   lines: number
   totalCost: number
   shortfalls: StockShortfall[]
+  /** OPS-8 val 2: items with new quantities (for maybeNotifyLowStock after the tx) */
+  deductions: StockDeduction[]
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -46,7 +55,7 @@ export async function deductStockForOrderTx(
   /** OPS-7 split po izstavkih: odštej SAMO te postavke (Check plačilo); brez = celo naročilo. */
   onlyItemIds?: string[]
 ): Promise<StockDeductionResult> {
-  const empty: StockDeductionResult = { deducted: false, lines: 0, totalCost: 0, shortfalls: [] }
+  const empty: StockDeductionResult = { deducted: false, lines: 0, totalCost: 0, shortfalls: [], deductions: [] }
   const subsetMode = Array.isArray(onlyItemIds) && onlyItemIds.length > 0
 
   // ── Replay zaščita 1: flag na naročilu ──
@@ -93,6 +102,7 @@ export async function deductStockForOrderTx(
   let lines = 0
   let totalCost = 0
   const shortfalls: StockShortfall[] = []
+  const deductions: StockDeduction[] = []
 
   for (const item of invItems) {
     const req = needed.get(item.id) || 0
@@ -213,6 +223,8 @@ export async function deductStockForOrderTx(
       })
     }
 
+    deductions.push({ inventoryItemId: item.id, name: item.name, newQty })
+
     lines += 1
     totalCost = r2(totalCost + lineCost)
   }
@@ -224,7 +236,7 @@ export async function deductStockForOrderTx(
       where: { orderId, voided: false, id: { notIn: onlyItemIds as string[] } },
     })
     if (remaining > 0) {
-      return { deducted: true, lines, totalCost, shortfalls }
+      return { deducted: true, lines, totalCost, shortfalls, deductions }
     }
   }
   await tx.order.update({ where: { id: orderId }, data: { inventoryDeducted: true } })
@@ -252,7 +264,7 @@ export async function deductStockForOrderTx(
     },
   })
 
-  return { deducted: true, lines, totalCost, shortfalls }
+  return { deducted: true, lines, totalCost, shortfalls, deductions }
 }
 
 /** Zaokroži na 2 decimalki (pomožnik za izvoz). */

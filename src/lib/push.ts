@@ -114,3 +114,95 @@ export function pushToEmployees(employeeIds: string[], payload: PushPayload): vo
   if (employeeIds.length === 0) return
   void pushNotify(payload, { employeeIds })
 }
+
+/* ─────────── OPS-8 val 2 (v1.72.0) — Notification matrix (RoxPos pattern) ───────────
+ * Event type x {everyone | selected roles | off}. Rules live in an Integration row
+ * (name='notification-rules', type='other') config JSON:
+ *   { rules: { ORDER_NEW: { mode: 'everyone'|'roles'|'off', roles: ['bar','kitchen'] }, ... } }
+ * Missing rule for an event type = default behavior (base target passes through).
+ * resolvePushTargets is server-side filtering — pushEvent is the only new entry point
+ * (pushNotify stays unchanged for backward compatibility).
+ */
+
+export const PUSH_EVENT_TYPES = [
+  'ORDER_NEW',
+  'ORDER_READY',
+  'ORDER_FIRE',
+  'DELIVERY_NEW',
+  'RESERVATION_NEW',
+  'LOW_STOCK',
+  'PO_APPROVED',
+  'PO_RECEIVED',
+  'TIME_OFF_STATUS',
+  'RECEIPT_FAILED',
+  'Z_CLOSED',
+] as const
+
+export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]
+
+const NOTIF_RULES_MARKER = 'notification-rules'
+
+export interface NotificationRule {
+  mode: 'everyone' | 'roles' | 'off'
+  roles?: string[]
+}
+
+export type NotificationRules = Partial<Record<PushEventType, NotificationRule>>
+
+/**
+ * Pure resolver (unit-tested, no DB):
+ *  - undefined rule / mode 'everyone'  → base target unchanged;
+ *  - mode 'off'                        → null (caller skips the push);
+ *  - mode 'roles'                      → roles overridden by configured roles,
+ *                                        employeeIds merge is preserved (author /
+ *                                        requester always gets their own event);
+ *                                        empty configured roles → nobody to notify → null.
+ */
+export function resolveTargetsByRule(
+  base: PushTarget,
+  rule: NotificationRule | undefined | null,
+): PushTarget | null {
+  if (!rule || rule.mode === 'everyone' || (rule.mode !== 'roles' && rule.mode !== 'off')) return base
+  if (rule.mode === 'off') return null
+  const roles = (Array.isArray(rule.roles) ? rule.roles : []).filter((r) => typeof r === 'string' && r.trim())
+  if (roles.length === 0) return null
+  return { ...base, roles }
+}
+
+async function getNotificationRules(): Promise<NotificationRules> {
+  const row = await db.integration.findFirst({ where: { name: NOTIF_RULES_MARKER, type: 'other' } })
+  if (!row) return {}
+  const cfg = jparse<{ rules?: NotificationRules }>(row.config, {})
+  return cfg && cfg.rules && typeof cfg.rules === 'object' ? cfg.rules : {}
+}
+
+/** Adjusted target for an event type (matrix-aware) or null when the event is switched off. */
+export async function resolvePushTargets(
+  eventType: PushEventType,
+  baseTarget: PushTarget,
+): Promise<PushTarget | null> {
+  const rules = await getNotificationRules()
+  return resolveTargetsByRule(baseTarget, rules[eventType])
+}
+
+/**
+ * Matrix-aware dispatch (fire-and-forget by convention: call sites use `void pushEvent(...)`).
+ * Never throws and never blocks the main flow — same contract as pushNotify.
+ */
+export async function pushEvent(
+  eventType: PushEventType,
+  payload: PushPayload,
+  baseTarget: PushTarget = {},
+): Promise<void> {
+  try {
+    const target = await resolvePushTargets(eventType, baseTarget)
+    if (!target) return
+    await pushNotify(payload, target)
+  } catch {
+    // push NIKOLI ne ruši glavnega toka
+  }
+}
+
+export function getNotificationRulesMarker(): string {
+  return NOTIF_RULES_MARKER
+}

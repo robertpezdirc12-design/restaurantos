@@ -5,9 +5,11 @@ import { guardResource } from '@/lib/tenant'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
+import { pushEvent } from '@/lib/push'
 import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
-import { deductStockForOrderTx } from '@/lib/inventory'
+import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
+import { maybeNotifyLowStock } from '@/lib/low-stock'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { certFromEnv, signZoi, fursInvoice } from '@/lib/furs/client'
@@ -714,7 +716,7 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      return { twin: created, duplicate: false as const }
+      return { twin: created, duplicate: false as const, stock }
     })
 
     if (receipt.duplicate) {
@@ -723,6 +725,12 @@ export async function POST(req: NextRequest) {
         replayed: true,
         order: { id: orderPre.id, status: 'PAID' },
       }, 200)
+    }
+
+    // OPS-8 val 2 (v1.72.0): low-stock alert AFTER the tx commit (fire-and-forget,
+    // try/catch inside the helper — NEVER affects the fiscal flow)
+    if (receipt.stock.deducted && receipt.stock.deductions.length > 0) {
+      void maybeNotifyLowStock(receipt.stock.deductions)
     }
 
     // Naloga 36: EOR — FURS SOAP klic PO transakciji (omrežje ne sme držati DB tx).
@@ -752,6 +760,14 @@ export async function POST(req: NextRequest) {
         })
       } catch (e) {
         console.warn('[furs] produkcija EOR ni uspel — račun ostane pending:', (e as Error).message)
+        // OPS-8 val 2 (v1.72.0): RECEIPT_FAILED push to management (matrix; fire-and-forget) —
+        // receipt stays pending, later fiscalization goes via SubsequentSubmit
+        void pushEvent('RECEIPT_FAILED', {
+          title: 'FURS fiskalizacija ni uspela',
+          body: `${receipt.twin.receiptNumber} — ${String((e as Error).message || 'napaka').slice(0, 120)}`,
+          url: '/dashboard?tab=racuni',
+          tag: `receipt-failed-${receipt.twin.id}`,
+        }, { roles: ['manager', 'admin'], locationId: orderPre.locationId })
       }
     }
     // Naloga 38: JIR — CIS SOAP klic PO transakciji (zrcalno FURS EOR; omrežje ne sme
@@ -782,6 +798,13 @@ export async function POST(req: NextRequest) {
         })
       } catch (e) {
         console.warn('[cis] produkcija JIR ni uspel — račun ostane pending:', (e as Error).message)
+        // OPS-8 val 2 (v1.72.0): RECEIPT_FAILED push to management (matrix; fire-and-forget)
+        void pushEvent('RECEIPT_FAILED', {
+          title: 'CIS fiskalizacija ni uspela',
+          body: `${receipt.twin.receiptNumber} — ${String((e as Error).message || 'napaka').slice(0, 120)}`,
+          url: '/dashboard?tab=racuni',
+          tag: `receipt-failed-${receipt.twin.id}`,
+        }, { roles: ['manager', 'admin'], locationId: orderPre.locationId })
       }
     }
     // Issue #11 §3 — dogodek izdaje računa (evidenca, fire-and-forget)

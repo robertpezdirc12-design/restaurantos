@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
 import { resolvePermissions } from '@/lib/permissions'
 import type { AuthPayload } from '@/lib/auth'
 
@@ -132,5 +133,14 @@ export async function PATCH(req: NextRequest) {
       data: { ...__chain, id: __aId, userId: user.sub, action: 'TIME_OFF_DECISION', entityType: 'TimeOffRequest', entityId: id, details: jstr({ status, employeeId: row.employeeId, by: user.name }), locationId: row.Employee.locationId },
     })
   })
+
+  // OPS-8 val 2 (v1.72.0): push to the requester on status change (via notification matrix;
+  // fire-and-forget; base target = the requester exactly)
+  void pushEvent('TIME_OFF_STATUS', {
+    title: 'Status zahteve za prostost',
+    body: `${status === 'approved' ? 'Odobreno' : status === 'rejected' ? 'Zavrnjeno' : 'Preklicano'} · ${row.startDate ? new Date(row.startDate).toLocaleDateString('sl-SI') : ''}`,
+    url: '/dashboard?tab=urnik',
+    tag: `timeoff-${id}`,
+  }, { employeeIds: [row.employeeId] })
   return ok({ updated: true })
 }

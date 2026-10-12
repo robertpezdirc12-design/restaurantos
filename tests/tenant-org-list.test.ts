@@ -168,7 +168,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // Task 64: haccp/plans GET je 29. —
     // OPS-7 (v1.69.0): staff-shifts GET je 30. (urnik izmen, lokacijski obseg) —
     // pin se dviga samo z NOVO ruto, nikoli z umikom await (regresija ostaja zaščiten).
-    expect(wired.length).toBe(30)
+    // OPS-8 (v1.72.0): purchase-orders/suggestions GET je 31. (predlogi naročil) —
+    // OPS-8 (v1.72.0): inventory/batches GET je 32. (serije / rok uporabe).
+    expect(wired.length).toBe(32)
   })
 })
 

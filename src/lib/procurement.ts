@@ -268,3 +268,28 @@ export function priceHistoryRows(args: {
   }
   return rows
 }
+
+/* ─────────── OPS-8 val 2 (v1.72.0) — PO→AccountsPayable bridge helpers ─────────── */
+
+/**
+ * Parse supplier payment terms ("30 dni", "14 days", "net 45") → days as integer.
+ * First integer found wins; invalid / missing → default 30 (market standard).
+ */
+export function parsePaymentTermsDays(terms: unknown, fallback = 30): number {
+  const s = String(terms ?? '').trim()
+  if (!s) return fallback
+  const m = s.match(/\d+/)
+  if (!m) return fallback
+  const days = parseInt(m[0], 10)
+  return Number.isFinite(days) && days > 0 && days <= 365 ? days : fallback
+}
+
+/** AP number: AP-<year>-<NNNN> (count-based sequence, unique retry at call site). */
+export function apNumberFor(year: number, seq: number): string {
+  return `AP-${year}-${String(Math.max(1, seq)).padStart(4, '0')}`
+}
+
+/** Gross line total (net + VAT), 2 decimals — AP lines sum to totalAmount. */
+export function apLineTotalGross(quantity: number, unitPrice: number, vatRate: number): number {
+  return Math.round(quantity * unitPrice * (1 + (Number.isFinite(vatRate) ? vatRate : 0) / 100) * 100) / 100
+}

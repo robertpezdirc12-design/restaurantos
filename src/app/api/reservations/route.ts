@@ -6,6 +6,7 @@ import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
 import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
 import { auditChainFields } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
 
 /** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
@@ -90,6 +91,14 @@ export async function POST(req: NextRequest) {
       notes: body.note || '', locationId,
     },
   })
+  // OPS-8 val 2 (v1.72.0): push to waiters/management on new reservation (via notification
+  // matrix; fire-and-forget — reservation is a critical path)
+  void pushEvent('RESERVATION_NEW', {
+    title: 'Nova rezervacija',
+    body: `${String(body.guestName)} · ${new Date(body.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${Number(body.guests) || 2} oseb`,
+    url: '/dashboard?tab=rezervacije',
+    tag: `reservation-${row.id}`,
+  }, { roles: ['waiter', 'manager'], locationId })
   return ok({ reservation: mapReservation(row) }, 201)
 }
 

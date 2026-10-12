@@ -154,6 +154,9 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
         <Card className="col-span-2 lg:col-span-1"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('inv.stockValue')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(totalValue)}</p></CardContent></Card>
       </div>
 
+      {/* OPS-8 val 2 — batches / expiry (FEFO, lazy-load on expand) */}
+      <BatchesCard />
+
       {canManage && (
         <div className="flex flex-wrap gap-2">
           <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setAddItem(true)}><Plus className="w-4 h-4" /> {t('inv.newItem')}</Button>
@@ -1480,7 +1483,16 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
           {txt('email', t('set.email'))}
           {txt('web', t('set.web'))}
           {txt('businessId', t('set.businessId'))}
-          {txt('taxId', t('set.taxId'))}
+          <div className="space-y-1.5">
+            <Label htmlFor="st-taxId">{t('set.taxId')}</Label>
+            <Input id="st-taxId" value={String(form.taxId ?? '')} onChange={(e) => set('taxId', e.target.value)} />
+            {/* OPS-8 val 2 — DURS VAT payer check (badge + autofill name) */}
+            <DursCheckButton
+              query={String(form.taxId ?? '')}
+              compact
+              onName={(name) => set('name', String(form.name ?? '').trim() ? String(form.name) : name)}
+            />
+          </div>
           {txt('registerNumber', t('set.registerNumber'), t('set.registerPlaceholder'))}
         </div>
 
@@ -2361,6 +2373,8 @@ interface NabavaPoDetail {
 interface NabavaSupForm { editingId: string | null; name: string; contact: string; phone: string; email: string; address: string; city: string; taxId: string; iban: string; paymentTerms: string }
 interface NabavaNewLine { inventoryItemId: string; description: string; quantity: string; unit: string; unitPrice: string; vatRate: string }
 interface NabavaRecvLine { accept: string; reject: string; reason: string; expiry: string }
+interface NabavaSuggestion { itemId: string; itemName: string; unit: string; qty: number; par: number; incoming: number; suggested: number; supplierId: string | null; supplierName: string; costEstimate: number }
+interface NabavaSuggGroup { supplierId: string | null; supplierName: string; items: NabavaSuggestion[]; total: number }
 
 const NABAVA_STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: 'proc.stDraft', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
@@ -2423,23 +2437,30 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   const [recvErr, setRecvErr] = useState('')
   const [recvDone, setRecvDone] = useState<{ grnNumber: string; warnings: string[] } | null>(null)
 
+  // — Reorder suggestions (OPS-8 val 2) —
+  const [suggGroups, setSuggGroups] = useState<NabavaSuggGroup[]>([])
+  const [suggLoading, setSuggLoading] = useState(true)
+  const [suggErr, setSuggErr] = useState('')
+
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const [s, inv, o] = await Promise.all([
+        const [s, inv, o, sg] = await Promise.all([
           api<{ suppliers: NabavaSupplier[] }>('/api/suppliers'),
           api<{ inventory: NabavaInvItem[] }>('/api/inventory'),
           api<{ orders: NabavaPo[] }>('/api/purchase-orders'),
+          api<{ groupedBySupplier: NabavaSuggGroup[] }>('/api/purchase-orders/suggestions').catch(() => ({ groupedBySupplier: [] as NabavaSuggGroup[] })),
         ])
         if (!alive) return
         setSuppliers(s.suppliers || [])
         setInvItems(inv.inventory || [])
         setOrders(o.orders || [])
+        setSuggGroups(sg.groupedBySupplier || [])
       } catch (e) {
         if (alive) setErr(String((e as Error).message || e))
       } finally {
-        if (alive) setLoading(false)
+        if (alive) { setLoading(false); setSuggLoading(false) }
       }
     })()
     return () => { alive = false }
@@ -2525,6 +2546,24 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   const openPoDialog = () => {
     setPoSupplierId(suppliers.find((s) => s.isActive)?.id || '')
     setPoLocationId(''); setPoExpected(''); setPoNotes(''); setPoLines([]); setPoErr('')
+    setPoDialog(true)
+  }
+  /* OPS-8 val 2 — prefill PO creator from a suggestion group (per supplier) */
+  const openPoDialogPrefilled = (group: NabavaSuggGroup) => {
+    if (!group.supplierId) return
+    setPoSupplierId(group.supplierId)
+    setPoLocationId(''); setPoExpected(''); setPoNotes(''); setPoErr('')
+    setPoLines(group.items.map((s) => {
+      const inv = invItems.find((i) => i.id === s.itemId)
+      return {
+        inventoryItemId: s.itemId,
+        description: s.itemName,
+        quantity: String(s.suggested),
+        unit: s.unit || inv?.unit || 'kos',
+        unitPrice: inv && inv.cost > 0 ? String(inv.cost) : '',
+        vatRate: '22',
+      }
+    }))
     setPoDialog(true)
   }
   const addPoLineFromInventory = (invId: string) => {
@@ -2641,6 +2680,68 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   return (
     <div className="space-y-4">
       <p className="text-xs text-stone-500">{t('proc.desc')}</p>
+
+      {/* 0 — reorder suggestions (OPS-8 val 2): PAR - stock - incoming, per supplier */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+            <TrendingUp className="w-4 h-4" /> {t('sugg.title')}
+          </CardTitle>
+          <CardDescription>{t('sugg.desc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {suggLoading ? (
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('sugg.loading')}</p>
+          ) : suggGroups.length === 0 ? (
+            <p className="text-sm text-stone-500">{t('sugg.empty')}</p>
+          ) : (
+            <div className="space-y-3">
+              {suggGroups.map((g) => (
+                <div key={g.supplierId || `none-${g.supplierName}`} className="rounded-xl border border-stone-200">
+                  <div className="flex items-center justify-between gap-2 flex-wrap border-b border-stone-100 bg-stone-50 px-3 py-2 rounded-t-xl">
+                    <span className="font-semibold text-sm">{g.supplierName || t('sugg.noSupplier')}</span>
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-stone-500">{t('sugg.total')}: <strong>{fmtEUR(g.total)}</strong></span>
+                      {canManage && g.supplierId && (
+                        <Button size="sm" className="h-7 px-2 text-xs bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => openPoDialogPrefilled(g)}>
+                          <Plus className="w-3 h-3" /> {t('sugg.createPo')}
+                        </Button>
+                      )}
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white text-left text-xs text-stone-500 sticky top-0">
+                        <tr>
+                          <th className="p-2">{t('sugg.colItem')}</th>
+                          <th className="p-2 text-right">{t('sugg.colQty')}</th>
+                          <th className="p-2 text-right">{t('sugg.colPar')}</th>
+                          <th className="p-2 text-right">{t('sugg.colIncoming')}</th>
+                          <th className="p-2 text-right">{t('sugg.colSuggested')}</th>
+                          <th className="p-2 text-right">{t('sugg.colCost')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.items.map((s) => (
+                          <tr key={s.itemId} className="border-t border-stone-100">
+                            <td className="p-2 font-medium max-w-48 truncate" title={s.itemName}>{s.itemName}</td>
+                            <td className="p-2 text-right">{s.qty} {s.unit}</td>
+                            <td className="p-2 text-right">{s.par}</td>
+                            <td className="p-2 text-right">{s.incoming}</td>
+                            <td className="p-2 text-right font-bold text-emerald-700">{s.suggested}</td>
+                            <td className="p-2 text-right">{fmtEUR(s.costEstimate)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {suggErr && <p className="text-sm text-rose-700">{t('sugg.error')} {suggErr}</p>}
+        </CardContent>
+      </Card>
 
       {/* A — DOBAVITELJI */}
       <Card>
@@ -2813,6 +2914,13 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                 <div className="space-y-1.5">
                   <Label htmlFor="nb-sup-tax">{t('set.taxId')}</Label>
                   <Input id="nb-sup-tax" value={supDialog.taxId} onChange={(e) => setSupDialog({ ...supDialog, taxId: e.target.value })} />
+                  {/* OPS-8 val 2 — DURS VAT payer check (badge + autofill name + bank account) */}
+                  <DursCheckButton
+                    query={supDialog.taxId}
+                    compact
+                    onName={(name) => setSupDialog((d) => (d && !d.name.trim() ? { ...d, name } : d))}
+                    onIban={(iban) => setSupDialog((d) => (d && !d.iban.trim() ? { ...d, iban } : d))}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="nb-sup-iban">{t('proc.iban')}</Label>
@@ -6715,6 +6823,287 @@ export function KdsStatsSection() {
                             {i.latePct.toFixed(1)} %
                           </span>
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  )
+}
+
+/* ─────────────────── OPS-8 val 2 — DURS VAT payer check ─────────────────── */
+
+interface DursEntryT { taxNumber: string; vatId: string; name: string; vatPayer: boolean; ibans: string[] }
+type DursState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'error'; code: string }
+  | { kind: 'none' }
+  | { kind: 'ok'; entry: DursEntryT | null }
+
+/** DURS VAT payer check button (ddv.inetis.com proxy): payer badge + autofill name + bank account. */
+export function DursCheckButton({ query, onName, onIban, compact = false }: { query: string; onName?: (name: string) => void; onIban?: (iban: string) => void; compact?: boolean }) {
+  const { t } = useI18n()
+  const [state, setState] = useState<DursState>({ kind: 'idle' })
+
+  const run = async () => {
+    if (state.kind === 'loading') return
+    setState({ kind: 'loading' })
+    try {
+      const res = await api<{ results?: DursEntryT[]; entry?: DursEntryT | null; error?: string }>(`/api/durs/check?q=${encodeURIComponent(query)}`)
+      const results = res.results || []
+      if (results.length === 0) {
+        setState({ kind: 'none' })
+        return
+      }
+      const entry = res.entry || results[0]
+      if (!entry.name && onName == null) {
+        // no name to show — still render the payer badge
+      }
+      if (entry.name && onName) onName(entry.name)
+      if (entry.ibans?.length && onIban) onIban(entry.ibans[0])
+      setState({ kind: 'ok', entry })
+    } catch (e) {
+      setState({ kind: 'error', code: String((e as Error).message || 'upstream') })
+    }
+  }
+
+  const errLabel =
+    state.kind === 'error'
+      ? state.code === 'too_short'
+        ? t('durs.errTooShort')
+        : state.code === 'rate_limited'
+          ? t('durs.errRate')
+          : t('durs.errUpstream')
+      : ''
+
+  return (
+    <div className="space-y-1.5">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className={compact ? 'h-7 px-2 text-xs' : 'h-9'}
+        onClick={run}
+        disabled={state.kind === 'loading' || !query.trim()}
+      >
+        {state.kind === 'loading' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Building2 className="w-3.5 h-3.5" />}
+        {state.kind === 'loading' ? t('durs.checking') : t('durs.checkBtn')}
+      </Button>
+      {state.kind === 'ok' && state.entry && (
+        <div className="flex flex-col gap-1 text-xs">
+          <Badge variant="outline" className={state.entry.vatPayer ? 'w-fit border-emerald-600 bg-emerald-50 text-emerald-700' : 'w-fit border-rose-300 bg-rose-50 text-rose-700'}>
+            {state.entry.vatPayer ? `✓ ${t('durs.vatPayerYes')}` : `✗ ${t('durs.vatPayerNo')}`}
+          </Badge>
+          {state.entry.name && <span className="text-stone-600">{state.entry.name}</span>}
+          {state.entry.ibans?.length > 0 && <span className="text-stone-500">{t('durs.ibanHint')}: {state.entry.ibans[0]}</span>}
+        </div>
+      )}
+      {state.kind === 'none' && <p className="text-xs text-stone-500">{t('durs.noResults')}</p>}
+      {state.kind === 'error' && <p className="text-xs text-rose-700">{errLabel}</p>}
+    </div>
+  )
+}
+
+/* ─────────────────── OPS-8 val 2 — notification matrix (RoxPos pattern) ─────────────────── */
+
+const NOTIF_EVENTS = [
+  'ORDER_NEW', 'ORDER_READY', 'ORDER_FIRE', 'DELIVERY_NEW', 'RESERVATION_NEW',
+  'LOW_STOCK', 'PO_APPROVED', 'PO_RECEIVED', 'TIME_OFF_STATUS', 'RECEIPT_FAILED', 'Z_CLOSED',
+] as const
+
+const NOTIF_ROLES = ['waiter', 'bar', 'kitchen', 'chef', 'staff', 'manager', 'warehouse', 'accounting', 'admin'] as const
+
+type NotifMode = 'everyone' | 'roles' | 'off'
+
+/** Notifications card (Nastavitve tab): 11 event types x {everyone | selected roles | off}. */
+export function NotificationsCard() {
+  const { t } = useI18n()
+  const [rules, setRules] = useState<Record<string, { mode: NotifMode; roles?: string[] }>>({})
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await api<{ rules: Record<string, { mode: NotifMode; roles?: string[] }> }>('/api/notification-rules')
+        if (alive) setRules(res.rules || {})
+      } catch {
+        if (alive) setNotice(t('notif.loadError'))
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  const setMode = (event: string, mode: NotifMode) => {
+    setNotice('')
+    setRules((r) => ({ ...r, [event]: { mode, roles: r[event]?.roles || [] } }))
+  }
+  const toggleRole = (event: string, role: string) => {
+    setNotice('')
+    setRules((r) => {
+      const cur = r[event] || { mode: 'roles' as NotifMode, roles: [] as string[] }
+      const roles = cur.roles || []
+      return { ...r, [event]: { ...cur, roles: roles.includes(role) ? roles.filter((x) => x !== role) : [...roles, role] } }
+    })
+  }
+
+  const save = async () => {
+    setBusy(true); setNotice('')
+    try {
+      await api('/api/notification-rules', { method: 'PUT', body: JSON.stringify({ rules }) })
+      setNotice(t('notif.saved'))
+    } catch (e) {
+      setNotice(`${t('notif.error')} ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><Bell className="w-4 h-4" /> {t('notif.title')}</CardTitle>
+        <CardDescription>{t('notif.desc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('notif.loading')}</p>
+        ) : (
+          <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
+            <table className="w-full text-sm">
+              <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+                <tr>
+                  <th className="p-2">{t('notif.title')}</th>
+                  <th className="p-2 w-44">{t('notif.mode')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {NOTIF_EVENTS.map((ev) => {
+                  const rule = rules[ev] || { mode: 'everyone' as NotifMode, roles: [] as string[] }
+                  return (
+                    <tr key={ev} className="border-t border-stone-100 align-top">
+                      <td className="p-2 font-medium">{t(`notif.event.${ev}`)}</td>
+                      <td className="p-2">
+                        <Select value={rule.mode} onValueChange={(v) => setMode(ev, v as NotifMode)}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="everyone">{t('notif.modeEveryone')}</SelectItem>
+                            <SelectItem value="roles">{t('notif.modeRoles')}</SelectItem>
+                            <SelectItem value="off">{t('notif.modeOff')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {rule.mode === 'roles' && (
+                          <div className="mt-2 grid grid-cols-2 gap-1">
+                            {NOTIF_ROLES.map((role) => (
+                              <label key={role} className="flex items-center gap-1.5 text-xs text-stone-600 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  className="h-3.5 w-3.5 accent-emerald-700"
+                                  checked={(rule.roles || []).includes(role)}
+                                  onChange={() => toggleRole(ev, role)}
+                                />
+                                {t(`role.${role}`)}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith(t('notif.error')) || notice === t('notif.loadError') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy || loading} onClick={save}>
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />} {t('notif.save')}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────────── OPS-8 val 2 — inventory batches / expiry (FEFO) ─────────────────── */
+
+interface BatchRowT { id: string; itemName: string; itemUnit: string; lotNumber: string; expiryDate: string | null; quantityRemaining: number; supplierName: string }
+
+/** Inventory batches card (Zaloge tab): expiry badges (<= 7 days amber / expired rose). */
+export function BatchesCard() {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<BatchRowT[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  const load = async () => {
+    setLoading(true); setErr('')
+    try {
+      const res = await api<{ batches: BatchRowT[] }>('/api/inventory/batches')
+      setRows(res.batches || [])
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const expiryBadge = (d: string | null) => {
+    if (!d) return null
+    const days = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
+    if (days < 0) return <Badge variant="outline" className="border-rose-300 bg-rose-50 text-rose-700">{t('bat.expired')}</Badge>
+    if (days <= 7) return <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">{t('bat.expiresSoon')}</Badge>
+    return null
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={(v) => { setOpen(v); if (v && rows === null && !loading) void load() }}>
+      <Card>
+        <CardHeader className="pb-2">
+          <CollapsibleTrigger className="flex w-full items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-1.5"><Clock className="w-4 h-4" /> {t('bat.title')}</CardTitle>
+            <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </CollapsibleTrigger>
+          <CardDescription>{t('bat.desc')}</CardDescription>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent>
+            {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('bat.loading')}</p>}
+            {err && <p className="text-sm text-rose-700">{t('bat.error')} {err}</p>}
+            {rows !== null && rows.length === 0 && <p className="text-sm text-stone-500">{t('bat.empty')}</p>}
+            {rows !== null && rows.length > 0 && (
+              <div className="max-h-80 overflow-y-auto rounded-xl border border-stone-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+                    <tr>
+                      <th className="p-2">{t('bat.colItem')}</th>
+                      <th className="p-2">{t('bat.colLot')}</th>
+                      <th className="p-2">{t('bat.colExpiry')}</th>
+                      <th className="p-2 text-right">{t('bat.colQty')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((b) => (
+                      <tr key={b.id} className="border-t border-stone-100">
+                        <td className="p-2 font-medium max-w-40 truncate" title={b.itemName}>{b.itemName}</td>
+                        <td className="p-2 text-stone-600 max-w-40 truncate" title={b.lotNumber}>{b.lotNumber}</td>
+                        <td className="p-2">
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            {b.expiryDate ? new Date(b.expiryDate).toLocaleDateString('sl-SI') : '—'}
+                            {expiryBadge(b.expiryDate)}
+                          </span>
+                        </td>
+                        <td className="p-2 text-right font-semibold">{b.quantityRemaining} {b.itemUnit}</td>
                       </tr>
                     ))}
                   </tbody>

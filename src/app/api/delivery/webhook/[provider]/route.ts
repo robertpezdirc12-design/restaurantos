@@ -22,6 +22,7 @@ import {
   mapGlovoPayload, mapWoltPayload, validateMapped, webhookIdempotencyKey,
 } from '@/lib/delivery'
 import { auditChainFields } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -200,6 +201,14 @@ export async function POST(
       provider: p, platformOrderId: mapped.platformOrderId, orderNumber: order.orderNumber,
       total: order.total, phone: maskPhone(mapped.recipientPhone), items: mapped.items.length,
     })
+    // OPS-8 val 2 (v1.72.0): push to waiters/management on new delivery-platform order
+    // (via notification matrix; fire-and-forget — webhook stays a critical path)
+    void pushEvent('DELIVERY_NEW', {
+      title: 'Novo dostavno naročilo',
+      body: `${p === 'glovo' ? 'Glovo' : 'Wolt'}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${mapped.items.length} postavk · ${order.total ?? ''} €`,
+      url: '/dashboard?tab=dostava',
+      tag: `delivery-${order.id}`,
+    }, { roles: ['waiter', 'staff', 'manager'], locationId: integration?.locationId ?? undefined })
     await logIntegration(p, integrationId, 'order.create', 'success', 200, '', Date.now() - t0, { platformOrderId: mapped.platformOrderId })
     return ok({ received: true, orderNumber: order.orderNumber, orderId: order.id })
   } catch (e) {

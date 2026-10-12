@@ -5,6 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { mapOrder, nid, jstr } from '@/lib/map'
 import { orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
+import { pushEvent } from '@/lib/push'
 import { auditChainFields } from '@/lib/audit-chain'
 
 /**
@@ -39,9 +40,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return fail('Zaključenega (plačanega/storniranega) naročila ni mogoče poslati na kuhinjo.', 409)
   }
   // OPS-7 coursing: validacija tečaja (pripada naročilu, ni že poslan)
-  let courseRow: { id: string; courseNumber: number; status: string } | null = null
+  let courseRow: { id: string; courseNumber: number; name: string; status: string } | null = null
   if (fireCourseId) {
-    const c = (order as { Course?: { id: string; courseNumber: number; status: string }[] }).Course?.find((cc) => cc.id === fireCourseId)
+    const c = (order as { Course?: { id: string; courseNumber: number; name: string; status: string }[] }).Course?.find((cc) => cc.id === fireCourseId)
     if (!c) return fail('Tečaj ne obstaja za to naročilo.', 404)
     if (c.status !== 'pending') return fail('Tečaj je že poslan v pripravo.', 409)
     courseRow = c
@@ -92,6 +93,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: id,
     payload: { orderId: id, count: firedCount, locationId: order.locationId },
   }).catch(() => undefined)
+
+  // OPS-8 val 2 (v1.72.0): push to kitchen/bar on course fire (via notification matrix,
+  // fire-and-forget — no rules = base targets kitchen/bar/chef)
+  if (firedCount > 0) {
+    void pushEvent('ORDER_FIRE', {
+      title: 'Tečaj poslan',
+      body: `${courseRow ? courseRow.name : 'Postavke'}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${firedCount} kos`,
+      url: '/dashboard?tab=kuhinja',
+      tag: `fire-${id}`,
+    }, { roles: ['kitchen', 'bar', 'chef'], locationId: order.locationId })
+  }
 
   const fresh = await db.order.findUnique({ where: { id }, include: orderInclude })
   if (!fresh) return fail('Naročilo ne obstaja.', 404)

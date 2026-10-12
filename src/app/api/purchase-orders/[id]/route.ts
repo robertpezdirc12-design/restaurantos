@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { canTransition, type PoStatus } from '@/lib/procurement'
 import { auditChainFields } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
 
 /**
  * Issue #1 (triage ②) — nabava: detail + statusni prehodi naročila.
@@ -162,6 +163,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
     return u
   })
+
+  // OPS-8 val 2 (v1.72.0): push to warehouse/management on PO approval (via notification
+  // matrix; fire-and-forget)
+  if (target === 'approved') {
+    void pushEvent('PO_APPROVED', {
+      title: 'Nabavno naročilo odobreno',
+      body: `${po.poNumber} · ${Number(po.totalAmount).toFixed(2)} € · ${po.PurchaseOrderItem.length} vrst`,
+      url: '/dashboard?tab=nabava',
+      tag: `po-approved-${id}`,
+    }, { roles: ['warehouse', 'manager'], locationId: po.locationId })
+  }
 
   return ok({ order: { id: updated.id, poNumber: updated.poNumber, status: updated.status } })
 }

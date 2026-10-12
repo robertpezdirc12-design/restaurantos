@@ -9,10 +9,14 @@ import {
   poStatusAfter,
   weightedAvgCostCents,
   priceHistoryRows,
+  parsePaymentTermsDays,
+  apNumberFor,
+  apLineTotalGross,
   type PoStatus,
   type ReceiveLineInput,
 } from '@/lib/procurement'
 import { auditChainFields } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
 
 /**
  * Issue #1 (triage ②) — prevzem blaga (GRN) z avtomatskim vplivom na zalogo.
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const po = await db.purchaseOrder.findUnique({
     where: { id },
-    include: { Supplier: { select: { id: true, name: true } }, PurchaseOrderItem: true },
+    include: { Supplier: { select: { id: true, name: true, paymentTerms: true } }, PurchaseOrderItem: true },
   })
   if (!po) return fail('Naročilo ne obstaja.', 404)
   if (!RECEIVABLE.includes(po.status)) {
@@ -264,6 +268,88 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       })
 
+      // 6b. OPS-8 val 2 (v1.72.0) — PO→AccountsPayable bridge (idempotent, fail-safe):
+      // a GRN creates the AP liability (due date = supplier payment terms).
+      // An AP insert failure MUST NOT break the receipt (GRN is the critical path) → try/catch.
+      try {
+        const invoiceNumber = String(body?.supplierDocNumber || '') || grnNumber
+        const apExists = await tx.accountsPayable.findFirst({
+          where: { purchaseOrderId: id, invoiceNumber },
+          select: { id: true },
+        })
+        if (!apExists) {
+          const acceptedLines = v.lines.filter((l) => l.input.quantityAccepted > 0)
+          if (acceptedLines.length > 0) {
+            let subtotal = 0
+            let vatAmount = 0
+            const apLines = acceptedLines.map((l) => {
+              const poItem = itemById.get(l.input.purchaseOrderItemId)!
+              const qty = l.input.quantityAccepted
+              const unitPrice = Number(poItem.unitPrice)
+              const vatRate = Number(poItem.vatRate) || 22
+              const net = Math.round(qty * unitPrice * 100) / 100
+              const gross = apLineTotalGross(qty, unitPrice, vatRate)
+              subtotal += net
+              vatAmount += Math.round((gross - net) * 100) / 100
+              return {
+                purchaseOrderItemId: poItem.id,
+                description: poItem.description,
+                quantityInvoiced: qty,
+                unitPriceInvoiced: unitPrice,
+                vatRateInvoiced: vatRate,
+                lineTotal: gross,
+              }
+            })
+            subtotal = Math.round(subtotal * 100) / 100
+            vatAmount = Math.round(vatAmount * 100) / 100
+            const termsDays = parsePaymentTermsDays(po.Supplier?.paymentTerms)
+            const dueDate = new Date(now.getTime() + termsDays * 86400000)
+            const year = now.getFullYear()
+            let apId: string | null = null
+            for (let attempt = 0; attempt < 5 && !apId; attempt++) {
+              const seq = (await tx.accountsPayable.count({ where: { apNumber: { startsWith: `AP-${year}-` } } })) + 1 + attempt
+              try {
+                const ap = await tx.accountsPayable.create({
+                  data: {
+                    id: nid(),
+                    apNumber: apNumberFor(year, seq),
+                    supplierId: po.supplierId,
+                    purchaseOrderId: id,
+                    invoiceNumber,
+                    invoiceDate: now,
+                    dueDate,
+                    subtotal,
+                    vatAmount,
+                    totalAmount: Math.round((subtotal + vatAmount) * 100) / 100,
+                    status: 'open',
+                    matchStatus: 'matched',
+                    notes: `GRN ${grnNumber} (${po.poNumber})`,
+                    locationId,
+                    AccountsPayableLine: {
+                      create: apLines.map((l) => ({ id: nid(), ...l })),
+                    },
+                  },
+                })
+                apId = ap.id
+              } catch (e) {
+                const emsg = String((e as Error).message || '')
+                if (emsg.includes('apNumber') && attempt < 4) continue // sočasno številčenje — retry
+                throw e
+              }
+            }
+            if (apId) {
+              await tx.purchaseOrder.update({
+                where: { id },
+                data: { invoiceStatus: 'invoiced', accountsPayableId: apId },
+              })
+            }
+          }
+        }
+      } catch (apErr) {
+        // fail-safe: the liability bridge must not break stock receipting
+        console.error('[grn] AccountsPayable most ni uspel (prevzem ostaja veljaven):', apErr)
+      }
+
       // 7. audit
       const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'GRN_RECEIVE', entityType: 'GoodsReceipt', entityId: receiptId, details: jstr({ grnNumber, poNumber: po.poNumber, supplierId: po.supplierId, supplierName: po.Supplier?.name || '', lines: v.lines.length, accepted: v.lines.reduce((a, l) => a + l.input.quantityAccepted, 0), rejected: v.lines.reduce((a, l) => a + l.input.quantityRejected, 0), overReceipt: v.overReceipt, warnings: v.warnings, poStatus: `${po.status} → ${nextPoStatus}`, stockItemsTouched: v.lines.filter((l) => l.input.quantityAccepted > 0 && itemById.get(l.input.purchaseOrderItemId)?.inventoryItemId).length, locationId, }), id: __aId2 })
       await tx.auditLog.create({
@@ -305,6 +391,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return ok({ receipt: { id: existing?.id, grnNumber: existing?.grnNumber, status: existing?.status, idempotentReplay: true } })
   }
   if (!result) return fail('Prevzem ni bil ustvarjen.', 500)
+
+  // OPS-8 val 2 (v1.72.0): push to warehouse/management on receipt (via notification matrix;
+  // fire-and-forget)
+  void pushEvent('PO_RECEIVED', {
+    title: 'Prevzem zaključen',
+    body: `${result.grnNumber} · ${po.poNumber} · ${po.Supplier?.name || ''}`,
+    url: '/dashboard?tab=nabava',
+    tag: `po-received-${id}`,
+  }, { roles: ['warehouse', 'manager'], locationId })
 
   return ok(
     {

@@ -6,7 +6,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } f
 import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { pushToLocationRoles, pushToEmployees } from '@/lib/push'
+import { pushEvent, pushToEmployees } from '@/lib/push'
 
 const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
@@ -61,15 +61,17 @@ export async function PATCH(req: NextRequest) {
     await db.order.update({ where: { id: item.orderId }, data: { status: 'prepared' } })
     // Issue #11 §3 — kuhinja zaključena (vsi artikli ready)
     await publishEvent('KitchenCompleted', { entityType: 'Order', entityId: item.orderId, payload: { itemId: item.id, by: user.name } }).catch(() => undefined)
-    // OPS-7 (v1.70.0): push natakarjem/vodstvu — naročilo pripravljeno (fire-and-forget)
+    // OPS-7 (v1.70.0) push to waiters/management; OPS-8 (v1.72.0) via notification matrix
+    // (fire-and-forget; no rules = same behavior as before). Push to the order author goes
+    // DIRECTLY (pushToEmployees) on purpose — personal notification, not a matrix event.
     const doneOrder = await db.order.findUnique({ where: { id: item.orderId }, select: { orderNumber: true, locationId: true, employeeId: true } })
     if (doneOrder) {
-      pushToLocationRoles(doneOrder.locationId, ['waiter', 'staff', 'manager'], {
+      void pushEvent('ORDER_READY', {
         title: 'Naročilo pripravljeno',
         body: `#${doneOrder.orderNumber ?? ''} — ${item.menuItemName ?? 'postavke'}`,
         url: '/dashboard?tab=mize',
         tag: `ready-${item.orderId}`,
-      })
+      }, { roles: ['waiter', 'staff', 'manager'], locationId: doneOrder.locationId })
       if (doneOrder.employeeId) pushToEmployees([doneOrder.employeeId], {
         title: 'Naročilo pripravljeno',
         body: `#${doneOrder.orderNumber ?? ''} — ${item.menuItemName ?? 'postavke'}`,

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
 
 /**
  * N5 (revizija §4): seznam izmen (z začetnim/končnim stanjem blagajne) — UI prikaže
@@ -220,6 +221,15 @@ export async function POST(req: NextRequest) {
         })
         return { shift, zreport, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash) }
       })
+
+      // OPS-8 val 2 (v1.72.0): push to management on shift close / Z-report (via
+      // notification matrix; fire-and-forget)
+      void pushEvent('Z_CLOSED', {
+        title: 'Izmena zaključena (Z-poročilo)',
+        body: `${result.totalSales.toFixed(2)} € · ${result.receipts} računov · gotovina ${result.cash.toFixed(2)} €`,
+        url: '/dashboard?tab=izmene',
+        tag: `z-closed-${result.zreport.id}`,
+      }, { roles: ['manager', 'admin'], locationId: result.shift.locationId })
 
       return ok({
         shift: mapShift({ ...result.shift, employee: null }),
