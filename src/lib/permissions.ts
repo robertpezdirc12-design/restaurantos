@@ -20,6 +20,15 @@ export const CANONICAL_PERMISSIONS = [
   'employees.manage',
   'settings.manage',
   'furs.issue',
+  // OPS-4 matrica (v1.67.0) — 8 novih ključev za granularne vloge:
+  'orders.void',
+  'orders.discount',
+  'cash.manage',
+  'menu.availability',
+  'haccp.execute',
+  'timeclock.manage',
+  'delivery.manage',
+  'giftcards.manage',
 ] as const
 
 export type CanonicalPermission = (typeof CANONICAL_PERMISSIONS)[number]
@@ -36,6 +45,15 @@ export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
   'employees.manage': 'Zaposleni — upravljanje',
   'settings.manage': 'Nastavitve — upravljanje',
   'furs.issue': 'FURS — izdaja',
+  // OPS-4 matrica (v1.67.0):
+  'orders.void': 'Naročila — storno postavk (kritično)',
+  'orders.discount': 'Popusti — uporaba do limita (nad tem vodja)',
+  'cash.manage': 'Blagajna — odpiranje/zapiranje izmene, no-sale',
+  'menu.availability': 'Meni — razpoložljivost (86 / razprodano)',
+  'haccp.execute': 'HACCP — izvedba kontrol in meritev',
+  'timeclock.manage': 'Delovni čas — urejanje izmen drugih',
+  'delivery.manage': 'Dostava — sprejem, statusi, cone',
+  'giftcards.manage': 'Darilne kartice — izdaja, polnjenje',
 }
 
 /**
@@ -49,11 +67,17 @@ const ROLE_DEFAULTS: Record<string, readonly CanonicalPermission[]> = {
   owner: CANONICAL_PERMISSIONS,
   admin: CANONICAL_PERMISSIONS,
   manager: CANONICAL_PERMISSIONS,
-  staff: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage'],
-  waiter: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage'],
-  bar: ['orders.create', 'apply_discounts', 'kitchen.update'],
-  chef: ['kitchen.update'],
-  kitchen: ['kitchen.update'],
+  // OPS-4 matrica: natakar dobi tudi 86 (razpoložljivost) — brez urejanja menija.
+  staff: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage', 'menu.availability'],
+  waiter: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage', 'menu.availability'],
+  // OPS-4 matrica: sank dobi hitro prodajo (orders.pay), 86 pijač in svojo blagajno;
+  // kitchen.update ostane (KDS filter po postaji se rešuje v UI/API, ne v ključu).
+  bar: ['orders.create', 'orders.pay', 'apply_discounts', 'kitchen.update', 'menu.availability', 'cash.manage'],
+  chef: ['kitchen.update', 'menu.availability', 'haccp.execute'],
+  kitchen: ['kitchen.update', 'menu.availability', 'haccp.execute'],
+  // OPS-4 (v1.67.0): NOVA vloga čistilke — samo izvedba HACCP kontrol + lastni delovni čas.
+  // Zahteva enum vrednost 'cleaner' na produkciji: DDL konzola → cleaner-role (mig #11).
+  cleaner: ['haccp.execute'],
   // issue #11 §1 — enterprise vloge
   group_owner: CANONICAL_PERMISSIONS,
   org_admin: CANONICAL_PERMISSIONS,
@@ -70,6 +94,7 @@ const UI_ROLE_TO_DB: Record<string, string> = {
   WAITER: 'waiter',
   BAR: 'bar',
   KITCHEN: 'kitchen',
+  CLEANER: 'cleaner',
   GROUP_OWNER: 'group_owner',
   ORG_ADMIN: 'org_admin',
   PROPERTY_MANAGER: 'property_manager',

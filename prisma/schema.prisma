@@ -3016,6 +3016,7 @@ enum EmployeeRole {
   property_manager
   warehouse
   accounting
+  cleaner
 }
 
 enum EmployeeStatus {

@@ -194,6 +194,22 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-stroski-kategorije',
     probe: () => columnExists('AccountsPayable', 'category'),
   },
+  {
+    // OPS-4 (v1.67.0): nova DB vloga 'cleaner' (čistilka — haccp.execute).
+    // Postgres: ALTER TYPE ADD VALUE IF NOT EXISTS (migrate-cleaner-role).
+    // SQLite: role je String — brez DDL, probe vedno true (konzola pokaže aplicirano).
+    // Probe je dialekt-ozaveščena (enako kot columnNullable zgoraj).
+    id: 'cleaner-role',
+    descKey: 'mig.cleanerRole.desc',
+    endpoint: '/api/admin/migrate-cleaner-role',
+    probe: async () => {
+      if ((process.env.DATABASE_URL ?? '').startsWith('file:')) return true
+      const rows = await db.$queryRawUnsafe<{ ok: boolean }[]>(
+        `SELECT 'cleaner' = ANY(enum_range(NULL::"EmployeeRole")) AS ok`,
+      )
+      return rows.length > 0 && rows[0].ok === true
+    },
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

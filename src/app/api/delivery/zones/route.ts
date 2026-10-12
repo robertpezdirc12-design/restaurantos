@@ -12,7 +12,7 @@ import { auditChainFields } from '@/lib/audit-chain'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'orders.create')
+  const user = await requirePermission(req, 'delivery.manage')
   if (isResponse(user)) return user
   const zones = await db.deliveryZone.findMany({
     // Issue #4 §1: cone po lokaciji uporabnika (DeliveryZone.locationId)

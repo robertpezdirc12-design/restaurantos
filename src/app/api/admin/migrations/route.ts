@@ -13,6 +13,7 @@ import { POST as issue12POST } from '../migrate-issue12/route'
 import { POST as issue13POST } from '../migrate-issue13/route'
 import { POST as haccpPlansPOST } from '../migrate-haccp-plans/route'
 import { POST as stroskiKategorijePOST } from '../migrate-stroski-kategorije/route'
+import { POST as cleanerRolePOST } from '../migrate-cleaner-role/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -39,6 +40,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'issue13': issue13POST,
   'haccp-plans': haccpPlansPOST,
   'stroski-kategorije': stroskiKategorijePOST,
+  'cleaner-role': cleanerRolePOST,
 }
 
 interface ConsoleResult {

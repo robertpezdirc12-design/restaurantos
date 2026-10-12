@@ -25,7 +25,7 @@ const TRANSITIONS: Record<string, string[]> = {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'orders.create')
+  const user = await requirePermission(req, 'delivery.manage')
   if (isResponse(user)) return user
 
   const [orders, zones, webhookErrors] = await Promise.all([
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = await requirePermission(req, 'orders.create')
+  const user = await requirePermission(req, 'delivery.manage')
   if (isResponse(user)) return user
 
   const body = (await req.json().catch(() => null)) as {

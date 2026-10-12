@@ -275,10 +275,15 @@ describe('P2 RBAC — N8: UI dovoljenja zavihkov (fail-closed)', () => {
     expect(tabHasPerm('racuni', { canManage: false, perms: ['orders.create', 'reports.view'] })).toBe(true)
   })
 
-  test('vsak vnos TAB_PERM je veljavno kanonično dovoljenje ALI "*" ', () => {
+  test('vsak vnos TAB_PERM je veljavno kanonično dovoljenje, OR-seznam veljavnih, ALI "*" (OPS-4)', () => {
     const valid = [...CANONICAL_PERMISSIONS, TAB_PERM_ALL]
     for (const [, perm] of Object.entries(TAB_PERM)) {
-      expect(valid).toContain(perm)
+      if (Array.isArray(perm)) {
+        expect(perm.length).toBeGreaterThan(0)
+        for (const p of perm) expect(valid).toContain(p)
+      } else {
+        expect(valid).toContain(perm)
+      }
     }
   })
 

@@ -15,7 +15,7 @@ import { auditChainFields } from '@/lib/audit-chain'
  * /api/reports/financial in imata svoj gating (izven obsega tega popravka).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'orders.pay')
+  const user = await requirePermission(req, 'cash.manage')
   if (isResponse(user)) return user
   const shifts = await db.cashRegisterShift.findMany({
     // Issue #4 §1: izmene po lokaciji (CashRegisterShift.locationId); POST ostaja lastna izmena

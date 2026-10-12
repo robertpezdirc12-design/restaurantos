@@ -17,11 +17,12 @@ import {
   resolvePermissions,
   resolvePermissionsForUIRole,
 } from '@/lib/permissions'
+import { tabHasPerm } from '@/lib/tab-permissions'
 
 /** Vse vloge iz Prisma enuma EmployeeRole (schema.prisma) — pokritost vseh ROLE_DEFAULTS vnosov */
 const ALL_DB_ROLES = [
   'owner', 'admin', 'manager', 'staff', 'waiter', 'bar', 'chef', 'kitchen',
-  'group_owner', 'org_admin', 'property_manager', 'warehouse', 'accounting',
+  'group_owner', 'org_admin', 'property_manager', 'warehouse', 'accounting', 'cleaner',
 ] as const
 
 const FULL_ROLES = ['owner', 'admin', 'manager', 'group_owner', 'org_admin', 'property_manager']
@@ -45,25 +46,51 @@ describe('resolvePermissions — vloge s polnim naborom dovoljenj', () => {
 })
 
 describe('resolvePermissions — podnabori po vlogah (staff/vodstvo operativke)', () => {
-  test('waiter: orders.create + orders.pay + apply_discounts + reservations.manage', () => {
+  test('waiter: orders.create + orders.pay + apply_discounts + reservations.manage + menu.availability (OPS-4)', () => {
     expect(sortedEq(resolvePermissions('waiter', []), [
-      'orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage',
+      'orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage', 'menu.availability',
     ])).toBe(true)
+    // granularnost OPS-4: natakar NE sme urejati menija/blagajne/vodstvenih zadev
+    expect(resolvePermissions('waiter', [])).not.toContain('menu.manage')
+    expect(resolvePermissions('waiter', [])).not.toContain('cash.manage')
   })
 
   test('staff (legacy natakar) ima ISTO privzeto množico kot waiter', () => {
     expect(sortedEq(resolvePermissions('staff', []), resolvePermissions('waiter', []))).toBe(true)
   })
 
-  test('bar: orders.create + apply_discounts + kitchen.update (BREZ orders.pay)', () => {
+  test('bar: hitra prodaja (orders.pay) + 86 + blagajna + KDS (OPS-4 matrica)', () => {
     const perms = resolvePermissions('bar', [])
-    expect(sortedEq(perms, ['orders.create', 'apply_discounts', 'kitchen.update'])).toBe(true)
-    expect(perms).not.toContain('orders.pay')
+    expect(sortedEq(perms, [
+      'orders.create', 'orders.pay', 'apply_discounts', 'kitchen.update', 'menu.availability', 'cash.manage',
+    ])).toBe(true)
+    expect(perms).toContain('orders.pay') // OPS-4: sank sme hitro prodajo
+    expect(perms).not.toContain('menu.manage')
+    expect(perms).not.toContain('employees.manage')
   })
 
-  test('chef in kitchen: samo kitchen.update', () => {
-    expect(sortedEq(resolvePermissions('chef', []), ['kitchen.update'])).toBe(true)
-    expect(sortedEq(resolvePermissions('kitchen', []), ['kitchen.update'])).toBe(true)
+  test('chef in kitchen: KDS + 86 + HACCP meritve (OPS-4) — brez prodaje', () => {
+    expect(sortedEq(resolvePermissions('chef', []), ['kitchen.update', 'menu.availability', 'haccp.execute'])).toBe(true)
+    expect(sortedEq(resolvePermissions('kitchen', []), ['kitchen.update', 'menu.availability', 'haccp.execute'])).toBe(true)
+    expect(resolvePermissions('kitchen', [])).not.toContain('orders.create')
+    expect(resolvePermissions('kitchen', [])).not.toContain('orders.pay')
+  })
+
+  test('cleaner (NOVO, OPS-4): izključno haccp.execute + lastni delovni čas (implicitno)', () => {
+    const perms = resolvePermissions('cleaner', [])
+    expect(sortedEq(perms, ['haccp.execute'])).toBe(true)
+    expect(perms).not.toContain('orders.create')
+    expect(perms).not.toContain('orders.pay')
+    expect(perms).not.toContain('reports.view')
+    expect(perms).not.toContain('settings.manage')
+  })
+
+  test('OPS-4: 19 kanoničnih dovoljenj (11 izvornih + 8 novih)', () => {
+    expect(canonical).toHaveLength(19)
+    for (const k of [
+      'orders.void', 'orders.discount', 'cash.manage', 'menu.availability',
+      'haccp.execute', 'timeclock.manage', 'delivery.manage', 'giftcards.manage',
+    ]) expect(canonical).toContain(k)
   })
 
   test('warehouse: inventory.manage + reports.view (naloga 31-b dejstvo)', () => {
@@ -145,7 +172,7 @@ describe('permissionOverrides — dodatne obveznice (SAMO aditivne)', () => {
     const perms = resolvePermissions('chef', JSON.stringify(['menu.manage']))
     expect(perms).toContain('menu.manage')
     expect(perms).toContain('kitchen.update')
-    expect(perms).toHaveLength(2)
+    expect(perms).toHaveLength(4) // 3 privzete (kitchen.update, menu.availability, haccp.execute) + menu.manage
   })
 
   test('pokvarjen JSON string overrides → varno samo privzete (jparse fallback)', () => {
@@ -190,5 +217,40 @@ describe('isValidPermission + PERMISSION_LABELS konsistentnost', () => {
       expect(typeof PERMISSION_LABELS[p]).toBe('string')
       expect(PERMISSION_LABELS[p].length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('tab-permissions — OR-logika (OPS-4 v1.67.0)', () => {
+  const baseCtx = { canManage: false }
+
+  test('haccp: zadosti settings.manage ALI haccp.execute (kuhinja/čistilka vidita)', () => {
+    expect(tabHasPerm('haccp', { ...baseCtx, perms: ['haccp.execute'] })).toBe(true)
+    expect(tabHasPerm('haccp', { ...baseCtx, perms: ['settings.manage'] })).toBe(true)
+    expect(tabHasPerm('haccp', { ...baseCtx, perms: ['orders.pay'] })).toBe(false)
+  })
+
+  test('izmene: cash.manage (bar) — natakar (orders.pay) NE vidi več', () => {
+    expect(tabHasPerm('izmene', { ...baseCtx, perms: ['cash.manage'] })).toBe(true)
+    expect(tabHasPerm('izmene', { ...baseCtx, perms: ['orders.pay'] })).toBe(false)
+  })
+
+  test('darilne: giftcards.manage — reports.view samo NE zadošča (premalo!)', () => {
+    expect(tabHasPerm('darilne', { ...baseCtx, perms: ['giftcards.manage'] })).toBe(true)
+    expect(tabHasPerm('darilne', { ...baseCtx, perms: ['reports.view'] })).toBe(false)
+  })
+
+  test('dostava: delivery.manage — orders.create NE zadošča', () => {
+    expect(tabHasPerm('dostava', { ...baseCtx, perms: ['delivery.manage'] })).toBe(true)
+    expect(tabHasPerm('dostava', { ...baseCtx, perms: ['orders.create'] })).toBe(false)
+  })
+
+  test('prodaja (nov tab): orders.pay — natakar in sank vidita, kuhinja ne', () => {
+    expect(tabHasPerm('prodaja', { ...baseCtx, perms: ['orders.pay'] })).toBe(true)
+    expect(tabHasPerm('prodaja', { ...baseCtx, perms: ['kitchen.update'] })).toBe(false)
+  })
+
+  test('canManage vseeno vidi vse; fail-closed za neznan tab ostaja', () => {
+    expect(tabHasPerm('dostava', { canManage: true, perms: [] })).toBe(true)
+    expect(tabHasPerm('neznan-tab', { ...baseCtx, perms: ['settings.manage'] })).toBe(false)
   })
 })

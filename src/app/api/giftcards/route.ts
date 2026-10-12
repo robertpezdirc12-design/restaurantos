@@ -68,7 +68,7 @@ function mapCard(c: {
 export async function GET(req: NextRequest) {
   // N5: polni seznam + saldo statistika → 'reports.view' (skladen z UI zavihkom);
   // plačilni tok ne gre skozi ta seznam (glej /api/giftcards/lookup — requireAuth)
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'giftcards.manage')
   if (isResponse(user)) return user
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim()

@@ -72,7 +72,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const user = await requirePermission(req, 'settings.manage')
+  const user = await requirePermission(req, 'giftcards.manage')
   if (isResponse(user)) return user
   const { id } = await ctx.params
   const body = await req.json().catch(() => null)

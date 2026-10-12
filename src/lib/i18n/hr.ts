@@ -277,6 +277,7 @@ export const hr: Record<string, string> = {
   'roles.WAITER': 'Konobar',
   'roles.BAR': 'Bar',
   'roles.KITCHEN': 'Kuhinja',
+  'roles.CLEANER': 'Čistilka',
 
   // ── Zone stolova ──
   'zones.main': 'Glavna dvorana',
@@ -490,6 +491,7 @@ export const hr: Record<string, string> = {
   'mig.issue13.desc': 'Location.premisesId → NULL-able (više lokacija bez FURS oznake)',
   'mig.haccpPlans.desc': 'Tablica HaccpPlan (planovi kontrola)',
   'mig.stroskiKategorije.desc': 'Troškovi: stupac kategorije na AccountsPayable (kategorizacija troškova)',
+  'mig.cleanerRole.desc': 'Nova uloga čistačice (EmployeeRole enum — samo HACCP izvedba)',
   // Troškovi
   'exp.month': 'Troškovi (mjesec)',
   'exp.totalRecords': 'Ukupno zapisa',
