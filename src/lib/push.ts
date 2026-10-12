@@ -141,6 +141,33 @@ export function apNewPushPayload(data: ApNewPushData): PushPayload {
   }
 }
 
+/* ─────────── OPS-11 val 3 (v1.82.0) — AP_OVERDUE (zapadli račun) ─────────── */
+
+/**
+ * Structured payload for the AP_OVERDUE event (open AccountsPayable past its
+ * due date). Fired ONLY from /api/cron/daily (1×/day, max 20) — never from
+ * user actions, so a late invoice cannot spam the staff.
+ */
+export interface ApOverduePushData {
+  apNumber: string
+  supplierName: string
+  amount: number
+  /** Whole days past due (>= 1). */
+  daysOverdue: number
+}
+
+/** Build the PushPayload for AP_OVERDUE (title/body hard-coded SL — same convention as AP_NEW). */
+export function apOverduePushPayload(data: ApOverduePushData): PushPayload {
+  const days = Math.max(0, Math.round(data.daysOverdue))
+  const dayWord = days === 1 ? 'dan' : days === 2 ? 'dneva' : 'dni'
+  return {
+    title: 'Zapadli račun dobavitelja',
+    body: `${data.apNumber} · ${data.supplierName} · ${data.amount.toFixed(2)} € · zapadlo ${days} ${dayWord}`,
+    url: '/dashboard?tab=stroski',
+    tag: `ap-overdue-${data.apNumber}`,
+  }
+}
+
 /* ─────────── OPS-8 val 2 (v1.72.0) — Notification matrix (RoxPos pattern) ───────────
  * Event type x {everyone | selected roles | off}. Rules live in an Integration row
  * (name='notification-rules', type='other') config JSON:

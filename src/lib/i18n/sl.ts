@@ -1722,6 +1722,9 @@ export const sl: Record<string, string> = {
   'notif.event.DRIVER_ASSIGNED': 'Voznik dodeljen (dostava)',
   // OPS-11 val 2 (v1.81.0) — new AccountsPayable event (eSLOG import / manual expense)
   'notif.event.AP_NEW': 'Nov račun dobavitelja (AP)',
+  // OPS-11 val 3 (v1.82.0) — overdue supplier invoice (daily cron only) + digest section label
+  'notif.event.AP_OVERDUE': 'Zapadli račun dobavitelja (AP)',
+  'digest.overdueTitle': 'Zapadle obveznosti',
   'role.waiter': 'Natakar',
   'role.bar': 'Bar',
   'role.kitchen': 'Kuhinja',

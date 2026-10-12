@@ -9,17 +9,35 @@
  * Recipient: RestaurantSettings.email (the venue contact address); if the venue
  * also configured emailReportRecipients (JSON array), up to 5 extra addresses
  * are added. E-mail content is Slovenian literal text (no i18n — accepted scope).
+ *
+ * OPS-11 val 3 (v1.82.0) — Vercel cron support:
+ *  - sendDailyDigest({ locationId?, now?, overdueAps? }) — request-free digest
+ *    for /api/cron/daily: aggregates YESTERDAY's sales window (local 00:00→00:00)
+ *    and sends the same daily summary layout (recurringToday + new "Zapadle
+ *    obveznosti" overdue-AP section). ScheduledEmailLog reportType 'DAILY_DIGEST'.
+ *  - shiftSummaryEmailText output for pre-existing inputs is UNCHANGED (byte-identical
+ *    refactor into shared summaryBodyLines; overdue/window fields are additive).
  */
 import { db } from '@/lib/db'
-import { nid } from '@/lib/map'
+import { nid, num } from '@/lib/map'
 import { smtpTransportForLocation } from '@/lib/reminders'
 import { dueTodayRules, parseRecurringConfig } from '@/lib/recurring-po'
+import { daysOverdue, localDateKey, startOfDay } from '@/lib/cron-daily'
 
 export interface RecurringTodayEntry {
   supplier: string
   itemCount: number
   /** scheduled hour (local) — rendered as HH:00 */
   hour: number
+}
+
+/** OPS-11 val 3 — one overdue AccountsPayable entry for the digest section. */
+export interface OverdueApEntry {
+  apNumber: string
+  supplier: string
+  /** whole days past due (>= 1) */
+  daysOverdue: number
+  amount: number
 }
 
 export interface ShiftSummaryData {
@@ -36,6 +54,10 @@ export interface ShiftSummaryData {
   topItems: { name: string; qty: number }[]
   /** OPS-10 val 3 (v1.79.0): recurring POs whose nextRun falls today (additive, optional) */
   recurringToday?: RecurringTodayEntry[]
+  /** OPS-11 val 3 (v1.82.0): overdue supplier invoices — "Zapadle obveznosti" section (additive, optional; empty → no section) */
+  overdueAps?: OverdueApEntry[]
+  /** OPS-11 val 3: label for the window header line (default 'Izmena'; cron digest passes 'Dan') */
+  windowLabel?: string
 }
 
 const eur = (v: number): string => `${(Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2)} EUR`
@@ -50,14 +72,18 @@ const METHOD_LABELS: Record<string, string> = {
 const fmtWindow = (d: Date): string =>
   d.toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-/** Pure text builder (unit-tested). */
-export function shiftSummaryEmailText(d: ShiftSummaryData): { subject: string; body: string } {
+/**
+ * Shared body lines (pure) — everything between the subject and the footer.
+ * OPS-11 val 3 refactor: extracted so shiftSummaryEmailText and the cron
+ * dailyDigestEmailText render the SAME sections; output for pre-existing
+ * inputs is byte-identical (additive overdueAps/windowLabel only).
+ */
+function summaryBodyLines(d: ShiftSummaryData): string[] {
   const avgCheck = d.covers > 0 ? d.net / d.covers : 0
-  const subject = `RestavrantOS — dnevni povzetek (izmena ${fmtWindow(d.shiftDate)})`
   const lines: string[] = []
   lines.push('Dnevni povzetek prodaje')
   lines.push('')
-  lines.push(`Izmena: ${fmtWindow(d.shiftDate)}`)
+  lines.push(`${d.windowLabel || 'Izmena'}: ${fmtWindow(d.shiftDate)}`)
   lines.push(`Obdobje: ${fmtWindow(d.from)} – ${fmtWindow(d.to)}`)
   lines.push('')
   lines.push(`Bruto promet (z DDV): ${eur(d.gross)}`)
@@ -87,9 +113,188 @@ export function shiftSummaryEmailText(d: ShiftSummaryData): { subject: string; b
       lines.push(`  ${i + 1}. ${r.supplier} — ${r.itemCount} ${itemWord(r.itemCount)} ob ${hh}:00`)
     })
   }
-  lines.push('')
-  lines.push('— Samodejno sporočilo RestavrantOS')
-  return { subject, body: lines.join('\n') }
+  // OPS-11 val 3: "Zapadle obveznosti" — overdue supplier invoices (additive,
+  // optional; absent/empty → NO section). Rendered before the footer.
+  if (Array.isArray(d.overdueAps) && d.overdueAps.length > 0) {
+    const dayWord = (n: number): string => (n === 1 ? 'dan' : n === 2 ? 'dneva' : 'dni')
+    lines.push('')
+    lines.push('Zapadle obveznosti (neplačani računi dobaviteljev):')
+    d.overdueAps.slice(0, 10).forEach((a, i) => {
+      const days = Math.max(0, Math.round(a.daysOverdue))
+      lines.push(`  ${i + 1}. ${a.apNumber} · ${a.supplier} — ${days} ${dayWord(days)} zamude · ${eur(a.amount)}`)
+    })
+  }
+  return lines
+}
+
+/** Pure text builder (unit-tested) — shift-close digest. */
+export function shiftSummaryEmailText(d: ShiftSummaryData): { subject: string; body: string } {
+  const subject = `RestavrantOS — dnevni povzetek (izmena ${fmtWindow(d.shiftDate)})`
+  const body = [...summaryBodyLines(d), '', '— Samodejno sporočilo RestavrantOS'].join('\n')
+  return { subject, body }
+}
+
+/**
+ * OPS-11 val 3 — pure text builder for the CRON daily digest (same layout,
+ * different subject/window label: it covers a calendar DAY, not a shift).
+ */
+export function dailyDigestEmailText(d: ShiftSummaryData): { subject: string; body: string } {
+  const subject = `RestavrantOS — dnevni povzetek (dan ${fmtWindow(d.shiftDate)})`
+  const body = [...summaryBodyLines({ ...d, windowLabel: d.windowLabel || 'Dan' }), '', '— Samodejno sporočilo RestavrantOS'].join('\n')
+  return { subject, body }
+}
+
+/**
+ * OPS-11 val 3 — overdue AccountsPayable rows for the digest section
+ * (fail-soft, never throws). status 'open' AND dueDate < today 00:00,
+ * oldest due first, clamped to MAX_OVERDUE_APS (20).
+ */
+async function loadOverdueApsForDigest(now: Date): Promise<OverdueApEntry[]> {
+  try {
+    const t0 = startOfDay(now)
+    const rows = await db.accountsPayable.findMany({
+      where: { status: 'open', dueDate: { lt: t0 } },
+      orderBy: { dueDate: 'asc' },
+      take: 20,
+      select: { apNumber: true, totalAmount: true, dueDate: true, Supplier: { select: { name: true } } },
+    })
+    return rows.map((r) => ({
+      apNumber: r.apNumber,
+      supplier: r.Supplier?.name || '(dobavitelj)',
+      daysOverdue: daysOverdue(r.dueDate, now),
+      amount: num(r.totalAmount),
+    }))
+  } catch {
+    return []
+  }
+}
+
+export interface DailyDigestResult {
+  sent: boolean
+  /** Skip reason when sent === false (email/SMTP not configured). */
+  reason?: string
+  /** Failure message when sending threw (also logged to ScheduledEmailLog 'failed'). */
+  error?: string
+}
+
+/**
+ * OPS-11 val 3 — request-free daily digest for /api/cron/daily.
+ * Covers YESTERDAY's local calendar day (from = yesterday 00:00, to = today
+ * 00:00 — at the 05:00 UTC cron the previous day is already complete) and
+ * always includes the recurringToday + overdue-AP sections. Never throws:
+ * the caller gets { sent: false, reason | error } and the cron run continues.
+ * @param args.locationId — optional receipt filter (default: all locations)
+ * @param args.overdueAps — pre-loaded entries (cron passes them so the push
+ *                         and the digest share a single query)
+ */
+export async function sendDailyDigest(args: { locationId?: string | null; now?: Date; overdueAps?: OverdueApEntry[] } = {}): Promise<DailyDigestResult> {
+  const now = args.now ?? new Date()
+  const to = startOfDay(now)
+  const from = new Date(to.getTime())
+  from.setDate(from.getDate() - 1)
+  const shiftDate = from
+  const reportType = 'DAILY_DIGEST'
+  try {
+    const settings = await db.restaurantSettings.findFirst()
+    if (!settings?.emailEnabled || !settings.email) return { sent: false, reason: 'email_not_configured' }
+    const transport = await smtpTransportForLocation(args.locationId ?? null)
+    if (!transport) return { sent: false, reason: 'smtp_not_configured' }
+
+    // yesterday's sales window — same aggregation as the shift-close digest
+    const receipts = await db.receipt.findMany({
+      where: {
+        ...(args.locationId ? { locationId: args.locationId } : {}),
+        createdAt: { gte: from, lt: to },
+      },
+      select: { orderId: true, subtotal: true, total: true, totalVat: true, isStorno: true, paymentMethod: true },
+      take: 5000,
+    })
+    let gross = 0, net = 0, vat = 0, covers = 0
+    const payTotals = new Map<string, number>()
+    const orderIds = new Set<string>()
+    for (const rc of receipts) {
+      if (rc.isStorno) continue
+      gross += num(rc.total)
+      net += num(rc.subtotal)
+      vat += num(rc.totalVat)
+      covers += 1
+      orderIds.add(rc.orderId)
+      const m = ['cash', 'card', 'mobile'].includes(rc.paymentMethod) ? rc.paymentMethod : 'other'
+      payTotals.set(m, Math.round(((payTotals.get(m) || 0) + num(rc.total)) * 100) / 100)
+    }
+    const items = orderIds.size
+      ? await db.orderItem.findMany({ where: { orderId: { in: [...orderIds] }, voided: false }, select: { menuItemName: true, quantity: true }, take: 5000 })
+      : []
+    const qtyByName = new Map<string, number>()
+    for (const it of items) {
+      const name = it.menuItemName || '(artikel)'
+      qtyByName.set(name, (qtyByName.get(name) || 0) + (it.quantity || 0))
+    }
+    const topItems = [...qtyByName.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, qty]) => ({ name, qty }))
+
+    // digest sections are best-effort — a failure never blocks the e-mail
+    const recurringToday = await loadRecurringToday()
+    const overdueAps = args.overdueAps ?? (await loadOverdueApsForDigest(now))
+
+    const extra = Array.isArray(settings.emailReportRecipients)
+      ? (settings.emailReportRecipients as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 5)
+      : []
+    const { subject, body } = dailyDigestEmailText({
+      shiftId: `daily-${localDateKey(from)}`,
+      shiftDate,
+      from,
+      to,
+      locationId: args.locationId ?? null,
+      gross: Math.round(gross * 100) / 100,
+      net: Math.round(net * 100) / 100,
+      vat: Math.round(vat * 100) / 100,
+      covers,
+      payments: [...payTotals.entries()].map(([method, amount]) => ({ method, amount })),
+      topItems,
+      recurringToday,
+      overdueAps,
+      windowLabel: 'Dan',
+    })
+    await transport.sendMail({
+      from: settings.emailFromAddress || undefined,
+      to: settings.email,
+      ...(extra.length > 0 ? { cc: extra.join(', ') } : {}),
+      subject,
+      text: body,
+    })
+    await db.scheduledEmailLog.create({
+      data: {
+        id: nid(),
+        reportType,
+        recipient: settings.email,
+        subject,
+        body,
+        status: 'sent',
+        sentAt: new Date(),
+        reportDate: from,
+      },
+    })
+    return { sent: true }
+  } catch (e) {
+    const error = String((e as Error).message || e).slice(0, 250)
+    try {
+      await db.scheduledEmailLog.create({
+        data: {
+          id: nid(),
+          reportType,
+          recipient: '(neznano)',
+          subject: `RestavrantOS — dnevni povzetek (dan ${localDateKey(from)})`,
+          body: '',
+          status: 'failed',
+          errorMessage: error,
+          reportDate: from,
+        },
+      })
+    } catch {
+      // logging must never break the caller — swallow
+    }
+    return { sent: false, error }
+  }
 }
 
 /**

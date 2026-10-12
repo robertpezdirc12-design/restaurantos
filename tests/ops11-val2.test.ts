@@ -180,11 +180,12 @@ describe('ops11/2: activeAds — window filtering (fixed NOW)', () => {
 /* ─────────── E) AP_NEW push registry + payload ─────────── */
 
 describe('ops11/2: AP_NEW push event', () => {
-  test('registry: AP_NEW added next to the PO_* types; 13 unique event types', () => {
+  test('registry: AP_NEW added next to the PO_* types; 14 unique event types (14th: OPS-11 val 3 AP_OVERDUE)', () => {
     expect(PUSH_EVENT_TYPES).toContain('AP_NEW')
     expect(PUSH_EVENT_TYPES.indexOf('AP_NEW')).toBe(PUSH_EVENT_TYPES.indexOf('PO_RECEIVED') + 1)
     expect(new Set(PUSH_EVENT_TYPES).size).toBe(PUSH_EVENT_TYPES.length)
-    expect(PUSH_EVENT_TYPES.length).toBe(13)
+    // OPS-11 val 3 (v1.82.0): AP_OVERDUE appended after AP_NEW → 13 → 14
+    expect(PUSH_EVENT_TYPES.length).toBe(14)
     // push.ts re-exports the client-safe registry (back-compat for '@/lib/push' imports)
     expect(PUSH_EVENTS_REEXPORT).toBe(PUSH_EVENT_TYPES)
   })

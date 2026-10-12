@@ -10,6 +10,10 @@
  *
  * AP_NEW: a new supplier invoice (AccountsPayable) was recorded — eSLOG e-invoice
  * import or the manual expense create. Fires next to the PO_* procurement events.
+ *
+ * AP_OVERDUE (OPS-11 val 3, v1.82.0): an open AccountsPayable is PAST ITS DUE
+ * DATE — fired ONLY from the daily cron (/api/cron/daily, 1×/day, max 20) so
+ * it can never become spam. Like AP_NEW it targets accounting/manager.
  */
 export const PUSH_EVENT_TYPES = [
   'ORDER_NEW',
@@ -22,6 +26,7 @@ export const PUSH_EVENT_TYPES = [
   'PO_APPROVED',
   'PO_RECEIVED',
   'AP_NEW',
+  'AP_OVERDUE',
   'TIME_OFF_STATUS',
   'RECEIPT_FAILED',
   'Z_CLOSED',
