@@ -1521,3 +1521,15 @@ Stage Summary:
 - v1.66.0: dashboard crash na produkciji POPRAVLJEN (client-bundle higiena + statična regresijska zaščita). Produkcija mora po deployu /api/health pokazati version 1.66.0; prijava → dashboard brez error boundary.
 - ZGODOVINSKA REKONCILIACIJA: produkcijska (obnovitvena) linija = c5f2190 + OPS-2; "originalna" linija (v1.45 @ 4f5bcebc, sosledna seja) je ZASTARELA veja — produkcija NE sme biti downgrade-ana na v1.45. Sandbox zdaj = produkcijska linija.
 - Odprto za uporabnika: (1) GitHub token (remote github trenutno neveljaven — push nanj ne uspe), (2) GitLab robert.pezdirc12 račun blokiran (403), (3) Vercel povezava: če watcha GitHub in ne markec GitLab, deploy zahteva svež GitHub token.
+
+---
+Task ID: OPS-2-dodatek (deploy monitoring)
+Agent: main (Z.ai Code)
+
+Work Log:
+- Push 75cec83: markec GitLab ✅ (c5f2190..75cec83); github ❌ (token neveljaven); origin robert.pezdirc12 ❌ (račun blokiran 403).
+- Vercel deploy monitoring: 9+ min (10 meritev po 45–50 s) — produkcija NE prevzame 1.66.0; ostaja 1.65.0 @ c5f2190 → Vercel očitno watcha GitHub repo (ne markec GitLab). Deploy POPRKOVAN na uporabnikov svež GitHub token.
+- GitHub main stanje NEZNANO (c5f2190 ali 7c098ed — sosledna seja je trdila push, token pa zdaj mrtav); ob prejemu novega tokena: fetch → force-push 75cec83 → deploy → produkcijski E2E (prijava vodja@ → dashboard brez error boundary).
+
+Stage Summary:
+- Fix + testi + worklog VARNI lokalno + na markec GitLab. Produkcija čaka na GitHub token (edini blokar za 1.66.0).
