@@ -168,6 +168,20 @@ export const hr: Record<string, string> = {
 
   // ── Stolovi ──
   'tables.seats': '{n} mjesta',
+  // OPS-4 v1.67.0 — tableta (PWA konobar)
+  'tlb.title': 'Tableta',
+  'tlb.sub': 'Brzo sučelje konobara',
+  'tlb.fullPos': 'Cijeli POS',
+  'tlb.occupied': 'Zauzet',
+  'tlb.noTables': 'Nema stolova za prikaz.',
+  'tlb.currentOrder': 'Narudžba',
+  'tlb.emptyOrder': 'Narudžba je još prazna.',
+  'tlb.queued': 'Bez mreže — narudžba je u redu za sinkronizaciju.',
+  'tlb.queuedAdd': 'Bez mreže — dodatak je u redu za sinkronizaciju.',
+  'tlb.send': 'Pošalji u pripremu',
+  'tlb.sendAdd': 'Dodaj i pošalji u pripremu',
+  'tlb.cart': 'U košarici: {n}',
+  'tlb.payAtPos': 'Plaćanje na blagajni',
   'tables.clickClean': 'Za pospremiti — klikni',
   'tables.available': 'Slobodan',
   'tables.reserved': 'Rezerviran',

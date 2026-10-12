@@ -168,6 +168,20 @@ export const sl: Record<string, string> = {
 
   // ── Mize ──
   'tables.seats': '{n} mest',
+  // OPS-4 v1.67.0 — tablica (PWA natakar)
+  'tlb.title': 'Tablica',
+  'tlb.sub': 'Natakarjev hitri vmesnik',
+  'tlb.fullPos': 'Polni POS',
+  'tlb.occupied': 'Zasedena',
+  'tlb.noTables': 'Ni miz za prikaz.',
+  'tlb.currentOrder': 'Naročilo',
+  'tlb.emptyOrder': 'Naročilo je še prazno.',
+  'tlb.queued': 'Brez mreže — naročilo je v vrsti za sinhronizacijo.',
+  'tlb.queuedAdd': 'Brez mreže — dodatek je v vrsti za sinhronizacijo.',
+  'tlb.send': 'Pošlji v pripravo',
+  'tlb.sendAdd': 'Dodaj in pošlji v pripravo',
+  'tlb.cart': 'V košarici: {n}',
+  'tlb.payAtPos': 'Plačilo na blagajni',
   'tables.clickClean': 'Za pospraviti — klikni',
   'tables.available': 'Na voljo',
   'tables.reserved': 'Rezervirana',
