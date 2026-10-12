@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num, jstr } from '@/lib/map'
-import { computeNextRun, parseRecurringConfig, RECURRING_PO_MARKER, type RecurringRule } from '@/lib/recurring-po'
+import { computeNextRun, parseRecurringConfig, clampRemindMinutes, RECURRING_PO_MARKER, type RecurringRule } from '@/lib/recurring-po'
 import { auditChainFields } from '@/lib/audit-chain'
 
 /**
@@ -101,6 +101,9 @@ export async function POST(req: NextRequest) {
   const everyWeeks = Math.trunc(num(body.everyWeeks, 1))
   if (everyWeeks < 1 || everyWeeks > 4) return fail('Interval mora biti med 1 in 4 tedni.', 400)
 
+  // OPS-10 val 3: optional reminder lead time (clamped 0-1440; absent → parser default 60)
+  const remindMinutesBefore = clampRemindMinutes(body.remindMinutesBefore)
+
   const { rowId, rules } = await readConfig()
   if (rules.length >= MAX_RULES) return fail(`Doseženo je največje število pravil (${MAX_RULES}).`, 409)
 
@@ -115,6 +118,7 @@ export async function POST(req: NextRequest) {
     active: true,
     lastRun: null,
     nextRun: computeNextRun({ weekdays, hour, everyWeeks }, now)?.toISOString() ?? null,
+    ...(remindMinutesBefore !== undefined ? { remindMinutesBefore } : {}),
   }
   const effectiveRowId = await writeConfig(rowId, [...rules, draft])
 

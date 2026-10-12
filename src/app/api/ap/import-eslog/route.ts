@@ -5,6 +5,7 @@ import { nid, jstr } from '@/lib/map'
 import { apNumberFor, apLineTotalGross, parsePaymentTermsDays } from '@/lib/procurement'
 import { parseEslog, type EslogInvoice } from '@/lib/eslog'
 import { auditChainFields } from '@/lib/audit-chain'
+import { upsertApAttachments, oversizeNote, type ApAttachmentMeta } from '@/lib/ap-attachments'
 
 /**
  * OPS-9 val 2 (v1.75.0) — eSLOG e-račun uvoz (XML → zapadle obveznosti).
@@ -24,6 +25,48 @@ import { auditChainFields } from '@/lib/audit-chain'
  */
 
 const MAX_XML_BYTES = 2 * 1024 * 1024 // 2 MB — e-računi so majhni dokumenti
+
+/** Response echo without the heavy base64 payloads (metadata only, additive). */
+function parsedEcho(inv: EslogInvoice): Omit<EslogInvoice, 'attachments'> & { attachments: ApAttachmentMeta[] } {
+  return {
+    ...inv,
+    attachments: (inv.attachments || []).map((a) => ({
+      mimeCode: a.mimeCode,
+      filename: a.filename,
+      sizeB: Math.floor((a.dataBase64.replace(/\s+/g, '').length * 3) / 4),
+    })),
+  }
+}
+
+/**
+ * OPS-10 val 3 — persist the embedded attachments for the AP archive (best-effort).
+ * NEVER fails the import; appends the oversize note to AP.notes when a payload
+ * exceeded the 1.5 MB config budget. Returns the number of archived attachments.
+ */
+async function saveAttachments(userId: string, apId: string, apNumber: string, apNotes: string, inv: EslogInvoice): Promise<number> {
+  try {
+    const atts = inv.attachments || []
+    if (atts.length === 0) return 0
+    const { entry, truncated, droppedBytes } = await upsertApAttachments(apNumber, atts)
+    const saved = entry?.attachments.length ?? 0
+    if (saved === 0) return 0
+    if (truncated && droppedBytes > 0) {
+      const base = (apNotes || '').trim()
+      await db.accountsPayable
+        .update({ where: { id: apId }, data: { notes: `${base} ${oversizeNote(droppedBytes)}`.trim() } })
+        .catch(() => undefined)
+    }
+    const __aId = nid(); const __chain = await auditChainFields(db, { action: 'ESLOG_ATTACHMENTS_SAVED', entityType: 'AccountsPayable', entityId: apId, details: jstr({ apNumber, saved, truncated, droppedBytes }), id: __aId })
+    await db.auditLog.create({
+      data: { ...__chain, id: __aId, userId, action: 'ESLOG_ATTACHMENTS_SAVED', entityType: 'AccountsPayable', entityId: apId, details: jstr({ apNumber, saved, truncated, droppedBytes }) },
+    })
+    return saved
+  } catch (e) {
+    // archive must never break the import — details only
+    console.warn('[import-eslog] attachment archive failed (ignored):', String((e as Error).message || e))
+    return 0
+  }
+}
 
 function apResponse(ap: {
   id: string
@@ -107,7 +150,10 @@ export async function POST(req: NextRequest) {
     where: { supplierId: supplier.id, invoiceNumber: inv.invoiceNumber },
   })
   if (existing) {
-    return ok({ duplicate: true, ap: apResponse(existing) })
+    // OPS-10 val 3: archive attachments also for a duplicate hit (idempotent merge;
+    // covers invoices first imported before the attachment support existed)
+    const attachmentsSaved = await saveAttachments(user.sub, existing.id, existing.apNumber, existing.notes || '', inv)
+    return ok({ duplicate: true, ap: apResponse(existing), attachmentsSaved })
   }
 
   // dates: issueDate/dueDate as written in XML (yyyy-mm-dd); fallbacks = today + payment terms
@@ -143,6 +189,9 @@ export async function POST(req: NextRequest) {
   }
   if (!ap) return fail('Uvoz računa ni uspel (številčenje).', 500)
 
+  // OPS-10 val 3 — best-effort attachment archive (never fails the import)
+  const attachmentsSaved = await saveAttachments(user.sub, ap.id, ap.apNumber, ap.notes || '', inv)
+
   const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'ESLOG_IMPORTED', entityType: 'AccountsPayable', entityId: ap.id, details: jstr({ apNumber: ap.apNumber, invoiceNumber: inv.invoiceNumber, supplierId: supplier.id, supplierName: supplier.name, supplierTaxId: inv.supplier.taxId, subtotal, vatAmount, totalAmount, lines: apLines.length, dueDate: dueDate.toISOString(), locationId: user.loc || null, }), id: __aId2 })
   await db.auditLog.create({
     data: { ...__chain2,
@@ -167,7 +216,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: inv }, 201)
+  return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: parsedEcho(inv), attachmentsSaved }, 201)
 }
 
 async function createAp(args: {

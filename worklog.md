@@ -1816,3 +1816,21 @@ Stage Summary:
 - 913/913 testov, tsc 0, lint 0; commit caddecc
 - Browser E2E: obe kartici v Pregledu (prazna stanja OK), Po postajah rendra (Bar 0/—, Kuhinja 2/13.1 min), CILJ ureditev 15→10 persistirana prek UI + PATCH audit (potem vračano na 15); API E2E: sales-by-hour z seedanima naročiloma ✓, labor-cost z seedanim TimeEntry ✓
 - DEV-ONLY opomba: hydration mismatch (data-slot na header Button) = PRE-EXISTING na čistem v1.76.0 (stash-test potrjeno) — Turbopack dev artifact, ne produkcijska napaka
+
+---
+Task ID: OPS-10-d (val 2 front-of-house)
+Agent: general-purpose + orchestrator
+Task: Kiosk upsell + /display promocije (v1.78.0).
+
+Work Log:
+- src/lib/upsell.ts (sanitizeUpsellConfig max 3, self-ref/dup/unknown cleanup) + src/lib/display-promos.ts (sanitizePromos clamp 5-120 s, max 5, auto-id)
+- GET/PUT /api/kiosk-upsell (menu.manage, marker 'kiosk-upsell', audit KIOSK_UPSELL_UPDATED); /api/public/menu +upsells (back-compat, samo available)
+- GET/PUT /api/display-promos (settings.manage, marker 'display-promos', audit DISPLAY_PROMOS_UPDATED); display state +promos (ACTIVE max 5, unpaired → [])
+- Kiosk: trak "Dodaj še" (unikatni predlogi, izključi košarico, en-tap add, 64 px slike); Meni tab UpsellCard (čipki + checkbox dialog); Nastavitve DisplayPromosCard (URL/trajanje/Switch/briši, max 5)
+- Display: idle carousel cross-fade + preload (ordering/paid + stale logika nedotaknjena); i18n +29 ključev; version 1.78.0; tests/ops10-val2.test.ts = 21
+
+Stage Summary:
+- 934/934, tsc 0, lint 0; commit ef5a28b
+- E2E (browser): kiosk — Burek v košarico → trak "DODAJ JOŠ" rendra Kranjska+juha → en-tap Kranjska → košarica 16,00 €, trak pravilno IZKLJUČI že-v-košarico artikel; display — enroll + pair prek 6-mestne kode + promo 8 s → full-screen carousel s sliko ✓; API: PUT sanitizacija (ghost/self odstranjena), display state keys [paired,posName,posOnline,updatedAt,payload,promos]
+- LEKCIJA: enroll odgovor token je DOLG (49 znakov) — ne truncate s head -c; display state 401 "ni registrirana" = napačen token, ne bug
+- Čiščenje: E2E napravi izbrisani (DELETE /api/devices/[id]), display-promos ads=[], kiosk-upsell config={} — produkcija čista

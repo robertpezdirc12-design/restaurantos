@@ -39,6 +39,8 @@ export interface RecurringRule {
   active: boolean
   lastRun: string | null
   nextRun: string | null
+  /** OPS-10 val 3: reminder lead time in minutes (clamped 0-1440; absent → default 60) */
+  remindMinutesBefore?: number
 }
 
 export interface RecurringPoConfig {
@@ -97,6 +99,90 @@ export function isDue(rule: Pick<RecurringRule, 'active' | 'nextRun'>, now: Date
   return next.getTime() <= t.getTime()
 }
 
+/* ─────────── OPS-10 val 3 (v1.79.0) — reminder support ─────────── */
+
+export const DEFAULT_REMIND_MINUTES_BEFORE = 60
+export const MIN_REMIND_MINUTES_BEFORE = 0
+export const MAX_REMIND_MINUTES_BEFORE = 1440
+/** Overdue rules stay remindable for this long (banner anti-spam window). */
+export const OVERDUE_REMIND_WINDOW_MS = 60 * 60 * 1000
+
+/**
+ * Clamp a raw remindMinutesBefore value into [0, 1440] (rounded). Returns
+ * undefined for absent/garbage values so callers can apply their own default —
+ * parseRecurringConfig substitutes DEFAULT_REMIND_MINUTES_BEFORE instead.
+ */
+export function clampRemindMinutes(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === '') return undefined
+  const n = Number(v)
+  if (!Number.isFinite(n)) return undefined
+  return Math.min(MAX_REMIND_MINUTES_BEFORE, Math.max(MIN_REMIND_MINUTES_BEFORE, Math.round(n)))
+}
+
+/** Effective reminder window in ms for a rule (absent → default 60 min). */
+export function remindMsForRule(rule: Pick<RecurringRule, 'remindMinutesBefore'>): number {
+  const m = clampRemindMinutes(rule.remindMinutesBefore)
+  return (m ?? DEFAULT_REMIND_MINUTES_BEFORE) * 60_000
+}
+
+/**
+ * Milliseconds until the next run (negative = overdue).
+ * Infinity when the rule has no parseable nextRun (never due → never reminded).
+ */
+export function dueInMs(
+  rule: Pick<RecurringRule, 'nextRun'>,
+  now: Date | string,
+): number {
+  const next = rule.nextRun ? new Date(rule.nextRun) : null
+  if (!next || isNaN(next.getTime())) return Number.POSITIVE_INFINITY
+  const t = typeof now === 'string' ? new Date(now) : new Date(now.getTime())
+  if (isNaN(t.getTime())) return Number.POSITIVE_INFINITY
+  return next.getTime() - t.getTime()
+}
+
+/**
+ * Should the rule surface in the "upcoming" banner right now?
+ *  - active AND due within (0, remindMs] → yes (lead window);
+ *  - active AND overdue by at most OVERDUE_REMIND_WINDOW_MS (60 min) → yes
+ *    (visible briefly after the scheduled time; the lazy trigger still fires it
+ *    independently — the banner does not re-fire anything);
+ *  - anything else → no (anti-spam: long-overdue rules never nag).
+ */
+export function isRemindable(
+  rule: Pick<RecurringRule, 'active' | 'nextRun'>,
+  now: Date | string,
+  remindMs: number = DEFAULT_REMIND_MINUTES_BEFORE * 60_000,
+): boolean {
+  if (!rule || !rule.active) return false
+  const due = dueInMs(rule, now)
+  if (!Number.isFinite(due)) return false
+  const window = Math.max(0, remindMs)
+  if (due > 0 && due <= window) return true
+  return due <= 0 && due >= -OVERDUE_REMIND_WINDOW_MS
+}
+
+/**
+ * Active rules whose nextRun falls on the SAME LOCAL CALENDAR DAY as `now` —
+ * the "Naročilnice za zagon danes" digest section (pure, unit-tested).
+ */
+export function dueTodayRules<T extends Pick<RecurringRule, 'active' | 'nextRun'>>(
+  rules: T[],
+  now: Date | string,
+): T[] {
+  const t = typeof now === 'string' ? new Date(now) : now
+  if (isNaN(t.getTime())) return []
+  return (rules || []).filter((r) => {
+    if (!r || !r.active) return false
+    const next = r.nextRun ? new Date(r.nextRun) : null
+    if (!next || isNaN(next.getTime())) return false
+    return (
+      next.getFullYear() === t.getFullYear() &&
+      next.getMonth() === t.getMonth() &&
+      next.getDate() === t.getDate()
+    )
+  })
+}
+
 /** Sanitize an unknown config payload into a rules array (tolerant, never throws). */
 export function parseRecurringConfig(raw: unknown): RecurringRule[] {
   let cfg = raw
@@ -106,7 +192,12 @@ export function parseRecurringConfig(raw: unknown): RecurringRule[] {
   if (!cfg || typeof cfg !== 'object') return []
   const rules = (cfg as { rules?: unknown }).rules
   if (!Array.isArray(rules)) return []
-  return rules.filter((r): r is RecurringRule =>
-    !!r && typeof r === 'object' && typeof (r as RecurringRule).id === 'string',
-  )
+  return rules
+    .filter((r): r is RecurringRule =>
+      !!r && typeof r === 'object' && typeof (r as RecurringRule).id === 'string',
+    )
+    // OPS-10 val 3: normalize the reminder lead time — every rule leaves the
+    // parser WITH the field (clamped 0-1440, default 60); absent/garbage → default.
+    // Tolerant + additive: legacy rules without the key get the default.
+    .map((r) => ({ ...r, remindMinutesBefore: clampRemindMinutes(r.remindMinutesBefore) ?? DEFAULT_REMIND_MINUTES_BEFORE }))
 }

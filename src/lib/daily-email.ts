@@ -13,6 +13,14 @@
 import { db } from '@/lib/db'
 import { nid } from '@/lib/map'
 import { smtpTransportForLocation } from '@/lib/reminders'
+import { dueTodayRules, parseRecurringConfig } from '@/lib/recurring-po'
+
+export interface RecurringTodayEntry {
+  supplier: string
+  itemCount: number
+  /** scheduled hour (local) — rendered as HH:00 */
+  hour: number
+}
 
 export interface ShiftSummaryData {
   shiftId: string
@@ -26,6 +34,8 @@ export interface ShiftSummaryData {
   covers: number
   payments: { method: string; amount: number }[]
   topItems: { name: string; qty: number }[]
+  /** OPS-10 val 3 (v1.79.0): recurring POs whose nextRun falls today (additive, optional) */
+  recurringToday?: RecurringTodayEntry[]
 }
 
 const eur = (v: number): string => `${(Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2)} EUR`
@@ -66,9 +76,44 @@ export function shiftSummaryEmailText(d: ShiftSummaryData): { subject: string; b
     // defensive slice — the caller normally passes at most 3, enforce it here too
     d.topItems.slice(0, 3).forEach((it, i) => lines.push(`  ${i + 1}. ${it.name} — ${it.qty}×`))
   }
+  // OPS-10 val 3: "Naročilnice za zagon danes" — recurring PO rules due today (additive)
+  if (Array.isArray(d.recurringToday) && d.recurringToday.length > 0) {
+    // Slovenian plural: 1 artikel, 2 artikla, 3-4 artikli, 5+ artiklov
+    const itemWord = (n: number): string => (n === 1 ? 'artikel' : n === 2 ? 'artikla' : n >= 3 && n <= 4 ? 'artikli' : 'artiklov')
+    lines.push('')
+    lines.push('Naročilnice za zagon danes:')
+    d.recurringToday.slice(0, 10).forEach((r, i) => {
+      const hh = String(Math.max(0, Math.min(23, Math.round(r.hour)))).padStart(2, '0')
+      lines.push(`  ${i + 1}. ${r.supplier} — ${r.itemCount} ${itemWord(r.itemCount)} ob ${hh}:00`)
+    })
+  }
   lines.push('')
   lines.push('— Samodejno sporočilo RestavrantOS')
   return { subject, body: lines.join('\n') }
+}
+
+/**
+ * OPS-10 val 3 — recurring PO rules due today (fail-soft, never throws).
+ * Active rules with nextRun on today's local day, resolved to supplier names.
+ */
+async function loadRecurringToday(): Promise<RecurringTodayEntry[]> {
+  try {
+    const row = await db.integration.findFirst({ where: { name: 'recurring-po', type: 'other' } })
+    const rules = dueTodayRules(parseRecurringConfig(row?.config), new Date())
+    if (rules.length === 0) return []
+    const supplierIds = [...new Set(rules.map((r) => r.supplierId).filter(Boolean))]
+    const suppliers = supplierIds.length
+      ? await db.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, name: true } })
+      : []
+    const nameById = new Map(suppliers.map((s) => [s.id, s.name]))
+    return rules.map((r) => ({
+      supplier: nameById.get(r.supplierId) || '(dobavitelj)',
+      itemCount: Array.isArray(r.items) ? r.items.length : 0,
+      hour: r.hour,
+    }))
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -81,10 +126,12 @@ export async function sendShiftDailySummary(d: ShiftSummaryData): Promise<void> 
     if (!settings?.emailEnabled || !settings.email) return
     const transport = await smtpTransportForLocation(d.locationId)
     if (!transport) return
+    // OPS-10 val 3: digest section is best-effort — a failure never blocks the e-mail
+    const recurringToday = d.recurringToday ?? (await loadRecurringToday())
     const extra = Array.isArray(settings.emailReportRecipients)
       ? (settings.emailReportRecipients as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 5)
       : []
-    const { subject, body } = shiftSummaryEmailText(d)
+    const { subject, body } = shiftSummaryEmailText({ ...d, recurringToday })
     await transport.sendMail({
       from: settings.emailFromAddress || undefined,
       to: settings.email,

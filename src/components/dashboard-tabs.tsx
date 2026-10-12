@@ -21,10 +21,12 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 import { heatClass } from '@/lib/sales-by-hour'
 import { durationLabel } from '@/lib/timeclock'
+import { scaleBatchLines } from '@/lib/batch'
+import { dueInMs, isRemindable, remindMsForRule } from '@/lib/recurring-po'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -210,6 +212,9 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       {/* OPS-8 val 2 — batches / expiry (FEFO, lazy-load on expand) */}
       <BatchesCard />
+
+      {/* OPS-10 val 3 — batch preparations (BOM production, lazy-load on expand) */}
+      <BatchPrepCard />
 
       {canManage && (
         <div className="flex flex-wrap gap-2">
@@ -1044,6 +1049,9 @@ export interface ExpenseT {
  * se UI polja/filter NE prikažejo). Vnos: datalist iz obstoječih kategorij (prost
  * tekst, ≤60), urejanje + brisanje kategorije v dialogu, oznaka v seznamu + filter.
  */
+/** OPS-10 val 3 — archived eSLOG attachment (server shape, src/lib/ap-attachments.ts). */
+interface ApAttT { mimeCode: string; filename: string; sizeB: number; dataBase64?: string }
+
 export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }: { expenses: ExpenseT[]; canManage: boolean; onReload: () => Promise<void>; categoriesEnabled?: boolean }) {
   const { t } = useI18n()
   const [description, setDescription] = useState('')
@@ -1055,6 +1063,36 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
   const [editForm, setEditForm] = useState({ description: '', amount: '', dueDate: '', category: '' })
   const [catFilter, setCatFilter] = useState('all')
   const [err, setErr] = useState('')
+
+  // OPS-10 val 3 — eSLOG attachment archive (lazy badge index + per-AP dialog)
+  const [attIndex, setAttIndex] = useState<Record<string, number>>({})
+  const [attDialog, setAttDialog] = useState<{ apNumber: string; description: string } | null>(null)
+  const [attList, setAttList] = useState<ApAttT[] | null>(null)
+  const [attTruncated, setAttTruncated] = useState(false)
+  const [attBusy, setAttBusy] = useState(false)
+  const [attErr, setAttErr] = useState('')
+  const [attPreview, setAttPreview] = useState<{ name: string; uri: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    api<{ attachmentsIndex: Record<string, number> }>('/api/expenses?attachmentsIndex=1')
+      .then((r) => { if (alive) setAttIndex(r.attachmentsIndex || {}) })
+      .catch(() => { /* best-effort badge index */ })
+    return () => { alive = false }
+  }, [])
+
+  const openAttachments = async (apNumber: string, description: string) => {
+    setAttDialog({ apNumber, description }); setAttList(null); setAttErr(''); setAttTruncated(false); setAttPreview(null)
+    setAttBusy(true)
+    try {
+      const r = await api<{ attachments: ApAttT[]; truncated: boolean }>(`/api/expenses?withAttachments=1&apNumber=${encodeURIComponent(apNumber)}`)
+      setAttList(r.attachments || [])
+      setAttTruncated(r.truncated === true)
+    } catch (e) {
+      setAttErr(String((e as Error).message || e))
+    } finally { setAttBusy(false) }
+  }
+
   const monthTotal = expenses
     .filter((e) => e.status !== 'void' && new Date(e.paidAt).getMonth() === new Date().getMonth() && new Date(e.paidAt).getFullYear() === new Date().getFullYear())
     .reduce((s, e) => s + e.amount, 0)
@@ -1136,6 +1174,15 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
     return <Badge variant="outline" className="text-amber-700 border-amber-300">{t('exp.statusOpen')}</Badge>
   }
 
+  // OPS-10 val 3 — human attachment size (B/KB/MB)
+  const fmtSize = (b: number) => {
+    if (!Number.isFinite(b) || b <= 0) return '0 B'
+    if (b < 1024) return `${b} B`
+    if (b < 1024 * 1024) return `${(Math.round((b / 1024) * 10) / 10).toFixed(1)} KB`
+    return `${(Math.round((b / (1024 * 1024)) * 10) / 10).toFixed(1)} MB`
+  }
+  const attUri = (a: ApAttT) => `data:${a.mimeCode || 'application/octet-stream'};base64,${a.dataBase64 || ''}`
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1212,6 +1259,17 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
                         <p className={`font-medium truncate ${voided ? 'line-through text-stone-400' : ''}`}>{e.description}</p>
                         {statusBadge(e)}
                         {categoriesEnabled && e.category && e.category !== 'OSTALO' && <Badge variant="outline" className="text-stone-600 border-stone-300">{e.category}</Badge>}
+                        {/* OPS-10 val 3 — archived eSLOG attachments (click opens the preview dialog) */}
+                        {e.apNumber && (attIndex[e.apNumber] || 0) > 0 && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-100"
+                            onClick={() => void openAttachments(e.apNumber as string, e.description)}
+                            aria-label={t('apatt.badge', { n: attIndex[e.apNumber] })}
+                          >
+                            <Paperclip className="w-3 h-3" /> {t('apatt.badge', { n: attIndex[e.apNumber] })}
+                          </button>
+                        )}
                       </div>
                       <p className="text-xs text-stone-500 mt-1">
                         {new Date(e.paidAt).toLocaleDateString('sl-SI')}
@@ -1274,6 +1332,59 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !editForm.description.trim() || !(Number(editForm.amount.replace(',', '.')) > 0)} onClick={saveEdit}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('exp.save')}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* OPS-10 val 3 — attachment archive dialog (list + inline PDF preview + download) */}
+      <Dialog open={!!attDialog} onOpenChange={(v) => { if (!v) { setAttDialog(null); setAttPreview(null) } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-1.5"><Paperclip className="w-4 h-4" /> {t('apatt.title')}</DialogTitle>
+            <CardDescription>{attDialog?.description}{attDialog ? ` · ${attDialog.apNumber}` : ''}</CardDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {attBusy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('apatt.loading')}</p>}
+            {attErr && <p role="alert" className="text-sm text-red-600">{attErr}</p>}
+            {attList !== null && attList.length === 0 && <p className="text-sm text-stone-500">{t('apatt.none')}</p>}
+            {attList !== null && attList.length > 0 && (
+              <div className="space-y-2">
+                {attList.map((a, i) => (
+                  <div key={`${a.filename}-${i}`} className="rounded-lg border border-stone-200 p-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate max-w-56" title={a.filename || '(brez imena)'}>{a.filename || '(brez imena)'}</p>
+                      <p className="text-xs text-stone-500">{a.mimeCode || '—'} · {fmtSize(a.sizeB)}{!a.dataBase64 ? ` · ${t('apatt.metaOnly')}` : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {a.dataBase64 && (a.mimeCode || '').includes('pdf') && (
+                        <Button size="sm" variant="outline" onClick={() => setAttPreview({ name: a.filename || 'priloga.pdf', uri: attUri(a) })}>
+                          <Eye className="w-3.5 h-3.5" /> {t('apatt.preview')}
+                        </Button>
+                      )}
+                      {a.dataBase64 && (
+                        <a href={attUri(a)} download={a.filename || 'priloga'} className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-stone-200 bg-white px-3 text-xs font-medium hover:bg-stone-50">
+                          <Download className="w-3.5 h-3.5" /> {t('apatt.download')}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {attTruncated && <p className="text-xs text-amber-700">{t('apatt.truncated')}</p>}
+                <p className="text-[11px] text-stone-400">{t('apatt.retention')}</p>
+              </div>
+            )}
+            {attPreview && (
+              <div className="rounded-lg border border-stone-200 overflow-hidden">
+                <div className="flex items-center justify-between gap-2 bg-stone-50 px-2.5 py-1.5">
+                  <span className="text-xs font-medium truncate">{attPreview.name}</span>
+                  <Button size="sm" variant="ghost" onClick={() => setAttPreview(null)} aria-label={t('apatt.closePreview')}>{t('apatt.closePreview')}</Button>
+                </div>
+                <iframe src={attPreview.uri} title={attPreview.name} className="w-full h-72 bg-white" />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAttDialog(null); setAttPreview(null) }}>{t('exp.cancel')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2851,6 +2962,8 @@ interface RecRuleT {
   items: { inventoryItemId: string; qty: number }[]
   weekdays: number[]; hour: number; everyWeeks: number
   active: boolean; lastRun: string | null; nextRun: string | null
+  /** OPS-10 val 3 — reminder lead time (minutes; server normalizes, default 60) */
+  remindMinutesBefore?: number
 }
 /** Display order for weekday toggles: Monday-first (0 = Sunday, JS getDay). */
 const REC_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
@@ -3333,6 +3446,34 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   return (
     <div className="space-y-4">
       <p className="text-xs text-stone-500">{t('proc.desc')}</p>
+
+      {/* OPS-10 val 3 — reminder banner for recurring POs due soon / freshly overdue (no polling:
+          computed from the rules already fetched on mount; "run now" reuses the existing trigger) */}
+      {(() => {
+        const nowD = new Date()
+        const remindable = recRules.filter((r) => isRemindable(r, nowD, remindMsForRule(r)))
+        if (remindable.length === 0) return null
+        const r = remindable[0]
+        const due = dueInMs(r, nowD)
+        const mins = Math.max(0, Math.round(Math.abs(due) / 60000))
+        const sName = suppliers.find((s) => s.id === r.supplierId)?.name || ''
+        const nd = r.nextRun ? new Date(r.nextRun) : null
+        const time = nd ? `${String(nd.getHours()).padStart(2, '0')}:${String(nd.getMinutes()).padStart(2, '0')}` : ''
+        return (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 flex flex-wrap items-center gap-2 text-sm text-amber-900" role="status">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span className="flex-1 min-w-48">
+              {due > 0
+                ? t('recurring.remindUpcoming', { name: sName, time, mins })
+                : t('recurring.remindOverdue', { name: sName, mins })}
+              {remindable.length > 1 ? ` (+${remindable.length - 1})` : ''}
+            </span>
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={recBusy} onClick={runRecurringNow}>
+              <Repeat className="w-3.5 h-3.5" /> {t('recurring.runNow')}
+            </Button>
+          </div>
+        )
+      })()}
 
       {/* 0 — reorder suggestions (OPS-8 val 2): PAR - stock - incoming, per supplier */}
       <Card>
@@ -8483,6 +8624,239 @@ export function BatchesCard() {
                 </table>
               </div>
             )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  )
+}
+
+/* ─────────────────── OPS-10 val 3 (v1.79.0) — priprava po serijah (BatchPreparation) ─────────────────── */
+
+interface BatchPrepRowT {
+  id: string; status: string; note: string
+  outputItemName: string; outputUnit: string; outputQuantity: number
+  outputCostPerUnit: number; totalInputCost: number
+  createdAt: string; completedAt: string | null; cancelledAt: string | null
+  createdByName: string; completedByName: string
+  lines: { id: string; name: string; unit: string; quantity: number; costPerUnit: number }[]
+}
+interface BatchCandidateT { id: string; name: string; unit: string; menuItemId: string }
+interface BomPreviewLineT { inventoryItemId: string; name: string; unit: string; qty: number; costPerUnit: number }
+
+/** Radix Select sentinel — never value="" (empty string is rejected by Radix). */
+const BATCH_NONE = 'NONE'
+
+/** BatchPreparation card (Zaloge tab): BOM-driven production runs, lazy-loaded on expand. */
+export function BatchPrepCard() {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<BatchPrepRowT[] | null>(null)
+  const [cands, setCands] = useState<BatchCandidateT[]>([])
+  const [forecast, setForecast] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  // new batch dialog
+  const [dlgOpen, setDlgOpen] = useState(false)
+  const [selItem, setSelItem] = useState(BATCH_NONE)
+  const [qty, setQty] = useState('')
+  const [bomLines, setBomLines] = useState<BomPreviewLineT[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [dlgErr, setDlgErr] = useState('')
+
+  const load = async () => {
+    setLoading(true); setErr('')
+    try {
+      const res = await api<{ batches: BatchPrepRowT[]; candidates: BatchCandidateT[]; forecast: Record<string, number> }>('/api/batch-preparations')
+      setRows(res.batches || [])
+      setCands(res.candidates || [])
+      setForecast(res.forecast || {})
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const pickItem = async (id: string) => {
+    setSelItem(id); setBomLines(null); setDlgErr('')
+    if (id === BATCH_NONE) { setQty(''); return }
+    const f = forecast[id]
+    setQty(f ? String(f) : '')
+    try {
+      const res = await api<{ lines: BomPreviewLineT[]; hasBom: boolean }>(`/api/batch-preparations?bomFor=${encodeURIComponent(id)}`)
+      setBomLines(res.lines || [])
+    } catch { setBomLines([]) }
+  }
+
+  // client-side preview with the SAME pure math the server applies on POST
+  const planned = Number(qty.replace(',', '.'))
+  const preview = bomLines
+    ? scaleBatchLines(bomLines.map((l) => ({ inventoryItemId: l.inventoryItemId, qty: l.qty })), planned)
+    : []
+  const previewCost = bomLines
+    ? preview.reduce((s, p) => s + p.qty * (bomLines.find((b) => b.inventoryItemId === p.inventoryItemId)?.costPerUnit || 0), 0)
+    : 0
+
+  const openDialog = () => {
+    setSelItem(BATCH_NONE); setQty(''); setBomLines(null); setDlgErr(''); setDlgOpen(true)
+  }
+
+  const createBatch = async () => {
+    if (selItem === BATCH_NONE) { setDlgErr(t('batch.errNoItem')); return }
+    if (!(planned > 0)) { setDlgErr(t('batch.errQty')); return }
+    setBusy(true); setDlgErr('')
+    try {
+      await api('/api/batch-preparations', { method: 'POST', body: JSON.stringify({ outputItemId: selItem, plannedQty: planned }) })
+      setDlgOpen(false)
+      toast({ title: t('batch.created') })
+      await load()
+    } catch (e) {
+      setDlgErr(String((e as Error).message || e))
+    } finally { setBusy(false) }
+  }
+
+  const completeBatch = async (id: string) => {
+    setBusy(true); setErr('')
+    try {
+      await api(`/api/batch-preparations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action: 'complete' }) })
+      toast({ title: t('batch.completed') })
+      await load()
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally { setBusy(false) }
+  }
+
+  const cancelBatch = async (id: string) => {
+    if (!window.confirm(t('batch.confirmCancel'))) return
+    setBusy(true); setErr('')
+    try {
+      await api(`/api/batch-preparations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) })
+      toast({ title: t('batch.cancelled') })
+      await load()
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally { setBusy(false) }
+  }
+
+  const statusBadge = (s: string) => {
+    if (s === 'COMPLETED') return <Badge className="bg-emerald-700 text-white">{t('batch.statusCompleted')}</Badge>
+    if (s === 'CANCELLED') return <Badge variant="outline" className="text-stone-400 line-through">{t('batch.statusCancelled')}</Badge>
+    return <Badge variant="outline" className="text-amber-700 border-amber-300">{t('batch.statusDraft')}</Badge>
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={(v) => { setOpen(v); if (v && rows === null && !loading) void load() }}>
+      <Card>
+        <CardHeader className="pb-2">
+          <CollapsibleTrigger className="flex w-full items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-1.5"><Layers className="w-4 h-4" /> {t('batch.card')}</CardTitle>
+            <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </CollapsibleTrigger>
+          <CardDescription>{t('batch.desc')}</CardDescription>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-3">
+            {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('batch.loading')}</p>}
+            {err && <p role="alert" className="text-sm text-rose-700">{t('batch.error')} {err}</p>}
+            {rows !== null && rows.length === 0 && <p className="text-sm text-stone-500">{t('batch.empty')}</p>}
+            {rows !== null && rows.length > 0 && (
+              <div className="max-h-80 overflow-y-auto rounded-xl border border-stone-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+                    <tr>
+                      <th className="p-2">{t('batch.colOutput')}</th>
+                      <th className="p-2">{t('batch.colQty')}</th>
+                      <th className="p-2 text-right">{t('batch.colCost')}</th>
+                      <th className="p-2">{t('batch.colStatus')}</th>
+                      <th className="p-2 text-right">{t('batch.colCreated')}</th>
+                      <th className="p-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((b) => (
+                      <tr key={b.id} className="border-t border-stone-100 align-top">
+                        <td className="p-2 font-medium max-w-44 truncate" title={b.outputItemName}>{b.outputItemName}</td>
+                        <td className="p-2">{b.outputQuantity} {b.outputUnit}</td>
+                        <td className="p-2 text-right font-semibold">
+                          {b.status === 'COMPLETED' ? fmtEUR(b.outputCostPerUnit) : <span className="text-stone-400">{fmtEUR(b.totalInputCost)}</span>}
+                        </td>
+                        <td className="p-2">{statusBadge(b.status)}</td>
+                        <td className="p-2 text-right text-xs text-stone-500">{new Date(b.createdAt).toLocaleDateString('sl-SI')}</td>
+                        <td className="p-2 text-right whitespace-nowrap">
+                          {b.status === 'DRAFT' && (
+                            <>
+                              <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 mr-1" disabled={busy} onClick={() => void completeBatch(b.id)}>{t('batch.complete')}</Button>
+                              <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" disabled={busy} onClick={() => void cancelBatch(b.id)}>{t('batch.cancelBtn')}</Button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {rows !== null && rows.length > 0 && cands.length > 0 && (
+              <div>
+                <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={openDialog}><Plus className="w-4 h-4" /> {t('batch.new')}</Button>
+              </div>
+            )}
+            {rows !== null && cands.length === 0 && <p className="text-xs text-stone-500">{t('batch.noCandidates')}</p>}
+
+            {/* new batch dialog — candidate + planned qty prefilled from the forecast + scaled-line preview */}
+            <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader><DialogTitle>{t('batch.dialogTitle')}</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>{t('batch.item')}</Label>
+                    <Select value={selItem || BATCH_NONE} onValueChange={(v) => void pickItem(v)}>
+                      <SelectTrigger><SelectValue placeholder={t('batch.itemPick')} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={BATCH_NONE}>{t('batch.itemPick')}</SelectItem>
+                        {cands.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name} ({c.unit})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selItem !== BATCH_NONE && forecast[selItem] !== undefined && (
+                    <p className="text-xs text-stone-500">{t('batch.forecast', { n: forecast[selItem] })}</p>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bp-qty">{t('batch.plannedQty')}</Label>
+                    <Input id="bp-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0" className="w-32" />
+                  </div>
+                  {bomLines !== null && bomLines.length === 0 && <p className="text-xs text-amber-700">{t('batch.noBom')}</p>}
+                  {preview.length > 0 && (
+                    <div className="rounded-md border border-stone-200 p-2.5">
+                      <p className="text-xs font-medium text-stone-600 mb-1.5">{t('batch.preview')}</p>
+                      <ul className="text-xs text-stone-600 space-y-1">
+                        {preview.map((p) => {
+                          const meta = bomLines?.find((b) => b.inventoryItemId === p.inventoryItemId)
+                          return (
+                            <li key={p.inventoryItemId} className="flex justify-between gap-2">
+                              <span className="truncate">{meta?.name || p.inventoryItemId}</span>
+                              <span className="shrink-0 font-medium">{p.qty} {meta?.unit || ''}</span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                      <p className="text-xs text-stone-500 mt-1.5">{t('batch.totalCost', { c: fmtEUR(previewCost) })}</p>
+                    </div>
+                  )}
+                  {dlgErr && <p role="alert" className="text-sm text-red-600">{dlgErr}</p>}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDlgOpen(false)} disabled={busy}>{t('batch.cancel')}</Button>
+                  <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || selItem === BATCH_NONE || !(planned > 0)} onClick={createBatch}>
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('batch.create')}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </CollapsibleContent>
       </Card>

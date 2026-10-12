@@ -173,7 +173,8 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // OPS-8 (v1.73.0): reports/gl GET je 33. (GL dnevnik — orientacijski dnevni obračun).
     // OPS-10 (v1.77.0): reports/sales-by-hour GET je 34. (prodaja po urah) —
     // OPS-10 (v1.77.0): reports/labor-cost GET je 35. (labor stroški).
-    expect(wired.length).toBe(35)
+    // OPS-10 (v1.79.0): batch-preparations GET je 36. (priprava po serijah — seznam batchov).
+    expect(wired.length).toBe(36)
   })
 })
 

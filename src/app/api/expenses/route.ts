@@ -6,6 +6,7 @@ import { assertOrgScope } from '@/lib/tenant'
 import { num, nid, r2, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
+import { getApAttachmentIndex, getApAttachments } from '@/lib/ap-attachments'
 
 /**
  * Task 67 (v1.65.0) — kategorije stroškov, runtime-gated:
@@ -28,6 +29,22 @@ import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expe
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'reports.view')
   if (isResponse(user)) return user
+
+  // OPS-10 val 3 (v1.79.0) — attachment archive read-outs (same permission as the list):
+  //  ?withAttachments=1&apNumber=AP-... → { apNumber, attachments: [meta+payload] }
+  //  ?attachmentsIndex=1                → { attachmentsIndex: { [apNumber]: count } } (badge column)
+  const url = req.nextUrl
+  if (url.searchParams.get('withAttachments') === '1') {
+    const apNumber = String(url.searchParams.get('apNumber') || '').trim()
+    if (!apNumber) return fail('Manjka apNumber.', 400)
+    const entry = await getApAttachments(apNumber)
+    return ok({ apNumber, attachments: entry?.attachments ?? [], truncated: entry?.truncated === true, savedAt: entry?.savedAt ?? null })
+  }
+  if (url.searchParams.get('attachmentsIndex') === '1') {
+    const index = await getApAttachmentIndex()
+    return ok({ attachmentsIndex: index })
+  }
+
   const rows = await db.accountsPayable.findMany({
     // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
     where: await locationScope(user),

@@ -31,6 +31,21 @@ export interface EslogSupplier {
   iban: string
 }
 
+/**
+ * OPS-10 val 3 (v1.79.0) — embedded binary attachment (usually the visual PDF of
+ * the e-invoice): cac:Attachment/cbc:EmbeddedDocumentBinaryObject. Tolerant: the
+ * attribute names vary (mimeCode/filename are optional per UBL) and the payload
+ * may sit under AdditionalDocumentReference or directly on the invoice root.
+ */
+export interface EslogAttachment {
+  /** MIME type from the mimeCode attribute when present; '' when absent */
+  mimeCode: string
+  /** original file name from the filename attribute when present; '' when absent */
+  filename: string
+  /** raw base64 payload (no data: URI prefix); never empty when the entry exists */
+  dataBase64: string
+}
+
 export interface EslogInvoice {
   invoiceNumber: string
   /** ISO yyyy-mm-dd (as written in the XML); empty when absent */
@@ -42,6 +57,8 @@ export interface EslogInvoice {
   subtotal: number
   vatTotal: number
   total: number
+  /** OPS-10 val 3: embedded attachments (empty when the invoice carries none — never fails the parse) */
+  attachments: EslogAttachment[]
 }
 
 export interface EslogParseResult {
@@ -245,6 +262,86 @@ function totalsOf(inv: XmlNode): { subtotal: number; vatTotal: number; total: nu
   }
 }
 
+/* ─────────── attachments (OPS-10 val 3) ─────────── */
+
+/** Case-insensitive BFS collecting EVERY node named `name` (bounded depth). */
+function deepFindAll(root: unknown, name: string, maxDepth = 6): unknown[] {
+  const target = name.toLowerCase()
+  const hits: unknown[] = []
+  let level: unknown[] = [root]
+  for (let depth = 0; depth < maxDepth && level.length > 0; depth++) {
+    const next: unknown[] = []
+    for (const node of level) {
+      if (!node || typeof node !== 'object') continue
+      for (const [k, v] of Object.entries(node as XmlNode)) {
+        if (k.toLowerCase() === target) hits.push(...asArray(v))
+        if (v && typeof v === 'object') next.push(v)
+      }
+    }
+    level = next
+  }
+  return hits
+}
+
+/** Attributes of a fast-xml-parser node (ignoreAttributes: false → '@_name' keys). */
+function attrOf(node: XmlNode, name: string): string {
+  const direct = textOf(node[`@_${name}`])
+  if (direct) return direct
+  // tolerate parsers/fragments without the '@_' prefix
+  return textOf(node[name])
+}
+
+/** One cac:Attachment → attachment entry; null when it carries no binary object. */
+function attachmentFrom(att: XmlNode): EslogAttachment | null {
+  const bin = att['EmbeddedDocumentBinaryObject']
+  if (bin == null) return null
+  if (typeof bin === 'string') {
+    const data = bin.trim()
+    return data ? { mimeCode: '', filename: '', dataBase64: data } : null
+  }
+  if (typeof bin !== 'object') return null
+  const o = bin as XmlNode
+  const data = textOf(o)
+  if (!data) return null
+  return {
+    mimeCode: attrOf(o, 'mimeCode'),
+    filename: attrOf(o, 'filename'),
+    dataBase64: data,
+  }
+}
+
+/**
+ * Collect all embedded attachments of the invoice (tolerant, multi-attachment safe):
+ *  1. canonical UBL placement — AdditionalDocumentReference/Attachment;
+ *  2. a direct Attachment child of the invoice root;
+ *  3. bounded deep search (some exporters nest deeper).
+ * Entries without a binary payload are skipped; the function NEVER throws.
+ */
+function attachmentsOf(inv: XmlNode): EslogAttachment[] {
+  const nodes: unknown[] = []
+  for (const ref of asArray(inv['AdditionalDocumentReference'])) {
+    if (ref && typeof ref === 'object') nodes.push(...asArray((ref as XmlNode)['Attachment']))
+  }
+  nodes.push(...asArray(inv['Attachment']))
+  let out: EslogAttachment[] = []
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue
+    const a = attachmentFrom(n as XmlNode)
+    if (a) out.push(a)
+  }
+  if (out.length === 0) {
+    for (const n of deepFindAll(inv, 'Attachment', 6)) {
+      if (!n || typeof n !== 'object') continue
+      const a = attachmentFrom(n as XmlNode)
+      if (a) out.push(a)
+    }
+  }
+  // defensive cap — an e-invoice never carries dozens of attachments; the XML
+  // itself is capped at 2 MB by the route, so this only guards pathological input
+  out = out.slice(0, 5)
+  return out
+}
+
 /* ─────────── public API ─────────── */
 
 const parserOptions = {
@@ -291,6 +388,7 @@ export function parseEslog(xml: string): EslogParseResult {
 
   const supplier = supplierOf(root)
   const lines = linesOf(root)
+  const attachments = attachmentsOf(root)
   const { subtotal, vatTotal, total } = totalsOf(root)
 
   if (!invoiceNumber) {
@@ -311,6 +409,7 @@ export function parseEslog(xml: string): EslogParseResult {
       subtotal: Number.isFinite(subtotal) ? subtotal : NaN,
       vatTotal: Number.isFinite(vatTotal) ? vatTotal : NaN,
       total: Number.isFinite(total) ? total : NaN,
+      attachments,
     },
     error: null,
   }
