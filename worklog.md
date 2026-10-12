@@ -1586,3 +1586,26 @@ Stage Summary:
 - v1.67.0: celotna P0 matrika iz GAP-analize dostavljena (dovoljenja+čistilka, KDS upgrade+zaslon šanka prek filtra, hitra prodaja, tablica PWA, split-evenly, tloris, odobritve popustov) + 1 P1 (86 iz KDS). Produkcija dobi vse prek običajnega pusha (Vercel Git integration, avtor commitov OK od OPS-3).
 - OSTALO za naslednjo fazo (iz P1/P2): split po postavkah (ownership per item), coursing UI (shema Course + fire endpoint sta, manjka dodeljevanje tečajev), SMS/e-mail opomniki (potreben ponudnik+strošek — uporabnikova odločitev), urnik izmen UI, push obvestila, poročila za knjigovodstvo portal, menu engineering.
 - Uporabniški korak na produkciji PO deployu: Enterprise → DDL konzola → 'cleaner-role' Uporabi → nato v Zaposlenih ustvari čistilko (vloga ČISTILKA, samo HACCP + lastna ura).
+---
+Task ID: OPS-6 (produkcijska aktivacija čistilke + E2E v1.67.0 na produkciji)
+Agent: Z.ai Code
+Task: Uporabnik: "odlicno nadaljuj" — nadaljevanje po OPS-5: aplicirati DDL 'cleaner-role' na produkciji (edini preostali uporabniški korak iz OPS-5) + produkcijski E2E dokazi novega v1.67.0.
+
+Work Log:
+- Ugotovitev ob prevzemu: OPS-4 (raziskava) in OPS-5 (4 valovi) ŽE commitani lokalno; /api/health na produkciji = 1.67.0 @ a550aed → celotna P0/P1 matrika ŽE ŽIVA (Vercel Git integration je deployala samodejno, avtorji commitov OK od OPS-3).
+- DDL migracija 'cleaner-role' IZVEDENA na produkciji (Neon PG): POST /api/admin/migrate-cleaner-role z ADMIN žetonom (info@) → {"migrated":true,"skipped":false,"applied":["ADD VALUE cleaner"]} — ALTER TYPE "EmployeeRole" ADD VALUE IF NOT EXISTS 'cleaner', idempotentno, audit SCHEMA_MIGRATION_CLEANER_ROLE.
+- PRODUKCIJSKI E2E (agent-browser, prijava vodja@restaurantos.app,restaurantos-theta.vercel.app):
+  - Dashboard: 27 zavihkov (nov "Hitra prodaja"), 0 page errors.
+  - Hitra prodaja: grid artiklov rendra iz produkcije, artikel v košarico → -1/+1 + "Plačaj in izdaj račun" (plačilo NE izvedeno — brez pravih FURS računov v testu).
+  - Kuhinja (KDS): filtri "Vse postaje / Kuhinja / Bar" (= zaslon šanka) + "Celozaslonsko" prisotni.
+  - Mize → Tloris: preklopnik Mreža/Tloris rendra mize z conskim razporedom, "Povleci mizo za premik", statusne barve (zelena/oranžna).
+  - /tablica (PWA natakarja): vseh 15 miz s statusi (Zasedena/Na voljo/Rezervirana) in conami, bottom-sheet naročanje (Miza 10 → iskalnik, kategorije, "Pošlji v pripravo") — naročilo NE oddano (čisti podatki).
+  - Zaposleni: vloga "Čistilka" IZBIRNA v comboboxu (dokaz uspešne DDL migracije).
+  - Izmene: začetno stanje blagajne + "Začni izmeno" + izvoz CSV rendra.
+  - QR: /api/tables/[id]/qr vrne URL + SVG; /m/a7c1ae52... rendra "RestaurantOS Ljubljana — Miza 10 · samopostrežno naročanje" s kategorijami, artikli (opisi, cene), košarico.
+- Worklog commit + push (github origin, avtor = robertpezdirc12-design noreply).
+
+Stage Summary:
+- Produkcija = v1.67.0 @ a550aed + DB enum vrednost 'cleaner' aplicirana → POPOLNOMA aktivna: hitra prodaja (šank), KDS z zaslonom šanka, tablica PWA, tloris, split bill, izmene, čistilka, odobritve popustov, 86.
+- NAVODILO UPORABNIKU: čistilko ustvari v Zaposlenih (vloga Čistilka — samo HACCP kontrole + lastna ura); šank naprava naj odpre /dashboard?tab=kuhinja&station=BAR; natakarjeve tablice na /tablica (PWA namestitev na domačem zaslonu).
+- Ostalo iz P1/P2 (ni še): split po postavkah (ownership per item), coursing UI, SMS/e-mail opomniki (potreben ponudnik), urnik izmen UI, push obvestila, poročila za knjigovodstvo, menu engineering.
