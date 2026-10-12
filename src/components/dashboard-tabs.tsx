@@ -480,6 +480,8 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   const [cash, setCash] = useState('')
   const [busy, setBusy] = useState(false)
   const openShift = shifts.find((s) => s.status === 'open')
+  // OPS-7 (v1.70.0): Z poročilo po zaključku izmene (Lightspeed vzorec — pokaži povzetek)
+  const [zRep, setZRep] = useState<{ totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number } | null>(null)
 
   async function startShift() {
     setBusy(true)
@@ -488,7 +490,12 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   }
   async function stopShift() {
     setBusy(true)
-    try { await api('/api/shifts', { method: 'POST', body: JSON.stringify({ action: 'stop', closingCash: Number(cash) || 0 }) }); setCash(''); await onReload() }
+    try {
+      const d = await api<{ zReport: { totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number } | null }>('/api/shifts', { method: 'POST', body: JSON.stringify({ action: 'stop', closingCash: Number(cash) || 0 }) })
+      setCash('')
+      if (d.zReport) setZRep(d.zReport)
+      await onReload()
+    }
     catch (err) { alert((err as Error).message) } finally { setBusy(false) }
   }
 
@@ -535,6 +542,27 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
           {t('shifts.exportCsv')}
         </Button>
       </div>
+
+      {/* OPS-7: Z poročilo po zaključku izmene */}
+      <Dialog open={!!zRep} onOpenChange={(v) => !v && setZRep(null)}>
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> {t('zrep.title')}</DialogTitle></DialogHeader>
+          {zRep && (
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between"><span>{t('zrep.sales')}</span><b>{fmtEUR(zRep.totalSales)}</b></div>
+              <div className="flex justify-between"><span>{t('zrep.tax')}</span><span>{fmtEUR(zRep.totalTax)}</span></div>
+              <div className="flex justify-between"><span>{t('zrep.cash')}</span><span>{fmtEUR(zRep.cash)}</span></div>
+              <div className="flex justify-between"><span>{t('zrep.card')}</span><span>{fmtEUR(zRep.card)}</span></div>
+              <div className="flex justify-between"><span>{t('zrep.receipts')}</span><span>{zRep.receipts}</span></div>
+              {zRep.totalStorno > 0 && <div className="flex justify-between text-red-600"><span>{t('zrep.storno')}</span><span>−{fmtEUR(zRep.totalStorno)}</span></div>}
+              <div className={`flex justify-between border-t border-stone-200 pt-1 ${Math.abs(zRep.cashDifference) >= 0.01 ? 'text-amber-700 font-semibold' : 'text-stone-500'}`}><span>{t('zrep.diff')}</span><span>{fmtEUR(zRep.cashDifference)}</span></div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setZRep(null)}>{t('zrep.close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {canManage && (
         <Card>
@@ -1945,12 +1973,14 @@ export function AccountingExportCard() {
   const [to, setTo] = useState(today)
   const [busy, setBusy] = useState<'csv' | 'json' | null>(null)
   const [err, setErr] = useState('')
+  // OPS-7 (v1.70.0): sekcija izvoza — summary | dnevnik prodaje | DDV povzetek
+  const [section, setSection] = useState<'summary' | 'dnevnik' | 'ddv'>('summary')
 
   async function download(fmt: 'csv' | 'json') {
     setBusy(fmt); setErr('')
     try {
       const token = getToken()
-      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=${fmt}`, {
+      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=${fmt}&section=${section}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) {
@@ -1961,7 +1991,8 @@ export function AccountingExportCard() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `izvoz-${from}_${to}.${fmt}`
+      const nameBySection = section === 'summary' ? 'izvoz' : section === 'dnevnik' ? 'dnevnik-prodaje' : 'ddv-povzetek'
+      a.download = `${nameBySection}-${from}_${to}.${fmt}`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -1983,6 +2014,17 @@ export function AccountingExportCard() {
           {t('acct.desc')}
         </p>
         <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">{t('acc.section')}</Label>
+            <Select value={section} onValueChange={(v) => setSection(v as 'summary' | 'dnevnik' | 'ddv')}>
+              <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="summary">{t('acc.summary')}</SelectItem>
+                <SelectItem value="dnevnik">{t('acc.dnevnik')}</SelectItem>
+                <SelectItem value="ddv">{t('acc.vat')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1">
             <Label htmlFor="exp-from" className="text-xs">{t('acct.from')}</Label>
             <Input id="exp-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
@@ -6020,7 +6062,7 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
   async function createTimeOff() {
     setBusy(true)
     try {
-      await api('/api/time-off', { method: 'POST', body: JSON.stringify({ type: toType, startDate: toFrom, endDate: toTo, reason: toReason, ...(canManageRequests && toEmployee ? { employeeId: toEmployee } : {}) }) })
+      await api('/api/time-off', { method: 'POST', body: JSON.stringify({ type: toType, startDate: toFrom, endDate: toTo, reason: toReason, ...(canManageRequests && toEmployee && toEmployee !== '__self' ? { employeeId: toEmployee } : {}) }) })
       setToOpen(false)
       setToReason('')
       await load()
@@ -6195,7 +6237,7 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
                 <Select value={toEmployee} onValueChange={setToEmployee}>
                   <SelectTrigger><SelectValue placeholder={t('urnik.myself')} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{t('urnik.myself')}</SelectItem>
+                    <SelectItem value="__self">{t('urnik.myself')}</SelectItem>
                     {activeEmployees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                   </SelectContent>
                 </Select>

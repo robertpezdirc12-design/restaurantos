@@ -1582,6 +1582,23 @@ export const hr: Record<string, string> = {
   'resv.reminderDone': 'Podsjetnik poslan',
   'resv.reminderNone': 'Nema rezervacija za podsjetnik',
   'resv.reminderFailed': 'Podsjetnik NI poslan',
+  'push.enable': 'Omogoči obavijesti',
+  'push.enabled': 'Obavijesti omogočene',
+  'status.SERVED': 'Posluženo',
+  'zrep.title': 'Z izvještaj smjene',
+  'zrep.sales': 'Promet (s PDV-om)',
+  'zrep.cash': 'Gotovina',
+  'zrep.card': 'Kartice/ostalo',
+  'zrep.tax': 'PDV',
+  'zrep.receipts': 'Br. računa',
+  'zrep.storno': 'Storno',
+  'zrep.diff': 'Razlika blagajne',
+  'zrep.close': 'Zatvori',
+  'acc.section': 'Sadržaj izvoza',
+  'acc.summary': 'Sažetak (dani, PDV, plaćanja, zalihe)',
+  'acc.dnevnik': 'Dnevnik prodaje (račun po račun)',
+  'acc.vat': 'PDV sažetak po stopnjama',
+  'orders.filterAll': 'Sve narudžbe',
 }
 
 export type DictionaryHr = typeof hr

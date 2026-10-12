@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, re
 import { assertOrgScope } from '@/lib/tenant'
 import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
 import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
+import { pushToLocationRoles } from '@/lib/push'
 
 /** Normalizacija produkcijske vrstice -> mapper pričakovana oblika */
 function normalize(o: Record<string, unknown>) {
@@ -56,6 +57,15 @@ export async function POST(req: NextRequest) {
       guests: body.guests,
       clientOperationId: body.clientOperationId || body.idempotencyKey || null,
     })
+    // OPS-7 (v1.70.0): push obvestilo kuhinji/baru ob novem naročilu (fire-and-forget, ne blokira)
+    if (!replayed) {
+      pushToLocationRoles(loc, ['bar', 'kitchen', 'chef'], {
+        title: 'Novo naročilo',
+        body: `${order.orderNumber ? `#${order.orderNumber} · ` : ''}${order.items?.length ?? 0} postavk`,
+        url: '/dashboard?tab=kuhinja',
+        tag: `order-${order.id}`,
+      })
+    }
     return ok({ order, replayed }, replayed ? 200 : 201)
   } catch (e) {
     if (e instanceof OrderError) return fail(e.message, e.status)

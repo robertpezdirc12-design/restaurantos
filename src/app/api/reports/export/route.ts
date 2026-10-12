@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
   if (isNaN(from.getTime()) || isNaN(to.getTime())) return fail('Neveljaven datum (pričakovano YYYY-MM-DD).', 400)
   if (from > to) return fail('Datum "from" je za datumom "to".', 400)
   const format = (url.searchParams.get('format') || 'csv').toLowerCase()
+  // OPS-7 (v1.70.0): section=summary (privzeto) | dnevnik (račun po račun) | ddv (povzetek po stopnjah)
+  const section = (url.searchParams.get('section') || 'summary').toLowerCase()
   const range = { gte: from, lte: to }
 
   // Issue #4 §1: izvoz je location-scoped (centralne vloge = globalno).
@@ -56,6 +58,8 @@ export async function GET(req: NextRequest) {
   const payScope = isCentralRole(user) ? {} : { Check: { Order: { locationId: user.loc || '__no_location__' } } }
   const stockScope = isCentralRole(user) ? {} : { InventoryItem: { locationId: user.loc || '__no_location__' } }
 
+  type DayRow = { count: number; net: number; vat: number; discount: number; gross: number; tip: number; grossWithTip: number }
+  const p2 = (n: number) => n.toFixed(2)
   // ── 1) Računi ──
   const receipts = await db.receipt.findMany({
     where: { createdAt: range, isStorno: false, ...locScope },
@@ -63,7 +67,6 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'asc' as const },
     take: 20000,
   })
-  type DayRow = { count: number; net: number; vat: number; discount: number; gross: number; tip: number; grossWithTip: number }
   const salesByDay = new Map<string, DayRow>()
   const vatByRate = new Map<string, { base: number; vat: number }>()
   for (const r of receipts) {
@@ -134,6 +137,68 @@ export async function GET(req: NextRequest) {
     stockByType.set(s.type, row)
   }
 
+  if (section === 'dnevnik') {
+    // OPS-7: DNEVNIK PRODAJE — dokument po dokument (knjigovodski pripenjanek; DURS-prijazno polja)
+    const docs = await db.receipt.findMany({
+      where: { createdAt: range, ...locScope },
+      select: {
+        receiptNumber: true, createdAt: true, subtotal: true, totalVat: true, discount: true, total: true, tip: true, totalWithTip: true,
+        paymentMethod: true, eor: true, isStorno: true, stornoOf: true, vatBreakdown: true,
+      },
+      orderBy: { createdAt: 'asc' as const },
+      take: 50000,
+    })
+    if (format === 'json') {
+      return ok({ section: 'dnevnik', from: day(from), to: day(to), documents: docs.map((d) => ({ ...d, createdAt: d.createdAt.toISOString(), vat: parseVat(d.vatBreakdown) })) })
+    }
+    const L2: string[] = []
+    L2.push(`DNEVNIK PRODAJE - RestaurantOS`)
+    L2.push(`Obdobje;${day(from)};${day(to)}`)
+    L2.push(`Stevilka racuna;Datum/cas;Storno;Storno od;Nacin placila;Neto;DDV;Popust;Skupaj;Napitnina;Skupaj z napitnino;EOR`)
+    for (const d of docs) {
+      L2.push([d.receiptNumber, d.createdAt.toISOString(), d.isStorno ? 'DA' : '', d.stornoOf || '', d.paymentMethod, p2(num(d.subtotal)), p2(num(d.totalVat)), p2(num(d.discount)), p2(num(d.total)), p2(num(d.tip)), p2(num(d.totalWithTip)), d.eor].join(';'))
+    }
+    const csv2 = '\uFEFF' + L2.join('\r\n')
+    return new NextResponse(csv2, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="dnevnik-prodaje_${day(from)}_${day(to)}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  if (section === 'ddv') {
+    // OPS-7: DDV POVZETEK — osnova/DDV po stopnjah PER DAN + skupaj (za izjavo)
+    const vatRows = [...vatByRate.entries()].sort(([a], [b]) => Number(a) - Number(b)).map(([rate, v]) => ({ rate: Number(rate), base: v.base, vat: v.vat }))
+    const dayRows = [...salesByDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v }))
+    if (format === 'json') {
+      return ok({ section: 'ddv', from: day(from), to: day(to), vatByRate: vatRows, salesByDay: dayRows })
+    }
+    const L3: string[] = []
+    L3.push(`DDV POVZETEK - RestaurantOS`)
+    L3.push(`Obdobje;${day(from)};${day(to)}`)
+    L3.push(`Stopnja (%);Osnova;DDV;Skupaj (EUR)`)
+    for (const v of vatRows) L3.push(`${v.rate};${p2(v.base)};${p2(v.vat)};${p2(v.base + v.vat)}`)
+    const tBase = vatRows.reduce((a, v) => a + v.base, 0)
+    const tVat = vatRows.reduce((a, v) => a + v.vat, 0)
+    L3.push(`SKUPAJ;${p2(tBase)};${p2(tVat)};${p2(tBase + tVat)}`)
+    L3.push('')
+    L3.push(`PO DNEVIH`)
+    L3.push(`Datum;St. racunov;Neto;DDV;Bruto (EUR)`)
+    for (const s of dayRows) L3.push(`${s.date};${s.count};${p2(s.net)};${p2(s.vat)};${p2(s.gross)}`)
+    const csv3 = '\uFEFF' + L3.join('\r\n')
+    return new NextResponse(csv3, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="ddv-povzetek_${day(from)}_${day(to)}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
   const payload = {
     from: day(from),
     to: day(to),
@@ -149,7 +214,6 @@ export async function GET(req: NextRequest) {
 
   // ── CSV (BOM + `;`) ──
   const L: string[] = []
-  const p2 = (n: number) => n.toFixed(2)
   L.push(`RACUNOVODSKI IZVOZ - RestaurantOS`)
   L.push(`Obdobje;${payload.from};${payload.to}`)
   L.push(`Ustvarjeno;${payload.generatedAt}`)

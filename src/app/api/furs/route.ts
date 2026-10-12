@@ -212,9 +212,10 @@ export async function POST(req: NextRequest) {
     if (target.paymentStatus === 'paid') return fail('Ta izstavek je že plačan.', 409)
     const paidOthers = checksAll.filter((c) => c.id !== target.id && c.paymentStatus === 'paid').length
     const unpaidOthers = checksAll.filter((c) => c.id !== target.id && c.paymentStatus !== 'paid').length
-    if (paidOthers > 0) {
-      return fail('Razdeljeno plačilo po izstavkih je dovoljeno samo dokler ni plačan še noben izstavek.', 409)
-    }
+    // OPOMBA: plačilo preostalih izstavkov po že plačanem izstavku je DOVOLJENO in zaželeno
+    // (toast/Lightspeed tok: izstavek 1 plačan → izstavek 2/3 sledijo). Omejitev "samo dokler
+    // nič ni plačano" velja izključno za DELETE postavk med izstavki (/api/orders/[id]/checks
+    // POST/DELETE) — tam je konserviranost zneskov vedno ohranjena (proporcija + ostankovni izstavek).
     // postavke izstavka (ne-voided); če izstavek še nima postavk (prazen) → napaka
     const scopeItems = billItems.filter((it) => (checkItemIdsCache.get(it.id) ?? null) === target.id)
     if (scopeItems.length === 0) return fail('Izstavek ne vsebuje plačljivih postavk.', 400)

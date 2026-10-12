@@ -1582,6 +1582,23 @@ export const sl: Record<string, string> = {
   'resv.reminderDone': 'Opomnik poslan',
   'resv.reminderNone': 'Ni rezervacij za opomnik',
   'resv.reminderFailed': 'Opomnik NI poslan',
+  'push.enable': 'Omogoči obvestila',
+  'push.enabled': 'Obvestila omogočena',
+  'status.SERVED': 'Servirano',
+  'zrep.title': 'Z poročilo izmene',
+  'zrep.sales': 'Promet (z DDV)',
+  'zrep.cash': 'Gotovina',
+  'zrep.card': 'Kartice/ostalo',
+  'zrep.tax': 'DDV',
+  'zrep.receipts': 'Št. računov',
+  'zrep.storno': 'Storno',
+  'zrep.diff': 'Razlika blagajne',
+  'zrep.close': 'Zapri',
+  'acc.section': 'Vsebina izvoza',
+  'acc.summary': 'Povzetek (dnevi, DDV, plačila, zaloge)',
+  'acc.dnevnik': 'Dnevnik prodaje (račun po račun)',
+  'acc.vat': 'DDV povzetek po stopnjah',
+  'orders.filterAll': 'Vsa naročila',
 }
 
 export type Dictionary = typeof sl

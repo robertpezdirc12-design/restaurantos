@@ -214,7 +214,30 @@ function DashboardInner() {
   const [checksData, setChecksData] = useState<ChecksT | null>(null)
   const [splitOpen, setSplitOpen] = useState(false)
   const [splitSel, setSplitSel] = useState<Record<string, boolean>>({})
+  // OPS-7 (v1.70.0): Web Push stanje + omogočanje (zvonček v glavi)
+  const [pushState, setPushState] = useState<'unsupported' | 'default' | 'granted' | 'denied'>(() => (typeof window !== 'undefined' && !('serviceWorker' in navigator && 'PushManager' in window) ? 'unsupported' : typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? 'granted' : Notification.permission === 'denied' ? 'denied' : 'default') : 'unsupported'))
+
+  async function enablePush() {
+    try {
+      if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+      const perm = await Notification.requestPermission()
+      setPushState(perm === 'granted' ? 'granted' : perm === 'denied' ? 'denied' : 'default')
+      if (perm !== 'granted') return
+      const reg = await navigator.serviceWorker.ready
+      const { publicKey } = await api<{ publicKey: string }>('/api/push/key')
+      const existing = await reg.pushManager.getSubscription()
+      const sub = existing ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey })
+      const j = sub.toJSON()
+      await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify(j) })
+      void api('/api/push/test', { method: 'POST' }).catch(() => undefined)
+      toast({ title: t('push.enabled') })
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    }
+  }
   const [tipEur, setTipEur] = useState('')
+  // OPS-7 (v1.70.0): filter stanj v Naročila zavihku
+  const [orderFilter, setOrderFilter] = useState<'ALL' | 'OPEN' | 'SENT' | 'PREPARED'>('ALL')
   // Issue #1 triage ③: darilna kartica pri plačilu — eno plačilo + deli
   const [gcSel, setGcSel] = useState<GiftCardSelT | null>(null)
   const [gcQuery, setGcQuery] = useState('')
@@ -1273,6 +1296,12 @@ function DashboardInner() {
             </button>
             <ThemeToggle />
             <LanguageToggle />
+            {/* OPS-7 (v1.70.0): push obvestila — en klik za omogočitev (nova naročila → kuhinja, pripravljeno → natakar) */}
+            {pushState !== 'granted' && pushState !== 'unsupported' && (
+              <Button variant="ghost" size="icon" onClick={() => void enablePush()} aria-label={t('push.enable')} title={t('push.enable')}>
+                <Bell className="w-4 h-4" />
+              </Button>
+            )}
             <PaletteButton onClick={() => setPaletteOpen(true)} />
             <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label={t('header.commands')}>
               <Search className="w-4 h-4" />
@@ -1477,8 +1506,19 @@ function DashboardInner() {
           <TabsContent value="narocila">
             <Card>
               <CardHeader><CardTitle className="text-base">{t('orders.allActive')}</CardTitle></CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {viewOrders.map((o) => (
+              <CardContent>
+                {/* OPS-7 (v1.70.0): filtri stanj (Lightspeed/Square vzorec — hiter pregled vrste) */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {(['ALL', 'OPEN', 'SENT', 'PREPARED'] as const).map((f) => (
+                    <Button key={f} size="sm" variant={orderFilter === f ? 'default' : 'outline'}
+                      className={orderFilter === f ? 'h-7 text-xs bg-emerald-700 hover:bg-emerald-800 text-white' : 'h-7 text-xs'}
+                      onClick={() => setOrderFilter(f)}>
+                      {f === 'ALL' ? t('orders.filterAll') : stL(f)}
+                    </Button>
+                  ))}
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                {viewOrders.filter((o) => orderFilter === 'ALL' || o.status === orderFilter).map((o) => (
                   <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-semibold">{o.table?.name || o.type} · {o.guests} {t('orders.persons')}</p>
@@ -1523,6 +1563,7 @@ function DashboardInner() {
                   </div>
                 ))}
                 {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1685,7 +1726,13 @@ function DashboardInner() {
                               )}
                               {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
                               {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setItemStatus(it.id, 'READY')}>{t('status.PREPARED')}</Button>}
-                              {it.status === 'READY' && <Badge className={statusColors.READY}>{t('status.READY')}</Badge>}
+                              {it.status === 'READY' && (
+                                <div className="flex items-center gap-1.5">
+                                  <Badge className={statusColors.READY}>{t('status.READY')}</Badge>
+                                  {/* OPS-7 (v1.70.0): SERVED bump (Lightspeed vzorec — izloči iz vrste) */}
+                                  <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         )
