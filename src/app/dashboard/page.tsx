@@ -74,7 +74,7 @@ interface ErrLogT { id: string; employeeId?: string | null; action: string; enti
 interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
-interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null }
+interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
@@ -985,6 +985,48 @@ function DashboardInner() {
     && mi.name.toLowerCase().includes(saleSearch.trim().toLowerCase()))
   const saleTotal = Object.entries(saleCart).reduce((s, [id, qty]) => s + (menu.find((x) => x.id === id)?.price ?? 0) * qty, 0)
 
+  // OPS-4 v1.67.0 — tloris lokala (Mize): pogled + vlečenje miz (posX/posY v %)
+  const [tableView, setTableView] = useState<'grid' | 'plan'>('grid')
+  const [planPos, setPlanPos] = useState<Record<string, { x: number; y: number }>>({})
+  const dragIdRef = useRef<string | null>(null)
+  const draggedRef = useRef(false)
+  // tloris platno: seed/hramba posX/posY je v px na dizajn-platnu 440x380 (prgmta 40..400/40..340);
+  // v UI delamo z % in pretvorimo v obe smeri, da je vlečenje perzistentno v istih enotah.
+  const PLAN_W = 440
+  const PLAN_H = 380
+  const planPosOf = (tb: TableT): { x: number; y: number } => {
+    const clampPct = (v: number): number => Math.min(97, Math.max(3, v))
+    const cached = planPos[tb.id]
+    if (cached) return cached
+    if (tb.posX || tb.posY) return { x: clampPct((tb.posX ?? 0) / PLAN_W * 100), y: clampPct((tb.posY ?? 0) / PLAN_H * 100) }
+    // privzeto (novi mizi brez pozicije): cona = stolpec, miza znotraj cone = vrstica (5 vrst)
+    const zi = Math.max(0, [...new Set(viewTables.map((x) => x.zone))].sort().indexOf(tb.zone))
+    const zoneTables = viewTables.filter((x) => x.zone === tb.zone)
+    const idx = Math.max(0, zoneTables.findIndex((x) => x.id === tb.id))
+    return { x: clampPct(15 + (zi % 5) * 17), y: clampPct(16 + (idx % 5) * 18) }
+  }
+  const planPointerDown = (tb: TableT) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    dragIdRef.current = tb.id; draggedRef.current = false
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const planPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const id = dragIdRef.current
+    if (!id) return
+    draggedRef.current = true
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = Math.round(Math.min(96, Math.max(4, ((e.clientX - rect.left) / rect.width) * 100)))
+    const y = Math.round(Math.min(94, Math.max(6, ((e.clientY - rect.top) / rect.height) * 100)))
+    setPlanPos((p) => ({ ...p, [id]: { x, y } }))
+  }
+  const planPointerUp = () => {
+    const id = dragIdRef.current
+    dragIdRef.current = null
+    if (!id || !draggedRef.current) return
+    const pos = planPos[id]
+    if (!pos) return
+    void api(`/api/tables/${id}`, { method: 'PATCH', body: JSON.stringify({ posX: Math.round(pos.x / 100 * PLAN_W), posY: Math.round(pos.y / 100 * PLAN_H) }) }).catch(() => null)
+  }
+
   async function submitSale() {
     const items = Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
     if (items.length === 0) return
@@ -1144,6 +1186,40 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="mize" className="space-y-6">
+            {/* OPS-4 v1.67.0 — tloris lokala: vizualni prikaz miz + vlečenje (shema posX/posY) */}
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant={tableView === 'grid' ? 'default' : 'outline'} className={tableView === 'grid' ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setTableView('grid')}>{t('tables.gridView')}</Button>
+              <Button size="sm" variant={tableView === 'plan' ? 'default' : 'outline'} className={tableView === 'plan' ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setTableView('plan')}>{t('tables.planView')}</Button>
+              {tableView === 'plan' && <span className="text-xs text-stone-500">{t('tables.planHint')}</span>}
+            </div>
+            {tableView === 'plan' && (
+              <div
+                className="relative w-full rounded-xl border border-stone-200 bg-stone-100/70 overflow-hidden touch-none"
+                style={{ aspectRatio: '16 / 10' }}
+                onPointerMove={planPointerMove}
+                onPointerUp={planPointerUp}
+              >
+                {viewTables.map((tb) => {
+                  const pos = planPosOf(tb)
+                  return (
+                    <button
+                      key={tb.id}
+                      onPointerDown={planPointerDown(tb)}
+                      onClick={() => {
+                        if (draggedRef.current) { draggedRef.current = false; return }
+                        if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
+                        if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openPayment(o) }
+                      }}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-lg shadow px-2 py-1.5 text-[11px] font-bold cursor-grab active:cursor-grabbing ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
+                      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                      aria-label={tb.name}
+                    >
+                      {tb.name}{tb.activeOrder ? ` · ${fmtEUR(tb.activeOrder.total)}` : ''}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {zones.map((zone) => {
               const zt = viewTables.filter((t) => t.zone === zone)
               if (zt.length === 0) return null
@@ -2091,19 +2167,27 @@ function DashboardInner() {
                           })()}
                         </div>
                       )}
-                      <Button
-                        variant="outline"
-                        className="w-full min-h-10"
-                        onClick={() => {
-                          const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
-                          const due = r2v(bill.totalDue - redeemValue)
-                          const half = r2v(due / 2)
-                          setParts([{ type: payMethod === 'cash' ? 'cash' : payMethod, amount: half }, { type: 'cash', amount: r2v(due - half) }])
-                          if (payMethod === 'giftcard' && gcSel) setGcPartSel({ 0: gcSel })
-                        }}
-                      >
-                        {t('payment.split2')}
-                      </Button>
+                      {/* OPS-4 v1.67.0: razdeli enakomerno na N delov (gostje) — Toast "split evenly" */}
+                      <div className="flex gap-1.5">
+                        {[2, 3, 4, 5].map((n) => (
+                          <Button key={n} variant="outline" className="min-h-10 flex-1" onClick={() => {
+                            const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
+                            const due = r2v(bill.totalDue - redeemValue)
+                            const per = r2v(due / n)
+                            const arr: PayPart[] = []
+                            let left = due
+                            for (let i = 0; i < n; i++) {
+                              const amount = i === n - 1 ? r2v(left) : per
+                              arr.push({ type: i === 0 ? (payMethod === 'cash' ? 'cash' : payMethod) : 'cash', amount })
+                              left = r2v(left - amount)
+                            }
+                            setParts(arr)
+                            if (payMethod === 'giftcard' && gcSel) setGcPartSel({ 0: gcSel })
+                          }}>
+                            {n}×
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">

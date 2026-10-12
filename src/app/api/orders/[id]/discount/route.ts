@@ -13,6 +13,12 @@ import { auditChainFields } from '@/lib/audit-chain'
  * Zahteva apply_discounts. Znesek se shrani na Order.discount (kanonično polje); končni
  * izračun (vključno s Happy Hour) se vedno izvede ob plačilu prek billing.ts.
  */
+
+/** OPS-4 (v1.67.0): zgornja meja ročnega odstotka za ne-vodstvene vloge (matrica §4b — Toast "manager approval"). */
+export const DISCOUNT_APPROVAL_PERCENT = 15
+const isManagerialRole = (role?: string | null): boolean =>
+  ['MANAGER', 'ADMIN', 'OWNER', 'GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER'].includes(String(role ?? '').toUpperCase())
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'apply_discounts')
   if (isResponse(user)) return user
@@ -41,6 +47,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (d.validFrom && d.validFrom > now) return fail('Popust še ni veljaven.', 400)
     if (d.validTo && d.validTo < now) return fail('Popust je pretekel.', 400)
     if (d.maxUses != null && d.currentUses >= d.maxUses) return fail('Popust je dosegel omejitev uporabe.', 409)
+    // OPS-4: vnaprej definiran odstotni popust nad limitom = tudi odobritev vodje
+    if (d.type === 'percent' && num(d.amount) > DISCOUNT_APPROVAL_PERCENT && !isManagerialRole(user.role)) {
+      return fail(`Odstotek nad ${DISCOUNT_APPROVAL_PERCENT} % zahteva odobritev vodje.`, 403)
+    }
     const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
     amount = discountAmountOf(d, subtotal)
     discountName = d.name
@@ -60,6 +70,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!['percent', 'fixed'].includes(type)) return fail('Vrsta mora biti percent ali fixed.', 400)
     if (!(val > 0)) return fail('Znesek/odstotek mora biti večji od 0.', 400)
     if (type === 'percent' && val > 100) return fail('Odstotek ne sme presegati 100.', 400)
+    // OPS-4: ročni odstotek nad limitom sme samo vodstvo (natakar/sank do limita)
+    if (type === 'percent' && val > DISCOUNT_APPROVAL_PERCENT && !isManagerialRole(user.role)) {
+      return fail(`Odstotek nad ${DISCOUNT_APPROVAL_PERCENT} % zahteva odobritev vodje.`, 403)
+    }
     const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
     amount = type === 'percent' ? r2(Math.min((subtotal * val) / 100, subtotal)) : r2(Math.min(val, subtotal))
     discountName = String(body?.name || 'Ročni popust').trim().slice(0, 120)
