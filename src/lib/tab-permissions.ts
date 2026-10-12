@@ -25,6 +25,7 @@ export const TAB_PERM: Record<string, string | string[]> = {
   meni: 'menu.manage',
   rezervacije: 'reservations.manage',
   racuni: 'reports.view',
+  inzeniring: 'reports.view', // OPS-8 v1.71.0 — menu engineering (Kasavana-Smith kvadrant; GET /api/menu-engineering = reports.view)
   popusti: 'apply_discounts', // Task 59 — admin upravljanje popustov (backend requirePermission apply_discounts)
   integracije: 'settings.manage', // Task 60 — admin integracije (backend requirePermission settings.manage)
   zaloge: 'inventory.manage',

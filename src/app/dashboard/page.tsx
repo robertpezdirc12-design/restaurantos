@@ -44,6 +44,7 @@ import {
   Split,
   Bell,
   CalendarRange,
+  ChartScatter,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -62,7 +63,7 @@ import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type Ter
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1321,7 +1322,7 @@ function DashboardInner() {
             {([
               ['pregled', t('tabs.pregled'), LayoutDashboard], ['mize', t('tabs.mize'), Utensils], ['narocila', t('tabs.narocila'), ClipboardList],
               ['prodaja', t('tabs.prodaja'), Zap], ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
-              ['racuni', t('tabs.racuni'), ReceiptText], ['popusti', t('tabs.popusti'), Percent], ['integracije', t('tabs.integracije'), Plug], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
+              ['racuni', t('tabs.racuni'), ReceiptText], ['inzeniring', t('tabs.inzeniring'), ChartScatter], ['popusti', t('tabs.popusti'), Percent], ['integracije', t('tabs.integracije'), Plug], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
               ['delovnicas', t('tabs.delovnicas'), Timer],
               ['urnik', t('tabs.urnik'), CalendarRange],
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
@@ -1742,6 +1743,8 @@ function DashboardInner() {
                 )
               })}
             {viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
+            {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
+            <KdsStatsSection />
           </TabsContent>
 
           <TabsContent value="meni" className="space-y-4">
@@ -1869,6 +1872,11 @@ function DashboardInner() {
               </CardContent>
             </Card>
             <AccountingExportCard />
+          </TabsContent>
+
+          <TabsContent value="inzeniring" className="space-y-4">
+            {/* OPS-8 v1.71.0 — menu engineering (Kasavana-Smith kvadrant) */}
+            <MenuEngineeringTab />
           </TabsContent>
 
           <TabsContent value="zaloge">
