@@ -10,6 +10,7 @@ import { guardResource } from '@/lib/tenant'
 import { db } from '@/lib/db'
 import { nid, jstr, mapOrder, mapDeliveryInfo, mapDeliveryZone, ORDER_ACTIVE_DB, DELIVERY_STATUS_DB, deliveryStatusToDB } from '@/lib/map'
 import { maskPhone } from '@/lib/delivery'
+import { pushEvent } from '@/lib/push'
 import { auditChainFields } from '@/lib/audit-chain'
 export const dynamic = 'force-dynamic'
 
@@ -201,6 +202,17 @@ export async function PATCH(req: NextRequest) {
       }),
     },
   }).catch(() => null)
+
+  // OPS-9 val 3 (v1.76.0): DRIVER_ASSIGNED push (notification matrix aware) when a driver
+  // Employee is newly assigned or CHANGED on this delivery. Fire-and-forget — never blocks.
+  if (driverEmployee && driverEmployee.id !== tracking?.driverEmployeeId) {
+    void pushEvent('DRIVER_ASSIGNED', {
+      title: 'Voznik dodeljen',
+      body: `#${order.orderNumber ?? ''} — ${order.DeliveryInfo?.address || 'dostava'} · ${driverEmployee.name}`,
+      url: '/dashboard?tab=dostava',
+      tag: `driver-${order.DeliveryInfo!.id}`,
+    }, { employeeIds: [driverEmployee.id] })
+  }
 
   return ok({ ok: true, status })
 }

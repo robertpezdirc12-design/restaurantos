@@ -91,6 +91,8 @@ export interface MappedPlatformOrder {
   deliveryFee: number
   packagingFee: number
   note: string
+  /** OPS-9 val 3: provider ETA in minutes (tolerant pickup; undefined = not supplied). */
+  estimatedMinutes?: number
 }
 
 type Row = Record<string, unknown>
@@ -163,6 +165,7 @@ export async function mapGlovoPayload(body: Row): Promise<MappedPlatformOrder> {
     deliveryFee: n(order.delivery_fee ?? addr.delivery_fee, 0),
     packagingFee: n(order.packaging_fee, 0),
     note: `Glovo #${s(order.id ?? order.code)}${loc ? '' : ''}`,
+    estimatedMinutes: n(order.eta_minutes ?? order.estimated_minutes ?? order.delivery_time, 0) || undefined,
   }
 }
 
@@ -206,6 +209,7 @@ export async function mapWoltPayload(body: Row): Promise<MappedPlatformOrder> {
     deliveryFee: r2(n(order.delivery_fee, 0) / 100),
     packagingFee: 0,
     note: `Wolt #${s(order.id ?? order.reference)}`,
+    estimatedMinutes: n(order.eta_minutes ?? order.estimated_minutes ?? order.delivery_time, 0) || undefined,
   }
 }
 
@@ -218,6 +222,69 @@ export function validateMapped(m: MappedPlatformOrder): string | null {
       : 'Payload ne vsebuje artiklov.'
   }
   return null
+}
+
+/* ───── OPS-9 val 3 (v1.76.0) — Auto-accept konfiguracija (delivery-auto-accept) ───── */
+
+/** Integration row marker (name=..., type='other') holding the auto-accept config JSON. */
+export const DELIVERY_AUTO_ACCEPT_MARKER = 'delivery-auto-accept'
+
+/** Providers that can be auto-accepted (webhook /api/delivery/webhook/[provider] set). */
+export const DELIVERY_AUTO_ACCEPT_PROVIDERS = ['glovo', 'wolt'] as const
+
+export interface DeliveryAutoAcceptConfig {
+  enabled: boolean
+  providers: string[]
+}
+
+/**
+ * Pure resolver for the Integration config JSON (unit-tested):
+ *  - missing/garbage config → defaults (enabled = fallbackEnabled, all known providers);
+ *    fallbackEnabled defaults TRUE so existing setups keep today's behavior (platform
+ *    orders arrive confirmed) until a manager explicitly switches auto-accept off;
+ *  - enabled must be a boolean to deviate from the fallback;
+ *  - providers: filtered to known providers, lowercased, deduped; empty/invalid → default.
+ */
+export function resolveAutoAcceptConfig(raw: unknown, fallbackEnabled = true): DeliveryAutoAcceptConfig {
+  const defaultProviders: string[] = [...DELIVERY_AUTO_ACCEPT_PROVIDERS]
+  if (raw === null || raw === undefined || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { enabled: fallbackEnabled, providers: defaultProviders }
+  }
+  const o = raw as Record<string, unknown>
+  const enabled = typeof o.enabled === 'boolean' ? o.enabled : fallbackEnabled
+  let providers = defaultProviders
+  if (Array.isArray(o.providers)) {
+    const clean = [...new Set(
+      (o.providers as unknown[])
+        .filter((p): p is string => typeof p === 'string' && !!p.trim())
+        .map((p) => p.trim().toLowerCase())
+        .filter((p) => (DELIVERY_AUTO_ACCEPT_PROVIDERS as readonly string[]).includes(p)),
+    )]
+    if (clean.length > 0) providers = clean
+  }
+  return { enabled, providers }
+}
+
+/** Auto-accept decision for a concrete provider (case-insensitive; disabled → false). */
+export function autoAcceptsProvider(cfg: DeliveryAutoAcceptConfig, provider: string): boolean {
+  if (!cfg.enabled) return false
+  return cfg.providers.includes(String(provider || '').trim().toLowerCase())
+}
+
+/** Tolerant ETA pickup: positive numeric minutes (or numeric string) → Date | null. */
+export function estimatedTimeFromMinutes(raw: unknown, now: Date = new Date()): Date | null {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0 || n > 24 * 60) return null
+  return new Date(now.getTime() + Math.round(n) * 60000)
+}
+
+/** DB loader for the auto-accept config (same dynamic-import pattern as getPlatformSecret). */
+export async function getDeliveryAutoAcceptConfig(): Promise<DeliveryAutoAcceptConfig> {
+  const { db } = await import('@/lib/db')
+  const { jparse } = await import('@/lib/map')
+  const row = await db.integration.findFirst({ where: { name: DELIVERY_AUTO_ACCEPT_MARKER, type: 'other' } })
+  if (!row) return resolveAutoAcceptConfig(null) // defaults: enabled=true, all providers (backward compatible)
+  return resolveAutoAcceptConfig(jparse<unknown>(row.config, null))
 }
 
 /* ───── Idempotencija webhookov (Order.idempotencyKey) ───── */

@@ -25,7 +25,8 @@ function guestKeys(dict: Record<string, string>): string[] {
 
 // Skupni izrazi, ki so v SL in HR vsebinsko identični (dokumentirane izjeme
 // za zahtevo »hr se razlikuje od sl«): 'Hvala!', 'Dodaj', 'Aktiviraj kiosk',
-// 'Hrana', 'Košarica', 'Tvoja košarica', 'Alergeni: …', '{label}: {n} od 5'
+// 'Hrana', 'Košarica', 'Tvoja košarica', 'Alergeni: …', 'Alergeni' (OPS-9 v1.76.0
+// — naslov filtra je v obeh jezikih naravno enak), '{label}: {n} od 5'
 // ter display izrazi, ki so v obeh jezikih naravno enaki (49).
 const SHARED_EQUAL = new Set([
   'guest.common.thanks',
@@ -33,6 +34,7 @@ const SHARED_EQUAL = new Set([
   'guest.common.status',
   'guest.kiosk.activate',
   'guest.menu.allergens',
+  'guest.menu.allergenFilter',
   'guest.cart.button',
   'guest.cart.title',
   'guest.feedback.food',

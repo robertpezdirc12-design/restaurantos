@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, isCentralRole } from '@/lib/api'
-import { prepMinutes, stationOf, kdsItemStats, kdsHeatmap, kdsTimeSplit, kdsDayKpi, type KdsSample } from '@/lib/kds-stats'
+import { prepMinutes, stationOf, kdsItemStats, kdsHeatmap, kdsTimeSplit, kdsDayKpi, kdsDelayCounts, type KdsSample } from '@/lib/kds-stats'
+import { KDS_DELAY_ACTION } from '@/lib/kds-delays'
 
 const ALLOWED_DAYS = [7, 14, 30] as const
 
@@ -73,6 +74,17 @@ export async function GET(req: NextRequest) {
     ...kdsTimeSplit(samples),
   }
 
+  // OPS-9 val 3 (v1.76.0): delay reasons from AuditLog KDS_DELAY rows in the period
+  const delayRows = await db.auditLog.findMany({
+    where: {
+      action: KDS_DELAY_ACTION,
+      timestamp: { gte: since },
+      ...(isCentralRole(user) ? {} : { locationId: user.loc || '__no_location__' }),
+    },
+    select: { details: true },
+    take: 5000,
+  })
+
   return ok({
     days,
     generatedAt: new Date().toISOString(),
@@ -86,5 +98,6 @@ export async function GET(req: NextRequest) {
     },
     items: kdsItemStats(samples),
     heatmap: kdsHeatmap(samples),
+    delays: kdsDelayCounts(delayRows),
   })
 }

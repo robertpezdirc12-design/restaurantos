@@ -20,6 +20,7 @@ import { createOrderCore, OrderError } from '@/lib/ops'
 import {
   rateLimit, verifyWebhookSignature, getPlatformSecret, maskPhone,
   mapGlovoPayload, mapWoltPayload, validateMapped, webhookIdempotencyKey,
+  getDeliveryAutoAcceptConfig, autoAcceptsProvider, estimatedTimeFromMinutes,
 } from '@/lib/delivery'
 import { auditChainFields } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
@@ -169,6 +170,14 @@ export async function POST(
       return fail('Sistem ni pripravljen (ni zaposlenih).', 503)
     }
 
+    // OPS-9 val 3 (v1.76.0): auto-accept — konfiguracija (Integration 'delivery-auto-accept')
+    // se prebere PO preverjanju podpisa. Vklopljen ponudnik → naročilo vstopi kot 'confirmed'
+    // (isti prehod pending→confirmed, ki ga sicer klikne osebstvo); izklopljen → ostane
+    // 'pending' za ročno potrditev. Brez konfiguracije = defaults (enabled, vsi ponudniki)
+    // → nazajkompatibilno z dosedanjim obnašanjem ('confirmed' ob prihodu).
+    const autoCfg = await getDeliveryAutoAcceptConfig()
+    const autoAccept = autoAcceptsProvider(autoCfg, p)
+
     const { order, replayed } = await createOrderCore({
       employeeId,
       // Issue #4 D6: vezava na lokacijo integracije (ce je nastavljena) — ne zaupaj
@@ -187,7 +196,9 @@ export async function POST(
         deliveryInstructions: mapped.instructions,
         deliveryFee: num(mapped.deliveryFee),
         packagingFee: num(mapped.packagingFee),
-        status: 'confirmed',
+        status: autoAccept ? 'confirmed' : 'pending',
+        // OPS-9 val 3: provider ETA (če ga platforma pošlje) → DeliveryInfo.estimatedTime
+        ...(estimatedTimeFromMinutes(mapped.estimatedMinutes) ? { estimatedTime: estimatedTimeFromMinutes(mapped.estimatedMinutes) as Date } : {}),
       },
     }, { allowFirstLocationFallback: true })
 
@@ -201,6 +212,13 @@ export async function POST(
       provider: p, platformOrderId: mapped.platformOrderId, orderNumber: order.orderNumber,
       total: order.total, phone: maskPhone(mapped.recipientPhone), items: mapped.items.length,
     })
+    // OPS-9 val 3: audit note for the automatic acceptance (pending → confirmed via config)
+    if (autoAccept) {
+      await writeAudit('system', 'DELIVERY_AUTO_ACCEPT', 'Order', order.id, {
+        provider: p, platformOrderId: mapped.platformOrderId, orderNumber: order.orderNumber,
+        note: 'auto-accepted at webhook (delivery-auto-accept config)',
+      })
+    }
     // OPS-8 val 2 (v1.72.0): push to waiters/management on new delivery-platform order
     // (via notification matrix; fire-and-forget — webhook stays a critical path)
     void pushEvent('DELIVERY_NEW', {

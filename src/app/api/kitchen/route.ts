@@ -4,9 +4,11 @@ import type { OrderItemStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
+import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { pushEvent, pushToEmployees } from '@/lib/push'
+import { auditChainFields } from '@/lib/audit-chain'
+import { KDS_DELAY_ACTION, computePrepMin, isValidDelayReason, kdsDelayDetails, shouldAskDelayReason } from '@/lib/kds-delays'
 
 const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
@@ -47,6 +49,8 @@ export async function PATCH(req: NextRequest) {
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body?.itemId || !['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(body.status)) return fail('itemId in veljaven status sta obvezna.')
+  // OPS-9 val 3: optional delay reason sent by the KDS when a LATE item (>10 min) is bumped
+  const delayReason = isValidDelayReason(body.delayReason) ? body.delayReason : null
   const newDbStatus = itemStatusToDB(body.status)
   const target = await db.orderItem.findUnique({ where: { id: body.itemId }, include: { Order: { select: { locationId: true } } } })
   if (!target) return fail('Artikel naročila ne obstaja.', 404)
@@ -56,6 +60,45 @@ export async function PATCH(req: NextRequest) {
     where: { id: body.itemId },
     data: { status: newDbStatus as Prisma.OrderItemUpdateInput['status'], ...(newDbStatus === 'ready' ? { readyAt: new Date(), readyById: user.sub, readyByName: user.name } : {}) },
   })
+  // OPS-9 val 3 (v1.76.0) — KDS_DELAY audit when a LATE item (prep > 10 min) is bumped to ready
+  // with a reason from the catalog. NON-BLOCKING: any failure here must never fail the bump.
+  if (newDbStatus === 'ready' && delayReason) {
+    try {
+      const prepMin = computePrepMin(target.firedAt, new Date())
+      if (shouldAskDelayReason(prepMin)) {
+        const __aId = nid()
+        const details = kdsDelayDetails({
+          orderItemId: item.id,
+          menuItemName: target.menuItemName || item.menuItemName || '—',
+          reason: delayReason,
+          prepMin: prepMin as number,
+          orderId: item.orderId,
+        })
+        const __chain = await auditChainFields(db, {
+          id: __aId,
+          action: KDS_DELAY_ACTION,
+          entityType: 'OrderItem',
+          entityId: item.id,
+          details,
+          locationId: target.Order?.locationId ?? null,
+        })
+        await db.auditLog.create({
+          data: {
+            ...__chain,
+            id: __aId,
+            userId: user.sub,
+            action: KDS_DELAY_ACTION,
+            entityType: 'OrderItem',
+            entityId: item.id,
+            details: jstr(details),
+            locationId: target.Order?.locationId ?? null,
+          },
+        })
+      }
+    } catch {
+      // never fail the bump because of the delay-reason audit
+    }
+  }
   const remaining = await db.orderItem.count({ where: { orderId: item.orderId, status: { in: ['pending', 'fired', 'preparing'] } } })
   if (remaining === 0) {
     await db.order.update({ where: { id: item.orderId }, data: { status: 'prepared' } })

@@ -48,7 +48,7 @@ export async function resolveQrToken(token: string) {
 export async function loadPublicMenu(locationId: string) {
   const menus = await db.menu.findMany({ where: { locationId, isActive: true }, select: { id: true } })
   const menuIds = menus.map((m) => m.id)
-  const [categories, items, groups, modifiers] = await Promise.all([
+  const [categories, items, groups, modifiers, settings] = await Promise.all([
     db.category.findMany({ where: { menuId: { in: menuIds } }, orderBy: { sortOrder: 'asc' } }),
     db.menuItem.findMany({
       where: { Category: { menuId: { in: menuIds } } },
@@ -57,6 +57,8 @@ export async function loadPublicMenu(locationId: string) {
     }),
     db.modifierGroup.findMany({ where: { locationId }, orderBy: { sortOrder: 'asc' } }),
     db.modifier.findMany({ where: { isAvailable: true }, orderBy: { sortOrder: 'asc' } }),
+    // OPS-9 val 3: gate for the QR-menu allergen filter (RestaurantSettings singleton)
+    db.restaurantSettings.findFirst({ select: { allergenFilterEnabled: true } }),
   ])
   const links = items.length
     ? await db.menuItemModifierGroup.findMany({ where: { menuItemId: { in: items.map((i) => i.id) } } })
@@ -76,6 +78,9 @@ export async function loadPublicMenu(locationId: string) {
   }
   return {
     categories: categories.map((c) => ({ id: c.id, name: c.name, sortOrder: c.sortOrder })),
+    // OPS-9 val 3 (v1.76.0): allergen filter gate — default true (schema default), only an
+    // explicit false in RestaurantSettings hides the chips on the guest page
+    allergenFilterEnabled: settings?.allergenFilterEnabled !== false,
     items: items.map((i) => {
       const groupIds = (linksByItem.get(i.id) || [])
         .map((gid) => groupById.get(gid))

@@ -1749,3 +1749,19 @@ Work Log:
 
 Stage Summary:
 - v1.75.0: nabava dobila e-račune (eSLOG→AP z avtomatskim matchem dobavitelja), EU/VIES preverjanje DDV za tuje dobavitelje (hr relevantno) in ponavljajoča naročila (draft PO per urnik, lazy evaluation ob odprtju Nabave). Zero DDL. Ostalo: eSLOG attachment/PDF, obvestilo ob novi AP, auto-send draftov → naslednja faza.
+
+---
+Task ID: OPS-9-c
+Agent: full-stack-developer (+ orchestrator zaključek po deadline prekinitvi)
+Task: Val 3 (v1.76.0) — KDS delay-reasoni + dostava dopolnitve + QR alergeni
+
+Work Log:
+- KDS delay-reasoni: src/lib/kds-delays.ts (katalog 5 razlogov + prag >10 min + THRESHOLD const); /api/kitchen PATCH sprejme delayReason → ob bumpu pozne postavke (prepMin > 10, firedAt obstaja) zapiše audit KDS_DELAY {orderItemId, menuItemName, reason, prepMin, orderId} (non-blocking try/catch); UI KDS: klik "Pripravljeno" na >10 min postavki odpre dialog z 5 razlogi + "Brez razloga" (pod 10 min direkten bump); /api/kitchen/stats razširen z delays [{reason,count}] iz audita + CSV razširjen.
+- Dostava: nov push tip DRIVER_ASSIGNED v PUSH_EVENT_TYPES (matrika v Nastavitvah ga prikaže avtomatsko); PATCH /api/delivery ob dodelitvi driverEmployeeId → pushEvent(DRIVER_ASSIGNED, employeeIds [voznik]); auto-accept: Integration 'delivery-auto-accept' {enabled, providers[]} + /api/delivery/auto-accept GET/PUT (delivery.manage, audit DELIVERY_AUTO_ACCEPT) + webhook po podpisu: pending → confirmed takoj če provider vključen; UI Dostava: kartica "Samodejna potrditev" (Switch + Glovo/Wolt chipi); ETA prikaz iz obstoječih polj.
+- QR /m/[token]: src/lib/allergens.ts (parseAllergens tolerant: string CSV/JSON array/separators; allergenUnion; itemContainsAllergen; exclusion filter); filter chips nad seznamom (gate allergenFilterEnabled !== false), multi-select, izbrani alergen SKRIJE artikle ki ga vsebujejo; oznake alergenov na artiklih; /kiosk item detail oznake.
+- i18n kds-delay.* + delivery.autoAccept + guest.menu.allergenFilter + kiosk oznake (SL/HR pariteta). Version → 1.76.0.
+- Orchestrator zaključek po deadline: validacija tsc 0 / lint 0 / bun test 892/892 (+27 novih čistih testov: kds-delays prag/katalog, auto-accept resolucija, allergen parse/union/exclusion); brskalniški dokazi: QR /m/[token] — Alergeni sekcija s chipi (gluten/laktoza/jajca), klik gluten → Burek s sirom SKRIT (0 najdbov), ponovni klik → viden; Dostava — "Voznik: Mojca Vodja" (dropdown zaposlenih deluje) + Switch "Samodejno potrdi naročila" checked + Glovo/Wolt chipi; 0 konzolnih napak.
+- LEKCIJA: agent-browser find --name deli IME KLIK na prvi element čigar dostopno ime VSEBUJE iskani niz (artikel "Burek ... gluten" je zadet kot chip "gluten") — uporabi eval z točnim textContent matchem za čipe.
+
+Stage Summary:
+- v1.76.0-kandidat: KDS dobil vzroke zamikov (audit + statistika + CSV), dostava push vozniku + auto-accept konfiguracija, QR meni alergeni filter (živo dokazan). Zero DDL. OPS-9 (3 valovi) POPOLN: recepture BOM + eSLOG + VIES + recurring PO + KDS delay + dostava + alergeni.

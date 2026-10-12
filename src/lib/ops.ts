@@ -37,6 +37,8 @@ export interface CreateOrderDeliveryInput {
   deliveryFee?: number
   packagingFee?: number
   status?: string
+  /** OPS-9 val 3 (v1.76.0): provider ETA (DeliveryInfo.estimatedTime, DateTime?) — opcionalno. */
+  estimatedTime?: Date | null
 }
 
 export interface CreateOrderInput {
@@ -194,6 +196,7 @@ export async function createOrderCore(
               deliveryFee: deliveryFee,
               packagingFee: packagingFee,
               status: input.delivery.status || 'pending',
+              ...(input.delivery.estimatedTime ? { estimatedTime: input.delivery.estimatedTime } : {}),
             },
           })
           deliveryInfoId = di.id

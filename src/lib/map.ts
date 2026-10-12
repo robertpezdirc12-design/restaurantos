@@ -155,6 +155,8 @@ export function mapDeliveryInfo(d: Row, tracking?: Row | null) {
     packagingFee: num(d.packagingFee),
     promisedTime: (d.promisedTime as string) || null,
     actualTime: (d.actualTime as string) || null,
+    // OPS-9 val 3 (v1.76.0): provider ETA (webhook estimatedTime) — shown in the delivery cards
+    estimatedTime: (d.estimatedTime as string) || null,
     courierName: (d.courierName as string) || '',
     courierPhone: (d.courierPhone as string) || '',
     driver: tracking
@@ -269,6 +271,8 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
     voided: it.voided === true,
     // OPS-7 coursing (v1.68.0): tečaj postavke (Course) — za urejevalnik naročila
     courseId: (it.courseId as string | null | undefined) ?? null,
+    // OPS-9 val 3 (v1.76.0): firedAt for the KDS per-item live timer / delay-reason dialog
+    firedAt: (it.firedAt as string | null | undefined) ?? null,
   }
 }
 

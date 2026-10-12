@@ -18,11 +18,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey } from '@/components/guest-i18n'
+import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergens'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
 interface MenuItem { id: string; name: string; description: string; price: number; vatRate: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[] }
-interface MenuPayload { restaurant: string; tableNumber: number | null; categories: { id: string; name: string }[]; items: MenuItem[] }
+interface MenuPayload { restaurant: string; tableNumber: number | null; categories: { id: string; name: string }[]; items: MenuItem[]; allergenFilterEnabled?: boolean }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; modifiers: ModifierOption[] }
 
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
@@ -53,6 +54,10 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState<{ orderNumber: number; status: string; total: number } | null>(null)
   const [online, setOnline] = useState(true)
+
+  // OPS-9 val 3 (v1.76.0): allergen filter — selected chips EXCLUDE items containing them
+  const [selAllergens, setSelAllergens] = useState<string[]>([])
+  const allergenFilterOn = menu?.allergenFilterEnabled !== false
 
   // Mnenje gosta (P1 audit točka 6) — vnos končno ima kam (POST /api/public/feedback)
   const [fbOpen, setFbOpen] = useState(false)
@@ -134,6 +139,24 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     }
     return m
   }, [menu])
+
+  // OPS-9 val 3: chip union across ALL menu items (stable across category switches)
+  const allergenChips = useMemo(
+    () => (allergenFilterOn ? allergenUnion(menu?.items || [], (it) => it.allergens) : []),
+    [menu, allergenFilterOn],
+  )
+  const visibleItems = useMemo(
+    () => filterByAllergens(itemsByCat.get(activeCat) || [], (it) => it.allergens, selAllergens),
+    [itemsByCat, activeCat, selAllergens],
+  )
+
+  const toggleAllergen = (label: string) => {
+    setSelAllergens((prev) => {
+      const key = label.toLowerCase()
+      const has = prev.some((x) => x.toLowerCase() === key)
+      return has ? prev.filter((x) => x.toLowerCase() !== key) : [...prev, label]
+    })
+  }
 
   const cartCount = cart.reduce((s, l) => s + l.qty, 0)
   const lineTotal = (l: CartLine) => (l.item.price + l.modifiers.reduce((s, m) => s + m.price, 0)) * l.qty
@@ -381,7 +404,36 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
       </nav>
 
       <main className="max-w-lg mx-auto px-4 py-4 space-y-3">
-        {(itemsByCat.get(activeCat) || []).map((it) => (
+        {/* OPS-9 val 3 (v1.76.0): allergen filter chips (gate: RestaurantSettings.allergenFilterEnabled)
+            Selected chip = HIDE items containing that allergen (client-side exclusion). */}
+        {allergenFilterOn && allergenChips.length > 0 && (
+          <section aria-label={t('guest.menu.allergenFilter')} className="rounded-2xl bg-white border border-stone-200 p-3">
+            <p className="text-xs font-semibold text-stone-500 mb-2">{t('guest.menu.allergenFilter')}</p>
+            <div className="flex flex-wrap gap-2">
+              {allergenChips.map((label) => {
+                const on = selAllergens.some((x) => x.toLowerCase() === label.toLowerCase())
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleAllergen(label)}
+                    className={`min-h-11 rounded-full border px-3.5 text-sm font-medium transition-colors ${on ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+              {selAllergens.length > 0 && (
+                <button type="button" onClick={() => setSelAllergens([])} className="min-h-11 rounded-full px-3 text-sm text-stone-500 underline underline-offset-2">
+                  {t('guest.menu.allergenClear')}
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-stone-400">{t('guest.menu.allergenFilterHint')}</p>
+          </section>
+        )}
+        {visibleItems.map((it) => (
           <button
             key={it.id}
             onClick={() => it.isAvailable && openDetail(it)}
@@ -401,6 +453,9 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         ))}
         {(itemsByCat.get(activeCat) || []).length === 0 && (
           <p className="text-center text-stone-400 text-sm py-10">{t('guest.menu.emptyCategory')}</p>
+        )}
+        {allergenFilterOn && selAllergens.length > 0 && (itemsByCat.get(activeCat) || []).length > 0 && visibleItems.length === 0 && (
+          <p className="text-center text-stone-400 text-sm py-10">{t('guest.menu.allergenNoneLeft')}</p>
         )}
         <p className="text-center text-[11px] text-stone-400 pt-4">
           {t('guest.menu.vatNote')}
@@ -475,6 +530,15 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
               <DialogHeader>
                 <DialogTitle>{detail.name}</DialogTitle>
                 {detail.description && <p className="text-sm text-stone-500">{detail.description}</p>}
+                {/* OPS-9 val 3: allergen badges in the item detail */}
+                {parseAllergens(detail.allergens).length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-xs font-medium text-stone-500">{t('guest.menu.allergenFilter')}:</span>
+                    {parseAllergens(detail.allergens).map((a) => (
+                      <Badge key={a} variant="outline" className="text-[11px] border-stone-300 text-stone-600">{a}</Badge>
+                    ))}
+                  </div>
+                )}
               </DialogHeader>
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (

@@ -19,7 +19,7 @@ import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
-interface MenuItem { id: string; name: string; description: string; price: number; isAvailable: boolean; categoryId: string; modifierGroups: ModifierGroup[] }
+interface MenuItem { id: string; name: string; description: string; price: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[] }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; modifiers: ModifierOption[] }
 
 const TOKEN_KEY = 'ro_kiosk_device_token'
@@ -357,7 +357,11 @@ function KioskInner() {
         <DialogContent className="max-w-lg bg-stone-800 border-stone-700 text-stone-100 max-h-[85vh] overflow-y-auto">
           {detail && (
             <>
-              <DialogHeader><DialogTitle className="text-2xl">{detail.name}</DialogTitle></DialogHeader>
+              {/* OPS-9 val 3: allergens in the kiosk item detail (same format as the QR menu) */}
+              <DialogHeader>
+                <DialogTitle className="text-2xl">{detail.name}</DialogTitle>
+                {detail.allergens && <p className="text-sm text-stone-400">{t('guest.menu.allergens', { allergens: detail.allergens })}</p>}
+              </DialogHeader>
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (
                   <div key={g.id}>

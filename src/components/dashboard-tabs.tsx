@@ -21,7 +21,7 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
@@ -1789,6 +1789,8 @@ export interface DeliveryInfoT {
   status: string
   deliveryFee: number
   packagingFee: number
+  /** OPS-9 val 3 (v1.76.0): provider ETA (DeliveryInfo.estimatedTime) — formatted in the cards */
+  estimatedTime: string | null
   courierName: string
   courierPhone: string
   /** OPS-8 val 3 (v1.73.0): driver may be an Employee (id + resolved name) */
@@ -1844,6 +1846,9 @@ const NEXT_STATUS: Record<string, { to: string; label: string } | null> = {
 }
 const platformOf = (note: string | null): 'GLOVO' | 'WOLT' | 'DOMAČA' =>
   note?.includes('Glovo') ? 'GLOVO' : note?.includes('Wolt') ? 'WOLT' : 'DOMAČA'
+
+/** OPS-9 val 3: provider ETA → "HH:MM" (null-safe; only rendered when the field is set). */
+const fmtEta = (iso: string): string => new Date(iso).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
 
 export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
   orders: DeliveryOrderT[]
@@ -1934,6 +1939,10 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                   <p className="text-sm"><span className="text-stone-500">{t('dost.address')}</span> {[d.address, d.postCode, d.city].filter(Boolean).join(', ') || '—'}</p>
                   {d.instructions && <p className="text-xs text-amber-700">{t('dost.note', { note: d.instructions })}</p>}
                   <p className="text-xs text-stone-500">{t('dost.itemsCount', { n: o.items.length })} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span> ({t('dost.deliveryFeeShort', { fee: fmtEUR(d.deliveryFee) })})</p>
+                  {/* OPS-9 val 3: provider ETA — shown while the delivery is not yet completed */}
+                  {d.estimatedTime && !['DELIVERED', 'CANCELLED'].includes(d.status) && (
+                    <p className="text-xs font-medium text-stone-700">🚚 {t('dost.eta', { time: fmtEta(d.estimatedTime) })}</p>
+                  )}
                   {o.status === 'PAID' && <Badge className="bg-emerald-600 text-white">{t('status.PAID')}</Badge>}
                   {o.fursEor && <p className="text-[11px] text-stone-400">FURS EOR: {o.fursEor}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -1971,6 +1980,10 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                       {(d?.driver?.name || d?.driver?.employeeName) && (
                         <p className="text-xs text-stone-400 mt-0.5 truncate">{t('dost.driver', { name: d.driver.employeeName || d.driver.name })}</p>
                       )}
+                      {/* OPS-9 val 3: ETA also in the history list (delivered orders) */}
+                      {d?.estimatedTime && (
+                        <p className="text-xs text-stone-400 mt-0.5">{t('dost.eta', { time: fmtEta(d.estimatedTime) })}</p>
+                      )}
                     </div>
                   )
                 })}
@@ -1981,6 +1994,8 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
+        {/* OPS-9 val 3 (v1.76.0) — Samodejna potrditev (auto-accept) prek webhookov */}
+        <AutoAcceptCard />
         {/* Cone */}
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -2110,6 +2125,106 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
     </div>
   )
 }
+
+/* ─────────────────────────── OPS-9 val 3 — AUTO-ACCEPT KARTICA ─────────────────────────── */
+
+/**
+ * OPS-9 val 3 (v1.76.0) — Auto-accept card (Dostava tab): Switch + provider chips.
+ * Config lives in Integration 'delivery-auto-accept' (type='other') via
+ * GET/PUT /api/delivery/auto-accept (delivery.manage). When enabled for a provider,
+ * platform webhook orders arrive directly as 'confirmed' (audited DELIVERY_AUTO_ACCEPT);
+ * when disabled they stay 'pending' for manual confirmation.
+ */
+function AutoAcceptCard() {
+  const { t } = useI18n()
+  const [enabled, setEnabled] = useState(true)
+  const [providers, setProviders] = useState<string[]>(['glovo', 'wolt'])
+  const [options, setOptions] = useState<string[]>(['glovo', 'wolt'])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    api<{ enabled: boolean; providers: string[]; providerOptions: string[] }>('/api/delivery/auto-accept')
+      .then((d) => {
+        if (!alive) return
+        setEnabled(d.enabled)
+        setProviders(d.providers || [])
+        setOptions(d.providerOptions || ['glovo', 'wolt'])
+      })
+      .catch(() => { if (alive) setNotice(t('notif.loadError')) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const save = async (nextEnabled: boolean, nextProviders: string[]) => {
+    setBusy(true); setNotice('')
+    try {
+      const res = await api<{ enabled: boolean; providers: string[] }>('/api/delivery/auto-accept', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled: nextEnabled, providers: nextProviders }),
+      })
+      setEnabled(res.enabled); setProviders(res.providers)
+      setNotice(t('notif.saved'))
+    } catch (e) {
+      setNotice(`${t('notif.error')} ${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  const toggleProvider = (p: string) => {
+    const next = providers.includes(p) ? providers.filter((x) => x !== p) : [...providers, p]
+    setProviders(next)
+    void save(enabled, next)
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><Zap className="w-4 h-4" /> {t('dost.autoAccept.title')}</CardTitle>
+        <CardDescription>{t('dost.autoAccept.desc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('notif.loading')}</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="auto-accept-switch" className="text-sm">{t('dost.autoAccept.enable')}</Label>
+              <Switch
+                id="auto-accept-switch"
+                checked={enabled}
+                disabled={busy}
+                onCheckedChange={(v) => { setEnabled(v); void save(v, providers) }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {options.map((p) => {
+                const on = providers.includes(p)
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={busy || !enabled}
+                    aria-pressed={on}
+                    className={`min-h-11 rounded-full border px-4 text-sm font-medium capitalize transition-colors disabled:opacity-40 ${on ? 'border-emerald-700 bg-emerald-50 text-emerald-800' : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300'}`}
+                    onClick={() => toggleProvider(p)}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-stone-500">{t('dost.autoAccept.hint')}</p>
+          </>
+        )}
+        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith(t('notif.error')) || notice === t('notif.loadError') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** X/Z report helpers (OPS-8 val 3) — kept below for module cohesion. */
 
 /* ─────────────────────────── RAČUNOVODSKI IZVOZ ─────────────────────────── */
 
@@ -7387,6 +7502,7 @@ interface KdsStatsResp {
   kpi: { todayAvgPrep: number; todayCount: number; onTimePct: number; okPct: number; warnPct: number; latePct: number }
   items: KdsStatItem[]
   heatmap: { hour: number; half: number; avg: number; count: number }[]
+  delays: { reason: string; count: number }[]
 }
 
 function kdsHeatClass(avg: number, count: number): string {
@@ -7438,6 +7554,11 @@ export function KdsStatsSection() {
       [t('kds.stats.heatmap')],
       ['ura', 'pol', t('kds.stats.thAvg') + ' (min)', t('kds.stats.thCount')],
       ...data.heatmap.map((c) => [c.hour, c.half === 0 ? '00' : '30', c.avg, c.count]),
+      // OPS-9 val 3 (v1.76.0): delay reasons section (AuditLog KDS_DELAY aggregation)
+      [],
+      [t('kds.delay.title')],
+      [t('kds.delay.colReason'), t('kds.stats.thCount')],
+      ...data.delays.map((dl) => [t(`kds.delay.${dl.reason}`), dl.count]),
     ]
     downloadCSV(`kds-statistika-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.csv`, rows)
   }
@@ -7584,6 +7705,28 @@ export function KdsStatsSection() {
                 </table>
               </div>
             )}
+
+            {/* OPS-9 val 3 (v1.76.0): delay reasons (AuditLog KDS_DELAY) — catalog table + counts */}
+            {data && data.delays.length > 0 && (
+              <div className="max-h-96 overflow-y-auto rounded-lg border border-stone-200">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">{t('kds.delay.colReason')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('kds.stats.thCount')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.delays.map((dl) => (
+                      <tr key={dl.reason} className="border-t border-stone-100 hover:bg-stone-50/60">
+                        <td className="px-3 py-2 font-medium">{t(`kds.delay.${dl.reason}`)}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{dl.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>
@@ -7676,7 +7819,7 @@ export function DursCheckButton({ query, onName, onIban, compact = false }: { qu
 /* ─────────────────── OPS-8 val 2 — notification matrix (RoxPos pattern) ─────────────────── */
 
 const NOTIF_EVENTS = [
-  'ORDER_NEW', 'ORDER_READY', 'ORDER_FIRE', 'DELIVERY_NEW', 'RESERVATION_NEW',
+  'ORDER_NEW', 'ORDER_READY', 'ORDER_FIRE', 'DELIVERY_NEW', 'DRIVER_ASSIGNED', 'RESERVATION_NEW',
   'LOW_STOCK', 'PO_APPROVED', 'PO_RECEIVED', 'TIME_OFF_STATUS', 'RECEIPT_FAILED', 'Z_CLOSED',
 ] as const
 

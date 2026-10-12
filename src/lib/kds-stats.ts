@@ -9,6 +9,8 @@
  * <= 5 min ok, 5-10 min warning, > 10 min late. onTimePct = share <= 10 min.
  */
 
+import { KDS_DELAY_REASONS, type KdsDelayReason } from '@/lib/kds-delays'
+
 export interface KdsSample {
   /** menu item display name (OrderItem.menuItemName) */
   name: string
@@ -131,4 +133,37 @@ export function kdsDayKpi(samples: KdsSample[], ref: Date): { avg: number; count
   })
   if (same.length === 0) return { avg: 0, count: 0 }
   return { avg: r1(same.reduce((s, v) => s + v.prepMin, 0) / same.length), count: same.length }
+}
+
+/* ───── OPS-9 val 3 (v1.76.0) — delay reasons (AuditLog KDS_DELAY aggregation) ───── */
+
+export interface KdsDelayCount {
+  reason: KdsDelayReason
+  count: number
+}
+
+/**
+ * Aggregate AuditLog KDS_DELAY rows (details JSON with a `reason` field) into
+ * { reason, count }[] over the fixed catalog, sorted by count desc then reason.
+ * Unknown / missing / unparseable reasons are skipped (catalog-only report).
+ */
+export function kdsDelayCounts(rows: { details?: string | null }[]): KdsDelayCount[] {
+  const counts = new Map<KdsDelayReason, number>()
+  for (const r of rows) {
+    let reason = ''
+    try {
+      const parsed: unknown = r.details ? JSON.parse(r.details) : null
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        reason = String((parsed as Record<string, unknown>).reason ?? '')
+      }
+    } catch {
+      continue
+    }
+    if ((KDS_DELAY_REASONS as readonly string[]).includes(reason)) {
+      counts.set(reason as KdsDelayReason, (counts.get(reason as KdsDelayReason) || 0) + 1)
+    }
+  }
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
 }

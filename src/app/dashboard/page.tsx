@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
+import { KDS_DELAY_REASONS } from '@/lib/kds-delays'
 import { tabHasPerm } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -82,7 +83,7 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
 interface CategoryT { id: string; name: string }
@@ -476,13 +477,13 @@ function DashboardInner() {
     } finally { setSending(false) }
   }
 
-  async function setItemStatus(itemId: string, status: string) {
+  async function setItemStatus(itemId: string, status: string, delayReason?: string) {
     try {
-      await api('/api/kitchen', { method: 'PATCH', body: JSON.stringify({ itemId, status }) })
+      await api('/api/kitchen', { method: 'PATCH', body: JSON.stringify({ itemId, status, ...(delayReason ? { delayReason } : {}) }) })
       await load()
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('kitchen.status', { itemId, status })
+        enqueueOp('kitchen.status', { itemId, status, ...(delayReason ? { delayReason } : {}) })
         alert(t('net.offlineStatusQueued'))
       } else {
         alert((err as Error).message)
@@ -1144,6 +1145,8 @@ function DashboardInner() {
   })
   const [kdsSound, setKdsSound] = useState(true)
   const kdsPrevPendingRef = useRef(0)
+  // OPS-9 val 3 (v1.76.0): delay-reason dialog — opens when a LATE item (>10 min) is bumped
+  const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
   const [saleCart, setSaleCart] = useState<Record<string, number>>({})
   const [saleCat, setSaleCat] = useState('ALL')
   const [saleSearch, setSaleSearch] = useState('')
@@ -1151,6 +1154,14 @@ function DashboardInner() {
 
   const kdsMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
   const kdsAgeClass = (m: number): string => (m >= 10 ? 'bg-red-100 text-red-700 border-red-200' : m >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+  // OPS-9 val 3: per-item live timer — firedAt when present (matches server prepMin), else order clock
+  const kdsItemAge = (it: OrderItemT, o: OrderT): number => kdsMinutes(it.firedAt || o.createdAt)
+  /** Bump to READY: late item (>10 min) asks for a delay reason first (Lightspeed pattern). */
+  const bumpReady = (it: OrderItemT, o: OrderT) => {
+    const age = kdsItemAge(it, o)
+    if (age > 10) setDelayAsk({ itemId: it.id, name: it.name, min: age })
+    else void setItemStatus(it.id, 'READY')
+  }
 
   // OPS-4: zvok ob novem cakajocem artiklu na izbrani postaji (WebAudio, brez sredstev)
   useEffect(() => {
@@ -1726,20 +1737,23 @@ function DashboardInner() {
                     <CardContent className="space-y-2">
                       {items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
+                        const itAge = kdsItemAge(it, o)
                         return (
                           <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
                             <div className="min-w-0">
                               <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge></p>
                               {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
                             </div>
-                            <div className="flex gap-1.5 shrink-0">
+                            <div className="flex gap-1.5 shrink-0 items-center">
+                              {/* OPS-9 val 3: per-item live timer (firedAt → order clock), same 5/10 escalation as the card */}
+                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${kdsAgeClass(itAge)}`}>{itAge}′</span>
                               {perms.includes('menu.availability') && mi && (
                                 <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
                                   <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
                                 </Button>
                               )}
                               {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
-                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setItemStatus(it.id, 'READY')}>{t('status.PREPARED')}</Button>}
+                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
                               {it.status === 'READY' && (
                                 <div className="flex items-center gap-1.5">
                                   <Badge className={statusColors.READY}>{t('status.READY')}</Badge>
@@ -1758,6 +1772,39 @@ function DashboardInner() {
             {viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
             {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
             <KdsStatsSection />
+
+            {/* OPS-9 val 3 (v1.76.0): delay-reason dialog when a LATE item (>10 min) is bumped */}
+            <Dialog open={!!delayAsk} onOpenChange={(v) => !v && setDelayAsk(null)}>
+              <DialogContent className="sm:max-w-xs">
+                <DialogHeader>
+                  <DialogTitle className="text-base">{t('kds.delay.title')}</DialogTitle>
+                  {delayAsk && (
+                    <p className="text-sm text-stone-500">
+                      {t('kds.delay.dialogInfo', { name: delayAsk.name, m: delayAsk.min })}
+                    </p>
+                  )}
+                </DialogHeader>
+                <div className="grid grid-cols-1 gap-2">
+                  {KDS_DELAY_REASONS.map((r) => (
+                    <Button
+                      key={r}
+                      variant="outline"
+                      className="min-h-11 justify-start text-base font-medium"
+                      onClick={() => { const cur = delayAsk; setDelayAsk(null); if (cur) void setItemStatus(cur.itemId, 'READY', r) }}
+                    >
+                      {t(`kds.delay.${r}`)}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    className="min-h-11 text-stone-500"
+                    onClick={() => { const cur = delayAsk; setDelayAsk(null); if (cur) void setItemStatus(cur.itemId, 'READY') }}
+                  >
+                    {t('kds.delay.skip')}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="meni" className="space-y-4">
