@@ -6,6 +6,7 @@ import { apNumberFor, apLineTotalGross, parsePaymentTermsDays } from '@/lib/proc
 import { parseEslog, type EslogInvoice } from '@/lib/eslog'
 import { auditChainFields } from '@/lib/audit-chain'
 import { upsertApAttachments, oversizeNote, type ApAttachmentMeta } from '@/lib/ap-attachments'
+import { pushEvent, apNewPushPayload } from '@/lib/push'
 
 /**
  * OPS-9 val 2 (v1.75.0) — eSLOG e-račun uvoz (XML → zapadle obveznosti).
@@ -215,6 +216,15 @@ export async function POST(req: NextRequest) {
       }),
     },
   })
+
+  // OPS-11 val 2 (v1.81.0) — AP_NEW push (new supplier invoice recorded). Fire-and-forget,
+  // notification-matrix aware; pushEvent swallows its own errors so the import NEVER fails
+  // because of push. Only on the fresh-create path — a duplicate hit is a silent no-op.
+  void pushEvent(
+    'AP_NEW',
+    apNewPushPayload({ apNumber: ap.apNumber, supplierName: supplier.name, amount: totalAmount, dueDate: dueDate.toISOString() }),
+    { roles: ['accounting', 'manager'], locationId: user.loc || null },
+  )
 
   return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: parsedEcho(inv), attachmentsSaved }, 201)
 }

@@ -27,6 +27,8 @@ import { heatClass } from '@/lib/sales-by-hour'
 import { durationLabel } from '@/lib/timeclock'
 import { scaleBatchLines } from '@/lib/batch'
 import { dueInMs, isRemindable, remindMsForRule } from '@/lib/recurring-po'
+import { PUSH_EVENT_TYPES } from '@/lib/push-events'
+import { isAdInWindow, isValidDateStr } from '@/lib/display-promos'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -8426,16 +8428,15 @@ export function DursCheckButton({ query, onName, onIban, compact = false }: { qu
 
 /* ─────────────────── OPS-8 val 2 — notification matrix (RoxPos pattern) ─────────────────── */
 
-const NOTIF_EVENTS = [
-  'ORDER_NEW', 'ORDER_READY', 'ORDER_FIRE', 'DELIVERY_NEW', 'DRIVER_ASSIGNED', 'RESERVATION_NEW',
-  'LOW_STOCK', 'PO_APPROVED', 'PO_RECEIVED', 'TIME_OFF_STATUS', 'RECEIPT_FAILED', 'Z_CLOSED',
-] as const
+const NOTIF_EVENTS = PUSH_EVENT_TYPES
 
 const NOTIF_ROLES = ['waiter', 'bar', 'kitchen', 'chef', 'staff', 'manager', 'warehouse', 'accounting', 'admin'] as const
 
 type NotifMode = 'everyone' | 'roles' | 'off'
 
-/** Notifications card (Nastavitve tab): 11 event types x {everyone | selected roles | off}. */
+/** Notifications card (Nastavitve tab): event types x {everyone | selected roles | off} —
+ *  rows render dynamically from PUSH_EVENT_TYPES (client-safe registry, @/lib/push-events)
+ *  so a new server event type appears in the matrix without a UI change. */
 export function NotificationsCard() {
   const { t } = useI18n()
   const [rules, setRules] = useState<Record<string, { mode: NotifMode; roles?: string[] }>>({})
@@ -9030,17 +9031,47 @@ export function UpsellCard({ menuItems, canManage }: { menuItems: UpsellMenuItem
   )
 }
 
-interface DisplayPromoRowT { id: string; imageUrl: string; durationSec: number; active: boolean }
+interface DisplayPromoRowT { id: string; imageUrl: string; durationSec: number; active: boolean; startDate?: string; endDate?: string }
 /** Local (unsaved) row id prefix — the server re-assigns ids on save. */
 const PROMO_NEW_PREFIX = 'new-'
 /** Max promos — mirrors MAX_PROMOS in src/lib/display-promos.ts. */
 const PROMO_MAX = 5
 
+/** True when the ad carries at least one valid campaign-window bound (chip is meaningless without one). */
+function hasWindow(ad: DisplayPromoRowT): boolean {
+  return isValidDateStr(ad.startDate) || isValidDateStr(ad.endDate)
+}
+
+/**
+ * Campaign window state chip (inclusive 'YYYY-MM-DD' bounds, local time):
+ *  - in window (or no bound)  → promo.active    (green);
+ *  - start bound in the future → promo.upcoming (amber) — probe: a start-only
+ *    window that is closed means now < start;
+ *  - end bound in the past     → promo.expired  (rose) — probe: an end-only
+ *    window that is closed means now > end.
+ */
+function WindowChip({ ad }: { ad: DisplayPromoRowT }) {
+  const { t } = useI18n()
+  const inWindow = isAdInWindow(ad)
+  const upcoming = !inWindow && !isAdInWindow({ startDate: ad.startDate })
+  const state = inWindow ? 'active' : upcoming ? 'upcoming' : 'expired'
+  const cls = state === 'active'
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : state === 'upcoming'
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-rose-50 text-rose-700 border-rose-200'
+  const label = state === 'active' ? t('promo.active') : state === 'upcoming' ? t('promo.upcoming') : t('promo.expired')
+  return <span className={`inline-block text-xs rounded-full border px-2 py-0.5 ${cls}`}>{label}</span>
+}
+
 /**
  * Customer display promos card (Nastavitve tab): idle-carousel ads for the wall
  * display — image URL (http/s), per-image duration (5-120 s, default 15), active
- * switch. Whole list is PUT at once; server sanitizes (max 5, bad URLs dropped)
- * and audits DISPLAY_PROMOS_UPDATED.
+ * switch, and (OPS-11 val 2) an OPTIONAL campaign window: Od/Do date inputs
+ * ('YYYY-MM-DD', inclusive, local time; empty = no bound) with a live state chip
+ * (promo.active / promo.upcoming / promo.expired) computed via the pure isAdInWindow().
+ * Whole list is PUT at once; server sanitizes (max 5, bad URLs dropped, invalid
+ * date strings stripped field-wise) and audits DISPLAY_PROMOS_UPDATED.
  */
 export function DisplayPromosCard() {
   const { t } = useI18n()
@@ -9079,7 +9110,16 @@ export function DisplayPromosCard() {
     try {
       const badUrl = ads.some((a) => a.imageUrl.trim() !== '' && !/^https?:\/\/\S+$/i.test(a.imageUrl.trim()))
       if (badUrl) { setNotice(t('promo.invalidUrl')); return }
-      const clean = ads.filter((a) => a.imageUrl.trim() !== '')
+      // OPS-11 val 2: invalid (non-YYYY-MM-DD) date strings are stripped client-side
+      // too — matches the tolerant server sanitize (field dropped, ad kept).
+      const clean = ads
+        .filter((a) => a.imageUrl.trim() !== '')
+        .map((a) => ({
+          ...a,
+          imageUrl: a.imageUrl.trim(),
+          startDate: isValidDateStr(a.startDate) ? a.startDate!.trim() : undefined,
+          endDate: isValidDateStr(a.endDate) ? a.endDate!.trim() : undefined,
+        }))
       const res = await api<{ ads: DisplayPromoRowT[] }>('/api/display-promos', { method: 'PUT', body: JSON.stringify({ ads: clean }) })
       setAds(res.ads || [])
       setNotice(clean.length !== ads.length ? t('promo.savedFiltered', { dropped: ads.length - clean.length }) : t('promo.saved'))
@@ -9104,14 +9144,38 @@ export function DisplayPromosCard() {
               <div className="space-y-2">
                 {ads.map((ad) => (
                   <div key={ad.id} className="rounded-lg border border-stone-200 bg-white p-2.5 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-                    <div className="space-y-1 min-w-0">
-                      <Label className="text-xs text-stone-500">{t('promo.image')}</Label>
-                      <Input
-                        value={ad.imageUrl}
-                        onChange={(e) => patchRow(ad.id, { imageUrl: e.target.value })}
-                        placeholder="https://…"
-                        className="h-9"
-                      />
+                    <div className="space-y-2 min-w-0">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-stone-500">{t('promo.image')}</Label>
+                        <Input
+                          value={ad.imageUrl}
+                          onChange={(e) => patchRow(ad.id, { imageUrl: e.target.value })}
+                          placeholder="https://…"
+                          className="h-9"
+                        />
+                      </div>
+                      {/* OPS-11 val 2: campaign window (inclusive, local; empty = no bound) */}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-stone-500">{t('promo.from')}</Label>
+                          <Input
+                            type="date"
+                            value={ad.startDate ?? ''}
+                            onChange={(e) => patchRow(ad.id, { startDate: e.target.value || undefined })}
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-stone-500">{t('promo.to')}</Label>
+                          <Input
+                            type="date"
+                            value={ad.endDate ?? ''}
+                            onChange={(e) => patchRow(ad.id, { endDate: e.target.value || undefined })}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                      {hasWindow(ad) && <WindowChip ad={ad} />}
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-stone-500">{t('promo.duration')}</Label>

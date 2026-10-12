@@ -7,6 +7,7 @@ import { num, nid, r2, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
 import { getApAttachmentIndex, getApAttachments } from '@/lib/ap-attachments'
+import { pushEvent, apNewPushPayload } from '@/lib/push'
 
 /**
  * Task 67 (v1.65.0) — kategorije stroškov, runtime-gated:
@@ -204,6 +205,13 @@ export async function POST(req: NextRequest) {
       locationId,
     },
   })
+  // OPS-11 val 2 (v1.81.0) — AP_NEW push on the manual AP (expense) create; fire-and-forget,
+  // notification-matrix aware (same contract as the eSLOG import path — never blocks/fails).
+  void pushEvent(
+    'AP_NEW',
+    apNewPushPayload({ apNumber: row.apNumber, supplierName: supplier.name, amount: r2(amount), dueDate: due.toISOString() }),
+    { roles: ['accounting', 'manager'], locationId },
+  )
   return ok({
     expense: {
       id: row.id,

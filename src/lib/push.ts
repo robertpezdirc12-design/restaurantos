@@ -115,6 +115,32 @@ export function pushToEmployees(employeeIds: string[], payload: PushPayload): vo
   void pushNotify(payload, { employeeIds })
 }
 
+/* ─────────── OPS-11 val 2 (v1.81.0) — AP_NEW (nov dobaviteljev račun) ─────────── */
+
+/**
+ * Structured payload for the AP_NEW event (AccountsPayable created — eSLOG
+ * e-invoice import or the manual expense create). Call sites pass this through
+ * apNewPushPayload() so the notification text stays consistent across both paths.
+ */
+export interface ApNewPushData {
+  apNumber: string
+  supplierName: string
+  amount: number
+  /** ISO datetime or 'YYYY-MM-DD'; rendered as the date part only; null = unknown. */
+  dueDate: string | null
+}
+
+/** Build the PushPayload for AP_NEW (title/body hard-coded SL — same convention as ORDER_NEW et al.). */
+export function apNewPushPayload(data: ApNewPushData): PushPayload {
+  const due = data.dueDate ? ` · zapade ${String(data.dueDate).slice(0, 10)}` : ''
+  return {
+    title: 'Nov dobaviteljev račun',
+    body: `${data.apNumber} · ${data.supplierName} · ${data.amount.toFixed(2)} €${due}`,
+    url: '/dashboard?tab=stroski',
+    tag: `ap-new-${data.apNumber}`,
+  }
+}
+
 /* ─────────── OPS-8 val 2 (v1.72.0) — Notification matrix (RoxPos pattern) ───────────
  * Event type x {everyone | selected roles | off}. Rules live in an Integration row
  * (name='notification-rules', type='other') config JSON:
@@ -122,24 +148,16 @@ export function pushToEmployees(employeeIds: string[], payload: PushPayload): vo
  * Missing rule for an event type = default behavior (base target passes through).
  * resolvePushTargets is server-side filtering — pushEvent is the only new entry point
  * (pushNotify stays unchanged for backward compatibility).
+ *
+ * OPS-11 val 2 (v1.81.0): the event type registry lives in './push-events'
+ * (client-safe, zero imports) so the UI matrix card can render dynamically from
+ * the same constant; the re-export below keeps every '@/lib/push' import intact.
+ * New in the registry: 'AP_NEW' (eSLOG import + manual expense create).
  */
 
-export const PUSH_EVENT_TYPES = [
-  'ORDER_NEW',
-  'ORDER_READY',
-  'ORDER_FIRE',
-  'DELIVERY_NEW',
-  'DRIVER_ASSIGNED',
-  'RESERVATION_NEW',
-  'LOW_STOCK',
-  'PO_APPROVED',
-  'PO_RECEIVED',
-  'TIME_OFF_STATUS',
-  'RECEIPT_FAILED',
-  'Z_CLOSED',
-] as const
+export { PUSH_EVENT_TYPES, type PushEventType } from './push-events'
 
-export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]
+import type { PushEventType } from './push-events'
 
 const NOTIF_RULES_MARKER = 'notification-rules'
 

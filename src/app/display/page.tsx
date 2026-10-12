@@ -43,7 +43,9 @@ interface DisplayPayload {
   message?: string
 }
 
-/** OPS-10 val 2: active promos ride along on every display state poll (additive key). */
+/** OPS-10 val 2: active promos ride along on every display state poll (additive key).
+ *  OPS-11 val 2: the state API already filters by the campaign window (Od/Do on the
+ *  promo card) — this page stays unchanged, it only rotates whatever it receives. */
 interface DisplayPromoT { id: string; imageUrl: string; durationSec: number; active: boolean }
 /** Fallback rotation when a promo has no usable duration (matches sanitize default). */
 const PROMO_FALLBACK_SEC = 15

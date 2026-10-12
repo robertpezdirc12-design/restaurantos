@@ -27,7 +27,10 @@ export async function GET(req: NextRequest) {
   if (!pos || pos.revokedAt) return ok({ paired: false, promos: [] })
 
   const payload = jparse<Record<string, unknown> | null>(pos.displayPayload, null)
-  // promos read on every poll (cheap findFirst) — no extra caching layer needed at 2 s
+  // promos read on every poll (cheap findFirst) — no extra caching layer needed at 2 s.
+  // OPS-11 val 2: activeAds()/sanitizePromos() gained an optional campaign window
+  // ('YYYY-MM-DD' start/end); both default `now` to the current moment, so this call
+  // site needs no change — only in-window ads reach the carousel.
   const promos = activeAds(sanitizePromos(jparse<unknown>(promosRow?.config ?? null, null)).ads).slice(0, MAX_PROMOS)
   return ok({
     paired: true,

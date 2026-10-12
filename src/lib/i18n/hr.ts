@@ -1720,6 +1720,8 @@ export const hr: Record<string, string> = {
   'notif.event.RECEIPT_FAILED': 'Greška fiskalizacije',
   'notif.event.Z_CLOSED': 'Zatvaranje smjene (Z)',
   'notif.event.DRIVER_ASSIGNED': 'Vozač dodijeljen (dostava)',
+  // OPS-11 val 2 (v1.81.0) — new AccountsPayable event (eSLOG import / manual expense)
+  'notif.event.AP_NEW': 'Novi račun dobavitelja (AP)',
   'role.waiter': 'Konobar',
   'role.bar': 'Šank',
   'role.kitchen': 'Kuhinja',
@@ -2010,6 +2012,11 @@ export const hr: Record<string, string> = {
   'promo.active': 'Aktivno',
   'promo.maxHint': 'Najviše 5 promocija.',
   'promo.delete': 'Ukloni promociju',
+  // OPS-11 val 2 (v1.81.0) — campaign window (Od/Do, inclusive local dates) + state chip
+  'promo.from': 'Od (datum)',
+  'promo.to': 'Do (datum)',
+  'promo.upcoming': 'Predstojeća',
+  'promo.expired': 'Završena',
 
   // ── OPS-10 val 2 (v1.78.0) — kiosk: traka "Dodaj još" ──
   'guest.kiosk.upsellTitle': 'Dodaj još',
