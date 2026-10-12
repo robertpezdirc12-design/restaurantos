@@ -1834,3 +1834,19 @@ Stage Summary:
 - E2E (browser): kiosk — Burek v košarico → trak "DODAJ JOŠ" rendra Kranjska+juha → en-tap Kranjska → košarica 16,00 €, trak pravilno IZKLJUČI že-v-košarico artikel; display — enroll + pair prek 6-mestne kode + promo 8 s → full-screen carousel s sliko ✓; API: PUT sanitizacija (ghost/self odstranjena), display state keys [paired,posName,posOnline,updatedAt,payload,promos]
 - LEKCIJA: enroll odgovor token je DOLG (49 znakov) — ne truncate s head -c; display state 401 "ni registrirana" = napačen token, ne bug
 - Čiščenje: E2E napravi izbrisani (DELETE /api/devices/[id]), display-promos ads=[], kiosk-upsell config={} — produkcija čista
+
+---
+Task ID: OPS-10-e (val 3 nabava + batch)
+Agent: general-purpose + orchestrator
+Task: eSLOG PDF priloga + recurring reminder + BatchPreparation aktivacija (v1.79.0).
+
+Work Log:
+- src/lib/ap-attachments.ts (sanitizeAttachments 1.5 MB b64 meja → truncated meta, max 5, dedupe) + eslog.ts parse cac:Attachment/cbc:EmbeddedDocumentBinaryObject (tolerant, cap 5) + import-eslog best-effort arhiv (try/catch ne-blocking, attachmentsSaved v odgovoru + duplicate path) + /api/expenses GET ?withAttachments&apNumber + badge/dialog s PDF iframe preview v Računi tabu (opomba hramba 10 let ZDavP-2)
+- recurring-po.ts +remindMinutesBefore (default 60, clamp 0-1440) + dueInMs/isRemindable/dueTodayRules + rumeni banner v Nabavi (Zaženi zdaj, enkrat na mount) + daily-email sekcija "Naročilnice za zagon danes"
+- src/lib/batch.ts (scaleBatchLines/forecastQty/batchCostPerUnit) + GET/POST /api/batch-preparations (BOM flattenDeduction portions=1 → scale; forecast = avg 4 istih dni tedna; candidates + ?bomFor preview) + PATCH complete (CAS odštevek nikoli negativno → 409 z manjkajočimi; FEFO serije InventoryBatch+StockBatchAllocation; BATCH_INPUT/BATCH_OUTPUT StockTransaction; utežena cena izhoda) + BatchPrepCard v Zalogah
+- i18n +42 ključev; version 1.79.0; tests/ops10-val3.test.ts = 32; locationScope pin 35→36
+
+Stage Summary:
+- 966/966, tsc 0, lint 0; commit 8c94dc7; browser E2E: Priprava po serijah rendra, 0 console errors; agent API E2E: eSLOG priloga saved+index+oversize-truncated, batch complete TX zaloge -3/-1.35/+3 @12.04, 409 shortfall + 409 re-complete, recurring remind polje na legacy pravilih
+- Čiščenje: vsi testni ostanki izbrisani (3 batchi, TX, artikel, AP, pravila, priloge); ostaja pre-existing "Test eSLOG Dobavitelj" (referenciran iz OPS-9)
+- OPS-10 POPOLN: v1.77 analitika + v1.78 front-of-house + v1.79 nabava/batch — vse zero DDL, 74 novih testov (892→966)
