@@ -40,6 +40,9 @@ import {
   ArrowRightLeft,
   GitMerge,
   Flame,
+  Pencil,
+  Split,
+  Bell,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -75,7 +78,7 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
 interface CategoryT { id: string; name: string }
@@ -85,10 +88,13 @@ interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
 interface BillAutoDisc { discountId: string; name: string; amount: number }
-interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number } }
+interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number }; items?: { id: string; name: string; quantity: number; unitPrice: number }[] }
 interface DiscountT { id: string; name: string; type: string; amount: number; triggerType: string; isActive: boolean; happyFromHour?: number | null; happyToHour?: number | null }
 interface LoyaltyAccT { id: string; customerName: string; customerPhone: string; pointsBalance: number; lifetimePoints: number; tier: string }
 interface PayPart { type: 'cash' | 'card' | 'mobile' | 'giftcard'; amount: number }
+/** OPS-7 (v1.68.0) — coursing (tečaji jedi) + split po izstavkih (Check) */
+interface CourseT { id: string; courseNumber: number; name: string; status: string; firedAt?: string | null }
+interface ChecksT { checks: { id: string; checkNumber: number; paymentStatus: string; payments: number }[]; items: { id: string; name: string; quantity: number; lineTotal: number; checkId: string | null; checkNumber: number | null }[]; checkCount: number }
 /** Issue #1 triage ③: izbrana darilna kartica (POS plačilo) */
 interface GiftCardSelT { id: string; cardNumber: string; ownerName: string; balance: number; effectiveStatus: string }
 
@@ -198,6 +204,15 @@ function DashboardInner() {
   const [loyaltySel, setLoyaltySel] = useState<LoyaltyAccT | null>(null)
   const [redeemPoints, setRedeemPoints] = useState(0)
   const [parts, setParts] = useState<PayPart[]>([])
+  // OPS-7 (v1.68.0): urejevalnik naročila (NaročiloSheet) + split po izstavkih + coursing
+  const [orderSheet, setOrderSheet] = useState<OrderT | null>(null)
+  const [sheetCourses, setSheetCourses] = useState<CourseT[]>([])
+  const [sheetCart, setSheetCart] = useState<Record<string, number>>({})
+  const [payCheckId, setPayCheckId] = useState<string | null>(null)
+  const [payCheckNum, setPayCheckNum] = useState(0)
+  const [checksData, setChecksData] = useState<ChecksT | null>(null)
+  const [splitOpen, setSplitOpen] = useState(false)
+  const [splitSel, setSplitSel] = useState<Record<string, boolean>>({})
   const [tipEur, setTipEur] = useState('')
   // Issue #1 triage ③: darilna kartica pri plačilu — eno plačilo + deli
   const [gcSel, setGcSel] = useState<GiftCardSelT | null>(null)
@@ -465,9 +480,123 @@ function DashboardInner() {
     return parts.every((x, i) => x.type !== 'giftcard' || (gcPartSel[i] && x.amount <= gcPartSel[i]!.balance + 0.004))
   })()
 
-  /** Issue #1 §6: odpri plačilni dialog — kanonični predogled računa (popusti, zvestoba) prek /api/orders/[id]/bill */
-  async function openPayment(o: OrderT) {
+  /** OPS-7: odpri urejevalnik naročila (Toast vzorec — klik na zasedeno mizo NE gre direktno v plačilo) */
+  async function openOrderSheet(o: OrderT) {
+    setOrderSheet(o)
+    setSheetCart({})
+    setSheetCourses([])
+    try {
+      const d = await api<{ courses: CourseT[] }>(`/api/orders/${o.id}/courses`)
+      setSheetCourses(d.courses)
+    } catch {
+      /* tečaji so opcijski — napaka ne blokira urejevalnika */
+    }
+  }
+
+  /** OPS-7: osveži urejevalnik naročila s svežimi podatki (po addItems/fire) */
+  async function refreshSheetOrder(orderId: string) {
+    try {
+      const d = await api<{ order: OrderT }>(`/api/orders/${orderId}`)
+      setOrderSheet(d.order)
+    } catch {
+      /* pusti obstoječe stanje urejevalnika */
+    }
+  }
+
+  /** OPS-7: pošlji dodatek obstoječemu naročilu (PATCH addItems) */
+  async function sendSheetItems() {
+    if (!orderSheet) return
+    const items = Object.entries(sheetCart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
+    if (items.length === 0) return
+    setSending(true)
+    try {
+      const clientOperationId = newOperationId()
+      await api(`/api/orders/${orderSheet.id}`, { method: 'PATCH', body: JSON.stringify({ addItems: items, clientOperationId }) })
+      setSheetCart({})
+      await load()
+      void refreshSheetOrder(orderSheet.id)
+    } catch (err) {
+      alert((err as Error).message)
+    } finally { setSending(false) }
+  }
+
+  /** OPS-7: fire vseh pending postavk naročila */
+  async function fireSheetAll() {
+    if (!orderSheet) return
+    setSending(true)
+    try {
+      await api(`/api/orders/${orderSheet.id}/fire`, { method: 'POST' })
+      await load()
+      void refreshSheetOrder(orderSheet.id)
+    } catch (err) {
+      alert((err as Error).message)
+    } finally { setSending(false) }
+  }
+
+  /** OPS-7 coursing: fire SAMO tečaja (ostale postavke ostanejo pending) */
+  async function fireCourse(courseId: string) {
+    if (!orderSheet) return
+    setSending(true)
+    try {
+      await api(`/api/orders/${orderSheet.id}/fire`, { method: 'POST', body: JSON.stringify({ courseId }) })
+      const d = await api<{ courses: CourseT[] }>(`/api/orders/${orderSheet.id}/courses`)
+      setSheetCourses(d.courses)
+      await load()
+      void refreshSheetOrder(orderSheet.id)
+    } catch (err) {
+      alert((err as Error).message)
+    } finally { setSending(false) }
+  }
+
+  /** OPS-7 coursing: dodeli postavko tečaju (ali ustvari nov tečaj) */
+  async function assignCourse(itemId: string, v: string) {
+    if (!orderSheet || v === 'none') return
+    try {
+      if (v === '__new') {
+        await api(`/api/orders/${orderSheet.id}/courses`, { method: 'POST', body: JSON.stringify({ itemIds: [itemId] }) })
+      } else {
+        await api(`/api/orders/${orderSheet.id}/courses`, { method: 'PATCH', body: JSON.stringify({ courseId: v, itemIds: [itemId] }) })
+      }
+      const d = await api<{ courses: CourseT[] }>(`/api/orders/${orderSheet.id}/courses`)
+      setSheetCourses(d.courses)
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  /** OPS-7 split: osveži izstavke (GET checks) */
+  async function refreshChecks(orderId: string) {
+    const d = await api<ChecksT>(`/api/orders/${orderId}/checks`)
+    setChecksData(d)
+    return d
+  }
+
+  /** OPS-7 split: razdeli izbrane postavke v nov izstavek */
+  async function splitCheck() {
+    if (!payingOrder) return
+    const itemIds = Object.entries(splitSel).filter(([, v]) => v).map(([k]) => k)
+    if (itemIds.length === 0) return
+    setSending(true)
+    try {
+      await api(`/api/orders/${payingOrder.id}/checks`, { method: 'POST', body: JSON.stringify({ itemIds }) })
+      setSplitSel({})
+      const d = await refreshChecks(payingOrder.id)
+      setSplitOpen(d.checkCount > 1)
+    } catch (err) {
+      alert((err as Error).message)
+    } finally { setSending(false) }
+  }
+
+  /** Issue #1 §6: odpri plačilni dialog — kanonični predogled računa (popusti, zvestoba) prek /api/orders/[id]/bill
+   *  OPS-7: checkId → predogled PER IZSTAVEK; openSplit → takoj prikaži upravljanje izstavkov */
+  async function openPayment(o: OrderT, checkId?: string, openSplit = false) {
     setPayingOrder(o)
+    setInvoice(null)
+    setPayCheckId(checkId ?? null)
+    setPayCheckNum(0)
+    setChecksData(null)
+    setSplitOpen(openSplit)
+    setSplitSel({})
     setInvoice(null)
     setLoyaltySel(null)
     setRedeemPoints(0)
@@ -486,11 +615,17 @@ function DashboardInner() {
     setGcPartQuery({})
     try {
       const [b, ds] = await Promise.all([
-        api<{ bill: BillT }>(`/api/orders/${o.id}/bill`),
+        api<{ bill: BillT; checkBill?: BillT; check?: { checkNumber: number } }>(`/api/orders/${o.id}/bill${checkId ? `?checkId=${checkId}` : ''}`),
         api<{ discounts: DiscountT[] }>('/api/discounts'),
       ])
-      setBill(b.bill)
+      if (checkId && b.checkBill && b.check) {
+        setBill(b.checkBill)
+        setPayCheckNum(b.check.checkNumber)
+      } else {
+        setBill(b.bill)
+      }
       setManualDiscounts(ds.discounts.filter((d) => d.triggerType !== 'auto' && d.isActive))
+      if (openSplit) void refreshChecks(o.id).catch(() => undefined)
     } catch (err) {
       alert((err as Error).message)
     }
@@ -614,6 +749,7 @@ function DashboardInner() {
         body: JSON.stringify({
           orderId: payingOrder.id,
           clientOperationId: newOperationId(),
+          ...(payCheckId ? { checkId: payCheckId } : {}),
           ...(Number(tipEur) > 0 ? { tip: Number(tipEur) } : {}),
           ...(bodyParts.length === 1
             ? {
@@ -881,6 +1017,8 @@ function DashboardInner() {
   }
 
   const cartTotal = Object.entries(cart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
+  // OPS-7: košarica urejevalnika naročila (NaročiloSheet)
+  const sheetCartTotal = Object.entries(sheetCart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
 
   // Issue #3: POS → customer display — trenutna transakcija v realnem času (debounce 800 ms)
   useEffect(() => {
@@ -1208,7 +1346,7 @@ function DashboardInner() {
                       onClick={() => {
                         if (draggedRef.current) { draggedRef.current = false; return }
                         if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
-                        if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openPayment(o) }
+                        if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                       }}
                       className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-lg shadow px-2 py-1.5 text-[11px] font-bold cursor-grab active:cursor-grabbing ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
@@ -1233,7 +1371,7 @@ function DashboardInner() {
                           onClick={() => {
                             // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
                             if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
-                            if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openPayment(o) }
+                            if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
                           className={`w-full rounded-xl p-4 text-left shadow transition ${statusColors[tb.status]} min-h-20`}
                         >
@@ -1324,9 +1462,14 @@ function DashboardInner() {
                     <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                       <p className="font-bold">{fmtEUR(o.total)}</p>
                       {o.status !== 'PAID' && (
-                        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void openPayment(o)}>
-                          <Banknote className="w-3.5 h-3.5" /> {t('orders.payFurs')}
-                        </Button>
+                        <div className="flex gap-1.5">
+                          <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => void openOrderSheet(o)} title={t('orders.edit')}>
+                            <Pencil className="w-3.5 h-3.5" /> {t('orders.edit')}
+                          </Button>
+                          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void openPayment(o)}>
+                            <Banknote className="w-3.5 h-3.5" /> {t('orders.payFurs')}
+                          </Button>
+                        </div>
                       )}
                     </div>
                     {/* 33-a: fire / move / merge — samo za odprta, neplačana naročila (backend uveljavlja orders.create) */}
@@ -1991,17 +2134,182 @@ function DashboardInner() {
         </DialogContent>
       </Dialog>
 
+      {/* ── OPS-7 (v1.68.0): UREJEVALNIK NAROČILA (Toast vzorec) — klik na zasedeno mizo ── */}
+      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}) } }}>
+        <DialogContent aria-describedby={undefined} className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              {t('sheet.title', { n: String(orderSheet?.orderNumber ?? ''), name: orderSheet?.table?.name || orderSheet?.type || '' })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {/* postavke + tečaji */}
+            <div className="rounded-xl border border-stone-200 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase text-stone-400">{t('sheet.items')}</p>
+                {orderSheet?.items.some((it) => it.status === 'PENDING' && !it.voided) && (
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                    disabled={sending} onClick={() => void fireSheetAll()}>
+                    <Flame className="w-3 h-3" /> {t('sheet.fire')}
+                  </Button>
+                )}
+              </div>
+              <ScrollArea className="max-h-44">
+                <div className="space-y-1 pr-1">
+                  {orderSheet?.items.filter((it) => !it.voided).map((it) => (
+                    <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2 py-1.5">
+                      <span className="min-w-0 truncate">{it.qty}× {it.name}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{it.status}</Badge>
+                        {hasPerm('orders.create') && it.status === 'PENDING' && (
+                          <Select value={it.courseId || 'none'}
+                            onValueChange={(v) => void assignCourse(it.id, v)}>
+                            <SelectTrigger className="h-6 w-[104px] text-[11px] gap-1"><SelectValue placeholder={t('sheet.noCourse')} /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">{t('sheet.noCourse')}</SelectItem>
+                              {sheetCourses.filter((c) => c.status === 'pending').map((c) => (
+                                <SelectItem key={c.id} value={String(c.courseNumber)}>{c.courseNumber}. {c.name}</SelectItem>
+                              ))}
+                              <SelectItem value="__new">{t('sheet.newCourse')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              {sheetCourses.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {sheetCourses.map((c) => (
+                    <div key={c.id} className="flex items-center gap-1 rounded-full border border-stone-200 pl-2 pr-1 py-0.5 text-xs">
+                      <span className={c.status === 'fired' ? 'text-emerald-700' : ''}>{c.courseNumber}. {c.name} {c.status === 'fired' ? '🔥' : ''}</span>
+                      {c.status === 'pending' && hasPerm('orders.create') && (
+                        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[11px] gap-0.5" disabled={sending} onClick={() => void fireCourse(c.id)}>
+                          <Flame className="w-3 h-3" /> {t('sheet.fireCourse')}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* dodaj artikle (Toast: urejevalnik = naročanje + dodajanje) */}
+            <div className="rounded-xl border border-stone-200 p-3">
+              <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{t('sheet.addItems')}</p>
+              <ScrollArea className="max-h-36">
+                <div className="space-y-3 pr-2">
+                  {orderDialogMenu.map((g) => (
+                    <div key={g.cat.id}>
+                      <p className="text-[11px] font-semibold uppercase text-stone-400 mb-1">{g.cat.name}</p>
+                      <div className="space-y-1">
+                        {g.items.filter((m) => m.available).map((m) => (
+                          <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2 py-1.5">
+                            <span className="text-sm min-w-0 truncate">{m.name} · <b>{fmtEUR(m.price)}</b></span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
+                              <span className="w-5 text-center text-sm font-semibold">{sheetCart[m.id] || 0}</span>
+                              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+          <DialogFooter className="items-center gap-2 sm:gap-0 flex-wrap">
+            <span className="mr-auto font-bold">{t('orders.total', { amount: fmtEUR(sheetCartTotal) })}</span>
+            {Object.values(sheetCart).some((q) => q > 0) && (
+              <Button className="bg-emerald-700 hover:bg-emerald-800 h-9" disabled={sending} onClick={() => void sendSheetItems()}>
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('sheet.sendItems')}
+              </Button>
+            )}
+            <Button variant="outline" className="h-9" onClick={() => { if (orderSheet) { setMoveTableId(''); const mv = orderSheet; setOrderSheet(null); setMoveOrder(mv) } }} title={t('mmv.move')}>
+              <ArrowRightLeft className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" className="h-9" onClick={() => { if (orderSheet) { const mg = orderSheet; setOrderSheet(null); setMergeOrder(mg) } }} title={t('mmv.merge')}>
+              <GitMerge className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" className="h-9" onClick={() => { if (orderSheet) { const sp = orderSheet; setOrderSheet(null); void openPayment(sp, undefined, true) } }} title={t('sheet.split')}>
+              <Split className="w-4 h-4" />
+            </Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 h-9" onClick={() => { if (orderSheet) { const py = orderSheet; setOrderSheet(null); void openPayment(py) } }}>
+              <Banknote className="w-4 h-4" /> {t('sheet.pay')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Plačilo + FURS (issue #1 §6: kanonični račun, popusti, zvestoba, deljeno plačilo; §7: večji gumbi) ── */}
       <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-lg">
-          <DialogHeader><DialogTitle className="text-lg">{t('payment.title', { name: payingOrder?.table?.name || '' })}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg">{t('payment.title', { name: payingOrder?.table?.name || '' })}{payCheckNum ? ` — ${t('payment.checkLabel', { n: payCheckNum })}` : ''}</DialogTitle></DialogHeader>
           {!bill && payingOrder && (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
           )}
           {bill && payingOrder && (
             <div className="space-y-3 text-sm">
-              {/* postavke + zneski (kanonično iz /api/orders/[id]/bill) */}
-              <ul className="space-y-1 max-h-36 overflow-y-auto pr-1">{payingOrder.items.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
+              {/* postavke + zneski (kanonično iz /api/orders/[id]/bill; split: samo izstavek) */}
+              <ul className="space-y-1 max-h-36 overflow-y-auto pr-1">{(payCheckId && bill.items ? bill.items : payingOrder.items.map((it) => ({ id: it.id, name: it.name, quantity: it.qty, unitPrice: it.unitPrice, voided: it.voided }))).map((it) => (
+                <li key={it.id} className="flex justify-between"><span>{it.quantity}× {it.name}</span><span>{fmtEUR(it.quantity * it.unitPrice)}</span></li>
+              ))}</ul>
+
+              {/* OPS-7: razdeli račun po postavkah (Check) — Toast/Lightspeed vzorec */}
+              {!invoice && !payCheckId && (
+                <div className="rounded-xl border border-stone-200 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase text-stone-400">{t('payment.splitTitle')}</p>
+                    <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => { const nx = !splitOpen; setSplitOpen(nx); if (nx && payingOrder && !checksData) void refreshChecks(payingOrder.id).catch(() => undefined) }}>
+                      <Split className="w-3 h-3" /> {splitOpen ? t('common.close') : t('payment.splitManage')}
+                    </Button>
+                  </div>
+                  {splitOpen && checksData && (
+                    <div className="space-y-2">
+                      {checksData.checks.some((c) => c.paymentStatus === 'paid') ? (
+                        <p className="text-xs text-stone-500">{t('payment.splitLocked')}</p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-stone-500">{t('payment.splitHint')}</p>
+                          <div className="max-h-40 overflow-y-auto pr-1 space-y-1">
+                            {checksData.items.map((it) => (
+                              <label key={it.id} className="flex items-center gap-2 rounded-lg border border-stone-100 px-2 py-1.5 cursor-pointer hover:bg-stone-50">
+                                <Checkbox checked={!!splitSel[it.id]} onCheckedChange={(v) => setSplitSel((s) => ({ ...s, [it.id]: v === true }))} aria-label={it.name} />
+                                <span className="text-xs flex-1 truncate">{it.quantity}× {it.name}</span>
+                                <span className="text-xs text-stone-400">{t('payment.checkShort', { n: it.checkNumber ?? 1 })}</span>
+                                <span className="text-xs">{fmtEUR(it.lineTotal)}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Button size="sm" className="h-7 text-xs bg-emerald-700 hover:bg-emerald-800" disabled={sending || !Object.values(splitSel).some(Boolean)}
+                              onClick={() => void splitCheck()}>
+                              {t('payment.splitSelected', { n: Object.values(splitSel).filter(Boolean).length })}
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                      {checksData.checkCount > 1 && (
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          {checksData.checks.filter((c) => c.paymentStatus !== 'paid').map((c) => (
+                            <Button key={c.id} size="sm" variant="outline" className="h-8 justify-between text-xs"
+                              onClick={() => { if (payingOrder) void openPayment(payingOrder, c.id) }}>
+                              <span>{t('payment.checkLabel', { n: c.checkNumber })}</span>
+                              <Banknote className="w-3.5 h-3.5" /> {t('payment.checkPay')}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {payCheckId && (
+                <div className="rounded-lg bg-stone-100 px-3 py-2 text-xs font-medium">{t('payment.checkBanner', { n: payCheckNum })}</div>
+              )}
               <div className="rounded-xl border border-stone-200 p-3 space-y-1">
                 <div className="flex justify-between"><span>{t('payment.grossTotal')}</span><span>{fmtEUR(bill.grossTotal)}</span></div>
                 {bill.manualDiscount > 0 && (

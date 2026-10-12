@@ -71,5 +71,54 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     pointsValue: num(location.loyaltyPointsValue, 0.01),
   })
 
-  return ok({ bill, order: { id: order.id, orderNumber: order.orderNumber, tableId: order.tableId, status: order.status } })
+  // ── OPS-7 (v1.68.0) — predogled PER IZSTAVEK (?checkId=) ──
+  // Proporcionalni popust (zadnji neplačani izstavek absorbira ostanek — enako kot /api/furs).
+  const checkIdParam = req.nextUrl.searchParams.get('checkId')
+  let checkBill: ReturnType<typeof computeBill> | null = null
+  let checkInfo: { id: string; checkNumber: number; paymentStatus: string; isLastUnpaid: boolean } | null = null
+  if (checkIdParam) {
+    const checks = await db.check.findMany({ where: { orderId: order.id }, orderBy: { checkNumber: 'asc' } })
+    const target = checks.find((c) => c.id === checkIdParam)
+    if (!target) return fail('Izstavek ne obstaja za to naročilo.', 404)
+    const itemChecks = new Map(order.OrderItem.filter((it) => !it.voided).map((it) => [it.id, it.checkId ?? null]))
+    const scopeItems = items.filter((it) => (itemChecks.get(it.id) ?? null) === target.id)
+    if (scopeItems.length === 0) return fail('Izstavek ne vsebuje plačljivih postavk.', 400)
+    const sSub = r2(scopeItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0))
+    const sTax = r2(scopeItems.reduce((s, it) => s + it.vatAmount, 0))
+    const unpaidOthers = checks.filter((c) => c.id !== target.id && c.paymentStatus !== 'paid').length
+    let sDiscount: number
+    if (unpaidOthers === 0) {
+      sDiscount = r2(Math.max(0, bill.discountTotal))
+    } else {
+      sDiscount = r2(Math.min(r2(bill.discountTotal * (sSub / Math.max(0.01, bill.subtotal))), sSub + sTax))
+    }
+    checkBill = computeBill({
+      items: scopeItems,
+      subtotal: sSub,
+      tax: sTax,
+      manualDiscount: 0,
+      autoCandidates: [],
+      now,
+      loyaltyEnabled: false,
+      pointsPerEuro: 0,
+      pointsValue: num(location.loyaltyPointsValue, 0.01),
+    })
+    // prepusti izračun na osnovi obsega (popust vstavi ročno — konserviranost z računom celote)
+    checkBill = {
+      ...checkBill,
+      discountTotal: sDiscount,
+      totalDue: r2(Math.max(0, sSub + sTax - sDiscount)),
+      loyalty: {
+        enabled: location.loyaltyEnabled,
+        pointsPerEuro: Math.max(0, Math.floor(location.loyaltyPointsPerEuro || 0)),
+        pointsValue: num(location.loyaltyPointsValue, 0.01),
+        maxRedeemablePoints: location.loyaltyEnabled
+          ? Math.floor(r2(Math.max(0, sSub + sTax - sDiscount)) / Math.max(0.01, num(location.loyaltyPointsValue, 0.01)))
+          : 0,
+      },
+    }
+    checkInfo = { id: target.id, checkNumber: target.checkNumber, paymentStatus: target.paymentStatus, isLastUnpaid: unpaidOthers === 0 }
+  }
+
+  return ok({ bill, ...(checkBill && checkInfo ? { checkBill, check: checkInfo } : {}), order: { id: order.id, orderNumber: order.orderNumber, tableId: order.tableId, status: order.status } })
 }

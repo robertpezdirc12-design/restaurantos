@@ -172,9 +172,80 @@ export async function POST(req: NextRequest) {
     pointsPerEuro: location.loyaltyPointsPerEuro,
     pointsValue: num(location.loyaltyPointsValue, 0.01),
   })
-  const subtotal = bill.subtotal
-  const totalVat = bill.tax
-  const total = bill.totalDue // znesek ZA PLAČANJE (po popustih)
+
+  // ── OPS-7 (v1.68.0) — SPLIT PO IZSTAVKIH (Check): plačilo PODMNOŽICE postavk ──
+  // Toast/Lightspeed vzorec: Check = neodvisen plačilni enota (checkNumber per order,
+  // OrderItem.checkId, Payment.checkId — shema že od v1.x). Pravila:
+  //  - checkId v body-ju → plačujemo SAMO postavke tega izstavka;
+  //  - delitev postavk med izstavke je dovoljena SAMO dokler NIČ ni plačano
+  //    (konserviranost zneskov: proporcionalni popust + zadnji plačani izstavek
+  //     absorbira ostanek popusta → Σ izstavkov = račun celote);
+  //  - račun (Receipt) nastane PER IZSTAVEK (fiskalno pravilen, DDV iz postavk izstavka),
+  //    zaloga se odšteje samo za postavke izstavka (deductStockForOrderTx onlyItemIds);
+  //  - miza/poraba naročila se zaključita šele ko so plačani VSI izstavki.
+  // preslikava postavka → izstavek (OrderItem.checkId; null = privzeti/edini izstavek)
+  const checkItemIdsCache = new Map<string, string | null>(
+    orderPre.OrderItem.filter((it) => !it.voided).map((it) => [it.id, it.checkId ?? null]),
+  )
+
+  const checksAll = await db.check.findMany({
+    where: { orderId: orderPre.id },
+    orderBy: { checkNumber: 'asc' },
+    select: { id: true, checkNumber: true, paymentStatus: true, discount: true },
+  })
+  const reqCheckId = typeof body?.checkId === 'string' && body.checkId.trim() ? body.checkId.trim() : null
+  interface CheckScope {
+    check: { id: string; checkNumber: number }
+    itemIds: string[]
+    items: BillItem[]
+    subtotal: number
+    tax: number
+    discount: number
+    total: number
+    paidOthers: number
+    unpaidOthers: number
+  }
+  let checkScope: CheckScope | null = null
+  if (reqCheckId) {
+    const target = checksAll.find((c) => c.id === reqCheckId)
+    if (!target) return fail('Izstavek (Check) ne obstaja za to naročilo.', 404)
+    if (target.paymentStatus === 'paid') return fail('Ta izstavek je že plačan.', 409)
+    const paidOthers = checksAll.filter((c) => c.id !== target.id && c.paymentStatus === 'paid').length
+    const unpaidOthers = checksAll.filter((c) => c.id !== target.id && c.paymentStatus !== 'paid').length
+    if (paidOthers > 0) {
+      return fail('Razdeljeno plačilo po izstavkih je dovoljeno samo dokler ni plačan še noben izstavek.', 409)
+    }
+    // postavke izstavka (ne-voided); če izstavek še nima postavk (prazen) → napaka
+    const scopeItems = billItems.filter((it) => (checkItemIdsCache.get(it.id) ?? null) === target.id)
+    if (scopeItems.length === 0) return fail('Izstavek ne vsebuje plačljivih postavk.', 400)
+    const scopeSubtotal = r2(scopeItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0))
+    const scopeTax = r2(scopeItems.reduce((s, it) => s + it.vatAmount, 0))
+    const scopeGross = r2(scopeSubtotal + scopeTax)
+    // proporcionalni popust; zadnji (edini še neplačani) izstavek absorbira ostanek
+    let scopeDiscount: number
+    if (unpaidOthers === 0) {
+      scopeDiscount = r2(Math.max(0, bill.discountTotal))
+    } else {
+      scopeDiscount = r2(bill.discountTotal * (scopeSubtotal / Math.max(0.01, bill.subtotal)))
+      scopeDiscount = r2(Math.min(scopeDiscount, scopeGross))
+    }
+    const scopeTotal = r2(Math.max(0, scopeGross - scopeDiscount))
+    checkScope = {
+      check: { id: target.id, checkNumber: target.checkNumber },
+      itemIds: scopeItems.map((it) => it.id),
+      items: scopeItems,
+      subtotal: scopeSubtotal,
+      tax: scopeTax,
+      discount: scopeDiscount,
+      total: scopeTotal,
+      paidOthers,
+      unpaidOthers,
+    }
+  }
+
+  const subtotal = checkScope ? checkScope.subtotal : bill.subtotal
+  const totalVat = checkScope ? checkScope.tax : bill.tax
+  const total = checkScope ? checkScope.total : bill.totalDue // znesek ZA PLAČANJE (po popustih)
   // Issue #1 (triage ①): napitnina lahko pride direktno s plačilom (body.tip, iz POS dialoga)
   // ali je bila že nastavljena na naročilu (orderPre.tip) — aditivno, nazaj-kompatibilno.
   const tip =
@@ -190,8 +261,12 @@ export async function POST(req: NextRequest) {
   if (redeemPoints > 0 || loyaltyAccountId) {
     if (!loyaltyAccountId) return fail('Unovčenje točk zahteva loyaltyAccountId.', 400)
     if (!location.loyaltyEnabled) return fail('Program zvestobe ni omogočen za to lokacijo.', 400)
-    if (redeemPoints > bill.loyalty.maxRedeemablePoints) {
-      return fail(`Največ ${bill.loyalty.maxRedeemablePoints} točk je mogoče unovčiti na tem računu.`, 400)
+    // OPS-7 split po izstavkih: limit unovčenja se računa na ZNESEK OBSEGA (izstavek ali cel račun)
+    const maxRedeemable = checkScope
+      ? Math.floor(checkScope.total / Math.max(0.01, num(location.loyaltyPointsValue, 0.01)))
+      : bill.loyalty.maxRedeemablePoints
+    if (redeemPoints > maxRedeemable) {
+      return fail(`Največ ${maxRedeemable} točk je mogoče unovčiti na tem računu.`, 400)
     }
     const acc = await db.loyaltyAccount.findUnique({ where: { id: loyaltyAccountId } })
     if (!acc || !acc.isActive) return fail('Račun zvestobe ne obstaja ali ni aktiven.', 404)
@@ -287,7 +362,9 @@ export async function POST(req: NextRequest) {
 
   // razčlenba DDV po stopnjah
   const vatMap: Record<string, { base: number; vat: number }> = {}
-  for (const it of billItems) {
+  // OPS-7: v split načinu DDV razčlenba SAMO iz postavk izstavka (fiskalna resnica računa)
+  const vatSourceItems = checkScope ? checkScope.items : billItems
+  for (const it of vatSourceItems) {
     const rate = it.vatRate.toFixed(2)
     const base = it.unitPrice * it.quantity
     const vat = it.vatAmount
@@ -310,22 +387,48 @@ export async function POST(req: NextRequest) {
 
   try {
     const receipt = await db.$transaction(async (tx) => {
-      // CAS zaščita (Naloga 37: eksplicitna bela lista plačljivih stanj — fail-closed
-      // tudi ob prihodnjih novih terminalnih vrednostih enuma) → dvojni klic izgubi dirko
-      const cas = await tx.order.updateMany({
-        where: { id: orderPre.id, paymentStatus: { in: ['unpaid', 'partial'] } },
-        data: { status: 'paid', paymentStatus: 'paid', paidAt: now, paymentMethod },
-      })
-      if (cas.count === 0) {
-        // drug klic je že plačal → vrni njegov račun (idempotentno)
-        // Naloga 37: SAMO original (isStorno=false) — storno negacija ni "plačilni" račun
-        const twin = await tx.receipt.findFirst({
-          where: { orderId: orderPre.id, isStorno: false },
-          orderBy: { createdAt: 'desc' },
+      // ── OPS-7 split po izstavkih: v check načinu CAS gre na CHECK (ne na naročilo) ──
+      if (checkScope) {
+        const casCheck = await tx.check.updateMany({
+          where: { id: checkScope.check.id, paymentStatus: { in: ['unpaid', 'partial'] } },
+          data: { paymentStatus: 'paid', paymentMethod },
         })
-        if (twin) return { twin, duplicate: true as const }
-        // plačano mimo plačilnega poteka (npr. ročni PAID) — brez računa
-        throw new OrderError('Naročilo je že plačano (brez računa).', 409)
+        if (casCheck.count === 0) {
+          // drug klic je že plačal ta izstavek → vrni njegov račun (idempotentno):
+          // plačilo izstavka prepoznamo po idempotencyKey prvega dela plačila
+          const twinPayment = idemBase
+            ? await tx.payment.findFirst({
+                where: { checkId: checkScope.check.id, idempotencyKey: { startsWith: idemBase } },
+                orderBy: { createdAt: 'asc' },
+              })
+            : null
+          const twin = twinPayment
+            ? await tx.receipt.findFirst({
+                where: { orderId: orderPre.id, isStorno: false, createdAt: { gte: twinPayment.createdAt } },
+                orderBy: { createdAt: 'asc' },
+              })
+            : null
+          if (twin) return { twin, duplicate: true as const }
+          throw new OrderError('Izstavek je že plačan (brez računa).', 409)
+        }
+      } else {
+        // CAS zaščita (Naloga 37: eksplicitna bela lista plačljivih stanj — fail-closed
+        // tudi ob prihodnjih novih terminalnih vrednostih enuma) → dvojni klic izgubi dirko
+        const cas = await tx.order.updateMany({
+          where: { id: orderPre.id, paymentStatus: { in: ['unpaid', 'partial'] } },
+          data: { status: 'paid', paymentStatus: 'paid', paidAt: now, paymentMethod },
+        })
+        if (cas.count === 0) {
+          // drug klic je že plačal → vrni njegov račun (idempotentno)
+          // Naloga 37: SAMO original (isStorno=false) — storno negacija ni "plačilni" račun
+          const twin = await tx.receipt.findFirst({
+            where: { orderId: orderPre.id, isStorno: false },
+            orderBy: { createdAt: 'desc' },
+          })
+          if (twin) return { twin, duplicate: true as const }
+          // plačano mimo plačilnega poteka (npr. ročni PAID) — brez računa
+          throw new OrderError('Naročilo je že plačano (brez računa).', 409)
+        }
       }
 
       const seqFloor = await tx.receipt.count({ where: { locationId: location.id } })
@@ -378,7 +481,23 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const check = await tx.check.create({
+      // OPS-7 split: v check načinu POSODOBIMO obstoječi izstavek (že ustvarjen ob delitvi),
+      // v celotnem načinu ustvarimo izstavek #1 (nazaj-kompatibilno obnašanje).
+      const check = checkScope
+        ? await tx.check.update({
+            where: { id: checkScope.check.id },
+            data: {
+              subtotal: checkScope.subtotal,
+              tax: checkScope.tax,
+              discount: checkScope.discount,
+              appliedDiscountId: bill.autoDiscounts[0]?.discountId || null,
+              total: checkScope.total,
+              tip,
+              totalWithTip: checkScope.total + tip,
+              paymentMethod,
+            },
+          })
+        : await tx.check.create({
         data: {
           id: nid(),
           checkNumber: 1,
@@ -528,13 +647,34 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      if (orderPre.tableId) {
-        await tx.table.update({ where: { id: orderPre.tableId }, data: { status: 'cleaning' } })
+      // ── OPS-7 split po izstavkih: zaključek naročila/mize ŠELE ko so plačani VSI izstavki ──
+      if (checkScope) {
+        const unpaidLeft = await tx.check.count({ where: { orderId: orderPre.id, paymentStatus: { not: 'paid' } } })
+        if (unpaidLeft === 0) {
+          await tx.order.update({
+            where: { id: orderPre.id },
+            data: { status: 'paid', paymentStatus: 'paid', paidAt: now, paymentMethod },
+          })
+          if (orderPre.tableId) {
+            await tx.table.update({ where: { id: orderPre.tableId }, data: { status: 'cleaning' } })
+          }
+        } else {
+          // ostali izstavki še odprti → naročilo 'partial' (ne 'paid'), miza ostane zasedena
+          await tx.order.update({
+            where: { id: orderPre.id },
+            data: { paymentStatus: 'partial' },
+          })
+        }
+      } else {
+        if (orderPre.tableId) {
+          await tx.table.update({ where: { id: orderPre.tableId }, data: { status: 'cleaning' } })
+        }
       }
 
       // Razknjiževanje zalog po recepturah (idempotentno, v ISTI transakciji kot račun
-      // — če se račun zavrne, se razknjiževanje tudi; primanjkljaj ne blokira prodaje)
-      const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name)
+      // — če se račun zavrne, se razknjiževanje tudi; primanjkljaj ne blokira prodaje).
+      // OPS-7 split: v check načinu odštejemo SAMO postavke plačanega izstavka.
+      const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name, checkScope ? checkScope.itemIds : undefined)
 
       // Revizijski dnevnik kritične operacije (issue #1: audit)
       const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVOICE_ISSUE', entityType: 'Receipt', entityId: created.id, details: jstr({ receiptNumber, orderId: orderPre.id, total, grossTotal: bill.grossTotal, discountTotal: bill.discountTotal, manualDiscount: bill.manualDiscount, autoDiscounts: bill.autoDiscounts, paymentMethod, parts: parts.map((p) => ({ type: p.type, amount: p.amount, giftCard: p.giftCardId && giftCards.get(p.giftCardId) ? maskCardNumber(giftCards.get(p.giftCardId)!.cardNumber) : undefined, })), loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null, simulation, terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null, stockDeduction: stock.deducted ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length } : null, }), locationId: location.id, id: __aId2 })

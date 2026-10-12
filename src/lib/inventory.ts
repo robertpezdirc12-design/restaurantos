@@ -42,21 +42,29 @@ export async function deductStockForOrderTx(
   tx: Tx,
   orderId: string,
   employeeId: string | null,
-  employeeName: string
+  employeeName: string,
+  /** OPS-7 split po izstavkih: odštej SAMO te postavke (Check plačilo); brez = celo naročilo. */
+  onlyItemIds?: string[]
 ): Promise<StockDeductionResult> {
   const empty: StockDeductionResult = { deducted: false, lines: 0, totalCost: 0, shortfalls: [] }
+  const subsetMode = Array.isArray(onlyItemIds) && onlyItemIds.length > 0
 
   // ── Replay zaščita 1: flag na naročilu ──
+  // (v subset načinu flag nastavimo šele pri plačilu ZADNJEGA izstavka — glej repliki 2)
   const order = await tx.order.findUnique({ where: { id: orderId }, select: { id: true, inventoryDeducted: true, locationId: true } })
   if (order?.inventoryDeducted) return empty
 
   // ── Replay zaščita 2: StockTransaction (orderId, type='SALE') ──
-  const existing = await tx.stockTransaction.findFirst({ where: { orderId, type: 'SALE' }, select: { id: true } })
-  if (existing) return empty
+  // Subset način: SALE transakcije so per izstavek (dovoljeno več); replika je pokrita s
+  // CAS na Check (že plačan izstavek nikoli ne pride sem). Celo naročilo: enaka pravila kot doslej.
+  if (!subsetMode) {
+    const existing = await tx.stockTransaction.findFirst({ where: { orderId, type: 'SALE' }, select: { id: true } })
+    if (existing) return empty
+  }
 
   const items = await tx.orderItem.findMany({
-    where: { orderId, voided: false },
-    select: { menuItemId: true, quantity: true },
+    where: { orderId, voided: false, ...(subsetMode ? { id: { in: onlyItemIds } } : {}) },
+    select: { id: true, menuItemId: true, quantity: true },
   })
   if (items.length === 0) return empty
 
@@ -209,6 +217,16 @@ export async function deductStockForOrderTx(
     totalCost = r2(totalCost + lineCost)
   }
 
+  // OPS-7 split: flag nastavimo šele, ko so odštete VSE ne-voided postavke naročila
+  // (v subset načinu šele pri plačilu zadnjega izstavka) — zaščita replike ostane veljavna.
+  if (subsetMode) {
+    const remaining = await tx.orderItem.count({
+      where: { orderId, voided: false, id: { notIn: onlyItemIds as string[] } },
+    })
+    if (remaining > 0) {
+      return { deducted: true, lines, totalCost, shortfalls }
+    }
+  }
   await tx.order.update({ where: { id: orderId }, data: { inventoryDeducted: true } })
 
   // 33-c: chain polja (tamper-evidentna veriga) + locationId naročila (audit §6)

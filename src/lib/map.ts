@@ -264,6 +264,8 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
     station: stationToUI(it.menuItem?.prepStation?.type),
     note: (it.notes as string) || null,
     voided: it.voided === true,
+    // OPS-7 coursing (v1.68.0): tečaj postavke (Course) — za urejevalnik naročila
+    courseId: (it.courseId as string | null | undefined) ?? null,
   }
 }
 

@@ -3,20 +3,23 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapOrder, nid, jstr } from '@/lib/map'
-import { orderInclude, normalizeOrder } from '@/lib/ops'
+import { orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
 import { auditChainFields } from '@/lib/audit-chain'
 
 /**
  * P2 audit §57 — ekspliciten "fire" na kuhinjo (draft → fire korak).
- * POST /api/orders/[id]/fire  (brez body-ja)
+ * POST /api/orders/[id]/fire  body (OPCIJSKO): {courseId: string}
  * Pravila:
  *  - dovoljenje `orders.create`; naročilo odprto
  *  - idempotentno: order.firedAt ??= now — če je firedAt že nastavljen, vrne 200 BREZ sprememb
  *    (izbira dokumentirana: ponoven fire obstoječega toka ni mogoč; postavke, dodane PO fire-u,
  *     pokrije naslednji klic, ker se vrste pri novih postavkah posodabljajo ločeno — v tej iteraciji
  *     pa fire = enkratna akcija celotnega odprtega naročila)
- *  - vsi OrderItem z statusom 'pending' (ne-voided) → status 'fired' + firedAt = now;
+ *  - OPS-7 (v1.68.0) COURSING: z body.courseId → fire SAMO pending postavk TEGA tečaja
+ *    (tečaj status pending → fired + firedAt); ostale postavke/tečaji ostanejo nedotaknjeni.
+ *    Brez courseId → vse pending postavke (obstoječe vedenje).
+ *  - vsi ciljni OrderItem z statusom 'pending' (ne-voided) → status 'fired' + firedAt = now;
  *    že fired/preparing/ready/served ostanejo nedotaknjeni
  *  - revizija ORDER_FIRED + dogodek OrderFired (fire-and-forget)
  *  - če ni pending postavk → 200 s firedCount 0 (idempotentna prijaznost; UI gumb vseeno skrije)
@@ -25,17 +28,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = await requirePermission(req, 'orders.create')
   if (isResponse(user)) return user
   const { id } = await params
+  const body = await req.json().catch(() => null)
+  const fireCourseId = typeof body?.courseId === 'string' && body.courseId.trim() ? body.courseId.trim() : null
 
-  const order = await db.order.findUnique({ where: { id } })
+  const order = await db.order.findUnique({ where: { id }, include: fireCourseId ? { Course: true } : undefined })
   if (!order) return fail('Naročilo ne obstaja.', 404)
   const guard = await guardResource(user, order.locationId)
   if (guard) return guard
   if (order.status === 'paid' || order.status === 'cancelled' || order.paymentStatus === 'paid') {
     return fail('Zaključenega (plačanega/storniranega) naročila ni mogoče poslati na kuhinjo.', 409)
   }
+  // OPS-7 coursing: validacija tečaja (pripada naročilu, ni že poslan)
+  let courseRow: { id: string; courseNumber: number; status: string } | null = null
+  if (fireCourseId) {
+    const c = (order as { Course?: { id: string; courseNumber: number; status: string }[] }).Course?.find((cc) => cc.id === fireCourseId)
+    if (!c) return fail('Tečaj ne obstaja za to naročilo.', 404)
+    if (c.status !== 'pending') return fail('Tečaj je že poslan v pripravo.', 409)
+    courseRow = c
+  }
 
   // idempotentnost: drugi klic ne sme spremeniti firedAt niti statusov postavk
-  if (order.firedAt) {
+  // (OPS-7: fire po tečaju je dovoljen tudi, če je order.firedAt že nastavljen —
+  //  vsak tečaj ima svoj fire; skupni firedAt ostane prvi)
+  if (order.firedAt && !fireCourseId) {
     const fresh = await db.order.findUnique({ where: { id }, include: orderInclude })
     if (!fresh) return fail('Naročilo ne obstaja.', 404)
     return ok({ order: mapOrder(normalizeOrder(fresh)), firedCount: 0, alreadyFired: true })
@@ -45,13 +60,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let firedCount = 0
   await db.$transaction(async (tx) => {
     const res = await tx.orderItem.updateMany({
-      where: { orderId: id, status: 'pending', voided: false },
+      where: { orderId: id, status: 'pending', voided: false, ...(fireCourseId ? { courseId: fireCourseId } : {}) },
       data: { status: 'fired', firedAt: now },
     })
     firedCount = res.count
-    await tx.order.update({ where: { id }, data: { firedAt: now } })
+    if (fireCourseId) {
+      if (firedCount === 0) throw new OrderError('Tečaj nima postavk za pošiljanje v pripravo.', 400)
+      await tx.course.update({ where: { id: fireCourseId }, data: { status: 'fired', firedAt: now } })
+    }
+    if (!order.firedAt) {
+      await tx.order.update({ where: { id }, data: { firedAt: now } })
+    }
     const __aIdF = nid()
-    const __chainF = await auditChainFields(tx, { action: 'ORDER_FIRED', entityType: 'Order', entityId: id, details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name }), locationId: order.locationId, id: __aIdF })
+    const __chainF = await auditChainFields(tx, { action: 'ORDER_FIRED', entityType: 'Order', entityId: id, details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name, ...(fireCourseId ? { courseId: fireCourseId, courseNumber: courseRow?.courseNumber } : {}) }), locationId: order.locationId, id: __aIdF })
     await tx.auditLog.create({
       data: {
         ...__chainF,
@@ -60,7 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         action: 'ORDER_FIRED',
         entityType: 'Order',
         entityId: id,
-        details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name }),
+        details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name, ...(fireCourseId ? { courseId: fireCourseId, courseNumber: courseRow?.courseNumber } : {}) }),
         locationId: order.locationId,
       },
     })
