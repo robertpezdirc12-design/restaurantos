@@ -1,0 +1,69 @@
+# OPS-3 (2026-10-12): Vercel Git deploymenti so "blocked" (GitHub status:
+# "Deployment was blocked", dpl_7ycgf5i43b5mBPurPRatdBNpneTE) — diagnoza prek
+# Vercel API + rezervni CLI deploy (recept iz delovnega dnevnika Task 41–43).
+# Token nikoli ne zapusti runnerja (samo env secret, ni odmlčen v log).
+
+name: Vercel OPS — diag + reserve CLI deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'diag | deploy'
+        required: true
+        default: 'diag'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-ops
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Diag — Vercel API (project, blocked dpl, zadnji deployi, teams)
+        if: ${{ inputs.mode == 'diag' }}
+        env:
+          VERCEL_TOKEN_B64: ${{ secrets.VERCEL_TOKEN_B64 }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          TOKEN=$(echo "$VERCEL_TOKEN_B64" | base64 -d)
+          ORG="$VERCEL_ORG_ID"; PRJ="$VERCEL_PROJECT_ID"
+          H="Authorization: Bearer $TOKEN"
+          echo "== /v2/user =="
+          curl -sS -H "$H" "https://api.vercel.com/v2/user" | head -c 1000; echo
+          echo "== /v9/projects/$PRJ?teamId=... =="
+          curl -sS -H "$H" "https://api.vercel.com/v9/projects/$PRJ?teamId=$ORG" | head -c 3000; echo
+          echo "== /v13/deployments/dpl_7ycgf5i43b5mBPurPRatdBNpneTE =="
+          curl -sS -H "$H" "https://api.vercel.com/v13/deployments/dpl_7ycgf5i43b5mBPurPRatdBNpneTE?teamId=$ORG" | head -c 4000; echo
+          echo "== zadnji 8 deployov (v6) =="
+          curl -sS -H "$H" "https://api.vercel.com/v6/deployments?projectId=$PRJ&teamId=$ORG&limit=8" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(x.get('uid'), x.get('state'), x.get('readyState'), x.get('url'), x.get('createdAt'), str(x.get('creator',{}).get('username'))) for x in d.get('deployments',[])]" || true
+          echo "== /v2/teams =="
+          curl -sS -H "$H" "https://api.vercel.com/v2/teams?limit=5" | head -c 2500; echo
+
+      - name: Generate deploy info (rezervna CLI pot, Task 41b)
+        if: ${{ inputs.mode == 'deploy' }}
+        run: |
+          printf "export const CI_DEPLOY_COMMIT = '%s'\nexport const CI_DEPLOY_RUN = '%s'\n" "${GITHUB_SHA::7}" "${{ github.run_id }}" > src/lib/deploy-commit.ts
+
+      - name: Vercel CLI deploy (production)
+        if: ${{ inputs.mode == 'deploy' }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN_B64: ${{ secrets.VERCEL_TOKEN_B64 }}
+        run: |
+          TOKEN=$(echo "$VERCEL_TOKEN_B64" | base64 -d)
+          npm i -g vercel@latest
+          npx vercel whoami --token="$TOKEN"
+          npx vercel --prod --yes --token="$TOKEN"
