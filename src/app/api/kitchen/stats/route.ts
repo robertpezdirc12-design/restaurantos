@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, isCentralRole } from '@/lib/api'
-import { prepMinutes, stationOf, kdsItemStats, kdsHeatmap, kdsTimeSplit, kdsDayKpi, kdsDelayCounts, type KdsSample } from '@/lib/kds-stats'
+import { prepMinutes, stationOf, kdsItemStats, kdsHeatmap, kdsTimeSplit, kdsDayKpi, kdsDelayCounts, kdsStationBreakdown, type KdsSample } from '@/lib/kds-stats'
 import { KDS_DELAY_ACTION } from '@/lib/kds-delays'
 
 const ALLOWED_DAYS = [7, 14, 30] as const
@@ -85,6 +85,26 @@ export async function GET(req: NextRequest) {
     take: 5000,
   })
 
+  // OPS-10 val 1 (v1.77.0): per-station targets from PrepStation.avgPrepTime.
+  // Active stations are mapped onto the two KDS buckets (stationOf(type));
+  // when several active stations share a bucket the first by sortOrder wins.
+  const prepStations = await db.prepStation.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, type: true, avgPrepTime: true, sortOrder: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  })
+  const bucketAvg = new Map<string, number>()
+  const stationConfig: Array<{ id: string; name: string; type: string; bucket: 'BAR' | 'KITCHEN'; avgPrepTime: number }> = []
+  for (const ps of prepStations) {
+    const bucket = stationOf(ps.type) as 'BAR' | 'KITCHEN'
+    if (!bucketAvg.has(bucket)) bucketAvg.set(bucket, ps.avgPrepTime)
+    stationConfig.push({ id: ps.id, name: ps.name, type: ps.type, bucket, avgPrepTime: ps.avgPrepTime })
+  }
+  const targets = {
+    BAR: bucketAvg.get('BAR') ?? 5,
+    KITCHEN: bucketAvg.get('KITCHEN') ?? 10,
+  }
+
   return ok({
     days,
     generatedAt: new Date().toISOString(),
@@ -99,5 +119,9 @@ export async function GET(req: NextRequest) {
     items: kdsItemStats(samples),
     heatmap: kdsHeatmap(samples),
     delays: kdsDelayCounts(delayRows),
+    // OPS-10 val 1 (v1.77.0) — additive keys (back-compat: existing keys untouched)
+    targets,
+    stations: kdsStationBreakdown(samples, targets),
+    stationConfig,
   })
 }

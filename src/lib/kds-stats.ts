@@ -135,6 +135,79 @@ export function kdsDayKpi(samples: KdsSample[], ref: Date): { avg: number; count
   return { avg: r1(same.reduce((s, v) => s + v.prepMin, 0) / same.length), count: same.length }
 }
 
+/* ───── OPS-10 val 1 (v1.77.0) — per-station targets (PrepStation.avgPrepTime) ───── */
+
+export interface KdsStationRow {
+  station: 'BAR' | 'KITCHEN'
+  count: number
+  avg: number
+  min: number
+  max: number
+  okPct: number
+  warnPct: number
+  latePct: number
+  target: number
+}
+
+/**
+ * Prep-time target (minutes) for a KDS station bucket. Station-specific
+ * overrides come from PrepStation.avgPrepTime (mapped by the caller into
+ * { BAR, KITCHEN }); fallbacks mirror the live board timers: BAR 5,
+ * KITCHEN 10. Always >= 1 (a 0/negative target would classify everything late).
+ */
+export function stationTarget(type: string, stationAvgPrepTimes?: Record<string, number>): number {
+  const bucket = stationOf(type)
+  const raw = stationAvgPrepTimes?.[bucket]
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return bucket === 'BAR' ? 5 : 10
+  return Math.max(1, Math.round(n))
+}
+
+/** 3-color escalation against a station target: <=target ok, <=125 % warn, else late. */
+export function classifyPrep(prepMin: number, target: number): 'ok' | 'warn' | 'late' {
+  const t = Number(target)
+  if (!Number.isFinite(t) || t <= 0) return prepMin > 0 ? 'late' : 'ok'
+  if (prepMin <= t) return 'ok'
+  if (prepMin <= t * 1.25) return 'warn'
+  return 'late'
+}
+
+/**
+ * Per-station breakdown against per-bucket targets. Always returns BOTH
+ * buckets (BAR, KITCHEN) so the UI can render a stable two-row table;
+ * empty buckets report count 0 and zeroed stats. Percentages use each
+ * station's own target (classifyPrep), not the global 5/10 thresholds.
+ */
+export function kdsStationBreakdown(samples: KdsSample[], targets: Record<string, number>): KdsStationRow[] {
+  const buckets: Array<'BAR' | 'KITCHEN'> = ['BAR', 'KITCHEN']
+  return buckets.map((station) => {
+    const arr = samples.filter((s) => s.station === station).map((s) => s.prepMin)
+    const count = arr.length
+    const target = stationTarget(station.toLowerCase(), targets)
+    let ok = 0
+    let warn = 0
+    let late = 0
+    for (const v of arr) {
+      const cls = classifyPrep(v, target)
+      if (cls === 'ok') ok += 1
+      else if (cls === 'warn') warn += 1
+      else late += 1
+    }
+    const pct = (n: number) => (count > 0 ? r1((n / count) * 100) : 0)
+    return {
+      station,
+      count,
+      avg: count > 0 ? r1(arr.reduce((s, v) => s + v, 0) / count) : 0,
+      min: count > 0 ? r1(Math.min(...arr)) : 0,
+      max: count > 0 ? r1(Math.max(...arr)) : 0,
+      okPct: pct(ok),
+      warnPct: pct(warn),
+      latePct: pct(late),
+      target,
+    }
+  })
+}
+
 /* ───── OPS-9 val 3 (v1.76.0) — delay reasons (AuditLog KDS_DELAY aggregation) ───── */
 
 export interface KdsDelayCount {

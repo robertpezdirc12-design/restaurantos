@@ -3,6 +3,10 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
 import { num } from '@/lib/map'
 import { prevWindow, buildXzReport, avgPartySizeOf } from '@/lib/xz-report'
+import { salesByHour, type SalesHourSample } from '@/lib/sales-by-hour'
+import { laborByDay, laborByRole, laborPct, type LaborSample } from '@/lib/labor-cost'
+import { dayKeyOf } from '@/lib/sales-by-hour'
+import { liveMinutes, totalPayCents } from '@/lib/timeclock'
 
 type VatRow = { base: number; vat: number }
 
@@ -177,6 +181,114 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="xz-porocilo_${report.from}_${report.to}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  // OPS-10 val 1 (v1.77.0): section=sbh — prodaja po urah (heatmap vir).
+  // Vir: plačani Orders (paidAt v obdobju); Prodaja = Order.total (z DDV).
+  if (section === 'sbh') {
+    const rows = await db.order.findMany({
+      where: { paidAt: range, ...locScope },
+      select: { paidAt: true, total: true, orderSource: true },
+      take: 50000,
+    })
+    const samples: SalesHourSample[] = []
+    for (const o of rows) {
+      if (!o.paidAt) continue
+      samples.push({ paidAt: o.paidAt, total: num(o.total), orderSource: o.orderSource })
+    }
+    const { days: byDay, totals } = salesByHour(samples)
+    if (format === 'json') {
+      return ok({ section: 'sbh', from: day(from), to: day(to), days: byDay, totals })
+    }
+    const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`
+    const Ls: string[] = []
+    Ls.push(`PRODAJA PO URAH - RestaurantOS`)
+    Ls.push(`Obdobje;${day(from)};${day(to)}`)
+    Ls.push(`Ura;Prodaja;Narocila;Povprecni racun`)
+    for (const t of totals) Ls.push(`${hourLabel(t.hour)};${p2(t.revenue)};${t.orders};${p2(t.avgCheck)}`)
+    Ls.push(`SKUPAJ;${p2(totals.reduce((a, t) => a + t.revenue, 0))};${totals.reduce((a, t) => a + t.orders, 0)}`)
+    for (const d of byDay) {
+      Ls.push('')
+      Ls.push(`DAN;${d.date}`)
+      Ls.push(`Ura;Prodaja;Narocila;Povprecni racun`)
+      for (const b of d.dayBuckets) Ls.push(`${hourLabel(b.hour)};${p2(b.revenue)};${b.orders};${p2(b.avgCheck)}`)
+    }
+    const csvS = '\uFEFF' + Ls.join('\r\n')
+    return new NextResponse(csvS, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="prodaja-po-urah_${day(from)}_${day(to)}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  // OPS-10 val 1 (v1.77.0): section=labor — labor stroški (punch×wage/net sales).
+  // Vir: TimeEntry (clockIn v obdobju; odprti vnosi šteti do min(zdaj, to))
+  // + neto prodaja po dnevih iz plačanih Orders (subtotal − discount).
+  if (section === 'labor') {
+    const nowCapped = to < new Date() ? to : new Date()
+    const [entries, paidOrders] = await Promise.all([
+      db.timeEntry.findMany({
+        where: { clockIn: range, ...locScope },
+        select: {
+          clockIn: true, clockOut: true, breakMinutes: true,
+          totalMinutes: true, totalPay: true, payRate: true, type: true, jobId: true,
+          Job: { select: { name: true } },
+        },
+        take: 50000,
+      }),
+      db.order.findMany({
+        where: { paidAt: range, paymentStatus: 'paid', ...locScope },
+        select: { paidAt: true, subtotal: true, discount: true },
+        take: 50000,
+      }),
+    ])
+    const samples: LaborSample[] = entries.map((e) => {
+      if (e.clockOut) {
+        return { clockIn: e.clockIn, clockOut: e.clockOut, totalMinutes: e.totalMinutes, totalPay: num(e.totalPay), jobId: e.jobId, type: e.type }
+      }
+      const end = nowCapped < e.clockIn ? e.clockIn : nowCapped
+      const live = liveMinutes(e.clockIn.getTime(), end.getTime(), e.breakMinutes)
+      const livePay = live > 0 ? num(totalPayCents(live, Math.round(num(e.payRate) * 100))) / 100 : 0
+      return { clockIn: e.clockIn, clockOut: end, totalMinutes: live, totalPay: livePay, jobId: e.jobId, type: e.type }
+    })
+    const jobNames: Record<string, string> = {}
+    for (const e of entries) if (e.jobId && e.Job?.name) jobNames[e.jobId] = e.Job.name
+    const netByDay = new Map<string, number>()
+    for (const o of paidOrders) {
+      if (!o.paidAt) continue
+      const key = dayKeyOf(o.paidAt)
+      netByDay.set(key, (netByDay.get(key) || 0) + Math.max(0, num(o.subtotal) - num(o.discount)))
+    }
+    const dayRows = laborByDay(samples).map((d) => {
+      const net = Math.round((netByDay.get(d.date) || 0) * 100) / 100
+      return { ...d, net, pct: laborPct(d.cost, net) }
+    })
+    const roleRows = laborByRole(samples, jobNames)
+    if (format === 'json') {
+      return ok({ section: 'labor', from: day(from), to: day(to), days: dayRows, roles: roleRows })
+    }
+    const Ll: string[] = []
+    Ll.push(`LABOR STROSKI - RestaurantOS`)
+    Ll.push(`Obdobje;${day(from)};${day(to)}`)
+    Ll.push(`Datum;Minute;Strosek (EUR);Neto prodaja (EUR);Labor %`)
+    for (const d of dayRows) Ll.push(`${d.date};${d.minutes};${p2(d.cost)};${p2(d.net)};${d.pct === null ? '' : d.pct}`)
+    Ll.push(`SKUPAJ;${Math.round(dayRows.reduce((a, d) => a + d.minutes, 0) * 100) / 100};${p2(dayRows.reduce((a, d) => a + d.cost, 0))};${p2([...netByDay.values()].reduce((a, v) => a + v, 0))}`)
+    Ll.push('')
+    Ll.push(`PO VLOGAH`)
+    Ll.push(`Vloga;Minute;Strosek (EUR)`)
+    for (const r of roleRows) Ll.push(`${r.roleName};${r.minutes};${p2(r.cost)}`)
+    const csvL = '\uFEFF' + Ll.join('\r\n')
+    return new NextResponse(csvL, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="labor-stroski_${day(from)}_${day(to)}.csv"`,
         'Cache-Control': 'no-store',
       },
     })

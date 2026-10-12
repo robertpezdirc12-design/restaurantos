@@ -19,10 +19,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
-  Tooltip as RTooltip, ReferenceLine, Legend,
+  Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
 import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
+import { heatClass } from '@/lib/sales-by-hour'
+import { durationLabel } from '@/lib/timeclock'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -7497,12 +7499,18 @@ export function MenuEngineeringTab() {
 /* ─────────────── OPS-8 v1.71.0 — KDS STATISTIKA PRIPRAVE ─────────────── */
 
 interface KdsStatItem { name: string; count: number; avg: number; min: number; max: number; latePct: number }
+/** OPS-10 val 1 (v1.77.0) — per-station breakdown row against its own target */
+interface KdsStationRowT { station: 'BAR' | 'KITCHEN'; count: number; avg: number; min: number; max: number; okPct: number; warnPct: number; latePct: number; target: number }
 interface KdsStatsResp {
   days: number; generatedAt: string
   kpi: { todayAvgPrep: number; todayCount: number; onTimePct: number; okPct: number; warnPct: number; latePct: number }
   items: KdsStatItem[]
   heatmap: { hour: number; half: number; avg: number; count: number }[]
   delays: { reason: string; count: number }[]
+  // OPS-10 val 1 (v1.77.0) — additive: per-station targets (PrepStation.avgPrepTime)
+  targets?: { BAR: number; KITCHEN: number }
+  stations?: KdsStationRowT[]
+  stationConfig?: { id: string; name: string; type: string; bucket: 'BAR' | 'KITCHEN'; avgPrepTime: number }[]
 }
 
 function kdsHeatClass(avg: number, count: number): string {
@@ -7512,7 +7520,7 @@ function kdsHeatClass(avg: number, count: number): string {
   return 'bg-rose-500'
 }
 
-export function KdsStatsSection() {
+export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -7522,6 +7530,9 @@ export function KdsStatsSection() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [reload, setReload] = useState(0)
+  // OPS-10 val 1 — target editing per PrepStation (avgPrepTime, PATCH /api/prep-stations/[id])
+  const [targetDraft, setTargetDraft] = useState<Record<string, string>>({})
+  const [savingId, setSavingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !loaded) return
@@ -7543,6 +7554,27 @@ export function KdsStatsSection() {
   }, [open, loaded, days, station, reload])
 
   const load = () => setLoaded(true)
+
+  /** OPS-10 val 1: save edited avgPrepTime for a PrepStation row (1-60 clamp server-side). */
+  const saveTarget = async (id: string) => {
+    const raw = targetDraft[id]
+    if (raw === undefined || raw.trim() === '') return
+    const n = Math.round(Number(raw))
+    if (!Number.isFinite(n)) return
+    setSavingId(id)
+    try {
+      await api(`/api/prep-stations/${id}`, { method: 'PATCH', body: JSON.stringify({ avgPrepTime: n }) })
+      toast({ title: t('kds.stations.saved') })
+      setTargetDraft((d) => {
+        const next = { ...d }; delete next[id]; return next
+      })
+      setReload((r) => r + 1)
+    } catch (e) {
+      toast({ title: String((e as Error).message || e), variant: 'destructive' })
+    } finally {
+      setSavingId(null)
+    }
+  }
 
   const exportCsv = () => {
     if (!data) return
@@ -7706,6 +7738,85 @@ export function KdsStatsSection() {
               </div>
             )}
 
+            {/* OPS-10 val 1 (v1.77.0): per-station breakdown vs PrepStation target
+                (3-dot colors from classifyPrep: ok / warn(<=125 %) / late) */}
+            {data && data.stations && data.stations.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-stone-500">{t('kds.stations.title')}</p>
+                <div className="overflow-x-auto rounded-lg border border-stone-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">{t('kds.stats.station')}</th>
+                        <th className="px-3 py-2 font-medium text-right">{t('kds.stats.thCount')}</th>
+                        <th className="px-3 py-2 font-medium text-right">{t('kds.stats.thAvg')}</th>
+                        <th className="px-3 py-2 font-medium text-right">{t('kds.stats.thLate')}</th>
+                        <th className="px-3 py-2 font-medium text-right">{t('kds.stations.target')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.stations.map((sRow) => {
+                        // 3-color dot against the station's own target (ok / warn / late by avg)
+                        const dotCls = sRow.count === 0
+                          ? 'bg-stone-300'
+                          : sRow.avg <= sRow.target
+                            ? 'bg-emerald-500'
+                            : sRow.avg <= sRow.target * 1.25
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                        const cfg = data.stationConfig?.find((c) => c.bucket === sRow.station)
+                        const draft = cfg ? targetDraft[cfg.id] : undefined
+                        return (
+                          <tr key={sRow.station} className="border-t border-stone-100 hover:bg-stone-50/60">
+                            <td className="px-3 py-2 font-medium whitespace-nowrap">
+                              <span className={`mr-1.5 inline-block h-2.5 w-2.5 rounded-full ${dotCls}`} aria-hidden />
+                              {sRow.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}
+                              {cfg && <span className="ml-1 text-xs font-normal text-stone-400">{cfg.name}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right">{sRow.count}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{sRow.count > 0 ? fmtMin(sRow.avg) : '—'}</td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${sRow.latePct > 25 ? 'bg-rose-100 text-rose-800' : sRow.latePct > 10 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                {sRow.latePct.toFixed(1)} %
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {cfg && canEditTargets ? (
+                                <span className="inline-flex items-center justify-end gap-1">
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={60}
+                                    className="h-7 w-16 text-right text-xs"
+                                    value={draft ?? String(cfg.avgPrepTime)}
+                                    aria-label={t('kds.stations.target')}
+                                    onChange={(e) => setTargetDraft((d) => ({ ...d, [cfg.id]: e.target.value }))}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') void saveTarget(cfg.id) }}
+                                  />
+                                  {draft !== undefined && draft !== String(cfg.avgPrepTime) && (
+                                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={savingId === cfg.id} onClick={() => void saveTarget(cfg.id)}>
+                                      {savingId === cfg.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />} {t('kds.stations.save')}
+                                    </Button>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-stone-600">{fmtMin(sRow.target)}</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-1.5 flex flex-wrap gap-x-3 text-[11px] text-stone-500">
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {t('kds.stats.ok')}</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {t('kds.stats.warn')}</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {t('kds.stats.late')}</span>
+                </p>
+              </div>
+            )}
+
             {/* OPS-9 val 3 (v1.76.0): delay reasons (AuditLog KDS_DELAY) — catalog table + counts */}
             {data && data.delays.length > 0 && (
               <div className="max-h-96 overflow-y-auto rounded-lg border border-stone-200">
@@ -7731,6 +7842,362 @@ export function KdsStatsSection() {
         </CollapsibleContent>
       </Card>
     </Collapsible>
+  )
+}
+
+/* ─────────────── OPS-10 v1.77.0 — ANALITIKA kartice v Pregledu ─────────────── */
+
+/** Lazy fetch helper — resolves true once the element first enters the viewport. */
+function useInViewOnce<T extends HTMLElement>(): [React.RefObject<T | null>, boolean] {
+  const ref = useRef<T | null>(null)
+  // no IntersectionObserver (old browsers) → treat as visible immediately, no effect needed
+  const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    if (inView) return
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) { setInView(true); io.disconnect() } },
+      { rootMargin: '160px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [inView])
+  return [ref, inView]
+}
+
+/** CSV download of an /api/reports/export section (Bearer-authenticated, blob save). */
+async function downloadReportSection(section: string, from: string, to: string, filename: string) {
+  const token = getToken()
+  const res = await fetch(`/api/reports/export?section=${section}&from=${from}&to=${to}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(data?.error || 'export failed')
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** 'YYYY-MM-DD' → 'DD.MM.' (compact day label for heatmap rows / tables). */
+const shortDay = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.` : iso)
+
+interface SbhRespT {
+  periodDays: number
+  days: { date: string; dayBuckets: { hour: number; revenue: number; orders: number; avgCheck: number }[] }[]
+  totals: { hour: number; revenue: number; orders: number; avgCheck: number }[]
+  edges: number[]
+}
+
+/** amber→rose heat scale (5 classes) — internal tailwind palette, no indigo/blue. */
+const SBH_HEAT_CLASSES = ['bg-stone-100 border border-stone-200', 'bg-amber-100', 'bg-amber-300', 'bg-orange-500', 'bg-rose-600']
+
+/** "Prodaja po urah" Pregled card — 24h × day heatmap + hourly totals bar chart. */
+export function SalesByHourCard() {
+  const { t } = useI18n()
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
+  const [days, setDays] = useState<'7' | '14' | '30'>('7')
+  const [data, setData] = useState<SbhRespT | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+  const [csvBusy, setCsvBusy] = useState(false)
+
+  useEffect(() => {
+    if (!inView) return
+    let alive = true
+    ;(async () => {
+      setBusy(true); setErr('')
+      try {
+        const d = await api<SbhRespT>(`/api/reports/sales-by-hour?days=${days}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [inView, days, reload])
+
+  const csvExport = async () => {
+    setCsvBusy(true)
+    try {
+      const to = new Date()
+      const from = new Date(to.getTime() - Number(days) * 86400000)
+      const iso = (d: Date) => d.toISOString().slice(0, 10)
+      await downloadReportSection('sbh', iso(from), iso(to), `prodaja-po-urah_${iso(from)}_${iso(to)}.csv`)
+    } catch (e) {
+      toast({ title: String((e as Error).message || e), variant: 'destructive' })
+    } finally {
+      setCsvBusy(false)
+    }
+  }
+
+  const edges = data?.edges || []
+  const totalOrders = data ? data.totals.reduce((a, b) => a + b.orders, 0) : 0
+  const totalRevenue = data ? data.totals.reduce((a, b) => a + b.revenue, 0) : 0
+  const hasData = !!data && totalOrders > 0
+  const chartData = data?.totals.filter((b) => b.orders > 0).map((b) => ({ ura: `${String(b.hour).padStart(2, '0')}`, prodaja: b.revenue })) || []
+
+  return (
+    <Card ref={ref}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+          <Clock className="w-4 h-4" /> {t('sbh.title')}
+          <span className="ml-auto flex items-center gap-2">
+            <Select value={days} onValueChange={(v) => setDays(v as '7' | '14' | '30')}>
+              <SelectTrigger className="h-7 w-24 text-xs" aria-label={t('kds.stats.period')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">{t('kds.stats.days7')}</SelectItem>
+                <SelectItem value="14">{t('kds.stats.days14')}</SelectItem>
+                <SelectItem value="30">{t('kds.stats.days30')}</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasData && (
+              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+                {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('sbh.csv')}
+              </Button>
+            )}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">{t('sbh.desc')}</p>
+        {err && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">{t('sbh.error')} <span className="text-red-500/80">{err}</span></p>
+            <Button size="sm" variant="outline" onClick={() => setReload((r) => r + 1)} className="shrink-0 gap-1"><RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}</Button>
+          </div>
+        )}
+        {busy && (
+          <div className="space-y-2" aria-busy="true">
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        )}
+        {!busy && data && !hasData && <p className="text-sm text-stone-500">{t('sbh.empty')}</p>}
+        {!busy && hasData && data && (
+          <>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-stone-500">{t('sbh.heat')}</p>
+              <div className="overflow-x-auto">
+                <div className="min-w-[520px] space-y-0.5">
+                  {data.days.map((d) => (
+                    <div key={d.date} className="flex items-center gap-1.5">
+                      <span className="w-12 shrink-0 text-[11px] text-stone-500">{shortDay(d.date)}</span>
+                      <div className="grid flex-1 gap-0.5" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                        {d.dayBuckets.map((b) => (
+                          <div
+                            key={b.hour}
+                            className={`h-5 rounded-sm ${SBH_HEAT_CLASSES[heatClass(b.revenue, edges)] ?? SBH_HEAT_CLASSES[0]}`}
+                            title={`${d.date} ${String(b.hour).padStart(2, '0')}:00 — ${t('sbh.revenue')}: ${fmtEUR(b.revenue)} · ${t('sbh.orders')}: ${b.orders}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-12 shrink-0 text-[11px] font-medium text-stone-500">{t('sbh.allDays')}</span>
+                    <div className="grid flex-1 gap-0.5" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
+                      {data.totals.map((b) => (
+                        <div
+                          key={b.hour}
+                          className={`h-5 rounded-sm ${SBH_HEAT_CLASSES[heatClass(b.revenue, edges)] ?? SBH_HEAT_CLASSES[0]}`}
+                          title={`${String(b.hour).padStart(2, '0')}:00 — ${t('sbh.revenue')}: ${fmtEUR(b.revenue)} · ${t('sbh.orders')}: ${b.orders}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-stone-500">
+                <span>{t('sbh.low')}</span>
+                {SBH_HEAT_CLASSES.map((c, i) => <span key={i} className={`h-2.5 w-4 rounded-sm ${c}`} />)}
+                <span>{t('sbh.high')}</span>
+                <span className="ml-2">{t('sbh.sumLine', { revenue: fmtEUR(totalRevenue), orders: totalOrders })}</span>
+              </p>
+            </div>
+            {chartData.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-stone-500">{t('sbh.chartTitle')}</p>
+                <div className="h-36 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="ura" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                      <YAxis tick={{ fontSize: 10 }} width={54} tickFormatter={(v: number) => fmtEUR(v)} />
+                      <RTooltip formatter={(v) => fmtEUR(Number(v))} />
+                      <Bar dataKey="prodaja" fill="#ea580c" radius={[3, 3, 0, 0]} name={t('sbh.revenue')} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+interface LaborRespT {
+  days: { date: string; cost: number; minutes: number; overtimeMinutes: number; netSales: number; pct: number | null }[]
+  roles: { roleName: string; minutes: number; cost: number }[]
+  summary: { periodDays: number; totalCost: number; totalMinutes: number; totalOvertimeMinutes: number; totalNetSales: number; avgPct: number | null; targetPct: number }
+}
+
+/** Labor % badge color: green ≤32, amber ≤38, red >38 (null = no net sales base). */
+const laborPctCls = (pct: number | null): string =>
+  pct === null ? 'bg-stone-100 text-stone-500' : pct <= 32 ? 'bg-emerald-100 text-emerald-800' : pct <= 38 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+
+/** "Labor stroški" Pregled card — daily labor % vs target + per-role top 5. */
+export function LaborCostCard() {
+  const { t } = useI18n()
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
+  const [days, setDays] = useState<'7' | '14' | '30'>('7')
+  const [data, setData] = useState<LaborRespT | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+  const [csvBusy, setCsvBusy] = useState(false)
+
+  useEffect(() => {
+    if (!inView) return
+    let alive = true
+    ;(async () => {
+      setBusy(true); setErr('')
+      try {
+        const d = await api<LaborRespT>(`/api/reports/labor-cost?days=${days}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [inView, days, reload])
+
+  const csvExport = async () => {
+    setCsvBusy(true)
+    try {
+      const to = new Date()
+      const from = new Date(to.getTime() - Number(days) * 86400000)
+      const iso = (d: Date) => d.toISOString().slice(0, 10)
+      await downloadReportSection('labor', iso(from), iso(to), `labor-stroski_${iso(from)}_${iso(to)}.csv`)
+    } catch (e) {
+      toast({ title: String((e as Error).message || e), variant: 'destructive' })
+    } finally {
+      setCsvBusy(false)
+    }
+  }
+
+  const s = data?.summary
+  const hasData = !!data && (data.days.length > 0 || (s !== undefined && s.totalMinutes > 0))
+  const topRoles = data?.roles.slice(0, 5) || []
+
+  return (
+    <Card ref={ref}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+          <Wallet className="w-4 h-4" /> {t('labor.title')}
+          <span className="ml-auto flex items-center gap-2">
+            <Select value={days} onValueChange={(v) => setDays(v as '7' | '14' | '30')}>
+              <SelectTrigger className="h-7 w-24 text-xs" aria-label={t('kds.stats.period')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">{t('kds.stats.days7')}</SelectItem>
+                <SelectItem value="14">{t('kds.stats.days14')}</SelectItem>
+                <SelectItem value="30">{t('kds.stats.days30')}</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasData && (
+              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+                {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('labor.csv')}
+              </Button>
+            )}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">{t('labor.desc')}</p>
+        {err && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">{t('labor.error')} <span className="text-red-500/80">{err}</span></p>
+            <Button size="sm" variant="outline" onClick={() => setReload((r) => r + 1)} className="shrink-0 gap-1"><RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}</Button>
+          </div>
+        )}
+        {busy && (
+          <div className="space-y-2" aria-busy="true">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        )}
+        {!busy && data && !hasData && <p className="text-sm text-stone-500">{t('labor.empty')}</p>}
+        {!busy && hasData && data && s && (
+          <>
+            <div className="overflow-x-auto rounded-lg border border-stone-200">
+              <table className="w-full min-w-[440px] text-sm">
+                <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">{t('labor.colDate')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('labor.colHours')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('labor.colCost')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('labor.colNet')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('labor.colPct')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.days.map((d) => (
+                    <tr key={d.date} className="border-t border-stone-100 hover:bg-stone-50/60">
+                      <td className="px-3 py-2 font-medium whitespace-nowrap">{shortDay(d.date)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{durationLabel(d.minutes)}</td>
+                      <td className="px-3 py-2 text-right">{fmtEUR(d.cost)}</td>
+                      <td className="px-3 py-2 text-right">{fmtEUR(d.netSales)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-xs font-medium ${laborPctCls(d.pct)}`}>
+                          {d.pct === null ? '—' : `${d.pct.toFixed(2)} %`}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {data.days.length === 0 && (
+                    <tr><td className="px-3 py-2 text-sm text-stone-500" colSpan={5}>{t('labor.empty')}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid gap-2 text-xs text-stone-600 sm:grid-cols-2">
+              <p>
+                {t('labor.target', { n: s.targetPct })} · <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${laborPctCls(s.avgPct)}`}>{s.avgPct === null ? '—' : `${s.avgPct.toFixed(2)} %`}</span>
+                <span className="ml-1">{t('labor.avgHint')}</span>
+              </p>
+              <p>{t('labor.overtime')}: <span className="font-semibold">{durationLabel(s.totalOvertimeMinutes)}</span> · {t('labor.totalCost')}: <span className="font-semibold">{fmtEUR(s.totalCost)}</span></p>
+            </div>
+            {topRoles.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-stone-500">{t('labor.roles')}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {topRoles.map((r) => (
+                    <Badge key={r.roleName} variant="outline" className="gap-1.5 whitespace-nowrap">
+                      {r.roleName} · {durationLabel(r.minutes)} · {fmtEUR(r.cost)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

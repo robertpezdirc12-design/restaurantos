@@ -66,7 +66,7 @@ import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1403,6 +1403,11 @@ function DashboardInner() {
                 </div>
               </CardContent>
             </Card>
+            {/* OPS-10 val 1 (v1.77.0) — analitika: prodaja po urah + labor stroški (lazy fetch ko sta vidna) */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <SalesByHourCard />
+              <LaborCostCard />
+            </div>
           </TabsContent>
 
           <TabsContent value="mize" className="space-y-6">
@@ -1771,7 +1776,8 @@ function DashboardInner() {
               })}
             {viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
             {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
-            <KdsStatsSection />
+            {/* OPS-10 v1.77.0 — per-station targets: urejanje samo s settings.manage */}
+            <KdsStatsSection canEditTargets={canManage || perms.includes('settings.manage')} />
 
             {/* OPS-9 val 3 (v1.76.0): delay-reason dialog when a LATE item (>10 min) is bumped */}
             <Dialog open={!!delayAsk} onOpenChange={(v) => !v && setDelayAsk(null)}>

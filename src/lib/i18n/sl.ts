@@ -1889,6 +1889,44 @@ export const sl: Record<string, string> = {
   // ── OPS-8 val 3 (v1.73.0) — dostava: voznik iz zaposlenih ──
   'dost.driverEmployee': 'Voznik (zaposleni)',
   'dost.driverManual': 'Ročni vnos',
+
+  // ── OPS-10 val 1 (v1.77.0) — analitika: prodaja po urah (Pregled kartica) ──
+  'sbh.title': 'Prodaja po urah',
+  'sbh.desc': 'Prihodki po uri plačila (topla mreža dni × 24 ur) in skupaj po urah — iz plačanih naročil.',
+  'sbh.csv': 'Izvozi (CSV)',
+  'sbh.empty': 'Ni plačanih naročil v izbranem obdobju.',
+  'sbh.error': 'Napaka pri nalaganju prodaje po urah.',
+  'sbh.heat': 'Topla mreža (dni × 24 ur)',
+  'sbh.allDays': 'Vsi dnevi',
+  'sbh.low': 'manj',
+  'sbh.high': 'več',
+  'sbh.sumLine': 'Skupaj: {revenue} · {orders} naročil',
+  'sbh.chartTitle': 'Skupaj po urah',
+  'sbh.revenue': 'Prodaja',
+  'sbh.orders': 'Naročila',
+
+  // ── OPS-10 val 1 (v1.77.0) — analitika: labor stroški (Pregled kartica) ──
+  'labor.title': 'Labor stroški',
+  'labor.desc': 'Strošek dela vs. neto prodaja po dnevih — zeleno ≤ 32 %, rumeno ≤ 38 %, rdeče > 38 %.',
+  'labor.csv': 'Izvozi (CSV)',
+  'labor.empty': 'Ni delovnih vnosov v izbranem obdobju.',
+  'labor.error': 'Napaka pri nalaganju labor stroškov.',
+  'labor.colDate': 'Dan',
+  'labor.colHours': 'Ure',
+  'labor.colCost': 'Strošek',
+  'labor.colNet': 'Neto prodaja',
+  'labor.colPct': 'Labor %',
+  'labor.target': 'Cilj: {n} %',
+  'labor.avgHint': '(povprečje obdobja)',
+  'labor.overtime': 'Nadure skupaj',
+  'labor.totalCost': 'Strošek skupaj',
+  'labor.roles': 'Po vlogah (top 5)',
+
+  // ── OPS-10 val 1 (v1.77.0) — KDS razčlenba po postajah + targeti ──
+  'kds.stations.title': 'Po postajah',
+  'kds.stations.target': 'Cilj (min)',
+  'kds.stations.save': 'Shrani',
+  'kds.stations.saved': 'Cilj postaje je shranjen.',
 }
 
 export type Dictionary = typeof sl

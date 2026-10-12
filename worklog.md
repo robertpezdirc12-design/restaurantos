@@ -1782,3 +1782,19 @@ Stage Summary:
 - Produkcija = v1.76.0 @ 8b21ef1: OPS-9 POPOLN — nabava zdaj: BOM recepture z yield/pod-recepturami, e-računi, EU preverjanje DDV, ponavljajoča naročila, AP most (od OPS-8), predlogi naročil (od OPS-8), FEFO serije; KDS: prep-time statistika (OPS-8) + delay-reasoni; dostava: voznik push + auto-accept; QR: alergeni. Zero DDL v vseh valovih (produkcija brez uporabniških korakov).
 - INCIDENT (resen, rešen): sandbox obnovljen iz starega snapshot-a med sejama (v1.73.0 → v1.65.0 lokalno) — rešeno z git fetch (nov žeton v remote URL — STARI žeton je bil v obnovljenem store-u, PAT ghp_ZRtO še veljaven) + rebase --onto + konflikti (worklog/api.ts). LEKCIJA: vedno `git log --oneline -1` + verzija iz health pred delom agentov; rebase --onto = čista pot reševanja.
 - OSTALO (P2/P3 za naslednjo fazo): eSLOG PDF/priloga, recurring PO reminder 1h (potreben cron), BatchPreparation aktivacija, kioski upsell, /display promocijska vsebina, prep-time per postaja targets, labor cost % iz TimeClock, sales-by-hour heatmap v pregledu.
+
+---
+Task ID: OPS-10-a + OPS-10-b (raziskava)
+Agent: Explore (inventar) + general-purpose (web research)
+Task: Inventar obstoječih podatkovnih virov + web research best practices za P2/P3 backlog (sales-by-hour, labor %, KDS targeti, kiosk upsell, display promocije, eSLOG priloga, recurring reminder, BatchPreparation).
+
+Work Log:
+- OPS-10-a (Explore): inventar 12 področij — TimeEntry (payRate snapshot, totalPay), Order.paidAt indeksiran, PrepStation.avgPrepTime obstaja a stats ga NE uporablja (2 postaji: BAR/KITCHEN prek stationOf()), kiosk nima upsell NITI slik, /display = polling 2 s brez promocij, eSLOG nima attachment shrambe, BatchPreparation = schema-only (0 usage v src/), recurring-po = lazy-only (brez cron), push = 12 tipov, Integration config pattern (5 primerov) = utirjena zero-DDL pot, testi 892, i18n 1894 vrstic/slovar
+- OPS-10-b (web, ~30 poizvedb): Toast labor% = punch×wage/netSales (benchmark 25–35 %; Toast NIMA scheduled-vs-actual); Toast hourly 15-min, Lightspeed gross+orders+covers per uro; KDS 3-barvna lestvica (100 %/125 % targeta; grill ~8/bar ~5/cold ~4 min); kiosk upsell AOV +10–30 % (4 viri), 1–3 predlogi per artikel, en tap; display promo carousel 15 s; eSLOG priloga = cac:Attachment/cbc:EmbeddedDocumentBinaryObject base64; HRAMBA 10 LET (ZDavP-2) — popravek pričakovanj 8; ZIERDED: eSLOG B2B obvezen od 1.1.2028; recurring reminder = banner + digest email (NE cron); batch = BOM flattenDeduction × plannedQty, napoved 4 ista dni tedna
+- Plan: docs/OPS10-plan-analitika-frontend-nabava.md — 3 valovi: V1 analitika (sales-by-hour + labor% + KDS targeti), V2 front-of-house (kiosk upsell + display promocije), V3 nabava (eSLOG priloga + recurring reminder + BatchPreparation)
+
+Stage Summary:
+- Vsi podatki za 8 funkcij že v DB — vse zero-DDL; edina praktična meja: eSLOG b64 priloga ≤1.5 MB v Integration config
+- KDS targeti: PrepStation.avgPrepTime je pravi vir (DDL NI potreben), fallback 5/10 min
+- Prodaja timestamp = paidAt (poravnano z X/Z); labor% = totalPay/netSales
+- eSLOG hramba dokumentirana 10 let; kiosk upsell benchmark 10–30 % AOV

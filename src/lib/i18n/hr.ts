@@ -1889,6 +1889,44 @@ export const hr: Record<string, string> = {
   // ── OPS-8 val 3 (v1.73.0) — dostava: vozač iz zaposlenih ──
   'dost.driverEmployee': 'Vozač (zaposleni)',
   'dost.driverManual': 'Ručni unos',
+
+  // ── OPS-10 val 1 (v1.77.0) — analitika: prodaja po satima (Pregled kartica) ──
+  'sbh.title': 'Prodaja po satima',
+  'sbh.desc': 'Prihodi po satu plaćanja (toplinska mreža dana × 24 sata) i ukupno po satima — iz plaćanih narudžbi.',
+  'sbh.csv': 'Izvezi (CSV)',
+  'sbh.empty': 'Nema plaćanih narudžbi u odabranom razdoblju.',
+  'sbh.error': 'Greška pri učitavanju prodaje po satima.',
+  'sbh.heat': 'Toplinska mreža (dani × 24 sata)',
+  'sbh.allDays': 'Svi dani',
+  'sbh.low': 'manje',
+  'sbh.high': 'više',
+  'sbh.sumLine': 'Ukupno: {revenue} · {orders} narudžbi',
+  'sbh.chartTitle': 'Ukupno po satima',
+  'sbh.revenue': 'Prodaja',
+  'sbh.orders': 'Narudžbe',
+
+  // ── OPS-10 val 1 (v1.77.0) — analitika: troškovi rada (Pregled kartica) ──
+  'labor.title': 'Troškovi rada',
+  'labor.desc': 'Trošak rada vs. neto prodaja po danima — zeleno ≤ 32 %, žuto ≤ 38 %, crveno > 38 %.',
+  'labor.csv': 'Izvezi (CSV)',
+  'labor.empty': 'Nema evidencija radnog vremena u odabranom razdoblju.',
+  'labor.error': 'Greška pri učitavanju troškova rada.',
+  'labor.colDate': 'Dan',
+  'labor.colHours': 'Sati',
+  'labor.colCost': 'Trošak',
+  'labor.colNet': 'Neto prodaja',
+  'labor.colPct': 'Rad %',
+  'labor.target': 'Cilj: {n} %',
+  'labor.avgHint': '(prosjek razdoblja)',
+  'labor.overtime': 'Prekovremeni ukupno',
+  'labor.totalCost': 'Trošak ukupno',
+  'labor.roles': 'Po ulogama (top 5)',
+
+  // ── OPS-10 val 1 (v1.77.0) — KDS razčlamba po postajama + ciljevi ──
+  'kds.stations.title': 'Po postajama',
+  'kds.stations.target': 'Cilj (min)',
+  'kds.stations.save': 'Spremi',
+  'kds.stations.saved': 'Cilj postaje je spremljen.',
 }
 
 export type DictionaryHr = typeof hr
