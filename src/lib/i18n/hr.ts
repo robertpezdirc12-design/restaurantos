@@ -1350,6 +1350,19 @@ export const hr: Record<string, string> = {
   // Kuhinja (dopune)
   'kitchen.start': 'Započni',
   'kitchen.queueEmpty': 'Red u kuhinji je prazan. 🎉',
+  // OPS-4 v1.67.0 — KDS upgrade + brza prodaja (šank)
+  'tabs.prodaja': 'Brza prodaja',
+  'kds.all': 'Sve postaje',
+  'kds.sound': 'Zvok',
+  'kds.fullscreen': 'Puni ekran',
+  'kds.minutes': '{m} min',
+  'kds.markUnavailable': 'Označi rasprodano (86)',
+  'kds.markAvailable': 'Vrati na raspolaganju',
+  'sale.search': 'Traži artikl…',
+  'sale.allCat': 'Sve kategorije',
+  'sale.total': 'Ukupno',
+  'sale.payNow': 'Plaći i izdaj račun',
+  'sale.empty': 'Nema artikala za brzu prodaju.',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',
   'payment.partGcRequired': 'Dio {n}: odaberite poklon karticu.',

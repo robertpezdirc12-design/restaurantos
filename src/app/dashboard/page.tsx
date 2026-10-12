@@ -63,7 +63,7 @@ import {
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
 } from '@/components/dashboard-tabs'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2 } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2 } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
@@ -176,7 +176,11 @@ function DashboardInner() {
   const [mergeOrder, setMergeOrder] = useState<OrderT | null>(null)
   const [mergeTargetId, setMergeTargetId] = useState('')
   const [refreshing, setRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState('pregled')
+  // OPS-4 v1.67.0: zacetni zavihek iz URL (?tab=) — zaslon sank/kuhinje na svoji napravi
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return 'pregled'
+    return new URLSearchParams(window.location.search).get('tab') ?? 'pregled'
+  })
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
 
@@ -929,6 +933,77 @@ function DashboardInner() {
   const viewOrders = filterByLocation(orders, viewLoc)
   const viewKitchen = filterByLocation(kitchen, viewLoc)
   const viewEmployees = filterByLocation(employees, viewLoc)
+  // OPS-4 v1.67.0 — KDS: stanje postaje/zvoka + hitra prodaja (sank)
+  const [kdsStation, setKdsStation] = useState<'ALL' | 'KITCHEN' | 'BAR'>(() => {
+    if (typeof window === 'undefined') return 'ALL'
+    const s = new URLSearchParams(window.location.search).get('station')
+    return s === 'KITCHEN' || s === 'BAR' ? s : 'ALL'
+  })
+  const [kdsSound, setKdsSound] = useState(true)
+  const kdsPrevPendingRef = useRef(0)
+  const [saleCart, setSaleCart] = useState<Record<string, number>>({})
+  const [saleCat, setSaleCat] = useState('ALL')
+  const [saleSearch, setSaleSearch] = useState('')
+  const [saleSending, setSaleSending] = useState(false)
+
+  const kdsMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
+  const kdsAgeClass = (m: number): string => (m >= 10 ? 'bg-red-100 text-red-700 border-red-200' : m >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+
+  // OPS-4: zvok ob novem cakajocem artiklu na izbrani postaji (WebAudio, brez sredstev)
+  useEffect(() => {
+    const pending = viewKitchen
+      .flatMap((o) => o.items.filter((it) => !it.voided && it.status === 'PENDING' && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation)))
+      .reduce((s, it) => s + it.qty, 0)
+    if (pending > kdsPrevPendingRef.current && kdsSound) {
+      try {
+        const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (Ctx) {
+          const ctx = new Ctx()
+          const osc = ctx.createOscillator(); const gain = ctx.createGain()
+          osc.connect(gain); gain.connect(ctx.destination)
+          osc.frequency.value = 880; gain.gain.value = 0.08
+          osc.start()
+          setTimeout(() => { try { osc.stop(); void ctx.close() } catch { /* nic kriticnega */ } }, 180)
+        }
+      } catch { /* zvok ni kriticen */ }
+    }
+    kdsPrevPendingRef.current = pending
+  }, [viewKitchen, kdsStation, kdsSound])
+
+  // OPS-4: 86 (razprodano) iz KDS — ozek endpoint menu.availability (ločen od Meni urejanja = menu.manage)
+  const kdsToggleAvailable = async (mi: MenuT) => {
+    try {
+      await api(`/api/menus/${mi.id}/availability`, { method: 'PATCH', body: JSON.stringify({ available: !mi.available }) })
+      await load()
+    } catch (err) { alert((err as Error).message) }
+  }
+
+  // OPS-4 hitra prodaja (sank): izbira -> kosarica -> POST (TAKEOUT) -> placilni dialog
+  const saleItems = menu.filter((mi) =>
+    mi.available
+    && (saleCat === 'ALL' || mi.categoryId === saleCat)
+    && mi.name.toLowerCase().includes(saleSearch.trim().toLowerCase()))
+  const saleTotal = Object.entries(saleCart).reduce((s, [id, qty]) => s + (menu.find((x) => x.id === id)?.price ?? 0) * qty, 0)
+
+  async function submitSale() {
+    const items = Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
+    if (items.length === 0) return
+    setSaleSending(true)
+    try {
+      const j = await api<{ order: { id: string } }>('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify({ items, type: 'TAKEOUT', guests: 1, clientOperationId: newOperationId() }),
+      })
+      setSaleCart({})
+      const fresh = await api<{ orders: OrderT[] }>('/api/orders')
+      setOrders(fresh.orders)
+      await load()
+      const created = fresh.orders.find((x) => x.id === j.order?.id)
+      if (created) void openPayment(created)
+    } catch (err) {
+      alert((err as Error).message)
+    } finally { setSaleSending(false) }
+  }
   const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
 
   const upcomingRes = reservations
@@ -1009,7 +1084,7 @@ function DashboardInner() {
           <TabsList className="w-full justify-start overflow-x-auto h-auto flex-nowrap bg-white border border-stone-200 p-1">
             {([
               ['pregled', t('tabs.pregled'), LayoutDashboard], ['mize', t('tabs.mize'), Utensils], ['narocila', t('tabs.narocila'), ClipboardList],
-              ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
+              ['prodaja', t('tabs.prodaja'), Zap], ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
               ['racuni', t('tabs.racuni'), ReceiptText], ['popusti', t('tabs.popusti'), Percent], ['integracije', t('tabs.integracije'), Plug], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
               ['delovnicas', t('tabs.delovnicas'), Timer],
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
@@ -1259,40 +1334,120 @@ function DashboardInner() {
             </DialogContent>
           </Dialog>
 
-          <TabsContent value="kuhinja" className="space-y-4">
-            {viewKitchen.map((o) => (
-              <Card key={o.id}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-                    {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
-                    <span className="ml-auto flex gap-1.5">
-                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
-                        <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
-                        <Printer className="w-3 h-3" /> {t('kitchen.barTicket')}
-                      </Button>
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {o.items.map((it) => (
-                    <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge></p>
-                        {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
+          <TabsContent value="prodaja" className="space-y-4">
+            {/* OPS-4 v1.67.0 — Hitra prodaja (sank): izbira -> kosarica -> racun (FURS) */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="w-full sm:w-64" />
+              <Select value={saleCat} onValueChange={setSaleCat}>
+                <SelectTrigger className="w-full sm:w-52"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">{t('sale.allCat')}</SelectItem>
+                  {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {saleItems.map((mi) => (
+                <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
+                  className={`rounded-xl border p-3 text-left min-h-16 transition ${mi.available ? 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow' : 'border-stone-200 bg-stone-100 opacity-60 cursor-not-allowed'}`}>
+                  <p className="font-medium text-sm leading-tight">{mi.name}</p>
+                  <p className="text-xs text-stone-500 mt-1">{fmtEUR(mi.price)}</p>
+                  {!mi.available && <Badge variant="outline" className="mt-1 text-[10px]">86</Badge>}
+                </button>
+              ))}
+            </div>
+            {saleItems.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
+            {Object.keys(saleCart).length > 0 && (
+              <Card className="sticky bottom-4 shadow-lg">
+                <CardContent className="p-4 space-y-2">
+                  {Object.entries(saleCart).map(([id, qty]) => {
+                    const mi = menu.find((x) => x.id === id)
+                    if (!mi) return null
+                    return (
+                      <div key={id} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 truncate">{qty}× {mi.name}</span>
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                        <span className="w-20 text-right font-medium">{fmtEUR(mi.price * qty)}</span>
                       </div>
-                      <div className="flex gap-1.5 shrink-0">
-                        {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
-                        {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setItemStatus(it.id, 'READY')}>{t('status.PREPARED')}</Button>}
-                        {it.status === 'READY' && <Badge className={statusColors.READY}>{t('status.READY')}</Badge>}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
+                  <div className="flex items-center justify-between border-t border-stone-200 pt-2 font-bold">
+                    <span>{t('sale.total')}</span><span>{fmtEUR(saleTotal)}</span>
+                  </div>
+                  <Button className="w-full bg-emerald-700 hover:bg-emerald-800 min-h-12 text-base font-bold" disabled={saleSending} onClick={() => void submitSale()}>
+                    {saleSending ? <Loader2 className="w-5 h-5 animate-spin" /> : t('sale.payNow')}
+                  </Button>
                 </CardContent>
               </Card>
-            ))}
-            {viewKitchen.length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
+            )}
+          </TabsContent>
+
+          <TabsContent value="kuhinja" className="space-y-4">
+            {/* OPS-4 v1.67.0 — KDS upgrade: filtri postaj (zaslon sank = BAR), casovniki, zvok, 86 */}
+            <div className="flex flex-wrap items-center gap-2">
+              {(['ALL', 'KITCHEN', 'BAR'] as const).map((st) => (
+                <Button key={st} size="sm" variant={kdsStation === st ? 'default' : 'outline'} className={kdsStation === st ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setKdsStation(st)}>
+                  {st === 'ALL' ? t('kds.all') : st === 'KITCHEN' ? t('menu.stationKitchen') : t('menu.stationBar')}
+                </Button>
+              ))}
+              <span className="flex-1" />
+              <label className="flex items-center gap-1.5 text-xs text-stone-600 cursor-pointer">
+                <Switch checked={kdsSound} onCheckedChange={setKdsSound} aria-label={t('kds.sound')} />
+                <Volume2 className="w-3.5 h-3.5" /> {t('kds.sound')}
+              </label>
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.() }}>
+                <Maximize2 className="w-3.5 h-3.5" /> {t('kds.fullscreen')}
+              </Button>
+            </div>
+            {viewKitchen
+              .filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation)))
+              .map((o) => {
+                const items = o.items.filter((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))
+                const ageMin = kdsMinutes(o.createdAt)
+                return (
+                  <Card key={o.id}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                        {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
+                        <span className="ml-auto flex gap-1.5">
+                          <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
+                            <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
+                          </Button>
+                          <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
+                            <Printer className="w-3 h-3" /> {t('kitchen.barTicket')}
+                          </Button>
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {items.map((it) => {
+                        const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
+                        return (
+                          <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge></p>
+                              {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              {perms.includes('menu.availability') && mi && (
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                                  <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
+                                </Button>
+                              )}
+                              {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
+                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => setItemStatus(it.id, 'READY')}>{t('status.PREPARED')}</Button>}
+                              {it.status === 'READY' && <Badge className={statusColors.READY}>{t('status.READY')}</Badge>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            {viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
           </TabsContent>
 
           <TabsContent value="meni" className="space-y-4">
