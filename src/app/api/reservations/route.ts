@@ -82,15 +82,33 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const row = await db.reservation.create({
-    data: {
-      id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
-      dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2, tableId: body.tableId || null,
-      status: reservationStatusToDB(body.status || 'CONFIRMED') as ReservationStatus,
-      source: reservationSourceToDB(body.source || 'PHONE') as ReservationSource,
-      notes: body.note || '', locationId,
-    },
-  })
+  // OPS-8 val 3 (v1.73.0): optional dialog fields — concrete table, channel, guest
+  // e-mail, planned duration and special requests (all existing schema columns).
+  const email = String(body.customerEmail || '').trim().slice(0, 200)
+  const duration = Math.min(600, Math.max(15, Math.round(Number(body.duration) || 120)))
+  const specialRequests = String(body.specialRequests || '').trim().slice(0, 500)
+  let row
+  try {
+    row = await db.reservation.create({
+      data: {
+        id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
+        customerEmail: email,
+        dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2, tableId: body.tableId || null,
+        duration,
+        status: reservationStatusToDB(body.status || 'CONFIRMED') as ReservationStatus,
+        source: reservationSourceToDB(body.source || 'PHONE') as ReservationSource,
+        notes: body.note || '',
+        specialRequests,
+        locationId,
+      },
+    })
+  } catch (e: unknown) {
+    // @@unique([tableId, dateTime]) — a concrete table can host only one reservation per slot
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002' && body.tableId) {
+      return ok({ error: 'Miza je že rezervirana ob izbranem času.' }, 409)
+    }
+    throw e
+  }
   // OPS-8 val 2 (v1.72.0): push to waiters/management on new reservation (via notification
   // matrix; fire-and-forget — reservation is a critical path)
   void pushEvent('RESERVATION_NEW', {

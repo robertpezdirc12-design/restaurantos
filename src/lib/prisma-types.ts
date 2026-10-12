@@ -14,6 +14,9 @@
 
 export type EmployeeRole = 'owner' | 'admin' | 'manager' | 'staff' | 'waiter' | 'bar' | 'chef' | 'kitchen'
 
+/** OPS-8 val 3 (v1.73.0) — GL journal (orientation) account type union. */
+export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'unknown'
+
 export type HaccpCategory = 'temperature' | 'cleaning' | 'delivery' | 'cooling' | 'training'
 
 export type HaccpStatus = 'ok' | 'warning' | 'critical' | 'archived'

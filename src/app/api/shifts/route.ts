@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } f
 import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
+import { sendShiftDailySummary } from '@/lib/daily-email'
 
 /**
  * N5 (revizija §4): seznam izmen (z začetnim/končnim stanjem blagajne) — UI prikaže
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
         })
         let cash = 0, card = 0, mobile = 0, alternate = 0, totalSales = 0, totalTax = 0
         let totalTips = 0, totalDiscounts = 0, guests = 0
+        let totalNet = 0
         let dineIn = 0, takeout = 0, delivery = 0
         // Task 63 (storno celovitost): storno račun (isStorno=true, negativni zneski) se
         // NOETNO prišteje k vsem vsotam (promet/DDV/načini plačila/vedri — pravilna negacija
@@ -121,6 +123,7 @@ export async function POST(req: NextRequest) {
           } else {
             originalOrders += 1
             guests += rc.Order?.splitCount || 0
+            totalNet += num(rc.subtotal)
           }
           totalSales += amount
           totalTax += num(rc.totalVat)
@@ -219,7 +222,7 @@ export async function POST(req: NextRequest) {
             locationId: claimed.locationId,
           },
         })
-        return { shift, zreport, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash) }
+        return { shift, zreport, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash), totalNet: r(totalNet), covers: originalOrders, windowFrom: from, windowTo: to }
       })
 
       // OPS-8 val 2 (v1.72.0): push to management on shift close / Z-report (via
@@ -230,6 +233,55 @@ export async function POST(req: NextRequest) {
         url: '/dashboard?tab=izmene',
         tag: `z-closed-${result.zreport.id}`,
       }, { roles: ['manager', 'admin'], locationId: result.shift.locationId })
+
+      // OPS-8 val 3 (v1.73.0): daily summary e-mail right after a successful close.
+      // Fire-and-forget with its own try/catch — it must never block or fail the close.
+      void (async () => {
+        try {
+          const winReceipts = await db.receipt.findMany({
+            where: { locationId: result.shift.locationId || undefined, createdAt: { gte: result.windowFrom, lt: result.windowTo } },
+            select: { orderId: true, subtotal: true, total: true, totalVat: true, isStorno: true, paymentMethod: true },
+            take: 5000,
+          })
+          let gross = 0, net = 0, vat = 0, covers = 0
+          const payTotals = new Map<string, number>()
+          const orderIds = new Set<string>()
+          for (const rc of winReceipts) {
+            if (rc.isStorno) continue
+            gross += num(rc.total)
+            net += num(rc.subtotal)
+            vat += num(rc.totalVat)
+            covers += 1
+            orderIds.add(rc.orderId)
+            const m = ['cash', 'card', 'mobile'].includes(rc.paymentMethod) ? rc.paymentMethod : 'other'
+            payTotals.set(m, r2((payTotals.get(m) || 0) + num(rc.total)))
+          }
+          const items = orderIds.size
+            ? await db.orderItem.findMany({ where: { orderId: { in: [...orderIds] }, voided: false }, select: { menuItemName: true, quantity: true }, take: 5000 })
+            : []
+          const qtyByName = new Map<string, number>()
+          for (const it of items) {
+            const name = it.menuItemName || '(artikel)'
+            qtyByName.set(name, (qtyByName.get(name) || 0) + (it.quantity || 0))
+          }
+          const topItems = [...qtyByName.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, qty]) => ({ name, qty }))
+          await sendShiftDailySummary({
+            shiftId: result.shift.id,
+            shiftDate: result.shift.openedAt,
+            from: result.windowFrom,
+            to: result.windowTo,
+            locationId: result.shift.locationId,
+            gross: r2(gross),
+            net: r2(net),
+            vat: r2(vat),
+            covers,
+            payments: [...payTotals.entries()].map(([method, amount]) => ({ method, amount })),
+            topItems,
+          })
+        } catch {
+          // never block the shift close response
+        }
+      })()
 
       return ok({
         shift: mapShift({ ...result.shift, employee: null }),

@@ -21,7 +21,8 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye } from 'lucide-react'
+import { deltaArrow } from '@/lib/xz-report'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -1706,7 +1707,8 @@ export interface DeliveryInfoT {
   packagingFee: number
   courierName: string
   courierPhone: string
-  driver: { name: string; phone: string; status: string } | null
+  /** OPS-8 val 3 (v1.73.0): driver may be an Employee (id + resolved name) */
+  driver: { name: string; phone: string; status: string; employeeId?: string | null; employeeName?: string | null } | null
 }
 export interface DeliveryOrderT {
   id: string
@@ -1768,9 +1770,22 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
   const { t } = useI18n()
   const [busy, setBusy] = useState<string | null>(null)
   const [driverFor, setDriverFor] = useState<DeliveryOrderT | null>(null)
-  const [driver, setDriver] = useState({ name: '', phone: '' })
+  // OPS-8 val 3 (v1.73.0): driver as Employee — 'MANUAL' sentinel keeps the free-text fallback
+  const [driver, setDriver] = useState({ name: '', phone: '', employeeId: 'MANUAL' })
+  const [drivers, setDrivers] = useState<{ id: string; name: string }[]>([])
   const [addZone, setAddZone] = useState(false)
   const [nz, setNz] = useState({ name: '', deliveryFee: '2.50', minOrderAmount: '10', estimatedMinutes: '30' })
+
+  // OPS-8 val 3 (v1.73.0): load active employees for the driver dropdown (fail-soft —
+  // without employees.manage permission the free-text input stays available)
+  useEffect(() => {
+    api<{ employees: { id: string; name: string; active: boolean }[] }>('/api/employees')
+      .then((d) => {
+        const list = (d.employees || []).filter((e) => e.active).map((e) => ({ id: e.id, name: e.name }))
+        setDrivers(list)
+      })
+      .catch(() => null)
+  }, [])
 
   const active = orders.filter((o) => !['PAID', 'CANCELLED'].includes(o.status) && o.delivery && o.delivery.status !== 'DELIVERED' && o.delivery.status !== 'CANCELLED')
   const history = orders.filter((o) => !active.includes(o))
@@ -1842,7 +1857,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                       <Button size="sm" disabled={busy === o.id} onClick={() => transition(o, next.to)} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t(next.label)}</Button>
                     )}
                     {next && next.to === 'ASSIGNED' && (
-                      <Button size="sm" disabled={busy === o.id} onClick={() => { setDriverFor(o); setDriver({ name: d.courierName || d.driver?.name || '', phone: d.courierPhone || d.driver?.phone || '' }) }} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t('dost.assignDriver')}</Button>
+                      <Button size="sm" disabled={busy === o.id} onClick={() => { setDriverFor(o); setDriver({ name: d.courierName || d.driver?.name || '', phone: d.courierPhone || d.driver?.phone || '', employeeId: d.driver?.employeeId || 'MANUAL' }) }} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t('dost.assignDriver')}</Button>
                     )}
                     <Button size="sm" variant="outline" disabled={busy === o.id} onClick={() => { if (confirm(t('dost.cancelConfirm', { n: o.orderNumber }))) transition(o, 'CANCELLED', { note: t('dost.cancelNote') }) }} className="border-red-300 text-red-700 hover:bg-red-50">{t('common.cancel')}</Button>
                   </div>
@@ -1864,9 +1879,14 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                 {history.slice(0, 30).map((o) => {
                   const d = o.delivery
                   return (
-                    <div key={o.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
-                      <p className="text-sm min-w-0 truncate">#{o.orderNumber} · {d?.recipientName || '—'} · {fmtEUR(o.total)}</p>
-                      <Badge className={DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_KEYS[d?.status || ''] ? t(DELIVERY_STATUS_KEYS[d?.status || '']) : d?.status || o.status}</Badge>
+                    <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm min-w-0 truncate">#{o.orderNumber} · {d?.recipientName || '—'} · {fmtEUR(o.total)}</p>
+                        <Badge className={DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_KEYS[d?.status || ''] ? t(DELIVERY_STATUS_KEYS[d?.status || '']) : d?.status || o.status}</Badge>
+                      </div>
+                      {(d?.driver?.name || d?.driver?.employeeName) && (
+                        <p className="text-xs text-stone-400 mt-0.5 truncate">{t('dost.driver', { name: d.driver.employeeName || d.driver.name })}</p>
+                      )}
                     </div>
                   )
                 })}
@@ -1941,17 +1961,43 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{t('dost.assignDriverTitle', { n: driverFor?.orderNumber ?? '' })}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label htmlFor="drv-name">{t('dost.driverName')}</Label><Input id="drv-name" value={driver.name} onChange={(e) => setDriver({ ...driver, name: e.target.value })} placeholder={t('dost.driverPlaceholder')} /></div>
+            {/* OPS-8 val 3 (v1.73.0): driver dropdown from Employees; free-text fallback */}
+            {drivers.length > 0 && (
+              <div className="space-y-1.5">
+                <Label htmlFor="drv-employee">{t('dost.driverEmployee')}</Label>
+                <Select value={driver.employeeId || 'MANUAL'} onValueChange={(v) => setDriver({ ...driver, employeeId: v, name: v === 'MANUAL' ? '' : drivers.find((x) => x.id === v)?.name || '' })}>
+                  <SelectTrigger id="drv-employee" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-64 overflow-y-auto">
+                    <SelectItem value="MANUAL">{t('dost.driverManual')}</SelectItem>
+                    {drivers.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {(driver.employeeId === 'MANUAL' || drivers.length === 0) && (
+              <div><Label htmlFor="drv-name">{t('dost.driverName')}</Label><Input id="drv-name" value={driver.name} onChange={(e) => setDriver({ ...driver, name: e.target.value })} placeholder={t('dost.driverPlaceholder')} /></div>
+            )}
+            {driver.employeeId !== 'MANUAL' && drivers.length > 0 && (
+              <p className="text-sm text-stone-600"><span className="text-stone-500">{t('dost.driverName')}:</span> {driver.name}</p>
+            )}
             <div><Label htmlFor="drv-phone">{t('inv.phone')}</Label><Input id="drv-phone" value={driver.phone} onChange={(e) => setDriver({ ...driver, phone: e.target.value })} placeholder={t('dost.phonePlaceholder')} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDriverFor(null)}>{t('common.cancel')}</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy !== null || !driver.name.trim()}
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy !== null || (driver.employeeId === 'MANUAL' && !driver.name.trim())}
               onClick={async () => {
                 if (!driverFor) return
                 setBusy(driverFor.id)
                 try {
-                  await api('/api/delivery', { method: 'PATCH', body: JSON.stringify({ orderId: driverFor.id, status: 'ASSIGNED', driverName: driver.name, driverPhone: driver.phone }) })
+                  const byEmployee = driver.employeeId !== 'MANUAL' && drivers.length > 0
+                  await api('/api/delivery', { method: 'PATCH', body: JSON.stringify({
+                    orderId: driverFor.id,
+                    status: 'ASSIGNED',
+                    ...(byEmployee ? { driverEmployeeId: driver.employeeId } : { driverName: driver.name }),
+                    driverPhone: driver.phone,
+                  }) })
                   setDriverFor(null); await onReload()
                 } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
               }}>{t('dost.assign')}</Button>
@@ -1983,6 +2029,28 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
 
 /* ─────────────────────────── RAČUNOVODSKI IZVOZ ─────────────────────────── */
 
+/** OPS-8 val 3 (v1.73.0) — X/Z preview payload (GET /api/reports/export?section=zz&format=json) */
+interface XzPreviewT {
+  section: 'zz'
+  generatedAt: string
+  from: string
+  to: string
+  grossSales: number
+  netSales: number
+  vatTotal: number
+  vatByRate: { rate: number; base: number; amount: number }[]
+  paymentsByMethod: { method: string; amount: number }[]
+  discountsTotal: number
+  tipsTotal: number
+  voidedCount: number
+  voidedTotal: number
+  wasteTotal: number
+  covers: number
+  avgCheck: number
+  avgPartySize: number
+  comparison: { prevFrom: string; prevTo: string; prevNetSales: number; prevCovers: number; deltaNetPct: number | null; deltaCoversPct: number | null }
+}
+
 export function AccountingExportCard() {
   const { t } = useI18n()
   const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
@@ -1992,7 +2060,11 @@ export function AccountingExportCard() {
   const [busy, setBusy] = useState<'csv' | 'json' | null>(null)
   const [err, setErr] = useState('')
   // OPS-7 (v1.70.0): sekcija izvoza — summary | dnevnik prodaje | DDV povzetek
-  const [section, setSection] = useState<'summary' | 'dnevnik' | 'ddv'>('summary')
+  // OPS-8 val 3 (v1.73.0): + 'zz' (X/Z poslovno poročilo s predogledom)
+  const [section, setSection] = useState<'summary' | 'dnevnik' | 'ddv' | 'zz'>('summary')
+  const [xzPreview, setXzPreview] = useState<XzPreviewT | null>(null)
+  const [xzBusy, setXzBusy] = useState(false)
+  const [xzErr, setXzErr] = useState('')
 
   async function download(fmt: 'csv' | 'json') {
     setBusy(fmt); setErr('')
@@ -2009,7 +2081,7 @@ export function AccountingExportCard() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      const nameBySection = section === 'summary' ? 'izvoz' : section === 'dnevnik' ? 'dnevnik-prodaje' : 'ddv-povzetek'
+      const nameBySection = section === 'summary' ? 'izvoz' : section === 'dnevnik' ? 'dnevnik-prodaje' : section === 'ddv' ? 'ddv-povzetek' : 'xz-porocilo'
       a.download = `${nameBySection}-${from}_${to}.${fmt}`
       document.body.appendChild(a)
       a.click()
@@ -2021,6 +2093,45 @@ export function AccountingExportCard() {
       setBusy(null)
     }
   }
+
+  /** OPS-8 val 3 (v1.73.0): X/Z preview dialog (JSON, no download). */
+  async function loadXzPreview() {
+    setXzBusy(true); setXzErr('')
+    try {
+      const token = getToken()
+      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=json&section=zz`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error((data as { error?: string })?.error || t('acct.xzLoadFailed'))
+      }
+      setXzPreview((await res.json()) as XzPreviewT)
+    } catch (e) {
+      setXzErr((e as Error).message)
+    } finally {
+      setXzBusy(false)
+    }
+  }
+
+  const Row = ({ label, value, sub }: { label: string; value: string; sub?: boolean }) => (
+    <div className={`flex items-center justify-between gap-3 ${sub ? 'pl-3' : ''}`}>
+      <span className={sub ? 'text-xs text-stone-500' : 'text-stone-600'}>{label}</span>
+      <span className={sub ? 'text-xs font-medium text-stone-700' : 'font-semibold text-stone-900'}>{value}</span>
+    </div>
+  )
+  const DeltaRow = ({ label, pct }: { label: string; pct: number | null }) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-stone-600">{label}</span>
+      {pct === null ? (
+        <span className="text-xs text-stone-400">{t('acct.xzNoPrev')}</span>
+      ) : (
+        <span className={`font-semibold ${pct > 0 ? 'text-emerald-600' : pct < 0 ? 'text-rose-600' : 'text-stone-500'}`}>
+          {deltaArrow(pct)} {pct > 0 ? '+' : ''}{pct.toLocaleString('sl-SI')}%
+        </span>
+      )}
+    </div>
+  )
 
   return (
     <Card>
@@ -2034,12 +2145,13 @@ export function AccountingExportCard() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label className="text-xs">{t('acc.section')}</Label>
-            <Select value={section} onValueChange={(v) => setSection(v as 'summary' | 'dnevnik' | 'ddv')}>
+            <Select value={section} onValueChange={(v) => setSection(v as 'summary' | 'dnevnik' | 'ddv' | 'zz')}>
               <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="summary">{t('acc.summary')}</SelectItem>
                 <SelectItem value="dnevnik">{t('acc.dnevnik')}</SelectItem>
                 <SelectItem value="ddv">{t('acc.vat')}</SelectItem>
+                <SelectItem value="zz">{t('acc.xz')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -2057,8 +2169,165 @@ export function AccountingExportCard() {
           <Button size="sm" variant="outline" className="min-h-10 gap-1.5" disabled={busy !== null || !from || !to} onClick={() => download('json')}>
             {busy === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} {t('acct.exportJson')}
           </Button>
+          {section === 'zz' && (
+            <Button size="sm" variant="outline" className="min-h-10 gap-1.5" disabled={xzBusy || !from || !to} onClick={() => void loadXzPreview()}>
+              {xzBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} {t('acct.preview')}
+            </Button>
+          )}
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
+        {xzErr && <p className="text-sm text-red-600">{xzErr}</p>}
+      </CardContent>
+
+      {/* OPS-8 val 3 (v1.73.0): X/Z poslovno poročilo — predogled (Lightspeed Business Report) */}
+      <Dialog open={!!xzPreview} onOpenChange={(v) => !v && setXzPreview(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>{t('acct.xzTitle')}</DialogTitle></DialogHeader>
+          {xzPreview && (
+            <div className="space-y-3 text-sm max-h-[60vh] overflow-y-auto pr-1">
+              <p className="text-xs text-stone-500">{xzPreview.from} – {xzPreview.to}</p>
+              <div className="space-y-1">
+                <Row label={t('acct.xzGross')} value={fmtEUR(xzPreview.grossSales)} />
+                <Row label={t('acct.xzNet')} value={fmtEUR(xzPreview.netSales)} />
+                <Row label={t('acct.xzVatTotal')} value={fmtEUR(xzPreview.vatTotal)} />
+                {xzPreview.vatByRate.map((v) => (
+                  <Row key={v.rate} sub label={`${t('acct.xzVatRate')} ${v.rate}%`} value={fmtEUR(v.amount)} />
+                ))}
+                <Row label={t('acct.xzDiscounts')} value={fmtEUR(xzPreview.discountsTotal)} />
+                <Row label={t('acct.xzTips')} value={fmtEUR(xzPreview.tipsTotal)} />
+                <Row label={t('acct.xzVoided')} value={String(xzPreview.voidedCount)} />
+                <Row label={t('acct.xzVoidedTotal')} value={fmtEUR(xzPreview.voidedTotal)} />
+                <Row label={t('acct.xzWaste')} value={fmtEUR(xzPreview.wasteTotal)} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzPayments')}</p>
+                {xzPreview.paymentsByMethod.length === 0 ? (
+                  <p className="text-xs text-stone-400">{t('common.none')}</p>
+                ) : (
+                  xzPreview.paymentsByMethod.map((p) => <Row key={p.method} sub label={p.method} value={fmtEUR(p.amount)} />)
+                )}
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzGuests')}</p>
+                <Row label={t('acct.xzCovers')} value={String(xzPreview.covers)} />
+                <Row label={t('acct.xzAvgCheck')} value={fmtEUR(xzPreview.avgCheck)} />
+                <Row label={t('acct.xzAvgParty')} value={xzPreview.avgPartySize.toLocaleString('sl-SI', { minimumFractionDigits: 2 })} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                  {t('acct.xzCompare')} ({xzPreview.comparison.prevFrom} – {xzPreview.comparison.prevTo})
+                </p>
+                <Row label={t('acct.xzPrevNet')} value={fmtEUR(xzPreview.comparison.prevNetSales)} />
+                <DeltaRow label={t('acct.xzDeltaNet')} pct={xzPreview.comparison.deltaNetPct} />
+                <Row label={t('acct.xzPrevCovers')} value={String(xzPreview.comparison.prevCovers)} />
+                <DeltaRow label={t('acct.xzDeltaCovers')} pct={xzPreview.comparison.deltaCoversPct} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setXzPreview(null)}>{t('common.close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
+/* ────────────────────── GL DNEVNIK (orientacijsko, OPS-8 val 3 v1.73.0) ────────────────────── */
+
+/** GL journal API shapes (GET /api/reports/gl) */
+interface GlLineT { accountCode: string; accountName: string; debit: number; credit: number }
+interface GlEntryT { date: string; entryNo: string; memo: string; persisted: boolean; adjustedAccount: string | null; lines: GlLineT[]; debit: number; credit: number }
+interface GlDataT { from: string; to: string; persisted: boolean; entries: GlEntryT[]; totals: { debits: number; credits: number } }
+
+export function GlJournalCard() {
+  const { t } = useI18n()
+  const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
+  const today = new Date().toISOString().slice(0, 10)
+  const [from, setFrom] = useState(firstOfMonth)
+  const [to, setTo] = useState(today)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [data, setData] = useState<GlDataT | null>(null)
+
+  async function load() {
+    setBusy(true); setErr('')
+    try {
+      const d = await api<GlDataT>(`/api/reports/gl?from=${from}&to=${to}`)
+      setData(d)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><Database className="w-4 h-4" /> {t('gl.title')}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">{t('gl.note')}</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="gl-from" className="text-xs">{t('acct.from')}</Label>
+            <Input id="gl-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="gl-to" className="text-xs">{t('acct.to')}</Label>
+            <Input id="gl-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+          </div>
+          <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white min-h-10 gap-1.5" disabled={busy || !from || !to} onClick={() => void load()}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />} {t('gl.view')}
+          </Button>
+        </div>
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        {data && (
+          <div className="space-y-2">
+            {!data.persisted && <p className="text-xs text-amber-700">{t('gl.previewOnly')}</p>}
+            {data.entries.length === 0 && <p className="text-sm text-stone-500">{t('gl.empty')}</p>}
+            <ScrollArea className="max-h-96">
+              <div className="space-y-2 pr-3">
+                {data.entries.map((e) => (
+                  <div key={e.entryNo} className="rounded-lg border border-stone-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="font-medium text-sm">{e.date} · {e.entryNo}</p>
+                      {!e.persisted && (
+                        <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">{t('gl.previewBadge')}</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-500 mb-2">{e.memo}</p>
+                    <div className="space-y-0.5">
+                      <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 text-[10px] uppercase tracking-wide text-stone-400 font-medium">
+                        <span>{t('gl.account')}</span>
+                        <span className="text-right">{t('gl.debit')}</span>
+                        <span className="text-right">{t('gl.credit')}</span>
+                      </div>
+                      {e.lines.map((l) => (
+                        <div key={`${e.entryNo}-${l.accountCode}`} className="grid grid-cols-[1fr_5rem_5rem] gap-2 text-sm">
+                          <span className="text-stone-700 min-w-0 truncate">{l.accountCode} · {l.accountName}</span>
+                          <span className="text-right font-mono text-xs text-stone-700">{l.debit ? fmtEUR(l.debit) : '—'}</span>
+                          <span className="text-right font-mono text-xs text-stone-700">{l.credit ? fmtEUR(l.credit) : '—'}</span>
+                        </div>
+                      ))}
+                      <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 text-xs border-t border-stone-200 pt-1 mt-1">
+                        <span className="text-stone-500">{t('gl.totals')}</span>
+                        <span className="text-right font-mono font-semibold text-stone-900">{fmtEUR(e.debit)}</span>
+                        <span className="text-right font-mono font-semibold text-stone-900">{fmtEUR(e.credit)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            {data.entries.length > 0 && (
+              <p className="text-xs text-stone-500">
+                {t('gl.totalsDebit')}: {fmtEUR(data.totals.debits)} · {t('gl.totalsCredit')}: {fmtEUR(data.totals.credits)}
+              </p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

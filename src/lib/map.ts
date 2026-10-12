@@ -163,6 +163,9 @@ export function mapDeliveryInfo(d: Row, tracking?: Row | null) {
           phone: (tracking.driverPhone as string) || '',
           status: (tracking.status as string) || 'assigned',
           estimatedArrival: (tracking.estimatedArrival as string) || null,
+          // OPS-8 val 3 (v1.73.0): driver as Employee — id + resolved name (history list)
+          employeeId: (tracking.driverEmployeeId as string) || null,
+          employeeName: ((tracking as Row).Employee as Row | undefined)?.name ?? null,
         }
       : null,
   }
@@ -312,6 +315,11 @@ export function mapReservation(r: Row) {
     createdAt: r.createdAt as string,
     // OPS-7 (v1.69.0): opomnik rezervacij — badge UI
     reminderSent: r.reminderSent === true,
+    // OPS-8 val 3 (v1.73.0): dialog fields surfaced for API consumers (additive)
+    email: (r.customerEmail as string) || '',
+    duration: (r.duration as number) ?? 120,
+    source: (r.source as string) || 'walk_in',
+    specialRequests: (r.specialRequests as string) || '',
   }
 }
 

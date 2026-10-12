@@ -23,6 +23,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
@@ -62,8 +63,9 @@ import {
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
+import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -85,7 +87,8 @@ interface OrderT { id: string; orderNumber?: number | null; type: string; status
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
-interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean }
+/** OPS-8 val 3 (v1.73.0): + email/duration/specialRequests/source (additive API fields) */
+interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean; email?: string | null; duration?: number | null; specialRequests?: string | null; source?: string | null }
 interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null; isStorno?: boolean; stornoOf?: string | null }
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
@@ -292,7 +295,9 @@ function DashboardInner() {
   const [qrBusy, setQrBusy] = useState(false)
 
   // Rezervacije — nov vnos
-  const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string } | null>(null)
+  const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string; tableId: string; source: string; email: string; duration: number; specialRequests: string } | null>(null)
+  // OPS-8 val 3 (v1.73.0): status filter chips for the reservation list
+  const [resFilter, setResFilter] = useState<ReservationFilter>('UPCOMING')
 
   const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
   // UI gating po dovoljenjih (backend uveljavlja neodvisno) — admin/manager vedno vse;
@@ -959,7 +964,16 @@ function DashboardInner() {
     try {
       await api('/api/reservations', {
         method: 'POST',
-        body: JSON.stringify({ guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests, reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours }),
+        // OPS-8 val 3 (v1.73.0): + tableId/source/customerEmail/duration/specialRequests
+        body: JSON.stringify({
+          guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests,
+          reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours,
+          ...(newRes.tableId ? { tableId: newRes.tableId } : {}),
+          source: newRes.source || 'phone',
+          ...(newRes.email ? { customerEmail: newRes.email } : {}),
+          duration: newRes.duration || 120,
+          ...(newRes.specialRequests ? { specialRequests: newRes.specialRequests } : {}),
+        }),
       })
       setNewRes(null); await load()
     } catch (err) {
@@ -1237,9 +1251,8 @@ function DashboardInner() {
   }
   const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
 
-  const upcomingRes = reservations
-    .filter((r) => new Date(r.reservedAt).getTime() >= Date.now() - 36e5 && r.status !== 'CANCELLED')
-    .sort((a, b) => +new Date(a.reservedAt) - +new Date(b.reservedAt))
+  // OPS-8 val 3 (v1.73.0): status filter chips — client-side filtering via lib/reservation-filters
+  const filteredRes = filterReservations(reservations, resFilter, Date.now())
 
   return (
     <main className="min-h-screen flex flex-col bg-stone-100">
@@ -1771,22 +1784,38 @@ function DashboardInner() {
                   <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => void sendAllReservationReminders()}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
-                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '' })}>
+                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '' })}>
                     <Plus className="w-3.5 h-3.5" /> {t('resv.new')}
                   </Button>
                 </div>
               )}
             </div>
+            {/* OPS-8 val 3 (v1.73.0): status filter chips (client-side) */}
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['ALL', t('common.all')],
+                ['UPCOMING', t('resv.filterUpcoming')],
+                ['TODAY', t('resv.filterToday')],
+                ['SEATED', t('resv.stSeated')],
+                ['NO_SHOW', t('resv.stNoShow')],
+                ['CANCELLED', t('resv.stCancelled')],
+              ] as [ReservationFilter, string][]).map(([key, label]) => (
+                <Button key={key} size="sm" variant="outline" className={`h-8 px-3 text-xs ${resFilter === key ? 'bg-stone-800 text-white border-stone-800 hover:bg-stone-800' : 'text-stone-600'}`} onClick={() => setResFilter(key)}>
+                  {label}
+                </Button>
+              ))}
+            </div>
             <Card>
               <CardContent className="pt-4">
-                {upcomingRes.length === 0 && <p className="text-sm text-stone-500">{t('resv.empty')}</p>}
+                {filteredRes.length === 0 && <p className="text-sm text-stone-500">{resFilter === 'UPCOMING' ? t('resv.empty') : t('resv.emptyGeneric')}</p>}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {upcomingRes.map((r) => (
+                  {filteredRes.map((r) => (
                     <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{r.guestName} <span className="text-xs text-stone-400">· {r.guests} {t('orders.persons')}</span></p>
                         <p className="text-xs text-stone-500">{new Date(r.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{r.phone ? ` · ${r.phone}` : ''}</p>
                         {r.note && <p className="text-xs text-stone-400 truncate">ℹ {r.note}</p>}
+                        {r.specialRequests && <p className="text-xs text-amber-700 truncate">★ {r.specialRequests}</p>}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Badge variant="outline">{RES_STATUS_KEYS[r.status] ? t(RES_STATUS_KEYS[r.status]) : r.status}</Badge>
@@ -1800,6 +1829,12 @@ function DashboardInner() {
                               </Button>
                             )}
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>{t('resv.seatedBtn')}</Button>
+                            {/* OPS-8 val 3 (v1.73.0): NO_SHOW on upcoming reservations (confirm-guarded) */}
+                            {r.status === 'CONFIRMED' && (
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-rose-700 border-rose-200 hover:bg-rose-50" disabled={sending} onClick={() => { if (confirm(t('resv.noShowConfirm'))) void setReservationStatus(r.id, 'NO_SHOW') }} title={t('resv.stNoShow')}>
+                                {t('resv.stNoShow')}
+                              </Button>
+                            )}
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>{t('common.cancel')}</Button>
                           </>
                         )}
@@ -1872,6 +1907,8 @@ function DashboardInner() {
               </CardContent>
             </Card>
             <AccountingExportCard />
+            {/* OPS-8 val 3 (v1.73.0) — GL dnevnik (orientacijsko) */}
+            <GlJournalCard />
           </TabsContent>
 
           <TabsContent value="inzeniring" className="space-y-4">
@@ -2731,6 +2768,47 @@ function DashboardInner() {
               <div className="space-y-1.5">
                 <Label htmlFor="res-time">{t('resv.dateTime')}</Label>
                 <Input id="res-time" type="datetime-local" value={newRes.reservedAt} onChange={(e) => setNewRes({ ...newRes, reservedAt: e.target.value })} />
+              </div>
+              {/* OPS-8 val 3 (v1.73.0): miza / vir / e-pošta / trajanje / posebne zahteve */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="res-table">{t('resv.table')}</Label>
+                  <Select value={newRes.tableId || 'NONE'} onValueChange={(v) => setNewRes({ ...newRes, tableId: v === 'NONE' ? '' : v })}>
+                    <SelectTrigger id="res-table" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent className="max-h-64 overflow-y-auto">
+                      <SelectItem value="NONE">{t('resv.tableNone')}</SelectItem>
+                      {viewTables.map((tb) => (
+                        <SelectItem key={tb.id} value={tb.id}>{tb.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="res-source">{t('resv.source')}</Label>
+                  <Select value={newRes.source || 'phone'} onValueChange={(v) => setNewRes({ ...newRes, source: v })}>
+                    <SelectTrigger id="res-source" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="phone">{t('resv.sourcePhone')}</SelectItem>
+                      <SelectItem value="walk_in">{t('resv.sourceWalkIn')}</SelectItem>
+                      <SelectItem value="website">{t('resv.sourceWebsite')}</SelectItem>
+                      <SelectItem value="app">{t('resv.sourceApp')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="res-email">{t('resv.email')}</Label>
+                  <Input id="res-email" type="email" value={newRes.email} onChange={(e) => setNewRes({ ...newRes, email: e.target.value })} placeholder="gost@e-pošta.si" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="res-duration">{t('resv.duration')}</Label>
+                  <Input id="res-duration" type="number" min={15} max={600} step={15} value={newRes.duration} onChange={(e) => setNewRes({ ...newRes, duration: Number(e.target.value) || 120 })} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="res-special">{t('resv.specialRequests')}</Label>
+                <Textarea id="res-special" rows={2} value={newRes.specialRequests} onChange={(e) => setNewRes({ ...newRes, specialRequests: e.target.value })} placeholder={t('resv.specialPlaceholder')} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="res-note">{t('proc.note')}</Label>

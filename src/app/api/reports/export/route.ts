@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
 import { num } from '@/lib/map'
+import { prevWindow, buildXzReport, avgPartySizeOf } from '@/lib/xz-report'
 
 type VatRow = { base: number; vat: number }
 
@@ -57,9 +58,131 @@ export async function GET(req: NextRequest) {
   const locScope = await locationScope(user)
   const payScope = isCentralRole(user) ? {} : { Check: { Order: { locationId: user.loc || '__no_location__' } } }
   const stockScope = isCentralRole(user) ? {} : { InventoryItem: { locationId: user.loc || '__no_location__' } }
+  const p2 = (n: number) => n.toFixed(2)
+
+  // OPS-8 val 3 (v1.73.0): section=zz — X/Z business report (Lightspeed Business Report
+  // pattern): gross/net, VAT by rate, payments by method, discounts, voids, waste,
+  // covers, average check, average party size + previous equal-length period comparison.
+  if (section === 'zz') {
+    const pw = prevWindow(from, to)
+    const [recs, stornos, pays, waste, resRows, prevRecs] = await Promise.all([
+      db.receipt.findMany({
+        where: { createdAt: range, isStorno: false, ...locScope },
+        select: { subtotal: true, totalVat: true, discount: true, total: true, tip: true, vatBreakdown: true },
+        take: 20000,
+      }),
+      db.receipt.findMany({
+        where: { createdAt: range, isStorno: true, ...locScope },
+        select: { total: true },
+        take: 20000,
+      }),
+      db.payment.findMany({
+        where: { createdAt: range, status: 'completed', ...payScope },
+        select: { type: true, amount: true },
+        take: 20000,
+      }),
+      db.wasteRecord.findMany({
+        where: { createdAt: range, reversedAt: null, ...locScope },
+        select: { totalCost: true },
+        take: 20000,
+      }),
+      db.reservation.findMany({
+        where: { dateTime: range, status: { not: 'cancelled' }, ...locScope },
+        select: { partySize: true },
+        take: 20000,
+      }),
+      db.receipt.aggregate({
+        where: { createdAt: { gte: pw.from, lte: pw.to }, isStorno: false, ...locScope },
+        _sum: { subtotal: true },
+        _count: true,
+      }),
+    ])
+    let gross = 0, net = 0, discounts = 0, tips = 0, covers = 0
+    const vatMap = new Map<string, { base: number; vat: number }>()
+    for (const r of recs) {
+      gross += num(r.total)
+      net += num(r.subtotal)
+      discounts += num(r.discount)
+      tips += num(r.tip)
+      covers += 1
+      for (const [rate, v] of Object.entries(parseVat(r.vatBreakdown))) {
+        const agg = vatMap.get(rate) || { base: 0, vat: 0 }
+        agg.base = r2(agg.base + v.base)
+        agg.vat = r2(agg.vat + v.vat)
+        vatMap.set(rate, agg)
+      }
+    }
+    let voidedTotal = 0
+    for (const s of stornos) voidedTotal += Math.abs(num(s.total))
+    const payMap = new Map<string, number>()
+    for (const p of pays) payMap.set(p.type, r2((payMap.get(p.type) || 0) + num(p.amount)))
+    const wasteTotal = waste.reduce((a, w) => a + num(w.totalCost), 0)
+    const report = buildXzReport({
+      from: day(from),
+      to: day(to),
+      grossSales: gross,
+      netSales: net,
+      vatByRate: [...vatMap.entries()].map(([rate, v]) => ({ rate: Number(rate), base: v.base, amount: v.vat })),
+      paymentsByMethod: [...payMap.entries()].map(([method, amount]) => ({ method, amount })),
+      discountsTotal: discounts,
+      tipsTotal: tips,
+      voidedCount: stornos.length,
+      voidedTotal,
+      wasteTotal,
+      covers,
+      avgPartySize: avgPartySizeOf(resRows.map((r) => r.partySize)),
+      prevNetSales: num(prevRecs._sum.subtotal),
+      prevCovers: prevRecs._count,
+      prevFrom: day(pw.from),
+      prevTo: day(pw.to),
+    })
+    if (format === 'json') return ok({ section: 'zz', generatedAt: new Date().toISOString(), ...report })
+    // CSV — same conventions as the other sections (UTF-8 BOM, `;` separator, SL literals)
+    const L4: string[] = []
+    L4.push(`X/Z POSLOVNO POROCILO - RestaurantOS`)
+    L4.push(`Obdobje;${report.from};${report.to}`)
+    L4.push(`Ustvarjeno;${new Date().toISOString()}`)
+    L4.push('')
+    L4.push(`PRODAJA`)
+    L4.push(`Bruto prodaja (z DDV);${p2(report.grossSales)}`)
+    L4.push(`Neto prodaja (brez DDV);${p2(report.netSales)}`)
+    L4.push(`DDV skupaj;${p2(report.vatTotal)}`)
+    L4.push(`Popusti;${p2(report.discountsTotal)}`)
+    L4.push(`Napitnine;${p2(report.tipsTotal)}`)
+    L4.push(`Storno - stevilo;${report.voidedCount}`)
+    L4.push(`Storno - znesek;${p2(report.voidedTotal)}`)
+    L4.push(`Kalo (odpad);${p2(report.wasteTotal)}`)
+    L4.push('')
+    L4.push(`DDV PO STOPNJAH`)
+    L4.push(`Stopnja (%);Osnova;DDV (EUR)`)
+    for (const v of report.vatByRate) L4.push(`${v.rate};${p2(v.base)};${p2(v.amount)}`)
+    L4.push('')
+    L4.push(`PLACILA PO NACINIH`)
+    L4.push(`Nacin;Znesek (EUR)`)
+    for (const p of report.paymentsByMethod) L4.push(`${p.method};${p2(p.amount)}`)
+    L4.push('')
+    L4.push(`GOSTJE`)
+    L4.push(`St. racunov (covers);${report.covers}`)
+    L4.push(`Povprecni racun;${p2(report.avgCheck)}`)
+    L4.push(`Povprecna velikost druzbe;${report.avgPartySize}`)
+    L4.push('')
+    L4.push(`PRIMERJAVA S PREJSNJIM OBDOBJEM (${report.comparison.prevFrom} - ${report.comparison.prevTo})`)
+    L4.push(`Neto prodaja prejsnje obdobje;${p2(report.comparison.prevNetSales)}`)
+    L4.push(`Sprememba neto (%);${report.comparison.deltaNetPct === null ? '' : report.comparison.deltaNetPct}`)
+    L4.push(`St. racunov prejsnje obdobje;${report.comparison.prevCovers}`)
+    L4.push(`Sprememba covers (%);${report.comparison.deltaCoversPct === null ? '' : report.comparison.deltaCoversPct}`)
+    const csv4 = '\uFEFF' + L4.join('\r\n')
+    return new NextResponse(csv4, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="xz-porocilo_${report.from}_${report.to}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
 
   type DayRow = { count: number; net: number; vat: number; discount: number; gross: number; tip: number; grossWithTip: number }
-  const p2 = (n: number) => n.toFixed(2)
   // ── 1) Računi ──
   const receipts = await db.receipt.findMany({
     where: { createdAt: range, isStorno: false, ...locScope },

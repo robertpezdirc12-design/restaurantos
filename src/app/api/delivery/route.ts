@@ -51,8 +51,10 @@ export async function GET(req: NextRequest) {
     }),
   ])
   // DeliveryTracking nima @relation na DeliveryInfo — ročno poveži po deliveryInfoId
+  // OPS-8 val 3 (v1.73.0): include Employee → resolved driver name for the history list
   const trackings = await db.deliveryTracking.findMany({
     where: { deliveryInfoId: { in: orders.map((o) => o.DeliveryInfo?.id).filter(Boolean) as string[] } },
+    include: { Employee: { select: { name: true } } },
   })
   const trackingByInfo = new Map(trackings.map((t) => [t.deliveryInfoId, t]))
 
@@ -89,6 +91,7 @@ export async function PATCH(req: NextRequest) {
     status?: string
     driverName?: string
     driverPhone?: string
+    driverEmployeeId?: string
     note?: string
   } | null
   if (!body?.orderId || !body.status) return fail('Manjkata orderId ali status.', 400)
@@ -96,6 +99,15 @@ export async function PATCH(req: NextRequest) {
   const status = deliveryStatusToDB(body.status)
   if (!DELIVERY_STATUS_DB.includes(status as (typeof DELIVERY_STATUS_DB)[number])) {
     return fail(`Neznan status dostave: ${body.status}`, 400)
+  }
+
+  // OPS-8 val 3 (v1.73.0): driver may be assigned as an Employee (UI dropdown).
+  // The employee name becomes the authoritative driverName/courierName.
+  let driverEmployee: { id: string; name: string } | null = null
+  if (body.driverEmployeeId) {
+    const emp = await db.employee.findUnique({ where: { id: body.driverEmployeeId }, select: { id: true, name: true } })
+    if (!emp) return fail('Voznik (zaposleni) ne obstaja.', 400)
+    driverEmployee = { id: emp.id, name: emp.name }
   }
 
   const order = await db.order.findUnique({
@@ -121,18 +133,20 @@ export async function PATCH(req: NextRequest) {
       data: {
         status,
         actualTime: status === 'delivered' ? new Date() : undefined,
-        ...(body.driverName ? { courierName: body.driverName } : {}),
+        ...(body.driverName || driverEmployee ? { courierName: driverEmployee?.name || body.driverName } : {}),
         ...(body.driverPhone ? { courierPhone: body.driverPhone } : {}),
       },
     })
     // Voznik/tracking (DeliveryTracking: deliveryInfoId @unique brez @relation)
-    if ((body.driverName || body.driverPhone) && !tracking) {
+    const resolvedDriverName = driverEmployee?.name || body.driverName || ''
+    if ((resolvedDriverName || body.driverPhone) && !tracking) {
       await tx.deliveryTracking.create({
         data: {
           id: nid(),
           deliveryInfoId: di.id,
-          driverName: body.driverName || '',
+          driverName: resolvedDriverName,
           driverPhone: body.driverPhone || '',
+          ...(driverEmployee ? { driverEmployeeId: driverEmployee.id } : {}),
           status: status === 'delivered' ? 'delivered' : 'assigned',
           assignedAt: new Date(),
           locationId: order.locationId,
@@ -143,7 +157,8 @@ export async function PATCH(req: NextRequest) {
         where: { id: tracking.id },
         data: {
           status: status === 'delivered' ? 'delivered' : status,
-          ...(body.driverName ? { driverName: body.driverName } : {}),
+          ...(resolvedDriverName ? { driverName: resolvedDriverName } : {}),
+          ...(driverEmployee ? { driverEmployeeId: driverEmployee.id } : {}),
           ...(body.driverPhone ? { driverPhone: body.driverPhone } : {}),
           ...(status === 'picked_up' ? { pickedUpAt: new Date() } : {}),
           ...(status === 'on_the_way' ? { onTheWayAt: new Date() } : {}),
@@ -169,7 +184,7 @@ export async function PATCH(req: NextRequest) {
     return di
   })
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DELIVERY_STATUS_UPDATE', entityType: 'DeliveryInfo', entityId: t.id, details: jstr({ orderId: order.id, orderNumber: order.orderNumber, from: current, to: status, driver: body.driverName || undefined, driverPhone: body.driverPhone ? maskPhone(body.driverPhone) : undefined, }), id: __aId2 })
+  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DELIVERY_STATUS_UPDATE', entityType: 'DeliveryInfo', entityId: t.id, details: jstr({ orderId: order.id, orderNumber: order.orderNumber, from: current, to: status, driver: (driverEmployee?.name || body.driverName) || undefined, driverEmployeeId: driverEmployee?.id, driverPhone: body.driverPhone ? maskPhone(body.driverPhone) : undefined, }), id: __aId2 })
   await db.auditLog.create({
     data: { ...__chain2,
       id: __aId2,
@@ -180,7 +195,8 @@ export async function PATCH(req: NextRequest) {
       details: jstr({
         orderId: order.id, orderNumber: order.orderNumber,
         from: current, to: status,
-        driver: body.driverName || undefined,
+        driver: (driverEmployee?.name || body.driverName) || undefined,
+        driverEmployeeId: driverEmployee?.id,
         driverPhone: body.driverPhone ? maskPhone(body.driverPhone) : undefined,
       }),
     },
