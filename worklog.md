@@ -1765,3 +1765,20 @@ Work Log:
 
 Stage Summary:
 - v1.76.0-kandidat: KDS dobil vzroke zamikov (audit + statistika + CSV), dostava push vozniku + auto-accept konfiguracija, QR meni alergeni filter (živo dokazan). Zero DDL. OPS-9 (3 valovi) POPOLN: recepture BOM + eSLOG + VIES + recurring PO + KDS delay + dostava + alergeni.
+
+---
+Task ID: OPS-9 (orchestrator — finalna sinteza)
+Agent: Z.ai Code (orchestrator)
+Task: "nadaljuj" — P2 faza: recepture BOM, eSLOG, VIES, recurring PO, KDS delay-reasoni, dostava dopolnitve, QR alergeni (3 valovi v1.74.0–1.76.0).
+
+Work Log:
+- VAL 1 (55118af + recovery ce7e9be, v1.74.0): recepture BOM maturity — recipe-cost.ts kernel (effectiveRawQty netto/(yield/100), rekurzivni strošek otrok, cikl-zaščita, flattenDeduction), deduction + menu engineering na istem kernelu, urednik receptur (yield input, pod-recepture zamaknjene, strošek na porcijo), PATCH validacija ciklov. NAZAJKOMPATIBILNOST dokazana (yield=100 brez otrok = identiteta).
+- VAL 2 (85074c1, v1.75.0): eSLOG uvoz (fast-xml-parser, /api/ap/import-eslog → AP + ESLOG_IMPORTED, match dobavitelja po davčni, idempotentno), VIES za EU tujce (classifyDursQuery + VIES REST, isti Preveri DDV gumb, source badge), ponavljajoča naročila (recurring-po pravila → draft PO, lazy mount trigger + Zaženi zdaj).
+- VAL 3 (8b21ef1, v1.76.0): KDS delay-reasoni (KDS_DELAY audit ob bumpu >10 min, dialog 5 razlogov, statistika + CSV), dostava (DRIVER_ASSIGNED push prek matrike, auto-accept prek Integration + kartica Switch/Glovo/Wolt, voznik ime iz zaposlenih), QR /m/[token] alergeni (tolerant parser, exclusion chips, oznake) + kiosk oznake.
+- PRODUKCIJA: push 3 commitov → Vercel deploy → /api/health = 1.76.0 @ 8b21ef1; produkcijski E2E: prijava vodja@ → 29 tabov, Nabava = eSLOG + Ponavljajoča naročila (Zaženi zdaj/Novo pravilo), Računi = GL dnevnik, 0 konzolnih napak.
+- Testi: 748 (stara baza) → 892/892 (BOM 17 + val2 22 + val3 27 + BOM semantika update), tsc 0, lint 0. i18n SL/HR pariteta čez vse valove.
+
+Stage Summary:
+- Produkcija = v1.76.0 @ 8b21ef1: OPS-9 POPOLN — nabava zdaj: BOM recepture z yield/pod-recepturami, e-računi, EU preverjanje DDV, ponavljajoča naročila, AP most (od OPS-8), predlogi naročil (od OPS-8), FEFO serije; KDS: prep-time statistika (OPS-8) + delay-reasoni; dostava: voznik push + auto-accept; QR: alergeni. Zero DDL v vseh valovih (produkcija brez uporabniških korakov).
+- INCIDENT (resen, rešen): sandbox obnovljen iz starega snapshot-a med sejama (v1.73.0 → v1.65.0 lokalno) — rešeno z git fetch (nov žeton v remote URL — STARI žeton je bil v obnovljenem store-u, PAT ghp_ZRtO še veljaven) + rebase --onto + konflikti (worklog/api.ts). LEKCIJA: vedno `git log --oneline -1` + verzija iz health pred delom agentov; rebase --onto = čista pot reševanja.
+- OSTALO (P2/P3 za naslednjo fazo): eSLOG PDF/priloga, recurring PO reminder 1h (potreben cron), BatchPreparation aktivacija, kioski upsell, /display promocijska vsebina, prep-time per postaja targets, labor cost % iz TimeClock, sales-by-hour heatmap v pregledu.
