@@ -133,18 +133,23 @@ describe('menu engineering — full pipeline', () => {
   })
 })
 
-describe('menu engineering — recipe cost from rows', () => {
-  it('sums direct rows (qtyPerServing x costPerUnit) and ignores sub-recipe components', () => {
+describe('menu engineering — recipe cost from rows (BOM-aware, OPS-9)', () => {
+  it('sums ALL nodes (direct + sub-recipe children) x costPerUnit', () => {
     const cost = recipeCostFromRows([
-      { quantityPerServing: 0.2, costPerUnit: 10 }, // 2.0
-      { quantityPerServing: 1, costPerUnit: 0.5 }, // 0.5
-      { quantityPerServing: 5, costPerUnit: 2, parentRecipeItemId: 'parent-1' }, // sub-recipe -> ignored
+      { id: 'a', quantityPerServing: 0.2, costPerUnit: 10 }, // 2.0
+      { id: 'b', quantityPerServing: 1, costPerUnit: 0.5 }, // 0.5
+      { id: 'c', quantityPerServing: 5, costPerUnit: 2, parentRecipeItemId: 'b' }, // sub-recipe child -> counts now
     ])
-    expect(cost).toBeCloseTo(2.5, 10)
+    expect(cost).toBeCloseTo(12.5, 10)
+  })
+
+  it('yieldPercent below 100 raises the effective raw quantity (netto/(yield/100))', () => {
+    const cost = recipeCostFromRows([{ id: 'a', quantityPerServing: 0.4, yieldPercent: 50, costPerUnit: 4 }])
+    expect(cost).toBeCloseTo(3.2, 10)
   })
 
   it('handles decimal strings (Prisma Decimal serialized)', () => {
-    const cost = recipeCostFromRows([{ quantityPerServing: '0.25', costPerUnit: '4.00' }])
+    const cost = recipeCostFromRows([{ id: 'a', quantityPerServing: '0.25', costPerUnit: '4.00' }])
     expect(cost).toBeCloseTo(1, 10)
   })
 

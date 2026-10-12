@@ -27,7 +27,7 @@ export function clampDays(raw: string | null): number {
  * Menu engineering report (Kasavana-Smith quadrant analysis), OPS-8 wave 1.
  * - Sales: non-voided OrderItems of orders with paymentStatus paid|partial,
  *   created within the period, location-scoped (central roles = all locations).
- * - Cost: direct RecipeItem rows x InventoryItem.costPerUnit, fallback to the
+ * - Cost: BOM-aware (yield + sub-recipe children) via recipe-cost kernel, fallback to the
  *   linked InventoryItem.costPerServing, else costKnown=false (item stays in
  *   the table with quadrant 'unknown', excluded from scatter + thresholds).
  * - Thresholds (popularity + CM) are computed WITHIN each category — see
@@ -75,8 +75,10 @@ export async function GET(req: NextRequest) {
   const recipeRows = await db.recipeItem.findMany({
     where: { menuItemId: { in: soldIds } },
     select: {
+      id: true,
       menuItemId: true,
       quantityPerServing: true,
+      yieldPercent: true,
       parentRecipeItemId: true,
       InventoryItem: { select: { costPerUnit: true } },
     },
@@ -109,7 +111,9 @@ export async function GET(req: NextRequest) {
     const rowsForItem = recipesByItem.get(id) || []
     const recipeCost = recipeCostFromRows(
       rowsForItem.map((r) => ({
+        id: r.id,
         quantityPerServing: num(r.quantityPerServing),
+        yieldPercent: num(r.yieldPercent) || 100,
         parentRecipeItemId: r.parentRecipeItemId,
         costPerUnit: num(r.InventoryItem?.costPerUnit),
       }))

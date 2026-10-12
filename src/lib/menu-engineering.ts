@@ -5,18 +5,20 @@
  * directly; the API route (src/app/api/menu-engineering) stays thin and only
  * fetches rows, then feeds them into `buildMenuEngineering`.
  *
- * Model notes:
- * - Cost per serving = sum of DIRECT RecipeItem rows (parentRecipeItemId == null)
- *   times InventoryItem.costPerUnit. Sub-recipes (RecipeItem.parentRecipeItemId
- *   self-relation) are IGNORED for v1 — their components would double-count the
- *   parent row; note kept for a future wave together with yieldPercent handling
- *   (deductStockForOrderTx also ignores yieldPercent today, so costs stay consistent).
+ * Model notes (OPS-9 update):
+ * - Cost per serving = BOM-aware kernel from src/lib/recipe-cost.ts: every
+ *   RecipeItem node contributes effectiveRawQty (netto / (yield/100)) x
+ *   costPerUnit, sub-recipe children (parentRecipeItemId self-relation) are
+ *   included recursively with a cycle guard. Consistent with
+ *   deductStockForOrderTx which consumes the same flattened raw quantities.
  * - Fallback: InventoryItem.costPerServing of the inventory row linked to the
  *   menu item via InventoryItem.menuItemId (unique per location) when > 0.
  * - Popularity thresholds and CM thresholds are computed WITHIN each category
  *   (Kasavana-Smith: popularity = share of category unit sales, so the average
  *   must be per category, never global).
  */
+
+import { recipeCost as bomRecipeCost } from '@/lib/recipe-cost'
 
 export type Quadrant = 'stars' | 'plowhorses' | 'puzzles' | 'dogs' | 'unknown'
 
@@ -157,16 +159,28 @@ export function buildMenuEngineering(items: MeItemInput[]): MeOutput {
 }
 
 /**
- * Direct recipe cost per serving from joined rows. Rows with a
- * parentRecipeItemId (sub-recipe components) are ignored for v1.
+ * BOM-aware recipe cost per serving (delegates to the recipe-cost kernel).
+ * Rows may be flat Prisma projections — synthetic ids are provided when the
+ * caller did not select `id` (only needed for the cycle guard).
  */
 export function recipeCostFromRows(
-  rows: { quantityPerServing: number | string; parentRecipeItemId?: string | null; costPerUnit: number | string }[]
+  rows: {
+    id?: string
+    quantityPerServing: number | string
+    yieldPercent?: number | string
+    parentRecipeItemId?: string | null
+    costPerUnit: number | string
+  }[]
 ): number {
-  let sum = 0
-  for (const r of rows) {
-    if (r.parentRecipeItemId) continue
-    sum += Number(r.quantityPerServing) * Number(r.costPerUnit)
-  }
-  return sum
+  const nodes = rows.map((r, i) => ({
+    id: r.id ?? `row-${i}`,
+    menuItemId: 'wrapper-item',
+    inventoryItemId: `inv-${i}`,
+    quantityPerServing: Number(r.quantityPerServing),
+    yieldPercent: r.yieldPercent === undefined || r.yieldPercent === null ? 100 : Number(r.yieldPercent),
+    unit: '',
+    parentRecipeItemId: r.parentRecipeItemId ?? null,
+    costPerUnit: Number(r.costPerUnit),
+  }))
+  return bomRecipeCost(nodes, 'wrapper-item').cost
 }

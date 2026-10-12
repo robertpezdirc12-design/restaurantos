@@ -1718,3 +1718,18 @@ Stage Summary:
 - Deviacije od briefingu (glava ≠ 4cb9684): menu engineering modul + MenuItem.costPerServing + version.ts + reorder.ts v tem HEAD ne obstajajo → C postavka dostavljena kot polni BOM stroški na /api/recipes GET (isti čisti kernel za prihodnji OPS-8 val); verzija 1.66.0 (ne 1.74.0); commit sporočilo prilagojeno resnici (menu engineering klavzula → recepture GET costPerServing).
 - Preostalo za naslednje valove: menu engineering modul (porablja recipeCost), globlje gnezdenje pod-receptur v UI (matematika že podpira poljubno globino), HR dev baza sync.
 
+
+---
+Task ID: OPS-9-a-RECOVERY (sandbox restore incident + val 1 integracija)
+Agent: Z.ai Code (orchestrator)
+Task: Sandbox je bil obnovljen iz starega snapshot-a (v1.65.0/c5f2190) — OPS-7/OPS-8 zgodovina lokalno izgubljena; obnoviti iz GitHub-a + ohraniti val 1 (recepture BOM) + integrirati recipeCost v menu engineering.
+
+Work Log:
+- INCIDENT: repot ob nadaljevanju = c5f2190 (v1.65.0) + nov commit 559178c (val 1 na STARI bazi) — reflog brez sledi OPS-7/8; node_modules + dev.db prav tako stari (agent je moral db:seed). VZROK: obnovitev sandbox snapshot-a med sejami.
+- REŠITEV: (1) git fetch github FAIL — remote URL je vseboval STAR žeton (obnovljen credential store); PAT ghp_ZRtO... še VELJAVEN (API /user = 200) → git remote set-url github z veljavnim žetonom → fetch OK (c5f2190..4cb9684). (2) backup branch backup-ops9-oldbase @ 559178c. (3) git rebase --onto github/main c5f2190 main → KONFLIKTI SAMO 2: worklog.md (obdržani OBE strani — OPS-8 vnos + OPS-9-a vnos) + src/lib/api.ts (obdržan v1.73.0 stil: export iz version.ts; star inline APP_VERSION odstranjen). i18n + inventory.ts + dashboard-tabs AVTO-merge čisti.
+- LEKCIJA: sandbox obnovitve lahko povrnejo STAR remote credential — vedno preveri git fetch + API validity pred sklepi o žetonu; rebase --onto je čista pot za reševanje dela na stari bazi.
+- INTEGRACIJA (zaključek deviacije #1 vala 1): menu-engineering.recipeCostFromRows ZDAJ delegira na BOM kernel (recipe-cost.ts: yield + otroci + cikl-zaščita); route /api/menu-engineering select + id + yieldPercent; tests/menu-engineering.test.ts posodobljeni na BOM semantiko (otroci SE ŠTEJAJO, yield dviga efektivno količino). Version 1.73.0 → 1.74.0. bun install (+17 paketov: web-push, nodemailer — manjkali po restore).
+- VALIDACIJA: tsc 0, lint 0, bun test 843/843 (825 baza + 17 val 1 + 1 nov), dev health 1.74.0, brskalnik: Inženjering jelovnika + Zalihe → "Trošak po porciji 12,04 €" živo, 0 konzolnih napak.
+
+Stage Summary:
+- Localno stanje ZNOVA sinhronizirano z GitHub/v1.73.0 + val 1 (recepture BOM) na vrhu = v1.74.0-kandidat. Menu engineering uporablja ISTI BOM kernel kot razknjižba zalog (konsistentni stroški). Produkcija ostaja 1.73.0 do pusha.
