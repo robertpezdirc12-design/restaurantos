@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
@@ -21,7 +21,7 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
@@ -2728,6 +2728,15 @@ interface NabavaNewLine { inventoryItemId: string; description: string; quantity
 interface NabavaRecvLine { accept: string; reject: string; reason: string; expiry: string }
 interface NabavaSuggestion { itemId: string; itemName: string; unit: string; qty: number; par: number; incoming: number; suggested: number; supplierId: string | null; supplierName: string; costEstimate: number }
 interface NabavaSuggGroup { supplierId: string | null; supplierName: string; items: NabavaSuggestion[]; total: number }
+/** OPS-9 val 2 — recurring PO rule (server shape, src/lib/recurring-po.ts). */
+interface RecRuleT {
+  id: string; supplierId: string
+  items: { inventoryItemId: string; qty: number }[]
+  weekdays: number[]; hour: number; everyWeeks: number
+  active: boolean; lastRun: string | null; nextRun: string | null
+}
+/** Display order for weekday toggles: Monday-first (0 = Sunday, JS getDay). */
+const REC_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
 const NABAVA_STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: 'proc.stDraft', cls: 'border-stone-300 bg-stone-100 text-stone-700' },
@@ -2795,6 +2804,27 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   const [suggLoading, setSuggLoading] = useState(true)
   const [suggErr, setSuggErr] = useState('')
 
+  // — eSLOG e-invoice import (OPS-9 val 2) —
+  const [eslogFile, setEslogFile] = useState<File | null>(null)
+  const [eslogBusy, setEslogBusy] = useState(false)
+  const [eslogResult, setEslogResult] = useState<{ apNumber: string; supplierName: string; totalAmount: number; dueDate: string; lines: number } | null>(null)
+  const [eslogWarn, setEslogWarn] = useState<{ error: string; supplierName?: string; taxId?: string } | null>(null)
+  const [eslogDup, setEslogDup] = useState('')
+
+  // — Recurring purchase orders (OPS-9 val 2) —
+  const [recRules, setRecRules] = useState<RecRuleT[]>([])
+  const [recLoading, setRecLoading] = useState(true)
+  const [recBusy, setRecBusy] = useState(false)
+  const [recErr, setRecErr] = useState('')
+  const [recDialog, setRecDialog] = useState(false)
+  const [recSupplierId, setRecSupplierId] = useState('')
+  const [recItemId, setRecItemId] = useState('')
+  const [recItems, setRecItems] = useState<{ inventoryItemId: string; name: string; qty: string }[]>([])
+  const [recWeekdays, setRecWeekdays] = useState<number[]>([1])
+  const [recHour, setRecHour] = useState('8')
+  const [recEvery, setRecEvery] = useState('1')
+  const recTriggered = useRef(false)
+
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -2827,6 +2857,34 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
     const s = await api<{ suppliers: NabavaSupplier[] }>('/api/suppliers')
     setSuppliers(s.suppliers || [])
   }
+  /* OPS-9 val 2 — recurring rules list */
+  const loadRecRules = async () => {
+    const r = await api<{ rules: RecRuleT[] }>('/api/recurring-po')
+    setRecRules(r.rules || [])
+  }
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        await loadRecRules()
+      } catch (e) {
+        if (alive) setRecErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setRecLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+  /* OPS-9 val 2 — lazy trigger: evaluate due recurring rules once per tab mount.
+   * Fire-and-forget; when drafts were created the order list refreshes silently.
+   * Users without inventory.manage get a silent 403 here (best-effort by design). */
+  useEffect(() => {
+    if (recTriggered.current) return
+    recTriggered.current = true
+    api<{ created: { poNumber: string }[]; skipped: number }>('/api/purchase-orders/run-recurring', { method: 'POST', body: JSON.stringify({}) })
+      .then((r) => { if (r.created?.length) void loadOrders() })
+      .catch(() => { /* best-effort — the explicit "run now" button reports errors */ })
+  }, [])
   const fetchDetail = async (id: string) => {
     setDetailBusy(true); setDetailErr('')
     try {
@@ -3028,6 +3086,131 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
     }
   }
 
+  /* — eSLOG e-račun uvoz (OPS-9 val 2) —
+   * raw fetch instead of api(): the 422 body carries the parsed invoice
+   * (supplier name/taxId) for the inline "create the supplier first" hint. */
+  const importEslog = async () => {
+    if (!eslogFile) return
+    setEslogBusy(true); setEslogWarn(null); setEslogDup(''); setEslogResult(null)
+    try {
+      const xml = await eslogFile.text()
+      const token = getToken()
+      const res = await fetch('/api/ap/import-eslog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ xml }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        error?: string; duplicate?: boolean
+        ap?: { apNumber: string; dueDate: string; totalAmount: number }
+        supplier?: { id: string; name: string }
+        parsed?: { lines: unknown[]; supplier: { name: string; taxId: string } } | null
+      }
+      if (res.status === 422) {
+        const tax = data?.parsed?.supplier?.taxId || ''
+        const name = data?.parsed?.supplier?.name || ''
+        setEslogWarn({ error: tax ? t('eslog.errSupplier', { tax, name }) : String(data.error || t('common.error')), supplierName: name, taxId: tax })
+        return
+      }
+      if (!res.ok) throw new Error(data?.error || 'Napaka zahteve')
+      if (data.duplicate && data.ap) {
+        setEslogDup(data.ap.apNumber)
+        toast({ title: t('eslog.dup', { ap: data.ap.apNumber }) })
+        return
+      }
+      if (data.ap) {
+        setEslogResult({
+          apNumber: data.ap.apNumber,
+          supplierName: data.supplier?.name || '',
+          totalAmount: Number(data.ap.totalAmount),
+          dueDate: data.ap.dueDate ? nabavaDate(data.ap.dueDate) : '—',
+          lines: data.parsed?.lines?.length || 0,
+        })
+        toast({ title: t('eslog.ok', { ap: data.ap.apNumber }) })
+      }
+    } catch (e) {
+      setEslogWarn({ error: String((e as Error).message || e) })
+    } finally {
+      setEslogBusy(false)
+    }
+  }
+
+  /* — ponavljajoča naročila (OPS-9 val 2) — */
+  const runRecurringNow = async () => {
+    setRecBusy(true); setRecErr('')
+    try {
+      const res = await api<{ created: { poNumber: string }[]; skipped: number }>('/api/purchase-orders/run-recurring', { method: 'POST', body: JSON.stringify({}) })
+      toast({ title: t('recurring.created', { n: res.created.length, s: res.skipped }) })
+      if (res.created.length > 0) await loadOrders()
+      await loadRecRules()
+    } catch (e) {
+      setRecErr(String((e as Error).message || e))
+    } finally {
+      setRecBusy(false)
+    }
+  }
+  const toggleRule = async (rule: RecRuleT) => {
+    setRecBusy(true); setRecErr('')
+    try {
+      const res = await api<{ rule: RecRuleT }>('/api/recurring-po', { method: 'PATCH', body: JSON.stringify({ id: rule.id, active: !rule.active }) })
+      setRecRules((rs) => rs.map((r) => (r.id === rule.id ? res.rule : r)))
+    } catch (e) {
+      setRecErr(String((e as Error).message || e))
+    } finally {
+      setRecBusy(false)
+    }
+  }
+  const deleteRule = async (id: string) => {
+    if (!window.confirm(t('recurring.confirmDelete'))) return
+    setRecBusy(true); setRecErr('')
+    try {
+      await api(`/api/recurring-po?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      setRecRules((rs) => rs.filter((r) => r.id !== id))
+      toast({ title: t('recurring.deleted') })
+    } catch (e) {
+      setRecErr(String((e as Error).message || e))
+    } finally {
+      setRecBusy(false)
+    }
+  }
+  const openRecDialog = () => {
+    setRecSupplierId(suppliers.find((s) => s.isActive)?.id || '')
+    setRecItemId(''); setRecItems([]); setRecWeekdays([1]); setRecHour('8'); setRecEvery('1'); setRecErr('')
+    setRecDialog(true)
+  }
+  const addRecItem = () => {
+    if (!recItemId) return
+    const it = invItems.find((i) => i.id === recItemId)
+    if (!it || recItems.some((x) => x.inventoryItemId === recItemId)) return
+    setRecItems((xs) => [...xs, { inventoryItemId: it.id, name: it.name, qty: '' }])
+    setRecItemId('')
+  }
+  const saveRecRule = async () => {
+    if (!recSupplierId) { setRecErr(t('recurring.errSupplier')); return }
+    if (recItems.length === 0 || recItems.some((x) => !(nabavaNum(x.qty) > 0))) { setRecErr(t('recurring.errItems')); return }
+    if (recWeekdays.length === 0) { setRecErr(t('recurring.errWeekdays')); return }
+    setRecBusy(true); setRecErr('')
+    try {
+      await api('/api/recurring-po', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId: recSupplierId,
+          items: recItems.map((x) => ({ inventoryItemId: x.inventoryItemId, qty: nabavaNum(x.qty) })),
+          weekdays: recWeekdays,
+          hour: Number(recHour) || 8,
+          everyWeeks: Number(recEvery) || 1,
+        }),
+      })
+      setRecDialog(false)
+      toast({ title: t('recurring.saved') })
+      await loadRecRules()
+    } catch (e) {
+      setRecErr(String((e as Error).message || e))
+    } finally {
+      setRecBusy(false)
+    }
+  }
+
   const filteredOrders = statusFilter === 'all' ? orders : orders.filter((o) => o.status === statusFilter)
 
   return (
@@ -3093,6 +3276,114 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
             </div>
           )}
           {suggErr && <p className="text-sm text-rose-700">{t('sugg.error')} {suggErr}</p>}
+        </CardContent>
+      </Card>
+
+      {/* 0b — eSLOG e-invoice import (OPS-9 val 2): XML file → AccountsPayable */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+            <FileUp className="w-4 h-4" /> {t('eslog.card')}
+          </CardTitle>
+          <CardDescription>{t('eslog.desc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nb-eslog-file">{t('eslog.file')}</Label>
+              <Input
+                id="nb-eslog-file"
+                type="file"
+                accept=".xml,text/xml,application/xml"
+                className="w-full sm:w-72 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-stone-100 file:px-2 file:py-1 file:text-xs"
+                disabled={eslogBusy}
+                onChange={(e) => { setEslogFile(e.target.files?.[0] || null); setEslogWarn(null); setEslogDup(''); setEslogResult(null) }}
+              />
+            </div>
+            <Button size="sm" className="h-9 bg-emerald-700 hover:bg-emerald-800 text-white" disabled={eslogBusy || !eslogFile} onClick={importEslog}>
+              {eslogBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
+              {eslogBusy ? t('eslog.importing') : t('eslog.importBtn')}
+            </Button>
+          </div>
+          {eslogDup && (
+            <p className="text-sm text-stone-700 rounded-xl border border-stone-200 bg-stone-50 p-3">{t('eslog.dup', { ap: eslogDup })}</p>
+          )}
+          {eslogWarn && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              <p className="font-semibold flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {eslogWarn.error}</p>
+            </div>
+          )}
+          {eslogResult && (
+            <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 space-y-1">
+              <p className="font-semibold">{t('eslog.summary')}: {eslogResult.apNumber}</p>
+              <p>
+                {t('eslog.colSupplier')}: <strong>{eslogResult.supplierName}</strong> · {t('eslog.colAmount')}: <strong>{fmtEUR(eslogResult.totalAmount)}</strong> · {t('eslog.colDue')}: {eslogResult.dueDate} · {t('eslog.lines', { n: eslogResult.lines })}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 0c — recurring purchase orders (OPS-9 val 2): rules → draft POs */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+            <Repeat className="w-4 h-4" /> {t('recurring.card')}
+            {canManage && (
+              <span className="ml-auto flex items-center gap-2">
+                <Button size="sm" variant="outline" className="h-8 px-2 text-xs" disabled={recBusy} onClick={runRecurringNow}>
+                  <RotateCcw className="w-3.5 h-3.5" /> {recBusy ? t('recurring.running') : t('recurring.runNow')}
+                </Button>
+                <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={openRecDialog}>
+                  <Plus className="w-3.5 h-3.5" /> {t('recurring.new')}
+                </Button>
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>{t('recurring.desc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {recLoading ? (
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('common.loading')}</p>
+          ) : recRules.length === 0 ? (
+            <p className="text-sm text-stone-500">{t('recurring.empty')}</p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              {recRules.map((rule) => {
+                const sup = suppliers.find((s) => s.id === rule.supplierId)
+                return (
+                  <div key={rule.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{sup?.name || rule.supplierId}</span>
+                        <Badge variant="outline" className={rule.active ? 'border-emerald-600 text-emerald-700' : 'text-stone-500'}>
+                          {rule.active ? t('recurring.active') : t('proc.inactiveF')}
+                        </Badge>
+                      </div>
+                      {canManage && (
+                        <div className="flex items-center gap-2">
+                          <Switch checked={rule.active} disabled={recBusy} onCheckedChange={() => toggleRule(rule)} aria-label={t('recurring.active')} />
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={recBusy} onClick={() => deleteRule(rule.id)}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-600 mt-1">
+                      {rule.items.map((it) => `${invItems.find((i) => i.id === it.inventoryItemId)?.name || it.inventoryItemId} × ${it.qty}`).join(', ')}
+                    </p>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      {t('recurring.weekdays')}: {REC_DAY_ORDER.filter((d) => rule.weekdays.includes(d)).map((d) => t(`recurring.day${d}`)).join(', ')} · {t('recurring.hour')}: {rule.hour}:00 · {t('recurring.every')}: {t(`recurring.every${Math.max(1, Math.min(4, rule.everyWeeks))}`)}
+                    </p>
+                    <p className="text-xs text-stone-500">
+                      {t('recurring.next')}: {rule.nextRun ? nabavaDate(rule.nextRun) : t('recurring.never')} · {t('recurring.lastRun')}: {rule.lastRun ? nabavaDate(rule.lastRun) : t('recurring.never')}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {recErr && <p className="text-sm text-red-600">{recErr}</p>}
         </CardContent>
       </Card>
 
@@ -3639,6 +3930,117 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: ponavljajoče naročilo — novo pravilo (OPS-9 val 2) */}
+      <Dialog open={recDialog} onOpenChange={(v) => { if (!v) setRecDialog(false) }}>
+        <DialogContent aria-describedby={undefined} className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{t('recurring.dialogTitle')}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="nb-rec-sup">{t('recurring.supplier')}</Label>
+              <Select value={recSupplierId} onValueChange={setRecSupplierId}>
+                <SelectTrigger id="nb-rec-sup"><SelectValue placeholder={t('proc.chooseSupplier')} /></SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {suppliers.filter((s) => s.isActive).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="nb-rec-item">{t('recurring.items')}</Label>
+              <div className="flex gap-2 items-end">
+                <Select value={recItemId} onValueChange={setRecItemId}>
+                  <SelectTrigger id="nb-rec-item" className="flex-1"><SelectValue placeholder={t('recurring.itemPick')} /></SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {invItems.map((i) => (
+                      <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" className="h-9" onClick={addRecItem} disabled={!recItemId}>
+                  <Plus className="w-3.5 h-3.5" /> {t('recurring.addItem')}
+                </Button>
+              </div>
+              {recItems.length === 0 ? (
+                <p className="text-xs text-stone-500">{t('recurring.errItems')}</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {recItems.map((x, idx) => (
+                    <div key={x.inventoryItemId} className="flex items-center gap-2">
+                      <span className="text-sm flex-1 truncate" title={x.name}>{x.name}</span>
+                      <Input
+                        inputMode="decimal"
+                        className="w-24 h-9 text-sm"
+                        value={x.qty}
+                        aria-label={t('recurring.qty')}
+                        placeholder={t('recurring.qty')}
+                        onChange={(e) => setRecItems((xs) => xs.map((y, i) => (i === idx ? { ...y, qty: e.target.value } : y)))}
+                      />
+                      <Button size="sm" variant="outline" className="h-9 px-2 text-xs" onClick={() => setRecItems((xs) => xs.filter((_, i) => i !== idx))} aria-label={t('common.delete')}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>{t('recurring.weekdays')}</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {REC_DAY_ORDER.map((d) => {
+                  const on = recWeekdays.includes(d)
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setRecWeekdays((ws) => (on ? ws.filter((w) => w !== d) : [...ws, d]))}
+                      aria-pressed={on}
+                      className={`h-9 min-w-12 rounded-md border px-2 text-xs font-medium transition-colors ${on ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300'}`}
+                    >
+                      {t(`recurring.day${d}`)}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="nb-rec-hour">{t('recurring.hour')}</Label>
+                <Select value={recHour} onValueChange={setRecHour}>
+                  <SelectTrigger id="nb-rec-hour"><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {Array.from({ length: 13 }, (_, i) => String(i + 6)).map((h) => (
+                      <SelectItem key={h} value={h}>{h}:00</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nb-rec-every">{t('recurring.every')}</Label>
+                <Select value={recEvery} onValueChange={setRecEvery}>
+                  <SelectTrigger id="nb-rec-every"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['1', '2', '3', '4'].map((n) => (
+                      <SelectItem key={n} value={n}>{t(`recurring.every${n}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {recErr && <p className="text-sm text-red-600">{recErr}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecDialog(false)} disabled={recBusy}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={saveRecRule} disabled={recBusy}>
+              {recBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {t('recurring.new')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -7191,7 +7593,7 @@ export function KdsStatsSection() {
 
 /* ─────────────────── OPS-8 val 2 — DURS VAT payer check ─────────────────── */
 
-interface DursEntryT { taxNumber: string; vatId: string; name: string; vatPayer: boolean; ibans: string[] }
+interface DursEntryT { taxNumber: string; vatId: string; name: string; vatPayer: boolean; ibans: string[]; source?: 'inetis' | 'vies' }
 type DursState =
   | { kind: 'idle' }
   | { kind: 'loading' }
@@ -7250,9 +7652,17 @@ export function DursCheckButton({ query, onName, onIban, compact = false }: { qu
       </Button>
       {state.kind === 'ok' && state.entry && (
         <div className="flex flex-col gap-1 text-xs">
-          <Badge variant="outline" className={state.entry.vatPayer ? 'w-fit border-emerald-600 bg-emerald-50 text-emerald-700' : 'w-fit border-rose-300 bg-rose-50 text-rose-700'}>
-            {state.entry.vatPayer ? `✓ ${t('durs.vatPayerYes')}` : `✗ ${t('durs.vatPayerNo')}`}
-          </Badge>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge variant="outline" className={state.entry.vatPayer ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-rose-300 bg-rose-50 text-rose-700'}>
+              {state.entry.vatPayer ? `✓ ${t('durs.vatPayerYes')}` : `✗ ${t('durs.vatPayerNo')}`}
+            </Badge>
+            {/* OPS-9 val 2 — source badge: domestic DURS (Inetis) vs EU VIES */}
+            {state.entry.source && (
+              <Badge variant="outline" className="border-stone-300 bg-stone-50 text-stone-600">
+                {state.entry.source === 'vies' ? t('durs.srcEu') : t('durs.srcSi')}
+              </Badge>
+            )}
+          </div>
           {state.entry.name && <span className="text-stone-600">{state.entry.name}</span>}
           {state.entry.ibans?.length > 0 && <span className="text-stone-500">{t('durs.ibanHint')}: {state.entry.ibans[0]}</span>}
         </div>

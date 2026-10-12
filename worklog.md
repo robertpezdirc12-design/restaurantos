@@ -1733,3 +1733,19 @@ Work Log:
 
 Stage Summary:
 - Localno stanje ZNOVA sinhronizirano z GitHub/v1.73.0 + val 1 (recepture BOM) na vrhu = v1.74.0-kandidat. Menu engineering uporablja ISTI BOM kernel kot razknjižba zalog (konsistentni stroški). Produkcija ostaja 1.73.0 do pusha.
+
+---
+Task ID: OPS-9-b
+Agent: full-stack-developer (+ orchestrator zaključek po deadline prekinitvi)
+Task: Val 2 (v1.75.0) — eSLOG uvoz e-računov + VIES za tujce + ponavljajoče naročilnice
+
+Work Log:
+- bun add fast-xml-parser; src/lib/eslog.ts (tolerant eSLOG 1.6/2.0 UBL parse: invoiceNumber/issueDate/dueDate/supplier{taxId,name,iban}/lines/subtotal/vatTotal/total, null + error pri neprepoznani strukturi, 2 vgrajeni fixture-ja za teste).
+- POST /api/ap/import-eslog {xml} → match Supplier po davčni (normalizacija SI prefix) → 422 če dobavitelj ne obstaja (UI opozori, brez auto-ustvarjanja), idempotenca po supplierId+invoiceNumber (duplicate:true), sicer AccountsPayable (apNumber AP-YYYY-NNNN isti vzorec kot receive ruta, dueDate = dueDate||issueDate+paymentTerms, status open, matchStatus auto, notes s povzetkom vrstic) + audit ESLOG_IMPORTED.
+- VIES: /api/durs/check razširjen — classifyDursQuery (si | eu | invalid) v src/lib/durs.ts; EU prefixi (brez SI) → ec.europa.eu VIES REST /ms/{CC}/vat/{num} timeout 6s → normalizeViesResponse → isti odzivni shape (source: 'vies' | 'inetis'); UI gumb Nespremenjen, badge vira.
+- Ponavljajoče naročilnice: src/lib/recurring-po.ts (computeNextRun weekday+everyWeeks, isDue — PURE); /api/recurring-po GET/POST/PATCH/DELETE (validacija supplier/items/weekdays 0-6/hour, audit RECURRING_PO_SAVED/DELETED) + POST /api/purchase-orders/run-recurring (due pravila → PO status draft z notes Recurring #id, lastRun/nextRun update, audit RECURRING_PO_CREATED, idempotentno) + lazy mount trigger v NabavaTab (useEffect enkrat) + kartica "Ponavljajoča naročila" (pravila: dobavitelj, dnevi, ura, nextRun, Switch active, dialog novo pravilo: supplier select + artikel + qty + dnevi + ura + vsak N teden, "Zaženi zdaj").
+- i18n eslog.* + recurring.* + durs source badge (50 ključev v hr, pariteta). Version → 1.75.0.
+- Orchestrator zaključek po deadline: validacija tsc 0 / lint 0 / bun test 865/865 (+22 novih: eslog parse 2 fixture-ja, classifyDursQuery, normalizeViesResponse, computeNextRun/isDue); brskalnik: kartici rendra (HR lokal: "Uvoz e-računa (eSLOG)", "Ponavljajuće narudžbe" + Pokreni sada + Novo pravilo, Uvezi disabled brez datoteke), run-recurring smoke {created:[],skipped:1}, GET rules OK, 0 konzolnih napak.
+
+Stage Summary:
+- v1.75.0: nabava dobila e-račune (eSLOG→AP z avtomatskim matchem dobavitelja), EU/VIES preverjanje DDV za tuje dobavitelje (hr relevantno) in ponavljajoča naročila (draft PO per urnik, lazy evaluation ob odprtju Nabave). Zero DDL. Ostalo: eSLOG attachment/PDF, obvestilo ob novi AP, auto-send draftov → naslednja faza.
