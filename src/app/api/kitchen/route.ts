@@ -2,13 +2,14 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import type { OrderItemStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB, nid, jstr } from '@/lib/map'
+import { stationOf } from '@/lib/kds-stats'
 import { publishEvent } from '@/lib/events'
 import { pushEvent, pushToEmployees } from '@/lib/push'
 import { auditChainFields } from '@/lib/audit-chain'
-import { KDS_DELAY_ACTION, computePrepMin, isValidDelayReason, kdsDelayDetails, shouldAskDelayReason } from '@/lib/kds-delays'
+import { KDS_DELAY_ACTION, computePrepMin, delayThresholdForTarget, isLatePrep, isValidDelayReason, kdsDelayDetails } from '@/lib/kds-delays'
 
 const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
@@ -41,7 +42,21 @@ export async function GET(req: NextRequest) {
       mapOrderItem({ ...it, menuItem: it.MenuItem ? { prepStation: it.MenuItem.PrepStation } : undefined })
     ),
   }))
-  return ok({ queue })
+  // OPS-11 val 1 (v1.80.0): per-station delay targets — PrepStation.avgPrepTime mapped onto
+  // the two KDS buckets (stationOf), first active station per bucket wins (mirrors the
+  // /api/kitchen/stats reading pattern). ADDITIVE response key — the queue shape is untouched;
+  // a null bucket means "no active station" → the client falls back to the global 10 min.
+  const prepStations = await db.prepStation.findMany({
+    where: { isActive: true, ...(isCentralRole(user) ? {} : { locationId: user.loc || '__no_location__' }) },
+    select: { type: true, avgPrepTime: true, sortOrder: true, name: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  })
+  const stationTargets: { BAR: number | null; KITCHEN: number | null } = { BAR: null, KITCHEN: null }
+  for (const ps of prepStations) {
+    const bucket = stationOf(ps.type) as 'BAR' | 'KITCHEN'
+    if (stationTargets[bucket] === null) stationTargets[bucket] = ps.avgPrepTime
+  }
+  return ok({ queue, stationTargets })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -52,7 +67,14 @@ export async function PATCH(req: NextRequest) {
   // OPS-9 val 3: optional delay reason sent by the KDS when a LATE item (>10 min) is bumped
   const delayReason = isValidDelayReason(body.delayReason) ? body.delayReason : null
   const newDbStatus = itemStatusToDB(body.status)
-  const target = await db.orderItem.findUnique({ where: { id: body.itemId }, include: { Order: { select: { locationId: true } } } })
+  const target = await db.orderItem.findUnique({
+    where: { id: body.itemId },
+    include: {
+      Order: { select: { locationId: true } },
+      // OPS-11 val 1: station of the item (single include) — PrepStation.avgPrepTime drives the delay threshold
+      MenuItem: { include: { PrepStation: true } },
+    },
+  })
   if (!target) return fail('Artikel naročila ne obstaja.', 404)
   const locRes = await guardResource(user, target.Order?.locationId)
   if (locRes) return locRes
@@ -60,12 +82,16 @@ export async function PATCH(req: NextRequest) {
     where: { id: body.itemId },
     data: { status: newDbStatus as Prisma.OrderItemUpdateInput['status'], ...(newDbStatus === 'ready' ? { readyAt: new Date(), readyById: user.sub, readyByName: user.name } : {}) },
   })
-  // OPS-9 val 3 (v1.76.0) — KDS_DELAY audit when a LATE item (prep > 10 min) is bumped to ready
-  // with a reason from the catalog. NON-BLOCKING: any failure here must never fail the bump.
+  // OPS-9 val 3 (v1.76.0) — KDS_DELAY audit when a LATE item is bumped to ready with a reason
+  // from the catalog. OPS-11 val 1 (v1.80.0): "late" is PER STATION — OrderItem → MenuItem
+  // → PrepStation.avgPrepTime resolves the threshold (max(10, ceil(target×1.25)); no station
+  // → the global 10 min, identical to the old behavior). NON-BLOCKING: any failure here must
+  // never fail the bump.
   if (newDbStatus === 'ready' && delayReason) {
     try {
       const prepMin = computePrepMin(target.firedAt, new Date())
-      if (shouldAskDelayReason(prepMin)) {
+      const stationAvgPrep = target.MenuItem?.PrepStation?.avgPrepTime ?? null
+      if (prepMin !== null && isLatePrep(prepMin, stationAvgPrep)) {
         const __aId = nid()
         const details = kdsDelayDetails({
           orderItemId: item.id,
@@ -73,6 +99,8 @@ export async function PATCH(req: NextRequest) {
           reason: delayReason,
           prepMin: prepMin as number,
           orderId: item.orderId,
+          // additive: stats know the threshold that applied at bump time
+          threshold: delayThresholdForTarget(stationAvgPrep),
         })
         const __chain = await auditChainFields(db, {
           id: __aId,

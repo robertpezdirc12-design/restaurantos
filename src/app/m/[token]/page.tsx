@@ -22,7 +22,7 @@ import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergen
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
-interface MenuItem { id: string; name: string; description: string; price: number; vatRate: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[] }
+interface MenuItem { id: string; name: string; description: string; price: number; vatRate: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string }
 interface MenuPayload { restaurant: string; tableNumber: number | null; categories: { id: string; name: string }[]; items: MenuItem[]; allergenFilterEnabled?: boolean }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; modifiers: ModifierOption[] }
 
@@ -441,6 +441,17 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
             className={`w-full text-left rounded-2xl bg-white border border-stone-200 p-4 shadow-sm ${it.isAvailable ? 'active:scale-[0.99] transition-transform' : 'opacity-50 cursor-not-allowed'}`}
           >
             <div className="flex justify-between gap-3">
+              {/* OPS-11 val 1: menu item thumbnails (80×80 left of the text, lazy, onError hide).
+                  Items without an image render exactly as before; allergen labels (OPS-9) stay in the text column. */}
+              {it.image && (
+                <img
+                  src={it.image}
+                  alt={it.name}
+                  loading="lazy"
+                  className="h-20 w-20 rounded-2xl object-cover shrink-0 bg-stone-200"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                />
+              )}
               <div className="min-w-0">
                 <p className="font-semibold text-stone-900">{it.name}</p>
                 {it.description && <p className="text-sm text-stone-500 line-clamp-2 mt-0.5">{it.description}</p>}

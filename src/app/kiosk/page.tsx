@@ -354,10 +354,26 @@ function KioskInner() {
                   disabled={!it.isAvailable}
                   className={`rounded-2xl bg-stone-800 border p-5 text-left transition-transform ${it.isAvailable ? 'border-stone-700 active:scale-[0.98] hover:border-stone-500' : 'border-stone-800 opacity-40 cursor-not-allowed'}`}
                 >
-                  <p className="text-xl font-semibold leading-snug">{it.name}</p>
-                  {it.description && <p className="text-sm text-stone-400 mt-1 line-clamp-2">{it.description}</p>}
-                  <p className="mt-3 text-2xl font-bold">{fmt(it.price)}</p>
-                  {!it.isAvailable && <p className="text-sm text-red-400 mt-1">{t('guest.common.unavailable')}</p>}
+                  {/* OPS-11 val 1: main menu item thumbnails (80×80 left of the text, lazy, onError hide).
+                      Items WITHOUT an image render exactly as before (plain tile, no layout change);
+                      shrink-0 keeps the grid rows even. */}
+                  <div className={it.image ? 'flex items-start gap-3' : undefined}>
+                    {it.image && (
+                      <img
+                        src={it.image}
+                        alt={it.name}
+                        loading="lazy"
+                        className="h-20 w-20 rounded-2xl object-cover shrink-0 bg-stone-700"
+                        onError={(e) => { e.currentTarget.style.display = 'none' }}
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xl font-semibold leading-snug">{it.name}</p>
+                      {it.description && <p className="text-sm text-stone-400 mt-1 line-clamp-2">{it.description}</p>}
+                      <p className="mt-3 text-2xl font-bold">{fmt(it.price)}</p>
+                      {!it.isAvailable && <p className="text-sm text-red-400 mt-1">{t('guest.common.unavailable')}</p>}
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -377,7 +393,7 @@ function KioskInner() {
                       className="shrink-0 w-60 rounded-2xl bg-stone-800 border border-stone-700 p-2.5 flex items-center gap-3 text-left transition-transform hover:border-stone-500 active:scale-[0.97]"
                     >
                       {it.image && (
-                        // kiosk renders images ONLY here (small upsell thumb) — the main grid stays untouched
+                        // small upsell thumb (h-16, OPS-10 val 2) — main grid thumbs are rendered separately (OPS-11 val 1)
                         <img src={it.image} alt={it.name} loading="lazy" className="h-16 w-16 rounded-xl object-cover shrink-0 bg-stone-700" />
                       )}
                       <span className="min-w-0 flex-1">

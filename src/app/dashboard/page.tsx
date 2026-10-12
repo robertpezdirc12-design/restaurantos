@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
-import { KDS_DELAY_REASONS } from '@/lib/kds-delays'
+import { KDS_DELAY_REASONS, delayThresholdForTarget, isLatePrep } from '@/lib/kds-delays'
 import { tabHasPerm } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -150,6 +150,9 @@ function DashboardInner() {
   const [tables, setTables] = useState<TableT[]>([])
   const [orders, setOrders] = useState<OrderT[]>([])
   const [kitchen, setKitchen] = useState<OrderT[]>([])
+  // OPS-11 val 1 (v1.80.0): per-station delay targets from GET /api/kitchen (PrepStation.avgPrepTime
+  // by KDS bucket) — the live timer / bump dialog resolve the threshold client-side via isLatePrep.
+  const [stationTargets, setStationTargets] = useState<Record<string, number | null>>({})
   const [menu, setMenu] = useState<MenuT[]>([])
   const [categories, setCategories] = useState<CategoryT[]>([])
   const [employees, setEmployees] = useState<EmployeeT[]>([])
@@ -323,7 +326,7 @@ function DashboardInner() {
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
-        soft(api<{ queue: OrderT[] }>('/api/kitchen')),
+        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null> }>('/api/kitchen')),
         soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ employees: EmployeeT[] }>('/api/employees')),
         soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
@@ -351,7 +354,7 @@ function DashboardInner() {
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
       if (o) setOrders(o.orders)
-      if (k) setKitchen(k.queue)
+      if (k) { setKitchen(k.queue); setStationTargets(k.stationTargets ?? {}) }
       if (m) { setMenu(m.items); setCategories(m.categories) }
       if (e) setEmployees(e.employees)
       if (r) setReservations(r.reservations)
@@ -1153,13 +1156,17 @@ function DashboardInner() {
   const [saleSending, setSaleSending] = useState(false)
 
   const kdsMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
-  const kdsAgeClass = (m: number): string => (m >= 10 ? 'bg-red-100 text-red-700 border-red-200' : m >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+  // OPS-11 val 1: red escalation is per station — threshold = max(10, ceil(target×1.25));
+  // without a target (no station / no config) the historical global 10 min applies.
+  const kdsAgeClass = (m: number, threshold = 10): string => (m >= threshold ? 'bg-red-100 text-red-700 border-red-200' : m >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+  // OPS-11 val 1: station prep target of an item (bucket from mapOrderItem) — null → global 10 min
+  const kdsTargetOf = (it: OrderItemT): number | null => stationTargets?.[it.station || 'KITCHEN'] ?? null
   // OPS-9 val 3: per-item live timer — firedAt when present (matches server prepMin), else order clock
   const kdsItemAge = (it: OrderItemT, o: OrderT): number => kdsMinutes(it.firedAt || o.createdAt)
-  /** Bump to READY: late item (>10 min) asks for a delay reason first (Lightspeed pattern). */
+  /** Bump to READY: late item (> per-station threshold, default 10 min) asks for a delay reason first (Lightspeed pattern). */
   const bumpReady = (it: OrderItemT, o: OrderT) => {
     const age = kdsItemAge(it, o)
-    if (age > 10) setDelayAsk({ itemId: it.id, name: it.name, min: age })
+    if (isLatePrep(age, kdsTargetOf(it))) setDelayAsk({ itemId: it.id, name: it.name, min: age })
     else void setItemStatus(it.id, 'READY')
   }
 
@@ -1750,8 +1757,8 @@ function DashboardInner() {
                               {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
                             </div>
                             <div className="flex gap-1.5 shrink-0 items-center">
-                              {/* OPS-9 val 3: per-item live timer (firedAt → order clock), same 5/10 escalation as the card */}
-                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${kdsAgeClass(itAge)}`}>{itAge}′</span>
+                              {/* OPS-9 val 3: per-item live timer (firedAt → order clock); OPS-11 val 1: red escalation per station (target → max(10, ceil(target×1.25))) */}
+                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{itAge}′</span>
                               {perms.includes('menu.availability') && mi && (
                                 <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
                                   <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
