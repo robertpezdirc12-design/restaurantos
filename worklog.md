@@ -1798,3 +1798,21 @@ Stage Summary:
 - KDS targeti: PrepStation.avgPrepTime je pravi vir (DDL NI potreben), fallback 5/10 min
 - Prodaja timestamp = paidAt (poravnano z X/Z); labor% = totalPay/netSales
 - eSLOG hramba dokumentirana 10 let; kiosk upsell benchmark 10–30 % AOV
+
+---
+Task ID: OPS-10-c (val 1 analitika)
+Agent: general-purpose + orchestrator
+Task: Sales-by-hour heatmap + labor cost % + KDS per-postaja targeti (v1.77.0).
+
+Work Log:
+- src/lib/sales-by-hour.ts (salesByHour 24×dan bucketi + heatQuantiles/heatClass) + /api/reports/sales-by-hour (paidAt>=since) + CSV section=sbh
+- src/lib/labor-cost.ts (laborByDay prek-noči delitev, proračun cost, laborByRole, laborPct) + /api/reports/labor-cost (odprti vnosi: liveMinutes×payRate) + CSV section=labor
+- kds-stats.ts +stationTarget/classifyPrep/kdsStationBreakdown (BAR 5/KITCHEN 10 fallback, PrepStation.avgPrepTime override, 3-barvno ok/warn/late na 100/125 %) — stare f-je nedotaknjene; /api/kitchen/stats +targets+stations+stationConfig
+- PATCH /api/prep-stations/[id] (avgPrepTime clamp 1-60, settings.manage, audit PREP_STATION_UPDATED)
+- UI: Pregled kartici "Prodaja po urah" (topla mreža dni×24, recharts BarChart, lazy IO) + "Labor stroški" (labor % barvo zelena≤32/rumena≤38/rdeča>38, top-5 vloge, nadure); Kuhinja "Statistika priprave" → "Po postajah" z CILJ (MIN) inputi + Shrani
+- i18n +32 ključev SL/HR; version 1.77.0; tests/ops10-val1.test.ts = 21 testov
+
+Stage Summary:
+- 913/913 testov, tsc 0, lint 0; commit caddecc
+- Browser E2E: obe kartici v Pregledu (prazna stanja OK), Po postajah rendra (Bar 0/—, Kuhinja 2/13.1 min), CILJ ureditev 15→10 persistirana prek UI + PATCH audit (potem vračano na 15); API E2E: sales-by-hour z seedanima naročiloma ✓, labor-cost z seedanim TimeEntry ✓
+- DEV-ONLY opomba: hydration mismatch (data-slot na header Button) = PRE-EXISTING na čistem v1.76.0 (stash-test potrjeno) — Turbopack dev artifact, ne produkcijska napaka

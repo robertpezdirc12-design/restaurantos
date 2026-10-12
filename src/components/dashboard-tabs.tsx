@@ -8489,3 +8489,291 @@ export function BatchesCard() {
     </Collapsible>
   )
 }
+
+/* ─────────────────── OPS-10 val 2 (v1.78.0) — front-of-house: kiosk upsell + display promos ─────────────────── */
+
+interface UpsellMenuItemT { id: string; name: string; price: number; available: boolean }
+/** Radix Select sentinel — never value="" (empty string is rejected by Radix). */
+const UPSELL_NONE = 'NONE'
+/** Max suggestions per item — mirrors MAX_UPSELLS in src/lib/upsell.ts. */
+const UPSELL_MAX_PICKS = 3
+
+/**
+ * Upsell suggestions card (Meni tab): per-item "Dodaj še" suggestions shown on the
+ * kiosk while the cart holds items. Max 3 suggestions per item, always sent as the
+ * WHOLE config (server sanitizes against live menu items and audits the change).
+ */
+export function UpsellCard({ menuItems, canManage }: { menuItems: UpsellMenuItemT[]; canManage: boolean }) {
+  const { t } = useI18n()
+  const [config, setConfig] = useState<Record<string, string[]>>({})
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [editItem, setEditItem] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string[]>([])
+  const [pickNew, setPickNew] = useState<string>(UPSELL_NONE)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await api<{ config: Record<string, string[]> }>('/api/kiosk-upsell')
+        if (alive) setConfig(res.config || {})
+      } catch {
+        if (alive) setNotice(t('upsell.loadError'))
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  const byId = new Map(menuItems.map((m) => [m.id, m]))
+  const configuredIds = Object.keys(config).filter((id) => byId.has(id))
+  const unconfigured = menuItems.filter((m) => !(m.id in config))
+
+  const togglePick = (id: string) => {
+    setNotice('')
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= UPSELL_MAX_PICKS ? p : [...p, id]))
+  }
+
+  const saveEdit = async () => {
+    if (!editItem) return
+    setBusy(true); setNotice('')
+    try {
+      const next = { ...config }
+      if (picked.length > 0) next[editItem] = picked
+      else delete next[editItem]
+      const res = await api<{ config: Record<string, string[]> }>('/api/kiosk-upsell', { method: 'PUT', body: JSON.stringify({ config: next }) })
+      setConfig(res.config || {})
+      setEditItem(null)
+      setPickNew(UPSELL_NONE)
+      setNotice(t('upsell.saved'))
+    } catch (e) {
+      setNotice(`${t('upsell.error')} ${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  const editTarget = editItem ? byId.get(editItem) : null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><UtensilsCrossed className="w-4 h-4" /> {t('upsell.title')}</CardTitle>
+        <CardDescription>{t('upsell.desc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('upsell.loading')}</p>
+        ) : (
+          <>
+            {configuredIds.length === 0 && <p className="text-sm text-stone-500">{t('upsell.empty')}</p>}
+            {configuredIds.length > 0 && (
+              <div className="space-y-2">
+                {configuredIds.map((id) => {
+                  const item = byId.get(id)!
+                  return (
+                    <div key={id} className="rounded-lg border border-stone-200 bg-white p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium truncate text-sm">{item?.name || id} <span className="text-stone-400 font-normal">· {fmtEUR(item?.price || 0)}</span></p>
+                        {canManage && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => { setEditItem(id); setPicked(config[id] || []) }}>
+                              <Pencil className="w-3 h-3" /> {t('upsell.edit')}
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-rose-700 border-rose-200 hover:bg-rose-50" disabled={busy}
+                              onClick={() => { setEditItem(id); setPicked([]) }}>
+                              <Trash2 className="w-3 h-3" /> {t('upsell.clear')}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {(config[id] || []).map((sid) => (
+                          <Badge key={sid} variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">{byId.get(sid)?.name || sid}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {canManage && (
+              <div className="flex items-center gap-2">
+                <Select value={pickNew} onValueChange={(v) => { if (v !== UPSELL_NONE) { setEditItem(v); setPicked(config[v] || []) } setPickNew(UPSELL_NONE) }}>
+                  <SelectTrigger className="h-9 max-w-72"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UPSELL_NONE}>{t('upsell.addFor')}</SelectItem>
+                    {unconfigured.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{m.name} · {fmtEUR(m.price)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </>
+        )}
+        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith(t('upsell.error')) || notice === t('upsell.loadError') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+      </CardContent>
+
+      <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">{t('upsell.dialogTitle', { name: editTarget?.name || '' })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-stone-500">{t('upsell.maxHint')}</p>
+          <ScrollArea className="max-h-72 rounded-xl border border-stone-200">
+            <div className="p-2 space-y-1">
+              {menuItems.filter((m) => m.id !== editItem).map((m) => {
+                const checked = picked.includes(m.id)
+                return (
+                  <label key={m.id} className={`flex items-center justify-between rounded-lg border px-2.5 py-2 text-sm cursor-pointer ${checked ? 'border-emerald-500 bg-emerald-50' : 'border-stone-100 hover:border-stone-300'} ${!checked && picked.length >= UPSELL_MAX_PICKS ? 'opacity-50' : ''}`}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-emerald-700"
+                        checked={checked}
+                        disabled={!checked && picked.length >= UPSELL_MAX_PICKS}
+                        onChange={() => togglePick(m.id)}
+                      />
+                      <span className="truncate">{m.name}</span>
+                    </span>
+                    <span className="text-stone-500 shrink-0">{fmtEUR(m.price)}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEditItem(null)}>{t('common.cancel')}</Button>
+            <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={saveEdit}>
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} {t('common.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
+interface DisplayPromoRowT { id: string; imageUrl: string; durationSec: number; active: boolean }
+/** Local (unsaved) row id prefix — the server re-assigns ids on save. */
+const PROMO_NEW_PREFIX = 'new-'
+/** Max promos — mirrors MAX_PROMOS in src/lib/display-promos.ts. */
+const PROMO_MAX = 5
+
+/**
+ * Customer display promos card (Nastavitve tab): idle-carousel ads for the wall
+ * display — image URL (http/s), per-image duration (5-120 s, default 15), active
+ * switch. Whole list is PUT at once; server sanitizes (max 5, bad URLs dropped)
+ * and audits DISPLAY_PROMOS_UPDATED.
+ */
+export function DisplayPromosCard() {
+  const { t } = useI18n()
+  const [ads, setAds] = useState<DisplayPromoRowT[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  const load = async () => {
+    setLoading(true); setNotice('')
+    try {
+      const res = await api<{ ads: DisplayPromoRowT[] }>('/api/display-promos')
+      setAds(res.ads || [])
+    } catch {
+      setNotice(t('promo.loadError'))
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { void load() }, [])
+
+  const patchRow = (id: string, patch: Partial<DisplayPromoRowT>) => {
+    setNotice('')
+    setAds((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  }
+  const addRow = () => {
+    setNotice('')
+    if (ads.length >= PROMO_MAX) return
+    setAds((rows) => [...rows, { id: `${PROMO_NEW_PREFIX}${Date.now().toString(36)}-${rows.length}`, imageUrl: '', durationSec: 15, active: true }])
+  }
+  const removeRow = (id: string) => {
+    setNotice('')
+    setAds((rows) => rows.filter((r) => r.id !== id))
+  }
+
+  const save = async () => {
+    setBusy(true); setNotice('')
+    try {
+      const badUrl = ads.some((a) => a.imageUrl.trim() !== '' && !/^https?:\/\/\S+$/i.test(a.imageUrl.trim()))
+      if (badUrl) { setNotice(t('promo.invalidUrl')); return }
+      const clean = ads.filter((a) => a.imageUrl.trim() !== '')
+      const res = await api<{ ads: DisplayPromoRowT[] }>('/api/display-promos', { method: 'PUT', body: JSON.stringify({ ads: clean }) })
+      setAds(res.ads || [])
+      setNotice(clean.length !== ads.length ? t('promo.savedFiltered', { dropped: ads.length - clean.length }) : t('promo.saved'))
+    } catch (e) {
+      setNotice(`${t('promo.error')} ${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><MonitorSmartphone className="w-4 h-4" /> {t('promo.title')}</CardTitle>
+        <CardDescription>{t('promo.desc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('promo.loading')}</p>
+        ) : (
+          <>
+            {ads.length === 0 && <p className="text-sm text-stone-500">{t('promo.empty')}</p>}
+            {ads.length > 0 && (
+              <div className="space-y-2">
+                {ads.map((ad) => (
+                  <div key={ad.id} className="rounded-lg border border-stone-200 bg-white p-2.5 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs text-stone-500">{t('promo.image')}</Label>
+                      <Input
+                        value={ad.imageUrl}
+                        onChange={(e) => patchRow(ad.id, { imageUrl: e.target.value })}
+                        placeholder="https://…"
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-stone-500">{t('promo.duration')}</Label>
+                      <Input
+                        inputMode="numeric"
+                        value={String(ad.durationSec)}
+                        onChange={(e) => patchRow(ad.id, { durationSec: Number(e.target.value.replace(/\D/g, '')) || 15 })}
+                        className="h-9 w-20"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-4 sm:pt-0">
+                      <Switch checked={ad.active} onCheckedChange={(v) => patchRow(ad.id, { active: v })} aria-label={t('promo.active')} />
+                      <span className="text-xs text-stone-600">{t('promo.active')}</span>
+                    </div>
+                    <div className="pt-2 sm:pt-0">
+                      <Button size="icon" variant="outline" className="h-9 w-9 text-rose-700 border-rose-200 hover:bg-rose-50" onClick={() => removeRow(ad.id)} title={t('promo.delete')}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" className="gap-1" disabled={ads.length >= PROMO_MAX} onClick={addRow}>
+                <Plus className="w-3.5 h-3.5" /> {t('promo.add')}
+              </Button>
+              <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy || loading} onClick={save}>
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />} {t('promo.save')}
+              </Button>
+              {ads.length >= PROMO_MAX && <span className="text-xs text-amber-700">{t('promo.maxHint')}</span>}
+            </div>
+          </>
+        )}
+        {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith(t('promo.error')) || notice === t('promo.loadError') || notice === t('promo.invalidUrl') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+      </CardContent>
+    </Card>
+  )
+}

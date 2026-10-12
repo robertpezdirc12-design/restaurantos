@@ -43,6 +43,11 @@ interface DisplayPayload {
   message?: string
 }
 
+/** OPS-10 val 2: active promos ride along on every display state poll (additive key). */
+interface DisplayPromoT { id: string; imageUrl: string; durationSec: number; active: boolean }
+/** Fallback rotation when a promo has no usable duration (matches sanitize default). */
+const PROMO_FALLBACK_SEC = 15
+
 export default function DisplayPage() {
   return (
     <GuestI18nProvider>
@@ -56,11 +61,14 @@ function DisplayInner() {
   const [token, setToken] = useState('')
   const [codeInput, setCodeInput] = useState('')
   const [info, setInfo] = useState<{ paired: boolean; posName?: string; posOnline?: boolean } | null>(null)
-  const [state, setState] = useState<{ payload: DisplayPayload | null; posOnline: boolean; updatedAt?: string } | null>(null)
+  const [state, setState] = useState<{ payload: DisplayPayload | null; posOnline: boolean; updatedAt?: string; promos?: DisplayPromoT[] } | null>(null)
   const [error, setError] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [stale, setStale] = useState(false)
   const failStreak = useRef(0)
+  // OPS-10 val 2: promo carousel — active slide index + preload bookkeeping
+  const [promoIdx, setPromoIdx] = useState(0)
+  const preloadedRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const tok = localStorage.getItem(TOKEN_KEY) || ''
@@ -89,7 +97,7 @@ function DisplayInner() {
       setStale(false)
       setError('')
       setInfo({ paired: data.paired, posName: data.posName, posOnline: data.posOnline })
-      setState({ payload: data.payload, posOnline: data.posOnline, updatedAt: data.updatedAt })
+      setState({ payload: data.payload, posOnline: data.posOnline, updatedAt: data.updatedAt, promos: Array.isArray(data.promos) ? data.promos : [] })
       return true
     } catch {
       // povezava nedosegljiva — pusti zadnje stanje (ne lažnega), a obvesti:
@@ -127,6 +135,33 @@ function DisplayInner() {
       window.removeEventListener('online', onOnline)
     }
   }, [token, refresh])
+
+  // OPS-10 val 2: promo carousel (idle only — ordering/paid mirror screens untouched)
+  const promos = state?.promos || []
+  const showPromoCarousel = (state?.payload?.state || 'idle') === 'idle' && promos.length > 0
+  // stable shape key — the promos array identity changes on every poll (2 s) and
+  // would otherwise reset the rotation timer before it ever fires
+  const promoKey = promos.map((a) => a.id).join('|')
+
+  // preload promo images once per URL (wall display = instant first cross-fade)
+  useEffect(() => {
+    for (const promo of promos) {
+      if (preloadedRef.current.has(promo.imageUrl)) continue
+      preloadedRef.current.add(promo.imageUrl)
+      try { const img = new Image(); img.src = promo.imageUrl } catch { /* preload is best-effort */ }
+    }
+  }, [promoKey])
+
+  // rotation — one timer per active promo's durationSec; clamps the index when the
+  // config shrinks. Polling (2 s) does NOT restart the timer (promoKey, not array identity).
+  useEffect(() => {
+    if (!showPromoCarousel) return
+    if (promoIdx >= promos.length) { setPromoIdx(0); return }
+    const sec = promos[promoIdx]?.durationSec || PROMO_FALLBACK_SEC
+    const clamped = Math.min(120, Math.max(5, sec))
+    const tm = setTimeout(() => setPromoIdx((i) => (i + 1) % promos.length), clamped * 1000)
+    return () => clearTimeout(tm)
+  }, [showPromoCarousel, promoKey, promoIdx, promos.length])
 
   async function connect() {
     if (!/^\d{6}$/.test(codeInput.trim())) { setError(t('guest.display.codeFormat')); return }
@@ -231,7 +266,25 @@ function DisplayInner() {
           {t('guest.display.stale')}
         </div>
       )}
-      <header className="px-8 py-5 border-b border-stone-800 flex items-center justify-between">
+      {/* OPS-10 val 2: full-screen promo carousel behind the chrome (idle only, cross-fade) */}
+      {showPromoCarousel && (
+        <div className="fixed inset-0 z-0">
+          {promos.map((promo, i) => (
+            <img
+              key={promo.id}
+              src={promo.imageUrl}
+              alt=""
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out ${i === promoIdx ? 'opacity-100' : 'opacity-0'}`}
+            />
+          ))}
+          {p?.message && (
+            <div className="absolute bottom-10 left-8 right-8 text-center text-2xl font-medium text-white bg-stone-950/60 rounded-2xl py-4 px-6">
+              {p.message}
+            </div>
+          )}
+        </div>
+      )}
+      <header className={`px-8 py-5 border-b border-stone-800 flex items-center justify-between relative z-10 ${showPromoCarousel ? 'bg-stone-950/70 backdrop-blur-sm' : ''}`}>
         <div className="flex items-center gap-3">
           <Monitor className="h-6 w-6 text-stone-500" />
           <span className="text-lg font-semibold">{info?.posName || 'POS'}</span>
@@ -247,8 +300,8 @@ function DisplayInner() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-10">
-        {phase === 'idle' && (
+      <main className="flex-1 flex flex-col items-center justify-center p-10 relative z-10">
+        {phase === 'idle' && !showPromoCarousel && (
           <div className="text-center">
             <h2 className="text-5xl font-bold text-stone-300">{t('guest.display.welcome')}</h2>
             <p className="mt-4 text-2xl text-stone-500">{t('guest.display.followHint')}</p>

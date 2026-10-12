@@ -66,7 +66,7 @@ import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1814,6 +1814,8 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="meni" className="space-y-4">
+            {/* OPS-10 val 2 (v1.78.0): per-item kiosk upsell suggestions ("Dodaj še") */}
+            <UpsellCard menuItems={menu.map((m) => ({ id: m.id, name: m.name, price: m.price, available: m.available }))} canManage={hasPerm('menu.manage')} />
             {menuByCat.map((g) => (
               <section key={g.cat.id} className="space-y-2">
                 <h2 className="font-semibold text-stone-700">{g.cat.name}</h2>
@@ -2104,6 +2106,8 @@ function DashboardInner() {
             <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
             {/* OPS-8 v1.72.0 — notifikacijska matrika (RoxPos: 11 dogodkov x vsi/vloge/izklopno) */}
             <NotificationsCard />
+            {/* OPS-10 val 2 (v1.78.0) — promocije za customer display (idle carousel) */}
+            <DisplayPromosCard />
             <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} onChanged={load} />
             {/* Naprave te naprave (issue #1, naloga 2) — tiskalnik + plačilni terminal */}
             <Card>

@@ -19,8 +19,12 @@ import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
-interface MenuItem { id: string; name: string; description: string; price: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[] }
+interface MenuItem { id: string; name: string; description: string; price: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; modifiers: ModifierOption[] }
+/** OPS-10 val 2: upsell map from /api/public/menu — { menuItemId: [suggestedId, …] } */
+interface UpsellMap { [menuItemId: string]: string[] }
+/** OPS-10 val 2: max unique suggestions shown in the "Dodaj še" strip. */
+const UPSELL_STRIP_MAX = 3
 
 const TOKEN_KEY = 'ro_kiosk_device_token'
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
@@ -43,7 +47,7 @@ function KioskInner() {
   const { t } = useGuestT()
   const [token, setToken] = useState('')
   const [tokenInput, setTokenInput] = useState('')
-  const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[] } | null>(null)
+  const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[]; upsells?: UpsellMap } | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeCat, setActiveCat] = useState('')
@@ -212,6 +216,35 @@ function KioskInner() {
     return m
   }, [menu])
 
+  // OPS-10 val 2: up to 3 UNIQUE upsell candidates for the "Dodaj še" strip —
+  // seeded from the cart's items, never suggesting something already in the cart
+  // (or unavailable). Shown only while the cart holds items and the order is not submitted.
+  const upsellSuggestions = useMemo<MenuItem[]>(() => {
+    if (!menu || done || cart.length === 0) return []
+    const cartIds = new Set(cart.map((l) => l.item.id))
+    const byId = new Map(menu.items.map((i) => [i.id, i]))
+    const out: MenuItem[] = []
+    const seen = new Set<string>()
+    for (const line of cart) {
+      for (const id of menu.upsells?.[line.item.id] || []) {
+        if (out.length >= UPSELL_STRIP_MAX) return out
+        if (seen.has(id) || cartIds.has(id)) continue
+        const it = byId.get(id)
+        if (!it || !it.isAvailable) continue
+        seen.add(id)
+        out.push(it)
+      }
+      if (out.length >= UPSELL_STRIP_MAX) return out
+    }
+    return out
+  }, [menu, cart, done])
+
+  /** OPS-10 val 2: one-tap add. Items with required modifier choices open the normal detail dialog. */
+  function addUpsell(it: MenuItem) {
+    if (it.modifierGroups.some((g) => g.required && g.minSelect > 0 && g.options.length)) { openDetail(it); return }
+    setCart((p) => [...p, { key: `${it.id}-${Date.now()}`, item: it, qty: 1, note: '', modifiers: [] }])
+  }
+
   async function submit() {
     if (cart.length === 0 || submitting) return
     setSubmitting(true)
@@ -329,6 +362,35 @@ function KioskInner() {
               ))}
             </div>
           </main>
+
+          {/* OPS-10 val 2: "Dodaj še" upsell strip — up to 3 unique suggestions, one tap to add.
+              Skipped entirely when nothing is configured / nothing matches (already in cart). */}
+          {!done && upsellSuggestions.length > 0 && (
+            <div className="border-t border-stone-800 px-6 py-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="max-w-6xl mx-auto">
+                <p className="text-sm font-semibold uppercase tracking-wide text-stone-500 mb-2">{t('guest.kiosk.upsellTitle')}</p>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar">
+                  {upsellSuggestions.map((it) => (
+                    <button
+                      key={it.id}
+                      onClick={() => addUpsell(it)}
+                      className="shrink-0 w-60 rounded-2xl bg-stone-800 border border-stone-700 p-2.5 flex items-center gap-3 text-left transition-transform hover:border-stone-500 active:scale-[0.97]"
+                    >
+                      {it.image && (
+                        // kiosk renders images ONLY here (small upsell thumb) — the main grid stays untouched
+                        <img src={it.image} alt={it.name} loading="lazy" className="h-16 w-16 rounded-xl object-cover shrink-0 bg-stone-700" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium leading-snug truncate">{it.name}</span>
+                        <span className="block text-lg font-bold">{fmt(it.price)}</span>
+                      </span>
+                      <span className="shrink-0 rounded-full bg-white text-stone-900 p-1.5" aria-hidden="true"><Plus className="h-4 w-4" /></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           <footer className="border-t border-stone-800 p-4">
             <div className="max-w-6xl mx-auto flex items-center gap-4">

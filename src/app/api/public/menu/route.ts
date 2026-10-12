@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
 import { db } from '@/lib/db'
+import { jparse } from '@/lib/map'
 import {
   loadPublicMenu,
   resolveQrToken,
@@ -9,6 +10,18 @@ import {
   deviceFromToken,
   deviceAlive,
 } from '@/lib/guest'
+import { KIOSK_UPSELL_MARKER, sanitizeUpsellConfig, type UpsellConfig } from '@/lib/upsell'
+
+/**
+ * OPS-10 val 2: upsell config read + sanitized against the CURRENTLY AVAILABLE
+ * items of this menu (the kiosk must never suggest a sold-out item). Missing or
+ * garbage Integration row → {} — the response key stays additive/back-compatible.
+ */
+async function loadUpsells(availableItemIds: Set<string>): Promise<UpsellConfig> {
+  const row = await db.integration.findFirst({ where: { name: KIOSK_UPSELL_MARKER, type: 'other' } })
+  if (!row) return {}
+  return sanitizeUpsellConfig(jparse<unknown>(row.config, null), availableItemIds)
+}
 
 /**
  * Issue #3 — JAVNI meni (ENOTEN vir: isti DB kot POS).
@@ -49,5 +62,8 @@ export async function GET(req: NextRequest) {
   }
 
   const menu = await loadPublicMenu(locationId)
-  return ok({ restaurant, tableNumber, source, ...menu })
+  // OPS-10 val 2 (v1.78.0): `upsells` is ADDITIVE — existing keys untouched.
+  const availableIds = new Set(menu.items.filter((i) => i.isAvailable).map((i) => i.id))
+  const upsells = await loadUpsells(availableIds)
+  return ok({ restaurant, tableNumber, source, ...menu, upsells })
 }

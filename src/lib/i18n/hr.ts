@@ -1927,6 +1927,41 @@ export const hr: Record<string, string> = {
   'kds.stations.target': 'Cilj (min)',
   'kds.stations.save': 'Spremi',
   'kds.stations.saved': 'Cilj postaje je spremljen.',
+
+  // ── OPS-10 val 2 (v1.78.0) — upsell prijedlozi (kiosk, Meni tab) ──
+  'upsell.title': 'Upsell prijedlozi (kiosk)',
+  'upsell.desc': 'Do 3 prijedloga artikala koje kiosk pokaže uz košaricu pod "Dodaj još" — jedan tap dodaje artikl.',
+  'upsell.empty': 'Još nema postavljenih prijedloga — odaberite artikl ispod.',
+  'upsell.loading': 'Učitavam prijedloge…',
+  'upsell.loadError': 'Pogreška pri učitavanju prijedloga.',
+  'upsell.error': 'Pogreška pri spremanju prijedloga.',
+  'upsell.saved': 'Prijedlozi su spremljeni.',
+  'upsell.addFor': 'Postavi prijedloge za artikl …',
+  'upsell.edit': 'Uredi',
+  'upsell.clear': 'Očisti',
+  'upsell.dialogTitle': 'Upsell prijedlozi: {name}',
+  'upsell.maxHint': 'Možete odabrati najviše 3 artikla. Prijedlozi na kiosku izbjegavaju artikle koji su već u košarici.',
+
+  // ── OPS-10 val 2 (v1.78.0) — promocije za zaslon gostiju (Postavke) ──
+  'promo.title': 'Zaslon gostiju — promocije',
+  'promo.desc': 'Slike (http/https) koje se u mirovanju rotiraju na customer displayu — prijelaz, trajanje po slici.',
+  'promo.empty': 'Nema promocija. Dodajte URL slike — prikazat će se na zaslonu gostiju kada nema aktivne narudžbe.',
+  'promo.loading': 'Učitavam promocije…',
+  'promo.loadError': 'Pogreška pri učitavanju promocija.',
+  'promo.error': 'Pogreška pri spremanju promocija.',
+  'promo.save': 'Spremi promocije',
+  'promo.saved': 'Promocije su spremljene.',
+  'promo.savedFiltered': 'Promocije su spremljene ({dropped} bez valjanog URL-a je izpušteno).',
+  'promo.invalidUrl': 'URL slike nije valjan — dopušteni su http:// i https://.',
+  'promo.add': 'Dodaj promociju',
+  'promo.image': 'URL slike',
+  'promo.duration': 'Trajanje (s)',
+  'promo.active': 'Aktivno',
+  'promo.maxHint': 'Najviše 5 promocija.',
+  'promo.delete': 'Ukloni promociju',
+
+  // ── OPS-10 val 2 (v1.78.0) — kiosk: traka "Dodaj još" ──
+  'guest.kiosk.upsellTitle': 'Dodaj još',
 }
 
 export type DictionaryHr = typeof hr

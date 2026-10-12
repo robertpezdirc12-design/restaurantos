@@ -1927,6 +1927,41 @@ export const sl: Record<string, string> = {
   'kds.stations.target': 'Cilj (min)',
   'kds.stations.save': 'Shrani',
   'kds.stations.saved': 'Cilj postaje je shranjen.',
+
+  // ── OPS-10 val 2 (v1.78.0) — kiosk upsell predlogi (Meni tab) ──
+  'upsell.title': 'Upsell predlogi (kiosk)',
+  'upsell.desc': 'Do 3 predlaganih artiklov, ki jih kiosk pokaže ob košarici pod "Dodaj še" — en tap doda artikel.',
+  'upsell.empty': 'Ni še nastavljenih predlogov — izberi artikel spodaj.',
+  'upsell.loading': 'Nalagam predloge…',
+  'upsell.loadError': 'Napaka pri nalaganju predlogov.',
+  'upsell.error': 'Napaka pri shranjevanju predlogov.',
+  'upsell.saved': 'Predlogi so shranjeni.',
+  'upsell.addFor': 'Nastavi predloge za artikel …',
+  'upsell.edit': 'Uredi',
+  'upsell.clear': 'Počisti',
+  'upsell.dialogTitle': 'Upsell predlogi: {name}',
+  'upsell.maxHint': 'Izberete lahko največ 3 artikle. Predlogi se na kiosku izognejo artiklom, ki so že v košarici.',
+
+  // ── OPS-10 val 2 (v1.78.0) — promocije za zaslon strank (Nastavitve) ──
+  'promo.title': 'Zaslon strank — promocije',
+  'promo.desc': 'Slike (http/https), ki se v mirovanju rotirajo na customer displayu — navzkrižni prehod, trajanje po sliki.',
+  'promo.empty': 'Ni promocij. Dodajte URL slike — prikazana bo na zaslonu strank, kadar ni aktivnega naročila.',
+  'promo.loading': 'Nalagam promocije…',
+  'promo.loadError': 'Napaka pri nalaganju promocij.',
+  'promo.error': 'Napaka pri shranjevanju promocij.',
+  'promo.save': 'Shrani promocije',
+  'promo.saved': 'Promocije so shranjene.',
+  'promo.savedFiltered': 'Promocije so shranjene ({dropped} brez veljavnega URL-ja je izpuščeno).',
+  'promo.invalidUrl': 'URL slike ni veljaven — dovoljeni so http:// in https://.',
+  'promo.add': 'Dodaj promocijo',
+  'promo.image': 'URL slike',
+  'promo.duration': 'Trajanje (s)',
+  'promo.active': 'Aktivno',
+  'promo.maxHint': 'Največ 5 promocij.',
+  'promo.delete': 'Odstrani promocijo',
+
+  // ── OPS-10 val 2 (v1.78.0) — kiosk: trak "Dodaj še" ──
+  'guest.kiosk.upsellTitle': 'Dodaj še',
 }
 
 export type Dictionary = typeof sl
