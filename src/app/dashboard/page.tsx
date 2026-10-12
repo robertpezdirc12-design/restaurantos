@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
-import { APP_VERSION } from '@/lib/api'
+import { APP_VERSION } from '@/lib/version'
 import { tabHasPerm } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'

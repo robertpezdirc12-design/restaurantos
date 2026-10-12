@@ -3,6 +3,7 @@ import { CI_DEPLOY_COMMIT } from '@/lib/deploy-commit'
 import { db } from '@/lib/db'
 import { getAuth, AuthPayload, sessionRevoked } from '@/lib/auth'
 import { resolvePermissions, resolvePermissionsForUIRole, CanonicalPermission } from '@/lib/permissions'
+import { APP_COMMIT } from '@/lib/version'
 
 export function ok(data: unknown, init?: number) {
   return NextResponse.json(data, { status: init ?? 200 })
@@ -82,8 +83,7 @@ export async function requirePermission(
   return user
 }
 
-export const APP_VERSION = '1.65.0'
-export const APP_COMMIT = 'reconstruction-1.0.0'
+export { APP_VERSION, APP_COMMIT } from '@/lib/version'
 /**
  * Realen deployan commit (Task 40 + Task 41): 
  *  - Git-integration deployi: Vercel vbrizga VERCEL_GIT_COMMIT_SHA v runtime.

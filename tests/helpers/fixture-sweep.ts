@@ -55,6 +55,7 @@ export const TEST_PREFIXES = [
   'mig65-', // migrations-console (Task 65)
   'sk66-', // stroski-ddl (Task 66)
   'sk67-', // expenses-categories (Task 67)
+  'sk68-', // client-bundle-hygiene (OPS-2)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

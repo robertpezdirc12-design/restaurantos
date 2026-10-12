@@ -1479,3 +1479,45 @@ Stage Summary:
 - Dostop uporabnika obnovljen: vodja@restaurantos.app / 754825 (MANAGER) + info@restaurantos.app / 729153 (ADMIN) — obe prijavi browser-verificirane prek produkcijskega API.
 - Demo PIN 4567 je bil iz lokalnega seeda — na produkciji nikoli obstajal; uporabniku pojasnjena razlika dev/produkcija.
 - Repo nespremenjen (čista operacija prek obstoječih API); brez deploya. Rate limit na prijavi (10/min/IP) omenjen uporabniku.
+---
+Task ID: 26-main
+Agent: main (Z.ai Code)
+Task: Preverjanje GitHub↔GitLab sinhronizacije z novim GitHub tokenom (uporabnikov zahtevek) + resinkronizacija lokalnega sandboksa
+
+Work Log:
+- uporabnik posredoval nov GitHub PAT (račun robertpezdirc12-design, classic, scope repo + admin) — token validiran prek /api.github.com/user (login: robertpezdirc12-design)
+- GitHub API audit repa robertpezdirc12-design/restaurantos (privaten, main): najnovejši commit 4f5bcebc 'APP_VERSION → 1.45.0 (i18n faza 2 — posodobitev oznak; ujet med produkcijskim smoke testom: health je kazal 1.44.0)', PUSHED_AT 2026-10-08T20:33Z; zgolj pred njim 6bf1fa05 'i18n faza 2 — prevod preostalih modulov (v1.45.0)' (923 novih ključev, 150 → 1073, pariteta SL=HR; 24 modulov; testi 371/371 · tsc 0 · lint 0) — torej je faza 2 (skupini E + F vključno) zaključena in SHIPANA v v1.45.0 s strani produkcijskega okolja
+- lokalni sandbox /home/z/my-project je bil ZASTAREL: HEAD fd8ff72 (era v1.39.0, triage ④) + 231 'spremenjenih' datotek — preverba: git diff HEAD ima 0 vrstic vsebine (^+++ count 0) = čisti chmod mode-noise (sandbox artefakt); rešitev: git config core.fileMode false → status čist
+- lokalni slovarski datoteki src/lib/i18n/{sl,hr}.ts v sandboxu SPLOH nista obstajali (potrjeno: direktorij ni obstajal) — vsa faza 2 se je zgodila v produkcijskem okolju
+- fetch GitHub main z novim tokenom (FETCH_HEAD = 4f5bcebc) → git reset --hard FETCH_HEAD → sandbox usklajen na v1.45.0 (253 datotek, +9450 vrstic); bun install: 941 paketov, brez sprememb
+- git remote set-url github z NOVIM tokenom; git push --dry-run github main → 'Everything up-to-date' = PISANJE POTRJENO
+- GitLab stran: shranjen glpat v origin URL NEDELOUJE (git: 'HTTP Basic: Access denied'; API: HTTP 403 'Your account has been blocked.') → račun robert.pezdirc12 je BLOKIRAN → sinhronizacija GitLab↔GitHub ni verificirljiva in push mirror (če konfiguriran na GitLab strani) je z te strani mrtav; GitLab je trenutno za GitHubom vsaj za cel faza 2 nabor (v1.45.0)
+- browser verifikacija po skoku v1.39→v1.45: / renderira prijavno stran (RestavrantOS, SL/HR jezični preklopnik viden, temni način, prijava E-pošta+PIN) — 0 konzolnih napak, 0 page errors; dev.log čist (Ready in 687ms)
+- worklog vnos commitan in PUSHAN na GitHub (dokaz pisanja v praksi)
+
+Stage Summary:
+- SINHRONIZACIJA: GitHub (robertpezdirc12-design/restaurantos) = AVTORITATIVEN, v1.45.0 @ 4f5bcebc; lokalni sandbox usklajen = GitHub main; push na GitHub DELUJE z novim tokenom (vgrajen v remote URL)
+- GitLab (robert.pezdirc12/restaurantos) = NEDOSTOPEN: račun blokiran (403) → za ponovno vzpostavitev potrebno: (1) odkleniti račun prek GitLab podpore ALI nov račun/projekt, (2) nov glpat token → potem lokalno git push origin main uskladi GitLab (iz GitHub main 4f5bcebc), (3) preveriti/ponastaviti push mirror na GitLab strani (GitHub token v mirrorju)
+- varnostna opomba: token je bil posredovan v klepetu (plaintext) — priporočena rotacija, ko GitLab sync ponovno deluje; starejši odprti reziduali ostajajo (MFA enrollment, CI build secret, rotacija Neon/Vercel credencial)
+
+---
+Task ID: OPS-2 (produkcija dashboard crash + sandbox recovery)
+Agent: main (Z.ai Code)
+Task: Uporabnikovo poročilo "Ups — prišlo je do napake" po prijavi na produkciji → diagnosticirati, popraviti, deployati. (+ odkritje, da je bila sandbox zgodovina vmes resetirana na staro linijo v1.45)
+
+Work Log:
+- REPRODUKCIJA (agent-browser, produkcija): prijava vodja@restaurantos.app/754825 → 200 → redirect /dashboard → error boundary "Ups — prišlo je do napake / Poskusi znova". Konzola: `Error: APP_SECRET ni nastavljen — produkcija zahteva APP_SECRET env (issue #4 §15)` v CLIENT chunku (b390b677733cccaa.js).
+- KOREN: `dashboard/page.tsx` ('use client') je uvažal APP_VERSION iz `@/lib/api` → uvozna veriga api.ts → auth.ts v client bundle; auth.ts module-scope fail-closed preverba (APP_SECRET) v brskalniku (NODE_ENV=production, APP_SECRET ni client env) CRASHALA module init → error boundary za VSE uporabnike. Dev je delal (APP_SECRET fallback dovoljen) → E2E na devu napake ni videl nikoli. Bug starejši od v1.65 (prisoten tudi v v1.45 liniji); produkcijahealth je vse tetra pokazala šele zdaj.
+- SANDBOX DISCOVERY: med OPS-1 in tem taskom je bila /home/z/my-project git zgodovina RESETIRANA na starejšo "originalno" linijo (reflog: fd8ff72 v1.39 → reset FETCH_HEAD 4f5bceb v1.45 → 7c098ed worklog sosledne seje "Task 26-main"). Objekti v1.65 linije (2c9169e/b2d357c/c5f2190) lokalno IZGUBLJENI; produkcija (@c5f2190) pa še vedno teče na njej. Remote stanje: github token neveljaven ("Invalid username or token"), origin (robert.pezdirc12 GitLab) 403 blokiran.
+- RECOVERY: `git remote add markec` (markec-group1/markec-project, token iz prejšnje seje) → `git ls-remote` main = c5f21905… (TOČNO produkcijski commit) → fetch → `git checkout -B main c5f2190`. Zgodovina v1.65.0 obnovljena; worklog zapis sosledne seje (26-main) ohranjen (append spodaj).
+- FIX (v1.66.0): NOV `src/lib/version.ts` (client-safe, brez uvozov): APP_VERSION='1.66.0' + APP_COMMIT; api.ts: literal odstranjen → `export { APP_VERSION, APP_COMMIT } from '@/lib/version'` (server back-compat) + import APP_COMMIT za DEPLOY_COMMIT; dashboard/page.tsx: import prenešen na '@/lib/version'. Brez i18n sprememb (ni novih nizov).
+- REGRESIJSKI TEST `tests/client-bundle-hygiene.test.ts` (sk68-, 5 testov, statično brez DB): (1) noben 'use client' modul ne sme uvažati api/auth/tenant/db/audit-chain; (2) version.ts čist (brez uvozov); (3) api.ts brez literalov, samo re-export; (4) dashboard uvaža version; (5) health route ostaja prek api.ts. Prefix 'sk68-' registriran v fixture-sweep TEST_PREFIXES.
+- INFRA PO SANDBOX SWAPU: bun install (3 nova paketa: postgres…), prisma-postinstall (sqlite zrcalna shema regenerirana — prej tsc 4 napak: haccpPlan manjkajoč model, node-forge, locations null), DB swap: db/custom.db pobrisan → prisma db push (sqlite schema, 117 tabel vključno HaccpPlan) → seed; dev strežnik restart (zastarel proces držal stari DB inode → 401 na sveže seeded račune).
+- VALIDACIJA: bun test **753/753** (748 + 5 novih), tsc **0 napak**, lint **0**.
+- Browser E2E živo (dev, v1.66.0): prijava admin@restaurantos.app/1234 → 200 → /dashboard rendra (header z 1.66.0, lokacijski preklopnik, vsi tabi Pregled→Integracije…), **0 konzolnih napak, 0 page errors**.
+- Push: markec (GitLab markec-group1) + poskusi github/origin (stanje tokenov poročano uporabniku); Vercel deploy monitoring + produkcijski E2E — glej Stage Summary.
+
+Stage Summary:
+- v1.66.0: dashboard crash na produkciji POPRAVLJEN (client-bundle higiena + statična regresijska zaščita). Produkcija mora po deployu /api/health pokazati version 1.66.0; prijava → dashboard brez error boundary.
+- ZGODOVINSKA REKONCILIACIJA: produkcijska (obnovitvena) linija = c5f2190 + OPS-2; "originalna" linija (v1.45 @ 4f5bcebc, sosledna seja) je ZASTARELA veja — produkcija NE sme biti downgrade-ana na v1.45. Sandbox zdaj = produkcijska linija.
+- Odprto za uporabnika: (1) GitHub token (remote github trenutno neveljaven — push nanj ne uspe), (2) GitLab robert.pezdirc12 račun blokiran (403), (3) Vercel povezava: če watcha GitHub in ne markec GitLab, deploy zahteva svež GitHub token.
