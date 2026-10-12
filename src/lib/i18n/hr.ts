@@ -400,6 +400,13 @@ export const hr: Record<string, string> = {
   'inv.phone': 'Telefon',
   'inv.saveSupplier': 'Spremi dobavljača',
   'inv.deleteRecipeConfirm': 'Izbrisati recepturu? Odbitak zaliha za ovaj artikl prestaje.',
+  // OPS-9 val 1 — recepture BOM maturity (yield + podrecepte + trošak po porciji)
+  'recipe.yield': 'Iskorištenost %',
+  'recipe.subRecipe': 'Podrecepta',
+  'recipe.costPerServing': 'Trošak po porciji',
+  'recipe.costUnknown': 'nepotpuni troškovi sastojaka',
+  'recipe.parentOf': 'Podrecepta pod',
+  'recipe.parentNone': '— bez (gornji redak)',
   // Smjene
   'shifts.revenueMonth': 'Prihodi (mjesec)',
   'shifts.tax': 'porez',

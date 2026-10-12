@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
@@ -28,7 +28,9 @@ import { deltaArrow } from '@/lib/xz-report'
 
 export interface InventoryT { id: string; name: string; unit: string; qty: number; minQty: number; cost: number; supplierId?: string | null }
 export interface SupplierT { id: string; name: string; contact?: string | null; phone?: string | null; email?: string | null; address?: string | null }
-export interface RecipeT { id: string; name: string; instructions: string; items: { inventoryItemId: string; name: string; unit: string; qty: number }[] }
+/** OPS-9 val 1: recipe line with BOM maturity — yieldPercent + nested sub-recipe children. */
+export interface RecipeLineT { inventoryItemId: string; name: string; unit: string; qty: number; yieldPercent?: number; parentRecipeItemId?: string | null; children?: RecipeLineT[] }
+export interface RecipeT { id: string; name: string; instructions: string; costPerServing?: number; costKnown?: boolean; items: RecipeLineT[] }
 
 type StRow = {
   id: string; status: string; note: string; createdByName: string
@@ -94,15 +96,28 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
   const recountSt = () => stAction('POST', `/api/stocktakes/${stOpen?.id}/recount`)
   const [supForm, setSupForm] = useState<{ name: string; contact: string; phone: string } | null>(null)
   const [supBusy, setSupBusy] = useState(false)
-  // Receptura urejevalnik (razknjiževanje po recepturah)
-  const [recForm, setRecForm] = useState<{ menuItemId: string; lines: { inventoryItemId: string; qty: string }[] } | null>(null)
+  // Receptura urejevalnik (razknjiževanje po recepturah) — OPS-9: yield + pod-recepture
+  const [recForm, setRecForm] = useState<{ menuItemId: string; lines: { inventoryItemId: string; qty: string; yield: string; parent: string }[] } | null>(null)
+  const [recEdit, setRecEdit] = useState<RecipeT | null>(null)
   const [recBusy, setRecBusy] = useState(false)
 
   function openRecipe(r?: RecipeT) {
     if (r) {
-      setRecForm({ menuItemId: r.id, lines: r.items.map((i) => ({ inventoryItemId: i.inventoryItemId, qty: String(i.qty) })) })
+      // Flatten the nested tree (children under parents) into editable lines;
+      // sub-recipe parent is referenced by inventoryItemId (unique within one recipe).
+      const lines: { inventoryItemId: string; qty: string; yield: string; parent: string }[] = []
+      const walk = (rows: RecipeLineT[], parentInv: string) => {
+        for (const l of rows) {
+          lines.push({ inventoryItemId: l.inventoryItemId, qty: String(l.qty), yield: String(l.yieldPercent ?? 100), parent: parentInv })
+          walk(l.children ?? [], l.inventoryItemId)
+        }
+      }
+      walk(r.items, '')
+      setRecEdit(r)
+      setRecForm({ menuItemId: r.id, lines: lines.length > 0 ? lines : [{ inventoryItemId: items[0]?.id || '', qty: '', yield: '100', parent: '' }] })
     } else {
-      setRecForm({ menuItemId: menuItems[0]?.id || '', lines: [{ inventoryItemId: items[0]?.id || '', qty: '' }] })
+      setRecEdit(null)
+      setRecForm({ menuItemId: menuItems[0]?.id || '', lines: [{ inventoryItemId: items[0]?.id || '', qty: '', yield: '100', parent: '' }] })
     }
   }
 
@@ -110,8 +125,19 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     if (!recForm || !recForm.menuItemId) return
     setRecBusy(true)
     try {
-      await api('/api/recipes', { method: 'POST', body: JSON.stringify({ menuItemId: recForm.menuItemId, items: recForm.lines }) })
-      setRecForm(null); await onReload()
+      await api('/api/recipes', {
+        method: 'POST',
+        body: JSON.stringify({
+          menuItemId: recForm.menuItemId,
+          items: recForm.lines.map((l) => ({
+            inventoryItemId: l.inventoryItemId,
+            qty: l.qty,
+            yieldPercent: l.yield === '' ? undefined : Number(l.yield.replace(',', '.')),
+            parentInventoryItemId: l.parent || undefined,
+          })),
+        }),
+      })
+      setRecForm(null); setRecEdit(null); await onReload()
     } catch (err) { alert((err as Error).message) } finally { setRecBusy(false) }
   }
 
@@ -121,6 +147,24 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       await api(`/api/recipes?menuItemId=${encodeURIComponent(menuItemId)}`, { method: 'DELETE' })
       await onReload()
     } catch (err) { alert((err as Error).message) }
+  }
+
+  // OPS-9: recursive recipe line renderer — children indented with a sub-recipe badge,
+  // non-default yield shown next to the name.
+  function renderRecipeLine(line: RecipeLineT, depth: number) {
+    return (
+      <Fragment key={line.inventoryItemId}>
+        <li className={`text-xs text-stone-600 flex justify-between gap-2 ${depth > 0 ? 'ml-4' : ''}`}>
+          <span className="truncate flex items-center gap-1 min-w-0">
+            {depth > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">{t('recipe.subRecipe')}</Badge>}
+            <span className="truncate">{line.name}</span>
+            {line.yieldPercent !== undefined && line.yieldPercent !== 100 && <span className="shrink-0 text-stone-400">· {line.yieldPercent} %</span>}
+          </span>
+          <span className="shrink-0 font-medium">{line.qty} {line.unit}</span>
+        </li>
+        {(line.children ?? []).map((c) => renderRecipeLine(c, depth + 1))}
+      </Fragment>
+    )
   }
 
   async function createItem() {
@@ -145,6 +189,13 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       await api('/api/suppliers', { method: 'POST', body: JSON.stringify(supForm) })
       setSupForm(null); await onReload()
     } catch (err) { alert((err as Error).message) } finally { setSupBusy(false) }
+  }
+
+  // OPS-9: yield validity (empty = default 100; otherwise 1..100)
+  const yieldInvalid = (s: string) => {
+    if (s === '') return false
+    const n = Number(s.replace(',', '.'))
+    return !Number.isFinite(n) || n <= 0 || n > 100
   }
 
   return (
@@ -306,7 +357,14 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               {recipes.map((r) => (
                 <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium truncate">{r.name}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{r.name}</p>
+                      {/* OPS-9: computed cost per serving (recursive BOM; from GET, refreshes on reload) */}
+                      <p className="text-[11px] text-stone-500">
+                        {t('recipe.costPerServing')}:{' '}
+                        {r.costKnown ? <span className="font-medium text-stone-700">{fmtEUR(r.costPerServing || 0)}</span> : <span className="text-amber-600">{t('recipe.costUnknown')}</span>}
+                      </p>
+                    </div>
                     {canManage && (
                       <div className="shrink-0 flex gap-1">
                         <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => openRecipe(r)}>{t('common.edit')}</Button>
@@ -318,12 +376,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                     <p className="text-xs text-stone-400">{t('inv.noIngredients')}</p>
                   ) : (
                     <ul className="mt-1 space-y-0.5">
-                      {r.items.map((line, idx) => (
-                        <li key={`${r.id}-${idx}`} className="text-xs text-stone-600 flex justify-between gap-2">
-                          <span className="truncate">{line.name}</span>
-                          <span className="shrink-0 font-medium">{line.qty} {line.unit}</span>
-                        </li>
-                      ))}
+                      {r.items.map((line) => renderRecipeLine(line, 0))}
                     </ul>
                   )}
                 </div>
@@ -339,6 +392,13 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
           <DialogHeader><DialogTitle>{t('inv.recipeTitle')}</DialogTitle></DialogHeader>
           {recForm && (
             <div className="space-y-3">
+              {/* OPS-9: computed cost per serving of the recipe being edited (from GET) */}
+              {recEdit && recEdit.id === recForm.menuItemId && (
+                <p className="text-xs text-stone-500">
+                  {t('recipe.costPerServing')}:{' '}
+                  {recEdit.costKnown ? <span className="font-medium text-stone-700">{fmtEUR(recEdit.costPerServing || 0)}</span> : <span className="text-amber-600">{t('recipe.costUnknown')}</span>}
+                </p>
+              )}
               <div className="space-y-1.5">
                 <Label>{t('inv.menuItem')}</Label>
                 <Select value={recForm.menuItemId} onValueChange={(v) => setRecForm({ ...recForm, menuItemId: v })}>
@@ -351,24 +411,48 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               <div className="space-y-2">
                 <Label>{t('inv.ingredients')}</Label>
                 {recForm.lines.map((line, idx) => (
-                  <div key={idx} className="flex gap-2 items-center">
-                    <Select value={line.inventoryItemId} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, inventoryItemId: v } : l) })}>
-                      <SelectTrigger className="flex-1"><SelectValue placeholder={t('inv.ingredient')} /></SelectTrigger>
-                      <SelectContent className="max-h-72">
-                        {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Input type="number" step="0.001" min="0" className="w-24" value={line.qty} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l) })} placeholder="0" />
-                    <Button size="sm" variant="outline" className="h-9 px-2 shrink-0 text-red-700 hover:text-red-800" onClick={() => setRecForm({ ...recForm, lines: recForm.lines.filter((_, i) => i !== idx) })} disabled={recForm.lines.length <= 1}>×</Button>
+                  <div key={idx} className="space-y-1">
+                    <div className="flex gap-2 items-center">
+                      <Select value={line.inventoryItemId} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, inventoryItemId: v } : l) })}>
+                        <SelectTrigger className="flex-1"><SelectValue placeholder={t('inv.ingredient')} /></SelectTrigger>
+                        <SelectContent className="max-h-72">
+                          {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Input type="number" step="0.001" min="0" className="w-20" value={line.qty} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l) })} placeholder="0" />
+                      {/* OPS-9: yield percent per line (1-100, default 100) */}
+                      <div className="relative w-20 shrink-0">
+                        <Input type="number" min="1" max="100" step="1" className="w-20 pr-6" aria-label={t('recipe.yield')} value={line.yield} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, yield: e.target.value } : l) })} placeholder="100" />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-stone-400 pointer-events-none">%</span>
+                      </div>
+                      <Button size="sm" variant="outline" className="h-9 px-2 shrink-0 text-red-700 hover:text-red-800" onClick={() => setRecForm({ ...recForm, lines: recForm.lines.filter((_, i) => i !== idx) })} disabled={recForm.lines.length <= 1}>×</Button>
+                    </div>
+                    {/* OPS-9: mark a line as sub-recipe of another line (same menu item) */}
+                    {recForm.lines.length > 1 && (
+                      <div className="flex items-center gap-1.5 pl-1">
+                        <span className="text-[10px] text-stone-400 shrink-0">{t('recipe.parentOf')}</span>
+                        <Select value={line.parent || '__none__'} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, parent: v === '__none__' ? '' : v } : l) })}>
+                          <SelectTrigger className="h-7 flex-1 text-[11px]"><SelectValue /></SelectTrigger>
+                          <SelectContent className="max-h-72">
+                            <SelectItem value="__none__">{t('recipe.parentNone')}</SelectItem>
+                            {recForm.lines.map((l, i) => (i !== idx && l.inventoryItemId && l.inventoryItemId !== line.inventoryItemId) ? (
+                              <SelectItem key={i} value={l.inventoryItemId}>
+                                {items.find((it) => it.id === l.inventoryItemId)?.name || l.inventoryItemId}
+                              </SelectItem>
+                            ) : null)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 ))}
-                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setRecForm({ ...recForm, lines: [...recForm.lines, { inventoryItemId: items[0]?.id || '', qty: '' }] })}><Plus className="w-3 h-3" /> {t('inv.addIngredient')}</Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setRecForm({ ...recForm, lines: [...recForm.lines, { inventoryItemId: items[0]?.id || '', qty: '', yield: '100', parent: '' }] })}><Plus className="w-3 h-3" /> {t('inv.addIngredient')}</Button>
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setRecForm(null)}>{t('common.cancel')}</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={recBusy || !recForm?.menuItemId || recForm.lines.some((l) => !l.inventoryItemId || !(Number(l.qty.replace(',', '.')) > 0))} onClick={saveRecipe}>{t('inv.saveRecipe')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={recBusy || !recForm?.menuItemId || recForm.lines.some((l) => !l.inventoryItemId || !(Number(l.qty.replace(',', '.')) > 0) || yieldInvalid(l.yield))} onClick={saveRecipe}>{t('inv.saveRecipe')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

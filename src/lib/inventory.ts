@@ -1,6 +1,7 @@
 import { nid, num } from '@/lib/map'
 import type { Prisma } from '@prisma/client'
 import { auditChainFields } from '@/lib/audit-chain'
+import { flattenDeduction, type RecipeNode } from '@/lib/recipe-cost'
 
 type Tx = Prisma.TransactionClient
 
@@ -38,6 +39,11 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000
  * odšteje sestavine po RecipeItem (quantityPerServing × količina) iz agregirane
  * zaloge (InventoryItem.quantity), zapisuje StockTransaction (type='SALE') in
  * po FEFO načelu razporedi odjem tudi na serije (InventoryBatch + StockBatchAllocation).
+ *
+ * OPS-9 val 1 (recipe BOM maturity): quantities come from flattenDeduction() —
+ * effective raw = quantityPerServing / (yieldPercent/100), sub-recipe nodes
+ * (parentRecipeItemId children) included; identical to the legacy flat math for
+ * yieldPercent=100 rows without children.
  *
  * Pravila:
  * - IDEMPOTENTNO: če za orderId že obstaja StockTransaction type='SALE', je replay → brez dvojnega odšteta.
@@ -78,18 +84,48 @@ export async function deductStockForOrderTx(
   if (items.length === 0) return empty
 
   const menuItemIds = [...new Set(items.map((i) => i.menuItemId))]
+  // OPS-9 val 1: fetch ALL rows incl. sub-recipe nodes (a child row still carries its own
+  // menuItemId — the same menu item — plus parentRecipeItemId pointing at the parent row),
+  // so this single fetch already returns the whole tree; parenting is rebuilt in memory.
+  // NOTE (@@unique(menuItemId, inventoryItemId)): a child row with the same inventory item
+  // as its parent would violate the constraint — duplicate (menuItemId, inventoryItemId)
+  // pairs cannot coexist; flattenDeduction still sums defensively if dirty data appears.
   const recipes = await tx.recipeItem.findMany({
     where: { menuItemId: { in: menuItemIds } },
-    select: { menuItemId: true, inventoryItemId: true, quantityPerServing: true, unit: true },
+    select: {
+      id: true,
+      menuItemId: true,
+      inventoryItemId: true,
+      quantityPerServing: true,
+      unit: true,
+      parentRecipeItemId: true,
+      yieldPercent: true,
+    },
   })
   if (recipes.length === 0) return empty
 
-  // ── Agregacija potrebščin po sestavinah ──
+  // Map DB rows to pure RecipeNode shape (Decimal -> number via num).
+  const recipeNodes: RecipeNode[] = recipes.map((r) => ({
+    id: r.id,
+    menuItemId: r.menuItemId,
+    inventoryItemId: r.inventoryItemId,
+    quantityPerServing: num(r.quantityPerServing),
+    yieldPercent: num(r.yieldPercent, 100),
+    unit: r.unit,
+    parentRecipeItemId: r.parentRecipeItemId,
+  }))
+
+  // ── Agregacija potrebščin po sestavinah (OPS-9: yield + pod-recepture aware) ──
+  // Per order line: recursive BOM flatten — effective raw = quantityPerServing/(yield/100),
+  // children of top-level lines included. BACKWARD COMPATIBILITY: for yieldPercent=100 and
+  // no child rows effectiveRawQty is the identity (r3 of an already 3-decimal Decimal value)
+  // and the tree is flat, so the result is IDENTICAL to the previous flat math
+  // (q = r3(quantityPerServing * quantity) accumulated with r3).
   const needed = new Map<string, number>()
   for (const oi of items) {
-    for (const r of recipes.filter((x) => x.menuItemId === oi.menuItemId)) {
-      const q = r3(num(r.quantityPerServing) * oi.quantity)
-      if (q > 0) needed.set(r.inventoryItemId, r3((needed.get(r.inventoryItemId) || 0) + q))
+    const flat = flattenDeduction(recipeNodes, oi.menuItemId, oi.quantity)
+    for (const [inventoryItemId, q] of flat) {
+      if (q > 0) needed.set(inventoryItemId, r3((needed.get(inventoryItemId) || 0) + q))
     }
   }
   if (needed.size === 0) return empty
