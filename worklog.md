@@ -1850,3 +1850,19 @@ Stage Summary:
 - 966/966, tsc 0, lint 0; commit 8c94dc7; browser E2E: Priprava po serijah rendra, 0 console errors; agent API E2E: eSLOG priloga saved+index+oversize-truncated, batch complete TX zaloge -3/-1.35/+3 @12.04, 409 shortfall + 409 re-complete, recurring remind polje na legacy pravilih
 - Čiščenje: vsi testni ostanki izbrisani (3 batchi, TX, artikel, AP, pravila, priloge); ostaja pre-existing "Test eSLOG Dobavitelj" (referenciran iz OPS-9)
 - OPS-10 POPOLN: v1.77 analitika + v1.78 front-of-house + v1.79 nabava/batch — vse zero DDL, 74 novih testov (892→966)
+
+---
+Task ID: OPS-11 (orchestrator — finalna sinteza valovi 1-3)
+Agent: Z.ai Code (orchestrator) + agenti OPS-11-a/b/c
+Task: "odlicno nadaljuj kjer si ostal" — P3 faza: kiosk/QR slike + KDS prag per postaja, display urnik + AP push, Vercel cron + AP opomniki (v1.80.0-1.82.0).
+
+Work Log:
+- VAL 1 (98e7ed8, v1.80.0): kiosk glavni meni slike (80x80 thumb levo, onError hide, upsell h-16 nedotaknjen) + QR /m/[token] slike (alergeni nedotaknjeni) + KDS delay prag per postaja (delayThresholdForTarget=max(10,ceil(t*1.25)), isLatePrep back-compat overload, PATCH ready per-item prag + threshold v details, GET /api/kitchen +stationTargets, live timer rdeča per postaja); 15 novih testov
+- VAL 2 (da177b9, v1.81.0): display urnik kampanj (startDate/endDate 'YYYY-MM-DD', isValidDateStr strict+leap, isAdInWindow inkluzivno lokalno, activeAds okna, date inputi + stanja chip) + AP_NEW push (client-safe src/lib/push-events.ts registry, NotificationsCard rendra iz konstante — popravljena hard-code literal, apNewPushPayload, eSLOG import + ročni /api/expenses push accounting/manager); 19 novih testov
+- VAL 3 (v1.82.0): recurring-run core izločen (route delegira back-compat), /api/cron/daily (CRON_SECRET timing-safe / admin session fallback, idempotency guard marker 'cron-daily-state' already_ran_today, koraki: recurring → AP_OVERDUE push (max 20) → sendDailyDigest + nova sekcija "Zapadle obveznosti" (dnevi zamude), audit CRON_DAILY_RAN), vercel.json crons ["0 5 * * *"]; 22 novih testov
+- PRODUKCIJA: push 4 commitov → Vercel deploy → health preverjen; browser E2E po vsakem valu (dev)
+
+Stage Summary:
+- Produkcija = v1.82.0: OPS-11 POPOLN — front-of-house: kiosk+QR slike; KDS: prag per postaja (avtoriteten server-side, timer + dialog); display: kampanje z urnikom; push: 14 tipov (AP_NEW, AP_OVERDUE) z matriko; infra: pravi cron na Vercelu (recurring + digest + AP opomniki vsak dan 05:00 UTC); 1022/1022 testov (892→1022, +130 v OPS-10+11), tsc 0, lint 0, zero DDL čez vse valove
+- OPOMBA (pre-existing): tests/race-fixes.test.ts:80 unscoped briše AuditLog entityType='AccountsPayable' v dev bazi — izolirati na test fixtures v prihodnje
+- OSTALO (P4): push subscription UI (web-push naročnine za role kanale), digest email SMTP config v produkciji (email_not_configured — user mora vklopiti v Nastavitvah), scheduled-vs-actual labor (Toast tudi nima), 15-min granularnost sales-by-hour, kiosk HR slike alt-text
