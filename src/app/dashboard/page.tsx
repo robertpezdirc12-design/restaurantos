@@ -43,6 +43,7 @@ import {
   Pencil,
   Split,
   Bell,
+  CalendarRange,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -61,7 +62,7 @@ import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type Ter
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -83,7 +84,7 @@ interface OrderT { id: string; orderNumber?: number | null; type: string; status
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
-interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null }
+interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean }
 interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null; isStorno?: boolean; stornoOf?: string | null }
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
@@ -951,6 +952,32 @@ function DashboardInner() {
     } finally { setSending(false) }
   }
 
+  /** OPS-7 (v1.69.0): opomnik rezervaciji (e-mail/SMS) — fail-soft, rezultat v toast */
+  async function sendReservationReminder(id: string, guestName: string) {
+    setSending(true)
+    try {
+      const d = await api<{ sent: boolean; channels: { email: { ok: boolean; detail: string }; sms: { ok: boolean; detail: string } } }>(`/api/reservations/${id}/reminder`, { method: 'POST' })
+      await load()
+      if (d.sent) toast({ title: t('resv.reminderDone'), description: guestName })
+      else toast({ title: t('resv.reminderFailed'), description: `${d.channels.email.detail} / ${d.channels.sms.detail}`, variant: 'destructive' })
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
+  }
+
+  /** OPS-7: serijski opomniki (vseh 24 h) */
+  async function sendAllReservationReminders() {
+    setSending(true)
+    try {
+      const d = await api<{ processed: number; sent: number; skipped: number; errors: number }>('/api/reservations/reminders', { method: 'POST', body: JSON.stringify({ hoursBefore: 24 }) })
+      await load()
+      if (d.processed === 0) toast({ title: t('resv.reminderNone') })
+      else toast({ title: t('resv.reminderDone'), description: `${d.sent}/${d.processed}` })
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
+  }
+
   async function setReservationStatus(id: string, status: string) {
     setSending(true)
     try {
@@ -1267,6 +1294,7 @@ function DashboardInner() {
               ['prodaja', t('tabs.prodaja'), Zap], ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
               ['racuni', t('tabs.racuni'), ReceiptText], ['popusti', t('tabs.popusti'), Percent], ['integracije', t('tabs.integracije'), Plug], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
               ['delovnicas', t('tabs.delovnicas'), Timer],
+              ['urnik', t('tabs.urnik'), CalendarRange],
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
               ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings], ['enterprise', t('tabs.enterprise'), Building2],
             ] as [string, string, typeof LayoutDashboard | null][])
@@ -1689,9 +1717,14 @@ function DashboardInner() {
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-semibold text-stone-700">{t('resv.upcoming')}</h2>
               {canRes && (
-                <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '' })}>
-                  <Plus className="w-3.5 h-3.5" /> {t('resv.new')}
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => void sendAllReservationReminders()}>
+                    <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
+                  </Button>
+                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '' })}>
+                    <Plus className="w-3.5 h-3.5" /> {t('resv.new')}
+                  </Button>
+                </div>
               )}
             </div>
             <Card>
@@ -1709,6 +1742,13 @@ function DashboardInner() {
                         <Badge variant="outline">{RES_STATUS_KEYS[r.status] ? t(RES_STATUS_KEYS[r.status]) : r.status}</Badge>
                         {canRes && (
                           <>
+                            {r.reminderSent ? (
+                              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 gap-1"><Bell className="w-3 h-3" /> {t('resv.reminderSent')}</Badge>
+                            ) : (
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" disabled={sending} onClick={() => void sendReservationReminder(r.id, r.guestName)} title={t('resv.reminderSend')}>
+                                <Bell className="w-3 h-3" /> {t('resv.reminderSend')}
+                              </Button>
+                            )}
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>{t('resv.seatedBtn')}</Button>
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>{t('common.cancel')}</Button>
                           </>
@@ -1795,6 +1835,11 @@ function DashboardInner() {
           <TabsContent value="delovnicas">
             {/* ura je za VSE zaposlene (TAB_PERM: '*'); ekipni del je gating employees.manage */}
             <DelovniCasTab canManage={hasPerm('employees.manage')} />
+          </TabsContent>
+
+          <TabsContent value="urnik">
+            {/* OPS-7: urnik izmen — pogled za vse (svoje izmene), urejanje gating timeclock.manage */}
+            <StaffScheduleTab employees={employees.map((e) => ({ id: e.id, name: e.name, role: e.role, active: e.active }))} canManage={hasPerm('timeclock.manage')} />
           </TabsContent>
 
           <TabsContent value="haccp">

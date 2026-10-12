@@ -310,6 +310,8 @@ export function mapReservation(r: Row) {
     tableId: (r.tableId as string) ?? null,
     locationId: (r.locationId as string) ?? null,
     createdAt: r.createdAt as string,
+    // OPS-7 (v1.69.0): opomnik rezervacij — badge UI
+    reminderSent: r.reminderSent === true,
   }
 }
 

@@ -30,6 +30,7 @@ export const TAB_PERM: Record<string, string | string[]> = {
   zaloge: 'inventory.manage',
   izmene: 'cash.manage', // OPS-4 v1.67.0 — blagajna izmena (open/close/no-sale) = cash.manage (bar + vodstvo)
   delovnicas: TAB_PERM_ALL, // Delovni čas — ura je za VSE zaposlene (samooskrba; ekipni del notri gating employees.manage)
+  urnik: TAB_PERM_ALL, // OPS-7: urnik izmen — pogled svojih izmen za vse; urejanje gating timeclock.manage (notri + backend)
   haccp: ['settings.manage', 'haccp.execute'], // OPS-4 v1.67.0 — urejanje načrtov (settings.manage) ALI izvedba kontrol (haccp.execute — kuhinja, čistilka)
   stroski: 'reports.view',
   zvestoba: 'reports.view',

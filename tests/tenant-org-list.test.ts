@@ -166,8 +166,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     const wired = routes.filter((f) => readFileSync(f, 'utf8').includes('await locationScope('))
     // Task 57: stocktakes GET je 28. org-obsegan seznamski endpoint (async locationScope) —
     // Task 64: haccp/plans GET je 29. —
+    // OPS-7 (v1.69.0): staff-shifts GET je 30. (urnik izmen, lokacijski obseg) —
     // pin se dviga samo z NOVO ruto, nikoli z umikom await (regresija ostaja zaščiten).
-    expect(wired.length).toBe(29)
+    expect(wired.length).toBe(30)
   })
 })
 
