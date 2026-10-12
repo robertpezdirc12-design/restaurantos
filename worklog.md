@@ -1553,3 +1553,18 @@ Stage Summary:
 - PRODUKCIJA = v1.66.0 @ 5b35a1b, dashboard crash ("Ups — prišlo je do napake") POPOLNOMA REŠEN in browser-verificiran: prijava vodja@/754825 in info@/729153 delujeta na restaurantos-theta.vercel.app.
 - Vzrok "vedno napaka": (1) dashboard crash fix nikoli deployan (mrtev GitHub token), (2) po pushu Vercel blokiral deploye, ker so bili commiti narejeni z avtorjem "Z User <z@container>" brez GitHub računa. Oba odpravljena; git identiteta v sandboxu trajno nastavljena na GitHub noreply obliko.
 - Ostalo: markec za GitHubom (IP blokada za pisanje), priporočena rotacija obeh tokenov (GitHub PAT bil v klepetu), sync.yml smer.
+---
+Task ID: OPS-4 (raziskava: manjkajoče funkcije + dovoljenja po vlogah)
+Agent: Z.ai Code
+Task: Uporabnik: "odlično deluje" → raziskati najboljše POS programe (zaslon sank, prodaja, natakar tablica, kuhinja, QR kode) + kakšna dovoljenja ima posamezni delavec (sank/natakar/kuhinja/čistilka). "Isci raziskuj".
+
+Work Log:
+- Inventar lastnega sistema iz kode (Explore agent @ 7c4a68a/v1.66.0): 5 UI rut (/, /dashboard 26 zavihkov, /kiosk, /m/[token] QR, /display CFD), 109 API rut, 118 Prisma modelov; 13 DB vlog; 11 kanoničnih dovoljenj + ROLE_DEFAULTS (waiter: orders.create/pay/apply_discounts/reservations.manage; bar: +kitchen.update; kitchen: kitchen.update; warehouse/accounting ožji) — uveljavljanje requirePermission (fail-closed) + tab-permissions UI gating.
+- Najdbe "schema ✓ / UI ✗": Course (tečaji), Table.posX/posY/shape (tloris), Reservation.reminderSent (SMS/e-mail), StaffShift+TimeOffRequest (urniki), PushSubscription, PrepStation.type=bar + naprava kds_bar + bar tisk (bar zaslon manjka SAMO kot UI). Ni split bill; ni vloge cleaner/čistilka.
+- Spletna raziskava (web-search ×7 + page_reader ×4): Toast (split bill, handheld payments, tableside), Lightspeed (Order Anywhere, KDS, Tasks, coursing, workforce), Loyverse (free POS, KDS, offline, roles), Square (floor plan, seat management), Quantic 44 features (waitlist notifikacije), Menumiz (coursing, split checks), POS Sector SI (4000+ uporabnikov: mobilno naročanje → kuhinja IN šank, kuhinjski monitor, normativi in kalo, poročila za knjigovodstvo), GIS Prestige SI (QR digitalni cenik + naročanje od mize).
+- PROIZVEDENO: docs/GAP-ANALIZA-funkcije-in-dovoljenja.md — (1) inventar, (2) benchmark tabela, (3) vrzeli prioritizirane P0/P1/P2 (P0: KDS-BAR zaslon, hitra prodaja šank, natakar tablica/PWA, KDS upgrade + 86, QR dopolnitve), (4) predlog razširitve za 8 novih dovoljenj (orders.void, orders.discount, cash.manage, menu.availability, haccp.execute, timeclock.manage, delivery.manage, giftcards.manage) + POLNA matrica vlog×dovoljenja vključno z NOVO vlogo cleaner (samo haccp.execute + lastni clock), (5) priporočen vrstni red implementacije.
+- Varnostno-dodatne najdbe matrice: giftcards danes pod reports.view (premalo), cash.manage ujet v orders.pay, bar ima kitchen.update za VSE postaje (naj bo samo BAR postaja), popusti natakarja brez zgornje meje (priporočeno: manager approval nad limitom — Toast pattern).
+
+Stage Summary:
+- Poročilo dostavljeno uporabniku v chatu + trajno v docs/GAP-ANALIZA-funkcije-in-dovoljenja.md (repo).
+- Brez sprememb kode (čista raziskava); produkcija ostaja v1.66.0. Naslednja implementacijska faza po priporočenem vrstnem redu: cleaner+vloga+HACCP checklisti → KDS upgrade/KDS-BAR → hitra prodaja → PWA tablica → split bill.
