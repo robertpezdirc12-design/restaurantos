@@ -212,12 +212,7 @@ function LoginPageInner() {
             </CardContent>
           </Card>
 
-          <div className="text-center space-y-1">
-            <p className="text-[11px] text-stone-400">
-              {t('login.reconstruction')}
-            </p>
-          </div>
-        </div>
+                  </div>
       </div>
       <footer className="mt-auto py-4 text-center text-xs text-stone-400 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {t('login.footer')}

@@ -52,7 +52,6 @@ export const sl: Record<string, string> = {
   'login.deviceFailed': 'Aktivacija ni uspela.',
   'login.devicePlaceholder': 'npr. 12345678',
   'login.deviceNameFallback': 'naprava',
-  'login.reconstruction': 'Rekonstrukcija 1.35.0 — obnovljeno iz Vercel deploymenta (GitHub račun hakiran)',
   'login.footer': 'RestavrantOS · FURS simulacija · EUR',
 
   // ── Zavihki ──

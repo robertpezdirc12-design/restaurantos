@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, Plus, Minus, Monitor, CheckCircle2, Lock } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestApiErrorText } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -48,7 +48,8 @@ function KioskInner() {
   const [token, setToken] = useState('')
   const [tokenInput, setTokenInput] = useState('')
   const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[]; upsells?: UpsellMap } | null>(null)
-  const [error, setError] = useState('')
+  const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
+  const [retryHint, setRetryHint] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeCat, setActiveCat] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
@@ -86,8 +87,9 @@ function KioskInner() {
     setCart([])
     setDetail(null)
     setDone(null)
-    setError('')
-  }, [])
+    pageErr.clear()
+    setRetryHint(false)
+  }, [pageErr])
 
   // Samodejni reset — timeout ne sme pustiti prejšnjega gosta v toku
   useEffect(() => {
@@ -108,14 +110,15 @@ function KioskInner() {
 
   async function loadMenu(tok: string) {
     setLoading(true)
-    setError('')
+    pageErr.clear()
     try {
       const res = await fetch('/api/public/menu', { headers: { 'X-Device-Token': tok }, cache: 'no-store' })
       const data = await res.json()
       if (!res.ok) {
         // poslovna napaka (npr. kiosk ni aktiviran) — ponavljanje ne pomaga
         stopRetry()
-        setError(guestApiErrorText(t, data?.error, 'guest.kiosk.notActivated'))
+        setRetryHint(false)
+        pageErr.set(data?.error, 'guest.kiosk.notActivated')
         return
       }
       stopRetry()
@@ -126,9 +129,9 @@ function KioskInner() {
       // omejeno število samodejnih poskusov, ob `online` dogodku takoj znova
       const attempt = retryAttempts.current + 1
       retryAttempts.current = attempt
-      setError(attempt <= MAX_RETRIES
-        ? `${t('guest.error.unreachable')} ${t('guest.kiosk.autoRetry')}`
-        : t('guest.error.unreachable'))
+      // pripona autoRetry je LOČEN state — izriše se ob vsakem izrisu (issue #2 §C)
+      setRetryHint(attempt <= MAX_RETRIES)
+      pageErr.setKey('guest.error.unreachable')
       if (attempt <= MAX_RETRIES) {
         if (retryTimer.current) clearTimeout(retryTimer.current)
         retryTimer.current = setTimeout(() => loadMenu(tok), RETRY_MS)
@@ -146,7 +149,7 @@ function KioskInner() {
 
   async function activate() {
     const val = tokenInput.trim()
-    setError('')
+    pageErr.clear()
     // Issue #4 §2.2: aktivacija z ENKRATNO vpisno kodo (8 števk) ALI neposredno z rodev_ tokenom
     if (/^\d{8}$/.test(val)) {
       setLoading(true)
@@ -157,16 +160,16 @@ function KioskInner() {
           body: JSON.stringify({ code: val }),
         })
         const data = await res.json()
-        if (!res.ok || !data.device?.token) { setError(guestApiErrorText(t, data?.error, 'guest.kiosk.activationFailed')); return }
+        if (!res.ok || !data.device?.token) { pageErr.set(data?.error, 'guest.kiosk.activationFailed'); return }
         localStorage.setItem(TOKEN_KEY, data.device.token)
         setToken(data.device.token)
         await loadMenu(data.device.token)
       } catch {
-        setError(t('guest.error.unreachable'))
+        pageErr.setKey('guest.error.unreachable')
       } finally { setLoading(false) }
       return
     }
-    if (val.length < 10) { setError(t('guest.kiosk.tokenHint')); return }
+    if (val.length < 10) { pageErr.setKey('guest.kiosk.tokenHint'); return }
     localStorage.setItem(TOKEN_KEY, val)
     setToken(val)
     loadMenu(val)
@@ -258,11 +261,11 @@ function KioskInner() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(guestApiErrorText(t, data?.error, 'guest.error.orderFailed')); return }
+      if (!res.ok) { pageErr.set(data?.error, 'guest.error.orderFailed'); return }
       setDone({ orderNumber: data.orderNumber, total: data.total })
       setCart([])
     } catch {
-      setError(t('guest.error.orderNotSubmitted'))
+      pageErr.setKey('guest.error.orderNotSubmitted')
     } finally {
       setSubmitting(false)
     }
@@ -287,7 +290,7 @@ function KioskInner() {
             onChange={(e) => setTokenInput(e.target.value)}
             placeholder={t('guest.kiosk.tokenPlaceholder')}
           />
-          {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+          {pageErr.error && <p className="mt-3 text-sm text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
           <Button className="w-full mt-4 h-12 text-base" onClick={activate} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
             {t('guest.kiosk.activate')}
@@ -426,7 +429,7 @@ function KioskInner() {
                 {t('guest.kiosk.submit')} · {fmt(total)}
               </Button>
             </div>
-            {error && <p className="max-w-6xl mx-auto mt-2 text-red-400">{error}</p>}
+            {pageErr.error && <p className="max-w-6xl mx-auto mt-2 text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
           </footer>
         </>
       )}

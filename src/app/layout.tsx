@@ -7,7 +7,7 @@ import { PwaRegister } from "@/components/pwa-register";
 export const metadata: Metadata = {
   title: "RestavrantOS — restavracijski sistem (rekonstrukcija)",
   description:
-    "Restavracijski POS: blagajna, naročila, mize, kuhinja. Rekonstrukcija 1.35.0 po forenzični analizi Vercel deploymenta.",
+    "Restavracijski POS: blagajna, naročila, mize, kuhinja, plačilne povezave, zaloga, HACCP.",
   icons: {
     icon: "/pwa-icon-192.png",
     apple: "/apple-touch-icon.png",

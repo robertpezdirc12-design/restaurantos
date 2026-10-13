@@ -14,12 +14,12 @@
  * Idempotenca: strežnik ključi na 'plk:<token>' — dvojni klik/refresh vrača
  * isti račun (replay), brez dvojnikov.
  */
-import { use, useCallback, useEffect, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, RefreshCw, CheckCircle2, WifiOff, CreditCard, Ban, Clock, PartyPopper, Smartphone } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestApiErrorText } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
 
 interface ReceiptInfo {
   receiptNumber: string
@@ -86,30 +86,27 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const { t } = useGuestT()
   const [state, setState] = useState<PayState | null>(null)
-  const [error, setError] = useState('')
+  const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
+  const payErr = useGuestApiError()
   const [loading, setLoading] = useState(true)
   const [paying, setPaying] = useState(false)
-  const [payError, setPayError] = useState('')
   const [tipPct, setTipPct] = useState(0)
   const [tipCustom, setTipCustom] = useState('')
   const [verifying, setVerifying] = useState(false)
 
-  const tRef = useRef(t)
-  tRef.current = t
-
   const load = useCallback(async () => {
-    setError('')
+    pageErr.clear()
     try {
       const res = await fetch(`/api/public/pay/${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(guestApiErrorText(tRef.current, data?.error, 'pay.notFound')); setState(null); return }
+      if (!res.ok) { pageErr.set(data?.error, 'pay.notFound'); setState(null); return }
       setState(data as PayState)
     } catch {
-      setError(tRef.current('guest.error.unreachableRetry'))
+      pageErr.setKey('guest.error.unreachableRetry')
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, pageErr])
 
   // Začetno nalaganje + Stripe vrnitev (?s=<sessionId>): najprej stanje, nato potrditev
   useEffect(() => {
@@ -124,7 +121,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       // počakaj prvo stanje (load zapiše state) — potrditveni klic izvedi takoj za njim
       await load()
       setVerifying(true)
-      setPayError('')
+      payErr.clear()
       try {
         const res = await fetch(`/api/public/pay/${encodeURIComponent(token)}`, {
           method: 'POST',
@@ -138,10 +135,10 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
           // konflikt stanja (plačano/preklicano/poteklo) — naj stanje samo pove
           await load()
         } else {
-          setPayError(guestApiErrorText(tRef.current, data?.error, 'pay.pending'))
+          payErr.set(data?.error, 'pay.pending')
         }
       } catch {
-        setPayError(tRef.current('guest.error.unreachableRetry'))
+        payErr.setKey('guest.error.unreachableRetry')
       } finally {
         setVerifying(false)
         // URL očisti (F5 ne ponovi potrditve; strežnik je idempotenten vseeno)
@@ -160,7 +157,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
 
   const pay = async () => {
     setPaying(true)
-    setPayError('')
+    payErr.clear()
     try {
       const res = await fetch(`/api/public/pay/${encodeURIComponent(token)}`, {
         method: 'POST',
@@ -169,7 +166,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setPayError(guestApiErrorText(tRef.current, data?.error, 'pay.errorRetry'))
+        payErr.set(data?.error, 'pay.errorRetry')
         if (res.status === 409) await load() // stanje se je spremenilo (plačano/preklicano)
         return
       }
@@ -179,7 +176,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       }
       setState(data as PayState)
     } catch {
-      setPayError(tRef.current('guest.error.unreachableRetry'))
+      payErr.setKey('guest.error.unreachableRetry')
     } finally {
       setPaying(false)
     }
@@ -196,13 +193,13 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
     )
   }
 
-  if (error && !state) {
+  if (pageErr.error && !state) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50 p-6">
         <GuestLanguageToggle variant="light" className="fixed top-3 right-3 z-50" />
         <div className="max-w-sm w-full rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <WifiOff className="h-10 w-10 mx-auto text-stone-400" />
-          <h1 className="mt-3 font-semibold text-stone-900">{error}</h1>
+          <h1 className="mt-3 font-semibold text-stone-900">{pageErr.text}</h1>
           <Button className="mt-4 w-full" onClick={load}>
             <RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}
           </Button>
@@ -353,9 +350,9 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
         </div>
       )}
 
-      {(payError || verifying) && (
+      {(payErr.error || verifying) && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700" role="alert">
-          {verifying ? t('pay.verify') : payError}
+          {verifying ? t('pay.verify') : payErr.text}
         </div>
       )}
 

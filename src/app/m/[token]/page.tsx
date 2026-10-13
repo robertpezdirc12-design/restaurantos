@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, guestApiErrorText } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, useGuestApiError } from '@/components/guest-i18n'
 import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergens'
 
 interface ModifierOption { id: string; name: string; price: number }
@@ -40,7 +40,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const { t } = useGuestT()
   const [menu, setMenu] = useState<MenuPayload | null>(null)
-  const [error, setError] = useState('')
+  const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
   const [activeCat, setActiveCat] = useState<string>('')
@@ -69,7 +69,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const [fbName, setFbName] = useState('')
   const [fbSending, setFbSending] = useState(false)
   const [fbDone, setFbDone] = useState(false)
-  const [fbError, setFbError] = useState('')
+  const fbErr = useGuestApiError()
 
   // Status naročila, viden gostu — javni API vrne fiksne SL nize; preslikava v i18n ključe
   const statusLabel = useCallback((raw: string) => {
@@ -78,9 +78,6 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   }, [t])
 
   // Zadnji t v ref-u — loadMenu se NE znova sproži ob preklopu jezika (brez reload-a podatkov)
-  const tRef = useRef(t)
-  tRef.current = t
-
   const opIdRef = useRef<string>('')
   if (!opIdRef.current && typeof window !== 'undefined') {
     // Isti clientOperationId preživi refresh → idempotenten replay (brez dvojnika)
@@ -92,19 +89,19 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   }
 
   const loadMenu = useCallback(async () => {
-    setError('')
+    pageErr.clear()
     try {
       const res = await fetch(`/api/public/menu?qr=${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(guestApiErrorText(tRef.current, data?.error, 'guest.menu.unavailable')); return }
+      if (!res.ok) { pageErr.set(data?.error, 'guest.menu.unavailable'); return }
       setMenu(data)
       setActiveCat(data.categories?.[0]?.id || '')
     } catch {
-      setError(tRef.current('guest.error.unreachableRetry'))
+      pageErr.setKey('guest.error.unreachableRetry')
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, pageErr])
 
   useEffect(() => {
     loadMenu()
@@ -206,7 +203,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   async function submitOrder() {
     if (cart.length === 0 || submitting) return
     setSubmitting(true)
-    setError('')
+    pageErr.clear()
     try {
       const res = await fetch('/api/public/orders', {
         method: 'POST',
@@ -224,7 +221,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(guestApiErrorText(t, data?.error, 'guest.error.orderFailed')); return }
+      if (!res.ok) { pageErr.set(data?.error, 'guest.error.orderFailed'); return }
       setDone({ orderNumber: data.orderNumber, status: data.status, total: data.total })
       setCart([])
       setCartOpen(false)
@@ -232,7 +229,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
       opIdRef.current = ''
     } catch {
       // NE ustvari lažno uspešnega naročila (issue #8: jasna napaka)
-      setError(t('guest.error.orderNotSubmittedRetry'))
+      pageErr.setKey('guest.error.orderNotSubmittedRetry')
     } finally {
       setSubmitting(false)
     }
@@ -242,7 +239,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   async function submitFeedback() {
     if (fbOverall < 1 || fbSending) return
     setFbSending(true)
-    setFbError('')
+    fbErr.clear()
     try {
       const res = await fetch('/api/public/feedback', {
         method: 'POST',
@@ -260,11 +257,11 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { setFbError(guestApiErrorText(t, data?.error, 'guest.feedback.failed')); return }
+      if (!res.ok) { fbErr.set(data?.error, 'guest.feedback.failed'); return }
       setFbDone(true)
       setFbOpen(false)
     } catch {
-      setFbError(t('guest.error.feedbackNotSubmitted'))
+      fbErr.setKey('guest.error.feedbackNotSubmitted')
     } finally {
       setFbSending(false)
     }
@@ -281,13 +278,13 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     )
   }
 
-  if (error && !menu) {
+  if (pageErr.error && !menu) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
         <GuestLanguageToggle variant="light" className="fixed top-3 right-3 z-50" />
         <div className="max-w-sm w-full rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <WifiOff className="h-10 w-10 mx-auto text-stone-400" />
-          <h1 className="mt-3 font-semibold text-stone-900">{error}</h1>
+          <h1 className="mt-3 font-semibold text-stone-900">{pageErr.text}</h1>
           <Button className="mt-4 w-full" onClick={loadMenu}><RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}</Button>
         </div>
       </div>
@@ -369,9 +366,9 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
                 />
                 <Input value={fbName} onChange={(e) => setFbName(e.target.value)} placeholder={t('guest.common.nameOptional')} maxLength={80} />
-                {fbError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{fbError}</div>}
+                {fbErr.error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{fbErr.text}</div>}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { setFbOpen(false); setFbError('') }}>{t('guest.common.close')}</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => { setFbOpen(false); fbErr.clear() }}>{t('guest.common.close')}</Button>
                   <Button className="flex-1" onClick={submitFeedback} disabled={fbOverall < 1 || fbSending}>
                     {fbSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     {fbSending ? t('guest.common.sending') : t('guest.feedback.submit')}
@@ -383,9 +380,9 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         )}
       </div>
 
-      {error && menu && (
+      {pageErr.error && menu && (
         <div className="max-w-lg mx-auto px-4 pt-4">
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{error}</div>
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>
         </div>
       )}
 
@@ -520,7 +517,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   <label className="text-xs font-medium text-stone-500">{t('guest.common.nameOptional')}</label>
                   <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('guest.cart.nameHint')} maxLength={80} />
                 </div>
-                {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{error}</div>}
+                {pageErr.error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>}
               </div>
               <div className="p-4 border-t border-stone-100">
                 <Button size="lg" className="w-full h-14 rounded-2xl text-base" onClick={submitOrder} disabled={submitting || cart.length === 0}>

@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2, Monitor, CheckCircle2, Link2, Unlink, WifiOff } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestApiErrorText } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
 
 const TOKEN_KEY = 'ro_cfd_device_token'
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
@@ -64,7 +64,7 @@ function DisplayInner() {
   const [codeInput, setCodeInput] = useState('')
   const [info, setInfo] = useState<{ paired: boolean; posName?: string; posOnline?: boolean } | null>(null)
   const [state, setState] = useState<{ payload: DisplayPayload | null; posOnline: boolean; updatedAt?: string; promos?: DisplayPromoT[] } | null>(null)
-  const [error, setError] = useState('')
+  const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const [connecting, setConnecting] = useState(false)
   const [stale, setStale] = useState(false)
   const failStreak = useRef(0)
@@ -92,12 +92,12 @@ function DisplayInner() {
           failStreak.current += 1
           if (failStreak.current >= STALE_AFTER) setStale(true)
         }
-        setError(guestApiErrorText(t, data?.error, 'guest.display.notRegistered'))
+        pageErr.set(data?.error, 'guest.display.notRegistered')
         return false
       }
       failStreak.current = 0
       setStale(false)
-      setError('')
+      pageErr.clear()
       setInfo({ paired: data.paired, posName: data.posName, posOnline: data.posOnline })
       setState({ payload: data.payload, posOnline: data.posOnline, updatedAt: data.updatedAt, promos: Array.isArray(data.promos) ? data.promos : [] })
       return true
@@ -166,7 +166,7 @@ function DisplayInner() {
   }, [showPromoCarousel, promoKey, promoIdx, promos.length])
 
   async function connect() {
-    if (!/^\d{6}$/.test(codeInput.trim())) { setError(t('guest.display.codeFormat')); return }
+    if (!/^\d{6}$/.test(codeInput.trim())) { pageErr.setKey('guest.display.codeFormat'); return }
     setConnecting(true)
     try {
       const res = await fetch('/api/devices/display', {
@@ -175,7 +175,7 @@ function DisplayInner() {
         body: JSON.stringify({ action: 'connect', code: codeInput.trim() }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(guestApiErrorText(t, data?.error, 'guest.display.connectFailed')); return }
+      if (!res.ok) { pageErr.set(data?.error, 'guest.display.connectFailed'); return }
       setCodeInput('')
       refresh(token)
     } finally {
@@ -212,14 +212,14 @@ function DisplayInner() {
             className="w-full mt-4 h-12 text-base"
             onClick={() => {
               const t2 = codeInput.trim()
-              if (t2.length < 10) { setError(t('guest.display.invalidToken')); return }
+              if (t2.length < 10) { pageErr.setKey('guest.display.invalidToken'); return }
               localStorage.setItem(TOKEN_KEY, t2)
               setToken(t2)
             }}
           >
             {t('guest.display.showScreen')}
           </Button>
-          {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+          {pageErr.error && <p className="mt-3 text-sm text-red-400">{pageErr.text}</p>}
         </div>
       </div>
     )
@@ -245,7 +245,7 @@ function DisplayInner() {
             {connecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {t('guest.display.connect')}
           </Button>
-          {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+          {pageErr.error && <p className="mt-3 text-sm text-red-400">{pageErr.text}</p>}
           <button
             className="mt-6 text-xs text-stone-600 hover:text-stone-400"
             onClick={() => { localStorage.removeItem(TOKEN_KEY); setToken('') }}

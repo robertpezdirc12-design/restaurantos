@@ -10,15 +10,22 @@ import type { NextConfig } from "next";
  *    uporablja (preverjeno Task 49: noben getUserMedia/geolocation klic).
  *    Ob prihodnjem QR-skanerju kamera= ponovno dovoliti ciljano.
  *
- * Frame zaščita (X-Frame-Options / CSP frame-ancestors) NAMENOMA NE še:
- * peskovni preview panel vgrajuje app v iframe in embed-origin ni verifikiran —
- * dodati šele s preverjenim seznamom dovoljenih origin-ov (audit §13 zapis).
+ * Frame zaščita (issue #2 §D, v1.87.1) — DOLOČENA politika vdelovanja:
+ *  - CSP frame-ancestors 'self': vgradnja SAMO iz istega izvora (gateway/peskovni
+ *    preview streže app prek istega izvora → predogled OHRANJEN; tuje strani ne
+ *    morejo iframe-ati POS). Edini iframe v kodi = predogled PRILOGE stroškov
+ *    (finance-tab, isti origin) → dovoljen.
+ *  - X-Frame-Options: SAMEORIGIN — usklajen s frame-ancestors (isti pomen, brez
+ *    konflikta; podpora starejšim brskalnikom). CSP default-src/script-src je
+ *    NAMENOMA izven te glave (nonce/hash režim + Stripe = ločena naloga).
  */
 export const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
 ];
 
 const nextConfig: NextConfig = {

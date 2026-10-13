@@ -114,6 +114,7 @@ describe('QR stran — obstoječa offline robustnost (regresija, Task 53 ne posl
   test('m/[token] še ima online/offline poslušalca + tiho ponavljanje statusa', () => {
     expect(qr).toContain("window.addEventListener('online'")
     expect(qr).toContain("window.addEventListener('offline'")
-    expect(qr).toContain("t('guest.error.unreachableRetry')")
+    // v1.87.1: ključ se uporabi prek useGuestApiError().setKey (izračun ob izrisu)
+    expect(qr).toContain("'guest.error.unreachableRetry'")
   })
 })

@@ -20,7 +20,7 @@
  * prevod statusov naročil, ki jih javni API vrne kot fiksne SL nize.
  */
 
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
@@ -261,6 +261,45 @@ export function guestApiErrorText(
     return message
   }
   return t(fallbackKey)
+}
+
+/**
+ * P1 (issue #2 §C, v1.87.1) — REGRESIJA: preklop jezika NI takoj prevedel ŽE
+ * PRIKAZANE napake, ker je stran ob napaki shranila ŽE PREVEDENO besedilo v
+ * state (prevod zamrznjen v jeziku ob trenutku napake).
+ *
+ * Rešitev: state hrani SUROVI strežniški niz (SL vir) + fallback ključ;
+ * besedilo se IZRAČUNA ob vsakem izrisu (guestApiErrorText s trenutnim t) —
+ * preklop SL↔HR↔EN sproži re-render → isti surovi niz se TAKOJ prevede.
+ * Uporaba: const err = useGuestApiError(); err.set(data?.error, 'pay.errorRetry');
+ * err.setKey('guest.error.unreachableRetry'); {err.text}.
+ */
+export interface GuestApiErrorState {
+  /** surov SL niz javnega API-ja ('' → uporabi fallbackKey) */
+  raw: string
+  /** i18n ključ za neznan/prazen niz */
+  fallbackKey: string
+}
+
+export function useGuestApiError(): {
+  error: GuestApiErrorState | null
+  /** izračunano ob izrisu — preklop jezika takoj spremeni prikazano besedilo */
+  text: string
+  set: (message: unknown, fallbackKey: string) => void
+  setKey: (fallbackKey: string) => void
+  clear: () => void
+} {
+  const { t } = useGuestT()
+  const [error, setError] = useState<GuestApiErrorState | null>(null)
+  const set = useCallback((message: unknown, fallbackKey: string) => {
+    setError({ raw: typeof message === 'string' ? message : '', fallbackKey })
+  }, [])
+  const setKey = useCallback((fallbackKey: string) => {
+    setError({ raw: '', fallbackKey })
+  }, [])
+  const clear = useCallback(() => setError(null), [])
+  const text = error ? guestApiErrorText(t, error.raw, error.fallbackKey) : ''
+  return { error, text, set, setKey, clear }
 }
 
 export type { GuestI18nValue }

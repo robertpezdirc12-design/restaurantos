@@ -42,7 +42,7 @@ describe('i18n — slovarji', () => {
       'roles.ADMIN', 'roles.BAR', 'roles.KITCHEN', 'receipt.title', 'receipt.premises', 'receipt.register',
       'receipt.operator', 'receipt.copy', 'receipt.storno', 'receipt.zki', 'receipt.jir',
       'receipt.fursVerified', 'receipt.fursPending', 'receipt.fursFailed', 'receipt.fursNone', 'receipt.fursStatus',
-      'login.reconstruction', 'payment.loyaltyEarned', 'payment.issued',
+      'payment.loyaltyEarned', 'payment.issued',
     ])
     const sloSpecific = ['Zasedena', 'Prosta', 'Shrani', 'Prekliči', 'Nalagam…', 'Iskanje', 'Napitnine',
       'Čakalna lista', 'Zaloge', 'Izmene', 'Stroški', 'Zvestoba', 'Mnenja', 'Nastavitve', 'Vse lokacije',

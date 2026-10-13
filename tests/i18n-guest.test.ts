@@ -387,7 +387,7 @@ describe('i18n gostov — javne API napake prevedene (P1-5)', () => {
     expect(guestApiErrorText(en, null, 'guest.menu.unavailable')).toBe('Menu is not available.')
   })
 
-  test('regresija: gostovske strani uporabljajo guestApiErrorText (ne surovega data.error)', () => {
+  test('regresija: gostovske strani uporabljajo guestApiErrorText/useGuestApiError (ne surovega data.error)', () => {
     const { readFileSync } = require('node:fs')
     for (const file of [
       'src/app/m/[token]/page.tsx',
@@ -396,7 +396,10 @@ describe('i18n gostov — javne API napake prevedene (P1-5)', () => {
       'src/app/display/page.tsx',
     ]) {
       const src = readFileSync(file, 'utf-8')
-      expect(src).toContain('guestApiErrorText')
+      // v1.87.1 (issue #2 §C): strani uporabljajo useGuestApiError() — hook, ki
+      // internally kliče guestApiErrorText ob vsakem izrisu (močnejša pogodba:
+      // besedilo se izračuna s trenutnim jezikom, ne zamrznjeni prevod)
+      expect(src.includes('useGuestApiError') || src.includes('guestApiErrorText')).toBe(true)
       // stari vzorec surovega prikaza ne sme več obstajati
       if (/data\.error \|\|/.test(src)) throw new Error(`surovi data.error prikaz ostaja: ${file}`)
     }

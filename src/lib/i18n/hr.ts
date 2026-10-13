@@ -52,7 +52,6 @@ export const hr: Record<string, string> = {
   'login.deviceFailed': 'Aktivacija nije uspjela.',
   'login.devicePlaceholder': 'npr. 12345678',
   'login.deviceNameFallback': 'uređaj',
-  'login.reconstruction': 'Rekonstrukcija 1.35.0 — obnovljeno iz Vercel deploymenta (račun GitHub hakiran)',
   'login.footer': 'RestavrantOS · Fiskalna simulacija · EUR',
 
   // ── Kartice (zavihci) ──
