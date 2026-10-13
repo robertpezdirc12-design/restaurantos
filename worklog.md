@@ -2234,3 +2234,19 @@ Stage Summary:
 - Centralni ADMIN/OWNER brez lokacije zdaj ustvarja naročila iz handheld/tablica/dashboard (lokacija iz konteksta mize/preklopnika)
 - Lekcija: python patch z \n v komentarju → tsc/eslint NE ujeta (veljaven komentar) — samo browser E2E dokže omrežni klic; delovni standard potrjen
 - Naslednji: P1-6 split po gostih (TRZNA-VRZELI §6 — odločitev PayLink orderId @unique: splitCount na PayLink ALI N povezav)
+
+---
+Task ID: v1.86.2b
+Agent: glavni agent (Z.ai)
+Task: Produkcijska verifikacija v1.86.2 + zaključek vala.
+
+Work Log:
+- Deploy 22155d2 → health ok 1.86.2; produkcijski E2E popravka: prijava info@ (ADMIN central, loc=null) → /handheld → Miza 5 → 2× Amaro → UI klik 'Ustvari naročilo' → POST /api/orders 201 (prej 400 'Lokacija ni določena') + 'Pošlji v kuhinjo (1)' + 'Račun · 8,32 €' (7,60 + DDV)
+- Čiščenje testnega naročila: PATCH status CANCELLED (200) → miza Za pospraviti → en klik → Na voljo; 0 error; GET / 200; POST /api/furs brez žetona 401 (dimnik)
+- Browser zaprt, dev :3007 ustavljen (higiena okolja)
+
+Stage Summary:
+- v1.86.2 živi na produkciji: centralne vloge brez lokacije ustvarjajo naročila iz handhelda (info@ = lastnikov lastni račun — to je bila pot uporabnika!)
+- Celoten val zaključen: PayLink DDL + vseh 12 migracij apliciranih, P2010 konzolni hrošč odpravljen, zlata pot PayLink verificirana na produkciji, centralna VRZNJA naročanja zaprta
+- NASLEDNJI VAL: P1-6 split po gostih — ODLOČITEV ZA UPORABNIKA (TRZNA-VRZELI §6): PayLink ima orderId @unique → (A) splitCount na PayLink (en QR, gost vidi svoj delež) ALI (B) N povezav na naročilo (vsak gost svoj QR/delež) — priporočilo: B z statusom partial + CAS na skupnem znesku (Toast-style 'split by item' pride kasneje iz OPS-7)
+- UPORABNIŠKI KORAKI (ponovno): (1) PREKLIC/ROTACIJA obeh izpostavljenih žetonov — GitHub PAT + GitLab glpat-… (oba sta v pogovoru in v git remote URL-jih!); (2) Upstash env (UPSTASH_REDIS_REST_URL + TOKEN) za učinkovit rate-limit; (3) Actions kvota 1. 11. 2026
