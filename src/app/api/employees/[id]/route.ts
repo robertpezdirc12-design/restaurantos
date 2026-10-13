@@ -50,7 +50,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (body.role !== undefined) {
     const role = String(body.role).toUpperCase()
     // P2 audit N7: enterprise vloge (issue #11 §1 — kanonični seznam iz ROLE_DEFAULTS)
-    const BASE_ROLES = ['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'OWNER']
+    // AUDIT-FIX v1.82.1: CLEANER dodan v BASE_ROLES — vloga je obstajala v RBAC
+    // (permissions.ts ROLE_DEFAULTS['cleaner']), UI dropdownu in i18n, a PATCH jo je
+    // zavrnil z 400 "Neznana vloga" (mrtva koda migracije cleaner-role).
+    const BASE_ROLES = ['ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'OWNER', 'CLEANER']
     const ENTERPRISE_ROLES = ['GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER', 'WAREHOUSE', 'ACCOUNTING']
     if (!BASE_ROLES.includes(role) && !ENTERPRISE_ROLES.includes(role)) return fail('Neznana vloga.', 400)
     // N7: enterprise vloge dodeljuje SAMO centralna vloga (OWNER/ADMIN) — MANAGER ne

@@ -12,7 +12,7 @@
  * (§18). Z prod clientom union ničesar ne zlomi (isti literali, širša poteza).
  */
 
-export type EmployeeRole = 'owner' | 'admin' | 'manager' | 'staff' | 'waiter' | 'bar' | 'chef' | 'kitchen'
+export type EmployeeRole = 'owner' | 'admin' | 'manager' | 'staff' | 'waiter' | 'bar' | 'chef' | 'kitchen' | 'group_owner' | 'org_admin' | 'property_manager' | 'warehouse' | 'accounting' | 'cleaner'
 
 /** OPS-8 val 3 (v1.73.0) — GL journal (orientation) account type union. */
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'unknown'

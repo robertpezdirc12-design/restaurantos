@@ -30,14 +30,14 @@
 - **Next.js 16 (App Router) + TypeScript 5** — API routes (`/api/**`), strežniška validacija
 - **Tailwind CSS 4 + shadcn/ui (New York)** — odziven UI, svetla/temna tema
 - **Prisma ORM** — produkcijska baza **Neon Postgres**, razvoj/testi **SQLite** (dvema sinhroniziranima shemama)
-- **bun test** — 600+ testov (enote, integracijski, race, E2E API)
+- **bun test** — 1000+ testov (enote, integracijski, race, E2E API)
 - **GitHub Actions** — quality gate na vsak push na `main`
 
 ## Hitri začetek
 
 ```bash
 bun install
-cp .env.example .env        # DATABASE_URL=file:./db/dev.db + APP_SECRET
+cp .env.example .env        # DATABASE_URL=file:./db/dev.db + APP_SECRET (glej .env.example)
 bun run db:push             # SQLite shema
 bun run dev                 # http://localhost:3000
 ```

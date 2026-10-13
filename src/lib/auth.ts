@@ -16,7 +16,23 @@ if (isProd && !APP_SECRET) {
 }
 // PIN_LOOKUP_SALT: rotacija bi zaklenila obstoječe PIN-e (scrypt hash je vezan na salt)
 // → rotacija samo z usklajeno ponastavitvijo vseh PIN-ov (glej PRODUCTION-HARDENING-REPORT.md)
-const PIN_LOOKUP_SALT = process.env.PIN_LOOKUP_SALT || 'restaurantos-pin-lookup-v1'
+// AUDIT-FIX v1.82.1: javna konstanta v repozitoriju kot fallback = DB leak omogoča
+// offline brute-force 4–8-mestnega PIN prostora (10^4–10^8 HMAC izračunov).
+// Brez env vrednosti v produkciji sedaj sol IZVEDEMO iz APP_SECRET (nejavna,
+// unikatna per deployment). Prijava ostane združljiva: pinOk sprejema pinLookup
+// ALI scrypt(pin, email) — obstoječi PIN-i se preverijo prek scrypt poti,
+// novi/resetirani zapišejo novi pinLookup. Eksplicitna env vrednost ima prednost.
+// Fail-closed throw bi ONEMOGOČIL deploy, če env ni nastavljen (za razliko od
+// APP_SECRET ga ne moremo preveriti iz repozitorija) — izvedena sol je varna
+// alternativa brez izpadov.
+const PIN_LOOKUP_SALT = process.env.PIN_LOOKUP_SALT
+  || (isProd
+    ? crypto.createHmac('sha256', APP_SECRET).update('restaurantos-pin-lookup-salt-v1').digest('hex')
+    : 'restaurantos-pin-lookup-v1')
+if (isProd && !process.env.PIN_LOOKUP_SALT) {
+  // glasen zapis — operator naj nastavi eksplicitni env (rotacija: glej komentar zgoraj)
+  console.error('[auth] PIN_LOOKUP_SALT ni nastavljen — izveden iz APP_SECRET. Priporočeno: nastavite PIN_LOOKUP_SALT env na Vercelu.')
+}
 
 export interface AuthPayload {
   sub: string
@@ -93,6 +109,19 @@ export function hashPin(pin: string, salt: string): string {
 
 export function pinLookupValue(pin: string): string {
   return crypto.createHmac('sha256', PIN_LOOKUP_SALT).update(pin).digest('hex')
+}
+
+/**
+ * AUDIT-FIX v1.82.1 — dosledno timing-safe primerjava nizov (enaka disciplina kot
+ * verifyToken/matchesBootstrap/delivery webhook/MFA/CRON_SECRET). Uporabljeno v
+ * login poti za pinLookup/pin primerjave. Dolžina se primerja ločeno (varno —
+ * dolžina ni skrivnost za hex digest fiksne dolžine).
+ */
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  const ba = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ba.length !== bb.length) return false
+  return crypto.timingSafeEqual(ba, bb)
 }
 
 export function employeePinFields(pin: string, email: string): { pin: string; pinLookup: string } {

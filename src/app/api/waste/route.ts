@@ -92,8 +92,19 @@ export async function POST(req: NextRequest) {
   const locRes = await guardResource(user, item.locationId)
   if (locRes) return locRes
 
-  const locationId = item.locationId || user.loc || (await db.location.findFirst({ select: { id: true } }))?.id
-  if (!locationId) return fail('Lokacija ni določljiva — artikel nima lokacije.', 400)
+  // AUDIT-FIX v1.82.1: umaknjen findFirst() fallback — v nasprotju s §10 politiko
+  // (api.ts requireUserLocation: "prepovedan je findFirst() fallback"). Centralna
+  // vloga brez lokacije + legacy artikel brez lokacije bi sicer knjižila odpad
+  // (in odštevala zalogo!) na NAKLJUČNO prvo lokacijo v DB — potencialno cross-org.
+  // Lokacija artikla je varovana prek guardResource zgoraj; user.loc je eksplicitna
+  // lokacija prijave centralne vloge. Brez obeh → fail-closed 400.
+  const locationId = item.locationId || user.loc
+  if (!locationId) {
+    return fail(
+      'Lokacija ni določljiva — artikel nima dodeljene lokacije, uporabnik pa ni prijavljen z lokacijo. Najprej dodelite lokacijo artiklu v Zalogah.',
+      400,
+    )
+  }
 
   // Idempotentni replay: (locationId, idempotencyKey) že obstaja → vrni obstoječi zapis
   const existing = await db.wasteRecord.findUnique({

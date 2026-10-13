@@ -7,7 +7,7 @@
  *    besedila v glavnih UI območjih« → sken kritičnih datotek za prevedene nize.
  */
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DEFAULT_LOCALE, LOCALES, dictionaryGaps, emptyValues, fiscalStatusLabel,
@@ -673,7 +673,18 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
 
   for (const file of files) {
     const abs = join(import.meta.dir, file)
-    const src = readFileSync(abs, 'utf-8')
+    // AUDIT-FIX v1.82.1 (razrez monolita): dashboard-tabs.tsx je zdaj KOREN družine —
+    // njegova i18n pokritost se preverja čez celo komponentno družino
+    // (dashboard-tabs.tsx + src/components/tabs/*.tsx), ker so bile domene
+    // (NabavaTab, ops kartice) izluščene v ločene datoteke. Obe varovalki
+    // (uporaba ključa + odsotnost hardcodiranega besedila) ostajata enako strogi.
+    let src = readFileSync(abs, 'utf-8')
+    if (file.endsWith('dashboard-tabs.tsx')) {
+      const tabsDir = join(import.meta.dir, '../src/components/tabs')
+      for (const name of readdirSync(tabsDir)) {
+        if (name.endsWith('.tsx')) src += '\n' + readFileSync(join(tabsDir, name), 'utf-8')
+      }
+    }
     const translated = perFile[file] || []
     test(`${file.split('/').pop()} — prevedena besedila so prek t(), ne trdo kodirana`, () => {
       for (const [text, key] of translated) {

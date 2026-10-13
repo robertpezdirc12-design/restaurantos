@@ -64,10 +64,15 @@ dev.log
 server.log
 
 # local env + dev database (never commit)
+# AUDIT-FIX v1.82.1: prisma/*.db dodan (prisma/dev.db je bil commitan — git rm --cached),
+# !.env.example izjema (README navaja cp .env.example .env — datoteka je morala biti commitana)
 .env
 .env*.local
+!.env.example
 db/*.db
 db/*.db-journal
+prisma/*.db
+prisma/*.db-journal
 
 # vercel project snapshots (issue #4 §15 — env imena + encrypted blobs ne grejo v git)
 vercel-project-settings.json

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { createToken, employeePinFields, matchesBootstrap } from '@/lib/auth'
+import { createToken, employeePinFields, matchesBootstrap, timingSafeEqualStr } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { fail } from '@/lib/api'
 import { rateLimitBool } from '@/lib/rate-limit'
@@ -40,10 +40,13 @@ export async function POST(req: NextRequest) {
     return fail('Napačen e-poštni naslov ali PIN.', 401)
   }
 
+  // AUDIT-FIX v1.82.1: pinLookup/pin primerjavi sedaj timing-safe (enaka disciplina
+  // kot verifyToken/matchesBootstrap — prej gola === primerjava nizov).
+  // pinLookup je fiksno-dolgi hex digest — lowercase normalizacija je varna.
   const expected = employeePinFields(pin, employee.email)
   const pinOk =
-    (employee.pinLookup && employee.pinLookup === expected.pinLookup) ||
-    (employee.pin && employee.pin === expected.pin)
+    (employee.pinLookup && timingSafeEqualStr(employee.pinLookup.toLowerCase(), expected.pinLookup)) ||
+    (employee.pin && timingSafeEqualStr(employee.pin, expected.pin))
 
   if (!pinOk) {
     // P0 audit (C1): neuspešna PIN prijava se beleži

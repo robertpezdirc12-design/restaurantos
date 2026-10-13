@@ -1,6 +1,6 @@
 # RestaurantOS — Arhitektura (issue #12 §8)
 
-> Posodobljeno: v1.35.0 (issue #12). Ta dokument opisuje DEJANSKO arhitekturo, ne želeno.
+> Posodobljeno: v1.82.1 (AUDIT-FIX val). Ta dokument opisuje DEJANSKO arhitekturo, ne želeno.
 
 ## Sistemski pregled
 
@@ -16,14 +16,15 @@ API Security Layer  ── src/lib/api.ts + auth.ts + tenant.ts + rate-limit.ts
    • audit (AuditLog) + dogodki (EventLog publish/dispatch)
         │
         ▼
-Domain API (65 Next.js route.ts handlerjev; App Router, vse prek /api/*)
+Domain API (139 Next.js route.ts handlerjev; App Router, vse prek /api/*)
    orders · kitchen · tables · menus · employees · shifts · furs · delivery
-   devices · sync · public (QR/kiosk) · enterprise · events · reports · print …
+   devices · sync · public (QR/kiosk) · enterprise · events · reports · print
+   haccp · ap/ar · expenses · batch · recurring · cron · admin/migrate-* …
         │
         ▼
 Data layer — Prisma ORM
-   • produkcija: Neon Postgres (prisma/schema.prisma, 116 modelov)
-   • lokalni dev: SQLite zrcalo (prisma/schema.sqlite.prisma — ista koda, preslikani tipi)
+   • produkcija: Neon Postgres (prisma/schema.prisma, 118 modelov, 20 enumov)
+   • lokalni dev: SQLite zrcalo (prisma/schema.sqlite.prisma — ista koda, preslikani tipi; drift-check v CI)
    • durable tipe uporablja koda (src/lib/prisma-types.ts) — deluje z obema clientoma
         │
         ▼
@@ -83,8 +84,8 @@ Tenant/Organization → Brand → Property → Location (operativno sidro)
 
 ## Deployment
 
-- **Vercel** (files API deploy iz te seje; produkcija: restaurantos-theta.vercel.app)
-- **GitLab CI**: quality-gate (tsc/lint/testi/drift/secrets) → production-build (pogojen `DATABASE_URL`)
-- **Mirror**: GitLab = canonical; GitHub = samodejni push-mirror + sync-service varovalka
-- Migracije: aditivni in-app endpointi (`/api/admin/migrate-issue*`) — idempotentne DDL
+- **Vercel** (Git integration: push na `main` → samodejni produkcijski build; produkcija: restaurantos-theta.vercel.app)
+- **GitHub Actions = quality gate** (`ci.yml`: Neon Postgres drift-smoke + tsc/lint/testi/secrets na vsak push na main). POZOR (AUDIT-FIX opomba v1.82.1): Vercel Git integration deploya NEPOMEDEJENO s CI — rdeč CI ne ustavi deploya; disciplina je "pushamo le lokalno zeleno". Trajna rešitev: Vercel → Settings → Git → preklopi "Deploy only when checks pass" (ali GitHub Checks integracija).
+- **Mirror**: GitHub = avtoritativna koda (Vercel deploy + CI); GitLab = push-mirror varnostna kopija (sync-check varovalka)
+- Migracije: aditivni in-app endpointi (`/api/admin/migrate-*`) — idempotentne DDL, `requireCentralRole` + audit
 - Podrobnosti odpornosti: `docs/DEPLOYMENT-RESILIENCE.md`
