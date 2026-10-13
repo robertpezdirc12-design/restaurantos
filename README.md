@@ -16,7 +16,7 @@
 
 ## Funkcije
 
-- **POS** — odprti računi, tečaji, KDS kuhinja z 86 ploščo (razprodano + nadomestki), waiter klici, stornacija z revizijo, /handheld enoročni PWA tok (mize → naroči → fire → plačaj pri mizi, offline vrsta)
+- **POS** — odprti računi, tečaji, KDS kuhinja z 86 ploščo (razprodano + nadomestki), waiter klici, stornacija z revizijo, /handheld enoročni PWA tok (mize → naroči → fire → plačaj pri mizi, offline vrsta), plačilna povezava /pay/<token> (QR položnica: gost plača na svojem telefonu — Stripe Checkout ali simulator, FURS zaključek)
 - **Kiosk** — samopostrežni terminal z vplačilom in kupončnim tiskanjem
 - **QR gost** — jedilnik, naročanje, klic natakarja, feedback, položnica
 - **Dostava** — naročila, dostavljalec, zone, spremljanje statusov

@@ -1563,6 +1563,7 @@ model Order {
   Table                                  Table?             @relation(fields: [tableId], references: [id], onUpdate: SetNull)
   VirtualBrand                           VirtualBrand?      @relation(fields: [virtualBrandId], references: [id], onUpdate: SetNull)
   OrderItem                              OrderItem[]
+  PayLink                                PayLink?
   Receipt                                Receipt[]
   StockTransaction                       StockTransaction[]
 
@@ -1735,6 +1736,35 @@ model Payment {
   @@index([loyaltyAccountId])
   @@index([status])
   @@index([type])
+}
+
+// P0-2 TRZNA-VRZELI (v1.85.0) — javna plačilna povezava za gosta ("QR položnica").
+// Token = 32-hex skrivnost (vzorec Table.qrToken) → javna stran /pay/<token>.
+// Ena povezava na naročilo (orderId @unique); plačilo teče SKOZI kanonično FURS
+// jedro (issueFursReceipt, src/lib/furs/issue.ts) — brez duplikata fiskalne logike.
+// amount/tip se zapolnita ob Stripe Checkout seji (znesek je ZAKLEPAN na seji);
+// pri simulatorju ostaneva null (dinamični račun ob plačilu).
+model PayLink {
+  id         String    @id
+  token      String    @unique
+  orderId    String    @unique
+  locationId String
+  status     String    @default("open") // open | paid | revoked | superseded
+  phone      String    @default("")
+  smsDetail  String    @default("")
+  amount     Decimal?
+  tip        Decimal?
+  expiresAt  DateTime?
+  paidAt     DateTime?
+  receiptId  String?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([locationId])
+  @@index([status])
 }
 
 model PrepStation {

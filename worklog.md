@@ -2102,3 +2102,54 @@ Stage Summary:
 - P0-3 ZAPRTO: 86-plošča na KDS (proaktivni 86 + obnova + števec), avtomatski nadomestki iz iste kategorije, waiter dialogi (novo naročilo + urejevalnik) kažejo 86 + nadomestke namesto tihega skrivanja/zavrnitve — parity z Toast/Square/Lightspeed
 - Endpoint iz OPS-4 (4e7b6e6) dobi prvi testni pokrov; suite 1047/1047
 - Preostala P0: handheld tok (P0-1), online pay link (P0-2) — po §6 vrstnem redu naslednji handheld
+
+---
+Task ID: v1.84.0
+Agent: glavni agent (Z.ai)
+Task: P0-1 iz TRZNA-VRZELI-2026 — handheld tok za natakarja (enoročni PWA: mize → naroči → fire → plačaj pri mizi) + vzpostavitev GitLab zrcala
+
+Work Log:
+- GitLab: žeton uporabnika preverjen (robertpezdirc8, Owner), projekt USTVARJEN robertpezdirc8/restaurantos (ID 87573786), celotna zgodovina potisnjena (main @ f355397; prvi poskus 403 = prehoden Cloudflare blok, retry uspešen); od zdaj push na OBA remota (origin GitHub + gitlab)
+- Raziskava (Explore agent): zemljevid avtentikacije (requirePermission, ROLE_DEFAULTS waiter = orders.create+orders.pay), API-jev (orders/fire/bill/furs + offline-queue/sync), i18n vzorcev, /tablica kot referenčna stran — sklep: 0 nove strežniške logike potrebne, 100 % kanonični endpoint-i
+- src/app/handheld/page.tsx (651 vrstic, nova): 4 pogledi — MIZE (filtri, ploščice z zneskom + značka 'n neposlano' iz pending postavk, en-klik čiščenje DIRTY), NAROČI (statusi postavk, 86 sivo+disabled+Badge, košarika z opombami + gostje stepper, CTA v coni palca min-h-14), RAČUN (kanonični bill, napitnina 0/5/10/15 % + po meri, gotovina/kartica/mobilno prek processTerminalPayment), PLAČANO (EOR + št. računa, Počisti mizo)
+- Offline: order.create/order.addItems v obstoječi vrsti (enqueueOp + flushQueue ob online); fire in plačilo zavestno NISTA čakalna (obvestilo ob izpadu)
+- i18n: hh.* ×47 + tlb.handheld v obeh slovarjih; /tablica dobi Smartphone gumb → /handheld
+- tests/handheld-flow.test.ts: 12 testov — zlata pot WAITER (create→replay→addItems→fire→idempotenten fire→bill 22,57→furs cash+tip→paid+miza cleaning+Receipt 24,07), 401 ×4, KITCHEN 403 ×2, tuja lokacija 403, bill 409 po plačilu; prefiks hhfl- v fixture-sweep
+- E2E odkrit in popravljen hrošč: tipPct se je MNOŽIL namesto delil s 100 (Plačaj 127,27 € namesto 12,73 €) — popravljen, re-verificirano
+- Dokumenti: TRZNA-VRZELI (P0-1 ZAPRTO v §3 matriki Handheld vrstica ✓, §4.1, §6 točka 2 prečrtana, §7 sklep — preostala samo pay link), README POS vrstica, AUDIT dodatek, APP_VERSION → 1.84.0
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1059/1059 (73 datotek, +12 testov)
+- Browser E2E na dev :3007 (svež e2e.db + seed, admin@): zlata pot gotovina (11,57 € + tip 1,16 → EOR B723A57E…, št. 2026-10-1-BLG001 → Počisti mizo → Na voljo), KARTICA prek simulatorja (SIM-O7NUKX approvalCode v Payment DB), 86 Morska rižota sivo+disabled+Badge, badge '1 neposlano', OFFLINE create → vrsta → online → /api/sync 200 → order v DB + miza occupied + vrsta prazna, HR jezik, /tablica→/handheld link, 0 console/page error, 390px 0 vodoravnih prelivov (mize/naroči/račun), 1280px OK
+- Commit 4f0af64 (pravilen avtor) → push GitHub + GitLab → Vercel deploy: health { ok, 1.84.0, 4f0af64, connected }, GET / 200, POST /api/furs 401, GET /handheld 200 (vsebina Handheld), GET /tablica 200
+
+Stage Summary:
+- P0-1 ZAPRTO v produkciji (4f0af64): /handheld enoročni tok — parity z Toast/Lightspeed tableside (#1 prodajni argument iz tržne analize)
+- Suite 1059/1059 (73 datotek); E2E odkrit 1 hrošč napitnine (popravljen pred commitom)
+- GitLab zrcalo robertpezdirc8/restaurantos vzpostavljeno in sinhronizirano; od zdaj dvojni push
+- Preostala P0: SAMO online pay link (P0-2); nato P1-5 EN jezik + P1-6 split po gostih (hitra dobička)
+- Uporabniške naloge: preklic IZPOSTAVLJENIH žetonov GitHub + GitLab (oba sta bila poslana v pogovoru!), Upstash env, Actions kvota 1. 11.
+---
+Task ID: v1.85.0
+Agent: glavni agent (Z.ai)
+Task: "odlično nadaljuj" — P0-2 iz TRZNA-VRZELI-2026 (zadnja P0 vrzel): online plačilna povezava (»QR položnica«) — gost plača račun na svojem telefonu.
+
+Work Log:
+- Prisma: NOV model PayLink (token 32-hex skrivnost @unique, orderId @unique, status open|paid|revoked|superseded, amount/tip za zaklep Stripe seje, phone/smsDetail, expiresAt, receiptId, createdBy; onDelete: Cascade na Order; indeksi) + PayLink? relacija na Order; db push + generate
+- src/lib/paylink/core.ts (218 vrst): newPayLinkToken/isPayLinkTokenShape/payLinkUrl (vzorec guest.ts), resolvePayProvider (STRIPE_SECRET_KEY env → Integration type='payments' → simulator), simulatedCharge (SIM-XXXXXX, ~300 ms — enak format kot terminalski adapter), stripeCreateCheckout + stripeSessionStatus (plain fetch, brez SDK), finalizePayLinkPayment — KLJUČNA odločitev: plačilo teče SKOZI kanonično issueFursReceipt prek sintetične NextRequest z strežniško kovanim break-glass žetonom (sub=bootstrap, role=ADMIN, 2 min; žeton ne zapusti procesa) → 0 duplikata fiskalne logike (CAS, EOR/ZKI-JIR, zaloga, loyalty, audit veriga, dovoljenja vse kanonična); idempotenca clientOperationId='plk:<token>' (Payment dobi #p0 pripono po konvenciji issue.ts)
+- POST/DELETE /api/orders/[id]/paylink (179 vrst): pravica orders.pay + guardResource; izdaja SAMO za aktivna naročila paymentStatus='unpaid' (partial/OPS-7 izven P0 obsega); idempotentna izdaja (isti token brez rotate; rotate=true = nova skrivnost); QR dataUrl (qrcode, isti parametri kot tables/[id]/qr); SMS fail-soft prek sendSms/smsConfigForLocation (Twilio/webhook) — napaka ne blokira; audit PAY_LINK_CREATED/PAY_LINK_REVOKED; DELETE = revokacija
+- GET/POST /api/public/pay/[token] (281 vrst): JAVNO (brez prijave), rate limit 60 branj/min/IP + 10 plačil/min/IP (rateLimitPublic); GET stanja z leni prehodi (paid/revoked/superseded/expired) + račun prek break-glass klica kanonične GET /api/orders/[id]/bill (0 duplikata izračuna — computeBill ostaja edini vir); POST { tip } → validacija 0 ≤ tip ≤ totalDue → simulator takoj / Stripe Checkout (redirect, znesek+napitnina ZAKLENJENA na povezavi) → verifySession po vrnitvi (server-to-server potrditev, neposrednost amount_total)
+- src/app/pay/[token]/page.tsx (332 vrst, nova javna stran): GuestI18nProvider + GuestLanguageToggle; račun (Medseštevek/DDV/Popust/Za plačilo), napitnina 0/5/10/15 % + po meri, simulator VEDNO vidno označen (amber badge — nikoli se ne izdaja za produkcijo), CTA v coni palca (h-14, safe-area), PLAČANO z računom/EOR/JIR, mrtve povezave (preklicano/poteklo/plačano drugje), Stripe ?s= potrditev po vrnitvi + history.replaceState čiščenje
+- Handheld RAČUN: nov razdelek »Plačilna povezava« — telefon (izbirno SMS) + Ustvari povezavo → QR 44×44 za gosta + URL (select-all) + SMS status + Kopiraj/Nova; goBill resetira stanje
+- i18n: pay.* ×32 + hh.plink* ×9 v OBEH slovarjih (SL/HR, pariteta samodejno verificirana)
+- tests/paylink-flow.test.ts (436 vrst, 19 testov): 401/403×3 (cleaner/kitchen/tuja lokacija), zlata pot (token 32-hex + QR + audit → idempotentna izdaja → javni GET 22,57 € → plačilo z napitnino 2,26 → paid+miza cleaning+Payment card/SIM-+Receipt EOR 24,83+PayLink paid+audit userId null → po plačilu GET paid/POST 409/bill 409 → izdaja na plačanem 409), mrtve povezave (revokacija/poteklo/superseded s POS plačilom), validacija (tip > znesek 400), SMS fail-soft, Stripe pot s fetch stub (checkout 201 redirect + zaklep zneska; verifySession → paid s pi_ sledjo; napačen znesek seje → 409)
+- fixture-sweep: prefiks 'plnk-' + payLink v ID_SWEEP (pred order) in LOCATION_CHILD_SWEEP (pred order)
+- Dokumenti: TRZNA-VRZELI-2026 (glava VSE P0 IZVEDENE, matrika ✓, §4 P0-2 ZAPRTO, §6 prečrtano, §7 sklep — parity v vseh P0), README POS vrstica, RESTAURANTOS-AUDIT dodatek v1.85.0, APP_VERSION → 1.85.0
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1078/1078 (74 datotek, +19)
+- Browser E2E na dev :3007 (svež e2e.db + seed, admin@): prijava → /handheld → Miza 1 (2× Burek + Coca-Cola 11,57 €) → POŠLJI V KUHINJO → Račun → Ustvari povezavo → QR 240 px + URL → GOSTOV zavihek /pay/<token>: račun + Demo badge + napitnina 10 % → Plačaj 12,73 € → PLAČANO (EOR 8B43DC79…, št. 2026-10-1-BLG001, napitnina 1,16) → miza SAMODEJNO Za pospraviti → en klik Na voljo; drugi krog: Miza 2 (Zebra 20,70 €) → povezava → HR jezik POPOLN prevod (Plaćanje računa/Narudžba/Međuzbroj/PDV/Napojnica/Plati/Plaćeno) → 5 % napitnina → Plaćeno (EOR 7025D3BF…, št. 2026-10-2-BLG001, 21,73 €); 390 px: 0 vodoravnih prelivov (odprto + plačano stanje); 0 console error, 0 page error, 0 manjkajočih i18n ključev; odkrita in popravljena 2 kozmetična hrošča med E2E (dvojna predpona »Miza Miza 1«; plačano stanje brez imena lokacije)
+- Commit → push GitHub + GitLab → Vercel deploy verify
+
+Stage Summary:
+- P0-2 ZAPRTO — ZADNJA P0 VRZEL: /pay/<token> QR položnica; plačilo skozi kanonično FURS jedro (0 duplikata fiskalne logike — arhitekturna odločitev: sintetični break-glass klic issueFursReceipt namesto refaktorja fiskalnega jedra)
+- VSE 3 P0 vrzeli iz TRZNA-VRZELI-2026 ZAPRTE (P0-3 v1.83.0, P0-1 v1.84.0, P0-2 v1.85.0) — parity z Toast/Square/Lightspeed v P0 plasteh
+- Suite 1078/1078 (74 datotek); Stripe pot produkcijsko pripravljena (dodaj STRIPE_SECRET_KEY), simulator privzet (honest, vidno označen)
+- Naslednji kandidati po §6: P1-5 EN jezik gosta + P1-6 split po gostih (hiter dobiček), P1-4 labor forecast
+- Uporabniške naloge: preklic IZPOSTAVLJENIH žetonov GitHub + GitLab, Upstash env, Actions kvota 1. 11.

@@ -57,6 +57,7 @@ export const TEST_PREFIXES = [
   'sk67-', // expenses-categories (Task 67)
   'sk68-', // client-bundle-hygiene (OPS-2)
   'hhfl-', // handheld-flow (v1.84.0 P0-1)
+  'plnk-', // paylink-flow (v1.85.0 P0-2)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -115,6 +116,8 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'guestFeedback' },
   { model: 'reservation' },
   { model: 'waitlistEntry' },
+  // v1.85.0 P0-2: javna plačilna povezava (FK → Order, briši PRED naročilom)
+  { model: 'payLink' },
   { model: 'check' },
   { model: 'orderItemModifier' },
   { model: 'orderItem' },
@@ -160,6 +163,7 @@ const LOCATION_CHILD_SWEEP = [
   'employee',
   'menu',
   'table',
+  'payLink',
   'order',
   'cashRegisterShift',
   'zReport',

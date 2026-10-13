@@ -16,6 +16,8 @@
  *  - GET  /api/orders/[id]/bill (orders.pay) — NOVO: kanonični predogled računa
  *  - POST /api/furs { orderId, type, tip?, terminal? } (orders.pay) — NOVO: plačilo
  *    pri mizi s fiskalizacijo; po uspehu strežnik samodejno: plačano + miza → DIRTY
+ *  - POST /api/orders/[id]/paylink (orders.pay) — NOVO v1.85.0: javna plačilna
+ *    povezava (P0-2) — QR pokažeš gostu, ta plača na svojem telefonu (/pay)
  * Offline: order.create / order.addItems v vrsti (src/lib/offline-queue, enako kot
  * tablica/dashboard); fire in plačilo ZAVESNO nista v vrsti (kuhinja je realnočasovna
  * akcija, plačila se po domeni nikoli ne čakajo) → ob izpadu jasno obvestilo.
@@ -30,7 +32,7 @@ import { processTerminalPayment } from '@/lib/devices/terminal'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Loader2, LogOut, ChevronLeft, Smartphone, Search, CheckCircle2, MessageSquare, Monitor, ArrowUpRight } from 'lucide-react'
+import { Loader2, LogOut, ChevronLeft, Smartphone, Search, CheckCircle2, MessageSquare, Monitor, ArrowUpRight, QrCode } from 'lucide-react'
 
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station?: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; tableId?: string | null; items: OrderItemT[]; paymentStatus?: string | null }
@@ -91,6 +93,10 @@ function HandheldInner() {
   const [paying, setPaying] = useState(false)
   const [online, setOnline] = useState(true)
   const [queueN, setQueueN] = useState(0)
+  // P0-2 (v1.85.0): plačilna povezava (QR položnica) iz pogleda RAČUN
+  const [plink, setPlink] = useState<{ url: string; qrDataUrl: string; sms: { sent: boolean; detail: string } | null } | null>(null)
+  const [plinkPhone, setPlinkPhone] = useState('')
+  const [plinkBusy, setPlinkBusy] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
@@ -262,7 +268,7 @@ function HandheldInner() {
     try {
       const b = await api<{ bill: BillT }>(`/api/orders/${openOrder.id}/bill`)
       setBill(b.bill)
-      setTipPct(0); setTipCustom(''); setPayMethod('cash')
+      setTipPct(0); setTipCustom(''); setPayMethod('cash'); setPlink(null)
       setView('bill')
     } catch (err) {
       setNotice((err as Error).message)
@@ -303,8 +309,25 @@ function HandheldInner() {
     } finally { setPaying(false) }
   }
 
+  /** P0-2 (v1.85.0): ustvari javno plačilno povezavo (+ QR za gosta, SMS izbirno). */
+  async function createPayLink() {
+    if (!openOrder || plinkBusy) return
+    if (!online) { setNotice(t('hh.payNeedsNet')); return }
+    setPlinkBusy(true); setNotice('')
+    try {
+      const d = await api<{ link: { url: string; qrDataUrl: string; sms: { sent: boolean; detail: string } | null } }>(`/api/orders/${openOrder.id}/paylink`, {
+        method: 'POST',
+        body: JSON.stringify({ phone: plinkPhone.trim() || undefined }),
+      })
+      setPlink(d.link ?? null)
+    } catch (err) {
+      setNotice((err as Error).message)
+    } finally { setPlinkBusy(false) }
+  }
+
   function backToTables() {
     setNotice(''); setBill(null); setPaidInfo(null); setCart({}); setNotes({}); setNoteOpen(null)
+    setPlink(null)
     setSelTableId(null)
     setView('tables')
   }
@@ -591,6 +614,54 @@ function HandheldInner() {
                   </button>
                 ))}
               </div>
+            </div>
+            {/* P0-2 (v1.85.0): plačilna povezava — gost plača na svojem telefonu */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-stone-500 uppercase">{t('hh.plink')}</p>
+              {!plink ? (
+                <div className="space-y-2 bg-white rounded-xl border border-stone-200 p-3">
+                  <Input
+                    value={plinkPhone}
+                    onChange={(e) => setPlinkPhone(e.target.value)}
+                    placeholder={t('hh.plinkPhone')}
+                    inputMode="tel"
+                    className="min-h-11"
+                    aria-label={t('hh.plinkPhone')}
+                  />
+                  <button
+                    disabled={plinkBusy || !online}
+                    onClick={() => void createPayLink()}
+                    className="w-full min-h-12 rounded-lg border border-emerald-700 text-emerald-800 text-sm font-bold flex items-center justify-center gap-2 active:bg-emerald-50 disabled:opacity-60"
+                  >
+                    {plinkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                    {t('hh.plinkCreate')}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 bg-white rounded-xl border border-stone-200 p-3 text-center">
+                  <img src={plink.qrDataUrl} alt={t('hh.plinkQr')} className="mx-auto w-44 h-44" />
+                  <p className="text-[11px] text-stone-500 break-all select-all">{plink.url}</p>
+                  {plink.sms && (
+                    <p className={`text-[11px] font-semibold ${plink.sms.sent ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {plink.sms.sent ? t('hh.plinkSent') : `${t('hh.plinkSendFail')} — ${plink.sms.detail}`}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => { void navigator.clipboard?.writeText(plink.url).catch(() => null); setNotice(t('hh.plinkCopied')) }}
+                      className="min-h-11 rounded-lg border border-stone-200 text-sm font-bold active:bg-stone-100"
+                    >
+                      {t('hh.plinkCopy')}
+                    </button>
+                    <button
+                      onClick={() => void createPayLink()}
+                      className="min-h-11 rounded-lg border border-stone-200 text-sm font-bold active:bg-stone-100"
+                    >
+                      {t('hh.plinkNew')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

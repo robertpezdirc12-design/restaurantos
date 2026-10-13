@@ -1,4 +1,4 @@
-# TRŽNA VRZEL-ANALIZA — 2. krog (v1.82.9 → v1.82.10, 2026-10-13; P0-3 izveden v v1.83.0)
+# TRŽNA VRZEL-ANALIZA — 2. krog (v1.82.9 → v1.85.0, 2026-10-13; VSE P0 IZVEDENE: P0-3 v1.83.0, P0-1 v1.84.0, P0-2 v1.85.0)
 
 > Nadaljevanje OPS-4 (`GAP-ANALIZA-funkcije-in-dovoljenja.md`, @ v1.66.0).
 > Naročilo lastnika: »raziskuj po spletu najboljše in primerjaj, kaj nam še manjka.«
@@ -66,7 +66,7 @@ Legenda: ✓ ima · ~ delno · ✗ manjka · — ni relevantno za ta trg
 | Offline način | ✓ | ~ | ✓ | ✓ | ✓ | ✓ (POS vrsta + resilience) |
 | **Hiter »86« toggle na KDS** | ✓ | ✓ | ✓ | ✓ | ✓ | **✓ v1.83.0 (86-plošča + nadomestki; gumb na listkah + ozek API od OPS-4)** |
 | Integrirana kartična plačila | ✓ | ✓ | ✓ | ✓ | ✓ | ~ (terminal, brez PAN) |
-| **Online plačilo (pay link)** | ✓ | ✓ | ✓ | ✗ | ✗ | **✗** |
+| **Online plačilo (pay link)** | ✓ | ✓ | ✓ | ✗ | ✗ | **✓ (v1.85.0 /pay/token: QR položnica + napitnina + kanonični FURS zaključek)** |
 | Fiskalizacija SI (FURS) | ✗ | ✗ | ✗ | ✗ | ✓ | **✓ (EOR/ZOI)** |
 | Fiskalizacija HR (FINA 2.0) | ✗ | ✗ | ✗ | ✗ | ~ | **✓ (pripr. na cert)** |
 | Dostava webhook (agregatorji) | ✓ | ✓ | ✓ | — | ~ | ✓ (Glovo/Wolt) |
@@ -111,7 +111,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 | # | Manjka | Zakaj pomembno | Trud |
 |---|---|---|---|
 | ~~1~~ | ~~Handheld tok za natakarja~~ — ✅ **izvedeno v v1.84.0** (/handheld: mize → naroči → fire → plačaj pri mizi; offline vrsta order.create/addItems; fire+plačilo zavestno samo online; 12-testni pokrov tests/handheld-flow.test.ts) | Lightspeed Tableside/Toast handheld = #1 prodajni argument | ~~Srednji~~ |
-| 2 | **Online plačilo QR položnice (pay link)** — gost odpre QR položnico in plača kartico na telefonu | Square/Toast/Lightspeed vsi; zmanjša čakanje natakarja pri mizi; poveča turnover | Srednji (ponudnik plačil) |
+| ~~2~~ | ~~**Online plačilo QR položnice (pay link)**~~ — ✅ **ZAPRTO v v1.85.0**: /pay/&lt;token&gt; javna stran (kanonični račun, napitnina 0/5/10/15 % + po meri, kartica) + POST /api/orders/[id]/paylink (QR + SMS fail-soft, pravica orders.pay) + GET/POST /api/public/pay/[token] (brez prijave, rate limit) — plačilo teče SKOZI kanonično FURS jedro (issueFursReceipt z break-glass žetonom — 0 duplikata fiskalne logike, CAS + idempotenca plk:&lt;token&gt;); ponudnik: Stripe Checkout (env STRIPE_SECRET_KEY oz. Integration type=payments) ali honest simulator (vidna značka); tests/paylink-flow.test.ts 19 testov | Square/Toast/Lightspeed vsi; zmanjša čakanje natakarja pri mizi; poveča turnover | Zaprto (v1.85.0) |
 | 3 | **Hiter »86« toggle na KDS/šank** — ✅ **ZAPRTO v v1.83.0**: 86-plošča na KDS (proaktivni 86 katerega koli artikla, obnova z enim klikom, števec razprodanih), avtomatski nadomestki iz iste kategorije (prioriteta ista postaja, max 3), waiter dialogi (novo naročilo + urejevalnik OPS-7) kažejo 86 + nadomestke namesto tihega skrivanja/zavrnitve; ozek API PATCH /api/menus/[id]/availability + menu.availability obstajata od OPS-4 (4e7b6e6) | Popravek poštenosti: v1.82.10 je vrstico ocenil ✗ — gumb na listkah naročil JE obstajal; manjkali so proaktivna plošča, nadomestki, waiter vidnost in testni pokrov (dodan tests/menu-86-board.test.ts: 401/403×2/400/404, toggle, revizijska veriga, idempotenca) | Zaprto (v1.83.0) |
 
 ### P1 — vsi vodilni imajo, konkurenčna parity
@@ -161,16 +161,17 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 
 1. ~~86-toggle (P0-3)~~ — ✅ **izvedeno v v1.83.0** (86-plošča + nadomestki + waiter-UI + testni pokrov; gl. §4).
 2. ~~Handheld tok (P0-1)~~ — ✅ **izvedeno v v1.84.0** (/handheld — enoročni tok mize→naroči→fire→plačaj pri mizi z velikimi CTA v coni palca, 86 artikli sivo, offline vrsta; tests/handheld-flow.test.ts 12 testov; gl. §4.1).
-3. **Pay link** (P0-2) — izbira ponudnika plačil (Stripe/SumUp lokalno).
+3. ~~Pay link (P0-2)~~ — ✅ **izvedeno v v1.85.0** (ponudnik: Stripe Checkout prek env/Integration; simulator privzet — gl. §4).
 4. **EN jezik gostu** (P1-5) + split po gostih (P1-6) — hiter dobiček.
 5. **Labor forecast + AI** (P1-4, P2-9) — podatki že zbrani (prodaja po urah, labor cost).
 6. Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).
 
 ## 7. Sklep
 
-RestavrantOS @ v1.82.9 je na **feature-parity s svetovnimi vodilnimi v ~80 % matrike** in
-**vodi v fiskalizaciji SI/HR, HACCP, audit verigi, menu engineeringu in lastništvu kode**.
-Preostala 1 P0 vrzel (pay link) je izvedljiva z obstoječo infrastrukturo —
-86-toggle je zaprt v v1.83.0, handheld tok pa v v1.84.0 (/handheld:
-enoročni PWA tok mize → naroči → fire → plačaj pri mizi, 12-testni pokrov).
+RestavrantOS @ v1.85.0 je na **feature-parity s svetovnimi vodilnimi v vseh P0 vrstah
+matrike** in **vodi v fiskalizaciji SI/HR, HACCP, audit verigi, menu engineeringu in
+lastništvu kode**. VSE 3 P0 vrzeli so ZAPRTE: 86-toggle v v1.83.0, handheld tok v
+v1.84.0 (/handheld) in online plačilna povezava v v1.85.0 (/pay/token — QR položnica
+z napitnino, plačilo skozi kanonični FURS zaključek, Stripe Checkout ali simulator,
+19-testni pokrov). Preostale vrzeli so P1+ (EN jezik, labor forecast, spletni portal).
 Regulatorno je sistem pripravljen na ViDA-ero z izjemo B2B e-račun izvoza (rok 2030+).
