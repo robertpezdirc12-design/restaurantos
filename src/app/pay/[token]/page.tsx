@@ -34,6 +34,16 @@ interface ReceiptInfo {
   fiscalStatus: string
 }
 
+interface SplitInfo {
+  index: number
+  count: number
+  share?: number | null
+  paidShares?: number
+  paidTotal?: number
+  remaining?: number
+  receiptPending?: boolean
+}
+
 interface PayState {
   status: 'open' | 'paid' | 'revoked' | 'superseded' | 'expired'
   provider?: 'simulator' | 'stripe'
@@ -44,6 +54,12 @@ interface PayState {
   tipPresets?: number[]
   receipt?: ReceiptInfo | null
   paidAt?: string | null
+  /** P1-6: delež gosta (split po gostih — fiksni delež povezave). */
+  share?: number | null
+  tipPaid?: number | null
+  approvalCode?: string | null
+  receiptPending?: boolean
+  split?: SplitInfo
 }
 
 const fmt = (n: number) => `${(Number.isFinite(n) ? n : 0).toFixed(2).replace('.', ',')} €`
@@ -135,8 +151,12 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
   }, [token, load])
 
   const totalDue = state?.bill?.totalDue ?? 0
-  const tip = tipCustom.trim() !== '' ? Math.max(0, Number(tipCustom.replace(',', '.')) || 0) : (totalDue * tipPct) / 100
-  const payTotal = Math.round((totalDue + tip) * 100) / 100
+  // P1-6: v split načinu gost plačuje SVOJ DELEŽ (fiksna vrstica povezave),
+  // napitnina se izbere NA delež (0 … delež)
+  const share = state?.split?.share ?? null
+  const splitAmount = share != null && share > 0 ? share : totalDue
+  const tip = tipCustom.trim() !== '' ? Math.max(0, Number(tipCustom.replace(',', '.')) || 0) : (splitAmount * tipPct) / 100
+  const payTotal = Math.round((splitAmount + Math.min(tip, splitAmount)) * 100) / 100
 
   const pay = async () => {
     setPaying(true)
@@ -195,6 +215,24 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
 
   // ── plačano ──
   if (s.status === 'paid') {
+    // P1-6: VMESNI delež (račun še ni izdan — čaka ostale goste)
+    if (!s.receipt && (s.receiptPending || (s.split && s.split.count > 1))) {
+      return (
+        <Shell t={t} name={s.location?.name}>
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
+            <CheckCircle2 className="h-10 w-10 mx-auto text-green-600" />
+            <h2 className="mt-2 text-xl font-bold text-green-900">{t('pay.sharePaid')}</h2>
+            <dl className="mt-4 space-y-1.5 text-sm text-stone-700 bg-white rounded-xl border border-green-100 p-4 text-left">
+              {s.share != null && <Row label={t('pay.share')} value={fmt(s.share)} strong />}
+              {s.tipPaid != null && s.tipPaid > 0 && <Row label={t('pay.tip')} value={fmt(s.tipPaid)} />}
+              {s.share != null && s.tipPaid != null && <Row label={t('pay.totalWithTip')} value={fmt(s.share + s.tipPaid)} strong />}
+              {s.approvalCode && <Row label="Odobritev" value={s.approvalCode} mono />}
+            </dl>
+            <p className="text-sm text-green-700 mt-3">{t('pay.sharePaidNote')}</p>
+          </div>
+        </Shell>
+      )
+    }
     return (
       <Shell t={t} name={s.location?.name}>
         <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
@@ -203,6 +241,8 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
           <p className="text-sm text-green-700 mt-1">{t('pay.thanks')}</p>
           {s.receipt && (
             <dl className="mt-4 space-y-1.5 text-sm text-stone-700 bg-white rounded-xl border border-green-100 p-4 text-left">
+              {s.split && s.split.count > 1 && s.share != null && <Row label={t('pay.share')} value={fmt(s.share)} />}
+              {s.split && s.split.count > 1 && s.tipPaid != null && s.tipPaid > 0 && <Row label={t('pay.tip')} value={fmt(s.tipPaid)} />}
               <Row label={t('pay.receipt')} value={s.receipt.receiptNumber} strong />
               <Row label={t('pay.totalDue')} value={fmt(s.receipt.total)} />
               <Row label={t('pay.tip')} value={fmt(s.receipt.tip)} />
@@ -234,8 +274,27 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
 
   // ── odprto: račun + napitnina + plačilo ──
   const presets = s.tipPresets && s.tipPresets.length ? s.tipPresets : [0, 5, 10, 15]
+  const isSplit = !!s.split && (s.split.count > 1 || (s.split.share != null && s.split.share > 0))
   return (
     <Shell t={t} name={s.location?.name}>
+      {/* P1-6: delež gosta (split) — fiksni znesek, napredek niza */}
+      {isSplit && (
+        <div className="rounded-2xl border border-stone-900 bg-stone-900 text-white p-5 shadow-sm">
+          <div className="flex items-baseline justify-between">
+            <p className="text-sm font-semibold opacity-90">{t('pay.share')} {s.split!.count > 1 ? `${s.split!.index}/${s.split!.count}` : ''}</p>
+            <p className="text-xs opacity-75">{t('pay.shareOf')} {fmt(totalDue)}</p>
+          </div>
+          <p className="mt-1 text-3xl font-bold">{fmt(splitAmount)}</p>
+          {s.split!.count > 1 && (
+            <div className="mt-3">
+              <div className="h-1.5 rounded-full bg-white/20 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={s.split!.count} aria-valuenow={s.split!.paidShares ?? 0}>
+                <div className="h-full bg-emerald-400 transition-all" style={{ width: `${Math.min(100, ((s.split!.paidShares ?? 0) / s.split!.count) * 100)}%` }} />
+              </div>
+              <p className="mt-1.5 text-xs opacity-75">{s.split!.paidShares ?? 0}/{s.split!.count} {t('pay.splitProgress')}</p>
+            </div>
+          )}
+        </div>
+      )}
       {/* Račun */}
       <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
@@ -304,13 +363,13 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       <div className="sticky bottom-0 inset-x-0 -mx-4 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-stone-50 via-stone-50 to-transparent">
         <Button
           className="w-full h-14 text-base font-bold"
-          disabled={paying || totalDue <= 0}
+          disabled={paying || splitAmount <= 0}
           onClick={pay}
         >
           {paying ? (
             <><Loader2 className="mr-2 h-5 w-5 animate-spin" />{t('pay.paying')}</>
           ) : (
-            <><CreditCard className="mr-2 h-5 w-5" />{t('pay.pay')} · {fmt(payTotal)}</>
+            <><CreditCard className="mr-2 h-5 w-5" />{isSplit ? t('pay.payShare') : t('pay.pay')} · {fmt(payTotal)}</>
           )}
         </Button>
         <p className="mt-2 text-center text-[11px] text-stone-400">{t('pay.footer')}</p>

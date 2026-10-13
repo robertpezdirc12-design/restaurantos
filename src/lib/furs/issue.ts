@@ -18,6 +18,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
+import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { pushEvent } from '@/lib/push'
@@ -202,7 +203,7 @@ export async function issueFursReceipt(req: NextRequest) {
   const total = checkScope ? checkScope.total : bill.totalDue // znesek ZA PLAČANJE (po popustih)
   // Issue #1 (triage ①): napitnina lahko pride direktno s plačilom (body.tip, iz POS dialoga)
   // ali je bila že nastavljena na naročilu (orderPre.tip) — aditivno, nazaj-kompatibilno.
-  const tip =
+  let tip =
     body?.tip !== undefined && body?.tip !== null && String(body.tip).trim() !== ''
       ? Math.max(0, num(body.tip))
       : num(orderPre.tip)
@@ -253,8 +254,46 @@ export async function issueFursReceipt(req: NextRequest) {
     }
     return null
   }
+  // ── P1-6 (v1.87.0) — DELEŽI, PLAČANI PREK PLAČILNIH POVEZAV (split po gostih) ──
+  // Vmesna plačila deležev (PayLink status='paid', receiptId še null, amount fiksna)
+  // so ŽE POBRAŠEN denar (odobritev terminala je na vrstici povezave) — jedro jih
+  // samodejno prišteje med dele plačila (en vir resnice):
+  //  - zadnji gost splita pokliče s parts: [] → račun pokrijejo SAMO povezave;
+  //  - POS zaključek: KLASIČNA pot (type + brez parts) samodejno plača SAMO
+  //    PREOSTANEK (total − točke − pobrani deleži — Toast-style "plačaj odprti
+  //    balance"); eksplicitni parts morajo vsoto dopolniti do celote;
+  //  - naročila BREZ povezav: 0 vrstic → obnašanje bit-identično prej (0 vpliva).
+  // Napitnine povezav se prištejejo k body tip (račun ima eno napitnino).
+  // POZOR: klasična (N=1) povezava se OZNAČI plačana ŠELE PO tem klicu — ob klicu
+  // je še 'open' → ni vključena (brez dvojnega štetja).
+  // POZOR (produkcija): med migrate-paylink-split DDL stolpci morda še manjkajo —
+  // shemska napaka (P2010/42703) NI plačilna napaka: izdaja/deleži takrat niso
+  // možni (payLinkReady 503) → mirno prazna lista (POS plačila delujejo).
+  const paidLinks = checkScope
+    ? [] // checkScope način: povezave pokrivajo CELOTO naročila — mešanje z izstavki ni smiselno (vsota bi razneslo)
+    : await db.payLink
+        .findMany({
+          where: { orderId: orderPre.id, status: 'paid', receiptId: null, amount: { not: null } },
+          orderBy: [{ splitIndex: 'asc' }, { createdAt: 'asc' }],
+          select: { amount: true, tip: true, approvalCode: true },
+        })
+        .catch((e: unknown) => {
+          if (isMissingSchemaError(e)) return []
+          throw e
+        })
+  let linkPaidTotal = 0
+  for (const l of paidLinks) {
+    const la = r2(num(l.amount))
+    if (la <= 0) continue
+    linkPaidTotal = r2(linkPaidTotal + la)
+  }
+  const linkTipTotal = paidLinks.length ? r2(paidLinks.reduce((s, l) => s + Math.max(0, num(l.tip)), 0)) : 0
+  if (linkTipTotal > 0) tip = r2(tip + linkTipTotal)
+
   const parts: PaymentPart[] = []
-  if (Array.isArray(body?.parts) && body.parts.length > 0) {
+  // P1-6: Array.isArray tudi za PRAZNO polje — caller (zadnji gost split plačilnih
+  // povezav) s praznim nizom pove »ročnih delov ni, znesek mora prinesti links«.
+  if (Array.isArray(body?.parts)) {
     if (body.parts.length > 10) return fail('Največ 10 delov plačila.', 400)
     for (const p of body.parts as Record<string, unknown>[]) {
       const type = String(p?.type || '').toLowerCase()
@@ -289,7 +328,9 @@ export async function issueFursReceipt(req: NextRequest) {
     if (['card', 'mobile'].includes(legacyType) && !ta) {
       return fail('Kartično plačilo zahteva odobritev terminala (approvalCode).', 402)
     }
-    const legacyAmount = r2(total - redeemValue)
+    // P1-6: klasična pot plača SAMO PREOSTANEK — pobrani deleži povezav se
+    // prištejejo med dele spodaj (vsota = celota; Toast-style odprti balance)
+    const legacyAmount = r2(total - redeemValue - linkPaidTotal)
     if (legacyAmount > 0) {
       let legacyGc: string | undefined
       if (legacyType === 'giftcard') {
@@ -301,12 +342,20 @@ export async function issueFursReceipt(req: NextRequest) {
     }
   }
 
+  // P1-6: deleži povezav kot PLAČILNI DELI (tip 'card', odobritev iz vrstice —
+  // sledljivost kot terminalske SIM-/pi- kode)
+  for (const l of paidLinks) {
+    const la = r2(num(l.amount))
+    if (la <= 0) continue
+    parts.push({ type: 'card', amount: la, terminalApproval: (l.approvalCode || '').trim().slice(0, 40) })
+  }
+
   // ── Usklajenost zneskov: deli + unovčene točke = za plačanje (preprečitev preplačila) ──
   const partsSum = r2(parts.reduce((s, p) => s + p.amount, 0))
   const expected = r2(redeemValue + partsSum)
   if (Math.abs(expected - total) > 0.004) {
     return fail(
-      `Vsota delov plačila (${partsSum.toFixed(2)} €)${redeemValue ? ` + točke (${redeemValue.toFixed(2)} €)` : ''} mora biti enaka znesku za plačanje (${total.toFixed(2)} €).`,
+      `Vsota delov plačila (${partsSum.toFixed(2)} €)${redeemValue ? ` + točke (${redeemValue.toFixed(2)} €)` : ''} mora biti enaka znesku za plačanje (${total.toFixed(2)} €)${linkPaidTotal > 0 ? ` — prek plačilnih povezav je že bilo pobranih ${linkPaidTotal.toFixed(2)} € (plačajte le preostanek)` : ''}.`,
       400,
     )
   }

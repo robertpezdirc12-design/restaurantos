@@ -112,6 +112,12 @@ export function isPayLinkStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+/** v1.87.0 (P1-6): split po gostih — ALTER TABLE ADD COLUMN + DROP INDEX nad PayLink. */
+export function isPayLinkSplitStatement(stmt: string): boolean {
+  if (!/"PayLink"/.test(stmt)) return false
+  return /^(ALTER\s+TABLE|DROP\s+INDEX)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -143,6 +149,18 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       '(ustvari jih osebje — pred tem ne obstajajo). Ko je DDL apliciran, drift ' +
       'izgine in ta vnos postane mrtva koda.',
     matches: isPayLinkStatement,
+  },
+  {
+    id: 'paylink-split',
+    reason:
+      'PayLink split po gostih (P1-6, v1.87.0 — N povezav na naročilo) — ' +
+      'produkcija čaka DDL korak: admin ruta /api/admin/migrate-paylink-split ' +
+      '(konzola Enterprise → Shema migracije → en klik; DROP orderId unique + ' +
+      'splitIndex/splitCount/approvalCode stolpci). Do DDL obstoječe PayLink ' +
+      'poizvedbe delujejo (stolpci imajo varne defaulte v Prisma klientu — ' +
+      'poizvedbe z novimi stolpci vrnejo P2022/P2010 → rute 503 degradirajo ' +
+      'prek payLinkReady probe). Ko je DDL apliciran, drift izgine.',
+    matches: isPayLinkSplitStatement,
   },
   {
     id: 'stroski-kategorije',

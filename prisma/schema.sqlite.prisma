@@ -48,12 +48,6 @@ model AccountsPayable {
   updatedAt           DateTime @updatedAt
   locationId          String?
   matchStatus         String                @default("unmatched")
-  // Task 66 (v1.64.0): stroški kategorije — DEV ONLY do uporabniškega DDL koraka.
-  // Main schema.prisma (produkcija) polja NIMA, dokler centralna vloga ne aplicira
-  // /api/admin/migrate-stroski-kategorije (konzola Enterprise) — sicer bi Prisma
-  // client na produkciji SELECT-al neobstoječ stolpec (P2022 zastrupitev živih
-  // poizvedb). Naslednja naloga (koda/UI kategorij) doda polje v main schema.
-  category            String                @default("")
   Location            Location?             @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   Supplier            Supplier              @relation(fields: [supplierId], references: [id])
   AccountsPayableLine AccountsPayableLine[]
@@ -63,6 +57,12 @@ model AccountsPayable {
   @@index([status, dueDate])
   @@index([status])
   @@index([supplierId])
+  // Task 66 (v1.64.0): stroški kategorije — DEV ONLY do uporabniškega DDL koraka.
+  // Main schema.prisma (produkcija) polja NIMA, dokler centralna vloga ne aplicira
+  // /api/admin/migrate-stroski-kategorije (konzola Enterprise) — sicer bi Prisma
+  // client na produkciji SELECT-al neobstoječ stolpec (P2022 zastrupitev živih
+  // poizvedb). Naslednja naloga (koda/UI kategorij) doda polje v main schema.
+  category            String                @default("")
 }
 
 model AccountsPayableLine {
@@ -1563,7 +1563,7 @@ model Order {
   Table                                  Table?             @relation(fields: [tableId], references: [id], onUpdate: SetNull)
   VirtualBrand                           VirtualBrand?      @relation(fields: [virtualBrandId], references: [id], onUpdate: SetNull)
   OrderItem                              OrderItem[]
-  PayLink                                PayLink?
+  PayLink                                PayLink[]
   Receipt                                Receipt[]
   StockTransaction                       StockTransaction[]
 
@@ -1739,21 +1739,28 @@ model Payment {
 }
 
 // P0-2 TRZNA-VRZELI (v1.85.0) — javna plačilna povezava za gosta ("QR položnica").
-// Token = 32-hex skrivnost (vzorec Table.qrToken) → javna stran /pay/<token>.
-// Ena povezava na naročilo (orderId @unique); plačilo teče SKOZI kanonično FURS
-// jedro (issueFursReceipt, src/lib/furs/issue.ts) — brez duplikata fiskalne logike.
-// amount/tip se zapolnita ob Stripe Checkout seji (znesek je ZAKLEPAN na seji);
-// pri simulatorju ostaneva null (dinamični račun ob plačilu).
+// Token = 32-hex skrivnost → javna stran /pay/<token>; ena povezava na naročilo;
+// plačilo teče SKOZI kanonično FURS jedro (issueFursReceipt).amount/tip se
+// zapolnita ob Stripe Checkout seji (znesek ZAKLEPAN); simulator = null (dinamično).
 model PayLink {
   id         String    @id
   token      String    @unique
-  orderId    String    @unique
+  // P1-6 (v1.87.0): orderId NI VEČ @unique — N povezav na naročilo (split po
+  // gostih): vsak gost svoj QR/delež; amount = FIKSNI delež (razen N=1 klasična
+  // povezava, kjer ostaja null = dinamičen preostanek ob plačilu).
+  orderId    String
   locationId String
   status     String    @default("open") // open | paid | revoked | superseded
   phone      String    @default("")
   smsDetail  String    @default("")
   amount     Decimal?
   tip        Decimal?
+  // P1-6: split metapodatki (snapshot ob izdaji) + odobritev terminala za
+  // VMESNA plačila deležev (dokler končni račun še ni izdan — Payment vrstica
+  // nastane šele ob zaključku prek kanoničnega FURS jedra).
+  splitIndex Int       @default(1)
+  splitCount Int       @default(1)
+  approvalCode String  @default("")
   expiresAt  DateTime?
   paidAt     DateTime?
   receiptId  String?

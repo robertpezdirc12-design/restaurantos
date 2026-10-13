@@ -1551,7 +1551,7 @@ model Order {
   Table                                  Table?             @relation(fields: [tableId], references: [id], onUpdate: SetNull)
   VirtualBrand                           VirtualBrand?      @relation(fields: [virtualBrandId], references: [id], onUpdate: SetNull)
   OrderItem                              OrderItem[]
-  PayLink                                PayLink?
+  PayLink                                PayLink[]
   Receipt                                Receipt[]
   StockTransaction                       StockTransaction[]
 
@@ -1733,13 +1733,22 @@ model Payment {
 model PayLink {
   id         String    @id
   token      String    @unique
-  orderId    String    @unique
+  // P1-6 (v1.87.0): orderId NI VEČ @unique — N povezav na naročilo (split po
+  // gostih): vsak gost svoj QR/delež; amount = FIKSNI delež (razen N=1 klasična
+  // povezava, kjer ostaja null = dinamičen preostanek ob plačilu).
+  orderId    String
   locationId String
   status     String    @default("open") // open | paid | revoked | superseded
   phone      String    @default("")
   smsDetail  String    @default("")
   amount     Decimal?
   tip        Decimal?
+  // P1-6: split metapodatki (snapshot ob izdaji) + odobritev terminala za
+  // VMESNA plačila deležev (dokler končni račun še ni izdan — Payment vrstica
+  // nastane šele ob zaključku prek kanoničnega FURS jedra).
+  splitIndex Int       @default(1)
+  splitCount Int       @default(1)
+  approvalCode String  @default("")
   expiresAt  DateTime?
   paidAt     DateTime?
   receiptId  String?

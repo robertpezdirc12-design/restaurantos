@@ -236,6 +236,9 @@ const GUEST_API_ERROR_KEY_MAP: Record<string, string> = {
   'Seja ni bila ustvarjena.': 'pay.errorRetry',
   'Znesek seje se ne ujema s povezavo.': 'pay.errorRetry',
   'Napitnina je izven dovoljenega obsega (0 do zneska računa).': 'pay.tipRange',
+  'Napitnina je izven dovoljenega obsega (0 do zneska deleža).': 'pay.tipRange',
+  'Račun se je spremenil — prosite osebje za novo povezavo.': 'pay.billChanged',
+  'Nič ni več za plačilo prek te povezave.': 'pay.errorRetry',
 }
 
 /** Znan SL niz iz javnega API-ja → i18n ključ; neznan → null (surovi prikaz). */

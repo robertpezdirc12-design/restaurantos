@@ -5,6 +5,7 @@ import { createToken } from '@/lib/auth'
 import { issueFursReceipt } from '@/lib/furs/issue'
 import { clientIp } from '@/lib/guest'
 import { jparse, r2 } from '@/lib/map'
+import { GET as billGET } from '@/app/api/orders/[id]/bill/route'
 
 /**
  * P0-2 TRZNA-VRZELI (v1.85.0) — jedro javne plačilne povezave (»QR položnica«).
@@ -156,50 +157,66 @@ export async function stripeSessionStatus(secretKey: string, sessionId: string):
   }
 }
 
+// ---------- skupni predogled računa (break-glass klic kanonične bill rute) ----------
+
+/**
+ * P1-6 (v1.87.0): loadBill iz javne pay rute povzdignjen v core — deleže
+ * izračunava TUDI osebje (POST /api/orders/[id]/paylink). 0 duplikata
+ * izračuna: vedno kanonični computeBill prek GET /api/orders/[id]/bill.
+ */
+export async function loadOrderBill(orderId: string): Promise<{ totalDue: number; bill: Record<string, unknown> } | null> {
+  const token = createToken({ sub: 'bootstrap', name: 'Plačilna povezava', role: 'ADMIN', loc: null, sv: 0 }, 2 / 60)
+  const req = new NextRequest(`http://127.0.0.1:3000/api/orders/${orderId}/bill`, {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  const res = await billGET(req, { params: Promise.resolve({ id: orderId }) })
+  if (!res.ok) return null
+  const data = (await res.json().catch(() => null)) as { bill?: { totalDue?: number } } | null
+  if (!data?.bill || typeof data.bill.totalDue !== 'number') return null
+  return { totalDue: r2(data.bill.totalDue), bill: data.bill as Record<string, unknown> }
+}
+
 // ---------- finalize: plačilo SKOZI kanonično FURS jedro ----------
 
-export interface FinalizePayLinkArgs {
-  payLinkToken: string
-  orderId: string
-  /** Napitnina v EUR (absolutna vrednost — enaka konvencija kot POST /api/furs). */
-  tip: number
-  /** Oznaka ponudnika: 'simulator' | 'stripe' (v Payment sled). */
+export interface FinalizePayLinkPart {
+  type: string
+  amount: number
   approvalCode: string
-  /** IP gosta za audit (lazy — null če neznan). */
-  ip?: string | null
 }
 
 export type FinalizePayLinkResult =
-  | { ok: true; replayed: boolean; invoice: Record<string, unknown> }
+  | { ok: true; replayed: boolean; invoice: Record<string, unknown>; receiptId: string | null }
   | { ok: false; status: number; error: string }
 
-/**
- * Izvede plačilo naročila prek povezave — 0 nove plačilne/fiskalne logike:
- * POST /api/furs (issueFursReceipt) prek sintetične zahteve z break-glass
- * žetonom (sub='bootstrap', vloga ADMIN, 2 minuti življenjske dobe, kovan
- * IZKLJUČNO v tem strežniškem procesu — HMAC podpis zahteva APP_SECRET).
- * clientOperationId = 'plk:<token>' → stabilna idempotenca: dvojni klik,
- * osvežitev ali ponovni prihod s Stripe vrnitve vrača ISTI račun (replayed).
- */
-export async function finalizePayLinkPayment(args: FinalizePayLinkArgs): Promise<FinalizePayLinkResult> {
-  const token = createToken(
+/** break-glass žeton za EN kanonični klic (sub='bootstrap', 2 min, procesno-lokalen). */
+function payLinkCoreToken(): string {
+  return createToken(
     { sub: 'bootstrap', name: 'Plačilna povezava', role: 'ADMIN', loc: null, sv: 0 },
-    2 / 60, // 2 minuti — žeton je samo za ta en klic
+    2 / 60,
   )
+}
+
+/** Skupni klic issueFursReceipt prek sintetične POST /api/furs zahteve. */
+async function postFursCore(
+  orderId: string,
+  parts: FinalizePayLinkPart[],
+  tip: number,
+  clientOperationId: string,
+  ip?: string | null,
+): Promise<FinalizePayLinkResult> {
   const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
+    authorization: `Bearer ${payLinkCoreToken()}`,
     'content-type': 'application/json',
   }
-  if (args.ip) headers['x-forwarded-for'] = args.ip
+  if (ip) headers['x-forwarded-for'] = ip
   const req = new NextRequest('http://127.0.0.1:3000/api/furs', {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      orderId: args.orderId,
-      type: 'card',
-      tip: r2(args.tip),
-      terminal: { approvalCode: args.approvalCode },
-      clientOperationId: `plk:${args.payLinkToken}`,
+      orderId,
+      parts: parts.map((p) => ({ type: p.type, amount: r2(p.amount), terminal: { approvalCode: p.approvalCode } })),
+      tip: r2(tip),
+      clientOperationId,
     }),
   })
   const res = await issueFursReceipt(req)
@@ -207,22 +224,45 @@ export async function finalizePayLinkPayment(args: FinalizePayLinkArgs): Promise
   if (!res.ok || !data?.invoice) {
     return { ok: false, status: res.status, error: data?.error || `Plačilo ni uspelo (${res.status}).` }
   }
-  return { ok: true, replayed: data.replayed === true, invoice: data.invoice }
+  const receiptId = String(data.invoice['id'] || '') || null
+  return { ok: true, replayed: data.replayed === true, invoice: data.invoice, receiptId }
+}
+
+/**
+ * P1-6: DOKONČANJE NIZA deležev — zadnji gost je plačal svoj delež, odprtih
+ * povezav ni več → izda KONČNI račun prek kanoničnega FURS jedra:
+ * parts: [] (ročnih delov ni) + jedro SAMO prišteje plačane deleže povezav
+ * (status='paid', receiptId null → glej issue.ts P1-6 blok) + njihove
+ * napitnine. clientOperationId = 'plkset:<orderId>' (stabilen po naročilu —
+ * dvojni klik/refresh/obnova GET vrača ISTI račun, replayed).
+ * Po uspehu se receiptId zapiše na VSE plačane povezave niza (idempotentno).
+ */
+export async function finalizePayLinkSet(orderId: string, ip?: string | null): Promise<FinalizePayLinkResult> {
+  const result = await postFursCore(orderId, [], 0, `plkset:${orderId}`, ip)
+  if (!result.ok) return result
+  if (result.receiptId) {
+    await db.payLink
+      .updateMany({ where: { orderId, status: 'paid', receiptId: null }, data: { receiptId: result.receiptId } })
+      .catch(() => {})
+  }
+  return result
 }
 
 // ---------- capability probe (v1.85.1 — haccp-plans vzorec) ----------
 
 /**
- * Ali tabela PayLink obstaja (dev SQLite: da prek db push; produkcijski Neon:
- * po migrate-paylink DDL koraku). 60 s TTL — produkcijska PayLink ruta med
+ * Ali je PayLink shema PRIPRAVLJENA (v1.87.0: tabela + P1-6 split stolpci —
+ * dev SQLite: da prek db push; produkcijski Neon: po migrate-paylink IN
+ * migrate-paylink-split DDL korakih). 60 s TTL — produkcijska PayLink ruta med
  * čakanjem na DDL vrača 503 s prijaznim sporočilom namesto 500.
+ * NAMERNO prazen catch (javna gostova ruta — prijazno 503 tudi pri infra napaki).
  */
 let payLinkProbeCache: { ok: boolean; at: number } | null = null
 
 export async function payLinkReady(): Promise<boolean> {
   if (payLinkProbeCache && Date.now() - payLinkProbeCache.at < 60_000) return payLinkProbeCache.ok
   try {
-    await db.$queryRawUnsafe('SELECT 1 FROM "PayLink" LIMIT 1')
+    await db.$queryRawUnsafe('SELECT "splitIndex", "approvalCode" FROM "PayLink" LIMIT 1')
     payLinkProbeCache = { ok: true, at: Date.now() }
     return true
   } catch {

@@ -195,6 +195,17 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     probe: () => columnExists('AccountsPayable', 'category'),
   },
   {
+    // P1-6 (v1.87.0): split po gostih — DROP orderId unique + 3 novi stolpci.
+    // Predpogoj: osnovna migracija 'paylink' (tabela obstaja); ruta zavrne
+    // izvedbo s 409 če tabele še ni (konzola pokaže paylink kot čakajočega).
+    id: 'paylink-split',
+    descKey: 'mig.paylinkSplit.desc',
+    endpoint: '/api/admin/migrate-paylink-split',
+    probe: () => columnsAll([
+      ['PayLink', 'splitIndex'], ['PayLink', 'splitCount'], ['PayLink', 'approvalCode'],
+    ]),
+  },
+  {
     // OPS-4 (v1.67.0): nova DB vloga 'cleaner' (čistilka — haccp.execute).
     // Postgres: ALTER TYPE ADD VALUE IF NOT EXISTS (migrate-cleaner-role).
     // SQLite: role je String — brez DDL, probe vedno true (konzola pokaže aplicirano).

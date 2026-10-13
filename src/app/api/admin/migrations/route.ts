@@ -15,6 +15,7 @@ import { POST as haccpPlansPOST } from '../migrate-haccp-plans/route'
 import { POST as stroskiKategorijePOST } from '../migrate-stroski-kategorije/route'
 import { POST as cleanerRolePOST } from '../migrate-cleaner-role/route'
 import { POST as paylinkPOST } from '../migrate-paylink/route'
+import { POST as paylinkSplitPOST } from '@/app/api/admin/migrate-paylink-split/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -43,6 +44,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'stroski-kategorije': stroskiKategorijePOST,
   'cleaner-role': cleanerRolePOST,
   'paylink': paylinkPOST,
+  'paylink-split': paylinkSplitPOST,
 }
 
 interface ConsoleResult {
