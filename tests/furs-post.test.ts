@@ -578,13 +578,14 @@ describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Nal
       { params: Promise.resolve({ id: inv1.id }) },
     )
     expect(resS.status).toBe(201)
-    // override poskus → 409
+    // override poskus → 409 (issue #47: ročni PAID UKINJEN — zavrnjen šele pred
+    // izvedbo, sporočilo usmerja na plačilno pot; paymentStatus ostane 'storno')
     const resO = await ordersPATCH(
       new NextRequest(`http://localhost/api/orders/${order.id}`, { method: 'PATCH', headers: { authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'PAID' }) }),
       { params: Promise.resolve({ id: order.id }) },
     )
     expect(resO.status).toBe(409)
-    expect(String((await resO.json()).error)).toContain('ponovno plačati')
+    expect(String((await resO.json()).error)).toContain('ni več podprt')
     const dbOrder = await db.order.findUnique({ where: { id: order.id } })
     expect(dbOrder?.paymentStatus).toBe('storno')
     expect(dbOrder?.status).toBe('paid') // status nespremenjen — override zavrnjen v celoti

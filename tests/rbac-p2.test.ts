@@ -156,14 +156,18 @@ describe('P2 RBAC — N1: mize (OWNER sme, staff ne)', () => {
 })
 
 describe('P2 RBAC — N2: ročni override statusa in storno naročila', () => {
-  test('OWNER ročno PAID override → 200, DB status paid (prej 403)', async () => {
+  test('OWNER ročni PAID override → 409, DB NESPREMENJEN (issue #47: ukinjen — plačilo samo prek kanonične poti)', async () => {
     const t = await setupP
     const order = await seedOrder(1)
     const res = await orderPATCH(req(`/api/orders/${order.id}`, t.owner, 'PATCH', { status: 'PAID' }), { params: Promise.resolve({ id: order.id }) })
-    expect(res.status).toBe(200)
+    // issue #47: ročni PAID brez Payment/Receipt/EOR/razknjižbe je ukinjen —
+    // 409 z usmeritvijo na plačilno pot; naročilo ostane točno takšno, kot je bilo
+    expect(res.status).toBe(409)
+    expect(String((await res.json()).error)).toContain('ni več podprt')
     const row = await db.order.findUnique({ where: { id: order.id } })
-    expect(row?.status).toBe('paid')
-    expect(row?.paymentStatus).toBe('paid')
+    expect(row?.status).toBe('open')
+    expect(row?.paymentStatus).toBe('unpaid')
+    expect(row?.paidAt).toBeNull()
   })
 
   test('WAITER ročno PAID override → 403', async () => {

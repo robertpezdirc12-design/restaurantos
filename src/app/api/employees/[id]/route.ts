@@ -97,6 +97,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       (CANONICAL_PERMISSIONS as readonly string[]).includes(p))
     if (valid.length !== body.permissionOverrides.length) return fail('Neznana dovoljenja.', 400)
     data.permissionOverrides = jstr(valid)
+    // Issue #6 §A (P0): sprememba dovoljenj prekliče stare seje — enaka disciplina
+    // kot vloga/PIN/lokacija/status. requirePermission sicer razrešuje pravice iz
+    // DB pri vsakem klicu (takojšen učinek na strežniku), a žeton v žepu (UI iz
+    // localStorage, handheld offline vrsta) ostaja samozavesten do izteka —
+    // sessionVersion ga pošlje na ponovno prijavo.
+    data.sessionVersion = (Number(target.sessionVersion) || 0) + 1
     sensitive.push('sprememba dovoljenj')
   }
   // PIN reset (občutljivo)
@@ -140,16 +146,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   return ok({ employee: mapEmployee(updated) })
 }
 
-/** Podrobnosti profila (kanonski vir za Control Center) */
+/** Podrobnosti profila (kanonski vir za Control Center) — issue #28:
+ *  SAMO lastni profil ALI employees.manage + tenant varovalka (lokacijska plast za
+ *  osebje, org plast za centralne vloge). Prej: vsak prijavljeni na isti lokaciji
+ *  je prebral e-pošto/telefon/dovoljenja kolega (samo requireAuth + lokacijska
+ *  enakost), centralne vloge pa TUDI profile tujih organizacij (brez org preverbe).
+ *  mapEmployee DTO ne nosi PIN/pinLookup/plače/IBAN (nikoli ni nosil). */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   const { id } = await ctx.params
   const target = await db.employee.findUnique({ where: { id } })
   if (!target) return fail('Zaposleni ne obstaja.', 404)
-  // Issue #4 §1: staff vidi samo profile svoje lokacije (tuja = 404, ne razkrivaj obstoja)
-  if (!isCentralRole(user) && (!user.loc || target.locationId !== user.loc)) {
-    return fail('Zaposleni ne obstaja.', 404)
-  }
+  // lastni profil: vedno dostopen (Control Center lastnega računa)
+  if (user.sub === id) return ok({ employee: mapEmployee(target) })
+  // tuji profil: najmanjša pravica (employees.manage — enaka kot seznam) + obseg
+  const gate = await requirePermission(req, 'employees.manage')
+  if (isResponse(gate)) return gate
+  const guard = await guardResource(user, target.locationId)
+  if (guard) return guard
   return ok({ employee: mapEmployee(target) })
 }

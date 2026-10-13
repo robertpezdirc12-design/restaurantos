@@ -58,6 +58,8 @@ export const TEST_PREFIXES = [
   'sk68-', // client-bundle-hygiene (OPS-2)
   'hhfl-', // handheld-flow (v1.84.0 P0-1)
   'plnk-', // paylink-flow (v1.85.0 P0-2)
+  'i47-', // issue47-48-order-state (v1.89.0)
+  'pih-', // p1-hardening (v1.89.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

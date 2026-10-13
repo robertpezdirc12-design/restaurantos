@@ -54,8 +54,12 @@ export async function GET(req: NextRequest) {
 
   // Issue #12 §1 — tenant scope: brez bootstrapa uporabnik vidi SAMO svojo organizacijo
   // (prej: vsi orgi za vse — cross-tenant read uhajanje). Bootstrap = break-glass.
+  // Issue #40 (#6 §C): NEZNANA organizacija je fail-closed — centralna vloga, katere
+  // lokacija ni verigana v nobeno organizacijo (userChain === null), vidi PRAZEN
+  // seznam (prej: fail-open globalni seznam VSEH organizacij vključno s tujimi
+  // blagovnimi znamkami/posestmi/delovnimi postajami). Bootstrap ostaja break-glass.
   const myOrgId = isBootstrapAdmin(user) ? null : (userChain?.organizationId ?? null)
-  const visibleOrgs = myOrgId ? orgs.filter((o) => o.id === myOrgId) : orgs
+  const visibleOrgs = isBootstrapAdmin(user) ? orgs : myOrgId ? orgs.filter((o) => o.id === myOrgId) : []
 
   return ok({
     myScope: userChain,

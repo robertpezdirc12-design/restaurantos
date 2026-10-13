@@ -22,7 +22,7 @@
 - **Dostava** — naročila, dostavljalec, zone, spremljanje statusov
 - **Fiskalizacija** — FURS SI (invoicing, BusinessPremise, ZOI/JIR) + FINA HR (pripravljeno na certifikat)
 - **Zaloge & nabava** — odšteti ob prodaji, inventura, odpadki, dobavitelji, naročila
-- **Zaposleni** — urniki, terminske kartice (timeclock), MFA, RBAC s fino razdeljenimi dovoljenji
+- **Zaposleni** — urniki, terminske kartice (timeclock), MFA, RBAC s fino razdeljenimi dovoljenji (fail-closed: terminalni statusi naročil, prazna dovoljenja ne odprejo panelov, plačilo samo prek kanonične fiskalne poti)
 - **Analitika** — dnevni obračun, X/Z poročila, DDV po stopnjah, tipi, darilni kuponi, billing
 
 ## Tehnološki sklad

@@ -60,16 +60,17 @@ export interface TabPermContext {
  * - neznan/undefined/prazen id zavihka → false (N8: prej true),
  * - zavihek brez vnosa v TAB_PERM → false,
  * - '*' → true za vse,
- * - pred nalaganjem dovoljenj (perms prazna) pokaži vse — permisivno, da UI
- *   ne utripa (obstoječe vedenje page.tsx, dokumentirano v izvorni kodi);
- *   backend uveljavlja dovoljenja neodvisno.
+ * - PRAZNA dovoljenja = fail-closed (issue #6 §F: prej permisivno "pred nalaganjem",
+ *   da UI ne utripa — a v1.88.0 inicializacija iz localStorage je SINHRONA, zato
+ *   stanja "pred nalaganjem" ni več; prazen seznam pomeni RESNIČNO brez dovoljenj
+ *   in ne sme odpreti privilegiranih panelov). Backend uveljavlja neodvisno.
  */
 export function tabHasPerm(tabId: string | undefined | null, ctx: TabPermContext): boolean {
   const perm = tabId ? TAB_PERM[tabId] : undefined
   if (!perm) return false // fail-closed — neznan/undefined tab ali manjkajoč vnos
   if (perm === TAB_PERM_ALL) return true
   if (ctx.canManage) return true
-  if (ctx.perms.length === 0) return true // pred nalaganjem dovoljenj (stabilen UI)
+  // issue #6 §F: perms.length === 0 → ostanejo samo TAB_PERM_ALL zavihki (fail-closed)
   // OR-logika (OPS-4 v1.67.0): seznam = zadosti ENO izmed dovoljenj (npr. haccp)
   if (Array.isArray(perm)) return perm.some((p) => ctx.perms.includes(p))
   return ctx.perms.includes(perm)

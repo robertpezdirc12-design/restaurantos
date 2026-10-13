@@ -11,14 +11,21 @@ import { writeAudit } from '@/lib/audit-chain'
  * Persistence: Integration row (name='recurring-po', type='other', provider='internal'),
  * config JSON = { rules: RecurringRule[] } — ZERO DDL (vzorec: low-stock-state).
  *
- * GET    /api/recurring-po                → { rules } (requireAuth; UI dopolni imena dobaviteljev)
+ * GET    /api/recurring-po                → { rules } (inventory.manage — issue #41:
+ *                                            prej requireAuth: vsak prijavljeni je videl
+ *                                            ID-je dobaviteljev/artiklov + količine)
  * POST   /api/recurring-po                → novo pravilo { supplierId, items:[{inventoryItemId,qty}],
  *                                            weekdays:[0-6], hour:6-18, everyWeeks:1-4 }
  * PATCH  /api/recurring-po { id, active } → preklop aktivnosti (ob aktivaciji se nextRun
  *                                            znova izračuna od zdaj)
  * DELETE /api/recurring-po?id=            → bris pravila
  *
- * Pravice: kot purchase-orders — GET requireAuth, ostalo inventory.manage.
+ * Pravice: kot purchase-orders — GET inventory.manage (issue #41), ostalo
+ * inventory.manage. Obseg (issue #6 §E): pravila so platform-level konfiguracija
+ * (Integration vrstica brez lokacijskih podatkov; dobavitelji so GLOBALNI katalog
+ * brez locationId) — zato obseg določa PRAVICA, ne filter: imena/IBAN dobaviteljev
+ * ščiti /api/suppliers (inventory.manage | reports.view), artikle /api/inventory,
+ * količine/urnike pa ta ruta (samo inventory.manage).
  * Audit: RECURRING_PO_SAVED (POST/PATCH), RECURRING_PO_DELETED (DELETE).
  */
 
@@ -57,7 +64,11 @@ function sanitizeWeekdays(raw: unknown): number[] {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  // Issue #41 (P1): pravila ponavljajočih nabavnih naročil so NABAVNI podatki
+  // (dobavitelji, artikli, količine, urniki) — prej requireAuth, torej jih je videl
+  // vsak prijavljeni (kuhinja, čistilka …). Zdaj: inventory.manage (enako
+  // purchase-orders in operativnemu delu /api/suppliers).
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
   const { rules } = await readConfig()
   return ok({ rules })

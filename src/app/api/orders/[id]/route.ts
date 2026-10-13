@@ -28,6 +28,40 @@ function normalize(o: Record<string, unknown>) {
    vir za PATCH in preklic posamezne postavke (/api/orders/[id]/void). */
 const recalcTotals = recalcOrderTotals
 
+/*
+ * ── STATE MACHINE NAROČILA (issue #47 + #48 — ena dokumentirana matrika) ─────────
+ * Order.status:   open ──► sent ──► prepared ──► paid  (SAMO kanonična izdaja:
+ *                 issueFursReceipt / paylink settle — Payment + Receipt + EOR +
+ *                 razknjižba zaloge v isti transakciji)
+ *                 open/sent/prepared so medsebojno prehodni (kitchen.update —
+ *                 KDS lahko stanje vrne nazaj; operativni bounce)
+ *                 paid      = TERMINALNO (fiskalni storno: /api/receipts/[id]/storno)
+ *                 cancelled = TERMINALNO (PATCH status CANCELLED ali DELETE — samo
+ *                 vodstvo, iz aktivnega statusa + unpaid/partial; odprte plačilne
+ *                 povezave se prekličejo skupaj z naročilom)
+ * Order.paymentStatus: unpaid ─► partial (paylink delna plačila) ─► paid (kanonično)
+ *                 storno    = terminalno (fiskalni storno — negacija računa)
+ *                 cancelled = terminalno (preklic naročila iz 'unpaid'; 'partial'
+ *                 ostane, ker so delna plačila že v Payment vrsticah)
+ * Mutacije po pravilih matrike:
+ *  - PATCH status:    ročni PAID UKINJEN (#47); terminalna stanja zavračajo VSE
+ *                     prehode (#48); CANCELLED dovoljen samo iz aktivnega statusa
+ *                     + paymentStatus unpaid/partial;
+ *  - PATCH addItems:  CAS bela lista — status IN (open,sent,prepared) AND
+ *                     paymentStatus IN (unpaid,partial); dirka s preklicom/plačilom
+ *                     = rollback transakcije, BREZ delnih zapisov (#48);
+ *  - PATCH note/customerName: vsebina naročila (orders.create) — dovoljeno tudi na
+ *                     terminalnem naročilu (opomba za zgodovino, ne stanje);
+ *  - DELETE:          preklic (isti pogoji kot PATCH CANCELLED); paid/storno → 409;
+ *  - POST /void:      posamezna postavka — paid/storno/cancelled → 409 (ločena pot);
+ *  - POST /api/furs:  issueFursReceipt CAS paymentStatus IN (unpaid,partial) +
+ *                     idempotentni replay (clientOperationId); storno/cancelled
+ *                     vnosi zavrnjeni na vhodu;
+ *  - POST …/paylink:  izdaja samo za aktivna naročila (status bela lista) +
+ *                     paymentStatus unpaid (reissue tudi partial-samo-iz-povezav).
+ * ────────────────────────────────────────────────────────────────────────────────
+ */
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
@@ -77,36 +111,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const data: Record<string, unknown> = {}
   if (body?.status && ['OPEN', 'SENT', 'PREPARED', 'PAID', 'CANCELLED'].includes(body.status)) {
-    // R10 popravek (P0 audit): plačanega naročila ni mogoče ročno stornirati (prej: možno
-    // brez razknjižbe zalog, brez fiskalnega storna in brez audita — tveganje pregreška evidence)
-    if (body.status === 'CANCELLED' && order.paymentStatus === 'paid') {
-      return fail('Plačanega naročila ni mogoče stornirati prek statusa — fiskalni storno/vračilo je v pripravi.', 409)
+    // Issue #47: ROČNI STATUS PAID JE UKINJEN. Prej je override nastavil status 'paid' +
+    // paymentStatus 'paid' + paidAt BREZ Payment/Receipt/EOR/razknjižbe — 'plačano brez
+    // dokaza', ki je hkrati BLOKIRAL kanonično pot (issueFursReceipt CAS zahteva
+    // unpaid/partial → 409 'plačano brez računa': naročilo se je za fiskalno izdajo
+    // nepovratno zaprlo). Nadomestni poti: plačilni zavihek (kanonično — Payment +
+    // račun z EOR + razknjižba) oz. vnos kartice z odobritveno kodo za izgubljen
+    // odgovor terminala (processTerminalPayment manual = obstoječa reconciliation pot
+    // z approvalCode sledljivostjo).
+    if (body.status === 'PAID') {
+      return fail('Ročni status PAID ni več podprt — plačilo izvedite prek plačilne poti (ustvari Payment, račun z EOR in razknjižbo zaloge); za izgubljen odgovor terminala uporabite vnos kartice z odobritveno kodo.', 409)
     }
-    // Naloga 37 (audit priporočilo Task 31-a): storniranega naročila ni mogoče "re-plačati"
-    // prek ročnega PAID override-a — prej je override prepisal paymentStatus 'storno' → 'paid'
-    // brez računa/plačila/dohodnine (računostvo: naročilo 'paid', na fiskalni strani storno
-    // negacija — nekonsistentno). Storno je terminalno; po potrebi novo naročilo.
-    if (body.status === 'PAID' && order.paymentStatus === 'storno') {
-      return fail('Storniranega naročila ni mogoče ponovno plačati — ustvarite novo naročilo.', 409)
+    // Issue #48: TERMINALNA MATRIKA — paid/cancelled sta terminalna za vsak ročni PATCH
+    // (prej: CANCELLED → OPEN/SENT/PREPARED in PAID → SENT sta bila možna prek navadnega
+    // status PATCH-a; takšno naročilo je ostalo neuporabno za zakoniti zaključek, ker
+    // kanonična pot nato zavrača kombinacijo status/paymentStatus).
+    if (order.status === 'cancelled') {
+      return fail('Preklicano naročilo je terminalno — statusa ni mogoče spreminjati. Ustvarite novo naročilo.', 409)
+    }
+    if (order.status === 'paid') {
+      return fail('Plačano naročilo je terminalno — spremembe potekajo le prek fiskalnega storna/vračila.', 409)
+    }
+    // R10 popravek (P0 audit) + Issue #48: preklic je možen samo iz ne-terminalnega
+    // plačilnega stanja ('partial' ostaja možen — delna plačila prek povezav so že v
+    // Payment vrsticah; preklic takšnega naročila je popolnoma auditiran).
+    if (body.status === 'CANCELLED' && ['paid', 'storno', 'cancelled'].includes(order.paymentStatus)) {
+      return fail('Plačanega/storniranega naročila ni mogoče preklicati prek statusa — fiskalni storno/vračilo je ločena pot.', 409)
     }
     data.status = body.status.toLowerCase()
-    if (body.status === 'PAID') {
-      data.paidAt = new Date()
-      data.paymentStatus = 'paid'
-    }
-    if (body.status === 'PAID' || body.status === 'CANCELLED') {
-      if (order.tableId) {
-        await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
-      }
-    }
     if (body.status === 'CANCELLED') {
       data.cancelledAt = new Date()
       data.cancelledBy = user.name
       data.cancelledById = user.sub
-    }
-    // P0 audit (C2): ročni override statusa PAID/CANCELLED = finančna akcija → obvezen audit
-    if (body.status === 'PAID' || body.status === 'CANCELLED') {
-      await writeAudit(db, { userId: user.sub, action: body.status === 'PAID' ? 'ORDER_STATUS_PAID_OVERRIDE' : 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name }), locationId: order.locationId })
+      // Issue #48: preklic spravi plačilno stanje v terminalno 'cancelled' (samo iz
+      // 'unpaid' — 'partial' ostane: delna plačila prek povezav so že v Payment tabeli).
+      if (order.paymentStatus === 'unpaid') data.paymentStatus = 'cancelled'
+      // Issue #48: odprte plačilne povezave se prekličejo skupaj z naročilom — gost
+      // ne more plačati preklicanega naročila prek QR povezave.
+      await db.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } }).catch(() => null)
+      if (order.tableId) {
+        await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
+      }
+      // P0 audit (C2): ročni preklic statusa = finančna akcija → obvezen audit
+      await writeAudit(db, { userId: user.sub, action: 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name }), locationId: order.locationId })
     }
   }
   if (body?.note !== undefined) data.notes = body.note
@@ -114,6 +161,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // dodajanje artiklov v odprto naročilo
   if (Array.isArray(body?.addItems) && body.addItems.length > 0) {
+    // Issue #48: terminalno naročilo zavrnemo PRED obdelavo (CAS znotraj transakcije
+    // ostaja avtoritativen za sočasne dirke): sprejemljivi so SAMO aktivni statusi
+    // (open/sent/prepared) in neplačljivi paymentStatus (unpaid/partial).
+    if (['paid', 'cancelled'].includes(order.status) || !['unpaid', 'partial'].includes(order.paymentStatus)) {
+      return fail('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
+    }
     const menuItems = await db.menuItem.findMany({
       where: {
         id: { in: body.addItems.map((i: { menuItemId: string }) => i.menuItemId) },
@@ -142,9 +195,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         notes: i.note || '',
       }
     })
-    // R5 popravek (P0 audit): createMany + recalcTotals + update v ISTI transakciji s CAS
-    // gate (paymentStatus !== 'paid') — prej: trije ločeni klici brez plačilne preverbe
-    // (postavke na plačano naročilo bi spremenile total, račun pa ostal star).
+    // R5 popravek (P0 audit) + Issue #48: createMany + recalcTotals + update v ISTI
+    // transakciji s CAS — BELA LISTA mutabilnih stanj (status IN paymentStatus, ne
+    // samo paymentStatus !== 'paid'): preklicano/stornirano/plačano naročilo ne sme
+    // sprejeti postavk niti z direktnim PATCH klicem, sočasna dirka s preklicem/
+    // plačilom pa pusti bazo BREZ delnih zapisov (createMany se z rollback-om izniči).
     try {
       await db.$transaction(async (tx) => {
         await tx.orderItem.createMany({ data: rows })
@@ -152,14 +207,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const patch: Record<string, unknown> = { ...totals, ...data }
         if (data.status === undefined && order.status === 'open') patch.status = 'sent'
         const claim = await tx.order.updateMany({
-          where: { id, paymentStatus: { not: 'paid' } },
+          where: { id, status: { in: ['open', 'sent', 'prepared'] }, paymentStatus: { in: ['unpaid', 'partial'] } },
           data: patch,
         })
-        if (claim.count === 0) throw new Error('ORDER_PAID_GATE')
+        if (claim.count === 0) throw new Error('ORDER_NOT_MUTABLE')
       })
     } catch (e) {
-      if (e instanceof Error && e.message === 'ORDER_PAID_GATE') {
-        return fail('Naročilo je že plačano — postavk ni mogoče dodati.', 409)
+      if (e instanceof Error && e.message === 'ORDER_NOT_MUTABLE') {
+        return fail('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
       }
       return fail('Artikel ni na voljo na lokaciji naročila.', 400)
     }
@@ -197,14 +252,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Issue #4 §1: lokacijski gate na storno
   const delGuard = await guardResource(user, order.locationId)
   if (delGuard) return delGuard
-  // R10 popravek (P0 audit): storno plačanega naročila brez razknjižbe/fiskalnega storna je zavrnjen
-  if (order.paymentStatus === 'paid') {
-    return fail('Plačanega naročila ni mogoče stornirati — fiskalni storno/vračilo je v pripravi.', 409)
+  // R10 popravek (P0 audit) + Issue #48: storno plačanega/STORNIRANEGA naročila brez
+  // razknjižbe/fiskalnega storna je zavrnjen ('storno' paymentStatus = fiskalna negacija).
+  if (order.paymentStatus === 'paid' || order.paymentStatus === 'storno') {
+    return fail('Plačanega/storniranega naročila ni mogoče stornirati — fiskalni storno/vračilo je ločena pot.', 409)
   }
   await db.order.update({
     where: { id },
-    data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub },
+    // Issue #48: preklic spravi plačilno stanje v terminalno 'cancelled' (iz 'unpaid';
+    // 'partial' ostane — delna plačila so že v Payment vrsticah)
+    data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub, ...(order.paymentStatus === 'unpaid' ? { paymentStatus: 'cancelled' } : {}) },
   })
+  // Issue #48: odprte plačilne povezave se prekličejo skupaj z naročilom (gost ne
+  // more plačati preklicanega naročila prek QR povezave)
+  await db.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } }).catch(() => null)
   // P0 audit (C2): storno naročila je finančna akcija → obvezen revizijski zapis
   {
     await writeAudit(db, { userId: user.sub, action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }), locationId: order.locationId })

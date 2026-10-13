@@ -323,15 +323,21 @@ function DashboardInner() {
   const [resFilter, setResFilter] = useState<ReservationFilter>('UPCOMING')
 
   const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
-  // UI gating po dovoljenjih (backend uveljavlja neodvisno) — admin/manager vedno vse;
-  // pred nalaganjem dovoljenj pokaži vse (permisivno, da ne utripa);
+  // Issue #6 §F: PRAZNA dovoljenja = fail-closed (prej: perms.length === 0 → vsa
+  // dovoljenja odprta, da UI ne utripa — v1.88.0 inicializacija iz localStorage je
+  // sinhrona, utripanja ni več; prazen seznam pomeni RESNIČNO brez dovoljenj).
   // N8 fail-closed: neznano/undefined dovoljenje → false (prej `!p` → true)
-  const hasPerm = (p?: string) => !!p && (canManage || perms.length === 0 || perms.includes(p))
+  const hasPerm = (p?: string) => !!p && (canManage || perms.includes(p))
+  // Issue #6 §F: zrcalo za load() useCallback (endpoint-on-demand brez stale closure)
+  const gateRef = useRef({ canManage, perms })
+  gateRef.current = { canManage, perms }
   // Issue #5 (P1-B): clamp aktivnega zavihka — URL ?tab=<privilegiran> za vlogo brez
   // dovoljenja se spravi na 'pregled' takoj, ko so perms znani (paneli sicer ostanejo
   // izrisani brez podatkov — backend 403; to je UI-hardening, ne varnostna plast)
   useEffect(() => {
-    if (perms.length === 0 || canManage) return
+    if (canManage) return
+    // issue #6 §F: tudi PRAZNA dovoljenja se clampajo (tabHasPerm fail-closed →
+    // privilegiran ?tab= pristane na 'pregled', ne da bi čakal na /me)
     if (!tabHasPerm(activeTab, { canManage, perms })) setActiveTab('pregled')
   }, [perms, canManage, activeTab])
 
@@ -342,7 +348,6 @@ function DashboardInner() {
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get('tab')
     if (tabParam && tabParam !== activeTab) setActiveTab(tabParam)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const canRes = canManage || perms.includes('reservations.manage')
 
@@ -358,6 +363,19 @@ function DashboardInner() {
       const soft = async <T,>(p: Promise<T>): Promise<T | undefined> => {
         try { return await p } catch (e) { if ((e as Error).message === 'unauthorized') throw e; return undefined }
       }
+      // Issue #6 §F: endpoint-on-demand — dashboard NE zahteva finančnih/konfiguracijskih
+      // API-jev za vlogo, ki jih ne sme uporabljati (backend UVEJEJA pravice neodvisno —
+      // to je le odprava brezpotrebnih 403 klicev ob vsakem load; mapa = dovoljenja
+      // samih API rut iz v1.88.0: employees/jobs/devices = employees.manage,
+      // financial/expenses/audit = reports.view, loyalty/integrations/webhooks/
+      // monitoring/settings/locations = settings.manage, suppliers = inventory.manage
+      // | reports.view | settings.manage, recipes = inventory.manage, haccp =
+      // haccp.execute | settings.manage, feedback = reservations.manage,
+      // delivery = delivery.manage; operativni klici (mize/naročila/kuhinja/meni/
+      // rezervacije/računi/zaloge/izmene) ostanejo za vse — mehki 403 catch).
+      const { canManage: manage, perms: curPerms } = gateRef.current
+      const hp = (p: string) => manage || curPerms.includes(p)
+      const hpAny = (...ps: string[]) => manage || ps.some((x) => curPerms.includes(x))
       const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc] = await Promise.all([
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
@@ -366,28 +384,28 @@ function DashboardInner() {
         // svojo postajo (kdsStationRef mirror za poll closure)
         soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null> }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
         soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
-        soft(api<{ employees: EmployeeT[] }>('/api/employees')),
+        hp('employees.manage') ? soft(api<{ employees: EmployeeT[] }>('/api/employees')) : undefined,
         soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
         soft(api<{ receipts: ReceiptT[] }>('/api/furs')),
         soft(api<{ inventory: InventoryT[] }>('/api/inventory')),
         soft(api<{ shifts: ShiftT[] }>('/api/shifts')),
-        soft(api<FinancialT>('/api/reports/financial')),
-        soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')),
-        soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')),
-        soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')),
-        soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')),
-        soft(api<{ recipes: RecipeT[] }>('/api/recipes')),
-        soft(api<{ jobContexts: JobT[] }>('/api/jobs')),
-        soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')),
-        soft(api<{ stats: LocationStatT[] }>('/api/locations/stats')),
-        soft(api<{ integrations: IntegrationT[] }>('/api/integrations')),
-        soft(api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks')),
-        soft(api<{ errors: ErrLogT[] }>('/api/monitoring/errors')),
-        soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')),
-        soft(api<{ devices: DeviceT[] }>('/api/devices')),
-        soft(api<{ entries: AuditT[] }>('/api/audit')),
-        soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')),
-        soft(api<{ locations: LocationRowT[] }>('/api/locations')),
+        hp('reports.view') ? soft(api<FinancialT>('/api/reports/financial')) : undefined,
+        hpAny('haccp.execute', 'settings.manage') ? soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')) : undefined,
+        hp('reports.view') ? soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')) : undefined,
+        hp('settings.manage') ? soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')) : undefined,
+        hpAny('inventory.manage', 'reports.view', 'settings.manage') ? soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')) : undefined,
+        hp('inventory.manage') ? soft(api<{ recipes: RecipeT[] }>('/api/recipes')) : undefined,
+        hp('employees.manage') ? soft(api<{ jobContexts: JobT[] }>('/api/jobs')) : undefined,
+        hp('reservations.manage') ? soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')) : undefined,
+        manage ? soft(api<{ stats: LocationStatT[] }>('/api/locations/stats')) : undefined,
+        hp('settings.manage') ? soft(api<{ integrations: IntegrationT[] }>('/api/integrations')) : undefined,
+        hp('settings.manage') ? soft(api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks')) : undefined,
+        hp('settings.manage') ? soft(api<{ errors: ErrLogT[] }>('/api/monitoring/errors')) : undefined,
+        hp('settings.manage') ? soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')) : undefined,
+        hp('employees.manage') ? soft(api<{ devices: DeviceT[] }>('/api/devices')) : undefined,
+        hp('reports.view') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
+        hp('delivery.manage') ? soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')) : undefined,
+        hp('settings.manage') ? soft(api<{ locations: LocationRowT[] }>('/api/locations')) : undefined,
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)

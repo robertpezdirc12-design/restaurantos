@@ -30,8 +30,10 @@ import {
  *   3. digest — sendDailyDigest() — yesterday's sales window + recurringToday +
  *      overdue-AP section; ScheduledEmailLog reportType 'DAILY_DIGEST'.
  *
- * Auth: CRON_SECRET set → timing-safe Bearer compare (Vercel cron); NOT set
- * (dev) → admin/manager session only (curl-able with the login Bearer token).
+ * Auth: CRON_SECRET set → timing-safe Bearer compare (Vercel cron); NOT set +
+ * dev → admin/manager session only (curl-able with the login Bearer token);
+ * NOT set + production → 401 fail-closed (issue #27 — session fallback ne sme
+ * tiho nadomeščati manjkajoče skrivnosti na produkciji).
  *
  * Idempotency (Vercel retries): Integration marker 'cron-daily-state'
  * config { lastRunDate: 'YYYY-MM-DD' } — a same-day re-invocation returns
@@ -50,7 +52,9 @@ function bearerMatches(headerValue: string | null, secret: string): boolean {
   return timingSafeEqual(actual, expected)
 }
 
-/** CRON_SECRET → Bearer; otherwise admin/manager session (dev convenience). */
+/** CRON_SECRET → Bearer; dev brez skrivnosti → admin/manager session; produkcija
+ *  brez CRON_SECRET → 401 fail-closed (issue #27 — prej je session fallback tekel
+ *  tudi v produkciji: napačno/manjkajočo konfiguracijo bi tiho nadomestil z sejo). */
 async function authorize(req: NextRequest): Promise<{ userId: string } | NextResponse> {
   const secret = process.env.CRON_SECRET
   if (secret) {
@@ -58,6 +62,13 @@ async function authorize(req: NextRequest): Promise<{ userId: string } | NextRes
       return fail('Neveljaven cron žeton (Authorization: Bearer <CRON_SECRET>).', 401)
     }
     return { userId: 'cron' }
+  }
+  // Issue #27: fail-closed v produkciji (uradni Vercel vzorec: manjkajoča skrivnost
+  // = 401, NIKOLI fallback na sejo — sproži tudi recurring PO, AP_OVERDUE push in
+  // dnevni digest, kar ni ročna operacija za prijavljene uporabnike). Dev
+  // (NODE_ENV !== 'production') obdrži session pot za ročno testiranje.
+  if (process.env.NODE_ENV === 'production') {
+    return fail('CRON_SECRET ni nastavljen — produkcija zahteva CRON_SECRET (Vercel → Settings → Environment Variables; Vercel cron pošilja Authorization: Bearer <CRON_SECRET>).', 401)
   }
   const user = await requireAuth(req)
   if (isResponse(user)) return user
