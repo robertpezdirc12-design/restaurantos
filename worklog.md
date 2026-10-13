@@ -1938,3 +1938,19 @@ Stage Summary:
 - Monolit dashboard-tabs: val1 −2587 + val3 −2338 vrst. (9217 → 4292, −53 % od začetka); ostanejo: InventoryTab/ShiftsTab/HaccpTab/ExpensesTab/LoyaltyTab/DeliveryTab/NapitnineTab/EnterpriseTab/StaffScheduleTab/MenuEngineeringTab + kartice za kasnejše valove
 - Testna higiiena: unscoped AP brisanje odpravljeno (dev baza varna pred ponovnim pojavom sirot)
 - Produkcija: v1.82.3 prek pravilno-avtoriranega commita (git konvencija iz AUDIT-DEPLOY-1)
+
+---
+Task ID: AUDIT-FIX-4 (razrez monolita val 4 — back-office grozd)
+Agent: Z.ai Code (orchestrator)
+Task: Tretji val razreza dashboard-tabs.tsx (4292 → 3276 vrst.) — dostava + računovodstvo + napitnine (v1.82.4).
+
+Work Log:
+- 5 komponent + delivery tipi izločeni v tabs/backoffice-tab.tsx (1061 vrst.): DeliveryTab (+ DeliveryInfoT/OrderT/ZoneT/PlatformIntegrationT tipi + DELIVERY_STATUS_KEYS/BG + NEXT_STATUS + platformOf + fmtEta) + AutoAcceptCard (notranji, samo DeliveryTab ga uporablja) + AccountingExportCard + GlJournalCard + NapitnineTab (+ fmtMin kopija)
+- DOKAZ: 5/5 komponent byte-identičnih (~47k znakov, python brace-match); DeliveryInfoT tip preseljen cel (bil bi razpolovljen na meji reza); fmtMin ostaja v OBEH datotekah (1-vrstična kopija — uporabljata ga NapitnineTab v backoffice in KdsStatsSection v monolitu; enak vzorec kot tipi-dvojčki)
+- zaostali NABAVA section header (ostanek vala 1, prazen komentar brez komponent) odstranjen; barrel + DeliveryTab/AccountingExportCard/GlJournalCard/NapitnineTab re-export + export type { DeliveryInfoT, DeliveryOrderT, DeliveryZoneT, PlatformIntegrationT } (page.tsx uva vse prek barrela — nespremenjen)
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1037/1037; browser E2E (dev 3007, admin@ prijava): Dostava (aktivna dostava/empty state/platforma), Napitnine (dnevni bazen/dan), Računi (Računovodski izvoz + GL dnevnik orientacijsko + CSV/JSON gumbi) — 0 page errors, 0 console errors
+- version.ts → 1.82.4; monolit 4292 → 3276; tabs/ družina sedaj 7 datotek (~6470 vrst. skupaj)
+
+Stage Summary:
+- Monolit dashboard-tabs: 9217 → 3276 vrst. (−64 %) po 3 valovih AUDIT-FIX (1: −2587, 3: −2338, 4: −1016); ostanejo v monolitu: InventoryTab, ShiftsTab, HaccpTab (+HaccpPlansSection), ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, EnterpriseTab (+MigrationsConsole), StaffScheduleTab, MenuEngineeringTab, KdsStatsSection — naslednji kandidati: HACCP blok (~333), Enterprise blok (~640)
+- Produkcija: v1.82.4
