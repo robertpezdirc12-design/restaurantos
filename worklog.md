@@ -1920,3 +1920,21 @@ Work Log:
 Stage Summary:
 - Fiskalno-kritična logika (FURS SI / CIS HR, $transaction, ZOI/EOR/ZKI/JIR) sedaj doma v src/lib/furs/issue.ts — testirana prek obstoječih 17+ furs testov, nič sprememb vedenja
 - P3 točke zunanje analize: monolit dashboard-tabs (val 1, −2587 vrst.) + furs route (val 2, −791 vrst. iz route) — OBE odpravljeni; ostanejo prihodnji valovi (~6600 vrst. dashboard-tabs)
+
+---
+Task ID: AUDIT-FIX-3 (razrez monolita val 3 + test sanitizacija)
+Agent: Z.ai Code (orchestrator)
+Task: Drugi val razreza dashboard-tabs.tsx (6630 → 4292 vrst.) + pre-existing unscoped test brisanje (v1.82.3).
+
+Work Log:
+- 7 komponent izločenih v 3 domenske datoteke (isti barrel vzorec kot val 1, porabniki nespremenjeni): tabs/gostinske-ops-tab.tsx (1170 vrst.: DarilneKarticeTab + GC_STATUS/GC_TX + GiftCardT/TxT/StatsT tipi, OdpadTab + WasteT/WasteStatsT + WASTE_* konstante, CakalnaListaTab), tabs/urniki-tab.tsx (1016 vrst.: DelovniCasTab + tcTime/tcDur/tcPay + TimeEntryT/TimeclockEmployeeT + tcType/tcStatus badge mape, OdpiralniCasTab + OpeningHoursRowT/OpenStatusT + DEFAULT_WEEK/PHASE_STYLES/fmtDateSL, DiscountsTab + DiscountRowT/DiscForm + DAY_KEYS/HOURS), tabs/integracje-tab.tsx (288 vrst.: IntegracijeTab + IntegRowT/IntegForm + INTEG_* konstante)
+- DOKAZ: 6/7 komponent byte-identičnih (python brace-matching ekstrakcija, ~106k znakov skupaj); OdpadTab edina z 2 načrtnima substitucijama tipov (InventoryT → lokalni OdpadInvT z id/name/unit/qty/cost — vzorec lokalnih tipov iz nabava-tab, prepreči ciklični uvoz tipov iz monolita)
+- med-komponentne reference sanirane: Enterprise tipni blok (EntLocationRow…EntData) se je pripeljal z Integracije blokom → vrnjen v monolit pred EnterpriseTab; timeclock blok se pripeljal s CakalnaLista blokom → preseljen v urniki-tab k DelovniCas; pokvarjeni uvozi './tabs/ops-cards' (kopirani iz monolit glave) odstranjeni iz vseh 3 novih datotek; barrel: export type ločeno (isolatedModules) + TimeEntryT/TimeclockEmployeeT re-export
+- PRE-EXISTING FIX (opomba iz AUDIT-FIX-1): tests/race-fixes.test.ts afterAll je brisal VSE 'AccountsPayable' audit loge (unscoped entityType pogoj) → sedaj najprej pobere lastne AP id-je po predponskih poljih, briše SAMO njihove vnose (entityId = AP id, glej expenses/[id] + ap/import-eslog rute); idempotentno ob praznem naboru
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db → 1037/1037; browser E2E na dev (port 3007, svež e2e.db + seed): prijava admin@ → vsi 7 zavihkov kliknjenih + VSEBINA preverjena (Darilne kartice: iskanje/novo kartico/aktivne; Odpad: razlogi/nov odpad/zapisi; Čakalna: stat napovedi; Delovni čas: prijava na izmeno; Odpiralni čas: dnevi/ure/switchi; Popusti: aktivni/nov; Integracije: empty state) — 0 page errors, 0 console errors; i18n test samodejno pokrije novo tabs/ družino (readdirSync)
+- version.ts → 1.82.3; monolit 6630 → 4292 (−35 %); skupaj tabs/ družina sedaj 6 datotek
+
+Stage Summary:
+- Monolit dashboard-tabs: val1 −2587 + val3 −2338 vrst. (9217 → 4292, −53 % od začetka); ostanejo: InventoryTab/ShiftsTab/HaccpTab/ExpensesTab/LoyaltyTab/DeliveryTab/NapitnineTab/EnterpriseTab/StaffScheduleTab/MenuEngineeringTab + kartice za kasnejše valove
+- Testna higiiena: unscoped AP brisanje odpravljeno (dev baza varna pred ponovnim pojavom sirot)
+- Produkcija: v1.82.3 prek pravilno-avtoriranega commita (git konvencija iz AUDIT-DEPLOY-1)

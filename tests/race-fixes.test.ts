@@ -77,7 +77,27 @@ beforeAll(async () => {
 afterAll(async () => {
   // obratna smer FK: sync zapisi → napitnine → AP/stroški → zaposleni → lokacija
   await db.deviceSyncOperation.deleteMany({ where: { deviceId: { startsWith: `${PREFIX}dev` } } }).catch(() => null)
-  await db.auditLog.deleteMany({ where: { OR: [{ entityId: { startsWith: `${PREFIX}pool` } }, { entityType: 'AccountsPayable' }] } }).catch(() => null)
+  // AUDIT-FIX v1.82.3: prej je drugi pogoj brisal VSE 'AccountsPayable' audit loge v
+  // (dev) bazi — unscoped, ne le svoje fixture (pre-existing opažba iz AUDIT-FIX-1).
+  // Sedaj: najprej pobrani lastni AP id-ji (po predponskih poljih), nato se brišejo
+  // SAMO njihovi revizijski vnosi (entityId = AP id — glej expenses/[id] in
+  // ap/import-eslog rute). Idempotentno tudi ob praznem naboru.
+  const ownAps = await db.accountsPayable
+    .findMany({
+      where: { OR: [{ id: { startsWith: `${PREFIX}` } }, { invoiceNumber: { startsWith: `${PREFIX}` } }, { notes: { startsWith: `${PREFIX}` } }, { apNumber: { startsWith: `${PREFIX}` } }] },
+      select: { id: true },
+    })
+    .catch(() => [] as { id: string }[])
+  await db.auditLog
+    .deleteMany({
+      where: {
+        OR: [
+          { entityId: { startsWith: `${PREFIX}pool` } },
+          ...(ownAps.length ? [{ entityId: { in: ownAps.map((a: { id: string }) => a.id) } }] : []),
+        ],
+      },
+    })
+    .catch(() => null)
   await db.tipDistribution.deleteMany({ where: { tipPoolId: { startsWith: `${PREFIX}pool` } } }).catch(() => null)
   await db.tipPool.deleteMany({ where: { id: { startsWith: `${PREFIX}pool` } } }).catch(() => null)
   // Task 61 LEKCIJA: AP id je nid() (rute), ne prefiks — prejšnji pogoj ni ujel ničesar
