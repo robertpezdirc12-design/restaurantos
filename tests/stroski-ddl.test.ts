@@ -44,6 +44,10 @@ import { hr } from '../src/lib/i18n/hr'
  *  5. probe override (status pending, realno aplicirano): konzola delegira →
  *     alreadyApplied (ok:true), a allApplied ostane false (override je resnica
  *     o statusu, ne o DDL) → po clear spet vse aplicirano
+ *  6. v1.86.1 raw-plast: pre-check P2010/42703 (Postgres — produkcija) in
+ *     P2010/1 (SQLite) → DDL se IZVEDE (prej 500 "infra napaka" — to je bilo
+ *     razlog, da uporabnikov klik "Uporabi" na produkciji ni uspel);
+ *     ne-manjkajoča raw koda (42601) ostane 500 (brez maskiranja)
  */
 
 const PREFIX = 'sk66-'
@@ -170,6 +174,105 @@ describe('stroski-kategorije: register + i18n', () => {
     const { waiter, manager } = await setupP
     expect((await stroskiPOST(req('/api/admin/migrate-stroski-kategorije', waiter, 'POST'))).status).toBe(403)
     expect((await stroskiPOST(req('/api/admin/migrate-stroski-kategorije', manager, 'POST'))).status).toBe(403)
+  })
+})
+
+describe('stroski-kategorije: raw-plast P2010 (v1.86.1 produkcijska lekcija)', () => {
+  /** PrismaClientKnownRequestError podobnost (P2010 "Raw query failed"). */
+  function p2010(dbCode: string, message: string): Error {
+    return Object.assign(
+      new Error(
+        `Invalid \`prisma.$queryRawUnsafe()\` invocation:\n\nRaw query failed. Code: \`${dbCode}\`. Message: \`${message}\``,
+      ),
+      { code: 'P2010', meta: { code: dbCode, message } },
+    )
+  }
+
+  type RawFn = (sql: string) => Promise<unknown>
+  const holder = db as unknown as { $queryRawUnsafe: RawFn; $executeRawUnsafe: RawFn }
+  const origQuery = holder.$queryRawUnsafe.bind(db)
+  const origExec = holder.$executeRawUnsafe.bind(db)
+
+  function restoreRaw(): void {
+    holder.$queryRawUnsafe = origQuery
+    holder.$executeRawUnsafe = origExec
+  }
+
+  test('pre-check P2010/42703 (Postgres — produkcija!) → DDL se IZVEDE (prej 500 "infra")', async () => {
+    const { owner } = await setupP
+    const ddlCalls: string[] = []
+    holder.$queryRawUnsafe = async (sql: string) => {
+      // preverba idempotence vidi "stolpec manjka" v RAW obliki (P2010 + PG koda)
+      if (sql.includes('SELECT "category" FROM "AccountsPayable"')) {
+        throw p2010('42703', 'column "category" does not exist')
+      }
+      return origQuery(sql) // post-check (count) ostane realen
+    }
+    holder.$executeRawUnsafe = async (sql: string) => {
+      if (sql.includes('ADD COLUMN "category"')) {
+        ddlCalls.push(sql) // simuliran Neon DDL uspeh (stolpec na dev že obstaja)
+        return 1
+      }
+      return origExec(sql)
+    }
+    try {
+      const r = await stroskiPOST(req('/api/admin/migrate-stroski-kategorije', owner, 'POST'))
+      expect(r.status).toBe(200)
+      const j = (await r.json()) as { alreadyApplied: boolean; applied: { ddl: string }[]; apCountAfter: number }
+      expect(j.alreadyApplied).toBe(false)
+      expect(j.applied.length).toBe(1)
+      expect(j.applied[0].ddl).toContain('ADD COLUMN "category"')
+      expect(ddlCalls.length).toBe(1)
+      expect(typeof j.apCountAfter).toBe('number')
+    } finally {
+      restoreRaw()
+    }
+  })
+
+  test('pre-check P2010/1 (SQLite "no such column") → DDL se izvede (dialekt-pariteta)', async () => {
+    const { owner } = await setupP
+    const ddlCalls: string[] = []
+    holder.$queryRawUnsafe = async (sql: string) => {
+      if (sql.includes('SELECT "category" FROM "AccountsPayable"')) {
+        throw p2010('1', 'no such column: category')
+      }
+      return origQuery(sql)
+    }
+    holder.$executeRawUnsafe = async (sql: string) => {
+      if (sql.includes('ADD COLUMN "category"')) {
+        ddlCalls.push(sql)
+        return 1
+      }
+      return origExec(sql)
+    }
+    try {
+      const r = await stroskiPOST(req('/api/admin/migrate-stroski-kategorije', owner, 'POST'))
+      expect(r.status).toBe(200)
+      const j = (await r.json()) as { alreadyApplied: boolean; applied: unknown[] }
+      expect(j.alreadyApplied).toBe(false)
+      expect(j.applied.length).toBe(1)
+      expect(ddlCalls.length).toBe(1)
+    } finally {
+      restoreRaw()
+    }
+  })
+
+  test('pre-check P2010 z NE-manjkajočo kodo (42601 sintaksa) → 500 infra resnica (brez maskiranja)', async () => {
+    const { owner } = await setupP
+    holder.$queryRawUnsafe = async (sql: string) => {
+      if (sql.includes('SELECT "category" FROM "AccountsPayable"')) {
+        throw p2010('42601', 'syntax error at or near "FROM"')
+      }
+      return origQuery(sql)
+    }
+    try {
+      const r = await stroskiPOST(req('/api/admin/migrate-stroski-kategorije', owner, 'POST'))
+      expect(r.status).toBe(500)
+      const j = (await r.json()) as { error?: string }
+      expect(String(j.error)).toContain('Infrastrukturna napaka')
+    } finally {
+      restoreRaw()
+    }
   })
 })
 

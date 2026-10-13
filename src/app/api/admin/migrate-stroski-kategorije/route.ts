@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid } from '@/lib/map'
+import { isMissingSchemaError } from '@/lib/prisma-missing'
 
 /**
  * Task 66 (v1.64.0) — Stroški kategorije: produkcijski DDL korak.
@@ -23,9 +24,13 @@ import { nid } from '@/lib/map'
  * izrecen predpogoj za tisti deploy).
  *
  * Idempotentno: preverba `SELECT "category" FROM "AccountsPayable" LIMIT 1` —
- * P2022 (stolpec manjka) → apliciraj; uspeh → alreadyApplied; druge napake
- * (P1001 unreachable …) → 500 (infra resnica, ne lažen pending — isti politiki
- * kot probe v src/lib/schema-migrations.ts).
+ * "stolpec manjka" → apliciraj (v1.86.1: P2021/P2022 + P2010/raw s kodo driverja
+ * v meta — src/lib/prisma-missing.ts; prej P2022 samo, kar se pri $queryRawUnsafe
+ * NIKOLI ne zgodi → produkcija je ob manjkajočem stolpcu napačno vračala 500
+ * "Infrastrukturna napaka" namesto DDL — to je bilo razlog, da uporabnikov klik
+ * ni uspel); uspeh → alreadyApplied; druge napake (P1001 unreachable …) → 500
+ * (infra resnica, ne lažen pending — isti politiki kot probe v
+ * src/lib/schema-migrations.ts).
  * DDL je dialekt-kompatibilen (SQLite + Postgres): ADD COLUMN z NOT NULL DEFAULT
  * konstanto (PG 11+ instant, brez rewrite-a).
  * Audit: SCHEMA_MIGRATION_STROSKI_KATEGORIJE.
@@ -34,10 +39,8 @@ const DDL = [
   `ALTER TABLE "AccountsPayable" ADD COLUMN "category" TEXT NOT NULL DEFAULT ''`,
 ]
 
-const isMissingSchema = (e: unknown): boolean => {
-  const code = (e as { code?: string }).code
-  return code === 'P2021' || code === 'P2022'
-}
+/** v1.86.1: skupni helper (prisma-missing.ts) — tipizirana + raw plast. */
+const isMissingSchema = isMissingSchemaError
 
 export async function POST(req: NextRequest) {
   const user = await requireCentralRole(req)

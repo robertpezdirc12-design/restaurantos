@@ -2171,3 +2171,46 @@ Work Log:
 Stage Summary:
 - Produkcija bo po deployu v1.85.1 vračala čist 503 (prijazno sporočilo) namesto 500 dokler uporabnik NE klikne migracije: Enterprise → Shema migracije (DDL) → paylink → »Uporabi« (1 klik, idempotentno, z auditom) — isti vzorec kot prejšnjih 11 migracij
 - Po DDL aplikaciji: /pay/<token> popolnoma operativen na produkciji; drift-check vnos postane mrtva koda
+
+---
+Task ID: v1.86.0
+Agent: glavni agent (Z.ai)
+Task: "odlično nadaljuj" — P1-5 iz TRZNA-VRZELI-2026: EN jezik za goste (turistični trg SI/HR — QR meni, kiosk, display, javna plačilna povezava).
+
+Work Log:
+- GitLab preverba pred delom: gitlab/main sinhroniziran z main (d99a9ca v1.85.1, 0/0), produkcija ok (1.85.1, d99a9ca) → P1-5 po §6 vrstnem redu (točka 4)
+- src/lib/i18n/en.ts (NOVA, ~150 vrst): DELNI EN slovar — 140 ključev SAMO 'guest.'+'pay.' predponi (QR meni, kiosk, display, /pay); dashboard NAMERNO izven (ostane SL/HR); EN fallback veriga en→sl prek centralnega t() (delna pokritost varna, nikoli mešana)
+- src/lib/i18n/index.ts: Locale 'sl'|'hr'|'en', LOCALES, DICTS+en, normalizeLocale (en/en-US→en — angleški brskalnik samodejno EN), isLocale, EN_GUEST_PREFIXES izvoz, enGuestGaps() (pokritostna sonda), komentarji
+- sl.ts/hr.ts: +guest.lang.en ('Angleščina'/'Engleski'); +5 novih ključev v 3 slovarjih: guest.error.qrInvalid/rateLimited/ratingRequired, pay.errorPayLinkDown, pay.tipRange (SL vrednosti = natanko API fail() nizi)
+- src/components/guest-i18n.tsx: GuestLanguageToggle ['sl','hr','en'] (44px dotik, light/dark); GUEST_API_ERROR_KEY_MAP (31 znanih SL fail() nizov javnih rut → i18n ključi) + guestApiErrorKey()/guestApiErrorText() — vzorec guestStatusKey (neznan niz → surovi prikaz, nikoli ne strmoglavi)
+- src/components/i18n.tsx (dashboard): varovalka — locale 'en' (gost na isti napravi, skupni LOCALE_STORAGE_KEY) → dashboard izriše SL (t() fallback) + SL poudarjen aria-pressed (0 mešanja za osebje)
+- 4 javne strani (m, pay, kiosk, display): 11 mest surovega data.error → guestApiErrorText(t, data?.error, fallback) — angleški gost vidi angleške napake; /pay badge 'Miza N' → localizedTableLabel (Table 1/Stol 1)
+- tests: i18n.test.ts (normalizeLocale en primeri, isLocale, LOCALES [sl,hr,en], EN fallback dashboard ključa→SL) + i18n-guest.test.ts (EN describe: pokritost 100 %, neprazne/angleške vrednosti, zlati prevodi, interpolacija, jezikovni ključi, display+pay v toggle pokrovu + API napake describe: 31 nizov ima ključ v 3 slovarjih, guestApiErrorText veriga, regresija 0 surovih data.error) — SKUPAJ 13 novih
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1093/1093 (74 datotek, +13)
+- Browser E2E na dev :3007 (svež e2e.db + seed, admin@, Miza 1 qrToken=e2e00000000000000000000000000000 + qrEnabled): QR meni samodejni EN (brskalnik en-US): 'Table 1 · self-service ordering', 'Cart · 1 item', dialog 'e.g. no onions'/'Add', košarica 'Your cart'/'So we can call your name'/'Submit order'; artikli iz DB ostanejo izvirno (Toast/Square konvencija); HR preklop v živo ('Kako je bilo?'); kiosk 'Kiosk activation'; display 'Customer display'; LOGIN+DASHBOARD+HANDHELD varovalka: locale=en → vsi SL, SL aria-pressed=true; /pay CELOTEN TOK V EN: handheld (SL) naroči 11,57 € → povezava → gostov /pay/<token> EN 'Order #1'+'Table 1'+'Pay · 12,73 €' (10 % tip) → 'Paid!'+'Receipt'+'EOR'+'Thank you — see you again!'; neveljaven token → EN 'This link does not exist or has expired.'; 390px 0 prelivov, 0 console/page error
+- Commit 17460e2 → push GitHub + GitLab (oba d99a9ca..17460e2) → Vercel: health { ok, 1.86.0, 17460e2, connected }, GET / 200, POST /api/furs 401; browser na PRODUKCIJI: /pay/<invalid> v EN ('Payment links are currently unavailable — please try again soon.' — 503 PayLink DDL še čaka na uporabnikov klik, sporočilo pa je zdaj prevedeno)
+
+Stage Summary:
+- P1-5 ZAPRTO in v produkciji (17460e2): trojezične javne strani SL/HR/EN z delnim EN slovarjem + samodejno izbiro po brskalniku + prevedenimi javnimi API napakami (31 nizov) — parity z Toast/Square za turistični trg
+- Suite 1093/1093 (74 datotek, +13); dashboard varovalka prepreči mešanje jezikov osebja
+- Naslednji po §6: P1-6 split po gostih (poleg izstavkov OPS-7 — '¢2 gosta na računu'; POZOR: PayLink ima orderId @unique → več povezav na naročilo zahteva odločitev: splitCount na PayLink (gost plača svoj delež) ALI N povezav) → nato P1-4 labor forecast + P2-9 AI
+- Uporabniški koraki: (1) Preklic/rotacija IZPOSTAVLJENIH žetonov GitHub + GitLab (oba v pogovoru!); (2) PayLink DDL na Neonu: Enterprise → Shema migracije → paylink → Uporabi (1 klik, idempotentno — do taklej javna /pay 503); (3) Upstash env za učinkovit rate-limit; (4) Actions kvota 1. 11.
+
+---
+Task ID: v1.86.1
+Agent: glavni agent (Z.ai)
+Task: "PayLink DDL na Neonu … to sem naredil preveri in nadaljuj" — verifikacija uporabnikovega klika "Uporabi" + nadaljevanje.
+
+Work Log:
+- VERIFIKACIJA klika: javna /api/public/pay/<32hex> na produkciji ŠE VEDNO 503 → klik NI uspel; prijava info@restaurantos.app (ADMIN, central) → GET /api/admin/migrations: paylink applied:false + error 42P01, poleg tega 3 DODATNE zaostale migracije (issue13, haccp-plans 42P01, stroski-kategorije 42703)
+- PRODUKCIJA DDL (kanonične admin rute, centralni žeton): POST migrate-paylink → 7 stavkov apliciranih (CREATE TABLE PayLink + 2 unique idx + 3 idx + FK CASCADE, linkCountAfter 0) → javna /pay/<32hex> zdaj 404 "Povezava ne obstaja." (payLinkReady proda prenešena); POST migrate-issue13 (premisesId nullable) + migrate-haccp-plans (4 stavki) → uspešno; migrate-stroski-kategorije → 500 "Infrastrukturna napaka pri preverbi sheme: … 42703 column category does not exist" ← KORENSKI VZROK NEUSPELEGA KLIKA
+- DIAGNOZA (produkcijski + empirični dokaz): isMissing preverbe (4 mesta) primerjajo SAMO Prisma kodi P2021/P2022 — te nastopijo IZKLJUČNO pri tipiziranih poizvedbah; $queryRawUnsafe vrača P2010 s kodo driverja v meta: Neon 42P01/42703 (dokazano), SQLite koda "1" + "no such table/column" (izmerjeno: P2010, meta {"code":"1","message":"no such table: NoSuchTable"}); posledice: stroski ruta 500 namesto DDL (uporabnikov klik!), konzola ERROR namesto pending, haccp/expenses probi lažni READY (degradacija se nikoli ni sprožila); na dev nevidno (db push ima vse strukture → error pot mrtva)
+- POPRAVEK: NOV src/lib/prisma-missing.ts isMissingSchemaError() (P2021/P2022 + P2010/raw meta koda/sporočilo, fallback err.message, infra P1001/42601 ostane false); uporabljen na 4 mestih: schema-migrations.ts (isMissingCode = helper — konzola zdaj pravilen pending), haccp-plans.ts + expenses-categories.ts (value = !isMissingSchemaError(e)), migrate-stroski-kategorije (isMissingSchema = helper); payLinkReady() NAMERNO prazen catch (javna gostova ruta — prijazno 503 tudi pri infra; dokumentirano)
+- TESTI: NOV tests/prisma-missing.test.ts 9 testov (5 enotskih: PG 42P01/42703, SQLite no-such ×2, sporočilni fallback ×2, infra/sintaksa NI manjka, null/undefined; 4 probe: haccp P2010/42P01 → false + reset + true po obnovitvi, haccp SQLite pariteta, expenses P2010/42703 → false/true, P1001 → true); stroski-ddl.test.ts +3 (P2010/42703 Postgres pot → 200 DDL izveden prek stub $executeRawUnsafe z obnovo v finally, P2010/1 SQLite pariteta, 42601 → 500 Infrastrukturna napaka)
+- DOKUMENTACIJA: AUDIT vrstica v1.86.1, APP_VERSION → 1.86.1
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1105/1105 (75 datotek, +12)
+
+Stage Summary:
+- PayLink DDL + issue13 + haccp-plans so ZDAJ aplicirani na Neon produkciji; stroski-kategorije čaka deploy tegea popravka (nato POST → DDL → allApplied)
+- Uporabnikov klik ni uspel zaradi P2010 hrošča (ne uporabnikova napaka) — vzrok odpravljen na korenu s skupnim helperjem + 12 testi
+- Naslednji koraki: deploy → produkcija stroski DDL + allApplied → produkcijski E2E PayLink zlate poti → P1-6 split po gostih

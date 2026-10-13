@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { isMissingSchemaError } from './prisma-missing'
 
 /**
  * Task 65 (v1.63.0) — register shematskih migracij (DDL konzola).
@@ -13,8 +14,8 @@ import { db } from '@/lib/db'
  * podvaja DDL).
  *
  * Probe mora biti dialekt-agnostična (dev SQLite + produkcijski Postgres):
- *  - tableExists:  SELECT 1 FROM "T" LIMIT 1        → P2021 = manjka
- *  - columnExists: SELECT "c" FROM "T" LIMIT 1      → P2022 = manjka
+ *  - tableExists:  SELECT 1 FROM "T" LIMIT 1        → manjka = P2010/raw (prisma-missing.ts)
+ *  - columnExists: SELECT "c" FROM "T" LIMIT 1      → manjka = P2010/raw (prisma-missing.ts)
  *  - columnNullable: Postgres information_schema, SQLite PRAGMA fallback
  * Infrastrukturne napake (P1001 unreachable, timeout …) NISO "pending" — probe
  * jih propagira (status error), da konzola pokaže resnico in ne lažnega DDL
@@ -38,10 +39,9 @@ export interface SchemaMigration {
 
 /* ───────────────────────── probe pomožniki ───────────────────────── */
 
-const isMissingCode = (e: unknown): boolean => {
-  const code = (e as { code?: string }).code
-  return code === 'P2021' || code === 'P2022'
-}
+/** v1.86.1: P2021/P2022 (tipizirane poizvedbe) + P2010/raw (meta koda
+ * driverja — PG 42P01/42703, SQLite "no such …") — glej src/lib/prisma-missing.ts. */
+const isMissingCode = isMissingSchemaError
 
 /** Ali tabela obstaja? (SQLite + Postgres) */
 async function tableExists(table: string): Promise<boolean> {

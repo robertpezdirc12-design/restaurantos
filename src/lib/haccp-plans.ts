@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { isMissingSchemaError } from './prisma-missing'
 
 /**
  * Task 64 (v1.62.0) — capability probe za HACCP načrte kontrol (model HaccpPlan).
@@ -35,11 +36,13 @@ export async function haccpPlansAvailable(): Promise<boolean> {
     await db.$queryRawUnsafe('SELECT 1 FROM "HaccpPlan" LIMIT 1')
     cached = { value: true, at: Date.now() }
   } catch (e) {
-    const code = (e as { code?: string }).code
-    // P2021 = table does not exist, P2022 = column does not exist → DDL pending.
+    // Manjka tabela/stolpec → DDL pending. v1.86.1: prepoznamo TUDI raw
+    // plast (P2010 + meta koda driverja — prisma-missing.ts); prej samo
+    // P2021/P2022, kar se pri $queryRawUnsafe NIKOLI ne zgodi → produkcijska
+    // proda je ob manjkajoči tabeli lažno trdila READY (degradacija se ni sprožila).
     // VSE ostalo (P1001, timeout, …) pomeni "tabela verjetno obstaja" → true,
     // da napako odkrije dejanska poizvedba (jasnejši 500 kot zamaskiran 503).
-    cached = { value: code !== 'P2021' && code !== 'P2022', at: Date.now() }
+    cached = { value: !isMissingSchemaError(e), at: Date.now() }
   }
   return cached.value
 }
