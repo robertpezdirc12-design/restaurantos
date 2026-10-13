@@ -86,7 +86,13 @@ export function useI18n(): I18nContextValue {
   return useContext(I18nContext)
 }
 
-/** SL | HR preklopnik — segmentiran gumb, deluje na prijavi in v glavi. */
+/**
+ * SL | HR preklopnik — segmentiran gumb, deluje na prijavi in v glavi.
+ * EN (P1-5) je NAMERNO izven dashboard izbire: če je shranjen 'en' (nastavil ga
+ * je gost na isti napravi — skupni LOCALE_STORAGE_KEY), se vsebina še vedno izriše
+ * iz SL slovarja (t() fallback) in je SL poudarjen kot aktiven; osebje z enim
+ * klikom preklopi nazaj na sl/hr.
+ */
 export function LanguageToggle({ className }: { className?: string }) {
   const { locale, setLocale, t } = useI18n()
   return (
@@ -99,11 +105,13 @@ export function LanguageToggle({ className }: { className?: string }) {
         <button
           key={l}
           type="button"
-          aria-pressed={locale === l}
+          aria-pressed={locale === l || (locale === 'en' && l === 'sl')}
           aria-label={t(`lang.${l}`)}
           onClick={() => setLocale(l)}
           className={`rounded-md px-2 py-1 transition ${
-            locale === l ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+            locale === l || (locale === 'en' && l === 'sl')
+              ? 'bg-emerald-700 text-white shadow-sm'
+              : 'text-stone-600 hover:text-stone-900'
           }`}
         >
           {l.toUpperCase()}

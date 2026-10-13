@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2, Monitor, CheckCircle2, Link2, Unlink, WifiOff } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestApiErrorText } from '@/components/guest-i18n'
 
 const TOKEN_KEY = 'ro_cfd_device_token'
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
@@ -92,7 +92,7 @@ function DisplayInner() {
           failStreak.current += 1
           if (failStreak.current >= STALE_AFTER) setStale(true)
         }
-        setError(data.error || t('guest.display.notRegistered'))
+        setError(guestApiErrorText(t, data?.error, 'guest.display.notRegistered'))
         return false
       }
       failStreak.current = 0
@@ -175,7 +175,7 @@ function DisplayInner() {
         body: JSON.stringify({ action: 'connect', code: codeInput.trim() }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || t('guest.display.connectFailed')); return }
+      if (!res.ok) { setError(guestApiErrorText(t, data?.error, 'guest.display.connectFailed')); return }
       setCodeInput('')
       refresh(token)
     } finally {

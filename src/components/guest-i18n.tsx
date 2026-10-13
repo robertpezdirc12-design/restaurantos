@@ -1,13 +1,14 @@
 'use client'
 
 /**
- * Dvojezičnost SL/HR za GOSTUJOČE strani (audit §65/§193 — 33-b).
+ * Trojezičnost SL/HR/EN za GOSTUJOČE strani (audit §65/§193 — 33-b; P1-5 EN).
  *
  * Kiosk (/kiosk) in QR meni (/m/<token>) NE hodita skozi dashboard (in njegov
  * I18nProvider), zato imata lahkoten samostojen provider — brez odvisnosti od
  * prijave/auth, a z ISTO infrastrukturo:
  *  - isti centralni slovar prek `t()` (src/lib/i18n/index.ts) — manjkajoč ključ
- *    v HR → SL vrednost; manjka povsod → ključ + console.warn v dev;
+ *    v HR/EN → SL vrednost (EN je DELNI slovar samo za guest./pay. — dashboard
+ *    ključi se v EN izrišejo iz SL); manjka povsod → ključ + console.warn v dev;
  *  - isti localStorage ključ (LOCALE_STORAGE_KEY = 'restaurantos.locale') —
  *    izbira jezika je povezana z glavno aplikacijo (gost in osebje si delita
  *    nastavitev na isti napravi; kiosk terminal si jo zapomni med ponovitvami);
@@ -15,7 +16,7 @@
  *    src/components/i18n.tsx — SSR snapshot 'sl', po hidraciji shranjena vrednost).
  *
  * Izvoz: GuestI18nProvider, useGuestT(), GuestLanguageToggle (prenosljiv pill
- * SL | HR — varianti 'light' (QR) in 'dark' (kiosk)), guestStatusKey() za
+ * SL | HR | EN — varianti 'light' (QR/plačilo) in 'dark' (kiosk)), guestStatusKey() za
  * prevod statusov naročil, ki jih javni API vrne kot fiksne SL nize.
  */
 
@@ -40,7 +41,8 @@ function loadStoredLocale(): void {
   try {
     const saved = localStorage.getItem(LOCALE_STORAGE_KEY)
     if (isLocale(saved)) { currentLocale = saved; return }
-    // prvi obisk: jezik brskalnika (sl/hr) — hrvaški gost dobi HR, privzeto sl
+    // prvi obisk: jezik brskalnika (sl/hr/en) — hrvaški gost dobi HR, angleški
+    // turist EN (P1-5), privzeto sl
     currentLocale = normalizeLocale(navigator.language)
   } catch { /* zasebni način/shramba onemogočena — ostane 'sl' */ }
 }
@@ -73,7 +75,7 @@ export function setGuestLocale(l: Locale): void {
 function translate(locale: Locale, key: string, vars?: Record<string, string | number>): string {
   const out = coreT(locale, key, vars)
   if (process.env.NODE_ENV !== 'production' && out === key) {
-    console.warn(`[guest-i18n] Manjkajoči i18n ključ: "${key}" (ni niti v SL niti v HR slovarju)`)
+    console.warn(`[guest-i18n] Manjkajoči i18n ključ: "${key}" (ni v SL/HR/EN slovarjih)`)
   }
   return out
 }
@@ -110,11 +112,12 @@ export function useGuestT(): GuestI18nValue {
   )
 }
 
-// ── SL | HR preklopnik (prenosljiv med kiosk in QR stranjo) ──
+// ── SL | HR | EN preklopnik (prenosljiv med kiosk, QR in plačilno stranjo) ──
 
 /**
- * Diskreten pill "SL | HR" — fiksiran zgornji desni kot po izbiri strani
- * (kiosk: v glavi poleg zaklepa / na aktivaciji fiksiran; QR: v lepljivi glavi).
+ * Diskreten pill "SL | HR | EN" — fiksiran zgornji desni kot po izbiri strani
+ * (kiosk: v glavi poleg zaklepa / na aktivaciji fiksiran; QR in /pay: v lepljivi
+ * glavi). EN (P1-5): turistični trg SI/HR — angleški gost vidi lastni jezik.
  * - `variant="dark"` za kiosk (temna ozadja), `"light"` za QR stran (svetla ozadja)
  * - aria-pressed + aria-label + tipkovnica dostopno (pravi <button> elementi)
  * - dotik: vsak gumb ≥ 44 px (h-[44px] min-w-[44px])
@@ -141,7 +144,7 @@ export function GuestLanguageToggle({
       role="group"
       aria-label={t('guest.lang.aria')}
     >
-      {(['sl', 'hr'] as Locale[]).map((l) => (
+      {(['sl', 'hr', 'en'] as Locale[]).map((l) => (
         <button
           key={l}
           type="button"
@@ -185,6 +188,76 @@ const GUEST_STATUS_KEY_MAP: Record<string, string> = {
 
 export function guestStatusKey(status: string): string | null {
   return GUEST_STATUS_KEY_MAP[(status || '').trim().toLowerCase()] ?? null
+}
+
+// ── Javne API napake za gosta ──
+
+/**
+ * Javni API-ji (src/app/api/public/**) vračajo napake kot fiksni SL nizi (fail()
+ * helper) — gostova stran jih preslika v i18n ključe, da angleški/hrvaški gost
+ * vidi napako v svojem jeziku (P1-5). Nepoznan niz → null (stran prikaže surovega
+ * — nikoli ne strmoglavi; isti varovalni vzorec kot guestStatusKey()).
+ * Upravljanje: nov fail() niz v javni ruti → dodaj preslikavo + ključ v slovarjih;
+ * pokritost (vsi nizi iz API-jev imajo ključ) uveljavlja tests/i18n-guest.test.ts.
+ */
+const GUEST_API_ERROR_KEY_MAP: Record<string, string> = {
+  // meni / identiteta
+  'QR koda ni veljavna ali je naročanje po QR izklopljeno.': 'guest.error.qrInvalid',
+  'QR koda ni veljavna.': 'guest.error.qrInvalid',
+  'Neveljaven ali izklopljen QR token.': 'guest.error.qrInvalid',
+  'Manjka QR token ali identiteta naprave.': 'guest.menu.unavailable',
+  'Kiosk naprava ni registrirana.': 'guest.kiosk.notActivated',
+  'Kiosk ni povezan z lokacijo.': 'guest.kiosk.notActivated',
+  // oddaja naročila / povratne informacije
+  'Naročila ni bilo mogoče varno oddati. Poskusi znova.': 'guest.error.orderNotSubmittedRetry',
+  'Manjkajo podatki.': 'guest.error.orderFailed',
+  'Manjka idempotency ključ (clientOperationId).': 'guest.error.orderFailed',
+  'Manjkata qr in orderNumber.': 'guest.error.orderFailed',
+  'Miza s to številko ne obstaja na lokaciji.': 'guest.error.orderFailed',
+  'Naročilo s to številko ne obstaja na tej mizi.': 'guest.error.orderFailed',
+  'Neveljavno telo zahteve.': 'guest.error.orderFailed',
+  'Ocena je obvezna (1–5).': 'guest.error.ratingRequired',
+  // omejevanje hitrosti (javne rute)
+  'Preveč naročil naenkrat. Počakaj trenutek.': 'guest.error.rateLimited',
+  'Preveč poskusov plačila. Počakajte trenutek.': 'guest.error.rateLimited',
+  'Preveč zahtev. Počakajte trenutek.': 'guest.error.rateLimited',
+  'Preveč zahtevkov.': 'guest.error.rateLimited',
+  'Preveč zahtevkov. Poskusi čez minuto.': 'guest.error.rateLimited',
+  // javna plačilna povezava (/api/public/pay)
+  'Plačilne povezave trenutno niso aktivne — poskusite kmalu znova.': 'pay.errorPayLinkDown',
+  'Plačilo še ni potrjeno.': 'pay.pending',
+  'Potrditev seje ni na voljo.': 'pay.errorRetry',
+  'Povezava je potekla. Prosimo, zaprosite osebje za novo.': 'pay.expiredNote',
+  'Povezava je preklicana.': 'pay.revoked',
+  'Povezava ne obstaja.': 'pay.notFound',
+  'Naročilo je že plačano drugje.': 'pay.superseded',
+  'Račun je že plačan.': 'pay.superseded',
+  'Računa ni mogoče izračunati.': 'pay.errorRetry',
+  'Seja ni bila ustvarjena.': 'pay.errorRetry',
+  'Znesek seje se ne ujema s povezavo.': 'pay.errorRetry',
+  'Napitnina je izven dovoljenega obsega (0 do zneska računa).': 'pay.tipRange',
+}
+
+/** Znan SL niz iz javnega API-ja → i18n ključ; neznan → null (surovi prikaz). */
+export function guestApiErrorKey(message: string): string | null {
+  return GUEST_API_ERROR_KEY_MAP[(message || '').trim()] ?? null
+}
+
+/**
+ * Besedilo napake za gosta (P1-5): znan API SL niz → preveden v trenutni jezik;
+ * neznan niz → surovi prikaz (nikoli ne strmoglavi); manjkajoč → fallback ključ.
+ */
+export function guestApiErrorText(
+  t: (key: string) => string,
+  message: unknown,
+  fallbackKey: string,
+): string {
+  if (typeof message === 'string' && message.trim() !== '') {
+    const key = guestApiErrorKey(message)
+    if (key) return t(key)
+    return message
+  }
+  return t(fallbackKey)
 }
 
 export type { GuestI18nValue }

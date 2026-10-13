@@ -1508,6 +1508,7 @@ export const sl: Record<string, string> = {
   'guest.lang.aria': 'Izbira jezika',
   'guest.lang.sl': 'Slovenščina',
   'guest.lang.hr': 'Hrvaščina',
+  'guest.lang.en': 'Angle\u0161\u010dina',
   // Skupno (obe gostujoči strani)
   'guest.common.thanks': 'Hvala!',
   'guest.common.amount': 'Znesek',
@@ -1534,6 +1535,11 @@ export const sl: Record<string, string> = {
   'guest.error.orderNotSubmitted': 'Povezava ni dosegljiva — naročilo NI oddano.',
   'guest.error.orderNotSubmittedRetry': 'Povezava ni dosegljiva — naročilo NI oddano. Poskusi znova.',
   'guest.error.feedbackNotSubmitted': 'Povezava ni dosegljiva — mnenje NI oddano. Poskusi znova.',
+  'guest.error.qrInvalid': 'QR koda ni veljavna ali je naročanje po QR izklopljeno.',
+  'guest.error.rateLimited': 'Preveč zahtevkov. Poskusi čez minuto.',
+  'guest.error.ratingRequired': 'Ocena je obvezna (1–5).',
+  'pay.errorPayLinkDown': 'Plačilne povezave trenutno niso aktivne — poskusite kmalu znova.',
+  'pay.tipRange': 'Napitnina je izven dovoljenega obsega (0 do zneska računa).',
   // Statusi naročil, ki jih vidi gost (javni API vrne fiksne SL nize → preslikava v ključe)
   'guest.status.received': 'Prejeto',
   'guest.status.preparing': 'V pripravi',

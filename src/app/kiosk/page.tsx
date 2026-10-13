@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, Plus, Minus, Monitor, CheckCircle2, Lock } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestApiErrorText } from '@/components/guest-i18n'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -115,7 +115,7 @@ function KioskInner() {
       if (!res.ok) {
         // poslovna napaka (npr. kiosk ni aktiviran) — ponavljanje ne pomaga
         stopRetry()
-        setError(data.error || t('guest.kiosk.notActivated'))
+        setError(guestApiErrorText(t, data?.error, 'guest.kiosk.notActivated'))
         return
       }
       stopRetry()
@@ -157,7 +157,7 @@ function KioskInner() {
           body: JSON.stringify({ code: val }),
         })
         const data = await res.json()
-        if (!res.ok || !data.device?.token) { setError(data.error || t('guest.kiosk.activationFailed')); return }
+        if (!res.ok || !data.device?.token) { setError(guestApiErrorText(t, data?.error, 'guest.kiosk.activationFailed')); return }
         localStorage.setItem(TOKEN_KEY, data.device.token)
         setToken(data.device.token)
         await loadMenu(data.device.token)
@@ -258,7 +258,7 @@ function KioskInner() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || t('guest.error.orderFailed')); return }
+      if (!res.ok) { setError(guestApiErrorText(t, data?.error, 'guest.error.orderFailed')); return }
       setDone({ orderNumber: data.orderNumber, total: data.total })
       setCart([])
     } catch {

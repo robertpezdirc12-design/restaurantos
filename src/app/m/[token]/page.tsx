@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, guestApiErrorText } from '@/components/guest-i18n'
 import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergens'
 
 interface ModifierOption { id: string; name: string; price: number }
@@ -96,7 +96,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     try {
       const res = await fetch(`/api/public/menu?qr=${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || tRef.current('guest.menu.unavailable')); return }
+      if (!res.ok) { setError(guestApiErrorText(tRef.current, data?.error, 'guest.menu.unavailable')); return }
       setMenu(data)
       setActiveCat(data.categories?.[0]?.id || '')
     } catch {
@@ -224,7 +224,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || t('guest.error.orderFailed')); return }
+      if (!res.ok) { setError(guestApiErrorText(t, data?.error, 'guest.error.orderFailed')); return }
       setDone({ orderNumber: data.orderNumber, status: data.status, total: data.total })
       setCart([])
       setCartOpen(false)
@@ -260,7 +260,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) { setFbError(data.error || t('guest.feedback.failed')); return }
+      if (!res.ok) { setFbError(guestApiErrorText(t, data?.error, 'guest.feedback.failed')); return }
       setFbDone(true)
       setFbOpen(false)
     } catch {

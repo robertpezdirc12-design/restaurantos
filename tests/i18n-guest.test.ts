@@ -7,15 +7,18 @@
  *  - HR vrednosti niso prazne in se razlikujejo od SL (razen dokumentiranih skupnih izrazov);
  *  - preslikava statusov naročil (javni API vrača fiksne SL nize) v i18n ključe;
  *  - regresija: prevedena besedila se ne vrnejo v trdo kodirano obliko na
- *    gostujočih straneh (kiosk + QR meni + display), preklopnik jezika je prisoten.
+ *    gostujočih straneh (kiosk + QR meni + display), preklopnik jezika je prisoten;
+ *  - EN (P1-5): delni angleški slovar pokriva 100 % 'guest.*' + 'pay.*' ključev
+ *    (QR meni, kiosk, display, javna plačilna povezava) — turistični trg SI/HR.
  */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { t } from '../src/lib/i18n'
+import { t, enGuestGaps } from '../src/lib/i18n'
 import { sl } from '../src/lib/i18n/sl'
 import { hr } from '../src/lib/i18n/hr'
-import { guestStatusKey } from '../src/components/guest-i18n'
+import { en } from '../src/lib/i18n/en'
+import { guestStatusKey, guestApiErrorKey, guestApiErrorText } from '../src/components/guest-i18n'
 
 const GUEST_PREFIX = 'guest.'
 
@@ -228,8 +231,13 @@ describe('i18n gostov — regresija hardcodiranih besedil (kiosk + QR stran)', (
     })
   }
 
-  test('obe strani uporabljata GuestI18nProvider + useGuestT + GuestLanguageToggle', () => {
-    for (const file of ['src/app/kiosk/page.tsx', 'src/app/m/[token]/page.tsx']) {
+  test('vse gostovske strani uporabljajo GuestI18nProvider + useGuestT + GuestLanguageToggle', () => {
+    for (const file of [
+      'src/app/kiosk/page.tsx',
+      'src/app/m/[token]/page.tsx',
+      'src/app/display/page.tsx', // 49
+      'src/app/pay/[token]/page.tsx', // P0-2 v1.85.0
+    ]) {
       const src = read(file)
       expect(src).toContain('GuestI18nProvider')
       expect(src).toContain('useGuestT')
@@ -243,5 +251,154 @@ describe('i18n gostov — regresija hardcodiranih besedil (kiosk + QR stran)', (
     expect(src).toContain('role="group"')
     expect(src).toContain('min-w-[44px]')
     expect(src).toContain('LOCALE_STORAGE_KEY') // isti ključ localStorage kot dashboard
+    expect(src).toContain("['sl', 'hr', 'en']") // P1-5: trije jeziki za gosta
+  })
+})
+
+// ─── P1-5: ANGLEŠČINA ZA GOSTE (delni slovar) ───
+
+describe('i18n gostov — angleščina (P1-5, TRZNA-VRZELI §4)', () => {
+  // Ključi, kjer je SL vrednost že angleška (neprevedljiva oznaka)
+  const SHARED_WITH_SL = new Set(['guest.display.title']) // 'Customer display' v obeh
+
+  test('pokritost: 100 % guest.* + pay.* ključev iz SL obstaja v EN', () => {
+    expect(enGuestGaps()).toEqual([]) // centralna uveljavljava (src/lib/i18n/index.ts)
+    // in enak set v obeh jezikih — noben EN-only ali SL-only gostovski ključ
+    const slKeys = Object.keys(sl).filter((k) => k.startsWith('guest.') || k.startsWith('pay.')).sort()
+    const enKeys = Object.keys(en).filter((k) => k.startsWith('guest.') || k.startsWith('pay.')).sort()
+    expect(enKeys).toEqual(slKeys)
+    expect(enKeys.length).toBeGreaterThan(130) // korenitost: vse 4 javne strani + plačilo
+  })
+
+  test('EN vrednosti niso prazne (prevod brez vsebine = mešanica jezikov)', () => {
+    for (const [k, v] of Object.entries(en)) {
+      if (!v || v.trim() === '') throw new Error(`EN slovar ima prazno vrednost: "${k}"`)
+    }
+  })
+
+  test('EN vrednosti so resnično angleške (niso SL besedila, razen dokumentiranih)', () => {
+    for (const k of Object.keys(en)) {
+      if (SHARED_WITH_SL.has(k)) continue
+      if (en[k] === sl[k]) throw new Error(`EN vrednost identična SL (neprevedeno): "${k}"`)
+    }
+  })
+
+  test('zlati prevodi — QR meni / plačilo / statusi / display', () => {
+    expect(t('en', 'pay.title')).toBe('Bill payment')
+    expect(t('en', 'pay.totalDue')).toBe('Amount due')
+    expect(t('en', 'pay.tipCustom')).toBe('Custom (€)')
+    expect(t('en', 'guest.menu.selfOrder')).toBe('Self-service ordering')
+    expect(t('en', 'guest.cart.submit')).toBe('Submit order')
+    expect(t('en', 'guest.status.preparing')).toBe('Preparing')
+    expect(t('en', 'guest.display.enjoy')).toBe('Enjoy your meal!')
+    expect(t('en', 'guest.kiosk.yourNumber')).toBe('Your order number:')
+  })
+
+  test('interpolacija spremenljivk deluje v EN', () => {
+    expect(t('en', 'guest.menu.tableSelfOrder', { n: 5 })).toBe('Table 5 · self-service ordering')
+    expect(t('en', 'guest.display.orderNo', { n: 12 })).toBe('Order #12')
+    expect(t('en', 'guest.feedback.starAria', { label: 'Food', n: 4 })).toBe('Food: 4 of 5')
+  })
+
+  test('fallback veriga: dashboard ključ v EN vrne SL (delna pokritost je varna)', () => {
+    expect(t('en', 'common.save')).toBe(sl['common.save'])
+    expect(t('en', 'tabs.overview')).toBe(sl['tabs.overview'] ?? t('sl', 'tabs.overview'))
+  })
+
+  test('jezikovni ključi preklopnika: vsi trije jeziki imajo imena', () => {
+    expect(t('en', 'guest.lang.sl')).toBe('Slovenian')
+    expect(t('en', 'guest.lang.hr')).toBe('Croatian')
+    expect(t('en', 'guest.lang.en')).toBe('English')
+    expect(sl['guest.lang.en']).toBe('Angleščina') // dodan tudi v SL/HR slovarja
+    expect(hr['guest.lang.en']).toBe('Engleski')
+  })
+})
+
+
+// ─── P1-5: preslikava javnih API napak (SL nizi → i18n) ───
+
+describe('i18n gostov — javne API napake prevedene (P1-5)', () => {
+  // SL nizi fail() iz vseh javnih rut (→ rg fail\( v src/app/api/public)
+  const KNOWN = [
+    'QR koda ni veljavna ali je naročanje po QR izklopljeno.',
+    'QR koda ni veljavna.',
+    'Neveljaven ali izklopljen QR token.',
+    'Manjka QR token ali identiteta naprave.',
+    'Kiosk naprava ni registrirana.',
+    'Kiosk ni povezan z lokacijo.',
+    'Naročila ni bilo mogoče varno oddati. Poskusi znova.',
+    'Manjkajo podatki.',
+    'Manjka idempotency ključ (clientOperationId).',
+    'Manjkata qr in orderNumber.',
+    'Miza s to številko ne obstaja na lokaciji.',
+    'Naročilo s to številko ne obstaja na tej mizi.',
+    'Neveljavno telo zahteve.',
+    'Ocena je obvezna (1–5).',
+    'Preveč naročil naenkrat. Počakaj trenutek.',
+    'Preveč poskusov plačila. Počakajte trenutek.',
+    'Preveč zahtev. Počakajte trenutek.',
+    'Preveč zahtevkov.',
+    'Preveč zahtevkov. Poskusi čez minuto.',
+    'Plačilne povezave trenutno niso aktivne — poskusite kmalu znova.',
+    'Plačilo še ni potrjeno.',
+    'Potrditev seje ni na voljo.',
+    'Povezava je potekla. Prosimo, zaprosite osebje za novo.',
+    'Povezava je preklicana.',
+    'Povezava ne obstaja.',
+    'Naročilo je že plačano drugje.',
+    'Račun je že plačan.',
+    'Računa ni mogoče izračunati.',
+    'Seja ni bila ustvarjena.',
+    'Znesek seje se ne ujema s povezavo.',
+    'Napitnina je izven dovoljenega obsega (0 do zneska računa).',
+  ]
+
+  test('vsak znan SL niz javnega API-ja ima preslikavo v i18n ključ', () => {
+    for (const msg of KNOWN) {
+      const key = guestApiErrorKey(msg)
+      if (!key) throw new Error(`API niz brez preslikave: "${msg}"`)
+    }
+    expect(KNOWN.length).toBeGreaterThanOrEqual(31)
+  })
+
+  test('preslikovani ključi resnično obstajajo v VSEH treh slovarjih (SL/HR/EN)', () => {
+    for (const msg of KNOWN) {
+      const key = guestApiErrorKey(msg)!
+      expect(sl[key]).toBeTruthy()
+      expect(hr[key]).toBeTruthy()
+      expect(en[key]).toBeTruthy()
+    }
+  })
+
+  test('nepoznan niz → null (surovi prikaz, nikoli ne strmoglavi)', () => {
+    expect(guestApiErrorKey('Nepričakovana interna napaka')).toBeNull()
+    expect(guestApiErrorKey('')).toBeNull()
+    expect(guestApiErrorKey('   ')).toBeNull()
+  })
+
+  test('guestApiErrorText: znan niz → EN prevod; neznan → surov; manjka → fallback', () => {
+    const en = (key: string) => t('en', key)
+    expect(guestApiErrorText(en, 'QR koda ni veljavna ali je naročanje po QR izklopljeno.', 'guest.menu.unavailable'))
+      .toBe('QR code is not valid or self-ordering is disabled.')
+    expect(guestApiErrorText(en, 'Plačilne povezave trenutno niso aktivne — poskusite kmalu znova.', 'pay.errorRetry'))
+      .toBe('Payment links are currently unavailable — please try again soon.')
+    expect(guestApiErrorText(en, 'Nepoznana napaka', 'guest.menu.unavailable')).toBe('Nepoznana napaka')
+    expect(guestApiErrorText(en, undefined, 'guest.menu.unavailable')).toBe('Menu is not available.')
+    expect(guestApiErrorText(en, null, 'guest.menu.unavailable')).toBe('Menu is not available.')
+  })
+
+  test('regresija: gostovske strani uporabljajo guestApiErrorText (ne surovega data.error)', () => {
+    const { readFileSync } = require('node:fs')
+    for (const file of [
+      'src/app/m/[token]/page.tsx',
+      'src/app/pay/[token]/page.tsx',
+      'src/app/kiosk/page.tsx',
+      'src/app/display/page.tsx',
+    ]) {
+      const src = readFileSync(file, 'utf-8')
+      expect(src).toContain('guestApiErrorText')
+      // stari vzorec surovega prikaza ne sme več obstajati
+      if (/data\.error \|\|/.test(src)) throw new Error(`surovi data.error prikaz ostaja: ${file}`)
+    }
   })
 })

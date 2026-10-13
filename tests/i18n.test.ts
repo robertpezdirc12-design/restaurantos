@@ -58,9 +58,9 @@ describe('i18n — slovarji', () => {
 })
 
 describe('i18n — t() in normalizacija', () => {
-  test('privzeti jezik je sl', () => {
+  test('privzeti jezik je sl, na voljo sl/hr + gostovski en (P1-5)', () => {
     expect(DEFAULT_LOCALE).toBe('sl')
-    expect(LOCALES).toEqual(['sl', 'hr'])
+    expect(LOCALES).toEqual(['sl', 'hr', 'en'])
   })
 
   test('t(sl) vrne natanko prvotna besedila (§18)', () => {
@@ -85,13 +85,27 @@ describe('i18n — t() in normalizacija', () => {
   test('manjkajoč ključ → SL fallback → še vedno manjka → ključ', () => {
     expect(t('sl', 'nep obstojeci.kljuc')).toBe('nep obstojeci.kljuc')
     expect(t('hr', 'nep obstojeci.kljuc')).toBe('nep obstojeci.kljuc')
+    expect(t('en', 'nep obstojeci.kljuc')).toBe('nep obstojeci.kljuc')
   })
 
-  test('normalizeLocale: sl-SI/sl/hr-HR/hr/nepoznano', () => {
+  test('EN je DELNI slovar (P1-5): dashboard ključ v EN → SL vrednost (nikoli mešano)', () => {
+    // EN pokriva SAMO guest./pay. — vsak drug ključ pade na izvorno SL besedilo,
+    // zato dashboard/osebje ostane dosledno slovensko tudi če je shranjen 'en'.
+    expect(t('en', 'common.save')).toBe(t('sl', 'common.save'))
+    expect(t('en', 'login.title')).toBe(t('sl', 'login.title'))
+    // gostovski ključ pa je v EN resnično preveden
+    expect(t('en', 'pay.title')).toBe('Bill payment')
+    expect(t('en', 'guest.menu.selfOrder')).toBe('Self-service ordering')
+  })
+
+  test('normalizeLocale: sl-SI/sl/hr-HR/hr/en/en-US/nepoznano', () => {
     expect(normalizeLocale('sl-SI')).toBe('sl')
     expect(normalizeLocale('sl')).toBe('sl')
     expect(normalizeLocale('hr-HR')).toBe('hr')
     expect(normalizeLocale('HR')).toBe('hr')
+    expect(normalizeLocale('en')).toBe('en') // P1-5: gostovski EN
+    expect(normalizeLocale('en-US')).toBe('en') // angleški turist (brskalnik)
+    expect(normalizeLocale('EN-gb')).toBe('en')
     expect(normalizeLocale('de-DE')).toBe('sl')
     expect(normalizeLocale(undefined)).toBe('sl')
     expect(normalizeLocale(42)).toBe('sl')
@@ -99,6 +113,7 @@ describe('i18n — t() in normalizacija', () => {
 
   test('isLocale varno za branje iz shrambe', () => {
     expect(isLocale('hr')).toBe(true)
+    expect(isLocale('en')).toBe(true) // P1-5: EN je veljaven Locale
     expect(isLocale('de')).toBe(false)
     expect(isLocale(null)).toBe(false)
   })

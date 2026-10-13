@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, RefreshCw, CheckCircle2, WifiOff, CreditCard, Ban, Clock, PartyPopper, Smartphone } from 'lucide-react'
-import { GuestI18nProvider, useGuestT, GuestLanguageToggle } from '@/components/guest-i18n'
+import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestApiErrorText } from '@/components/guest-i18n'
 
 interface ReceiptInfo {
   receiptNumber: string
@@ -47,6 +47,16 @@ interface PayState {
 }
 
 const fmt = (n: number) => `${(Number.isFinite(n) ? n : 0).toFixed(2).replace('.', ',')} €`
+
+/**
+ * Javni API vrača oznako mize kot SL fiksni format "Miza N" (issue + javna rute —
+ * isti vir). Lokaliziramo samo predpono; številka/neznan format ostane nespremenjen
+ * (P1-5 — angleški/hrvaški gost vidi "Table 1"/"Stol 1").
+ */
+function localizedTableLabel(label: string, t: (k: string) => string): string {
+  const m = /^Miza\s+(.+)$/.exec(label.trim())
+  return m ? `${t('pay.table')} ${m[1]}` : label
+}
 
 export default function GuestPayPage({ params }: { params: Promise<{ token: string }> }) {
   return (
@@ -76,7 +86,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
     try {
       const res = await fetch(`/api/public/pay/${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || tRef.current('pay.notFound')); setState(null); return }
+      if (!res.ok) { setError(guestApiErrorText(tRef.current, data?.error, 'pay.notFound')); setState(null); return }
       setState(data as PayState)
     } catch {
       setError(tRef.current('guest.error.unreachableRetry'))
@@ -112,7 +122,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
           // konflikt stanja (plačano/preklicano/poteklo) — naj stanje samo pove
           await load()
         } else {
-          setPayError(data.error || tRef.current('pay.pending'))
+          setPayError(guestApiErrorText(tRef.current, data?.error, 'pay.pending'))
         }
       } catch {
         setPayError(tRef.current('guest.error.unreachableRetry'))
@@ -139,7 +149,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setPayError(data.error || tRef.current('pay.errorRetry'))
+        setPayError(guestApiErrorText(tRef.current, data?.error, 'pay.errorRetry'))
         if (res.status === 409) await load() // stanje se je spremenilo (plačano/preklicano)
         return
       }
@@ -232,7 +242,11 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
           <h2 className="font-semibold text-stone-900">
             {t('pay.order')} #{s.order?.orderNumber}
           </h2>
-          {s.order?.table && <Badge variant="outline" className="border-stone-300 text-stone-600">{s.order.table}</Badge>}
+          {s.order?.table && (
+            <Badge variant="outline" className="border-stone-300 text-stone-600">
+              {localizedTableLabel(s.order.table, t)}
+            </Badge>
+          )}
         </div>
         <dl className="mt-4 space-y-1.5 text-sm text-stone-700">
           <Row label={t('pay.subtotal')} value={fmt(s.bill?.subtotal ?? 0)} />

@@ -4,7 +4,7 @@
 > Naročilo lastnika: »raziskuj po spletu najboljše in primerjaj, kaj nam še manjka.«
 > Metodologija: (a) sveža raziskava spleta 13. 10. 2026 (uradne strani Lightspeed/Toast/
 > Square/Loyverse; nevtralna primerjava TechRadar 2026; regulatorni viri EU/PCI SSC;
-> Wikipedia za ViDA/QR), (b) inventar lastnega sistema IZ KODE @ v1.82.9 (grep dokazi),
+> Wikipedia za ViDA/QR), (b) inventar lastnega sistema IZ KODE @ v1.86.0 (grep dokazi),
 > (c) primerjava matrično, (d) prioritizacija P0–P3 s trudom.
 > Omejitve: toasttab.com/touchbistro.com/possector.com za bot-zaščito (Cloudflare) —
 > njihovi nabori povzeti po OPS-4 (12. 10. 2026) in TechRadar 2026; FINA fina.hr nedosegljiva
@@ -119,7 +119,8 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 | # | Manjka | Trud |
 |---|---|---|
 | 4 | **Labor forecast** — iz zgodovine prodaje priporočeno število ur/izm. (imamo actuals + prodaja po urah) | Srednji |
-| 5 | **EN jezik za goste** (QR/kiosk/display) — turistični trg SI/HR; i18n infrastruktura je | Majhen–srednji |
+| 5 | **EN jezik za goste** | ✓ ZAPRTO | P1-5 v1.86.0 — delni EN slovar (guest./pay. 140 ključev), GuestLanguageToggle SL/HR/EN, samodejna izbira po brskalniku, javne API napake preslikane v i18n (31 nizov) |
+| 5 | **EN jezik za goste** | ✓ **ZAPRTO (P1-5, v1.86.0)** — delni EN slovar (140 ključev 'guest.*'+'pay.*': QR meni, kiosk, display, /pay), GuestLanguageToggle SL/HR/EN (44px), samodejna izbira po jeziku brskalnika (en→EN, hr→HR), dashboard varovalka (locale 'en' → SL vsebina + SL poudarjen), javne API SL napake (31 fail-nizov) preslikane v i18n prek guestApiErrorKey/Text (vzorec guestStatusKey), "Miza N" → Table/Stol N; fallback veriga en→SL (delna pokritost varna) | Majhen–srednji → izvedeno |
 | 6 | **Split po gostih** (poleg izstavkov) — »2 gosta na računu« posebni zahtevek | Majhen |
 | 7 | **Integrirana kartična plačila z vinjetami za napitnino na terminalu** (SumUp/Stripe Terminal/Bankart — lokalni SI/HR ponudniki) | Velik (partner) |
 | 8 | **Lastni spletni portal za prevzem** (spletna stran + plačilo → direktno v POS) | Srednji–velik |
@@ -162,7 +163,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 1. ~~86-toggle (P0-3)~~ — ✅ **izvedeno v v1.83.0** (86-plošča + nadomestki + waiter-UI + testni pokrov; gl. §4).
 2. ~~Handheld tok (P0-1)~~ — ✅ **izvedeno v v1.84.0** (/handheld — enoročni tok mize→naroči→fire→plačaj pri mizi z velikimi CTA v coni palca, 86 artikli sivo, offline vrsta; tests/handheld-flow.test.ts 12 testov; gl. §4.1).
 3. ~~Pay link (P0-2)~~ — ✅ **izvedeno v v1.85.0** (ponudnik: Stripe Checkout prek env/Integration; simulator privzet — gl. §4).
-4. **EN jezik gostu** (P1-5) + split po gostih (P1-6) — hiter dobiček.
+4. ~~EN jezik gostu (P1-5)~~ — ✓ **izvedeno v v1.86.0** (delni EN slovar + 3-jezikovni preklopnik + prevod API napak; gl. §4). Ostaja: split po gostih (P1-6) — hiter dobiček.
 5. **Labor forecast + AI** (P1-4, P2-9) — podatki že zbrani (prodaja po urah, labor cost).
 6. Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).
 
@@ -173,5 +174,5 @@ matrike** in **vodi v fiskalizaciji SI/HR, HACCP, audit verigi, menu engineering
 lastništvu kode**. VSE 3 P0 vrzeli so ZAPRTE: 86-toggle v v1.83.0, handheld tok v
 v1.84.0 (/handheld) in online plačilna povezava v v1.85.0 (/pay/token — QR položnica
 z napitnino, plačilo skozi kanonični FURS zaključek, Stripe Checkout ali simulator,
-19-testni pokrov). Preostale vrzeli so P1+ (EN jezik, labor forecast, spletni portal).
+19-testni pokrov). Preostale vrzeli so P1+ (split po gostih, labor forecast, spletni portal); EN jezik za goste je ZAPRT v v1.86.0 (turistični trg).
 Regulatorno je sistem pripravljen na ViDA-ero z izjemo B2B e-račun izvoza (rok 2030+).

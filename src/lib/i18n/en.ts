@@ -1,0 +1,179 @@
+/**
+ * P1-5 (TRZNA-VRZELI-2026 §4) — ANGLEŠKI slovar, NAMERNO DELNI.
+ *
+ * Obseg: SAMO gostujoče strani — QR meni (/m), kiosk (/kiosk), customer display
+ * (/display) in javna plačilna povezava (/pay/<token>) → predponi 'guest.*' in
+ * 'pay.*'. Turistični trg SI/HR: angleški gost odpre QR na mizi in takoj vidi
+ * svoj jezik (normalizeLocale(navigator.language) → 'en').
+ *
+ * Izven obsega (NAMERNO): celoten dashboard/osebje ostaja dvojezičen SL/HR —
+ * t() ima fallback verigo en → SL: manjkajoč dashboard ključ v EN vrne slovensko
+ * vrednost (delna pokritost je varna, nikoli mešana znotraj enega ključa).
+ *
+ * Vzdrževanje: pokritost ('guest.*' + 'pay.*' iz SL) uveljavlja test
+ * tests/i18n-guest.test.ts — vsak nov gostovski ključ v SL/HR ZAHTEJEVAN tudi tukaj.
+ * Fiskalizacija NI prevodna funkcija (fiskalni nizi ostanejo SI/HR — gl. index.ts).
+ */
+
+export const en: Record<string, string> = {
+  // ‖ Jezikovni preklopnik (gost) ‖
+  'guest.lang.aria': 'Choose language',
+  'guest.lang.sl': 'Slovenian',
+  'guest.lang.hr': 'Croatian',
+  'guest.lang.en': 'English',
+
+  // ‖ Skupno (vse gostovske strani) ‖
+  'guest.common.thanks': 'Thank you!',
+  'guest.common.amount': 'Amount',
+  'guest.common.payAtCashier': '· pay at the counter',
+  'guest.common.unavailable': 'Not available',
+  'guest.common.unavailableNow': 'Currently unavailable',
+  'guest.common.optional': 'optional',
+  'guest.common.note': 'Note',
+  'guest.common.noteKitchen': 'Note for the kitchen',
+  'guest.common.add': 'Add',
+  'guest.common.retry': 'Try again',
+  'guest.common.close': 'Close',
+  'guest.common.sending': 'Sending …',
+  'guest.common.submitting': 'Submitting …',
+  'guest.common.offline': 'Offline',
+  'guest.common.total': 'Total',
+  'guest.common.vat': 'VAT',
+  'guest.common.nameOptional': 'Name (optional)',
+  'guest.common.noSurcharge': 'no extra charge',
+
+  // ‖ Napake (omrežje/oddaja) ‖
+  'guest.error.unreachable': 'Connection unavailable.',
+  'guest.error.unreachableRetry': 'Connection unavailable. Check your internet and try again.',
+  'guest.error.orderFailed': 'Your order could not be placed.',
+  'guest.error.orderNotSubmitted': 'Connection unavailable — your order has NOT been submitted.',
+  'guest.error.orderNotSubmittedRetry': 'Connection unavailable — your order has NOT been submitted. Please try again.',
+  'guest.error.feedbackNotSubmitted': 'Connection unavailable — your feedback has NOT been submitted. Please try again.',
+  'guest.error.qrInvalid': 'QR code is not valid or self-ordering is disabled.',
+  'guest.error.rateLimited': 'Too many requests. Please try again in a minute.',
+  'guest.error.ratingRequired': 'A rating (1–5) is required.',
+  'pay.errorPayLinkDown': 'Payment links are currently unavailable — please try again soon.',
+  'pay.tipRange': 'Tip is out of the allowed range (0 to the bill amount).',
+
+  // ‖ Statusi naročil (gost vidi) ‖
+  'guest.status.received': 'Received',
+  'guest.status.preparing': 'Preparing',
+  'guest.status.ready': 'Ready',
+  'guest.status.served': 'Served',
+  'guest.status.paid': 'Paid',
+  'guest.status.cancelled': 'Cancelled',
+
+  // ‖ Kiosk ‖
+  'guest.kiosk.title': 'Kiosk activation',
+  'guest.kiosk.instructions': 'Enter the ONE-TIME entry code (Settings → Devices → Entry code) or the kiosk device token.',
+  'guest.kiosk.tokenPlaceholder': '12345678 or rodev_…',
+  'guest.kiosk.activate': 'Activate kiosk',
+  'guest.kiosk.notActivated': 'Kiosk is not activated.',
+  'guest.kiosk.autoRetry': 'Retrying …',
+  'guest.kiosk.activationFailed': 'Activation failed.',
+  'guest.kiosk.tokenHint': 'Enter the 8-digit entry code or a valid device token (rodev_…).',
+  'guest.kiosk.subtitle': 'Self-service kiosk — pick items and place your order',
+  'guest.kiosk.lockTitle': 'Lock/reset kiosk (long press required)',
+  'guest.kiosk.yourNumber': 'Your order number:',
+  'guest.kiosk.autoReset': 'Kiosk is resetting automatically …',
+  'guest.kiosk.cartEmpty': 'Your cart is empty — tap an item to start.',
+  'guest.kiosk.notePlaceholder': 'e.g. no ice',
+  'guest.kiosk.submit': 'Submit',
+  'guest.kiosk.upsellTitle': 'Add more',
+
+  // ‖ QR meni ‖
+  'guest.menu.loading': 'Loading menu …',
+  'guest.menu.unavailable': 'Menu is not available.',
+  'guest.menu.tableSelfOrder': 'Table {n} · self-service ordering',
+  'guest.menu.selfOrder': 'Self-service ordering',
+  'guest.menu.allergens': 'Allergens: {allergens}',
+  'guest.menu.emptyCategory': 'No items available in this category.',
+  'guest.menu.vatNote': 'Prices include VAT (itemised in the cart). No app or sign-up needed.',
+  'guest.menu.allergenFilter': 'Allergens',
+  'guest.menu.allergenFilterHint': 'Select allergens — dishes containing them will be hidden.',
+  'guest.menu.allergenClear': 'Clear selection',
+  'guest.menu.allergenNoneLeft': 'No dishes without the selected allergens in this category.',
+  'guest.menu.notePlaceholder': 'e.g. no onions',
+  'guest.menu.orderDone': 'Order #number: {n}',
+  'guest.menu.newOrder': 'New order',
+
+  // ‖ Košarica ‖
+  'guest.cart.button': 'Cart',
+  'guest.cart.title': 'Your cart',
+  'guest.cart.itemOne': 'item',
+  'guest.cart.itemMany': 'items',
+  'guest.cart.nameHint': 'So we can call your name',
+  'guest.cart.submit': 'Submit order',
+  'guest.cart.vatExcl': 'List without VAT',
+
+  // ‖ Mnenja (QR povratne informacije) ‖
+  'guest.feedback.cta': 'How was it? Leave us your feedback',
+  'guest.feedback.title': 'Your feedback',
+  'guest.feedback.overall': 'Overall',
+  'guest.feedback.food': 'Food',
+  'guest.feedback.service': 'Service',
+  'guest.feedback.atmosphere': 'Atmosphere',
+  'guest.feedback.starAria': '{label}: {n} of 5',
+  'guest.feedback.commentPlaceholder': 'Comment (optional)',
+  'guest.feedback.thanks': 'Thank you for your feedback — we will use it to improve.',
+  'guest.feedback.submit': 'Send feedback',
+  'guest.feedback.failed': 'Your feedback could not be submitted.',
+
+  // ‖ Customer display ‖
+  'guest.display.title': 'Customer display',
+  'guest.display.notRegistered': 'Display device is not registered.',
+  'guest.display.tokenHint': 'Enter a device token of type customer_display (Settings → Devices → add a device).',
+  'guest.display.invalidToken': 'Enter a valid device token.',
+  'guest.display.showScreen': 'Show screen',
+  'guest.display.connectPos': 'Connect to POS',
+  'guest.display.pairHint': 'On the POS: Settings → Customer display → Show code. Enter the 6-digit code:',
+  'guest.display.codeFormat': 'The code is a 6-digit number (POS → Settings → Customer display).',
+  'guest.display.connect': 'Connect',
+  'guest.display.connectFailed': 'Connection failed.',
+  'guest.display.changeDevice': 'Change device',
+  'guest.display.online': 'connected',
+  'guest.display.offline': 'offline',
+  'guest.display.unpair': 'Unpair',
+  'guest.display.stale': 'Connection lost — displayed data may be outdated.',
+  'guest.display.welcome': 'Welcome!',
+  'guest.display.followHint': 'You can follow your order on this screen.',
+  'guest.display.currentOrder': 'Current order',
+  'guest.display.vatRate': 'VAT {rate} %',
+  'guest.display.total': 'TOTAL',
+  'guest.display.orderNo': 'Order #{n}',
+  'guest.display.enjoy': 'Enjoy your meal!',
+  'guest.display.waitingPos': 'Waiting for POS data …',
+
+  // ‖ Javna plačilna povezava (/pay/<token> — P0-2 v1.85.0) ‖
+  'pay.title': 'Bill payment',
+  'pay.loading': 'Loading …',
+  'pay.notFound': 'This link does not exist or has expired.',
+  'pay.errorRetry': 'Payment failed. Please try again.',
+  'pay.order': 'Order',
+  'pay.table': 'Table',
+  'pay.subtotal': 'Subtotal',
+  'pay.tax': 'VAT',
+  'pay.discount': 'Discount',
+  'pay.totalDue': 'Amount due',
+  'pay.tip': 'Tip',
+  'pay.tipNone': 'No tip',
+  'pay.tipCustom': 'Custom (€)',
+  'pay.pay': 'Pay',
+  'pay.paying': 'Paying …',
+  'pay.verify': 'Confirming payment …',
+  'pay.pending': 'Payment not confirmed yet — please try again after completion.',
+  'pay.paid': 'Paid!',
+  'pay.thanks': 'Thank you — see you again!',
+  'pay.receipt': 'Receipt',
+  'pay.eor': 'EOR (FURS confirmation)',
+  'pay.jir': 'JIR (CIS confirmation)',
+  'pay.totalWithTip': 'Total with tip',
+  'pay.revoked': 'This link has been cancelled.',
+  'pay.revokedNote': 'Please pay with our staff.',
+  'pay.expired': 'This link has expired.',
+  'pay.expiredNote': 'Please ask our staff for a new link.',
+  'pay.superseded': 'This bill has already been paid.',
+  'pay.supersededNote': 'The payment was completed elsewhere.',
+  'pay.simulationNote': 'Demo mode — payment is simulated (no card is charged).',
+  'pay.footer': 'Secure payment link by RestaurantOS',
+}
