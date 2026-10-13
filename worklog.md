@@ -2214,3 +2214,23 @@ Stage Summary:
 - PayLink DDL + issue13 + haccp-plans so ZDAJ aplicirani na Neon produkciji; stroski-kategorije čaka deploy tegea popravka (nato POST → DDL → allApplied)
 - Uporabnikov klik ni uspel zaradi P2010 hrošča (ne uporabnikova napaka) — vzrok odpravljen na korenu s skupnim helperjem + 12 testi
 - Naslednji koraki: deploy → produkcija stroski DDL + allApplied → produkcijski E2E PayLink zlate poti → P1-6 split po gostih
+
+---
+Task ID: v1.86.2
+Agent: glavni agent (Z.ai)
+Task: Nadaljevanje po v1.86.1 — produkcijski E2E PayLink zlate poti + E2E odkrita vrzel: centralna vloga brez lokacije ne more ustvariti naročila iz UI.
+
+Work Log:
+- PRODUKCIJSKI E2E PayLink (agent-browser, restaurantos-theta.vercel.app): prijava vodja@ (MANAGER, Ljubljana) → /handheld → Miza 5 → 2× pizza → Ustvari naročilo (POST 201, naročilo #691, 26,94 € z naročnino) → Pošlji v kuhinjo → V pripravi → Račun → Ustvari povezavo (POST /paylink 201) → QR 176×176 + URL → GOSTOV /pay/<token> NOV ZAVIHEK: samodejni EN (brskalnik en-US — P1-5 deluje na produkciji), 'Order #691' + 'Table 5' + napitnine → 10 % → 'Pay · 29,63 €' → PLAČANO: 'Receipt 2026-10-4-BLG001' + 'Amount due 26,94 €' + 'Tip 2,69 €' + 'Total with tip 29,63 €' + 'EOR C37B7412-E25A-4A97…' (simulator) → miza samodejno Za pospraviti → Počisti mizo → Na voljo; 0 console/page error
+- E2E odkritje (kot info@ ADMIN central, loc=null): /handheld → Ustvari naročilo → 400 'Lokacija ni določena — podajte locationId.' — UI ne pošilja locationId, requireUserLocation pa centralni vlogi brez lokacije zahteva body.locationId (za osebje strežnik vedno uporabi user.loc)
+- POPRAVEK v1.86.2 (4 mesta): handheld submitCreate + offline enqueue pošiljata selTable.locationId (miza vedno nosi svojo lokacijo prek mapTable triage ⑧); tablica + dashboard novo naročilo (openTable/newOrderTable.locationId); dashboard hitra prodaja TAKEOUT (viewLoc iz preklopnika pogleda); vzorec `x || undefined` — JSON.stringify izpušče undefined → za osebje/lokalizirane vloge se nič ne spremeni
+- AVTORSKA NAPAKA UJETA S Browser E2E (razlog, zakaj E2E pred commitom OBVEZNO): prva različica popravka je imela v python patchu LITERAL \n v komentarju → cela vrstica ena linija → // komentar je pojedel klic api() → submitCreate je TIHO izpraznil košaro BREZ POST-a; dev E2E odkril (klik brez omrežnega klica), diagnoza z instrumentiranim fetch/click listenerjem → vse 4 datoteke popravljene na prave newligne, potrjeno 0 dobesednih \n
+- DEV E2E PO POPRAVKU (dev :3007, svež e2e.db + seed + central@restaurantos.app lastnik loc=null PIN 4321): UI klik 'Ustvari naročilo' → POST /api/orders 201 + naročilo v DB (n=2, emp=e2e-central-owner) + 'Pošlji v kuhinjo (1)' + 'Račun · 7,67 €'; tsc 0, eslint 0, svež ci-fresh.db 1105/1105 (75 datotek)
+- Nepojasnjena stranska opažanja dev :3007 (ne blokirajo, dokumentirano): poll trioi (~1/s med interakcijo) + Next watcher rebuild vihar (SQLite journal v gledanem drevesu) — znano dev-only okolje
+- Produkcija med E2E: mize 1/2/3/6 so med testiranjem postale OCCUPIED brez aktivnih naročil (najverjetneje uporabnik istočasno testira) — manager POST na zasedeni mizi je pravilno 409
+
+Stage Summary:
+- PayLink zlata pot 100 % verificirana NA PRODUKCIJI (ustvarjanje → QR → javna stran EN → plačilo z napitnino → fiskalizacija → avtomatsko pospravljanje mize) — P0-2 TRZNA-VRZELI je produkcijsko živa
+- Centralni ADMIN/OWNER brez lokacije zdaj ustvarja naročila iz handheld/tablica/dashboard (lokacija iz konteksta mize/preklopnika)
+- Lekcija: python patch z \n v komentarju → tsc/eslint NE ujeta (veljaven komentar) — samo browser E2E dokže omrežni klic; delovni standard potrjen
+- Naslednji: P1-6 split po gostih (TRZNA-VRZELI §6 — odločitev PayLink orderId @unique: splitCount na PayLink ALI N povezav)

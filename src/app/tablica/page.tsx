@@ -127,11 +127,12 @@ function TablicaInner() {
     setSending(true); setNotice('')
     const clientOperationId = newOperationId()
     try {
-      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: openTable.id, items, guests: 2, clientOperationId }) })
+      // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
+      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: openTable.id, items, guests: 2, clientOperationId, locationId: openTable.locationId || undefined }) })
       setCart({}); setOpenTable(null); await load()
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '' }, clientOperationId)
+        enqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '', locationId: openTable.locationId || undefined }, clientOperationId)
         setCart({}); setOpenTable(null); setNotice(t('tlb.queued'))
       } else setNotice((err as Error).message)
     } finally { setSending(false) }

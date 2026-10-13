@@ -467,12 +467,13 @@ function DashboardInner() {
       if (items.length === 0) return
       // idempotencija: isti clientOperationId ob replayu ne ustvari dvojnega naročila
       const clientOperationId = newOperationId()
-      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2, clientOperationId }) })
+      // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
+      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2, clientOperationId, locationId: newOrderTable.locationId || undefined }) })
       setCart({}); setNewOrderTable(null); await load()
     } catch (err) {
       if (isNetworkError(err)) {
         // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
-        enqueueOp('order.create', { tableId: newOrderTable.id, items: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), guests: 2, note: '' })
+        enqueueOp('order.create', { tableId: newOrderTable.id, items: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), guests: 2, note: '', locationId: newOrderTable.locationId || undefined })
         setCart({}); setNewOrderTable(null)
         alert(t('net.offlineOrderQueued'))
       } else {
@@ -1278,7 +1279,9 @@ function DashboardInner() {
     try {
       const j = await api<{ order: { id: string } }>('/api/orders', {
         method: 'POST',
-        body: JSON.stringify({ items, type: 'TAKEOUT', guests: 1, clientOperationId: newOperationId() }),
+        // v1.86.2: centralna vloga brez lokacije → lokacija iz preklopnika pogleda (viewLoc);
+        // JSON.stringify izpušče undefined → za osebje/lokalizirane vloge se nič ne spremeni
+        body: JSON.stringify({ items, type: 'TAKEOUT', guests: 1, clientOperationId: newOperationId(), locationId: viewLoc || undefined }),
       })
       setSaleCart({})
       const fresh = await api<{ orders: OrderT[] }>('/api/orders')

@@ -217,12 +217,14 @@ function HandheldInner() {
     setSending(true); setNotice('')
     const clientOperationId = newOperationId()
     try {
-      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: selTable.id, items: itemsPayload, guests, clientOperationId }) })
+      // v1.86.2: centralna vloga brez lokacije (ADMIN loc=null) pošlje lokacijo IZ MIZE —
+      // requireUserLocation jo sprejme; osebje s lokacijo je strežnik ignorira (user.loc zmaga)
+      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: selTable.id, items: itemsPayload, guests, clientOperationId, locationId: selTable.locationId || undefined }) })
       setCart({}); setNotes({}); setNoteOpen(null)
       await load()
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('order.create', { tableId: selTable.id, items: itemsPayload, guests, note: '' }, clientOperationId)
+        enqueueOp('order.create', { tableId: selTable.id, items: itemsPayload, guests, note: '', locationId: selTable.locationId || undefined }, clientOperationId)
         setCart({}); setNotes({}); setNoteOpen(null); setView('tables'); setSelTableId(null)
         setNotice(t('tlb.queued'))
       } else setNotice((err as Error).message)
