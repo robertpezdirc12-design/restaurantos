@@ -1904,3 +1904,19 @@ Work Log:
 Stage Summary:
 - Produkcija: v1.82.1 deployan prek pravilno-avtoriranega commita; health po deployu = version 1.82.1 + nov commit SHA
 - Priporočila uporabniku: (1) doplačaj Actions minute ali počakaj na reset 1. 11. (do takrat brez CI in GitLab sync-a); (2) "Deploy only when CI passes" na Vercelu NE vklopiti dokler je kvota izčrpana (deployi bi se povsem ustavili); (3) GitHub žeton iz klepeta preklicati (izpostavljen)
+
+---
+Task ID: AUDIT-FIX-2 (razrez monolita val 2 — furs route)
+Agent: Z.ai Code (orchestrator)
+Task: Zadnja P3 točka zunanje analize: src/app/api/furs/route.ts = 878 vrstic fiskalne logike v handlerju → izločitev jedra (v1.82.2).
+
+Work Log:
+- ČISTA EKSTRAKCIJA (pure move): POST telo (vklj. PaymentPart + findReceiptByIdempotencyKey) dobesedno preneseno v src/lib/furs/issue.ts kot issueFursReceipt(req: NextRequest); route = tanki delegat (POST → issueFursReceipt), GET nespremenjen; vzorec enak run-recurring → recurring-run (OPS-11 val 3)
+- DOKAZ BYTE-IDENTIČNOSTI: python diff originalnega POST bloka (git HEAD) vs prenesenega = identičen (edina sprememba: ime funkcije POST → issueFursReceipt); avtentikacija ostaja v jedru (requirePermission zahteva NextRequest, enak vzorec kot recurring-run)
+- uvozi: issue.ts dobi natanko POST-potreben nabor (17 uvozov, locationScope izpuščen — GET-only), route.ts dobi GET nabor + issueFursReceipt
+- VERIFIKACIJA: tsc --noEmit 0; eslint 0; svež ci-fresh.db → 1037/1037 testov (tests/furs-post.test.ts uva POST iz route → pokriva delegat → jedro pot, vklj. idempotenco/CAS/deljeno plačilo/zvestobo/kartice); check-secrets OK
+- version.ts → 1.82.2; route 878 → 87 vrstic (jedro 829)
+
+Stage Summary:
+- Fiskalno-kritična logika (FURS SI / CIS HR, $transaction, ZOI/EOR/ZKI/JIR) sedaj doma v src/lib/furs/issue.ts — testirana prek obstoječih 17+ furs testov, nič sprememb vedenja
+- P3 točke zunanje analize: monolit dashboard-tabs (val 1, −2587 vrst.) + furs route (val 2, −791 vrst. iz route) — OBE odpravljeni; ostanejo prihodnji valovi (~6600 vrst. dashboard-tabs)
