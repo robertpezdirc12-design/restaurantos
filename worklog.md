@@ -1954,3 +1954,15 @@ Work Log:
 Stage Summary:
 - Monolit dashboard-tabs: 9217 → 3276 vrst. (−64 %) po 3 valovih AUDIT-FIX (1: −2587, 3: −2338, 4: −1016); ostanejo v monolitu: InventoryTab, ShiftsTab, HaccpTab (+HaccpPlansSection), ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, EnterpriseTab (+MigrationsConsole), StaffScheduleTab, MenuEngineeringTab, KdsStatsSection — naslednji kandidati: HACCP blok (~333), Enterprise blok (~640)
 - Produkcija: v1.82.4
+
+---
+Task ID: AUDIT-DEPLOY-2 (deploy anomalija vala 4)
+Agent: Z.ai Code (orchestrator)
+Task: Deploy za 742938d (v1.82.4) se je zataknil — Vercel status je šel pending, nato IZGINIL (total_count 0, brez uspeha/napake), health ostaja na v1.82.3. Vzrok: Vercel-side anomalija (izgubljen deployment), ne koda (tsc 0 / 1037 testov / E2E zeleno lokalno).
+
+Work Log:
+- 20+ min polling: status pending → statuses prazne (0), CI check-runi (kvota) rdeči kot pričakovano
+- rešitev: ta commit (worklog-only) sproži nov webhook → nov deployment; če uspe, health → v1.82.4
+
+Stage Summary:
+- Vzorec za prihodnje seje: če Vercel status izgine iz commita brez zaključka, push manjši commit za re-trigger
