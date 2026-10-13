@@ -1,4 +1,4 @@
-# TRŽNA VRZEL-ANALIZA — 2. krog (v1.82.9 → v1.82.10, 2026-10-13)
+# TRŽNA VRZEL-ANALIZA — 2. krog (v1.82.9 → v1.82.10, 2026-10-13; P0-3 izveden v v1.83.0)
 
 > Nadaljevanje OPS-4 (`GAP-ANALIZA-funkcije-in-dovoljenja.md`, @ v1.66.0).
 > Naročilo lastnika: »raziskuj po spletu najboljše in primerjaj, kaj nam še manjka.«
@@ -44,7 +44,7 @@
 | P2-15 Loyalty nivoji | ✅ ZAPRTO | tier (bronze/silver/zlato) v zvestoba toku |
 
 **Bilanca: 14/20 OPS-4 vrzeli popolnoma zaprtih + 2 delno** v 16 izdajah (v1.67.0 → v1.82.9).
-Odprte ostanejo: handheld tok, 86-toggle, QR mnenje na računu, EN/DE/IT jeziki,
+Odprte ostanejo (stanje @ v1.82.10): handheld tok, QR mnenje na računu, EN/DE/IT jeziki,
 spletni rezervacijski widget, kampanje, AI napovedi, predavtorizacija, knjigovodski portal (delno).
 
 ## 3. TRŽNA MATRIKA 2026 (RestavrantOS @ v1.82.9 proti vodilnim)
@@ -64,7 +64,7 @@ Legenda: ✓ ima · ~ delno · ✗ manjka · — ni relevantno za ta trg
 | Kiosk samopostrežni | ✓ | ✓ | ✓ | ✗ | ~ | ✓ (+vplačilo) |
 | QR naročanje gosta | ✓ | ✓ | ✓ | ✗ | ~ (cenik) | ✓ (/m/token) |
 | Offline način | ✓ | ~ | ✓ | ✓ | ✓ | ✓ (POS vrsta + resilience) |
-| **Hiter »86« toggle na KDS** | ✓ | ✓ | ✓ | ✓ | ✓ | **✗ (Meni → dostopnost)** |
+| **Hiter »86« toggle na KDS** | ✓ | ✓ | ✓ | ✓ | ✓ | **✓ v1.83.0 (86-plošča + nadomestki; gumb na listkah + ozek API od OPS-4)** |
 | Integrirana kartična plačila | ✓ | ✓ | ✓ | ✓ | ✓ | ~ (terminal, brez PAN) |
 | **Online plačilo (pay link)** | ✓ | ✓ | ✓ | ✗ | ✗ | **✗** |
 | Fiskalizacija SI (FURS) | ✗ | ✗ | ✗ | ✗ | ✓ | **✓ (EOR/ZOI)** |
@@ -112,7 +112,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 |---|---|---|---|
 | 1 | **Handheld tok za natakarja** — optimiziran eno-ročni PWA tok (Mize → naroči → fire → plačaj pri mizi) | Lightspeed Tableside/Toast handheld = #1 prodajni argument; PWA + offline vrsta ŽE obstajata — manjka samo optimiziran UI tok | Srednji |
 | 2 | **Online plačilo QR položnice (pay link)** — gost odpre QR položnico in plača kartico na telefonu | Square/Toast/Lightspeed vsi; zmanjša čakanje natakarja pri mizi; poveča turnover | Srednji (ponudnik plačil) |
-| 3 | **Hiter »86« toggle na KDS/šank** — en klik iz KDS postaje artikl v sold-out | Vsi konkurenti; menu.availability dovoljenje ŽE obstaja — manjka gumb na KDS + avtomatska ponudba nadomestkov | Majhen |
+| 3 | **Hiter »86« toggle na KDS/šank** — ✅ **ZAPRTO v v1.83.0**: 86-plošča na KDS (proaktivni 86 katerega koli artikla, obnova z enim klikom, števec razprodanih), avtomatski nadomestki iz iste kategorije (prioriteta ista postaja, max 3), waiter dialogi (novo naročilo + urejevalnik OPS-7) kažejo 86 + nadomestke namesto tihega skrivanja/zavrnitve; ozek API PATCH /api/menus/[id]/availability + menu.availability obstajata od OPS-4 (4e7b6e6) | Popravek poštenosti: v1.82.10 je vrstico ocenil ✗ — gumb na listkah naročil JE obstajal; manjkali so proaktivna plošča, nadomestki, waiter vidnost in testni pokrov (dodan tests/menu-86-board.test.ts: 401/403×2/400/404, toggle, revizijska veriga, idempotenca) | Zaprto (v1.83.0) |
 
 ### P1 — vsi vodilni imajo, konkurenčna parity
 
@@ -159,7 +159,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 
 ## 6. PRIporočen VRSTNI RED
 
-1. **86-toggle** (P0-3) — najmanj truda, vidno vsak dan.
+1. ~~86-toggle (P0-3)~~ — ✅ **izvedeno v v1.83.0** (86-plošča + nadomestki + waiter-UI + testni pokrov; gl. §4).
 2. **Handheld tok** (P0-1) — PWA osnova obstaja; nov /handheld UI (mize-naroči-plačaj).
 3. **Pay link** (P0-2) — izbira ponudnika plačil (Stripe/SumUp lokalno).
 4. **EN jezik gostu** (P1-5) + split po gostih (P1-6) — hiter dobiček.
@@ -170,6 +170,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 
 RestavrantOS @ v1.82.9 je na **feature-parity s svetovnimi vodilnimi v ~80 % matrike** in
 **vodi v fiskalizaciji SI/HR, HACCP, audit verigi, menu engineeringu in lastništvu kode**.
-Preostale 3 P0 vrzeli (handheld tok, pay link, 86-toggle) so izvedljive z obstoječo
-infrastrukturo (PWA, offline vrsta, dovoljenja) — ocenjen skupni trud ~2–3 sprinti.
+Preostale 2 P0 vrzeli (handheld tok, pay link) sta izvedljivi z obstoječo
+infrastrukturo (PWA, offline vrsta, dovoljenja) — 86-toggle je zaprt v v1.83.0
+(86-plošča + nadomestki + waiter vidnost + testni pokrov endpointa).
 Regulatorno je sistem pripravljen na ViDA-ero z izjemo B2B e-račun izvoza (rok 2030+).

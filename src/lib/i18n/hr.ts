@@ -1390,6 +1390,13 @@ export const hr: Record<string, string> = {
   'kds.minutes': '{m} min',
   'kds.markUnavailable': 'Označi rasprodano (86)',
   'kds.markAvailable': 'Vrati na raspolaganju',
+  // P0-3 (v1.83.0) — 86 ploča na KDS: proaktivni 86 + zamjene (TRZNA-VRZELI-2026 §4)
+  'kds.boardTitle': '86 ploča — rasprodani artikli',
+  'kds.boardEmpty': 'Svi artikli su dostupni.',
+  'kds.boardSearch': 'Brzi 86 — pronađi artikal…',
+  'kds.boardNoHit': 'Nema rezultata.',
+  'kds.substitutes': 'Zamjene',
+  'kds.noSubstitutes': 'nema zamjena u kategoriji',
   'sale.search': 'Traži artikl…',
   'sale.allCat': 'Sve kategorije',
   'sale.total': 'Ukupno',

@@ -47,6 +47,7 @@ import {
   Bell,
   CalendarRange,
   ChartScatter,
+  Eye,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -1147,6 +1148,8 @@ function DashboardInner() {
     return s === 'KITCHEN' || s === 'BAR' ? s : 'ALL'
   })
   const [kdsSound, setKdsSound] = useState(true)
+  // P0-3 (v1.83.0): 86 plošča — iskanje za hiter proaktiven 86 (TRZNA-VRZELI-2026 §4 P0-3)
+  const [kds86Search, setKds86Search] = useState('')
   const kdsPrevPendingRef = useRef(0)
   // OPS-9 val 3 (v1.76.0): delay-reason dialog — opens when a LATE item (>10 min) is bumped
   const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
@@ -1198,6 +1201,26 @@ function DashboardInner() {
       await load()
     } catch (err) { alert((err as Error).message) }
   }
+
+  // P0-3 (v1.83.0) — 86 PLOŠČA (Toast/Square vzorec): proaktivni 86 katerega koli artikla,
+  // obnova z enim klikom + avtomatski nadomestki iz iste kategorije (kuhinja/šank jih
+  // pove natakarju/gostu). OPS-4 je dal gumb samo ZNOTRAJ listk aktivnih naročil — za
+  // artikle izven vrste je bilo treba v zavihek Meni. Plošča spoštuje pogled lokacije
+  // (triaža ⑧) in postajni filter za iskalne zadetke; seznam razprodanega je viden
+  // vsem postajam (natakar mora vedeti za 86 tudi iz tuje postaje).
+  const kdsBoardMenu = filterByLocation(menu, viewLoc)
+  const kdsSoldOut = kdsBoardMenu.filter((mi) => !mi.available)
+  const kdsSubstitutesFor = (mi: MenuT): MenuT[] =>
+    kdsBoardMenu
+      .filter((x) => x.available && x.id !== mi.id && !!mi.categoryId && x.categoryId === mi.categoryId)
+      .sort((a, b) => (a.station === mi.station ? 0 : 1) - (b.station === mi.station ? 0 : 1) || a.name.localeCompare(b.name))
+      .slice(0, 3)
+  const kds86Candidates = kds86Search.trim()
+    ? kdsBoardMenu.filter((mi) =>
+        mi.available
+        && (kdsStation === 'ALL' || (mi.station || 'KITCHEN') === kdsStation)
+        && mi.name.toLowerCase().includes(kds86Search.trim().toLowerCase()))
+    : []
 
   // OPS-4 hitra prodaja (sank): izbira -> kosarica -> POST (TAKEOUT) -> placilni dialog
   const saleItems = menu.filter((mi) =>
@@ -1725,6 +1748,59 @@ function DashboardInner() {
                 <Maximize2 className="w-3.5 h-3.5" /> {t('kds.fullscreen')}
               </Button>
             </div>
+            {/* P0-3 (v1.83.0) — 86 PLOŠČA: proaktivni 86 + obnova + nadomestki (TRZNA-VRZELI-2026 §4 P0-3) */}
+            <Card className="border-stone-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
+                  <EyeOff className="w-4 h-4 text-stone-500" /> {t('kds.boardTitle')}
+                  {kdsSoldOut.length > 0 && <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-bold">{kdsSoldOut.length}</Badge>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {kdsSoldOut.length === 0 ? (
+                  <p className="text-xs text-stone-500">{t('kds.boardEmpty')}</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {kdsSoldOut.map((mi) => (
+                      <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {mi.name}
+                            <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">{mi.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
+                          </p>
+                          <p className="text-[11px] text-stone-500 truncate">
+                            {t('kds.substitutes')}: {kdsSubstitutesFor(mi).map((s) => s.name).join(' · ') || t('kds.noSubstitutes')}
+                          </p>
+                        </div>
+                        {perms.includes('menu.availability') && (
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs shrink-0" title={t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {perms.includes('menu.availability') && (
+                  <div>
+                    <Input value={kds86Search} onChange={(e) => setKds86Search(e.target.value)} placeholder={t('kds.boardSearch')} className="h-8 text-xs" aria-label={t('kds.boardSearch')} />
+                    {kds86Search.trim() && (
+                      <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
+                        {kds86Candidates.map((mi) => (
+                          <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2.5 py-1.5">
+                            <span className="text-xs truncate min-w-0">{mi.name} · <b>{fmtEUR(mi.price)}</b></span>
+                            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px] gap-1 text-stone-500 hover:text-red-700 shrink-0" title={t('kds.markUnavailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                              <EyeOff className="w-3 h-3" /> 86
+                            </Button>
+                          </div>
+                        ))}
+                        {kds86Candidates.length === 0 && <p className="text-[11px] text-stone-400 px-1">{t('kds.boardNoHit')}</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
             {viewKitchen
               .filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation)))
               .map((o) => {
@@ -2313,12 +2389,22 @@ function DashboardInner() {
                   <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{g.cat.name}</p>
                   <div className="space-y-1.5">
                     {g.items.map((m) => (
-                      <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
-                        <span className="text-sm min-w-0 truncate">{m.name} · <b>{fmtEUR(m.price)}</b></span>
+                      /* P0-3 (v1.83.0): razprodani artikli so VIDNI (sivi, 86, nadomestki) namesto
+                         naročljivih do strežniške zavrnitve; Minus ostaja aktiven (izdelek je lahko
+                         že v košarici izpred 86). Nadomestki = ista kategorija (g.items). */
+                      <div key={m.id} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${m.available ? 'border-stone-200' : 'border-stone-200 bg-stone-100 opacity-70'}`}>
+                        <div className="min-w-0">
+                          <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-[10px] px-1.5 py-0">86</Badge>}</p>
+                          {!m.available && (
+                            <p className="text-[11px] text-stone-500 truncate">
+                              {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
+                            </p>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                           <span className="w-6 text-center text-sm font-semibold">{cart[m.id] || 0}</span>
-                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                          <Button size="icon" variant="outline" className="h-7 w-7" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => setCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
                         </div>
                       </div>
                     ))}
@@ -2407,13 +2493,22 @@ function DashboardInner() {
                     <div key={g.cat.id}>
                       <p className="text-[11px] font-semibold uppercase text-stone-400 mb-1">{g.cat.name}</p>
                       <div className="space-y-1">
-                        {g.items.filter((m) => m.available).map((m) => (
-                          <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2 py-1.5">
-                            <span className="text-sm min-w-0 truncate">{m.name} · <b>{fmtEUR(m.price)}</b></span>
+                        {g.items.map((m) => (
+                          /* P0-3 (v1.83.0): prej tiho skrito (filter available) — natakar ni vedel,
+                             DA artikel obstaja in je razprodan; zdaj sivi + 86 + nadomestki. */
+                          <div key={m.id} className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${m.available ? 'border-stone-100' : 'border-stone-100 bg-stone-100 opacity-70'}`}>
+                            <div className="min-w-0">
+                              <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-[10px] px-1.5 py-0">86</Badge>}</p>
+                              {!m.available && (
+                                <p className="text-[11px] text-stone-500 truncate">
+                                  {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
+                                </p>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                               <span className="w-5 text-center text-sm font-semibold">{sheetCart[m.id] || 0}</span>
-                              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                              <Button size="icon" variant="outline" className="h-6 w-6" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => setSheetCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
                             </div>
                           </div>
                         ))}

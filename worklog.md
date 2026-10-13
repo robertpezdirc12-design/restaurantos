@@ -2083,3 +2083,22 @@ Work Log:
 Stage Summary:
 - 2. kroga OPS-4 zaprta 14/20 vrzeli; sistem na parity z vodilnimi razen 3 P0 (handheld/pay-link/86) — vse izvedljive na obstoječi infrastrukturi (PWA, offline vrsta, dovoljenja)
 - Regulatorno: ViDA e-račun IZVOZ (P2, rok 2030+); PCI SAQ-A drža (cardLast4); NIS2 izven obsega
+
+---
+Task ID: P0-86-12
+Agent: main (Z.ai Code)
+Task: "odlično nadaljuj" — izvedba P0-3 iz docs/TRZNA-VRZELI-2026.md §6 priporočenega vrstnega reda: hiter »86« toggle na KDS (86-plošča + nadomestki + waiter vidnost).
+
+Work Log:
+- Izhodišče: TRZNA-VRZELI-2026 §4 P0-3 — vzpostavitev poštenosti pred implementacijo: ozek API PATCH /api/menus/[id]/availability + dovoljenje menu.availability + gumb na listkah aktivnih naročil SO obstajali od OPS-4 (v1.67.0, commit 4e7b6e6) — v1.82.10 matrika je vrstico napačno ocenila ✗; manjkali so: proaktivni 86 artiklov IZVEN vrste, nadomestki, waiter vidnost, testni pokrov
+- page.tsx +6 sprememb (python, vsaka zamenjava z dokazom enoličnosti): uvoz Eye; stanje kds86Search; izpeljani kdsBoardMenu/kdsSoldOut/kdsSubstitutesFor (ista kategorija, prioriteta ista postaja, max 3)/kds86Candidates (spošta kdsStation); 86-PLOŠČA JSX med filtrirno vrstico postaj in listkami (razprodano z obnovo + iskanje za hiter 86, akcije samo z menu.availability, seznam viden vsem — informacija za vse postaje); NOVO NAROČILO dialog (86 sivi + Badge + nadomestki max 2 + Plus disabled, Minus ostaja aktiven — izdelek je lahko v košarici izpred 86); UREJEVALNIK OPS-7 (prej tiho skrito z filter(available) — zdaj vidno sivo z 86 + nadomestki)
+- i18n: 6 novih ključev SL/HR (kds.boardTitle/boardEmpty/boardSearch/boardNoHit/substitutes/noSubstitutes) — pariteta samodejno verificirana z obstoječim i18n.test.ts
+- TESTI: nova datoteka tests/menu-86-board.test.ts (176 vrst., 10 testov): unit (chef/bar/waiter imajo menu.availability, cleaner ne) + integracija endpointa (401 brez žetona, 403 cleaner, 403 waiter tuje lokacije — tenant guard, 400 ne-boolean, 404 neznan, ADMIN toggle OFF z audit MENU_ITEM_AVAILABILITY from→to, idempotenca unchanged:true brez novega zapisa, CHEF obnovi ON, nadomestki ostanejo na voljo); popravek med razvojem: AuditLog sort polje je timestamp (ne createdAt)
+- VERIFIKACIJA: tsc 0, eslint 0 (bun run lint), svež ci-fresh.db → 1047/1047 (1037 + 10 novih, 72 datotek)
+- BROWSER E2E (dev :3007, svež e2e.db + seed, admin@restaurantos.app): Kuhinja → plošča se izriže (naslov + prazno stanje) → iskanje "rižota" → klik 86 → razprodano z avtomatskimi nadomestki "Burek s sirom · Kranjska klobasa · Zebra pečenka" + postajna značka + števec 1 → Vrni na voljo → prazno; Mize → proste mize → dialog NOVO NAROČILO: Morska rižota siva z Badge 86 + "Nadomestki: Burek s sirom · Kranjska klobasa" + Plus [disabled] + Minus aktiven + nadomestek naročljiv (košara 3,50 €); 0 console error / 0 page error; 1280px 0 preliva; 390px preliv 404/390 IZJEMA — prejšnje stanje (identično na Pregled zavihku brez v1.83.0 sprememb; tab strip), ne regresija
+- Dokumenti: TRZNA-VRZELI-2026.md (glava v1.83.0, §2 odprti brez 86, §3 matrika ✓, §4 P0-3 ZAPRTO z popravkom poštenosti, §6 vrstni red izveden, §7 sklep 2 P0), README POS vrstica; APP_VERSION → 1.83.0
+
+Stage Summary:
+- P0-3 ZAPRTO: 86-plošča na KDS (proaktivni 86 + obnova + števec), avtomatski nadomestki iz iste kategorije, waiter dialogi (novo naročilo + urejevalnik) kažejo 86 + nadomestke namesto tihega skrivanja/zavrnitve — parity z Toast/Square/Lightspeed
+- Endpoint iz OPS-4 (4e7b6e6) dobi prvi testni pokrov; suite 1047/1047
+- Preostala P0: handheld tok (P0-1), online pay link (P0-2) — po §6 vrstnem redu naslednji handheld

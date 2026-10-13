@@ -16,7 +16,7 @@
 
 ## Funkcije
 
-- **POS** — odprti računi, tečaji, KDS kuhinja, waiter klici, stornacija z revizijo
+- **POS** — odprti računi, tečaji, KDS kuhinja z 86 ploščo (razprodano + nadomestki), waiter klici, stornacija z revizijo
 - **Kiosk** — samopostrežni terminal z vplačilom in kupončnim tiskanjem
 - **QR gost** — jedilnik, naročanje, klic natakarja, feedback, položnica
 - **Dostava** — naročila, dostavljalec, zone, spremljanje statusov

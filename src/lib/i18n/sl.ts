@@ -1390,6 +1390,13 @@ export const sl: Record<string, string> = {
   'kds.minutes': '{m} min',
   'kds.markUnavailable': 'Označi razprodano (86)',
   'kds.markAvailable': 'Vrni na voljo',
+  // P0-3 (v1.83.0) — 86 plošča na KDS: proaktivni 86 + nadomestki (TRZNA-VRZELI-2026 §4)
+  'kds.boardTitle': '86 plošča — razprodani artikli',
+  'kds.boardEmpty': 'Vsi artikli so na voljo.',
+  'kds.boardSearch': 'Hiter 86 — poišči artikel…',
+  'kds.boardNoHit': 'Ni zadetkov.',
+  'kds.substitutes': 'Nadomestki',
+  'kds.noSubstitutes': 'ni nadomestkov v kategoriji',
   'sale.search': 'Išči artikel…',
   'sale.allCat': 'Vse kategorije',
   'sale.total': 'Skupaj',
