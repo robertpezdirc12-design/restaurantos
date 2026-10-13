@@ -28,7 +28,7 @@
 | OPS-4 vrzel | Stanje @ v1.82.9 | Dokaz |
 |---|---|---|
 | P0-2 Hitra prodaja (šank) | ✅ ZAPRTO | zavihek »prodaja« (page.tsx + tab-permissions + i18n) |
-| P0-3 Natakar tablica (PWA) | ✅ Osnova | public/manifest.webmanifest + sw.js + pwa ikone (handheld TOK ostaja odprt, gl. 4.1) |
+| P0-3 Natakar tablica (PWA) | ✅ ZAPRTO | /tablica (hitri način) + /handheld v1.84.0: enoročni tok mize→naroči→fire→plačaj (gl. 4.1) |
 | P0-5b QR na računu | ~ delno | HR fiskalni potrditveni QR ✓ (receipt.ts); QR za mnenje/loyalty na računu ŠE manjka (gost ga dobi v QR toku /m/, ne na papirju) |
 | P1-6 Split bill | ✅ ZAPRTO | OPS-7 v1.68.0 — split po izstavkih (ChecksT, splitSel) |
 | P1-7 Coursing | ✅ ZAPRTO | OPS-7 v1.68.0 (CourseT + fire po tečajih) |
@@ -44,7 +44,7 @@
 | P2-15 Loyalty nivoji | ✅ ZAPRTO | tier (bronze/silver/zlato) v zvestoba toku |
 
 **Bilanca: 14/20 OPS-4 vrzeli popolnoma zaprtih + 2 delno** v 16 izdajah (v1.67.0 → v1.82.9).
-Odprte ostanejo (stanje @ v1.82.10): handheld tok, QR mnenje na računu, EN/DE/IT jeziki,
+Odprte ostanejo (stanje @ v1.84.0): QR mnenje na računu, EN/DE/IT jeziki,
 spletni rezervacijski widget, kampanje, AI napovedi, predavtorizacija, knjigovodski portal (delno).
 
 ## 3. TRŽNA MATRIKA 2026 (RestavrantOS @ v1.82.9 proti vodilnim)
@@ -60,7 +60,7 @@ Legenda: ✓ ima · ~ delno · ✗ manjka · — ni relevantno za ta trg
 | KDS + statistika priprave | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (+heatmap) |
 | Šank (KDS-BAR) filter | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Customer-facing display | ✓ | ✓ | ✓ | ✓ | ~ | ✓ (/display, pari) |
-| **Handheld/tableside tok** | ✓ | ✓ | ✓ | ✗ | ✗ | **~ (PWA, ni opt. toka)** |
+| **Handheld/tableside tok** | ✓ | ✓ | ✓ | ✗ | ✗ | **✓ (v1.84.0 /handheld: enoročni mize→fire→plačilo pri mizi + offline vrsta)** |
 | Kiosk samopostrežni | ✓ | ✓ | ✓ | ✗ | ~ | ✓ (+vplačilo) |
 | QR naročanje gosta | ✓ | ✓ | ✓ | ✗ | ~ (cenik) | ✓ (/m/token) |
 | Offline način | ✓ | ~ | ✓ | ✓ | ✓ | ✓ (POS vrsta + resilience) |
@@ -110,7 +110,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 
 | # | Manjka | Zakaj pomembno | Trud |
 |---|---|---|---|
-| 1 | **Handheld tok za natakarja** — optimiziran eno-ročni PWA tok (Mize → naroči → fire → plačaj pri mizi) | Lightspeed Tableside/Toast handheld = #1 prodajni argument; PWA + offline vrsta ŽE obstajata — manjka samo optimiziran UI tok | Srednji |
+| ~~1~~ | ~~Handheld tok za natakarja~~ — ✅ **izvedeno v v1.84.0** (/handheld: mize → naroči → fire → plačaj pri mizi; offline vrsta order.create/addItems; fire+plačilo zavestno samo online; 12-testni pokrov tests/handheld-flow.test.ts) | Lightspeed Tableside/Toast handheld = #1 prodajni argument | ~~Srednji~~ |
 | 2 | **Online plačilo QR položnice (pay link)** — gost odpre QR položnico in plača kartico na telefonu | Square/Toast/Lightspeed vsi; zmanjša čakanje natakarja pri mizi; poveča turnover | Srednji (ponudnik plačil) |
 | 3 | **Hiter »86« toggle na KDS/šank** — ✅ **ZAPRTO v v1.83.0**: 86-plošča na KDS (proaktivni 86 katerega koli artikla, obnova z enim klikom, števec razprodanih), avtomatski nadomestki iz iste kategorije (prioriteta ista postaja, max 3), waiter dialogi (novo naročilo + urejevalnik OPS-7) kažejo 86 + nadomestke namesto tihega skrivanja/zavrnitve; ozek API PATCH /api/menus/[id]/availability + menu.availability obstajata od OPS-4 (4e7b6e6) | Popravek poštenosti: v1.82.10 je vrstico ocenil ✗ — gumb na listkah naročil JE obstajal; manjkali so proaktivna plošča, nadomestki, waiter vidnost in testni pokrov (dodan tests/menu-86-board.test.ts: 401/403×2/400/404, toggle, revizijska veriga, idempotenca) | Zaprto (v1.83.0) |
 
@@ -160,7 +160,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 ## 6. PRIporočen VRSTNI RED
 
 1. ~~86-toggle (P0-3)~~ — ✅ **izvedeno v v1.83.0** (86-plošča + nadomestki + waiter-UI + testni pokrov; gl. §4).
-2. **Handheld tok** (P0-1) — PWA osnova obstaja; nov /handheld UI (mize-naroči-plačaj).
+2. ~~Handheld tok (P0-1)~~ — ✅ **izvedeno v v1.84.0** (/handheld — enoročni tok mize→naroči→fire→plačaj pri mizi z velikimi CTA v coni palca, 86 artikli sivo, offline vrsta; tests/handheld-flow.test.ts 12 testov; gl. §4.1).
 3. **Pay link** (P0-2) — izbira ponudnika plačil (Stripe/SumUp lokalno).
 4. **EN jezik gostu** (P1-5) + split po gostih (P1-6) — hiter dobiček.
 5. **Labor forecast + AI** (P1-4, P2-9) — podatki že zbrani (prodaja po urah, labor cost).
@@ -170,7 +170,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 
 RestavrantOS @ v1.82.9 je na **feature-parity s svetovnimi vodilnimi v ~80 % matrike** in
 **vodi v fiskalizaciji SI/HR, HACCP, audit verigi, menu engineeringu in lastništvu kode**.
-Preostale 2 P0 vrzeli (handheld tok, pay link) sta izvedljivi z obstoječo
-infrastrukturo (PWA, offline vrsta, dovoljenja) — 86-toggle je zaprt v v1.83.0
-(86-plošča + nadomestki + waiter vidnost + testni pokrov endpointa).
+Preostala 1 P0 vrzel (pay link) je izvedljiva z obstoječo infrastrukturo —
+86-toggle je zaprt v v1.83.0, handheld tok pa v v1.84.0 (/handheld:
+enoročni PWA tok mize → naroči → fire → plačaj pri mizi, 12-testni pokrov).
 Regulatorno je sistem pripravljen na ViDA-ero z izjemo B2B e-račun izvoza (rok 2030+).

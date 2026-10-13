@@ -246,6 +246,7 @@
 | v1.82.6 | 0572daf | gostje-tab (173), nastavitve-tab (351), enterprise-tab (405); monolit → 1.005 |
 | v1.82.7 | bde2d04 | urnik-izmen-tab (380) + analitika-tab (599); dashboard-tabs.tsx → **41 vrstic = ČISTI BARREL** (−99,5 %); 14 domenskih datotek |
 | v1.82.8 | 5d71c99 | **writeAudit() helper** — src/lib/audit-chain.ts centralizira nid()+auditChainFields()+auditLog.create(); transformer (lexer) prepisal 114/124 mest v 80 rutah (−1.110 vrstic boilerplate); 10 mest ostalo ročnih; 41 datotek očiščenih mrtvih nid uvozov |
+| v1.84.0 | (P0-1) | **/handheld — enoročni PWA tok natakarja** (TRZNA-VRZELI P0-1): mize → naroči (86 artikli sivo) → POŠLJI V KUHINJO → plačaj pri mizi (bill + FURS + terminal adapter + napitnina) → samodejni DIRTY + eno-tap čiščenje; CTA v coni palca ≥48px; offline vrsta order.create/addItems (fire/plačilo zavestno samo online); 0 nove strežniške logike — 100 % kanonični endpoint-i; tests/handheld-flow.test.ts 12 testov (zlata pot WAITER + 401 + KITCHEN 403 + tuja lokacija 403); i18n hh.* ×47 SL/HR; /tablica dobi povezavo |
 
 **Verifikacija verige (writeAudit):** nadzorni poskus `verifyAuditChain` pred/po refaktorju IDENTIČEN
 (link-break = dokumentirana konkurenčna veja testne suite, ne regresija); E2E LOGIN_FAILED piše z verigo (prevHash se veže).

@@ -9,6 +9,9 @@
  * na blagajni" pelje v /dashboard?tab=mize, kjer teče kanonični predogled
  * računa + FURS izdaja — ničesar ne podvajamo).
  *
+ * v1.84.0: gumb Handheld v glavi vodi na /handheld — enoročni tok s fire +
+ * plačilom pri mizi (ta stran ostane hitri način brez obeh).
+ *
  * Offline: enaka vrsta kot glavni POS (src/lib/offline-queue) — order.create /
  * order.addItems z idempotentnim clientOperationId, flush prek /api/sync.
  *
@@ -25,7 +28,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { Loader2, LogOut, Monitor, Search, Utensils } from 'lucide-react'
+import { Loader2, LogOut, Monitor, Search, Smartphone, Utensils } from 'lucide-react'
 
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; tableId?: string | null; items: OrderItemT[]; paymentStatus?: string | null }
@@ -170,6 +173,7 @@ function TablicaInner() {
           <p className="text-[11px] opacity-90 truncate">{me?.name} · {t('tlb.sub')}</p>
         </div>
         <LanguageToggle />
+        <button aria-label={t('tlb.handheld')} onClick={() => router.push('/handheld')} className="p-2 rounded-lg hover:bg-emerald-800"><Smartphone className="w-5 h-5" /></button>
         <button aria-label={t('tlb.fullPos')} onClick={() => router.push('/dashboard')} className="p-2 rounded-lg hover:bg-emerald-800"><Monitor className="w-5 h-5" /></button>
         <button aria-label={t('header.logout')} onClick={() => { localStorage.removeItem('ro_token'); localStorage.removeItem('ro_user'); router.replace('/') }} className="p-2 rounded-lg hover:bg-emerald-800"><LogOut className="w-5 h-5" /></button>
       </header>
