@@ -2030,3 +2030,38 @@ Work Log:
 Stage Summary:
 - VSE točke zunanje analize (P1 funkcionalno, P2 varnost ×4, P3 struktura ×3 vklj. writeAudit, P4 higiena) ZAKLJUČENE
 - API rute: povprečno −14 vrstic boilerplate na revizijsko pisano akcijo; 1 kanonično mesto za prihodnje spremembe verige
+
+---
+Task ID: AUDIT-CLOSE-9
+Agent: main (Z.ai Code)
+Task: "odlično nadaljuj" — končna verifikacija vseh valov v1.82.x.
+
+Work Log:
+- v1.82.8 (5d71c99) production: health ok/1.82.8/5d71c99/connected, GET / 200, POST /api/furs 401, GitHub status success (Vercel Production)
+- race-fixes.test.ts:80: potrjen popravek iz v1.82.3 (scoped AP brisanje po entityId IN); tests/ brez neobseženih deleteMany
+- Sveža baza: 1037/1037 pass (71 datotek)
+- src/: 0 TODO/FIXME; dev.log čist
+- Sandbox (/home/z/my-project): predogled preoblikovan v nadzorno ploščo statusa v živo (proxy /api/health, strežniški prvi fetch + odjemalski polling 30 s, KPI/timeline/akcije, lint 0, E2E 0 napak, responsive)
+
+Stage Summary:
+- CELOTNA REVIZIJA ZAKLJUČENA: P1 funkcionalno, P2 varnost ×4, P3 struktura ×3 (monolit 9217→41, writeAudit −1110 vrstic), P4 higiena — vse v produkciji na 1.82.8
+- Ni odprtih razvojnih nalog v repu; preostalo so uporabniške naloge (žeton, Upstash, kvota)
+
+---
+Task ID: DOC-SYNC-10
+Agent: main (Z.ai Code)
+Task: "odlično nadaljuj" — dokumentacijska sinhronizacija po valu v1.82.x.
+
+Work Log:
+- Ugotovljena vrzel: ARCHITECTURE.md (zadnjič v1.82.1) NI imel frontend sekcije; RESTAURANTOS-AUDIT.md ni imel nobenega zapisa o valu v1.82.x (8 izdaj)
+- docs/ARCHITECTURE.md (91→121 vrstic): nova sekcija "Frontend — dashboard plast" — drevo page.tsx (3.168, DashboardInner 121 hookov + POS zavihki) → dashboard-tabs.tsx ČISTI BARREL (41) → 14 domenskih datotek (~9.560 vrstic) s tabelo (vrstic + izvozi); zgodovina razreza 9.217→41 (−99,5 %, byte-identitetni premiki); lib izseki: audit-chain.ts writeAudit (v1.82.8), furs/issue.ts (v1.82.2); verzija glave → v1.82.8
+- docs/RESTAURANTOS-AUDIT.md (232→261): dodatek "zunanja revizija v1.82.x — 8 izdaj, vse zaprto" — tabela vseh izdaj s commit SHA (a43b4ba/0572daf/bde2d04/5d71c99), metodologija (byte-identiteta, pravilen avtor za Vercel), verifikacija verige, končno stanje produkcije, uporabniški odprti koraki (PAT preklic, Upstash, kvota 1.11.)
+- README.md: vrstica "Koda" → "vse točke zunanjih revizij zaprte, P1–P4 (gl. audit + dodatek v1.82.x)"
+- src/lib/version.ts: APP_VERSION 1.82.8 → 1.82.9 (sledljivost na /api/health; edina preostala omemba 1.82.8 je zgodovinski doc komentar v audit-chain.ts)
+- Odklonjen: razrez dashboard/page.tsx (POS zavihki 1.900 vrstic JSX + 121 hookov = props-refaktor, NE byte-identiteta; audita ni označil; tveganje/korist slab za produkcijski POS)
+- Odklonjen: brisanje deployed-site-snapshot.html/download/ (zgodovinski artefakti v zasebnem repu; vrednost izbrisa nizka)
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1037/1037 (71 datotek) — tudi po bumpu verzije
+
+Stage Summary:
+- Dokumentacija zdaj odraža DEJANSKO stanje po razrezu (docs brez izgube) — naslednji razvoj ima zemljevid frontend plast + celotna revizijska zgodovina na enem mestu
+- Commit: DOC-SYNC v1.82.9 (samo docs + verzija; ni DB/i18n/logike sprememb)

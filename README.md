@@ -12,7 +12,7 @@
 | Health | `/api/health` → `{"status","version","commit","database"}` |
 | Deploy | Vercel **Git integration** — push na `main` → samodejni produkcijski build (~30 s) |
 | CI | GitHub Actions quality gate: Neon Postgres drift-smoke + tsc/lint/cel testni suite |
-| Koda | 100 % zaprta (proprietary) — vsi audit P1/P2 taski zaprti (gl. `docs/RESTAURANTOS-AUDIT.md`) |
+| Koda | 100 % zaprta (proprietary) — vse točke zunanjih revizij zaprte, P1–P4 (gl. `docs/RESTAURANTOS-AUDIT.md` + dodatek v1.82.x) |
 
 ## Funkcije
 

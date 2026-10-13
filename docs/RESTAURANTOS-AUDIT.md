@@ -228,5 +228,34 @@
 - [x] Porocilo vsebuje prioritete in blokade (§13).
 
 - **Org meja na seznamskih endpointih za centralne vloge (znana omejitev Task 52: seznamski endpointi brez org filtra).** — **✅ ZAPRTO (Task 54, v1.55.0):** `locationScope` zdaj async + org allow-lista za centralne vloge — `locationId IN [lokacije svoje org + nevezane legacy (propertyId null)]`; migracijsko varno (neznana org uporabnika → brez filtra, produkcija z nevezanimi lokacijami se ne regresira), bootstrap break-glass vidi vse, staff lokacijski sloj nespremenjen (fail-closed sentinel). Mehanično povezano v 27 API rut (`await locationScope(user)` codemod + tsc arbiter); print/ack type-najozja rešitev z ekstaktno staro semantiko (centralna → null kot prej). DB-backed testi (orgA/orgB + legacy): orgA vidi orgA+legacy NE orgB, orgB obratno, legacy admin vidi vse, bootstrap vse, waiter izključno svojo lokacijo (tudi isto-org ne); statična regresija: 0 sinhronih klicev, ≥20 rut z await. 7 novih testov (652/652).
+---
 
+## Dodatek (2026-10-13): zunanja revizija v1.82.x — 8 izdaj, vse zaprto
 
+> Odgovor na kasnejšo zunanjo analizo (P1 funkcionalno, P2 varnost ×4, P3 struktura ×3, P4 higiena).
+> Metodologija: čisti premiki (byte-identiteta dokazana z python diff vsak val), brez DDL, brez i18n sprememb;
+> vsak val: tsc 0 · eslint 0 · sveža CI baza 1037/1037 · brskalniški E2E 0 napak · pravilen avtor commita
+> (`robertpezdirc12-design <249648337+robertpezdirc12-design@users.noreply.github.com>` — nepravilen avtor blokira Vercel deploy).
+
+| Izdaja | Commit | Vsebina |
+|---|---|---|
+| v1.82.1 | (AUDIT-FIX-1) | CLEANER vloga (padec na sessionVersion) + P2 varnost ×4 (waste fallback, sol PIN iskanja, brisanje scaffold route, rate-limit setup) + prvi val razreza (−2.587 vrstic) |
+| v1.82.2 | (AUDIT-FIX-2) | POST /api/furs 878 vrstic → src/lib/furs/issue.ts (čist premik) |
+| v1.82.3 / v1.82.4 | (valova 3–4) | gostinske-ops + urniki + integracije + backoffice domenski izseki; monolit 9.217 → 3.259; popravljen unscoped delete v tests/race-fixes.test.ts (AP audit brisanje zdaj scoped po entityId) |
+| v1.82.5 | a43b4ba | zaloga-tab (560), finance-tab (523), haccp-tab (329); monolit → 1.889 |
+| v1.82.6 | 0572daf | gostje-tab (173), nastavitve-tab (351), enterprise-tab (405); monolit → 1.005 |
+| v1.82.7 | bde2d04 | urnik-izmen-tab (380) + analitika-tab (599); dashboard-tabs.tsx → **41 vrstic = ČISTI BARREL** (−99,5 %); 14 domenskih datotek |
+| v1.82.8 | 5d71c99 | **writeAudit() helper** — src/lib/audit-chain.ts centralizira nid()+auditChainFields()+auditLog.create(); transformer (lexer) prepisal 114/124 mest v 80 rutah (−1.110 vrstic boilerplate); 10 mest ostalo ročnih; 41 datotek očiščenih mrtvih nid uvozov |
+
+**Verifikacija verige (writeAudit):** nadzorni poskus `verifyAuditChain` pred/po refaktorju IDENTIČEN
+(link-break = dokumentirana konkurenčna veja testne suite, ne regresija); E2E LOGIN_FAILED piše z verigo (prevHash se veže).
+
+**Končno stanje (2026-10-13):** produkcija `1.82.8 / 5d71c99 / database: connected`,
+GitHub commit status: success (Vercel Production), GET / 200, POST /api/furs brez avtentikacije 401,
+sveža CI baza 1037/1037 (71 datotek), 0 TODO/FIXME v src/, 0 @ts-ignore, 0 eslint-disable, 0 console.log.
+
+**Omejitve/odprti koraki (uporabniška stran):**
+1. Izpostavljen GitHub PAT (viden v komunikaciji) — takoj preklicati.
+2. Učinkovit rate-limit v produkciji zahteva Upstash env (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) v Vercel.
+3. GitHub Actions kvota (2.000/2.000 min) se ponastavi 1. 11. — do takrat CI/GitLab-sync mirujejo;
+   Vercel deploy je neodvisen in dela. Do ponastavitve NE vklopiti »Deploy only when CI passes«.

@@ -1,6 +1,6 @@
 # RestaurantOS — Arhitektura (issue #12 §8)
 
-> Posodobljeno: v1.82.1 (AUDIT-FIX val). Ta dokument opisuje DEJANSKO arhitekturo, ne želeno.
+> Posodobljeno: v1.82.8 (writeAudit). Ta dokument opisuje DEJANSKO arhitekturo, ne želeno.
 
 ## Sistemski pregled
 
@@ -66,6 +66,36 @@ Tenant/Organization → Brand → Property → Location (operativno sidro)
 | Integracije | `Integration` + `IntegrationLog` | /api/integrations, /api/delivery |
 
 **Ni dovoljeno** uvajati vzporednih sistemov za zgornje domene (issue #12 §9) — vedno razširi kanon.
+
+## Frontend — dashboard plast
+
+```
+src/app/dashboard/page.tsx (~3.168 vrstic)
+  └─ DashboardInner: stanje (121 hookov) + POS zavihki (pregled/mize/naročila/prodaja/kuhinja/meni/rezervacije/računi …)
+       └─ src/components/dashboard-tabs.tsx — ČISTI BARREL (41 vrstic, samo re-exporti; edini potrošnik je page.tsx)
+            └─ src/components/tabs/*.tsx — 14 domenskih datotek (~9.560 vrstic)
+```
+
+| Datoteka (src/components/tabs/) | Vrstic | Izvozi (komponente) |
+|---|---|---|
+| nabava-tab.tsx | 1421 | NabavaTab |
+| ops-cards.tsx | 1266 | SalesByHourCard, LaborCostCard, DursCheckButton, NotificationsCard, BatchesCard, BatchPrepCard, UpsellCard, DisplayPromosCard |
+| gostinske-ops-tab.tsx | 1170 | DarilneKarticeTab, OdpadTab, CakalnaListaTab |
+| backoffice-tab.tsx | 1080 | DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab |
+| urniki-tab.tsx | 1016 | DelovniCasTab, OdpiralniCasTab, DiscountsTab |
+| analitika-tab.tsx | 599 | MenuEngineeringTab (Kasavana-Smith), KdsStatsSection |
+| zaloga-tab.tsx | 560 | InventoryTab |
+| finance-tab.tsx | 523 | ShiftsTab, ExpensesTab |
+| enterprise-tab.tsx | 405 | EnterpriseTab, MigrationsConsoleSection |
+| urnik-izmen-tab.tsx | 380 | StaffScheduleTab |
+| nastavitve-tab.tsx | 351 | JobsCard, SettingsEditor, DevicesCard |
+| haccp-tab.tsx | 329 | HaccpTab |
+| integracje-tab.tsx | 288 | IntegracijeTab |
+| gostje-tab.tsx | 173 | LoyaltyTab, FeedbackTab |
+
+- **Zgodovina razreza:** monolit dashboard-tabs.tsx 9.217 → 41 vrstic (−99,5 %; valovi v1.82.1→v1.82.7). Vsak premik byte-identičen (python diff dokazi v commitih); `page.tsx` (edini potrošnik) nespremenjen skozi vse valove. Nova komponenta gre v svojo domensko datoteko po grozdu — monolit ne sme več rasti.
+- **Audit pisanje:** `src/lib/audit-chain.ts` (v1.82.8) — `writeAudit(prisma, opts)` centralizira nid() + auditChainFields() + auditLog.create(); 114/124 pisalnih mest v 80 API rutah uporablja helper (10 mest ročno: haccpEntry model, monitoring/errors vrača vrstico, webhook shorthand, staff-shifts ne-adjacent deklaracija).
+- **Fiskalizacija:** `src/lib/furs/issue.ts` (v1.82.2) — izdajanje računov/EOR/ZOI (878 vrstic iz POST /api/furs rute); ruta ostaja tanek HTTP ovoj.
 
 ## Varnostni sloj — kje je kaj
 
