@@ -1983,3 +1983,19 @@ Work Log:
 Stage Summary:
 - tabs/ družina: 9 datotek (~10190 vrst.); monolit 1889 vrst. (Loyalty/Feedback/Jobs/Settings/Devices/Enterprise/Migrations/StaffSchedule/MenuEngineering/KDS)
 - naslednji val (6): nastavitve-tab (Settings/Devices/Jobs) + enterprise-tab (Enterprise/Migrations) + analitika-tab (StaffSchedule/MenuEngineering/KDS)
+
+---
+Task ID: AUDIT-FIX-6 (val 6 razreza monolita)
+Agent: main (Z.ai Code)
+Task: nadaljevanje — šesti val razreza dashboard-tabs.tsx.
+
+Work Log:
+- tabs/gostje-tab.tsx (173): LoyaltyTab+FeedbackTab+LoyaltyT/FeedbackT+TIER_COLORS — byte-identično (159/159)
+- tabs/nastavitve-tab.tsx (351): JobsCard+SettingsEditor+DevicesCard+JobT/SettingsT/DeviceT+DEVICE_TYPE_KEYS — byte-identično (336/336); DursCheckButton uvoz seli k SettingsEditor (monolit izgubi zadnji ops-cards uvoz)
+- tabs/enterprise-tab.tsx (405): EnterpriseTab+MigrationsConsoleSection+Ent*/Mig* tipi+emptyEntForm — byte-identično (390/390); MigrationsConsoleSection se renderira znotraj EnterpriseTab (isti grozd)
+- monolit 1889→1005 vrst. (−89 % od 9217); uvozi monolita ponovno prunani (Textarea/Switch/ScrollArea/CardDescription/HeartHandshake/Star/Briefcase/Store/MonitorSmartphone/ŠhieldAlert/Building2/Link2/Database(zadnji) odpadli)
+- barrel: + Loyalty/Feedback, Jobs/Settings/Devices, Enterprise/Migrations re-exporti + tipi; page.tsx NESPREMENJEN
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1037/1037, browser E2E Zvestoba/Mnenja/Zaposleni(Delovna mesta)/Nastavitve(DURS+Vpisna koda+Testni tisk)/Enterprise(DDL konzola "Vse migracije aplicirane") 0 console/page error; dev.log čist; zero DDL, zero i18n
+
+Stage Summary:
+- monolit = 1005 vrst.: StaffScheduleTab+MenuEngineeringTab+KdsStatsSection+barrel; val 7 (zadnji) jih izprazni v urnik-izmen-tab + analitika-tab → čisti barrel
