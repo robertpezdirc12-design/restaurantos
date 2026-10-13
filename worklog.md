@@ -1966,3 +1966,20 @@ Work Log:
 
 Stage Summary:
 - Vzorec za prihodnje seje: če Vercel status izgine iz commita brez zaključka, push manjši commit za re-trigger
+
+---
+Task ID: AUDIT-FIX-5 (val 5 razreza monolita)
+Agent: main (Z.ai Code)
+Task: "odlično nadaljuj" — peti val razreza dashboard-tabs.tsx po domenskih grozdih.
+
+Work Log:
+- tabs/zaloga-tab.tsx (560 vrst.): InventoryTab + InventoryT/SupplierT/RecipeT/RecipeLineT + St* tipi — byte-identičen premik (544/544 vrst.), vključen uvoz BatchesCard/BatchPrepCard iz ops-cards
+- tabs/finance-tab.tsx (523 vrst.): ShiftsTab (ShiftT/FinancialT) + ExpensesTab (ExpenseT/ApAttT) — byte-identično (508/508), dva izvorna bloka združena v eno domensko datoteko
+- tabs/haccp-tab.tsx (329 vrst.): HaccpTab + HaccpPlanT + interna HaccpPlansSection — byte-identično (311/311)
+- monolit 3259→1889 vrst. (skupaj −80 % od 9217); uvozi monolita izrezani po dejanski uporabi (pruner: react/client/ui/recharts/lucide/ops-cards — DursCheckButton ostane za SettingsEditor; popravljen izpad aliasa Tooltip as RTooltip)
+- barrel: + InventoryTab/types, ShiftsTab/ExpensesTab/types, HaccpTab/types re-exporti; page.tsx NESPREMENJEN
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1037/1037, browser E2E Zaloge/Izmene/HACCP/Stroški + šiv Zvestoba + Nastavitve (DursCheckButton) 0 error; zero DDL, zero i18n
+
+Stage Summary:
+- tabs/ družina: 9 datotek (~10190 vrst.); monolit 1889 vrst. (Loyalty/Feedback/Jobs/Settings/Devices/Enterprise/Migrations/StaffSchedule/MenuEngineering/KDS)
+- naslednji val (6): nastavitve-tab (Settings/Devices/Jobs) + enterprise-tab (Enterprise/Migrations) + analitika-tab (StaffSchedule/MenuEngineering/KDS)
