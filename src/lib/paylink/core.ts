@@ -210,6 +210,32 @@ export async function finalizePayLinkPayment(args: FinalizePayLinkArgs): Promise
   return { ok: true, replayed: data.replayed === true, invoice: data.invoice }
 }
 
+// ---------- capability probe (v1.85.1 — haccp-plans vzorec) ----------
+
+/**
+ * Ali tabela PayLink obstaja (dev SQLite: da prek db push; produkcijski Neon:
+ * po migrate-paylink DDL koraku). 60 s TTL — produkcijska PayLink ruta med
+ * čakanjem na DDL vrača 503 s prijaznim sporočilom namesto 500.
+ */
+let payLinkProbeCache: { ok: boolean; at: number } | null = null
+
+export async function payLinkReady(): Promise<boolean> {
+  if (payLinkProbeCache && Date.now() - payLinkProbeCache.at < 60_000) return payLinkProbeCache.ok
+  try {
+    await db.$queryRawUnsafe('SELECT 1 FROM "PayLink" LIMIT 1')
+    payLinkProbeCache = { ok: true, at: Date.now() }
+    return true
+  } catch {
+    payLinkProbeCache = { ok: false, at: Date.now() }
+    return false
+  }
+}
+
+/** Reset probe (migrate-paylink po DDL; teste). */
+export function resetPayLinkProbe(): void {
+  payLinkProbeCache = null
+}
+
 // ---------- skupne pomožke ----------
 
 /** IP gosta (enaka izpeljava kot javne rute — clientIp iz @/lib/guest). */

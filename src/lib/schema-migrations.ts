@@ -199,6 +199,12 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     // Postgres: ALTER TYPE ADD VALUE IF NOT EXISTS (migrate-cleaner-role).
     // SQLite: role je String — brez DDL, probe vedno true (konzola pokaže aplicirano).
     // Probe je dialekt-ozaveščena (enako kot columnNullable zgoraj).
+    id: 'paylink',
+    descKey: 'mig.paylink.desc',
+    endpoint: '/api/admin/migrate-paylink',
+    probe: () => tableExists('PayLink'),
+  },
+  {
     id: 'cleaner-role',
     descKey: 'mig.cleanerRole.desc',
     endpoint: '/api/admin/migrate-cleaner-role',

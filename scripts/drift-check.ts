@@ -106,6 +106,12 @@ export function isHaccpPlanStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+/** v1.85.1 (P0-2): PayLink tabela — isti vzorec kot HaccpPlan (vsi stavki vsebujejo ime). */
+export function isPayLinkStatement(stmt: string): boolean {
+  if (!/"PayLink"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -125,6 +131,18 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'nobena živa funkcionalnost ne uporablja nove tabele. Ko je DDL apliciran, ' +
       'drift izgine in ta vnos postane mrtva koda (brez spremembe workflowa).',
     matches: isHaccpPlanStatement,
+  },
+  {
+    id: 'paylink',
+    reason:
+      'PayLink tabela (v1.85.0, P0-2 — javna plačilna povezava /pay/<token>) — ' +
+      'produkcija čaka DDL korak: admin ruta /api/admin/migrate-paylink (konzola ' +
+      'Enterprise → Shema migracije → en klik). Rute /api/orders/[id]/paylink in ' +
+      '/api/public/pay/[token] graceful degradirajo (capability probe → 503 s ' +
+      'prijaznim sporočilom); PayLink povezave se ZAČNEJO uporabljati šele po DDL ' +
+      '(ustvari jih osebje — pred tem ne obstajajo). Ko je DDL apliciran, drift ' +
+      'izgine in ta vnos postane mrtva koda.',
+    matches: isPayLinkStatement,
   },
   {
     id: 'stroski-kategorije',

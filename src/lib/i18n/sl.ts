@@ -608,6 +608,7 @@ export const sl: Record<string, string> = {
   'mig.haccpPlans.desc': 'Tabela HaccpPlan (načrti kontrol)',
   'mig.stroskiKategorije.desc': 'Stroški: stolpec kategorije na AccountsPayable (kategorizacija stroškov)',
   'mig.cleanerRole.desc': 'Nova vloga čistilke (EmployeeRole enum — samo HACCP izvedba)',
+  'mig.paylink.desc': 'Tabela plačilnih povezav (javno plačilo gosta /pay/<token> — P0-2)',
   // Stroški
   'exp.month': 'Stroški (mesec)',
   'exp.totalRecords': 'Vseh zapisov',

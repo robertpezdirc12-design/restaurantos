@@ -2153,3 +2153,21 @@ Stage Summary:
 - Suite 1078/1078 (74 datotek); Stripe pot produkcijsko pripravljena (dodaj STRIPE_SECRET_KEY), simulator privzet (honest, vidno označen)
 - Naslednji kandidati po §6: P1-5 EN jezik gosta + P1-6 split po gostih (hiter dobiček), P1-4 labor forecast
 - Uporabniške naloge: preklic IZPOSTAVLJENIH žetonov GitHub + GitLab, Upstash env, Actions kvota 1. 11.
+---
+Task ID: v1.85.1
+Agent: glavni agent (Z.ai)
+Task: Produkcijski popravek po deployu v1.85.0 — javna ruta /api/public/pay na Neonu 500 (Prisma klient generiran iz schema.prisma BREZ PayLink + tabela ne obstaja).
+
+Work Log:
+- Diagnoza: postinstall (scripts/prisma-postinstall.cjs) izbere shemo po DATABASE_URL — produkcija (Neon Postgres) generira iz prisma/schema.prisma, ki ni imel PayLink → db.payLink delegat manjka → 500; GET /pay/<32-f> vrnil 500, /pay/short 404
+- Popravek: model PayLink + Order relacija dodana TUDI v prisma/schema.prisma (identična definicija); DDL izvlečen točno iz `prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma`
+- NOVA ruta /api/admin/migrate-paylink (issue-13/haccp-plans vzorec): requireCentralRole (N4), fiksne DDL izjave (CREATE TABLE + 2 unique + 3 index + FK CASCADE), idempotentna preverba (SELECT → alreadyApplied), audit SCHEMA_MIGRATION_PAYLINK, resetPayLinkProbe po aplikaciji
+- Registracija: SCHEMA_MIGRATIONS vnos 'paylink' (probe tableExists) + migracijska konzola HANDLERS + i18n mig.paylink.desc SL/HR (UI dinamičen — Enterprise → Shema migracije)
+- Graceful degradacija (haccp-plans vzorec): payLinkReady() capability probe (60 s TTL) v POST/DELETE paylink + GET/POST javni ruti → 503 s prijaznim sporočilom namesto 500, dokler DDL ni apliciran
+- drift-check.ts: allowlist vnos 'paylink' (CI rumena anotacija, ne rdeča — isto kot haccp-plans; po DDL aplikaciji vnos postane mrtva koda)
+- Tests: +2 v paylink-flow (migrate 401/403 waiter/owner alreadyApplied; 503 PENDING simulacija: DROP TABLE → javna ruta 503 → SQLite-kompatibilna obnovitev → spet 404/deluje, finally varovalka); posodobljeni štetji 11→12 v migrations-console + stroski-ddl
+- APP_VERSION → 1.85.1; AUDIT vrstica; VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1080/1080 (74 datotek)
+
+Stage Summary:
+- Produkcija bo po deployu v1.85.1 vračala čist 503 (prijazno sporočilo) namesto 500 dokler uporabnik NE klikne migracije: Enterprise → Shema migracije (DDL) → paylink → »Uporabi« (1 klik, idempotentno, z auditom) — isti vzorec kot prejšnjih 11 migracij
+- Po DDL aplikaciji: /pay/<token> popolnoma operativen na produkciji; drift-check vnos postane mrtva koda

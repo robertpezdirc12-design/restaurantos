@@ -15,6 +15,7 @@ import {
   stripeSessionStatus,
   finalizePayLinkPayment,
   payLinkUrl,
+  payLinkReady,
 } from '@/lib/paylink/core'
 
 /**
@@ -118,6 +119,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const ip = clientIp(req)
   if (!rateLimitPublic(`payview:${ip}:${token}`, 60)) return fail('Preveč zahtev. Počakajte trenutek.', 429)
   if (!isPayLinkTokenShape(token)) return fail('Povezava ne obstaja.', 404)
+  if (!(await payLinkReady())) return fail('Plačilne povezave trenutno niso aktivne — poskusite kmalu znova.', 503)
 
   const link = (await db.payLink.findUnique({ where: { token } })) as LinkRow | null
   if (!link) return fail('Povezava ne obstaja.', 404)
@@ -173,6 +175,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const ip = clientIp(req)
   if (!rateLimitPublic(`paypost:${ip}:${token}`, 10)) return fail('Preveč poskusov plačila. Počakajte trenutek.', 429)
   if (!isPayLinkTokenShape(token)) return fail('Povezava ne obstaja.', 404)
+  if (!(await payLinkReady())) return fail('Plačilne povezave trenutno niso aktivne — poskusite kmalu znova.', 503)
   const body = (await req.json().catch(() => null)) as { tip?: unknown; verifySession?: unknown } | null
 
   const link = (await db.payLink.findUnique({ where: { token } })) as LinkRow | null

@@ -6,7 +6,7 @@ import { guardResource } from '@/lib/tenant'
 import { writeAudit } from '@/lib/audit-chain'
 import { nid, ORDER_ACTIVE_DB } from '@/lib/map'
 import { sendSms, smsConfigForLocation } from '@/lib/reminders'
-import { newPayLinkToken, payLinkUrl } from '@/lib/paylink/core'
+import { newPayLinkToken, payLinkUrl, payLinkReady } from '@/lib/paylink/core'
 
 /**
  * P0-2 TRZNA-VRZELI (v1.85.0) — plačilna povezava za naročilo (osebje).
@@ -45,6 +45,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = await requirePermission(req, 'orders.pay')
   if (isResponse(user)) return user
   const { id } = await params
+  if (!(await payLinkReady())) {
+    return fail('Plačilne povezave čakajo na shemsko migracijo (Enterprise → Shema migracije → paylink).', 503)
+  }
   const body = (await req.json().catch(() => null)) as {
     phone?: unknown
     expiresInHours?: unknown
@@ -155,6 +158,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const user = await requirePermission(req, 'orders.pay')
   if (isResponse(user)) return user
   const { id } = await params
+  if (!(await payLinkReady())) {
+    return fail('Plačilne povezave čakajo na shemsko migracijo (Enterprise → Shema migracije → paylink).', 503)
+  }
 
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)

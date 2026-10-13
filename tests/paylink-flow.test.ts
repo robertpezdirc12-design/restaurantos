@@ -39,6 +39,8 @@ import { GET as billGET } from '../src/app/api/orders/[id]/bill/route'
 import { POST as fursPOST } from '../src/app/api/furs/route'
 import { POST as paylinkPOST, DELETE as paylinkDELETE } from '../src/app/api/orders/[id]/paylink/route'
 import { GET as publicPayGET, POST as publicPayPOST } from '../src/app/api/public/pay/[token]/route'
+import { POST as migratePaylinkPOST } from '../src/app/api/admin/migrate-paylink/route'
+import { payLinkReady, resetPayLinkProbe } from '@/lib/paylink/core'
 
 const PREFIX = 'plnk-'
 const TS = Date.now()
@@ -52,6 +54,7 @@ let waiterA = ''
 let waiterB = ''
 let kitchenA = ''
 let cleanerA = ''
+let ownerA = ''
 let item5 = ''
 let item350 = ''
 const TABLE_POOL: string[] = []
@@ -61,6 +64,7 @@ let tokenWaiterA = ''
 let tokenWaiterB = ''
 let tokenKitchenA = ''
 let tokenCleanerA = ''
+let tokenOwnerA = ''
 
 let orderSeq = 891001
 const PREV_FURS_ENV = process.env.FURS_ENVIRONMENT
@@ -161,11 +165,13 @@ beforeAll(async () => {
   waiterB = (await db.employee.create({ data: { id: nid(), name: `${PREFIX} Natakar B`, email: `${PREFIX}-waiter-b-${TS}@test.local`, role: 'waiter', pin: `${PREFIX}-pin-wb-${TS}`, locationId: locB } })).id
   kitchenA = (await db.employee.create({ data: { id: nid(), name: `${PREFIX} Kuhar A`, email: `${PREFIX}-kitchen-a-${TS}@test.local`, role: 'kitchen', pin: `${PREFIX}-pin-ka-${TS}`, locationId: locA } })).id
   cleanerA = (await db.employee.create({ data: { id: nid(), name: `${PREFIX} Čistilec A`, email: `${PREFIX}-cleaner-a-${TS}@test.local`, role: 'cleaner', pin: `${PREFIX}-pin-cl-${TS}`, locationId: locA } })).id
+  ownerA = (await db.employee.create({ data: { id: nid(), name: `${PREFIX} Lastnik A`, email: `${PREFIX}-owner-a-${TS}@test.local`, role: 'owner', pin: `${PREFIX}-pin-ow-${TS}`, locationId: locA } })).id
 
   tokenWaiterA = createToken({ sub: waiterA, name: `${PREFIX} Natakar A`, role: 'WAITER', loc: locA, sv: 0 })
   tokenWaiterB = createToken({ sub: waiterB, name: `${PREFIX} Natakar B`, role: 'WAITER', loc: locB, sv: 0 })
   tokenKitchenA = createToken({ sub: kitchenA, name: `${PREFIX} Kuhar A`, role: 'KITCHEN', loc: locA, sv: 0 })
   tokenCleanerA = createToken({ sub: cleanerA, name: `${PREFIX} Čistilec A`, role: 'CLEANER', loc: locA, sv: 0 })
+  tokenOwnerA = createToken({ sub: ownerA, name: `${PREFIX} Lastnik A`, role: 'OWNER', loc: locA, sv: 0 })
 
   const menuA = (await db.menu.create({ data: { id: nid(), name: `${PREFIX} meni`, locationId: locA } })).id
   const catA = (await db.category.create({ data: { id: nid(), name: `${PREFIX} kategorija`, menuId: menuA } })).id
@@ -440,3 +446,71 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
   })
 })
 
+describe('paylink — produkcijski DDL korak (migrate-paylink + 503 degradacija)', () => {
+  test('migrate-paylink: 401 brez žetona, 403 waiter (ni centralen), owner → alreadyApplied (SQLite ima tabelo)', async () => {
+    expect((await migratePaylinkPOST(req('/api/admin/migrate-paylink', '', 'POST', {}))).status).toBe(401)
+    expect((await migratePaylinkPOST(req('/api/admin/migrate-paylink', tokenWaiterA, 'POST', {}))).status).toBe(403)
+    const res = await migratePaylinkPOST(req('/api/admin/migrate-paylink', tokenOwnerA, 'POST', {}))
+    expect(res.status).toBe(200)
+    const data = (await res.json()) as { alreadyApplied: boolean }
+    expect(data.alreadyApplied).toBe(true) // dev SQLite: db push je tabelo že ustvaril
+    expect(await payLinkReady()).toBe(true)
+  })
+
+  test('503 degradacija: tabela manjka → javna ruta 503; obnovitev → spet deluje (PENDING simulacija)', async () => {
+    const { id: oid } = await mkOrder()
+    const link = await mkLink(oid)
+    try {
+      // PENDING simulacija (issue-10 vzorec iz migrations-console): drop tabelo
+      await db.$executeRawUnsafe('DROP TABLE "PayLink"')
+      resetPayLinkProbe()
+      const res = await publicPayGET(req(`/api/public/pay/${link.token}`, ''), { params: Promise.resolve({ token: link.token }) })
+      expect(res.status).toBe(503)
+      // ponovna vzpostavitev (DDL rute brez ALTER CONSTRAINT — SQLite kompatibilno;
+      // produkcijski Postgres dobi CELOTEN DDL prek /api/admin/migrate-paylink)
+      await db.$executeRawUnsafe(`CREATE TABLE "PayLink" (
+        "id" TEXT NOT NULL,
+        "token" TEXT NOT NULL,
+        "orderId" TEXT NOT NULL,
+        "locationId" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'open',
+        "phone" TEXT NOT NULL DEFAULT '',
+        "smsDetail" TEXT NOT NULL DEFAULT '',
+        "amount" DECIMAL(65,30),
+        "tip" DECIMAL(65,30),
+        "expiresAt" DATETIME,
+        "paidAt" DATETIME,
+        "receiptId" TEXT,
+        "createdBy" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "PayLink_pkey" PRIMARY KEY ("id")
+      )`)
+      await db.$executeRawUnsafe('CREATE UNIQUE INDEX "PayLink_token_key" ON "PayLink"("token")')
+      await db.$executeRawUnsafe('CREATE UNIQUE INDEX "PayLink_orderId_key" ON "PayLink"("orderId")')
+      await db.$executeRawUnsafe('CREATE INDEX "PayLink_createdAt_idx" ON "PayLink"("createdAt")')
+      await db.$executeRawUnsafe('CREATE INDEX "PayLink_locationId_idx" ON "PayLink"("locationId")')
+      await db.$executeRawUnsafe('CREATE INDEX "PayLink_status_idx" ON "PayLink"("status")')
+      resetPayLinkProbe()
+      // tabela je prazna (vrstica je padla z dropom) — token ne obstaja → čist 404, ne več 500/503
+      const res2 = await publicPayGET(req(`/api/public/pay/${link.token}`, ''), { params: Promise.resolve({ token: link.token }) })
+      expect(res2.status).toBe(404)
+      expect(await payLinkReady()).toBe(true)
+    } finally {
+      // varovalka: tabela MORA obstajati za ostale datoteke suite
+      const ok2 = await (async () => { try { await db.$queryRawUnsafe('SELECT 1 FROM "PayLink" LIMIT 1'); return true } catch { return false } })()
+      if (!ok2) {
+        await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PayLink" (
+          "id" TEXT NOT NULL, "token" TEXT NOT NULL, "orderId" TEXT NOT NULL, "locationId" TEXT NOT NULL,
+          "status" TEXT NOT NULL DEFAULT 'open', "phone" TEXT NOT NULL DEFAULT '', "smsDetail" TEXT NOT NULL DEFAULT '',
+          "amount" DECIMAL(65,30), "tip" DECIMAL(65,30), "expiresAt" DATETIME, "paidAt" DATETIME,
+          "receiptId" TEXT, "createdBy" TEXT, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" DATETIME NOT NULL, CONSTRAINT "PayLink_pkey" PRIMARY KEY ("id")
+        )`)
+        await db.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "PayLink_token_key" ON "PayLink"("token")').catch(() => null)
+        await db.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "PayLink_orderId_key" ON "PayLink"("orderId")').catch(() => null)
+      }
+      resetPayLinkProbe()
+    }
+  })
+})
