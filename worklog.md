@@ -2065,3 +2065,21 @@ Work Log:
 Stage Summary:
 - Dokumentacija zdaj odraža DEJANSKO stanje po razrezu (docs brez izgube) — naslednji razvoj ima zemljevid frontend plast + celotna revizijska zgodovina na enem mestu
 - Commit: DOC-SYNC v1.82.9 (samo docs + verzija; ni DB/i18n/logike sprememb)
+
+---
+Task ID: RESEARCH-11
+Agent: main (Z.ai Code)
+Task: "odlično raziskuj po spletu najboljše in primerjaj kaj nam še manjka temeljito profesionalno delaj" — 2. krog tržne vrzel-analize.
+
+Work Log:
+- Izhodšiče: OPS-4 GAP-ANALIZA (@ v1.66.0, 12. 10. 2026) — inventar vrzeli; sledil sistematičen pregled stanja @ v1.82.9 (grep dokazi za vsako postavko)
+- ZAPRTO od OPS-4 (dokazano): hitra prodaja (prodaja tab), tloris v1.67.0 (drag&drop posX/posY), split+tečaji OPS-7 v1.68.0, urniki izmen, menu inženiring, KDS statistika+heatmap, KDS-BAR, normativi/kalo, push+SMS(Twilio/SMTP/webhook), CLEANER+8 dovoljenj, loyalty tierji, PWA (manifest+sw) — 14/20 + 2 delno (QR mnenje na računu: samo HR fiskalni QR; knjigovodski portal delno)
+- SPLETNA RAZISKAVA (13. 10. 2026): Lightspeed Restaurant uradna (brskalnik; Tableside/Order Anywhere/benchmarks/labor forecast/PMS), TechRadar Best POS 2026 (posod. 10. 2. 2026; Toast best-for-restaurants $69+/mes+2 %+15¢+1–3 letne pogodbe), Square for Restaurants, Loyverse, Wikipedia ViDA (sprejet 11. 3. 2025, velja 12. 4. 2025), PCI SSC (v4.0, PA-DSS upokojen), Wikipedia POS/QR
+- Omejitve: toasttab/touchbistro/possector Cloudflare bot-zaščita (njihovi seti po OPS-4+TechRadar); fina.hr nedosegljiva (status po FURS-CERT-RUNBOOK); z-ai web_search 429 celo sejo — primarni viri pridobljeni direktno (curl/agent-browser)
+- docs/TRZNA-VRZELI-2026.md (175 vrst): viri z datumi, zaprto-od-OPS-4 tabela z dokazi, tržna matrika 30+ funkcij × 6 sistemov, vrzeli P0×3 (handheld tok, pay link, 86-toggle) + P1×5 + P2×7 + P3×6 s trudom, regulatorna pripravljenost (ViDA/PCI/NIS2/GDPR/FURS-FINA), priporočen vrstni red, sklep (feature-parity ~80 %, vodimo v fiskalizaciji SI/HR/HACCP/audit verigi)
+- Poštenost dokumenta: vrstica QR-na-računu popravljena v ~delno (HR fiskalni QR obstaja, QR za mnenje ne) po pregledu src/lib/receipt.ts
+- APP_VERSION → 1.82.10; VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1037/1037
+
+Stage Summary:
+- 2. kroga OPS-4 zaprta 14/20 vrzeli; sistem na parity z vodilnimi razen 3 P0 (handheld/pay-link/86) — vse izvedljive na obstoječi infrastrukturi (PWA, offline vrsta, dovoljenja)
+- Regulatorno: ViDA e-račun IZVOZ (P2, rok 2030+); PCI SAQ-A drža (cardLast4); NIS2 izven obsega
