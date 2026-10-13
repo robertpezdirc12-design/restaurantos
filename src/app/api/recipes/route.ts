@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isCentralRole, isResponse, ok } from '@/lib/api'
+import { requirePermission, isResponse, ok, locationScope } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
@@ -22,9 +22,8 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const rows = await db.recipeItem.findMany({
     // Issue #4 §1: receptura nima locationId → scope prek lanca MenuItem → Category → Menu.locationId
-    where: isCentralRole(user)
-      ? {}
-      : { MenuItem: { Category: { Menu: { locationId: user.loc || '__no_location__' } } } },
+    // Issue #5 (P0, komentar #6): org allow-lista (locationScope) namesto centralnega bypassa
+    where: { MenuItem: { Category: { Menu: await locationScope(user) } } },
     include: {
       MenuItem: { select: { id: true, name: true } },
       InventoryItem: { select: { id: true, name: true, unit: true, costPerUnit: true } },

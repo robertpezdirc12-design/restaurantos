@@ -58,6 +58,50 @@ export function isResponse(v: unknown): v is NextResponse {
  * Vsi realni zaposleni gredo čez DB: status + sessionVersion (D4) + dovoljenja
  * delujejo TAKOJ (12h žeton jih ne zamrzne).
  */
+/**
+ * Issue #5 (P0-B): requireAuth + RAZREŠENA dovoljenja v enem DB klicu —
+ * za GET rute, ki potrebujejo pogojna polja (npr. finančni KPI samo za
+ * reports.view) ali OR-logiko dovoljenj (npr. haccp: settings.manage ALI
+ * haccp.execute). Vrne kontekst {user, perms} ali NextResponse (401/403).
+ * Dovoljenja so vedno DB-resolved (takojšnji učinek, ne 12h žeton).
+ */
+export interface AuthedContext {
+  user: AuthPayload
+  perms: CanonicalPermission[]
+}
+
+export async function requireAuthWithPerms(
+  req: NextRequest
+): Promise<AuthedContext | NextResponse> {
+  const user = await requireAuth(req)
+  if (isResponse(user)) return user
+  if (user.role === 'ADMIN' && user.sub === 'bootstrap') {
+    return { user, perms: resolvePermissionsForUIRole('ADMIN') }
+  }
+  const employee = await db.employee.findUnique({
+    where: { id: user.sub },
+    select: { role: true, permissionOverrides: true },
+  })
+  if (!employee) return forbidden()
+  return { user, perms: resolvePermissions(employee.role, employee.permissionOverrides) }
+}
+
+/**
+ * Issue #5 (P0-B): OR-logika dovoljenj — zadosti ENO izmed seznamu.
+ * Npr. GET /api/orders: orders.create ALI kitchen.update ALI delivery.manage.
+ */
+export async function requireAnyPermission(
+  req: NextRequest,
+  permissions: readonly CanonicalPermission[]
+): Promise<AuthedContext | NextResponse> {
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
+  if (!permissions.some((p) => ctx.perms.includes(p))) {
+    return fail(`Dostop zavrnjen — manjka dovoljenje: ${permissions.join(' | ')}.`, 403)
+  }
+  return ctx
+}
+
 export async function requirePermission(
   req: NextRequest,
   permission: CanonicalPermission

@@ -29,6 +29,10 @@ export const CANONICAL_PERMISSIONS = [
   'timeclock.manage',
   'delivery.manage',
   'giftcards.manage',
+  // Issue #5 (P0-A): katalog promocij/popustov ločeno od UPORABE popusta na računu —
+  // apply_discounts (natakar) ostane samo za uporabo ob plačilu; discounts.manage
+  // (vodstvo po privzetem naboru) je edini ključ za POST/PATCH/DELETE kataloga.
+  'discounts.manage',
 ] as const
 
 export type CanonicalPermission = (typeof CANONICAL_PERMISSIONS)[number]
@@ -54,6 +58,7 @@ export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
   'timeclock.manage': 'Delovni čas — urejanje izmen drugih',
   'delivery.manage': 'Dostava — sprejem, statusi, cone',
   'giftcards.manage': 'Darilne kartice — izdaja, polnjenje',
+  'discounts.manage': 'Popusti — urejanje kataloga promocij (ne uporaba)',
 }
 
 /**

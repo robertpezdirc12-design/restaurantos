@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num } from '@/lib/map'
 import { prevWindow, buildXzReport, avgPartySizeOf } from '@/lib/xz-report'
 import { salesByHour, type SalesHourSample } from '@/lib/sales-by-hour'
@@ -60,8 +60,11 @@ export async function GET(req: NextRequest) {
   // Payment nima locationId → scope prek relacije Check → Order.locationId;
   // StockTransaction nima locationId → scope prek povezanega InventoryItem.locationId.
   const locScope = await locationScope(user)
-  const payScope = isCentralRole(user) ? {} : { Check: { Order: { locationId: user.loc || '__no_location__' } } }
-  const stockScope = isCentralRole(user) ? {} : { InventoryItem: { locationId: user.loc || '__no_location__' } }
+  // Issue #5 (P0, komentar #6): payScope/stockScope prej ročni centralni bypass {} —
+  // izvoz je pomešal org-scoped račune s PLAČILI/ZALOGAMI vseh organizacij (knjigovodska
+  // napačna čez-obračunavanja). Zdaj org allow-lista (isti vzorec kot locScope).
+  const payScope = { Check: { Order: locScope } }
+  const stockScope = { InventoryItem: locScope }
   const p2 = (n: number) => n.toFixed(2)
 
   // OPS-8 val 3 (v1.73.0): section=zz — X/Z business report (Lightspeed Business Report

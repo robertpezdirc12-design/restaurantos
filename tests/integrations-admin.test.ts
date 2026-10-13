@@ -112,7 +112,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
     await isErr(integrationsPOST(req('/api/integrations', owner, 'POST', { name: 'x', baseUrl: 'ftp://y' })), 400)
   })
 
-  test('GET maskiranje: waiter vidi •••• + maskedFields, owner prave vrednosti', async () => {
+  test('GET (issue #5): waiter (brez settings.manage) → 403; owner vidi prave vrednosti', async () => {
     const { owner, waiter } = await setupP
     const created = await integrationsPOST(req('/api/integrations', owner, 'POST', {
       name: `${PREFIX}Bizi`, type: 'delivery', config: { apiKey_bizi: 'sk-secret-42', region: 'si' },
@@ -120,13 +120,10 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
     const id = ((await created.json()) as { integration: { id: string } }).integration.id
     await db.integration.update({ where: { id }, data: { lastSyncError: 'stari napaki' } })
 
-    const w = ((await (await integrationsGET(req('/api/integrations', waiter))).json()) as {
-      integrations: Array<{ id: string; config: Record<string, unknown>; maskedFields?: string[]; lastSyncError: string; baseUrl: string }>
-    }).integrations.find((x) => x.id === id)!
-    expect(w.config.apiKey_bizi).toBe('••••')
-    expect(w.config.region).toBe('si')
-    expect(w.maskedFields).toContain('apiKey_bizi')
-    expect(w.lastSyncError).toBe('') // non-central ne vidi podrobnosti napak
+    // issue #5 (v1.88.0): GET zahteva settings.manage — waiter sploh NE pride do seznama
+    // (prej requireAuth z maskiranjem; masker ostaja kot notranji obrambni sloj)
+    const wRes = await integrationsGET(req('/api/integrations', waiter))
+    expect(wRes.status).toBe(403)
 
     const o = ((await (await integrationsGET(req('/api/integrations', owner))).json()) as {
       integrations: Array<{ id: string; config: Record<string, unknown>; maskedFields?: string[]; lastSyncError: string }>

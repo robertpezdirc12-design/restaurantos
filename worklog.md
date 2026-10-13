@@ -2277,3 +2277,52 @@ Stage Summary:
 - FISKALNA ODLOČITEV (dokumentirana v AUDIT): en račun na celoto — delni računi/predplačila = follow-up ob produkciji Stripe (denar je do takrat sledljiv prek PayLink vrstic + audit verige)
 - UPORABNIŠKI KORAK: Neon konzola → Enterprise → Shema migracije → 'paylink-split' → Uporabi (1 klik, idempotentno) — do taklej javne PayLink rute 503 (POS plačila delujejo normalno)
 - NASLEDNJI VAL: GitHub issue #2 (P1 QA): A CI gate diagnostika → B prijavna stran 1.35.0/incident besedilo → C gostov i18n takojšnji prevod napak → D CSP glave → E 404 poti → F varni E2E (prioriteta A → B → C → D → E)
+
+---
+Task ID: v1.87.1
+Agent: glavni agent (Z.ai)
+Task: GitHub issue #2 "P1 — PRODUKCIJSKI QA IN ZANESLJIVA OBJAVA" (A → B → C → D → E, F varno) — preberi in izvedi.
+
+Work Log:
+- ISSUE #2 prebran prek GitHub API (gh CLI manjka, token iz git config; brezplačni API rate-limit → avtentificiran klic)
+- A DIAGNOZA: run 38457116691 (d0826c7) — tests + neon-smoke končana v 3 SEKUNDAH, runner_id=0, 0 korakov → runner NIKOLI dodeljen = IZČRPANA KVOTA minut (ne testna napaka, ne workflow config — YAML veljaven, concurrency+timeout prisotna); 6 zaporednih runov enak vzorec; lokalen gate izveden s številkami (tsc 0, eslint 0, 1126/1126, prisma validate ×2, check-secrets OK, check-schema-drift OK, validate-migration OK); ročna koraka dokumentirana (Billing kvota + Vercel GitHub Checks — iz kode naredljivo NI)
+- B: login.reconstruction odstranjeno (SL+HR + page blok + layout.tsx SEO metadata) — različica ostaja na /api/health; bonus: popravljen pokvarjen sticky-footer class pb-ax → pb-[max(…)] (rekonstrukcijska napaka); tests/i18n.test.ts allowedSame brez ključa
+- C REGRESIJA: preklop jezika NI prevedel že prikazane napake (strani zamrznile PREVEDENO besedilo v state) → NOV useGuestApiError() (state = surovi niz + fallbackKey; besedilo IZRAČUNANO ob izrisu) na VSEH 4 gostovskih straneh (pay/m/kiosk/display), kiosk kompozit (autoRetry) v retryHint state ob renderju, tRef vzorec odstranjen; tests/guest-i18n-errors.test.ts ×5 (SL→HR→EN iz istega surovega niza = 3 različna besedila; P1-6 napaka; varna meja; strukturno 4 strani; hook izračun v renderju)
+- D: CSP frame-ancestors 'self' + X-Frame-Options SAMEORIGIN (usklajeno; edini iframe v kodi = predogled priloge isti-origin → ohranjen; gateway/predogled isti origin; CSP script-src dokumentirano izven); tests/security-headers.test.ts ×5; heredoc zaplet pri prvem patchu next.config (patch 'uspešno' a ni zapisal — re-apliciran z marker assertom)
+- E: /landing + /api/docs + /api/openapi.json = 0 referenc v README/docs/src → 404 PRAVILEN (nič dodanega)
+- F varni E2E (e2e.db, FURS simulator): prijava → izmena 100 € → naročilo → fire → gotovina (račun 2026-10-2-BLG001 EOR) → razknjižba zaloge z RECEPTOM (2×0,05 kg TOČNO; sejem receptov nima — dodan ad hoc in počiščen) → zaključek + Z-report 12,19 € → RBAC kuhar 403; E2E smetje v e2e.db počiščeno (recepti kave + Mleko2; lekcija: skriptni cleanup je tiho padel — tail je skril stderr)
+- NASTALI REGRESIJSKI POPRAVKI testov (pogodba posodobljena, namero ohranjena): i18n-guest 'uporablja guestApiErrorText' sprejme useGuestApiError; guest-offline m/[token] ključ unreachableRetry prek setKey
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1126/1126 (76 datotek, +10)
+- PRODUKCIJA: push 9005bbc (GitHub+GitLab) → health 1.87.1 9005bbc database connected; curl -I: VSEH 6 glav (CSP frame-ancestors 'self', XFO SAMEORIGIN, HSTS, nosniff, Referrer-Policy, Permissions-Policy); prijava brez 'Rekonstrukcija/hakiran' (0 zadetkov)
+- GitHub issue #2 komentar objavljen (issuecomment-6154145627): A diagnoza z dokazi + številke, B/C/D/E ✅, F na varnem okolju + NEPREVERJENO (Stripe/prod FURS), ročni koraki (kvota, Vercel checks, žetoni, paylink-split DDL)
+
+Stage Summary:
+- Issue #2: B/C/D/E POPOLNOMA odpravljeni in produkcijsko verificirani; A diagnosticiran (kvota — ročni korak lastnika, konfiguracija je pravilna); F dokazan na varnem testnem okolju (issue NE zaprt — ostajajo ročni koraki + prod integracije po vaših pravilih)
+- v1.87.1 na produkciji: čista prijava, takojšnji prevodi napak, določena frame politika, 1126/1126
+- NASLEDNJI: (1) uporabnik: paylink-split DDL na Neonu (Enterprise → Shema migracije — 1 klik); (2) uporabnik: kvota Actions + rotacija žetonov; (3) P1-4 labor forecast + P2-9 AI (TRZNA-VRZELI vrstni red)
+
+---
+Task ID: v1.88.0
+Agent: glavni agent (Z.ai)
+Task: GitHub issue #5 (P0/P1 — delovni tokovi po vlogah) P0 val: varna in dosledna avtorizacija pri vsakem API-klicu + komentarji #1–#5 uporabnika.
+
+Work Log:
+- Issue #5 prebran (23.048 znakov + 5 komentarjev); 4 vzporedni Explore agenti izvedli dokazno inventuro (read-leaks, org-bypass, write-gaps, UI landing); paylink-split DDL na Neonu ŠE ČAKA uporabnikov klik (javna /pay 503 — degradacija po načrtu, POS deluje)
+- A. READ-LEAKS (12 rut): settings (SECRETS! fursCertPassword/smtp/apiKeys/cis — zdaj minimalni DTO + settings.manage full), suppliers (IBAN/davčna → inventory.manage operativno/reports.view finančno), events (central-only + minimalni DTO brez payload), jobs (employees.manage), webhooks+monitoring/errors (settings.manage + locationScope), kitchen (kitchen.update + ?station= STREŽNIŠKI filter), orders (requireAnyPermission OR-nabor), reservations (reservations.manage — PII), feedback (uskladitev s TAB_PERM), stocktakes (inventory.manage), inventory cost strip, purchase-orders (inventory.manage + obseg)
+- B. ORG-SCOPE (11 ročnih bypassov → locationScope org allow-lista): locations/stats, locations, kitchen/stats ×2, kitchen postaje, menu-engineering, recipes, discounts GET, reports/export payScope+stockScope, reports/gl payScope; tips/tips-payout locationId validacija (manager tuje org je zaključeval bazene!); dashboard (?locationId assertOrgScope + centralni default ORG obseg + finančni KPI samo reports.view + financialPerm zastavica); GL entryNumber GL-YYYYMMDD-<scopeHash8>-01 (hash niza lokacij obsega — ista org=ista idempotenca, tuja=ločen vnos); expenses priloge scope preverba
+- C. WRITE-GAPS: discounts katalog → NOVA 20. kanonična pravica discounts.manage + guardResource na vir; shifts POST → cash.manage + requireUserLocation (prej requireAuth!); haccp GET OR(settings.manage,haccp.execute) + POST haccp.execute (prej NASPROTNO); orders note/customerName → orders.create; employees POST eskalacijska matrica (MANAGER ni mogel več ustvariti OWNER!) + PIN validacija; employees PATCH role → sessionVersion bump; tables tloris → menu.manage; staff-shifts GET lastne/ekipa + POST jobId
+- D. NOVA FUNKCIJA — PREKLIC POSAMEZNE POSTAVKE: orders.void prvič uveljavljena + VoidReason seed (4 razlogi) + POST /api/orders/[id]/void (razlog obvezen, CAS, plačano 409 → fiskalni storno, zaloga varna ker razknjižba teče ob FURS samo za izstavljene postavke) + GET /api/void-reasons + UI dialog v urejevalniku + recalcOrderTotals izluščen v ops.ts + i18n SL/HR
+- E. P1 UI: landingTab() pristajalni zavihek po vlogi (kuhinja→KDS, šank→prodaja, natakar→mize, čistilka→HACCP); perms iz localStorage (konec utripanja); clamp ?tab=URL elevacija; URL-sync effect (App Router posodobi URL šele PO prvem renderu — E2E odkritje!); kitchen ?station na strežnik (kdsStationRef mirror); TAB_PERM.popusti → discounts.manage
+- TESTI: tests/issue5-authorization.test.ts ×38 novih (A 12, B 5, C 10, D 7, E 3) + pin 36→47 rut z locationScope + pogodbni update 3 obstoječih (zreport/race → BAR cash.manage, integrations waiter 403, permissions 20)
+- VERIFIKACIJA: tsc 0, eslint 0, prisma validate ×2 OK, check-secrets OK, check-schema-drift OK (119 modelov ×2), svež ci-fresh.db 1166/1166 (79 datotek, +40)
+- BROWSER E2E dev :3000 (svež e2e.db + seed): kuhar (kuhinja@) prijava → /dashboard?tab=kuhinja + KDS zavihek aktiven + SAMO 6 kuhinjskih zavihkov; natakar → ?tab=mize + 10 natakarjevih zavihkov (brez zaposleni/finance); ?tab=zaposleni kot natakar → CLAMP na Pregled (panel skrit); admin → naročilo #1 Miza 9 (2 artikla 20,15 €) → urejevalnik → gumb Prekliči postavko → razlog "gost je zamenjal misel" → POST /void 200 → voided=1, total 16,32 €, postavka IZGINI iz seznama; 0 konzolnih strani napak; testno naročilo preklicano (CANCELED + miza spravljena); ujeta UX napaka pred koncem: oba gumba dialoga sta se imenovala "Prekliči" → potrditev preimenovana "Prekliči postavko" (SL) / "Storniraj stavku" (HR)
+- INFRA: dev :3000 (PORT env ignoriran — Next 16 lastna izbira), e2e.db, FURS simulator
+
+Stage Summary:
+- Issue #5 P0 val živ: vsaka zaščitena ruta ima IZRECNO pravico + tenant/lokacijski obseg + minimalni DTO; org meje zaprte za centralne vloge (11 bypassov); write poti po pravilih
+- Ključne odpravljene luknje: settings SECRETS dostopne vsakemu prijavljenemu (KRITIČNO), manager je lahko ustvaril OWNER račun, vsak je lahko zaključil blagajno z Z-reportom, natakar je lahko spreminjal katalog promocij + TUJE lokacije, GL trčenja med organizacijami, PII gostov vsakomur na lokaciji
+- NOVA funkcija: preklic posamezne postavke (orders.void — Toast vzorec: pooblastilo + obvezen razlog + audit) — prvič uporabljena 20. kanonična pravica in VoidReason model (oba mrteva od OPS-4)
+- P1 UI: pristajalni zaslon po vlogi (vsak delavec pristane v SVOJEM okolju), konec utripanja privilegiranih zavihkov, URL ne poviša pravic
+- BREZ DDL: VoidReason/OrderItem.voided/permissionOverrides so že v shemi → NI Neon koraka za ta val
+- NASLEDNJI VAL (issue #5 P1): delovni profili po napravah (DeviceRegistry station binding — kds_bar je mrtev stolpec), ločitev timeclock/cash zaključka z odobritvami, EventLog/Supplier locationId DDL (konzola vnosi), dogodkovni dogovori #3/#4 (dostava, expediter KDS)
+- UPORABNIŠKI KORAKI (ponovno): paylink-split DDL na Neonu (Enterprise → Shema migracije — javne PayLink rute 503 do takrat), rotacija obeh žetonov, Actions kvota 1. 11. 2026

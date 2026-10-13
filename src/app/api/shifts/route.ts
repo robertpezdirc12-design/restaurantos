@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
@@ -60,7 +60,10 @@ class ShiftCloseConflictError extends Error {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  // Issue #5 (P0, komentar #3): odpiranje/zaključek blagajne = cash.manage
+  // (enako kot GET; prej requireAuth — vsak prijavljeni je lahko pognal Z-poročilo).
+  // Osebna evidenca delovnega časa ostaja LOČENA v /api/timeclock (samooskrba).
+  const user = await requirePermission(req, 'cash.manage')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
 
@@ -282,7 +285,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const locationId = user.loc || (await db.location.findFirst())?.id || null
+  // Issue #5: requireUserLocation (§10 — brez findFirst() fallbacka; centralna vloga
+  // podaja lokacijo eksplicitno, ostali so vezani na svojo)
+  const locationId = requireUserLocation(user)
+  if (isResponse(locationId)) return locationId
   // R1 popravek (P0 audit): odpiranje izmene v transakciji z ponovno preverbo —
   // dva vzporedna klika ne moreta odpreti dveh izmen (SQLite serializira; PG zoži okno).
   const opened = await db.$transaction(async (tx) => {

@@ -5,6 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
+import { recalcOrderTotals } from '@/lib/ops'
 import type { Prisma } from '@prisma/client'
 
 const orderInclude = {
@@ -23,17 +24,9 @@ function normalize(o: Record<string, unknown>) {
   } as Parameters<typeof mapOrder>[0]
 }
 
-async function recalcTotals(orderId: string, tx?: Prisma.TransactionClient) {
-  const dbx = tx ?? db
-  const items = await dbx.orderItem.findMany({ where: { orderId, voided: false } })
-  let subtotal = 0
-  let tax = 0
-  for (const it of items) {
-    subtotal += num(it.price) * (it.quantity || 0)
-    tax += num(it.vatAmount)
-  }
-  return { subtotal: r2(subtotal), tax: r2(tax), total: r2(subtotal + tax) }
-}
+/* Issue #5: recalcTotals prestavljen v src/lib/ops.ts (recalcOrderTotals) — skupni
+   vir za PATCH in preklic posamezne postavke (/api/orders/[id]/void). */
+const recalcTotals = recalcOrderTotals
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireAuth(req)
@@ -58,6 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const gate = await requirePermission(req, 'orders.create')
     if (isResponse(gate)) return gate
   } else if (body?.status) {
+    // (podveje spodaj)
     if (body.status === 'PAID' || body.status === 'CANCELLED') {
       // plačilo/veljavnost mimo plačilnega poteka = samo vodstvo
       // P2 audit N2: OWNER je centralna vloga — sme tudi ročno override (prej samo ADMIN/MANAGER)
@@ -66,6 +60,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const gate = await requirePermission(req, 'kitchen.update')
       if (isResponse(gate)) return gate
     }
+  } else if (body?.note !== undefined || body?.customerName !== undefined) {
+    // Issue #5 (P0, komentar #3): opomba/stranka sta VSEBINA naročila — prej brez
+    // pravice (vsak prijavljeni, tudi čistilka, je lahko spreminjal tudi na plačanih)
+    const gate = await requirePermission(req, 'orders.create')
+    if (isResponse(gate)) return gate
   }
 
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: true } })

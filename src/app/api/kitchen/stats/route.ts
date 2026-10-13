@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, isCentralRole } from '@/lib/api'
+import { requirePermission, isResponse, ok, locationScope } from '@/lib/api'
 import { prepMinutes, stationOf, kdsItemStats, kdsHeatmap, kdsTimeSplit, kdsDayKpi, kdsDelayCounts, kdsStationBreakdown, type KdsSample } from '@/lib/kds-stats'
 import { KDS_DELAY_ACTION } from '@/lib/kds-delays'
 
@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
   const stationFilter = stationParam === 'BAR' || stationParam === 'KITCHEN' ? stationParam : null
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
-  const orderScope = isCentralRole(user) ? {} : { locationId: user.loc || '__no_location__' }
+  // Issue #5 (P0, kommentar #6): org allow-lista (prej centralna vloga VSE organizacije)
+  const orderScope = await locationScope(user)
 
   const rows = await db.orderItem.findMany({
     where: {
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
     where: {
       action: KDS_DELAY_ACTION,
       timestamp: { gte: since },
-      ...(isCentralRole(user) ? {} : { locationId: user.loc || '__no_location__' }),
+      locationId: orderScope.locationId ?? undefined,
     },
     select: { details: true },
     take: 5000,

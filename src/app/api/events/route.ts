@@ -4,13 +4,20 @@
  */
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
+import { requireCentralRole, requirePermission, isResponse, ok } from '@/lib/api'
 import { dispatchPending, eventPayload } from '@/lib/events'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Issue #5 (P0, kommentar #1): prej requireAuth + BREZ filtra — vsak prijavljeni je
+ * videl celoten event tok vseh organizacij (payload z št. računov/zneski, error
+ * besedila, identifikatorje). EventLog še NIMA locationId stolpca (P1: DDL sledi),
+ * zato P0 rešitev: centralna vloga (admin/owner — diagnostični trace) + MINIMALNI
+ * DTO (brez payload/error — samo status/type/entityId/attempti/časi).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requireCentralRole(req)
   if (isResponse(user)) return user
 
   const url = new URL(req.url)
@@ -28,7 +35,7 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { createdAt: 'desc' },
       take,
-      select: { id: true, type: true, entityType: true, entityId: true, payload: true, status: true, attempts: true, error: true, createdAt: true, processedAt: true },
+      select: { id: true, type: true, entityType: true, entityId: true, status: true, attempts: true, createdAt: true, processedAt: true },
     }),
     db.eventLog.count({ where: { status: 'pending' } }),
     db.eventLog.count({ where: { status: 'failed' } }),
@@ -36,6 +43,6 @@ export async function GET(req: NextRequest) {
 
   return ok({
     queue: { pending: pendingCount, failed: failedCount },
-    events: rows.map((r) => ({ ...r, payloadParsed: eventPayload(r) })),
+    events: rows,
   })
 }

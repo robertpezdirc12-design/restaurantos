@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
+import { requireAnyPermission, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
 import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
@@ -16,9 +16,16 @@ function normalize(o: Record<string, unknown>) {
   } as Parameters<typeof mapOrder>[0]
 }
 
+/**
+ * Issue #5 (P0 §B): prej requireAuth — naročila (zneski, opombe, eor) so bila
+ * bralno dostopna vsakemu prijavljenemu (čistilka vključno). Bralna pravica
+ * domene = orders.create (natakar sledi svojim) ALI kitchen.update (KDS) ALI
+ * orders.pay (blagajna) ALI delivery.manage (dostava).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
-  if (isResponse(user)) return user
+  const ctx = await requireAnyPermission(req, ['orders.create', 'kitchen.update', 'orders.pay', 'delivery.manage'])
+  if (isResponse(ctx)) return ctx
+  const user = ctx.user
   const status = req.nextUrl.searchParams.get('status')
   const base = status
     ? { status: status.toLowerCase() }

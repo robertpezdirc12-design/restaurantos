@@ -1,10 +1,16 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
+import { requirePermission, isResponse, ok } from '@/lib/api'
 import { jparse, jstr, nid } from '@/lib/map'
 
+/**
+ * Issue #5 (P0, kommentar #2): prej requireAuth — vsak prijavljeni je videl seznam
+ * delovnih mest z njihovimi nabori dovoljenj (varnostna rekonivala). JobsCard je v
+ * zaposleni-tabu (employees.manage); urnik svojih izmen imena delovnih mest dobi iz
+ * /api/staff-shifts (Job include) — zato je branje /api/jobs sedaj employees.manage.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
   const rows = await db.job.findMany({ orderBy: { sortOrder: 'asc' }, take: 100 })
   return ok({

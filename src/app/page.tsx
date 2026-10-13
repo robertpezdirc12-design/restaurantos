@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown } from 'lucide-react'
+import { landingTab } from '@/lib/tab-permissions'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 
@@ -95,7 +96,12 @@ function LoginPageInner() {
       // Vaja PIN-ov: bootstrap prijava (začasen 2-urni dostop) označimo, da dashboard lahko svetuje prehod na PIN iz baze
       if (data.bootstrap) localStorage.setItem('ro_bootstrap', '1')
       else localStorage.removeItem('ro_bootstrap')
-      router.push('/dashboard')
+      // Issue #5 (P1-A): pristajalni zavihek PO VLOGI/dovoljenjih — vsak delavec
+      // pristane v SVOJEM delovnem okolju (kuhinja → KDS, šank → hitra prodaja,
+      // natakar → mize, čistilka → HACCP, vodstvo → pregled). URL param ne more
+      // povišati pravic (backend preverja neodvisno) — to je samo izbira zavihka.
+      const landing = landingTab(String(data.employee?.role || ''), Array.isArray(data.employee?.permissions) ? data.employee.permissions : [])
+      router.push(landing.station ? `/dashboard?tab=${landing.tab}&station=${landing.station}` : `/dashboard?tab=${landing.tab}`)
     } catch {
       setError(t('login.connection'))
     } finally {

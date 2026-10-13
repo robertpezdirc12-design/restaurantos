@@ -154,10 +154,20 @@ export function buildGlEntry(t: GlDayTotals): GlEntryPreview {
   return { lines, debits, credits, balanced: debits === credits, residual, adjustedAccount }
 }
 
-/** Deterministic per-day entry number — also the idempotency key (unique in DB). */
-export function glEntryNumber(dayIso: string): string {
+/**
+ * Deterministic per-day entry number — also the idempotency key (unique in DB).
+ *
+ * Issue #5 (P0, komentar #6): prej `GL-YYYYMMDD-01` GLOBALNO unikatno — dve
+ * organizaciji s prometom istega dne trčita (prva persistira, druga dobi NAZAJ
+ * TUJE vrstice prek findUnique). Zdaj entryNumber vsebuje scopeKey (8-hex hash
+ * razvrščenega niza lokacij obsega): ista organizacija = isti ključ = idempotenca;
+ * tuja organizacija = drug ključ = ločeni vnosi. Default '*' = globalni obseg
+ * (bootstrap admin / neznana org — break-glass, združljivo s starimi zapisi).
+ */
+export function glEntryNumber(dayIso: string, scopeKey = '*'): string {
   const compact = dayIso.replaceAll('-', '')
-  return `GL-${compact}-01`
+  if (scopeKey === '*' || !scopeKey) return `GL-${compact}-01`
+  return `GL-${compact}-${scopeKey}-01`
 }
 
 /** Memo (description) — the 'AVTO' prefix marks rows created by this automation. */

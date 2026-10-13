@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isCentralRole, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { jparse, jstr, nid } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
@@ -17,10 +17,20 @@ import { maskIntegrationConfig, stripMaskedConfig } from '@/lib/integration-mask
  *  - POST: kreiranje povezave (settings.manage), maskne vrednosti v configu se
  *    izpustijo (src/lib/integration-mask.ts), audit INTEGRATION_CREATED + dogodek.
  */
+/**
+ * Issue #5 (P0, komentar #6): prej requireAuth + BREZ lokacijskega filtra — vsak
+ * prijavljeni je videl integracije VSEH organizacij (metadata + status), centralne
+ * vloge pa CELI konfigi (tudi tuje org). Zdaj: settings.manage (integracije-tab) +
+ * locationScope org allow-lista. Maskiranje za non-central ostaja kot dodatni sloj.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
-  const rows = await db.integration.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
+  const rows = await db.integration.findMany({
+    where: { ...(await locationScope(user)) },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  })
   const central = isCentralRole(user)
   return ok({
     integrations: rows.map((r) => {

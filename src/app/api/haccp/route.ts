@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { HaccpCategory, HaccpStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requireAuthWithPerms, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { num, nid } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
@@ -9,17 +9,20 @@ const HACCP_TYPES = ['temperature', 'cleaning', 'delivery', 'cooling', 'training
 const HACCP_STATUSES = ['ok', 'warning', 'critical'] as const
 
 /**
- * N5 (revizija §4): HACCP zapisi so interni kontrolni seznam — UI prikaže zavihek
- * HACCP samo z 'settings.manage' (TAB_PERM.haccp), zato backend uveljavlja isto
- * kanonično dovoljenje (prej: requireAuth). Odstopanje od predloga 'kitchen.update'
- * je namerno in preverjeno proti UI: kuhinjske vloge (chef/kitchen, dovoljenje
- * 'kitchen.update') zavihka HACCP v dashboardu NE vidijo (TAB_PERM ga vezuje na
- * settings.manage), zato bi 'kitchen.update' pustil API odprtejšega kot UI;
- * 'settings.manage' je minimalno dovoljenje, ki se ujema z vidnostjo vmesnika.
+ * Issue #5 (P0 §C): prej neskladje v OBEH smereh — GET je zahteval settings.manage
+ * (kuhar/čistilka z haccp.execute so videli TAB (TAB_PERM.haccp OR-seznam), API pa
+ * 403 → prazna seznama), POST pa samo requireAuth (natakar je lahko vnašal kontrole!).
+ * Zdaj: GET = settings.manage ALI haccp.execute (pregled kontrol za izvajalce);
+ * POST = haccp.execute (izvedba) — urejanje NAČRTOV ostaja ločeno v /api/haccp/plans
+ * (settings.manage).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'settings.manage')
-  if (isResponse(user)) return user
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
+  if (!ctx.perms.includes('settings.manage') && !ctx.perms.includes('haccp.execute')) {
+    return fail('Dostop zavrnjen — manjka dovoljenje: settings.manage | haccp.execute.', 403)
+  }
+  const user = ctx.user
   const rows = await db.haccpEntry.findMany({ where: await locationScope(user), orderBy: { date: 'desc' }, take: 100 })
   return ok({ haccpChecks: rows.map((r) => ({
     id: r.id, type: r.category.toUpperCase(), target: r.title, value: r.value ? num(r.value) : null,
@@ -28,7 +31,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'haccp.execute')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   const type = String(body?.type || '').toLowerCase()
@@ -39,7 +42,9 @@ export async function POST(req: NextRequest) {
     ? String(body.status)
     : (body?.ok === false ? 'warning' : 'ok')
   const value = body?.value !== undefined && body?.value !== null && String(body.value) !== '' ? String(num(body.value)) : ''
-  const locationId = user.loc || (await db.location.findFirst())?.id || null
+  // Issue #5: requireUserLocation (§10 — brez findFirst() fallbacka)
+  const locationId = requireUserLocation(user)
+  if (isResponse(locationId)) return locationId
   // 33-c: HaccpEntry dobí tamper-evidentno verigo (model 'haccpEntry' — audit §6/§193)
   const __aId = nid()
   const __chain = await auditChainFields(db, {

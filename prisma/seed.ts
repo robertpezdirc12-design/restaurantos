@@ -48,6 +48,19 @@ async function main() {
   })
   console.log('📍 Lokacija:', location.name)
 
+  // Issue #5 (komentar #3): katalog razlogov preklica postavke (VoidReason — model
+  // je obstajal v shemi, nikoli ni bil sejdan/uporabljen). 4 standardni razlogi.
+  const voidReasons = [
+    { id: nid('vr-wrong'), name: 'Napačen artikel', sortOrder: 1 },
+    { id: nid('vr-guest'), name: 'Gost je zavrnil', sortOrder: 2 },
+    { id: nid('vr-late'), name: 'Zamuda priprave', sortOrder: 3 },
+    { id: nid('vr-mistake'), name: 'Napaka pri naročanju', sortOrder: 4 },
+  ]
+  for (const v of voidReasons) {
+    await db.voidReason.create({ data: { id: v.id, name: v.name, sortOrder: v.sortOrder, locationId: locationId } })
+  }
+  console.log('🗑️ Razlogi preklica:', voidReasons.length)
+
   const employees = [
     { id: nid('emp-admin'), name: 'Ana Admin', email: 'admin@restaurantos.app', role: 'admin', pin: '1234' },
     { id: nid('emp-waiter'), name: 'Marko Natakar', email: 'natakar@restaurantos.app', role: 'staff', pin: '2345' },

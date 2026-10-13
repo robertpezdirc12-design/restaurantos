@@ -201,7 +201,20 @@ function DashboardInner() {
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   // Offline/local-first + pravice (issue #1)
-  const [perms, setPerms] = useState<string[]>([])
+  // Issue #5 (P1-A): inicializacija iz localStorage (login vrača resolved permissions
+  // in jih page.tsx shrani) — prvi izris ŽE ve, kdo je prijavljen → zavihki ne
+  // utripajo skozi permisivno stanje (prej perms=[] → tabHasPerm dovolil VSE do /me).
+  // /api/auth/me v load() ostaja kot osvežitev (takojšen učinek spremembe pravic).
+  const [perms, setPerms] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = localStorage.getItem('ro_user')
+      const parsed = raw ? JSON.parse(raw) : null
+      return Array.isArray(parsed?.permissions) ? parsed.permissions : []
+    } catch {
+      return []
+    }
+  })
   const [online, setOnline] = useState(true)
   const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
   const [syncing, setSyncing] = useState(false)
@@ -218,6 +231,11 @@ function DashboardInner() {
   const [orderSheet, setOrderSheet] = useState<OrderT | null>(null)
   const [sheetCourses, setSheetCourses] = useState<CourseT[]>([])
   const [sheetCart, setSheetCart] = useState<Record<string, number>>({})
+  // Issue #5 (komentar #3): preklic posamezne postavke (orders.void) — dialog + razlog
+  const [voidItem, setVoidItem] = useState<OrderItemT | null>(null)
+  const [voidReasons, setVoidReasons] = useState<{ id: string; name: string }[]>([])
+  const [voidReasonId, setVoidReasonId] = useState('')
+  const [voidReasonText, setVoidReasonText] = useState('')
   const [payCheckId, setPayCheckId] = useState<string | null>(null)
   const [payCheckNum, setPayCheckNum] = useState(0)
   const [checksData, setChecksData] = useState<ChecksT | null>(null)
@@ -309,6 +327,23 @@ function DashboardInner() {
   // pred nalaganjem dovoljenj pokaži vse (permisivno, da ne utripa);
   // N8 fail-closed: neznano/undefined dovoljenje → false (prej `!p` → true)
   const hasPerm = (p?: string) => !!p && (canManage || perms.length === 0 || perms.includes(p))
+  // Issue #5 (P1-B): clamp aktivnega zavihka — URL ?tab=<privilegiran> za vlogo brez
+  // dovoljenja se spravi na 'pregled' takoj, ko so perms znani (paneli sicer ostanejo
+  // izrisani brez podatkov — backend 403; to je UI-hardening, ne varnostna plast)
+  useEffect(() => {
+    if (perms.length === 0 || canManage) return
+    if (!tabHasPerm(activeTab, { canManage, perms })) setActiveTab('pregled')
+  }, [perms, canManage, activeTab])
+
+  // Issue #5 (P1-A lekcija): pri router.push iz prijave App Router posodobi URL ŠELE
+  // PO prvem renderu nove strani → useState inicializator je prebral STAR URL ('').
+  // Ta effect po umirjenju navigacije prebere ?tab= in sinhronizira aktivni zavihek
+  // (varnost: clamp effect zgoraj neodvisno preveri dovoljenje — tuji param ne poviša).
+  useEffect(() => {
+    const tabParam = new URLSearchParams(window.location.search).get('tab')
+    if (tabParam && tabParam !== activeTab) setActiveTab(tabParam)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const canRes = canManage || perms.includes('reservations.manage')
 
   const load = useCallback(async () => {
@@ -327,7 +362,9 @@ function DashboardInner() {
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
-        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null> }>('/api/kitchen')),
+        // Issue #5 §C: postaja gre NA STREŽNIK (?station=) — KDS naprava dobi SAMO
+        // svojo postajo (kdsStationRef mirror za poll closure)
+        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null> }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
         soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ employees: EmployeeT[] }>('/api/employees')),
         soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
@@ -536,6 +573,49 @@ function DashboardInner() {
       setOrderSheet(d.order)
     } catch {
       /* pusti obstoječe stanje urejevalnika */
+    }
+  }
+
+  /** Issue #5: odpri dialog preklica postavke (razlogi se naložijo enkrat, 403 → prazno) */
+  async function openVoidDialog(it: OrderItemT) {
+    setVoidItem(it)
+    setVoidReasonId('')
+    setVoidReasonText('')
+    if (voidReasons.length === 0) {
+      try {
+        const d = await api<{ voidReasons: { id: string; name: string }[] }>('/api/void-reasons')
+        setVoidReasons(d.voidReasons || [])
+      } catch {
+        /* brez kataloga (npr. prazna DB) — prosta beseda ostane edina možnost */
+      }
+    }
+  }
+
+  /** Issue #5: potrdi preklic postavke (orders.void + obvezen razlog; plačano → 409 toast) */
+  async function confirmVoidItem() {
+    if (!voidItem || !orderSheet) return
+    if (!voidReasonId && voidReasonText.trim().length < 3) {
+      toast({ title: t('void.reasonLabel'), variant: 'destructive' })
+      return
+    }
+    setSending(true)
+    try {
+      const d = await api<{ voided: { refund: number }; order: OrderT | null }>(`/api/orders/${orderSheet.id}/void`, {
+        method: 'POST',
+        body: JSON.stringify({
+          itemId: voidItem.id,
+          ...(voidReasonId ? { reasonId: voidReasonId } : {}),
+          ...(voidReasonText.trim() ? { reason: voidReasonText.trim() } : {}),
+        }),
+      })
+      setVoidItem(null)
+      if (d.order) setOrderSheet(d.order)
+      toast({ title: t('void.done') })
+      void load()
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally {
+      setSending(false)
     }
   }
 
@@ -1148,6 +1228,9 @@ function DashboardInner() {
     const s = new URLSearchParams(window.location.search).get('station')
     return s === 'KITCHEN' || s === 'BAR' ? s : 'ALL'
   })
+  // Issue #5: mirror za poll closure (load() bere ref, state ostane za UI)
+  const kdsStationRef = useRef<'ALL' | 'KITCHEN' | 'BAR'>(kdsStation)
+  useEffect(() => { kdsStationRef.current = kdsStation }, [kdsStation])
   const [kdsSound, setKdsSound] = useState(true)
   // P0-3 (v1.83.0): 86 plošča — iskanje za hiter proaktiven 86 (TRZNA-VRZELI-2026 §4 P0-3)
   const [kds86Search, setKds86Search] = useState('')
@@ -2453,6 +2536,11 @@ function DashboardInner() {
                       <span className="min-w-0 truncate">{it.qty}× {it.name}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">{it.status}</Badge>
+                        {hasPerm('orders.void') && orderSheet.paymentStatus !== 'paid' && (
+                          <Button size="icon" variant="outline" className="h-6 w-6 text-red-700 hover:bg-red-50 hover:text-red-800" disabled={sending} onClick={() => void openVoidDialog(it)} title={t('sheet.void')} aria-label={t('sheet.void')}>
+                            <Ban className="w-3 h-3" />
+                          </Button>
+                        )}
                         {hasPerm('orders.create') && it.status === 'PENDING' && (
                           <Select value={it.courseId || 'none'}
                             onValueChange={(v) => void assignCourse(it.id, v)}>
@@ -2540,6 +2628,43 @@ function DashboardInner() {
             </Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 h-9" onClick={() => { if (orderSheet) { const py = orderSheet; setOrderSheet(null); void openPayment(py) } }}>
               <Banknote className="w-4 h-4" /> {t('sheet.pay')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Issue #5: preklic posamezne postavke (orders.void + obvezen razlog; plačano zavrnjeno) ── */}
+      <Dialog open={!!voidItem} onOpenChange={(v) => { if (!v) setVoidItem(null) }}>
+        <DialogContent aria-describedby={undefined} className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-lg">{t('void.title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="rounded-lg border border-stone-200 px-3 py-2">{voidItem?.qty}× {voidItem?.name}</p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="void-reason-text">{t('void.reasonLabel')}</label>
+              {voidReasons.length > 0 ? (
+                <Select value={voidReasonId} onValueChange={setVoidReasonId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {voidReasons.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <input
+                id="void-reason-text"
+                value={voidReasonText}
+                onChange={(e) => setVoidReasonText(e.target.value.slice(0, 200))}
+                placeholder={t('void.reasonPlaceholder')}
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                maxLength={200}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="h-9" onClick={() => setVoidItem(null)}>{t('common.cancel')}</Button>
+            <Button variant="destructive" className="h-9" disabled={sending} onClick={() => void confirmVoidItem()}>
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />} {t('void.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

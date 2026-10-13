@@ -3,8 +3,16 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { num, r2, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
+import { guardResource } from '@/lib/tenant'
 
-/** Issue #1 §6 — urejanje/brisanje popusta (apply_discounts) + audit občutljivih sprememb. */
+/**
+ * Issue #1 §6 — urejanje/brisanje popusta + audit občutljivih sprememb.
+ * Issue #5 (P0, komentar #2): (a) pravica je discounts.manage (katalog promocij —
+ * apply_discounts je imel tudi NATAKAR, ki tako ne more več spreminjati pravil
+ * Happy Hour); (b) DODAN guardResource na existing.locationId — prej je lahko
+ * natakar/šank PATCHal/DELETEal popust TUJE lokacije/organizacije (ista pravica,
+ * nikjer location guard).
+ */
 
 function parseDays(v: unknown): string {
   if (v == null || v === '') return ''
@@ -17,7 +25,7 @@ function parseDays(v: unknown): string {
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requirePermission(req, 'apply_discounts')
+  const user = await requirePermission(req, 'discounts.manage')
   if (isResponse(user)) return user
   const { id } = await params
   const body = await req.json().catch(() => null)
@@ -25,6 +33,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await db.discount.findUnique({ where: { id } })
   if (!existing) return fail('Popust ne obstaja.', 404)
+  // Issue #5 (P0, komentar #2): location/org guard na vir (prej mankal)
+  const locGuard = await guardResource(user, existing.locationId)
+  if (locGuard) return locGuard
 
   const data: Record<string, unknown> = {}
   if (body?.name !== undefined) {
@@ -77,11 +88,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requirePermission(req, 'apply_discounts')
+  const user = await requirePermission(req, 'discounts.manage')
   if (isResponse(user)) return user
   const { id } = await params
   const existing = await db.discount.findUnique({ where: { id } })
   if (!existing) return fail('Popust ne obstaja.', 404)
+  // Issue #5 (P0, komentar #2): location/org guard na vir (prej mankal)
+  const locGuard = await guardResource(user, existing.locationId)
+  if (locGuard) return locGuard
   // mehko brisanje (Check/OrderItem imajo FK) — deaktivacija ohrani audit pot
   await db.discount.update({ where: { id }, data: { isActive: false } })
   await writeAudit(db, { userId: user.sub, action: 'DISCOUNT_DELETED', entityType: 'Discount', entityId: id, details: jstr({ name: existing.name, amount: existing.amount, softDelete: true }), locationId: existing.locationId })

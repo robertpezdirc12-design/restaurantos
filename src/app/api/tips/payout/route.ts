@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
+import { guardResource } from '@/lib/tenant'
 
 /**
  * Issue #1 (triage ①) — izplačilo napitnin iz bazena.
@@ -30,6 +31,11 @@ export async function POST(req: NextRequest) {
 
   const pool = await db.tipPool.findUnique({ where: { id: poolId }, include: { TipDistribution: true } })
   if (!pool) return fail('Bazen ne obstaja.', 404)
+  // Issue #5 (P0, komentar #6): prej BREZ guarda — nosilec employees.manage (tudi
+  // MANAGER druge organizacije) je lahko OZNAČIL TUJ bazen kot izplačan (cross-org
+  // finančna MUTACIJA). Zdaj guardResource (lokacija + org meja).
+  const poolGuard = await guardResource(user, pool.locationId)
+  if (poolGuard) return poolGuard
 
   const targets = distributionId ? pool.TipDistribution.filter((d) => d.id === distributionId) : pool.TipDistribution.filter((d) => d.status === 'pending')
   if (targets.length === 0) return fail('Ni čakajočih distribucij za izplačilo (že vse izplačano ali napačen ID).', 409)

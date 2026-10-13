@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, locationScope, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { jstr, nid } from '@/lib/map'
 import { validateLocationInput, codeCandidateFromName } from '@/lib/multilocation'
 import { writeAudit } from '@/lib/audit-chain'
@@ -16,9 +16,12 @@ import { writeAudit } from '@/lib/audit-chain'
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  // Issue #5 (P0, kommentar #6): centralne vloge prej VSE lokacije vseh organizacij —
+  // zdaj org allow-lista (locationScope, Task 54 vzorec; imenik vsebuje FURS premisesId)
+  const scope = await locationScope(user)
   const locations = await db.location.findMany({
     // Issue #4 §1 + triage ⑧: non-central ne sme videti drugih poslovalnic
-    where: isCentralRole(user) ? {} : { id: user.loc || '__no_location__' },
+    where: { id: scope.locationId ?? undefined },
     orderBy: { name: 'asc' },
   })
   return ok({ locations })

@@ -36,8 +36,14 @@ async function specialsFor(locationId: string | undefined): Promise<{ date: stri
   return [...byDate.values()].map(({ loc: _loc, ...s }) => s)
 }
 
+/**
+ * Issue #5 (P0 §B): prej requireAuth — gostovi PII (telefon, e-pošta) iz rezervacij
+ * je bil dostopen vsakemu prijavljenemu (kuhar, čistilka). Rezervacije vodi recepcija/
+ * natakar (reservations.manage — TAB_PERM.rezervacije) — ostali status naročila spremljajo
+ * prek /api/orders.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'reservations.manage')
   if (isResponse(user)) return user
   const rows = await db.reservation.findMany({ where: await locationScope(user), orderBy: { dateTime: 'desc' }, take: 100 })
   return ok({ reservations: rows.map(mapReservation) })

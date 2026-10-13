@@ -1,14 +1,21 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isResponse, ok, fail } from '@/lib/api'
+import { requireAuth, requirePermission, locationScope, isResponse, ok, fail } from '@/lib/api'
 import { mapAudit, nid, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 
+/**
+ * Issue #5 (P0, kommentar #4): vpogled v diagnostične dnevnike = settings.manage
+ * (integracije-tab) + lokacijski obseg (AuditLog.locationId obstaja — prej brez
+ * filtra, cross-org). Pošiljanje prijave napak (POST) ostaja vsem prijavljenim —
+ * ločeno od vpogleda (issue: »loči pošiljanje varno očiščene prijave od vpogleda«).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
+  const scope = await locationScope(user)
   const errors = await db.auditLog.findMany({
-    where: { action: { contains: 'ERROR' } },
+    where: { action: { contains: 'ERROR' }, ...(scope.locationId ? { locationId: scope.locationId } : {}) },
     orderBy: { timestamp: 'desc' },
     take: 50,
   })

@@ -26,7 +26,7 @@ export const TAB_PERM: Record<string, string | string[]> = {
   rezervacije: 'reservations.manage',
   racuni: 'reports.view',
   inzeniring: 'reports.view', // OPS-8 v1.71.0 — menu engineering (Kasavana-Smith kvadrant; GET /api/menu-engineering = reports.view)
-  popusti: 'apply_discounts', // Task 59 — admin upravljanje popustov (backend requirePermission apply_discounts)
+  popusti: 'discounts.manage', // Issue #5 P0-A — katalog promocij = discounts.manage (vodstvo); UPORABA popusta ob plačilu ostaja apply_discounts (natakar)
   integracije: 'settings.manage', // Task 60 — admin integracije (backend requirePermission settings.manage)
   zaloge: 'inventory.manage',
   izmene: 'cash.manage', // OPS-4 v1.67.0 — blagajna izmena (open/close/no-sale) = cash.manage (bar + vodstvo)
@@ -73,4 +73,30 @@ export function tabHasPerm(tabId: string | undefined | null, ctx: TabPermContext
   // OR-logika (OPS-4 v1.67.0): seznam = zadosti ENO izmed dovoljenj (npr. haccp)
   if (Array.isArray(perm)) return perm.some((p) => ctx.perms.includes(p))
   return ctx.perms.includes(perm)
+}
+
+/**
+ * Issue #5 (P1-A): začetni zavihek po vlogi/dovoljenjih po prijavi.
+ * Vrne { tab, station } — dashboard URL: /dashboard?tab=<tab>[&station=<station>].
+ * Pravila (iz issue #5 §B delovni profili):
+ *  - centralne vloge + MANAGER → pregled (poslovni nadzor);
+ *  - KITCHEN/CHEF → kuhinja (KDS); BAR → prodaja (hitra prodaja šanka);
+ *  - WAITER/STAFF → mize (mapsView natakarja);
+ *  - CLEANER → haccp (dovoljene kontrole) ali delovnicas;
+ *  - enterprise warehouse → zaloge; accounting → racuni.
+ * Dovoljenja (perms) vedno premagajo vlogo — vrstni red: vloga → preverba dovoljenja
+ * (npr. BAR brez orders.pay pade na mize). URL param NE poviša pravic (backend neodvisno).
+ */
+export function landingTab(uiRole: string, perms: string[]): { tab: string; station?: string } {
+  const has = (p: string) => perms.includes(p)
+  const role = (uiRole || '').toUpperCase()
+  if (role === 'OWNER' || role === 'ADMIN' || role === 'MANAGER') return { tab: 'pregled' }
+  if (role === 'GROUP_OWNER' || role === 'ORG_ADMIN' || role === 'PROPERTY_MANAGER') return { tab: 'pregled' }
+  if (role === 'ACCOUNTING') return { tab: has('reports.view') ? 'racuni' : 'pregled' }
+  if (role === 'WAREHOUSE') return { tab: has('inventory.manage') ? 'zaloge' : 'pregled' }
+  if (role === 'KITCHEN' || role === 'CHEF') return { tab: 'kuhinja' }
+  if (role === 'BAR') return { tab: has('orders.pay') ? 'prodaja' : 'mize' }
+  if (role === 'CLEANER') return { tab: has('haccp.execute') ? 'haccp' : 'delovnicas' }
+  // WAITER / STAFF / neznane vloge
+  return { tab: 'mize' }
 }

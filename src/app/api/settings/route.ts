@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok } from '@/lib/api'
+import { requirePermission, requireAuthWithPerms, isResponse, ok } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -10,11 +10,28 @@ const EDITABLE = [
   'receiptFooter', 'currency', 'locale', 'country', 'emailEnabled',
 ] as const
 
+/**
+ * Issue #5 (P0, kommentar #3): prej je GET vrnil CELO vrstico RestaurantSettings
+ * vsakemu prijavljenemu — vključno s skrivnostmi (fursCertPassword, emailSmtpPassword,
+ * apiKeys, cisCertPassword). Zdaj:
+ *  - navaden prijavljen (POS potrebuje receiptFooter za tisk) → MINIMALNI operativni
+ *    DTO iz EDITABLE (poslovni podatki, NI skrivnosti — enak seznam kot PUT sprejme);
+ *  - settings.manage → polna vrstica (nastavitve-tab urejanje; PUT itak sprejema samo
+ *    EDITABLE ključe, skrivnosti se ne morejo spreminjati prek API-ja).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
-  if (isResponse(user)) return user
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
   const s = await db.restaurantSettings.findFirst()
-  return ok({ settings: s || null })
+  if (!s) return ok({ settings: null })
+  if (ctx.perms.includes('settings.manage')) {
+    return ok({ settings: s })
+  }
+  const minimal: Record<string, unknown> = {}
+  for (const key of EDITABLE) {
+    if (s[key] !== undefined) minimal[key] = s[key]
+  }
+  return ok({ settings: minimal })
 }
 
 export async function PUT(req: NextRequest) {

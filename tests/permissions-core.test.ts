@@ -85,11 +85,13 @@ describe('resolvePermissions — podnabori po vlogah (staff/vodstvo operativke)'
     expect(perms).not.toContain('settings.manage')
   })
 
-  test('OPS-4: 19 kanoničnih dovoljenj (11 izvornih + 8 novih)', () => {
-    expect(canonical).toHaveLength(19)
+  test('OPS-4: 20 kanoničnih dovoljenj (11 izvornih + 8 OPS-4 + discounts.manage issue #5)', () => {
+    expect(canonical).toHaveLength(20)
     for (const k of [
       'orders.void', 'orders.discount', 'cash.manage', 'menu.availability',
       'haccp.execute', 'timeclock.manage', 'delivery.manage', 'giftcards.manage',
+      // issue #5: katalog promocij ločeno od uporabe popusta
+      'discounts.manage',
     ]) expect(canonical).toContain(k)
   })
 

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { EmployeeRole } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation, isCentralRole } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { mapEmployee, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
@@ -34,6 +34,19 @@ export async function POST(req: NextRequest) {
   if (isResponse(locationId)) return locationId
   const orgGuard = await assertOrgScope(user, locationId)
   if (orgGuard) return orgGuard
+
+  // Issue #5 (P0, komentar #3): POST prej NI IMEL eskalacijskih pravil — MANAGER
+  // (ima employees.manage) je lahko ustvaril OWNER/ADMIN račun = popoln prevzem.
+  // Zrcali PATCH matrico: ENTERPRISE vloge + ADMIN + OWNER sme ustvariti samo
+  // centralna vloga (OWNER/ADMIN); MANAGER sme ustvarjati samo operativne vloge.
+  const requestedRole = String(body.role || 'WAITER').toUpperCase()
+  const ENTERPRISE_ROLES = ['GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER', 'WAREHOUSE', 'ACCOUNTING']
+  const PRIVILEGED_ROLES = ['OWNER', 'ADMIN', ...ENTERPRISE_ROLES]
+  if (PRIVILEGED_ROLES.includes(requestedRole) && !isCentralRole(user)) {
+    return fail(`Vloga ${requestedRole} je privilegirana — ustvari jo lahko samo OWNER ali ADMIN.`, 403)
+  }
+  // Issue #5: PIN validacija (prej samo v PATCH — POST je sprejel 'abc')
+  if (!/^\d{4,8}$/.test(pin)) return ok({ error: 'PIN mora imeti 4–8 številk.' }, 400)
   const fields = employeePinFields(pin, email)
   let employee
   try {

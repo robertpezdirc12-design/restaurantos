@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireAuthWithPerms, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -14,9 +14,23 @@ import { writeAudit } from '@/lib/audit-chain'
  * ostanejo nespremenjeni — samo dopolnjeno.
  */
 
+/**
+ * Issue #5 (P0, kommentar #5): prej requireAuth — vsak prijavljeni je videl cel
+ * dobaviteljski imenik (davčna št., IBAN, banka, plačilni pogoji, kontakti, opombe).
+ * Supplier NIMA lokacijskega stolpca (P1: DDL sledi) — zato P0: pravice + minimalni DTO:
+ *  - inventory.manage (nabava-tab, skladišče) → operativni kontakti (naročanje),
+ *    BREZ računovodskih polj;
+ *  - reports.view ALI settings.manage → polni profil (računovodski izvoz/urejanje).
+ * Oba odgovora ohranjata odgovarjajoča ključa ({taxId: null, …}) — UI ne prelomi.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
-  if (isResponse(user)) return user
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
+  const financial = ctx.perms.includes('reports.view') || ctx.perms.includes('settings.manage')
+  const operational = ctx.perms.includes('inventory.manage')
+  if (!financial && !operational) {
+    return fail('Dostop zavrnjen — manjka dovoljenje: inventory.manage | reports.view.', 403)
+  }
   const rows = await db.supplier.findMany({
     orderBy: { name: 'asc' },
     take: 200,
@@ -34,11 +48,11 @@ export async function GET(req: NextRequest) {
       code: r.code || null,
       city: r.city || null,
       country: r.country || null,
-      taxId: r.taxId || null,
-      businessId: r.businessId || null,
-      iban: r.iban || null,
-      bank: r.bank || null,
-      paymentTerms: r.paymentTerms || null,
+      taxId: financial ? r.taxId || null : null,
+      businessId: financial ? r.businessId || null : null,
+      iban: financial ? r.iban || null : null,
+      bank: financial ? r.bank || null : null,
+      paymentTerms: financial ? r.paymentTerms || null : null,
       isActive: r.isActive,
       notes: r.notes || null,
       purchaseOrdersCount: r._count.PurchaseOrder,

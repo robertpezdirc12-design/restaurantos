@@ -7,11 +7,15 @@ import { jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  // Issue #4 §1: spreminjanje statusov miz je natakrjska akcija (orders.create)
-  const user = await requirePermission(req, 'orders.create')
-  if (isResponse(user)) return user
+  // Issue #4 §1: spreminjanje statusov miz je natakarjska akcija (orders.create).
+  // Issue #5 (P0 §C): OPERATIVNI status (natakar) je ločen od TLORISA (posX/posY/zone =
+  // konfiguracija prostora → menu.manage, usklajeno z DELETE); prej je orders.create
+  // pokrival oboje — natakar je lahko trajno prestavil mize z drag&drop.
   const { id } = await params
   const body = await req.json().catch(() => null)
+  const isFloorPlan = body?.posX !== undefined || body?.posY !== undefined || body?.zone !== undefined
+  const user = await requirePermission(req, isFloorPlan ? 'menu.manage' : 'orders.create')
+  if (isResponse(user)) return user
   const data: Record<string, unknown> = {}
   if (body?.status) data.status = tableStatusToDB(String(body.status))
   if (body?.posX !== undefined) data.posX = Number(body.posX)

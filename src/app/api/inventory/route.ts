@@ -1,14 +1,23 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, locationScope } from '@/lib/api'
+import { requireAuthWithPerms, requirePermission, isResponse, ok, locationScope } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 
+/**
+ * Issue #5 (P0 §C): količine so operativne (kuhinja vidi zalogo) — NABAVNA CENA pa
+ * je občutljiva (issue: »loči minimalen operativni vpogled v artikle/količine od
+ * občutljivejših cen«). Zdaj: cost/supplierId samo za inventory.manage
+ * (zaloge/nabava-tab, skladišče) ali reports.view; ostali dobijo minimalni
+ * operativni DTO (ključi ostanejo — null vrednosti, UI ne prelomi).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
-  if (isResponse(user)) return user
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
+  const user = ctx.user
+  const showCost = ctx.perms.includes('inventory.manage') || ctx.perms.includes('reports.view')
   const rows = await db.inventoryItem.findMany({
     // Issue #4 §1: staff vidi samo zalogo svoje lokacije
     where: await locationScope(user),
@@ -22,8 +31,8 @@ export async function GET(req: NextRequest) {
       unit: r.unit,
       qty: num(r.quantity),
       minQty: num(r.minQuantity),
-      cost: num(r.costPerUnit),
-      supplierId: r.supplier || null,
+      cost: showCost ? num(r.costPerUnit) : 0,
+      supplierId: showCost ? r.supplier || null : null,
       locationId: r.locationId,
     })),
   })

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, requireAuth, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requirePermission, requireAuthWithPerms, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -43,14 +43,22 @@ function weekRange(fromParam: string | null, toParam: string | null): { from: Da
 }
 
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
-  if (isResponse(user)) return user
+  // Issue #5 (P0 §C): prej requireAuth + CEL seznam izmen lokacije (imena/urice
+  // celotne ekipe za vsakega, npr. čistilko) — modulski komentar o UI lastnem
+  // filtriranju NI bil res (urnik-izmen-tab ne filtrira po employeeId). Zdaj:
+  // lastne izmene za navadne zaposlene; EKIPNI pregled zahteva timeclock.manage
+  // (urejanje) ali employees.manage.
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
+  const user = ctx.user
+  const teamView = ctx.perms.includes('timeclock.manage') || ctx.perms.includes('employees.manage')
   const { from, to } = weekRange(req.nextUrl.searchParams.get('from'), req.nextUrl.searchParams.get('to'))
   const scope = await locationScope(user)
   const shifts = await db.staffShift.findMany({
     where: {
       shiftDate: { gte: from, lte: to },
       ...scope,
+      ...(teamView ? {} : { employeeId: user.sub }),
     },
     include: { Employee_StaffShift_employeeIdToEmployee: { select: { id: true, name: true, role: true } }, Location: { select: { id: true, name: true } } },
     orderBy: [{ shiftDate: 'asc' }, { startTime: 'asc' }],
@@ -91,6 +99,15 @@ export async function POST(req: NextRequest) {
   const breakMinutes = Math.max(0, Math.min(240, Number(body?.breakMinutes) || 0))
   const notes = typeof body?.notes === 'string' ? body.notes.trim().slice(0, 200) : ''
 
+  // Issue #5 (komentar #2): jobId — StaffShift.jobId je v shemi (Job relation) in je
+  // bil na tej poti MRTV (create ga nikoli ni shranil, UI tudi ne pošilja). Zdaj:
+  // nevaljana vrednost se tiho izpusti (nazajkompatibilno), veljaven Job (aktiven,
+  // z aktivno lokacijo) se pripne izmeni — delovni profili (Toast-style job
+  // permissions) se gradijo na tem v naslednjem valu.
+  const jobCandidate = typeof body?.jobId === 'string' && body.jobId.trim() ? body.jobId.trim() : ''
+  const job = jobCandidate ? await db.job.findUnique({ where: { id: jobCandidate } }) : null
+  const jobId = job && job.isActive ? job.id : null
+
   const employee = await db.employee.findUnique({ where: { id: employeeId } })
   if (!employee || employee.status !== 'active') return fail('Zaposleni ne obstaja ali ni aktiven.', 404)
   const targetLocationId = typeof body?.locationId === 'string' && body.locationId.trim() ? body.locationId.trim() : employee.locationId
@@ -116,6 +133,7 @@ export async function POST(req: NextRequest) {
         locationId: targetLocationId || null,
         status: 'scheduled',
         createdById: user.sub,
+        ...(jobId ? { jobId } : {}),
       },
     })
     const __aId = nid()

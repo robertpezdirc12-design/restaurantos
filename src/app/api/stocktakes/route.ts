@@ -84,7 +84,9 @@ function mapStocktakeFull(s: StBase) {
 
 /** Seznam popisov (lokacijski + org obseg — Task 54 async locationScope). */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  // Issue #5 (P0, komentar #4): bralna pravica domene — inventory.manage (zaloge-tab),
+  // prej requireAuth (vsak prijavljeni je videl varianceValue popisov)
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
   const rows = await db.stocktake.findMany({
     where: await locationScope(user),

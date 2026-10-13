@@ -35,15 +35,36 @@ export async function GET(req: NextRequest) {
   //  ?withAttachments=1&apNumber=AP-... → { apNumber, attachments: [meta+payload] }
   //  ?attachmentsIndex=1                → { attachmentsIndex: { [apNumber]: count } } (badge column)
   const url = req.nextUrl
+  // Issue #5 (P0, komentar #6): priloge so arhivirane po GLOBALNO unikatnem apNumber —
+  // prej je vsak reports.view nosilec lahko prebral priloge TUJE organizacije (uganil
+  // apNumber). Zdaj: apNumber mora pripadati vrstici AccountsPayable v uporabnikovem
+  // obsegu (locScope spodaj); indeks se prav tako filtrira na obseg.
+  const attScope = await locationScope(user)
   if (url.searchParams.get('withAttachments') === '1') {
     const apNumber = String(url.searchParams.get('apNumber') || '').trim()
     if (!apNumber) return fail('Manjka apNumber.', 400)
+    const scoped = await db.accountsPayable.findFirst({
+      where: { apNumber, ...(attScope.locationId ? { locationId: attScope.locationId } : {}) },
+      select: { id: true },
+    })
+    if (!scoped) return fail('Prejeta računovodska postavka s to številko ni v vašem obsegu ali ne obstaja.', 404)
     const entry = await getApAttachments(apNumber)
     return ok({ apNumber, attachments: entry?.attachments ?? [], truncated: entry?.truncated === true, savedAt: entry?.savedAt ?? null })
   }
   if (url.searchParams.get('attachmentsIndex') === '1') {
-    const index = await getApAttachmentIndex()
-    return ok({ attachmentsIndex: index })
+    const [index, scopedRows] = await Promise.all([
+      getApAttachmentIndex(),
+      db.accountsPayable.findMany({
+        where: { ...(attScope.locationId ? { locationId: attScope.locationId } : {}) },
+        select: { apNumber: true },
+      }),
+    ])
+    const scopedNumbers = new Set(scopedRows.map((r) => r.apNumber))
+    const scopedIndex: Record<string, number> = {}
+    for (const [apNumber, count] of Object.entries(index)) {
+      if (scopedNumbers.has(apNumber)) scopedIndex[apNumber] = count
+    }
+    return ok({ attachmentsIndex: scopedIndex })
   }
 
   const rows = await db.accountsPayable.findMany({

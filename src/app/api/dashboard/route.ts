@@ -1,35 +1,50 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, isCentralRole, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requireAuthWithPerms, isCentralRole, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num, ORDER_ACTIVE_DB } from '@/lib/map'
+import { assertOrgScope } from '@/lib/tenant'
 
+/**
+ * Issue #5 (P0 §C + komentar #6): trije popravki —
+ *  1. ?locationId centralne vloge: DODAN assertOrgScope (prej je centralna vloga
+ *     lahko potegnila žive statistike TUJE organizacije z ugibanjem ID-ja);
+ *  2. centralna vloga BREZ izbire: 'danes' agregati tečejo po org allow-listi
+ *     (locationScope) — prej BREZ filtra = globalni cross-org promet;
+ *  3. non-central BREZ lokacije: fail-closed '__no_location__' (prej findFirst()
+ *     fallback na prvo lokacijo v DB = tuj promet).
+ * + Issue #5 §C (dashboard): finančni kazalniki (todayRevenue, paidToday) samo za
+ *   reports.view; operativni števci (aktivna naročila, mize, danes števec) ostanejo
+ *   vsem — stats.financialPerm pove UI-ju, ali sme kartice sploh pokazati.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
-  if (isResponse(user)) return user
+  const ctx = await requireAuthWithPerms(req)
+  if (isResponse(ctx)) return ctx
+  const user = ctx.user
+  const showFinancial = ctx.perms.includes('reports.view')
 
   // Triage ⑧ — lokacijski preklopnik (pogledi): centralna vloga sme izbrati
-  // lokacijo (?locationId=); brez parametra = VSE lokacije (prej: findFirst
-  // omejitev je prikazala "danes" samo prve lokacije — nekonsistentno).
+  // lokacijo (?locationId=) — sedaj Z org preverbo; brez parametra = org allow-lista.
   // Non-central je vedno vezan na svojo lokacijo (fail-closed).
   const requested = new URL(req.url).searchParams.get('locationId')?.trim() || ''
   let selectedLocation: string | null = null
   if (requested) {
     if (!isCentralRole(user)) return fail('Samo centralne vloge smejo preklapljati med lokacijami.', 403)
+    const orgGuard = await assertOrgScope(user, requested)
+    if (orgGuard) return orgGuard
     const loc = await db.location.findUnique({ where: { id: requested }, select: { id: true, name: true } })
     if (!loc) return fail('Lokacija ne obstaja.', 404)
     selectedLocation = loc.id
   }
-  const todayLoc = selectedLocation
-    ?? (isCentralRole(user) ? null : (user.loc || (await db.location.findFirst())?.id || null))
 
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
 
+  // izbrana lokacija ALI org allow-lista (nikoli več globalno / findFirst fallback)
   const counterScope = selectedLocation ? { locationId: selectedLocation } : await locationScope(user)
   const todayWhere = {
     createdAt: { gte: startOfDay },
     status: { not: 'cancelled' as const },
-    ...(todayLoc ? { locationId: todayLoc } : {}),
+    ...counterScope,
   }
 
   // Issue #4 §1: globalni števci se zožijo na lokacijo uporabnika;
@@ -44,11 +59,13 @@ export async function GET(req: NextRequest) {
       where: todayWhere,
       select: { total: true, status: true },
     }),
-    db.order.aggregate({
-      where: { ...todayWhere, paymentStatus: 'paid', paidAt: { gte: startOfDay } },
-      _sum: { total: true },
-      _count: true,
-    }),
+    showFinancial
+      ? db.order.aggregate({
+          where: { ...todayWhere, paymentStatus: 'paid', paidAt: { gte: startOfDay } },
+          _sum: { total: true },
+          _count: true,
+        })
+      : Promise.resolve({ _sum: { total: null as number | null }, _count: 0 }),
     db.orderItem.groupBy({
       by: ['menuItemName'],
       where: { Order: { createdAt: { gte: new Date(Date.now() - 7 * 86400_000) }, status: { not: 'cancelled' }, ...counterScope } },
@@ -58,7 +75,7 @@ export async function GET(req: NextRequest) {
     }),
   ])
 
-  const todayRevenue = todayOrders.reduce((s, o) => s + num(o.total), 0)
+  const todayRevenue = showFinancial ? todayOrders.reduce((s, o) => s + num(o.total), 0) : 0
 
   return ok({
     stats: {
@@ -68,7 +85,8 @@ export async function GET(req: NextRequest) {
       employees,
       todayOrders: todayOrders.length,
       todayRevenue,
-      paidToday: { count: paidToday._count, total: paidToday._sum.total ? num(paidToday._sum.total) : 0 },
+      paidToday: { count: paidToday._count, total: showFinancial && paidToday._sum.total ? num(paidToday._sum.total) : 0 },
+      financialPerm: showFinancial,
     },
     topItems: topItemsRaw.map((t) => ({ name: t.menuItemName, qty: t._sum.quantity || 0 })),
     // preklopnik (pogledi): odgovor jasno pove, na katero lokacijo se nanaša

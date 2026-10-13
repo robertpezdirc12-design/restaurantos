@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, isCentralRole } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange, type TipMethod } from '@/lib/tips'
 import { writeAudit } from '@/lib/audit-chain'
@@ -96,8 +97,21 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     return fail((e as Error).message, 400)
   }
-  const locationId = url.searchParams.get('locationId') || user.loc || ''
-  if (!locationId) return fail('locationId je obvezen (izberi lokacijo).', 400)
+  // Issue #5 (P0, komentar #6): prej locationId verbatim iz query — tudi NON-central
+  // (fallback || user.loc je veljal samo ob MANJKAJOČEM parametru!) in brez org preverbe
+  // za centralne. Zdaj: non-central VEDNO user.loc; centralna vloga s parametrom gre
+  // čez assertOrgScope (tuja organizacija → 403).
+  let locationId: string
+  if (isCentralRole(user)) {
+    const raw = url.searchParams.get('locationId') || user.loc || ''
+    if (!raw) return fail('locationId je obvezen (izberi lokacijo).', 400)
+    const orgGuard = await assertOrgScope(user, raw)
+    if (orgGuard) return orgGuard
+    locationId = raw
+  } else {
+    if (!user.loc) return fail('Uporabnik nima dodeljene lokacije.', 403)
+    locationId = user.loc
+  }
   const method = parseTipMethod(url.searchParams.get('method')) || 'hours'
 
   const payments = await dayPayments(range.from, range.to, locationId)
@@ -152,8 +166,19 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const date = String(body?.date || '')
   const method = parseTipMethod(body?.method) || 'hours'
-  const locationId = String(body?.locationId || user.loc || '')
-  if (!locationId) return fail('locationId je obvezen (izberi lokacijo).', 400)
+  // Issue #5 (P0, komentar #6): enaka validacija kot GET — non-central vedno user.loc,
+  // centralna s parametrom čez assertOrgScope.
+  let locationId: string
+  if (isCentralRole(user)) {
+    const raw = String(body?.locationId || user.loc || '')
+    if (!raw) return fail('locationId je obvezen (izberi lokacijo).', 400)
+    const orgGuard = await assertOrgScope(user, raw)
+    if (orgGuard) return orgGuard
+    locationId = raw
+  } else {
+    if (!user.loc) return fail('Uporabnik nima dodeljene lokacije.', 403)
+    locationId = user.loc
+  }
   const points: Record<string, number> =
     body?.points && typeof body.points === 'object' && !Array.isArray(body.points) ? (body.points as Record<string, number>) : {}
   const shiftId = body?.shiftId ? String(body.shiftId) : null

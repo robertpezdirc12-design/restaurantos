@@ -19,8 +19,9 @@
  * computed preview — never a 500 — so the UI can always render the orientation view.
  */
 import { NextRequest } from 'next/server'
+import { createHash } from 'crypto'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { nid, num, r2 } from '@/lib/map'
 import { seedStandardAccounts, buildGlEntry, glEntryNumber, glMemo } from '@/lib/gl'
 import type { AccountType } from '@/lib/prisma-types'
@@ -68,10 +69,23 @@ export async function GET(req: NextRequest) {
   const spanDays = Math.round((endDay.getTime() - startDay.getTime()) / 86_400_000) + 1
   if (spanDays > 370) return fail('Obdobje je predolgo (največ 370 dni).', 400)
 
-  // Issue #4 §1: location-scoped like the other report routes (central roles = global).
-  // Payment has no locationId → scope through Check → Order.locationId.
+  // Issue #4 §1: location-scoped like the other report routes.
+  // Issue #5 (P0, komentar #6): payScope prej ročni centralni bypass {} = plačila VSEH
+  // organizacij pomešana z org-scoped računi. Zdaj org allow-lista prek Check → Order.
   const locScope = await locationScope(user)
-  const payScope = isCentralRole(user) ? {} : { Check: { Order: { locationId: user.loc || '__no_location__' } } }
+  const payScope = { Check: { Order: locScope } }
+  // scopeKey — deterministični hash niza lokacij obsega (idempotenca PO organizaciji;
+  // vključno z osebjem z eno lokacijo — en same set = enak ključ = deljen vnos)
+  const scopeKey = (() => {
+    const lid = locScope.locationId
+    if (typeof lid === 'string') return createHash('sha256').update(lid).digest('hex').slice(0, 8)
+    if (lid && typeof lid === 'object' && Array.isArray((lid as { in: string[] }).in)) {
+      const ids = [...(lid as { in: string[] }).in].sort()
+      if (ids.length === 0) return 'EMPTY'
+      return createHash('sha256').update(ids.join(',')).digest('hex').slice(0, 8)
+    }
+    return '*' // bootstrap / neznana org — globalni break-glass
+  })()
   const range = { gte: startDay, lte: to }
 
   const [receipts, payments] = await Promise.all([
@@ -128,7 +142,9 @@ export async function GET(req: NextRequest) {
     cur.setDate(cur.getDate() + 1)
     const agg = byDay.get(k)
     if (!agg || agg.receipts === 0) continue
-    const entryNo = glEntryNumber(k)
+    // Issue #5: entryNumber po obsegu — tuja organizacija ima DRUG ključ → najden
+    // vnos je vedno LASTNI obseg (prej: globalni GL-YYYYMMDD-01 = tuje vrstice)
+    const entryNo = glEntryNumber(k, scopeKey)
 
     const existing = await db.journalEntry.findUnique({
       where: { entryNumber: entryNo },

@@ -174,7 +174,10 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // OPS-10 (v1.77.0): reports/sales-by-hour GET je 34. (prodaja po urah) —
     // OPS-10 (v1.77.0): reports/labor-cost GET je 35. (labor stroški).
     // OPS-10 (v1.79.0): batch-preparations GET je 36. (priprava po serijah — seznam batchov).
-    expect(wired.length).toBe(36)
+    // Issue #5 (v1.88.0): +11 rut (webhooks, monitoring/errors, integrations, locations/stats,
+    // locations, kitchen/stats, kitchen, menu-engineering, recipes, discounts, purchase-orders —
+    // org allow-lista namesto ročnih centralnih bypassov) → 47
+    expect(wired.length).toBe(47)
   })
 })
 

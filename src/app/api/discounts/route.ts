@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, isCentralRole, requireUserLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, fail, isCentralRole, requireUserLocation, locationScope } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
@@ -73,9 +73,20 @@ export async function GET(req: NextRequest) {
   const locationId = url.searchParams.get('locationId')
   // Issue #4 §1: za non-central ignoriraj client query locationId in forsiraj user.loc
   // (cross-location popusti so sicer brani samo pri pisanju); centralna lahko filtrira
-  const where = isCentralRole(user)
-    ? (locationId ? { locationId } : {})
-    : { locationId: user.loc || '__no_location__' }
+  // Issue #5 (P0, komentar #6): centralna brez parametra dobi org allow-listo (locationScope,
+  // ne več vse organizacije); s parametrom se lokacija PREVERI proti org obsegu (assertOrgScope)
+  let where: Record<string, unknown>
+  if (isCentralRole(user)) {
+    if (locationId) {
+      const orgGuard = await assertOrgScope(user, locationId)
+      if (orgGuard) return orgGuard
+      where = { locationId }
+    } else {
+      where = await locationScope(user)
+    }
+  } else {
+    where = { locationId: user.loc || '__no_location__' }
+  }
   const rows = await db.discount.findMany({
     where,
     orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' as const }],
@@ -85,7 +96,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requirePermission(req, 'apply_discounts')
+  // Issue #5 (P0, komentar #2): ustvarjanje promocije = discounts.manage (vodstvo) —
+  // apply_discounts (natakar) ostane SAMO za uporabo popusta na računu
+  // (POST /api/orders/[id]/discount)
+  const user = await requirePermission(req, 'discounts.manage')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body) return fail('Manjkajo podatki.', 400)

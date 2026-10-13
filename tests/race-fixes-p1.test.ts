@@ -173,19 +173,21 @@ const setupP = setup()
 describe('R1 — odpiranje izmene (transakcija + ponovna preverba)', () => {
   test('odprta izmena zaposlenega → 2. odpiranje 409, brez dvojne izmene; po zaključku → 201', async () => {
     const t = await setupP
-    const emp = await db.employee.findUnique({ where: { id: `${PREFIX}emp-waiter-${RUN}` } })
+    // issue #5 (v1.88.0): POST /api/shifts zahteva cash.manage → klicatelj je MANAGER
+    // (guard 'ena odprta izmena na zaposlenega' je per-employee → izmena se seje na MANAGER)
+    const emp = await db.employee.findUnique({ where: { id: `${PREFIX}emp-manager-${RUN}` } })
     expect(emp).not.toBeNull()
     const openShift = await seedShift(emp!.id, emp!.name, new Date(Date.UTC(2026, 0, 2, 8, 0, 0)))
 
     // 1. klic: izmena že teče → 409
-    const res1 = await shiftsPOST(req('/api/shifts', t.waiter, 'POST', { openingCash: 100 }))
+    const res1 = await shiftsPOST(req('/api/shifts', t.manager, 'POST', { openingCash: 100 }))
     expect(res1.status).toBe(409)
     const openCount = await db.cashRegisterShift.count({ where: { employeeId: emp!.id, status: 'open' } })
     expect(openCount).toBe(1)
 
     // zaključi fiksturno izmeno → 2. klic uspešno odpre novo
     await db.cashRegisterShift.update({ where: { id: openShift.id }, data: { status: 'closed', closedAt: new Date() } })
-    const res2 = await shiftsPOST(req('/api/shifts', t.waiter, 'POST', { openingCash: 100 }))
+    const res2 = await shiftsPOST(req('/api/shifts', t.manager, 'POST', { openingCash: 100 }))
     expect(res2.status).toBe(201)
     const shifts = await db.cashRegisterShift.findMany({ where: { employeeId: emp!.id } })
     expect(shifts).toHaveLength(2)
@@ -201,10 +203,11 @@ describe('R1 — odpiranje izmene (transakcija + ponovna preverba)', () => {
 describe('R3 — zaključek izmene (CAS prevzem zaklepa)', () => {
   test('2 vzporedna zaključka → točno EN uspeh, EN Z-poročilo, EN SHIFT_CLOSE revizija', async () => {
     const t = await setupP
-    const emp = await seedEmployee('stopper', 'waiter', pinOf(3))
+    // issue #5: stop je self-scoped + zahteva cash.manage → BAR vloga (šank)
+    const emp = await seedEmployee('stopper', 'bar', pinOf(3))
     const shift = await seedShift(emp.id, emp.name) // openedAt = OPEN_AT (unikatno na run)
 
-    const stopCall = () => shiftsPOST(req('/api/shifts', tokenFor(emp.id, emp.name, 'WAITER', locA), 'POST', { action: 'stop', closingCash: 50 }))
+    const stopCall = () => shiftsPOST(req('/api/shifts', tokenFor(emp.id, emp.name, 'BAR', locA), 'POST', { action: 'stop', closingCash: 50 }))
     const [a, b] = await Promise.all([stopCall(), stopCall()])
     const statuses = [a.status, b.status]
     expect(statuses.filter((s) => s === 200)).toHaveLength(1)

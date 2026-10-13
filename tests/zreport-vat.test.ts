@@ -96,11 +96,12 @@ beforeAll(async () => {
     data: { id: nid(), name: `${PREFIX} lokacija`, code: `${PREFIX}-${TS}`, premisesId: `BLGZRV${TS % 1000000}`, country: 'SI' },
   })).id
   const emp = await db.employee.create({
-    data: { id: nid(), name: `${PREFIX} blagajnik`, email: `${PREFIX}-${TS}@test.local`, role: 'waiter', pin: `${PREFIX}-pin-${TS}`, locationId: locId },
+    // issue #5 (v1.88.0): POST /api/shifts zahteva cash.manage → BAR (šank ima pravico)
+    data: { id: nid(), name: `${PREFIX} blagajnik`, email: `${PREFIX}-${TS}@test.local`, role: 'bar', pin: `${PREFIX}-pin-${TS}`, locationId: locId },
   })
   empId = emp.id
   empName = emp.name
-  token = createToken({ sub: empId, name: empName, role: 'WAITER', loc: locId, sv: 0 })
+  token = createToken({ sub: empId, name: empName, role: 'BAR', loc: locId, sv: 0 })
   shiftId = (await db.cashRegisterShift.create({
     data: { id: nid(), employeeId: empId, employeeName: empName, status: 'open', openedAt: new Date(TS - 2 * 3600_000), startingCash: 100, locationId: locId },
   })).id

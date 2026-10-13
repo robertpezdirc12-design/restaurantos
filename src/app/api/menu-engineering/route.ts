@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, isCentralRole } from '@/lib/api'
+import { requirePermission, isResponse, ok, locationScope } from '@/lib/api'
 import { num } from '@/lib/map'
 import { buildMenuEngineering, recipeCostFromRows, type MeItemInput } from '@/lib/menu-engineering'
 
@@ -42,7 +42,9 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
   // Issue #4 §1: location scope on the related Order (OrderItem has no locationId).
-  const orderScope = isCentralRole(user) ? {} : { locationId: user.loc || '__no_location__' }
+  // Issue #5 (P0, komentar #6): org allow-lista namesto ročnega centralnega bypassa
+  // (analiza prodaje ne sme mešati organizacij).
+  const orderScope = await locationScope(user)
 
   const rows = await db.orderItem.findMany({
     where: {

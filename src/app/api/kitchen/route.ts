@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import type { OrderItemStatus } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, isCentralRole } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB, nid, jstr } from '@/lib/map'
 import { stationOf } from '@/lib/kds-stats'
@@ -20,15 +20,25 @@ type KitchenOrder = Prisma.OrderGetPayload<{
   }
 }>
 
+/**
+ * Issue #5 (P0 §C + komentar #2): prej requireAuth — KDS vrsta je bila vidna vsakemu
+ * prijavljenemu (vključno s čistilko). Zdaj kitchen.update (kuhinja/šank/vodstvo;
+ * natakar sledi statusom prek /api/orders — ločena pravica od spremembe statusa).
+ * + ?station=KITCHEN|BAR: STREŽNIŠKI filter postaje (issue: omejitev postaje mora biti
+ * uveljavljena na strežniku, ne samo UI filter). Postaja = PrepStation.type 'bar' → BAR,
+ * vse ostalo (tudi brez postaje) → KITCHEN.
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'kitchen.update')
   if (isResponse(user)) return user
+  const stationParam = new URL(req.url).searchParams.get('station')
+  const stationFilter = stationParam === 'BAR' || stationParam === 'KITCHEN' ? stationParam : null
   const orders = await db.order.findMany({
     where: { ...(await locationScope(user)), status: { in: ORDER_ACTIVE_DB }, OrderItem: { some: { status: { in: ITEM_ACTIVE_PRISMA } } } },
     include: {
       Table: true,
       OrderItem: {
-        where: { status: { in: ITEM_ACTIVE_PRISMA } },
+        where: { status: { in: ITEM_ACTIVE_PRISMA }, voided: false },
         orderBy: { createdAt: 'asc' },
         include: { MenuItem: { include: { PrepStation: true } } },
       },
@@ -36,18 +46,25 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'asc' },
   }) as unknown as KitchenOrder[]
 
-  const queue = orders.map((o) => ({
+  const mapped = orders.map((o) => ({
     ...mapOrder({ ...o, items: o.OrderItem, table: o.Table, employee: null }),
     items: o.OrderItem.map((it) =>
       mapOrderItem({ ...it, menuItem: it.MenuItem ? { prepStation: it.MenuItem.PrepStation } : undefined })
     ),
   }))
+  // strežniški station filter (issue #5 §C: postaja na strežniku): KDS vrsta naprave
+  // dobi SAMO svojo postajo; brez parametra ostane celotna vrsta (kuhinjski tab ALL)
+  const queue = stationFilter
+    ? mapped
+        .map((o) => ({ ...o, items: o.items.filter((it) => (it.station || 'KITCHEN') === stationFilter) }))
+        .filter((o) => o.items.length > 0)
+    : mapped
   // OPS-11 val 1 (v1.80.0): per-station delay targets — PrepStation.avgPrepTime mapped onto
   // the two KDS buckets (stationOf), first active station per bucket wins (mirrors the
   // /api/kitchen/stats reading pattern). ADDITIVE response key — the queue shape is untouched;
   // a null bucket means "no active station" → the client falls back to the global 10 min.
   const prepStations = await db.prepStation.findMany({
-    where: { isActive: true, ...(isCentralRole(user) ? {} : { locationId: user.loc || '__no_location__' }) },
+    where: { isActive: true, ...(await locationScope(user)) },
     select: { type: true, avgPrepTime: true, sortOrder: true, name: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
   })

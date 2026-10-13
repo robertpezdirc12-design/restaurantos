@@ -4,6 +4,7 @@
  * da offline ustvarjena naročila gredo skozi ISTEI preverjanja kot online.
  * Idempotencija: Order.idempotencyKey (unique) — isti clientOperationId vrne obstoječe naročilo.
  */
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { mapOrder, nid, num, r2, orderTypeToDB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
@@ -289,6 +290,23 @@ export async function createOrderCore(
   throw lastErr instanceof OrderError
     ? lastErr
     : new OrderError('Naročila ni bilo mogoče ustvariti. Poskusite znova.')
+}
+
+/**
+ * Issue #5 (komentar #3): preureditev zneskov naročila — prej LOKALNA funkcija v
+ * orders/[id]/route.ts; sedaj skupni vir za PATCH naročila IN preklic posamezne
+ * postavke (/api/orders/[id]/void). Upošteva SAMO ne-preklicane postavke (voided).
+ */
+export async function recalcOrderTotals(orderId: string, tx?: Prisma.TransactionClient) {
+  const dbx = tx ?? db
+  const items = await dbx.orderItem.findMany({ where: { orderId, voided: false } })
+  let subtotal = 0
+  let tax = 0
+  for (const it of items) {
+    subtotal += num(it.price) * (it.quantity || 0)
+    tax += num(it.vatAmount)
+  }
+  return { subtotal: r2(subtotal), tax: r2(tax), total: r2(subtotal + tax) }
 }
 
 export class OrderError extends Error {

@@ -67,6 +67,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return fail('Samo LASTNIK lahko spremeni LASTNIKOVO vlogo.', 403)
     }
     data.role = roleToDB(role)
+    // Issue #5 (P0 §B): sprememba vloge TAKOJ odpove stare seje (prej je 12h žeton
+    // obdržal staro vlogo — requireAuth sicer preverja status/sv, vloga v žetonu
+    // pa je ostala priviligirana do izteka)
+    if (roleToDB(role) !== target.role) {
+      data.sessionVersion = (Number(target.sessionVersion) || 0) + 1
+    }
     sensitive.push(`sprememba vloge v ${role}`)
   }
   // status

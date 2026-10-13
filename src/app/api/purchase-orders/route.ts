@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isCentralRole, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { assertOrgScope } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { poNumberFor, computeTotalsCents, computeLineCents, type PoStatus } from '@/lib/procurement'
 import { writeAudit } from '@/lib/audit-chain'
@@ -57,20 +58,38 @@ export function serializeItem(i: {
   }
 }
 
+/**
+ * Issue #5 (P0, komentar #6): prej requireAuth + BREZ kakršnegakoli obsega — vsak
+ * prijavljeni je videl nabavna naročila VSEH organizacij (zneski, dobavitelji,
+ * postavke). Zdaj: inventory.manage (nabava-tab) + obseg — non-central VEDNO
+ * user.loc; centralna z locationId parametrom čez assertOrgScope, brez pa org
+ * allow-lista (locationScope).
+ */
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req)
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)
   const status = url.searchParams.get('status')
   const supplierId = url.searchParams.get('supplierId')
-  const locationId = url.searchParams.get('locationId')
+  const rawLocationId = url.searchParams.get('locationId')
   const take = Math.min(Math.max(parseInt(url.searchParams.get('take') || '50', 10) || 50, 1), 100)
 
   const where: Record<string, unknown> = {}
   if (status && PO_STATUSES.includes(status)) where.status = status
   if (supplierId) where.supplierId = supplierId
-  if (locationId) where.locationId = locationId
+  if (isCentralRole(user)) {
+    if (rawLocationId) {
+      const orgGuard = await assertOrgScope(user, rawLocationId)
+      if (orgGuard) return orgGuard
+      where.locationId = rawLocationId
+    } else {
+      Object.assign(where, await locationScope(user))
+    }
+  } else {
+    // non-central: ignoriraj query param — vedno svoja lokacija (fail-closed)
+    where.locationId = user.loc || '__no_location__'
+  }
 
   const rows = await db.purchaseOrder.findMany({
     where,

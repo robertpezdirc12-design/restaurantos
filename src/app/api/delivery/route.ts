@@ -43,8 +43,10 @@ export async function GET(req: NextRequest) {
     }),
     db.deliveryZone.findMany({ where: await locationScope(user), orderBy: { sortOrder: 'asc' } }),
     // Napake webhookov — IntegrationLog za glovo/wolt (za Dnevnik napak v UI)
+    // Issue #5 (P0, komentar #2): prej brez lokacijskega filtra — manager ene lokacije
+    // je videl integracije/dnevnike VSEH organizacij (Integration LOKACIJSKI stolpec ima)
     db.integration.findMany({
-      where: { provider: { in: ['glovo', 'wolt'] } },
+      where: { provider: { in: ['glovo', 'wolt'] }, ...(await locationScope(user)) },
       select: {
         id: true, name: true, provider: true, isActive: true, connectionStatus: true,
         IntegrationLog: { orderBy: { createdAt: 'desc' as const }, take: 20 },
