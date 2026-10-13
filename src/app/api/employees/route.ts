@@ -3,8 +3,8 @@ import type { EmployeeRole } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
-import { mapEmployee, nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { mapEmployee, jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
@@ -57,25 +57,6 @@ export async function POST(req: NextRequest) {
     throw e
   }
   // 33-c (audit §6): kreiranje zaposlenega je zdaj revidirano (prej brez revizije)
-  const __aId = nid(); const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'EMPLOYEE_CREATE',
-    entityType: 'Employee',
-    entityId: employee.id,
-    details: jstr({ name: employee.name, email: employee.email, role: employee.role, status: employee.status }),
-    locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'EMPLOYEE_CREATE',
-      entityType: 'Employee',
-      entityId: employee.id,
-      details: jstr({ name: employee.name, email: employee.email, role: employee.role, status: employee.status }),
-      locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'EMPLOYEE_CREATE', entityType: 'Employee', entityId: employee.id, details: jstr({ name: employee.name, email: employee.email, role: employee.role, status: employee.status }), locationId: locationId })
   return ok({ employee: mapEmployee(employee) }, 201)
 }

@@ -2,11 +2,11 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapOrder, nid, jstr } from '@/lib/map'
+import { mapOrder, jstr } from '@/lib/map'
 import { orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
 import { pushEvent } from '@/lib/push'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * P2 audit §57 — ekspliciten "fire" na kuhinjo (draft → fire korak).
@@ -72,20 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!order.firedAt) {
       await tx.order.update({ where: { id }, data: { firedAt: now } })
     }
-    const __aIdF = nid()
-    const __chainF = await auditChainFields(tx, { action: 'ORDER_FIRED', entityType: 'Order', entityId: id, details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name, ...(fireCourseId ? { courseId: fireCourseId, courseNumber: courseRow?.courseNumber } : {}) }), locationId: order.locationId, id: __aIdF })
-    await tx.auditLog.create({
-      data: {
-        ...__chainF,
-        id: __aIdF,
-        userId: user.sub,
-        action: 'ORDER_FIRED',
-        entityType: 'Order',
-        entityId: id,
-        details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name, ...(fireCourseId ? { courseId: fireCourseId, courseNumber: courseRow?.courseNumber } : {}) }),
-        locationId: order.locationId,
-      },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_FIRED', entityType: 'Order', entityId: id, details: jstr({ firedItems: firedCount, orderNumber: order.orderNumber, by: user.name, ...(fireCourseId ? { courseId: fireCourseId, courseNumber: courseRow?.courseNumber } : {}) }), locationId: order.locationId })
   })
 
   await publishEvent('OrderFired', {

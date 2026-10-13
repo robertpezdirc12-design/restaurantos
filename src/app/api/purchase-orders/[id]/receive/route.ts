@@ -15,7 +15,7 @@ import {
   type PoStatus,
   type ReceiveLineInput,
 } from '@/lib/procurement'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 
 /**
@@ -351,15 +351,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       // 7. audit
-      const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'GRN_RECEIVE', entityType: 'GoodsReceipt', entityId: receiptId, details: jstr({ grnNumber, poNumber: po.poNumber, supplierId: po.supplierId, supplierName: po.Supplier?.name || '', lines: v.lines.length, accepted: v.lines.reduce((a, l) => a + l.input.quantityAccepted, 0), rejected: v.lines.reduce((a, l) => a + l.input.quantityRejected, 0), overReceipt: v.overReceipt, warnings: v.warnings, poStatus: `${po.status} → ${nextPoStatus}`, stockItemsTouched: v.lines.filter((l) => l.input.quantityAccepted > 0 && itemById.get(l.input.purchaseOrderItemId)?.inventoryItemId).length, locationId, }), id: __aId2 })
-      await tx.auditLog.create({
-        data: { ...__chain2,
-          id: __aId2,
-          userId: user.sub,
-          action: 'GRN_RECEIVE',
-          entityType: 'GoodsReceipt',
-          entityId: receiptId,
-          details: jstr({
+      await writeAudit(tx, { userId: user.sub, action: 'GRN_RECEIVE', entityType: 'GoodsReceipt', entityId: receiptId, details: jstr({
             grnNumber,
             poNumber: po.poNumber,
             supplierId: po.supplierId,
@@ -372,9 +364,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             poStatus: `${po.status} → ${nextPoStatus}`,
             stockItemsTouched: v.lines.filter((l) => l.input.quantityAccepted > 0 && itemById.get(l.input.purchaseOrderItemId)?.inventoryItemId).length,
             locationId,
-          }),
-        },
-      })
+          }) })
 
       return receipt
     })

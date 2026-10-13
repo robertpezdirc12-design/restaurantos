@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, jstr, num, r2 } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * OPS-7 (v1.68.0) — SPLIT PO IZSTAVKIH (Check, Toast/Lightspeed vzorec).
@@ -106,18 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: { in: selected.map((it) => it.id) } },
       data: { checkId: created.id },
     })
-    const __aId = nid()
-    const __chain = await auditChainFields(tx, {
-      action: 'ORDER_CHECK_SPLIT',
-      entityType: 'Order',
-      entityId: id,
-      details: jstr({ newCheckId: created.id, checkNumber: nextNumber, items: selected.length, by: user.name }),
-      locationId: order.locationId,
-      id: __aId,
-    })
-    await tx.auditLog.create({
-      data: { ...__chain, id: __aId, userId: user.sub, action: 'ORDER_CHECK_SPLIT', entityType: 'Order', entityId: id, details: jstr({ newCheckId: created.id, checkNumber: nextNumber, items: selected.length, by: user.name }), locationId: order.locationId },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_CHECK_SPLIT', entityType: 'Order', entityId: id, details: jstr({ newCheckId: created.id, checkNumber: nextNumber, items: selected.length, by: user.name }), locationId: order.locationId })
     return created
   })
 
@@ -150,18 +139,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   await db.$transaction(async (tx) => {
     await tx.orderItem.updateMany({ where: { checkId, orderId: id }, data: { checkId: keeper.id } })
     await tx.check.delete({ where: { id: checkId } })
-    const __aId = nid()
-    const __chain = await auditChainFields(tx, {
-      action: 'ORDER_CHECK_MERGE',
-      entityType: 'Order',
-      entityId: id,
-      details: jstr({ mergedCheckId: checkId, checkNumber: target.checkNumber, into: keeper.checkNumber, by: user.name }),
-      locationId: order.locationId,
-      id: __aId,
-    })
-    await tx.auditLog.create({
-      data: { ...__chain, id: __aId, userId: user.sub, action: 'ORDER_CHECK_MERGE', entityType: 'Order', entityId: id, details: jstr({ mergedCheckId: checkId, checkNumber: target.checkNumber, into: keeper.checkNumber, by: user.name }), locationId: order.locationId },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_CHECK_MERGE', entityType: 'Order', entityId: id, details: jstr({ mergedCheckId: checkId, checkNumber: target.checkNumber, into: keeper.checkNumber, by: user.name }), locationId: order.locationId })
   })
 
   return ok({ merged: true })

@@ -2,10 +2,10 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapOrder, nid, jstr, num, r2 } from '@/lib/map'
+import { mapOrder, jstr, num, r2 } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * P2 audit §54 — združevanje naročil (merge).
@@ -93,17 +93,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const totals = { subtotal: r2(subtotal), tax: r2(tax), total: r2(subtotal + tax) }
     await tx.order.update({ where: { id: targetOrderId }, data: totals })
-    const __aIdG = nid()
-    const __chainG = await auditChainFields(tx, { action: 'ORDER_MERGE', entityType: 'Order', entityId: id, details: jstr({ sourceOrderId: id, targetOrderId, movedItems: moved.count, sourceTableId: fromTableId, targetTableId: target.tableId, orderNumber: source.orderNumber, by: user.name }), locationId: source.locationId, id: __aIdG })
-    await tx.auditLog.create({
-      data: {
-        ...__chainG,
-        id: __aIdG,
-        userId: user.sub,
-        action: 'ORDER_MERGE',
-        entityType: 'Order',
-        entityId: id,
-        details: jstr({
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_MERGE', entityType: 'Order', entityId: id, details: jstr({
           sourceOrderId: id,
           targetOrderId,
           movedItems: moved.count,
@@ -111,10 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           targetTableId: target.tableId,
           orderNumber: source.orderNumber,
           by: user.name,
-        }),
-        locationId: source.locationId,
-      },
-    })
+        }), locationId: source.locationId })
     return moved.count
   })
 

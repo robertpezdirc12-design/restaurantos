@@ -11,7 +11,7 @@ import { db } from '@/lib/db'
 import { nid, jstr, mapOrder, mapDeliveryInfo, mapDeliveryZone, ORDER_ACTIVE_DB, DELIVERY_STATUS_DB, deliveryStatusToDB } from '@/lib/map'
 import { maskPhone } from '@/lib/delivery'
 import { pushEvent } from '@/lib/push'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 export const dynamic = 'force-dynamic'
 
 /** Dovoljene tranzicije dostave (naprej po toku; preklic kadarkoli pred dostavo). */
@@ -185,23 +185,13 @@ export async function PATCH(req: NextRequest) {
     return di
   })
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DELIVERY_STATUS_UPDATE', entityType: 'DeliveryInfo', entityId: t.id, details: jstr({ orderId: order.id, orderNumber: order.orderNumber, from: current, to: status, driver: (driverEmployee?.name || body.driverName) || undefined, driverEmployeeId: driverEmployee?.id, driverPhone: body.driverPhone ? maskPhone(body.driverPhone) : undefined, }), id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'DELIVERY_STATUS_UPDATE',
-      entityType: 'DeliveryInfo',
-      entityId: t.id,
-      details: jstr({
+  await writeAudit(db, { userId: user.sub, action: 'DELIVERY_STATUS_UPDATE', entityType: 'DeliveryInfo', entityId: t.id, details: jstr({
         orderId: order.id, orderNumber: order.orderNumber,
         from: current, to: status,
         driver: (driverEmployee?.name || body.driverName) || undefined,
         driverEmployeeId: driverEmployee?.id,
         driverPhone: body.driverPhone ? maskPhone(body.driverPhone) : undefined,
-      }),
-    },
-  }).catch(() => null)
+      }) }).catch(() => null)
 
   // OPS-9 val 3 (v1.76.0): DRIVER_ASSIGNED push (notification matrix aware) when a driver
   // Employee is newly assigned or CHANGED on this delivery. Fire-and-forget — never blocks.

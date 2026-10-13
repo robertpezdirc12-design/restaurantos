@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
-import { nid } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #12 §3 — enkratna produkcijska migracija sheme (Neon Postgres): MFA polja
@@ -38,17 +38,7 @@ export async function POST(req: NextRequest) {
     results.push({ id: m.id, statements: m.ddl.length })
   }
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'SCHEMA_MIGRATION_ISSUE12', entityType: 'Employee', entityId: 'mfa-fields', details: `applied=${results.reduce((a, r) => a + r.statements, 0)} (aditivno, idempotentno)`, id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'SCHEMA_MIGRATION_ISSUE12',
-      entityType: 'Employee',
-      entityId: 'mfa-fields',
-      details: `applied=${results.reduce((a, r) => a + r.statements, 0)} (aditivno, idempotentno)`,
-    },
-  }).catch(() => {})
+  await writeAudit(db, { userId: user.sub, action: 'SCHEMA_MIGRATION_ISSUE12', entityType: 'Employee', entityId: 'mfa-fields', details: `applied=${results.reduce((a, r) => a + r.statements, 0)} (aditivno, idempotentno)` }).catch(() => {})
 
   const columns = await db.$queryRawUnsafe<{ column_name: string }[]>(
     `SELECT column_name FROM information_schema.columns WHERE table_name = 'Employee' AND column_name LIKE 'mfa%'`

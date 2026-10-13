@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, locationScope } from '@
 import { guardResource } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -56,10 +56,7 @@ export async function POST(req: NextRequest) {
     },
   })
   // 33-c (audit §6): INVENTORY_CREATE dobi locationId (prej neviden location-scoped uporabnikom)
-  const __aId1 = nid(); const __chain1 = await auditChainFields(db, { action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }), locationId, id: __aId1 })
-  await db.auditLog.create({
-    data: { ...__chain1, id: __aId1, userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }), locationId },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }), locationId: locationId })
   return ok({ item: { id: row.id, name: row.name } }, 201)
 }
 
@@ -138,10 +135,7 @@ export async function PATCH(req: NextRequest) {
       })
     }
 
-    const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }), id: __aId2 })
-    await tx.auditLog.create({
-      data: { ...__chain2, id: __aId2, userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }) },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }) })
     return { newQty, variance, name: item.name }
   })
 

@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * OPS-4 (v1.67.0) — "86 / razprodano": STROGO ozek endpoint za toggle
@@ -37,25 +37,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return ok({ id, available: body.available, unchanged: true })
   }
   await db.menuItem.update({ where: { id }, data: { isAvailable: body.available } })
-  const __aId = nid(); const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'MENU_ITEM_AVAILABILITY',
-    entityType: 'MenuItem',
-    entityId: id,
-    details: jstr({ name: existing.name, from: existing.isAvailable, to: body.available }),
-    locationId: existing.Category?.Menu?.locationId ?? null,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'MENU_ITEM_AVAILABILITY',
-      entityType: 'MenuItem',
-      entityId: id,
-      details: jstr({ name: existing.name, from: existing.isAvailable, to: body.available }),
-      locationId: existing.Category?.Menu?.locationId ?? null,
-    },
-  }).catch(() => null)
+  await writeAudit(db, { userId: user.sub, action: 'MENU_ITEM_AVAILABILITY', entityType: 'MenuItem', entityId: id, details: jstr({ name: existing.name, from: existing.isAvailable, to: body.available }), locationId: existing.Category?.Menu?.locationId ?? null }).catch(() => null)
   return ok({ id, available: body.available, unchanged: false })
 }

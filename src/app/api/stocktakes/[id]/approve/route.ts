@@ -4,7 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Potrditev popisa: SUBMITTED → APPROVED — inventurni popravek v transakciji.
@@ -71,9 +71,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   })
   if ('error' in result) return result.error
 
-  const __aId1 = nid()
-  const __chain1 = await auditChainFields(db, { action: 'STOCKTAKE_APPROVE', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, adjusted: result.adjusted, varianceValue: result.varianceValue }), locationId: st.locationId, id: __aId1 })
-  await db.auditLog.create({ data: { ...__chain1, id: __aId1, userId: user.sub, action: 'STOCKTAKE_APPROVE', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, adjusted: result.adjusted, varianceValue: result.varianceValue }), locationId: st.locationId } })
+  await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_APPROVE', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, adjusted: result.adjusted, varianceValue: result.varianceValue }), locationId: st.locationId })
   await publishEvent('StocktakeApproved', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, adjusted: result.adjusted, varianceValue: result.varianceValue, by: user.name } }).catch(() => undefined)
 
   return ok({ id, status: 'APPROVED', adjusted: result.adjusted, varianceValue: result.varianceValue })

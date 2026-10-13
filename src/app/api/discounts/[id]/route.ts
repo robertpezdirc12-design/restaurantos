@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { nid, num, r2, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { num, r2, jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 /** Issue #1 §6 — urejanje/brisanje popusta (apply_discounts) + audit občutljivih sprememb. */
 
@@ -72,18 +72,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body?.sortOrder !== undefined) data.sortOrder = Math.max(0, Math.round(Number(body.sortOrder) || 0))
 
   const updated = await db.discount.update({ where: { id }, data })
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DISCOUNT_UPDATED', entityType: 'Discount', entityId: id, details: jstr({ before: { name: existing.name, amount: existing.amount, isActive: existing.isActive, happyFromHour: existing.happyFromHour, happyToHour: existing.happyToHour }, after: data }), locationId: existing.locationId, id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'DISCOUNT_UPDATED',
-      entityType: 'Discount',
-      entityId: id,
-      details: jstr({ before: { name: existing.name, amount: existing.amount, isActive: existing.isActive, happyFromHour: existing.happyFromHour, happyToHour: existing.happyToHour }, after: data }),
-      locationId: existing.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'DISCOUNT_UPDATED', entityType: 'Discount', entityId: id, details: jstr({ before: { name: existing.name, amount: existing.amount, isActive: existing.isActive, happyFromHour: existing.happyFromHour, happyToHour: existing.happyToHour }, after: data }), locationId: existing.locationId })
   return ok({ discount: updated })
 }
 
@@ -95,17 +84,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!existing) return fail('Popust ne obstaja.', 404)
   // mehko brisanje (Check/OrderItem imajo FK) — deaktivacija ohrani audit pot
   await db.discount.update({ where: { id }, data: { isActive: false } })
-  const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'DISCOUNT_DELETED', entityType: 'Discount', entityId: id, details: jstr({ name: existing.name, amount: existing.amount, softDelete: true }), locationId: existing.locationId, id: __aId4 })
-  await db.auditLog.create({
-    data: { ...__chain4,
-      id: __aId4,
-      userId: user.sub,
-      action: 'DISCOUNT_DELETED',
-      entityType: 'Discount',
-      entityId: id,
-      details: jstr({ name: existing.name, amount: existing.amount, softDelete: true }),
-      locationId: existing.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'DISCOUNT_DELETED', entityType: 'Discount', entityId: id, details: jstr({ name: existing.name, amount: existing.amount, softDelete: true }), locationId: existing.locationId })
   return ok({ deleted: true })
 }

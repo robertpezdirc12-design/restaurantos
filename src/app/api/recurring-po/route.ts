@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num, jstr } from '@/lib/map'
 import { computeNextRun, parseRecurringConfig, clampRemindMinutes, RECURRING_PO_MARKER, type RecurringRule } from '@/lib/recurring-po'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * OPS-9 val 2 (v1.75.0) — pravila ponavljajočih naročilnic (recurring PO rules).
@@ -122,15 +122,7 @@ export async function POST(req: NextRequest) {
   }
   const effectiveRowId = await writeConfig(rowId, [...rules, draft])
 
-  const __aId = nid(); const __chain = await auditChainFields(db, { action: 'RECURRING_PO_SAVED', entityType: 'Integration', entityId: effectiveRowId, details: jstr({ ruleId: draft.id, supplierId, supplierName: supplier.name, items: items.length, weekdays, hour, everyWeeks, nextRun: draft.nextRun, }), id: __aId })
-  await db.auditLog.create({
-    data: { ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'RECURRING_PO_SAVED',
-      entityType: 'Integration',
-      entityId: effectiveRowId,
-      details: jstr({
+  await writeAudit(db, { userId: user.sub, action: 'RECURRING_PO_SAVED', entityType: 'Integration', entityId: effectiveRowId, details: jstr({
         ruleId: draft.id,
         supplierId,
         supplierName: supplier.name,
@@ -139,9 +131,7 @@ export async function POST(req: NextRequest) {
         hour,
         everyWeeks,
         nextRun: draft.nextRun,
-      }),
-    },
-  })
+      }) })
 
   return ok({ rule: draft }, 201)
 }
@@ -172,17 +162,7 @@ export async function PATCH(req: NextRequest) {
   nextRules[idx] = next
   const effectiveRowId = await writeConfig(rowId, nextRules)
 
-  const __aId = nid(); const __chain = await auditChainFields(db, { action: 'RECURRING_PO_SAVED', entityType: 'Integration', entityId: effectiveRowId, details: jstr({ ruleId, active: next.active, nextRun: next.nextRun }), id: __aId })
-  await db.auditLog.create({
-    data: { ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'RECURRING_PO_SAVED',
-      entityType: 'Integration',
-      entityId: effectiveRowId,
-      details: jstr({ ruleId, active: next.active, nextRun: next.nextRun }),
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'RECURRING_PO_SAVED', entityType: 'Integration', entityId: effectiveRowId, details: jstr({ ruleId, active: next.active, nextRun: next.nextRun }) })
 
   return ok({ rule: next })
 }
@@ -199,17 +179,7 @@ export async function DELETE(req: NextRequest) {
   if (nextRules.length === rules.length) return fail('Pravilo ne obstaja.', 404)
   const effectiveRowId = await writeConfig(rowId, nextRules)
 
-  const __aId = nid(); const __chain = await auditChainFields(db, { action: 'RECURRING_PO_DELETED', entityType: 'Integration', entityId: effectiveRowId, details: jstr({ ruleId }), id: __aId })
-  await db.auditLog.create({
-    data: { ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'RECURRING_PO_DELETED',
-      entityType: 'Integration',
-      entityId: effectiveRowId,
-      details: jstr({ ruleId }),
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'RECURRING_PO_DELETED', entityType: 'Integration', entityId: effectiveRowId, details: jstr({ ruleId }) })
 
   return ok({ deleted: ruleId })
 }

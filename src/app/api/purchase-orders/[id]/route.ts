@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { nid, jstr } from '@/lib/map'
+import { jstr } from '@/lib/map'
 import { canTransition, type PoStatus } from '@/lib/procurement'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 
 /**
@@ -150,17 +150,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updated = await db.$transaction(async (tx) => {
     const u = await tx.purchaseOrder.update({ where: { id }, data })
-    const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: action === 'submit' ? 'PO_SUBMIT' : action === 'approve' ? 'PO_APPROVE' : 'PO_CANCEL', entityType: 'PurchaseOrder', entityId: id, details: jstr({ poNumber: po.poNumber, from: po.status, to: target, supplierId: po.supplierId, total: Number(po.totalAmount) }), id: __aId2 })
-    await tx.auditLog.create({
-      data: { ...__chain2,
-        id: __aId2,
-        userId: user.sub,
-        action: action === 'submit' ? 'PO_SUBMIT' : action === 'approve' ? 'PO_APPROVE' : 'PO_CANCEL',
-        entityType: 'PurchaseOrder',
-        entityId: id,
-        details: jstr({ poNumber: po.poNumber, from: po.status, to: target, supplierId: po.supplierId, total: Number(po.totalAmount) }),
-      },
-    })
+    await writeAudit(tx, { userId: user.sub, action: action === 'submit' ? 'PO_SUBMIT' : action === 'approve' ? 'PO_APPROVE' : 'PO_CANCEL', entityType: 'PurchaseOrder', entityId: id, details: jstr({ poNumber: po.poNumber, from: po.status, to: target, supplierId: po.supplierId, total: Number(po.totalAmount) }) })
     return u
   })
 

@@ -2014,3 +2014,19 @@ Work Log:
 Stage Summary:
 - RAZREZ MONOLITA DOKONČAN: 9217 vrst. → 12 domenskih datotek v tabs/ (~10.400 vrst. skupaj) + 41-vrstični barrel; vsak premik byte-identičen (python diff dokazi v 7 commitih v1.82.1→v1.82.7)
 - preostali kandidati za prihodnje: writeAudit() helper (115× __aId/__chain boilerplate)
+
+---
+Task ID: AUDIT-FIX-8 (writeAudit helper — zadnja točka zunanje analize)
+Agent: main (Z.ai Code)
+Task: "odlično nadaljuj" — eliminacija __aId/__chain boilerplate z writeAudit() helperjem.
+
+Work Log:
+- src/lib/audit-chain.ts: nov writeAudit(prisma, opts) + WriteAuditOpts — centralizira nid()+auditChainFields()+auditLog.create() trojček z ENAKIMI semantikami (undefined→isti DB defaulti, .catch ostaja na klicnem mestu, napake se širijo); userId/entityId tipa string|null (anonimne naprave/gostje)
+- transformer (python, string/template/comment-zaveden lexer): 124 mest analiziranih, vsako preverjeno (konsistenca polj med chain-opts in data, enoličnost spremenljivk, soseščina stavkov, dovoljeni ključi) → 114 mest prepisanih v 80 datotekah (−1110 vrstic neto), 10 mest ostaja ročnih (haccpEntry model, monitoring/errors vrača vrstico, delivery/webhook shorthand, staff-shifts ne-adjacent decl)
+- 2 semantično varni specializaciji: details objekt→jstr() (kanonizacija identična), trailing-comma normalizacija pri primerjavi
+- CLEANUP: 41 datotek odstranjen mrtev nid uvoz (no-unused-vars izklopljen v repu; guest.ts re-export ohranjen)
+- VERIFIKACIJA: tsc 0, eslint 0 (82 datotek), svež ci-fresh.db 1037/1037; NADZORNI POSKUS: verifyAuditChain na testni bazi IDENTIČEN pred/po refaktorju (ok:false/link je dokumentirana konkurenčna veja testne suite, ne regresija); browser E2E: napačna prijava → LOGIN_FAILED vrstica zapisana z writeAudit (prevHash se veže, ip/entityId/userId pravilni)
+
+Stage Summary:
+- VSE točke zunanje analize (P1 funkcionalno, P2 varnost ×4, P3 struktura ×3 vklj. writeAudit, P4 higiena) ZAKLJUČENE
+- API rute: povprečno −14 vrstic boilerplate na revizijsko pisano akcijo; 1 kanonično mesto za prihodnje spremembe verige

@@ -6,8 +6,8 @@ import { fail } from '@/lib/api'
 import { rateLimitBool } from '@/lib/rate-limit'
 import { resolvePermissions, resolvePermissionsForUIRole } from '@/lib/permissions'
 import { totpVerify, consumeRecoveryCode, roleRequiresMfa } from '@/lib/mfa'
-import { nid, jparse } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jparse } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -33,10 +33,7 @@ export async function POST(req: NextRequest) {
       })
     }
     // P0 audit (C1): neuspešne prijave se beležijo (prej: brute-force neviden v reviziji)
-    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'LOGIN_FAILED', entityType: 'Employee', entityId: email, details: `Neuspešna prijava (neznan/deaktiviran račun: ${email}).`, id: __aId2 })
-    await db.auditLog.create({
-      data: { ...__chain2, id: __aId2, userId: 'anonymous', action: 'LOGIN_FAILED', entityType: 'Employee', entityId: email, details: `Neuspešna prijava (neznan/deaktiviran račun: ${email}).`, ipAddress: ip },
-    }).catch(() => {})
+    await writeAudit(db, { userId: 'anonymous', action: 'LOGIN_FAILED', entityType: 'Employee', entityId: email, details: `Neuspešna prijava (neznan/deaktiviran račun: ${email}).`, ipAddress: ip }).catch(() => {})
     return fail('Napačen e-poštni naslov ali PIN.', 401)
   }
 
@@ -50,10 +47,7 @@ export async function POST(req: NextRequest) {
 
   if (!pinOk) {
     // P0 audit (C1): neuspešna PIN prijava se beleži
-    const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'LOGIN_FAILED', entityType: 'Employee', entityId: employee.id, details: `Neuspešna prijava (napačen PIN): ${email}.`, locationId: employee.locationId, id: __aId4 })
-    await db.auditLog.create({
-      data: { ...__chain4, id: __aId4, userId: employee.id, action: 'LOGIN_FAILED', entityType: 'Employee', entityId: employee.id, details: `Neuspešna prijava (napačen PIN): ${email}.`, ipAddress: ip, locationId: employee.locationId },
-    }).catch(() => {})
+    await writeAudit(db, { userId: employee.id, action: 'LOGIN_FAILED', entityType: 'Employee', entityId: employee.id, details: `Neuspešna prijava (napačen PIN): ${email}.`, ipAddress: ip, locationId: employee.locationId }).catch(() => {})
     if (matchesBootstrap(email, pin)) {
       const token = createToken({
         sub: employee.id,
@@ -95,19 +89,11 @@ export async function POST(req: NextRequest) {
       }
     }
     if (!mfaOk) {
-      const __aId6 = nid(); const __chain6 = await auditChainFields(db, { action: 'MFA_LOGIN_FAILED', entityType: 'Employee', entityId: employee.id, details: 'Napačna ali manjkajoča MFA koda pri prijavi.', locationId: employee.locationId, id: __aId6 })
-      await db.auditLog.create({
-        data: { ...__chain6, id: __aId6, userId: employee.id, action: 'MFA_LOGIN_FAILED', entityType: 'Employee', entityId: employee.id,
-          details: 'Napačna ali manjkajoča MFA koda pri prijavi.', ipAddress: ipOf(req), locationId: employee.locationId },
-      }).catch(() => {})
+      await writeAudit(db, { userId: employee.id, action: 'MFA_LOGIN_FAILED', entityType: 'Employee', entityId: employee.id, details: 'Napačna ali manjkajoča MFA koda pri prijavi.', ipAddress: ipOf(req), locationId: employee.locationId }).catch(() => {})
       // 401 + mfaRequired zastavica — UI prikaže MFA korak; brez uhajanja ali mfaEnabled je vklopljena
       return NextResponse.json({ error: 'Zahtevana je druga stopnja prijave (MFA koda).', mfaRequired: true }, { status: 401 })
     }
-    const __aId8 = nid(); const __chain8 = await auditChainFields(db, { action: usedRecovery ? 'MFA_RECOVERY_USED' : 'MFA_LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: 'MFA druga stopnja uspešna.', locationId: employee.locationId, id: __aId8 })
-    await db.auditLog.create({
-      data: { ...__chain8, id: __aId8, userId: employee.id, action: usedRecovery ? 'MFA_RECOVERY_USED' : 'MFA_LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id,
-        details: 'MFA druga stopnja uspešna.', ipAddress: ipOf(req), locationId: employee.locationId },
-    }).catch(() => {})
+    await writeAudit(db, { userId: employee.id, action: usedRecovery ? 'MFA_RECOVERY_USED' : 'MFA_LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: 'MFA druga stopnja uspešna.', ipAddress: ipOf(req), locationId: employee.locationId }).catch(() => {})
   }
 
   const mfaMandatory = roleRequiresMfa(employee.role) && !employee.mfaEnabled
@@ -120,10 +106,7 @@ export async function POST(req: NextRequest) {
   })
 
   // P0 audit (C1): uspešna prijava se beleži (actor + IP)
-  const __aId10 = nid(); const __chain10 = await auditChainFields(db, { action: 'LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: `Prijava uspešna.`, locationId: employee.locationId, id: __aId10 })
-  await db.auditLog.create({
-    data: { ...__chain10, id: __aId10, userId: employee.id, action: 'LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: `Prijava uspešna.`, ipAddress: ip, locationId: employee.locationId },
-  }).catch(() => {})
+  await writeAudit(db, { userId: employee.id, action: 'LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: `Prijava uspešna.`, ipAddress: ip, locationId: employee.locationId }).catch(() => {})
 
   return NextResponse.json({
     token,

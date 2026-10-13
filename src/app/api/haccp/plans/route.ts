@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { nid, jstr, jparse } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { haccpPlansAvailable } from '@/lib/haccp-plans'
 
 /**
@@ -128,26 +128,6 @@ export async function POST(req: NextRequest) {
     },
   })
   // 33-c konvencija: tamper-evidentna revizijska veriga
-  const __aId = nid()
-  const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'HACCP_PLAN_CREATED',
-    entityType: 'HaccpPlan',
-    entityId: row.id,
-    details: jstr({ name, category, frequency, target, threshold, responsible, steps: steps.length, active: row.active, locationId }),
-    locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'HACCP_PLAN_CREATED',
-      entityType: 'HaccpPlan',
-      entityId: row.id,
-      details: jstr({ name, category, frequency, target, threshold, responsible, steps: steps.length, active: row.active, locationId }),
-      locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'HACCP_PLAN_CREATED', entityType: 'HaccpPlan', entityId: row.id, details: jstr({ name, category, frequency, target, threshold, responsible, steps: steps.length, active: row.active, locationId }), locationId: locationId })
   return ok({ plan: mapPlan(row) }, 201)
 }

@@ -5,7 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { WASTE_REVERSAL_TX_TYPE, canReverseWaste, wasteReversalReason } from '@/lib/waste'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
@@ -84,17 +84,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return fail(`Reverzija ni uspela: ${msg}`, 500)
   }
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'WASTE_REVERSE', entityType: 'WasteRecord', entityId: rec.id, details: jstr({ item: item?.name ?? rec.inventoryItemId, quantity: qty, unit: rec.unit, totalCost: num(rec.totalCost), newQty, reversalStockTransactionId }), id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'WASTE_REVERSE',
-      entityType: 'WasteRecord',
-      entityId: rec.id,
-      details: jstr({ item: item?.name ?? rec.inventoryItemId, quantity: qty, unit: rec.unit, totalCost: num(rec.totalCost), newQty, reversalStockTransactionId }),
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'WASTE_REVERSE', entityType: 'WasteRecord', entityId: rec.id, details: jstr({ item: item?.name ?? rec.inventoryItemId, quantity: qty, unit: rec.unit, totalCost: num(rec.totalCost), newQty, reversalStockTransactionId }) })
   await publishEvent('StockChanged', {
     entityType: 'InventoryItem',
     entityId: rec.inventoryItemId,

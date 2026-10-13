@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isCentralRole, isResponse, ok } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { recipeCost, type RecipeNode } from '@/lib/recipe-cost'
 
 /**
@@ -250,17 +250,7 @@ export async function POST(req: NextRequest) {
   }))
   const { cost, costKnown } = recipeCost(savedNodes, menuItemId)
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'RECIPE_SAVED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lines: rows.map((r) => ({ item: invItems.find((i) => i.id === r.inventoryItemId)?.name, qty: r.quantityPerServing, unit: r.unit, yieldPercent: r.yieldPercent, parent: r.parentRecipeItemId ? invItems.find((i) => i.id === rows.find((x) => x.id === r.parentRecipeItemId)?.inventoryItemId)?.name : null })), costPerServing: cost }), id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'RECIPE_SAVED',
-      entityType: 'MenuItem',
-      entityId: menuItemId,
-      details: jstr({ menuItem: menuItem.name, lines: rows.map((r) => ({ item: invItems.find((i) => i.id === r.inventoryItemId)?.name, qty: r.quantityPerServing, unit: r.unit, yieldPercent: r.yieldPercent, parent: r.parentRecipeItemId ? invItems.find((i) => i.id === rows.find((x) => x.id === r.parentRecipeItemId)?.inventoryItemId)?.name : null })), costPerServing: cost }),
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'RECIPE_SAVED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lines: rows.map((r) => ({ item: invItems.find((i) => i.id === r.inventoryItemId)?.name, qty: r.quantityPerServing, unit: r.unit, yieldPercent: r.yieldPercent, parent: r.parentRecipeItemId ? invItems.find((i) => i.id === rows.find((x) => x.id === r.parentRecipeItemId)?.inventoryItemId)?.name : null })), costPerServing: cost }) })
 
   return ok({ saved: rows.length, menuItemId, costPerServing: cost, costKnown }, 201)
 }
@@ -336,10 +326,7 @@ export async function PATCH(req: NextRequest) {
   const updated = await db.recipeItem.update({ where: { id: line.id }, data })
   const after = { yieldPercent: num(updated.yieldPercent), quantityPerServing: num(updated.quantityPerServing), parentRecipeItemId: updated.parentRecipeItemId }
 
-  const __aId = nid(); const __chain = await auditChainFields(db, { action: 'RECIPE_UPDATED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lineId: line.id, inventoryItemId: line.inventoryItemId, before, after }), id: __aId })
-  await db.auditLog.create({
-    data: { ...__chain, id: __aId, userId: user.sub, action: 'RECIPE_UPDATED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lineId: line.id, inventoryItemId: line.inventoryItemId, before, after }) },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'RECIPE_UPDATED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lineId: line.id, inventoryItemId: line.inventoryItemId, before, after }) })
 
   return ok({
     line: {
@@ -371,10 +358,7 @@ export async function DELETE(req: NextRequest) {
   }
   const del = await db.recipeItem.deleteMany({ where: { menuItemId } })
   if (del.count > 0) {
-    const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'RECIPE_DELETED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem?.name || menuItemId, removed: del.count }), id: __aId4 })
-    await db.auditLog.create({
-      data: { ...__chain4, id: __aId4, userId: user.sub, action: 'RECIPE_DELETED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem?.name || menuItemId, removed: del.count }) },
-    })
+    await writeAudit(db, { userId: user.sub, action: 'RECIPE_DELETED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem?.name || menuItemId, removed: del.count }) })
   }
   return ok({ deleted: del.count })
 }

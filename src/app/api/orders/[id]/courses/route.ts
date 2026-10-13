@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * OPS-7 (v1.68.0) — COURSING (tečaji jedi, Toast/Lightspeed vzorec).
@@ -97,18 +97,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         data: { courseId: created.id },
       })
     }
-    const __aId = nid()
-    const __chain = await auditChainFields(tx, {
-      action: 'ORDER_COURSE_CREATE',
-      entityType: 'Order',
-      entityId: id,
-      details: jstr({ courseId: created.id, courseNumber: nextNumber, name: created.name, items: itemIds.length, by: user.name }),
-      locationId: order.locationId,
-      id: __aId,
-    })
-    await tx.auditLog.create({
-      data: { ...__chain, id: __aId, userId: user.sub, action: 'ORDER_COURSE_CREATE', entityType: 'Order', entityId: id, details: jstr({ courseId: created.id, courseNumber: nextNumber, name: created.name, items: itemIds.length, by: user.name }), locationId: order.locationId },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_COURSE_CREATE', entityType: 'Order', entityId: id, details: jstr({ courseId: created.id, courseNumber: nextNumber, name: created.name, items: itemIds.length, by: user.name }), locationId: order.locationId })
     return created
   })
 

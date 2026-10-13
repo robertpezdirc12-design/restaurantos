@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { jparse, jstr, nid } from '@/lib/map'
+import { jparse, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { maskIntegrationConfig, stripMaskedConfig } from '@/lib/integration-mask'
 
 /**
@@ -62,19 +62,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const updated = await db.integration.update({ where: { id }, data: data as never })
-  const __aIdU = nid(); const __chainU = await auditChainFields(db, {
-    action: 'INTEGRATION_UPDATED', entityType: 'Integration', entityId: id,
-    details: jstr({ fields: Object.keys(data), name: updated.name, by: user.name }),
-    locationId: updated.locationId, id: __aIdU,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chainU, id: __aIdU, userId: user.sub,
-      action: 'INTEGRATION_UPDATED', entityType: 'Integration', entityId: id,
-      details: jstr({ fields: Object.keys(data), name: updated.name, by: user.name }),
-      locationId: updated.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_UPDATED', entityType: 'Integration', entityId: id, details: jstr({ fields: Object.keys(data), name: updated.name, by: user.name }), locationId: updated.locationId })
   await publishEvent('IntegrationUpdated', { entityType: 'Integration', entityId: id, payload: { fields: Object.keys(data) } })
   return ok({ integration: updated })
 }
@@ -90,19 +78,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     where: { id },
     data: { isActive: false, syncEnabled: false, connectionStatus: 'disconnected' },
   })
-  const __aIdD = nid(); const __chainD = await auditChainFields(db, {
-    action: 'INTEGRATION_DISABLED', entityType: 'Integration', entityId: id,
-    details: jstr({ name: row.name, by: user.name }),
-    locationId: updated.locationId, id: __aIdD,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chainD, id: __aIdD, userId: user.sub,
-      action: 'INTEGRATION_DISABLED', entityType: 'Integration', entityId: id,
-      details: jstr({ name: row.name, by: user.name }),
-      locationId: updated.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_DISABLED', entityType: 'Integration', entityId: id, details: jstr({ name: row.name, by: user.name }), locationId: updated.locationId })
   await publishEvent('IntegrationDisabled', { entityType: 'Integration', entityId: id, payload: { name: row.name } })
   return ok({ integration: updated, disabled: true })
 }

@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 import { haccpPlansAvailable } from '@/lib/haccp-plans'
 import { PLAN_CATEGORIES, PLAN_FREQUENCIES, normalizeSteps, mapPlan } from '../route'
 
@@ -66,27 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const row = await db.haccpPlan.update({ where: { id }, data })
 
-  const __aId = nid()
-  const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'HACCP_PLAN_UPDATED',
-    entityType: 'HaccpPlan',
-    entityId: id,
-    details: jstr({ name: row.name, changed, active: row.active, locationId: existing.locationId }),
-    locationId: existing.locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'HACCP_PLAN_UPDATED',
-      entityType: 'HaccpPlan',
-      entityId: id,
-      details: jstr({ name: row.name, changed, active: row.active, locationId: existing.locationId }),
-      locationId: existing.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'HACCP_PLAN_UPDATED', entityType: 'HaccpPlan', entityId: id, details: jstr({ name: row.name, changed, active: row.active, locationId: existing.locationId }), locationId: existing.locationId })
   return ok({ plan: mapPlan(row) })
 }
 
@@ -107,26 +87,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // trdo brisanje je varno; revizija ohrani zgodovino.
   await db.haccpPlan.delete({ where: { id } })
 
-  const __aId = nid()
-  const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'HACCP_PLAN_DELETED',
-    entityType: 'HaccpPlan',
-    entityId: id,
-    details: jstr({ name: existing.name, category: existing.category, frequency: existing.frequency, locationId: existing.locationId }),
-    locationId: existing.locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'HACCP_PLAN_DELETED',
-      entityType: 'HaccpPlan',
-      entityId: id,
-      details: jstr({ name: existing.name, category: existing.category, frequency: existing.frequency, locationId: existing.locationId }),
-      locationId: existing.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'HACCP_PLAN_DELETED', entityType: 'HaccpPlan', entityId: id, details: jstr({ name: existing.name, category: existing.category, frequency: existing.frequency, locationId: existing.locationId }), locationId: existing.locationId })
   return ok({ ok: true })
 }

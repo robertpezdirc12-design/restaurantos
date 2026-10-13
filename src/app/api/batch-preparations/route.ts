@@ -4,7 +4,7 @@ import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/ap
 import { nid, num, jstr, r2 } from '@/lib/map'
 import { flattenDeduction, type RecipeNode } from '@/lib/recipe-cost'
 import { scaleBatchLines, forecastQty, type BatchLine } from '@/lib/batch'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * OPS-10 val 3 (v1.79.0) — priprava po serijah (BatchPreparation activation).
@@ -325,10 +325,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  const __aId = nid(); const __chain = await auditChainFields(db, { action: 'BATCH_CREATED', entityType: 'BatchPreparation', entityId: created.id, details: jstr({ outputItemId: item.id, outputItemName: item.name, plannedQty, lines: scaled.length, totalInputCost, idempotencyKey, locationId }), id: __aId })
-  await db.auditLog.create({
-    data: { ...__chain, id: __aId, userId: user.sub, action: 'BATCH_CREATED', entityType: 'BatchPreparation', entityId: created.id, details: jstr({ outputItemId: item.id, outputItemName: item.name, plannedQty, lines: scaled.length, totalInputCost, idempotencyKey, locationId }) },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'BATCH_CREATED', entityType: 'BatchPreparation', entityId: created.id, details: jstr({ outputItemId: item.id, outputItemName: item.name, plannedQty, lines: scaled.length, totalInputCost, idempotencyKey, locationId }) })
 
   return ok({ batch: mapBatch(created) }, 201)
 }

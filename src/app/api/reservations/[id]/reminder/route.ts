@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 import { sendReminder } from '@/lib/reminders'
 
 /**
@@ -61,18 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       where: { id },
       data: { reminderSent: result.anySent || reservation.reminderSent, reminderSentAt: result.anySent ? now : reservation.reminderSentAt },
     })
-    const __aId = nid()
-    const __chain = await auditChainFields(tx, {
-      action: 'RESERVATION_REMINDER',
-      entityType: 'Reservation',
-      entityId: id,
-      details: jstr({ email: result.email, sms: result.sms, guest: reservation.customerName, by: user.name }),
-      locationId: reservation.locationId,
-      id: __aId,
-    })
-    await tx.auditLog.create({
-      data: { ...__chain, id: __aId, userId: user.sub, action: 'RESERVATION_REMINDER', entityType: 'Reservation', entityId: id, details: jstr({ email: result.email, sms: result.sms, guest: reservation.customerName, by: user.name }), locationId: reservation.locationId },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'RESERVATION_REMINDER', entityType: 'Reservation', entityId: id, details: jstr({ email: result.email, sms: result.sms, guest: reservation.customerName, by: user.name }), locationId: reservation.locationId })
   })
 
   return ok({ sent: result.anySent, channels: { email: result.email, sms: result.sms } })

@@ -2,9 +2,9 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapEmployee, roleToDB, jstr, nid } from '@/lib/map'
+import { mapEmployee, roleToDB, jstr } from '@/lib/map'
 import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 export { CANONICAL_PERMISSIONS }
 
@@ -128,17 +128,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   // AUDIT za občutljive akcije (SENSITIVE ACTION UX — R266: razlaga + sledljivost)
   if (sensitive.length > 0) {
-    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'EMPLOYEE_SENSITIVE_UPDATE', entityType: 'Employee', entityId: id, details: jstr({ by: user.sub, target: id, changes: sensitive, pinNote }), id: __aId2 })
-    await db.auditLog.create({
-      data: { ...__chain2,
-        id: __aId2,
-        userId: user.sub,
-        action: 'EMPLOYEE_SENSITIVE_UPDATE',
-        entityType: 'Employee',
-        entityId: id,
-        details: jstr({ by: user.sub, target: id, changes: sensitive, pinNote }),
-      },
-    }).catch(() => null)
+    await writeAudit(db, { userId: user.sub, action: 'EMPLOYEE_SENSITIVE_UPDATE', entityType: 'Employee', entityId: id, details: jstr({ by: user.sub, target: id, changes: sensitive, pinNote }) }).catch(() => null)
   }
 
   return ok({ employee: mapEmployee(updated) })

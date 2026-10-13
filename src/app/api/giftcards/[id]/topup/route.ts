@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num, r2 } from '@/lib/map'
 import { effectiveCardStatus, gcNote, giftCardTxId, validateTopUpCents } from '@/lib/giftcards'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #1 (triage ③) — polnjenje darilne kartice.
@@ -107,24 +107,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const updated = await db.giftCard.findUnique({ where: { id } })
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'GIFT_CARD_TOPUP', entityType: 'GiftCard', entityId: id, details: JSON.stringify({ cardNumber: card.cardNumber, amount, balanceAfter: num(updated?.balance), note, idempotent: Boolean(clientOperationId), }), locationId: card.locationId, id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'GIFT_CARD_TOPUP',
-      entityType: 'GiftCard',
-      entityId: id,
-      details: JSON.stringify({
+  await writeAudit(db, { userId: user.sub, action: 'GIFT_CARD_TOPUP', entityType: 'GiftCard', entityId: id, details: JSON.stringify({
         cardNumber: card.cardNumber,
         amount,
         balanceAfter: num(updated?.balance),
         note,
         idempotent: Boolean(clientOperationId),
-      }),
-      locationId: card.locationId,
-    },
-  })
+      }), locationId: card.locationId })
 
   return ok(
     {

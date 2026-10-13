@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Dobavitelji. Issue #1 (triage ②) — aditivne razširitve za nabavni tok:
@@ -78,20 +78,7 @@ export async function POST(req: NextRequest) {
     },
   })
   // 33-c: chain polja + locationId akterja (audit §6)
-  const __aId1 = nid(); const __chain1 = await auditChainFields(db, { id: __aId1, action: 'SUPPLIER_CREATE', entityType: 'Supplier', entityId: row.id, details: jstr({ name: row.name, code: row.code }), locationId: user.loc })
-  await db.auditLog.create({
-    data: {
-      ...__chain1,
-      id: __aId1,
-      userId: user.sub,
-      action: 'SUPPLIER_CREATE',
-      entityType: 'Supplier',
-      entityId: row.id,
-      details: jstr({ name: row.name, code: row.code }),
-      // 33-c (audit §6): SUPPLIER_* dobi locationId akterja (Supplier nima lokacije)
-      locationId: user.loc,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'SUPPLIER_CREATE', entityType: 'Supplier', entityId: row.id, details: jstr({ name: row.name, code: row.code }), locationId: user.loc })
   return ok({ supplier: { id: row.id, name: row.name } }, 201)
 }
 
@@ -135,19 +122,6 @@ export async function PATCH(req: NextRequest) {
 
   const row = await db.supplier.update({ where: { id }, data })
   // 33-c: chain polja + locationId akterja (audit §6)
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { id: __aId2, action: 'SUPPLIER_UPDATE', entityType: 'Supplier', entityId: id, details: jstr({ changed: Object.keys(data), name: row.name }), locationId: user.loc })
-  await db.auditLog.create({
-    data: {
-      ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'SUPPLIER_UPDATE',
-      entityType: 'Supplier',
-      entityId: id,
-      details: jstr({ changed: Object.keys(data), name: row.name }),
-      // 33-c (audit §6): SUPPLIER_* dobi locationId akterja (Supplier nima lokacije)
-      locationId: user.loc,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'SUPPLIER_UPDATE', entityType: 'Supplier', entityId: id, details: jstr({ changed: Object.keys(data), name: row.name }), locationId: user.loc })
   return ok({ supplier: { id: row.id, name: row.name } })
 }

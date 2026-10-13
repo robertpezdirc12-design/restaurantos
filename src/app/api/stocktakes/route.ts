@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, requireUserLocation, isResponse, ok, fa
 import { assertOrgScope } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Inventura (popis zaloge) — audit §7 "Zaloga: inventura PARTIAL (ni protokola)".
@@ -144,9 +144,7 @@ export async function POST(req: NextRequest) {
     include: { StocktakeItem: true },
   })
 
-  const __aId1 = nid()
-  const __chain1 = await auditChainFields(db, { action: 'STOCKTAKE_OPEN', entityType: 'Stocktake', entityId: id, details: jstr({ locationId, lines: items.length, by: user.name }), locationId, id: __aId1 })
-  await db.auditLog.create({ data: { ...__chain1, id: __aId1, userId: user.sub, action: 'STOCKTAKE_OPEN', entityType: 'Stocktake', entityId: id, details: jstr({ locationId, lines: items.length, by: user.name }), locationId } })
+  await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_OPEN', entityType: 'Stocktake', entityId: id, details: jstr({ locationId, lines: items.length, by: user.name }), locationId: locationId })
   await publishEvent('StocktakeOpened', { entityType: 'Stocktake', entityId: id, payload: { locationId, lines: items.length, by: user.name } }).catch(() => undefined)
 
   return ok({ stocktake: mapStocktakeFull(created) }, 201)

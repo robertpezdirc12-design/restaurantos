@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #1 §6 — enkratna produkcijska migracija sheme (Neon Postgres nima teh stolpcev).
@@ -43,17 +43,7 @@ export async function POST(req: NextRequest) {
       }
       results.push({ id: m.id, applied, skipped: applied.length === 0 })
     }
-    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'SCHEMA_MIGRATION_ISSUE1_S6', entityType: 'Schema', entityId: 'issue1_s6_discount_happy_hour', details: jstr({ results }), id: __aId2 })
-    await db.auditLog.create({
-      data: { ...__chain2,
-        id: __aId2,
-        userId: user.sub,
-        action: 'SCHEMA_MIGRATION_ISSUE1_S6',
-        entityType: 'Schema',
-        entityId: 'issue1_s6_discount_happy_hour',
-        details: jstr({ results }),
-      },
-    })
+    await writeAudit(db, { userId: user.sub, action: 'SCHEMA_MIGRATION_ISSUE1_S6', entityType: 'Schema', entityId: 'issue1_s6_discount_happy_hour', details: jstr({ results }) })
     return ok({ results })
   } catch (e) {
     console.error('[migrate-issue1-s6] napaka:', e)

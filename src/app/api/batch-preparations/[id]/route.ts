@@ -4,7 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num, jstr, r2 } from '@/lib/map'
 import { batchCostPerUnit } from '@/lib/batch'
 import { weightedAvgCostCents } from '@/lib/procurement'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * OPS-10 val 3 (v1.79.0) — batch lifecycle transitions.
@@ -61,10 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { status: 'CANCELLED', cancelledAt: new Date(), completedByName: user.name || '' },
       include: { InventoryItem: { select: { name: true, unit: true } }, BatchPreparationLine: true },
     })
-    const __aId = nid(); const __chain = await auditChainFields(db, { action: 'BATCH_CANCELLED', entityType: 'BatchPreparation', entityId: id, details: jstr({ outputItemId: batch.outputItemId, outputQuantity: num(batch.outputQuantity) }), id: __aId })
-    await db.auditLog.create({
-      data: { ...__chain, id: __aId, userId: user.sub, action: 'BATCH_CANCELLED', entityType: 'BatchPreparation', entityId: id, details: jstr({ outputItemId: batch.outputItemId, outputQuantity: num(batch.outputQuantity) }) },
-    })
+    await writeAudit(db, { userId: user.sub, action: 'BATCH_CANCELLED', entityType: 'BatchPreparation', entityId: id, details: jstr({ outputItemId: batch.outputItemId, outputQuantity: num(batch.outputQuantity) }) })
     return ok({ batch: { id: updated.id, status: updated.status, cancelledAt: updated.cancelledAt } })
   }
 
@@ -220,10 +217,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     throw e
   }
 
-  const __aId = nid(); const __chain = await auditChainFields(db, { action: 'BATCH_COMPLETED', entityType: 'BatchPreparation', entityId: batch.id, details: jstr({ outputItemId: batch.outputItemId, outputQuantity: outputQty, outputCostPerUnit: outUnitCost, totalInputCost, outputStockTransactionId: completed.outputTxId, lines: batch.BatchPreparationLine.length }), id: __aId })
-  await db.auditLog.create({
-    data: { ...__chain, id: __aId, userId: user.sub, action: 'BATCH_COMPLETED', entityType: 'BatchPreparation', entityId: batch.id, details: jstr({ outputItemId: batch.outputItemId, outputQuantity: outputQty, outputCostPerUnit: outUnitCost, totalInputCost, outputStockTransactionId: completed.outputTxId, lines: batch.BatchPreparationLine.length }) },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'BATCH_COMPLETED', entityType: 'BatchPreparation', entityId: batch.id, details: jstr({ outputItemId: batch.outputItemId, outputQuantity: outputQty, outputCostPerUnit: outUnitCost, totalInputCost, outputStockTransactionId: completed.outputTxId, lines: batch.BatchPreparationLine.length }) })
 
   return ok({
     batch: {

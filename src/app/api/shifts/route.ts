@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendShiftDailySummary } from '@/lib/daily-email'
 
@@ -206,22 +206,11 @@ export async function POST(req: NextRequest) {
             locationId: claimed.locationId,
           },
         })
-        const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'SHIFT_CLOSE', entityType: 'CashRegisterShift', entityId: claimed.id, details: JSON.stringify({ totalSales: r(totalSales), cash: r(cash), card: r(card), receipts: receipts.length, cashDifference: r(closingCash - expectedCash), windowFrom: from.toISOString(), windowTo: to.toISOString(), }), locationId: claimed.locationId, id: __aId2 })
-        await tx.auditLog.create({
-          data: { ...__chain2,
-            id: __aId2,
-            userId: user.sub,
-            action: 'SHIFT_CLOSE',
-            entityType: 'CashRegisterShift',
-            entityId: claimed.id,
-            details: JSON.stringify({
+        await writeAudit(tx, { userId: user.sub, action: 'SHIFT_CLOSE', entityType: 'CashRegisterShift', entityId: claimed.id, details: JSON.stringify({
               totalSales: r(totalSales), cash: r(cash), card: r(card), receipts: receipts.length,
               cashDifference: r(closingCash - expectedCash),
               windowFrom: from.toISOString(), windowTo: to.toISOString(),
-            }),
-            locationId: claimed.locationId,
-          },
-        })
+            }), locationId: claimed.locationId })
         return { shift, zreport, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash), totalNet: r(totalNet), covers: originalOrders, windowFrom: from, windowTo: to }
       })
 
@@ -310,26 +299,7 @@ export async function POST(req: NextRequest) {
       },
     })
     // 33-c (audit §6): odpiranje izmene je zdaj revidirano (SHIFT_OPEN) — v ISTI transakciji
-    const __aId = nid(); const __chain = await auditChainFields(tx, {
-      id: __aId,
-      action: 'SHIFT_OPEN',
-      entityType: 'CashRegisterShift',
-      entityId: shift.id,
-      details: jstr({ startingCash: num(body?.openingCash), employeeName: user.name }),
-      locationId,
-    })
-    await tx.auditLog.create({
-      data: {
-        ...__chain,
-        id: __aId,
-        userId: user.sub,
-        action: 'SHIFT_OPEN',
-        entityType: 'CashRegisterShift',
-        entityId: shift.id,
-        details: jstr({ startingCash: num(body?.openingCash), employeeName: user.name }),
-        locationId,
-      },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'SHIFT_OPEN', entityType: 'CashRegisterShift', entityId: shift.id, details: jstr({ startingCash: num(body?.openingCash), employeeName: user.name }), locationId: locationId })
     return shift
   })
   if (!opened) return fail('Izmena že teče (sočasno odpiranje zavrnjeno).', 409)

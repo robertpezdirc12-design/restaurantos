@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { jstr, nid } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Task 60 (audit §7 Integracije PARTIAL→DONE) — test povezave.
@@ -79,19 +79,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       statusCode, errorMessage, durationMs, requestData: jstr({ url: row.baseUrl }),
     },
   })
-  const __aIdT = nid(); const __chainT = await auditChainFields(db, {
-    action: 'INTEGRATION_TESTED', entityType: 'Integration', entityId: id,
-    details: jstr({ reachable, statusCode, durationMs, by: user.name }),
-    locationId: updated.locationId, id: __aIdT,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chainT, id: __aIdT, userId: user.sub,
-      action: 'INTEGRATION_TESTED', entityType: 'Integration', entityId: id,
-      details: jstr({ reachable, statusCode, durationMs, by: user.name }),
-      locationId: updated.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_TESTED', entityType: 'Integration', entityId: id, details: jstr({ reachable, statusCode, durationMs, by: user.name }), locationId: updated.locationId })
   await publishEvent('IntegrationTested', { entityType: 'Integration', entityId: id, payload: { reachable, statusCode } })
   return ok({ connectionStatus, statusCode, durationMs, error: errorMessage, reachable })
 }

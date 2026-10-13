@@ -2,10 +2,10 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapOrder, nid, jstr } from '@/lib/map'
+import { mapOrder, jstr } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * P2 audit §54 — selitev naročila na drugo mizo (move).
@@ -74,20 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         await tx.table.updateMany({ where: { id: fromTableId, status: 'occupied' }, data: { status: 'available' } })
       }
     }
-    const __aIdM = nid()
-    const __chainM = await auditChainFields(tx, { action: 'ORDER_MOVE', entityType: 'Order', entityId: id, details: jstr({ fromTableId, toTableId: tableId, tableNumber: table.number, orderNumber: order.orderNumber, by: user.name }), locationId: order.locationId, id: __aIdM })
-    await tx.auditLog.create({
-      data: {
-        ...__chainM,
-        id: __aIdM,
-        userId: user.sub,
-        action: 'ORDER_MOVE',
-        entityType: 'Order',
-        entityId: id,
-        details: jstr({ fromTableId, toTableId: tableId, tableNumber: table.number, orderNumber: order.orderNumber, by: user.name }),
-        locationId: order.locationId,
-      },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_MOVE', entityType: 'Order', entityId: id, details: jstr({ fromTableId, toTableId: tableId, tableNumber: table.number, orderNumber: order.orderNumber, by: user.name }), locationId: order.locationId })
   })
 
   await publishEvent('OrderMoved', {

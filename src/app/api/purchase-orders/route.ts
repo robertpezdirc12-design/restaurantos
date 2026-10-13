@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { poNumberFor, computeTotalsCents, computeLineCents, type PoStatus } from '@/lib/procurement'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #1 (triage ②) — nabava: nabavna naročila dobavitelju.
@@ -199,15 +199,7 @@ export async function POST(req: NextRequest) {
   }
   if (!po) return fail('Ustvarjanje naročila ni uspelo (številčenje).', 500)
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'PO_CREATE', entityType: 'PurchaseOrder', entityId: po.id, details: jstr({ poNumber: po.poNumber, supplierId, supplierName: supplier.name, lines: lines.length, subtotalCents: totals.subtotalCents, vatCents: totals.vatCents, totalCents: totals.totalCents, locationId, }), id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'PO_CREATE',
-      entityType: 'PurchaseOrder',
-      entityId: po.id,
-      details: jstr({
+  await writeAudit(db, { userId: user.sub, action: 'PO_CREATE', entityType: 'PurchaseOrder', entityId: po.id, details: jstr({
         poNumber: po.poNumber,
         supplierId,
         supplierName: supplier.name,
@@ -216,9 +208,7 @@ export async function POST(req: NextRequest) {
         vatCents: totals.vatCents,
         totalCents: totals.totalCents,
         locationId,
-      }),
-    },
-  })
+      }) })
 
   return ok(
     {

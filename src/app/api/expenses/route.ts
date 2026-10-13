@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { num, nid, r2, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
 import { getApAttachmentIndex, getApAttachments } from '@/lib/ap-attachments'
 import { pushEvent, apNewPushPayload } from '@/lib/push'
@@ -185,26 +185,7 @@ export async function POST(req: NextRequest) {
     return created
   })
   // 33-c (audit §6): ustvarjanje stroška je zdaj revidirano (prej brez revizije)
-  const __aId = nid(); const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'EXPENSE_CREATE',
-    entityType: 'AccountsPayable',
-    entityId: row.id,
-    details: jstr({ category: category || 'OSTALO', amount: r2(amount), supplier: supplier.name, description: description.slice(0, 120), apNumber: row.apNumber }),
-    locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'EXPENSE_CREATE',
-      entityType: 'AccountsPayable',
-      entityId: row.id,
-      details: jstr({ category: category || 'OSTALO', amount: r2(amount), supplier: supplier.name, description: description.slice(0, 120), apNumber: row.apNumber }),
-      locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'EXPENSE_CREATE', entityType: 'AccountsPayable', entityId: row.id, details: jstr({ category: category || 'OSTALO', amount: r2(amount), supplier: supplier.name, description: description.slice(0, 120), apNumber: row.apNumber }), locationId: locationId })
   // OPS-11 val 2 (v1.81.0) — AP_NEW push on the manual AP (expense) create; fire-and-forget,
   // notification-matrix aware (same contract as the eSLOG import path — never blocks/fails).
   void pushEvent(

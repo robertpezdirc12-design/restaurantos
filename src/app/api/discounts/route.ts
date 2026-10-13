@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail, isCentralRole, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #1 §6 — popusti/promocije + Happy Hour: CRUD Discount modela.
@@ -110,25 +110,6 @@ export async function POST(req: NextRequest) {
 
   const created = await db.discount.create({ data: { id: nid(), ...discountPayload(body, locationId) } })
   // 33-c: chain polja (tamper-evidentna veriga)
-  const __aId = nid(); const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'DISCOUNT_CREATED',
-    entityType: 'Discount',
-    entityId: created.id,
-    details: jstr({ name: created.name, type: created.type, amount: created.amount, triggerType: created.triggerType, happyDays: created.happyDays, happyFromHour: created.happyFromHour, happyToHour: created.happyToHour, targetCategoryIds: created.targetCategoryIds }),
-    locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'DISCOUNT_CREATED',
-      entityType: 'Discount',
-      entityId: created.id,
-      details: jstr({ name: created.name, type: created.type, amount: created.amount, triggerType: created.triggerType, happyDays: created.happyDays, happyFromHour: created.happyFromHour, happyToHour: created.happyToHour, targetCategoryIds: created.targetCategoryIds }),
-      locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'DISCOUNT_CREATED', entityType: 'Discount', entityId: created.id, details: jstr({ name: created.name, type: created.type, amount: created.amount, triggerType: created.triggerType, happyDays: created.happyDays, happyFromHour: created.happyFromHour, happyToHour: created.happyToHour, targetCategoryIds: created.targetCategoryIds }), locationId: locationId })
   return ok({ discount: created }, 201)
 }

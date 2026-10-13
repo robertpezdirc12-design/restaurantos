@@ -7,8 +7,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { totpVerify, generateRecoveryCodes, recoveryHashesToStore } from '@/lib/mfa'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 export async function POST(req: NextRequest) {
   const user = await requireAuth(req)
@@ -40,11 +40,7 @@ export async function POST(req: NextRequest) {
       mfaRecoveryCodes: jstr(recoveryHashesToStore(recoveryCodes)),
     },
   })
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'MFA_ENABLED', entityType: 'Employee', entityId: employee.id, details: 'MFA aktivirana (TOTP); 8 recovery kod izdanih (shranjeni hashi).', locationId: user.loc, id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2, id: __aId2, userId: employee.id, action: 'MFA_ENABLED', entityType: 'Employee', entityId: employee.id,
-      details: 'MFA aktivirana (TOTP); 8 recovery kod izdanih (shranjeni hashi).', locationId: user.loc },
-  }).catch(() => {})
+  await writeAudit(db, { userId: employee.id, action: 'MFA_ENABLED', entityType: 'Employee', entityId: employee.id, details: 'MFA aktivirana (TOTP); 8 recovery kod izdanih (shranjeni hashi).', locationId: user.loc }).catch(() => {})
 
   return ok({ enabled: true, recoveryCodes }, 200)
 }

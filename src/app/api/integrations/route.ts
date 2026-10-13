@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { jparse, jstr, nid } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { maskIntegrationConfig, stripMaskedConfig } from '@/lib/integration-mask'
 
 /**
@@ -85,19 +85,7 @@ export async function POST(req: NextRequest) {
       config: jstr(config),
     },
   })
-  const __aIdI = nid(); const __chainI = await auditChainFields(db, {
-    action: 'INTEGRATION_CREATED', entityType: 'Integration', entityId: id,
-    details: jstr({ name: row.name, type: row.type, provider: row.provider, by: user.name }),
-    locationId: row.locationId, id: __aIdI,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chainI, id: __aIdI, userId: user.sub,
-      action: 'INTEGRATION_CREATED', entityType: 'Integration', entityId: id,
-      details: jstr({ name: row.name, type: row.type, provider: row.provider, by: user.name }),
-      locationId: row.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_CREATED', entityType: 'Integration', entityId: id, details: jstr({ name: row.name, type: row.type, provider: row.provider, by: user.name }), locationId: row.locationId })
   await publishEvent('IntegrationCreated', { entityType: 'Integration', entityId: id, payload: { name: row.name, provider: row.provider } })
   return ok({ integration: { ...row, config: jstr(config) } }, 201)
 }

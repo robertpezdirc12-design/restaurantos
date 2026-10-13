@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'node:crypto'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail, forbidden } from '@/lib/api'
-import { nid, jstr, jparse, num } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr, jparse, num } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 import { runDueRecurringRules } from '@/lib/recurring-run'
 import { sendDailyDigest, type OverdueApEntry } from '@/lib/daily-email'
 import { pushEvent, apOverduePushPayload } from '@/lib/push'
@@ -192,25 +192,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
 
   // 5) audit (append-only; never fails the response)
   try {
-    const aId = nid()
-    const chain = await auditChainFields(db, {
-      id: aId,
-      action: 'CRON_DAILY_RAN',
-      entityType: 'System',
-      entityId: `cron-daily-${todayKey}`,
-      details: jstr({ steps, errors }),
-    })
-    await db.auditLog.create({
-      data: {
-        ...chain,
-        id: aId,
-        userId: auth.userId,
-        action: 'CRON_DAILY_RAN',
-        entityType: 'System',
-        entityId: `cron-daily-${todayKey}`,
-        details: jstr({ steps, errors }),
-      },
-    })
+    await writeAudit(db, { userId: auth.userId, action: 'CRON_DAILY_RAN', entityType: 'System', entityId: `cron-daily-${todayKey}`, details: jstr({ steps, errors }) })
   } catch {
     // audit must never break the cron response
   }

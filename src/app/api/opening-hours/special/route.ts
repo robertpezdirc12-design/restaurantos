@@ -4,7 +4,7 @@ import { requirePermission, isResponse, ok, fail, requireUserLocation } from '@/
 import { assertOrgScope } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { validateSpecialDayInput, isValidDateKey, toLocalDateKey } from '@/lib/openinghours'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Posebni dnevi/prazniki odpiralnega časa (issue #1 triage ⑦).
@@ -59,13 +59,7 @@ export async function POST(req: NextRequest) {
       })
       added++
     }
-    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: locRes, details: jstr({ batch: 'slovenian-holidays', added, skipped: skipped.length, locationId: locRes }), id: __aId2 })
-    await db.auditLog.create({
-      data: { ...__chain2,
-        id: __aId2, userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: locRes,
-        details: jstr({ batch: 'slovenian-holidays', added, skipped: skipped.length, locationId: locRes }),
-      },
-    }).catch(() => {})
+    await writeAudit(db, { userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: locRes, details: jstr({ batch: 'slovenian-holidays', added, skipped: skipped.length, locationId: locRes }) }).catch(() => {})
     return ok({ added, skipped }, 201)
   }
 
@@ -84,13 +78,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  const __aId4 = nid(); const __chain4 = await auditChainFields(db, { action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: row.id, details: jstr({ date: row.date, isClosed: row.isClosed, openTime: row.openTime, closeTime: row.closeTime, note: row.note, locationId: locRes }), id: __aId4 })
-  await db.auditLog.create({
-    data: { ...__chain4,
-      id: __aId4, userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: row.id,
-      details: jstr({ date: row.date, isClosed: row.isClosed, openTime: row.openTime, closeTime: row.closeTime, note: row.note, locationId: locRes }),
-    },
-  }).catch(() => {})
+  await writeAudit(db, { userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: row.id, details: jstr({ date: row.date, isClosed: row.isClosed, openTime: row.openTime, closeTime: row.closeTime, note: row.note, locationId: locRes }) }).catch(() => {})
 
   return ok({ specialDay: row }, 201)
 }
@@ -111,13 +99,7 @@ export async function DELETE(req: NextRequest) {
   if (row.locationId && row.locationId !== locRes) return fail('Poseben dan ne pripada tej lokaciji.', 403)
 
   await db.specialOpeningDay.delete({ where: { id } })
-  const __aId6 = nid(); const __chain6 = await auditChainFields(db, { action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: id, details: jstr({ deleted: true, date: row.date, note: row.note, locationId: locRes }), id: __aId6 })
-  await db.auditLog.create({
-    data: { ...__chain6,
-      id: __aId6, userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: id,
-      details: jstr({ deleted: true, date: row.date, note: row.note, locationId: locRes }),
-    },
-  }).catch(() => {})
+  await writeAudit(db, { userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: id, details: jstr({ deleted: true, date: row.date, note: row.note, locationId: locRes }) }).catch(() => {})
 
   return ok({ deleted: true, id })
 }
@@ -161,13 +143,7 @@ export async function PATCH(req: NextRequest) {
     },
   })
 
-  const __aId8 = nid(); const __chain8 = await auditChainFields(db, { action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: id, details: jstr({ before: { date: row.date, isClosed: row.isClosed, openTime: row.openTime, closeTime: row.closeTime, note: row.note }, after: { date: updated.date, isClosed: updated.isClosed, openTime: updated.openTime, closeTime: updated.closeTime, note: updated.note } }), id: __aId8 })
-  await db.auditLog.create({
-    data: { ...__chain8,
-      id: __aId8, userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: id,
-      details: jstr({ before: { date: row.date, isClosed: row.isClosed, openTime: row.openTime, closeTime: row.closeTime, note: row.note }, after: { date: updated.date, isClosed: updated.isClosed, openTime: updated.openTime, closeTime: updated.closeTime, note: updated.note } }),
-    },
-  }).catch(() => {})
+  await writeAudit(db, { userId: perm.sub, action: 'OPENING_HOURS_SPECIAL', entityType: 'SpecialOpeningDay', entityId: id, details: jstr({ before: { date: row.date, isClosed: row.isClosed, openTime: row.openTime, closeTime: row.closeTime, note: row.note }, after: { date: updated.date, isClosed: updated.isClosed, openTime: updated.openTime, closeTime: updated.closeTime, note: updated.note } }) }).catch(() => {})
 
   return ok({ specialDay: updated })
 }

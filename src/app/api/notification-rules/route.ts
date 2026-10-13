@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 import { PUSH_EVENT_TYPES, getNotificationRulesMarker, type NotificationRules } from '@/lib/push'
 
 /**
@@ -82,17 +82,7 @@ export async function PUT(req: NextRequest) {
     })
   }
 
-  const __aId = nid()
-  const __chain = await auditChainFields(db, {
-    action: 'NOTIFICATION_RULES_UPDATED',
-    entityType: 'Integration',
-    entityId: existing?.id || RULES_MARKER,
-    details: jstr({ events: Object.keys(clean), by: user.name }),
-    id: __aId,
-  })
-  await db.auditLog.create({
-    data: { ...__chain, id: __aId, userId: user.sub, action: 'NOTIFICATION_RULES_UPDATED', entityType: 'Integration', entityId: existing?.id || RULES_MARKER, details: jstr({ events: Object.keys(clean), by: user.name }) },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'NOTIFICATION_RULES_UPDATED', entityType: 'Integration', entityId: existing?.id || RULES_MARKER, details: jstr({ events: Object.keys(clean), by: user.name }) })
 
   return ok({ rules: clean })
 }

@@ -4,7 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { apNumberFor, apLineTotalGross, parsePaymentTermsDays } from '@/lib/procurement'
 import { parseEslog, type EslogInvoice } from '@/lib/eslog'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { upsertApAttachments, oversizeNote, type ApAttachmentMeta } from '@/lib/ap-attachments'
 import { pushEvent, apNewPushPayload } from '@/lib/push'
 
@@ -57,10 +57,7 @@ async function saveAttachments(userId: string, apId: string, apNumber: string, a
         .update({ where: { id: apId }, data: { notes: `${base} ${oversizeNote(droppedBytes)}`.trim() } })
         .catch(() => undefined)
     }
-    const __aId = nid(); const __chain = await auditChainFields(db, { action: 'ESLOG_ATTACHMENTS_SAVED', entityType: 'AccountsPayable', entityId: apId, details: jstr({ apNumber, saved, truncated, droppedBytes }), id: __aId })
-    await db.auditLog.create({
-      data: { ...__chain, id: __aId, userId, action: 'ESLOG_ATTACHMENTS_SAVED', entityType: 'AccountsPayable', entityId: apId, details: jstr({ apNumber, saved, truncated, droppedBytes }) },
-    })
+    await writeAudit(db, { userId: userId, action: 'ESLOG_ATTACHMENTS_SAVED', entityType: 'AccountsPayable', entityId: apId, details: jstr({ apNumber, saved, truncated, droppedBytes }) })
     return saved
   } catch (e) {
     // archive must never break the import — details only
@@ -193,15 +190,7 @@ export async function POST(req: NextRequest) {
   // OPS-10 val 3 — best-effort attachment archive (never fails the import)
   const attachmentsSaved = await saveAttachments(user.sub, ap.id, ap.apNumber, ap.notes || '', inv)
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'ESLOG_IMPORTED', entityType: 'AccountsPayable', entityId: ap.id, details: jstr({ apNumber: ap.apNumber, invoiceNumber: inv.invoiceNumber, supplierId: supplier.id, supplierName: supplier.name, supplierTaxId: inv.supplier.taxId, subtotal, vatAmount, totalAmount, lines: apLines.length, dueDate: dueDate.toISOString(), locationId: user.loc || null, }), id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'ESLOG_IMPORTED',
-      entityType: 'AccountsPayable',
-      entityId: ap.id,
-      details: jstr({
+  await writeAudit(db, { userId: user.sub, action: 'ESLOG_IMPORTED', entityType: 'AccountsPayable', entityId: ap.id, details: jstr({
         apNumber: ap.apNumber,
         invoiceNumber: inv.invoiceNumber,
         supplierId: supplier.id,
@@ -213,9 +202,7 @@ export async function POST(req: NextRequest) {
         lines: apLines.length,
         dueDate: dueDate.toISOString(),
         locationId: user.loc || null,
-      }),
-    },
-  })
+      }) })
 
   // OPS-11 val 2 (v1.81.0) — AP_NEW push (new supplier invoice recorded). Fire-and-forget,
   // notification-matrix aware; pushEvent swallows its own errors so the import NEVER fails

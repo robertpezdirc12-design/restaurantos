@@ -3,8 +3,8 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { tableStatusToDB, tableStatusToUI } from '@/lib/map'
-import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Issue #4 §1: spreminjanje statusov miz je natakrjska akcija (orders.create)
@@ -41,25 +41,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (locRes) return locRes
   await db.table.delete({ where: { id } })
   // 33-c (audit §6): brisanje mize je zdaj revidirano (prej brez revizije)
-  const __aId = nid(); const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'TABLE_DELETE',
-    entityType: 'Table',
-    entityId: id,
-    details: jstr({ number: existing.number }),
-    locationId: existing.locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'TABLE_DELETE',
-      entityType: 'Table',
-      entityId: id,
-      details: jstr({ number: existing.number }),
-      locationId: existing.locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'TABLE_DELETE', entityType: 'Table', entityId: id, details: jstr({ number: existing.number }), locationId: existing.locationId })
   return ok({ deleted: true })
 }

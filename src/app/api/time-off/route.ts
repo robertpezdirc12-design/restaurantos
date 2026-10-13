@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { resolvePermissions } from '@/lib/permissions'
 import type { AuthPayload } from '@/lib/auth'
@@ -120,18 +120,7 @@ export async function PATCH(req: NextRequest) {
       where: { id },
       data: { status, reviewedBy: canManage ? user.sub : row.reviewedBy, reviewedAt: new Date() },
     })
-    const __aId = nid()
-    const __chain = await auditChainFields(tx, {
-      action: 'TIME_OFF_DECISION',
-      entityType: 'TimeOffRequest',
-      entityId: id,
-      details: jstr({ status, employeeId: row.employeeId, by: user.name }),
-      locationId: row.Employee.locationId,
-      id: __aId,
-    })
-    await tx.auditLog.create({
-      data: { ...__chain, id: __aId, userId: user.sub, action: 'TIME_OFF_DECISION', entityType: 'TimeOffRequest', entityId: id, details: jstr({ status, employeeId: row.employeeId, by: user.name }), locationId: row.Employee.locationId },
-    })
+    await writeAudit(tx, { userId: user.sub, action: 'TIME_OFF_DECISION', entityType: 'TimeOffRequest', entityId: id, details: jstr({ status, employeeId: row.employeeId, by: user.name }), locationId: row.Employee.locationId })
   })
 
   // OPS-8 val 2 (v1.72.0): push to the requester on status change (via notification matrix;

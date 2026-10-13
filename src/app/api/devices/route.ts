@@ -6,7 +6,7 @@ import { assertOrgScope } from '@/lib/tenant'
 import { nid } from '@/lib/map'
 import { rateLimitBoolAsync } from '@/lib/rate-limit'
 import { clientIp } from '@/lib/guest'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /** Issue #4 §2.1: device token se ne vrača v polni obliki — samo masked prikaz. */
 function maskDeviceToken(token: string): string {
@@ -83,19 +83,7 @@ export async function POST(req: NextRequest) {
       lastSeenAt: new Date(),
     },
   })
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'DEVICE_CREATED', entityType: 'DeviceRegistry', entityId: row.id, details: `name=${name} type=${type} location=${location.id}`, locationId: location.id, id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'DEVICE_CREATED',
-      entityType: 'DeviceRegistry',
-      entityId: row.id,
-      details: `name=${name} type=${type} location=${location.id}`,
-      ipAddress: clientIp(req),
-      locationId: location.id,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'DEVICE_CREATED', entityType: 'DeviceRegistry', entityId: row.id, details: `name=${name} type=${type} location=${location.id}`, ipAddress: clientIp(req), locationId: location.id })
   // Enrollment moment: polni token se vrne TOČKO tukaj (UI ga pokaže enkrat)
   return ok({
     device: {

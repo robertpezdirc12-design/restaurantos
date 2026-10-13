@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { jstr, nid } from '@/lib/map'
+import { jstr } from '@/lib/map'
 import { describeLocationChanges, validateLocationInput } from '@/lib/multilocation'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Več poslovalnic (triage ⑧) — urejanje lokacije (settings.manage).
@@ -69,13 +69,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   try {
     const updated = await db.location.update({ where: { id }, data })
     const changes = describeLocationChanges(loc as unknown as Record<string, unknown>, data)
-    const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'LOCATION_UPDATE', entityType: 'Location', entityId: id, details: jstr({ name: updated.name, changes }), id: __aId2 })
-    await db.auditLog.create({
-      data: { ...__chain2,
-        id: __aId2, userId: user.sub, action: 'LOCATION_UPDATE', entityType: 'Location', entityId: id,
-        details: jstr({ name: updated.name, changes }),
-      },
-    }).catch(() => null)
+    await writeAudit(db, { userId: user.sub, action: 'LOCATION_UPDATE', entityType: 'Location', entityId: id, details: jstr({ name: updated.name, changes }) }).catch(() => null)
     return ok({ location: updated })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)

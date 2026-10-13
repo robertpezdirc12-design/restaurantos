@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, requireUserLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { mapTable, tableStatusToDB, nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -43,25 +43,6 @@ export async function POST(req: NextRequest) {
     },
   })
   // 33-c (audit §6): kreiranje mize je zdaj revidirano (prej brez revizije)
-  const __aId = nid(); const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'TABLE_CREATE',
-    entityType: 'Table',
-    entityId: table.id,
-    details: jstr({ number, capacity: table.capacity, area: table.area }),
-    locationId,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'TABLE_CREATE',
-      entityType: 'Table',
-      entityId: table.id,
-      details: jstr({ number, capacity: table.capacity, area: table.area }),
-      locationId,
-    },
-  })
+  await writeAudit(db, { userId: user.sub, action: 'TABLE_CREATE', entityType: 'Table', entityId: table.id, details: jstr({ number, capacity: table.capacity, area: table.area }), locationId: locationId })
   return ok({ table: mapTable(table) }, 201)
 }

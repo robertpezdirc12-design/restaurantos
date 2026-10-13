@@ -43,6 +43,7 @@
  */
 import { createHash } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
+import { nid } from '@/lib/map'
 
 /** DB klient (PrismaClient ali transakcijski klient) — oba izpolnjujeta TransactionClient. */
 export type ChainDb = Prisma.TransactionClient
@@ -260,4 +261,61 @@ export async function verifyAuditChain(
     prevChain = storedHash
   }
   return { ok: true, brokenAt: null, reason: null, checked: rows.length }
+}
+
+
+/**
+ * AUDIT-FIX v1.82.8 — centraliziran zapis AuditLog vrstice.
+ *
+ * Do tega commita je 124 API-mest pisalo trojček ročno (≈4 vrstice boilerplate vsak):
+ *   const __aId = nid()
+ *   const __chain = await auditChainFields(db, { id: __aId, action, entityType, entityId, details?, locationId? })
+ *   await db.auditLog.create({ data: { ...__chain, id: __aId, userId, action, entityType, entityId, details?, ipAddress?, locationId? } })
+ *
+ * writeAudit() združi vse tri korake v en klic z ENAKIMI semantikami:
+ *  - id = nid(); chain se izračuna PREJ create (ista zaporedja kot prej),
+ *  - polja, ki niso podana, se v data izpustijo (undefined) → isti DB defaulti
+ *    kot prej (details '{}', ipAddress '', locationId/userId/entityId NULL),
+ *  - details je string (jstr(...)): chain ga kanonizira (parse+sort), enako kot
+ *    prej — zapis in verifikacija ostajata bitno-identična,
+ *  - napake se širijo klicatelju; ognjevzdržni klici (npr. LOGIN_FAILED) obdržijo
+ *    .catch(() => {}) na klicnem mestu.
+ *
+ * Izven obsega (ostajajo ročni): haccpEntry veriga (drugi model), monitoring/errors
+ * (vrstico vrača v odgovoru), delivery/webhook + staff-shifts (nestandardne oblike).
+ */
+export interface WriteAuditOpts {
+  userId?: string | null
+  action: string
+  entityType: string
+  entityId?: string | null
+  /** Podrobnosti kot niz (jstr(...)) — kanonizira ga auditChainFields. */
+  details?: string
+  ipAddress?: string
+  locationId?: string | null
+}
+
+export async function writeAudit(prisma: ChainDb, opts: WriteAuditOpts): Promise<void> {
+  const id = nid()
+  const chain = await auditChainFields(prisma, {
+    action: opts.action,
+    entityType: opts.entityType,
+    entityId: opts.entityId ?? '',
+    details: opts.details,
+    locationId: opts.locationId,
+    id,
+  })
+  await prisma.auditLog.create({
+    data: {
+      ...chain,
+      id,
+      userId: opts.userId,
+      action: opts.action,
+      entityType: opts.entityType,
+      entityId: opts.entityId,
+      details: opts.details,
+      ipAddress: opts.ipAddress,
+      locationId: opts.locationId,
+    },
+  })
 }

@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok } from '@/lib/api'
-import { nid } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #1 sklop ⑦ — enkratna produkcijska migracija sheme (Neon Postgres):
@@ -51,17 +51,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const __aId2 = nid(); const __chain2 = await auditChainFields(db, { action: 'SCHEMA_MIGRATION_ISSUE1_S7', entityType: 'SpecialOpeningDay', entityId: 'special-opening-days', details: `applied=${applied.length} (aditivno, idempotentno)`, id: __aId2 })
-  await db.auditLog.create({
-    data: { ...__chain2,
-      id: __aId2,
-      userId: user.sub,
-      action: 'SCHEMA_MIGRATION_ISSUE1_S7',
-      entityType: 'SpecialOpeningDay',
-      entityId: 'special-opening-days',
-      details: `applied=${applied.length} (aditivno, idempotentno)`,
-    },
-  }).catch(() => {})
+  await writeAudit(db, { userId: user.sub, action: 'SCHEMA_MIGRATION_ISSUE1_S7', entityType: 'SpecialOpeningDay', entityId: 'special-opening-days', details: `applied=${applied.length} (aditivno, idempotentno)` }).catch(() => {})
 
   const columns = await db.$queryRawUnsafe<{ column_name: string }[]>(
     `SELECT column_name FROM information_schema.columns WHERE table_name = 'SpecialOpeningDay' ORDER BY ordinal_position`

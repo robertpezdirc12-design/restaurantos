@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
 import { db } from '@/lib/db'
-import { nid } from '@/lib/map'
+
 import { createOrderCore, OrderError } from '@/lib/ops'
 import {
   GuestError,
@@ -13,7 +13,7 @@ import {
   deviceAlive,
   GUEST_VISIBLE_ORDER_STATUS,
 } from '@/lib/guest'
-import { auditChainFields } from '@/lib/audit-chain'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Issue #3 — JAVNO oddajanje naročila (QR self-order + kiosk).
@@ -95,20 +95,7 @@ export async function POST(req: NextRequest) {
 
     if (!replayed) {
       // 33-c: chain polja (tamper-evidentna veriga)
-      const __aId = nid(); const __chain = await auditChainFields(db, { id: __aId, action: 'GUEST_ORDER_CREATED', entityType: 'Order', entityId: order.id, details: `vir=${orderSource} naročilo=#${order.orderNumber} postavke=${items.length}`, locationId })
-      await db.auditLog.create({
-        data: {
-          ...__chain,
-          id: __aId,
-          userId: null,
-          action: 'GUEST_ORDER_CREATED',
-          entityType: 'Order',
-          entityId: order.id,
-          details: `vir=${orderSource} naročilo=#${order.orderNumber} postavke=${items.length}`,
-          ipAddress: ip,
-          locationId,
-        },
-      })
+      await writeAudit(db, { userId: null, action: 'GUEST_ORDER_CREATED', entityType: 'Order', entityId: order.id, details: `vir=${orderSource} naročilo=#${order.orderNumber} postavke=${items.length}`, ipAddress: ip, locationId: locationId })
     }
 
     // Javni odgovor — brez občutljivih podatkov zaposlenih (status: DB 'open' → gostujoča beseda)

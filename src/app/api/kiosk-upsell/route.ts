@@ -13,8 +13,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { nid, jparse, jstr } from '@/lib/map'
-import { auditChainFields } from '@/lib/audit-chain'
+import { jparse, jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 import { KIOSK_UPSELL_MARKER, sanitizeUpsellConfig, type UpsellConfig } from '@/lib/upsell'
 
 /** Live menu item ids (all items — the config editor shows the whole menu). */
@@ -65,25 +65,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const details = { items: Object.keys(config).length, by: user.name }
-  const __aId = nid()
-  const __chain = await auditChainFields(db, {
-    id: __aId,
-    action: 'KIOSK_UPSELL_UPDATED',
-    entityType: 'Integration',
-    entityId: existing?.id || KIOSK_UPSELL_MARKER,
-    details,
-  })
-  await db.auditLog.create({
-    data: {
-      ...__chain,
-      id: __aId,
-      userId: user.sub,
-      action: 'KIOSK_UPSELL_UPDATED',
-      entityType: 'Integration',
-      entityId: existing?.id || KIOSK_UPSELL_MARKER,
-      details: jstr(details),
-    },
-  }).catch(() => null)
+  await writeAudit(db, { userId: user.sub, action: 'KIOSK_UPSELL_UPDATED', entityType: 'Integration', entityId: existing?.id || KIOSK_UPSELL_MARKER, details: jstr(details) }).catch(() => null)
 
   return ok({ config })
 }
