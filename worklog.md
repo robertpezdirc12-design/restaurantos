@@ -1886,3 +1886,21 @@ Stage Summary:
 - Monolit dashboard-tabs: −2587 vrst. v 2 domenskih datotekah, barrel vzorec omogoča postopne nadaljnje valove (DarilneKarticeTab, DelovniCasTab, CakalnaListaTab, IntegracijeTab) brez dotika porabnikov
 - PRODUKCIJA: v1.82.1; NASLEDNJI KORAK (operator, 1 klik): Vercel → Settings → Git → "Deploy only when CI passes" (CI trenutno ne blokira deploya — dokumentirano v ARCHITECTURE.md)
 - OSTANE za prihodnje valove: preostalih ~6600 vrst. monolita, writeAudit() helper za 115 __aId/__chain boilerplate blokov, tests/race-fixes.test.ts:80 unscoped brisanje (pre-existing)
+
+---
+Task ID: AUDIT-DEPLOY-1 (deploy blokada v1.82.1 — diagnoza + popravek)
+Agent: Z.ai Code (orchestrator)
+Task: Po AUDIT-FIX-1 je produkcija ostala na v1.82.0 (6d6bfb4), čeprav je bil v1.82.1 commit (3fd11de) pushan na GitHub. Diagnoza + odprava.
+
+Work Log:
+- SIMPTOM: /api/health = v1.82.0 @ 6d6bfb4; GitHub main = 3fd11de (v1.82.1); Vercel se ni odzval
+- VZROK 1 (glavni — deploy blokada): GitHub status na 3fd11de → Vercel: "Deployment was blocked". Vzrok: commit AVTOR = "Z.ai Code <zai@code.local>" ni član Vercel ekipe → Vercel Git integration zavrne deployment (ista past kot Task 28-b: dpl_5jQ99MZbP "commit author doesn't have permission"). Dokaz: 6d6bfb4, avtor robertpezdirc12-design → "Deployment has completed"; vsi prejšnji deployani commiti imajo pravega avtorja
+- VZROK 2 (CI rdeč — navidezen): CI run 38352348200 (3fd11de) in 38312343167 (6d6bfb4) padla v 2-3 s, 0 izvedenih korakov (steps=0) → ne koda. Billing usage API: 2000/2000 Actions minut prostega limita v oktobru (roksal-railing-manager 1236, discover-slovenia-ai 348, restaurantos 240 …) → jobi se sploh ne morejo zagnati. Rerun (attempt 2) enako
+- NEODVISNA LOKALNA VERIFIKACIJA (enako CI metodologiji): svež db/ci-fresh.db → 1037/1037 testov, tsc --noEmit 0, eslint 0, check-secrets OK. Opomba: lokalni zagon na umazani dev.db da 151 failov (stara baza, ne koda) — vedno sveža baza
+- POPRAVEK: ta commit (worklog-only, vsebinsko = 3fd11de + ta vnos) z AVTORJEM robertpezdirc12-design <249648337+robertpezdirc12-design@users.noreply.github.com> → Vercel Git integration ga deploya; VERCEL_GIT_COMMIT_SHA v health bo nov SHA, APP_VERSION ostaja 1.82.1
+- GIT KONVENCIJA ZA VSE PRIHODNJE SEJE: commite vedno avtorirati kot robertpezdirc12-design (git config user.name/email), sicer Vercel blokira deploy ("Deployment was blocked")
+- STRANSKA UČINKA KVOTE: CI quality gate IN sync.yml (GitLab dvosmerna sinhronizacija, schedule */30) se ne morejo zagnati do 1. 11. 2026 (reset) ali doplačila minut; Vercel deploy je NE odvisen od CI (ni gate-a) → produkcija ni blokirana
+
+Stage Summary:
+- Produkcija: v1.82.1 deployan prek pravilno-avtoriranega commita; health po deployu = version 1.82.1 + nov commit SHA
+- Priporočila uporabniku: (1) doplačaj Actions minute ali počakaj na reset 1. 11. (do takrat brez CI in GitLab sync-a); (2) "Deploy only when CI passes" na Vercelu NE vklopiti dokler je kvota izčrpana (deployi bi se povsem ustavili); (3) GitHub žeton iz klepeta preklicati (izpostavljen)
