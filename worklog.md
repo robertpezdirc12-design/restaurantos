@@ -1999,3 +1999,18 @@ Work Log:
 
 Stage Summary:
 - monolit = 1005 vrst.: StaffScheduleTab+MenuEngineeringTab+KdsStatsSection+barrel; val 7 (zadnji) jih izprazni v urnik-izmen-tab + analitika-tab → čisti barrel
+
+---
+Task ID: AUDIT-FIX-7 (val 7, ZADNJI — monolit izpraznjen)
+Agent: main (Z.ai Code)
+Task: zaključni val razreza dashboard-tabs.tsx → čisti barrel.
+
+Work Log:
+- tabs/urnik-izmen-tab.tsx (380): StaffScheduleTab + StaffShiftRowT/TimeOffRowT + SHIFT_TYPE_LABELS/SHIFT_STATUS_BADGE + isoDay — byte-identično (365/365)
+- tabs/analitika-tab.tsx (599): MenuEngineeringTab (Kasavana-Smith: Me* tipi+MeScatterTooltip) + KdsStatsSection (Kds* tipi+fmtMin+kdsHeatClass) — byte-identično (580/580)
+- monolit 1005→41 vrst. (−99,5 % od 9217): dashboard-tabs.tsx je od zdaj ČISTI BARREL — nič lastne logike, samo re-exporti + zgodovina valov v doc komentarju; vsi uvozi monolita odpadli
+- VERIFIKACIJA: tsc 0, eslint 0, svež ci-fresh.db 1037/1037, browser E2E Urnik (Nova izmena/zahtevaj prostost/datumska nav), Menu inženiring (prazno stanje pravilno), Kuhinja→KDS Statistika priprave (heatmap+pragočasnost ≤5/5-10/>10) + Pregled, 0 console/page error; dev.log čist; zero DDL, zero i18n
+
+Stage Summary:
+- RAZREZ MONOLITA DOKONČAN: 9217 vrst. → 12 domenskih datotek v tabs/ (~10.400 vrst. skupaj) + 41-vrstični barrel; vsak premik byte-identičen (python diff dokazi v 7 commitih v1.82.1→v1.82.7)
+- preostali kandidati za prihodnje: writeAudit() helper (115× __aId/__chain boilerplate)
