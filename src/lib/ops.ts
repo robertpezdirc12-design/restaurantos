@@ -3,6 +3,19 @@
  * Skupna logika za POST /api/orders IN POST /api/sync (replay offline operacij),
  * da offline ustvarjena naročila gredo skozi ISTEI preverjanja kot online.
  * Idempotencija: Order.idempotencyKey (unique) — isti clientOperationId vrne obstoječe naročilo.
+ *
+ * Issue #57 (P1): idempotencyKey je KLIENTOV identifikator operacije, NE dovoljenje.
+ * Replay (pre-lookup in P2002 twin veja) vrne obstoječe naročilo SAMO, če pripada
+ * TRENUTNO VALIDIRANEMU kontekstu (lokacija + miza + tip + vir). Drugačen kontekst
+ * → 409 z generičnim sporočilom, BREZ podatkov tujega naročila. Enako pravilo kot
+ * #50 (plačilni replay), #51 (kartice), #56 (popis), #65 (eSLOG): ključ ni poverilnica.
+ *
+ * NAMERNO PRAVILO (premik mize): če je bilo naročilo legitimno premaknjeno prek
+ * /api/orders/[id]/move, retry starega konteksta (npr. QR mize) vrne 409 — klient
+ * mora stanje ponovno prebrati (javna pot ima ločen status endpoint). Fail-closed.
+ * EmployeeId NI del konteksta: sistemski viri (delivery webhook) razrešijo
+ * zaposlenega nestabilno (findFirst nad aktivnimi), zato operater ne sme biti
+ * identiteta replaya; kontekst = kanonična operacija (lokacija/miza/tip/vir).
  */
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
@@ -76,6 +89,49 @@ export interface CreateOrderOptions {
   allowFirstLocationFallback?: boolean
 }
 
+/** Kanonični kontekst operacije za idempotentni replay (issue #57). */
+export interface OrderReplayContext {
+  locationId: string
+  tableId: string | null
+  /** DB-normaliziran tip (orderTypeToDB) */
+  type: string
+  /** izvor naročila: pos | qr | kiosk (privzeto 'pos') */
+  orderSource: string
+}
+
+/**
+ * Issue #57: obstoječe naročilo sme biti vrnjeno kot replay SAMO pri ujemanju
+ * trenutno validiranega konteksta. Čistega jedra NE meče — vrača boolean, da ga
+ * lahko testi in obe veji (pre-lookup + P2002 twin) uporabita enako.
+ */
+export function orderReplayContextMatches(
+  existing: { locationId: string; tableId: string | null; type: string; orderSource: string },
+  ctx: OrderReplayContext
+): boolean {
+  return (
+    existing.locationId === ctx.locationId &&
+    (existing.tableId ?? null) === ctx.tableId &&
+    (existing.type || 'dine-in') === ctx.type &&
+    (existing.orderSource || 'pos') === ctx.orderSource
+  )
+}
+
+/**
+ * Issue #57: replay-context varovalka — ob NE-ujemanju vrže 409 z generičnim
+ * sporočilom (brez vrstic/zneskov/številke tujega naročila).
+ */
+function assertReplayContext(
+  existing: { locationId: string; tableId: string | null; type: string; orderSource: string },
+  ctx: OrderReplayContext
+): void {
+  if (!orderReplayContextMatches(existing, ctx)) {
+    throw new OrderError(
+      'Idempotency ključ je že uporabljen v drugem kontekstu (druga lokacija, miza, tip ali vir naročila) — naročilo ni bilo ustvarjeno.',
+      409
+    )
+  }
+}
+
 /** Idempotentno ustvarjanje naročila (transakcija: sekvenca + naročilo + artikli + miza) */
 export async function createOrderCore(
   input: CreateOrderInput,
@@ -111,13 +167,25 @@ export async function createOrderCore(
       ? input.clientOperationId.trim().slice(0, 64)
       : null
 
-  // Idempotentni replay: isti clientOperationId → vrni obstoječe naročilo (ne ustvari dvojnega)
+  // Issue #57: kanonični kontekst operacije — replay je dovoljen SAMO zanj
+  const replayCtx: OrderReplayContext = {
+    locationId,
+    tableId: input.tableId || null,
+    type: orderTypeToDB(input.delivery ? 'DELIVERY' : (input.type || 'DINE_IN')),
+    orderSource: input.orderSource || 'pos',
+  }
+
+  // Idempotentni replay: isti clientOperationId + ISTI kontekst → vrni obstoječe
+  // naročilo (ne ustvari dvojnega). Drug kontekst → 409 (assertReplayContext).
   if (idempotencyKey) {
     const existing = await db.order.findUnique({
       where: { idempotencyKey },
       include: orderInclude,
     })
-    if (existing) return { order: mapOrder(normalizeOrder(existing)), replayed: true }
+    if (existing) {
+      assertReplayContext(existing, replayCtx)
+      return { order: mapOrder(normalizeOrder(existing)), replayed: true }
+    }
   }
 
   let subtotal = 0
@@ -279,9 +347,14 @@ export async function createOrderCore(
       lastErr = e
       const code = (e as { code?: string })?.code
       // P2002 na idempotencyKey → vzporedni dvojnik je zmagal: vrni njegovo naročilo
+      // SAMO, če pripada trenutnemu kontekstu (issue #57 — isti guard kot pre-lookup;
+      // tuji dvojnik = kollision ključa → 409, ne tujih podatkov)
       if (code === 'P2002' && idempotencyKey) {
         const twin = await db.order.findUnique({ where: { idempotencyKey }, include: orderInclude })
-        if (twin) return { order: mapOrder(normalizeOrder(twin)), replayed: true }
+        if (twin) {
+          assertReplayContext(twin, replayCtx)
+          return { order: mapOrder(normalizeOrder(twin)), replayed: true }
+        }
       }
       // P2002 na orderNumber (sočasna sekvenca na Postgresu) → ponovi z svežim max
       if (code !== 'P2002') break

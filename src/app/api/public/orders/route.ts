@@ -108,7 +108,8 @@ export async function POST(req: NextRequest) {
     })
   } catch (e) {
     if (e instanceof GuestError) return fail(e.message, e.status)
-    if (e instanceof OrderError) return fail(e.message, 400)
+    // Issue #57: replay-context konflikt nosi svoj status (409), ne generični 400
+    if (e instanceof OrderError) return fail(e.message, e.status || 400)
     console.error('public order error', e)
     return fail('Naročila ni bilo mogoče varno oddati. Poskusi znova.', 500)
   }

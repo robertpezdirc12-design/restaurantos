@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, requireUserLocation, isResponse, ok, fail, locationScope } from '@/lib/api'
-import { assertOrgScope } from '@/lib/tenant'
+import { assertOrgScope, guardResource } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
@@ -112,7 +112,21 @@ export async function POST(req: NextRequest) {
     ? body.idempotencyKey.trim().slice(0, 64) : null
   if (idempotencyKey) {
     const existing = await db.stocktake.findFirst({ where: { idempotencyKey }, include: { StocktakeItem: true } })
-    if (existing) return ok({ stocktake: mapStocktakeFull(existing), replayed: true }, 200)
+    if (existing) {
+      // Issue #56 (P1): idempotenca = isti ključ + ISTI lokacijski kontekst.
+      // Ključ določi klient in je identifikator operacije, NE poverilnica —
+      // popis (vrstice, količine, variance) DUGE lokacije/organizacije se nikoli
+      // ne vrne (isti princip kot #50/#51/#57/#65). Kanonični payload identiteta je
+      // implicitno zajeta: isti ključ + ista lokacija = snapshot istih artiklov.
+      if (existing.locationId !== locationId) {
+        return fail('Idempotency ključ je že uporabljen v drugem kontekstu (druga lokacija) — popis ni bil ustvarjen.', 409)
+      }
+      // org meja: enaka lokacija je že pokrita z assertOrgScope zgoraj (isti
+      // locationId); guardResource je obrambna redundanca po vzorcu točkovnih rut.
+      const guard = await guardResource(user, existing.locationId)
+      if (guard) return guard
+      return ok({ stocktake: mapStocktakeFull(existing), replayed: true }, 200)
+    }
   }
 
   const open = await db.stocktake.findFirst({ where: { locationId, status: { in: [...OPEN_STATUSES] } }, select: { id: true } })
@@ -122,29 +136,44 @@ export async function POST(req: NextRequest) {
   if (items.length === 0) return fail('Ni artiklov zaloge na tej lokaciji — popis ni mogoč.', 400)
 
   const id = nid()
-  const created = await db.stocktake.create({
-    data: {
-      id,
-      locationId,
-      status: 'DRAFT',
-      note: String(body?.note || '').slice(0, 500),
-      createdByName: user.name,
-      idempotencyKey,
-      StocktakeItem: {
-        create: items.map((it) => ({
-          id: nid(),
-          inventoryItemId: it.id,
-          itemName: it.name,
-          unit: it.unit,
-          expectedQuantity: it.quantity,
-          costPerUnit: it.costPerUnit,
-          countedQuantity: null,
-          lineNote: '',
-        })),
+  let created
+  try {
+    created = await db.stocktake.create({
+      data: {
+        id,
+        locationId,
+        status: 'DRAFT',
+        note: String(body?.note || '').slice(0, 500),
+        createdByName: user.name,
+        idempotencyKey,
+        StocktakeItem: {
+          create: items.map((it) => ({
+            id: nid(),
+            inventoryItemId: it.id,
+            itemName: it.name,
+            unit: it.unit,
+            expectedQuantity: it.quantity,
+            costPerUnit: it.costPerUnit,
+            countedQuantity: null,
+            lineNote: '',
+          })),
+        },
       },
-    },
-    include: { StocktakeItem: true },
-  })
+      include: { StocktakeItem: true },
+    })
+  } catch (e) {
+    // Issue #56: sočasna dvojnika istega (locationId, idempotencyKey) — @@unique
+    // v shemi; zmagovalni poskus že obstaja → vrni NJEGOV popis kot replay
+    // (isti kontekst — key+location), brez 500 in brez dvojnika.
+    if ((e as { code?: string })?.code === 'P2002' && idempotencyKey) {
+      const winner = await db.stocktake.findFirst({
+        where: { idempotencyKey, locationId },
+        include: { StocktakeItem: true },
+      })
+      if (winner) return ok({ stocktake: mapStocktakeFull(winner), replayed: true }, 200)
+    }
+    throw e
+  }
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_OPEN', entityType: 'Stocktake', entityId: id, details: jstr({ locationId, lines: items.length, by: user.name }), locationId: locationId })
   await publishEvent('StocktakeOpened', { entityType: 'Stocktake', entityId: id, payload: { locationId, lines: items.length, by: user.name } }).catch(() => undefined)

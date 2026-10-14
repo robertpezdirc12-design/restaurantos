@@ -177,7 +177,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // Issue #5 (v1.88.0): +11 rut (webhooks, monitoring/errors, integrations, locations/stats,
     // locations, kitchen/stats, kitchen, menu-engineering, recipes, discounts, purchase-orders —
     // org allow-lista namesto ročnih centralnih bypassov) → 47
-    expect(wired.length).toBe(47)
+    // Issue #65 (v1.96.0): import-eslog (apVisibleInScope — duplicate/replay tenant-scope,
+    // list↔replay konsistentnost s /api/expenses) → 48
+    expect(wired.length).toBe(48)
   })
 })
 
