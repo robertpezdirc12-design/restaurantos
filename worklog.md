@@ -2620,3 +2620,30 @@ Stage Summary:
 - 24 odprtih issue-jev; NASLEDNJI VAL kandidati: P1 #38 (EventLog tenant ključ — majhna) ali #29 (naprava claim CAS) ali #26 (giftcard izolacija); priporočam #38+#29 (enostavna zaklepna vzorca)
 - UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): (1) **VAPID rotacija ŠE VEDNO odprta** (izpostavitev v1.88-1.89); (2) rotacija GitHub+GitLab žetonov (oba živa v pogovoru); (3) UPSTASH env neobvezno (skupni rate limit); (4) MFA vpis za info@+vodja@ pred MFA_ENFORCE_AFTER
 - OSTANKI NA PRODUKCIJI (poimenovani, inertni): naročilo #698 CANCELLED (note verify199-live); popis 'verify199 — serializacija' CANCELLED (brez popisa zaloge); starejši: verify97 loyalty računi, #696/#697 naročila, SSRF-verify-30 integracija
+
+---
+
+Task ID: v1.100.0-session
+Agent: glavni agent (Z.ai)
+Task: "odlucno nadaljuj" — prejeti povzetek ZASTAREL (zahteval #23+#42, že zaprta v v1.90.0) → reverifikacija → izveden priporočeni val #38 (EventLog tenant ključ) + #29 (atomaren claim vpisne kode).
+
+Work Log:
+- REVERIFIKACIJA: repo 25df798 usklajen; produkcija v1.99.0 healthy; #23/#42 zaprta → val #38+#29 po v1.99.0 priporočilu (24 odprtih)
+- #38 SHEMA: aditivni EventLog.locationId (TEXT NULL + EventLog_locationId_idx, OBE shemi; BREZ FK — izbrisana lokacija pusti fail-closed ID); DDL ruta /api/admin/migrate-issue38 (idempotentna, IF NOT EXISTS) + konzola issue38 + KNOWN_DRIFTS issue38-event-tenant + i18n mig.issue38.desc SL/HR
+- #38 publishEvent: opts.locationId iz PREVERJENE entitete (vseh 26 klicnih mest posodobljenih — order/stocktake/waste/inventory/waitlist/integration/receipt/kitchen); IZRECNO prepovedano izpeljevanje iz klientovega payload-a; detached dispatch ostaja sistemski (brez razkritja)
+- #38 GET /api/events: eventTenantScope (org-bound → strog seznam lokacij org; bootstrap → global break-glass; neznana org → fail-closed prazno) + števci nad ISTIM where; eventScopeWhere helper; POPRAVLJEN LATENTNI HROŠČ: Number(null)=0 → odsoten take pomenil take=1 (pregled vrnil SAMO najnovejši dogodek) — zdaj privzeto 50
+- #38 dispatch: requireCentralRole namesto settings.manage (MANAGER ne more več globalno dispatchati) + tenant scope (org = SAMO svoji; NULL = samo bootstrap) + EVENTS_DISPATCH audit (števke, brez vsebine); dispatchPending(limit, {locationIdIn})
+- #29 devices/enroll PUT: ATOMAREN CAS claim (id+enrollmentCode+claimedAt:null+revokedAt:null+expiresAt>now → updateMany); 0 vrstic → sveža preberba → 410/403/404 BREZ tokena; token @unique na deviceId → natanko en zapis, izključno v odgovoru zmagovalke; POST: preverba trka kode z živimi prijavami (≤5 regeneracij) — unique indeks NAMENOMA izpuščen (legacy duplikati → destruktivna migracija bi bila potrebna)
+- TESTI: tests/issue38-event-tenant-scope.test.ts ×15 (I38Probe tip sonde — akumulirana baza ne more potisniti sond čez take-limit; sejanje BREZ publishEvent v beforeAll — detached dispatch bi predelal stanja) + tests/issue29-device-enroll.test.ts ×10 (per-IP x-forwarded-for + __resetRateLimitForTests) + drift-check ×4 + posodobljeni registra (14→15 migracij) → 1470/1470 (91 datotek); tsc 0; eslint 0; secrets OK; validate ×2
+- DEPLOY 26aafcf → health 1.100.0 connected (~45 s) → DDL APLICIRAN TAKOJ (migrate-issue38: ALTER TABLE + CREATE INDEX, alreadyApplied:false)
+- ŽIVA VERIFIKACIJA #38: info@ (loc null) GET events → 200 PRAZNO 0/0 (prej GLOBALNI pregled — vrzel); vodja@ MANAGER GET → 403; vodja@ dispatch → 403 (prej settings.manage = globalni dispatch!); info@ dispatch → 403 'Tenant obseg ni zanesljivo izpeljan'; konzola issue38 applied; event-write pot po DDL (popis open→submit→cancel 200 ×3, CANCELLED inerten)
+- ŽIVA VERIFIKACIJA #29 — PRAVA SOČASNA DIRKA na produkciji (sinhrona bariera, 2 niti, ista koda): [A] 200 token rodev_158e5a65… | [B] 404 'Neznana ali že unovčena' BREZ tokena — NATANKO ENA zmagovalka; replay → 404; naprava verify100 po testu REVOKED
+- GitHub: #38+#29 komentirana z dokazi (6177350016 / 6177357675) in ZAPRTA — 22 odprtih; GitLab push USPEŠEN PRVI POSKUS (25df798..26aafcf); lokalno=origin=gitlab=26aafcf
+
+Stage Summary:
+- P1 val ZAKLJUČEN na produkciji v1.100.0 (26aafcf): dogodkovna vrsta ima kanonični tenant ključ (strežniško izpeljan iz preverjene entitete na vseh 26 publishEvent klicih; nikoli iz klientovega payload-a) — seznam/števci/dispatch uporabljajo ENAK org/lokacijski obseg; legacy NULL dogodki so vidni/dispatchani SAMO bootstrap operatorju; MANAGER z settings.manage ne more več sprožiti globalne obdelave; vpisna koda naprave je atomsko unovčljiva (CAS — ena koda = natanko en token, tudi v živi produkcijski dirki)
+- LEKCIJA: Number(null)===0 — odsoten query parameter prek Number() da 0 (ne NaN) → latentni take=1 na /api/events; testne sonde z unikatnim tipom so odporne na akumulirano bazo
+- 22 odprtih issue-jev; NASLEDNJI VAL kandidati: #26 (giftcard izolacija, P1) ali #25 (sanitizacija diagnostike, P1) ali #18 (tristransko ujemanje, P1); priporočam #26 (isti tenant vzorec, znan repertuar)
+- PRODUKCIJSKA OPOMBA #38: info@ ima loc=null → fail-closed vidi prazen dogodkovni pregled (dogodkovna konzola je bootstrap-only, dokler centralni račun ni vezan na lokacijo organizacije) — to JE zahtevana semantika issue-ja, dokumentirano v komentarju
+- UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): (1) VAPID rotacija ŠE VEDNO odprta; (2) rotacija GitHub+GitLab žetonov; (3) MFA vpis info@+vodja@; (4) UPSTASH neobvezno
+- OSTANKI NA PRODUKCIJI (inertni, poimenovani): popis 'verify100 — event write pot' CANCELLED; naprava verify100 REVOKED; starejši: #698 naročilo, verify199 popis, verify97 loyalty, verify93 kartica 0€
