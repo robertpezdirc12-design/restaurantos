@@ -2647,3 +2647,27 @@ Stage Summary:
 - PRODUKCIJSKA OPOMBA #38: info@ ima loc=null → fail-closed vidi prazen dogodkovni pregled (dogodkovna konzola je bootstrap-only, dokler centralni račun ni vezan na lokacijo organizacije) — to JE zahtevana semantika issue-ja, dokumentirano v komentarju
 - UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): (1) VAPID rotacija ŠE VEDNO odprta; (2) rotacija GitHub+GitLab žetonov; (3) MFA vpis info@+vodja@; (4) UPSTASH neobvezno
 - OSTANKI NA PRODUKCIJI (inertni, poimenovani): popis 'verify100 — event write pot' CANCELLED; naprava verify100 REVOKED; starejši: #698 naročilo, verify199 popis, verify97 loyalty, verify93 kartica 0€
+
+---
+
+Task ID: v1.101.0-session
+Agent: glavni agent (Z.ai)
+Task: uporabnik razčistil zmedo (sporočilo o ARCore/Roksal je bilo za DRUG projekt — Roksal raziskava je bila SAMO-BRALNA, restaurantos repozitorij potrjeno NEDOTAKNJEN, git status čist) → nadaljevanje RestaurantOS vala po priporočilu v1.100.0: issue #26 (P1 — tenant izolacija darilnih kartic).
+
+Work Log:
+- KONTEKST: repo 1e75a50 usklajen; produkcija v1.100.0 healthy; 22 odprtih issue-jev; izbran priporočeni #26
+- AUDIT POTI: GET [id] = requireAuth + globalni findUnique (vsaka seja = 100 transakcij tuje org!); PATCH = giftcards.manage BREZ obsega; topup = orders.pay BREZ obsega, replay PRED morebitno avtorizacijo; lookup = globalno iskanje (katerakoli org); fiskalni redeem = brez org meje; unovčenje isto-org-čez-lokacije = poslovno pravilo, ki ga NE SME biti pokvarjeno
+- NOV src/lib/giftcard-scope.ts: giftCardScopeFor (bootstrap global; znana org → vse njene lokacije; staff brez dreva → lastna; centralna neznana → none/fail-closed) + giftCardScopeWhere ('none' → neujemajoč locationId → enoten 404)
+- GET [id]: giftcards.manage + guardResource + ledžer 100→50; PATCH: guardResource PRED mutacijo; topup: guardCardForTopup PRED statusno preverbo in PRED replayem (ključ NI poverilnica); lookup: scopeWhere na vseh 4 iskalnih vejah (id veja findUnique→findFirst); furs/issue.ts preloadGiftCard: isCrossTenantLocations(order, kartica) → cross-tenant 409 + legacy null-loc fail-closed (bootstrap izjema); vse zavrnitve = revizija GIFT_CARD_ACCESS_DENIED brez podatkov kartice
+- TS LEKCIJA: closure ne prenaša control-flow zožitve → bootstrapOp/orderLocId zajeti izven preloadGiftCard; AuditLog ima timestamp NE createdAt (orderBy)
+- TESTI: tests/issue26-giftcard-tenant.test.ts ×27 → 1497/1497 svež ci-fresh.db (92 datotek); tsc 0; eslint 0; secrets OK; validate ×2; BREZ DDL
+- DEPLOY 9f28025 → health 1.101.0 connected (~60 s); ZERO incidentov (brez 503 vala — patch sekanje bilo čisto)
+- ŽIVA VERIFIKACIJA (vodja@ MANAGER Ljubljana): izdaja 201 → ledger 200 (issue vrstica) → PATCH preimenovanje+revert → topup 1 € + replay brez podvojitve → lookup polna/sufiks 200 brez locationId, bogus 404, kratek 400; info@ (loc null) lookup → 404 FAIL-CLOSED (prej GLOBALNO); fiskalna zlata pot: naročilo #699 13,47 € plačano z GC-20261014-000002 → račun 2026-10-7-BLG001 verified (test/simulated), redeem −13,47 → 2,53 z vezanim orderId; replay plačila brez dvojnega odbitka; kartica deaktivirana (inertni ostanek)
+- GitHub #26 zaprt z dokazi (comment 6179425398); GitLab push; TENANT-ISOLATION.md: pokritostna vrstica + test vrstica
+
+Stage Summary:
+- Produkcija v1.101.0 (9f28025) healthy: darilne kartice imajo polno tenant izolacijo po operacijah (POS lookup org-obseg z ohranjenim medposlovalničnim unovčenjem iste org; ledger/urejanje/polnjenje giftcards.manage+guardResource; replay ključ ne obide avtorizacije; fiskalni cross-tenant 409; legacy brez lokacije fail-closed razen bootstrap)
+- 21 odprtih issue-jev; NASLEDNJI VAL kandidati: #25 (diagnostika sanitizacija) ali #18 (tristransko ujemanje) ali #47/#48
+- UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): VAPID rotacija ŠE VEDNO odprta; rotacija GitHub+GitLab žetonov; MFA vpis info@+vodja@ pred MFA_ENFORCE_AFTER
+- OSTANKI NA PRODUKCIJI (poimenovani, inertni): GC-20261014-000002 verify101 (saldo 2,53 €, DEAKTIVIRANA); naročilo #699 TAKEAWAY PAID z računom 2026-10-7-BLG001; starejši: #698 verify199, verify100 revoked, verify195
+- ARCore/Roksal raziskava (z napačnega navodila): čisto ločena, samo-bralna — vnos v my-project/worklog.md (Task 2-a), restaurantos repozitorij NI bil dotaknjen (git status čist pred valom)
