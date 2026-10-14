@@ -67,7 +67,7 @@ import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -2291,6 +2291,9 @@ function DashboardInner() {
 
           <TabsContent value="nastavitve" className="space-y-4">
             <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
+            {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za
+                prijavljenega uporabnika — step-up PIN, recovery kode, enforcement */}
+            <MfaCard />
             {/* OPS-8 v1.72.0 — notifikacijska matrika (RoxPos: 11 dogodkov x vsi/vloge/izklopno) */}
             <NotificationsCard />
             {/* OPS-10 val 2 (v1.78.0) — promocije za customer display (idle carousel) */}

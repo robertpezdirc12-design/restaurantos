@@ -3,6 +3,7 @@ import { CI_DEPLOY_COMMIT } from '@/lib/deploy-commit'
 import { db } from '@/lib/db'
 import { getAuth, AuthPayload, sessionRevoked } from '@/lib/auth'
 import { resolvePermissions, resolvePermissionsForUIRole, CanonicalPermission } from '@/lib/permissions'
+import { roleRequiresMfa, mfaEnforcementActive } from '@/lib/mfa'
 import { APP_COMMIT } from '@/lib/version'
 
 export function ok(data: unknown, init?: number) {
@@ -27,6 +28,14 @@ export function forbidden() {
  * PIN reset / deaktivacija zaposlenega TAKOJ prekliče vse obstoječe žetone.
  * Fail-closed: žeton brez sv (izdan pred tem deployem) → 401 (ponovna prijava).
  * Bootstrap admin (sub='bootstrap', brez Employee vrstice) gre po fast-pathu.
+ *
+ * Issue #31 (v1.94.0) — CENTRALNO strežniško uveljavljanje MFA:
+ * ko je enforcement aktiven (MFA_ENFORCE_AFTER) in je vloga (iz DB — živ vir
+ * resnice, tudi po spremembi vloge) privilegirana brez mfaEnabled, je NAVADEN
+ * žeton zavrtnjen (401 mfaRequired); velja samo še omejen mfa-enrollment-only
+ * žeton (izdan na prijavi po uspešnem PIN-u). Obratno: enrollment-only žeton
+ * izven tega stanja (MFA medtem aktivirana / vloga nezahtevna / enforcement
+ * ugasnjen) je mrtev → 401 (napaka se NE razkriva — generična prijavna).
  */
 export async function requireAuth(req: NextRequest): Promise<AuthPayload | NextResponse> {
   const user = getAuth(req)
@@ -34,7 +43,7 @@ export async function requireAuth(req: NextRequest): Promise<AuthPayload | NextR
   if (user.role === 'ADMIN' && user.sub === 'bootstrap') return user
   const employee = await db.employee.findUnique({
     where: { id: user.sub },
-    select: { status: true, sessionVersion: true },
+    select: { status: true, sessionVersion: true, role: true, mfaEnabled: true },
   })
   if (!employee) return forbidden()
   if (employee.status !== 'active') {
@@ -42,6 +51,19 @@ export async function requireAuth(req: NextRequest): Promise<AuthPayload | NextR
   }
   if (sessionRevoked(user.sv, employee.sessionVersion)) {
     return fail('Seja je preklicana (sprememba PIN-a ali deaktivacija) — prijavite se ponovno.', 401)
+  }
+  // #31: DB-izpeljana MFA politika (nikoli iz klienta/žetona samega)
+  const restricted = mfaEnforcementActive() && roleRequiresMfa(String(employee.role)) && !employee.mfaEnabled
+  if (restricted) {
+    if (user.mfaEnrollOnly) return user
+    return NextResponse.json(
+      { error: 'Vaša vloga zahteva MFA — dokončajte vpis (prijava → nastavitev MFA).', mfaRequired: true, mfaEnrollmentRequired: true },
+      { status: 401 }
+    )
+  }
+  if (user.mfaEnrollOnly) {
+    // enrollment-only žeton izven enrollment stanja → mrtva seja (fail-closed)
+    return fail('Seja je omejena na vpis MFA — prijavite se znova.', 401)
   }
   return user
 }
@@ -70,11 +92,25 @@ export interface AuthedContext {
   perms: CanonicalPermission[]
 }
 
+/**
+ * Issue #31: enrollment-only žetoni nikoli ne preidejo dovoljenjskega sloja —
+ * tudi če requireAuth (enrollment stanje) velja. Enoten varovalni pogoj za
+ * vse tri dovoljenjske vnose (requireAuthWithPerms/requirePermission/
+ * requireCentralRole — requireAnyPermission delegira na WithPerms).
+ */
+function enrollmentOnlyForbidden(): NextResponse {
+  return NextResponse.json(
+    { error: 'Dostop zavrnjen — dokončajte vpis MFA (omejena seja).', mfaRequired: true, mfaEnrollmentRequired: true },
+    { status: 403 }
+  )
+}
+
 export async function requireAuthWithPerms(
   req: NextRequest
 ): Promise<AuthedContext | NextResponse> {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  if (user.mfaEnrollOnly) return enrollmentOnlyForbidden()
   if (user.role === 'ADMIN' && user.sub === 'bootstrap') {
     return { user, perms: resolvePermissionsForUIRole('ADMIN') }
   }
@@ -108,6 +144,7 @@ export async function requirePermission(
 ): Promise<AuthPayload | NextResponse> {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  if (user.mfaEnrollOnly) return enrollmentOnlyForbidden()
   if (user.role === 'ADMIN' && user.sub === 'bootstrap') {
     const bootstrapPermissions = resolvePermissionsForUIRole('ADMIN')
     if (!bootstrapPermissions.includes(permission)) {
@@ -150,6 +187,7 @@ export const DEPLOY_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || CI_DEPLOY_COMM
 export async function requireCentralRole(req: NextRequest): Promise<AuthPayload | NextResponse> {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
+  if (user.mfaEnrollOnly) return enrollmentOnlyForbidden()
   if (user.role === 'ADMIN' && user.sub === 'bootstrap') return user
   const employee = await db.employee.findUnique({
     where: { id: user.sub },

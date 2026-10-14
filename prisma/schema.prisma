@@ -646,6 +646,14 @@ model Employee {
   mfaEnabled                                          Boolean               @default(false)
   mfaRecoveryCodes                                    Json                  @default("[]")
   mfaEnrolledAt                                       DateTime?
+  // Issue #36 (v1.94.0) — RFC 6238 §5.2 replay zaščita: zadnji USPEŠNO sprejeti
+  // TOTP korak (counter). Enakega ali starejšega koraka ni mogoče znova sprejeti
+  // (atomarna CAS zahteva v login poti). null = MFA še nikoli uporabljena.
+  mfaLastTotpCounter                                  Int?
+  // Issue #35 (v1.94.0) — CAS različica seznama recovery kod: vsak zapis
+  // mfaRecoveryCodes poviša števec → sočasna poraba iste kode pade na
+  // updateMany where mfaRecoveryVersion (točno ena zmagovalka).
+  mfaRecoveryVersion                                  Int                   @default(0)
   BiometricCredential                                 BiometricCredential[]
   CashRegisterShift                                   CashRegisterShift[]
   DeliveryTracking                                    DeliveryTracking[]

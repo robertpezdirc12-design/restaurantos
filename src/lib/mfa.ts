@@ -154,9 +154,46 @@ export function consumeRecoveryCode(code: string, storedHashes: string[]): { ok:
   return { ok, remaining }
 }
 
-/** Privilegirane vloge (DB nivo) — MFA priporočena/obvezna po issue #12 §3. */
-export const PRIVILEGED_MFA_ROLES = ['owner', 'admin', 'group_owner', 'org_admin', 'property_manager'] as const
+/**
+ * Privilegirane vloge (DB nivo) — MFA zahtevana po issue #12 §3.
+ *
+ * Issue #31 (v1.94.0) — IZRECNA odločitev o MANAGER:
+ * src/lib/permissions.ts dodeli 'manager' VSA kanonična dovoljenja (enak
+ * obseg kot owner/admin, dokler #5 ne zoži profila). Varstvo skrivnosti in
+ * pravic brez MFA bi bilo neskladno z ostalimi centralnimi vlogami →
+ * manager ZDAJ zahteva MFA. Ostale operativne vloge (staff/waiter/bar/chef/
+ * kitchen/warehouse/accounting) ostajajo na PIN prijavi (brez MFA).
+ */
+export const PRIVILEGED_MFA_ROLES = ['owner', 'admin', 'manager', 'group_owner', 'org_admin', 'property_manager'] as const
 
 export function roleRequiresMfa(role: string): boolean {
   return (PRIVILEGED_MFA_ROLES as readonly string[]).includes(String(role || '').toLowerCase())
+}
+
+/* ─────────────── Issue #31 — strežniško uveljavljanje (enforcement) ─────────────── */
+
+/**
+ * Veljavnost enrollment-only žetona (sub=Employee.id, mfaEnrollOnly: true).
+ * 1 h: dovolj časa za enroll + enable, prekratko za dolgotrajno zlorabo.
+ */
+export const MFA_ENROLLMENT_ONLY_HOURS = 1
+
+/**
+ * Issue #31 §A — prehod iz migracijskega (soft prompt) v STROGO uveljavljanje.
+ *
+ * MFA_ENFORCE_AFTER (Vercel env): ISO datum ali epoch-ms niz. Po tem trenutku
+ * privilegiran račun brez mfaEnabled=true pri prijavi dobi SAMO omejen
+ * mfa-enrollment-only žetoni (1 h), requireAuth pa takoj zavrne občutljive
+ * klice (401 mfaRequired). Vsa ostala seja ostane na mehki politiki
+ * (mfaMandatory zastavica + UI nagovor) — obstoječi računi se NE zaklenejo
+ * nenapovedano (migracijska zahteva issue-ja).
+ *
+ * Nastavitev/unveljaven → false (migracijsko obdobje). Prebere se ob vsakem
+ * klicu (testi lahko env prosto nastavljajo; operater lahko datum prestavi).
+ */
+export function mfaEnforcementActive(nowMs = Date.now()): boolean {
+  const raw = (process.env.MFA_ENFORCE_AFTER || '').trim()
+  if (!raw) return false
+  const ts = /^\d+$/.test(raw) ? Number(raw) : Date.parse(raw)
+  return Number.isFinite(ts) && nowMs >= ts
 }

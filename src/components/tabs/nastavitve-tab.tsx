@@ -10,8 +10,196 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus } from 'lucide-react'
+import { Loader2, Briefcase, Store, MonitorSmartphone, ShieldAlert, ShieldCheck, Plus } from 'lucide-react'
 import { DursCheckButton } from './ops-cards'
+
+/* ─────────────────────────── VARNOST — MFA (v1.94.0, issue #31–#36) ─────────────────────────── */
+
+interface MfaStatus {
+  enabled: boolean
+  secretPending: boolean
+  mandatory: boolean
+  enforcementActive?: boolean
+  bootstrap?: boolean
+}
+
+/**
+ * Samo-oskrbni MFA (TOTP) upravitelj za PRIJAVLJENEGA uporabnika:
+ *  - status iz /api/auth/mfa/status (brez skrivnosti);
+ *  - vklop: PIN (step-up, #33) → QR/skrivnost → koda → /enable → recovery
+ *    kode prikazane ENKRAT (v DB samo SHA-256) + nadaljevalni žeton (druge
+ *    seje so preklicane — sessionVersion +1);
+ *  - izklop: PIN + TOTP/recovery koda → /disable → nadaljevalni žeton.
+ *  - enforcement (#31): mandatory=true opozori, enforcementActive pa pove,
+ *    da bo brez MFA dostop omejen (enrollment-only seja).
+ */
+export function MfaCard() {
+  const { t } = useI18n()
+  const [status, setStatus] = useState<MfaStatus | null>(null)
+  const [pin, setPin] = useState('')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [enroll, setEnroll] = useState<{ secret: string; otpauthUri: string; qrDataUrl: string } | null>(null)
+  const [recovery, setRecovery] = useState<string[] | null>(null)
+  const [notice, setNotice] = useState('')
+
+  async function loadStatus() {
+    try {
+      const s = await api<MfaStatus>('/api/auth/mfa/status')
+      setStatus(s)
+    } catch { setStatus(null) }
+  }
+  useEffect(() => { loadStatus() }, [])
+
+  /* enable/disable vračata NADALJEVALNI žeton (sessionVersion +1 revokacija
+     ostalih sej) — shranimo ga takoj, sicer bi trenutna seja umrla. */
+  async function mfaFetch(path: string, body: Record<string, unknown>) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('ro_token') || ''}`,
+      },
+      body: JSON.stringify(body),
+    })
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok) throw new Error(String(data.error || t('common.error')))
+    if (typeof data.token === 'string' && data.token) {
+      localStorage.setItem('ro_token', data.token)
+    }
+    return data
+  }
+
+  async function startEnroll() {
+    setError(''); setNotice(''); setBusy(true)
+    try {
+      const data = await mfaFetch('/api/auth/mfa/enroll', { pin })
+      setEnroll({ secret: String(data.secret || ''), otpauthUri: String(data.otpauthUri || ''), qrDataUrl: String(data.qrDataUrl || '') })
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function confirmEnable() {
+    setError(''); setBusy(true)
+    try {
+      const data = await mfaFetch('/api/auth/mfa/enable', { pin, code })
+      setRecovery(Array.isArray(data.recoveryCodes) ? (data.recoveryCodes as string[]) : [])
+      setEnroll(null); setCode(''); setPin('')
+      await loadStatus()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function confirmDisable() {
+    setError(''); setBusy(true)
+    try {
+      // recovery koda (XXXX-XXXX, črke) ali TOTP koda — pošljemo glede na vsebino
+      const isRecovery = /-[A-Z2-9]/i.test(code)
+      const body = isRecovery ? { pin, recoveryCode: code } : { pin, code }
+      await mfaFetch('/api/auth/mfa/disable', body)
+      setNotice(t('mfa.disabled'))
+      setCode(''); setPin('')
+      await loadStatus()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  if (status?.bootstrap) return null // break-glass identiteta nima DB vrstice/MFA
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5">
+          <ShieldCheck className="w-4 h-4" /> {t('mfa.title')}
+          {status && (
+            <Badge className={status.enabled ? 'bg-emerald-600 text-white' : status.mandatory ? 'bg-amber-500 text-white' : 'bg-stone-400 text-white'}>
+              {status.enabled ? t('mfa.on') : status.mandatory ? t('mfa.required') : t('mfa.off')}
+            </Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!status && <p className="text-sm text-stone-500">{t('mfa.loading')}</p>}
+
+        {status && !status.enabled && status.mandatory && (
+          <p className={`text-xs rounded-md px-2.5 py-1.5 ${status.enforcementActive ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}>
+            {status.enforcementActive ? t('mfa.enforcementOn') : t('mfa.mandatoryHint')}
+          </p>
+        )}
+        {status?.enabled && <p className="text-xs text-stone-500">{t('mfa.enabledHint')}</p>}
+
+        {status && !status.enabled && !enroll && !recovery && (
+          <div className="space-y-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="mfa-pin">{t('mfa.pinLabel')}</Label>
+              <Input id="mfa-pin" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="w-40 tracking-[0.3em] font-mono" />
+              <p className="text-[11px] text-stone-400">{t('mfa.pinHint')}</p>
+            </div>
+            <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || pin.length < 4} onClick={startEnroll}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mfa.start')}
+            </Button>
+          </div>
+        )}
+
+        {enroll && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-3">
+            <p className="text-sm font-medium text-amber-900">{t('mfa.enrollTitle')}</p>
+            <div className="flex flex-col sm:flex-row gap-3 items-start">
+              {enroll.qrDataUrl && <img src={enroll.qrDataUrl} alt={t('mfa.qrAlt')} className="rounded-lg bg-white p-1 border border-amber-200 w-28 h-28" />}
+              <div className="space-y-1 min-w-0 flex-1">
+                <p className="text-xs text-amber-800">{t('mfa.scanHint')}</p>
+                <p className="text-[11px] text-stone-500">{t('mfa.manual')}</p>
+                <p className="font-mono text-xs break-all bg-white border border-amber-200 rounded px-2 py-1 select-all">{enroll.secret}</p>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="mfa-code">{t('mfa.codeLabel')}</Label>
+                <Input id="mfa-code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" className="tracking-[0.3em] font-mono" />
+              </div>
+            </div>
+            <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || code.length !== 6} onClick={confirmEnable}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mfa.enable')}
+            </Button>
+          </div>
+        )}
+
+        {recovery && (
+          <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 space-y-2">
+            <p className="text-sm font-semibold text-emerald-900">{t('mfa.recoveryTitle')}</p>
+            <p className="text-xs text-emerald-700">{t('mfa.recoveryHint')}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {recovery.map((c) => (
+                <p key={c} className="font-mono text-xs bg-white border border-emerald-200 rounded px-2 py-1 select-all">{c}</p>
+              ))}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(recovery.join('\n')); setNotice(t('dev.copied')) }}>{t('dev.copyCode')}</Button>
+          </div>
+        )}
+
+        {status?.enabled && (
+          <div className="space-y-2">
+            <div className="grid sm:grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="mfa-pin-off">{t('mfa.pinLabel')}</Label>
+                <Input id="mfa-pin-off" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="tracking-[0.3em] font-mono" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mfa-code-off">{t('mfa.codeLabel')}</Label>
+                <Input id="mfa-code-off" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12))} placeholder="••••••" className="tracking-[0.2em] font-mono" />
+                <p className="text-[11px] text-stone-400">{t('mfa.disableCodeHint')}</p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" disabled={busy || pin.length < 4 || code.length < 4} onClick={confirmDisable}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mfa.disable')}
+            </Button>
+          </div>
+        )}
+
+        {notice && <p className="text-xs text-emerald-700">{notice}</p>}
+        {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-2.5 py-1.5">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
 
 /* ─────────────────────────── DELOVNA MESTA ─────────────────────────── */
 

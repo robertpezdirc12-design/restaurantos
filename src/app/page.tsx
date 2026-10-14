@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown } from 'lucide-react'
+import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown, ShieldCheck } from 'lucide-react'
 import { landingTab } from '@/lib/tab-permissions'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
@@ -34,6 +34,15 @@ function LoginPageInner() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
+  // v1.94.0 (issue #12/#31): druga stopnja — MFA koda pri 401 mfaRequired
+  const [mfaRequired, setMfaRequired] = useState(false)
+  const [mfaCode, setMfaCode] = useState('')
+  // v1.94.0 (issue #31): obvezni vpis MFA (enforcement) — enrollment tok na prijavi
+  const [enrollToken, setEnrollToken] = useState('')
+  const [enrollEmployee, setEnrollEmployee] = useState<Record<string, unknown> | null>(null)
+  const [enroll, setEnroll] = useState<{ secret: string; otpauthUri: string; qrDataUrl: string } | null>(null)
+  const [enrollCode, setEnrollCode] = useState('')
+  const [recovery, setRecovery] = useState<string[] | null>(null)
   // ISSUE #4 §2.2 — device aktivacija prek ENKRATNE vpisne kode (dashboard ustvari kodo,
   // naprava jo unovči JAVNO — brez prijave; token pride nazaj samo tukaj in se shrani lokalno)
   const [provOpen, setProvOpen] = useState(false)
@@ -84,18 +93,38 @@ function LoginPageInner() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, pin }),
+        // mfaCode se pošlje samo, ko je UI v drugi stopnji (401 mfaRequired)
+        body: JSON.stringify(mfaRequired ? { email, pin, mfaCode } : { email, pin }),
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || t('login.failed'))
+        if (data.mfaRequired) {
+          // račun ima vklopljeno MFA → prikaži drugo stopnjo (PIN ostane v formi)
+          setMfaRequired(true)
+          setError(data.error || t('login.mfaRequired'))
+        } else {
+          setError(data.error || t('login.failed'))
+        }
         return
       }
       localStorage.setItem('ro_token', data.token)
       localStorage.setItem('ro_user', JSON.stringify(data.employee))
-      // Vaja PIN-ov: bootstrap prijava (začasen 2-urni dostop) označimo, da dashboard lahko svetuje prehod na PIN iz baze
+      // v1.94.0 (#34): bootstrap prijava je VEDNO ločena break-glass identiteta —
+      // dashboard svetuje prehod na pravi račun (PIN iz baze + MFA)
       if (data.bootstrap) localStorage.setItem('ro_bootstrap', '1')
       else localStorage.removeItem('ro_bootstrap')
+      // v1.94.0 (#31): enforcement — privilegiran račun brez MFA: OMEJENA
+      // enrollment-only seja (samo /api/auth/mfa/**). Žetona NE shranimo v
+      // localStorage (dashboard bi z njim razpadel) — držimo ga v stanju forme
+      // in sprožimo vpis MFA (enroll s svežim PIN-om → koda aplikacije → enable).
+      if (data.mfaEnrollmentRequired) {
+        localStorage.removeItem('ro_token')
+        localStorage.removeItem('ro_user')
+        setEnrollToken(String(data.token || ''))
+        setEnrollEmployee(data.employee || null)
+        await startEnrollment(String(data.token || ''))
+        return
+      }
       // Issue #5 (P1-A): pristajalni zavihek PO VLOGI/dovoljenjih — vsak delavec
       // pristane v SVOJEM delovnem okolju (kuhinja → KDS, šank → hitra prodaja,
       // natakar → mize, čistilka → HACCP, vodstvo → pregled). URL param ne more
@@ -107,6 +136,58 @@ function LoginPageInner() {
     } finally {
       setLoading(false)
     }
+  }
+
+  /* v1.94.0 (#31): obvezni vpis MFA neposredno na prijavi — enroll (PIN je v
+     formi, sveže preverjen) → QR/skrivnost → koda iz aplikacije → enable →
+     recovery kode (enkrat!) → nadaljevalni žeton → prijava dokončana. */
+  async function startEnrollment(token: string) {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/auth/mfa/enroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ pin }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || t('login.failed')); return }
+      setEnroll({ secret: data.secret, otpauthUri: data.otpauthUri, qrDataUrl: data.qrDataUrl })
+    } catch {
+      setError(t('login.connection'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function confirmEnrollment() {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/auth/mfa/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${enrollToken}` },
+        body: JSON.stringify({ pin, code: enrollCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || t('login.failed')); return }
+      setRecovery(data.recoveryCodes || [])
+      // nadaljevalni žeton + identiteta SHRANIMO šele po potrditvi, da je
+      // uporabnik videl recovery kode (v DB so samo hash — to je EDINA priložnost)
+      if (data.token) {
+        localStorage.setItem('ro_token', data.token)
+        if (enrollEmployee) localStorage.setItem('ro_user', JSON.stringify(enrollEmployee))
+      }
+    } catch {
+      setError(t('login.connection'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function finishEnrollment() {
+    setEnroll(null); setRecovery(null); setEnrollCode(''); setMfaRequired(false)
+    router.push('/dashboard')
   }
 
   return (
@@ -178,6 +259,43 @@ function LoginPageInner() {
               <CardDescription>{t('login.desc')}</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* v1.94.0 (#31): obvezni vpis MFA — QR + koda + recovery kode */}
+              {enroll && (
+                <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-amber-900 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> {t('login.mfaEnrollTitle')}</p>
+                  <div className="flex flex-col sm:flex-row gap-3 items-start">
+                    {enroll.qrDataUrl && (
+                      <img src={enroll.qrDataUrl} alt={t('login.mfaQrAlt')} className="rounded-lg bg-white p-1 border border-amber-200 w-32 h-32" />
+                    )}
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <p className="text-xs text-amber-800">{t('login.mfaScanHint')}</p>
+                      <p className="text-[11px] text-stone-500">{t('login.mfaManual')}</p>
+                      <p className="font-mono text-xs break-all bg-white border border-amber-200 rounded px-2 py-1 select-all">{enroll.secret}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="mfa-enroll-code">{t('login.mfaCodeLabel')}</Label>
+                    <Input id="mfa-enroll-code" inputMode="numeric" autoComplete="one-time-code" value={enrollCode} onChange={(e) => setEnrollCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" className="tracking-[0.3em] font-mono h-11" />
+                  </div>
+                  <Button className="w-full h-11 bg-emerald-700 hover:bg-emerald-800" disabled={loading || enrollCode.length !== 6} onClick={confirmEnrollment}>
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('login.mfaEnable')}
+                  </Button>
+                </div>
+              )}
+              {/* v1.94.0: recovery kode — prikazane ENKRAT (v DB samo hash) */}
+              {recovery && (
+                <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-emerald-900">{t('login.mfaRecoveryTitle')}</p>
+                  <p className="text-xs text-emerald-700">{t('login.mfaRecoveryHint')}</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {recovery.map((c) => (
+                      <p key={c} className="font-mono text-xs bg-white border border-emerald-200 rounded px-2 py-1 select-all">{c}</p>
+                    ))}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(recovery.join('\n')); }}>{t('dev.copyCode')}</Button>
+                  <Button className="w-full h-11 bg-emerald-700 hover:bg-emerald-800" onClick={finishEnrollment}>{t('login.mfaContinue')}</Button>
+                </div>
+              )}
               <form onSubmit={submit} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="email">{t('login.email')}</Label>
@@ -206,6 +324,23 @@ function LoginPageInner() {
                     className="h-11 tracking-[0.4em]"
                   />
                 </div>
+                {/* v1.94.0 (#12): druga stopnja — MFA koda (račun z vklopljeno MFA) */}
+                {mfaRequired && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="mfa-code">{t('login.mfaCodeLabel')}</Label>
+                    <Input
+                      id="mfa-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="••••••"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="h-11 tracking-[0.3em] font-mono"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-stone-400">{t('login.mfaHint')}</p>
+                  </div>
+                )}
                 {error && (
                   <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
                     {error}

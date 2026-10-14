@@ -42,6 +42,14 @@ export interface AuthPayload {
   exp: number
   /** Issue #4 D4: sessionVersion ob izdaji žetona — sprememba PIN-a/deaktivacija prekliče sejo. */
   sv?: number
+  /**
+   * Issue #31 (v1.94.0): omejen mfa-enrollment-only žeton — izda se SAMO ob
+   * prijavi privilegiranega računa brez MFA, ko je enforcement aktiven
+   * (MFA_ENFORCE_AFTER). Dovoljuje SAMO /api/auth/mfa/** + /api/auth/me
+   * (requireAuth); vsak dovoljenjski sloj (requirePermission*) ga zavrne.
+   * Umrne ob enable (sessionVersion bump) ali spremembi stanja.
+   */
+  mfaEnrollOnly?: boolean
 }
 
 function sign(data: string): string {

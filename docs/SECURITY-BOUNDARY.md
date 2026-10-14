@@ -38,25 +38,74 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 | `/api/delivery/webhook/[provider]` | HMAC `sha256=` (timingSafeEqual); brez secret → 503 fail-closed; idempotencija `platform:orderId`; rate limit 30/min |
 | `/api/devices/enroll` | enkratna koda; claim → device token + lokacijska vezava; replay claim → 404 |
 
-## MFA (issue #12 §3, v1.35.0)
+## MFA (issue #12 §3, v1.35.0 — utrjeno v1.94.0, issue #31–#36)
 
 - TOTP (RFC 6238) — `src/lib/mfa.ts`, node crypto, brez novih odvisnosti;
   6-mestne kode, ±1 korak; združljivo z Google Authenticator (otpauth URI + QR).
-- Potek: `/api/auth/mfa/enroll` → skrivnost + URI; `/enable` (koda) → aktivacija
-  + 8 recovery kod (plain ENKRAT; v DB SHA-256 hashi); `/disable` (koda ALI
-  recovery); `/status` za UI.
+- Potek: `/api/auth/mfa/enroll` → skrivnost + URI + QR; `/enable` (koda) →
+  aktivacija + 8 recovery kod (plain ENKRAT; v DB SHA-256 hashi); `/disable`
+  (koda ALI recovery); `/status` za UI.
+- **Step-up (v1.94.0, #33)**: vsaka sprememba MFA (enroll/enable/disable)
+  zahteva SVEŽ PIN v telesu zahteve (`pinStepUpOk` — ista scrypt/pinLookup
+  disciplina kot prijava). Žeton sam po sebi NE zadostuje (ukradena dolgotrajna
+  seja ne more nastaviti/izklopiti MFA). Sočasen enroll je CAS-zaščiten (409).
+- **Revokacija sej (v1.94.0, #33)**: ob enable/disable se `sessionVersion`
+  poviša → VSI drugi žetoni so TAKOJ preklicani; trenutni klient dobi
+  nadaljevalni žeton v odgovoru (dokumentirana politika — brez prisilne
+  ponovne prijave trenutne seje).
 - Prijava: račun z `mfaEnabled` zahteva `mfaCode` (ali `mfaRecoveryCode`) —
   sicer 401 + `mfaRequired:true` (brez uhajanja, da je MFA vklopljena).
-  Recovery poraba je atomična (hashi se odstranijo ob uspehu) + auditira
-  (`MFA_RECOVERY_USED`).
-- Privilegirane vloge (owner/admin/group_owner/org_admin/property_manager)
-  brez MFA: prijava NE blokira (migracijsko varno), odgovor nosi
-  `mfaMandatory:true` → UI nagovori enroll; status poroča `mandatory`.
-- **Bootstrap admin ostane break-glass** (brez DB vrstice → MFA na njem ni
-  mogoča) — obnova dostopa prek env; auditirana prijava (2 h žeton).
+  - **TOTP replay (v1.94.0, #36, RFC 6238 §5.2)**: uspešno sprejet korak se
+    ATOMARNO zapiše (`mfaLastTotpCounter`); enak/starejši korak (ponovna
+    uporaba iste kode ali sočasnost) → zavrnjen. Politika prejšnjega koraka:
+    koda iz koraka N-1 je sprejeta SAMO dokler ni bil porabljen novejši korak
+    (striktna monotona rast — RFC priporočilo). TOTP poraba velja v LOGIN
+    poti; disable s TOTP kodo je step-up (PIN + koda), ne prijavni zapis.
+  - **Recovery poraba (v1.94.0, #35)**: ATOMARNA CAS transakcija nad
+    `mfaRecoveryVersion` — sočasna uporaba iste kode pomeni TOČNO ENO
+    zmagovalko (druga → 401); ostale kode ostanejo nedotaknjene.
+  - **MFA poskusi (v1.94.0, #32)**: namenski limit 10/5 min po računu
+    (`mfa-acct:`) — IP login limit ga NE nadomešča.
+- **Enforcement (v1.94.0, #31)**: `MFA_ENFORCE_AFTER` env (ISO/epoch) določa
+  prehod iz mehke politike v STROGO. Po tem trenutku privilegiran račun brez
+  `mfaEnabled` pri prijavi dobi SAMO omejen **mfa-enrollment-only žeton**
+  (1 h, `mfaEnrollOnly:true` — velja izključno za `/api/auth/mfa/**` + `/me`);
+  `requireAuth` takoj zavrne navadne žetone (401 `mfaRequired`), vsi
+  dovoljenjski vnosi (requirePermission/WithPerms/CentralRole) zavrnejo
+  enrollment-only žetone (403). Vloga/MFA stanje se izpelje IZKLJUČNO iz DB
+  (nikoli iz klienta) — sprememba vloge zaposlenega prekliče seje (sv bump) →
+  naslednja prijava pade pod politiko. **Privzeto (brez env) vlada
+  migracijsko obdobje** (mehka politika + `mfaMandatory:true` UI nagovor) —
+  obstoječi računi se ne zaklenejo nenapovedano; operater nastavi datum, ko
+  so računi vpisali MFA.
+- **Zahtevane vloge (v1.94.0, #31 — izrecna odločitev)**:
+  owner/admin/**manager**/group_owner/org_admin/property_manager. MANAGER je
+  vključen, ker permissions.ts dodeli vlogi VSA kanonična dovoljenja (enak
+  obseg kot owner/admin). Operativne vloge (staff/waiter/bar/chef/kitchen/
+  warehouse/accounting) ostajajo na PIN prijavi.
+- **Bootstrap break-glass (v1.94.0, #34)**: veljavna BOOTSTRAP_ADMIN_EMAIL/PIN
+  poverilnica IZDA SAMO ločeno `sub='bootstrap'` identiteto (2 h, ADMIN,
+  audit `LOGIN_BOOTSTRAP_USED`/`LOGIN_BOOTSTRAP_BREAKGLASS`) — NIKOLI sejo pod
+  `employee.id` (niti ob napačnem PIN-u obstoječega zaposlenega z istim
+  e-poštnim naslovom; prej je ta pot obšla MFA). Break-glass uspeh ni
+  zabeležen kot `LOGIN_FAILED`. Brez Employee vrstice MFA na bootstrapu ni
+  mogoča (namerno).
+- **Login rate limiting (v1.94.0, #32)**: IP limit 10/min (store-aware:
+  Upstash REST, če je konfiguriran — vse instance delijo števec; izpad →
+  bounded-memory fallback + glasen `console.error`, fallback NI globalna
+  meja) + ACCOUNT dimenzija po normaliziranem e-poštnem naslovu (10/min +
+  30/15 min — časovno omejeno okence, NE trajen zaklep). IP signal:
+  `x-vercel-forwarded-for` (platforma ga nastavi/prepiše — neponareljiv) >
+  `x-forwarded-for` > `unknown`. Javne napake ostanejo enake za vse vzroke
+  (brez naštevanja računov); zavrnitve zapišejo audit `LOGIN_RATE_LIMITED`
+  (brez PIN-ov/kod).
 - PIN prijava operativnih vlog ostane nespremenjena (POS hitrost, §18).
 - Audit dogodki: `MFA_ENROLL_STARTED`, `MFA_ENABLED`, `MFA_DISABLED`,
-  `MFA_LOGIN_SUCCESS`, `MFA_LOGIN_FAILED`, `MFA_RECOVERY_USED`.
+  `MFA_LOGIN_SUCCESS`, `MFA_LOGIN_FAILED`, `MFA_RECOVERY_USED`,
+  `MFA_STEPUP_FAILED`, `MFA_RATE_LIMITED`, `LOGIN_MFA_ENROLLMENT_REQUIRED`,
+  `LOGIN_RATE_LIMITED`, `LOGIN_BOOTSTRAP_USED`, `LOGIN_BOOTSTRAP_BREAKGLASS`.
+  Audit NIKOLI ne vsebuje PIN-ov, TOTP/recovery kod, skrivnosti, otpauth
+  URI-jev ali žetonov.
 
 ## Payment boundary (issue #12 §4 — preverjeno, NI novega sistema)
 

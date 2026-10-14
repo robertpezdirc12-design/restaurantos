@@ -149,14 +149,17 @@ describe('mfa recovery kode (enkratna uporaba, v DB samo hashi)', () => {
   })
 })
 
-describe('mfa vloge (privilegirane po issue #12 §3)', () => {
-  it('owner/admin/group_owner/org_admin/property_manager zahtevajo MFA', () => {
-    for (const r of ['owner', 'admin', 'group_owner', 'org_admin', 'property_manager']) {
+describe('mfa vloge (privilegirane po issue #12 §3 + #31 v1.94.0)', () => {
+  it('owner/admin/manager/group_owner/org_admin/property_manager zahtevajo MFA', () => {
+    for (const r of ['owner', 'admin', 'manager', 'group_owner', 'org_admin', 'property_manager']) {
       expect(roleRequiresMfa(r)).toBe(true)
     }
   })
   it('operativne vloge NE zahtevajo MFA (PIN prijava ostaja)', () => {
-    for (const r of ['manager', 'staff', 'waiter', 'bar', 'chef', 'kitchen', 'warehouse', 'accounting']) {
+    // v1.94.0 (#31): manager PREMAŠČEN med privilegirane — permissions.ts mu dodeli
+    // VSA kanonična dovoljenja (enak obseg kot owner/admin) → MFA obvezna;
+    // dokumentirano v docs/SECURITY-BOUNDARY.md (izrecna odločitev issue #31).
+    for (const r of ['staff', 'waiter', 'bar', 'chef', 'kitchen', 'warehouse', 'accounting']) {
       expect(roleRequiresMfa(r)).toBe(false)
     }
     expect(roleRequiresMfa('')).toBe(false)

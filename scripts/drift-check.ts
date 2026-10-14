@@ -118,6 +118,25 @@ export function isPayLinkSplitStatement(stmt: string): boolean {
   return /^(ALTER\s+TABLE|DROP\s+INDEX)\b/i.test(stmt)
 }
 
+/**
+ * v1.94.0 (issue #31–36): aditivna MFA stolpca nad Employee — mfaLastTotpCounter
+ * (TOTP replay zaščita, RFC 6238 §5.2) + mfaRecoveryVersion (CAS za atomarno
+ * porabo recovery kod). Prepozna ALTER TABLE "Employee" z SAMO tema dvema
+ * dodatnima stolpcema (druge spremembe Employee ostanejo nepričakovani drift).
+ */
+export function isIssue31_36MfaStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"Employee"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = m[1]
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+  if (clauses.length === 0) return false
+  return clauses.every((c) =>
+    /^ADD\s+COLUMN\s+"(mfaLastTotpCounter|mfaRecoveryVersion)"(\s|$)/i.test(c)
+  )
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -173,6 +192,19 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'ADD COLUMN. Nobena živa poizvedba ne uporablja stolpca v obeh fazah — ' +
       'produkcija deluje normalno. Ko je oboje usklajeno, drift izgine (mrtva koda).',
     matches: isStroskiKategorijeStatement,
+  },
+  {
+    id: 'issue31-36-mfa',
+    reason:
+      'MFA utrjevanje (v1.94.0, issue #31–36) — Employee.mfaLastTotpCounter ' +
+      '(RFC 6238 §5.2 TOTP replay zaščita) + Employee.mfaRecoveryVersion (CAS ' +
+      'atomarna poraba recovery kod): produkcija čaka DDL korak — admin ruta ' +
+      '/api/admin/migrate-issue31-36 (konzola Enterprise → Shema migracije → ' +
+      'en klik). Do DDL: običajne prijave BREZ MFA so neprizadete (pisajo samo ' +
+      'obstoječa polja), MFA poti (enroll/enable/disable, prijava mfaEnabled ' +
+      'računov) pa pišejo v nove stolpce → P2022 → 500. DDL aplicirajmo TAKOJ ' +
+      'po deployu (idempotentno, IF NOT EXISTS).',
+    matches: isIssue31_36MfaStatement,
   },
 ]
 
