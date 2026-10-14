@@ -9,7 +9,12 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const employee = await db.employee.findUnique({
     where: { id: user.sub },
-    include: { Location: { select: { id: true, name: true } } },
+    // select (v1.94.0 hotfix): namesto include (ki prebere VSA skalarna polja —
+    // novi MFA stolpci čakajo DDL na produkciji → P2022). Izbrana obstoječa polja.
+    select: {
+      id: true, name: true, email: true, role: true, permissionOverrides: true,
+      Location: { select: { id: true, name: true } },
+    },
   })
   if (!employee) return ok({ error: 'Zaposleni ne obstaja' }, 404)
   return ok({

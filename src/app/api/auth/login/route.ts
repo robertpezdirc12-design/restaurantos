@@ -99,7 +99,18 @@ export async function POST(req: NextRequest) {
     return fail('Preveč poskusov prijave. Poskusite znova kasneje.', 429)
   }
 
-  const employee = await db.employee.findUnique({ where: { email } })
+  // EKSPlicitni select (v1.94.0 hotfix): findUnique brez select je prebral VSA
+  // skalarna polja — vključno z novima mfaLastTotpCounter/mfaRecoveryVersion,
+  // ki na produkciji čakata DDL korak (migrate-issue31-36) → P2022 → login 500.
+  // Z izbiro OBSTOJEČIH polj prijava deluje TUDI pred aplikacijo DDL.
+  const employee = await db.employee.findUnique({
+    where: { email },
+    select: {
+      id: true, name: true, email: true, role: true, status: true, locationId: true,
+      sessionVersion: true, pin: true, pinLookup: true, permissionOverrides: true,
+      mfaSecret: true, mfaEnabled: true, mfaRecoveryCodes: true,
+    },
+  })
 
   // #34: break-glass Preverba ZDAJ na enem mestu, PRED katero koli potjo
   // zaposlenega — velja za neobstoječi račun, deaktiviranega IN napačen PIN.
