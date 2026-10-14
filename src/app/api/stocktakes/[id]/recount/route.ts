@@ -29,7 +29,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (res.count === 0) return fail('Potrjenega popisa ni mogoče ponovno odpreti.', 409)
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_RECOUNT', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, recount: st.recountCount + 1 }), locationId: st.locationId })
-  await publishEvent('StocktakeRecount', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, recount: st.recountCount + 1, by: user.name } }).catch(() => undefined)
+  await publishEvent('StocktakeRecount', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, recount: st.recountCount + 1, by: user.name }, locationId: st.locationId }).catch(() => undefined)
 
   return ok({ id, status: 'DRAFT', recountCount: st.recountCount + 1 })
 }

@@ -633,6 +633,7 @@ export const sl: Record<string, string> = {
   'mig.paylink.desc': 'Tabela plačilnih povezav (javno plačilo gosta /pay/<token> — P0-2)',
   'mig.paylinkSplit.desc': 'Split po gostih — N plačilnih povezav na naročilo (vsak gost svoj QR/delež)',
   'mig.paylinkSession.desc': 'Kanonična Stripe seja — plačilo je potrjeno samo za sejo, vezano na točno to povezavo (#37)',
+  'mig.issue38.desc': 'Tenant ključ dogodkovne vrste — EventLog.locationId (dogodki so vidni samo znotraj organizacije; #38)',
   // Stroški
   'exp.month': 'Stroški (mesec)',
   'exp.totalRecords': 'Vseh zapisov',

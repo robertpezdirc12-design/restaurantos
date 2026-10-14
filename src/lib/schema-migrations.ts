@@ -215,6 +215,14 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     probe: () => columnExists('PayLink', 'sessionId'),
   },
   {
+    // Issue #38 (v1.100.0, P1): EventLog."locationId" — kanonični tenant ključ
+    // dogodkovne vrste (strežniško izpeljan; NULL = samo bootstrap operator).
+    id: 'issue38',
+    descKey: 'mig.issue38.desc',
+    endpoint: '/api/admin/migrate-issue38',
+    probe: () => columnExists('EventLog', 'locationId'),
+  },
+  {
     // OPS-4 (v1.67.0): nova DB vloga 'cleaner' (čistilka — haccp.execute).
     // Postgres: ALTER TYPE ADD VALUE IF NOT EXISTS (migrate-cleaner-role).
     // SQLite: role je String — brez DDL, probe vedno true (konzola pokaže aplicirano).

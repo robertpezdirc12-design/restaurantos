@@ -117,6 +117,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     entityId: rec.inventoryItemId,
     // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
     payload: { name: item?.name ?? rec.inventoryItemId, variance: qty, newQty, by: user.name, cause: 'waste-reversal', locationId: item?.locationId ?? rec.locationId ?? null },
+    // Issue #38: verifikovana lokacija (artikel zaloge oziroma zapis odpada)
+    locationId: item?.locationId ?? rec.locationId ?? null,
   }).catch(() => undefined)
 
   const fresh = await db.wasteRecord.findUnique({ where: { id: rec.id }, select: { reversedAt: true, reversalStockTransactionId: true } })

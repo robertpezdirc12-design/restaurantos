@@ -27,7 +27,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (res.count === 0) return fail('Potrjenega popisa ni mogoče preklicati (inventura je že zabeležena).', 409)
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_CANCEL', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, from: st.status }), locationId: st.locationId })
-  await publishEvent('StocktakeCancelled', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, by: user.name } }).catch(() => undefined)
+  await publishEvent('StocktakeCancelled', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, by: user.name }, locationId: st.locationId }).catch(() => undefined)
 
   return ok({ id, status: 'CANCELLED' })
 }

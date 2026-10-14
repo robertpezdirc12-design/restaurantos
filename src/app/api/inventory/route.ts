@@ -235,7 +235,7 @@ export async function PATCH(req: NextRequest) {
   // Issue #11 §3 — dogodek spremembe zaloge (variance != 0 pomeni dejanski premik)
   if (result.variance !== 0) {
     // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
-    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: result.name, variance: result.variance, newQty: result.newQty, by: user.name, locationId: item.locationId } }).catch(() => undefined)
+    await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: result.name, variance: result.variance, newQty: result.newQty, by: user.name, locationId: item.locationId }, locationId: item.locationId }).catch(() => undefined)
   }
   return ok({ item: { id, name: item.name, qty: result.newQty } })
 }

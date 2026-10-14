@@ -3043,9 +3043,16 @@ model EventLog {
   error       String    @default("")
   createdAt   DateTime  @default(now())
   processedAt DateTime?
+  // Issue #38 (P1): kanonični tenant ključ dogodka — STREŽNIŠKO izpeljan iz
+  // preverjene entitete/konteksta (nikoli iz klientovega payload-a). NULL =
+  // legacy/sistemski dogodek z nezanesljivim tenantom → viden SAMO bootstrap
+  // platformnemu operaterju (fail-closed). Brez FK: izbrisana lokacija pusti
+  // locationId, ki ne ustreza nobeni živi organizaciji → prav tako fail-closed.
+  locationId  String?
 
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@index([locationId])
 }
 

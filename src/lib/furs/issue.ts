@@ -866,11 +866,13 @@ export async function issueFursReceipt(req: NextRequest) {
       }
     }
     // Issue #11 §3 — dogodek izdaje računa (evidenca, fire-and-forget)
+    // Issue #38: locationId iz preverjenega naročila (orderPre), ne iz klienta
     await publishEvent('InvoiceCreated', {
       entityType: 'Receipt',
       entityId: receipt.twin.id,
       // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
       payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation, fursEnvironment: profile.environment, locationId: orderPre.locationId },
+      locationId: orderPre.locationId,
     }).catch(() => undefined)
     // Adapter je čista fabrika — po transakciji ga znova pridobimo in QR gradimo iz
     // DB polj računa (resnica o shranjenem, ne o spremenljivkah iz tx obsega).

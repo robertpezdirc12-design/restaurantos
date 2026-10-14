@@ -203,6 +203,8 @@ export async function POST(req: NextRequest) {
     entityId: item.id,
     // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
     payload: { name: item.name, variance: -qty, newQty: created.newQty, by: user.name, cause: 'waste', locationId: item.locationId },
+    // Issue #38: verifikovana lokacija artikla zaloge
+    locationId: item.locationId,
   }).catch(() => undefined)
 
   return ok(

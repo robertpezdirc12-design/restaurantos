@@ -113,6 +113,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     },
   })
   await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_TESTED', entityType: 'Integration', entityId: id, details: jstr({ reachable, statusCode, durationMs, by: user.name }), locationId: updated.locationId })
-  await publishEvent('IntegrationTested', { entityType: 'Integration', entityId: id, payload: { reachable, statusCode } })
+  await publishEvent('IntegrationTested', { entityType: 'Integration', entityId: id, payload: { reachable, statusCode }, locationId: updated.locationId })
   return ok({ connectionStatus, statusCode, durationMs, error: errorMessage, reachable })
 }

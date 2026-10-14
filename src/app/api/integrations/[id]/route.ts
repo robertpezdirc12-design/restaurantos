@@ -91,7 +91,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const updated = await db.integration.update({ where: { id }, data: data as never })
   await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_UPDATED', entityType: 'Integration', entityId: id, details: jstr({ fields: Object.keys(data), name: updated.name, by: user.name }), locationId: updated.locationId })
-  await publishEvent('IntegrationUpdated', { entityType: 'Integration', entityId: id, payload: { fields: Object.keys(data) } })
+  await publishEvent('IntegrationUpdated', { entityType: 'Integration', entityId: id, payload: { fields: Object.keys(data) }, locationId: updated.locationId })
   // #23 §3: varni DTO — nikoli surov model
   return ok({ integration: safeIntegrationDto(updated, { central: isCentralRole(user) }) })
 }
@@ -111,7 +111,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     data: { isActive: false, syncEnabled: false, connectionStatus: 'disconnected' },
   })
   await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_DISABLED', entityType: 'Integration', entityId: id, details: jstr({ name: row.name, by: user.name }), locationId: updated.locationId })
-  await publishEvent('IntegrationDisabled', { entityType: 'Integration', entityId: id, payload: { name: row.name } })
+  await publishEvent('IntegrationDisabled', { entityType: 'Integration', entityId: id, payload: { name: row.name }, locationId: updated.locationId })
   // #23 §3: varni DTO
   return ok({ integration: safeIntegrationDto(updated, { central: isCentralRole(user) }), disabled: true })
 }

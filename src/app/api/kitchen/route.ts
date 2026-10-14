@@ -147,12 +147,13 @@ export async function PATCH(req: NextRequest) {
   const remaining = await db.orderItem.count({ where: { orderId: item.orderId, status: { in: ['pending', 'fired', 'preparing'] } } })
   if (remaining === 0) {
     await db.order.update({ where: { id: item.orderId }, data: { status: 'prepared' } })
+    const doneOrder = await db.order.findUnique({ where: { id: item.orderId }, select: { orderNumber: true, locationId: true, employeeId: true } })
     // Issue #11 §3 — kuhinja zaključena (vsi artikli ready)
-    await publishEvent('KitchenCompleted', { entityType: 'Order', entityId: item.orderId, payload: { itemId: item.id, by: user.name } }).catch(() => undefined)
+    // Issue #38: locationId iz prebranega naročila (verifikovan vir, ne klient)
+    await publishEvent('KitchenCompleted', { entityType: 'Order', entityId: item.orderId, payload: { itemId: item.id, by: user.name }, locationId: doneOrder?.locationId ?? null }).catch(() => undefined)
     // OPS-7 (v1.70.0) push to waiters/management; OPS-8 (v1.72.0) via notification matrix
     // (fire-and-forget; no rules = same behavior as before). Push to the order author goes
     // DIRECTLY (pushToEmployees) on purpose — personal notification, not a matrix event.
-    const doneOrder = await db.order.findUnique({ where: { id: item.orderId }, select: { orderNumber: true, locationId: true, employeeId: true } })
     if (doneOrder) {
       void pushEvent('ORDER_READY', {
         title: 'Naročilo pripravljeno',

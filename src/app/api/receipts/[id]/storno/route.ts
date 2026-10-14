@@ -314,6 +314,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
           locationId: original.locationId,
         },
+        // Issue #38: verifikovana lokacija originalnega računa
+        locationId: original.locationId,
       }).catch(() => undefined)
     }
 

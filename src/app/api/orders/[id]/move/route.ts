@@ -81,6 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityType: 'Order',
     entityId: id,
     payload: { orderId: id, fromTableId, toTableId: tableId, locationId: order.locationId },
+    locationId: order.locationId,
   }).catch(() => undefined)
 
   const fresh = await db.order.findUnique({ where: { id }, include: orderInclude })

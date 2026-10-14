@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   classifyDrift,
   isIssue13Statement,
+  isIssue38EventTenantStatement,
   isStroskiKategorijeStatement,
   parseStatements,
   KNOWN_DRIFTS,
@@ -188,5 +189,39 @@ describe('drift-check: isStroskiKategorijeStatement (Task 66)', () => {
     }
     const ids = KNOWN_DRIFTS.map((k) => k.id)
     expect(ids).toContain('stroski-kategorije')
+  })
+})
+
+describe('drift-check: isIssue38EventTenantStatement (v1.100.0, issue #38)', () => {
+  const ADD_COL = 'ALTER TABLE "EventLog" ADD COLUMN IF NOT EXISTS "locationId" TEXT'
+  const ADD_COL_NO_IF = 'ALTER TABLE "EventLog" ADD COLUMN "locationId" TEXT'
+  const IDX = 'CREATE INDEX IF NOT EXISTS "EventLog_locationId_idx" ON "EventLog" ("locationId")'
+  const IDX_NO_IF = 'CREATE INDEX "EventLog_locationId_idx" ON "EventLog" ("locationId")'
+
+  test('ADD COLUMN (z/brz IF NOT EXISTS) → znana', () => {
+    expect(isIssue38EventTenantStatement(ADD_COL)).toBe(true)
+    expect(isIssue38EventTenantStatement(ADD_COL_NO_IF)).toBe(true)
+  })
+
+  test('CREATE INDEX (z/brz IF NOT EXISTS) → znana', () => {
+    expect(isIssue38EventTenantStatement(IDX)).toBe(true)
+    expect(isIssue38EventTenantStatement(IDX_NO_IF)).toBe(true)
+  })
+
+  test('drugačen stolpec / druga tabela → NI znana', () => {
+    expect(isIssue38EventTenantStatement('ALTER TABLE "EventLog" ADD COLUMN "organizationId" TEXT')).toBe(false)
+    expect(isIssue38EventTenantStatement('ALTER TABLE "Order" ADD COLUMN "locationId" TEXT')).toBe(false)
+    expect(isIssue38EventTenantStatement('ALTER TABLE "EventLog" DROP COLUMN "payload"')).toBe(false)
+    expect(isIssue38EventTenantStatement('DROP TABLE "EventLog";')).toBe(false)
+  })
+
+  test('classifyDrift + register vsebuje issue38-event-tenant z DDL korakom', () => {
+    const cls = classifyDrift(`-- AlterTable\n${ADD_COL};\n\n-- CreateIndex\n${IDX};\n`)
+    expect(cls.unexpected).toHaveLength(0)
+    expect(cls.known).toHaveLength(1)
+    expect(cls.known[0].id).toBe('issue38-event-tenant')
+    expect(cls.known[0].reason).toContain('/api/admin/migrate-issue38')
+    const ids = KNOWN_DRIFTS.map((k) => k.id)
+    expect(ids).toContain('issue38-event-tenant')
   })
 })

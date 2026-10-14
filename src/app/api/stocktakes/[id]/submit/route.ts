@@ -28,7 +28,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (res.count === 0) return fail('Popis ni več v osnutku (že oddan, potrjen ali preklican).', 409)
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_SUBMIT', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name }), locationId: st.locationId })
-  await publishEvent('StocktakeSubmitted', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, by: user.name } }).catch(() => undefined)
+  await publishEvent('StocktakeSubmitted', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, by: user.name }, locationId: st.locationId }).catch(() => undefined)
 
   return ok({ id, status: 'SUBMITTED' })
 }

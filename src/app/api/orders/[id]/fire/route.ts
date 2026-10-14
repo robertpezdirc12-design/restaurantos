@@ -79,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityType: 'Order',
     entityId: id,
     payload: { orderId: id, count: firedCount, locationId: order.locationId },
+    locationId: order.locationId,
   }).catch(() => undefined)
 
   // OPS-8 val 2 (v1.72.0): push to kitchen/bar on course fire (via notification matrix,

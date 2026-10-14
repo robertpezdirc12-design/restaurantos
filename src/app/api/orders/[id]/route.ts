@@ -259,10 +259,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const updatedAfterAdd = await db.order.findUnique({ where: { id }, include: orderInclude })
     if (!updatedAfterAdd) return fail('Naročilo ne obstaja.', 404)
     if (updatedAfterAdd.status === 'paid') {
-      await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updatedAfterAdd.id, payload: { total: updatedAfterAdd.total, locationId: updatedAfterAdd.locationId } }).catch(() => undefined)
+      await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updatedAfterAdd.id, payload: { total: updatedAfterAdd.total, locationId: updatedAfterAdd.locationId }, locationId: updatedAfterAdd.locationId }).catch(() => undefined)
     }
     if (updatedAfterAdd.status === 'cancelled') {
-      await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updatedAfterAdd.id, payload: { by: user.name, locationId: updatedAfterAdd.locationId } }).catch(() => undefined)
+      await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updatedAfterAdd.id, payload: { by: user.name, locationId: updatedAfterAdd.locationId }, locationId: updatedAfterAdd.locationId }).catch(() => undefined)
     }
     return ok({ order: mapOrder(normalize(updatedAfterAdd)) })
   }
@@ -270,10 +270,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updated = await db.order.update({ where: { id }, data, include: orderInclude })
   // Issue #11 §3 — plačilo/storno dogodki (fire-and-forget, nikoli ne vplivata na odgovor)
   if (updated.status === 'paid') {
-    await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updated.id, payload: { total: updated.total, locationId: updated.locationId } }).catch(() => undefined)
+    await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updated.id, payload: { total: updated.total, locationId: updated.locationId }, locationId: updated.locationId }).catch(() => undefined)
   }
   if (updated.status === 'cancelled') {
-    await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updated.id, payload: { by: user.name, locationId: updated.locationId } }).catch(() => undefined)
+    await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updated.id, payload: { by: user.name, locationId: updated.locationId }, locationId: updated.locationId }).catch(() => undefined)
   }
   return ok({ order: mapOrder(normalize(updated)) })
 }
@@ -309,7 +309,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await writeAudit(db, { userId: user.sub, action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }), locationId: order.locationId })
   }
   // Issue #11 §3 — storno dogodek
-  await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true } }).catch(() => undefined)
+  await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true }, locationId: order.locationId }).catch(() => undefined)
   if (order.tableId) {
     await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
   }

@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
   }
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_OPEN', entityType: 'Stocktake', entityId: id, details: jstr({ locationId, lines: items.length, by: user.name }), locationId: locationId })
-  await publishEvent('StocktakeOpened', { entityType: 'Stocktake', entityId: id, payload: { locationId, lines: items.length, by: user.name } }).catch(() => undefined)
+  await publishEvent('StocktakeOpened', { entityType: 'Stocktake', entityId: id, payload: { locationId, lines: items.length, by: user.name }, locationId }).catch(() => undefined)
 
   return ok({ stocktake: mapStocktakeFull(created) }, 201)
 }

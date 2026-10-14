@@ -46,7 +46,23 @@ export async function POST(req: NextRequest) {
   const location = await db.location.findUnique({ where: { id: loc } })
   if (!location) return fail('Lokacija ne obstaja.', 400)
 
-  const code = newEnrollmentCode()
+  let code = newEnrollmentCode()
+  // Issue #29: praktična izključitev duplikata kode med ŽIVIMI (neporabljenimi)
+  // prijavami — brez unikatnega indeksa (ustvarjanje le-tega lahko propade nad
+  // legacy duplikati → destruktivna migracija bi bila potrebna). CAS claim
+  // vsebuje tudi enrollmentCode, zato duplikat ne more izdati dveh tokenov
+  // za ISTO napravo; ta preverba zgolj zoža okno (rojski prostor ~10⁸,
+  // nekaj aktivnih pending prijav → zanemarljivo).
+  let codeOk = false
+  for (let i = 0; i < 5 && !codeOk; i++) {
+    const clash = await db.deviceRegistry.findFirst({
+      where: { enrollmentCode: code, enrollmentClaimedAt: null, revokedAt: null },
+      select: { id: true },
+    })
+    if (!clash) codeOk = true
+    else code = newEnrollmentCode() // regenerate (naključni trk — izjemno redko)
+  }
+  if (!codeOk) return fail('Generacija vpisne kode ni uspela — poskusi znova.', 500)
   const expiresAt = new Date(Date.now() + ENROLLMENT_TTL_MS)
   const row = await db.deviceRegistry.create({
     data: {
@@ -69,6 +85,18 @@ export async function POST(req: NextRequest) {
 /**
  * Javni claim (naprava na lokaciji): { code } → poljni token (samo tokrat).
  * Rate limit + enkratnost + TTL. Koda brez tokena ne da ničesar.
+ *
+ * Issue #29 (P1) — ATOMAREN claim: prej je bila posodobitev BREZ pogojev
+ * (update po prebranem id-ju) — dve sočasni zahtevi z isto veljavno kodo sta
+ * obe prebrali neporabljen zapis, obe izdelali token in obe dobili uspešen
+ * odgovor (veljaven je ostal samo zadnji zapisani; druga naprava je dobila
+ * lažni občutek povezave). Zdaj: pogojna CAS posodobitev točno ENEGA zapisa
+ * (id + enrollmentCode + enrollmentClaimedAt: null + revokedAt: null +
+ * enrollmentExpiresAt > now); 0 prizadetih vrstic = izgubljena dirka →
+ * dosledna zavrnitev BREZ tokena. Zmagovalna zahteva dobi natanko en token,
+ * ki je zapisan v DB (deviceId je unique) in IZKLJUČNO v njenem odgovoru.
+ * (SQLite serializira pisatelje; PG row-lock ponovno ovrednoti WHERE po
+ * commitu zmagovalca — ena in ista semantika CAS na obeh dialektih.)
  */
 export async function PUT(req: NextRequest) {
   if (!(await rateLimitBoolAsync(`claim:${clientIp(req)}`, 10, 5 * 60_000))) {
@@ -82,32 +110,58 @@ export async function PUT(req: NextRequest) {
     where: { enrollmentCode: code },
   })
   if (!device) return fail('Neznana ali že unovčena vpisna koda.', 404)
+  // hitre predpreverbe (prijazna vrstna reda napak) — AVTORITATIVNA je CAS spodaj
   if (device.enrollmentClaimedAt) return fail('Vpisna koda je bila že uporabljena.', 410)
   if (!device.enrollmentExpiresAt || device.enrollmentExpiresAt.getTime() < Date.now()) {
     return fail('Vpisna koda je potekla. Ustvari novo v nastavitvah.', 410)
   }
   if (device.revokedAt) return fail('Naprava je razveljavljena.', 403)
 
+  // #29: ATOMAREN pogojni prehod — natanko ena sočasna zahteva zmagá
+  const now = new Date()
   const deviceToken = `rodev_${crypto.randomBytes(24).toString('hex')}`
-  const updated = await db.deviceRegistry.update({
-    where: { id: device.id },
+  const claimed = await db.deviceRegistry.updateMany({
+    where: {
+      id: device.id,
+      enrollmentCode: code,
+      enrollmentClaimedAt: null,
+      revokedAt: null,
+      enrollmentExpiresAt: { gt: now },
+    },
     data: {
       deviceId: deviceToken,
       status: 'online',
-      lastSeenAt: new Date(),
+      lastSeenAt: now,
       enrollmentCode: null,
-      enrollmentClaimedAt: new Date(),
+      enrollmentClaimedAt: now,
     },
   })
+
+  if (claimed.count !== 1) {
+    // izgubljena dirka (sočasni claim / revoke / potek vmes) — razloži BREZ tokena
+    const fresh = await db.deviceRegistry.findUnique({
+      where: { id: device.id },
+      select: { enrollmentCode: true, enrollmentClaimedAt: true, enrollmentExpiresAt: true, revokedAt: true },
+    })
+    if (!fresh || fresh.enrollmentCode !== code) return fail('Neznana ali že unovčena vpisna koda.', 404)
+    if (fresh.enrollmentClaimedAt) return fail('Vpisna koda je bila že uporabljena.', 410)
+    if (fresh.revokedAt) return fail('Naprava je razveljavljena.', 403)
+    if (!fresh.enrollmentExpiresAt || fresh.enrollmentExpiresAt.getTime() < Date.now()) {
+      return fail('Vpisna koda je potekla. Ustvari novo v nastavitvah.', 410)
+    }
+    return fail('Neznana ali že unovčena vpisna koda.', 404)
+  }
+
   await writeAudit(db, { userId: null, action: 'DEVICE_CLAIMED', entityType: 'DeviceRegistry', entityId: device.id, details: `name=${device.name} type=${device.type} location=${device.locationId || 'brez'}`, ipAddress: clientIp(req), locationId: device.locationId })
-  // ENKRATNI izpis polnega tokena (enrollment moment)
+  // ENKRATNI izpis polnega tokena (enrollment moment) — samo zmagovalna zahteva;
+  // token se NE zapisuje v audit/log in se NE vrača izgubljenim zahtevam (#29)
   return ok({
     device: {
-      id: updated.id,
-      name: updated.name,
-      type: updated.type.toUpperCase(),
+      id: device.id,
+      name: device.name,
+      type: device.type.toUpperCase(),
       token: deviceToken,
-      locationId: updated.locationId,
+      locationId: device.locationId,
     },
   })
 }

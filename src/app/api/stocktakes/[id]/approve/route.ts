@@ -81,7 +81,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if ('error' in result) return result.error
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_APPROVE', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, adjusted: result.adjusted, varianceValue: result.varianceValue }), locationId: st.locationId })
-  await publishEvent('StocktakeApproved', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, adjusted: result.adjusted, varianceValue: result.varianceValue, by: user.name } }).catch(() => undefined)
+  await publishEvent('StocktakeApproved', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, adjusted: result.adjusted, varianceValue: result.varianceValue, by: user.name }, locationId: st.locationId }).catch(() => undefined)
 
   return ok({ id, status: 'APPROVED', adjusted: result.adjusted, varianceValue: result.varianceValue })
 }

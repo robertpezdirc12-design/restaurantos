@@ -119,6 +119,8 @@ export async function POST(req: NextRequest) {
     entityId: row.id,
     // 33-c: locationId v payloadu (lokacijsko vidni dogodki)
     payload: { guestName: row.guestName, partySize: row.partySize, kind: 'waitlist', by: user.name, locationId },
+    // Issue #38: verifikovana lokacija vnosa (requireUserLocation)
+    locationId,
   }).catch(() => undefined)
 
   return ok({ entry: { id: row.id, guestName: row.guestName, status: row.status, checkedInAt: row.checkedInAt } }, 201)
@@ -211,6 +213,8 @@ export async function PATCH(req: NextRequest) {
         entityType: 'WaitlistEntry',
         entityId: id,
         payload: { guestName: rec.guestName, partySize: rec.partySize, tableId: data.tableId ?? null, actualWaitMinutes: data.actualWaitMinutes ?? null, by: user.name },
+        // Issue #38: lokacija preverjenega vnosa čakalne vrste
+        locationId: rec.locationId,
       }).catch(() => undefined)
     }
     return ok({ entry: { id: updated.id, status: updated.status, seatedAt: updated.seatedAt, actualWaitMinutes: updated.actualWaitMinutes, tableId: updated.tableId } })

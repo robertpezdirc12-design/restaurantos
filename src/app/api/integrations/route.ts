@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     },
   })
   await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_CREATED', entityType: 'Integration', entityId: id, details: jstr({ name: row.name, type: row.type, provider: row.provider, by: user.name }), locationId: row.locationId })
-  await publishEvent('IntegrationCreated', { entityType: 'Integration', entityId: id, payload: { name: row.name, provider: row.provider } })
+  await publishEvent('IntegrationCreated', { entityType: 'Integration', entityId: id, payload: { name: row.name, provider: row.provider }, locationId: row.locationId })
   // #23 §3: odgovor = varni DTO — apiKey/apiSecret/config nikoli v surovi obliki
   return ok({ integration: safeIntegrationDto(row, { central: isCentralRole(user) }) }, 201)
 }

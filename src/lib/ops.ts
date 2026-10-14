@@ -337,10 +337,12 @@ export async function createOrderCore(
         return created
       })
       // Issue #11 §3 — dogodek za event-driven temelj (nikoli ne poruši toka)
+      // Issue #38: locationId iz verifikovanega konteksta (requireUserLocation pred TX)
       await publishEvent('OrderCreated', {
         entityType: 'Order',
         entityId: order.id,
         payload: { orderNumber: order.orderNumber, locationId, total: order.total, type: order.type },
+        locationId,
       }).catch(() => undefined)
       return { order: mapOrder(normalizeOrder(order)), replayed: false }
     } catch (e) {

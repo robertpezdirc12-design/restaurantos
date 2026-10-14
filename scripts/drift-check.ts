@@ -147,6 +147,17 @@ export function isIssue31_36MfaStatement(stmt: string): boolean {
   )
 }
 
+/**
+ * v1.100.0 (issue #38): aditivni tenant ključ EventLog."locationId" (+ index).
+ * Prepozna ALTER TABLE "EventLog" z SAMO tem dodatnim stolpcem (drugo = nepričakovan drift)
+ * in CREATE INDEX EventLog_locationId_idx.
+ */
+export function isIssue38EventTenantStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"EventLog"\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"locationId"\s+TEXT\b/i.exec(stmt)
+  if (m) return true
+  return /^CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"EventLog_locationId_idx"\s+ON\s+"EventLog"\s+\("locationId"\)/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -225,6 +236,21 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'računov) pa pišejo v nove stolpce → P2022 → 500. DDL aplicirajmo TAKOJ ' +
       'po deployu (idempotentno, IF NOT EXISTS).',
     matches: isIssue31_36MfaStatement,
+  },
+  {
+    id: 'issue38-event-tenant',
+    reason:
+      'Tenant ključ dogodkovne vrste (v1.100.0, issue #38 P1) — ' +
+      'EventLog."locationId" (kanonična lokacija dogodka, strežniško izpeljana ' +
+      'iz preverjene entitete; NULL = legacy/sistemski dogodek, viden samo ' +
+      'bootstrap operatorju) + index EventLog_locationId_idx: produkcija čaka ' +
+      'DDL korak — admin ruta /api/admin/migrate-issue38 (konzola Enterprise → ' +
+      'Shema migracije → en klik). Do DDL: /api/events GET/.dispatch in ' +
+      'publishEvent vračajo P2022 → dogodkovna vrsta miruje (evidenca se ' +
+      'zapiše šele po DDL — poslovni tokovi niso prizadeti, publishEvent ' +
+      'nikoli ne meče). DDL aplicirajmo TAKOJ po deployu (idempotentno, ' +
+      'IF NOT EXISTS).',
+    matches: isIssue38EventTenantStatement,
   },
 ]
 

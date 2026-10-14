@@ -207,6 +207,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityType: 'Order',
     entityId: id,
     payload: { itemId, orderNumber: order.orderNumber, by: user.name },
+    locationId: order.locationId,
   }).catch(() => undefined)
   pushToLocationRoles(order.locationId, ['chef', 'kitchen', 'bar', 'manager'], {
     tag: 'ORDER_ITEM_VOID',
