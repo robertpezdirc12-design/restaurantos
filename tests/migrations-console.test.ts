@@ -95,10 +95,10 @@ afterAll(async () => {
 })
 
 describe('register shematskih migracij', () => {
-  test('13 migracij z unikatnimi id-ji in metapodatki (+paylink v1.85.1, +paylink-split v1.87.0)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(13)
+  test('14 migracij z unikatnimi id-ji in metapodatki (+paylink v1.85.1, +paylink-split v1.87.0, +paylink-session v1.98.0 #37)', () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(14)
     const ids = SCHEMA_MIGRATIONS.map((m) => m.id)
-    expect(new Set(ids).size).toBe(13)
+    expect(new Set(ids).size).toBe(14)
     for (const m of SCHEMA_MIGRATIONS) {
       expect(m.descKey.startsWith('mig.')).toBe(true)
       expect(m.endpoint.startsWith('/api/admin/migrate-')).toBe(true)
@@ -116,7 +116,7 @@ describe('register shematskih migracij', () => {
 
   test('status na dev SQLite: vse aplicirano (schema je pushana)', async () => {
     const status = await schemaMigrationsStatus()
-    expect(status.length).toBe(13)
+    expect(status.length).toBe(14)
     expect(status.every((s) => s.applied)).toBe(true)
     expect(status.every((s) => s.error === undefined)).toBe(true)
   })
@@ -136,12 +136,12 @@ describe('migracijska konzola — avtorizacija', () => {
 })
 
 describe('migracijska konzola — status in delegacija', () => {
-  test('GET owner: 13 vnosov, vse aplicirano na dev, oblika vnosa', async () => {
+  test('GET owner: 14 vnosov, vse aplicirano na dev, oblika vnosa', async () => {
     const { owner } = await setupP
     const r = await consoleGET(req('/api/admin/migrations', owner))
     expect(r.status).toBe(200)
     const j = (await r.json()) as MigResp
-    expect(j.migrations.length).toBe(13)
+    expect(j.migrations.length).toBe(14)
     expect(j.allApplied).toBe(true)
     expect(j.pending).toBe(0)
     for (const m of j.migrations) {

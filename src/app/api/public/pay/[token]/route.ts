@@ -11,6 +11,7 @@ import {
   simulatedCharge,
   stripeCreateCheckout,
   stripeSessionStatus,
+  stripeExpireSession,
   finalizePayLinkSet,
   loadOrderBill,
   payLinkUrl,
@@ -26,6 +27,20 @@ import {
  * POST /api/public/pay/<token>  → plačilo DELEŽA (split) ali CELOTE (klasično):
  *                                 simulator odobri takoj; Stripe vrne redirect
  *                                 na Checkout sejo ({ verifySession } = potrditev).
+ *
+ * Issue #37 (P0, v1.98.0) — VEZAVA STRIPE SEJE NA KONKRETNO POVEZAVO:
+ *  - ustvarjanje: seja nosi server-side metadata (payLinkId/orderId/locationId/
+ *    znesek/valuta) + client_reference_id + Idempotency-Key vezan na
+ *    (povezava, znesek); KANONIČNI sessionId se shrani na PayLink atomarno
+ *    (CAS) — sočasna klica ustvarijoSAMO eno plačljivo sejo (izgubljenikova
+ *    seja se zapre); ponovljen POST z istim zneskom ponovno uporabi isto
+ *    odprto sejo, sprememba zneska jo varno zamenja (stara se zapre);
+ *  - potrditev: SAMO seja, ki je shranjena kot kanonična ZA TO povezavo, se
+ *    sprejme — plačana seja z ISTIM zneskom iz druge povezave/naročila je
+ *    ZAVRNJENA (preverjamo sessionId + metadata + valuto + mode + znesek,
+ *    strežniško nad Stripe odgovorom);
+ *  - poravnava: atomaren prehod open → paid (CAS) — sočasni/dvojni potrditvi
+ *    povzročita EN finančni učinek (zgubi → idempotentni replay odgovor).
  *
  * P1-6 split tok (N povezav na naročilo — vsak gost svoj QR/delež):
  *  - delež je FIKSEN na vrstici povezave (amount) — gost ga ne more spremeniti;
@@ -59,6 +74,8 @@ interface LinkRow {
   splitIndex: number
   splitCount: number
   approvalCode: string
+  /** #37: kanonična Stripe Checkout seja za to povezavo. */
+  sessionId: string | null
   expiresAt: Date | null
   paidAt: Date | null
   receiptId: string | null
@@ -276,20 +293,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return fail('Račun se je spremenil — prosite osebje za novo povezavo.', 409)
   }
 
-  // ── Stripe potrditev po vrnitvi ({ verifySession }) ──
+  // ── Stripe potrditev po vrnitvi ({ verifySession }) — Issue #37 ──
   const verifySession = String(body?.verifySession || '').trim()
   if (verifySession) {
     if (provider.kind !== 'stripe' || !provider.secretKey) return fail('Potrditev seje ni na voljo.', 400)
     if (link.amount == null || link.tip == null) return fail('Seja ni bila ustvarjena.', 409)
+    // #37 točka 1: SAMO kanonična seja te povezave je veljavna — znani ID
+    // TUJE plačane seje (tudi z istim zneskom) se zavrnejo, ŠELE pred klicem
+    if (verifySession !== link.sessionId) {
+      return fail('Plačilna seja ni veljavna za to povezavo.', 409)
+    }
     const status = await stripeSessionStatus(provider.secretKey, verifySession)
     if (!status.paid) return fail('Plačilo še ni potrjeno.', 409)
-    // neposrednost: znesek seje se mora ujemati z zaklenjenim deležem+napitnino
+    // #37 točka 2: strežniško preverjena VEZAVA na TO povezavo (Stripe echo id,
+    // metadata, ki jih klient ne more ponarediti; valuta/mode/znesek)
     const expected = Math.round((Number(link.amount) + Number(link.tip)) * 100)
+    const bound =
+      status.id === verifySession &&
+      status.metadata?.payLinkId === link.id &&
+      status.metadata?.orderId === link.orderId &&
+      status.metadata?.locationId === link.locationId &&
+      (status.metadata?.expectedAmountCents == null || Number(status.metadata.expectedAmountCents) === expected) &&
+      (status.currency == null || status.currency === 'eur') &&
+      (status.mode == null || status.mode === 'payment') &&
+      status.sessionStatus !== 'expired'
+    if (!bound) {
+      return fail('Plačilna seja ni veljavna za to povezavo.', 409)
+    }
+    // neposrednost: znesek seje se mora ujemati z zaklenjenim deležem+napitnino
     if (status.amountTotalCents != null && status.amountTotalCents !== expected) {
       return fail('Znesek seje se ne ujema s povezavo.', 409)
     }
     const approvalCode = (status.paymentIntent || `stripe-${verifySession.slice(0, 20)}`).slice(0, 40)
-    return settleShare(order, link, share, Number(link.tip), approvalCode, ip, openOthers)
+    return settleShare(order, link, share, Number(link.tip), approvalCode, ip, openOthers, link.sessionId)
   }
 
   // ── plačilo: najprej kanonični račun (napitnina ≤ DELEŽ) ──
@@ -301,19 +337,75 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   if (provider.kind === 'stripe' && provider.secretKey) {
     const origin = payLinkUrl(req, token).slice(0, -(token.length + 1)) // .../pay
+    const amountCents = Math.round((share + tip) * 100)
+    const description = link.splitCount > 1 ? `Račun #${order.orderNumber} — delež ${link.splitIndex}/${link.splitCount}` : `Račun #${order.orderNumber}`
+
+    // #37: obstoječa KANONIČNA seja — ponovna uporaba (isti znesek, še odprta)
+    // ali poravnava (že plačana, a še nepotrjena), nikoli druga plačljiva seja
+    if (link.sessionId) {
+      const existing = await stripeSessionStatus(provider.secretKey, link.sessionId).catch(() => null)
+      const stillBound = existing?.metadata?.payLinkId === link.id && existing?.metadata?.orderId === link.orderId
+      if (existing && existing.paid && stillBound && existing.id === link.sessionId) {
+        // seja je ŽE plačana → potrdi prek kanonične poti (ne ustvari nove!)
+        const approvalCode = (existing.paymentIntent || `stripe-${link.sessionId.slice(0, 20)}`).slice(0, 40)
+        return settleShare(order, link, share, Number(link.tip), approvalCode, ip, openOthers, link.sessionId)
+      }
+      if (existing && existing.sessionStatus === 'open' && stillBound && existing.url && (existing.amountTotalCents ?? amountCents) === amountCents) {
+        // isti znesek (isti delež + napitnina) → ISTA seja (idempotenca; napitnino
+        // na povezavi le uskladimo z zaklenjenim stanjem)
+        await db.payLink.update({ where: { id: link.id }, data: { amount: share, tip } })
+        return ok({ redirect: existing.url, sessionId: link.sessionId, amount: r2(share + tip), share }, 201)
+      }
+      // seja je zaprta/potekla ali znesek se je spremenil → VARNA ZAMENJAVA:
+      // najprej nova seja (Idempotency-Key na nov znesek), nato atomarna
+      // zamenjava (CAS na staro vrednost) in zaprtje stare (best-effort).
+    }
+
     const session = await stripeCreateCheckout({
       secretKey: provider.secretKey,
-      amountCents: Math.round((share + tip) * 100),
+      amountCents,
       currency: 'eur',
-      description: link.splitCount > 1 ? `Račun #${order.orderNumber} — delež ${link.splitIndex}/${link.splitCount}` : `Račun #${order.orderNumber}`,
+      description,
       successUrl: `${origin}/${token}?s={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${origin}/${token}`,
+      // #37: server-side vezava na KONKRETNO povezavo/naročilo/lokacijo
+      payLinkId: link.id,
+      orderId: order.id,
+      locationId: order.locationId,
     })
+
+    // #37: atomarna prijava KANONIČNE seje (CAS) — sočasna klica ustvarijo samo
+    // eno plačljivo sejo; izgubljenikovo sejo zapremo in vrnemo zmagovalčevo
+    const prevSession = link.sessionId
+    const cas = prevSession
+      ? await db.payLink.updateMany({
+          where: { id: link.id, status: 'open', sessionId: prevSession },
+          data: { sessionId: session.sessionId, amount: share, tip },
+        })
+      : await db.payLink.updateMany({
+          where: { id: link.id, status: 'open', sessionId: null },
+          data: { sessionId: session.sessionId, amount: share, tip },
+        })
+    if (cas.count === 0) {
+      // izgubil CAS — zapri svojo (best-effort) in poročaj zmagovalčevo sejo
+      await stripeExpireSession(provider.secretKey, session.sessionId).catch(() => null)
+      const fresh = (await db.payLink.findUnique({ where: { id: link.id } })) as LinkRow | null
+      if (fresh?.sessionId && fresh.sessionId !== session.sessionId) {
+        const winner = await stripeSessionStatus(provider.secretKey, fresh.sessionId).catch(() => null)
+        if (winner?.url) {
+          return ok({ redirect: winner.url, sessionId: fresh.sessionId, amount: r2(share + tip), share }, 201)
+        }
+        return ok({ sessionId: fresh.sessionId, amount: r2(share + tip), share }, 201)
+      }
+      // povezava je bila medtem poravnana/preklicana
+      return fail('Račun je že plačan.', 409)
+    }
+    if (prevSession) {
+      // zamenjava — staro sejo zapremo (best-effort; denar, če je bil zajet,
+      // rešuje samo kanonična pot poravnave)
+      await stripeExpireSession(provider.secretKey, prevSession).catch(() => null)
+    }
     // P1-6: amount = DELEŽ (brez napitnine — plačilni del), tip posebej
-    await db.payLink.update({
-      where: { id: link.id },
-      data: { amount: share, tip },
-    })
     return ok({ redirect: session.url, sessionId: session.sessionId, amount: r2(share + tip), share }, 201)
   }
 
@@ -327,6 +419,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
  * naročilo → 'partial'; če je povezava ZADNJA odprta → kanonični FURS zaključek
  * celotnega niza (parts=[] → jedro prišteje plačane deleže; idempotenca
  * 'plkset:<orderId>'), sicer gost vidi 'delež plačan, račun sledi ob zaključku'.
+ *
+ * Issue #37: prehod open → paid je ATOMAREN (CAS updateMany na status='open') —
+ * sočasni/dvojni potrditvi povzročita EN finančni učinek; zgubljeni zahtevek
+ * dobi idempotentni (že plačano) ali zavrnjeni (409) odgovor BREZ ponovnega
+ * obračuna. sessionRef (Stripe cs_ prefix) se zapiše v revizijo v omejeni,
+ * ne-skrivni obliki (sledljivost do seje — issue zahteva).
  */
 async function settleShare(
   order: OrderLite,
@@ -336,10 +434,12 @@ async function settleShare(
   approvalCode: string,
   ip: string,
   openOthers: number,
+  sessionRef?: string | null,
 ) {
   const now = new Date()
-  await db.payLink.update({
-    where: { id: link.id },
+  // #37: ATOMARNI prehod open → paid (CAS) — samo zmagovalni zahtevek nadaljuje
+  const cas = await db.payLink.updateMany({
+    where: { id: link.id, status: 'open' },
     data: {
       status: 'paid',
       paidAt: now,
@@ -348,6 +448,14 @@ async function settleShare(
       approvalCode: String(approvalCode || '').slice(0, 40),
     },
   })
+  if (cas.count === 0) {
+    // sočasni/dvojni zahtevek — idempotentni odgovor brez drugega učinka
+    const fresh = (await db.payLink.findUnique({ where: { id: link.id } })) as LinkRow | null
+    if (fresh?.status === 'paid') {
+      return ok({ ...(await paidPayload(fresh)), replayed: true })
+    }
+    return fail('Račun je že plačan.', 409)
+  }
 
   if (openOthers > 0) {
     // ── vmesni delež: naročilo 'partial' (CAS — unpaid → partial), brez računa ──
@@ -359,7 +467,7 @@ async function settleShare(
       action: 'PAY_LINK_SHARE_PAID',
       entityType: 'PayLink',
       entityId: link.id,
-      details: `order=#${order.orderNumber} token=${link.token.slice(0, 8)}… share=${share.toFixed(2)} tip=${r2(tip).toFixed(2)} approval=${String(approvalCode).slice(0, 20)} split=${link.splitIndex}/${link.splitCount}`,
+      details: `order=#${order.orderNumber} token=${link.token.slice(0, 8)}… share=${share.toFixed(2)} tip=${r2(tip).toFixed(2)} approval=${String(approvalCode).slice(0, 20)}${sessionRef ? ` session=${String(sessionRef).slice(0, 14)}…` : ''} split=${link.splitIndex}/${link.splitCount}`,
       ipAddress: ip,
       locationId: order.locationId,
     }).catch(() => {})
@@ -397,7 +505,7 @@ async function settleShare(
       action: 'PAY_LINK_PAID',
       entityType: 'PayLink',
       entityId: link.id,
-      details: `order=#${order.orderNumber} token=${link.token.slice(0, 8)}… final=1 share=${share.toFixed(2)} tip=${r2(tip).toFixed(2)} approval=${String(approvalCode).slice(0, 20)} split=${link.splitIndex}/${link.splitCount}`,
+      details: `order=#${order.orderNumber} token=${link.token.slice(0, 8)}… final=1 share=${share.toFixed(2)} tip=${r2(tip).toFixed(2)} approval=${String(approvalCode).slice(0, 20)}${sessionRef ? ` session=${String(sessionRef).slice(0, 14)}…` : ''} split=${link.splitIndex}/${link.splitCount}`,
       ipAddress: ip,
       locationId: order.locationId,
     }).catch(() => {})

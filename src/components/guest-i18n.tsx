@@ -235,6 +235,7 @@ const GUEST_API_ERROR_KEY_MAP: Record<string, string> = {
   'Računa ni mogoče izračunati.': 'pay.errorRetry',
   'Seja ni bila ustvarjena.': 'pay.errorRetry',
   'Znesek seje se ne ujema s povezavo.': 'pay.errorRetry',
+  'Plačilna seja ni veljavna za to povezavo.': 'pay.errorSessionInvalid',
   'Napitnina je izven dovoljenega obsega (0 do zneska računa).': 'pay.tipRange',
   'Napitnina je izven dovoljenega obsega (0 do zneska deleža).': 'pay.tipRange',
   'Račun se je spremenil — prosite osebje za novo povezavo.': 'pay.billChanged',

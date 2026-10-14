@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer'
 import { db } from '@/lib/db'
 import { jparse } from '@/lib/map'
+import { ssrfSafeRequest } from '@/lib/ssrf-guard'
 
 /**
  * OPS-7 (v1.69.0) — OPOMNIKI REZERVACIJ (e-mail + SMS).
@@ -9,8 +10,12 @@ import { jparse } from '@/lib/map'
  * Port/User/Password, emailFromAddress). Nodemailer, STARTTLS/TLS po porti.
  *
  * SMS: plitvi adapter prek Integrations tabele (type='sms', config JSON):
- *  - {provider:'twilio', accountSid, authToken, from}  → Twilio REST API (fetch, brez SDK)
- *  - {provider:'webhook', url, secret?}                → POST {to, message} na lasten webhook
+ *  - {provider:'twilio', accountSid, authToken, from}  → Twilio REST API (fetch,
+ *    FIKSEN gostitelj api.twilio.com — ne uporabniško nastavljiv)
+ *  - {provider:'webhook', url, secret?}                → POST {to, message} na
+ *    webhook — Issue #30: uporabniško nastavljiv URL teče skozi SSRF varovalo
+ *    (https/dns-pinning/brez preusmeritev/porti 80/443/8443); skrivnost
+ *    X-Webhook-Secret se pošlje SAMO na https cilj.
  * Integracije so generični register (v1.x) — brez DDL, konfiguracija prek Zaposleni→Integracije.
  *
  * Vsi naslovi so fail-soft: napaka pošiljanja NE blokira rezervacije; rezultat gre v audit.
@@ -90,7 +95,10 @@ export async function smsConfigForLocation(locationId: string | null): Promise<S
   return null
 }
 
-/** Pošlji SMS prek konfiguriranega ponudnika (fail-soft — vrne {ok, detail}). */
+/** Pošlji SMS prek konfiguriranega ponudnika (fail-soft — vrne {ok, detail}).
+ * Issue #30: webhook URL je uporabniško nastavljen → SSRF varovalo (validacija
+ * URL-ja + DNS pinning + brez sledenja preusmeritvam); X-Webhook-Secret se
+ * pošlje SAMO na https cilj (poverilnica ne gre po odprtem kanalu). */
 export async function sendSms(cfg: SmsConfig, to: string, message: string): Promise<{ ok: boolean; detail: string }> {
   const clean = to.replace(/[^\d+]/g, '')
   if (!clean || clean.length < 6) return { ok: false, detail: 'Neveljavna telefonska številka.' }
@@ -110,15 +118,18 @@ export async function sendSms(cfg: SmsConfig, to: string, message: string): Prom
       if (!res.ok) return { ok: false, detail: `Twilio ${res.status}` }
       return { ok: true, detail: 'Twilio OK' }
     }
-    // webhook (privzeto, če provider manjka)
-    const res = await fetch(cfg.url as string, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(cfg.secret ? { 'X-Webhook-Secret': cfg.secret } : {}),
-      },
-      body: JSON.stringify({ to: clean, message }),
-    })
+    // webhook (privzeto, če provider manjka) — #30: SSRF varovalni klic
+    const payload = JSON.stringify({ to: clean, message })
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    let webhookUrl: URL
+    try {
+      webhookUrl = new URL(cfg.url as string)
+    } catch {
+      return { ok: false, detail: 'Webhook URL ni veljaven.' }
+    }
+    if (webhookUrl.protocol === 'https:' && cfg.secret) headers['X-Webhook-Secret'] = cfg.secret
+    const res = await ssrfSafeRequest(cfg.url as string, { method: 'POST', headers, body: payload, timeoutMs: 5000 })
+    if (res.status === 0) return { ok: false, detail: `Webhook ni dosegljiv (${res.errorCategory})` }
     if (!res.ok) return { ok: false, detail: `Webhook ${res.status}` }
     return { ok: true, detail: 'Webhook OK' }
   } catch (e) {

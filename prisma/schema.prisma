@@ -1757,6 +1757,10 @@ model PayLink {
   splitIndex Int       @default(1)
   splitCount Int       @default(1)
   approvalCode String  @default("")
+  // Issue #37 (v1.98.0): KANONIČNA Stripe Checkout seja za to povezavo —
+  // potrditev plačila sprejme SAMO sejo, ki je atomarno prijavljena tukaj (CAS)
+  // IN strežniško vezana prek metadata (payLinkId/orderId/locationId/znesek).
+  sessionId  String?
   expiresAt  DateTime?
   paidAt     DateTime?
   receiptId  String?

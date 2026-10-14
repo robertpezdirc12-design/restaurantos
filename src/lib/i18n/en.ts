@@ -149,6 +149,7 @@ export const en: Record<string, string> = {
   'pay.loading': 'Loading …',
   'pay.notFound': 'This link does not exist or has expired.',
   'pay.errorRetry': 'Payment failed. Please try again.',
+  'pay.errorSessionInvalid': 'The payment cannot be confirmed — please notify the staff.',
   'pay.order': 'Order',
   'pay.table': 'Table',
   'pay.subtotal': 'Subtotal',

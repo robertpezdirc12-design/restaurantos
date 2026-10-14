@@ -100,6 +100,11 @@ export interface StripeCheckoutArgs {
   description: string
   successUrl: string
   cancelUrl: string
+  /** Issue #37: vezava seje na KONKRETEN PayLink/naročilo/lokacijo (server-side
+   *  metadata + client_reference_id — klient jih ne more ponarediti). */
+  payLinkId: string
+  orderId: string
+  locationId: string
 }
 
 export interface StripeCheckoutResult {
@@ -107,7 +112,13 @@ export interface StripeCheckoutResult {
   url: string
 }
 
-/** Ustvari Stripe Checkout sejo (znesek ZAKLEPAN na seji — napitnina vključena). */
+/**
+ * Ustvari Stripe Checkout sejo (znesek ZAKLEPAN na seji — napitnina vključena).
+ * Issue #37: seja se nujno zaveže na konkretne PayLink/Order/Location prek
+ * metadata (verifikacija jih strežniško preverja) + client_reference_id;
+ * Idempotency-Key je vezan na (povezava, znesek) — ponovljen klic z istim
+ * zneskom vrne ISTO sejo, spremenjena napitnina (nov znesek) pa nov ključ.
+ */
 export async function stripeCreateCheckout(args: StripeCheckoutArgs): Promise<StripeCheckoutResult> {
   const form = new URLSearchParams({
     mode: 'payment',
@@ -117,12 +128,19 @@ export async function stripeCreateCheckout(args: StripeCheckoutArgs): Promise<St
     'line_items[0][price_data][product_data][name]': args.description.slice(0, 100),
     success_url: args.successUrl,
     cancel_url: args.cancelUrl,
+    client_reference_id: args.payLinkId,
+    'metadata[payLinkId]': args.payLinkId,
+    'metadata[orderId]': args.orderId,
+    'metadata[locationId]': args.locationId,
+    'metadata[expectedAmountCents]': String(Math.round(args.amountCents)),
+    'metadata[currency]': args.currency,
   })
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: {
       authorization: `Bearer ${args.secretKey}`,
       'content-type': 'application/x-www-form-urlencoded',
+      'idempotency-key': `paylink-${args.payLinkId}-${Math.round(args.amountCents)}`,
     },
     body: form.toString(),
   })
@@ -135,25 +153,78 @@ export async function stripeCreateCheckout(args: StripeCheckoutArgs): Promise<St
 }
 
 export interface StripeSessionStatus {
+  /** Stripe ID seje (echo — primerjava s pričakovano). */
+  id: string | null
   paid: boolean
   paymentIntent: string | null
   amountTotalCents: number | null
+  currency: string | null
+  /** Stripe session.status: open | complete | expired. */
+  sessionStatus: string | null
+  /** 'payment' za Checkout enkratno plačilo. */
+  mode: string | null
+  /** server-side metadata (mi jih postavimo ob ustvarjanju — klient ne more ponarediti). */
+  metadata: Record<string, string> | null
+  clientReferenceId: string | null
+  /** URL plačilne strani (samo dokler je seja odprta). */
+  url: string | null
+}
+
+interface StripeSessionRaw {
+  id?: string
+  status?: string
+  mode?: string
+  payment_status?: string
+  payment_intent?: string | null
+  amount_total?: number | null
+  currency?: string | null
+  metadata?: Record<string, string> | null
+  client_reference_id?: string | null
+  url?: string | null
 }
 
 /**
  * Preveri sejo (server-to-server — avtoriteta je Stripe, ne client).
- * payment_intent → approvalCode (sledljivost kot terminalski SIM- kodi).
+ * Issue #37: vrača CELO preverjeno stanje (id/payment_status/amount_total/
+ * currency/mode/metadata/client_reference_id/status) — payment_intent →
+ * approvalCode (sledljivost kot terminalski SIM- kodi).
  */
 export async function stripeSessionStatus(secretKey: string, sessionId: string): Promise<StripeSessionStatus> {
   const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
     headers: { authorization: `Bearer ${secretKey}` },
   })
   if (!res.ok) throw new Error(`Stripe session ${res.status}`)
-  const data = (await res.json()) as { payment_status?: string; payment_intent?: string | null; amount_total?: number | null }
+  const data = (await res.json()) as StripeSessionRaw
   return {
+    id: typeof data.id === 'string' ? data.id : null,
     paid: data.payment_status === 'paid',
     paymentIntent: data.payment_intent || null,
     amountTotalCents: typeof data.amount_total === 'number' ? data.amount_total : null,
+    currency: typeof data.currency === 'string' ? data.currency : null,
+    sessionStatus: typeof data.status === 'string' ? data.status : null,
+    mode: typeof data.mode === 'string' ? data.mode : null,
+    metadata: data.metadata && typeof data.metadata === 'object' ? data.metadata : null,
+    clientReferenceId: typeof data.client_reference_id === 'string' ? data.client_reference_id : null,
+    url: typeof data.url === 'string' ? data.url : null,
+  }
+}
+
+/**
+ * Issue #37: zapri (expire) sejo — najboljši poskus (fail-soft). Uporabi se ob
+ * zamenjavi kanonične seje (spremenjena napitnina) in ob izgubljenem CAS
+ * (sočasna ustvarjanja: izgubljenikova seja se zapre, ostane plačljiva SAMO
+ * kanonična). Napaka se tiho pogoltne (že zajet denar bi reševal webhook/rok —
+ * izven obsega; kanonična verifikacija ostaja edina pot poravnave).
+ */
+export async function stripeExpireSession(secretKey: string, sessionId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}/expire`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${secretKey}` },
+    })
+    return res.ok
+  } catch {
+    return false
   }
 }
 
@@ -251,18 +322,18 @@ export async function finalizePayLinkSet(orderId: string, ip?: string | null): P
 // ---------- capability probe (v1.85.1 — haccp-plans vzorec) ----------
 
 /**
- * Ali je PayLink shema PRIPRAVLJENA (v1.87.0: tabela + P1-6 split stolpci —
- * dev SQLite: da prek db push; produkcijski Neon: po migrate-paylink IN
- * migrate-paylink-split DDL korakih). 60 s TTL — produkcijska PayLink ruta med
- * čakanjem na DDL vrača 503 s prijaznim sporočilom namesto 500.
- * NAMERNO prazen catch (javna gostova ruta — prijazno 503 tudi pri infra napaki).
+ * Ali je PayLink shema PRIPRAVLJENA (v1.87.0: tabela + P1-6 split stolpci;
+ * v1.98.0: še sessionId — kanonična Stripe Checkout seja, issue #37). 60 s TTL —
+ * produkcijska PayLink ruta med čakanjem na DDL vrača 503 s prijaznim sporočilom
+ * namesto 500. NAMERNO prazen catch (javna gostova ruta — prijazno 503 tudi pri
+ * infra napaki).
  */
 let payLinkProbeCache: { ok: boolean; at: number } | null = null
 
 export async function payLinkReady(): Promise<boolean> {
   if (payLinkProbeCache && Date.now() - payLinkProbeCache.at < 60_000) return payLinkProbeCache.ok
   try {
-    await db.$queryRawUnsafe('SELECT "splitIndex", "approvalCode" FROM "PayLink" LIMIT 1')
+    await db.$queryRawUnsafe('SELECT "splitIndex", "approvalCode", "sessionId" FROM "PayLink" LIMIT 1')
     payLinkProbeCache = { ok: true, at: Date.now() }
     return true
   } catch {

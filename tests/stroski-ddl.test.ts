@@ -150,7 +150,7 @@ describe('stroski-kategorije: register + i18n', () => {
     expect(m?.descKey).toBe('mig.stroskiKategorije.desc')
     expect(m?.endpoint).toBe('/api/admin/migrate-stroski-kategorije')
     expect(typeof m?.probe).toBe('function')
-    expect(SCHEMA_MIGRATIONS.length).toBe(13) // v1.87.0: +paylink-split
+    expect(SCHEMA_MIGRATIONS.length).toBe(14) // v1.98.0: +paylink-session (#37)
     // i18n: ključ obstaja v SL in HR (globalna pariteta → tests/i18n.test.ts)
     expect(typeof sl['mig.stroskiKategorije.desc']).toBe('string')
     expect(typeof hr['mig.stroskiKategorije.desc']).toBe('string')

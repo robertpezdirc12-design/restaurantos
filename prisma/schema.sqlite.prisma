@@ -47,6 +47,7 @@ model AccountsPayable {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime @updatedAt
   locationId          String?
+  category            String                @default("")
   matchStatus         String                @default("unmatched")
   Location            Location?             @relation(fields: [locationId], references: [id], onUpdate: SetNull)
   Supplier            Supplier              @relation(fields: [supplierId], references: [id])
@@ -57,12 +58,6 @@ model AccountsPayable {
   @@index([status, dueDate])
   @@index([status])
   @@index([supplierId])
-  // Task 66 (v1.64.0): stroški kategorije — DEV ONLY do uporabniškega DDL koraka.
-  // Main schema.prisma (produkcija) polja NIMA, dokler centralna vloga ne aplicira
-  // /api/admin/migrate-stroski-kategorije (konzola Enterprise) — sicer bi Prisma
-  // client na produkciji SELECT-al neobstoječ stolpec (P2022 zastrupitev živih
-  // poizvedb). Naslednja naloga (koda/UI kategorij) doda polje v main schema.
-  category            String                @default("")
 }
 
 model AccountsPayableLine {
@@ -1769,6 +1764,10 @@ model PayLink {
   splitIndex Int       @default(1)
   splitCount Int       @default(1)
   approvalCode String  @default("")
+  // Issue #37 (v1.98.0): KANONIČNA Stripe Checkout seja za to povezavo —
+  // potrditev plačila sprejme SAMO sejo, ki je atomarno prijavljena tukaj (CAS)
+  // IN strežniško vezana prek metadata (payLinkId/orderId/locationId/znesek).
+  sessionId  String?
   expiresAt  DateTime?
   paidAt     DateTime?
   receiptId  String?

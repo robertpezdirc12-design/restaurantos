@@ -119,6 +119,16 @@ export function isPayLinkSplitStatement(stmt: string): boolean {
 }
 
 /**
+ * v1.98.0 (issue #37): aditivni stolpec PayLink."sessionId" — kanonična Stripe
+ * Checkout seja povezave (strežniška vezava plačila na KONKRETNO povezavo).
+ * Prepozna ALTER TABLE "PayLink" z SAMO tem dodatnim stolpcem.
+ */
+export function isPayLinkSessionStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"PayLink"\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"sessionId"\s+TEXT\b/i.exec(stmt)
+  return !!m
+}
+
+/**
  * v1.94.0 (issue #31–36): aditivna MFA stolpca nad Employee — mfaLastTotpCounter
  * (TOTP replay zaščita, RFC 6238 §5.2) + mfaRecoveryVersion (CAS za atomarno
  * porabo recovery kod). Prepozna ALTER TABLE "Employee" z SAMO tema dvema
@@ -180,6 +190,16 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'poizvedbe z novimi stolpci vrnejo P2022/P2010 → rute 503 degradirajo ' +
       'prek payLinkReady probe). Ko je DDL apliciran, drift izgine.',
     matches: isPayLinkSplitStatement,
+  },
+  {
+    id: 'paylink-session',
+    reason:
+      'PayLink kanonična Stripe seja (issue #37, v1.98.0 — sessionId stolpec) — ' +
+      'produkcija čaka DDL korak: admin ruta /api/admin/migrate-paylink-session ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL javna /pay ruta ' +
+      '503 degradira prek payLinkReady probe (prijazno sporočilo, nižje je že ' +
+      'paylink/paylink-split predpogoj). Ko je DDL apliciran, drift izgine.',
+    matches: isPayLinkSessionStatement,
   },
   {
     id: 'stroski-kategorije',

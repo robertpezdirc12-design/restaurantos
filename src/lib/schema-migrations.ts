@@ -206,6 +206,15 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     ]),
   },
   {
+    // Issue #37 (v1.98.0): kanonična Stripe Checkout seja na PayLink —
+    // potrditev plačila sprejme SAMO sejo, ki je atomarno prijavljena na
+    // povezavi (CAS) in vezana prek Stripe metadata. Predpogoj: tabela PayLink.
+    id: 'paylink-session',
+    descKey: 'mig.paylinkSession.desc',
+    endpoint: '/api/admin/migrate-paylink-session',
+    probe: () => columnExists('PayLink', 'sessionId'),
+  },
+  {
     // OPS-4 (v1.67.0): nova DB vloga 'cleaner' (čistilka — haccp.execute).
     // Postgres: ALTER TYPE ADD VALUE IF NOT EXISTS (migrate-cleaner-role).
     // SQLite: role je String — brez DDL, probe vedno true (konzola pokaže aplicirano).

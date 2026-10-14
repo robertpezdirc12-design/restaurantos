@@ -368,12 +368,16 @@ describe('paylink — validacija + SMS fail-soft', () => {
 describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
   const origFetch = globalThis.fetch
 
-  test('checkout: 201 redirect + znesek/napitnina ZAKLEPANA na povezavi', async () => {
+  test('checkout: 201 redirect + znesek/napitnina ZAKLEPANA + KANONIČNA seja prijavljena (#37)', async () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_plnk'
     let called = ''
+    let createBody = ''
+    let createHeaders: Record<string, string> = {}
     globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
       called = String(url)
       if (called.includes('api.stripe.com/v1/checkout/sessions') && (init?.method || 'GET') === 'POST') {
+        createBody = String(init?.body || '')
+        createHeaders = (init?.headers as Record<string, string>) || {}
         return new Response(JSON.stringify({ id: 'cs_plnk_1', url: 'https://checkout.stripe.com/c/pay/cs_plnk_1' }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
@@ -383,14 +387,22 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
       const link = await mkLink(oid)
       const res = await publicPayPOST(req(`/api/public/pay/${link.token}`, '', 'POST', { tip: 2.26 }), { params: Promise.resolve({ token: link.token }) })
       expect(res.status).toBe(201)
-      const data = (await res.json()) as { redirect: string; amount: number; share: number }
+      const data = (await res.json()) as { redirect: string; amount: number; share: number; sessionId: string }
       expect(data.redirect).toContain('checkout.stripe.com')
       expect(data.amount).toBe(24.83) // delež + napitnina (seja)
       expect(data.share).toBe(22.57) // P1-6: amount = delež BREZ napitnine
       expect(called).toContain('api.stripe.com')
+      // #37: seja je VEZANA na konkretno povezavo/naročilo/lokacijo (server-side)
+      expect(createBody).toContain(`metadata%5BpayLinkId%5D=${encodeURIComponent(link.id)}`)
+      expect(createBody).toContain(`metadata%5BorderId%5D=${encodeURIComponent(oid)}`)
+      expect(createBody).toContain(`client_reference_id=${encodeURIComponent(link.id)}`)
+      expect(createBody).toContain('metadata%5BexpectedAmountCents%5D=2483')
+      expect(String(createHeaders['idempotency-key'] || '')).toContain(`paylink-${link.id}-`)
       const row = await db.payLink.findUnique({ where: { token: link.token } })
       expect(Number(row?.amount)).toBe(22.57)
       expect(Number(row?.tip)).toBe(2.26)
+      // #37: KANONIČNI sessionId je atomarno prijavljen na povezavi
+      expect(row?.sessionId).toBe('cs_plnk_1')
       // še NI plačano — seja čaka
       expect(row?.status).toBe('open')
     } finally {
@@ -399,20 +411,25 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
     }
   })
 
-  test('verifySession: plačana seja → kanonični FURS zaključek + pi_ sled', async () => {
+  test('verifySession: plačana KANONIČNA seja → kanonični FURS zaključek + pi_ sled', async () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_plnk'
+    const { id: oid } = await mkOrder()
+    const link = await mkLink(oid)
+    // zakleni znesek + KANONIČNO sejo (kot bi ju checkout — #37)
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_plnk_2' } })
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url)
       if (u.includes('api.stripe.com/v1/checkout/sessions/cs_plnk_2')) {
-        return new Response(JSON.stringify({ id: 'cs_plnk_2', payment_status: 'paid', payment_intent: 'pi_plnk_2', amount_total: 2483 }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return new Response(JSON.stringify({
+          id: 'cs_plnk_2', object: 'checkout.session', status: 'complete', mode: 'payment',
+          payment_status: 'paid', payment_intent: 'pi_plnk_2', amount_total: 2483, currency: 'eur',
+          client_reference_id: link.id,
+          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483', currency: 'eur' },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
     try {
-      const { id: oid } = await mkOrder()
-      const link = await mkLink(oid)
-      // zakleni znesek (kot bi ga checkout)
-      await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26 } })
       const res = await publicPayPOST(req(`/api/public/pay/${link.token}`, '', 'POST', { verifySession: 'cs_plnk_2' }), { params: Promise.resolve({ token: link.token }) })
       expect(res.status).toBe(200)
       const data = (await res.json()) as { status: string; receipt: { totalWithTip: number } }
@@ -421,6 +438,9 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
       const payment = await db.payment.findFirst({ where: { idempotencyKey: `plkset:${oid}#p0` } })
       expect(payment?.authorizationCode).toBe('pi_plnk_2')
       expect(payment?.type).toBe('card')
+      // #37: revizija nosi omejeno sled seje (ne-skrivna oblika)
+      const audit = await db.auditLog.findFirst({ where: { action: 'PAY_LINK_PAID', entityId: link.id } })
+      expect(audit?.details).toContain('session=cs_plnk_2…')
     } finally {
       delete process.env.STRIPE_SECRET_KEY
       globalThis.fetch = origFetch
@@ -429,17 +449,21 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
 
   test('verifySession: napačen znesek seje → 409 (neposrednost)', async () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_plnk'
+    const { id: oid } = await mkOrder()
+    const link = await mkLink(oid)
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_plnk_3' } })
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url)
       if (u.includes('api.stripe.com/v1/checkout/sessions/cs_plnk_3')) {
-        return new Response(JSON.stringify({ id: 'cs_plnk_3', payment_status: 'paid', payment_intent: 'pi_plnk_3', amount_total: 9999 }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return new Response(JSON.stringify({
+          id: 'cs_plnk_3', status: 'complete', mode: 'payment', payment_status: 'paid',
+          payment_intent: 'pi_plnk_3', amount_total: 9999, currency: 'eur',
+          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483', currency: 'eur' },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
     try {
-      const { id: oid } = await mkOrder()
-      const link = await mkLink(oid)
-      await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26 } })
       const res = await publicPayPOST(req(`/api/public/pay/${link.token}`, '', 'POST', { verifySession: 'cs_plnk_3' }), { params: Promise.resolve({ token: link.token }) })
       expect(res.status).toBe(409)
     } finally {
@@ -484,6 +508,7 @@ describe('paylink — produkcijski DDL korak (migrate-paylink + 503 degradacija)
         "splitIndex" INTEGER NOT NULL DEFAULT 1,
         "splitCount" INTEGER NOT NULL DEFAULT 1,
         "approvalCode" TEXT NOT NULL DEFAULT '',
+        "sessionId" TEXT,
         "expiresAt" DATETIME,
         "paidAt" DATETIME,
         "receiptId" TEXT,

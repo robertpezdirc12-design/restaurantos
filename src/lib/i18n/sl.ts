@@ -258,6 +258,7 @@ export const sl: Record<string, string> = {
   'pay.loading': 'Nalagam …',
   'pay.notFound': 'Povezava ne obstaja ali je potekla.',
   'pay.errorRetry': 'Plačilo ni uspelo. Poskusite znova.',
+  'pay.errorSessionInvalid': 'Plačila ni mogoče potrditi — prosimo, obvestite osebje.',
   'pay.order': 'Naročilo',
   'pay.table': 'Miza',
   'pay.subtotal': 'Medseštevek',
@@ -631,6 +632,7 @@ export const sl: Record<string, string> = {
   'mig.cleanerRole.desc': 'Nova vloga čistilke (EmployeeRole enum — samo HACCP izvedba)',
   'mig.paylink.desc': 'Tabela plačilnih povezav (javno plačilo gosta /pay/<token> — P0-2)',
   'mig.paylinkSplit.desc': 'Split po gostih — N plačilnih povezav na naročilo (vsak gost svoj QR/delež)',
+  'mig.paylinkSession.desc': 'Kanonična Stripe seja — plačilo je potrjeno samo za sejo, vezano na točno to povezavo (#37)',
   // Stroški
   'exp.month': 'Stroški (mesec)',
   'exp.totalRecords': 'Vseh zapisov',
