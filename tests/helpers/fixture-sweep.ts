@@ -64,6 +64,8 @@ export const TEST_PREFIXES = [
   'i60-', // issue60-63-cash-shift-atomic (v1.92.0)
   'pi49-', // issue49-51-64-payments (v1.93.0)
   'i53-', // issue53-54-fiscal-po-scope (v1.95.0)
+  'i65-', // issue56-57-65-replay-scope (v1.96.0)
+  'i4346-', // issue43-46-loyalty-discount-gc (v1.97.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

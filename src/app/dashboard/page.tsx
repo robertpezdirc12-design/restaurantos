@@ -772,6 +772,11 @@ function DashboardInner() {
       if (!discountId || discountId === 'none') {
         await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE' })
       } else {
+        // v1.97.0 (#45): strežnik zavrne tiho preiranje obstoječega popusta (409) —
+        // zamenjava je EKSPlicitna: najprej odstrani dosedanjega, nato apliciraj novega
+        if (selDiscountId && selDiscountId !== 'none') {
+          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE' })
+        }
         await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ discountId }) })
       }
       setSelDiscountId(discountId)
@@ -2185,7 +2190,9 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="zvestoba">
-            <LoyaltyTab accounts={loyalty} canManage={canManage} onReload={load} />
+            {/* v1.97.0 (#43): centralna vloga pošlje izbrano lokacijo pogleda (viewLoc) —
+                strežnik jo validira (org obseg); staff lokacija ostaja strežniško določena */}
+            <LoyaltyTab accounts={loyalty} canManage={canManage} onReload={load} centralLocationId={viewLoc || ''} />
           </TabsContent>
 
           <TabsContent value="mnenja">

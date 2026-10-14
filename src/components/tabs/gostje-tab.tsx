@@ -20,7 +20,7 @@ const TIER_COLORS: Record<string, string> = {
   BRONZE: 'bg-amber-700 text-white', SILVER: 'bg-stone-400 text-white', GOLD: 'bg-yellow-500 text-white', PLATINUM: 'bg-stone-700 text-white',
 }
 
-export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: LoyaltyT[]; canManage: boolean; onReload: () => Promise<void> }) {
+export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = '' }: { accounts: LoyaltyT[]; canManage: boolean; onReload: () => Promise<void>; centralLocationId?: string }) {
   const { t } = useI18n()
   const totalPoints = accounts.reduce((s, a) => s + a.points, 0)
   const [member, setMember] = useState<{ guestName: string; phone: string } | null>(null)
@@ -33,7 +33,11 @@ export function LoyaltyTab({ accounts, canManage, onReload }: { accounts: Loyalt
     if (!member) return
     setMBusy(true)
     try {
-      await api('/api/loyalty', { method: 'POST', body: JSON.stringify(member) })
+      // v1.97.0 (#43): centralna vloga pošlje izbrano lokacijo pogleda (preklopnik
+      // v glavi); strežnik jo validira (org obseg) in 400 če centralni brez izbire.
+      // JSON.stringify izpušče undefined → staff pot se nič ne spremeni (lokacija
+      // ostane strežniško dodeljena, klientova vrednost se ignorira)
+      await api('/api/loyalty', { method: 'POST', body: JSON.stringify({ ...member, locationId: centralLocationId || undefined }) })
       setMember(null); await onReload()
     } catch (err) { alert((err as Error).message) } finally { setMBusy(false) }
   }

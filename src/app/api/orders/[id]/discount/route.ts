@@ -12,12 +12,38 @@ import { writeAudit } from '@/lib/audit-chain'
  * - DELETE: odstrani ročni popust
  * Zahteva apply_discounts. Znesek se shrani na Order.discount (kanonično polje); končni
  * izračun (vključno s Happy Hour) se vedno izvede ob plačilu prek billing.ts.
+ *
+ * Issue #45 (P1) — SEMANTIKA currentUses (dokumentirana odločitev):
+ * kvota šteje USPEŠNO PRIPETE popuste na naročilo (attachment = poraba; enako kot
+ * »žig kupona ob uporabi«). Plačilo NI pogoj za porabo (billing izračunava sam ob
+ * plačilu; auto/HappyHour popusti sploh ne grejo skozi ta števec). ODSTRANITEV
+ * popusta (DELETE) s kvote NE vrača — računovodsko konzervativno (promocija je
+ * porabila svojo izdajo). Kar je NOVO: poraba je VEZANA na uspeh celotne mutacije —
+ * naročilo + kvota + audit v ENI transakciji:
+ *  - vsa validacija (vnosi, veljavnost, končni znesek > 0, plačljivo stanje,
+ *    obstoječi popust) PRED porabo kvote;
+ *  - CAS na naročilu: paymentStatus IN (unpaid, partial) AND discount = prebrana
+ *    vrednost — naročilo, ki je medtem plačano/stornirano/preklicano ALI je druga
+ *    zahteva že pripela popust, povzroči ROLLBACK kvote (409);
+ *  - dve sočasni zahtevi na isto naročilo: natanko ena uspe (CAS), druga 409 —
+ *    tiho preiranje zneska ob dvojni porabi kvote ni več mogoče; zamenjava je
+ *    EKSPlicitna (najprej DELETE, nato POST).
  */
 
 /** OPS-4 (v1.67.0): zgornja meja ročnega odstotka za ne-vodstvene vloge (matrica §4b — Toast "manager approval"). */
 export const DISCOUNT_APPROVAL_PERCENT = 15
 const isManagerialRole = (role?: string | null): boolean =>
   ['MANAGER', 'ADMIN', 'OWNER', 'GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER'].includes(String(role ?? '').toUpperCase())
+
+/** Issue #45: plačljiva stanja naročila za spremembo ročnega popusta (CAS v samem update-u). */
+const PAYABLE: ('unpaid' | 'partial')[] = ['unpaid', 'partial']
+
+/** Interni reject (#45) — znotraj $transaction povzroči ROLLBACK (naročilo + kvota). */
+class DiscountApplyError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+  }
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'apply_discounts')
@@ -37,6 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let discountName = ''
   let amount = 0
   let discountId: string | null = null
+  let quota: { maxUses: number } | null = null
 
   if (body?.discountId) {
     const d = await db.discount.findUnique({ where: { id: String(body.discountId) } })
@@ -55,15 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     amount = discountAmountOf(d, subtotal)
     discountName = d.name
     discountId = d.id
-    // R8 popravek (P0 audit): atomarno povečanje števca uporabe (CAS guard maxUses) —
-    // prej: preverba + nevezan increment → sočasna uporaba bi prekorazila omejitev
-    if (d.maxUses != null) {
-      const bump = await db.discount.updateMany({
-        where: { id: d.id, currentUses: { lt: d.maxUses } },
-        data: { currentUses: { increment: 1 } },
-      })
-      if (bump.count === 0) return fail('Popust je dosegel omejitev uporabe.', 409)
-    }
+    if (d.maxUses != null) quota = { maxUses: d.maxUses }
   } else {
     const type = String(body?.type || '').toLowerCase()
     const val = num(body?.amount)
@@ -79,14 +98,54 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     discountName = String(body?.name || 'Ročni popust').trim().slice(0, 120)
   }
 
+  // (#45) VSA validacija PRED porabo kvote — prej je bil končni pregled zneska
+  // ZA incrementom currentUses (zavrnjen popust je že porabil kvoto)
   if (amount <= 0) return fail('Popust ima ničelen znesek na tem računu.', 400)
+  // (#45) eksplicitna zamenjava: naročilo z obstoječim popustom se ZAVRNE — tiho
+  // preiranje (2× porabljena kvota, viden samo zadnji znesek) ni več mogoče;
+  // UI zamenjavo izvede eksplicitno (najprej DELETE, nato POST)
+  if (num(order.discount) > 0) {
+    return fail('Naročilo že ima popust — najprej odstranite obstoječega, nato aplicirajte novega.', 409)
+  }
 
-  const updated = await db.order.update({
-    where: { id },
-    data: { discount: amount },
-  })
-  await writeAudit(db, { userId: user.sub, action: 'DISCOUNT_APPLIED', entityType: 'Order', entityId: id, details: jstr({ discountId, name: discountName, amount, orderNumber: order.orderNumber, previousDiscount: num(order.discount) }), locationId: order.locationId })
-  return ok({ discount: num(updated.discount), discountId, name: discountName })
+  const previousDiscount = num(order.discount)
+  try {
+    const applied = await db.$transaction(async (tx) => {
+      // 1) kvota (#45): atomaren CAS claim — currentUses < maxUses, v ISTI
+      //    transakciji kot sprememba naročila; neuspeh 2./3. koraka → ROLLBACK kvote
+      if (quota) {
+        const bump = await tx.discount.updateMany({
+          where: { id: discountId as string, currentUses: { lt: quota.maxUses } },
+          data: { currentUses: { increment: 1 } },
+        })
+        if (bump.count === 0) throw new DiscountApplyError(409, 'Popust je dosegel omejitev uporabe.')
+      }
+      // 2) naročilo (#45): CAS na plačljivo stanje + dosedanjo vrednost popusta —
+      //    plačilo/storno/preklic ali konkurenčna pripenitev med branjem → 409,
+      //    kvota se povrne (rollback transakcije)
+      const upd = await tx.order.updateMany({
+        where: { id, paymentStatus: { in: PAYABLE }, discount: previousDiscount },
+        data: { discount: amount },
+      })
+      if (upd.count === 0) {
+        throw new DiscountApplyError(409, 'Naročilo ni več v plačljivem stanju ali že ima popust — sprememba zavrnjena.')
+      }
+      // 3) audit v isti transakciji (noben uspeh brez sledi)
+      await writeAudit(tx, {
+        userId: user.sub,
+        action: 'DISCOUNT_APPLIED',
+        entityType: 'Order',
+        entityId: id,
+        details: jstr({ discountId, name: discountName, amount, orderNumber: order.orderNumber, previousDiscount }),
+        locationId: order.locationId,
+      })
+      return amount
+    })
+    return ok({ discount: applied, discountId, name: discountName })
+  } catch (e) {
+    if (e instanceof DiscountApplyError) return fail(e.message, e.status)
+    throw e
+  }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -101,7 +160,29 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (delGuard) return delGuard
   if (order.paymentStatus === 'paid') return fail('Naročilo je že plačano.', 409)
   const previous = num(order.discount)
-  await db.order.update({ where: { id }, data: { discount: 0 } })
-  await writeAudit(db, { userId: user.sub, action: 'DISCOUNT_REMOVED', entityType: 'Order', entityId: id, details: jstr({ removedAmount: previous, orderNumber: order.orderNumber }), locationId: order.locationId })
-  return ok({ removed: true, previous })
+  try {
+    await db.$transaction(async (tx) => {
+      // (#45) CAS v SAMEM update-u: plačljivo stanje + dosedanja vrednost —
+      // prej: preverba pred ločenim update-om (plačilo medtem bi tiho prepisalo)
+      const upd = await tx.order.updateMany({
+        where: { id, paymentStatus: { in: PAYABLE }, discount: previous },
+        data: { discount: 0 },
+      })
+      if (upd.count === 0) {
+        throw new DiscountApplyError(409, 'Naročilo ni več v plačljivem stanju ali je popust že odstranjen/zamenjan.')
+      }
+      await writeAudit(tx, {
+        userId: user.sub,
+        action: 'DISCOUNT_REMOVED',
+        entityType: 'Order',
+        entityId: id,
+        details: jstr({ removedAmount: previous, orderNumber: order.orderNumber }),
+        locationId: order.locationId,
+      })
+    })
+    return ok({ removed: true, previous })
+  } catch (e) {
+    if (e instanceof DiscountApplyError) return fail(e.message, e.status)
+    throw e
+  }
 }
