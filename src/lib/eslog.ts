@@ -22,6 +22,12 @@ export interface EslogLine {
   quantity: number
   unitPrice: number
   vatRate: number
+  /** Issue #18 (aditivno): koda enote iz unitCode atributa (npr. "H87", "KGM"); '' ni znana. */
+  unit?: string
+  /** Issue #18 (aditivno): cbc:ID vrstice (referenca dobavitelja); '' ni znana. */
+  lineId?: string
+  /** Issue #18 (aditivno): vrstica iz CreditNoteLine (dobropis) — količina se predznači pri shranjevanju. */
+  credited?: boolean
 }
 
 export interface EslogSupplier {
@@ -59,6 +65,8 @@ export interface EslogInvoice {
   total: number
   /** OPS-10 val 3: embedded attachments (empty when the invoice carries none — never fails the parse) */
   attachments: EslogAttachment[]
+  /** Issue #18 (aditivno): korenski dokument je CreditNote (dobropis) in ne Invoice. */
+  documentType?: 'invoice' | 'credit_note'
 }
 
 export interface EslogParseResult {
@@ -154,26 +162,26 @@ function firstNonEmpty(...vals: string[]): string {
  * UBL documents parse to { Invoice: {...} } (declaration becomes '?xml');
  * credit notes ({ CreditNote }) are accepted with the same extraction rules.
  */
-function invoiceRoot(doc: XmlNode): { root: XmlNode | null; found: boolean } {
+function invoiceRoot(doc: XmlNode): { root: XmlNode | null; found: boolean; key: string | null } {
   for (const key of ['Invoice', 'CreditNote', 'InvoiceDocument']) {
     const hit = doc[key]
-    if (hit && typeof hit === 'object' && !Array.isArray(hit)) return { root: hit as XmlNode, found: true }
+    if (hit && typeof hit === 'object' && !Array.isArray(hit)) return { root: hit as XmlNode, found: true, key }
     if (Array.isArray(hit) && hit.length > 0 && typeof hit[0] === 'object') {
-      return { root: hit[0] as XmlNode, found: true }
+      return { root: hit[0] as XmlNode, found: true, key }
     }
   }
   // last resort: any top-level object whose key contains "invoice" (e.g. "UBLInvoice"),
   // then a bounded deep search for a wrapped <Invoice> node (e.g. <root><Invoice>...)
   for (const [k, v] of Object.entries(doc)) {
     if (/invoice/i.test(k) && v && typeof v === 'object' && !Array.isArray(v)) {
-      return { root: v as XmlNode, found: true }
+      return { root: v as XmlNode, found: true, key: k }
     }
   }
   const deep = deepFind(doc, 'Invoice', 3)
   if (deep && typeof deep === 'object' && !Array.isArray(deep)) {
-    return { root: deep as XmlNode, found: true }
+    return { root: deep as XmlNode, found: true, key: 'Invoice' }
   }
-  return { root: null, found: false }
+  return { root: null, found: false, key: null }
 }
 
 function supplierOf(inv: XmlNode): EslogSupplier {
@@ -209,27 +217,42 @@ function supplierOf(inv: XmlNode): EslogSupplier {
 }
 
 function linesOf(inv: XmlNode): EslogLine[] {
-  // UBL Invoice uses InvoiceLine; CreditNote may use CreditNoteLine — accept both
-  const rawLines = [...asArray(inv['InvoiceLine']), ...asArray(inv['CreditNoteLine'])]
+  // UBL Invoice uses InvoiceLine; CreditNote may use CreditNoteLine — accept both.
+  // Issue #18: vrstice iz CreditNoteLine nosijo credited:true (količina se pri
+  // shranjevanju v AP predznači negativno — dobropis ZMANJŠA fakturirano kumulativo).
+  const rawPairs: Array<{ raw: unknown; credited: boolean }> = [
+    ...asArray(inv['InvoiceLine']).map((raw) => ({ raw, credited: false })),
+    ...asArray(inv['CreditNoteLine']).map((raw) => ({ raw, credited: true })),
+  ]
   const out: EslogLine[] = []
-  for (const raw of rawLines) {
+  for (const { raw, credited } of rawPairs) {
     if (!raw || typeof raw !== 'object') continue
     const line = raw as XmlNode
     const name = textOf(pick(line, ['Item', 'Name'])) || textOf(deepFind(line, 'Name', 3))
-    const qty = numFrom(
-      textOf(line['InvoicedQuantity']) || textOf(line['CreditedQuantity']) || textOf(line['Quantity']),
-    )
+    const qtyNode = credited
+      ? (line['CreditedQuantity'] ?? line['InvoicedQuantity'] ?? line['Quantity'])
+      : (line['InvoicedQuantity'] ?? line['CreditedQuantity'] ?? line['Quantity'])
+    const qty = numFrom(textOf(qtyNode))
     const unitPrice = numFrom(textOf(pick(line, ['Price', 'PriceAmount'])))
     const vatRate =
       numFrom(textOf(pick(line, ['TaxCategory', 'Percent']))) ||
       numFrom(textOf(pick(line, ['Item', 'ClassifiedTaxCategory', 'Percent']))) ||
       0
     if (!name && !Number.isFinite(qty)) continue
+    const qtyObj = qtyNode && typeof qtyNode === 'object' ? (qtyNode as XmlNode) : null
+    // Issue #18 (aditivno, NE-odmevno za stare odjemalce): koda enote + ID
+    // vrstice + pripadnost dobropisu se izpišejo SAMO ko so prisotni/smiselni —
+    // toEqual pogodbe obstoječih testov (prazna polja ne smejo biti ključi)
+    const unitCode = qtyObj ? attrOf(qtyObj, 'unitCode') : ''
+    const lineId = textOf(line['ID'])
     out.push({
       name,
       quantity: Number.isFinite(qty) ? qty : 0,
       unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
       vatRate: Number.isFinite(vatRate) ? vatRate : 0,
+      ...(unitCode ? { unit: unitCode } : {}),
+      ...(lineId ? { lineId } : {}),
+      ...(credited ? { credited } : {}),
     })
   }
   return out
@@ -371,7 +394,7 @@ export function parseEslog(xml: string): EslogParseResult {
     return { invoice: null, error: 'XML ni veljaven (prazen dokument).' }
   }
 
-  const { root, found } = invoiceRoot(doc as XmlNode)
+  const { root, key: rootKey } = invoiceRoot(doc as XmlNode)
   if (!root) {
     return { invoice: null, error: 'Nepoznana struktura e-računa (pričakovan eSLOG/UBL Invoice).' }
   }
@@ -410,6 +433,7 @@ export function parseEslog(xml: string): EslogParseResult {
       vatTotal: Number.isFinite(vatTotal) ? vatTotal : NaN,
       total: Number.isFinite(total) ? total : NaN,
       attachments,
+      documentType: rootKey && /credit/i.test(rootKey) ? 'credit_note' : 'invoice',
     },
     error: null,
   }

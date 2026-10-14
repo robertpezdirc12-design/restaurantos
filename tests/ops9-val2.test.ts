@@ -105,11 +105,15 @@ describe('OPS-9/2 parseEslog — eSLOG 1.6 (namespaced UBL)', () => {
   test('lines (quantity, decimal-comma price, vat rate)', () => {
     const inv = r.invoice!
     expect(inv.lines).toHaveLength(2)
-    expect(inv.lines[0]).toEqual({ name: 'Moka moka', quantity: 10, unitPrice: 12.5, vatRate: 22 })
+    // Issue #18 (v1.103.0): vrstice nosijo DODATNO kodo enote (unitCode) in ID
+    // vrstice (aditivno — dobropisna pripadnost se izpiše samo pri CreditNoteLine)
+    expect(inv.lines[0]).toEqual({ name: 'Moka moka', quantity: 10, unitPrice: 12.5, vatRate: 22, unit: 'KGM', lineId: '1' })
     expect(inv.lines[1].name).toBe('Soncecnovo olje')
     expect(inv.lines[1].quantity).toBe(8)
     expect(inv.lines[1].unitPrice).toBe(10) // "10,00" decimal comma
     expect(inv.lines[1].vatRate).toBe(0) // no tax category on the line
+    expect(inv.lines[1].unit).toBe('LTR') // Issue #18: koda enote iz atributa
+    expect(inv.lines[1].lineId).toBe('2') // Issue #18: ID vrstice (cbc:ID)
   })
 })
 

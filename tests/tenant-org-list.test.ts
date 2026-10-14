@@ -179,7 +179,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // org allow-lista namesto ročnih centralnih bypassov) → 47
     // Issue #65 (v1.96.0): import-eslog (apVisibleInScope — duplicate/replay tenant-scope,
     // list↔replay konsistentnost s /api/expenses) → 48
-    expect(wired.length).toBe(48)
+    // Issue #18 (v1.103.0): ap/[id]/match GET (tristransko ujemanje — predlogi PO
+    // postavk v uporabnikovem obsegu) → 49
+    expect(wired.length).toBe(49)
   })
 })
 

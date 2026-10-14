@@ -18,6 +18,7 @@ import { POST as paylinkPOST } from '../migrate-paylink/route'
 import { POST as paylinkSplitPOST } from '@/app/api/admin/migrate-paylink-split/route'
 import { POST as paylinkSessionPOST } from '@/app/api/admin/migrate-paylink-session/route'
 import { POST as issue38POST } from '../migrate-issue38/route'
+import { POST as apTolerancePOST } from '../migrate-ap-tolerance/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -49,6 +50,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'paylink-split': paylinkSplitPOST,
   'paylink-session': paylinkSessionPOST,
   'issue38': issue38POST,
+  'ap-tolerance': apTolerancePOST,
 }
 
 interface ConsoleResult {

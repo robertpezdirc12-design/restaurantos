@@ -2130,6 +2130,14 @@ model RestaurantSettings {
   cisCertPath           String   @default("")
   cisCertPassword       String   @default("")
   cisEnvironment        String   @default("test")
+  // Issue #18 (P1, v1.103.0) — tolerance tristranskega ujemanja (pooblaščena
+  // računovodska politika; privzeto STROGO). SAMO v SQLite zrcalu (main schema
+  // jih nima — dostop izključno prek raw SQL + probe, vzorec stroski-kategorije;
+  // produkcijski DDL: /api/admin/migrate-ap-tolerance).
+  apMatchQtyTolerancePct      Decimal @default(0)
+  apMatchPriceTolerancePct    Decimal @default(0)
+  apMatchVatTolerancePct      Decimal @default(0)
+  apMatchAmountToleranceCents Int     @default(2)
 }
 
 model RevenueCenter {

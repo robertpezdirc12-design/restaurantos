@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, requireAuthWithPerms, isResponse, ok } from '@/lib/api'
-import { nid, jstr } from '@/lib/map'
+import { nid, jstr, num } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { safeSettingsDto } from '@/lib/secret-dto'
+import { apToleranceConfig, apToleranceAvailable, writeApTolerance, AP_TOLERANCE_COLUMNS } from '@/lib/ap-tolerance'
 
 const EDITABLE = [
   'name', 'address', 'city', 'postCode', 'phone', 'email', 'web', 'businessId', 'taxId',
@@ -29,7 +30,9 @@ export async function GET(req: NextRequest) {
   if (!s) return ok({ settings: null })
   if (ctx.perms.includes('settings.manage')) {
     // #23 §1: tudi nastavitvena vloga ne vidi obstoječih skrivnosti — samo indikator
-    return ok({ settings: safeSettingsDto(s) })
+    // Issue #18: tolerance ujemanja so del globalne računovodske politike (DDL-gated)
+    const tolerance = await apToleranceConfig()
+    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable() })
   }
   const minimal: Record<string, unknown> = {}
   for (const key of EDITABLE) {
@@ -49,10 +52,28 @@ export async function PUT(req: NextRequest) {
     if (body[key] !== undefined) data[key] = body[key]
   }
   if (body.emailReportRecipients !== undefined) data.emailReportRecipients = jstr(body.emailReportRecipients)
+
+  // Issue #18: tolerance tristranskega ujemanja (pooblaščena računovodska
+  // politika, DDL-gated raw SQL — vzorec kategorij). Ne odmevajo v `settings`
+  // DTO (tipiziran client stolpcev ne pozna), ampak ločeno pod apMatchTolerance.
+  // NAMENOMA ZA ustvarjanjem/posodobitvijo vrstice: writeApTolerance je UPDATE —
+  // brez singleton vrstice (prvi zagon) se vrednost ne bi shranila.
+  const toleranceValues: Partial<Record<(typeof AP_TOLERANCE_COLUMNS)[number], number>> = {}
+  for (const col of AP_TOLERANCE_COLUMNS) {
+    if (body[col] !== undefined) {
+      const v = num(body[col], NaN)
+      if (!Number.isFinite(v)) return ok({ error: `${col} mora biti število.` }, 400)
+      toleranceValues[col] = v
+    }
+  }
   const existing = await db.restaurantSettings.findFirst()
   const settings = existing
     ? await db.restaurantSettings.update({ where: { id: existing.id }, data })
     : await db.restaurantSettings.create({ data: { id: nid(), ...data } })
+  if (Object.keys(toleranceValues).length > 0) {
+    const err = await writeApTolerance(toleranceValues)
+    if (err) return ok({ error: err }, 503)
+  }
   // 33-c (audit §6): spremembe nastavitev so zdaj revidirane — SAMO ključi (NI vrednosti,
   // ker so med njimi poslovni podatki; pin/skrivnosti v Editable sploh niso)
   const changedKeys = Object.keys(data)
@@ -60,5 +81,6 @@ export async function PUT(req: NextRequest) {
     await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys }), locationId: user.loc })
   }
   // #23 §1: PUT odgovor vrača varni DTO — ne odmeva obstoječih skrivnosti
-  return ok({ settings: safeSettingsDto(settings) })
+  // Issue #18: + trenutne tolerance (pri prisotnosti v telesu se odražajo takoj)
+  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig() })
 }

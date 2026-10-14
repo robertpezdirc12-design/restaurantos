@@ -96,6 +96,48 @@ export function isStroskiKategorijeStatement(stmt: string): boolean {
 }
 
 /**
+ * Issue #18 (v1.103.0): tolerance tristranskega ujemanja — 4 stolpci na
+ * RestaurantSettings. Dvosmerno (kot stroski-kategorije): pred DDL jih main
+ * schema nima (brez drifta, če jih baza še ne ima); PO uporabniškem DDL in
+ * PRED umikom iz mirror sheme diff generira DROP COLUMN ×4; po uskladitvi
+ * izgine. Matcher je STROG: tabela + vsaka klavzula ADD/DROP enega od 4 imen.
+ * Split klavzul je OKLEPAJNO-ZAVEDEN (DECIMAL(5,2) vsebuje vejico!).
+ */
+export function isApToleranceStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"RestaurantSettings"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  const cols = [
+    'apMatchQtyTolerancePct', 'apMatchPriceTolerancePct',
+    'apMatchVatTolerancePct', 'apMatchAmountToleranceCents',
+  ]
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && cols.includes(mm[2])
+  })
+}
+
+/** Split na vejice ZUNAJ oklepajev (DECIMAL(5,2) ne razbije klavzul). */
+function splitTopLevelClauses(s: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of s) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth = Math.max(0, depth - 1)
+    if (ch === ',' && depth === 0) {
+      if (cur.trim()) out.push(cur.trim())
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  if (cur.trim()) out.push(cur.trim())
+  return out
+}
+
+/**
  * Task 64 (v1.62.0): HaccpPlan tabela — prisma diff generira CREATE TABLE +
  * 2× CREATE INDEX + ADD CONSTRAINT (FK na Location). Vsi 4 stavki vsebujejo
  * "HaccpPlan" (noben drug model se nanjo veže), zato je matcher preprost in
@@ -251,6 +293,20 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'nikoli ne meče). DDL aplicirajmo TAKOJ po deployu (idempotentno, ' +
       'IF NOT EXISTS).',
     matches: isIssue38EventTenantStatement,
+  },
+  {
+    id: 'ap-tolerance',
+    reason:
+      'Tolerance tristranskega ujemanja (v1.103.0, issue #18 P1) — 4 stolpci na ' +
+      'RestaurantSettings (apMatchQtyTolerancePct / apMatchPriceTolerancePct / ' +
+      'apMatchVatTolerancePct / apMatchAmountToleranceCents): produkcija čaka DDL ' +
+      'korak — admin ruta /api/admin/migrate-ap-tolerance (konzola Enterprise → ' +
+      'Shema migracije → en klik). Dvosmerna faza (kot stroski-kategorije): po ' +
+      'DDL in pred uskladitvijo main sheme diff generira DROP COLUMN ×4. Do DDL ' +
+      'match motor teče na STROGIH privzetkih (0 % / 2 c — graceful), pisanje ' +
+      'toleranc prek PUT /api/settings vrne 503. Nobena tipizirana poizvedba ' +
+      'stolpcev ne uporablja (raw SQL + probe, vzorec stroski-kategorije).',
+    matches: isApToleranceStatement,
   },
 ]
 

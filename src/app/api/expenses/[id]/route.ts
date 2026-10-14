@@ -5,6 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { auditChainFields } from '@/lib/audit-chain'
 import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
+import { applyApMatchEvaluation } from '@/lib/ap-match'
 
 /**
  * Task 61 (revizija §7 vrstica 122): urejanje/mehko brisanje stroška (AccountsPayable).
@@ -66,7 +67,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await db.accountsPayable.findUnique({
     where: { id },
-    include: { Supplier: { select: { name: true } } },
+    // Issue #18: vrstice potrebne za apHasPoLinks (re-evalvacija ob spremembi zneska)
+    include: {
+      Supplier: { select: { name: true } },
+      AccountsPayableLine: { select: { purchaseOrderItemId: true } },
+    },
   })
   if (!existing) return fail('Strošek ne obstaja.', 404)
   // lokacijski + org sloj (Task 52 konvencija — guardResource v 34 rutah)
@@ -105,6 +110,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const status = String(body.status).toLowerCase()
     if (!['open', 'paid'].includes(status)) {
       return fail('Status mora biti open ali paid (preklic gre prek DELETE).', 400)
+    }
+    // Issue #18 (P1) — plačilna varovalka tristranskega ujemanja: račun z
+    // nerazrešenimi razlikami (količina nad prevzemom / cena / DDV / znesek →
+    // blocked ali review_required) NI potrjevan/plačljiv, dokler pooblaščena
+    // oseba ne razreši izjeme (POST /api/ap/[id]/match approve_exception →
+    // exception_approved). Osnutek iz prevzema (grn_draft) OSTAJA plačljiv
+    // (blago je fizično prejeto; znesek izhaja iz PO) — a je jasno označen.
+    if (status === 'paid' && (existing.matchStatus === 'blocked' || existing.matchStatus === 'review_required')) {
+      return fail(
+        `Račun ima nerazrešene razlike v tristranskem ujemanju (nabavno naročilo ↔ prevzem ↔ račun; stanje: ${existing.matchStatus}) — ` +
+        'razrešite izjemo (Stroški → Ujemanje → Odobri izjemo) pred plačilom.',
+        409,
+      )
     }
     if (status === 'paid') {
       const total = r2(num(body?.amount !== undefined ? data.totalAmount : existing.totalAmount))
@@ -189,7 +207,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   })
 
+  // Issue #18: sprememba zneska glave na AP s PO povezavami → ponovna
+  // tristranska evalvacija (prejšnji rezultat ne ostaja veljaven brez preverbe).
+  // Best-effort (urejanje samo po uspehu); exception_approved se NE prepiše.
+  if (data.totalAmount !== undefined && apHasPoLinks(existing)) {
+    try {
+      await applyApMatchEvaluation(id, { userId: user.sub, reason: 'expense_amount_changed' })
+    } catch {
+      /* stanje se vidi v /api/ap/[id]/match in seznamu Stroškov */
+    }
+  }
+
   return ok({ expense: expenseView(updated, catsEnabled ? (categoryChanged ? categoryValue! : (categoryPrevious ?? '')) : undefined) })
+}
+
+/** Issue #18: ali ima AP vrstice povezane na PO postavke (pomembno za re-evalvacijo)? */
+function apHasPoLinks(ap: { AccountsPayableLine?: { purchaseOrderItemId: string | null }[] }): boolean {
+  return (ap.AccountsPayableLine ?? []).some((l) => !!l.purchaseOrderItemId)
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

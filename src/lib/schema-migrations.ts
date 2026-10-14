@@ -223,6 +223,21 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     probe: () => columnExists('EventLog', 'locationId'),
   },
   {
+    // Issue #18 (v1.103.0, P1): tolerance tristranskega ujemanja — 4 stolpci na
+    // RestaurantSettings (qty/price/vat % + centi zaokroževanja). Privzeto strogo
+    // (0 % / 2 c) — ohlapitev je izrecna odločitev settings.manage osebe.
+    // Do DDL: match motor teče na strogih privzetkih (graceful), pisanje → 503.
+    id: 'ap-tolerance',
+    descKey: 'mig.apTolerance.desc',
+    endpoint: '/api/admin/migrate-ap-tolerance',
+    probe: () => columnsAll([
+      ['RestaurantSettings', 'apMatchQtyTolerancePct'],
+      ['RestaurantSettings', 'apMatchPriceTolerancePct'],
+      ['RestaurantSettings', 'apMatchVatTolerancePct'],
+      ['RestaurantSettings', 'apMatchAmountToleranceCents'],
+    ]),
+  },
+  {
     // OPS-4 (v1.67.0): nova DB vloga 'cleaner' (čistilka — haccp.execute).
     // Postgres: ALTER TYPE ADD VALUE IF NOT EXISTS (migrate-cleaner-role).
     // SQLite: role je String — brez DDL, probe vedno true (konzola pokaže aplicirano).

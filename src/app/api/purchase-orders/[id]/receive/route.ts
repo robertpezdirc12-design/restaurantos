@@ -19,6 +19,7 @@ import {
 } from '@/lib/procurement'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
+import { applyApMatchEvaluation } from '@/lib/ap-match'
 
 /**
  * Issue #1 (triage ②) — prevzem blaga (GRN) z avtomatskim vplivom na zalogo.
@@ -364,6 +365,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 unitPriceInvoiced: unitPrice,
                 vatRateInvoiced: vatRate,
                 lineTotal: gross,
+                // Issue #18: osnutek iz prevzema — vrstice niso preverjene proti
+                // dejanskemu računu dobavitelja
+                varianceStatus: 'unverified',
               }
             })
             subtotal = Math.round(subtotal * 100) / 100
@@ -388,8 +392,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                     vatAmount,
                     totalAmount: Math.round((subtotal + vatAmount) * 100) / 100,
                     status: 'open',
-                    matchStatus: 'matched',
-                    notes: `GRN ${grnNumber} (${po.poNumber})`,
+                    // Issue #18: OSNUTEK iz prevzema — NE lažni 'matched'!
+                    // Osnutek iz GRN temelji na cenah PO + količinah prevzema;
+                    // potrjen račun je šele dejanski dokument dobavitelja
+                    // (eSLOG uvoz → tristranska evalvacija).
+                    matchStatus: 'grn_draft',
+                    notes: `OSNUTEK iz prevzema GRN ${grnNumber} (${po.poNumber}) — čaka dobaviteljev račun`,
                     locationId,
                     AccountsPayableLine: {
                       create: apLines.map((l) => ({ id: nid(), ...l })),
@@ -412,8 +420,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
         }
       } catch (apErr) {
-        // fail-safe: the liability bridge must not break stock receipting
+        // fail-safe: the liability bridge must not break stock receipting.
+        // Issue #18: napaka NI več samo strežniški log — zapiše revizijski dogodek
+        // GRN_AP_BRIDGE_FAILED (vidno stanje "neuspel korak"; varen ponovni poskus
+        // = naslednji prevzem istega PO ali eSLOG uvoz, ki samoustvari pravi AP).
         console.error('[grn] AccountsPayable most ni uspel (prevzem ostaja veljaven):', apErr)
+        await writeAudit(tx, {
+          userId: user.sub,
+          action: 'GRN_AP_BRIDGE_FAILED',
+          entityType: 'GoodsReceipt',
+          entityId: receiptId,
+          details: jstr({
+            grnNumber,
+            poNumber: po.poNumber,
+            purchaseOrderId: id,
+            reason: String((apErr as Error).message || apErr).slice(0, 200),
+            note: 'Osnutek obveznosti ni bil ustvarjen — prevzem je veljaven; naslednji prevzem ali eSLOG uvoz ga nadomesti.',
+            locationId,
+          }),
+        }).catch(() => undefined)
       }
 
       // 7. audit
@@ -454,6 +479,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return ok({ receipt: { id: existing?.id, grnNumber: existing?.grnNumber, status: existing?.status, idempotentReplay: true } })
   }
   if (!result) return fail('Prevzem ni bil ustvarjen.', 500)
+
+  // Issue #18 — ponovna tristranska evalvacija AP-jev, povezanih na postavke
+  // TOGA naročila (npr. račun je prispel pred blagom → 'blocked' zaradi
+  // presežka nad sprejeto količino; novi prevzem poveča količino → odblokira).
+  // Best-effort (napaka ne podre prevzema); exception_approved se NE prepiše.
+  try {
+    const affectedItems = po.PurchaseOrderItem.map((i) => i.id)
+    if (affectedItems.length > 0) {
+      const affectedAps = await db.accountsPayable.findMany({
+        where: {
+          status: { not: 'void' },
+          matchStatus: { in: ['auto', 'matched', 'review_required', 'blocked'] },
+          AccountsPayableLine: { some: { purchaseOrderItemId: { in: affectedItems } } },
+        },
+        select: { id: true },
+        take: 20,
+      })
+      for (const a of affectedAps) {
+        await applyApMatchEvaluation(a.id, { userId: user.sub, reason: `grn_receive:${grnNumber}` })
+      }
+    }
+  } catch (e) {
+    console.warn('[grn] ponovna evalvacija ujemanja ni uspela (prevzem ostaja veljaven):', String((e as Error).message || e))
+  }
 
   // OPS-8 val 2 (v1.72.0): push to warehouse/management on receipt (via notification matrix;
   // fire-and-forget)

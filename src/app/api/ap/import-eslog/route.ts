@@ -8,6 +8,7 @@ import { parseEslog, type EslogInvoice } from '@/lib/eslog'
 import { writeAudit } from '@/lib/audit-chain'
 import { upsertApAttachments, oversizeNote, type ApAttachmentMeta } from '@/lib/ap-attachments'
 import { pushEvent, apNewPushPayload } from '@/lib/push'
+import { autoLinkExactMatches, applyApMatchEvaluation } from '@/lib/ap-match'
 import type { AuthPayload } from '@/lib/auth'
 
 /**
@@ -117,7 +118,10 @@ function eslogPayloadMismatch(
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
     const x = inv.lines[i]
-    if (Math.round(Number(l.quantityInvoiced) * 10000) !== Math.round(x.quantity * 10000)) return `vrstica ${i + 1}: količina`
+    // Issue #18: dobropisne vrstice so shranjene S PREDZNAKOM (negativno) —
+    // isti XML poda enako predznakano vrednost
+    const expectedQty = x.credited ? -x.quantity : x.quantity
+    if (Math.round(Number(l.quantityInvoiced) * 10000) !== Math.round(expectedQty * 10000)) return `vrstica ${i + 1}: količina`
     if (cents(l.unitPriceInvoiced) !== cents(x.unitPrice)) return `vrstica ${i + 1}: cena`
     if (Math.round(Number(l.vatRateInvoiced) * 100) !== Math.round(x.vatRate * 100)) return `vrstica ${i + 1}: DDV stopnja`
   }
@@ -191,13 +195,15 @@ function apResponse(ap: {
   }
 }
 
-/** Fallback totals from lines when the XML header amounts are missing/unparseable. */
+/** Fallback totals from lines when the XML header amounts are missing/unparseable.
+ *  Issue #18: vrstice dobropisa so predznačene negativno (kumulativa se ZMANJŠA). */
 function totalsFromLines(inv: EslogInvoice): { subtotal: number; vatAmount: number; totalAmount: number } {
   let subtotal = 0
   let vatAmount = 0
   for (const l of inv.lines) {
-    const net = Math.round(l.quantity * l.unitPrice * 100) / 100
-    const gross = apLineTotalGross(l.quantity, l.unitPrice, l.vatRate)
+    const lineSign = l.credited ? -1 : 1
+    const net = (Math.round(l.quantity * l.unitPrice * 100) / 100) * lineSign
+    const gross = apLineTotalGross(l.quantity, l.unitPrice, l.vatRate) * lineSign
     subtotal += net
     vatAmount += Math.round((gross - net) * 100) / 100
   }
@@ -313,13 +319,18 @@ export async function POST(req: NextRequest) {
   const vatAmount = Number.isFinite(inv.vatTotal) ? inv.vatTotal : derived.vatAmount
   const totalAmount = Number.isFinite(inv.total) ? inv.total : derived.totalAmount
 
-  const apLines = inv.lines.map((l) => ({
-    description: l.name || invoiceNumber,
-    quantityInvoiced: l.quantity,
-    unitPriceInvoiced: l.unitPrice,
-    vatRateInvoiced: l.vatRate,
-    lineTotal: apLineTotalGross(l.quantity, l.unitPrice, l.vatRate),
-  }))
+  // Issue #18: vrstice dobropisa (CreditNoteLine) se shranijo S PREDZNAKOM —
+  // negativna količina/vrednost (kumulativna fakturirana količina se zmanjša)
+  const apLines = inv.lines.map((l) => {
+    const lineSign = l.credited ? -1 : 1
+    return {
+      description: l.name || invoiceNumber,
+      quantityInvoiced: l.quantity * lineSign,
+      unitPriceInvoiced: l.unitPrice,
+      vatRateInvoiced: l.vatRate,
+      lineTotal: apLineTotalGross(l.quantity, l.unitPrice, l.vatRate) * lineSign,
+    }
+  })
 
   const year = now.getFullYear()
   let ap: Awaited<ReturnType<typeof createAp>> | null = null
@@ -349,9 +360,35 @@ export async function POST(req: NextRequest) {
   // OPS-10 val 3 — best-effort attachment archive (never fails the import)
   const attachmentsSaved = await saveAttachments(user.sub, ap.id, ap.apNumber, ap.notes || '', inv)
 
+  // Issue #18 — tristransko ujemanje ob uvozu:
+  //  1. deterministična samodejna povezava VRSTIC na PO postavke istega dobavitelja
+  //     v obsegu AP (SAMO točna ujemanja: normaliziran opis + DDV + količinska
+  //     smiselnost; vse ostalo je predlog za ročno potrditev v /api/ap/[id]/match);
+  //  2. evalvacija PO ↔ GRN ↔ vrstice → kanonični matchStatus (matched /
+  //     review_required / blocked) + varianceStatus/varianceNote vrstic.
+  //     Napake NE podrejo uvoza (račun obstaja; stanje se vidi v Stroških).
+  let linesAutoLinked = 0
+  try {
+    // obseg kandidatov = uporabnikov locationScope (centralni uvoz NE poveže
+    // vrstic na PO-je tuje organizacije)
+    linesAutoLinked = await autoLinkExactMatches(ap.id, user.sub, await locationScope(user))
+  } catch (e) {
+    console.warn('[import-eslog] auto-link ni uspel (račun ostaja uvožen):', String((e as Error).message || e))
+  }
+  let matchEvaluated = false
+  try {
+    const evaluated = await applyApMatchEvaluation(ap.id, { userId: user.sub, reason: 'eslog_import' })
+    matchEvaluated = evaluated !== null
+  } catch (e) {
+    console.warn('[import-eslog] tristranska evalvacija ni uspela (račun ostaja uvožen):', String((e as Error).message || e))
+  }
+
   await writeAudit(db, { userId: user.sub, action: 'ESLOG_IMPORTED', entityType: 'AccountsPayable', entityId: ap.id, details: jstr({
         apNumber: ap.apNumber,
         invoiceNumber, canonicalId,
+        documentType: inv.documentType || 'invoice',
+        linesAutoLinked,
+        matchEvaluated,
         supplierId: supplier.id,
         supplierName: supplier.name,
         supplierTaxId: inv.supplier.taxId,
@@ -372,7 +409,7 @@ export async function POST(req: NextRequest) {
     { roles: ['accounting', 'manager'], locationId: user.loc || null },
   )
 
-  return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: parsedEcho(inv), attachmentsSaved }, 201)
+  return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: parsedEcho(inv), attachmentsSaved, linesAutoLinked, matchEvaluated }, 201)
 }
 
 async function createAp(args: {

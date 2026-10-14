@@ -72,8 +72,18 @@ export async function GET(req: NextRequest) {
     where: await locationScope(user),
     orderBy: { invoiceDate: 'desc' },
     take: 100,
-    include: { Supplier: { select: { name: true } } },
+    include: {
+      Supplier: { select: { name: true } },
+      AccountsPayableLine: { select: { varianceStatus: true, purchaseOrderItemId: true } },
+    },
   })
+  // Issue #18: reference PO (poNumber) za vrstice s povezavo
+  const poIds = [...new Set(rows.map((r) => r.purchaseOrderId).filter((x): x is string => !!x))]
+  const poNumberById = new Map<string, string>()
+  if (poIds.length) {
+    const poRows = await db.purchaseOrder.findMany({ where: { id: { in: poIds } }, select: { id: true, poNumber: true } })
+    for (const p of poRows) poNumberById.set(p.id, p.poNumber)
+  }
   // Task 67: runtime-gated enrichment — realna kategorija SAMO če stolpec obstaja
   const catsEnabled = await expenseCategoriesAvailable()
   let catById = new Map<string, string>()
@@ -98,6 +108,15 @@ export async function GET(req: NextRequest) {
       dueDate: r.dueDate,
       locationId: r.locationId,
       supplierName: r.Supplier?.name || null,
+      // Issue #18 — tristransko ujemanje: status + povzetek vrstic + PO referenca
+      matchStatus: r.matchStatus,
+      matchSummary: {
+        linesTotal: r.AccountsPayableLine.length,
+        linesMatched: r.AccountsPayableLine.filter((l) => l.varianceStatus === 'match').length,
+        linesBlocked: r.AccountsPayableLine.filter((l) => l.varianceStatus === 'blocked').length,
+        linesNotLinked: r.AccountsPayableLine.filter((l) => l.varianceStatus === 'not_linked').length,
+      },
+      poNumber: r.purchaseOrderId ? (poNumberById.get(r.purchaseOrderId) ?? null) : null,
     })),
     categoriesEnabled: catsEnabled,
     ...(catsEnabled
