@@ -40,16 +40,21 @@
   (`Location.fursEnvironment`)
 - `FURS_ALLOW_SIMULATION=false` (produkcija: simulacija prepovedana)
 
-### Fail-closed fiskalni profil (issue #53, v1.95.0 — `src/lib/fiscal-profile.ts`)
+### Fail-closed fiskalni profil (issue #53, v1.95.1 — `src/lib/fiscal-profile.ts`)
 Od v1.95.0 fiskalno izdajo (`POST /api/furs` + storno) vodi STREŽNIŠKI profil,
 razrešen IZRECNO (globalni env > `Location.fursEnvironment`), ne iz privzete
 vrednosti:
 - `NODE_ENV=production` **brez** obeh env vrednosti → izdaja zavrnjena (503
   `FISCAL_CONFIG_MISSING`) — prej je tiho padla v simulacijo z lažnim
   `fiscalStatus='verified'`;
-- `FURS_ENVIRONMENT=simulation` ali `FURS_ALLOW_SIMULATION=true` v produkciji →
-  zavrnjeno (503 `FISCAL_SIMULATION_IN_PRODUCTION`), RAZEN ob izrecni lastnikovi
-  varovalki `FURS_PRODUCTION_TEST_MODE=true` (namensko odobren testni način);
+- `FURS_ENVIRONMENT=simulation` v produkciji → zavrnjeno (503
+  `FISCAL_SIMULATION_IN_PRODUCTION`), RAZEN ob izrecni lastnikovi varovalki
+  `FURS_PRODUCTION_TEST_MODE=true` (namensko odobren testni način);
+- `FURS_ALLOW_SIMULATION=true` OB `FURS_ENVIRONMENT=production` → zavrnjeno (503)
+  — zastavica ne sme PRISILITI simulacije nad produkcijskim okoljem (dejanski
+  fail-open vektor, ki ga je #53 opisal); nad izrecnim `test` profilom je
+  zastavica REDUNDANTNA (izdaja poteka — okolje 'test' je simulacijsko po
+  deklaraciji lastnika; v strežniških logih gre opozorilo, naj jo odstrani);
 - neveljavna vrednost (typo, npr. `prod`) → 503 `FISCAL_CONFIG_INVALID` v vseh
   runtimeih — konfiguracijska napaka se ne sme tiho pretvoriti v produkcijo;
 - `test` in `simulation` ostajata SIMULACIJSKA kodna toku kot doslej (§18); razlika

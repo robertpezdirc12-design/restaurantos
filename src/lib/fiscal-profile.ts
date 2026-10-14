@@ -26,11 +26,16 @@
  * Fail-closed PRAVILA (NODE_ENV=production):
  *   - env popolnoma manjka (global + lokacija) → FISCAL_CONFIG_MISSING (503) —
  *     PRED ustvarjanjem Payment/Receipt/StockTransaction;
- *   - env 'simulation' ali FURS_ALLOW_SIMULATION='true' → FISCAL_SIMULATION_IN_PRODUCTION
- *     (503), RAZEN če lastnik IZRECNO odobri testni način z namensko varovalko
- *     FURS_PRODUCTION_TEST_MODE='true' (dokumentirana, namenska odločitev);
- *   - neveljavna vrednost env (typo) → FISCAL_CONFIG_INVALID (503) — v VSEH runtimeih
- *     (konfiguracijska napaka se ne sme tiho pretvoriti v produkcijo).
+ *   - env 'simulation' → FISCAL_SIMULATION_IN_PRODUCTION (503), RAZEN če lastnik
+ *     IZRECNO odobri testni način z namensko varovalko FURS_PRODUCTION_TEST_MODE
+ *     ='true' (dokumentirana, namenska odločitev);
+ *   - FURS_ALLOW_SIMULATION='true' OB env='production' → FISCAL_SIMULATION_IN_
+ *     PRODUCTION (503) — zastavica ne sme PRISILITI simulacije nad produkcijskim
+ *     okoljem (to je bil dejanski fail-open vektor); nad izrecnim 'test' profilom
+ *     je zastavica redundančna → izdaja poteka ( okolje 'test' je že simulacijsko
+ *     po deklaraciji lastnika), v logih pa gre opozorilo, naj jo odstrani;
+ *   - neveljavna vrednost env (typo) → FISCAL_CONFIG_INVALID (503) — v VSEH
+ *     runtimeih (konfiguracijska napaka se ne sme tiho pretvoriti v produkcijo).
  *
  * KODOVNA POTEKLA ISTA KOT DOSLEJ (§18 — brez spremembe vedenja simulatorja):
  * 'test' in 'simulation' ostajata simulacijska (simulirane kode, brez SOAP klica,
@@ -138,8 +143,13 @@ export function resolveFiscalProfile(input: {
   }
 
   // Issue #53 §3: v produkciji je simulacija IZKLJUČENA (varno privzeto) —
-  // zavrnemo env='simulation' in FURS_ALLOW_SIMULATION='true', RAZEN ob lastnikovi
-  // namenski odobritvi FURS_PRODUCTION_TEST_MODE='true'.
+  // zavrnemo env='simulation' ter FURS_ALLOW_SIMULATION, ki bi PRISILIL simulacijo
+  // nad (produkcijskim) okoljem 'production' (fail-open vektor: zastavica ob
+  // FURS_ENVIRONMENT=production je izdajala simulirane račune kot 'verified').
+  // Nad IZRECNIM testnim profilom ('test') je zastavica REDUNDANTNA (okolje je
+  // že simulacijsko po lastnikovi deklaraciji — dokazano produkcija stanje:
+  // lokacija 'test' + zastavica): ne blokira izdaje, a opozori lastniku v logih.
+  // Varovalka FURS_PRODUCTION_TEST_MODE ostaja rezervirana za env 'simulation'.
   if (productionRuntime && !productionTestMode) {
     if (environment === 'simulation') {
       throw new FiscalConfigError(
@@ -147,10 +157,17 @@ export function resolveFiscalProfile(input: {
         'Fiskalna simulacija je v produkciji izključena (FURS_ENVIRONMENT="simulation") — računov s simuliranimi kodami in "verified" statusom ni mogoče izdajati. Nastavite FURS_ENVIRONMENT=production oz. test, ali FURS_PRODUCTION_TEST_MODE=true za namenski testni način.',
       )
     }
-    if (allowSimulation) {
+    if (allowSimulation && environment === 'production') {
       throw new FiscalConfigError(
         'FISCAL_SIMULATION_IN_PRODUCTION',
-        'FURS_ALLOW_SIMULATION=true je v produkciji izključen — zastavica ne sme prisiliti simulacije nad produkcijskimi računi. Odstranite jo ali nastavite FURS_PRODUCTION_TEST_MODE=true za namenski testni način.',
+        'FURS_ALLOW_SIMULATION=true ne sme prisiliti simulacije nad produkcijskim okoljem (FURS_ENVIRONMENT=production) — računi bi bili simulirani, a označeni verified. Odstranite zastavico ali nastavite FURS_PRODUCTION_TEST_MODE=true za namenski testni način.',
+      )
+    }
+    if (allowSimulation) {
+      // redundančna zastavica nad izrecnim 'test' profilom — ne blokira izdaje
+      // (okolje je že simulacijsko po lastnikovi deklaraciji), a opozori v logih
+      console.warn(
+        '[fiscal-profile] FURS_ALLOW_SIMULATION=true je v produkciji redundančen nad izrecnim okoljem "test" — priporočamo odstranitev zastavice (FURS_ENVIRONMENT/lokacija že določata testni profil).',
       )
     }
   }

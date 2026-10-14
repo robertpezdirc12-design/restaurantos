@@ -270,9 +270,15 @@ describe('#53 resolveFiscalProfile — produkcija fail-closed', () => {
     expect(e.code).toBe('FISCAL_SIMULATION_IN_PRODUCTION')
   })
 
-  it('produkcija + env "production" + FURS_ALLOW_SIMULATION=true → zavrnjeno (prisiljena simulacija)', () => {
+  it('produkcija + env "production" + FURS_ALLOW_SIMULATION=true → zavrnjeno (prisiljena simulacija nad PRODUKCIJSKIM okoljem = fail-open vektor)', () => {
     const e = errCode(() => resolveFiscalProfile({ nodeEnv: 'production', globalEnv: 'production', allowSimulation: 'true' }))
     expect(e.code).toBe('FISCAL_SIMULATION_IN_PRODUCTION')
+  })
+
+  it('produkcija + izrecni "test" + FURS_ALLOW_SIMULATION=true → DOVOLJEN (redundantna zastavica nad testnim profilom — ne blokira izdaje)', () => {
+    const p = resolveFiscalProfile({ nodeEnv: 'production', globalEnv: 'test', allowSimulation: 'true' })
+    expect(p.environment).toBe('test')
+    expect(p.simulation).toBe(true)
   })
 
   it('produkcija + "simulation" + FURS_PRODUCTION_TEST_MODE=true → NAMENSKO dovoljen testni način', () => {
@@ -401,18 +407,34 @@ describe('#53 furs POST + storno — produkcija (NODE_ENV=production)', () => {
     expect(String(audit?.details)).toContain('"fursProfileSource":"location"')
   })
 
-  it('FURS_ALLOW_SIMULATION=true v produkciji → 503 (zastavica ne more prisiliti simulacije)', async () => {
+  it('FURS_ALLOW_SIMULATION=true nad izrecnim "test" (lokacija) → 201 — zastavica redundančna, izdaja poteka z oznako test', async () => {
     process.env.FURS_ALLOW_SIMULATION = 'true'
     try {
       const mgrTok = tok(managerA, `${PREFIX}mA`, 'MANAGER', locA1)
       const orderId = await mkOrder(locA1, miA)
       const r = await pay(mgrTok, { orderId, type: 'cash' })
+      expect(r.code).toBe(201)
+      expect(r.body.fursEnvironment).toBe('test')
+      expect(r.body.fiscalStatus).toBe('verified')
+    } finally {
+      delete process.env.FURS_ALLOW_SIMULATION
+    }
+  })
+
+  it('FURS_ALLOW_SIMULATION=true + globalni env "production" → 503 (zastavica ne sme prisiliti simulacije nad produkcijo)', async () => {
+    process.env.FURS_ALLOW_SIMULATION = 'true'
+    process.env.FURS_ENVIRONMENT = 'production'
+    try {
+      const mgrTok = tok(managerA, `${PREFIX}mA`, 'MANAGER', locA1)
+      const orderId = await mkOrder(locA1, miA)
+      const r = await pay(mgrTok, { orderId, type: 'cash' })
       expect(r.code).toBe(503)
-      expect(String(r.body.error)).toMatch(/izključen|FURS_ALLOW_SIMULATION/i)
+      expect(String(r.body.error)).toMatch(/FURS_ALLOW_SIMULATION/i)
       expect(await db.receipt.count({ where: { orderId } })).toBe(0)
       expect(await db.order.findUnique({ where: { id: orderId } }).then((o) => o?.paymentStatus)).toBe('unpaid')
     } finally {
       delete process.env.FURS_ALLOW_SIMULATION
+      delete process.env.FURS_ENVIRONMENT
     }
   })
 
