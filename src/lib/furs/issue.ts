@@ -16,7 +16,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { guardResource } from '@/lib/tenant'
+import { guardResource, isCrossTenantLocations, isBootstrapAdmin } from '@/lib/tenant'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { nextSequence } from '@/lib/sequences'
@@ -269,12 +269,28 @@ export async function issueFursReceipt(req: NextRequest) {
   // validira PRED transakcijo (definitivne napake) in odbije z CAS V transakciji.
   interface GiftCardPreload { id: string; cardNumber: string; balanceCents: number }
   const giftCards: Map<string, GiftCardPreload> = new Map()
+  // #26: zožene vrednosti zajete IZVEN closure (TypeScript ne prenaša
+  // control-flow zožitve v zajete spremenljivke funkcij)
+  const bootstrapOp = isBootstrapAdmin(user)
+  const orderLocId = orderPre.locationId
   async function preloadGiftCard(id: unknown, amount: number): Promise<string | null> {
     const cid = typeof id === 'string' && id.trim() ? id.trim() : ''
     if (!cid) return 'Del plačila z darilno kartico zahteva giftCardId.'
     if (!giftCards.has(cid)) {
       const card = await db.giftCard.findUnique({ where: { id: cid } })
       if (!card) return 'Darilna kartica ne obstaja.'
+      // Issue #26 (P1) — TENANT meja unovčenja: kartica je instrument
+      // ORGANIZACIJE, ne poslovalnice — veljavno unovčenje na kateri koli
+      // lokaciji ISTE org (medposlovalnično deluje naprej), cross-tenant pa je
+      // zavrnjen. Legacy kartica brez locationId = organizacije ni mogoče
+      // razrešiti → fail-closed (razen bootstrap break-glass operatorja).
+      if (!card.locationId) {
+        if (!bootstrapOp) {
+          return 'Darilna kartica nima vezane lokacije (legacy) — unovčenje ni mogoče.'
+        }
+      } else if (await isCrossTenantLocations(orderLocId, card.locationId)) {
+        return 'Darilna kartica pripada drugi organizaciji — unovčenje ni mogoče.'
+      }
       const check = canRedeem(
         { cardNumber: card.cardNumber, status: card.status, balanceCents: Math.round(num(card.balance) * 100), expiresAt: card.expiresAt },
         Math.round(amount * 100),

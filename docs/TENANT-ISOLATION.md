@@ -63,6 +63,7 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
 | Export (/api/reports/export) | `locationScope` + relacijski scope (Check→Order, InventoryItem) |
 | Device enroll | enkratna koda (8 mest, kratka veljavnost) + lokacijska vezava ob claim-u; revoke = `DeviceRegistry.revokedAt` |
 | Print | `/api/print/*` zahteva žeton (requireAuth) |
+| Darilne kartice (issue #26, v1.101.0) | Glede na operacijo: **POS lookup** (`/api/giftcards/lookup`) = org obseg (medposlovalnično unovčenje ISTE org dovoljeno; staff brez org dreva → lastna lokacija; centralna z neznano org → prazno/fail-closed; tuja org + legacy brez lokacije → enoten 404); **ledger/urejanje** (`/api/giftcards/[id]` GET/PATCH) = `giftcards.manage` + `guardResource` (staff = lastna lokacija, centralni = org); **polnjenje** (`topup`) = `orders.pay` + `guardResource` PRED idempotentnim replayem (ključ NI poverilnica); **unovčenje** (fiskalni tok) = kartica je instrument ORGANIZACIJE — `isCrossTenantLocations(order, kartica)` → cross-tenant 409. Legacy kartica brez `locationId` = fail-closed povsod (404/409), razen bootstrap break-glass. |
 
 ## Testi
 
@@ -78,6 +79,12 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
   orgB (in obratno); legacy admin (org neznana) → brez filtra (migracijsko varno);
   bootstrap vse; waiter izključno svojo lokacijo; statična regresija (vsi
   `locationScope` klici v src/app/api so `await`, ≥ 20 rut).
+- `tests/issue26-giftcard-tenant.test.ts` (v1.101.0) — darilne kartice: ledger
+  pod `giftcards.manage` + org obsegom; PATCH/topup cross-tenant 403 brez
+  spremembe salda; replay ključ iz tuje org ne obide avtorizacije; lookup
+  medposlovalnično isti org OK / tuja org enoten 404; legacy kartica brez
+  lokacije fail-closed; fiskalno unovčenje isti-org čez lokacije OK,
+  cross-tenant 409.
 
 ## Znane meje (transparentno)
 

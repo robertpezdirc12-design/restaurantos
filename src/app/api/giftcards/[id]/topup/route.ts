@@ -1,9 +1,52 @@
 import { NextRequest } from 'next/server'
+import type { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { nid, num, r2 } from '@/lib/map'
+import { guardResource, isBootstrapAdmin } from '@/lib/tenant'
+import { nid, num, r2, jstr } from '@/lib/map'
 import { effectiveCardStatus, gcNote, giftCardTxId, validateTopUpCents } from '@/lib/giftcards'
 import { writeAudit } from '@/lib/audit-chain'
+import type { AuthPayload } from '@/lib/auth'
+
+/**
+ * Issue #26 (P1) — TENANT IZOLACIJA polnjenja: varovalka PO pridobitvi kartice
+ * iz DB (prej je globalni findUnique dovolil orders.pay uporabniku orgA
+ * polniti kartico orgB) in PRED idempotentnim replayem — kljuc
+ * clientOperationId NI poverilnica: tuj tenant z ukradenim/replay kljucem NE
+ * dobi kartice/salda (avtorizacija se preveri tudi na replay odgovoru —
+ * zahteva issue #26). Varovalka: legacy kartica brez locationId → 404
+ * (fail-closed, razen bootstrap break-glass); guardResource → 403
+ * (staff = lastna lokacija; centralni = org meja). Zavrnitev se zabeleži v
+ * revizijo (GIFT_CARD_ACCESS_DENIED) brez podatkov kartice — nikoli ključa.
+ */
+async function guardCardForTopup(
+  user: AuthPayload,
+  id: string,
+  card: { locationId: string | null },
+): Promise<NextResponse | null> {
+  if (!card.locationId && !isBootstrapAdmin(user)) {
+    await writeAudit(db, {
+      userId: user.sub,
+      action: 'GIFT_CARD_ACCESS_DENIED',
+      entityType: 'GiftCard',
+      entityId: id,
+      details: jstr({ op: 'TOPUP', reason: 'legacy-no-location' }),
+    }).catch(() => {})
+    return fail('Kartica ne obstaja.', 404)
+  }
+  const guard = await guardResource(user, card.locationId)
+  if (guard) {
+    await writeAudit(db, {
+      userId: user.sub,
+      action: 'GIFT_CARD_ACCESS_DENIED',
+      entityType: 'GiftCard',
+      entityId: id,
+      details: jstr({ op: 'TOPUP', reason: 'cross-tenant' }),
+    }).catch(() => {})
+    return guard
+  }
+  return null
+}
 
 /**
  * Issue #1 (triage ③) — polnjenje darilne kartice.
@@ -36,6 +79,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const card = await db.giftCard.findUnique({ where: { id } })
   if (!card) return fail('Kartica ne obstaja.', 404)
+  // #26: tenant obseg PREJ kot statusna preverba in PREJ kot idempotentni
+  // replay — kljuc NI poverilnica, tuja organizacija ne dobi salda/kartice
+  const denied = await guardCardForTopup(user, id, card)
+  if (denied) return denied
   const st = effectiveCardStatus(card.status, Math.round(num(card.balance) * 100), card.expiresAt)
   if (st === 'inactive') return fail('Kartica je deaktivirana — najprej jo aktivirajte (Nastavitve pravic / urejanje kartice).', 409)
   if (st === 'expired') return fail('Kartica je pretekla — polnjenje ni mogoče.', 409)

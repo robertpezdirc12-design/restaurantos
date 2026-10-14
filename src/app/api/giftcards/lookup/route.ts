@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { num, jstr } from '@/lib/map'
 import { effectiveCardStatus } from '@/lib/giftcards'
+import { giftCardScopeFor, giftCardScopeWhere } from '@/lib/giftcard-scope'
 import { rateLimitSharedAsync } from '@/lib/rate-limit'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -64,29 +65,38 @@ export async function GET(req: NextRequest) {
     return fail('Preveč iskanj kartic — počakajte minuto in poskusite znova.', 429)
   }
 
+  // #26: tenant obseg iskanja (strežniško izpeljan iz org dreva uporabnikove
+  // lokacije) — enak where-pogoj za VSE štiri iskalne veje; kartica je
+  // instrument ORGANIZACIJE (medposlovalnično iskanje iste org deluje naprej)
+  const scopeWhere = giftCardScopeWhere(await giftCardScopeFor(user))
+
   let card: Awaited<ReturnType<typeof db.giftCard.findFirst>> = null
   if (q.startsWith('GC-')) {
     card = await db.giftCard.findFirst({
-      where: { cardNumber: { endsWith: q } },
+      where: { cardNumber: { endsWith: q }, ...scopeWhere },
       orderBy: { createdAt: 'desc' },
     })
   }
   if (!card && /^\d{6,}$/.test(q)) {
     card = await db.giftCard.findFirst({
-      where: { cardNumber: { endsWith: `-${q}` } },
+      where: { cardNumber: { endsWith: `-${q}` }, ...scopeWhere },
       orderBy: { createdAt: 'desc' },
     })
   }
   // generični suffix: zadnjih 6 znakov (q je garantiran ≥ 6 s preverbo zgoraj)
   if (!card) {
     card = await db.giftCard.findFirst({
-      where: { cardNumber: { endsWith: q.slice(-6) } },
+      where: { cardNumber: { endsWith: q.slice(-6) }, ...scopeWhere },
       orderBy: { createdAt: 'desc' },
     })
   }
   if (!card && /^[A-Z0-9]{8,}$/.test(q)) {
-    card = await db.giftCard.findUnique({ where: { id: q.toLowerCase() } })
+    card = await db.giftCard.findFirst({
+      where: { id: q.toLowerCase(), ...scopeWhere },
+    })
   }
+  // #26: tuj tenant in neobstoječa kartica vračata ENAK odgovor (404) — brez
+  // razlike, ki bi olajšala enumeracijo (legacy kartice brez lokacije prav tako)
   if (!card) return fail('Kartica s to številko ne obstaja.', 404)
 
   const balanceCents = Math.round(num(card.balance) * 100)
