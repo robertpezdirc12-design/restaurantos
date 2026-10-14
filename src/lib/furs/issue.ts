@@ -31,6 +31,7 @@ import { fiscalAdapterFor } from '@/lib/fiscal'
 import { certFromEnv, signZoi, fursInvoice } from '@/lib/furs/client'
 import { cisCertFromEnv, signZki, cisInvoice, hrNacinPlac } from '@/lib/cis/client'
 import { auditChainFields } from '@/lib/audit-chain'
+import { approvalAttestationProfile, paymentPolicyError, type PaymentAttestationProfile } from '@/lib/payments-policy'
 
 interface PaymentPart {
   type: string
@@ -38,6 +39,9 @@ interface PaymentPart {
   terminalApproval: string
   // Issue #1 (triage ③): del plačila z darilno kartico — zahteva giftCardId
   giftCardId?: string
+  // Issue #49: profil dokazovanja kartičnega/mobilnega dela — določi STREŽNIK
+  // (samo za KLIENTU poslane dele; PayLink dele overi vrstica povezave status='paid')
+  attestation?: PaymentAttestationProfile
 }
 
 export async function issueFursReceipt(req: NextRequest) {
@@ -77,10 +81,18 @@ export async function issueFursReceipt(req: NextRequest) {
     return fail('Naročilo je preklicano — plačilo ni mogoče.', 409)
   }
 
-  // Idempotentni replay — plačilo za ta clientOperationId že obstaja?
+  // Idempotentni replay — plačilo za ta clientOperationId + ISTO naročilo že obstaja?
+  // Issue #50: ključ je podan od klienta (NI poverilnica in ne dovoljenje) —
+  // velja SAMO za isto naročilo. Ključ, vezan na drugo naročilo (tudi tujega
+  // tenanta), NE vrne tujega računa in ne poroča naročila kot plačanega → 409.
   if (idempotencyKey) {
-    const existing = await findReceiptByIdempotencyKey(idempotencyKey)
-    if (existing) return ok({ invoice: existing, replayed: true, order: { id: orderPre.id, status: 'PAID' } }, 200)
+    const existing = await findReceiptByIdempotencyKey(idempotencyKey, orderPre.id)
+    if (existing && existing.kind === 'foreign') {
+      return fail('Idempotenčni ključ je že vezan na drugo naročilo — uporabite nov ključ.', 409)
+    }
+    if (existing && existing.kind === 'receipt') {
+      return ok({ invoice: existing.receipt, replayed: true, order: { id: orderPre.id, status: 'PAID' } }, 200)
+    }
   }
 
   const location = await db.location.findUnique({ where: { id: orderPre.locationId } })
@@ -308,13 +320,24 @@ export async function issueFursReceipt(req: NextRequest) {
       if (['card', 'mobile'].includes(type) && !ta) {
         return fail('Kartični/mobilni del plačila zahteva odobritev terminala (approvalCode).', 402)
       }
+      // Issue #49: STREŽNIŠKA politika dokazovanja kartičnega/mobilnega dela.
+      // Profil odobritvene kode klasificira STREŽNIK (SIM- predpona = simulator,
+      // vse drugo = ročna zabeležba zaposlenega, dokler ni prave ponudniške
+      // integracije). Klientov način terminala (localStorage) NE more spremeniti
+      // politike; simulator velja SAMO v strežniško določenem simulacijskem okolju.
+      let attestation: PaymentAttestationProfile | undefined
+      if (['card', 'mobile'].includes(type) && ta) {
+        attestation = approvalAttestationProfile(ta)
+        const policyErr = paymentPolicyError(attestation, simulation)
+        if (policyErr) return fail(policyErr, 402)
+      }
       let giftCardId: string | undefined
       if (type === 'giftcard') {
         const gcErr = await preloadGiftCard(p?.giftCardId, amount)
         if (gcErr) return fail(gcErr, 409)
         giftCardId = String(p?.giftCardId).trim()
       }
-      parts.push({ type, amount, terminalApproval: ta, ...(giftCardId ? { giftCardId } : {}) })
+      parts.push({ type, amount, terminalApproval: ta, ...(giftCardId ? { giftCardId } : {}), ...(attestation ? { attestation } : {}) })
     }
   } else {
     // klasična pot — eno plačilo preostanka (po odbitku unovčenih točk)
@@ -328,6 +351,13 @@ export async function issueFursReceipt(req: NextRequest) {
     if (['card', 'mobile'].includes(legacyType) && !ta) {
       return fail('Kartično plačilo zahteva odobritev terminala (approvalCode).', 402)
     }
+    // Issue #49: enaka strežniška politika dokazovanja za klasično (posamezno) pot
+    let legacyAttestation: PaymentAttestationProfile | undefined
+    if (['card', 'mobile'].includes(legacyType) && ta) {
+      legacyAttestation = approvalAttestationProfile(ta)
+      const policyErr = paymentPolicyError(legacyAttestation, simulation)
+      if (policyErr) return fail(policyErr, 402)
+    }
     // P1-6: klasična pot plača SAMO PREOSTANEK — pobrani deleži povezav se
     // prištejejo med dele spodaj (vsota = celota; Toast-style odprti balance)
     const legacyAmount = r2(total - redeemValue - linkPaidTotal)
@@ -338,7 +368,7 @@ export async function issueFursReceipt(req: NextRequest) {
         if (gcErr) return fail(gcErr, 409)
         legacyGc = String(body?.giftCardId).trim()
       }
-      parts.push({ type: legacyType, amount: legacyAmount, terminalApproval: ta, ...(legacyGc ? { giftCardId: legacyGc } : {}) })
+      parts.push({ type: legacyType, amount: legacyAmount, terminalApproval: ta, ...(legacyGc ? { giftCardId: legacyGc } : {}), ...(legacyAttestation ? { attestation: legacyAttestation } : {}) })
     }
   }
 
@@ -680,7 +710,10 @@ export async function issueFursReceipt(req: NextRequest) {
       const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name, checkScope ? checkScope.itemIds : undefined)
 
       // Revizijski dnevnik kritične operacije (issue #1: audit)
-      const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVOICE_ISSUE', entityType: 'Receipt', entityId: created.id, details: jstr({ receiptNumber, orderId: orderPre.id, total, grossTotal: bill.grossTotal, discountTotal: bill.discountTotal, manualDiscount: bill.manualDiscount, autoDiscounts: bill.autoDiscounts, paymentMethod, parts: parts.map((p) => ({ type: p.type, amount: p.amount, giftCard: p.giftCardId && giftCards.get(p.giftCardId) ? maskCardNumber(giftCards.get(p.giftCardId)!.cardNumber) : undefined, })), loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null, simulation, terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null, stockDeduction: stock.deducted ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length } : null, }), locationId: location.id, id: __aId2 })
+      const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVOICE_ISSUE', entityType: 'Receipt', entityId: created.id, details: jstr({ receiptNumber, orderId: orderPre.id, total, grossTotal: bill.grossTotal, discountTotal: bill.discountTotal, manualDiscount: bill.manualDiscount, autoDiscounts: bill.autoDiscounts, paymentMethod, parts: parts.map((p) => ({ type: p.type, amount: p.amount, giftCard: p.giftCardId && giftCards.get(p.giftCardId) ? maskCardNumber(giftCards.get(p.giftCardId)!.cardNumber) : undefined, })), loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null, simulation, terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null, // Issue #49: profil dokazovanja kartičnih delov v reviziji (akter = userId
+            // vrstice audita; ročna zabeležba NIKOLI ni predstavljena kot preverjena
+            // pri ponudniku; PayLink dele izpusti — njihov dokaz je vrstica povezave)
+            attestation: parts.filter((p) => p.attestation).map((p) => ({ type: p.type, profile: p.attestation })), stockDeduction: stock.deducted ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length } : null, }), locationId: location.id, id: __aId2 })
       await tx.auditLog.create({
         data: { ...__chain2,
           id: __aId2,
@@ -708,6 +741,9 @@ export async function issueFursReceipt(req: NextRequest) {
             loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
             simulation,
             terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null,
+            // Issue #49: profil dokazovanja kartičnih delov (ročna zabeležba ni
+            // ponudniško preverjena — glej src/lib/payments-policy.ts)
+            attestation: parts.filter((p) => p.attestation).map((p) => ({ type: p.type, profile: p.attestation })),
             stockDeduction: stock.deducted
               ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length }
               : null,
@@ -851,9 +887,15 @@ export async function issueFursReceipt(req: NextRequest) {
     if (e instanceof OrderError) return fail(e.message, e.status)
     // P2002 na Payment.idempotencyKey → vzporedni dvojnik je zmagal
     if ((e as { code?: string })?.code === 'P2002' && idempotencyKey) {
-      const existing = await findReceiptByIdempotencyKey(idempotencyKey)
-      if (existing) {
-        return ok({ invoice: existing, replayed: true, order: { id: orderPre.id, status: 'PAID' } }, 200)
+      // Issue #50: ENAKA preverba vezave kot v predtransakcijskem replay-u —
+      // vzporedni zmagovalnik z istim ključem na DRUGEM naročilu ne sme vrniti
+      // tujega računa (transakcija se je povrnila v celoti — naročilo ostane unpaid)
+      const existing = await findReceiptByIdempotencyKey(idempotencyKey, orderPre.id)
+      if (existing && existing.kind === 'foreign') {
+        return fail('Idempotenčni ključ je že vezan na drugo naročilo — uporabite nov ključ.', 409)
+      }
+      if (existing && existing.kind === 'receipt') {
+        return ok({ invoice: existing.receipt, replayed: true, order: { id: orderPre.id, status: 'PAID' } }, 200)
       }
     }
     console.error('[furs POST] transakcija ni uspela:', e)
@@ -861,18 +903,34 @@ export async function issueFursReceipt(req: NextRequest) {
   }
 }
 
-/** Poišči račun po idempotency ključu plačila (replay podpora).
- *  Pokriva tudi deljeno plačilo/zvestobo, kjer so ključi priponjeni: `key#p0`, `key#loyalty`. */
-async function findReceiptByIdempotencyKey(key: string) {
+/**
+ * Poišči račun po idempotency ključu plačila (replay podpora).
+ *  Pokriva tudi deljeno plačilo/zvestobo, kjer so ključi priponjeni: `key#p0`, `key#loyalty`.
+ *
+ * Issue #50 (P1): idempotenca je VEZANA na kanonični tuple (orderId + ključ):
+ *  - plačilo s ključem pripada ISTEMU naročilu → { kind: 'receipt', receipt };
+ *  - ključ pripada DRUGEMU naročilu (tudi tujemu tenant-u) → { kind: 'foreign' }
+ *    — klicatelj NE dobi tujega računa (klicno mesto vrne 409 brez podatkov);
+ *  - ključ ni znan → null.
+ * Ker je naročilo klica že varovano z guardResource(user, orderPre.locationId),
+ * vezava na isto naročilo zagotavlja tudi isti tenant/lokacijo vračanega računa.
+ */
+async function findReceiptByIdempotencyKey(
+  key: string,
+  orderId: string
+): Promise<{ kind: 'receipt'; receipt: ReturnType<typeof mapReceipt> } | { kind: 'foreign' } | null> {
   const payment = await db.payment.findFirst({
     where: { OR: [{ idempotencyKey: key }, { idempotencyKey: { startsWith: `${key}#` } }] },
     include: { Check: true },
     orderBy: { createdAt: 'asc' as const },
   })
   if (!payment) return null
+  if (payment.Check.orderId !== orderId) return { kind: 'foreign' }
+  // #50: račun mora pripadati ISTEMU kanoničnemu naročilu (ne le naročilu plačila);
+  // storno negacija NI plačilni račun (enaka bela lista kot pri CAS twin iskanju)
   const receipt = await db.receipt.findFirst({
-    where: { orderId: payment.Check.orderId },
+    where: { orderId, isStorno: false },
     orderBy: { createdAt: 'desc' },
   })
-  return receipt ? mapReceipt(receipt) : null
+  return receipt ? { kind: 'receipt', receipt: mapReceipt(receipt) } : null
 }

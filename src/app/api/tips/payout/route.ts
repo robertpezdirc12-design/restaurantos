@@ -19,6 +19,14 @@ import { guardResource } from '@/lib/tenant'
  * prevzemata z updateMany({ where: { id, status: 'pending' } }). Dvojni klik ali
  * vzporedna zahteva: drugi poskus šteje 0 vrstic → 409 'Tips so že izplačani.',
  * brez drugega izplačila in brez drugega revizijskega vnosa (točno EN audit TIP_PAYOUT).
+ *
+ * Issue #64 (P2): sočasna izplačila RAZLIČNIH distribucij istega bazena — prej sta
+ * obe transakciji iz lastnega (zastarelega) pogleda izračunali poolStatus='pending'
+ * → po koncu obeh so lahko VSE distribucije paid, bazen pa zamrknil 'pending'.
+ * Zdaj: ANCHOR zapis na vrstici bazena PRVI v transakciji (zaklep/claim) — druga
+ * transakcija čaka na commit prve, njen FRESH pregled vseh distribucij vključuje
+ * predhodna izplačila → agregatni status vedno odraža kanonično stanje
+ * (vse paid ⇒ pool paid; kadar katera ostaja pending ⇒ pool pending).
  */
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
@@ -42,6 +50,13 @@ export async function POST(req: NextRequest) {
 
   const now = new Date()
   const paid = await db.$transaction(async (tx) => {
+    // Issue #64: ANCHOR zapis na vrstici bazena PRVI v transakciji — zaklep/claim
+    // PRED izplačili distribucij (SQLite ekskluzivni write zaklep / PG vrstični
+    // zaklep). Sočasna izplačila različnih distribucij se serializirajo: druga
+    // transakcija čaka na commit prve → njen pregled distribucij je FRESH.
+    // Bazena, izbrisanega med potekom, ne poznamo → anchorMiss (404 po tx).
+    const anchor = await tx.tipPool.updateMany({ where: { id: poolId }, data: { updatedAt: now } })
+    if (anchor.count === 0) return { anchorMiss: true as const }
     // R9: CAS guard — updateMany z statusom 'pending' v where. Podvojeni/vzporedni poskus
     // dobi count 0 → brez spremembe, brez audita (revizija vidi točno eno izplačilo).
     let count = 0
@@ -53,13 +68,16 @@ export async function POST(req: NextRequest) {
       count += r.count
     }
     if (count === 0) return { count: 0, poolStatus: pool.status }
+    // Issue #64: FRESH pregled vseh distribucij (PO anchor zaklepu + PO izplačilih)
+    // — zadnji pisec vedno vidi tudi predhodna sočasna izplačila
     const all = await tx.tipDistribution.findMany({ where: { tipPoolId: poolId } })
     const poolStatus = all.every((d) => d.status === 'paid') ? 'paid' : 'pending'
-    if (poolStatus !== pool.status) {
-      // tudi prehod bazena je CAS — samo iz 'pending' (nikoli ne prevrišči tuje spremembe)
-      await tx.tipPool.updateMany({ where: { id: poolId, status: 'pending' }, data: { status: poolStatus } })
+    if (poolStatus === 'paid') {
+      // tudi prehod bazena je CAS — samo iz 'pending' (nikoli ne prevrišemo
+      // že zaključenega statusa; pending ostaja pending — nič za pisati)
+      await tx.tipPool.updateMany({ where: { id: poolId, status: 'pending' }, data: { status: 'paid' } })
     }
-    // 33-c: chain polja + locationId bazena (audit §6)
+    // 33-c: chain polja + locationId bazena (audit §6) — odraža KANONIČNI končni status
     await writeAudit(tx, { userId: user.sub, action: 'TIP_PAYOUT', entityType: 'TipPool', entityId: poolId, details: jstr({
           distributionId,
           markedPaid: count,
@@ -69,6 +87,9 @@ export async function POST(req: NextRequest) {
         }), locationId: pool.locationId })
     return { count, poolStatus }
   })
+
+  // Issue #64: bazen je bil med potekom izbrisan (anchor ni zadel nobene vrstice)
+  if ('anchorMiss' in paid) return fail('Bazen ne obstaja.', 404)
 
   // R9: drugi (podvojeni) poskus — nič izplačano → 409, brez drugega revizijskega vnosa
   if (paid.count === 0) return fail('Tips so že izplačani.', 409)

@@ -62,6 +62,7 @@ export const TEST_PREFIXES = [
   'pih-', // p1-hardening (v1.89.0)
   'i23-', // issue23-42-data-exposure (v1.90.0)
   'i60-', // issue60-63-cash-shift-atomic (v1.92.0)
+  'pi49-', // issue49-51-64-payments (v1.93.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

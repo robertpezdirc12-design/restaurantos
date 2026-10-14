@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
-import { assertOrgScope } from '@/lib/tenant'
+import { assertOrgScope, guardResource } from '@/lib/tenant'
 import { nid, num, r2 } from '@/lib/map'
 import {
   cardNumberFor,
@@ -143,10 +143,27 @@ export async function POST(req: NextRequest) {
   if (orgGuard) return orgGuard
 
   // Idempotentni replay — kartica za ta clientOperationId že obstaja?
+  // Issue #51 (P1): replay je VEZAN na isti kanonični kontekst operacije —
+  // isti tenant/lokacija izdaje + ENAK payload (znesek/lastnik/rok). Sam
+  // clientOperationId NI poverilnica in ne dovoljenje: ponovljen/kolidiran
+  // ključ iz druge lokacije ali organizacije NE odpre obstoječe kartice → 409
+  // BREZ podatkov kartice v odgovoru (št./saldo/lastnik/lokacija ne puščajo).
   const cardId = clientOperationId ? giftCardIssueId(clientOperationId) : nid()
   if (clientOperationId) {
     const existing = await db.giftCard.findUnique({ where: { id: cardId } })
     if (existing) {
+      // org obseg obstoječe kartice (staff = točno svoja lokacija; centralne org meja)
+      const inScope = !(await guardResource(user, existing.locationId))
+      // kontekst izdaje: isti ključ sme pomeniti SAMO isto izdajo — lokacija,
+      // začetni saldo (centi), lastnik in rok se morajo ujemati
+      const sameContext =
+        existing.locationId === loc &&
+        Math.round(num(existing.initialBalance) * 100) === Math.round(initialBalance * 100) &&
+        existing.ownerName === ownerName &&
+        (existing.expiresAt ? existing.expiresAt.getTime() : null) === (expiresAt ? expiresAt.getTime() : null)
+      if (!inScope || !sameContext) {
+        return fail('Idempotenčni ključ je že vezan na drugo operacijo izdaje (druga lokacija, organizacija ali vsebina zahteve).', 409)
+      }
       return ok({ card: mapCard(existing), replayed: true }, 200)
     }
   }
