@@ -2671,3 +2671,26 @@ Stage Summary:
 - UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): VAPID rotacija ŠE VEDNO odprta; rotacija GitHub+GitLab žetonov; MFA vpis info@+vodja@ pred MFA_ENFORCE_AFTER
 - OSTANKI NA PRODUKCIJI (poimenovani, inertni): GC-20261014-000002 verify101 (saldo 2,53 €, DEAKTIVIRANA); naročilo #699 TAKEAWAY PAID z računom 2026-10-7-BLG001; starejši: #698 verify199, verify100 revoked, verify195
 - ARCore/Roksal raziskava (z napačnega navodila): čisto ločena, samo-bralna — vnos v my-project/worklog.md (Task 2-a), restaurantos repozitorij NI bil dotaknjen (git status čist pred valom)
+
+---
+
+Task ID: v1.102.0-session
+Agent: glavni agent (Z.ai)
+Task: uporabnik potrdil nadaljevanje ("odlicno nadaljuj zapiraj issue") po zaključenem valu #26 (v1.101.0) → naslednji priporočeni val: issue #25 (P1 — validacija in sanitizacija POST /api/monitoring/errors pred zapisom v audit).
+
+Work Log:
+- STANJE: repo a35617d usklajen (lokalno=origin=gitlab); produkcija v1.101.0 healthy; 21 odprtih issue-jev; izbran #25 (P1, priporočilo v1.101.0)
+- AUDIT POTI: POST = requireAuth + pogoj body.message truthy → jstr(CELOTNO telo).slice(2000) v AuditLog.details (poljubna dodatna polja!) + odgovor mapAudit(log) = polje data → SUROV ODMEEV pošiljatelju; GET (9dfbb40) pravilen — nedotaknjen; POST nima UI klicalca (dashboard uporablja samo GET) → sprememba odgovora brez loma
+- NOV src/lib/error-report.ts: VALIDACIJA (allow-list DTO: message obvezen ≤2000; code ≤64; component ≤128; correlationId ≤64; context ploščat ≤8 ključev, ključ ≤40, vrednost ≤200; skupaj ≤4500; nepoznana polja/ugnezdeni objekti/ne-niz tipi/array/broken JSON → 400) + REDAKCIJA v globini (8 pravil zaporedno: authHeader bearer/basic → JWT trojček → serviceToken sk_/ghp_/glpat-/vcp_/xox-/AIza → queryCredential → labeledSecret password/token/secret/api key/sessionId/cvv/pin → cardPan → emailPii j***@domena → stackFrame; pred tem odstranitev nadzornih znakov/ANSI)
+- RUTA: details = SAMO kanonični sanitiziran DTO; entityId = reportId (sledljivost v GET); odgovor { accepted, reportId, status } 201 BREZ log/data odmeva; auditChainFields/ročni zapis ohranjen (nid pred create za reportId); komentar v audit-chain.ts posodobljen (nov razlog za ročni monitoring/errors)
+- REGEX LEKCIJE ×3: (1) alternacija za en znak ESC je pojedla ESC pred ANSI vejo → "[31m" ostal (ANSI veja MORA biti prva); (2) ločilo [ \t]*[:=][ \t]* izven zajemalne skupine ga nadomestitev POJEDE (password → password[REDACTED]) → ločilo v svoji skupini $2; (3) zaporedna pravila znova zadenejo [REDACTED] marker iz prejšnjega pravila → dvojni ] → negativen pogled naprej (?!\[REDACTED)
+- TESTI: tests/issue25-error-report.test.ts ×27 (unit redakcija ×11 + unit validacija ×6 + route DB ×8 + GET scope ×2) → 1524/1524 svež ci-fresh.db (93 datotek); tsc 0; eslint 0; check-secrets OK; i25- dodan v TEST_PREFIXES; ročno čiščenje auditLog po userId/locationId predponi (entityId=nid() — ID_SWEEP ne zajame, AuditLog nima FK)
+- DEPLOY 23331ce → health 1.102.0 ok (~60 s)
+- ŽIVA VERIFIKACIJA (vodja@ MANAGER Ljubljana): POST s fejk skrivnostmi → 201 { accepted, reportId, status } BREZ odmeva; GET settings.manage → shranjeni details vsebujejo [REDACTED]/[REDACTED_PAN]/j***@example.com/[STACK_FRAME_REDACTED]/token=[REDACTED] in NE vsebujejo poslanih gesel/ključev/PAN/e-pošte/JWT/stack poti; zavrnitve: nepoznano polje 400, ugnezden context 400, message=123 400, array 400, broken JSON 400, neprijavljen 401
+- GitHub #25 zaprt z dokaznim komentarjem (6180050387) → 20 odprtih; GitLab push uspešen prvi poskus; lokalno=origin=gitlab=23331ce
+
+Stage Summary:
+- Produkcija v1.102.0 (23331ce) healthy: diagnostično poročilo napake gre skozi allow-list validacijo + vsebinsko redakcijo (žetoni/gesla/ključi/PAN/PII/stack) PRED zapisom v AuditLog; odgovor ne odmeva surovih podatkov (samo accepted+reportId+status); GET obseg (settings.manage+lokacija) in hash-chain/lokacija akterja ohranjena
+- 20 odprtih issue-jev; NASLEDNJI VAL kandidati: #18 (tristransko ujemanje nabave, P1) ali #7 (alergeni — en vir resnice, P1) ali #15 (sledljivost serij, P1)
+- UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): VAPID rotacija ŠE VEDNO odprta; rotacija GitHub+GitLab žetonov; MFA vpis info@+vodja@ pred MFA_ENFORCE_AFTER
+- OSTANKI NA PRODUKCIJI (inertni, poimenovani): ERROR_REPORT vrstici "message":"a" (validacijska raba) + I25-PROD-VERIFIKACIJA (fejk skrivnosti, vse zamaskirane) — audit dnevnik je append-only (veriga), namenoma ostajata; starejši: GC-20261014-000002 deaktivirana, #699 naročilo, verify100 revoked
