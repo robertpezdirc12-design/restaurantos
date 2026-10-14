@@ -124,6 +124,15 @@ export function validateWasteInput(
 
 // ── Reverzija ────────────────────────────────────────────────────────────────
 
+/**
+ * Issue #59 (P1) — CAS marker: znotraj transakcije reverzije ATOMARNO prevzamemo
+ * pravico z updateMany({ where: { id, reversedAt: null, reversalStockTransactionId: null } }).
+ * Unique na reversalStockTransactionId SAM ne zagotavlja enkratnosti (obe sočasni
+ * zahtevi ustvarita RAZLIČNA StockTransaction ID-ja) — claim z vejnim pogojem je
+ * edina avtoriteta; ta konstanta se vrže, ko claim ne uspe (vrstica že povrnjena).
+ */
+export const WASTE_REVERSAL_CLAIM_FAILED = 'WASTE_REVERSAL_CLAIM_FAILED'
+
 /** Ali je reverzija zapisa dovoljena? (samo še ne-povrnjen zapis) */
 export function canReverseWaste(record: {
   reversedAt: Date | string | null

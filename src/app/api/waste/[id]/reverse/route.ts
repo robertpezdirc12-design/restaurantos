@@ -4,7 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
-import { WASTE_REVERSAL_TX_TYPE, canReverseWaste, wasteReversalReason } from '@/lib/waste'
+import { WASTE_REVERSAL_TX_TYPE, WASTE_REVERSAL_CLAIM_FAILED, canReverseWaste, wasteReversalReason } from '@/lib/waste'
 import { writeAudit } from '@/lib/audit-chain'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
@@ -12,7 +12,18 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000
 /**
  * Reverzija odpada (pomota pri vnosu) — v celoti vrne originalno količino na
  * zalogo (StockTransaction type='ADJUST', pozitiven), zapiše reversedAt +
- * reversalStockTransactionId (unique → reverzija je enkratna). Audit WASTE_REVERSE.
+ * reversalStockTransactionId. Audit WASTE_REVERSE.
+ *
+ * Issue #59 (P1) — ATOMARNA ENKRATNOST (CAS claim znotraj iste transakcije):
+ * prej je bila edina "zaščita" unique na reversalStockTransactionId, ki pa je
+ * unique referenca NA WasteRecord vrstico — dve sočasni zahtevi ustvarita
+ * različna StockTransaction ID-ja in LAHKO OBÉ dvakrat povečata zalogo.
+ * Zdaj: transakcija NAJPREJ atomarno prevzame pravico (updateMany z vejnim
+ * pogojom reversedAt=null AND reversalStockTransactionId=null) — samo če se
+ * spremeni NATANKO ena vrstica se nadaljuje vračilo + povratni ledger;
+ * katerakoli napaka kasneje rollback-a tudi claim (ista transakcija).
+ * Pred-transakcijska canReverseWaste preverba ostane samo kot UX hitra pot,
+ * NE pa varovalka. Zunanja guardResource lokacijski/org obseg ostaja.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'inventory.manage')
@@ -36,6 +47,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   let newQty = 0
   try {
     const done = await db.$transaction(async (tx) => {
+      // ── Issue #59: ATOMIC CLAIM (CAS) — edina avtoriteta enkratnosti ──
+      // Pogojni updateMany: natanko ena vrstica se sme spremeniti; če je zapis
+      // vmes že povrnjen (sočasna zahteva), count=0 → celotna transakcija se
+      // zavrne (rollback claim + zaloga + ledger) → 409 brez dvojnega vračila.
+      const claim = await tx.wasteRecord.updateMany({
+        where: { id: rec.id, reversedAt: null, reversalStockTransactionId: null },
+        data: { reversedAt: new Date() },
+      })
+      if (claim.count !== 1) {
+        throw new Error(WASTE_REVERSAL_CLAIM_FAILED)
+      }
       // Povratek na zalogo: brez gornje meje (vračamo fizično količino odpada)
       await tx.inventoryItem.updateMany({
         where: { id: rec.inventoryItemId },
@@ -67,7 +89,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       })
       await tx.wasteRecord.update({
         where: { id: rec.id },
-        data: { reversedAt: new Date(), reversalStockTransactionId: revTx.id },
+        data: { reversalStockTransactionId: revTx.id },
       })
       return { revTxId: revTx.id, newQty: after }
     })
@@ -75,6 +97,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     newQty = done.newQty
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
+    // Issue #59: CAS claim ni uspel — vrstica je bila vmes že povrnjena (sočasna
+    // zahteva). Rollback je že počistil claim/zalogo/ledger → varen 409 replay.
+    if (msg === WASTE_REVERSAL_CLAIM_FAILED) {
+      return fail('Odpad je že povrnjen.', 409)
+    }
     // enkratnost reverzije zagotavlja unique reversalStockTransactionId;
     // če je zapis vmes že povrnjen (sočasno), unique pada → preveri stanje
     if (msg.includes('Unique constraint')) {

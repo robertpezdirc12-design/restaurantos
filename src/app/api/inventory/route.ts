@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuthWithPerms, requirePermission, isResponse, ok, locationScope } from '@/lib/api'
-import { guardResource } from '@/lib/tenant'
+import { requireAuthWithPerms, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation, isCentralRole } from '@/lib/api'
+import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
+import { parseInventoryField, sanitizeUnit, roundCost2 } from '@/lib/inventory-validate'
 
 /**
  * Issue #5 (P0 §C): količine so operativne (kuhinja vidi zalogo) — NABAVNA CENA pa
@@ -43,36 +44,107 @@ export async function GET(req: NextRequest) {
  * N3 (audit P1): kanonično dovoljenje `inventory.manage` namesto trdo kodiranih vlog —
  * tudi vloga warehouse (in enterprise vloge s to pravico) lahko zdaj sprejema blago;
  * permissionOverrides delujejo na pisanje (DB lookup na vsak klic).
+ *
+ * Issue #55 (P1): lokacija je IZRECNA in tenant-preverjena — findFirst() fallback
+ * ("prva lokacija v bazi", lahko tuje org) je UKINJEN. Staff/warehouse vedno vezajo
+ * na svojo lokacijo; centralna vloga lahko podamo eksplicitno lokacijo v telesu,
+ * vendar jo assertOrgScope preveri proti org uporabnika. Staff, ki pošlje
+ * tujo body.locationId, dobi 403 (klientovo polje ne sme preusmeriti artikla).
+ *
+ * Issue #58 (P1): stroga strežniška validacija količin/cen (skupni helper s PATCH):
+ * NaN/±Infinity/neštevilski vhodi in negativne/prevelike vrednosti → 400,
+ * NIKOLI tiho v 0. Začetno stanje (qty > 0) se evidentira kot EKSPICITEN
+ * StockTransaction (type='RECEIVE', "Začetno stanje (ročni vnos)") — NI GRN
+ * (brez PO/dobaviteljevega dokumenta, brez serijske sledljivosti).
  */
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
-  const name = String(body?.name || '').trim()
+  const name = String(body?.name || '').trim().slice(0, 120)
   if (!name) return ok({ error: 'Naziv artikla je obvezen.' }, 400)
-  const locationId = user.loc || (await db.location.findFirst())?.id || null
-  const row = await db.inventoryItem.create({
-    data: {
-      id: nid(),
-      name,
-      unit: String(body?.unit || 'pcs'),
-      quantity: Number(String(body?.qty ?? 0).replace(',', '.')) || 0,
-      minQuantity: Number(String(body?.minQty ?? 0).replace(',', '.')) || 0,
-      costPerUnit: Number(String(body?.cost ?? 0).replace(',', '.')) || 0,
-      supplier: String(body?.supplierName || ''),
-      category: String(body?.category || 'general'),
+
+  // ── Issue #55: izrecna, tenant-preverjena lokacija (bREZ findFirst fallback) ──
+  const bodyLoc = typeof body?.locationId === 'string' ? body.locationId.trim() : ''
+  if (bodyLoc && !isCentralRole(user) && bodyLoc !== user.loc) {
+    // lokalna vloga ne sme preusmeriti svojega artikla na tujo lokacijo s klientovim poljem
+    return fail('Lokacija v zahtevi se ne ujema z vašo dodeljeno lokacijo.', 403)
+  }
+  const locRes = requireUserLocation(user, bodyLoc || undefined)
+  if (isResponse(locRes)) return locRes
+  const locationId = locRes
+  const orgRes = await assertOrgScope(user, locationId)
+  if (orgRes) return orgRes
+
+  // ── Issue #58: stroga validacija (isti helper kot PATCH) ──
+  const qtyP = parseInventoryField(body?.qty, 'Količina')
+  if (!qtyP.ok) return fail(qtyP.error, 400)
+  const minP = parseInventoryField(body?.minQty, 'Minimalna količina')
+  if (!minP.ok) return fail(minP.error, 400)
+  const costP = parseInventoryField(body?.cost, 'Nabavna cena', { isCost: true })
+  if (!costP.ok) return fail(costP.error, 400)
+  const qty = qtyP.value ?? 0
+  const minQty = minP.value ?? 0
+  const cost = costP.value ?? 0
+  const unit = sanitizeUnit(body?.unit)
+
+  const openingTxId = qty > 0 ? nid() : null
+  const row = await db.$transaction(async (tx) => {
+    const created = await tx.inventoryItem.create({
+      data: {
+        id: nid(),
+        name,
+        unit,
+        quantity: qty,
+        minQuantity: minQty,
+        costPerUnit: cost,
+        supplier: String(body?.supplierName || '').trim().slice(0, 120),
+        category: String(body?.category || 'general').trim().slice(0, 60) || 'general',
+        locationId,
+      },
+    })
+    // #58: opening balance — ekspliciten RECEIVE dogodek v ISTI transakciji
+    // (evidence ne odstopa od stanja). NI GRN: brez dobaviteljevega dokumenta,
+    // brez InventoryBatch/serije — untracked/legacy označba v note.
+    if (openingTxId) {
+      await tx.stockTransaction.create({
+        data: {
+          id: openingTxId,
+          inventoryItemId: created.id,
+          type: 'RECEIVE',
+          quantity: qty,
+          previousQty: 0,
+          newQty: qty,
+          costPerUnit: cost,
+          totalCost: roundCost2(cost * qty),
+          reason: 'Začetno stanje (ročni vnos)',
+          note: 'Opening balance brez serijske sledljivosti (ni GRN/dobaviteljev prevzem) — za prevzem uporabi nabavo.',
+          employeeId: user.sub,
+          employeeName: user.name,
+        },
+      })
+    }
+    // 33-c (audit §6): INVENTORY_CREATE dobi locationId (prej neviden location-scoped uporabnikom)
+    await writeAudit(tx, {
+      userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: created.id,
+      details: jstr({ name, qty, minQuantity: minQty, costPerUnit: cost, unit, openingTx: openingTxId ? 'RECEIVE/začetno stanje' : 'brez začetne količine' }),
       locationId,
-    },
+    })
+    return created
   })
-  // 33-c (audit §6): INVENTORY_CREATE dobi locationId (prej neviden location-scoped uporabnikom)
-  await writeAudit(db, { userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: row.id, details: jstr({ name, qty: num(row.quantity), unit: row.unit }), locationId: locationId })
-  return ok({ item: { id: row.id, name: row.name } }, 201)
+  return ok({ item: { id: row.id, name: row.name, locationId, openingTxId } }, 201)
 }
 
 /**
  * Prilagoditev zaloge: prejem (delta > 0), popravek količine/min/cene.
  * N3 (audit P1): kanonično dovoljenje `inventory.manage` namesto trdo kodiranih vlog
  * (warehouse/enterprise + override-i delujejo); lokacijski gate ostaja fail-closed.
+ *
+ * Issue #58 (P1): ISTA validacija kot POST (parseInventoryField) — neveljavni
+ * vhodi (NaN/Infinity/neštevilski) → 400 namesto tihe 0/ignoriranja; negativni
+ * setQty/minQty/cost → 400; |delta| prevelika → 400. previousQty se prebere
+ * FRESH znotraj transakcije (issue #52 duh — sledi dejanskemu stanju, ne
+ * zastarelemu branju izven nje).
  */
 export async function PATCH(req: NextRequest) {
   const user = await requirePermission(req, 'inventory.manage')
@@ -85,17 +157,29 @@ export async function PATCH(req: NextRequest) {
   const locRes = await guardResource(user, item.locationId)
   if (locRes) return locRes
 
-  const delta = body?.delta !== undefined && body?.delta !== null && body?.delta !== '' ? Number(String(body.delta).replace(',', '.')) : null
-  const setQty = body?.setQty !== undefined && body?.setQty !== null && body?.setQty !== '' ? Number(String(body.setQty).replace(',', '.')) : null
-  const minQty = body?.minQty !== undefined && body?.minQty !== '' ? (Number(String(body.minQty).replace(',', '.')) || 0) : null
-  const cost = body?.cost !== undefined && body?.cost !== '' ? (Number(String(body.cost).replace(',', '.')) || 0) : null
+  // ── Issue #58: stroga validacija (isti helper kot POST) ──
+  const deltaP = parseInventoryField(body?.delta, 'Delta', { allowNegative: true })
+  if (!deltaP.ok) return fail(deltaP.error, 400)
+  const setQtyP = parseInventoryField(body?.setQty, 'Količina (nastavi)')
+  if (!setQtyP.ok) return fail(setQtyP.error, 400)
+  const minQtyP = parseInventoryField(body?.minQty, 'Minimalna količina')
+  if (!minQtyP.ok) return fail(minQtyP.error, 400)
+  const costP = parseInventoryField(body?.cost, 'Nabavna cena', { isCost: true })
+  if (!costP.ok) return fail(costP.error, 400)
+  const delta = deltaP.value
+  const setQty = setQtyP.value
+  const minQty = minQtyP.value
+  const cost = costP.value
   if (delta === null && setQty === null && minQty === null && cost === null) return ok({ error: 'Ni podatkov za posodobitev.' }, 400)
 
   // R4 popravek (P0 audit): transakcija + atomarne spremembe količine (increment/decrement
   // s pogojem) — brez lost update; StockTransaction + AuditLog v ISTI transakciji,
   // da evidence gibanja ne odstopa od dejanskega stanja (prej: trije ločeni klici).
+  // #58: previousQty se prebere FRESH znotraj transakcije (ne zastareli item.quantity
+  // izven nje) — ledger snapshot ≡ dejansko DB stanje ob spremembi.
   const result = await db.$transaction(async (tx) => {
-    const prevQty = num(item.quantity)
+    const cur = await tx.inventoryItem.findUnique({ where: { id }, select: { quantity: true } })
+    const prevQty = Math.max(0, num(cur?.quantity))
     let newQty = prevQty
     let variance = 0
     if (delta !== null && delta > 0) {

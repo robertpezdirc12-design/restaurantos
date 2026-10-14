@@ -142,8 +142,11 @@ export async function deductStockForOrderTx(
 
   for (const item of invItems) {
     const req = needed.get(item.id) || 0
-    const prev = Math.max(0, num(item.quantity))
-    const requested = Math.min(req, prev) // ciljani odjem (primanjkljaj ne blokira prodaje)
+    // načrt odjema iz branja pred CAS (lahko zastarelo pri sočasnosti — CAS/retry
+    // spodaj prilagodi dejanski odjem; previousQty/newQty pa se izračunata iz
+    // FRESH post-decrement stanja, da je ledger ≡ DB — issue #52)
+    const prevRead = Math.max(0, num(item.quantity))
+    const requested = Math.min(req, prevRead) // ciljani odjem (primanjkljaj ne blokira prodaje)
     const unitCost = num(item.costPerUnit)
 
     // ── R2 popravek (P0 audit): CAS odštevek — atomarno (quantity >= x → decrement),
@@ -170,7 +173,15 @@ export async function deductStockForOrderTx(
       }
     }
     const actual = deducted
-    const newQty = r3(prev - actual)
+    // ── Issue #52: LEDGER ≡ DB ──
+    // previousQty/newQty se izračunata iz FRESH post-decrement stanja (ne iz
+    // zastarelega prevRead!): dva sočasna računa, oba sta prebrala 100 in vsak
+    // prodal 10 → prvi zapíse 100→90, drugi CAS uspe na 90 → fresh read 80 →
+    // zapíse 90→80. Zadnja transakcija v dnevniku se IZRAVNA z dejansko DB
+    // količino (prej sta obe lahko zapisali 100→90 pri dejanski 80).
+    const freshQty = await tx.inventoryItem.findUnique({ where: { id: item.id }, select: { quantity: true } })
+    const newQty = r3(Math.max(0, num(freshQty?.quantity)))
+    const prev = r3(newQty + actual) // dejansko stanje ob odjemu (konzistenten par)
     const shortfall = r3(req - actual)
     const lineCost = r2(unitCost * actual)
 
@@ -188,6 +199,9 @@ export async function deductStockForOrderTx(
     const txId = nid()
     const useBatches = batches.length > 0 && batchStock > 0
     const toAllocateFromBatches = useBatches ? Math.min(actual, batchStock) : 0
+    // Issue #52: količina, ki je ostala BREZ serijske alokacije ker je serija
+    // izpadla po 3 CAS poskusih (sočasen odjem) — ne sme tiho izginiti.
+    let batchSkipped = 0
 
     // KRITIČEN popravek vrstnega reda (bug odkrit z testi, Task 32-c): alokacije
     // (StockBatchAllocation, FK → StockTransaction) se NE smejo zapisovati, preden
@@ -218,7 +232,13 @@ export async function deductStockForOrderTx(
           avail = Math.max(0, num(fresh?.quantityRemaining))
           alloc = Math.min(avail, remaining)
         }
-        if (!ok || alloc <= 0.0005) continue
+        if (!ok) {
+          // Issue #52: serija po 3 CAS poskusih ni rezervirana (sočasen odjem jo
+          // je izčrpal) — količina se evidentira kot brez-serijska, ne izgine tiho.
+          batchSkipped = r3(batchSkipped + Math.max(0, alloc))
+          continue
+        }
+        if (alloc <= 0.0005) continue
         const bNew = r3(avail - alloc)
         plannedAllocations.push({ batchId: b.id, alloc: r3(alloc), bNew, status: bNew <= 0.0005 ? 'EXHAUSTED' : b.status })
         remaining = r3(remaining - alloc)
@@ -228,6 +248,8 @@ export async function deductStockForOrderTx(
     const noteParts: string[] = []
     if (shortfall > 0) noteParts.push(`Primanjkljaj: zahtevano ${req} ${item.unit}, na zalogi ${prev} ${item.unit} — odšteto ${actual}`)
     if (useBatches && toAllocateFromBatches < actual - 0.0005) noteParts.push(`Serije pokrijejo ${toAllocateFromBatches} ${item.unit} od ${actual}`)
+    // Issue #52: izpadle serije (CAS retry izčrpan) — eksplicitna untracked oznaka
+    if (batchSkipped > 0.0005) noteParts.push(`Serijska alokacija: ${batchSkipped} ${item.unit} brez serije (sočasen odjem — serija se je izčrpala med rezervacijo)`)
 
     await tx.stockTransaction.create({
       data: {
