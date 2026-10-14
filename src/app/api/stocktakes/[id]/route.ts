@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { num } from '@/lib/map'
+import { num, jstr } from '@/lib/map'
+import { writeAudit } from '@/lib/audit-chain'
 
 /**
  * Detail + vnos popisa. Branje = requireAuth (isti sloj kot GET /api/inventory),
@@ -11,7 +12,26 @@ import { num } from '@/lib/map'
  * countedQuantity == null pomeni "počisti vnos" (recount primer — reset vrstice).
  * Map funkciji sta LOKALNI (Next route handlerji niso modul za medsebojni import;
  * zavestna duplikacija z route.ts — varnost čistih datotek pred refaktorjem).
+ *
+ * Issue #66 (P1) — SERIALIZACIJA z submit/cancel/recount (prej: status je bil
+ * preverjen ZUNAJ transakcije, vrstice pa posodobljene znotraj nje — submit,
+ * ki je zmagal med PATCH-validacijo in PATCH-zapisom, bi pustil ODDAN popis z
+ * novimi količinami). Zdaj: claim + zapisi v ENI transakciji —
+ *  - claim: updateMany({ where: { id, status: 'DRAFT' }, data: { status: 'DRAFT' } })
+ *    pridobi zaklep vrstice Stocktake (PG: row lock do commita; SQLite: en sam
+ *    pisatelj) in hkrati preveri, da je status ŠE VEDNO DRAFT → 0 vrstic = 409
+ *    brez kakršnega koli zapisa;
+ *  - submit/cancel/recount se serializirajo z istim zaklepom: če PATCH zmagá,
+    submit zaklene TOČNO shranjene količine; če submit zmagá prej, PATCH dobi
+ *    409 in ne zapiše NIČ (fail-closed);
+ *  - vrstice se posodabljajo z VEZAVO stocktakeId v sami mutaciji (updateMany,
+ *    count 0 = napad/premik → rollback);
+ *  - audit STOCKTAKE_ITEMS_SAVED šele PO uspešnem commitu (zavrnjen pozni PATCH
+ *    se ne predstavi kot uspešno štetje).
  */
+
+/** #66: zaklenjen popis (SUBMITTED/CANCELLED/APPROVED) → 409, rollback. */
+class StocktakeLockedError extends Error {}
 
 type StItem = {
   id: string; inventoryItemId: string; itemName: string; unit: string
@@ -107,20 +127,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const ops = items.map((it) => {
-    const raw = it?.countedQuantity
-    const counted = raw == null ? null : Number(String(raw).replace(',', '.'))
-    return db.stocktakeItem.update({
-      where: { id: String(it.id) },
-      data: {
-        countedQuantity: counted,
-        countedAt: counted == null ? null : new Date(),
-        countedByName: counted == null ? '' : user.name,
-        lineNote: String(it?.lineNote ?? '').slice(0, 200),
-      },
+  // #66: claim DRAFT + zapisi vrstic v ENI transakciji (serializacija s submit/
+  // cancel/recount — glej glavo datoteke). Padec katerega koli koraka → rollback,
+  // oddan popis ne dobi poznilh sprememb.
+  try {
+    const saved = await db.$transaction(async (tx) => {
+      // claim: UPDATE pridobi zaklep vrstice Stocktake (updatedAt se osveži;
+      // namerno istovetna vrednost statusa) — 0 vrstic = status se je spremenil
+      const claim = await tx.stocktake.updateMany({
+        where: { id, status: 'DRAFT' },
+        data: { status: 'DRAFT' },
+      })
+      if (claim.count === 0) throw new StocktakeLockedError()
+      for (const it of items) {
+        const raw = it?.countedQuantity
+        const counted = raw == null ? null : Number(String(raw).replace(',', '.'))
+        // vezava stocktakeId v SAMI mutaciji (count 0 → fail-closed rollback)
+        const upd = await tx.stocktakeItem.updateMany({
+          where: { id: String(it.id), stocktakeId: id },
+          data: {
+            countedQuantity: counted,
+            countedAt: counted == null ? null : new Date(),
+            countedByName: counted == null ? '' : user.name,
+            lineNote: String(it?.lineNote ?? '').slice(0, 200),
+          },
+        })
+        if (upd.count === 0) throw new StocktakeLockedError()
+      }
+      return items.length
     })
-  })
-  await db.$transaction(ops)
-
-  return ok({ id, saved: items.length })
+    // #66: audit odraža SAMO dovoljene spremembe — zapis po uspešnem commitu
+    await writeAudit(db, {
+      userId: user.sub,
+      action: 'STOCKTAKE_ITEMS_SAVED',
+      entityType: 'Stocktake',
+      entityId: id,
+      details: jstr({ saved, by: user.name }),
+      locationId: st.locationId,
+    })
+    return ok({ id, saved })
+  } catch (e) {
+    if (e instanceof StocktakeLockedError) {
+      return fail('Popis ni več v osnutku (že oddan, potrjen ali preklican) — sprememba zavrnjena.', 409)
+    }
+    throw e
+  }
 }

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapOrder, jstr } from '@/lib/map'
+import { mapOrder, num, r2, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
 import { recalcOrderTotals } from '@/lib/ops'
 import { writeAudit } from '@/lib/audit-chain'
 import { publishEvent } from '@/lib/events'
@@ -21,8 +21,6 @@ import { pushToLocationRoles } from '@/lib/push'
  *    pooblaščeni);
  *  - razlog OBVEZEN: reasonId (katalog VoidReason: aktiven, ista lokacija/org)
  *    ALI reason besedilo (3–200 znakov — shranjeno v audit sledi);
- *  - CAS: updateMany({ where: { id, voided: false } }) — dvojni klik ne
- *    naredi dveh dogodkov (count 0 → 409);
  *  - PLAČANO/stornirano naročilo → 409 (fiskalni storno/vračilo je LOČENA
  *    kanonična pot /api/receipts/[id]/storno — izdanih računov ne spreminjamo);
  *  - zaloga: razknjižba teče ob FURS izstavitvi SAMO za izstavljene postavke
@@ -30,7 +28,58 @@ import { pushToLocationRoles } from '@/lib/push'
  *    plačilom pomeni, da se postavka nikoli ne razknjiži (brez popravkov);
  *  - KDS: kuhinjski GET filtrira voided: false + aktivne statuse → preklicana
  *    postavka IZGINE iz vrste; osebje obvestimo prek dogodka + pusha.
+ *
+ * Issue #39 (P1) — ATOMARNOST + lost-update zaščita (prej: ločeni koraki
+ * updateMany-claim → recalcOrderTotals BREZ tx → ločen order.update; padec po
+ * CAS-u je pustil preklicano postavko s STARIMI zneski, sočasna voida/addItems
+ * pa sta si lahko tiho prepisala totale):
+ *  1. CAS claim, razlog, preračun in zapis Order.subtotal/tax/total/
+ *     totalWithTip so zdaj ENA DB transakcija — padec katerega koli koraka
+ *     povrne tudi voided/voidReasonId (ni polovičnega stanja);
+ *  2. CAS veže itemId NA orderId (`where: { id, orderId, voided: false }`) —
+ *     identiteta postavke se preveri tudi v sami mutaciji, ne samo v pre-branju;
+ *  3. optimistic-concurrency CAS na zapisu naročila: zneski se zapišejo SAMO,
+ *     če so v vrstici še vedno vrednosti, ki smo jih prebrali ZNOTRAJ
+ *     transakcije (status whitelist + paymentStatus unpaid/partial + prejšnji
+ *     subtotal/tax/total). Sočasen void/addItems/popust, ki je medtem
+ *     Committiral, povzroči rollback + ponovitev (≤3) — dva sočasna preklica
+ *     RAZLIČNIH postavk torej OBETA uspešno izvedeta, končni zneski pa točno
+ *     ustrezajo preostalim postavkam; vztrajen konflikt → 409 (uporabnik
+ *     osveži in ponovi). Navadna transakcija brez tega ščita pod READ COMMITTED
+ *     (PostgreSQL/Neon) NI dovolj — recalc druge transakcije ne vidi nepotrjenega
+ *     claima, zadnji zapis bi tiho prepisal novejše zneske;
+ *  4. audit/dogodek/push šele PO uspešnem commitu (kuhinja ne dobi obvestila o
+ *     preklicu, ki je bil razveljavljen);
+ *  5. Issue #39 semantika: odgovor/audit nosita `amountRemovedFromOrder`
+ *     (NETO zmanjšanje vrednosti NEPLAČANEGA naročila: qty × price − popust
+ *     vrstice), NE `refund` — vračilo denarja/fiskalni storno sta ločeni poti.
  */
+
+/** #39: terminalni konflikt (vračamo status + sporočilo, brez retryja). */
+class VoidConflictError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+  }
+}
+
+/** #39: retry-potreben lost-update (rollback + svež poskus; 3× → 409). */
+class VoidRetryError extends Error {}
+
+/**
+ * #39: prehodne napake transakcije (zaklep/write conflict) — tudi te so varno
+ * ponovljive: celoten poskus se je povrnil (rollback), claim/razlog/zneski so
+ * nedotaknjeni. Pokriva SQLITE_BUSY (dev) in P2024/P2028 (Prisma timeouti).
+ */
+function isTransientTxError(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  if (code === 'P2024' || code === 'P2028') return true
+  return /SQLITE_BUSY|database is locked|write conflict/i.test(String((e as Error)?.message || ''))
+}
+
+const MAX_VOID_ATTEMPTS = 3
+/** Issue #48/addItems ista bela lista — mutabilna stanja naročila za zapis zneskov. */
+const VOID_PAYABLE: ('unpaid' | 'partial')[] = ['unpaid', 'partial']
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'orders.void')
   if (isResponse(user)) return user
@@ -44,6 +93,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return fail('Razlog preklica je obvezen (izberi iz seznama ali vpiši vsaj 3 znake).', 400)
   }
 
+  // hitri pred-brani (prijazna sporočila); avtoritativne preverbe so CAS znotraj transakcije
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: true } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
   const locGuard = await guardResource(user, order.locationId)
@@ -65,22 +115,73 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     reason = { id: row.id, name: row.name }
   }
 
-  // CAS prevzem: samo prvi poskus prekliče (podvojen klik → 0 vrstic → 409)
-  const claim = await db.orderItem.updateMany({
-    where: { id: itemId, voided: false },
-    data: { voided: true, ...(reason ? { voidReasonId: reason.id } : {}) },
-  })
-  if (claim.count === 0) return fail('Postavka je že preklicana.', 409)
+  // NETO zmanjšanje vrednosti neplačanega naročila (qty × price − popust vrstice)
+  const amountRemovedFromOrder = r2(num(item.quantity) * num(item.price) - num(item.discountAmount || 0))
 
-  // vrnjena vrednost postavke (quantity × price − popust) — izračun iz vrstice
-  const refund = Number(item.quantity) * Number(item.price) - Number(item.discountAmount || 0)
+  // #39: ena atomska enota — claim postavke + preračun + zapis zneskov
+  let totals: { subtotal: number; tax: number; total: number } | null = null
+  let tip = 0
+  for (let attempt = 1; attempt <= MAX_VOID_ATTEMPTS; attempt++) {
+    try {
+      const res = await db.$transaction(async (tx) => {
+        // (a) sveže stanje ZNOTRAJ transakcije — optimistični predpis za CAS zapis
+        const cur = await tx.order.findUnique({
+          where: { id },
+          select: { subtotal: true, tax: true, total: true, tip: true },
+        })
+        if (!cur) throw new VoidConflictError(404, 'Naročilo ne obstaja.')
+        // (b) CAS prevzem: prvi poskus prekliče (podvojen klik → 0 vrstic → 409);
+        // itemId je VEZAN na orderId — mutacija ne more zadeti tuje postavke
+        const claim = await tx.orderItem.updateMany({
+          where: { id: itemId, orderId: id, voided: false },
+          data: { voided: true, ...(reason ? { voidReasonId: reason.id } : {}) },
+        })
+        if (claim.count === 0) throw new VoidConflictError(409, 'Postavka je že preklicana.')
+        // (c) preračun po claimu, v isti transakciji (obstoječa kanonična formula)
+        const next = await recalcOrderTotals(id, tx)
+        // (d) optimistic-concurrency zapis: zgolj če se stanje/znosni niso
+        // spremenili med (a) in (d), se zapišejo novi zneski (totalWithTip
+        // ostane skladen: total + tip)
+        tip = num(cur.tip)
+        const write = await tx.order.updateMany({
+          where: {
+            id,
+            status: { in: ORDER_ACTIVE_DB },
+            paymentStatus: { in: VOID_PAYABLE },
+            subtotal: cur.subtotal,
+            tax: cur.tax,
+            total: cur.total,
+          },
+          data: { ...next, totalWithTip: r2(next.total + tip) },
+        })
+        if (write.count === 0) {
+          // ločena vzroka: naročilo je medtem zaprlo (terminalni 409) ALI je
+          // sočasna mutacija Committirala nove zneske (lost-update → retry)
+          const closed = await tx.order.findUnique({ where: { id }, select: { status: true, paymentStatus: true } })
+          if (!closed || !ORDER_ACTIVE_DB.includes(closed.status) || !VOID_PAYABLE.includes(closed.paymentStatus as 'unpaid' | 'partial')) {
+            throw new VoidConflictError(409, 'Plačanega/storniranega naročila ni mogoče preklicati po postavkah — fiskalni storno je ločena pot.')
+          }
+          throw new VoidRetryError()
+        }
+        return next
+      })
+      totals = res
+      break
+    } catch (e) {
+      if (e instanceof VoidConflictError) return fail(e.message, e.status)
+      if (e instanceof VoidRetryError || isTransientTxError(e)) {
+        // zadnji poskus je porabil vse retryje → izrecni 409 (uporabnik osveži)
+        if (attempt === MAX_VOID_ATTEMPTS) {
+          return fail('Naročilo se je medtem spremenilo (sočasen vnos/popust/preklic) — osvežite in poskusite znova.', 409)
+        }
+        continue
+      }
+      throw e
+    }
+  }
+  if (!totals) return fail('Preklica ni bilo mogoče izvesti — poskusite znova.', 500)
 
-  // osveži zneske naročila (recalc upošteva SAMO ne-preklicane postavke) — isti
-  // vzorec kot addItems pot: izračun SE ZAPIŠE v vrstico naročila
-  const totals = await recalcOrderTotals(id)
-  await db.order.update({ where: { id }, data: totals })
-
-  // audit sled: kdo, kaj, razlog, vrnjeni znesek
+  // #39 točka 4: audit/push/dogodek ŠELE PO uspešnem commitu
   await writeAudit(db, {
     userId: user.sub,
     action: 'ORDER_ITEM_VOID',
@@ -91,7 +192,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       orderNumber: order.orderNumber,
       item: item.menuItemName,
       quantity: Number(item.quantity),
-      refund: Math.round(refund * 100) / 100,
+      amountRemovedFromOrder,
+      net: true, // zmanjšanje NEPLAČANEGA naročila — ni vračilo denarja
       reasonId: reason?.id || null,
       reasonName: reason?.name || null,
       reasonText: reasonText || null,
@@ -123,7 +225,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return ok({
     voided: {
       itemId,
-      refund: Math.round(refund * 100) / 100,
+      // #39: nedvoumen izraz — zmanjšanje vrednosti neplačanega naročila
+      // (NETO: brez davka; vračilo denarja/fiskalni storno = ločeni poti)
+      amountRemovedFromOrder,
       reason: reason?.name || reasonText || null,
     },
     order: fresh

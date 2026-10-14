@@ -618,7 +618,8 @@ function DashboardInner() {
     }
     setSending(true)
     try {
-      const d = await api<{ voided: { refund: number }; order: OrderT | null }>(`/api/orders/${orderSheet.id}/void`, {
+      // #39: amountRemovedFromOrder (neto) — zmanjšanje vrednosti NEPLAČANEGA naročila (ni vračilo denarja)
+      const d = await api<{ voided: { amountRemovedFromOrder: number }; order: OrderT | null }>(`/api/orders/${orderSheet.id}/void`, {
         method: 'POST',
         body: JSON.stringify({
           itemId: voidItem.id,

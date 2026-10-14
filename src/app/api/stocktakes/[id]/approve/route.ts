@@ -15,12 +15,18 @@ import { writeAudit } from '@/lib/audit-chain'
  * expectedQuantity (proti snapshotu — analitični pogled), varianceValue :=
  * variansa × costPerUnit. Vrstice brez vnosa ostanejo NESPREMENJENE.
  * Dvojni klik: updateMany CAS šteje 0 vrstic → 409.
+ *
+ * Issue #66: vrstice se preberejo SVEŽE ZNOTRAJ transakcije (prej so bile
+ * prebrane pred njo — zastarelo štetje bi lahko odobrilo količine, ki jih
+ * zadnji PATCH sploh ni zapisal). Po claimu SUBMITTED→APPROVED lahko PATCH
+ * nič več ne zapiše (claim zaklep serializira), prebrana množica je torej
+ * točno tista, ki jo je submit zaklenil.
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(_req, 'inventory.manage')
   if (isResponse(user)) return user
   const { id } = await params
-  const st = await db.stocktake.findUnique({ where: { id }, select: { id: true, locationId: true, status: true, StocktakeItem: true } })
+  const st = await db.stocktake.findUnique({ where: { id }, select: { id: true, locationId: true, status: true } })
   if (!st) return fail('Popis ne obstaja.', 404)
   const guard = await guardResource(user, st.locationId)
   if (guard) return guard
@@ -31,9 +37,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       data: { status: 'APPROVED', approvedAt: new Date(), approvedByName: user.name },
     })
     if (locked.count === 0) return { error: fail('Popis ni več v oddanem stanju (že potrjen ali preklican).', 409) as NextResponse }
+    // #66: SVEŽE vrstice po claimu (zastarelo pred-branje odstranjeno) — množica
+    // je točno tista, ki jo je submit zaklenil; poznej PATCH na njo je nemogoč
+    const lines = await tx.stocktakeItem.findMany({ where: { stocktakeId: id } })
     let adjusted = 0
     let varianceValue = 0
-    for (const line of st.StocktakeItem) {
+    for (const line of lines) {
       if (line.countedQuantity == null) continue
       const counted = num(line.countedQuantity)
       const inv = await tx.inventoryItem.findUnique({ where: { id: line.inventoryItemId } })

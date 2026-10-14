@@ -200,22 +200,60 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // samo paymentStatus !== 'paid'): preklicano/stornirano/plačano naročilo ne sme
     // sprejeti postavk niti z direktnim PATCH klicem, sočasna dirka s preklicem/
     // plačilom pa pusti bazo BREZ delnih zapisov (createMany se z rollback-om izniči).
+    //
+    // Issue #39 (P1) — dodatna optimistična zaščita: zneski se zapišejo SAMO, če so
+    // v vrstici še vrednosti, prebrane ZNOTRAJ transakcije (subtotal/tax/total CAS).
+    // Sočasen preklic postavke, ki medtem Committira, povzroči rollback + ponovitev
+    // (≤3) — sicer bi ta pot preklicano postavko tiho vrnila v NOVEJŠE (napačne)
+    // zneske (lost-update pod READ COMMITTED na PostgreSQL/Neon). createMany je
+    // ZNOTRAJ transakcije → rollback izniči tudi dodane vrstice, ponovitev jih
+    // varno znova ustvari (isti nid-ji so bili povrnjeni).
     try {
-      await db.$transaction(async (tx) => {
-        await tx.orderItem.createMany({ data: rows })
-        const totals = await recalcTotals(id, tx)
-        const patch: Record<string, unknown> = { ...totals, ...data }
-        if (data.status === undefined && order.status === 'open') patch.status = 'sent'
-        const claim = await tx.order.updateMany({
-          where: { id, status: { in: ['open', 'sent', 'prepared'] }, paymentStatus: { in: ['unpaid', 'partial'] } },
-          data: patch,
-        })
-        if (claim.count === 0) throw new Error('ORDER_NOT_MUTABLE')
-      })
-    } catch (e) {
-      if (e instanceof Error && e.message === 'ORDER_NOT_MUTABLE') {
-        return fail('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
+      let added = false
+      for (let attempt = 1; attempt <= 3 && !added; attempt++) {
+        try {
+          await db.$transaction(async (tx) => {
+            // svež optimistični predpis (skupni zneski) pred mutacijo vrstic
+            const cur = await tx.order.findUnique({
+              where: { id },
+              select: { subtotal: true, tax: true, total: true, tip: true },
+            })
+            if (!cur) throw new Error('ORDER_NOT_MUTABLE')
+            await tx.orderItem.createMany({ data: rows })
+            const totals = await recalcTotals(id, tx)
+            // #39: totalWithTip ohranja invarianto ≡ total + tip (tip je za
+            // neplačana naročila 0; plačilni tok ga nastavi ob zaključku)
+            const patch: Record<string, unknown> = { ...totals, totalWithTip: r2(totals.total + num(cur.tip)), ...data }
+            if (data.status === undefined && order.status === 'open') patch.status = 'sent'
+            const claim = await tx.order.updateMany({
+              where: {
+                id,
+                status: { in: ['open', 'sent', 'prepared'] },
+                paymentStatus: { in: ['unpaid', 'partial'] },
+                subtotal: cur.subtotal,
+                tax: cur.tax,
+                total: cur.total,
+              },
+              data: patch,
+            })
+            if (claim.count === 0) throw new Error('ORDER_NOT_MUTABLE')
+          })
+          added = true
+        } catch (e) {
+          // lost-update dirka (totals se je medtem spremenil, stanje pa je še
+          // mutabilno) → retry; terminalno zaprtje pade skozi kot ORDER_NOT_MUTABLE
+          if (e instanceof Error && e.message === 'ORDER_NOT_MUTABLE') {
+            const fresh = await db.order.findUnique({ where: { id }, select: { status: true, paymentStatus: true } })
+            const mutable = fresh && ['open', 'sent', 'prepared'].includes(fresh.status) && ['unpaid', 'partial'].includes(fresh.paymentStatus)
+            if (!mutable || attempt === 3) {
+              return fail('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
+            }
+            continue
+          }
+          throw e
+        }
       }
+    } catch (e) {
       return fail('Artikel ni na voljo na lokaciji naročila.', 400)
     }
     const updatedAfterAdd = await db.order.findUnique({ where: { id }, include: orderInclude })

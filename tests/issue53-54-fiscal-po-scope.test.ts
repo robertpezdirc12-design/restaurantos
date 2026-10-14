@@ -92,6 +92,13 @@ async function cleanupFixtures() {
   // zaloge (StockChanged entityId = prefixed artikel)
   await db.auditLog.deleteMany({ where: { locationId: { startsWith: PREFIX } } })
   await db.eventLog.deleteMany({ where: { entityId: { startsWith: PREFIX } } })
+  // v1.99.0 higiena: LEGACY PO prek APIja (nid id, locationId null) ni dosegljiv
+  // generičnemu sweep-u — Restrict FK na Supplier blokira brisanje dobavitelja
+  // in zastrupi skupno DB za ponovni tek (P2002 na Supplier.name). Izrecno
+  // počisti nabavne vrstice vezane na TESTNE dobavitelje (GRN nad PO kaskadira).
+  await db.accountsPayable.deleteMany({ where: { supplierId: { startsWith: PREFIX } } })
+  await db.goodsReceipt.deleteMany({ where: { supplierId: { startsWith: PREFIX } } })
+  await db.purchaseOrder.deleteMany({ where: { supplierId: { startsWith: PREFIX } } })
   await sweepTestFixtures(db, [PREFIX])
 }
 
