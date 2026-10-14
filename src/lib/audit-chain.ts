@@ -282,7 +282,9 @@ export async function verifyAuditChain(
  *    .catch(() => {}) na klicnem mestu.
  *
  * Izven obsega (ostajajo ročni): haccpEntry veriga (drugi model), monitoring/errors
- * (vrstico vrača v odgovoru), delivery/webhook + staff-shifts (nestandardne oblike).
+ * (issue #25: ruta potrebuje nid za reportId v odgovoru in vodi svojo
+ * validacijo/redakcijo details pred zapisom), delivery/webhook + staff-shifts
+ * (nestandardne oblike).
  */
 export interface WriteAuditOpts {
   userId?: string | null
