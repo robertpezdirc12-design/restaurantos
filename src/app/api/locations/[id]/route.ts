@@ -4,12 +4,18 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { jstr } from '@/lib/map'
 import { describeLocationChanges, validateLocationInput } from '@/lib/multilocation'
 import { writeAudit } from '@/lib/audit-chain'
+import { guardResource } from '@/lib/tenant'
+import { safeLocationDto } from '@/lib/secret-dto'
 
 /**
  * Več poslovalnic (triage ⑧) — urejanje lokacije (settings.manage).
  * PATCH sprejme izbirna polja; deaktivacija (isActive=false) NE izbriše
  * podatkov — zaposleni/mize/naročila ostanejo (FK integriteta), vidnost
  * pa ureja fail-closed avtorizacija. Brisanja ni (§18 — FK varnost).
+ *
+ * #23 §2: settings.manage sam po sebi ne upraviči poljubnega ID-ja — ciljna
+ * lokacija mora biti v uporabnikovem tenant/lokacijskem obsegu (guardResource);
+ * odgovor vrača varni DTO (fursCertPassword = indikator, ne surova vrednost).
  */
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -22,6 +28,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const loc = await db.location.findUnique({ where: { id } })
   if (!loc) return fail('Lokacija ne obstaja.', 404)
+
+  // #23 §2: tenant/lokacijska meja — patchanje tujih lokacij po znanem ID-ju ni mogoče
+  const guard = await guardResource(user, loc.id)
+  if (guard) return guard
 
   // validira se ZDAJŠNJA vsebina (obstoječa + povozene vrednosti iz telesa)
   const merged: Record<string, unknown> = {
@@ -70,7 +80,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const updated = await db.location.update({ where: { id }, data })
     const changes = describeLocationChanges(loc as unknown as Record<string, unknown>, data)
     await writeAudit(db, { userId: user.sub, action: 'LOCATION_UPDATE', entityType: 'Location', entityId: id, details: jstr({ name: updated.name, changes }) }).catch(() => null)
-    return ok({ location: updated })
+    return ok({ location: safeLocationDto(updated) })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return fail(`Posodobitev ni uspela: ${msg}`, 500)

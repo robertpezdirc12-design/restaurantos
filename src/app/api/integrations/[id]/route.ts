@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { jparse, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
-import { maskIntegrationConfig, stripMaskedConfig } from '@/lib/integration-mask'
+import { stripMaskedConfig } from '@/lib/integration-mask'
+import { safeIntegrationDto } from '@/lib/secret-dto'
+import { guardIntegration } from '@/lib/tenant'
 
 /**
  * Task 60 (audit §7 Integracije PARTIAL→DONE) — upravljanje posamezne povezave.
@@ -18,6 +20,21 @@ import { maskIntegrationConfig, stripMaskedConfig } from '@/lib/integration-mask
  * connectionStatus='disconnected') — povezava ostane v evidenci; trdo brisanje
  * bi s FK Cascade izgubilo IntegrationLog zgodovino. Audit INTEGRATION_DISABLED.
  * Idempotentno: že neaktivna → 200 brez nove revizije.
+ *
+ * Issue #42 — tenant/lokacijski obseg na točkovnih poteh (prej samo findUnique po
+ * ID-ju; settings.manage + znan ID je omogočal upravljanje TUJIH integracij):
+ *  1. vir naložimo, nato guardIntegration(user, row.locationId): bound vir →
+ *     guardResource (staff = izključno svoja lokacija; central = org meja) —
+ *     ENAKO pravilo kot seznam;
+ *  2. globalna integracija (locationId null) je IZRECNA platform-level
+ *     operacija (guardGlobalResource): samo centralna vloga BREZ vezane org
+ *     ali bootstrap; zavezana centralna vloga globalov ne vidi v seznamu
+ *     (locationScope org allow-lista) in jih zato ne sme niti mutirati;
+ *  3. premik na drug locationId preveri OBOJE: pravico nad trenutno povezavo IN
+ *     pravico nad ciljno lokacijo (cilj orgB → 403 tudi za centralne vloge orgA);
+ *  4. premik v globalno (null) je dovoljen samo centralnim vlogam.
+ * Odgovori (PATCH/DELETE) vračajo varni DTO (#23 §3 — brez surovih
+ * apiKey/apiSecret/config vrednosti).
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'settings.manage')
@@ -25,6 +42,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params
   const row = await db.integration.findUnique({ where: { id } })
   if (!row) return fail('Povezava ne obstaja.', 404)
+  // #42 točka 1+2: obseg trenutnega vira (globalni vir = izrecno centralna operacija)
+  const guard = await guardIntegration(user, row.locationId)
+  if (guard) return guard
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== 'object') return fail('Manjka telo zahtevka.', 400)
 
@@ -44,11 +64,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     data.syncInterval = Math.round(n)
   }
   if (body.locationId !== undefined) {
-    if (body.locationId === null || body.locationId === '') data.locationId = null
-    else {
+    if (body.locationId === null || body.locationId === '') {
+      // #42 točka 4: premik v GLOBALNO — izrecna platform-level operacija
+      // (guardGlobalResource: non-central + zavezana centralna → 403)
+      const gNull = await guardIntegration(user, null)
+      if (gNull) return gNull
+      data.locationId = null
+    } else {
       const loc = await db.location.findUnique({ where: { id: String(body.locationId) } })
       if (!loc) return fail('Lokacija ne obstaja.', 400)
-      data.locationId = String(body.locationId)
+      // #42 točka 3: pravica nad CILJNO lokacijo (cilj tuje org → 403)
+      const gTarget = await guardIntegration(user, loc.id)
+      if (gTarget) return gTarget
+      data.locationId = loc.id
     }
   }
   if (body.config !== undefined) {
@@ -64,7 +92,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const updated = await db.integration.update({ where: { id }, data: data as never })
   await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_UPDATED', entityType: 'Integration', entityId: id, details: jstr({ fields: Object.keys(data), name: updated.name, by: user.name }), locationId: updated.locationId })
   await publishEvent('IntegrationUpdated', { entityType: 'Integration', entityId: id, payload: { fields: Object.keys(data) } })
-  return ok({ integration: updated })
+  // #23 §3: varni DTO — nikoli surov model
+  return ok({ integration: safeIntegrationDto(updated, { central: isCentralRole(user) }) })
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -73,12 +102,16 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const { id } = await ctx.params
   const row = await db.integration.findUnique({ where: { id } })
   if (!row) return fail('Povezava ne obstaja.', 404)
-  if (!row.isActive) return ok({ integration: row, disabled: true }) // idempotentno
+  // #42: obseg vira (enako pravilo kot PATCH/seznam; globalni = central-only)
+  const guard = await guardIntegration(user, row.locationId)
+  if (guard) return guard
+  if (!row.isActive) return ok({ integration: safeIntegrationDto(row, { central: isCentralRole(user) }), disabled: true }) // idempotentno
   const updated = await db.integration.update({
     where: { id },
     data: { isActive: false, syncEnabled: false, connectionStatus: 'disconnected' },
   })
   await writeAudit(db, { userId: user.sub, action: 'INTEGRATION_DISABLED', entityType: 'Integration', entityId: id, details: jstr({ name: row.name, by: user.name }), locationId: updated.locationId })
   await publishEvent('IntegrationDisabled', { entityType: 'Integration', entityId: id, payload: { name: row.name } })
-  return ok({ integration: updated, disabled: true })
+  // #23 §3: varni DTO
+  return ok({ integration: safeIntegrationDto(updated, { central: isCentralRole(user) }), disabled: true })
 }

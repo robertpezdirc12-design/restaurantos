@@ -4,6 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { jstr, nid } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
+import { guardIntegration } from '@/lib/tenant'
 
 /**
  * Task 60 (audit §7 Integracije PARTIAL→DONE) — test povezave.
@@ -15,6 +16,11 @@ import { writeAudit } from '@/lib/audit-chain'
  * SSRF varovalo (P1): zavrne localhost, zasebna območja IP (RFC 1918, CGNAT,
  * link-local, loopback, ULA) in .local/.internal domene — testiranje sme samo
  * javne http(s) naslove, dovoljenje settings.manage.
+ *
+ * Issue #42: test po znanem ID-ju nosi ISTI tenant/lokacijski pravilnik kot
+ * seznam/PATCH/DELETE (guardResource) — credential headerje (apiKey/apiSecret)
+ * strežnik pošlje cilju ŠELE, ko je vir v uporabnikovem obsegu in je cilj
+ * prestal SSRF varovalo.
  */
 function isPrivateHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/\.$/, '')
@@ -38,6 +44,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params
   const row = await db.integration.findUnique({ where: { id } })
   if (!row) return fail('Povezava ne obstaja.', 404)
+  // #42: obseg vira PRED testnim klicem — tujih integracij ne smemo niti testirati
+  // (test pošlje shranjene credential headerje na baseUrl — najprej pooblastilo)
+  const guard = await guardIntegration(user, row.locationId)
+  if (guard) return guard
   let url: URL
   try {
     url = new URL(row.baseUrl)

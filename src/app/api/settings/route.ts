@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, requireAuthWithPerms, isResponse, ok } from '@/lib/api'
 import { nid, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
+import { safeSettingsDto } from '@/lib/secret-dto'
 
 const EDITABLE = [
   'name', 'address', 'city', 'postCode', 'phone', 'email', 'web', 'businessId', 'taxId',
@@ -16,8 +17,10 @@ const EDITABLE = [
  * apiKeys, cisCertPassword). Zdaj:
  *  - navaden prijavljen (POS potrebuje receiptFooter za tisk) → MINIMALNI operativni
  *    DTO iz EDITABLE (poslovni podatki, NI skrivnosti — enak seznam kot PUT sprejme);
- *  - settings.manage → polna vrstica (nastavitve-tab urejanje; PUT itak sprejema samo
- *    EDITABLE ključe, skrivnosti se ne morejo spreminjati prek API-ja).
+ *  - settings.manage → polna vrstica, a z write-only skrivnostmi (#23 §1):
+ *    fursCertPassword/cisCertPassword/emailSmtpPassword/apiKeys se nikoli ne
+ *    vrnejo — indikator '' (ni nastavljeno) / '••••' (nastavljeno). PUT sprejema
+ *    samo EDITABLE ključe, zato skrivnosti ostanejo write-only.
  */
 export async function GET(req: NextRequest) {
   const ctx = await requireAuthWithPerms(req)
@@ -25,7 +28,8 @@ export async function GET(req: NextRequest) {
   const s = await db.restaurantSettings.findFirst()
   if (!s) return ok({ settings: null })
   if (ctx.perms.includes('settings.manage')) {
-    return ok({ settings: s })
+    // #23 §1: tudi nastavitvena vloga ne vidi obstoječih skrivnosti — samo indikator
+    return ok({ settings: safeSettingsDto(s) })
   }
   const minimal: Record<string, unknown> = {}
   for (const key of EDITABLE) {
@@ -55,5 +59,6 @@ export async function PUT(req: NextRequest) {
   if (changedKeys.length > 0) {
     await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys }), locationId: user.loc })
   }
-  return ok({ settings })
+  // #23 §1: PUT odgovor vrača varni DTO — ne odmeva obstoječih skrivnosti
+  return ok({ settings: safeSettingsDto(settings) })
 }

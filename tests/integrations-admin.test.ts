@@ -97,8 +97,8 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
       locationId: locA,
     }))
     expect(r.status).toBe(201)
-    const d = ((await r.json()) as { integration: { id: string; config: string; locationId: string | null } }).integration
-    const cfg = JSON.parse(d.config) as Record<string, unknown>
+    const d = ((await r.json()) as { integration: { id: string; config: Record<string, unknown>; locationId: string | null } }).integration
+    const cfg = d.config // #23: odgovor = varni DTO, config je objekt (ne JSON niz)
     expect(cfg.region).toBe('eu')
     expect('apiKey_prod' in cfg).toBe(false) // maska se NIKOLI ne shrani
     expect(d.locationId).toBe(locA)
@@ -112,7 +112,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
     await isErr(integrationsPOST(req('/api/integrations', owner, 'POST', { name: 'x', baseUrl: 'ftp://y' })), 400)
   })
 
-  test('GET (issue #5): waiter (brez settings.manage) → 403; owner vidi prave vrednosti', async () => {
+  test('GET (issue #5+#23): waiter (brez settings.manage) → 403; owner vidi MASKIRANE vrednosti', async () => {
     const { owner, waiter } = await setupP
     const created = await integrationsPOST(req('/api/integrations', owner, 'POST', {
       name: `${PREFIX}Bizi`, type: 'delivery', config: { apiKey_bizi: 'sk-secret-42', region: 'si' },
@@ -128,9 +128,9 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
     const o = ((await (await integrationsGET(req('/api/integrations', owner))).json()) as {
       integrations: Array<{ id: string; config: Record<string, unknown>; maskedFields?: string[]; lastSyncError: string }>
     }).integrations.find((x) => x.id === id)!
-    expect(o.config.apiKey_bizi).toBe('sk-secret-42')
-    expect(o.lastSyncError).toBe('stari napaki')
-    expect(o.maskedFields).toBeUndefined()
+    expect(o.config.apiKey_bizi).toBe('••••') // #23 §3: tudi centralne vloge vidijo masko
+    expect((o.maskedFields as string[] | undefined)).toEqual(['apiKey_bizi'])
+    expect(o.lastSyncError).toBe('stari napaki') // lastSyncError ostaja za centralne (ni skrivnost)
   })
 
   test('PATCH config: maskna vrednost NE prepiše skrivnosti, ostalo se posodobi + audit', async () => {
@@ -143,11 +143,13 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
       config: { apiKey_wolt: '••••', city: 'kp' }, syncInterval: 120,
     }), { params: Promise.resolve({ id }) })
     expect(r.status).toBe(200)
-    const d = ((await r.json()) as { integration: { config: string; syncInterval: number } }).integration
-    const cfg = JSON.parse(d.config) as Record<string, unknown>
-    expect(cfg.apiKey_wolt).toBe('sk-real-77') // ohranjeno — maska ni prepišala
-    expect(cfg.city).toBe('kp')
+    const d = ((await r.json()) as { integration: { config: Record<string, unknown>; syncInterval: number } }).integration
+    expect(d.config.apiKey_wolt).toBe('••••') // #23: odgovor = maska (nikoli surova vrednost)
+    expect(d.config.city).toBe('kp')
     expect(d.syncInterval).toBe(120)
+    const row = await db.integration.findUnique({ where: { id } })
+    const dbCfg = JSON.parse(String(row?.config ?? '{}')) as Record<string, unknown>
+    expect(dbCfg.apiKey_wolt).toBe('sk-real-77') // ohranjeno v DB — maska ni prepišala
     const audit = await db.auditLog.count({ where: { action: 'INTEGRATION_UPDATED', entityId: id } })
     expect(audit).toBe(1)
     await isErr(integrationPATCH(req(`/api/integrations/${id}`, owner, 'PATCH', { syncInterval: 10 }), { params: Promise.resolve({ id }) }), 400)

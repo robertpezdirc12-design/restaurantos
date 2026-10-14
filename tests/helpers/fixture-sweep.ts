@@ -60,6 +60,7 @@ export const TEST_PREFIXES = [
   'plnk-', // paylink-flow (v1.85.0 P0-2)
   'i47-', // issue47-48-order-state (v1.89.0)
   'pih-', // p1-hardening (v1.89.0)
+  'i23-', // issue23-42-data-exposure (v1.90.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

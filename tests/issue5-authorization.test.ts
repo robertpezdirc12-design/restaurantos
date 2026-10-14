@@ -205,7 +205,11 @@ describe('issue #5 A — read-leaks: pravice + minimalni DTO', () => {
     const a = await status(settingsGET(req('/api/settings', tok(adminA, 'a', 'ADMIN', locA1))))
     expect(a.code).toBe(200)
     const sa = a.body.settings as Record<string, unknown>
-    expect(sa.fursCertPassword).toBeDefined()
+    // issue #23 (v1.90.0): nastavitvena vloga vidi INDIKATOR, ne surove skrivnosti
+    expect(sa.fursCertPassword).toBe('••••')
+    expect(sa.emailSmtpPassword).toBe('••••')
+    expect(sa.apiKeys).toBe('••••')
+    expect(JSON.stringify(a.body)).not.toContain('SECRET-')
   })
 
   it('suppliers GET: cleaner → 403; admin → IBAN/davčna; (nabava brez inventory.manage ne vidi finančnih polj)', async () => {

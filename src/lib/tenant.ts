@@ -145,3 +145,35 @@ export async function orgFilterForUser(user: AuthPayload): Promise<string | null
   const chain = await chainForLocation(user.loc)
   return chain?.organizationId ?? null
 }
+
+/**
+ * Issue #42 — pravilo za GLOBALNE vire (locationId null, trenutno: integracije).
+ * Globalni vir je IZRECNA platform-level operacija:
+ *  - sme jo upravljati SAMO centralna vloga BREZ vezane organizacije
+ *    (loc null ali nevezana lokacija — platform-level admin, kot je ustvarjalec)
+ *    ali bootstrap admin (break-glass);
+ *  - zavezana centralna vloga (org scope) globalov NE vidi v seznamu
+ *    (locationScope org allow-lista ne zajema locationId null) in jih zato
+ *    tudi NE sme mutirati/testirati — list↔mutacija konsistentnost;
+ *  - non-central (staff/manager) → 403 (varovalka pred 'znani ID' vzorcem).
+ */
+export async function guardGlobalResource(user: AuthPayload): Promise<TenantGuardResult> {
+  if (isBootstrapAdmin(user)) return null
+  if (!isCentralRole(user)) {
+    return fail('Globalni vir je izrecna centralna operacija — dostop zavrnjen.', 403)
+  }
+  const chain = await chainForLocation(user.loc)
+  if (chain) {
+    return fail('Globalni vir je platform-level operacija — upravljajte vire svoje organizacije.', 403)
+  }
+  return null
+}
+
+/** Issue #42: poenotena varovalka za integracije (bound → guardResource, global → guardGlobalResource). */
+export async function guardIntegration(
+  user: AuthPayload,
+  resourceLocationId: string | null | undefined
+): Promise<TenantGuardResult> {
+  if (!resourceLocationId) return guardGlobalResource(user)
+  return guardResource(user, resourceLocationId)
+}

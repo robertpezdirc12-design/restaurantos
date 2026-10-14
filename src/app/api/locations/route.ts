@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, locationScope, isCentralRole, isRespons
 import { jstr, nid } from '@/lib/map'
 import { validateLocationInput, codeCandidateFromName } from '@/lib/multilocation'
 import { writeAudit } from '@/lib/audit-chain'
+import { safeLocationDto } from '@/lib/secret-dto'
 
 /**
  * Več poslovalnic (GitLab issue #1, triage ⑧).
@@ -24,7 +25,8 @@ export async function GET(req: NextRequest) {
     where: { id: scope.locationId ?? undefined },
     orderBy: { name: 'asc' },
   })
-  return ok({ locations })
+  // #23 §2: surov model Location vsebuje fursCertPassword → varni DTO
+  return ok({ locations: locations.map((l) => safeLocationDto(l)) })
 }
 
 export async function POST(req: NextRequest) {
@@ -72,7 +74,8 @@ export async function POST(req: NextRequest) {
 
     await writeAudit(db, { userId: user.sub, action: 'LOCATION_CREATE', entityType: 'Location', entityId: row.id, details: jstr({ name: row.name, code: row.code, country: row.country, currency: row.currency, premisesId: row.premisesId || null }) }).catch(() => null)
 
-    return ok({ location: row }, 201)
+    // #23 §2: odgovor nosi varni DTO (fursCertPassword = indikator)
+    return ok({ location: safeLocationDto(row) }, 201)
   } catch (e: unknown) {
       // Task 42 + 44: natančno P2002 razlikovanje (meta.target) — zavajajoče splošno
       // sporočilo zamenja akcijsko; pokrije race okno med taken()/dupPremises()
