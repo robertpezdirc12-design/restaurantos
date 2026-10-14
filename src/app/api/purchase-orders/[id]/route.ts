@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource } from '@/lib/tenant'
 import { jstr } from '@/lib/map'
 import { canTransition, type PoStatus } from '@/lib/procurement'
 import { writeAudit } from '@/lib/audit-chain'
@@ -17,6 +18,12 @@ import { pushEvent } from '@/lib/push'
  *   → statusni prehodi po kanoničnem toku (osnutek → oddaja → odobritev;
  *     preklic dovoljen do odobritve/dobave). Pravica: inventory.manage.
  *     Audit: PO_SUBMIT / PO_APPROVE / PO_CANCEL.
+ *
+ * Issue #54 (P0/P1): GET in PATCH sta varovana z inventory.manage + guardResource
+ * nad kanoničnim po.locationId (PREJ: GET requireAuth — vsak prijavljeni je videl
+ * detail tujega naročila/prevzemov; PATCH brez varovalke — tuje naročilo je bilo
+ * mogoče oddati/odobriti/preklicati). Usklajeno z GET /api/purchase-orders seznamom
+ * (isti permission + isti obseg — permission brez target-scope ni dovoljen).
  *
  * Urejanje vrstic osnutka ni v obsegu tega inkrementa (osnutek se zbriše in
  * ustvari novo) — prehode in prevzem pa ta ruta pokriva v celoti.
@@ -37,12 +44,17 @@ async function loadPo(id: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requireAuth(req)
+  // Issue #54: detail = isti obseg kot seznam (inventory.manage + guardResource) —
+  // prej requireAuth brez varovalke (vsak prijavljeni je videl tuj detail).
+  const user = await requirePermission(req, 'inventory.manage')
   if (isResponse(user)) return user
   const { id } = await params
 
   const po = await loadPo(id)
   if (!po) return fail('Naročilo ne obstaja.', 404)
+
+  const poGuard = await guardResource(user, po.locationId)
+  if (poGuard) return poGuard
 
   const itemIds = po.PurchaseOrderItem.map((i) => i.inventoryItemId).filter((x): x is string => !!x)
   const priceHistory = itemIds.length
@@ -133,6 +145,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const po = await db.purchaseOrder.findUnique({ where: { id }, include: { PurchaseOrderItem: true } })
   if (!po) return fail('Naročilo ne obstaja.', 404)
+
+  // Issue #54: statusna mutacija TUJEGA naročila je zavrnjena (obseg pred operacijo)
+  const poGuard = await guardResource(user, po.locationId)
+  if (poGuard) return poGuard
 
   if (!canTransition(po.status as PoStatus, target)) {
     return fail(`Prehod ${po.status} → ${target} ni dovoljen (kanonični tok: osnutek → oddaja → odobritev → dobava).`, 409)

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isCentralRole, isResponse, ok, fail, locationScope } from '@/lib/api'
+import { requirePermission, isCentralRole, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { nid, num, r2, jstr } from '@/lib/map'
 import { poNumberFor, computeTotalsCents, computeLineCents, type PoStatus } from '@/lib/procurement'
@@ -18,6 +18,17 @@ import { writeAudit } from '@/lib/audit-chain'
  *   description, quantity, unit?, unitPrice, vatRate?, packQty?, packUnit? }] }
  *   → novo naročilo v OSNUTKU (status draft), vsote točno v centih.
  *     Pravica: inventory.manage. Audit: PO_CREATE.
+ *
+ * Issue #54 (P0/P1) — tenant/lokacijski obseg NAROČILA:
+ *   - lokacija se določi prek requireUserLocation (lokalna vloga = IZKLJUČNO
+ *     user.loc; client locationId, ki odstopa, se ZAVRNE — 403) + assertOrgScope
+ *     za centralne vloge (tuja organizacija → 403) + preverba obstoja (bogus
+ *     ID → 404, ne naročilo z namišljeno lokacijo);
+ *   - vsak inventoryItemId mora pripadati lokaciji naročila (locationId null =
+ *     legacy/nevezan artikel → migracijsko dovoljen; artikel DRUGE lokacije =
+ *     tuja zaloga → 403 PRED kakršnimkoli zapisom — brez PO in SupplierItem);
+ *   - dobavitelji so GLOBALNO deljen poslovni vir (brez locationId — dokumentirana
+ *     politika, issue #54: "če so dobavitelji globalno deljeni, to dokumentiraj").
  *
  * Kanonični tok (triage §9): dobavitelj → naročilo (tu) → prevzem
  * (/api/purchase-orders/[id]/receive) → zaloga. §18: brez podvajanja —
@@ -142,6 +153,23 @@ export async function POST(req: NextRequest) {
   if (rawLines.length === 0) return fail('Naročilo potrebuje vsaj eno vrstico.', 400)
   if (rawLines.length > 100) return fail('Naročilo ima lahko največ 100 vrstic.', 400)
 
+  // ── Issue #54: lokacija naročila IZHAJA iz obsega uporabnika (PREJ: body.locationId
+  // brez kakršnekoli validacije → uporabnik z inventory.manage v lokaciji A je lahko
+  // ustvaril naročilo za lokacijo B). Lokalna vloga s TUJIM locationId → 403;
+  // centralna vloga → assertOrgScope (tuja org → 403) + obstoj (bogus ID → 404). ──
+  const bodyLoc = typeof body?.locationId === 'string' && body.locationId.trim() ? body.locationId.trim() : null
+  if (bodyLoc && !isCentralRole(user) && bodyLoc !== user.loc) {
+    return fail('Lokacija naročila ne sme odstopati od lokacije uporabnika.', 403)
+  }
+  const locRes = requireUserLocation(user, bodyLoc ?? undefined)
+  if (isResponse(locRes)) return locRes
+  const locationId = locRes
+  const orgGuard = await assertOrgScope(user, locationId)
+  if (orgGuard) return orgGuard
+  const locRow = await db.location.findUnique({ where: { id: locationId }, select: { id: true } })
+  if (!locRow) return fail('Lokacija ne obstaja.', 404)
+
+
   const seenItem = new Set<string>()
   const lines: {
     id: string
@@ -171,10 +199,15 @@ export async function POST(req: NextRequest) {
     if (inventoryItemId && seenItem.has(inventoryItemId)) return fail(`Vrstica ${idx + 1}: artikel je naveden večkrat — združi količine.`, 400)
     if (inventoryItemId) seenItem.add(inventoryItemId)
 
-    // referenčna integriteta: artikel, če je podan
+    // referenčna integriteta + Issue #54 obseg: artikel, če je podan, mora OBSTOJATI
+    // in pripadati lokaciji naročila (null = legacy/nevezan → migracijsko dovoljen;
+     // artikel druge lokacije = tuja zaloga → 403 brez PO/SupplierItem zapisa)
     if (inventoryItemId) {
-      const inv = await db.inventoryItem.findUnique({ where: { id: inventoryItemId }, select: { id: true, name: true, unit: true } })
+      const inv = await db.inventoryItem.findUnique({ where: { id: inventoryItemId }, select: { id: true, name: true, unit: true, locationId: true } })
       if (!inv) return fail(`Vrstica ${idx + 1}: inventarni artikel ne obstaja.`, 400)
+      if (inv.locationId && inv.locationId !== locationId) {
+        return fail(`Vrstica ${idx + 1}: inventarni artikel pripada drugi lokaciji — naročilo ne sme referencirati tuje zaloge.`, 403)
+      }
       invName = inv.name
       invUnit = inv.unit
     }
@@ -199,7 +232,6 @@ export async function POST(req: NextRequest) {
 
   const totals = computeTotalsCents(lines.map((l) => ({ quantity: l.quantityOrdered, unitPriceCents: Math.round(l.unitPrice * 100), vatRate: l.vatRate })))
 
-  const locationId = body?.locationId ? String(body.locationId) : user.loc || null
   const expectedDate = body?.expectedDate ? new Date(String(body.expectedDate)) : null
   if (expectedDate && isNaN(expectedDate.getTime())) return fail('Neveljaven pričakovani datum.', 400)
 

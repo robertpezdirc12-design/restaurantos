@@ -63,6 +63,7 @@ export const TEST_PREFIXES = [
   'i23-', // issue23-42-data-exposure (v1.90.0)
   'i60-', // issue60-63-cash-shift-atomic (v1.92.0)
   'pi49-', // issue49-51-64-payments (v1.93.0)
+  'i53-', // issue53-54-fiscal-po-scope (v1.95.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -197,6 +198,14 @@ const LOCATION_CHILD_SWEEP = [
   'loyaltyAccount',
   'integration',
   'printJob',
+  // v1.95.0 (issue #54): nabavna pot (POST/receive) ustvari PurchaseOrder/GoodsReceipt/
+  // AccountsPayable/SupplierPriceHistory z nid() id-ji BREZ predpone (poNumber/grnNumber/
+  // apNumber/invoiceNumber prav tako brez nje) — testna predpona živi SAMO v locationId.
+  // Otroci → starši: AP/priceHistory (FK na PO/supplier), GRN (kaskada na PO), PO zadnji.
+  'accountsPayable',
+  'supplierPriceHistory',
+  'goodsReceipt',
+  'purchaseOrder',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }

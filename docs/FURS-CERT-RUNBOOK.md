@@ -40,6 +40,23 @@
   (`Location.fursEnvironment`)
 - `FURS_ALLOW_SIMULATION=false` (produkcija: simulacija prepovedana)
 
+### Fail-closed fiskalni profil (issue #53, v1.95.0 — `src/lib/fiscal-profile.ts`)
+Od v1.95.0 fiskalno izdajo (`POST /api/furs` + storno) vodi STREŽNIŠKI profil,
+razrešen IZRECNO (globalni env > `Location.fursEnvironment`), ne iz privzete
+vrednosti:
+- `NODE_ENV=production` **brez** obeh env vrednosti → izdaja zavrnjena (503
+  `FISCAL_CONFIG_MISSING`) — prej je tiho padla v simulacijo z lažnim
+  `fiscalStatus='verified'`;
+- `FURS_ENVIRONMENT=simulation` ali `FURS_ALLOW_SIMULATION=true` v produkciji →
+  zavrnjeno (503 `FISCAL_SIMULATION_IN_PRODUCTION`), RAZEN ob izrecni lastnikovi
+  varovalki `FURS_PRODUCTION_TEST_MODE=true` (namensko odobren testni način);
+- neveljavna vrednost (typo, npr. `prod`) → 503 `FISCAL_CONFIG_INVALID` v vseh
+  runtimeih — konfiguracijska napaka se ne sme tiho pretvoriti v produkcijo;
+- `test` in `simulation` ostajata SIMULACIJSKA kodna toku kot doslej (§18); razlika
+  je izrecna oznaka okolja: odgovor `fursEnvironment: 'test' | 'simulation'` +
+  revizija INVOICE_ISSUE/RECEIPT_STORNO nosita `fursEnvironment` — poročila/izpisi
+  razločijo testni verified od produkcijskega (issue #53 §4).
+
 ### HR (CIS) — novo (Task 38, `src/lib/cis/client.ts`)
 - `FURS_HR_CERT_P12_B64` + `FURS_HR_CERT_PASSWORD` (napredni certifikat z OIB)
 - `FURS_HR_ENVIRONMENT=test` → nato `production` (fallback: `FURS_ENVIRONMENT`)

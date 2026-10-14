@@ -32,6 +32,7 @@ import { certFromEnv, signZoi, fursInvoice } from '@/lib/furs/client'
 import { cisCertFromEnv, signZki, cisInvoice, hrNacinPlac } from '@/lib/cis/client'
 import { auditChainFields } from '@/lib/audit-chain'
 import { approvalAttestationProfile, paymentPolicyError, type PaymentAttestationProfile } from '@/lib/payments-policy'
+import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
 
 interface PaymentPart {
   type: string
@@ -98,9 +99,26 @@ export async function issueFursReceipt(req: NextRequest) {
   const location = await db.location.findUnique({ where: { id: orderPre.locationId } })
   if (!location) return fail('Lokacija ne obstaja.', 400)
 
-  const fursEnv = process.env.FURS_ENVIRONMENT || location.fursEnvironment || 'simulation'
-  const simulation =
-    process.env.FURS_ALLOW_SIMULATION === 'true' || ['simulation', 'test'].includes(fursEnv.toLowerCase())
+  // Issue #53 (P0/P1) — STREŽNIŠKI fiskalni profil (fail-closed): prej je manjkajoča
+  // konfiguracija tiho padla v privzeto 'simulation' → račun z lažnim 'verified'
+  // statusom; FURS_ALLOW_SIMULATION je v produkciji prisilil simulacijo. Profil je
+  // izrecen: produkcija brez env → 503 PRED ustvarjanjem Payment/Receipt/
+  // StockTransaction (ta točka je pred vsem izračunom/transakcijo); env 'simulation'
+  // oz. allowSimulation v produkciji → 503 (razen FURS_PRODUCTION_TEST_MODE=true).
+  let profile: FiscalProfile
+  try {
+    profile = resolveFiscalProfile({
+      globalEnv: process.env.FURS_ENVIRONMENT,
+      locationEnv: location.fursEnvironment,
+      allowSimulation: process.env.FURS_ALLOW_SIMULATION,
+      productionTestMode: process.env.FURS_PRODUCTION_TEST_MODE,
+      nodeEnv: process.env.NODE_ENV,
+    })
+  } catch (e) {
+    if (e instanceof FiscalConfigError) return fail(e.message, e.status)
+    throw e
+  }
+  const simulation = profile.simulation
 
   // ── Kanonični izračun računa (ročni + avtomatski/Happy Hour popusti) — billing.ts ──
   const now = new Date()
@@ -740,6 +758,10 @@ export async function issueFursReceipt(req: NextRequest) {
             })),
             loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
             simulation,
+            // Issue #53: izrecna oznaka okolja v reviziji — poročila/izpisi razločijo
+            // testno simulacijo od produkcijskega verified statusa
+            fursEnvironment: profile.environment,
+            fursProfileSource: profile.source,
             terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null,
             // Issue #49: profil dokazovanja kartičnih delov (ročna zabeležba ni
             // ponudniško preverjena — glej src/lib/payments-policy.ts)
@@ -848,7 +870,7 @@ export async function issueFursReceipt(req: NextRequest) {
       entityType: 'Receipt',
       entityId: receipt.twin.id,
       // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
-      payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation, locationId: orderPre.locationId },
+      payload: { receiptNumber: receipt.twin.receiptNumber, orderId: orderPre.id, total, simulation, fursEnvironment: profile.environment, locationId: orderPre.locationId },
     }).catch(() => undefined)
     // Adapter je čista fabrika — po transakciji ga znova pridobimo in QR gradimo iz
     // DB polj računa (resnica o shranjenem, ne o spremenljivkah iz tx obsega).
@@ -867,8 +889,10 @@ export async function issueFursReceipt(req: NextRequest) {
         jir: receipt.twin.cisJir || undefined,
         qr: fiscalQr || undefined,
       },
-      // Issue #4 §8: simulator se NIKOLI ne predstavlja kot prava fiskalizacija
-      fursEnvironment: simulation ? 'simulation' : receipt.twin.fiscalStatus === 'verified' ? 'production' : 'production_pending',
+      // Issue #4 §8: simulator se NIKOLI ne predstavlja kot prava fiskalizacija.
+      // Issue #53: izrecna oznaka okolja — 'test' in 'simulation' se razločita
+      // (odgovor na testnem okolju NI označen kot živ produkcijski fiskalni uspeh).
+      fursEnvironment: simulation ? profile.environment : receipt.twin.fiscalStatus === 'verified' ? 'production' : 'production_pending',
       fiscalVerified: receipt.twin.fiscalVerified,
       fiscalStatus: receipt.twin.fiscalStatus,
       // Triage SI/HR: fiskalna oznaka po državi (ZOI/EOR vs ZKI/JIR + QR)

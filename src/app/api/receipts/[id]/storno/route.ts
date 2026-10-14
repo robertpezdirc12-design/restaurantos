@@ -8,6 +8,7 @@ import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { writeAudit } from '@/lib/audit-chain'
+import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
 
 /**
  * Fiskalni storno (umnik/povračilo) računa — P1 točka 1 iz docs/RESTAURANTOS-AUDIT.md.
@@ -75,9 +76,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!location) return fail('Lokacija ne obstaja.', 400)
 
   // Isti fiskalni režim kot /api/furs POST (simulacija / produkcija pending do certifikata)
-  const fursEnv = process.env.FURS_ENVIRONMENT || location.fursEnvironment || 'simulation'
-  const simulation =
-    process.env.FURS_ALLOW_SIMULATION === 'true' || ['simulation', 'test'].includes(fursEnv.toLowerCase())
+  // Issue #53 (P0/P1): profil je zdaj STREŽNIŠKI in fail-closed (src/lib/fiscal-profile.ts)
+  // — produkcija brez izrecnega okolja oz. s simulacijo → 503 PRED kakršnimkoli zapisom
+  // (storno = fiskalna izdaja nad plačanim računom; enaka vrzel kot /api/furs POST).
+  let profile: FiscalProfile
+  try {
+    profile = resolveFiscalProfile({
+      globalEnv: process.env.FURS_ENVIRONMENT,
+      locationEnv: location.fursEnvironment,
+      allowSimulation: process.env.FURS_ALLOW_SIMULATION,
+      productionTestMode: process.env.FURS_PRODUCTION_TEST_MODE,
+      nodeEnv: process.env.NODE_ENV,
+    })
+  } catch (e) {
+    if (e instanceof FiscalConfigError) return fail(e.message, e.status)
+    throw e
+  }
+  const simulation = profile.simulation
 
   // ── Negacija originalnih zneskov (storno TOČNO uniči original — brez preračuna) ──
   const subtotal = r2(-num(original.subtotal))
@@ -277,6 +292,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             total,
             stockReversalCount,
             simulation,
+            // Issue #53: izrecna oznaka okolja v reviziji storna (enaka disciplina INVOICE_ISSUE)
+            fursEnvironment: profile.environment,
+            fursProfileSource: profile.source,
           }), locationId: original.locationId })
 
       return { created, stockReversalCount, restoredItems }
@@ -314,6 +332,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         fiscalVerified: result.created.fiscalVerified,
         fiscalStatus: result.created.fiscalStatus,
         simulation,
+        // Issue #53: izrecna oznaka okolja — 'test'/'simulation' se razločita od produkcije
+        fursEnvironment: profile.environment,
       },
       order: { id: order.id, paymentStatus: 'storno' },
     }, 201)

@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
+import { OrderError } from '@/lib/ops'
 import {
   grnNumberFor,
   validateReceiveLines,
@@ -37,6 +39,19 @@ import { pushEvent } from '@/lib/push'
  *   Pravica: inventory.manage. Idempotentnost: idempotencyKey (unique na PO+key)
  *   → ponoven klic vrne obstoječi prevzem (200). Prejem samo zavrnitev brez
  *   sprejema ni prevzem (400). §18: obstoječi tokovi ostanejo nedotaknjeni.
+ *
+ * Issue #54 (P0/P1) — obseg NAROČIJA pred vsakim branjem/mutacijo:
+ *   - guardResource(user, po.locationId) NEMUDOMA po nalaganju PO (prej: globalni
+ *     findUnique — uporabnik z inventory.manage je lahko prevzel TUJE naročilo in
+ *     spremenil njegovo zalogo/ceno/status/AP); idempotentni replay je ZA varovalko
+ *     (ključ ni poverilnica — tujega GRN-a ne vrne in ne obide avtorizacije);
+ *   - lokacija prevzema IZHAJA iz naročila: body.locationId ne sme prestaviti GRN
+ *     (zaloga/serije/AP) na drugo lokacijo — 403; legacy PO brez lokacije sprejme
+ *     SAMO centralna vloga, ki izrecno (in validirano) določi lokacijo prevzema;
+ *   - sveža preverba PO (status + lokacija) ZNOTRAJ transakcije (preklic med
+ *     branjem in zapisom → 409 rollback celote);
+ *   - sprejet artikel z znano lokacijo mora sovpadati z lokacijo prevzema
+ *     (legacy PO s tujo referenco → rollback, zaloga se NE spremeni).
  */
 
 const RECEIVABLE: readonly string[] = ['approved', 'partial']
@@ -53,11 +68,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     include: { Supplier: { select: { id: true, name: true, paymentTerms: true } }, PurchaseOrderItem: true },
   })
   if (!po) return fail('Naročilo ne obstaja.', 404)
+
+  // ── Issue #54: obseg NAROČILA najprej (PREJ: globalni findUnique brez varovalke —
+  // prevzem TUJEGA naročila je bil le z znanim ID-jem: mutacija zaloge, nabavne
+  // cene, statusov in AP tujega tenanta). Legacy PO brez lokacije: non-central → 403
+  // (fail-closed), centralna vloga = izrecen dostop. ──
+  const poGuard = await guardResource(user, po.locationId)
+  if (poGuard) return poGuard
+
   if (!RECEIVABLE.includes(po.status)) {
     return fail(`Prevzem je mogoč samo na odobrenem naročilu (approved/partial) — to je "${po.status}".`, 409)
   }
 
-  // idempotentnost: obstoječi prevzem za isti ključ → vrni ga (ne podvojuj)
+  // idempotentnost: obstoječi prevzem za isti ključ → vrni ga (ne podvojuj).
+  // Issue #54: replay je ZA varovalko obsega — ključ NI poverilnica: uporabnik
+  // iz tuje lokacije/org dobi 403 (zgoraj), ne metapodatkov GRN-a.
   const idempotencyKey = body?.idempotencyKey ? String(body.idempotencyKey) : null
   if (idempotencyKey) {
     const existing = await db.goodsReceipt.findUnique({
@@ -96,8 +121,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   )
   if (v.errors.length) return fail(v.errors.join(' '), 400)
 
-  // enotna lokacija prevzema: body.locationId, sicer naročilo, sicer uporabnik
-  const locationId = (body?.locationId ? String(body.locationId) : '') || po.locationId || user.loc || null
+  // ── Issue #54: lokacija prevzema IZHAJA iz NAROČILA (PREJ: body.locationId ||
+  // po.locationId || user.loc — request nad PO lokacije A je lahko prestavil zalogo,
+  // serije in AP na lokacijo B). Pravila:
+  //   - PO ima lokacijo → GRN pade NA NJO; druga body.locationId → 403 (medlokacijski
+  //     premik zahteva izrecen postopek, ki ga danes ni);
+  //   - legacy PO brez lokacije (centralna vloga) → body.locationId je izrecna,
+  //     VALIDIRANA določitev (obstoj + org obseg); brez nje user.loc;
+  //   - non-central uporabnik nikoli ne pride do PO brez lokacije (guard zgoraj). ──
+  const bodyLoc = typeof body?.locationId === 'string' && body.locationId.trim() ? body.locationId.trim() : null
+  if (bodyLoc && po.locationId && bodyLoc !== po.locationId) {
+    return fail('Prevzem ne more potekati na drugi lokaciji kot nabavno naročilo — medlokacijski premik zahteva izrecen postopek.', 403)
+  }
+  let locationId: string | null
+  if (po.locationId) {
+    locationId = po.locationId
+  } else if (bodyLoc) {
+    const orgGuard = await assertOrgScope(user, bodyLoc)
+    if (orgGuard) return orgGuard
+    const locRow = await db.location.findUnique({ where: { id: bodyLoc }, select: { id: true } })
+    if (!locRow) return fail('Lokacija prevzema ne obstaja.', 404)
+    locationId = bodyLoc
+  } else {
+    locationId = user.loc || null
+  }
 
   const receiptId = nid()
   const now = new Date()
@@ -116,6 +163,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const result = await db
     .$transaction(async (tx) => {
+      // ── Issue #54: sveža preverba ZNOTRAJ transakcije — PO je bil prebran ZUNAJ;
+      // sočasen preklic/odobritev (PATCH) med branjem in zapisom mora pasti varno
+      // (409 + rollback celote, brez delnih GRN/zaloge/AP sprememb). ──
+      const freshPo = await tx.purchaseOrder.findUnique({ where: { id }, select: { status: true, locationId: true } })
+      if (!freshPo || !RECEIVABLE.includes(freshPo.status)) {
+        throw new OrderError(`Prevzem je mogoč samo na odobrenem naročilu (approved/partial) — to je "${freshPo?.status ?? 'izbrisano'}".`, 409)
+      }
+      if ((freshPo.locationId || null) !== (po.locationId || null)) {
+        throw new OrderError('Lokacija naročila se je spremenila med prevzemom — poskusite znova.', 409)
+      }
+
       // 1. prevzemni dokument + vrstice
       const receipt = await tx.goodsReceipt.create({
         data: {
@@ -166,6 +224,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         const inv = await tx.inventoryItem.findUnique({ where: { id: poItem.inventoryItemId } })
         if (!inv) continue
+
+        // ── Issue #54: sprejet artikel ne sme povečati zaloge DRUGE lokacije
+        // (legacy PO s tujo referenco bi ob prevzemu dvignil tujim stroškom
+        // nabavno ceno/količino). Artikel z znano lokacijo mora sovpadati z
+        // lokacijo prevzema → sicer rollback celote (400). ──
+        if (inv.locationId && locationId && inv.locationId !== locationId) {
+          throw new OrderError(`Artikel "${inv.name}" pripada drugi lokaciji kot prevzem — prevzem ne sme spreminjati tuje zaloge.`, 400)
+        }
 
         const oldQty = Number(inv.quantity)
         const oldCostCents = Math.round(Number(inv.costPerUnit) * 100)
@@ -369,10 +435,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return receipt
     })
     .catch((e: unknown) => {
+      // Issue #54: kontekstne napake iz transakcije (sveža preverba statusa/lokacije
+      // PO, obseg artikla) se preslikajo v fail() z lastnim statusom — rollback
+      // Prisme je že celoten, tu samo vrnemo varno sporočilo.
+      if (e instanceof OrderError) return e
       const msg = String((e as Error).message || '')
       if (idempotencyKey && msg.includes('purchaseOrderId_idempotencyKey')) return null // sočasni ponovljen klic
       throw e
     })
+
+  // Issue #54: kontekstna napaka transakcije → njen status (409/400), ne 500
+  if (result instanceof OrderError) return fail(result.message, result.status)
 
   if (!result && idempotencyKey) {
     const existing = await db.goodsReceipt.findUnique({
