@@ -159,6 +159,20 @@ export async function GET(req: NextRequest) {
   })
 }
 
+/** Issue #63: bazen za (dan, lokacija) že obstaja — CAS/anchor tekmovalni poskus (409, brez podvojitve) */
+class TipPoolExistsError extends Error {
+  constructor(public readonly poolId: string) {
+    super(`Za ta dan in lokacijo bazen že obstaja (${poolId}).`)
+  }
+}
+
+/** Issue #63: ciljna lokacija ne obstaja — fail-closed 400 (anchor update je P2025). */
+class TipLocationMissingError extends Error {
+  constructor() {
+    super('Ciljna lokacija ne obstaja.')
+  }
+}
+
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'employees.manage')
   if (isResponse(user)) return user
@@ -190,7 +204,7 @@ export async function POST(req: NextRequest) {
     return fail((e as Error).message, 400)
   }
 
-  // zaščita pred podvojitvijo: en bazen na dan + lokacijo
+  // zaščita pred podvojitvijo: en bazen na dan + lokacijo (hitra pot — UX)
   const existing = await db.tipPool.findFirst({ where: { date: { gte: range.from, lt: range.to }, locationId } })
   if (existing) return fail(`Za ta dan in lokacijo bazen že obstaja (${existing.id}).`, 409)
 
@@ -236,22 +250,47 @@ export async function POST(req: NextRequest) {
     }
   })
 
-  const pool = await db.$transaction(async (tx) => {
-    const created = await tx.tipPool.create({
-      data: {
-        id: poolId,
-        date: range.from,
-        shiftId,
-        totalTips: totalCents / 100,
-        cashTips: cashCents / 100,
-        cardTips: nonCashCents / 100,
-        distributionMethod: effectiveMethod,
-        status: 'pending',
-        locationId,
-      },
-    })
-    await tx.tipDistribution.createMany({ data: distributions })
-    await writeAudit(tx, { userId: user.sub, action: 'TIP_POOL_CLOSE', entityType: 'TipPool', entityId: poolId, details: jstr({
+  /*
+   * Issue #63 (P1) — ATOMARNA ENOLIČNOST bazena na (poslovni dan, lokacija):
+   * gornji findFirst je bil IZVEN transakcije — dve sočasni zahtevi za isti
+   * (datum, locationId) sta ga obe prestali in vsaka ustvarila SVOJ TipPool +
+   * lastne TipDistribution vrstice (ista Payment.tipAmount razdeljen dvakrat;
+   * payout lahko oba bazena ločeno izplača).
+   * Zdaj: znotraj ENE interaktivne transakcije NAJPREJ ANCHOR write na vrstico
+   * LOKACIJE (updateMany + updatedAt) — na SQLite pridabi izključni pisljivi
+   * zaklep, na PostgreSQL zaklene vrstico lokacije — kar serializira vsa
+   * sočasna ustvarjanja bazenov ZA ISTO LOKACIJO. Sledi FRESH re-check (isti
+   * dnevni okvir + ista lokacija — ključ ne more vrniti tujega bazena) in šele
+   * nato createMany bazena + distribucij + audit, vse skupaj: napaka kjerkoli
+   * → ROLLBACK (brez delnega/siromašnega bazena).
+   * (Ekvivalent unique(data, locationId) omejitvi, ki bi zahtevala DDL migracijo
+   * in obdelavo legacy dvojnikov — enaka invarianta, brez spremembe sheme.)
+   */
+  let pool: Awaited<ReturnType<typeof db.tipPool.create>> | null = null
+  try {
+    pool = await db.$transaction(async (tx) => {
+      // #63: anchor claim — serializacija sočasnih POST za isto lokacijo
+      const anchor = await tx.location.updateMany({ where: { id: locationId }, data: { updatedAt: new Date() } })
+      if (anchor.count === 0) throw new TipLocationMissingError()
+      // #63: FRESH re-check ZNOTRAJ transakcije (zahtevek je bil sprožen pred
+      // tekmečevim commitom — zdaj vidi njegov bazen in se ustavi)
+      const dupe = await tx.tipPool.findFirst({ where: { date: { gte: range.from, lt: range.to }, locationId } })
+      if (dupe) throw new TipPoolExistsError(dupe.id)
+      const created = await tx.tipPool.create({
+        data: {
+          id: poolId,
+          date: range.from,
+          shiftId,
+          totalTips: totalCents / 100,
+          cashTips: cashCents / 100,
+          cardTips: nonCashCents / 100,
+          distributionMethod: effectiveMethod,
+          status: 'pending',
+          locationId,
+        },
+      })
+      await tx.tipDistribution.createMany({ data: distributions })
+      await writeAudit(tx, { userId: user.sub, action: 'TIP_POOL_CLOSE', entityType: 'TipPool', entityId: poolId, details: jstr({
           date,
           locationId,
           method: effectiveMethod,
@@ -264,8 +303,15 @@ export async function POST(req: NextRequest) {
           employees: distributions.length,
           sumOfParts: distributions.reduce((a, d) => a + d.amount * 100, 0),
         }) })
-    return created
-  })
+      return created
+    })
+  } catch (e) {
+    // #63: izgubljeni tekmec — natanko en bazen obstaja (njegov); ta zahteva
+    // ni ustvarila ničesar (rollback) → 409 z ID-jem zmagovalnega bazena.
+    if (e instanceof TipPoolExistsError) return fail(e.message, 409)
+    if (e instanceof TipLocationMissingError) return fail(e.message, 400)
+    throw e
+  }
 
   const created = await db.tipDistribution.findMany({ where: { tipPoolId: poolId }, orderBy: { createdAt: 'asc' } })
   return ok({ pool, distributions: created }, 201)

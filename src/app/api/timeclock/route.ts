@@ -198,6 +198,29 @@ export async function POST(req: NextRequest) {
   const employee = await db.employee.findUnique({ where: { id: user.sub } })
   if (!employee) return fail('Zaposleni profil ne obstaja za ta račun.', 404)
 
+  /*
+   * Issue #62 (P1) — ATOMIC transicije (vsi prehodi stanja):
+   *  - clock-in: CHECK-THEN-CREATE izven transakcije je vzorcu TOGAv (dve sočasni
+   *    zahtevi obe prebereta "ni aktivne" in ustvarita DVE odprti evidenci).
+   *    Zdaj: ENA interaktivna transakcija, ki NAJPREJ zapiše ANCHOR write na vrstico
+   *    zaposlenega (updateMany + updatedAt) — na SQLite takoj pridabi izključni
+   *    pisljivi zaklep, na PostgreSQL zaklene VRSTICO zaposlenega — s čimer se
+   *    sočasna clock-in za ISTEGA zaposlenega serializirata; sledi FRESH re-check
+   *    + create + audit VSE v isti transakciji. Izgubljeni tekmec → 409 brez
+   *    drugega TimeEntry/audit dogodka. (Učinkovito ekvivalentno partial unique
+   *    indeksu (employeeId WHERE clockOut IS NULL), ki ga SQLite ne ponuja in bi
+   *    zahteval DDL migracijo — enaka invarianta, brez spremembe sheme.)
+   *  - break-start/break-end: CAS updateMany na pričakovano PREJŠNJE stanje
+   *    (break-end se prišteje NATANKO enkrat; sočasen dvojni break-start → 409).
+   *  - clock-out: CAS claim zaprtja + FRESH read + izračun totalMinutes/totalPay +
+   *    audit — VSE v ENI transakciji (prej je bil vnos že zaprt, ko bi izračun/audit
+   *    odpovedal → partial write z zastarelimi ničelnimi zneski).
+   *  - legacy dvojniki (iz prejšnjih verzij) se NE brišejo samodejno — odkrije jih
+   *    pregled (GET vrne najnovejšega); ta popravek preprečuje NASTANEK novih.
+   *  - ročna pot (manual) VEDNO zapiše clockOut (zaprta evidenca za recenzijo) —
+   *    ne more ustvariti druge AKTIVNE evidence; vse odprto-zaprte poizvedbe
+   *    gledajo clockOut IS NULL, ne status.
+   */
   const active = await db.timeEntry.findFirst({
     where: { employeeId: user.sub, clockOut: null },
     orderBy: { clockIn: 'desc' },
@@ -207,20 +230,35 @@ export async function POST(req: NextRequest) {
     if (active) return fail('Izmena že teče (od ' + new Date(active.clockIn).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }) + ').', 409)
     const { payRate, jobId } = await payRateSnapshot(user.sub)
     const now = new Date()
-    const entry = await db.timeEntry.create({
-      data: {
-        id: nid(),
-        employeeId: user.sub,
-        jobId,
-        clockIn: now,
-        payRate,
-        type: 'regular',
-        status: 'active',
-        locationId: user.loc || employee.locationId,
-      },
-    })
-    await writeAudit(db, { userId: user.sub, action: 'TIMECLOCK_IN', entityType: 'TimeEntry', entityId: entry.id, details: jstr({ employee: employee.name, clockIn: now.toISOString(), payRate, jobId }) })
-    return ok({ entry: mapEntry({ ...entry, Employee: { name: employee.name } }) }, 201)
+    let created: { id: string } | null = null
+    try {
+      // #62: anchor write (vrstica zaposlenega) serializira sočasne clock-in;
+      // katerakoli kasnejša napaka rollback-a tudi create in audit skupaj.
+      created = await db.$transaction(async (tx) => {
+        await tx.employee.updateMany({ where: { id: user.sub }, data: { updatedAt: now } })
+        const again = await tx.timeEntry.findFirst({ where: { employeeId: user.sub, clockOut: null } })
+        if (again) return null
+        const entry = await tx.timeEntry.create({
+          data: {
+            id: nid(),
+            employeeId: user.sub,
+            jobId,
+            clockIn: now,
+            payRate,
+            type: 'regular',
+            status: 'active',
+            locationId: user.loc || employee.locationId,
+          },
+        })
+        await writeAudit(tx, { userId: user.sub, action: 'TIMECLOCK_IN', entityType: 'TimeEntry', entityId: entry.id, details: jstr({ employee: employee.name, clockIn: now.toISOString(), payRate, jobId }) })
+        return { id: entry.id }
+      })
+    } catch {
+      created = null
+    }
+    if (!created) return fail('Izmena že teče (sočasno prijavo je prevzela druga zahteva).', 409)
+    const entry = await db.timeEntry.findUnique({ where: { id: created.id } })
+    return ok({ entry: mapEntry({ ...entry!, Employee: { name: employee.name } }) }, 201)
   }
 
   if (!active) return fail('Ni aktivne izmene — najprej se prijavi (clock-in).', 409)
@@ -228,7 +266,18 @@ export async function POST(req: NextRequest) {
   if (action === 'break-start') {
     if (active.breakStart && !active.breakEnd) return fail('Odmor že teče.', 409)
     const now = new Date()
-    await db.timeEntry.update({ where: { id: active.id }, data: { breakStart: now, breakEnd: null } })
+    // #62: CAS — breakStart zapišemo SAMO, če izmena še teče in ni odprtega odmora
+    // (breakStart null ALI prejšnji odmor zaključen). Sočasen dvojni break-start:
+    // drugi updateMany vidi že zapisan breakStart → count 0 → 409, brez prepisa.
+    const cas = await db.timeEntry.updateMany({
+      where: {
+        id: active.id,
+        clockOut: null,
+        OR: [{ breakStart: null }, { breakEnd: { not: null } }],
+      },
+      data: { breakStart: now, breakEnd: null },
+    })
+    if (cas.count === 0) return fail('Odmor že teče ali izmena je zaključena.', 409)
     await writeAudit(db, { userId: user.sub, action: 'TIMECLOCK_BREAK_START', entityType: 'TimeEntry', entityId: active.id, details: jstr({ at: now.toISOString() }) })
     return ok({ ok: true, breakStart: now })
   }
@@ -237,40 +286,59 @@ export async function POST(req: NextRequest) {
     if (!active.breakStart || active.breakEnd) return fail('Odmor ni odprt.', 409)
     const now = new Date()
     const delta = breakDeltaMinutes(active.breakStart.getTime(), now.getTime())
-    const entry = await db.timeEntry.update({
-      where: { id: active.id },
+    // #62: CAS — trajanje se prišteje NATANKO enkrat (breakEnd še null + izmena
+    // še odprta). Dva sočasna break-end: drugi vidi že zapisan breakEnd → count 0
+    // → 409, breakMinutes ostane prikrajšan za napihnjen dvojni increment.
+    const cas = await db.timeEntry.updateMany({
+      where: { id: active.id, clockOut: null, breakStart: { not: null }, breakEnd: null },
       data: { breakEnd: now, breakMinutes: { increment: delta } },
     })
-    await writeAudit(db, { userId: user.sub, action: 'TIMECLOCK_BREAK_END', entityType: 'TimeEntry', entityId: active.id, details: jstr({ at: now.toISOString(), deltaMinutes: delta, breakMinutes: entry.breakMinutes }) })
-    return ok({ ok: true, breakMinutes: entry.breakMinutes, deltaMinutes: delta })
+    if (cas.count === 0) return fail('Odmor ni odprt ali izmena je zaključena.', 409)
+    const entry = await db.timeEntry.findUnique({ where: { id: active.id } })
+    await writeAudit(db, { userId: user.sub, action: 'TIMECLOCK_BREAK_END', entityType: 'TimeEntry', entityId: active.id, details: jstr({ at: now.toISOString(), deltaMinutes: delta, breakMinutes: entry!.breakMinutes }) })
+    return ok({ ok: true, breakMinutes: entry!.breakMinutes, deltaMinutes: delta })
   }
 
   if (action === 'clock-out') {
     const now = new Date()
-    let breakMinutes = active.breakMinutes
-    const autoBreak = active.breakStart !== null && active.breakEnd === null
-    if (autoBreak) {
-      breakMinutes += breakDeltaMinutes(active.breakStart!.getTime(), now.getTime())
-    }
-    // race-safe zaključek: uspe samo, če izmena še teče
-    const upd = await db.timeEntry.updateMany({
-      where: { id: active.id, clockOut: null },
-      data: { clockOut: now, breakEnd: autoBreak ? now : active.breakEnd, breakMinutes },
-    })
-    if (upd.count === 0) return fail('Izmena je bila vmes zaključena.', 409)
-    const minutes = totalMinutesCalc(active.clockIn.getTime(), now.getTime(), breakMinutes)
-    const cents = totalPayCents(minutes, payRateToCents(num(active.payRate)))
-    const entry = await db.timeEntry.update({
-      where: { id: active.id },
-      data: { totalMinutes: minutes, totalPay: cents / 100 },
-    })
-    await writeAudit(db, { userId: user.sub, action: 'TIMECLOCK_OUT', entityType: 'TimeEntry', entityId: active.id, details: jstr({
-          employee: employee.name, clockIn: active.clockIn.toISOString(), clockOut: now.toISOString(),
+    // #62: ENA transakcija — CAS claim zaprtja → FRESH read (resnica o odmoru,
+    // tudi če je sočasni break-end pravkar committal) → izračun → totals → audit.
+    // Napaka kjerkoli → ROLLBACK celote → izmena ostane odprta (povleljivo),
+    // zaprta evidenca NIKOLI ne ostane brez izračuna plačila.
+    let done: { entry: ReturnType<typeof mapEntry>; minutes: number; cents: number } | null = null
+    try {
+      done = await db.$transaction(async (tx) => {
+        const claim = await tx.timeEntry.updateMany({
+          where: { id: active.id, clockOut: null },
+          data: { clockOut: now },
+        })
+        if (claim.count === 0) return null
+        const fresh = await tx.timeEntry.findUnique({ where: { id: active.id } })
+        if (!fresh) return null
+        let breakMinutes = fresh.breakMinutes
+        const autoBreak = fresh.breakStart !== null && fresh.breakEnd === null
+        if (autoBreak) {
+          breakMinutes += breakDeltaMinutes(fresh.breakStart!.getTime(), now.getTime())
+        }
+        const minutes = totalMinutesCalc(fresh.clockIn.getTime(), now.getTime(), breakMinutes)
+        const cents = totalPayCents(minutes, payRateToCents(num(fresh.payRate)))
+        const entry = await tx.timeEntry.update({
+          where: { id: active.id },
+          data: { breakEnd: autoBreak ? now : fresh.breakEnd, breakMinutes, totalMinutes: minutes, totalPay: cents / 100 },
+        })
+        await writeAudit(tx, { userId: user.sub, action: 'TIMECLOCK_OUT', entityType: 'TimeEntry', entityId: active.id, details: jstr({
+          employee: employee.name, clockIn: fresh.clockIn.toISOString(), clockOut: now.toISOString(),
           breakMinutes, totalMinutes: minutes, totalPay: cents / 100, autoBreakEnded: autoBreak,
         }) })
+        return { entry: mapEntry({ ...entry, Employee: { name: employee.name } }), minutes, cents }
+      })
+    } catch {
+      done = null
+    }
+    if (!done) return fail('Izmena je bila vmes zaključena (sočasna zahteva).', 409)
     return ok({
-      entry: mapEntry({ ...entry, Employee: { name: employee.name } }),
-      summary: { totalMinutes: minutes, label: durationLabel(minutes), totalPay: cents / 100 },
+      entry: done.entry,
+      summary: { totalMinutes: done.minutes, label: durationLabel(done.minutes), totalPay: done.cents / 100 },
     })
   }
 

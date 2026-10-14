@@ -59,6 +59,26 @@ class ShiftCloseConflictError extends Error {
   }
 }
 
+/**
+ * Issue #61 (P1): legacy izmena BREZ lokacije (CashRegisterShift.locationId null)
+ * ne sme biti zaključena z Z-poročilom — `locationId: null || undefined` je iz
+ * Prisma where-filtra IZPUSIL lokacijski omejitveni pogoj in bi agregiral RAČUNE
+ * VSEH LOKACIJ v časovnem oknu (globalni promet). Fail-closed: celotna transakcija
+ * (CAS claim + totals + ZReport + audit) se ROLLBACK-a, izmena ostane odprta,
+ * odgovor je 409 z navodilom za pooblaščeno razrešitev (izrecna dodelitev
+ * lokacije legacy zapisu prek centralnega OPS postopka — NE samodejni prevzem
+ * »prve«/naključne organizacije).
+ */
+class LegacyShiftLocationError extends Error {
+  constructor() {
+    super(
+      'Izmena brez dodeljene lokacije (legacy zapis) ne more biti zaključena — ' +
+        'Z-poročilo zahteva potrjeno lokacijo. Razrešitev: centralni administrativni ' +
+        'poseg, ki izmeni izrecno dodeli lokacijo (brez samodejnega pripisa).',
+    )
+  }
+}
+
 export async function POST(req: NextRequest) {
   // Issue #5 (P0, komentar #3): odpiranje/zaključek blagajne = cash.manage
   // (enako kot GET; prej requireAuth — vsak prijavljeni je lahko pognal Z-poročilo).
@@ -87,10 +107,22 @@ export async function POST(req: NextRequest) {
         if (!claimed || claimed.status !== 'closed' || !claimed.closedAt) throw new ShiftCloseConflictError()
         const to = claimed.closedAt
 
+        // ── Issue #61: FAIL-CLOSED na legacy izmeno brez lokacije ──
+        // NUL lokacije se NIKOLI ne pretvori v neomejen findMany (Prisma bi pri
+        // `locationId: undefined` izpustil filter → globalni agregat). Velja za
+        // VSE vloge (tudi centralne — centralna vloga ne more uporabiti null-loc
+        // izmene kot implicitnega globalnega poročila; globalni ops postopek je
+        // ločen in izrecno dokumentiran). Rollback celotne transakcije (claim
+        // vključno) → izmena ostane odprta, nič ne poteče.
+        const locId = claimed.locationId
+        if (!locId) throw new LegacyShiftLocationError()
+
         // R11 (2/2): spodnja meja okna — prvo zaprtje zmaga (veriženje brez prekrivanja)
+        // #61: filter ZVEZNO z (že preverjeno ne-nullo) lokacijo izmene — enako
+        // obsegovanje kot računi (ne more pobrati zaključkov druge lokacije).
         const lastClosed = await tx.cashRegisterShift.findFirst({
           where: {
-            locationId: claimed.locationId ?? undefined,
+            locationId: locId,
             status: 'closed',
             closedAt: { not: null },
             id: { not: claimed.id },
@@ -103,8 +135,10 @@ export async function POST(req: NextRequest) {
 
         // izračun iz fiskalnih računov v oknu izmene — prebrano ZNOTRAJ iste transakcije
         // (polodprt interval: [from, to) — račun natanko ob meji pripada NASLEDNJEMU poročilu)
+        // #61: LOKACIJSKI FILTER JE OBVEZEN — locId je zgornj preverjen kot ne-null;
+        // nikoli več `|| undefined` (izpad filtra = agregacija vseh lokacij).
         const receipts = await tx.receipt.findMany({
-          where: { locationId: claimed.locationId || undefined, createdAt: { gte: from, lt: to } },
+          where: { locationId: locId, createdAt: { gte: from, lt: to } },
           include: { Order: { select: { type: true, splitCount: true, tip: true, discount: true } } },
         })
         let cash = 0, card = 0, mobile = 0, alternate = 0, totalSales = 0, totalTax = 0
@@ -214,7 +248,7 @@ export async function POST(req: NextRequest) {
               cashDifference: r(closingCash - expectedCash),
               windowFrom: from.toISOString(), windowTo: to.toISOString(),
             }), locationId: claimed.locationId })
-        return { shift, zreport, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash), totalNet: r(totalNet), covers: originalOrders, windowFrom: from, windowTo: to }
+        return { shift, zreport, locationId: locId, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash), totalNet: r(totalNet), covers: originalOrders, windowFrom: from, windowTo: to }
       })
 
       // OPS-8 val 2 (v1.72.0): push to management on shift close / Z-report (via
@@ -230,8 +264,10 @@ export async function POST(req: NextRequest) {
       // Fire-and-forget with its own try/catch — it must never block or fail the close.
       void (async () => {
         try {
+          // #61: dodatna analitika uporablja ISTI validiran locationId iz transakcije
+          // (result.locationId — zgoraj preverjen ne-null) — nikoli ne umakne filtra.
           const winReceipts = await db.receipt.findMany({
-            where: { locationId: result.shift.locationId || undefined, createdAt: { gte: result.windowFrom, lt: result.windowTo } },
+            where: { locationId: result.locationId, createdAt: { gte: result.windowFrom, lt: result.windowTo } },
             select: { orderId: true, subtotal: true, total: true, totalVat: true, isStorno: true, paymentMethod: true },
             take: 5000,
           })
@@ -281,6 +317,9 @@ export async function POST(req: NextRequest) {
       })
     } catch (e) {
       if (e instanceof ShiftCloseConflictError) return fail(e.message, 409)
+      // #61: legacy null-loc izmena → varen 409 (izmena ostane odprta; transakcija
+      // se je povsem rollback-ala — brez ZReport, brez totals, brez audita).
+      if (e instanceof LegacyShiftLocationError) return fail(e.message, 409)
       throw e
     }
   }

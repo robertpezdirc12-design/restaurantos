@@ -61,6 +61,7 @@ export const TEST_PREFIXES = [
   'i47-', // issue47-48-order-state (v1.89.0)
   'pih-', // p1-hardening (v1.89.0)
   'i23-', // issue23-42-data-exposure (v1.90.0)
+  'i60-', // issue60-63-cash-shift-atomic (v1.92.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -143,6 +144,10 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'counter' },
   { model: 'deviceRegistry' },
   { model: 'timeEntry' },
+  // v1.92.0 (issue #60): StaffShift referencira Employee z Restrict — brez tega
+  // prehoda bi izbris testnega Employee spodletel (sirote z nid() id + locationId
+  // so pobrani v odklenjenem lokacijskem prehodu, direktni s predponskim id tu).
+  { model: 'staffShift' },
   { model: 'employeeJob' },
   { model: 'zReport' },
   { model: 'cashRegisterShift' },
@@ -177,6 +182,7 @@ const LOCATION_CHILD_SWEEP = [
   'guestFeedback',
   'receipt',
   'timeEntry',
+  'staffShift',
   'wasteRecord',
   'reservation',
   'waitlistEntry',

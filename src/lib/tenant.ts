@@ -177,3 +177,22 @@ export async function guardIntegration(
   if (!resourceLocationId) return guardGlobalResource(user)
   return guardResource(user, resourceLocationId)
 }
+
+/**
+ * Issue #60 (P1) — cross-tenant konflikt MED DVEMA lokacijama (ne uporabnikom):
+ * true, samo kadar sta OBÉ lokaciji zanesljivo povezani v organizacijsko drevo
+ * IN pripadata RAZLIČNIMA organizacijama. Neznana/legacy veriga (null) → false
+ * (migracijsko varno — enaka konvencija kot tenantAllows). Namen: preveriti,
+ * da ZAPOLENI in CILJNA LOKACIJA izmene pripadata isti organizaciji, preden
+ * se izmena razporedi (POST staff-shifts preprečuje vezavo zaposlenega iz
+ * orgB na lokacijo orgA prek znanega employeeId).
+ */
+export async function isCrossTenantLocations(
+  locationA: string | null | undefined,
+  locationB: string | null | undefined
+): Promise<boolean> {
+  if (!locationA || !locationB || locationA === locationB) return false
+  const [chainA, chainB] = await Promise.all([chainForLocation(locationA), chainForLocation(locationB)])
+  if (!chainA || !chainB) return false
+  return !tenantAllows(chainA, chainB)
+}
