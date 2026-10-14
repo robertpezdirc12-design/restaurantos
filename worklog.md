@@ -2326,3 +2326,24 @@ Stage Summary:
 - BREZ DDL: VoidReason/OrderItem.voided/permissionOverrides so že v shemi → NI Neon koraka za ta val
 - NASLEDNJI VAL (issue #5 P1): delovni profili po napravah (DeviceRegistry station binding — kds_bar je mrtev stolpec), ločitev timeclock/cash zaključka z odobritvami, EventLog/Supplier locationId DDL (konzola vnosi), dogodkovni dogovori #3/#4 (dostava, expediter KDS)
 - UPORABNIŠKI KORAKI (ponovno): paylink-split DDL na Neonu (Enterprise → Shema migracije — javne PayLink rute 503 do takrat), rotacija obeh žetonov, Actions kvota 1. 11. 2026
+
+---
+Task ID: v1.90.0
+Agent: glavni agent (Z.ai)
+Task: GitHub issues #23 + #42 — "data exposure" val: write-only skrivnosti (varni DTO-ji) + tenant obseg integracij po ID-ju. (v1.89.0 #47/#48/#27/#40/#41/#6/#28 zaprtje je zabeleženo v sandbox dnevniku — repozitorijev vnos je bil izpuščen, ta vnos nadoknadjuje kontinuiteto.)
+
+Work Log:
+- PREDTEST NA PRODUKCIJI (v1.89.0, varno — read-only + no-op PATCH): GET /api/settings (settings.manage) je vračal SURA polja fursCertPassword/cisCertPassword/emailSmtpPassword/apiKeys; GET /api/locations surov Location model; GET /api/integrations centralnim NEMASKIRAN config — push-vapid je v plaintextu nosil ŽIVI VAPID privateKey; PATCH /api/integrations/[id] odmeval surov model → MANAGER (prazen seznam!) je z no-op PATCH prejel config.privateKey (produkcijski dokaz verige #42+#23)
+- #23 POPRAVEK: NOVO src/lib/secret-dto.ts (maskSecretValue ''/ '••••' indikator + safeSettingsDto + safeLocationDto + safeIntegrationDto); settings GET/PUT, locations GET/POST/PATCH, integrations GET/POST/PATCH/DELETE — VSI odgovori = varni DTO (skrivnosti NIKOLI, niti OWNER/ADMIN); write-only semantika (EDITABLE bela lista nespremenjena)
+- integration-mask.ts: isSecretConfigKey() — public* ključi (VAPID publicKey) NISO skrivnost; secret|token|password vedno; 'key' samo brez 'public' (prej je vzorec /key/i maskiral tudi javne ključe)
+- #42 POPRAVEK: tenant.ts NOVO guardGlobalResource + guardIntegration — GLOBALNA integracija (locationId null) = IZRECNA platform-level operacija (centralna vloga brez vezane org kot ustvarjalec ali bootstrap; zavezana centralna globalov NE vidi v seznamu in jih ne sme mutirati — list↔mutacija konsistentnost); [id] PATCH/DELETE/test imajo guard PRED operacijo (credential headerji cilju šele po obsegu + SSRF); PATCH premik locationId = DVOJNI obseg (vir + cilj; premik v globalno = platform-only); POST cilj v obsegu, brez lokacije → VEZANO na uporabnikovo; locations/[id] PATCH → guardResource (settings.manage ne zadostuje)
+- TESTI: tests/issue23-42-data-exposure.test.ts ×17 novih + pogodbene posodobitve integrations-admin (config objekt, maske za vse, ohranitev skrivnosti v DB) + issue5 (maska) + fixture-sweep i23- predpona → 1212/1212 svež ci-fresh.db (80 datotek); tsc 0; eslint 0; check-secrets OK; check-schema-drift 119×119; BREZ DDL
+- BROWSER E2E dev :3007 (dedicated e2e.db — LEKCIJA: sandbox OS env DATABASE_URL kaže na DELJENO /home/z/my-project/db/custom.db, kar je db:push sandbox restarta prepisal s svojo shemo; lastna absolutna pot rešitev): prijava admin@ → Integracije (nova povezava s privateKey v configu → seznam kaže "Maskirana polja: privateKey" → Uredi prikaže privateKey '••••' + publicKey viden → Shrani z masko → DB OHRANI pravo vrednost) + Nastavitve (15 polj + Shrani, 0 napak) — 0 console/page error
+- PRODUKCIJA: push 61e86bf GitHub + GitLab (main je bil ZASTAREL star OPS-2 odtiz — odščiten prek API + force push + ponovna zaščita Maintainers) → Vercel health 1.89.0→1.90.0 v <15 s; ŽIVA RE-VERIFIKACIJA: settings/locations indikatorji; GET integrations privateKey='••••' + publicKey viden; MANAGER PATCH/DELETE push-vapid + cron-daily → 403 'Globalni vir je izrecna centralna operacija' (prej 200 + privateKey!); platform ADMIN PATCH → 200 + varni DTO; security headers nespremenjeni
+- GitHub: komentarji z dokazi (#23 issuecomment-6161787740, #42 issuecomment-6161791930) + OBA ISSUE ZAPRTA
+
+Stage Summary:
+- #23 + #42 POPOLNOMA odpravljena in produkcijsko verificirana: noben odgovor več ne nosi surove skrivnosti (VAPID privateKey maskiran za VSE vloge), točkovne poti integracij imajo tenant obseg, globalne integracije = izrecna platform-level operacija
+- UPORABNIŠKA ODLOČITEV: rotacija VAPID ključa push-vapid (bil živo izpostavljen v1.88–1.89) — pozor: razveljavi obstoječe push naročnine
+- Odprtih issue-jev: 55 (nov backlog #55–#66: atomarnost/idempotenca val — stocktake CAS, tips bazen, timeclock prehodi, eSLOG duplikati, inventory validacije)
+- NASLEDNJI KANDIDAT: atomarnost val (#61 zaključek blagajne null-location, #63 tips bazen, #62 timeclock, #59 odpad CAS) ALI uporabnikova rotacija VAPID + žetonov
