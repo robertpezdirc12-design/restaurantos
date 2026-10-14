@@ -2694,3 +2694,31 @@ Stage Summary:
 - 20 odprtih issue-jev; NASLEDNJI VAL kandidati: #18 (tristransko ujemanje nabave, P1) ali #7 (alergeni — en vir resnice, P1) ali #15 (sledljivost serij, P1)
 - UPORABNIŠKI KORAKI (NESPREMENJENI, URGENTNO): VAPID rotacija ŠE VEDNO odprta; rotacija GitHub+GitLab žetonov; MFA vpis info@+vodja@ pred MFA_ENFORCE_AFTER
 - OSTANKI NA PRODUKCIJI (inertni, poimenovani): ERROR_REPORT vrstici "message":"a" (validacijska raba) + I25-PROD-VERIFIKACIJA (fejk skrivnosti, vse zamaskirane) — audit dnevnik je append-only (veriga), namenoma ostajata; starejši: GC-20261014-000002 deaktivirana, #699 naročilo, verify100 revoked
+
+---
+
+Task ID: v1.103.0-session
+Agent: glavni agent (Z.ai)
+Task: uporabnik potrdil nadaljevanje ("odlicno nadaljuj") po zaključenem valu #25 (v1.102.0) → naslednji priporočeni val: issue #18 (P1 — tristransko ujemanje nabavnega naročila, dejanskega prevzema in dobaviteljevega e-računa).
+
+Work Log:
+- STANJE: repo 3020058 usklajen; produkcija v1.102.0 healthy; 20 odprtih issue-jev; izbran #18 (P1, priporočilo v1.102.0); predpogoja #54/#65 že zaprta (v1.95.0/v1.96.0)
+- AUDIT POTI: PO→AP most ob prevzemu = matchStatus 'matched' SAMO iz PO/GRN podatkov (lažno) + odgovor mapAudit odmev; eSLOG uvoz = vrstice BREZ purchaseOrderItemId + matchStatus 'auto'; expenses PATCH brez varovalke; 2 komentarja na issue-ju potrdita #54/#65 pokriti
+- NOV src/lib/ap-match.ts: EVALVACIJA (kumulativno fakturirano [ne-void, ne-grn_draft] vs naročeno/prejeto; cena; DDV; znesek vrstice kol×cena×DDV; glava vsota vrstic) + PREDLOGI (normaliziran opis brez diakritik + DDV + količinska smiselnost; prednost NEFAKTURIRANEMU prejetemu — FIFO med več enakimi PO; samodejno SAMO točno) + SUPERSEDE osnutkov (pokriti grn_draft → void + audit GRN_DRAFT_SUPERSEDED); exception_approved LEPENJIV
+- NOV src/lib/ap-tolerance.ts + DDL ruta migrate-ap-tolerance (4 stolpci na RestaurantSettings; mirror schema + register + konzola HANDLERS + KNOWN_DRIFTS ap-tolerance + i18n mig.apTolerance.desc SL/HR): privzeto STROGO 0 %/2 c; pisanje prek PUT /api/settings (settings.manage; NAMENOMA ZA create/update singleton vrstice!)
+- RECEIVE: 'matched' → 'grn_draft' + vrstice 'unverified' + OSNUTEK opomba + GRN_AP_BRIDGE_FAILED audit ob odpovedi mostu + re-evalvacija AP-jev PO-ja po prevzemu (račun pred blagom se odblokira)
+- ESLOG: parser razširjen (documentType/credited/unitCode/lineId — aditivno, pogojno izpisano zaradi toEqual pogodb); dobropisi S PREDZNAKOM (kumulativa ↓, eslogPayloadMismatch predznačeno); po uvozu autoLinkExactMatches (scope = user locationScope — centralni ne poveže tujih PO) + applyApMatchEvaluation
+- NOVA RUTA /api/ap/[id]/match: GET (reports.view + guardResource — vrstice/evalvacija/predlogi/kandidati/PO/GRN reference + tolerance) + POST link (inventory.manage; validacija vrstic/dobavitelja/ena PO postavka na vrstico) / evaluate / approve_exception (settings.manage; razlog ≥ 10; audit AP_EXCEPTION_APPROVED z referencami)
+- PLAČILNA VAROVALKA: expenses PATCH paid → 409 pri blocked/review_required; re-evalvacija ob spremembi zneska (apHasPoLinks)
+- UI finance-tab: matchBadge + poNumber + linesSummary + onemogočeno plačilo (paymentBlocked) + ApMatchDialog (povzetek/reference/razlogi/vrstice s Select povezav/Ponovno ovrednoti/Odobri izjemo); i18n apmatch.* SL/HR (~35 ključev)
+- LEKCIJE: (1) GRN osnutek NE šteje v kumulativno fakturirano (osnutek ≠ račun — sicer vsak uvoz blokira); (2) prisma SQLite pot je RELATIVNA na schema map → prava datoteka je prisma/db/ci-fresh.db (rm db/... je bil tihi no-op → stale tolerance iz prejšnjega teka zastrupila teste); (3) DECIMAL(5,2) vsebuje VEJICO → split klavzul drift matcherja mora biti oklepajno-zaveden; (4) toEqual pogodbe: nova opcijska polja se izpišejo SAMO ko so prisotna; (5) migracijska konzola ima LASTNO HANDLERS mapo — register vnos sam po sebi NE delegira; (6) objekt iz any v Set → unknown[] (izrecni cast)
+- TESTI: tests/issue18-ap-3way-match.test.ts ×18 → 1542/1542 sveža prisma/db/ci-fresh.db (94 datotek; posodobljeni števci registra 15→16 ×4, codemod 48→49, ops9 toEqual z novimi polji); tsc 0; eslint 0; check-secrets OK
+- DEPLOY e4d9560 → health 1.103.0 ok (~60 s); DDL APLICIRAN TAKOJ (migrate-ap-tolerance: 4× ALTER + alreadyApplied:false; konzola allApplied:true, pending:0)
+- ŽIVA VERIFIKACIJA (vodja@ MANAGER Ljubljana): PO-20261014-0001 (10 kg × 5 €) → prevzem 4 → OSNUTEK AP-2026-0003 grn_draft (+PO ref) → eSLOG ista vrstica → AP-2026-0004 MATCHED (1/1, varianca 0) + osnutek nadomeščen (void); presežek 5 kg → blocked (razlog količina) → plačilo 409 → odobritev izjeme 200 (reference PO/GRN) → plačilo 200; UI (agent-browser): badge Osnutek/Ujemanje OK (1/1 vrstic)/Izjema odobrena + PO št. + dialog Tristransko ujemanje (Stanje/Vrstice/Razlika/Tolerance/PO/GRN/Ponovno ovrednoti) — 0 konzolnih napak
+- GitHub #18 zaprt z dokaznim komentarjem (6180719783) → 19 odprtih
+
+Stage Summary:
+- Produkcija v1.103.0 (e4d9560) healthy + DDL ap-tolerance apliciran: tristransko ujemanje PO↔GRN↔e-račun je polno operativno (grn_draft ločen od računa; samodejne povezave samo točne; kumulativno fakturiranje brez dvojnih; dobropisi zmanjšajo; tolerance politika settings.manage; plačilna varovalka blocked/review_required → 409 do odobritve izjeme z audit referencami)
+- 19 odprtih issue-jev; naslednji val kandidati: #7 (alergeni — en vir resnice, P1) ali #15 (sledljivost serij, P1) ali #17 (dejanska proti teoretični porabi)
+- UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
+- Inertni ostanki na produkciji (i18 verifikacija, namenoma — revizijska sled append-only): PO-20261014-0001 partial, GRN-20261014-0001, AP-2026-0003 void osnutek, AP-2026-0004 matched open, AP-2026-0005 paid exception_approved
