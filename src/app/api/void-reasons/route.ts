@@ -129,8 +129,9 @@ export async function POST(req: NextRequest) {
     data: { id: nid(), name, isActive: true, sortOrder: 0, locationId },
     select: { id: true },
   })
-  // DDL stolpca prek parametrizirane raw predloge
-  await db.$executeRaw`UPDATE "VoidReason" SET "kind" = ${kind}, "requireComment" = ${requireComment ? 1 : 0} WHERE "id" = ${created.id}`
+  // DDL stolpca prek parametrizirane raw predloge — BOOLEAN param (NE 1/0:
+  // Postgres zavrne integer → boolean pretvorbo; SQLite prek Prisma mapira na 0/1)
+  await db.$executeRaw`UPDATE "VoidReason" SET "kind" = ${kind}, "requireComment" = ${requireComment} WHERE "id" = ${created.id}`
 
   await writeAudit(db, {
     userId: user.sub,
@@ -173,7 +174,7 @@ export async function PATCH(req: NextRequest) {
     data: { name, isActive, sortOrder },
   })
   if (changed.includes('requireComment') && (await reasonKindColumnAvailable())) {
-    await db.$executeRaw`UPDATE "VoidReason" SET "requireComment" = ${requireComment ? 1 : 0} WHERE "id" = ${id}`
+    await db.$executeRaw`UPDATE "VoidReason" SET "requireComment" = ${requireComment} WHERE "id" = ${id}`
   }
   await writeAudit(db, {
     userId: user.sub,

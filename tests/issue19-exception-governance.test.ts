@@ -137,13 +137,14 @@ async function seedDiscount(overrides: Record<string, unknown> = {}) {
   return id
 }
 
-/** Katalog razlog z kind (raw — stolpca sta mirror/DDL only). */
+/** Katalog razlog z kind (raw — stolpca sta mirror/DDL only). Boolean param
+ *  (NE 1/0 — Postgres integer→boolean pretvorba bi padla; vzorec proge). */
 async function seedReason(name: string, kind: string, opts: { requireComment?: boolean; isActive?: boolean; loc?: string } = {}) {
   const id = `${P}vr-${name}-${RUN}`
   await db.voidReason.create({
     data: { id, name: `${P}${name}`, isActive: opts.isActive ?? true, sortOrder: 0, locationId: opts.loc ?? locA },
   })
-  await db.$executeRaw`UPDATE "VoidReason" SET "kind" = ${kind}, "requireComment" = ${opts.requireComment ? 1 : 0} WHERE "id" = ${id}`
+  await db.$executeRaw`UPDATE "VoidReason" SET "kind" = ${kind}, "requireComment" = ${opts.requireComment ?? false} WHERE "id" = ${id}`
   return id
 }
 
