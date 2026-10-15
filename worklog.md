@@ -2778,3 +2778,26 @@ Stage Summary:
 - 17 odprtih issue-jev; naslednji val kandidati: #17 (varianca porabe P1/P2) / #13 (rezervacije P1/P2) / #19 (razlogi/odobritev popustov P1/P2)
 - UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
 - Inertni ostanki i15 na produkciji (namerno): PO-20261015-0002 + GRN-20261015-0001 + serija GRN-20261015-0001-1 (RECALLED, 10 kg) + artikel/dobavitelj i15-* + audit/event sledi (append-only)
+
+---
+Task ID: v1.106.0-session
+Agent: glavni agent (Z.ai)
+Task: uporabnik potrdil nadaljevanje ("nadaljuj") → izveden RestaurantOS val issue #17 (P1/P2 — food-cost varianca: dejanska proti teoretični porabi iz prodaje, receptur, zalog, odpisov in inventure).
+
+Work Log:
+- STANJE: repo 3cf6bcd usklajen; produkcija v1.105.0 healthy; 17 odprtih; izbran #17 (P1/P2, priporočilo v1.105.0)
+- FAZA 0 INVENTURA: StockTransaction tipi (GRN piše 'purchase' z MALO črko!; RECEIVE/STORNO_RETURN/BATCH_OUTPUT prilivi; SALE/WASTE/BATCH_INPUT odlivi; STOCKTAKE/ADJUST popravki); recepture = flattenDeduction (starš+otrok OBRA odštejeta, izkoristek neto/(yield/100)); storno nastavi paymentStatus='storno' + povrne zalogo; menu-engineering/reports/export sta obstoječi analitiki (AVT poročila NI bilo — potrditev issue hipoteze)
+- NOV src/lib/food-cost-variance.ts (ČISTI motor, dokumentirane formule): dejanska poraba = otvoritev + prejemi + proizvodnja − zaključek; sidra = PREŠTETA količina potrjene inventure (fizična resnica, counted + Σ premikov po njej), fallback knjiga (live − Σ prihodnjih); teoretična = prodaja (paidAt okno, paid|partial, ne-voidane — poravnano z razknjižbo SALE ob plačilu) × flattenDeduction z enotnimi pretvorbami SAMO kg↔g/l↔ml (unitFactor; kos → null + zastavica); razčlenitev variance: odpis/priprava/vračilo/primanjkljaj/popis/nepojasnjeno; vrednotenje period_avg → last_supplier_price → current_cost (OZNAČENA) → unknown (NULL); cenovni vpliv informativen; KPI + byCategory/byLocation + dokazi (orderNumbers/GRN/popisi) + dataQuality (razlogi: no_opening/no_closing/price/unit/noRecipe/recipeChanged/truncated)
+- NOV GET /api/reports/food-cost?from&to&format: reports.view + locationScope (pin 49→50); CSV BOM `;` ISTE formule; take cap-i + transactionsTruncated
+- UI: FoodCostVarianceCard (analitika-tab) v "inženiring" tabu pod MenuEngineeringTab: 4 KPI, banner DQ + disclaimer ("signal, ne dokaz krivde") + ledgerCaveat, tabela odstopanj (max-h-96, čipi komponent), drilldown dialog (identiteta, komponente, cena/vpliv, dokazi), CSV blob download; i18n ~75 ključev SL/HR
+- BUGFIXI MED TESTI: (1) knjigovodska rekonstrukcija balanceAt je SESTEVALA prihodnje namesto ODŠTEVALA (predznak!) — odkrito z ročno preverljivo fiksturo; (2) −0 normalizacija (nz) pri komponentah; (3) podvojen openAnc/closeAnc blok po MultiEdit
+- TESTI: tests/issue17-food-cost.test.ts ×35 → 1649/1649 (97 datotek, +35); tsc 0; eslint 0; check-secrets OK; TEST_PREFIXES i17-; locationScope pin dvignjen 49→50 s komentarjem
+- DEPLOY fafc37d → 1.106.0 healthy (4. poskus ~80 s)
+- ŽIVA VERIFIKACIJA (vodja@ MANAGER Ljubljana): poročilo 28 artiklov, netSales 76.9, dejanski FC 17 € (22.11 %), DQ pošteno (no_opening_stocktake/no_closing_stocktake/sold_menu_items_without_recipe — 3 jedi: Letni časi, Bolognese, gobova juha); CSV BOM/`>`/Content-Disposition/iste številke; brez žetona 401; drilldown Piščančji file: otvoritev 25 (knjiga) → zaključek 23, dejansko 2 kg/17 €, primanjkljaj 2 kg (jed brez recepture — vrzel vidno razložena), naročilo #689, cena 8.50 trenutna (OZNAČENA); agent-browser: kartica + KPI + tabela + dialog + disclaimer, 0 konzolnih napak (1 benign a11y DialogDescription), mobilni 390 px OK
+- GitHub #17 zaprt z dokaznim komentarjem (6187901614) → 16 odprtih; GitLab usklajen prvi poskus; lokalno=origin=gitlab=fafc37d
+
+Stage Summary:
+- Produkcija v1.106.0 (fafc37d) healthy: food-cost varianca (AVT) je polno operativna — en vir formul (čisti motor) v UI/API/CSV; dejansko stanje iz PREŠTETIH inventur (fizična resnica) s knjigovodskim fallbackom (označen); teoretično iz prodaje × recepture (ista matematika kot razknjižba); razčlenitev na dokumentirane komponente + nepojasnjeno (signal za preverbo, izrecno NE dokaz krivde); zgodovinsko vrednotenje s trenutno ceno vedno označeno; manjkajoči podatki NULL + banner; dokazi (naročila/GRN/popisi) + CSV izvoz
+- 16 odprtih issue-jev; naslednji val kandidati: #19 (razlogi/odobritev popustov P1/P2) / #13 (rezervacije P1/P2) / #16 (blagajniški premiki P1/P2)
+- UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
+- Inertni ostanki na produkciji (i17 — NAMERNO, poročilo je brikalo): poročilo kliče obstoječe transakcije v ONLY-READ načinu (ni novih zapisov); vrzeli podatkov (brez popisov/receptur) so bile VIDNE v DQ bannerju — to je delno tudi zato, ker poročilo zahteva popis pred/po obdobju za polno vrednost (priporočilo uporabniku: dodajte inventure)
