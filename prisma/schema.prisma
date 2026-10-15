@@ -2231,6 +2231,31 @@ model Reservation {
   @@index([tableId, status])
 }
 
+// Issue #13 (P1/P2, v1.110.0) — javni rezervacijski widget (/r/<token>):
+// ena konfiguracija na lokacijo. Token JE skrivnost (32 hex, rotacija =
+// revokacija stare povezave — isti vzorec kot Table.qrToken / PayLink.token).
+// maxCoversPerSlot = 0 → dinamična kapaciteta (seštevek sedežev miz lokacije).
+// locationId je SKALAR brez FK relacije (EventLog/HaccpAction vzorec — DDL
+// prek admin rute ne nosi FKConstraint driftov; brisanje lokacije počisti
+// prek housekeeping, ne prek cascade).
+model ReservationWidget {
+  id               String   @id
+  locationId       String   @unique
+  token            String   @unique
+  enabled          Boolean  @default(false)
+  slotMinutes      Int      @default(30)
+  minParty         Int      @default(1)
+  maxParty         Int      @default(12)
+  leadMinutes      Int      @default(60)
+  maxAdvanceDays   Int      @default(30)
+  maxCoversPerSlot Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([token])
+  @@index([enabled])
+}
+
 model RestaurantSettings {
   id                    String   @id
   name                  String   @default("RestaurantOS")

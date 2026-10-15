@@ -25,6 +25,7 @@ import { POST as exceptionPolicyPOST } from '../migrate-exception-policy/route'
 import { POST as exceptionReasonsPOST } from '../migrate-exception-reasons/route'
 import { POST as cashMovementsPOST } from '../migrate-cash-movements/route'
 import { POST as haccpOpsPOST } from '../migrate-haccp-ops/route'
+import { POST as reservationWidgetPOST } from '../migrate-reservation-widget/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -63,6 +64,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'exception-reasons': exceptionReasonsPOST,
   'cash-movements': cashMovementsPOST,
   'haccp-ops': haccpOpsPOST,
+  'reservation-widget': reservationWidgetPOST,
 }
 
 interface ConsoleResult {

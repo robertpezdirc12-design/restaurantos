@@ -359,6 +359,14 @@ export function isHaccpOpsStatement(stmt: string): boolean {
   return false
 }
 
+/** Issue #13 (v1.110.0): javni rezervacijski widget — NOVA tabela
+ * ReservationWidget (strogo po tabeli — vzorec HaccpAction; nova tabela
+ * se ne prekriva z nobenim obstoječim matcherjem). */
+export function isReservationWidgetStatement(stmt: string): boolean {
+  if (!/"ReservationWidget"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -546,6 +554,20 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'deluje nespremenjeno (premiki se ne upoštevajo do DDL). Ko je DDL apliciran, drift ' +
       'izgine in vnos postane mrtva koda.',
     matches: isCashMovementStatement,
+  },
+  {
+    id: 'reservation-widget',
+    reason:
+      'Javni rezervacijski widget (v1.110.0, issue #13 P1/P2) — NOVA tabela ' +
+      'ReservationWidget (ena vrstica na lokacijo: skrivnostni token javne povezave ' +
+      '/r/<token>, vklop, politika terminov; locationId skalar brez FK — EventLog vzorec): ' +
+      'produkcija čaka DDL korak — admin ruta /api/admin/migrate-reservation-widget ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL javni ruti widgeta ' +
+      '(/api/public/reservations, /r/<token>) odgovarjata 404 (graceful — povezava se ' +
+      'začne uporabljati šele po DDL, ustvari jo osebje prek nastavitev); interni ' +
+      'rezervacijski tok POS se ne dotakne. Ko je DDL apliciran, drift izgine in ' +
+      'vnos postane mrtva koda.',
+    matches: isReservationWidgetStatement,
   },
 ]
 

@@ -2207,6 +2207,26 @@ model Reservation {
   @@index([tableId, status])
 }
 
+// Issue #13 (P1/P2, v1.110.0) — javni rezervacijski widget (/r/<token>):
+// ena konfiguracija na lokacijo; token JE skrivnost (rotacija = revokacija).
+model ReservationWidget {
+  id               String   @id
+  locationId       String   @unique
+  token            String   @unique
+  enabled          Boolean  @default(false)
+  slotMinutes      Int      @default(30)
+  minParty         Int      @default(1)
+  maxParty         Int      @default(12)
+  leadMinutes      Int      @default(60)
+  maxAdvanceDays   Int      @default(30)
+  maxCoversPerSlot Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([token])
+  @@index([enabled])
+}
+
 model RestaurantSettings {
   id                    String   @id
   name                  String   @default("RestaurantOS")

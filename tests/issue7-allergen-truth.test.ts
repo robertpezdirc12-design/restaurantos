@@ -717,7 +717,7 @@ describe('I. register + DDL', () => {
     expect(m).not.toBeUndefined()
     expect(m!.endpoint).toBe('/api/admin/migrate-allergen-truth')
     expect(m!.descKey).toBe('mig.allergenTruth.desc')
-    expect(SCHEMA_MIGRATIONS.length).toBe(22) // v1.109.0: +haccp-ops (#20)
+    expect(SCHEMA_MIGRATIONS.length).toBe(23) // v1.110.0: +reservation-widget (#13)
     expect(slDict['mig.allergenTruth.desc']).toBeTruthy()
     expect(hrDict['mig.allergenTruth.desc']).toBeTruthy()
   })

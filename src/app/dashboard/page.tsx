@@ -69,7 +69,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -2266,7 +2266,12 @@ function DashboardInner() {
                   {filteredRes.map((r) => (
                     <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{r.guestName} <span className="text-xs text-stone-400">· {r.guests} {t('orders.persons')}</span></p>
+                        <p className="font-medium truncate">
+                          {r.guestName} <span className="text-xs text-stone-400">· {r.guests} {t('orders.persons')}</span>
+                          {/* Issue #13: vir rezervacije (spletna povezava = takoj prepoznavna) */}
+                          {r.source === 'website' && <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-[10px] bg-sky-50 text-sky-800 border-sky-200">🌐 {t('resv.srcWebsite')}</Badge>}
+                          {r.source === 'app' && <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-[10px] bg-stone-50 text-stone-600 border-stone-200">{t('resv.srcApp')}</Badge>}
+                        </p>
                         <p className="text-xs text-stone-500">{new Date(r.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{r.phone ? ` · ${r.phone}` : ''}</p>
                         {r.note && <p className="text-xs text-stone-400 truncate">ℹ {r.note}</p>}
                         {r.specialRequests && <p className="text-xs text-amber-700 truncate">★ {r.specialRequests}</p>}
@@ -2509,6 +2514,8 @@ function DashboardInner() {
 
           <TabsContent value="nastavitve" className="space-y-4">
             <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
+            {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
+            <ReservationWidgetCard />
             {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za
                 prijavljenega uporabnika — step-up PIN, recovery kode, enforcement */}
             <MfaCard />

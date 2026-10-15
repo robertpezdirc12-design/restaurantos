@@ -43,6 +43,24 @@ function fmtWhen(d: Date, locale: 'sl' | 'hr'): string {
   })
 }
 
+/** Issue #13 (v1.110.0): potrditev SPLETNE rezervacije gostu (ob uspešnem
+ * oddanem obrazcu widgeta). Isti dvojezični vzorec kot opomnik. */
+export function bookingConfirmationText(t: ReminderTarget, locale: 'sl' | 'hr'): { subject: string; body: string; sms: string } {
+  const when = fmtWhen(t.when, locale)
+  if (locale === 'hr') {
+    return {
+      subject: `Potvrda: rezervacija u ${t.restaurantName} — ${when}`,
+      body: `Poštovani/a ${t.guestName},\n\nvaša je rezervacija potvrđena:\n\n  ${when}\n  Broj gostiju: ${t.partySize}\n  Lokal: ${t.restaurantName}\n\nUkoliko ne možete doći, molimo Vas da nas obavijestite.\n\nVidimo se!\n${t.restaurantName}`,
+      sms: `Potvrda: rezervacija ${t.restaurantName}, ${when} za ${t.partySize} os.`,
+    }
+  }
+  return {
+    subject: `Potrditev: rezervacija v ${t.restaurantName} — ${when}`,
+    body: `Spoštovani/a ${t.guestName},\n\nvaša rezervacija je potrjena:\n\n  ${when}\n  Št. oseb: ${t.partySize}\n  Lokal: ${t.restaurantName}\n\nČe ne morete priti, nas prosim obvestite.\n\nSe vidimo!\n${t.restaurantName}`,
+    sms: `Potrditev: rezervacija ${t.restaurantName}, ${when} za ${t.partySize} oseb.`,
+  }
+}
+
 export function reminderText(t: ReminderTarget, locale: 'sl' | 'hr'): { subject: string; body: string; sms: string } {
   const when = fmtWhen(t.when, locale)
   if (locale === 'hr') {
@@ -159,6 +177,41 @@ export async function sendReminder(t: ReminderTarget, locale: 'sl' | 'hr', locat
     }
   }
   // SMS
+  if (t.phone) {
+    const cfg = await smsConfigForLocation(locationId)
+    if (cfg) {
+      result.sms = await sendSms(cfg, t.phone, texts.sms)
+    }
+  }
+  result.anySent = result.email.ok || result.sms.ok
+  return result
+}
+
+/**
+ * Issue #13 (v1.110.0) — potrditev SPLETNE rezervacije gostu (ob oddanem
+ * obrazcu widgeta /r/<token>). Fail-soft po kanalih — ne blokira rezervacije.
+ * Lokalni jezik lokacije (Location.locale, privzeto sl-SI) — hr-HR dobi HR.
+ */
+export async function sendBookingConfirmation(t: ReminderTarget, localeTag: string | null, locationId: string | null): Promise<ReminderSendResult> {
+  const locale: 'sl' | 'hr' = String(localeTag || '').toLowerCase().startsWith('hr') ? 'hr' : 'sl'
+  const texts = bookingConfirmationText(t, locale)
+  const result: ReminderSendResult = {
+    email: { ok: false, detail: 'ni konfigurirano' },
+    sms: { ok: false, detail: 'ni konfigurirano' },
+    anySent: false,
+  }
+  if (t.email) {
+    const transport = await smtpTransportForLocation(locationId)
+    if (transport) {
+      try {
+        const settings = await db.restaurantSettings.findFirst()
+        await transport.sendMail({ from: settings?.emailFromAddress || undefined, to: t.email, subject: texts.subject, text: texts.body })
+        result.email = { ok: true, detail: 'OK' }
+      } catch (e) {
+        result.email = { ok: false, detail: (e as Error).message.slice(0, 120) }
+      }
+    }
+  }
   if (t.phone) {
     const cfg = await smsConfigForLocation(locationId)
     if (cfg) {

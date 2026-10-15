@@ -365,6 +365,17 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
         ['HaccpPlan', 'version'],
       ])) && (await tableExists('HaccpAction')),
   },
+  {
+    // Issue #13 (P1/P2, v1.110.0): javni rezervacijski widget — NOVA tabela
+    // ReservationWidget (ena vrstica na lokacijo: skrivnostni token javne
+    // povezave /r/<token>, vklop, politika terminov). locationId je skalar
+    // brez FK (EventLog vzorec). Dokler DDL ni apliciran, javne rute widgeta
+    // odgovarjajo 404 — interni rezervacijski tok se ne dotakne.
+    id: 'reservation-widget',
+    descKey: 'mig.reservationWidget.desc',
+    endpoint: '/api/admin/migrate-reservation-widget',
+    probe: async () => (await tableExists('ReservationWidget')),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

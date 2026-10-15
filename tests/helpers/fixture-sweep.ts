@@ -75,6 +75,7 @@ export const TEST_PREFIXES = [
   'i19-', // issue19-exception-governance (v1.107.0)
   'i16-', // issue16-cash-movements (v1.108.0)
   'i20-', // issue20-haccp-ops (v1.109.0)
+  'i13-', // issue13-reservation-widget (v1.110.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -220,6 +221,10 @@ const LOCATION_CHILD_SWEEP = [
   'supplierPriceHistory',
   'goodsReceipt',
   'purchaseOrder',
+  // v1.110.0 (issue #13): javni rezervacijski widget — nid() id brez predpone,
+  // predpona živi v locationId (skalar, NE SetNull) → prehod po locationId
+  // počisti vrstico pred brisanjem lokacije (drugače bi ostala sirota).
+  'reservationWidget',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }

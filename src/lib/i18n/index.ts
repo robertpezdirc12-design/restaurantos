@@ -36,7 +36,7 @@ const DICTS: Record<Locale, Record<string, string>> = { sl, hr, en }
  * (fallback en → sl, isti varovalni vzorec kot manjkajoč HR ključ).
  * Pokritost teh dveh predpon uveljavlja tests/i18n-guest.test.ts.
  */
-export const EN_GUEST_PREFIXES = ['guest.', 'pay.'] as const
+export const EN_GUEST_PREFIXES = ['guest.', 'pay.', 'resv.public.'] as const
 
 /**
  * 'sl-SI' | 'sl' | 'hr-HR' | 'hr' | 'en' | 'en-US' | nepoznano → normaliziran Locale

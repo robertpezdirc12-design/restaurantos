@@ -264,8 +264,8 @@ describe('i18n gostov — angleščina (P1-5, TRZNA-VRZELI §4)', () => {
   test('pokritost: 100 % guest.* + pay.* ključev iz SL obstaja v EN', () => {
     expect(enGuestGaps()).toEqual([]) // centralna uveljavljava (src/lib/i18n/index.ts)
     // in enak set v obeh jezikih — noben EN-only ali SL-only gostovski ključ
-    const slKeys = Object.keys(sl).filter((k) => k.startsWith('guest.') || k.startsWith('pay.')).sort()
-    const enKeys = Object.keys(en).filter((k) => k.startsWith('guest.') || k.startsWith('pay.')).sort()
+    const slKeys = Object.keys(sl).filter((k) => k.startsWith('guest.') || k.startsWith('pay.') || k.startsWith('resv.public.')).sort()
+    const enKeys = Object.keys(en).filter((k) => k.startsWith('guest.') || k.startsWith('pay.') || k.startsWith('resv.public.')).sort()
     expect(enKeys).toEqual(slKeys)
     expect(enKeys.length).toBeGreaterThan(130) // korenitost: vse 4 javne strani + plačilo
   })
