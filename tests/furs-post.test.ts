@@ -536,7 +536,7 @@ describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Nal
     // 2. fiskalni storno (koti /api/furs: isti furs.issue dovoljenje, lokacija A)
     const stornoToken = createToken({ sub: mgrA.id, name: mgrA.name, role: 'MANAGER', loc: locA.id, sv: 0 })
     const resS = await stornoPOST(
-      new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' } }),
+      new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'testni storno razlog' }) }),
       { params: Promise.resolve({ id: inv1.id }) },
     )
     expect(resS.status).toBe(201)
@@ -574,7 +574,7 @@ describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Nal
     const inv1 = (await res1.json()).invoice
     const stornoToken = createToken({ sub: mgrA.id, name: mgrA.name, role: 'MANAGER', loc: locA.id, sv: 0 })
     const resS = await stornoPOST(
-      new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' } }),
+      new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'testni storno razlog' }) }),
       { params: Promise.resolve({ id: inv1.id }) },
     )
     expect(resS.status).toBe(201)

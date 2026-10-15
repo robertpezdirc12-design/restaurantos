@@ -60,6 +60,8 @@ async function callStorno(receiptId: string, employeeId: string, role: string) {
   const req = new NextRequest('http://localhost/api/receipts/x/storno', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    // #19 (v1.107.0): storno zahteva razlog izjeme (politika, privzeto obvezen)
+    body: JSON.stringify({ reason: 'testni storno razlog' }),
   })
   return stornoPOST(req, { params: Promise.resolve({ id: receiptId }) })
 }

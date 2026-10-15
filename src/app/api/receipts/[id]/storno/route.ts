@@ -9,6 +9,15 @@ import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { writeAudit } from '@/lib/audit-chain'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
+import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
+import {
+  validateExceptionReason,
+  resolveExceptionApproval,
+  reasonAuditFields,
+  approvalAuditFields,
+  type ReasonEvidence,
+  type ApprovalEvidence,
+} from '@/lib/exception-approval'
 
 /**
  * Fiskalni storno (umnik/povračilo) računa — P1 točka 1 iz docs/RESTAURANTOS-AUDIT.md.
@@ -27,6 +36,14 @@ import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/l
  *  - 409: naročilo ni 'paid' — samo plačana naročila se stornirajo (R10 vzorec).
  *  - 409: dvojni storno — preverba znotraj transakcije (race varna) + fail-fast zunaj.
  *
+ * Issue #19 (v1.107.0): fiskalni storno je finančna izjema → obvezen RAZLOG
+ * (politika excRequireReasonStorno, privzeto TRUE; katalog VoidReason
+ * kind=storno|any ALI prosto besedilo 3–200 — posnetek v auditu) + prag
+ * ODOBREDITVE (excStornoApprovalAmountCents, privzeto 0 = izklopljen —
+ * dovoljenje furs.issue je že vodstveno; vodstvena izvajalska vloga šteje kot
+ * odobritev 'role', NE-vodstveni izvajalec pa potrebuje poverilnico DRUGE
+ * pooblaščene osebe). PIN odobritelja se NIKOLI ne zapiše v audit.
+ *
  * Fiskalna polja: replikacija vedenja /api/furs POST (simulacija → ZOI/EOR + 'verified',
  * produkcija brez certifikata → prazne kode + 'pending') — NIč ne izmišljujemo.
  * Številčenje: isti Counter (`receipt:<locationId>`) in isti format št. računa.
@@ -41,6 +58,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const user = await requirePermission(req, 'furs.issue')
   if (isResponse(user)) return user
   const { id } = await ctx.params
+  // #19: telo nosi razlog storna (+ morebitno poverilnico odobritelja)
+  const body = await req.json().catch(() => null)
 
   // ── Predhodne preverbe (definitivni odgovori, ne transakcijski) ──
   const original = await db.receipt.findUnique({ where: { id } })
@@ -74,6 +93,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const location = await db.location.findUnique({ where: { id: original.locationId } })
   if (!location) return fail('Lokacija ne obstaja.', 400)
+
+  // ── Issue #19: razlog + odobritev (ZA preverbami stanja, PRED transakcijo) ──
+  const excPolicy = await exceptionPolicy()
+  let stornoReason: ReasonEvidence | null = null
+  if (excPolicy.requireReasonStorno) {
+    const rr = await validateExceptionReason('storno', original.locationId, body)
+    if (!rr.ok) return fail(rr.message, rr.status)
+    stornoReason = rr.reason
+  }
+  const stornoAmount = Math.abs(num(original.total))
+  let stornoApproval: ApprovalEvidence | null = null
+  let stornoApprovalBasis: string | null = null
+  if (amountAboveThreshold(stornoAmount, excPolicy.stornoApprovalAmountCents)) {
+    stornoApprovalBasis = `amount ${stornoAmount.toFixed(2)} > ${(excPolicy.stornoApprovalAmountCents / 100).toFixed(2)}`
+    const aa = await resolveExceptionApproval(user, original.locationId, body)
+    if (!aa.ok) return fail(aa.message, aa.status)
+    stornoApproval = aa.approval
+  }
 
   // Isti fiskalni režim kot /api/furs POST (simulacija / produkcija pending do certifikata)
   // Issue #53 (P0/P1): profil je zdaj STREŽNIŠKI in fail-closed (src/lib/fiscal-profile.ts)
@@ -302,6 +339,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             // Issue #53: izrecna oznaka okolja v reviziji storna (enaka disciplina INVOICE_ISSUE)
             fursEnvironment: profile.environment,
             fursProfileSource: profile.source,
+            // Issue #19: razlog (posnetek) + odobritev storna
+            ...reasonAuditFields(stornoReason),
+            ...approvalAuditFields(stornoApproval, stornoApprovalBasis),
           }), locationId: original.locationId })
 
       return { created, stockReversalCount, restoredItems }

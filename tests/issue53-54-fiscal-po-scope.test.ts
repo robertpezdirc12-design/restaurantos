@@ -193,7 +193,7 @@ const pay = (token: string, body: Record<string, unknown>) =>
   status(fursPOST(req('/api/furs', token, 'POST', body)))
 
 const storno = (token: string, receiptId: string) =>
-  status(stornoPOST(req(`/api/receipts/${receiptId}/storno`, token, 'POST', {}), { params: Promise.resolve({ id: receiptId }) }))
+  status(stornoPOST(req(`/api/receipts/${receiptId}/storno`, token, 'POST', { reason: 'testni storno razlog' }), { params: Promise.resolve({ id: receiptId }) }))
 
 beforeAll(async () => {
   await cleanupFixtures()

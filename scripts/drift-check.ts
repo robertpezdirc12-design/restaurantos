@@ -255,6 +255,44 @@ export function isIssue38EventTenantStatement(stmt: string): boolean {
   return /^CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"EventLog_locationId_idx"\s+ON\s+"EventLog"\s+\("locationId"\)/i.test(stmt)
 }
 
+/**
+ * Issue #19 (v1.107.0): politika finančnih izjem — 9 stolpcev na
+ * RestaurantSettings (pragovi odobritve + obveznost razloga) IN katalog
+ * razlogov izjem — 2 stolpca na VoidReason (kind + requireComment).
+ * Dvosmerno (kot ap-tolerance): pred DDL jih main schema nima; po DDL in
+ * pred uskladitvijo shem diff generira DROP COLUMN. Matcherja STROGA po
+ * tabeli (RestaurantSettings ≠ VoidReason stolpci se ne mešajo).
+ */
+const EXCEPTION_POLICY_COLUMNS = [
+  'excDiscountApprovalPct', 'excDiscountApprovalAmountCents', 'excVoidApprovalAmountCents',
+  'excStornoApprovalAmountCents', 'excCancelApprovalAmountCents', 'excRequireReasonDiscount',
+  'excRequireReasonCancel', 'excRequireReasonStorno', 'excRequireReasonVoid',
+]
+
+export function isExceptionPolicyStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"RestaurantSettings"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && EXCEPTION_POLICY_COLUMNS.includes(mm[2])
+  })
+}
+
+const EXCEPTION_REASON_COLUMNS = ['kind', 'requireComment']
+
+export function isExceptionReasonsStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"VoidReason"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && EXCEPTION_REASON_COLUMNS.includes(mm[2])
+  })
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -391,6 +429,32 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'Vroča pot (FEFO ob plačilu) je zaščitena s capability-probe (lotGovernanceColumnsReady) ' +
       '— pre-DDL teče legacy where/select, prodaja ne pada na šemo.',
     matches: isLotGovernanceStatement,
+  },
+  {
+    id: 'exception-policy',
+    reason:
+      'Politika finančnih izjem (v1.107.0, issue #19 P1/P2) — 9 stolpcev na ' +
+      'RestaurantSettings (excDiscountApprovalPct/AmountCents + zneskovni pragovi ' +
+      'void/storno/cancel + obveznost razloga discount/cancel/storno/void): produkcija ' +
+      'čaka DDL korak — admin ruta /api/admin/migrate-exception-policy (konzola ' +
+      'Enterprise → Shema migracije → en klik). Dvosmerna faza (kot ap-tolerance): po ' +
+      'DDL in pred uskladitvijo main sheme diff generira DROP COLUMN ×9. Do DDL rute ' +
+      'tečejo na varnih privzetkih (graceful — 15 % prag + razlog za preklic/storno/void), ' +
+      'pisanje politike prek PUT /api/settings vrne 503. Nobena tipizirana poizvedba ' +
+      'stolpcev ne uporablja (raw SQL + probe, vzorec ap-tolerance).',
+    matches: isExceptionPolicyStatement,
+  },
+  {
+    id: 'exception-reasons',
+    reason:
+      'Katalog razlogov izjem (v1.107.0, issue #19 P1/P2) — 2 stolpca na obstoječem ' +
+      'VoidReason (kind: void|discount|cancel|storno|any + requireComment): produkcija ' +
+      'čaka DDL korak — admin ruta /api/admin/migrate-exception-reasons (konzola ' +
+      'Enterprise → Shema migracije → en klik). Dvosmerna faza (kot ap-tolerance). ' +
+      'Do DDL: katalog razlogov je uporabljiv SAMO za void (dosedanja semantika — ' +
+      'findUnique pot), druge vrste izjem uporabijo prosto besedilo. Po DDL ' +
+      'validateExceptionReason preklopi na kind-aware poizvedbo.',
+    matches: isExceptionReasonsStatement,
   },
 ]
 

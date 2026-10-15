@@ -717,7 +717,7 @@ describe('I. register + DDL', () => {
     expect(m).not.toBeUndefined()
     expect(m!.endpoint).toBe('/api/admin/migrate-allergen-truth')
     expect(m!.descKey).toBe('mig.allergenTruth.desc')
-    expect(SCHEMA_MIGRATIONS.length).toBe(18)
+    expect(SCHEMA_MIGRATIONS.length).toBe(20) // v1.107.0: +exception-policy +exception-reasons (#19)
     expect(slDict['mig.allergenTruth.desc']).toBeTruthy()
     expect(hrDict['mig.allergenTruth.desc']).toBeTruthy()
   })

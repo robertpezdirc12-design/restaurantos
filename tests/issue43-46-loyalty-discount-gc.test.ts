@@ -432,7 +432,8 @@ describe('#45 — popust: kvota + naročilo atomarno (CAS, validacije PRED kvoto
     const disc = await seedDiscount({ maxUses: 5 })
     const order = await seedOrder(locA)
     await discountPOST(req('POST', `/api/orders/${order}/discount`, tokMgrA, { discountId: disc }), { params: Promise.resolve({ id: order }) })
-    const del = await discountDELETE(req('DELETE', `/api/orders/${order}/discount`, tokMgrA), { params: Promise.resolve({ id: order }) })
+    // #19 (v1.107.0): odstranitev uporabljenega popusta = izjema → obvezen razlog
+    const del = await discountDELETE(req('DELETE', `/api/orders/${order}/discount`, tokMgrA, { reason: 'testni razlog odstranitve' }), { params: Promise.resolve({ id: order }) })
     expect(del.status).toBe(200)
     const o1 = await db.order.findUnique({ where: { id: order } })
     expect(Number(o1?.discount)).toBe(0)

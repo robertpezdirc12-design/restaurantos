@@ -183,7 +183,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // postavk v uporabnikovem obsegu) → 49
     // Issue #17 (v1.106.0): reports/food-cost GET (food-cost varianca — Artikli/
     // transakcije/naročila/inventure v uporabnikovem obsegu) → 50
-    expect(wired.length).toBe(50)
+    // Issue #19 (v1.107.0): reports/exceptions GET (poročilo finančnih izjem —
+    // kanonične audit vrstice v uporabnikovem obsegu) → 51
+    expect(wired.length).toBe(51)
   })
 })
 

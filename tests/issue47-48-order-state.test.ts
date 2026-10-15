@@ -123,7 +123,7 @@ describe('Issue #47 — ročni status PAID je ukinjen', () => {
 describe('Issue #48 — terminalna stanja so res terminalna', () => {
   test('DELETE (preklic) → status cancelled + paymentStatus terminalno cancelled', async () => {
     const order = await seedOrder(10)
-    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(200)
     const row = await db.order.findUnique({ where: { id: order.id } })
     expect(row?.status).toBe('cancelled')
@@ -132,7 +132,7 @@ describe('Issue #48 — terminalna stanja so res terminalna', () => {
 
   test('po DELETE: PATCH addItems → 409, 0 novih postavk, zneski nespremenjeni', async () => {
     const order = await seedOrder(11)
-    await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     const before = await db.order.findUnique({ where: { id: order.id } })
     const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(waiterId, 'w', 'WAITER', locId), 'PATCH', { addItems: [{ menuItemId: miId, qty: 2 }] }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(409)
@@ -145,7 +145,7 @@ describe('Issue #48 — terminalna stanja so res terminalna', () => {
 
   test('preklicano naročilo NE preide v OPEN/SENT/PREPARED prek običajnega PATCH', async () => {
     const order = await seedOrder(12)
-    await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     for (const st of ['OPEN', 'SENT', 'PREPARED']) {
       const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: st }), { params: Promise.resolve({ id: order.id }) })
       expect(res.status).toBe(409)
@@ -169,7 +169,7 @@ describe('Issue #48 — terminalna stanja so res terminalna', () => {
   test('PATCH status CANCELLED iz open+unpaid → 200; paymentStatus cancelled; miza → cleaning; audit', async () => {
     const table = await db.table.create({ data: { id: `${PREFIX}tbl-${RUN}`, number: 4711, locationId: locId } })
     const order = await seedOrder(14, 'open', 'unpaid', table.id)
-    const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED' }), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED', reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(200)
     const row = await db.order.findUnique({ where: { id: order.id } })
     expect(row?.status).toBe('cancelled')
@@ -181,13 +181,13 @@ describe('Issue #48 — terminalna stanja so res terminalna', () => {
 
   test('PATCH status CANCELLED na paymentStatus storno → 409 (fiskalna negacija je terminalna)', async () => {
     const order = await seedOrder(15, 'paid', 'storno')
-    const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED' }), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED', reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(409)
   })
 
   test('DELETE na paymentStatus storno → 409 (nova varovalka — prej samo paid)', async () => {
     const order = await seedOrder(16, 'paid', 'storno')
-    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(409)
     expect(String((await res.json()).error)).toContain('storniranega')
   })
@@ -217,7 +217,7 @@ describe('Issue #48 — terminalna stanja so res terminalna', () => {
     const order = await seedOrder(30)
     const l1 = await seedLink(1, order.id, 1, 2)
     const l2 = await seedLink(2, order.id, 2, 2)
-    const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED' }), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED', reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(200)
     expect((await db.payLink.findUnique({ where: { id: l1.id } }))?.status).toBe('superseded')
     expect((await db.payLink.findUnique({ where: { id: l2.id } }))?.status).toBe('superseded')
@@ -226,14 +226,14 @@ describe('Issue #48 — terminalna stanja so res terminalna', () => {
   test('preklic prek DELETE prav tako prekliče odprte plačilne povezave', async () => {
     const order = await seedOrder(31)
     const l1 = await seedLink(3, order.id, 1, 3)
-    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(200)
     expect((await db.payLink.findUnique({ where: { id: l1.id } }))?.status).toBe('superseded')
   })
 
   test('PATCH note na preklicanem naročilu → 200 (vsebina naročila, ne stanje — issue #48 opomba)', async () => {
     const order = await seedOrder(32)
-    await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     const res = await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(waiterId, 'w', 'WAITER', locId), 'PATCH', { note: 'gost je odšel pred plačilom' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(200)
     expect((await db.order.findUnique({ where: { id: order.id } }))?.notes).toBe('gost je odšel pred plačilom')

@@ -21,6 +21,8 @@ import { POST as issue38POST } from '../migrate-issue38/route'
 import { POST as apTolerancePOST } from '../migrate-ap-tolerance/route'
 import { POST as allergenTruthPOST } from '../migrate-allergen-truth/route'
 import { POST as lotGovernancePOST } from '../migrate-lot-governance/route'
+import { POST as exceptionPolicyPOST } from '../migrate-exception-policy/route'
+import { POST as exceptionReasonsPOST } from '../migrate-exception-reasons/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -55,6 +57,8 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'ap-tolerance': apTolerancePOST,
   'allergen-truth': allergenTruthPOST,
   'lot-governance': lotGovernancePOST,
+  'exception-policy': exceptionPolicyPOST,
+  'exception-reasons': exceptionReasonsPOST,
 }
 
 interface ConsoleResult {

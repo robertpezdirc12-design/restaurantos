@@ -2165,6 +2165,17 @@ model RestaurantSettings {
   apMatchPriceTolerancePct    Decimal @default(0)
   apMatchVatTolerancePct      Decimal @default(0)
   apMatchAmountToleranceCents Int     @default(2)
+  // Issue #19 (v1.107.0): politika finančnih izjem — MIRROR-ONLY do DDL
+  // (migrate-exception-policy); privzeti % prag ohranja 15-% disciplino
+  excDiscountApprovalPct         Decimal @default(15)
+  excDiscountApprovalAmountCents Int     @default(0)
+  excVoidApprovalAmountCents     Int     @default(0)
+  excStornoApprovalAmountCents   Int     @default(0)
+  excCancelApprovalAmountCents   Int     @default(0)
+  excRequireReasonDiscount      Boolean @default(false)
+  excRequireReasonCancel        Boolean @default(true)
+  excRequireReasonStorno        Boolean @default(true)
+  excRequireReasonVoid          Boolean @default(true)
 }
 
 model RevenueCenter {
@@ -2771,6 +2782,10 @@ model VoidReason {
   name       String
   isActive   Boolean     @default(true)
   sortOrder  Int         @default(0)
+  // Issue #19 (v1.107.0): vrsta izjeme (void|discount|cancel|storno|any) +
+  // obvezen komentar — MIRROR-ONLY do DDL (migrate-exception-reasons)
+  kind            String  @default("void")
+  requireComment  Boolean @default(false)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime @updatedAt
   locationId String

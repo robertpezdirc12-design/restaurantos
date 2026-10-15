@@ -293,6 +293,39 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
       ['InventoryBatch', 'releaseNote'],
     ]),
   },
+  {
+    // Issue #19 (P1/P2, v1.107.0): politika finančnih izjem — 9 stolpcev na
+    // RestaurantSettings (pragovi odobritve popusta/preklica/storna + obveznost
+    // razloga). Privzeto: % prag 15 (dosedanja disciplina), zneskovni pragovi
+    // izklopljeni, razlog obvezen za preklic/storno/void. Do DDL: varni
+    // privzetki (graceful), pisanje → 503.
+    id: 'exception-policy',
+    descKey: 'mig.exceptionPolicy.desc',
+    endpoint: '/api/admin/migrate-exception-policy',
+    probe: () => columnsAll([
+      ['RestaurantSettings', 'excDiscountApprovalPct'],
+      ['RestaurantSettings', 'excDiscountApprovalAmountCents'],
+      ['RestaurantSettings', 'excVoidApprovalAmountCents'],
+      ['RestaurantSettings', 'excStornoApprovalAmountCents'],
+      ['RestaurantSettings', 'excCancelApprovalAmountCents'],
+      ['RestaurantSettings', 'excRequireReasonDiscount'],
+      ['RestaurantSettings', 'excRequireReasonCancel'],
+      ['RestaurantSettings', 'excRequireReasonStorno'],
+      ['RestaurantSettings', 'excRequireReasonVoid'],
+    ]),
+  },
+  {
+    // Issue #19 (P1/P2, v1.107.0): katalog razlogov izjem — 2 stolpca na
+    // obstoječem VoidReason (kind vrste izjeme + requireComment). PONOVNA
+    // UPORABA obstoječega modela (brez vzporednega sistema razlogov). Obstoječe
+    // vrstice ostanejo 'void'. Do DDL: katalog veljaven samo za void.
+    id: 'exception-reasons',
+    descKey: 'mig.exceptionReasons.desc',
+    endpoint: '/api/admin/migrate-exception-reasons',
+    probe: () => columnsAll([
+      ['VoidReason', 'kind'], ['VoidReason', 'requireComment'],
+    ]),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

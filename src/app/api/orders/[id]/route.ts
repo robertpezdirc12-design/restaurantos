@@ -7,6 +7,15 @@ import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals } from '@/lib/ops'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
+import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
+import {
+  validateExceptionReason,
+  resolveExceptionApproval,
+  reasonAuditFields,
+  approvalAuditFields,
+  type ReasonEvidence,
+  type ApprovalEvidence,
+} from '@/lib/exception-approval'
 import type { Prisma } from '@prisma/client'
 
 const orderInclude = {
@@ -141,6 +150,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     data.status = body.status.toLowerCase()
     if (body.status === 'CANCELLED') {
+      // Issue #19 (v1.107.0): preklic naročila je finančna izjema → obvezen
+      // razlog (politika excRequireReasonCancel, privzeto TRUE) + prag odobritve
+      // (excCancelApprovalAmountCents, privzeto 0 = izklopljen; vodstvena
+      // izvajalska vloga šteje kot odobritev, sicer poverilnica DRUGE osebe).
+      const excPolicy = await exceptionPolicy()
+      let cancelReason: ReasonEvidence | null = null
+      if (excPolicy.requireReasonCancel) {
+        const rr = await validateExceptionReason('cancel', order.locationId, body)
+        if (!rr.ok) return fail(rr.message, rr.status)
+        cancelReason = rr.reason
+      }
+      let cancelApproval: ApprovalEvidence | null = null
+      let cancelApprovalBasis: string | null = null
+      if (amountAboveThreshold(num(order.total), excPolicy.cancelApprovalAmountCents)) {
+        cancelApprovalBasis = `amount ${num(order.total).toFixed(2)} > ${(excPolicy.cancelApprovalAmountCents / 100).toFixed(2)}`
+        const aa = await resolveExceptionApproval(user, order.locationId, body)
+        if (!aa.ok) return fail(aa.message, aa.status)
+        cancelApproval = aa.approval
+      }
       data.cancelledAt = new Date()
       data.cancelledBy = user.name
       data.cancelledById = user.sub
@@ -154,7 +182,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
       }
       // P0 audit (C2): ročni preklic statusa = finančna akcija → obvezen audit
-      await writeAudit(db, { userId: user.sub, action: 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name }), locationId: order.locationId })
+      // #19: razlog (posnetek) + odobritev (če je prag aktiven) + znesek
+      await writeAudit(db, { userId: user.sub, action: 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name, ...reasonAuditFields(cancelReason), ...approvalAuditFields(cancelApproval, cancelApprovalBasis) }), locationId: order.locationId })
     }
   }
   if (body?.note !== undefined) data.notes = body.note
@@ -293,6 +322,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // P2 audit N2: OWNER je centralna vloga — sme tudi storno (prej samo ADMIN/MANAGER)
   if (!isCentralRole(user) && user.role !== 'MANAGER') return forbidden()
   const { id } = await params
+  // #19: telo nosi razlog preklica (obvezna izjema; negativne preverbe ostanejo pred)
+  const body = await req.json().catch(() => null)
   const order = await db.order.findUnique({ where: { id } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
   // Issue #4 §1: lokacijski gate na storno
@@ -303,6 +334,26 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (order.paymentStatus === 'paid' || order.paymentStatus === 'storno') {
     return fail('Plačanega/storniranega naročila ni mogoče stornirati — fiskalni storno/vračilo je ločena pot.', 409)
   }
+
+  // Issue #19 (v1.107.0): preklic (DELETE) je finančna izjema → obvezen razlog
+  // (politika excRequireReasonCancel, privzeto TRUE) + prag odobritve (privzeto
+  // izklopljen; vodstvena izvajalska vloga = odobritev 'role')
+  const excPolicy = await exceptionPolicy()
+  let cancelReason: ReasonEvidence | null = null
+  if (excPolicy.requireReasonCancel) {
+    const rr = await validateExceptionReason('cancel', order.locationId, body)
+    if (!rr.ok) return fail(rr.message, rr.status)
+    cancelReason = rr.reason
+  }
+  let cancelApproval: ApprovalEvidence | null = null
+  let cancelApprovalBasis: string | null = null
+  if (amountAboveThreshold(num(order.total), excPolicy.cancelApprovalAmountCents)) {
+    cancelApprovalBasis = `amount ${num(order.total).toFixed(2)} > ${(excPolicy.cancelApprovalAmountCents / 100).toFixed(2)}`
+    const aa = await resolveExceptionApproval(user, order.locationId, body)
+    if (!aa.ok) return fail(aa.message, aa.status)
+    cancelApproval = aa.approval
+  }
+
   await db.order.update({
     where: { id },
     // Issue #48: preklic spravi plačilno stanje v terminalno 'cancelled' (iz 'unpaid';
@@ -313,8 +364,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // more plačati preklicanega naročila prek QR povezave)
   await db.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } }).catch(() => null)
   // P0 audit (C2): storno naročila je finančna akcija → obvezen revizijski zapis
+  // #19: razlog (posnetek) + odobritev (če je prag aktiven)
   {
-    await writeAudit(db, { userId: user.sub, action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name }), locationId: order.locationId })
+    await writeAudit(db, { userId: user.sub, action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name, ...reasonAuditFields(cancelReason), ...approvalAuditFields(cancelApproval, cancelApprovalBasis) }), locationId: order.locationId })
   }
   // Issue #11 §3 — storno dogodek
   await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true }, locationId: order.locationId }).catch(() => undefined)

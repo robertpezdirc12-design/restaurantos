@@ -5,6 +5,7 @@ import { nid, jstr, num } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { safeSettingsDto } from '@/lib/secret-dto'
 import { apToleranceConfig, apToleranceAvailable, writeApTolerance, AP_TOLERANCE_COLUMNS } from '@/lib/ap-tolerance'
+import { exceptionPolicy, exceptionPolicyAvailable, writeExceptionPolicy, EXCEPTION_POLICY_COLUMNS, type ExceptionPolicyColumn } from '@/lib/exception-policy'
 
 const EDITABLE = [
   'name', 'address', 'city', 'postCode', 'phone', 'email', 'web', 'businessId', 'taxId',
@@ -31,8 +32,9 @@ export async function GET(req: NextRequest) {
   if (ctx.perms.includes('settings.manage')) {
     // #23 §1: tudi nastavitvena vloga ne vidi obstoječih skrivnosti — samo indikator
     // Issue #18: tolerance ujemanja so del globalne računovodske politike (DDL-gated)
+    // Issue #19: politika finančnih izjem (pragovi odobritve + obveznost razloga)
     const tolerance = await apToleranceConfig()
-    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable() })
+    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable(), exceptionPolicy: await exceptionPolicy(), exceptionPolicyDdlActive: await exceptionPolicyAvailable() })
   }
   const minimal: Record<string, unknown> = {}
   for (const key of EDITABLE) {
@@ -66,6 +68,24 @@ export async function PUT(req: NextRequest) {
       toleranceValues[col] = v
     }
   }
+
+  // Issue #19 (v1.107.0): politika finančnih izjem (pragovi odobritve +
+  // obveznost razloga) — ista disciplina kot tolerance (DDL-gated raw UPDATE,
+  // ne odmevajo v settings DTO ampak ločeno pod exceptionPolicy).
+  const excValues: Partial<Record<ExceptionPolicyColumn, number | boolean>> = {}
+  for (const col of EXCEPTION_POLICY_COLUMNS) {
+    if (body[col] !== undefined) {
+      const raw = body[col]
+      const bounds = col.startsWith('exc') && (typeof raw === 'boolean' || raw === 'true' || raw === 'false')
+      if (bounds) {
+        excValues[col] = raw === true || raw === 'true'
+      } else {
+        const v = num(raw, NaN)
+        if (!Number.isFinite(v)) return ok({ error: `${col} mora biti število ali true/false.` }, 400)
+        excValues[col] = v
+      }
+    }
+  }
   const existing = await db.restaurantSettings.findFirst()
   const settings = existing
     ? await db.restaurantSettings.update({ where: { id: existing.id }, data })
@@ -74,13 +94,21 @@ export async function PUT(req: NextRequest) {
     const err = await writeApTolerance(toleranceValues)
     if (err) return ok({ error: err }, 503)
   }
+  if (Object.keys(excValues).length > 0) {
+    const err = await writeExceptionPolicy(excValues)
+    if (err) return ok({ error: err }, 503)
+  }
   // 33-c (audit §6): spremembe nastavitev so zdaj revidirane — SAMO ključi (NI vrednosti,
   // ker so med njimi poslovni podatki; pin/skrivnosti v Editable sploh niso)
+  // Issue #19: ključi politike izjem (pragovi odobritve/razlogi) so finančno
+  // občutljivi → vsaj zapis, KATERI so se spremenili (vrednosti števila/booli)
   const changedKeys = Object.keys(data)
-  if (changedKeys.length > 0) {
-    await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys }), locationId: user.loc })
+  const excChanged = Object.keys(excValues)
+  if (changedKeys.length > 0 || excChanged.length > 0) {
+    await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys, exceptionPolicyChanged: excChanged, exceptionPolicyValues: excValues }), locationId: user.loc })
   }
   // #23 §1: PUT odgovor vrača varni DTO — ne odmeva obstoječih skrivnosti
   // Issue #18: + trenutne tolerance (pri prisotnosti v telesu se odražajo takoj)
-  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig() })
+  // Issue #19: + trenutna politika izjem
+  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig(), exceptionPolicy: await exceptionPolicy() })
 }

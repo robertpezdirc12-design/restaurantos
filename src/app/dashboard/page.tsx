@@ -69,7 +69,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -238,6 +238,23 @@ function DashboardInner() {
   const [voidReasons, setVoidReasons] = useState<{ id: string; name: string }[]>([])
   const [voidReasonId, setVoidReasonId] = useState('')
   const [voidReasonText, setVoidReasonText] = useState('')
+  // Issue #19 (v1.107.0): politika finančnih izjem + generični dialog razloga/odobritve
+  const [excPolicy, setExcPolicy] = useState<{ policy: { discountApprovalPct: number; discountApprovalAmountCents: number; voidApprovalAmountCents: number; requireReasonDiscount: boolean }; isManagerial: boolean } | null>(null)
+  const [excAction, setExcAction] = useState<
+    | { type: 'discount-apply'; discountId: string; switching: boolean }
+    | { type: 'discount-remove' }
+    | { type: 'storno'; receipt: ReceiptT }
+    | null
+  >(null)
+  const [excTitleKey, setExcTitleKey] = useState('exc.title')
+  const [excNeedsReason, setExcNeedsReason] = useState(true)
+  const [excNeedsApprover, setExcNeedsApprover] = useState(false)
+  const [excReasons, setExcReasons] = useState<{ id: string; name: string }[]>([])
+  const [excReasonId, setExcReasonId] = useState('')
+  const [excReasonText, setExcReasonText] = useState('')
+  const [excComment, setExcComment] = useState('')
+  const [excApproverEmail, setExcApproverEmail] = useState('')
+  const [excApproverPin, setExcApproverPin] = useState('')
   const [payCheckId, setPayCheckId] = useState<string | null>(null)
   const [payCheckNum, setPayCheckNum] = useState(0)
   const [checksData, setChecksData] = useState<ChecksT | null>(null)
@@ -596,11 +613,16 @@ function DashboardInner() {
     }
   }
 
-  /** Issue #5: odpri dialog preklica postavke (razlogi se naložijo enkrat, 403 → prazno) */
+  /** Issue #5: odpri dialog preklica postavke (razlogi se naložijo enkrat, 403 → prazno)
+   *  Issue #19: + politika (ali prikazati polja odobritelja). */
   async function openVoidDialog(it: OrderItemT) {
     setVoidItem(it)
     setVoidReasonId('')
     setVoidReasonText('')
+    setExcComment('')
+    setExcApproverEmail('')
+    setExcApproverPin('')
+    void ensureExcPolicy()
     if (voidReasons.length === 0) {
       try {
         const d = await api<{ voidReasons: { id: string; name: string }[] }>('/api/void-reasons')
@@ -611,11 +633,20 @@ function DashboardInner() {
     }
   }
 
-  /** Issue #5: potrdi preklic postavke (orders.void + obvezen razlog; plačano → 409 toast) */
+  /** Issue #5: potrdi preklic postavke (orders.void + obvezen razlog; plačano → 409 toast)
+   *  Issue #19: + komentar + morebitna odobritev (prag excVoidApprovalAmountCents). */
   async function confirmVoidItem() {
     if (!voidItem || !orderSheet) return
     if (!voidReasonId && voidReasonText.trim().length < 3) {
       toast({ title: t('void.reasonLabel'), variant: 'destructive' })
+      return
+    }
+    // #19: prag preklica aktiven in ne-vodstveni izvajalec → obvezna poverilnica
+    const voidNeedsApprover =
+      !!excPolicy && !excPolicy.isManagerial && excPolicy.policy.voidApprovalAmountCents > 0 &&
+      Math.round(voidItem.qty * voidItem.unitPrice * 100) > excPolicy.policy.voidApprovalAmountCents
+    if (voidNeedsApprover && (!excApproverEmail.trim() || !excApproverPin)) {
+      toast({ title: t('exc.approverMissing'), variant: 'destructive' })
       return
     }
     setSending(true)
@@ -627,6 +658,9 @@ function DashboardInner() {
           itemId: voidItem.id,
           ...(voidReasonId ? { reasonId: voidReasonId } : {}),
           ...(voidReasonText.trim() ? { reason: voidReasonText.trim() } : {}),
+          ...(excComment.trim() ? { comment: excComment.trim() } : {}),
+          ...(voidNeedsApprover && excApproverEmail.trim() ? { approverEmail: excApproverEmail.trim() } : {}),
+          ...(voidNeedsApprover && excApproverPin ? { approverPin: excApproverPin } : {}),
         }),
       })
       setVoidItem(null)
@@ -768,26 +802,149 @@ function DashboardInner() {
     }
   }
 
-  /** Issue #1 §6: ročni popust (iz registra) — uporabi ali odstrani, nato osveži kanonični račun */
+  /** Issue #19: politika izjem (brez skrivnosti; requireAuth) — POS ve, kdaj
+   *  odpreti dialog razloga/odobritve. Strežnik ostaja avtoritativen (vsak klic
+   *  validira sam) — ta preber je SAMO za prikaz. */
+  async function ensureExcPolicy() {
+    if (excPolicy) return excPolicy
+    try {
+      const d = await api<{ policy: { discountApprovalPct: number; discountApprovalAmountCents: number; voidApprovalAmountCents: number; requireReasonDiscount: boolean }; isManagerial: boolean }>('/api/exception-policy')
+      setExcPolicy(d)
+      return d
+    } catch {
+      return null // nedosegljivo → direktni klic; strežnik bo odgovoril s 400/403
+    }
+  }
+
+  /** Issue #19: odpri generični dialog izjeme (razlog + morebitna odobritev).
+   *  kindCatalog: 'discount' | 'storno' — naloži pripadajoče katalog razloge. */
+  async function openExceptionDialog(opts: {
+    titleKey: string
+    needsReason: boolean
+    needsApprover: boolean
+    kindCatalog: 'discount' | 'storno'
+  }) {
+    setExcTitleKey(opts.titleKey)
+    setExcNeedsReason(opts.needsReason)
+    setExcNeedsApprover(opts.needsApprover)
+    setExcReasonId('')
+    setExcReasonText('')
+    setExcComment('')
+    setExcApproverPin('')
+    if (excReasons.length === 0 && opts.needsReason) {
+      try {
+        const d = await api<{ voidReasons: { id: string; name: string }[] }>(`/api/void-reasons?kind=${opts.kindCatalog}`)
+        setExcReasons((d.voidReasons || []).map((r) => ({ id: r.id, name: r.name })))
+      } catch {
+        /* brez kataloga — prosta beseda */
+      }
+    }
+  }
+
+  /** Issue #19: skupno telo razloga/odobritve za vse izjeme (strežnik validira). */
+  function excBody() {
+    return {
+      ...(excReasonId ? { reasonId: excReasonId } : {}),
+      ...(excReasonText.trim() ? { reason: excReasonText.trim() } : {}),
+      ...(excComment.trim() ? { comment: excComment.trim() } : {}),
+      ...(excNeedsApprover && excApproverEmail.trim() ? { approverEmail: excApproverEmail.trim() } : {}),
+      ...(excNeedsApprover && excApproverPin ? { approverPin: excApproverPin } : {}),
+    }
+  }
+
+  /** Issue #19: potrdi izjemo (razlog + odobritev) → izvedi naloženo akcijo. */
+  async function confirmException() {
+    if (!excAction || !payingOrder) return
+    if (excNeedsReason && !excReasonId && excReasonText.trim().length < 3) {
+      toast({ title: t('exc.reasonMissing'), variant: 'destructive' })
+      return
+    }
+    if (excNeedsApprover && (!excApproverEmail.trim() || !excApproverPin)) {
+      toast({ title: t('exc.approverMissing'), variant: 'destructive' })
+      return
+    }
+    setSending(true)
+    try {
+      if (excAction.type === 'storno') {
+        const r = excAction.receipt
+        setStornoing(r.id)
+        try {
+          const d = await api<{ invoice: { invoiceNumber: string }; storno: { restoredStockItems: number } }>(`/api/receipts/${r.id}/storno`, { method: 'POST', body: JSON.stringify(excBody()) })
+          await load()
+          alert(t('rcpt.stornoDone', { n: d.invoice.invoiceNumber, s: d.storno.restoredStockItems }))
+        } finally { setStornoing(null) }
+      } else {
+        // discount-apply / discount-remove — #45: zamenjava je eksplicitna
+        // (najprej DELETE z razlogom, nato POST); oba koraka nosita ISTI razlog
+        const body = excBody()
+        if (excAction.type === 'discount-apply' && excAction.switching) {
+          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE', body: JSON.stringify(body) })
+        } else if (excAction.type === 'discount-remove') {
+          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE', body: JSON.stringify(body) })
+        }
+        if (excAction.type === 'discount-apply') {
+          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ ...body, discountId: excAction.discountId }) })
+          setSelDiscountId(excAction.discountId)
+        } else {
+          setSelDiscountId('none')
+        }
+        const b = await api<{ bill: BillT }>(`/api/orders/${payingOrder.id}/bill`)
+        setBill(b.bill)
+        await load()
+      }
+      setExcAction(null)
+      toast({ title: t('exc.done') })
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  /** Issue #1 §6 + #19: ročni popust (iz registra). Konfigurirana promocija pod
+   *  pragom gre DIREKTNO (brez trenja); nad pragom ali ko politika zahteva razlog
+   *  → dialog izjeme (razlog + odobritev DRUGE osebe za ne-vodstvene). */
   async function applyManualDiscount(discountId: string) {
     if (!payingOrder) return
-    try {
-      if (!discountId || discountId === 'none') {
-        await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE' })
-      } else {
-        // v1.97.0 (#45): strežnik zavrne tiho preiranje obstoječega popusta (409) —
-        // zamenjava je EKSPlicitna: najprej odstrani dosedanjega, nato apliciraj novega
-        if (selDiscountId && selDiscountId !== 'none') {
-          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE' })
-        }
-        await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ discountId }) })
+    const pol = await ensureExcPolicy()
+    const d = manualDiscounts.find((x) => x.id === discountId)
+    const switching = !!selDiscountId && selDiscountId !== 'none'
+
+    // #19: odstranitev/zamenjava uporabljenega popusta = izjema (razlog obvezen)
+    if (!discountId || discountId === 'none') {
+      if (switching || (bill?.manualDiscount ?? 0) > 0) {
+        setExcAction({ type: 'discount-remove' })
+        await openExceptionDialog({ titleKey: 'exc.discountRemoveTitle', needsReason: true, needsApprover: false, kindCatalog: 'discount' })
       }
+      return
+    }
+    if (!d) return
+    const pctAbove = d.type === 'percent' && pol ? Number(d.amount) > pol.policy.discountApprovalPct : false
+    const amountAbove = d.type === 'fixed' && pol && pol.policy.discountApprovalAmountCents > 0 ? Math.round(Number(d.amount) * 100) > pol.policy.discountApprovalAmountCents : false
+    const needsReason = (pol?.policy.requireReasonDiscount ?? false) || pctAbove || amountAbove
+    const needsApprover = (pctAbove || amountAbove) && !(pol?.isManagerial ?? false)
+    if (needsReason || switching) {
+      // zamenjava obstoječega (409 #45) ali razlog/odobritev → dialog z istim razlogom
+      setExcAction({ type: 'discount-apply', discountId, switching })
+      await openExceptionDialog({ titleKey: 'exc.discountTitle', needsReason: true, needsApprover, kindCatalog: 'discount' })
+      return
+    }
+    // pod pragom, brez politike razloga, brez zamenjave → direktna prijava (dosedanji tok)
+    try {
+      await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ discountId }) })
       setSelDiscountId(discountId)
       const b = await api<{ bill: BillT }>(`/api/orders/${payingOrder.id}/bill`)
       setBill(b.bill)
       await load()
     } catch (err) {
-      alert((err as Error).message)
+      // 400 (razlog obvezen — politika se je medtem spremenila) → odpri dialog
+      const msg = String((err as Error).message || '')
+      if (/razlog|odobrit/i.test(msg)) {
+        setExcAction({ type: 'discount-apply', discountId, switching: false })
+        await openExceptionDialog({ titleKey: 'exc.discountTitle', needsReason: true, needsApprover: false, kindCatalog: 'discount' })
+      } else {
+        alert(msg)
+      }
     }
   }
 
@@ -954,15 +1111,14 @@ function DashboardInner() {
     } catch (err) { alert(t('print.prepareError', { error: (err as Error).message })) } finally { setPrinting(false) }
   }
 
-  /** Fiskalni storno računa (P1 audit točka 1) — storno račun + povračilo zaloge + revizija */
+  /** Fiskalni storno računa (P1 audit točka 1) — storno račun + povračilo zaloge
+   *  + revizija. Issue #19: obvezen RAZLOG (dialog) pred izvedbo; prag odobritve
+   *  je privzeto izklopljen (furs.issue je vodstveno dovoljenje) — če politika
+   *  sproži odobritev, strežnik odgovori 403 in dialog ponudi polja odobritelja. */
   async function stornoReceipt(r: ReceiptT) {
     if (!confirm(t('rcpt.stornoConfirm', { n: r.invoiceNumber, a: fmtEUR(Math.abs(r.total)) }))) return
-    setStornoing(r.id)
-    try {
-      const d = await api<{ invoice: { invoiceNumber: string }; storno: { restoredStockItems: number } }>(`/api/receipts/${r.id}/storno`, { method: 'POST' })
-      await load()
-      alert(t('rcpt.stornoDone', { n: d.invoice.invoiceNumber, s: d.storno.restoredStockItems }))
-    } catch (err) { alert((err as Error).message) } finally { setStornoing(null) }
+    setExcAction({ type: 'storno', receipt: r })
+    await openExceptionDialog({ titleKey: 'exc.stornoTitle', needsReason: true, needsApprover: false, kindCatalog: 'storno' })
   }
 
   /** Ali je ta original že storniran (storno račun je med izdanimi)? — skrije Storno akcijo */
@@ -2207,6 +2363,8 @@ function DashboardInner() {
             <AccountingExportCard />
             {/* OPS-8 val 3 (v1.73.0) — GL dnevnik (orientacijsko) */}
             <GlJournalCard />
+            {/* Issue #19 (v1.107.0) — poročilo finančnih izjem (razlog + odobritev) */}
+            <ExceptionsReportCard />
           </TabsContent>
 
           <TabsContent value="inzeniring" className="space-y-4">
@@ -2741,11 +2899,118 @@ function DashboardInner() {
                 maxLength={200}
               />
             </div>
+            {/* #19: komentar + polja odobritelja (prag preklica aktiven) */}
+            <input
+              value={excComment}
+              onChange={(e) => setExcComment(e.target.value.slice(0, 500))}
+              placeholder={t('exc.commentPlaceholder')}
+              aria-label={t('exc.commentLabel')}
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+              maxLength={500}
+            />
+            {excPolicy && !excPolicy.isManagerial && excPolicy.policy.voidApprovalAmountCents > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+                <p className="text-xs text-amber-800">{t('exc.approverHint')}</p>
+                <input
+                  value={excApproverEmail}
+                  onChange={(e) => setExcApproverEmail(e.target.value)}
+                  placeholder={t('exc.approverLabel')}
+                  aria-label={t('exc.approverLabel')}
+                  type="email"
+                  className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={excApproverPin}
+                  onChange={(e) => setExcApproverPin(e.target.value)}
+                  placeholder={t('exc.approverPinLabel')}
+                  aria-label={t('exc.approverPinLabel')}
+                  inputMode="numeric"
+                  className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" className="h-9" onClick={() => setVoidItem(null)}>{t('common.cancel')}</Button>
             <Button variant="destructive" className="h-9" disabled={sending} onClick={() => void confirmVoidItem()}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />} {t('void.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Issue #19: generični dialog finančne izjeme (razlog + odobritev) —
+          popust (prijava/odstranitev) in fiskalni storno ── */}
+      <Dialog open={!!excAction} onOpenChange={(v) => { if (!v) setExcAction(null) }}>
+        <DialogContent aria-describedby={undefined} className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-lg">{t(excTitleKey)}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {excAction?.type === 'storno' && (
+              <p className="rounded-lg border border-stone-200 px-3 py-2">
+                {excAction.receipt.invoiceNumber} · {fmtEUR(Math.abs(excAction.receipt.total))}
+              </p>
+            )}
+            {excAction?.type === 'discount-apply' && (
+              <p className="rounded-lg border border-stone-200 px-3 py-2">
+                {manualDiscounts.find((x) => x.id === excAction.discountId)?.name || ''}
+                {excAction.switching ? ` · ${t('exc.discountRemoveTitle')}` : ''}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="exc-reason-text">{t('exc.reasonLabel')}</label>
+              {excReasons.length > 0 ? (
+                <Select value={excReasonId} onValueChange={setExcReasonId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {excReasons.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <input
+                id="exc-reason-text"
+                value={excReasonText}
+                onChange={(e) => setExcReasonText(e.target.value.slice(0, 200))}
+                placeholder={t('exc.reasonPlaceholder')}
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                maxLength={200}
+              />
+            </div>
+            <input
+              value={excComment}
+              onChange={(e) => setExcComment(e.target.value.slice(0, 500))}
+              placeholder={t('exc.commentLabel')}
+              aria-label={t('exc.commentLabel')}
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+              maxLength={500}
+            />
+            {excNeedsApprover && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+                <p className="text-xs text-amber-800">{t('exc.approverHint')}</p>
+                <input
+                  value={excApproverEmail}
+                  onChange={(e) => setExcApproverEmail(e.target.value)}
+                  placeholder={t('exc.approverLabel')}
+                  aria-label={t('exc.approverLabel')}
+                  type="email"
+                  className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                />
+                <input
+                  value={excApproverPin}
+                  onChange={(e) => setExcApproverPin(e.target.value)}
+                  placeholder={t('exc.approverPinLabel')}
+                  aria-label={t('exc.approverPinLabel')}
+                  inputMode="numeric"
+                  className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="h-9" onClick={() => setExcAction(null)}>{t('common.cancel')}</Button>
+            <Button variant="destructive" className="h-9 bg-amber-700 hover:bg-amber-800" disabled={sending} onClick={() => void confirmException()}>
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} {t('exc.approve')}
             </Button>
           </DialogFooter>
         </DialogContent>

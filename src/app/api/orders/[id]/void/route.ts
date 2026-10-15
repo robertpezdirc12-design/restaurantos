@@ -7,6 +7,8 @@ import { recalcOrderTotals } from '@/lib/ops'
 import { writeAudit } from '@/lib/audit-chain'
 import { publishEvent } from '@/lib/events'
 import { pushToLocationRoles } from '@/lib/push'
+import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
+import { resolveExceptionApproval, reasonAuditFields, approvalAuditFields, type ApprovalEvidence } from '@/lib/exception-approval'
 
 /**
  * Issue #5 (komentar #3 — P0 funkcionalna vrzel): PREKLIC POSAMEZNE POSTAVKE.
@@ -89,7 +91,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!itemId) return fail('itemId je obvezen.', 400)
   const reasonId = typeof body?.reasonId === 'string' ? body.reasonId.trim() : ''
   const reasonText = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 200) : ''
-  if (!reasonId && reasonText.length < 3) {
+
+  // Issue #19 (v1.107.0): obveznost razloga je politika (excRequireReasonVoid,
+  // privzeto TRUE — ohranja dosedanjo obveznost preklica postavke)
+  const policy = await exceptionPolicy()
+  if (policy.requireReasonVoid && !reasonId && reasonText.length < 3) {
     return fail('Razlog preklica je obvezen (izberi iz seznama ali vpiši vsaj 3 znake).', 400)
   }
 
@@ -117,6 +123,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // NETO zmanjšanje vrednosti neplačanega naročila (qty × price − popust vrstice)
   const amountRemovedFromOrder = r2(num(item.quantity) * num(item.price) - num(item.discountAmount || 0))
+
+  // Issue #19: prag odobritve za preklic (excVoidApprovalAmountCents; privzeto
+  // 0 = izklopljen — dovoljenje orders.void je že vodstveno). Če je prag aktiven
+  // in ga vrednost presega, NE-vodstveni izvajalec rabi poverilnico DRUGE
+  // pooblaščene osebe (ločena identiteta; PIN nikoli v auditu).
+  const voidNeedsApproval = amountAboveThreshold(amountRemovedFromOrder, policy.voidApprovalAmountCents)
+  let voidApproval: ApprovalEvidence | null = null
+  let voidApprovalBasis: string | null = null
+  if (voidNeedsApproval) {
+    voidApprovalBasis = `amount ${amountRemovedFromOrder.toFixed(2)} > ${(policy.voidApprovalAmountCents / 100).toFixed(2)}`
+    const a = await resolveExceptionApproval(user, order.locationId, body)
+    if (!a.ok) return fail(a.message, a.status)
+    voidApproval = a.approval
+  }
 
   // #39: ena atomska enota — claim postavke + preračun + zapis zneskov
   let totals: { subtotal: number; tax: number; total: number } | null = null
@@ -181,7 +201,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   if (!totals) return fail('Preklica ni bilo mogoče izvesti — poskusite znova.', 500)
 
-  // #39 točka 4: audit/push/dogodek ŠELE PO uspešnem commitu
+  // #39 točka 4: audit/push/dogodek ŠELE PO uspešnem commitu — #19: razlog
+  // (posnetek, enoten zapis) + odobritev (če je prag aktiven)
   await writeAudit(db, {
     userId: user.sub,
     action: 'ORDER_ITEM_VOID',
@@ -194,10 +215,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       quantity: Number(item.quantity),
       amountRemovedFromOrder,
       net: true, // zmanjšanje NEPLAČANEGA naročila — ni vračilo denarja
-      reasonId: reason?.id || null,
-      reasonName: reason?.name || null,
-      reasonText: reasonText || null,
       by: user.name,
+      ...reasonAuditFields({
+        reasonId: reason?.id ?? null,
+        reasonName: reason?.name ?? null,
+        reasonText: reasonText || null,
+        comment: typeof body?.comment === 'string' ? body.comment.trim().slice(0, 500) || null : null,
+      }),
+      ...approvalAuditFields(voidApproval, voidApprovalBasis),
     }),
     locationId: order.locationId,
   })

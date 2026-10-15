@@ -180,7 +180,7 @@ describe('P2 RBAC — N2: ročni override statusa in storno naročila', () => {
   test('OWNER storno (DELETE) neplačanega naročila → 200 cancelled (prej 403)', async () => {
     const t = await setupP
     const order = await seedOrder(3)
-    const res = await orderDELETE(req(`/api/orders/${order.id}`, t.owner, 'DELETE'), { params: Promise.resolve({ id: order.id }) })
+    const res = await orderDELETE(req(`/api/orders/${order.id}`, t.owner, 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     expect(res.status).toBe(200)
     expect((await res.json()).cancelled).toBe(true)
     const row = await db.order.findUnique({ where: { id: order.id } })
