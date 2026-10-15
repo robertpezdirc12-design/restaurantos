@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, fmtEUR, downloadCSV } from '@/lib/client'
+import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ReferenceLine, Legend,
 } from 'recharts'
-import { Loader2, RefreshCw, TrendingUp, CheckCircle2, Timer, Database, ChevronDown } from 'lucide-react'
+import { Loader2, RefreshCw, TrendingUp, CheckCircle2, Timer, Database, ChevronDown, Scale, Download, AlertTriangle } from 'lucide-react'
 
 /* ─────────────── OPS-8 v1.71.0 — MENU ENGINEERING (Kasavana-Smith) ─────────────── */
 
@@ -595,5 +596,421 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
         </CollapsibleContent>
       </Card>
     </Collapsible>
+  )
+}
+
+/* ─────────────── Issue #17 (v1.106.0) — FOOD-COST VARIANCE (actual vs theoretical) ─────────────── */
+
+/**
+ * Issue #17 (P1/P2): actual vs theoretical food cost report card.
+ * Server engine + formulas: src/lib/food-cost-variance.ts (single source of
+ * truth shared by UI, API and CSV export). All visible text via i18n keys
+ * (fc.*) — no hardcoded strings.
+ */
+
+interface FcItem {
+  inventoryItemId: string; name: string; category: string; unit: string
+  locationId: string | null; locationName: string
+  openingQty: number; openingBasis: 'stocktake' | 'ledger'; openingStocktakeId: string | null
+  closingQty: number; closingBasis: 'stocktake' | 'ledger'; closingStocktakeId: string | null
+  receiptsQty: number; productionQty: number
+  theoreticalQty: number; actualUsageQty: number; varianceQty: number
+  waste: { qty: number; value: number | null }
+  prepConsumption: { qty: number; value: number | null }
+  returns: { qty: number; value: number | null }
+  saleShortfall: { qty: number; value: number | null }
+  inventoryCorrection: { qty: number; value: number | null }
+  unexplained: { qty: number; value: number | null }
+  price: number | null; priceBasis: 'period_avg' | 'last_supplier_price' | 'current_cost' | 'unknown'
+  priorPrice: number | null; priceChangeImpact: number | null
+  theoreticalValue: number | null; actualValue: number | null; varianceValue: number | null
+  saleOrderNumbers: number[]; receiptDocs: string[]; wasteReasons: string[]; stocktakeIds: string[]
+  unitMismatch: boolean; recipeChangedSinceFrom: boolean; ledgerSaleQty: number
+}
+interface FcResp {
+  from: string; to: string; generatedAt: string; currency: string
+  salesBasis: 'paid_at'; recipeBasis: 'current'
+  netSales: number
+  kpi: {
+    actualFoodCostValue: number | null; theoreticalFoodCostValue: number | null; varianceValue: number | null
+    actualFoodCostPct: number | null; theoreticalFoodCostPct: number | null
+    variancePctOfTheoretical: number | null; variancePctOfSales: number | null
+    wasteValue: number | null; wasteSharePct: number | null
+  }
+  totals: {
+    theoreticalQty: number; actualUsageQty: number; varianceQty: number; receiptsQty: number
+    productionQty: number; wasteQty: number; prepQty: number; returnsQty: number
+    shortfallQty: number; correctionQty: number; unexplainedQty: number; purchaseValue: number | null
+  }
+  items: FcItem[]
+  byCategory: { category: string; theoreticalValue: number | null; actualValue: number | null; varianceValue: number | null; wasteValue: number | null; unexplainedValue: number | null }[]
+  byLocation: { locationId: string | null; locationName: string; theoreticalValue: number | null; actualValue: number | null; varianceValue: number | null; unexplainedValue: number | null }[]
+  soldWithoutRecipe: { menuItemId: string; name: string; qtySold: number; revenue: number }[]
+  dataQuality: {
+    incompleteData: boolean; reasons: string[]
+    openingBasis: 'stocktake' | 'ledger'; closingBasis: 'stocktake' | 'ledger'
+    hasOpeningStocktake: boolean; hasClosingStocktake: boolean
+    itemsWithUnknownPrice: number; itemsWithUnitMismatch: number
+    soldMenuItemsWithoutRecipe: number; recipesPossiblyChanged: number; transactionsTruncated: boolean
+  }
+  notes: string[]
+}
+
+const FC_Q_REASON_KEYS: Record<string, string> = {
+  no_opening_stocktake: 'fc.q.noOpen',
+  no_closing_stocktake: 'fc.q.noClose',
+  items_with_unknown_price: 'fc.q.noPrice',
+  unit_mismatch: 'fc.q.unit',
+  sold_menu_items_without_recipe: 'fc.q.noRecipe',
+  recipes_possibly_changed: 'fc.q.recipeChanged',
+  transactions_truncated: 'fc.q.truncated',
+  no_items_in_scope: 'fc.q.noItems',
+}
+
+const FC_BASIS_LABEL: Record<string, string> = {
+  stocktake: 'fc.basis.stocktake',
+  ledger: 'fc.basis.ledger',
+  period_avg: 'fc.price.periodAvg',
+  last_supplier_price: 'fc.price.lastSupplier',
+  current_cost: 'fc.price.currentCost',
+  unknown: 'fc.price.unknown',
+}
+
+function fcQty(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return Math.abs(n) >= 100 ? n.toFixed(1) : String(n)
+}
+
+function fcPct(n: number | null | undefined): string {
+  return n == null ? '—' : `${n.toFixed(1)} %`
+}
+
+/** Small component chips for non-zero variance components. */
+function FcComponentChips({ it, t }: { it: FcItem; t: (k: string) => string }) {
+  const chips: { label: string; cls: string; title: string }[] = []
+  if (it.waste.qty !== 0) chips.push({ label: `${t('fc.c.waste')} ${fcQty(it.waste.qty)}`, cls: 'bg-rose-50 text-rose-700 border-rose-200', title: t('fc.c.wasteHint') })
+  if (it.prepConsumption.qty !== 0) chips.push({ label: `${t('fc.c.prep')} ${fcQty(it.prepConsumption.qty)}`, cls: 'bg-violet-50 text-violet-700 border-violet-200', title: t('fc.c.prepHint') })
+  if (it.returns.qty !== 0) chips.push({ label: `${t('fc.c.returns')} ${fcQty(it.returns.qty)}`, cls: 'bg-sky-50 text-sky-700 border-sky-200', title: t('fc.c.returnsHint') })
+  if (it.saleShortfall.qty !== 0) chips.push({ label: `${t('fc.c.shortfall')} ${fcQty(it.saleShortfall.qty)}`, cls: 'bg-amber-50 text-amber-700 border-amber-200', title: t('fc.c.shortfallHint') })
+  if (it.inventoryCorrection.qty !== 0) chips.push({ label: `${t('fc.c.correction')} ${fcQty(it.inventoryCorrection.qty)}`, cls: 'bg-stone-100 text-stone-700 border-stone-200', title: t('fc.c.correctionHint') })
+  if (it.unexplained.qty !== 0) chips.push({ label: `${t('fc.c.unexplained')} ${fcQty(it.unexplained.qty)}`, cls: 'bg-orange-100 text-orange-800 border-orange-300', title: t('fc.c.unexplainedHint') })
+  if (chips.length === 0) return <span className="text-xs text-stone-400">—</span>
+  return (
+    <div className="flex flex-wrap gap-1">
+      {chips.map((c, i) => (
+        <Badge key={i} variant="outline" className={`whitespace-nowrap text-[10px] ${c.cls}`} title={c.title}>{c.label}</Badge>
+      ))}
+    </div>
+  )
+}
+
+export function FoodCostVarianceCard() {
+  const { t } = useI18n()
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const [from, setFrom] = useState(monthStart.toISOString().slice(0, 10))
+  const [to, setTo] = useState(now.toISOString().slice(0, 10))
+  const [data, setData] = useState<FcResp | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [sel, setSel] = useState<FcItem | null>(null)
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setBusy(true); setErr('')
+      try {
+        const d = await api<FcResp>(`/api/reports/food-cost?from=${from}&to=${to}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [from, to, reload])
+
+  const downloadCsv = async () => {
+    try {
+      const token = getToken()
+      const res = await fetch(`/api/reports/food-cost?from=${from}&to=${to}&format=csv`, {
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `food-cost-varianca-${from}_${to}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast({ description: t('fc.csvErr') })
+    }
+  }
+
+  const k = data?.kpi
+  const dq = data?.dataQuality
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Scale className="w-4 h-4 text-stone-500" aria-hidden />
+              {t('fc.title')}
+            </CardTitle>
+            <p className="mt-1 text-xs text-stone-500 max-w-2xl">{t('fc.desc')}</p>
+          </div>
+          <div className="flex items-end gap-2">
+            <div className="grid gap-1">
+              <Label htmlFor="fc-from" className="text-xs text-stone-500">{t('fc.from')}</Label>
+              <Input id="fc-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="h-8 w-36 text-xs" />
+            </div>
+            <div className="grid gap-1">
+              <Label htmlFor="fc-to" className="text-xs text-stone-500">{t('fc.to')}</Label>
+              <Input id="fc-to" type="date" value={to} min={from} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setTo(e.target.value)} className="h-8 w-36 text-xs" />
+            </div>
+            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setReload((n) => n + 1)} disabled={busy}>
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <RefreshCw className="w-3.5 h-3.5" aria-hidden />} {t('fc.load')}
+            </Button>
+            {data && (
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={downloadCsv}>
+                <Download className="w-3.5 h-3.5" aria-hidden /> {t('fc.csv')}
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {err && <p className="text-sm text-red-700" role="alert">{err}</p>}
+        {busy && !data && (
+          <div className="space-y-2">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/3" />
+          </div>
+        )}
+
+        {data && (
+          <>
+            {/* KPI row */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-lg border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">{t('fc.kpi.actual')}</p>
+                <p className="mt-1 text-lg font-semibold">{k?.actualFoodCostValue != null ? fmtEUR(k.actualFoodCostValue) : '—'}</p>
+                <p className="text-xs text-stone-500">{t('fc.kpi.ofSales')}: {fcPct(k?.actualFoodCostPct)}</p>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">{t('fc.kpi.theoretical')}</p>
+                <p className="mt-1 text-lg font-semibold">{k?.theoreticalFoodCostValue != null ? fmtEUR(k.theoreticalFoodCostValue) : '—'}</p>
+                <p className="text-xs text-stone-500">{t('fc.kpi.ofSales')}: {fcPct(k?.theoreticalFoodCostPct)}</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${(k?.varianceValue ?? 0) > 0 ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
+                <p className="text-xs text-stone-500">{t('fc.kpi.variance')}</p>
+                <p className={`mt-1 text-lg font-semibold ${(k?.varianceValue ?? 0) > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                  {k?.varianceValue != null ? fmtEUR(k.varianceValue) : '—'}
+                </p>
+                <p className="text-xs text-stone-500">{t('fc.kpi.vsTheoretical')}: {fcPct(k?.variancePctOfTheoretical)}</p>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">{t('fc.kpi.waste')}</p>
+                <p className="mt-1 text-lg font-semibold">{k?.wasteValue != null ? fmtEUR(k.wasteValue) : '—'}</p>
+                <p className="text-xs text-stone-500">{t('fc.kpi.wasteShare')}: {fcPct(k?.wasteSharePct)}</p>
+              </div>
+            </div>
+
+            {/* data quality + honesty notes */}
+            {dq?.incompleteData && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="status">
+                <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" aria-hidden /> {t('fc.q.title')}</p>
+                <ul className="mt-1.5 list-disc pl-5 space-y-0.5">
+                  {dq.reasons.map((r) => (
+                    <li key={r}>{t(FC_Q_REASON_KEYS[r] || 'fc.q.other')}{r.startsWith('items_') || r.startsWith('sold_') || r.startsWith('recipes_') ? ` (${t('fc.q.count')})` : ''}</li>
+                  ))}
+                </ul>
+                <p className="mt-1.5">{t('fc.q.disclaimer')}</p>
+                {!dq.hasOpeningStocktake || !dq.hasClosingStocktake ? <p className="mt-1">{t('fc.q.ledgerCaveat')}</p> : null}
+              </div>
+            )}
+            <p className="text-xs text-stone-500">ℹ {t('fc.basisNote')} · {t('fc.recipeNote')}</p>
+
+            {/* top deviations table */}
+            {data.items.length === 0 ? (
+              <p className="text-sm text-stone-500">{t('fc.empty')}</p>
+            ) : (
+              <div className="max-h-96 overflow-y-auto rounded-lg border border-stone-200">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500 z-10">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">{t('fc.th.item')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('fc.th.theoretical')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('fc.th.actual')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('fc.th.variance')}</th>
+                      <th className="px-3 py-2 font-medium">{t('fc.th.components')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('fc.th.price')}</th>
+                      <th className="px-3 py-2 font-medium">{t('fc.th.flags')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.items.map((it) => (
+                      <tr key={it.inventoryItemId} className="border-t border-stone-100 hover:bg-stone-50/60 cursor-pointer" onClick={() => setSel(it)}>
+                        <td className="px-3 py-2 font-medium max-w-44 truncate" title={it.name}>{it.name}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{fcQty(it.theoreticalQty)} {it.unit}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{fcQty(it.actualUsageQty)} {it.unit}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <span className={it.varianceQty > 0 ? 'text-amber-700 font-semibold' : it.varianceQty < 0 ? 'text-emerald-700 font-semibold' : ''}>
+                            {fcQty(it.varianceQty)} {it.unit}
+                          </span>
+                          <span className="block text-xs text-stone-500">{it.varianceValue != null ? fmtEUR(it.varianceValue) : '—'}</span>
+                        </td>
+                        <td className="px-3 py-2"><FcComponentChips it={it} t={t} /></td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {it.price != null ? fmtEUR(it.price) : '—'}
+                          <span className="block text-[10px] text-stone-400">{t(FC_BASIS_LABEL[it.priceBasis])}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            {it.unitMismatch && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200" title={t('fc.flag.unitHint')}>{t('fc.flag.unit')}</Badge>}
+                            {it.recipeChangedSinceFrom && <Badge variant="outline" className="text-[10px] bg-violet-50 text-violet-700 border-violet-200" title={t('fc.flag.recipeHint')}>{t('fc.flag.recipe')}</Badge>}
+                            {it.priceBasis === 'unknown' && <Badge variant="outline" className="text-[10px] bg-stone-100 text-stone-600 border-stone-200" title={t('fc.price.unknown')}>{t('fc.flag.price')}</Badge>}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* sales without recipe — visible gap, never hidden */}
+            {data.soldWithoutRecipe.length > 0 && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-xs text-violet-900">
+                <p className="font-semibold">{t('fc.noRecipe.title')} ({data.soldWithoutRecipe.length})</p>
+                <p className="mt-0.5">{t('fc.noRecipe.desc')}</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {data.soldWithoutRecipe.slice(0, 8).map((s) => (
+                    <li key={s.menuItemId}>{s.name} — {s.qtySold} × · {fmtEUR(s.revenue)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* per-location breakdown (central roles / multi-location) */}
+            {data.byLocation.length > 1 && (
+              <div className="flex flex-wrap gap-2">
+                {data.byLocation.map((l) => (
+                  <Badge key={l.locationId || '_'} variant="outline" className="whitespace-nowrap">
+                    {l.locationName}: {t('fc.kpi.variance')} {l.varianceValue != null ? fmtEUR(l.varianceValue) : '—'}
+                    {l.unexplainedValue != null ? ` · ${t('fc.c.unexplained')} ${fmtEUR(l.unexplainedValue)}` : ''}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+
+      {/* drilldown dialog — full evidence for one ingredient */}
+      <Dialog open={sel !== null} onOpenChange={(v) => { if (!v) setSel(null) }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          {sel && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 flex-wrap">
+                  {sel.name}
+                  <Badge variant="outline" className="text-xs">{sel.category}</Badge>
+                  {sel.locationName && <Badge variant="outline" className="text-xs">{sel.locationName}</Badge>}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-3 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="rounded border border-stone-200 p-2">
+                    <p className="text-xs text-stone-500">{t('fc.d.opening')}</p>
+                    <p className="font-semibold">{fcQty(sel.openingQty)} {sel.unit}</p>
+                    <p className="text-[10px] text-stone-400">{t(FC_BASIS_LABEL[sel.openingBasis])}{sel.openingStocktakeId ? ` · ${sel.openingStocktakeId.slice(0, 10)}` : ''}</p>
+                  </div>
+                  <div className="rounded border border-stone-200 p-2">
+                    <p className="text-xs text-stone-500">{t('fc.d.receipts')}</p>
+                    <p className="font-semibold">{fcQty(sel.receiptsQty)} {sel.unit}</p>
+                    <p className="text-[10px] text-stone-400">{t('fc.d.production')}: {fcQty(sel.productionQty)}</p>
+                  </div>
+                  <div className="rounded border border-stone-200 p-2">
+                    <p className="text-xs text-stone-500">{t('fc.d.closing')}</p>
+                    <p className="font-semibold">{fcQty(sel.closingQty)} {sel.unit}</p>
+                    <p className="text-[10px] text-stone-400">{t(FC_BASIS_LABEL[sel.closingBasis])}{sel.closingStocktakeId ? ` · ${sel.closingStocktakeId.slice(0, 10)}` : ''}</p>
+                  </div>
+                </div>
+
+                <div className="rounded border border-stone-200 p-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-stone-500">{t('fc.d.theoretical')}</p>
+                    <p className="font-semibold">{fcQty(sel.theoreticalQty)} {sel.unit} · {sel.theoreticalValue != null ? fmtEUR(sel.theoreticalValue) : '—'}</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-stone-500">{t('fc.d.actual')}</p>
+                    <p className="font-semibold">{fcQty(sel.actualUsageQty)} {sel.unit} · {sel.actualValue != null ? fmtEUR(sel.actualValue) : '—'}</p>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-stone-100 mt-1 pt-1">
+                    <p className="text-xs font-medium">{t('fc.th.variance')}</p>
+                    <p className={`font-bold ${sel.varianceQty > 0 ? 'text-amber-700' : sel.varianceQty < 0 ? 'text-emerald-700' : ''}`}>
+                      {fcQty(sel.varianceQty)} {sel.unit} · {sel.varianceValue != null ? fmtEUR(sel.varianceValue) : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded border border-stone-200 p-2">
+                  <p className="text-xs text-stone-500 mb-1">{t('fc.d.components')}</p>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {([
+                        ['fc.c.waste', sel.waste],
+                        ['fc.c.prep', sel.prepConsumption],
+                        ['fc.c.returns', sel.returns],
+                        ['fc.c.shortfall', sel.saleShortfall],
+                        ['fc.c.correction', sel.inventoryCorrection],
+                        ['fc.c.unexplained', sel.unexplained],
+                      ] as const).map(([label, c]) => (
+                        <tr key={label} className={c.qty !== 0 ? '' : 'text-stone-400'}>
+                          <td className="py-0.5 pr-2">{t(label)}</td>
+                          <td className="py-0.5 text-right whitespace-nowrap">{fcQty(c.qty)} {sel.unit}</td>
+                          <td className="py-0.5 text-right whitespace-nowrap">{c.value != null ? fmtEUR(c.value) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded border border-stone-200 p-2 text-xs space-y-0.5">
+                  <p className="text-stone-500">{t('fc.d.price')}</p>
+                  <p>{sel.price != null ? `${fmtEUR(sel.price)} / ${sel.unit}` : t('fc.price.unknown')} — {t(FC_BASIS_LABEL[sel.priceBasis])}</p>
+                  {sel.priceChangeImpact != null && (
+                    <p className="text-stone-500">{t('fc.d.priceChange')}: {fmtEUR(sel.priceChangeImpact)} ({sel.priorPrice != null ? fmtEUR(sel.priorPrice) : '—'} → {sel.price != null ? fmtEUR(sel.price) : '—'})</p>
+                  )}
+                </div>
+
+                <div className="rounded border border-stone-200 p-2 text-xs space-y-1">
+                  <p className="text-stone-500">{t('fc.d.evidence')}</p>
+                  {sel.saleOrderNumbers.length > 0 && <p>{t('fc.ev.orders')}: {sel.saleOrderNumbers.join(', ')}</p>}
+                  {sel.receiptDocs.length > 0 && <p>{t('fc.ev.receipts')}: {sel.receiptDocs.join(', ')}</p>}
+                  {sel.wasteReasons.length > 0 && <p>{t('fc.ev.waste')}: {sel.wasteReasons.join(', ')}</p>}
+                  {sel.stocktakeIds.length > 0 && <p>{t('fc.ev.stocktakes')}: {sel.stocktakeIds.join(', ')}</p>}
+                  {sel.saleOrderNumbers.length + sel.receiptDocs.length + sel.wasteReasons.length + sel.stocktakeIds.length === 0 && (
+                    <p className="text-stone-400">{t('fc.ev.none')}</p>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-stone-500 border-t border-stone-100 pt-2">{t('fc.q.disclaimer')}</p>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

@@ -181,7 +181,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // list↔replay konsistentnost s /api/expenses) → 48
     // Issue #18 (v1.103.0): ap/[id]/match GET (tristransko ujemanje — predlogi PO
     // postavk v uporabnikovem obsegu) → 49
-    expect(wired.length).toBe(49)
+    // Issue #17 (v1.106.0): reports/food-cost GET (food-cost varianca — Artikli/
+    // transakcije/naročila/inventure v uporabnikovem obsegu) → 50
+    expect(wired.length).toBe(50)
   })
 })
 
