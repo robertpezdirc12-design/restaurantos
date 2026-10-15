@@ -3,9 +3,10 @@ import type { HaccpCategory } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
-import { nid, jstr, jparse } from '@/lib/map'
+import { nid, jstr, jparse, num } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { haccpPlansAvailable } from '@/lib/haccp-plans'
+import { haccpOpsColumnsReady, validatePlanRuleInput, numStrict, type MeasureKind, type ThresholdDirection } from '@/lib/haccp-ops'
 
 /**
  * Task 64 (v1.62.0) — HACCP načrti kontrol (audit §7 vrstica 125: "vnosi+seznam;
@@ -36,6 +37,21 @@ export interface PlanDTO {
   active: boolean
   locationId: string | null
   createdAt: string | Date
+  // Issue #20 (v1.109.0) — operativna pravila (DDL-gated; null = produkcija
+  // še čaka haccp-ops korak → UI prikaže pasivna polja)
+  measureKind: string | null
+  unit: string | null
+  direction: string | null
+  okLimit: number | null
+  warnLimit: number | null
+  rangeMin: number | null
+  rangeMax: number | null
+  critical: boolean | null
+  requiresVerification: boolean | null
+  dueTime: string | null
+  weekday: number | null
+  monthDay: number | null
+  version: number | null
 }
 
 /** Normaliziraj steps telo → seznam nizov (ali null = neveljavno). */
@@ -58,9 +74,18 @@ export function mapPlan(r: {
   id: string; name: string; category: string; frequency: string; target: string
   threshold: string; steps: unknown; responsible: string; active: boolean
   locationId: string | null; createdAt: Date
+  measureKind?: string | null; unit?: string | null; direction?: string | null
+  okLimit?: unknown; warnLimit?: unknown; rangeMin?: unknown; rangeMax?: unknown
+  critical?: boolean | null; requiresVerification?: boolean | null
+  dueTime?: string | null; weekday?: number | null; monthDay?: number | null; version?: number | null
 }): PlanDTO {
   const rawSteps = jparse<string[] | unknown>(r.steps, [])
   const steps = Array.isArray(rawSteps) ? rawSteps.map((s) => String(s)).slice(0, 20) : []
+  const numo = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null
+    const n = numStrict(v)
+    return n
+  }
   return {
     id: r.id,
     name: r.name,
@@ -73,6 +98,19 @@ export function mapPlan(r: {
     active: r.active,
     locationId: r.locationId,
     createdAt: r.createdAt,
+    measureKind: r.measureKind ?? null,
+    unit: r.unit ?? null,
+    direction: r.direction ?? null,
+    okLimit: numo(r.okLimit),
+    warnLimit: numo(r.warnLimit),
+    rangeMin: numo(r.rangeMin),
+    rangeMax: numo(r.rangeMax),
+    critical: r.critical ?? null,
+    requiresVerification: r.requiresVerification ?? null,
+    dueTime: r.dueTime ?? null,
+    weekday: r.weekday ?? null,
+    monthDay: r.monthDay ?? null,
+    version: r.version ?? null,
   }
 }
 
@@ -80,12 +118,15 @@ export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
   if (!(await haccpPlansAvailable())) return ok({ plans: [], ddlPending: true })
+  // Issue #20: operativna pravila (novo polja) so pasivna, dokler haccp-ops
+  // DDL ni apliciran → UI skrije novo sekcijo (vzorec graceful degradacije)
+  const opsReady = await haccpOpsColumnsReady()
   const rows = await db.haccpPlan.findMany({
     where: await locationScope(user),
     orderBy: [{ active: 'desc' }, { name: 'asc' }],
     take: 200,
   })
-  return ok({ plans: rows.map(mapPlan), ddlPending: false })
+  return ok({ plans: rows.map(mapPlan), ddlPending: false, ddlOpsPending: !opsReady })
 }
 
 export async function POST(req: NextRequest) {
@@ -107,6 +148,47 @@ export async function POST(req: NextRequest) {
   const responsible = String(body?.responsible || '').trim().slice(0, 80)
   const steps = normalizeSteps(body?.steps)
   if (steps === null) return fail('Koraki morajo biti seznam nizov (največ 20, vsak do 200 znakov).', 400)
+
+  /* ─────────── Issue #20: operativna pravila (DDL-gated) ─────────── */
+  const hasRuleFields =
+    body?.measureKind !== undefined || body?.unit !== undefined || body?.direction !== undefined ||
+    body?.okLimit !== undefined || body?.warnLimit !== undefined || body?.rangeMin !== undefined ||
+    body?.rangeMax !== undefined || body?.critical !== undefined || body?.requiresVerification !== undefined ||
+    body?.dueTime !== undefined || body?.weekday !== undefined || body?.monthDay !== undefined
+  if (hasRuleFields && !(await haccpOpsColumnsReady())) {
+    return fail('Operativna pravila načrta še niso aktivirana — zahtevajo DDL korak na strežniku (/api/admin/migrate-haccp-ops).', 503)
+  }
+  const measureKind = body?.measureKind !== undefined ? String(body.measureKind).toLowerCase() : 'confirm'
+  if (measureKind !== 'number' && measureKind !== 'confirm') return fail('measureKind je "number" ali "confirm".', 400)
+  const direction = body?.direction !== undefined ? String(body.direction).toLowerCase() : 'none'
+  if (!['below', 'above', 'between', 'none'].includes(direction)) return fail('direction je below/above/between/none.', 400)
+  const ruleErr = validatePlanRuleInput(
+    {
+      measureKind: measureKind as MeasureKind,
+      unit: body?.unit !== undefined ? String(body.unit).trim().slice(0, 8) : '',
+      direction: direction as ThresholdDirection,
+      okLimit: body?.okLimit !== undefined ? numStrict(body.okLimit) : null,
+      warnLimit: body?.warnLimit !== undefined ? numStrict(body.warnLimit) : null,
+      rangeMin: body?.rangeMin !== undefined ? numStrict(body.rangeMin) : null,
+      rangeMax: body?.rangeMax !== undefined ? numStrict(body.rangeMax) : null,
+      critical: body?.critical !== undefined ? Boolean(body.critical) : false,
+      requiresVerification: body?.requiresVerification !== undefined ? Boolean(body.requiresVerification) : true,
+    },
+    {
+      frequency,
+      dueTime: body?.dueTime !== undefined ? String(body.dueTime) : '10:00',
+      weekday: body?.weekday !== undefined ? numStrict(body.weekday) : null,
+      monthDay: body?.monthDay !== undefined ? numStrict(body.monthDay) : null,
+    },
+  )
+  if (ruleErr) return fail(ruleErr, 400)
+  // numerične meje: niz pač neveljaven (numStrict null pri podani vrednosti)
+  for (const k of ['okLimit', 'warnLimit', 'rangeMin', 'rangeMax'] as const) {
+    if (body?.[k] !== undefined && body[k] !== null && numStrict(body[k]) === null) {
+      return fail(`Polje ${k} mora biti številka.`, 400)
+    }
+  }
+
   // Issue #4 §10 konvencija: staff = svoja lokacija, centralna poda body.locationId
   const locationId = requireUserLocation(user, body?.locationId)
   if (isResponse(locationId)) return locationId
@@ -125,6 +207,21 @@ export async function POST(req: NextRequest) {
       responsible,
       active: body?.active === undefined ? true : Boolean(body.active),
       locationId,
+      // Issue #20 — operativna pravila (privzeto: confirm + brez terminske
+      // omejitve = vedenje enako starem toku, dokler upravljalec ne določi)
+      measureKind,
+      unit: body?.unit !== undefined ? String(body.unit).trim().slice(0, 8) : '',
+      direction,
+      okLimit: body?.okLimit !== undefined ? numStrict(body.okLimit) : null,
+      warnLimit: body?.warnLimit !== undefined ? numStrict(body.warnLimit) : null,
+      rangeMin: body?.rangeMin !== undefined ? numStrict(body.rangeMin) : null,
+      rangeMax: body?.rangeMax !== undefined ? numStrict(body.rangeMax) : null,
+      critical: body?.critical !== undefined ? Boolean(body.critical) : false,
+      requiresVerification: body?.requiresVerification !== undefined ? Boolean(body.requiresVerification) : true,
+      dueTime: body?.dueTime !== undefined ? String(body.dueTime) : '10:00',
+      weekday: body?.weekday !== undefined ? numStrict(body.weekday) : null,
+      monthDay: body?.monthDay !== undefined ? numStrict(body.monthDay) : null,
+      version: 1,
     },
   })
   // 33-c konvencija: tamper-evidentna revizijska veriga

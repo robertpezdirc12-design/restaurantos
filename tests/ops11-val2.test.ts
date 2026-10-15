@@ -185,7 +185,7 @@ describe('ops11/2: AP_NEW push event', () => {
     expect(PUSH_EVENT_TYPES.indexOf('AP_NEW')).toBe(PUSH_EVENT_TYPES.indexOf('PO_RECEIVED') + 1)
     expect(new Set(PUSH_EVENT_TYPES).size).toBe(PUSH_EVENT_TYPES.length)
     // OPS-11 val 3 (v1.82.0): AP_OVERDUE appended after AP_NEW → 13 → 14
-    expect(PUSH_EVENT_TYPES.length).toBe(17) // v1.108.0: +CASH_MOVEMENT (#16)
+    expect(PUSH_EVENT_TYPES.length).toBe(19) // v1.109.0: +HACCP_OVERDUE/HACCP_DEVIATION (#20)
     // push.ts re-exports the client-safe registry (back-compat for '@/lib/push' imports)
     expect(PUSH_EVENTS_REEXPORT).toBe(PUSH_EVENT_TYPES)
   })

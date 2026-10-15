@@ -8,6 +8,7 @@ import { runDueRecurringRules } from '@/lib/recurring-run'
 import { sendDailyDigest, type OverdueApEntry } from '@/lib/daily-email'
 import { pushEvent, apOverduePushPayload } from '@/lib/push'
 import { runDailyLotAlerts } from '@/lib/lot-alert'
+import { runDailyHaccpOverdue } from '@/lib/haccp-overdue'
 import {
   CRON_DAILY_MARKER,
   MAX_OVERDUE_APS,
@@ -130,11 +131,13 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     digest: { sent: boolean; reason?: string }
     apOverdue: { count: number }
     lotAlert: { count: number }
+    haccpOverdue: { count: number }
   } = {
     recurring: { created: 0, skipped: 0 },
     digest: { sent: false },
     apOverdue: { count: 0 },
     lotAlert: { count: 0 },
+    haccpOverdue: { count: 0 },
   }
 
   // 1) recurring purchase-order rules (shared core with the UI route)
@@ -175,6 +178,14 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     steps.lotAlert = { count: await runDailyLotAlerts(now) }
   } catch (e) {
     errors.push(`lotAlert: ${String((e as Error).message || e).slice(0, 200)}`)
+  }
+  // 3c) Issue #20 (v1.109.0): HACCP overdue — načrtovane kontrole, katerih
+  //     termin je pretekel BREZ zapisa izvedbe → HACCP_OVERDUE push
+  //     (fire-and-forget, state marker preprečuje dnevno ponavljanje)
+  try {
+    steps.haccpOverdue = { count: await runDailyHaccpOverdue(now) }
+  } catch (e) {
+    errors.push(`haccpOverdue: ${String((e as Error).message || e).slice(0, 200)}`)
   }
   try {
     const overdueEntries: OverdueApEntry[] = overdue.map((ap) => ({

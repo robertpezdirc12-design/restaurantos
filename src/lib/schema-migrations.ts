@@ -344,6 +344,27 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
         ['ZReport', 'cashGuestRefund'],
       ])) && (await tableExists('CashMovement')),
   },
+  {
+    // Issue #20 (P1/P2, v1.109.0): operativni HACCP tok — 12 novih stolpcev na
+    // HaccpEntry (vezava na načrt, strukturirana meritev, cikel odstopanja),
+    // 13 novih stolpcev na HaccpPlan (pravila meritev, termin, različica) +
+    // NOVA tabela HaccpAction (append-only revizijski dogodki: korektivni
+    // ukrep / verifikacija). Stare vrstice ostanejo 'legacy' — obstoječi
+    // tokovi (načrti brez novih polj, ad-hoc vnosi, zgodovina) se ne dotaknejo
+    // (graceful degradacija prek haccpOpsColumnsReady probe).
+    id: 'haccp-ops',
+    descKey: 'mig.haccpOps.desc',
+    endpoint: '/api/admin/migrate-haccp-ops',
+    probe: async () =>
+      (await columnsAll([
+        ['HaccpEntry', 'planId'],
+        ['HaccpEntry', 'entryState'],
+        ['HaccpEntry', 'occurrenceKey'],
+        ['HaccpPlan', 'measureKind'],
+        ['HaccpPlan', 'dueTime'],
+        ['HaccpPlan', 'version'],
+      ])) && (await tableExists('HaccpAction')),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

@@ -74,6 +74,7 @@ export const TEST_PREFIXES = [
   'i17-', // issue17-food-cost-variance (v1.106.0)
   'i19-', // issue19-exception-governance (v1.107.0)
   'i16-', // issue16-cash-movements (v1.108.0)
+  'i20-', // issue20-haccp-ops (v1.109.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -150,6 +151,9 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'openingHours' },
   { model: 'specialOpeningDay' },
   { model: 'haccpEntry' },
+  // Issue #20 (v1.109.0): revizijski dogodki HACCP zapisa — nid() id, locationId
+  // nosi testno predpono (kopija iz zapisa) → lokacijski prehod PRED haccpEntry.
+  { model: 'haccpAction' },
   { model: 'prepStation' },
   { model: 'deliveryZone' },
   { model: 'table' },

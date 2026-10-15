@@ -185,7 +185,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // transakcije/naročila/inventure v uporabnikovem obsegu) → 50
     // Issue #19 (v1.107.0): reports/exceptions GET (poročilo finančnih izjem —
     // kanonične audit vrstice v uporabnikovem obsegu) → 51
-    expect(wired.length).toBe(51)
+    // Issue #20 (v1.109.0): haccp detail [id] GET + [id]/actions POST +
+    // report GET (zapisi/dogodki v uporabnikovem obsegu) → 54
+    expect(wired.length).toBe(54)
   })
 })
 

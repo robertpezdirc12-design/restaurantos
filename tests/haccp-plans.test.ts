@@ -182,7 +182,7 @@ describe('Task 64 — HACCP načrti kontrol (API)', () => {
 
   test('PATCH: urejanje + active stikalo + audit; cross-lokacija (manager B) → 403; neznani → 404', async () => {
     const { ownerA, managerB } = await setupP
-    const { plan } = await createPlan(ownerA, { name: `${PREFIX}Tedenska kontrola ${RUN}`, frequency: 'weekly' })
+    const { plan } = await createPlan(ownerA, { name: `${PREFIX}Tedenska kontrola ${RUN}`, frequency: 'weekly', weekday: 3 }) // issue #20: tedenski načrt ZAHTEVA dan (razlovljiv termin)
     expect(plan).toBeDefined()
     const id = plan!.id
 

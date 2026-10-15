@@ -327,6 +327,38 @@ export function isCashMovementStatement(stmt: string): boolean {
   return false
 }
 
+/** Issue #20 (v1.109.0): HACCP operativni tok — HaccpEntry/HaccpPlan novi
+ * stolpci + NOVA tabela HaccpAction (strogo po tabelah, vzorec cash-movements). */
+const HACCP_OPS_ENTRY_COLS = new Set([
+  'planId', 'planName', 'planVersion', 'ruleSnapshot', 'measureKind', 'numericValue',
+  'unit', 'occurrenceKey', 'dueAt', 'entryState', 'source', 'closedAt',
+])
+const HACCP_OPS_PLAN_COLS = new Set([
+  'measureKind', 'unit', 'direction', 'okLimit', 'warnLimit', 'rangeMin', 'rangeMax',
+  'critical', 'requiresVerification', 'dueTime', 'weekday', 'monthDay', 'version',
+])
+
+function allClausesHaccpColumn(clauses: string[], allowed: Set<string>): boolean {
+  return clauses.length > 0 && clauses.every((c) => {
+    const m = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c.trim())
+    return m !== null && allowed.has(m[2])
+  })
+}
+
+export function isHaccpOpsStatement(stmt: string): boolean {
+  // 1) nova tabela HaccpAction + indeksi
+  if (/"HaccpAction"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  // 2) HaccpEntry novi stolpci (CREATE INDEX ISTO imena tabel dovoljena zgoraj)
+  let m = /^ALTER\s+TABLE\s+"HaccpEntry"\s+([\s\S]+)$/i.exec(stmt)
+  if (m) return allClausesHaccpColumn(splitTopLevelClauses(m[1]), HACCP_OPS_ENTRY_COLS)
+  // 3) HaccpPlan novi stolpci
+  m = /^ALTER\s+TABLE\s+"HaccpPlan"\s+([\s\S]+)$/i.exec(stmt)
+  if (m) return allClausesHaccpColumn(splitTopLevelClauses(m[1]), HACCP_OPS_PLAN_COLS)
+  return false
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -336,6 +368,19 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'DDL korak: admin ruta /api/admin/migrate-issue13 (docs/RESTAURANTOS-AUDIT.md §13). ' +
       'Produkcija deluje normalno (aditivno-varno).',
     matches: isIssue13Statement,
+  },
+  {
+    id: 'haccp-ops',
+    reason:
+      'HACCP operativni tok (issue #20, v1.109.0) — 12 novih stolpcev na HaccpEntry ' +
+      '(vezava na načrt, strukturirana meritev, cikel odstopanja), 13 novih stolpcev ' +
+      'na HaccpPlan (pravila meritev, termin, različica) + NOVA tabela HaccpAction ' +
+      '(append-only revizijski dogodki). Produkcija čaka DDL korak: admin ruta ' +
+      '/api/admin/migrate-haccp-ops (konzola Enterprise → Shema migracije → en klik). ' +
+      'Rute graceful degradirajo (capability probe → 503 s prijaznim sporočilom); ' +
+      'obstoječi tokovi (načrti brez novih polj, ad-hoc vnosi, zgodovina) delujejo ' +
+      'nespremenjeno. Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isHaccpOpsStatement,
   },
   {
     id: 'haccp-plans',

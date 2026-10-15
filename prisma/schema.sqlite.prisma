@@ -959,11 +959,50 @@ model HaccpEntry {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime @updatedAt
   Location         Location?     @relation(fields: [locationId], references: [id], onUpdate: SetNull)
+  // Issue #20 (v1.109.0) — operativni tok (glej main schema.prisma za
+  // dokumentacijo): vezava na načrt, strukturirana meritev, cikel odstopanja.
+  // ruleSnapshot Json->String (zrcalna konvencija, jparse/jstr).
+  planId           String?       @default("")
+  planName         String        @default("")
+  planVersion      Int           @default(0)
+  ruleSnapshot     String        @default("{}")
+  measureKind      String        @default("")
+  numericValue     Decimal?
+  unit             String        @default("")
+  occurrenceKey    String        @default("")
+  dueAt            DateTime?
+  entryState       String        @default("legacy")
+  source           String        @default("manual")
+  closedAt         DateTime?
 
   @@index([category])
   @@index([date])
   @@index([locationId])
   @@index([status, date])
+  @@index([planId])
+  @@index([occurrenceKey])
+  @@index([entryState])
+}
+
+// Issue #20 (v1.109.0) — revizijski dogodki HACCP zapisa (glej main schema).
+// Scalar entryId/locationId BREZ FK (EventLog/CashMovement vzorec).
+model HaccpAction {
+  id               String        @id
+  entryId          String
+  locationId       String?
+  kind             String
+  method           String        @default("")
+  note             String        @default("")
+  outcome          String        @default("")
+  recheckValue     Decimal?
+  performedById    String        @default("")
+  performedByName  String        @default("")
+  managerial       Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+
+  @@index([entryId])
+  @@index([locationId])
+  @@index([kind])
 }
 
 // Task 64 (v1.62.0) — HACCP načrti kontrol (audit §7 vrstica 125: "vnosi+seznam;
@@ -985,6 +1024,22 @@ model HaccpPlan {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   Location    Location?     @relation(fields: [locationId], references: [id], onUpdate: SetNull)
+  // Issue #20 (v1.109.0) — operativna pravila + termin + različica (glej main
+  // schema.prisma). MIRROR-ONLY do DDL /api/admin/migrate-haccp-ops — glavna
+  // shema jih ima (NEW tabela nima legacy odvisnosti), dostop typed (ni raw).
+  measureKind         String   @default("confirm")
+  unit                String   @default("")
+  direction           String   @default("none")
+  okLimit             Decimal?
+  warnLimit           Decimal?
+  rangeMin            Decimal?
+  rangeMax            Decimal?
+  critical            Boolean  @default(false)
+  requiresVerification Boolean @default(true)
+  dueTime             String   @default("10:00")
+  weekday             Int?
+  monthDay            Int?
+  version             Int      @default(1)
 
   @@index([locationId])
   @@index([active])

@@ -967,11 +967,55 @@ model HaccpEntry {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime @updatedAt
   Location         Location?     @relation(fields: [locationId], references: [id], onUpdate: SetNull)
+  // Issue #20 (v1.109.0) — operativni tok: vezava na načrt + strukturirana
+  // meritev + življenjski cikel odstopanja. Posnetek pravil (ruleSnapshot)
+  // zamrzne pomen načrta ob meritvi — kasnejše spremembe načrta NE spremenijo
+  // zgodovinskih zapisov (issue: revizijska sled). Stare vrstice: entryState
+  // 'legacy' (obnašanje nespremenjeno, brez vpliva na obstoječe tokove).
+  planId           String?       @default("")
+  planName         String        @default("")
+  planVersion      Int           @default(0)
+  ruleSnapshot     Json          @default("{}")
+  measureKind      String        @default("")
+  numericValue     Decimal?      @db.Decimal(10, 2)
+  unit             String        @default("")
+  occurrenceKey    String        @default("")
+  dueAt            DateTime?
+  entryState       String        @default("legacy")
+  source           String        @default("manual")
+  closedAt         DateTime?
 
   @@index([category])
   @@index([date])
   @@index([locationId])
   @@index([status, date])
+  @@index([planId])
+  @@index([occurrenceKey])
+  @@index([entryState])
+}
+
+// Issue #20 (v1.109.0) — revizijski dogodki HACCP zapisa (korektivni ukrep,
+// verifikacija). APPEND-ONLY: izvedenega zapisa NE brišemo in NE tiho
+// prepisujemo meritve — vsak popravek je NOV dogodez z referenco na
+// original (issue: revizijska sled). Scalar entryId/locationId BREZ FK
+// (EventLog/CashMovement vzorec — fail-closed nad orphan ključi).
+model HaccpAction {
+  id               String        @id
+  entryId          String
+  locationId       String?
+  kind             String        // 'corrective' | 'verify'
+  method           String        @default("") // 'recheck' | 'approval'
+  note             String        @default("")
+  outcome          String        @default("") // 'ok' | 'failed' | ''
+  recheckValue     Decimal?      @db.Decimal(10, 2)
+  performedById    String        @default("")
+  performedByName  String        @default("")
+  managerial       Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+
+  @@index([entryId])
+  @@index([locationId])
+  @@index([kind])
 }
 
 // Task 64 (v1.62.0) — HACCP načrti kontrol (audit §7 vrstica 125: "vnosi+seznam;
@@ -993,6 +1037,23 @@ model HaccpPlan {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   Location    Location?     @relation(fields: [locationId], references: [id], onUpdate: SetNull)
+  // Issue #20 (v1.109.0) — operativna pravila: strukturirana meritev (number
+  // z enoto + pragi po smeri | confirm izid), termin (dueTime + weekday/
+  // monthDay), resnost, obvezna verifikacija + RAZLIČICA načrta (version —
+  // semantične spremembe jo povečajo; posnetek na zapisu je nespremenljiv).
+  measureKind         String   @default("confirm")
+  unit                String   @default("")
+  direction           String   @default("none")
+  okLimit             Decimal? @db.Decimal(10, 2)
+  warnLimit           Decimal? @db.Decimal(10, 2)
+  rangeMin            Decimal? @db.Decimal(10, 2)
+  rangeMax            Decimal? @db.Decimal(10, 2)
+  critical            Boolean  @default(false)
+  requiresVerification Boolean @default(true)
+  dueTime             String   @default("10:00")
+  weekday             Int?
+  monthDay            Int?
+  version             Int      @default(1)
 
   @@index([locationId])
   @@index([active])

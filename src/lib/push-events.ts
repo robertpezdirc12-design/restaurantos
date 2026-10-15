@@ -23,6 +23,13 @@
  * CASH_MOVEMENT (issue #16, v1.108.0): ODLIV gotovine iz predala (paid_out /
  * supplier_payment / safe_drop / guest_refund) — takojšen push vodstvu
  * (kraja/trenje signal; prilivi niso dogodek).
+ *
+ * HACCP_OVERDUE (issue #20, v1.109.0): načrtovana kontrola je ZAPADLA brez
+ * zapisa izvedbe — dnevni cron (/api/cron/daily korak haccpOverdue), en
+ * opomnik na termin (state marker preprečuje ponavljanje).
+ * HACCP_DEVIATION (issue #20): meritev je IZVEN meje (warning/critical) —
+ * takojšen push ob vnosu (vodstvo; opozorilna odstopanja niso dogodek —
+ * samo critical, da opozorila ne postanejo šum).
  */
 export const PUSH_EVENT_TYPES = [
   'ORDER_NEW',
@@ -42,6 +49,8 @@ export const PUSH_EVENT_TYPES = [
   'LOT_BLOCKED',
   'LOT_ALERT',
   'CASH_MOVEMENT',
+  'HACCP_OVERDUE',
+  'HACCP_DEVIATION',
 ] as const
 
 export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]
