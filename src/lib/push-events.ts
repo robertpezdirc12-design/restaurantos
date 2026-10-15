@@ -19,6 +19,10 @@
  * odpoklic) — takojšen push vodstvu/skladiščniku. LOT_ALERT (issue #15):
  * opozorilni datum serije je pretekel (samo IZRECNO določen alertDate —
  * dnevni cron, 1×/dan, ne izpeljuje se iz privzetih dni).
+ *
+ * CASH_MOVEMENT (issue #16, v1.108.0): ODLIV gotovine iz predala (paid_out /
+ * supplier_payment / safe_drop / guest_refund) — takojšen push vodstvu
+ * (kraja/trenje signal; prilivi niso dogodek).
  */
 export const PUSH_EVENT_TYPES = [
   'ORDER_NEW',
@@ -37,6 +41,7 @@ export const PUSH_EVENT_TYPES = [
   'Z_CLOSED',
   'LOT_BLOCKED',
   'LOT_ALERT',
+  'CASH_MOVEMENT',
 ] as const
 
 export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]

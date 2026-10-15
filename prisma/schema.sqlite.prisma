@@ -309,6 +309,43 @@ model CashRegisterShift {
   @@index([status])
 }
 
+/// Issue #16 (P1/P2) — blagajniški premiki denarja (glej main schema.prisma
+/// za dokumentacijo). Scalar vezave brez FK (EventLog vzorec #38).
+model CashMovement {
+  id             String    @id
+  shiftId        String
+  locationId     String
+  type           String    @default("paid_out")
+  direction      String    @default("out")
+  amount         Decimal   @default(0)
+  currency       String    @default("EUR")
+  reasonId       String?
+  reasonName     String    @default("")
+  reasonText     String    @default("")
+  note           String    @default("")
+  userId         String
+  userName       String    @default("")
+  deviceId       String    @default("")
+  receiptRef     String    @default("")
+  status         String    @default("confirmed")
+  voidedById     String?
+  voidedByName   String    @default("")
+  voidedAt       DateTime?
+  voidReason     String    @default("")
+  reversalOfId   String?
+  idempotencyKey String?
+  expectedAfter  Decimal   @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([idempotencyKey])
+  @@index([shiftId])
+  @@index([locationId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
 model Category {
   id        String     @id
   name      String
@@ -2176,6 +2213,11 @@ model RestaurantSettings {
   excRequireReasonCancel        Boolean @default(true)
   excRequireReasonStorno        Boolean @default(true)
   excRequireReasonVoid          Boolean @default(true)
+  // Issue #16 (P1/P2): politika blagajniških premikov — MIRROR-ONLY do DDL
+  // (migrate-cash-movements). Prag variance gotovine (0 = izklopljen) +
+  // slepi popis (blagajnik NE vidi pričakovanega pred oddajo štetja).
+  cashVarianceThresholdCents    Int     @default(0)
+  cashBlindCount                Boolean @default(false)
 }
 
 model RevenueCenter {
@@ -2983,6 +3025,12 @@ model ZReport {
   actualCash        Decimal   @default(0)
   cashDifference    Decimal   @default(0) 
   cashDrops         Decimal   @default(0)
+  // Issue #16 (P1/P2): povzetek NEPRODAJNIH premikov predala ob zaključku —
+  // MIRROR-ONLY do DDL (migrate-cash-movements); cashDrops (typed) = odvod v
+  // sef. Raw SQL pisanje (main client stolpcev ne pozna).
+  cashPaidIn        Decimal   @default(0)
+  cashPaidOut       Decimal   @default(0)
+  cashGuestRefund   Decimal   @default(0)
   totalCost         Decimal   @default(0)
   grossProfit       Decimal   @default(0)
   grossMargin       Decimal   @default(0)

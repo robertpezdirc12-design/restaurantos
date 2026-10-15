@@ -293,6 +293,40 @@ export function isExceptionReasonsStatement(stmt: string): boolean {
   })
 }
 
+/**
+ * Issue #16 (v1.108.0): blagajniški premiki denarja — NOVA tabela CashMovement
+ * (knjiga neprodajnih premikov predala; HaccpPlan vzorec: vsi stavki vsebujejo
+ * ime tabele) + 2 politika stolpca na RestaurantSettings (prag variance +
+ * slepi popis) + 3 povzetek stolpca na ZReport (paidIn/paidOut/guestRefund).
+ * Dvosmerno (kot allergen-truth): pred DDL ADD COLUMN, po DDL DROP COLUMN.
+ * Matcher STROG: CashMovement samo CREATE/ALTER stavki; RestaurantSettings in
+ * ZReport samo njihovi cash- stolpci.
+ */
+const CASH_POLICY_COLS = ['cashVarianceThresholdCents', 'cashBlindCount']
+const ZREPORT_CASH_COLS = ['cashPaidIn', 'cashPaidOut', 'cashGuestRefund']
+
+function allClausesCashColumn(clauses: string[], allowed: string[]): boolean {
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && allowed.includes(mm[2])
+  })
+}
+
+export function isCashMovementStatement(stmt: string): boolean {
+  // 1) nova tabela: vsi stavki vsebujejo "CashMovement" (HaccpPlan vzorec)
+  if (/"CashMovement"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  // 2) RestaurantSettings politika stolpca
+  let m = /^ALTER\s+TABLE\s+"RestaurantSettings"\s+([\s\S]+)$/i.exec(stmt)
+  if (m) return allClausesCashColumn(splitTopLevelClauses(m[1]), CASH_POLICY_COLS)
+  // 3) ZReport povzetek stolpca
+  m = /^ALTER\s+TABLE\s+"ZReport"\s+([\s\S]+)$/i.exec(stmt)
+  if (m) return allClausesCashColumn(splitTopLevelClauses(m[1]), ZREPORT_CASH_COLS)
+  return false
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -455,6 +489,18 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'findUnique pot), druge vrste izjem uporabijo prosto besedilo. Po DDL ' +
       'validateExceptionReason preklopi na kind-aware poizvedbo.',
     matches: isExceptionReasonsStatement,
+  },
+  {
+    id: 'cash-movements',
+    reason:
+      'CashMovement tabela + RestaurantSettings politika (cashVarianceThresholdCents/cashBlindCount) ' +
+      '+ ZReport povzetek (cashPaidIn/cashPaidOut/cashGuestRefund) — issue #16 (v1.108.0), ' +
+      'produkcija čaka DDL korak: admin ruta /api/admin/migrate-cash-movements (konzola ' +
+      'Enterprise → Shema migracije → en klik). Rute /api/shifts/movements** in ' +
+      '/api/shifts/no-sale-reasons graceful degradirajo (503/ddlPending); zaključek izmene ' +
+      'deluje nespremenjeno (premiki se ne upoštevajo do DDL). Ko je DDL apliciran, drift ' +
+      'izgine in vnos postane mrtva koda.',
+    matches: isCashMovementStatement,
   },
 ]
 

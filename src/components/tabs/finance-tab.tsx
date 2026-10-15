@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, fmtEUR, downloadCSV } from '@/lib/client'
+import { api, fmtEUR, downloadCSV, getUser } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Loader2, Clock, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Trash2, Hourglass, Pencil, RotateCcw, Eye, Paperclip, Download, Scale, Link2 } from 'lucide-react'
+import { CashMovementsCard } from '@/components/tabs/cash-movements-card'
 
 export interface ShiftT { id: string; employeeId?: string | null; employee?: { name: string; role: string } | null; startedAt: string; endedAt?: string | null; openingCash: number; closingCash: number; status: string }
 export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number }; taxBreakdown: { taxRate: number; qty: number }[] }
@@ -21,8 +22,18 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   const [cash, setCash] = useState('')
   const [busy, setBusy] = useState(false)
   const openShift = shifts.find((s) => s.status === 'open')
+  // Issue #16: razlog variance + odobritev (nad pragom politike; dialog)
+  const [varianceReason, setVarianceReason] = useState('')
+  const [approverEmail, setApproverEmail] = useState('')
+  const [approverPin, setApproverPin] = useState('')
+  const [askVariance, setAskVariance] = useState(false)
+  // vodstvena vloga (odobritev 'role'; sicer polja poverilnic druge osebe)
+  const isManagerial = ['MANAGER', 'ADMIN', 'OWNER', 'GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER'].includes(
+    String(getUser()?.role ?? '').toUpperCase(),
+  )
   // OPS-7 (v1.70.0): Z poročilo po zaključku izmene (Lightspeed vzorec — pokaži povzetek)
-  const [zRep, setZRep] = useState<{ totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number } | null>(null)
+  // Issue #16: + movementSummary (NEPRODAJNI premiki) za razčlenitev Z-poročila
+  const [zRep, setZRep] = useState<{ totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number; movementSummary?: { paidIn: number; paidOut: number; safeDrop: number; guestRefund: number; net: number; count: number } | null } | null>(null)
 
   async function startShift() {
     setBusy(true)
@@ -32,12 +43,30 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   async function stopShift() {
     setBusy(true)
     try {
-      const d = await api<{ zReport: { totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number } | null }>('/api/shifts', { method: 'POST', body: JSON.stringify({ action: 'stop', closingCash: Number(cash) || 0 }) })
+      const d = await api<{ zReport: { totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number; movementSummary?: { paidIn: number; paidOut: number; safeDrop: number; guestRefund: number; net: number; count: number } | null } | null }>('/api/shifts', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'stop',
+          closingCash: Number(cash) || 0,
+          ...(varianceReason.trim() ? { varianceReason: varianceReason.trim() } : {}),
+          ...(!isManagerial && approverEmail.trim() && approverPin.trim() ? { approverEmail: approverEmail.trim(), approverPin: approverPin.trim() } : {}),
+        }),
+      })
       setCash('')
+      setVarianceReason(''); setApproverEmail(''); setApproverPin(''); setAskVariance(false)
       if (d.zReport) setZRep(d.zReport)
       await onReload()
     }
-    catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+    catch (err) {
+      const msg = (err as Error).message
+      // Issue #16: razlika nad pragom → razširjen dialog (razlog + odobritev)
+      if (/presega prag|razlog|odobrit/i.test(msg)) {
+        setAskVariance(true)
+        alert(msg)
+      } else {
+        alert(msg)
+      }
+    } finally { setBusy(false) }
   }
 
   return (
@@ -96,6 +125,18 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
               <div className="flex justify-between"><span>{t('zrep.card')}</span><span>{fmtEUR(zRep.card)}</span></div>
               <div className="flex justify-between"><span>{t('zrep.receipts')}</span><span>{zRep.receipts}</span></div>
               {zRep.totalStorno > 0 && <div className="flex justify-between text-red-600"><span>{t('zrep.storno')}</span><span>−{fmtEUR(zRep.totalStorno)}</span></div>}
+              {/* Issue #16: razčlenitev NEPRODAJNIH premikov (isti števci kot knjiga) */}
+              {zRep.movementSummary && zRep.movementSummary.count > 0 && (
+                <div className="pt-1 space-y-0.5 text-xs text-stone-600">
+                  <p className="font-medium text-stone-700 border-t border-stone-200 pt-1">{t('cmv.zSummary')}</p>
+                  <div className="flex justify-between"><span>{t('cmv.paidIn')}</span><span>+{fmtEUR(zRep.movementSummary.paidIn)}</span></div>
+                  <div className="flex justify-between"><span>{t('cmv.paidOut')}</span><span>−{fmtEUR(zRep.movementSummary.paidOut)}</span></div>
+                  <div className="flex justify-between"><span>{t('cmv.safeDrop')}</span><span>−{fmtEUR(zRep.movementSummary.safeDrop)}</span></div>
+                  {zRep.movementSummary.guestRefund > 0 && (
+                    <div className="flex justify-between"><span>{t('cmv.guestRefund')}</span><span>−{fmtEUR(zRep.movementSummary.guestRefund)}</span></div>
+                  )}
+                </div>
+              )}
               <div className={`flex justify-between border-t border-stone-200 pt-1 ${Math.abs(zRep.cashDifference) >= 0.01 ? 'text-amber-700 font-semibold' : 'text-stone-500'}`}><span>{t('zrep.diff')}</span><span>{fmtEUR(zRep.cashDifference)}</span></div>
             </div>
           )}
@@ -121,8 +162,34 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
               <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={startShift}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('shifts.startShift')}</Button>
             )}
           </CardContent>
+          {/* Issue #16: variance nad pragom — razlog (+ poverilnica odobritelja
+              za NE-vodstvene; vodstvena vloga odobri sama 'role') */}
+          {openShift && askVariance && (
+            <CardContent className="pt-0 space-y-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="var-reason">{t('cmv.varianceReason')} <span className="text-red-600">*</span></Label>
+                <Input id="var-reason" value={varianceReason} onChange={(e) => setVarianceReason(e.target.value)} placeholder={t('cmv.reasonPlaceholder')} />
+              </div>
+              {!isManagerial && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="var-mail">{t('cmv.approverEmail')}</Label>
+                    <Input id="var-mail" type="email" value={approverEmail} onChange={(e) => setApproverEmail(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="var-pin">{t('cmv.approverPin')}</Label>
+                    <Input id="var-pin" inputMode="numeric" value={approverPin} onChange={(e) => setApproverPin(e.target.value.replace(/\D/g, ''))} />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
       )}
+
+      {/* Issue #16: knjiga blagajniških premikov — živo pričakovano stanje,
+          vnos premikov, zgodovina z razveljavitvami (samo odprta izmena) */}
+      {canManage && openShift && <CashMovementsCard shiftId={openShift.id} isManager={isManagerial} />}
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">{t('shifts.recent')}</CardTitle></CardHeader>

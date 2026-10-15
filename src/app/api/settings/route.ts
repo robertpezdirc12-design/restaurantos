@@ -6,6 +6,7 @@ import { writeAudit } from '@/lib/audit-chain'
 import { safeSettingsDto } from '@/lib/secret-dto'
 import { apToleranceConfig, apToleranceAvailable, writeApTolerance, AP_TOLERANCE_COLUMNS } from '@/lib/ap-tolerance'
 import { exceptionPolicy, exceptionPolicyAvailable, writeExceptionPolicy, EXCEPTION_POLICY_COLUMNS, type ExceptionPolicyColumn } from '@/lib/exception-policy'
+import { cashPolicy, cashPolicyAvailable, writeCashPolicy, CASH_POLICY_COLUMNS, type CashPolicyColumn } from '@/lib/cash-movements'
 
 const EDITABLE = [
   'name', 'address', 'city', 'postCode', 'phone', 'email', 'web', 'businessId', 'taxId',
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     // Issue #18: tolerance ujemanja so del globalne računovodske politike (DDL-gated)
     // Issue #19: politika finančnih izjem (pragovi odobritve + obveznost razloga)
     const tolerance = await apToleranceConfig()
-    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable(), exceptionPolicy: await exceptionPolicy(), exceptionPolicyDdlActive: await exceptionPolicyAvailable() })
+    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable(), exceptionPolicy: await exceptionPolicy(), exceptionPolicyDdlActive: await exceptionPolicyAvailable(), cashPolicy: await cashPolicy(), cashPolicyDdlActive: await cashPolicyAvailable() })
   }
   const minimal: Record<string, unknown> = {}
   for (const key of EDITABLE) {
@@ -86,6 +87,24 @@ export async function PUT(req: NextRequest) {
       }
     }
   }
+  // Issue #16 (v1.108.0): politika blagajniških premikov (prag variance +
+  // slepi popis) — ista disciplina kot izjeme (DDL-gated raw UPDATE).
+  const cashValues: Partial<Record<CashPolicyColumn, number | boolean>> = {}
+  for (const col of CASH_POLICY_COLUMNS) {
+    if (body[col] !== undefined) {
+      const raw = body[col]
+      if (col === 'cashBlindCount') {
+        if (typeof raw !== 'boolean' && raw !== 'true' && raw !== 'false') {
+          return ok({ error: 'cashBlindCount mora biti true/false.' }, 400)
+        }
+        cashValues[col] = raw === true || raw === 'true'
+      } else {
+        const v = num(raw, NaN)
+        if (!Number.isFinite(v)) return ok({ error: `${col} mora biti število.` }, 400)
+        cashValues[col] = v
+      }
+    }
+  }
   const existing = await db.restaurantSettings.findFirst()
   const settings = existing
     ? await db.restaurantSettings.update({ where: { id: existing.id }, data })
@@ -98,17 +117,22 @@ export async function PUT(req: NextRequest) {
     const err = await writeExceptionPolicy(excValues)
     if (err) return ok({ error: err }, 503)
   }
+  if (Object.keys(cashValues).length > 0) {
+    const err = await writeCashPolicy(cashValues)
+    if (err) return ok({ error: err }, 503)
+  }
   // 33-c (audit §6): spremembe nastavitev so zdaj revidirane — SAMO ključi (NI vrednosti,
   // ker so med njimi poslovni podatki; pin/skrivnosti v Editable sploh niso)
   // Issue #19: ključi politike izjem (pragovi odobritve/razlogi) so finančno
   // občutljivi → vsaj zapis, KATERI so se spremenili (vrednosti števila/booli)
   const changedKeys = Object.keys(data)
   const excChanged = Object.keys(excValues)
-  if (changedKeys.length > 0 || excChanged.length > 0) {
-    await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys, exceptionPolicyChanged: excChanged, exceptionPolicyValues: excValues }), locationId: user.loc })
+  const cashChanged = Object.keys(cashValues)
+  if (changedKeys.length > 0 || excChanged.length > 0 || cashChanged.length > 0) {
+    await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys, exceptionPolicyChanged: excChanged, exceptionPolicyValues: excValues, cashPolicyChanged: cashChanged, cashPolicyValues: cashValues }), locationId: user.loc })
   }
   // #23 §1: PUT odgovor vrača varni DTO — ne odmeva obstoječih skrivnosti
   // Issue #18: + trenutne tolerance (pri prisotnosti v telesu se odražajo takoj)
   // Issue #19: + trenutna politika izjem
-  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig(), exceptionPolicy: await exceptionPolicy() })
+  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig(), exceptionPolicy: await exceptionPolicy(), cashPolicy: await cashPolicy() })
 }

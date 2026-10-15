@@ -73,6 +73,7 @@ export const TEST_PREFIXES = [
   'i15-', // issue15-lot-governance (v1.105.0)
   'i17-', // issue17-food-cost-variance (v1.106.0)
   'i19-', // issue19-exception-governance (v1.107.0)
+  'i16-', // issue16-cash-movements (v1.108.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

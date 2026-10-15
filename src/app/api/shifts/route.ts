@@ -5,6 +5,14 @@ import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendShiftDailySummary } from '@/lib/daily-email'
+import {
+  cashMovementsAvailable,
+  cashPolicy,
+  summarizeMovements,
+  expectedDrawerCash,
+  zReportCashColumnsAvailable,
+} from '@/lib/cash-movements'
+import { resolveExceptionApproval } from '@/lib/exception-approval'
 
 /**
  * N5 (revizija §4): seznam izmen (z začetnim/končnim stanjem blagajne) — UI prikaže
@@ -59,6 +67,14 @@ class ShiftCloseConflictError extends Error {
   }
 }
 
+/** Issue #16: variance nad pragom BREZ razloga → 400 (PRE-TX return fail).
+ *  Uporabljen tudi ZNOTRAJ TX kot fail-closed točna preverba (rasa). */
+class VarianceReasonError extends Error {
+  constructor() {
+    super('Razlika gotovine presega prag — vpišite razlog (vsaj 3 znake).')
+  }
+}
+
 /**
  * Issue #61 (P1): legacy izmena BREZ lokacije (CashRegisterShift.locationId null)
  * ne sme biti zaključena z Z-poročilom — `locationId: null || undefined` je iz
@@ -95,6 +111,77 @@ export async function POST(req: NextRequest) {
     if (!open) return fail('Ni odprte izmene.')
     const closingCash = num(body.closingCash)
 
+    /* ── Issue #16 PRE-TX: politika + PREVIEW variance (razlog/odobritev) ──
+     * resolveExceptionApproval in probe pomočniki uporabljajo skupno db
+     * povezavo — ZNOTRAJ interaktivne TX bi si prisvajala izključno povezavo
+     * (SQLite deadlock). Zato: odločitev o odobritvi izven TX (ista okenska
+     * logika, read-only preview); ZNOTRAJ TX se točna razlika izračuna na novo
+     * in če je nad pragom BREZ dokaza → fail-closed VarianceReasonError
+     * (izmena ostane odprta, uporabnik vpiše razlog + odobritev in ponovi). */
+    const movementsReady = await cashMovementsAvailable()
+    const policy = await cashPolicy()
+    // ZReport povzetek stolpci (probe PREV-TX — isti vzorec povezave)
+    const zrColsReady = movementsReady ? await zReportCashColumnsAvailable() : false
+    let varianceEvidence: Record<string, unknown> | null = null
+    if (movementsReady && policy.varianceThresholdCents > 0 && open.locationId) {
+      const lastClosedPrev = await db.cashRegisterShift.findFirst({
+        where: { locationId: open.locationId, status: 'closed', closedAt: { not: null }, id: { not: open.id } },
+        orderBy: { closedAt: 'desc' },
+        select: { closedAt: true },
+      })
+      const fromPrev =
+        lastClosedPrev?.closedAt && lastClosedPrev.closedAt > open.openedAt ? lastClosedPrev.closedAt : open.openedAt
+      const receiptsPrev = await db.receipt.findMany({
+        where: { locationId: open.locationId, createdAt: { gte: fromPrev, lt: new Date() }, paymentMethod: 'cash' },
+        select: { total: true },
+        take: 5000,
+      })
+      let cashPrev = 0
+      for (const rc of receiptsPrev) cashPrev += num(rc.total) // storno neto (negativni)
+      const mvPrev = await db.cashMovement.findMany({
+        where: { shiftId: open.id },
+        select: { type: true, direction: true, amount: true, status: true, reversalOfId: true },
+        take: 1000,
+      })
+      const mPrevSummary = summarizeMovements(mvPrev.map((m) => ({ ...m, amount: num(m.amount) })))
+      const expectedPrev = expectedDrawerCash(num(open.startingCash), cashPrev, mPrevSummary.net)
+      const diffPrev = Math.round((closingCash - expectedPrev + Number.EPSILON) * 100)
+      if (Math.abs(diffPrev) > policy.varianceThresholdCents) {
+        const vReasonId = typeof body?.varianceReasonId === 'string' ? body.varianceReasonId.trim() : ''
+        const vReasonText = typeof body?.varianceReason === 'string' ? body.varianceReason.trim().slice(0, 200) : ''
+        let reasonName: string | null = null
+        let reasonId: string | null = null
+        let reasonText: string | null = null
+        if (vReasonId) {
+          const nr = await db.noSaleReason.findUnique({ where: { id: vReasonId } })
+          if (!nr || !nr.isActive || nr.locationId !== open.locationId) {
+            return fail('Razlog variance ni veljaven za to lokacijo.', 400)
+          }
+          reasonId = nr.id
+          reasonName = nr.name
+        } else if (vReasonText.length >= 3) {
+          reasonText = vReasonText
+        } else {
+          return fail('Razlika gotovine presega prag — vpišite razlog (vsaj 3 znake).', 400)
+        }
+        const approval = await resolveExceptionApproval(user, open.locationId, {
+          approverEmail: body?.approverEmail,
+          approverPin: body?.approverPin,
+        })
+        if (!approval.ok) return fail(approval.message, approval.status)
+        varianceEvidence = {
+          varianceOverThreshold: true,
+          varianceThresholdCents: policy.varianceThresholdCents,
+          varianceReasonId: reasonId,
+          varianceReasonName: reasonName,
+          varianceReasonText: reasonText,
+          approved: true,
+          approvalMethod: approval.approval.method,
+          approverId: approval.approval.approverId,
+          approverName: approval.approval.approverName,
+        }
+      }
+    }
     try {
       const result = await db.$transaction(async (tx) => {
         // R11 (1/2): CAS prevzem zaklepa — samo prva zahteva preide iz 'open' v 'closed'
@@ -185,12 +272,47 @@ export async function POST(req: NextRequest) {
             vatBuckets[key].vat += num(v.vat)
           }
         }
-        const expectedCash = num(claimed.startingCash) + cash
+        const expectedCashRaw = num(claimed.startingCash) + cash
+
+        /* ── Issue #16: blagajniški premiki v pričakovani gotovini ──
+         * pričakovano = začetni fond + gotovinska prodaja (okno, storno neto)
+         *              + Σ potrjeni vhodni premiki − Σ potrjeni izhodni premiki
+         * EN vir formule (expectedDrawerCash) — isti motor kot živi pregled
+         * premikov. Premiki so vezani na izmeno (kreacija SAMO na odprti) →
+         * zaključeni Z-poročili se KASNEJE ne preračunavajo (issue).
+         * movementsReady/policy sta PREVETA PREV-TX (probe uporablja skupno
+         * povezavo — znotraj TX bi prisvajala izključno povezavo). */
+        const movementRows = movementsReady
+          ? await tx.cashMovement.findMany({
+              where: { shiftId: claimed.id },
+              select: { type: true, direction: true, amount: true, status: true, reversalOfId: true },
+              take: 1000,
+            })
+          : []
+        const mSummary = summarizeMovements(
+          movementRows.map((m) => ({ ...m, amount: num(m.amount) }))
+        )
+        const expectedCash = movementsReady
+          ? expectedDrawerCash(num(claimed.startingCash), cash, mSummary.net)
+          : expectedCashRaw
         const r = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100
+
+        /* ── Issue #16: TOČNA preverba variance ZNOTRAJ TX (fail-closed) ──
+         * Odločitev o razlogu/odobritvi je bila sprejeta PREV-TX (preview,
+         * enaka okenska logika). Tukaj izračunamo TOČNO razliko: če je nad
+         * pragom BREZ dokaza (rasa: račun je prisel med preview in TX) →
+         * rollback + 400 (izmena ostane odprta; uporabnik ponovi s razlogom).
+         * Dokaz (varianceEvidence) se zapiše v audit SHIFT_CLOSE. */
+        const diffEur = r(closingCash - expectedCash)
+        const exactOverThreshold =
+          policy.varianceThresholdCents > 0 &&
+          Math.abs(Math.round(diffEur * 100)) > policy.varianceThresholdCents
+        if (exactOverThreshold && !varianceEvidence) {
+          throw new VarianceReasonError()
+        }
         const std = vatBuckets['22'] || { net: 0, vat: 0 }
         const red = vatBuckets['9.5'] || { net: 0, vat: 0 }
         const zero = vatBuckets['0'] || { net: 0, vat: 0 }
-
         // totals na izmeni (prevzem je naš — varno po id)
         const shift = await tx.cashRegisterShift.update({
           where: { id: claimed.id },
@@ -239,6 +361,9 @@ export async function POST(req: NextRequest) {
             expectedCash: r(expectedCash),
             actualCash: closingCash,
             cashDifference: r(closingCash - expectedCash),
+            // Issue #16: odvod v sef — obstoječe typed polje, doslej vedno 0;
+            // ujema se s Square definicijo "cash drop" (denar odveden med izmeno)
+            cashDrops: r(mSummary.safeDrop),
             notes: `Zaključek: ${user.name}`,
             locationId: claimed.locationId,
           },
@@ -247,9 +372,28 @@ export async function POST(req: NextRequest) {
               totalSales: r(totalSales), cash: r(cash), card: r(card), receipts: receipts.length,
               cashDifference: r(closingCash - expectedCash),
               windowFrom: from.toISOString(), windowTo: to.toISOString(),
+              // Issue #16: razčlenitev premikov + dokaz variance (odobritev/razlog)
+              movements: mSummary.count > 0 || mSummary.voidedCount > 0 ? {
+                paidIn: mSummary.paidIn, paidOut: mSummary.paidOut, safeDrop: mSummary.safeDrop,
+                guestRefund: mSummary.guestRefund, net: mSummary.net, count: mSummary.count,
+                voidedCount: mSummary.voidedCount,
+              } : undefined,
+              variance: varianceEvidence ?? undefined,
             }), locationId: claimed.locationId })
-        return { shift, zreport, locationId: locId, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash), totalNet: r(totalNet), covers: originalOrders, windowFrom: from, windowTo: to }
+        return { shift, zreport, locationId: locId, receipts: receipts.length, totalStorno: r(totalStorno), totalSales: r(totalSales), cash: r(cash), card: r(card), totalTax: r(totalTax), cashDifference: r(closingCash - expectedCash), totalNet: r(totalNet), covers: originalOrders, windowFrom: from, windowTo: to, movementSummary: mSummary }
       })
+      // Issue #16: povzetek NEPRODAJNIH premikov (mirror-only do DDL — raw
+      // UPDATE IZVEN transakcije: Prisma raw poizvedba si lahko prisvaja
+      // LOČENO povezavo → znotraj TX bi čakala na lastni write-lock (P2028,
+      // 5 s timeout — odkrito v polnem CI teku). Fail-soft: brez stolpcev
+      // Z-poročilo ostane popolnoma veljavno (povzetek živ prek CashMovement).
+      if (movementsReady && zrColsReady && result.movementSummary.count > 0) {
+        await db
+          .$executeRawUnsafe(
+            `UPDATE "ZReport" SET "cashPaidIn" = ${result.movementSummary.paidIn}, "cashPaidOut" = ${result.movementSummary.paidOut}, "cashGuestRefund" = ${result.movementSummary.guestRefund} WHERE "id" = '${result.zreport.id}'`,
+          )
+          .catch(() => null)
+      }
 
       // OPS-8 val 2 (v1.72.0): push to management on shift close / Z-report (via
       // notification matrix; fire-and-forget)
@@ -314,12 +458,17 @@ export async function POST(req: NextRequest) {
       return ok({
         shift: mapShift({ ...result.shift, employee: null }),
         zReport: { id: result.zreport.id, totalSales: result.totalSales, cash: result.cash, card: result.card, totalTax: result.totalTax, receipts: result.receipts, totalStorno: result.totalStorno, cashDifference: result.cashDifference },
+        // Issue #16: razčlenitev NEPRODAJNIH premikov za Z-poročilo dialog
+        movementSummary: result.movementSummary,
       })
     } catch (e) {
       if (e instanceof ShiftCloseConflictError) return fail(e.message, 409)
       // #61: legacy null-loc izmena → varen 409 (izmena ostane odprta; transakcija
       // se je povsem rollback-ala — brez ZReport, brez totals, brez audita).
       if (e instanceof LegacyShiftLocationError) return fail(e.message, 409)
+      // Issue #16: variance nad pragom — 400 (razlog); PRE-TX odobritev je
+      // že vrnila 403; transakcija se rollback-a, izmena OSTANE ODPRTA.
+      if (e instanceof VarianceReasonError) return fail(e.message, 400)
       throw e
     }
   }

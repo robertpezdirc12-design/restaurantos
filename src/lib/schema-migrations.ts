@@ -326,6 +326,24 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
       ['VoidReason', 'kind'], ['VoidReason', 'requireComment'],
     ]),
   },
+  {
+    // Issue #16 (P1/P2, v1.108.0): blagajniški premiki denarja — NOVA tabela
+    // CashMovement (knjiga neprodajnih premikov predala na obstoječi izmeni;
+    // scalar vezave brez FK, EventLog vzorec) + 2 politika stolpca na
+    // RestaurantSettings (prag variance, slepi popis) + 3 povzetek stolpca na
+    // ZReport (paidIn/paidOut/guestRefund; typed cashDrops = odvod v sef).
+    id: 'cash-movements',
+    descKey: 'mig.cashMovements.desc',
+    endpoint: '/api/admin/migrate-cash-movements',
+    probe: async () =>
+      (await columnsAll([
+        ['RestaurantSettings', 'cashVarianceThresholdCents'],
+        ['RestaurantSettings', 'cashBlindCount'],
+        ['ZReport', 'cashPaidIn'],
+        ['ZReport', 'cashPaidOut'],
+        ['ZReport', 'cashGuestRefund'],
+      ])) && (await tableExists('CashMovement')),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

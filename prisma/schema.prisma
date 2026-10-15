@@ -302,6 +302,58 @@ model CashRegisterShift {
   @@index([status])
 }
 
+/// Issue #16 (P1/P2) — blagajniški premiki denarja: evidenca NEPRODAJNIH
+/// premikov predala VEZANA na obstoječo izmeno (CashRegisterShift ostaja
+/// glavna identiteta — NI nove seje/registrske blagajne). Scalar vezave
+/// (EventLog vzorec #38): shiftId/locationId BREZ FK — premik nikoli ne
+/// preživi svoje izmene (kreacija SAMO na odprti izmeni), brisanje pa bi
+/// pustilo ključ, ki ne ustreza nobeni živi vrstici → fail-closed branje.
+///
+/// Tipi (končni seznam po issue; smer je IZPELJANA iz tipa, razmen
+/// menjalnega fonda 'change_fund' izrecno): paid_in (vplačilo) · paid_out
+/// (izplačilo drobnega) · supplier_payment (gotovinsko plačilo dobavitelju)
+/// · safe_drop (odvod v sef/banko) · guest_refund (gotovinsko vračilo
+/// BREZ fiskalnega storna — storno vračilo se šteje SAMO v Receipts oknu).
+///
+/// Potrjenega premika NE smemo tiho brisati/urejati (issue): popravek =
+/// kompenzacijski RAZVELJAVITVENI zapis (status='voided' na originalu +
+/// reverse premik z reversalOfId) z razlogom + audit — obe vrstici
+/// ostanejo vidni v zgodovini. Zgolj prodaja NI premik (ločeno v ZReport).
+model CashMovement {
+  id             String    @id
+  shiftId        String
+  locationId     String
+  type           String    @default("paid_out")
+  direction      String    @default("out")
+  amount         Decimal   @db.Decimal(12, 2)
+  currency       String    @default("EUR")
+  reasonId       String?
+  reasonName     String    @default("")
+  reasonText     String    @default("")
+  note           String    @default("")
+  userId         String
+  userName       String    @default("")
+  deviceId       String    @default("")
+  receiptRef     String    @default("")
+  status         String    @default("confirmed")
+  voidedById     String?
+  voidedByName   String    @default("")
+  voidedAt       DateTime?
+  voidReason     String    @default("")
+  reversalOfId   String?
+  idempotencyKey String?
+  expectedAfter  Decimal   @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([idempotencyKey])
+  @@index([shiftId])
+  @@index([locationId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
 model Category {
   id        String     @id
   name      String
