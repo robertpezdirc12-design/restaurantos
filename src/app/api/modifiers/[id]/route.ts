@@ -67,17 +67,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return guard
   }
 
-  const parsed = sanitizeAllergenCodeList(body?.allergens)
-  if (parsed.invalid.length > 0) {
-    return fail(
-      `Neveljavne alergenske kode (dovoljene: kanonične kode 14 EU kataloga): ${jstr(parsed.invalid).slice(0, 120)}`,
-      400,
-    )
+  // Issue #14 (v1.112.0): alergeni so zdaj OPCIJSKO polje tegea rute (usmeritev
+  // na postajo se lahko spremeni brez dotikanja alergenov); brez body.allergens
+  // se alergenski zapis NE spremeni (prej je bila napaka 400 — tu popravljeno).
+  const hasAllergens = body?.allergens !== undefined
+  let parsed = { codes: [] as ReturnType<typeof parseAllergenCodes>['codes'], invalid: [] as unknown[] }
+  if (hasAllergens) {
+    parsed = sanitizeAllergenCodeList(body?.allergens)
+    if (parsed.invalid.length > 0) {
+      return fail(
+        `Neveljavne alergenske kode (dovoljene: kanonične kode 14 EU kataloga): ${jstr(parsed.invalid).slice(0, 120)}`,
+        400,
+      )
+    }
   }
 
+  // Issue #14 (v1.112.0): usmeritev opcije na postajo (Modifier.prepStationId).
+  // Samo id postaje ISTE lokacije (skupina → lokacija) ali null (počisti).
+  let prepStationId: string | null | undefined
+  if (body?.prepStationId !== undefined) {
+    if (body.prepStationId === null || body.prepStationId === '') prepStationId = null
+    else if (typeof body.prepStationId === 'string') {
+      const ps = await db.prepStation.findUnique({ where: { id: body.prepStationId.trim() }, select: { id: true, locationId: true } })
+      if (!ps || ps.locationId !== modifier.ModifierGroup.locationId) {
+        return fail('Postaja ne obstaja na lokaciji skupine opcij.', 400)
+      }
+      prepStationId = ps.id
+    } else return fail('prepStationId mora biti id postaje ali null.', 400)
+  }
+  const stationRouting = prepStationId !== undefined && prepStationId !== (modifier.prepStationId ?? null)
+
   const oldCodes = parseAllergenCodes(modifier.allergens).codes
-  const newJson = jstr(parsed.codes)
-  const contentChanged = oldCodes.join('|') !== parsed.codes.join('|')
+  const newJson = jstr(hasAllergens ? parsed.codes : oldCodes)
+  const contentChanged = hasAllergens && oldCodes.join('|') !== parsed.codes.join('|')
 
   const links = await db.menuItemModifierGroup.findMany({
     where: { modifierGroupId: modifier.modifierGroupId },
@@ -86,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const affectedMenuItems = [...new Set(links.map((l) => l.menuItemId))]
 
   await db.$transaction(async (tx) => {
-    await tx.modifier.update({ where: { id }, data: { allergens: newJson } })
+    await tx.modifier.update({ where: { id }, data: { ...(hasAllergens ? { allergens: newJson } : {}), ...(prepStationId !== undefined ? { prepStationId } : {}) } })
     if (contentChanged && affectedMenuItems.length > 0) {
       await flagMenuItemsForAllergenReview(tx, affectedMenuItems, 'sprememba alergenov dodatka')
     }
@@ -102,6 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         new: parsed.codes,
         contentChanged,
         flaggedMenuItems: contentChanged ? affectedMenuItems.length : 0,
+        ...(stationRouting ? { prepStationId } : {}),
       }),
       locationId: modifier.ModifierGroup.locationId || undefined,
     })
@@ -112,5 +135,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     allergens: parsed.codes,
     contentChanged,
     flaggedMenuItems: contentChanged ? affectedMenuItems.length : 0,
+    ...(prepStationId !== undefined ? { prepStationId } : {}),
   })
 }

@@ -89,8 +89,10 @@ export async function GET(req: NextRequest) {
   // OPS-10 val 1 (v1.77.0): per-station targets from PrepStation.avgPrepTime.
   // Active stations are mapped onto the two KDS buckets (stationOf(type));
   // when several active stations share a bucket the first by sortOrder wins.
+  // Issue #14 (v1.112.0): lokacijski obseg DODAN (prej so se cilji/vedra
+  // mešali čez lokacije — isti tenant-scope kot vrstice zgornje).
   const prepStations = await db.prepStation.findMany({
-    where: { isActive: true },
+    where: { isActive: true, ...orderScope },
     select: { id: true, name: true, type: true, avgPrepTime: true, sortOrder: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
   })
@@ -104,6 +106,47 @@ export async function GET(req: NextRequest) {
   const targets = {
     BAR: bucketAvg.get('BAR') ?? 5,
     KITCHEN: bucketAvg.get('KITCHEN') ?? 10,
+  }
+
+  // Issue #14 (v1.112.0) — uspešnost PO POSTAJI iz zgodovine nalog (additive;
+  // pre-DDL → []). priprava/modifikacija: firedAt→readyAt; izdaja: firedAt→issuedAt.
+  // Prag zamude = avgPrepTime postaje (zamudne postavke po pravi ciljni postaji,
+  // ne skupnem KITCHEN povprečju — issue §3).
+  let perStation: Array<{ stationId: string; stationName: string; kind: string; count: number; avgMin: number; lateCount: number; target: number | null }> = []
+  try {
+    const taskRows = await db.stationTask.findMany({
+      where: { locationId: orderScope.locationId, firedAt: { gte: since }, OR: [{ readyAt: { not: null } }, { issuedAt: { not: null } }] },
+      select: { stationId: true, stationName: true, kind: true, firedAt: true, readyAt: true, issuedAt: true },
+      take: 50000,
+    })
+    const byKey = new Map<string, { stationId: string; stationName: string; kind: string; mins: number[] }>()
+    for (const t of taskRows) {
+      const end = t.kind === 'expo' ? t.issuedAt : t.readyAt
+      if (!t.firedAt || !end) continue
+      const min = prepMinutes(t.firedAt, end)
+      if (min === null) continue
+      const kind = t.kind === 'expo' ? 'expo' : 'prep'
+      const key = `${t.stationId}:${kind}`
+      const cur = byKey.get(key) ?? { stationId: t.stationId, stationName: t.stationName, kind, mins: [] }
+      cur.mins.push(min)
+      byKey.set(key, cur)
+    }
+    perStation = [...byKey.values()].map((s) => {
+      const st = prepStations.find((p) => p.id === s.stationId)
+      const target = st?.avgPrepTime ?? null
+      const threshold = target !== null ? Math.max(10, Math.ceil(target * 1.25)) : 10
+      return {
+        stationId: s.stationId,
+        stationName: s.stationName,
+        kind: s.kind,
+        count: s.mins.length,
+        avgMin: Math.round((s.mins.reduce((a, b) => a + b, 0) / s.mins.length) * 10) / 10,
+        lateCount: s.mins.filter((m) => m > threshold).length,
+        target,
+      }
+    })
+  } catch {
+    // DDL pending (StationTask) — additive polje izpraznjeno
   }
 
   return ok({
@@ -124,5 +167,7 @@ export async function GET(req: NextRequest) {
     targets,
     stations: kdsStationBreakdown(samples, targets),
     stationConfig,
+    // Issue #14 (v1.112.0) — uspešnost PO postaji (additive)
+    perStation,
   })
 }

@@ -27,6 +27,7 @@ import { POST as cashMovementsPOST } from '../migrate-cash-movements/route'
 import { POST as haccpOpsPOST } from '../migrate-haccp-ops/route'
 import { POST as reservationWidgetPOST } from '../migrate-reservation-widget/route'
 import { POST as managerCallPOST } from '../migrate-manager-call/route'
+import { POST as kdsStationsPOST } from '../migrate-kds-stations/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -67,6 +68,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'haccp-ops': haccpOpsPOST,
   'reservation-widget': reservationWidgetPOST,
   'manager-call': managerCallPOST,
+  'kds-stations': kdsStationsPOST,
 }
 
 interface ConsoleResult {

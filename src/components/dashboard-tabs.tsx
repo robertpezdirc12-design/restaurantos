@@ -39,6 +39,8 @@ export { ReservationWidgetCard } from './tabs/reservation-widget-card'
 /* Issue #21 (v1.111.0) — klic vodje iz POS-a: plošča vodje + nastavitve */
 export { ManagerCallsCard } from './tabs/manager-calls-card'
 export { ManagerCallSettingsCard } from './tabs/manager-call-settings-card'
+/* Issue #14 (v1.112.0) — KDS: config kartica pripravljalnih postaj + usmerjanje artiklov */
+export { PrepStationsCard } from './tabs/prep-stations-card'
 export { EnterpriseTab, MigrationsConsoleSection } from './tabs/enterprise-tab'
 export { StaffScheduleTab } from './tabs/urnik-izmen-tab'
 export type { StaffShiftRowT, TimeOffRowT } from './tabs/urnik-izmen-tab'

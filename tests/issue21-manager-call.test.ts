@@ -1001,7 +1001,7 @@ describe('H. DDL/register/drift', () => {
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'manager-call')
     expect(m).toBeDefined()
     expect(m?.endpoint).toBe('/api/admin/migrate-manager-call')
-    expect(SCHEMA_MIGRATIONS.length).toBeGreaterThanOrEqual(24)
+    expect(SCHEMA_MIGRATIONS.length).toBeGreaterThanOrEqual(25)
   })
 
   it('H2: DDL ruta idempotentna — bootstrap 200; drugi klic alreadyApplied:true', async () => {

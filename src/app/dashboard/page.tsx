@@ -69,13 +69,17 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
 } from '@/components/dashboard-tabs'
 import { ManagerCallButton } from '@/components/manager-call-dialog'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2 } from 'lucide-react'
+/* Issue #14 (v1.112.0) — KDS station views: task board + expo dispatch board
+   (component lives in src/components/ — outside the i18n scan family). */
+import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type KdsStationStatT } from '@/components/kds-station-board'
+import { stationViewKey } from '@/lib/kds-station-routing'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
@@ -134,6 +138,30 @@ const RES_STATUS_KEYS: Record<string, string> = {
   CONFIRMED: 'resv.stConfirmed', SEATED: 'resv.stSeated', COMPLETED: 'resv.stCompleted', CANCELLED: 'resv.stCancelled', NO_SHOW: 'resv.stNoShow',
 }
 
+/* Issue #14 (v1.112.0) — station progress chip for a TASKED legacy item: the legacy
+   order queue replaces the raw status buttons with per-station sync chips so the
+   ALL/KITCHEN/BAR views never fire a 409 (item is managed by the station flow).
+   Style map + label keys are shared with the task board (single source). */
+function KdsTaskChip({ task }: { task: KdsTaskT }) {
+  const { t } = useI18n()
+  const st = KDS_TASK_STATUS[task.status] ?? KDS_TASK_STATUS.pending
+  const icon =
+    task.kind === 'expo' ? <Ship className="w-3 h-3" aria-hidden />
+      : task.status === 'waiting' ? <Lock className="w-3 h-3" aria-hidden />
+        : task.status === 'pending' ? <Clock className="w-3 h-3" aria-hidden />
+          : task.status === 'preparing' ? <Loader2 className="w-3 h-3 animate-pulse" aria-hidden />
+            : <Check className="w-3 h-3" aria-hidden />
+  return (
+    <span
+      title={`${task.stationName} — ${t(st.labelKey)}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${st.cls}`}
+    >
+      {icon}
+      <span className="max-w-24 truncate">{task.stationName}</span>
+    </span>
+  )
+}
+
 export default function DashboardPage() {
   return (
     <I18nProvider>
@@ -157,6 +185,12 @@ function DashboardInner() {
   // OPS-11 val 1 (v1.80.0): per-station delay targets from GET /api/kitchen (PrepStation.avgPrepTime
   // by KDS bucket) — the live timer / bump dialog resolve the threshold client-side via isLatePrep.
   const [stationTargets, setStationTargets] = useState<Record<string, number | null>>({})
+  // Issue #14 (v1.112.0): ADDITIVE GET /api/kitchen fields — named stations, active station tasks
+  // (the client filters per station view; the expo board also needs sibling tasks) and per-station
+  // queue stats (issue §4). Empty arrays pre-DDL (server degrades gracefully).
+  const [kdsStations, setKdsStations] = useState<KdsStationT[]>([])
+  const [kdsTasks, setKdsTasks] = useState<KdsTaskT[]>([])
+  const [kdsStationStats, setKdsStationStats] = useState<KdsStationStatT[]>([])
   const [menu, setMenu] = useState<MenuT[]>([])
   const [categories, setCategories] = useState<CategoryT[]>([])
   const [employees, setEmployees] = useState<EmployeeT[]>([])
@@ -185,7 +219,7 @@ function DashboardInner() {
   const [sending, setSending] = useState(false)
   const [payingOrder, setPayingOrder] = useState<OrderT | null>(null)
   const [invoice, setInvoice] = useState<{ eor: string; invoiceNumber: string; id?: string } | null>(null)
-  /** Natisljivi račun (FURS) — busy indikator za gumb Natisni */
+  /** Natisljivi račun (FURS) — busy indikator za gumb za tiskanje (common.print) */
   const [printing, setPrinting] = useState(false)
   const [stornoing, setStornoing] = useState<string | null>(null)
   // ==== 33-a: selitev/združevanje/fire (P2 audit §54/§57) ====
@@ -401,8 +435,10 @@ function DashboardInner() {
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
         // Issue #5 §C: postaja gre NA STREŽNIK (?station=) — KDS naprava dobi SAMO
-        // svojo postajo (kdsStationRef mirror za poll closure)
-        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null> }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
+        // svojo postajo (kdsStationRef mirror za poll closure). Issue #14: custom
+        // station ids are ADDITIVE (server ignores unknown values for the legacy
+        // queue filter — the task board does its own client-side filtering).
+        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[] }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
         soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         hp('employees.manage') ? soft(api<{ employees: EmployeeT[] }>('/api/employees')) : undefined,
         soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
@@ -430,7 +466,14 @@ function DashboardInner() {
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
       if (o) setOrders(o.orders)
-      if (k) { setKitchen(k.queue); setStationTargets(k.stationTargets ?? {}) }
+      if (k) {
+        setKitchen(k.queue)
+        setStationTargets(k.stationTargets ?? {})
+        // Issue #14: additive fields (pre-DDL → undefined → keep empty = legacy behavior)
+        setKdsStations(k.stations ?? [])
+        setKdsTasks(k.tasks ?? [])
+        setKdsStationStats(k.stationStats ?? [])
+      }
       if (m) { setMenu(m.items); setCategories(m.categories) }
       if (e) setEmployees(e.employees)
       if (r) setReservations(r.reservations)
@@ -1406,13 +1449,20 @@ function DashboardInner() {
   const viewKitchen = filterByLocation(kitchen, viewLoc)
   const viewEmployees = filterByLocation(employees, viewLoc)
   // OPS-4 v1.67.0 — KDS: stanje postaje/zvoka + hitra prodaja (sank)
-  const [kdsStation, setKdsStation] = useState<'ALL' | 'KITCHEN' | 'BAR'>(() => {
+  // Issue #14 (v1.112.0): kdsStation accepts CUSTOM station ids too — 'ALL' plus
+  // the two legacy buckets plus any id of a configured named station. The URL
+  // ?station= initializer stays pure: it accepts the legacy values or any slug
+  // candidate; a stale/unknown id gracefully falls back to the legacy view
+  // (kdsCustomView below resolves against the loaded station list).
+  const [kdsStation, setKdsStation] = useState<string>(() => {
     if (typeof window === 'undefined') return 'ALL'
     const s = new URLSearchParams(window.location.search).get('station')
-    return s === 'KITCHEN' || s === 'BAR' ? s : 'ALL'
+    if (s === 'KITCHEN' || s === 'BAR') return s
+    if (s && /^[A-Za-z0-9_-]{1,64}$/.test(s)) return s
+    return 'ALL'
   })
   // Issue #5: mirror za poll closure (load() bere ref, state ostane za UI)
-  const kdsStationRef = useRef<'ALL' | 'KITCHEN' | 'BAR'>(kdsStation)
+  const kdsStationRef = useRef<string>(kdsStation)
   useEffect(() => { kdsStationRef.current = kdsStation }, [kdsStation])
   const [kdsSound, setKdsSound] = useState(true)
   // P0-3 (v1.83.0): 86 plošča — iskanje za hiter proaktiven 86 (TRZNA-VRZELI-2026 §4 P0-3)
@@ -1445,11 +1495,31 @@ function DashboardInner() {
     else void setItemStatus(it.id, 'READY')
   }
 
+  // ── Issue #14 (v1.112.0): named-station view resolution ──
+  // custom stations = every type that is NOT one of the two legacy buckets; they
+  // get their own picker button and the task board instead of the order queue.
+  const kdsCustomStations = kdsStations.filter((s) => {
+    const ty = (s.type || '').toLowerCase()
+    return ty !== 'bar' && ty !== 'kitchen'
+  })
+  // selected station object (undefined = legacy view, incl. stale ids pre-DDL)
+  const kdsCustomStation = kdsCustomStations.find((s) => s.id === kdsStation)
+  const kdsCustomView = kdsCustomStation !== undefined
+  // legacy queue/86 filters use ONLY the two buckets — an unknown/custom id must
+  // not silently empty the queue (it renders the task board instead)
+  const kdsLegacyBucket: 'ALL' | 'KITCHEN' | 'BAR' = kdsStation === 'KITCHEN' || kdsStation === 'BAR' ? kdsStation : 'ALL'
+
   // OPS-4: zvok ob novem cakajocem artiklu na izbrani postaji (WebAudio, brez sredstev)
+  // Issue #14: a custom station view counts NEW PENDING tasks of that station
+  // (kdsTasks) instead of legacy queue items — the semantics stay the same.
   useEffect(() => {
-    const pending = viewKitchen
-      .flatMap((o) => o.items.filter((it) => !it.voided && it.status === 'PENDING' && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation)))
-      .reduce((s, it) => s + it.qty, 0)
+    const pending = kdsCustomView
+      ? kdsTasks
+          .filter((task) => task.stationId === kdsStation && task.status === 'pending')
+          .reduce((s, task) => s + task.quantity, 0)
+      : viewKitchen
+          .flatMap((o) => o.items.filter((it) => !it.voided && it.status === 'PENDING' && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+          .reduce((s, it) => s + it.qty, 0)
     if (pending > kdsPrevPendingRef.current && kdsSound) {
       try {
         const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -1464,7 +1534,7 @@ function DashboardInner() {
       } catch { /* zvok ni kriticen */ }
     }
     kdsPrevPendingRef.current = pending
-  }, [viewKitchen, kdsStation, kdsSound])
+  }, [viewKitchen, kdsStation, kdsSound, kdsTasks, kdsCustomView])
 
   // OPS-4: 86 (razprodano) iz KDS — ozek endpoint menu.availability (ločen od Meni urejanja = menu.manage)
   const kdsToggleAvailable = async (mi: MenuT) => {
@@ -1490,7 +1560,7 @@ function DashboardInner() {
   const kds86Candidates = kds86Search.trim()
     ? kdsBoardMenu.filter((mi) =>
         mi.available
-        && (kdsStation === 'ALL' || (mi.station || 'KITCHEN') === kdsStation)
+        && (kdsLegacyBucket === 'ALL' || (mi.station || 'KITCHEN') === kdsLegacyBucket)
         && mi.name.toLowerCase().includes(kds86Search.trim().toLowerCase()))
     : []
 
@@ -2011,10 +2081,26 @@ function DashboardInner() {
 
           <TabsContent value="kuhinja" className="space-y-4">
             {/* OPS-4 v1.67.0 — KDS upgrade: filtri postaj (zaslon sank = BAR), casovniki, zvok, 86 */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Issue #14: named stations join the picker (type ≠ legacy buckets); the
+                expo station carries a Ship badge (dispatch view) — small, wraps on mobile. */}
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('kds.stView')}>
               {(['ALL', 'KITCHEN', 'BAR'] as const).map((st) => (
                 <Button key={st} size="sm" variant={kdsStation === st ? 'default' : 'outline'} className={kdsStation === st ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setKdsStation(st)}>
                   {st === 'ALL' ? t('kds.all') : st === 'KITCHEN' ? t('menu.stationKitchen') : t('menu.stationBar')}
+                </Button>
+              ))}
+              {kdsCustomStations.map((st) => (
+                <Button
+                  key={st.id}
+                  size="sm"
+                  variant={kdsStation === st.id ? 'default' : 'outline'}
+                  className={`gap-1 max-w-44 ${kdsStation === st.id ? 'bg-emerald-700 hover:bg-emerald-800' : ''} ${st.isExpo ? 'border-emerald-300' : ''}`}
+                  onClick={() => setKdsStation(st.id)}
+                  aria-label={st.isExpo ? `${st.name} · ${t('kds.stExpo')}` : st.name}
+                  title={st.isExpo ? `${st.name} · ${t('kds.stExpo')}` : st.name}
+                >
+                  {st.isExpo && <Ship className="w-3.5 h-3.5 shrink-0" aria-hidden />}
+                  <span className="truncate">{st.name}</span>
                 </Button>
               ))}
               <span className="flex-1" />
@@ -2079,10 +2165,52 @@ function DashboardInner() {
                 )}
               </CardContent>
             </Card>
-            {viewKitchen
-              .filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation)))
+            {/* Issue #14 (issue §4): per-station queue load chips on the ALL view —
+                compact badges above the queue; tap switches to that station view
+                (legacy types resolve to their bucket via stationViewKey). */}
+            {kdsStation === 'ALL' && kdsStationStats.length > 0 && (
+              <div role="group" aria-label={t('kds.stStatsTitle')} aria-live="polite" className="flex flex-wrap gap-1.5">
+                {kdsStationStats.map((s) => {
+                  const active = s.waiting + s.pending + s.preparing
+                  const st = kdsStations.find((x) => x.id === s.stationId)
+                  return (
+                    <button
+                      key={s.stationId}
+                      type="button"
+                      onClick={() => st && setKdsStation(stationViewKey(st))}
+                      title={st?.isExpo ? `${s.stationName} · ${t('kds.stExpo')}` : s.stationName}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
+                        active > 0
+                          ? 'bg-amber-50 text-amber-800 border-amber-300 hover:border-amber-500'
+                          : 'bg-stone-50 text-stone-500 border-stone-200 hover:border-stone-400'
+                      }`}
+                    >
+                      {st?.isExpo && <Ship className="w-3 h-3 shrink-0" aria-hidden />}
+                      <span className="max-w-28 truncate">{s.stationName}</span>
+                      <span className="font-bold">{active}</span>
+                      {s.ready > 0 && <span className="text-emerald-700">{s.ready}✓</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {/* Issue #14: custom station view → TASK BOARD (orders are managed by the
+                station flow; the legacy queue stays for ALL/KITCHEN/BAR views). */}
+            {kdsCustomView && kdsCustomStation && (
+              <KdsStationBoard
+                station={kdsCustomStation}
+                tasks={kdsTasks}
+                onDone={load}
+                onPrintOrder={(orderId) => {
+                  const o = kitchen.find((x) => x.id === orderId)
+                  if (o) void printKitchenTicket(o, 'KITCHEN')
+                }}
+              />
+            )}
+            {!kdsCustomView && viewKitchen
+              .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
               .map((o) => {
-                const items = o.items.filter((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))
+                const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
                 return (
                   <Card key={o.id}>
@@ -2104,6 +2232,9 @@ function DashboardInner() {
                       {items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
                         const itAge = kdsItemAge(it, o)
+                        // Issue #14: tasked items are managed by the station flow — the legacy
+                        // queue shows per-station sync chips instead of status buttons (no 409s)
+                        const itemTasks = kdsTasks.filter((task) => task.itemId === it.id)
                         return (
                           <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
                             <div className="min-w-0">
@@ -2120,7 +2251,7 @@ function DashboardInner() {
                               )}
                               {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
                             </div>
-                            <div className="flex gap-1.5 shrink-0 items-center">
+                            <div className="flex gap-1.5 shrink-0 items-center flex-wrap justify-end">
                               {/* OPS-9 val 3: per-item live timer (firedAt → order clock); OPS-11 val 1: red escalation per station (target → max(10, ceil(target×1.25))) */}
                               <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{itAge}′</span>
                               {perms.includes('menu.availability') && mi && (
@@ -2128,6 +2259,12 @@ function DashboardInner() {
                                   <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
                                 </Button>
                               )}
+                              {itemTasks.length > 0 ? (
+                                <span className="flex flex-wrap gap-1 justify-end" role="group" aria-label={t('kds.stStatsTitle')}>
+                                  {itemTasks.map((task) => <KdsTaskChip key={task.id} task={task} />)}
+                                </span>
+                              ) : (
+                                <>
                               {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
                               {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
                               {it.status === 'READY' && (
@@ -2137,6 +2274,8 @@ function DashboardInner() {
                                   <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
                                 </div>
                               )}
+                                </>
+                              )}
                             </div>
                           </div>
                         )
@@ -2145,7 +2284,7 @@ function DashboardInner() {
                   </Card>
                 )
               })}
-            {viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsStation === 'ALL' || (it.station || 'KITCHEN') === kdsStation))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
+            {!kdsCustomView && viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
             {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
             {/* OPS-10 v1.77.0 — per-station targets: urejanje samo s settings.manage */}
             <KdsStatsSection canEditTargets={canManage || perms.includes('settings.manage')} />
@@ -2523,6 +2662,9 @@ function DashboardInner() {
             <ReservationWidgetCard />
             {/* Issue #21 (v1.111.0) — nastavitve klica vodje (dovoljene vrste + čas eskalacije) */}
             <ManagerCallSettingsCard />
+            {/* Issue #14 (v1.112.0) — KDS named stations config + item routing editor
+                (settings.manage render gate inside the card; menu.manage gates routing) */}
+            <PrepStationsCard />
             {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za
                 prijavljenega uporabnika — step-up PIN, recovery kode, enforcement */}
             <MfaCard />

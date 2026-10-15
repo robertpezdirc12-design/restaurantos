@@ -374,6 +374,18 @@ export function isManagerCallStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+/** Issue #14 (v1.112.0): KDS poimenovane postaje — NOVI tabeli StationTask +
+ * MenuItemStation + STOLPCA Modifier.prepStationId / PrepStation.isExpo
+ * (strogo po tabelah/stolpcih — vzorec ManagerCall). */
+export function isKdsStationsStatement(stmt: string): boolean {
+  if (/"StationTask"|"MenuItemStation"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  if (/"Modifier"/.test(stmt) && /"prepStationId"/.test(stmt)) return true
+  if (/"PrepStation"/.test(stmt) && /"isExpo"/.test(stmt)) return true
+  return false
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -588,6 +600,23 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'graceful degradirajo (503/ddlPending — POS tok se ne dotakne). Ko je DDL ' +
       'apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isManagerCallStatement,
+  },
+  {
+    id: 'kds-stations',
+    reason:
+      'KDS poimenovane postaje (v1.112.0, issue #14 P1/P2) — NOVI tabeli ' +
+      'StationTask (postavka × postaja: usmerjanje ob FIRE-u, posnetki imen, ' +
+      'zaporedje korakov, statusi waiting/pending/preparing/ready/done) in ' +
+      'MenuItemStation (dodatne postaje artikla M:N) + STOLPCA ' +
+      'Modifier.prepStationId (usmeritev opcije na drugo postajo) in ' +
+      'PrepStation.isExpo (izdajna postaja) — skalarne vezave brez FK ' +
+      '(EventLog/ManagerCall vzorec): produkcija čaka DDL korak — admin ruta ' +
+      '/api/admin/migrate-kds-stations (konzola Enterprise → Shema migracije → ' +
+      'en klik). Do DDL /api/kitchen additive polja (stations/tasks/' +
+      'stationStats) in usmerjanje v fire ruti se tiho izpraznijo/preskočijo ' +
+      '(graceful — queue + stationTargets + POS/KDS tok se ne dotaknejo). Ko je ' +
+      'DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isKdsStationsStatement,
   },
 ]
 

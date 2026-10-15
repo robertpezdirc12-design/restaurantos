@@ -23,6 +23,9 @@ export type HaccpStatus = 'ok' | 'warning' | 'critical' | 'archived'
 
 export type OrderItemStatus = 'pending' | 'fired' | 'preparing' | 'ready' | 'served' | 'cancelled' | 'voided'
 
+/** Issue #14 (v1.112.0) — status postajne naloge KDS (StationTask.status, proste vrednosti). */
+export type StationTaskStatus = 'waiting' | 'pending' | 'preparing' | 'ready' | 'done'
+
 export type ReservationSource = 'walk_in' | 'phone' | 'website' | 'app'
 
 export type ReservationStatus = 'confirmed' | 'seated' | 'completed' | 'cancelled' | 'no_show'

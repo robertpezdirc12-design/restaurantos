@@ -389,6 +389,25 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-manager-call',
     probe: async () => (await tableExists('ManagerCall')),
   },
+  {
+    // Issue #14 (P1/P2, v1.112.0): KDS poimenovane postaje — NOVI tabeli
+    // StationTask (postavka × postaja: usmerjanje ob FIRE-u, posnetki imen,
+    // zaporedje korakov, statusi waiting/pending/preparing/ready/done) in
+    // MenuItemStation (dodatne postaje artikla M:N) + STOLPCA
+    // Modifier.prepStationId (usmeritev opcije na drugo postajo) in
+    // PrepStation.isExpo (izdajna postaja). Skalarne vezave brez FK
+    // (EventLog/ManagerCall vzorec). Do DDL: /api/kitchen additive polja
+    // (stations/tasks/stationStats) se tiho izpraznijo — queue in
+    // stationTargets ostaneta nespremenjena (graceful — POS/KDS tok
+    // se ne dotakne).
+    id: 'kds-stations',
+    descKey: 'mig.kdsStations.desc',
+    endpoint: '/api/admin/migrate-kds-stations',
+    probe: async () => (await tablesAll(['StationTask', 'MenuItemStation'])) && (await columnsAll([
+      ['Modifier', 'prepStationId'],
+      ['PrepStation', 'isExpo'],
+    ])),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

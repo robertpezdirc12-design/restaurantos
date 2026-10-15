@@ -7,6 +7,7 @@ import { guardResource } from '@/lib/tenant'
 import type { AuthPayload } from '@/lib/auth'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
 import { createOrderCore, OrderError } from '@/lib/ops'
+import { tasksForItem, completeTasksForItem } from '@/lib/station-task-service'
 
 /**
  * Issue #1 — offline/local-first sync (replay offline operacij).
@@ -257,7 +258,16 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
       if (!item) throw new OrderError('Postavka ne obstaja.', 404)
       const ksGuard = await guardResource(user as unknown as AuthPayload, item.Order?.locationId)
       if (ksGuard) throw new OrderError('Postavka ne pripada vaši lokaciji.', 403)
+      // Issue #14 (v1.112.0): postavka s postajnimi nalogami se upravlja s postajnim
+      // tokom — offline vrsta sprejme samo SERVED (spravi naloge v done), ostalo 409.
+      const itemTasks = await tasksForItem(itemId)
+      if (itemTasks.length > 0 && status !== 'SERVED') {
+        throw new OrderError('Postavka je usmerjena na postaje — offline sprememba ni podprta (strežba samo).', 409)
+      }
       await client.orderItem.update({ where: { id: itemId }, data: { status: itemStatusToDB(status) as OrderItemStatus } })
+      if (itemTasks.length > 0 && status === 'SERVED') {
+        await completeTasksForItem(client, itemId)
+      }
       const remaining = await client.orderItem.count({ where: { orderId: item.orderId, status: { in: ['pending', 'fired', 'preparing'] } } })
       if (remaining === 0) await client.order.update({ where: { id: item.orderId }, data: { status: 'prepared' } })
       else await client.order.updateMany({ where: { id: item.orderId, status: 'open' }, data: { status: 'sent' } })

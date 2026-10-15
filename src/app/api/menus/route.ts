@@ -5,6 +5,7 @@ import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapMenuItem, mapCategory, nid, num, jstr, stationToUI } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { getMenuItemAllergenProfiles } from '@/lib/allergen-profile'
+import { validateStationsForLocation } from '@/lib/station-task-service'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -35,6 +36,23 @@ export async function GET(req: NextRequest) {
   const allergenSummaries = await getMenuItemAllergenProfiles(items.map((m) => m.id)).catch(
     () => new Map<string, { codes: string[]; status: 'confirmed' | 'review_required' | 'needs_confirmation'; reviewFlag: boolean }>(),
   )
+  // Issue #14 (v1.112.0): usmeritve postaj PO artikelu (M:N) za urejevalnik
+  // usmerjanja (nastavitve kartica); pre-DDL → prazni seznami (graceful)
+  let stationRows: { menuItemId: string; stationId: string }[] = []
+  try {
+    stationRows = await db.menuItemStation.findMany({
+      where: { menuItemId: { in: items.map((m) => m.id) } },
+      select: { menuItemId: true, stationId: true },
+    })
+  } catch {
+    // DDL pending (MenuItemStation) — brez usmeritev
+  }
+  const stationsByItem = new Map<string, string[]>()
+  for (const r of stationRows) {
+    const arr = stationsByItem.get(r.menuItemId) ?? []
+    arr.push(r.stationId)
+    stationsByItem.set(r.menuItemId, arr)
+  }
   return ok({
     items: items.map((m) => {
       // Issue #7 (P1, v1.104.0): alergenski povzetek artiklov (status + kode +
@@ -43,6 +61,9 @@ export async function GET(req: NextRequest) {
       const p = allergenSummaries.get(m.id)
       return {
         ...mapMenuItem({ ...m, prepStation: m.PrepStation }),
+        // Issue #14: trenutne usmeritve (idji postaj; primarna + dodatne)
+        prepStationId: m.prepStationId ?? null,
+        stationIds: stationsByItem.get(m.id) ?? [],
         allergenStatus: p?.status ?? 'needs_confirmation',
         allergenCodes: p?.codes ?? [],
         allergenReviewFlag: p?.reviewFlag ?? false,
@@ -78,11 +99,27 @@ export async function POST(req: NextRequest) {
     return fail('Kategorija ne pripada podani lokaciji.', 400)
   }
   let prepStationId: string | null = null
-  if (body.station) {
+  const itemLocationId = cat.Menu?.locationId ?? locId
+  // Issue #14 (v1.112.0): EKSPlicitNA postaja (id, strežniško preverjena + lokacijsko
+  // obsegovana) ima prednost pred legacy bucket izbiro (body.station BAR/KITCHEN —
+  // zgodovinsko je iskanje potekalo BREZ lokacijskega filtra: tu popravljeno).
+  if (typeof body.prepStationId === 'string' && body.prepStationId.trim()) {
+    const ps = await db.prepStation.findUnique({ where: { id: body.prepStationId.trim() }, select: { id: true, locationId: true } })
+    if (!ps || ps.locationId !== itemLocationId) return fail('Postaja ne obstaja na tej lokaciji.', 400)
+    prepStationId = ps.id
+  } else if (body.station) {
     const ps = await db.prepStation.findFirst({
-      where: { type: stationToUI(body.station) === 'BAR' ? 'bar' : 'kitchen' },
+      where: { type: stationToUI(body.station) === 'BAR' ? 'bar' : 'kitchen', locationId: itemLocationId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     })
     prepStationId = ps?.id ?? null
+  }
+  // Issue #14: dodatne postaje artikla (M:N — MenuItemStation), strežniško preverjene
+  let extraStationIds: string[] = []
+  if (body.stationIds !== undefined) {
+    const check = await validateStationsForLocation(body.stationIds, itemLocationId)
+    if (!check.ok) return fail(check.error, check.status)
+    extraStationIds = check.ids.filter((sid) => sid !== prepStationId)
   }
   const item = await db.menuItem.create({
     data: {
@@ -96,7 +133,16 @@ export async function POST(req: NextRequest) {
       prepStationId,
     },
   })
+  if (extraStationIds.length > 0) {
+    try {
+      await db.menuItemStation.createMany({
+        data: extraStationIds.map((sid) => ({ id: nid(), menuItemId: item.id, stationId: sid, locationId: itemLocationId })),
+      })
+    } catch {
+      // DDL pending — usmeritev se aktivira po migrate-kds-stations
+    }
+  }
   // 33-c (audit §6): kreiranje artikla menija je zdaj revidirano (prej brez revizije)
-  await writeAudit(db, { userId: user.sub, action: 'MENU_ITEM_CREATE', entityType: 'MenuItem', entityId: item.id, details: jstr({ name: item.name, price: Number(item.price), vatRate: Number(item.vatRate), categoryId }), locationId: cat.Menu?.locationId ?? locId })
-  return ok({ item: mapMenuItem(item) }, 201)
+  await writeAudit(db, { userId: user.sub, action: 'MENU_ITEM_CREATE', entityType: 'MenuItem', entityId: item.id, details: jstr({ name: item.name, price: Number(item.price), vatRate: Number(item.vatRate), categoryId, prepStationId, stationIds: extraStationIds }), locationId: cat.Menu?.locationId ?? locId })
+  return ok({ item: mapMenuItem(item), prepStationId, stationIds: extraStationIds }, 201)
 }

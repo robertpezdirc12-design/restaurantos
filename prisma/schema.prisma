@@ -1576,6 +1576,9 @@ model Modifier {
   isAvailable     Boolean       @default(true)
   sortOrder       Int           @default(0)
   allergens       String        @default("")
+  // Issue #14 (v1.112.0): usmeritev opcije na postajo (npr. "zapečeno" → Grill;
+  // piščanec v solati → Žar). NULL = opcija ne ustvari lastnega postajnega koraka.
+  prepStationId   String?
   modifierGroupId String
   createdAt       DateTime      @default(now())
   updatedAt       DateTime @updatedAt
@@ -1931,6 +1934,10 @@ model PrepStation {
   avgPrepTime Int        @default(15)
   isActive    Boolean    @default(true)
   sortOrder   Int        @default(0)
+  // Issue #14 (v1.112.0): izdajna postaja (expediter) — postaja, ki sestavi/izda
+  // celoten naročeni artikel. Postaja je lahko IZKLJUČNO izdajna (expo) ali
+  // priprava+izdaja (prep+expo: dobi svoj pripravljalni KORAK + izdajo).
+  isExpo      Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime @updatedAt
   locationId  String
@@ -1940,6 +1947,66 @@ model PrepStation {
   @@index([isActive])
   @@index([locationId])
   @@index([type])
+}
+
+// Issue #14 (P1/P2, v1.112.0) — KDS postajne naloge: ena vrstica na (postavka
+// naročila × postaja × VRSTA). Usmerjanje se razreši ob FIRE-u (posnetek:
+// stationName/stationType/sequence se zapišejo takrat — preimenovanje postaje
+// kasneje ne spremeni zgodovine). Skalarne vezave BREZ FK (EventLog/ManagerCall
+// vzorec — enostaven DDL, brišljivost zgodovine). Statusi so PROSTE vrednosti
+// String. Unique VKLJUČUJE kind: postaja, ki je hkrati priprava+izdajna (isExpo),
+// dobi SVOJ pripravljalni korak IN izdajo (dve vrstici, isti stationId).
+model StationTask {
+  id           String    @id
+  locationId   String
+  orderItemId  String
+  orderId      String
+  stationId    String
+  stationName  String    @default("")
+  stationType  String    @default("kitchen")
+  // prep = priprava artikla na postaji; modifier = dodatno delo iz opcije
+  // (usmerjena na drugo postajo — brez podvajanja postavke); expo = sestava/izdaja
+  kind         String    @default("prep")
+  sequence     Int       @default(0)
+  // waiting (blokirana predhodna postaja) | pending | preparing | ready | done
+  status       String    @default("pending")
+  title        String    @default("")
+  detail       String    @default("")
+  quantity     Int       @default(1)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  firedAt      DateTime?
+  startedAt    DateTime?
+  readyAt      DateTime?
+  readyById    String?
+  readyByName  String    @default("")
+  issuedAt     DateTime?
+  issuedById   String?
+  issuedByName String    @default("")
+
+  @@unique([orderItemId, stationId, kind])
+  @@index([locationId, status])
+  @@index([stationId, status])
+  @@index([orderItemId])
+  @@index([orderId])
+  @@index([status])
+}
+
+// Issue #14 (P1/P2, v1.112.0) — dodatna usmeritev artikla na postaje (M:N):
+// MenuItem.prepStationId ostane PRIMARNA postaja; MenuItemStation doda ostale
+// (npr. burger: Grill (primarna) + Skladiščenje hladnega). Skalarne vezave brez FK.
+model MenuItemStation {
+  id         String   @id
+  menuItemId String
+  stationId  String
+  locationId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([menuItemId, stationId])
+  @@index([menuItemId])
+  @@index([stationId])
+  @@index([locationId])
 }
 
 model PriceGroup {

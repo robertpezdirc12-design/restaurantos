@@ -77,6 +77,7 @@ export const TEST_PREFIXES = [
   'i20-', // issue20-haccp-ops (v1.109.0)
   'i13-', // issue13-reservation-widget (v1.110.0)
   'i21-', // issue21-manager-call (v1.111.0)
+  'i14-', // issue14-kds-stations (v1.112.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -230,6 +231,11 @@ const LOCATION_CHILD_SWEEP = [
   // predpona živi v locationId (skalar brez FK) → lokacijski prehod počisti
   // vrstice pred brisanjem lokacije (drugače bi ostale sirote).
   'managerCall',
+  // v1.112.0 (issue #14): KDS postajne naloge + usmeritve artiklov — nid() id
+  // brez predpone, predpona živi v locationId (skalar brez FK) → lokacijski
+  // prehod počisti vrstice pred brisanjem lokacije (drugače bi ostale sirote).
+  'stationTask',
+  'menuItemStation',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }
