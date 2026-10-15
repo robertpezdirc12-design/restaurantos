@@ -2985,3 +2985,21 @@ Stage Summary:
 - 11 odprtih issue-jev (po zaprtju #13 in #21); naslednji kandidati: #14 (KDS pripravljalne postaje) / #22 (obračun plač) / #24 (etikete)
 - UPORABNIŠKI KORAKI: GitHub Actions kvota (2000/2000 min — reset 1.11. ali spending limit), VAPID rotacija, MFA vpis, FURS certifikat, DNS TXT zapisi
 - Inertni ostanki E2E na dev bazi (namerno, vzorec i13): 2 ManagerCall vrstici (E2E test) + MANAGER_CALL* revizijske vrstice
+
+---
+Task ID: v1.111.0-session (produkcijska verifikacija — dodatek)
+Agent: glavni agent (Z.ai)
+Task: Deploy veriga + DDL + živa verifikacija + zaprtje issue #21
+
+Work Log:
+- commit e264c75 pushan NA OBA remota (gitlab + github — sync.yml je disabled_manually, zato direktno)
+- Vercel git-integracija: deploy READY < 50 s → produkcija health 1.111.0/e264c750/database connected
+- DDL apliciran na produkciji (info@ ADMIN, migracijska konzola): manager-call OK; UJET in popravljen ZAMUDNIK — reservation-widget (v1.110) je bil ŠE vedno pending na produkciji → apliciran; sedaj pending: 0, allApplied: true
+- ŽIVA produkcija: GET /api/manager-call?scope=active → 200 (prazni klici + privzete nastavitve 5 min/vseh 5 tipov); GET /api/manager-call/settings → 200
+- GitHub issue #21 ZAPRT (completed) z dokaznim komentarjem 6198450507 (obseg, testi 1866/1866, živa E2E, finančna ločenost)
+- CI: Actions kvota ostaja izčrpana (2000/2000) — deploy ni blokiran (Vercel neodvisen), quality gate teče lokalno (tsc/lint/testi/secrets zeleni)
+
+Stage Summary:
+- Issue #21 ŽIV V PRODUKCIJI v1.111.0: klic vodje iz POS-a popolnoma operativen (en klik → push vodstvu → prevzem/rešitev s sledljivimi časi; eskalacija max 3 krogi; poštena dostavna evidenca; tenant izolacija; audit hash veriga)
+- 11 odprtih issue-jev; naslednji kandidati: #14 (KDS pripravljalne postaje P1/P2) / #22 (obračun plač P2) / #24 (etikete pripravljene hrane P2)
+- UPORABNIŠKI KORAKI (nespremenjeno): GitHub Actions kvota (reset 1.11. ali spending limit), VAPID rotacija, MFA vpis, FURS certifikat, DNS TXT zapisi
