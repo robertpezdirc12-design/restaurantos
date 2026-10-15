@@ -2722,3 +2722,29 @@ Stage Summary:
 - 19 odprtih issue-jev; naslednji val kandidati: #7 (alergeni — en vir resnice, P1) ali #15 (sledljivost serij, P1) ali #17 (dejanska proti teoretični porabi)
 - UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
 - Inertni ostanki na produkciji (i18 verifikacija, namenoma — revizijska sled append-only): PO-20261014-0001 partial, GRN-20261014-0001, AP-2026-0003 void osnutek, AP-2026-0004 matched open, AP-2026-0005 paid exception_approved
+
+---
+Task ID: v1.104.0-session
+Agent: glavni agent (Z.ai)
+Task: uporabnik potrdil nadaljevanje ("odlicno nadaljuj") → izveden RestaurantOS val issue #7 (P1 — alergeni iz sestavin do menija in KDS: en vir resnice in varna kontrola sprememb).
+
+Work Log:
+- STANJE: repo d1b1ea5 usklajen; produkcija v1.103.0 healthy; 19 odprtih; izbran #7 (P1, priporočilo v1.103.0)
+- INVENTURA: MenuItem/Modifier.allergens = prosto besedilo BREZ write poti; Guest.allergens mrtv; recepture obstajajo (parentRecipeItemId podrecepture, yieldPercent); javni meni = edini strežniški read; brez alergenskega opozorila v naročilnem toku
+- NOV src/lib/allergen-catalog.ts: 14 kanoničnih EU kod (Priloga II 1169/2011) + oznake SL/HR/EN + alias preslikava legacy besedila (stop-besede, "brez X" → null) + strict sanitizacija pisanja
+- NOV src/lib/allergen-profile.ts: BULK izračun profila (celotno drevo recepture — vsako vozlišče je sestavina), legacy/modifikatorji/override, status confirmed/review_required/needs_confirmation (NIKOLI lažno varno), buildAllergenSnapshots (jed ∪ izbrane opcije), flagMenuItemsForAllergenReview + menuItemIdsUsingInventoryItem
+- DDL allergen-truth: 10 stolpcev / 3 tabele (InventoryItem 4, MenuItem 5, OrderItem 2) + register (16→17) + konzola HANDLERS + KNOWN_DRIFTS (isAllergenTruthStatement, tabela-strogi matcher) + i18n mig.allergenTruth.desc SL/HR
+- RUTE: POST /api/inventory/allergens (inventory.manage; crossContact=ocena osebja; sprememba → zastavica jedi + razveljavitev potrditve brez confirm), GET/POST /api/menus/[id]/allergens (confirm/override z razlogom ≥10; odstranjene kode OSTANEJO vidne; remove neprisotne 400), PATCH /api/modifiers/[id] (samo allergens → flag prek skupin), PATCH /api/orders/[id]/allergen-warning (audit staro→novo; paid/cancelled 409); 403 → ALLERGEN_ACCESS_DENIED audit brez vrednosti
+- NAROČILA: createOrderCore snapshot (IZVEN TX) + allergenWarning ≤200; orders addItems; resolveGuestItems (QR/kiosk); mapOrderItem (warning/kode/status) → KDS; kuhinjski list ⚠ ALERGIJA + alergeni; loadPublicMenu projekcija (fallback legacy ob padcu)
+- UI: meni tab badge+kode+⚠ Alergeni gumb → NOV src/components/allergen-dialog.tsx (profil/sestavine z urejanjem+potrditvijo/override/confirm); KDS rdeče opozorilo; QR/kiosk kanonični čipi + Lahko vsebuje + ⚠ Potrebna potrditev osebja + vnos Alergija-opozorilo; handheld warning vnos; i18n ~45 ključev SL/HR (+8 EN guest)
+- LEKCIJE: (1) build-sqlite-mirror.py BRIŠE mirror-only stolpce (AccountsPayable.category + 4 ap-tolerance!) — zrcalo obnoviti iz HEAD in ročno dodati nove; (2) Matcher mora prenesti "IF NOT EXISTS" med ADD COLUMN in imenom; (3) AuditLog nima createdAt (timestamp) OrderItem pa ima — orderBy po modelu preveriti; (4) AlergenDialog MORA uporabljati api() helper (Bearer iz localStorage), surovi fetch → 401; (5) kanonični vrstni red = Priloga II (soybeans pred milk)
+- TESTI: tests/issue7-allergen-truth.test.ts ×41 → 1586/1586 sveža prisma/db/ci-fresh.db (95 datotek); tsc 0; eslint 0; check-secrets OK; števci registra 16→17 (migrations-console ×4 + stroski-ddl); TEST_PREFIXES i7-; drift-check +3 matcher testi
+- DEPLOY 7580035 → 1.104.0 ok; POPRAVEK 19a3be0 (dialog auth) → 1.104.0 ok; DDL APLICIRAN TAKOJ (10× ALTER, konzola allApplied:true pending:0, retry idempotenten)
+- ŽIVA VERIFIKACIJA (vodja@ MANAGER Ljubljana): Moka gluten + Mocarela milk+crossContact nuts → receptura Big smash burger → profil [gluten, milk] + crossContact [nuts] + viri → confirm → confirmed; override remove gluten → removedByOverride viden → clear; naročilo #700 z opozorilom → KDS ⚠ ALERGIJA + kode; PATCH opozorila + persistenca; javni QR meni kode/status; brez žetona 401; agent-browser: QR čipi SL + Lahko vsebuje + vnos opozorila; meni tab badge; dialog (status/kode/sestavine/override/confirm); KDS banner; 0 konzolnih napak
+- GitHub #7 zaprt z dokaznim komentarjem (6185870823) → 18 odprtih; GitLab usklajen prvi poskus; lokalno=origin=gitlab=19a3be0
+
+Stage Summary:
+- Produkcija v1.104.0 (19a3be0) healthy + DDL allergen-truth apliciran: alergeni imajo EN vir resnice — strukturirane kanonične kode na sestavinah (14 EU), izračun profila iz receptur z zastavico ponovne preverbe ob vsaki spremembi, potrditev odgovorne osebe z auditom, ročni popravek z izvorom (odstranjene kode ostanejo vidne), posnetek na naročilu (zgodovinska celovitost) + izrecno opozorilo vidno na KDS/tisku, enoten SL/HR prikaz po vseh površinah
+- 18 odprtih issue-jev; naslednji val kandidati: #15 (sledljivost serij P1) / #17 (varianca porabe P1/P2) / #13 (rezervacije P1/P2)
+- UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
+- Inertni ostanki i7 na produkciji (namerno): receptura Big smash burger + alergeni Moka/Mocarela + potrjen profil + naročilo #700 z opozorilom (odprto, TAKEAWAY)
