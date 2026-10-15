@@ -139,7 +139,7 @@ function RecentChecks({ checks }: { checks: HaccpT[] }) {
                   key={c.id}
                   type="button"
                   onClick={() => setDetailId(c.id)}
-                  className="text-left rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2 hover:border-emerald-400 transition-colors"
+                  className="min-w-0 text-left rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2 hover:border-emerald-400 transition-colors"
                 >
                   <div className="min-w-0">
                     <p className="font-medium truncate">
@@ -285,7 +285,7 @@ function ScheduleBoard({ onChanged }: { onChanged: () => Promise<void> }) {
                       {list.map((it) => (
                         <div
                           key={`${it.plan.id}|${it.date}`}
-                          className={`rounded-lg border p-3 flex items-start justify-between gap-3 ${
+                          className={`min-w-0 rounded-lg border p-3 flex items-start justify-between gap-3 ${
                             it.state === 'overdue' ? 'border-red-300 bg-red-50' : it.state === 'deviation' || it.state === 'awaiting_verification' ? 'border-orange-200 bg-orange-50' : 'border-stone-200 bg-white'
                           }`}
                         >
@@ -389,7 +389,7 @@ function PerformDialog({
 
   return (
     <Dialog open={occurrence !== null} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{plan?.name}</DialogTitle>
         </DialogHeader>
@@ -522,7 +522,7 @@ function EntryDetailDialog({ entryId, onClose, onChanged }: { entryId: string | 
 
   return (
     <Dialog open={entryId !== null} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {t('haccp.detail.title')}
@@ -833,7 +833,7 @@ function HaccpPlansSection() {
         ) : (
           <div className="grid gap-2">
             {plans.map((p) => (
-              <div key={p.id} className={`rounded-lg border p-3 flex items-start justify-between gap-3 ${p.active ? 'border-stone-200 bg-white' : 'border-stone-200 bg-stone-50 opacity-75'}`}>
+              <div key={p.id} className={`min-w-0 rounded-lg border p-3 flex items-start justify-between gap-3 ${p.active ? 'border-stone-200 bg-white' : 'border-stone-200 bg-stone-50 opacity-75'}`}>
                 <div className="min-w-0">
                   <p className="font-medium truncate">
                     {p.name}
@@ -869,7 +869,7 @@ function HaccpPlansSection() {
       </CardContent>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent aria-describedby={undefined} className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? t('haccpPlan.edit') : t('haccpPlan.new')}</DialogTitle>
           </DialogHeader>
