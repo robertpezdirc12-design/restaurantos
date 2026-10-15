@@ -259,6 +259,23 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
       return rows.length > 0 && rows[0].ok === true
     },
   },
+  {
+    // Issue #7 (P1, v1.104.0): alergeni — en vir resnice. 10 stolpcev na 3
+    // obstoječih tabelah (InventoryItem sestavina / MenuItem jed / OrderItem
+    // posnetek naročila). Do DDL: pisanje 503 (graceful), javni meni pade
+    // nazaj na legacy prosto besedilo (toleranten parse).
+    id: 'allergen-truth',
+    descKey: 'mig.allergenTruth.desc',
+    endpoint: '/api/admin/migrate-allergen-truth',
+    probe: () => columnsAll([
+      ['InventoryItem', 'allergens'], ['InventoryItem', 'allergensCrossContact'],
+      ['InventoryItem', 'allergensConfirmedAt'], ['InventoryItem', 'allergensConfirmedById'],
+      ['MenuItem', 'allergensOverride'], ['MenuItem', 'allergensConfirmedAt'],
+      ['MenuItem', 'allergensConfirmedById'], ['MenuItem', 'allergenReviewFlag'],
+      ['MenuItem', 'allergenReviewReason'], ['OrderItem', 'allergenSnapshot'],
+      ['OrderItem', 'allergenWarning'],
+    ]),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

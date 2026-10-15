@@ -8,6 +8,8 @@
  *  - 'simulator' — potrdi potek brez naprave (jasno označena simulacija)
  */
 
+import { allergenLabels } from '@/lib/allergen-catalog'
+
 export type PrintTarget = 'browser' | 'agent' | 'simulator'
 
 export interface PrintConfig {
@@ -158,7 +160,7 @@ export function buildKitchenTicketLines(order: {
   type?: string
   createdAt?: string
   employeeName?: string | null
-  items: { name: string; qty: number; note?: string | null; station?: string | null }[]
+  items: { name: string; qty: number; note?: string | null; station?: string | null; allergenWarning?: string | null; allergenCodes?: string[] }[]
 }, stationFilter?: 'KITCHEN' | 'BAR'): PrintLine[] {
   const now = new Date()
   const time = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
@@ -174,6 +176,14 @@ export function buildKitchenTicketLines(order: {
   out.push({ text: '--------------------------------' })
   for (const it of items) {
     out.push({ text: `${it.qty}× ${it.name}`, bold: true, size: 'large' })
+    // Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo + kode iz posnetka —
+    // kuhinja/bar ju VIDITA na tiskanem listu (enako kot KDS zaslon)
+    if (it.allergenWarning) {
+      out.push({ text: `⚠ ALERGIJA: ${it.allergenWarning}`, bold: true })
+    }
+    if (Array.isArray(it.allergenCodes) && it.allergenCodes.length > 0) {
+      out.push({ text: `   alergeni: ${allergenLabels(it.allergenCodes, 'sl')}` })
+    }
     if (it.note) out.push({ text: `   opomba: ${it.note}` })
   }
   out.push({ text: '--------------------------------' })

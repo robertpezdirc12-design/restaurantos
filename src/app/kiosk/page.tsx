@@ -16,10 +16,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, Plus, Minus, Monitor, CheckCircle2, Lock } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
+import { ALLERGEN_CODES, allergenLabel, labelToAllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
+import { parseAllergens } from '@/lib/allergens'
 
-interface ModifierOption { id: string; name: string; price: number }
+interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
-interface MenuItem { id: string; name: string; description: string; price: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string }
+interface MenuItem { id: string; name: string; description: string; price: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string; allergenCodes?: string[]; allergenCrossContact?: string[]; allergenStatus?: string }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; modifiers: ModifierOption[] }
 /** OPS-10 val 2: upsell map from /api/public/menu — { menuItemId: [suggestedId, …] } */
 interface UpsellMap { [menuItemId: string]: string[] }
@@ -44,7 +46,7 @@ export default function KioskPage() {
 }
 
 function KioskInner() {
-  const { t } = useGuestT()
+  const { t, locale } = useGuestT()
   const [token, setToken] = useState('')
   const [tokenInput, setTokenInput] = useState('')
   const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[]; upsells?: UpsellMap } | null>(null)
@@ -441,7 +443,25 @@ function KioskInner() {
               {/* OPS-9 val 3: allergens in the kiosk item detail (same format as the QR menu) */}
               <DialogHeader>
                 <DialogTitle className="text-2xl">{detail.name}</DialogTitle>
-                {detail.allergens && <p className="text-sm text-stone-400">{t('guest.menu.allergens', { allergens: detail.allergens })}</p>}
+                {/* Issue #7: kanonične kode (enoten SL/HR prikaz) + "lahko vsebuje" + status */}
+                {(() => {
+                  const set = new Set<string>(detail.allergenCodes || [])
+                  for (const raw of parseAllergens(detail.allergens)) {
+                    const code = labelToAllergenCode(raw)
+                    if (code) set.add(code)
+                  }
+                  const kLoc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : 'sl'
+                  const kLbl = (code: string) => ((ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, kLoc) : code)
+                  return (
+                    <div className="space-y-0.5">
+                      {set.size > 0 && <p className="text-sm text-stone-400">{t('guest.menu.allergens', { allergens: [...set].map(kLbl).join(', ') })}</p>}
+                      {(detail.allergenCrossContact ?? []).length > 0 && <p className="text-xs text-amber-400">⚠ {t('guest.menu.allergenMayContain', { allergens: (detail.allergenCrossContact ?? []).map(kLbl).join(', ') })}</p>}
+                      {detail.allergenStatus && detail.allergenStatus !== 'confirmed' && (
+                        <p className="text-xs text-stone-400">⚠ {detail.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
+                      )}
+                    </div>
+                  )
+                })()}
               </DialogHeader>
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (

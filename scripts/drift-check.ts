@@ -118,6 +118,35 @@ export function isApToleranceStatement(stmt: string): boolean {
   })
 }
 
+/**
+ * Issue #7 (v1.104.0): alergeni — en vir resnice. 10 stolpcev na 3 tabelah
+ * (InventoryItem 4 + MenuItem 5 + OrderItem 2). Dvosmerno (kot ap-tolerance):
+ * pred DDL jih main schema ima, baza pa ne → diff ADD COLUMN; po uporabniškem
+ * DDL (in pred umikom iz mirror/main) lahko generira DROP COLUMN. Matcher je
+ * STROG po tabeli: vsaka klavzula ADD/DROP mora biti stolpec IZ RAVNO TE
+ * tabele (InventoryItem ≠ MenuItem stolpci se mešati ne smejo).
+ */
+const ALLERGEN_TRUTH_COLUMNS: Record<string, string[]> = {
+  InventoryItem: ['allergens', 'allergensCrossContact', 'allergensConfirmedAt', 'allergensConfirmedById'],
+  MenuItem: ['allergensOverride', 'allergensConfirmedAt', 'allergensConfirmedById', 'allergenReviewFlag', 'allergenReviewReason'],
+  OrderItem: ['allergenSnapshot', 'allergenWarning'],
+}
+
+export function isAllergenTruthStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"(\w+)"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const table = m[1]
+  const allowed = ALLERGEN_TRUTH_COLUMNS[table]
+  if (!allowed) return false
+  const clauses = splitTopLevelClauses(m[2])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    // IF NOT EXISTS je dovoljen vmes (naša DDL ruta ga izdaje; prisma diff ne)
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && allowed.includes(mm[2])
+  })
+}
+
 /** Split na vejice ZUNAJ oklepajev (DECIMAL(5,2) ne razbije klavzul). */
 function splitTopLevelClauses(s: string): string[] {
   const out: string[] = []
@@ -307,6 +336,21 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'toleranc prek PUT /api/settings vrne 503. Nobena tipizirana poizvedba ' +
       'stolpcev ne uporablja (raw SQL + probe, vzorec stroski-kategorije).',
     matches: isApToleranceStatement,
+  },
+  {
+    id: 'allergen-truth',
+    reason:
+      'Alergeni — en vir resnice (v1.104.0, issue #7 P1) — 10 stolpcev na 3 obstoječih ' +
+      'tabelah (InventoryItem.allergens/allergensCrossContact/allergensConfirmedAt/ById; ' +
+      'MenuItem.allergensOverride/allergensConfirmedAt/ById/allergenReviewFlag/Reason; ' +
+      'OrderItem.allergenSnapshot/allergenWarning): produkcija čaka DDL korak — admin ruta ' +
+      '/api/admin/migrate-allergen-truth (konzola Enterprise → Shema migracije → en klik). ' +
+      'Dvosmerna faza (kot ap-tolerance): po DDL in pred uskladitvijo shem diff generira ' +
+      'DROP COLUMN. POZOR — vroče tabele (MenuItem/InventoryItem/OrderItem): v oknu ' +
+      'deploy→DDL tipizirane poizvedbe (naročila/KDS/meni) vrnejo P2022 (client pozna ' +
+      'stolpce, baza jih še ne) — DDL apliciramo TAKOJ po deployu (vzorec issue31-36/38), ' +
+      'produkcija nima živega prometa v tem oknu.',
+    matches: isAllergenTruthStatement,
   },
 ]
 

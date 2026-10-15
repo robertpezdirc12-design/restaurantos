@@ -19,12 +19,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, useGuestApiError } from '@/components/guest-i18n'
 import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergens'
+import { ALLERGEN_CODES, ALLERGEN_LABELS, allergenLabel, labelToAllergenCode, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 
-interface ModifierOption { id: string; name: string; price: number }
+interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
-interface MenuItem { id: string; name: string; description: string; price: number; vatRate: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string }
+interface MenuItem { id: string; name: string; description: string; price: number; vatRate: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string; allergenCodes?: string[]; allergenCrossContact?: string[]; allergenStatus?: string }
 interface MenuPayload { restaurant: string; tableNumber: number | null; categories: { id: string; name: string }[]; items: MenuItem[]; allergenFilterEnabled?: boolean }
-interface CartLine { key: string; item: MenuItem; qty: number; note: string; modifiers: ModifierOption[] }
+interface CartLine { key: string; item: MenuItem; qty: number; note: string; allergenWarning: string; modifiers: ModifierOption[] }
 
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 
@@ -38,7 +39,7 @@ export default function GuestMenuPage({ params }: { params: Promise<{ token: str
 
 function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
-  const { t } = useGuestT()
+  const { t, locale } = useGuestT()
   const [menu, setMenu] = useState<MenuPayload | null>(null)
   const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const [loading, setLoading] = useState(true)
@@ -49,6 +50,8 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const [detail, setDetail] = useState<MenuItem | null>(null)
   const [detailQty, setDetailQty] = useState(1)
   const [detailNote, setDetailNote] = useState('')
+  // Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo gosta (kuhinja ga VIDIA na KDS/tisku)
+  const [detailAllergenWarning, setDetailAllergenWarning] = useState('')
   const [detailMods, setDetailMods] = useState<Record<string, string[]>>({})
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -138,20 +141,36 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   }, [menu])
 
   // OPS-9 val 3: chip union across ALL menu items (stable across category switches)
+  // Issue #7: čipi so zdaj KANONIČNE KODE (enoten SL/HR prikaz prek kataloga);
+  // legacy prosto besedilo se preslika (nepreslikljive oznake NE sodelujejo v
+  // filtriranju — prikazne ostanejo pod besedilom artikla).
+  const gLoc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : 'sl'
+  const gLbl = (code: string) => ((ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, gLoc) : code)
+  const itemCodes = (it: MenuItem): string[] => {
+    const set = new Set<string>(it.allergenCodes || [])
+    for (const raw of parseAllergens(it.allergens)) {
+      const code = labelToAllergenCode(raw)
+      if (code) set.add(code)
+    }
+    return [...set]
+  }
   const allergenChips = useMemo(
-    () => (allergenFilterOn ? allergenUnion(menu?.items || [], (it) => it.allergens) : []),
-    [menu, allergenFilterOn],
+    () => (allergenFilterOn ? [...new Set((menu?.items || []).flatMap(itemCodes))] : []),
+    [menu, allergenFilterOn, gLoc],
   )
   const visibleItems = useMemo(
-    () => filterByAllergens(itemsByCat.get(activeCat) || [], (it) => it.allergens, selAllergens),
-    [itemsByCat, activeCat, selAllergens],
+    () => {
+      if (!allergenFilterOn || selAllergens.length === 0) return itemsByCat.get(activeCat) || []
+      const sel = new Set(selAllergens)
+      return (itemsByCat.get(activeCat) || []).filter((it) => !itemCodes(it).some((c) => sel.has(c)))
+    },
+    [itemsByCat, activeCat, selAllergens, allergenFilterOn],
   )
 
-  const toggleAllergen = (label: string) => {
+  const toggleAllergen = (code: string) => {
     setSelAllergens((prev) => {
-      const key = label.toLowerCase()
-      const has = prev.some((x) => x.toLowerCase() === key)
-      return has ? prev.filter((x) => x.toLowerCase() !== key) : [...prev, label]
+      const has = prev.includes(code)
+      return has ? prev.filter((x) => x !== code) : [...prev, code]
     })
   }
 
@@ -176,6 +195,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     setDetail(it)
     setDetailQty(1)
     setDetailNote('')
+    setDetailAllergenWarning('')
     const init: Record<string, string[]> = {}
     for (const g of it.modifierGroups) if (g.required && g.minSelect > 0 && g.options.length) init[g.id] = [g.options[0].id]
     setDetailMods(init)
@@ -196,7 +216,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
       if (g.required && (detailMods[g.id] || []).length < Math.max(1, g.minSelect)) return
     }
     const mods = detail.modifierGroups.flatMap((g) => (detailMods[g.id] || []).map((mid) => g.options.find((o) => o.id === mid)!).filter(Boolean))
-    setCart((prev) => [...prev, { key: `${detail.id}-${Date.now()}`, item: detail, qty: detailQty, note: detailNote.trim(), modifiers: mods }])
+    setCart((prev) => [...prev, { key: `${detail.id}-${Date.now()}`, item: detail, qty: detailQty, note: detailNote.trim(), allergenWarning: detailAllergenWarning.trim(), modifiers: mods }])
     setDetail(null)
   }
 
@@ -216,6 +236,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
             menuItemId: l.item.id,
             qty: l.qty,
             note: l.note || undefined,
+            allergenWarning: l.allergenWarning || undefined,
             modifierIds: l.modifiers.map((m) => m.id),
           })),
         }),
@@ -408,7 +429,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
             <p className="text-xs font-semibold text-stone-500 mb-2">{t('guest.menu.allergenFilter')}</p>
             <div className="flex flex-wrap gap-2">
               {allergenChips.map((label) => {
-                const on = selAllergens.some((x) => x.toLowerCase() === label.toLowerCase())
+                const on = selAllergens.includes(label)
                 return (
                   <button
                     key={label}
@@ -417,7 +438,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                     onClick={() => toggleAllergen(label)}
                     className={`min-h-11 rounded-full border px-3.5 text-sm font-medium transition-colors ${on ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`}
                   >
-                    {label}
+                    {gLbl(label)}
                   </button>
                 )
               })}
@@ -452,7 +473,19 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
               <div className="min-w-0">
                 <p className="font-semibold text-stone-900">{it.name}</p>
                 {it.description && <p className="text-sm text-stone-500 line-clamp-2 mt-0.5">{it.description}</p>}
-                {it.allergens && <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergens', { allergens: it.allergens })}</p>}
+                {/* Issue #7: kanonične kode (enoten SL/HR prikaz) + status — nikoli lažno "brez alergenov" */}
+                {itemCodes(it).length > 0 && (
+                  <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergens', { allergens: itemCodes(it).map(gLbl).join(', ') })}</p>
+                )}
+                {(it.allergenCrossContact ?? []).length > 0 && (
+                  <p className="text-[11px] text-amber-700 mt-0.5">{t('guest.menu.allergenMayContain', { allergens: (it.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
+                )}
+                {it.allergenStatus && it.allergenStatus !== 'confirmed' && (
+                  <p className="text-[11px] text-stone-500 mt-0.5">⚠ {it.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
+                )}
+                {itemCodes(it).length === 0 && it.allergenStatus === 'confirmed' && (
+                  <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergenNoneKnown')}</p>
+                )}
                 {!it.isAvailable && <p className="text-xs text-red-500 mt-1 font-medium">{t('guest.common.unavailableNow')}</p>}
               </div>
               <span className="shrink-0 font-bold text-stone-900">{fmt(it.price)}</span>
@@ -494,6 +527,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                           <p className="text-xs text-stone-500">+ {l.modifiers.map((m) => m.name).join(', ')}</p>
                         )}
                         {l.note && <p className="text-xs text-stone-400 italic">{l.note}</p>}
+                        {l.allergenWarning && <p className="text-xs text-red-700 font-medium">⚠ {l.allergenWarning}</p>}
                       </div>
                       <span className="font-semibold shrink-0">{fmt(lineTotal(l))}</span>
                     </div>
@@ -538,15 +572,27 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
               <DialogHeader>
                 <DialogTitle>{detail.name}</DialogTitle>
                 {detail.description && <p className="text-sm text-stone-500">{detail.description}</p>}
-                {/* OPS-9 val 3: allergen badges in the item detail */}
-                {parseAllergens(detail.allergens).length > 0 && (
+                {/* Issue #7: kanonične kode + "lahko vsebuje" + status + alergeni dodatkov */}
+                {itemCodes(detail).length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span className="text-xs font-medium text-stone-500">{t('guest.menu.allergenFilter')}:</span>
-                    {parseAllergens(detail.allergens).map((a) => (
-                      <Badge key={a} variant="outline" className="text-[11px] border-stone-300 text-stone-600">{a}</Badge>
+                    {itemCodes(detail).map((code) => (
+                      <Badge key={code} variant="outline" className="text-[11px] border-stone-300 text-stone-600">{gLbl(code)}</Badge>
                     ))}
                   </div>
                 )}
+                {(detail.allergenCrossContact ?? []).length > 0 && (
+                  <p className="text-[11px] text-amber-700">⚠ {t('guest.menu.allergenMayContain', { allergens: (detail.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
+                )}
+                {detail.allergenStatus && detail.allergenStatus !== 'confirmed' && (
+                  <p className="text-[11px] text-stone-500">⚠ {detail.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
+                )}
+                {(() => {
+                  const modCodes = [...new Set(detail.modifierGroups.flatMap((g) => (g.options ?? []).flatMap((o) => o.allergenCodes || [])))]
+                  return modCodes.length > 0 ? (
+                    <p className="text-[11px] text-stone-500">{t('guest.menu.allergenModifier', { allergens: modCodes.map(gLbl).join(', ') })}</p>
+                  ) : null
+                })()}
               </DialogHeader>
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (
@@ -573,6 +619,11 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 <div>
                   <label className="text-xs font-medium text-stone-500">{t('guest.common.noteKitchen')}</label>
                   <Input value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.menu.notePlaceholder')} maxLength={200} />
+                </div>
+                {/* Issue #7: izrecno alergensko opozorilo — preide na postavko naročila (KDS + tisk) */}
+                <div>
+                  <label className="text-xs font-medium text-red-700">⚠ {t('guest.order.allergenWarningLabel')}</label>
+                  <Input value={detailAllergenWarning} onChange={(e) => setDetailAllergenWarning(e.target.value)} placeholder={t('guest.order.allergenWarningPlaceholder')} maxLength={200} className="border-red-200 focus-visible:ring-red-300" />
                 </div>
                 <div className="flex items-center gap-3">
                   <Button variant="outline" size="icon" onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-4 w-4" /></Button>

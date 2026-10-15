@@ -7,6 +7,23 @@
  */
 import { randomUUID } from 'crypto'
 
+/**
+ * Issue #7 (P1, v1.104.0): toleranten parse alergenskega posnetka OrderItem
+ * (LOKALNA čista funkcija — map.ts NE SME uvažati db verige; vzorec nid).
+ */
+function parseAllergenSnapshotLocal(raw: string | null | undefined): { codes?: unknown; status?: unknown } {
+  if (!raw) return {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as { codes?: unknown; status?: unknown }
+    }
+  } catch {
+    /* posnetek manjka/pokvarjen → prazno (nikoli ne meče) */
+  }
+  return {}
+}
+
 /** Nov ID za create (produkcijska shema ima String @id brez defaultov) */
 export function nid(): string {
   return randomUUID().replace(/-/g, '').slice(0, 25)
@@ -259,6 +276,9 @@ export function mapCategory(c: Row) {
 }
 
 export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: string } | null } | null }) {
+  // Issue #7 (P1, v1.104.0): alergenski posnetek postavke (kode ob nastanku —
+  // tolerantno iz JSON niza) + izrecno opozorilo (gost/osebje) za KDS/bar/tisk
+  const allergenSnap = parseAllergenSnapshotLocal(it.allergenSnapshot as string | null | undefined)
   return {
     id: it.id as string,
     name: (it.menuItemName as string) || 'Artikel',
@@ -268,6 +288,13 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
     status: itemStatusToUI(it.status as string),
     station: stationToUI(it.menuItem?.prepStation?.type),
     note: (it.notes as string) || null,
+    // Issue #7: ⚠ izrecno alergensko opozorilo — VEDNO vidno na KDS (preživi premik/osvežitev)
+    allergenWarning: (it.allergenWarning as string) || '',
+    // Issue #7: kode iz posnetka ob nastanku (zgodovina se ne spremeni s kasnejšim receptom)
+    allergenCodes: Array.isArray(allergenSnap.codes)
+      ? (allergenSnap.codes as unknown[]).filter((c): c is string => typeof c === 'string')
+      : [],
+    allergenStatus: typeof allergenSnap.status === 'string' ? allergenSnap.status : null,
     voided: it.voided === true,
     // OPS-7 coursing (v1.68.0): tečaj postavke (Course) — za urejevalnik naročila
     courseId: (it.courseId as string | null | undefined) ?? null,

@@ -12,6 +12,8 @@ import { db } from '@/lib/db'
 import { nid, num } from '@/lib/map'
 import { rateLimitBoolAsync as rateLimitPublic } from '@/lib/rate-limit'
 import { loadModifierContext, validateItemModifiers } from '@/lib/modifiers'
+import { parseAllergenCodes } from '@/lib/allergen-catalog'
+import { getMenuItemAllergenProfiles, sanitizeAllergenWarning, type AllergenProfile } from '@/lib/allergen-profile'
 
 // Issue #4 §6: rate limiting je ZDAJ skupni modul z omejenim pomnilnikom + TTL
 // (prej: lokalna Map brez TTL čiščenja). Public API ostaja kompatibilen.
@@ -60,6 +62,12 @@ export async function loadPublicMenu(locationId: string) {
     // OPS-9 val 3: gate for the QR-menu allergen filter (RestaurantSettings singleton)
     db.restaurantSettings.findFirst({ select: { allergenFilterEnabled: true } }),
   ])
+  // Issue #7 (P1, v1.104.0): strukturirani kanonični alergeni (kode iz kataloga) —
+  // en vir resnice (sestavine recepture ∪ legacy preslikano − override). Padec
+  // izračuna (npr. pred DDL) NE podre javnega menija — pade nazaj na legacy niz.
+  const allergenProfiles = await getMenuItemAllergenProfiles(items.map((i) => i.id)).catch(
+    () => new Map<string, AllergenProfile>(),
+  )
   const links = items.length
     ? await db.menuItemModifierGroup.findMany({ where: { menuItemId: { in: items.map((i) => i.id) } } })
     : []
@@ -82,6 +90,7 @@ export async function loadPublicMenu(locationId: string) {
     // explicit false in RestaurantSettings hides the chips on the guest page
     allergenFilterEnabled: settings?.allergenFilterEnabled !== false,
     items: items.map((i) => {
+      const profile = allergenProfiles.get(i.id)
       const groupIds = (linksByItem.get(i.id) || [])
         .map((gid) => groupById.get(gid))
         .filter((g): g is NonNullable<typeof g> => !!g)
@@ -95,6 +104,11 @@ export async function loadPublicMenu(locationId: string) {
         isAvailable: i.isAvailable,
         image: i.image || '',
         allergens: i.allergens || '',
+        // Issue #7: strukturirani alergeni (kanonične kode + status — NIKOLI
+        // lažno "brez alergenov": needs_confirmation pokaže opozorilo osebja)
+        allergenCodes: profile?.codes ?? [],
+        allergenCrossContact: profile?.crossContact ?? [],
+        allergenStatus: profile?.status ?? 'needs_confirmation',
         categoryId: i.categoryId,
         modifierGroups: groupIds.map((g) => ({
           id: g.id,
@@ -104,7 +118,13 @@ export async function loadPublicMenu(locationId: string) {
           maxSelect: g.maxSelect,
           options: (modsByGroup.get(g.id) || [])
             .filter((m) => m.isAvailable)
-            .map((m) => ({ id: m.id, name: m.name, price: num(m.price) })),
+            .map((m) => ({
+              id: m.id,
+              name: m.name,
+              price: num(m.price),
+              // Issue #7: alergeni dodatka (opcija spremeni profil NAROČENE postavke)
+              allergenCodes: parseAllergenCodes(m.allergens).codes,
+            })),
         })),
       }
     }),
@@ -116,6 +136,8 @@ export interface GuestItemInput {
   menuItemId: string
   qty?: number
   note?: string
+  /** Issue #7 (P1): izrecno alergensko opozorilo gosta (≤ 200) — viden na KDS + kuhinjskem listu */
+  allergenWarning?: string
   modifierIds?: string[]
 }
 
@@ -131,6 +153,7 @@ export interface ResolvedItem {
   menuItemId: string
   qty: number
   note: string
+  allergenWarning: string
   price: number
   vatRate: number
   modifiers: ResolvedModifier[]
@@ -178,6 +201,7 @@ export async function resolveGuestItems(
       menuItemId: mi.id,
       qty,
       note: String(item.note || '').slice(0, 200),
+      allergenWarning: sanitizeAllergenWarning(item.allergenWarning),
       price: num(mi.price),
       vatRate: num(mi.vatRate, 22),
       modifiers: v.resolved,

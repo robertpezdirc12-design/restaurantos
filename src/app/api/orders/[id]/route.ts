@@ -6,6 +6,7 @@ import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/li
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals } from '@/lib/ops'
+import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import type { Prisma } from '@prisma/client'
 
 const orderInclude = {
@@ -175,7 +176,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         Category: { Menu: { locationId: order.locationId } },
       },
     })
-    const rows = body.addItems.map((i: { menuItemId: string; qty?: number; note?: string }) => {
+    // Issue #7 (P1, v1.104.0): posnetek alergenskih informacij za dodane postavke
+    // (brez modifikatorjev — ta pot jih ne podpira; kode jedi ob dodajanju).
+    const allergenSnapshots = await buildAllergenSnapshots(
+      body.addItems.map((i: { menuItemId: string }) => ({ menuItemId: i.menuItemId, chosenModifierIds: [] }))
+    ).catch(() => body.addItems.map(() => '{}'))
+    const rows = body.addItems.map((i: { menuItemId: string; qty?: number; note?: string; allergenWarning?: string }, itemIdx: number) => {
       const mi = menuItems.find((m) => m.id === i.menuItemId)
       if (!mi) throw new Error(`Artikel ni na voljo na tej lokaciji (${i.menuItemId}).`)
       const qty = Math.max(1, Math.round(Number(i.qty) || 1))
@@ -193,6 +199,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         menuItemName: mi.name,
         status: itemStatusToDB('PENDING'),
         notes: i.note || '',
+        allergenSnapshot: allergenSnapshots[itemIdx] || '{}',
+        allergenWarning: sanitizeAllergenWarning(i.allergenWarning),
       }
     })
     // R5 popravek (P0 audit) + Issue #48: createMany + recalcTotals + update v ISTI

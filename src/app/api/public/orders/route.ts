@@ -87,6 +87,8 @@ export async function POST(req: NextRequest) {
         menuItemId: i.menuItemId,
         qty: i.qty,
         note: i.note,
+        // Issue #7 (P1): izrecno alergensko opozorilo gosta → postavka + KDS + tisk
+        allergenWarning: i.allergenWarning,
         modifiers: i.modifiers,
       })),
       note: [notePrefix, customerName ? `Gost: ${customerName}` : ''].filter(Boolean).join(' · '),

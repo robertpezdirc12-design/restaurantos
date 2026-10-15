@@ -23,6 +23,7 @@ import { mapOrder, nid, num, r2, orderTypeToDB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
 import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
 import { publishEvent } from '@/lib/events'
+import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 
 export const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -63,6 +64,8 @@ export interface CreateOrderInput {
     menuItemId: string
     qty?: number
     note?: string
+    /** Issue #7: izrecno alergensko opozorilo (gost prijavi alergijo / osebje) — ≤ 200 */
+    allergenWarning?: string
     /** Issue #3: opcije/modifierji — cene se štejejo v linijo, vrste se zapišejo v OrderItemModifier */
     modifiers?: { modifierId: string; name: string; price: number; groupName?: string; modifierGroupId?: string }[]
   }[]
@@ -188,9 +191,19 @@ export async function createOrderCore(
     }
   }
 
+  // Issue #7 (P1, v1.104.0): posnetek alergenskih informacij OB NASTANKU naročila
+  // (kode jedi ∪ kode IZBRANIH opcij; kasnejša sprememba recepta NE spremeni
+  // zgodovine). Izračun IZVEN transakcije (branje, pred TX spodaj).
+  const allergenSnapshots = await buildAllergenSnapshots(
+    input.items.map((i) => ({
+      menuItemId: i.menuItemId,
+      chosenModifierIds: (i.modifiers || []).map((m) => String(m.modifierId || '')).filter(Boolean),
+    }))
+  ).catch(() => input.items.map(() => '{}'))
+
   let subtotal = 0
   let tax = 0
-  const itemRows = input.items.map((i) => {
+  const itemRows = input.items.map((i, itemIdx) => {
     const mi = visibleItems.find((m) => m.id === i.menuItemId)
     if (!mi) {
       throw new OrderError(
@@ -235,6 +248,9 @@ export async function createOrderCore(
       status: 'pending' as const,
       notes: i.note || '',
       modifiersJson: '[]',
+      // Issue #7: posnetek (kode/status ob nastanku) + izrecno opozorilo postavke
+      allergenSnapshot: allergenSnapshots[itemIdx] || '{}',
+      allergenWarning: sanitizeAllergenWarning(i.allergenWarning),
       mods,
     }
   })

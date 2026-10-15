@@ -4,6 +4,7 @@ import {
   isIssue13Statement,
   isIssue38EventTenantStatement,
   isStroskiKategorijeStatement,
+  isAllergenTruthStatement,
   parseStatements,
   KNOWN_DRIFTS,
 } from '../scripts/drift-check'
@@ -223,5 +224,39 @@ describe('drift-check: isIssue38EventTenantStatement (v1.100.0, issue #38)', () 
     expect(cls.known[0].reason).toContain('/api/admin/migrate-issue38')
     const ids = KNOWN_DRIFTS.map((k) => k.id)
     expect(ids).toContain('issue38-event-tenant')
+  })
+})
+
+describe('drift-check: isAllergenTruthStatement (v1.104.0, issue #7)', () => {
+  const INV_ADD = 'ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "allergens" TEXT NOT NULL DEFAULT \'[]\''
+  const MI_ADD = 'ALTER TABLE "MenuItem" ADD COLUMN IF NOT EXISTS "allergenReviewFlag" BOOLEAN NOT NULL DEFAULT false'
+  const OI_ADD = 'ALTER TABLE "OrderItem" ADD COLUMN IF NOT EXISTS "allergenWarning" TEXT NOT NULL DEFAULT \'\''
+  const MI_DROP = 'ALTER TABLE "MenuItem" DROP COLUMN "allergensOverride"'
+
+  test('ADD/DROP za dovoljene stolpce → znani (vse 3 tabele)', () => {
+    expect(isAllergenTruthStatement(INV_ADD)).toBe(true)
+    expect(isAllergenTruthStatement(MI_ADD)).toBe(true)
+    expect(isAllergenTruthStatement(OI_ADD)).toBe(true)
+    expect(isAllergenTruthStatement(MI_DROP)).toBe(true)
+  })
+
+  test('stolpec iz DRUGE tabele / tuja tabela / neznana klavzula → NI znana', () => {
+    expect(isAllergenTruthStatement('ALTER TABLE "MenuItem" ADD COLUMN "allergens" TEXT')).toBe(false) // InventoryItem stolpec
+    expect(isAllergenTruthStatement('ALTER TABLE "OrderItem" ADD COLUMN "allergenReviewFlag" BOOLEAN')).toBe(false) // MenuItem stolpec
+    expect(isAllergenTruthStatement('ALTER TABLE "PayLink" ADD COLUMN "allergens" TEXT')).toBe(false)
+    expect(isAllergenTruthStatement('DROP TABLE "MenuItem";')).toBe(false)
+    expect(isAllergenTruthStatement('ALTER TABLE "MenuItem" RENAME COLUMN "allergensOverride" TO "x"')).toBe(false)
+  })
+
+  test('classifyDrift + register vsebuje allergen-truth z DDL korakom', () => {
+    for (const stmt of [INV_ADD, MI_ADD, OI_ADD, MI_DROP]) {
+      const cls = classifyDrift(`-- AlterTable\n${stmt};\n`)
+      expect(cls.unexpected).toHaveLength(0)
+      expect(cls.known).toHaveLength(1)
+      expect(cls.known[0].id).toBe('allergen-truth')
+      expect(cls.known[0].reason).toContain('/api/admin/migrate-allergen-truth')
+    }
+    const ids = KNOWN_DRIFTS.map((k) => k.id)
+    expect(ids).toContain('allergen-truth')
   })
 })

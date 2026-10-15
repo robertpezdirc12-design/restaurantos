@@ -1072,6 +1072,14 @@ model InventoryItem {
   leadTimeDays         Int?
   reorderPoint         Decimal?               @db.Decimal(12, 3)
   safetyStock          Decimal?               @db.Decimal(12, 3)
+  // Issue #7 (P1, v1.104.0) — strukturirani alergeni SESTAVINE (kanonične kode
+  // iz src/lib/allergen-catalog.ts, JSON niz). Ločeno navzkrižna kontaminacija
+  // ("lahko vsebuje" — izključno ocena odgovorne osebe, nikoli izpeljana).
+  // Potrditev: kdaj + kdo (allergensConfirmedById = Employee id).
+  allergens               String                 @default("[]")
+  allergensCrossContact   String                 @default("[]")
+  allergensConfirmedAt    DateTime?
+  allergensConfirmedById  String?
   BatchPreparation     BatchPreparation[]
   BatchPreparationLine BatchPreparationLine[]
   InventoryBatch       InventoryBatch[]
@@ -1384,6 +1392,16 @@ model MenuItem {
   sortOrder             Int                     @default(0)
   vatRate               Decimal                 @default(22.00) @db.Decimal(5, 2)
   allergens             String                  @default("")
+  // Issue #7 (P1, v1.104.0) — ročni popravek (override) IZVOR+RAZLOG+KDRO+KDaj;
+  // allergensOverride JSON: { add: kode[], remove: kode[], reason, confirmedById,
+  // confirmedByName, confirmedAt }. Odstranjene izpeljene kode ostanejo vidne
+  // (removedByOverride — tiho izničenje je prepovedano). allergenReviewFlag:
+  // sprememba recepture/modifikatorja/sestavine označi jed za ponovno preverbo.
+  allergensOverride       String?
+  allergensConfirmedAt    DateTime?
+  allergensConfirmedById  String?
+  allergenReviewFlag      Boolean                 @default(false)
+  allergenReviewReason    String                  @default("")
   categoryId            String
   salesCategoryId       String?
   priceGroupId          String?
@@ -1592,6 +1610,11 @@ model OrderItem {
   vatAmount         Decimal             @default(0) @db.Decimal(12, 2)
   notes             String              @default("")
   modifiersJson     String              @default("[]")
+  // Issue #7 (P1, v1.104.0) — POSNETEK alergenskih informacij OB NASTANKU
+  // naročila (kasnejša sprememba recepta NE spremeni zgodovine) + izrecno
+  // opozorilo (gost prijavi alergijo / osebje doda) — viden na KDS/štampiljki.
+  allergenSnapshot  String              @default("{}")
+  allergenWarning   String              @default("")
   menuItemName      String              @default("")
   voided            Boolean             @default(false)
   voidReasonId      String?

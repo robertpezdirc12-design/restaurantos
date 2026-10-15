@@ -1079,6 +1079,12 @@ model InventoryItem {
   leadTimeDays         Int?
   reorderPoint         Decimal?               
   safetyStock          Decimal?               
+  // Issue #7 (P1, v1.104.0) — strukturirani alergeni SESTAVINE (kanonične kode;
+  // "lahko vsebuje" = ocena osebja; potrditev kdaj+kdo)
+  allergens               String                 @default("[]")
+  allergensCrossContact   String                 @default("[]")
+  allergensConfirmedAt    DateTime?
+  allergensConfirmedById  String?
   BatchPreparation     BatchPreparation[]
   BatchPreparationLine BatchPreparationLine[]
   InventoryBatch       InventoryBatch[]
@@ -1391,6 +1397,13 @@ model MenuItem {
   sortOrder             Int                     @default(0)
   vatRate               Decimal                 @default(22.00) 
   allergens             String                  @default("")
+  // Issue #7 (P1, v1.104.0) — ročni popravek (izvor+razlog+kdo+kdaj) + potrditev
+  // profila + zastavica ponovne preverbe (sprememba recepture/modifikatorja/sestavine)
+  allergensOverride       String?
+  allergensConfirmedAt    DateTime?
+  allergensConfirmedById  String?
+  allergenReviewFlag      Boolean                 @default(false)
+  allergenReviewReason    String                  @default("")
   categoryId            String
   salesCategoryId       String?
   priceGroupId          String?
@@ -1599,6 +1612,10 @@ model OrderItem {
   vatAmount         Decimal             @default(0) 
   notes             String              @default("")
   modifiersJson     String              @default("[]")
+  // Issue #7 (P1, v1.104.0) — posnetek alergenskih informacij OB NASTANKU +
+  // izrecno opozorilo (gost/osebje) — viden na KDS + kuhinjskem listu
+  allergenSnapshot  String              @default("{}")
+  allergenWarning   String              @default("")
   menuItemName      String              @default("")
   voided            Boolean             @default(false)
   voidReasonId      String?

@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, requireUserLocation, isCentralRole, isR
 import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapMenuItem, mapCategory, nid, num, jstr, stationToUI } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
+import { getMenuItemAllergenProfiles } from '@/lib/allergen-profile'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -30,8 +31,23 @@ export async function GET(req: NextRequest) {
       orderBy: { sortOrder: 'asc' }, take: 200,
     }),
   ])
+  // Issue #7 (P1, v1.104.0): BULK alergenski profili za prikaz stanja v meni tabu
+  const allergenSummaries = await getMenuItemAllergenProfiles(items.map((m) => m.id)).catch(
+    () => new Map<string, { codes: string[]; status: 'confirmed' | 'review_required' | 'needs_confirmation'; reviewFlag: boolean }>(),
+  )
   return ok({
-    items: items.map((m) => mapMenuItem({ ...m, prepStation: m.PrepStation })),
+    items: items.map((m) => {
+      // Issue #7 (P1, v1.104.0): alergenski povzetek artiklov (status + kode +
+      // zastavica) — meni tab prikaže stanje in odpre dialog za potrditev/popravek.
+      // Padec izračuna (pred DDL) NE podre seznama — povzetek manjka, UI degradira.
+      const p = allergenSummaries.get(m.id)
+      return {
+        ...mapMenuItem({ ...m, prepStation: m.PrepStation }),
+        allergenStatus: p?.status ?? 'needs_confirmation',
+        allergenCodes: p?.codes ?? [],
+        allergenReviewFlag: p?.reviewFlag ?? false,
+      }
+    }),
     categories: categories.map(mapCategory),
   })
 }

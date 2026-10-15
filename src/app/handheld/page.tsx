@@ -77,6 +77,8 @@ function HandheldInner() {
   const [guests, setGuests] = useState(2)
   const [cart, setCart] = useState<Record<string, number>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
+  // Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo na postavki (gost prijavi alergijo)
+  const [allergenNotes, setAllergenNotes] = useState<Record<string, string>>({})
   const [noteOpen, setNoteOpen] = useState<string | null>(null)
   const [cat, setCat] = useState('ALL')
   const [search, setSearch] = useState('')
@@ -216,6 +218,7 @@ function HandheldInner() {
     const itemsPayload = Object.entries(cart).map(([menuItemId, qty]) => ({
       menuItemId, qty,
       ...(notes[menuItemId]?.trim() ? { note: notes[menuItemId].trim() } : {}),
+      ...(allergenNotes[menuItemId]?.trim() ? { allergenWarning: allergenNotes[menuItemId].trim().slice(0, 200) } : {}),
     }))
     setSending(true); setNotice('')
     const clientOperationId = newOperationId()
@@ -223,12 +226,12 @@ function HandheldInner() {
       // v1.86.2: centralna vloga brez lokacije (ADMIN loc=null) pošlje lokacijo IZ MIZE —
       // requireUserLocation jo sprejme; osebje s lokacijo je strežnik ignorira (user.loc zmaga)
       await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: selTable.id, items: itemsPayload, guests, clientOperationId, locationId: selTable.locationId || undefined }) })
-      setCart({}); setNotes({}); setNoteOpen(null)
+      setCart({}); setNotes({}); setAllergenNotes({}); setNoteOpen(null)
       await load()
     } catch (err) {
       if (isNetworkError(err)) {
         enqueueOp('order.create', { tableId: selTable.id, items: itemsPayload, guests, note: '', locationId: selTable.locationId || undefined }, clientOperationId)
-        setCart({}); setNotes({}); setNoteOpen(null); setView('tables'); setSelTableId(null)
+        setCart({}); setNotes({}); setAllergenNotes({}); setNoteOpen(null); setView('tables'); setSelTableId(null)
         setNotice(t('tlb.queued'))
       } else setNotice((err as Error).message)
     } finally { setSending(false) }
@@ -239,6 +242,7 @@ function HandheldInner() {
     const addItems = Object.entries(cart).map(([menuItemId, qty]) => ({
       menuItemId, qty,
       ...(notes[menuItemId]?.trim() ? { note: notes[menuItemId].trim() } : {}),
+      ...(allergenNotes[menuItemId]?.trim() ? { allergenWarning: allergenNotes[menuItemId].trim().slice(0, 200) } : {}),
     }))
     setSending(true); setNotice('')
     const clientOperationId = newOperationId()
@@ -516,15 +520,25 @@ function HandheldInner() {
                         <button aria-label={t('hh.note')} onClick={() => setNoteOpen(noteOpen === id ? null : id)} className={`w-9 h-9 rounded-lg flex items-center justify-center ${notes[id]?.trim() ? 'bg-emerald-700 text-white' : 'bg-stone-100 active:bg-stone-200'}`}><MessageSquare className="w-4 h-4" /></button>
                       </div>
                       {noteOpen === id && (
-                        <div className="flex items-center gap-2 mt-1.5">
+                        <div className="space-y-1.5 mt-1.5">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={notes[id] ?? ''}
+                              onChange={(e) => setNotes((p) => ({ ...p, [id]: e.target.value }))}
+                              placeholder={t('hh.notePlaceholder')}
+                              className="min-h-11 text-sm"
+                              maxLength={80}
+                            />
+                            <button onClick={() => { setNotes((p) => { const nx = { ...p }; delete nx[id]; return nx }); setNoteOpen(null) }} className="text-xs text-stone-500 underline min-h-11 px-1 shrink-0">{t('hh.remove')}</button>
+                          </div>
+                          {/* Issue #7: izrecno alergensko opozorilo (rdeče) — viden na KDS + tisku */}
                           <Input
-                            value={notes[id] ?? ''}
-                            onChange={(e) => setNotes((p) => ({ ...p, [id]: e.target.value }))}
-                            placeholder={t('hh.notePlaceholder')}
-                            className="min-h-11 text-sm"
-                            maxLength={80}
+                            value={allergenNotes[id] ?? ''}
+                            onChange={(e) => setAllergenNotes((p) => ({ ...p, [id]: e.target.value }))}
+                            placeholder={t('hh.allergenWarningPlaceholder')}
+                            className="min-h-11 text-sm border-red-200 focus-visible:ring-red-300 text-red-800"
+                            maxLength={200}
                           />
-                          <button onClick={() => { setNotes((p) => { const nx = { ...p }; delete nx[id]; return nx }); setNoteOpen(null) }} className="text-xs text-stone-500 underline min-h-11 px-1 shrink-0">{t('hh.remove')}</button>
                         </div>
                       )}
                     </div>

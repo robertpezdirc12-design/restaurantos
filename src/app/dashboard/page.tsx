@@ -66,6 +66,8 @@ import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type Ter
 import { PERMISSION_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
+import { AllergenDialog } from '@/components/allergen-dialog'
+import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
   InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
@@ -84,9 +86,9 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
-interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
+interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 /** OPS-8 val 3 (v1.73.0): + email/duration/specialRequests/source (additive API fields) */
@@ -1057,7 +1059,7 @@ function DashboardInner() {
       tableName: o.table?.name || null,
       type: o.type,
       employeeName: o.employee?.name || null,
-      items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station })),
+      items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [] })),
     }, station))
     if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
     else if (res.simulated) alert(station === 'BAR' ? t('print.simBar') : t('print.simKitchen'))
@@ -1261,6 +1263,11 @@ function DashboardInner() {
   const kdsPrevPendingRef = useRef(0)
   // OPS-9 val 3 (v1.76.0): delay-reason dialog — opens when a LATE item (>10 min) is bumped
   const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
+  // Issue #7 (P1, v1.104.0): alergenski dialog (meni tab → potrditev/popravek profila)
+  const [allergenDlg, setAllergenDlg] = useState<{ id: string; name: string } | null>(null)
+  const allergenLocale: AllergenLocale = locale === 'hr' ? 'hr' : 'sl'
+  const allergenLbl = (code: string) =>
+    (ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, allergenLocale) : code
   const [saleCart, setSaleCart] = useState<Record<string, number>>({})
   const [saleCat, setSaleCat] = useState('ALL')
   const [saleSearch, setSaleSearch] = useState('')
@@ -1940,6 +1947,16 @@ function DashboardInner() {
                           <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
                             <div className="min-w-0">
                               <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge></p>
+                              {/* Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo — VIDNO vedno (preživi premik/osvežitev) */}
+                              {it.allergenWarning && (
+                                <p className="mt-0.5 rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</p>
+                              )}
+                              {(it.allergenCodes ?? []).length > 0 && (
+                                <p className="text-[11px] text-stone-600">{t('kds.allergenCodes')}: {(it.allergenCodes ?? []).map(allergenLbl).join(', ')}</p>
+                              )}
+                              {it.allergenStatus && it.allergenStatus !== 'confirmed' && !it.allergenWarning && (
+                                <p className="text-[11px] text-amber-700">⚠ {t('kds.allergenUnconfirmed')}</p>
+                              )}
                               {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
                             </div>
                             <div className="flex gap-1.5 shrink-0 items-center">
@@ -2006,6 +2023,16 @@ function DashboardInner() {
             </Dialog>
           </TabsContent>
 
+          {/* Issue #7 (P1, v1.104.0): alergenski dialog (potrditev profila / ročni popravek / sestavine) */}
+          <AllergenDialog
+            itemId={allergenDlg?.id ?? null}
+            itemName={allergenDlg?.name ?? ''}
+            canManageMenu={hasPerm('menu.manage')}
+            canManageInventory={hasPerm('inventory.manage')}
+            onClose={() => setAllergenDlg(null)}
+            onChanged={() => void load()}
+          />
+
           <TabsContent value="meni" className="space-y-4">
             {/* OPS-10 val 2 (v1.78.0): per-item kiosk upsell suggestions ("Dodaj še") */}
             <UpsellCard menuItems={menu.map((m) => ({ id: m.id, name: m.name, price: m.price, available: m.available }))} canManage={hasPerm('menu.manage')} />
@@ -2015,8 +2042,31 @@ function DashboardInner() {
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {g.items.map((m) => (
                     <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0"><p className="font-medium truncate">{m.name}</p><p className="text-sm text-stone-500">{fmtEUR(m.price)} · {m.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</p></div>
-                      <Button size="sm" variant={m.available ? 'outline' : 'secondary'} onClick={() => toggleAvailable(m)}>{m.available ? t('menu.inStock') : t('menu.outOfStock')}</Button>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{m.name}</p>
+                        <p className="text-sm text-stone-500">{fmtEUR(m.price)} · {m.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</p>
+                        {/* Issue #7 (P1, v1.104.0): alergenski status + kode na kartici menija */}
+                        <p className="mt-0.5 flex flex-wrap items-center gap-1">
+                          {m.allergenStatus && (
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                              m.allergenStatus === 'confirmed' ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                : m.allergenStatus === 'review_required' ? 'border-amber-300 bg-amber-50 text-amber-800'
+                                  : 'border-red-300 bg-red-50 text-red-800'
+                            }`}>{t(`menu.allergenStatus.${m.allergenStatus}`)}</span>
+                          )}
+                          {(m.allergenCodes ?? []).length > 0 && (
+                            <span className="text-[10px] text-stone-500">{(m.allergenCodes ?? []).map(allergenLbl).slice(0, 4).join(', ')}{(m.allergenCodes ?? []).length > 4 ? ' …' : ''}</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex flex-col shrink-0 gap-1.5">
+                        {hasPerm('menu.manage') && (
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAllergenDlg({ id: m.id, name: m.name })}>
+                            ⚠ {t('menu.allergenBtn')}
+                          </Button>
+                        )}
+                        <Button size="sm" variant={m.available ? 'outline' : 'secondary'} onClick={() => toggleAvailable(m)}>{m.available ? t('menu.inStock') : t('menu.outOfStock')}</Button>
+                      </div>
                     </div>
                   ))}
                 </div>

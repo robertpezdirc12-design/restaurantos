@@ -5,6 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { recipeCost, type RecipeNode } from '@/lib/recipe-cost'
+import { flagMenuItemsForAllergenReview } from '@/lib/allergen-profile'
 
 /**
  * OPS-9 val 1 — recipe BOM maturity.
@@ -234,6 +235,9 @@ export async function POST(req: NextRequest) {
   await db.$transaction(async (tx) => {
     await tx.recipeItem.deleteMany({ where: { menuItemId } })
     for (const r of rows) await tx.recipeItem.create({ data: r })
+    // Issue #7 (P1, v1.104.0): sprememba recepture → jed gre v ponovno preverbo
+    // alergenskega profila (potrditev profila jo počisti)
+    await flagMenuItemsForAllergenReview(tx, [menuItemId], 'sprememba recepture')
   })
 
   // OPS-9: computed cost of the freshly saved recipe (children + yield aware).
@@ -324,6 +328,8 @@ export async function PATCH(req: NextRequest) {
   const before = { yieldPercent: num(line.yieldPercent), quantityPerServing: num(line.quantityPerServing), parentRecipeItemId: line.parentRecipeItemId }
   const updated = await db.recipeItem.update({ where: { id: line.id }, data })
   const after = { yieldPercent: num(updated.yieldPercent), quantityPerServing: num(updated.quantityPerServing), parentRecipeItemId: updated.parentRecipeItemId }
+  // Issue #7 (P1, v1.104.0): sprememba vrstice → jed gre v ponovno preverbo
+  await flagMenuItemsForAllergenReview(db, [menuItemId], 'sprememba vrstice recepture')
 
   await writeAudit(db, { userId: user.sub, action: 'RECIPE_UPDATED', entityType: 'MenuItem', entityId: menuItemId, details: jstr({ menuItem: menuItem.name, lineId: line.id, inventoryItemId: line.inventoryItemId, before, after }) })
 
