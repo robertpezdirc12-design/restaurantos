@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useI18n } from '@/components/i18n'
+import { api } from '@/lib/client'
 import { ALLERGEN_CODES, ALLERGEN_LABELS, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 
 export interface AllergenProfileIngredientT {
@@ -95,10 +96,8 @@ export function AllergenDialog({
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`/api/menus/${itemId}/allergens`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Napaka')
-      const p = json?.profile as AllergenProfileT | null
+      const json = await api<{ profile: AllergenProfileT | null }>(`/api/menus/${itemId}/allergens`)
+      const p = json?.profile ?? null
       setProfile(p)
       if (p?.override) {
         setOverrideAdd(p.override.add || [])
@@ -124,14 +123,11 @@ export function AllergenDialog({
     setNotice('')
     setError('')
     try {
-      const res = await fetch(`/api/menus/${itemId}/allergens`, {
+      const json = await api<{ profile: AllergenProfileT | null }>(`/api/menus/${itemId}/allergens`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Napaka')
-      const p = json?.profile as AllergenProfileT | null
+      const p = json?.profile ?? null
       if (p) setProfile(p)
       setNotice(t('menu.allergenDialog.confirmInfo'))
       onChanged?.()
@@ -147,9 +143,8 @@ export function AllergenDialog({
     setError('')
     setNotice('')
     try {
-      const res = await fetch('/api/inventory/allergens', {
+      await api('/api/inventory/allergens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inventoryItemId: ing.id,
           allergens: ingCodes,
@@ -157,8 +152,6 @@ export function AllergenDialog({
           confirm,
         }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || 'Napaka')
       setEditIngId(null)
       await load()
       onChanged?.()
