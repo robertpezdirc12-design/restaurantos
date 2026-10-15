@@ -14,6 +14,11 @@
  * AP_OVERDUE (OPS-11 val 3, v1.82.0): an open AccountsPayable is PAST ITS DUE
  * DATE — fired ONLY from the daily cron (/api/cron/daily, 1×/day, max 20) so
  * it can never become spam. Like AP_NEW it targets accounting/manager.
+ *
+ * LOT_BLOCKED (issue #15, v1.105.0): serija je bila blokirana (karantena ali
+ * odpoklic) — takojšen push vodstvu/skladiščniku. LOT_ALERT (issue #15):
+ * opozorilni datum serije je pretekel (samo IZRECNO določen alertDate —
+ * dnevni cron, 1×/dan, ne izpeljuje se iz privzetih dni).
  */
 export const PUSH_EVENT_TYPES = [
   'ORDER_NEW',
@@ -30,6 +35,8 @@ export const PUSH_EVENT_TYPES = [
   'TIME_OFF_STATUS',
   'RECEIPT_FAILED',
   'Z_CLOSED',
+  'LOT_BLOCKED',
+  'LOT_ALERT',
 ] as const
 
 export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]

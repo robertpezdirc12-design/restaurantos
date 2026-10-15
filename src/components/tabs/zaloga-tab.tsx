@@ -197,7 +197,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       </div>
 
       {/* OPS-8 val 2 — batches / expiry (FEFO, lazy-load on expand) */}
-      <BatchesCard />
+      <BatchesCard canManage={canManage} />
 
       {/* OPS-10 val 3 — batch preparations (BOM production, lazy-load on expand) */}
       <BatchPrepCard />

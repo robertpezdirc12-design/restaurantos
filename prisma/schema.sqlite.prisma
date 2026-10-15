@@ -1042,6 +1042,16 @@ model InventoryBatch {
   unitCost             Decimal?               
   status               String                 @default("ACTIVE")
   note                 String                 @default("")
+  // Issue #15 (P1, v1.105.0) — lot governance (glej glavno shemo)
+  alertDate            DateTime?
+  removalDate          DateTime?
+  holdReason           String                 @default("")
+  holdAt               DateTime?
+  holdById             String?
+  holdRef              String                 @default("")
+  releaseAt            DateTime?
+  releaseById          String?
+  releaseNote          String                 @default("")
   createdAt            DateTime               @default(now())
   updatedAt            DateTime @updatedAt
   InventoryItem        InventoryItem          @relation(fields: [inventoryItemId], references: [id], onUpdate: Restrict)

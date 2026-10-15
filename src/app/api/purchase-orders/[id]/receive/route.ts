@@ -264,7 +264,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             quantityRemaining: acc,
             unit: inv.unit,
             unitCost: newCost / 100,
-            status: 'active',
+            status: 'ACTIVE', // v1.105.0 (#15): velike črke — FEFO sprašuje 'ACTIVE' (SQLite case-sensitive; legacy 'active' normalizira DDL lot-governance)
           },
         })
 

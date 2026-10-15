@@ -7,6 +7,7 @@ import { writeAudit } from '@/lib/audit-chain'
 import { runDueRecurringRules } from '@/lib/recurring-run'
 import { sendDailyDigest, type OverdueApEntry } from '@/lib/daily-email'
 import { pushEvent, apOverduePushPayload } from '@/lib/push'
+import { runDailyLotAlerts } from '@/lib/lot-alert'
 import {
   CRON_DAILY_MARKER,
   MAX_OVERDUE_APS,
@@ -128,10 +129,12 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     recurring: { created: number; skipped: number }
     digest: { sent: boolean; reason?: string }
     apOverdue: { count: number }
+    lotAlert: { count: number }
   } = {
     recurring: { created: 0, skipped: 0 },
     digest: { sent: false },
     apOverdue: { count: 0 },
+    lotAlert: { count: 0 },
   }
 
   // 1) recurring purchase-order rules (shared core with the UI route)
@@ -165,6 +168,14 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   }
 
   // 3) daily digest e-mail (receives the same overdue entries → "Zapadle obveznosti")
+  // 3b) Issue #15 (v1.105.0): lot alerts — serije s PRETEKELIM izrecnim
+  //     opozorilnim datumom (alertDate) → LOT_ALERT push (fire-and-forget,
+  //     state marker preprečuje dnevno ponavljanje; brez alertDate brez opozorila)
+  try {
+    steps.lotAlert = { count: await runDailyLotAlerts(now) }
+  } catch (e) {
+    errors.push(`lotAlert: ${String((e as Error).message || e).slice(0, 200)}`)
+  }
   try {
     const overdueEntries: OverdueApEntry[] = overdue.map((ap) => ({
       apNumber: ap.apNumber,

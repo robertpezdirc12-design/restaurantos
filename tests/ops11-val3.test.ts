@@ -200,11 +200,11 @@ describe('ops11/3: digest overdue-AP section (Zapadle obveznosti)', () => {
 /* ─────────── F) AP_OVERDUE push registry + payload ─────────── */
 
 describe('ops11/3: AP_OVERDUE push event', () => {
-  test('registry: AP_OVERDUE present right after AP_NEW; unique; 14 types', () => {
+  test('registry: AP_OVERDUE present right after AP_NEW; unique; 16 types', () => {
     expect(PUSH_EVENT_TYPES).toContain('AP_OVERDUE')
     expect(PUSH_EVENT_TYPES.indexOf('AP_OVERDUE')).toBe(PUSH_EVENT_TYPES.indexOf('AP_NEW') + 1)
     expect(new Set(PUSH_EVENT_TYPES).size).toBe(PUSH_EVENT_TYPES.length)
-    expect(PUSH_EVENT_TYPES.length).toBe(14)
+    expect(PUSH_EVENT_TYPES.length).toBe(16) // v1.105.0: +LOT_BLOCKED/+LOT_ALERT (#15)
   })
   test('apOverduePushPayload: shape {apNumber, supplierName, amount, daysOverdue} → notification text', () => {
     const p = apOverduePushPayload({ apNumber: 'AP-202506-000009', supplierName: 'Mercator d.o.o.', amount: 244, daysOverdue: 3 })

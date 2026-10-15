@@ -252,12 +252,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           if (bAfter !== braw) {
             await tx.inventoryBatch.update({ where: { id: a.batchId }, data: { quantityRemaining: bAfter } })
           }
-          // serija je bila ob izprodaji označena EXHAUSTED → s povračilom spet ACTIVE
-          if (bfresh?.status === 'EXHAUSTED' && bAfter > 0.0005) {
+          // serija je bila ob izprodaji označena EXHAUSTED → s povračilom spet ACTIVE.
+          // Issue #15 (v1.105.0): varovalka — če je bila serija medtem BLOKIRANA
+          // (karantena/odpoklic), vračilo poveča količino (fizična resnica), a
+          // status ostane blokiran — tiha reaktivacija iz blokade ni mogoča.
+          const stNow = (bfresh?.status || '').toUpperCase()
+          if (bfresh?.status === 'EXHAUSTED' && bAfter > 0.0005 && stNow !== 'QUARANTINE' && stNow !== 'RECALLED') {
             await tx.inventoryBatch.updateMany({
               where: { id: a.batchId, status: 'EXHAUSTED' },
               data: { status: 'ACTIVE' },
             })
+          }
+          if (stNow === 'QUARANTINE' || stNow === 'RECALLED') {
+            notes.push(`Serija ${a.batchId} je blokirana (${stNow}) — vračilo ${q} dodano na količino, status ostane blokiran.`)
           }
         }
 

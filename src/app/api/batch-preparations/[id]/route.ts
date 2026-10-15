@@ -5,6 +5,14 @@ import { nid, num, jstr, r2 } from '@/lib/map'
 import { batchCostPerUnit } from '@/lib/batch'
 import { weightedAvgCostCents } from '@/lib/procurement'
 import { writeAudit } from '@/lib/audit-chain'
+import {
+  lotGovernanceColumnsReady,
+  usableBatchWhere,
+  usableBatchWhereLegacy,
+  sortUsableFefo,
+  BATCH_SELECT_FULL,
+  BATCH_SELECT_LEGACY,
+} from '@/lib/lot-governance'
 
 /**
  * OPS-10 val 3 (v1.79.0) — batch lifecycle transitions.
@@ -100,12 +108,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
         const newQty = r3(prev - qty)
 
-        // FEFO series plan (earliest expiry first) — same allocation pattern as lib/inventory.ts
-        const batches = await tx.inventoryBatch.findMany({
-          where: { inventoryItemId: inv.id, status: 'ACTIVE', quantityRemaining: { gt: 0 } },
-          orderBy: [{ expiryDate: 'asc' }, { receivedAt: 'asc' }],
-          take: 50,
+        // FEFO series plan (issue #15: lot governance) — uporabne serije samo:
+        // blokirane (karantena/odpoklic), pretekle in odstranjene so IZKLJUČENE
+        // iz porabe pri pripravi; dialekt-determinističen vrstni red (nulls zadnji).
+        const lotReady = await lotGovernanceColumnsReady()
+        const now = new Date()
+        const batchesRaw = await tx.inventoryBatch.findMany({
+          where: {
+            inventoryItemId: inv.id,
+            ...(lotReady ? usableBatchWhere(now) : usableBatchWhereLegacy(now)),
+          },
+          select: lotReady ? BATCH_SELECT_FULL : BATCH_SELECT_LEGACY,
         })
+        const batches = sortUsableFefo(batchesRaw).slice(0, 50)
         const batchStock = batches.reduce((s, b) => s + Math.max(0, num(b.quantityRemaining)), 0)
         const useBatches = batches.length > 0 && batchStock > 0
         let remaining = useBatches ? Math.min(qty, batchStock) : 0

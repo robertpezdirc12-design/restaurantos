@@ -459,6 +459,7 @@ export function proposeLinks(
     const lineTokens = tokenSet(line.description)
     let best: PoItemCandidate | null = null
     let bestScore = 0
+    let bestUncovered = -Infinity
     let bestConfidence: LineProposal['confidence'] = 'none'
     let bestReasons: string[] = []
 
@@ -497,8 +498,20 @@ export function proposeLinks(
         confidence = 'weak'
         reasons.push(`Delno ujemanje opisa (${Math.round(tokens * 100)} %) — ročna potrditev obvezna`)
       }
-      if (score > bestScore) {
+      // v1.105.0 (#15): DETERMINISTIČNI tie-break — enake točke (npr. več PO
+      // postavk istega artikla za dobropis) ne smejo odviseti od nedoločenega
+      // vrstnega reda DB poizvedbe: (1) več nefakturiranega prejete količine,
+      // (2) leksikografsko manjši id (stabilen vrstni red). Brez tega je bila
+      // izbira kandidata odvisna od SQLite query plana (shemske spremembe so
+      // lahko preletele vrstni red → isti račun povezal na DRUGO postavko).
+      const better =
+        score > bestScore
+        || (score === bestScore && score > 0 && best !== null
+          && (uncovered > bestUncovered
+            || (uncovered === bestUncovered && cand.id < best.id)))
+      if (better) {
         bestScore = score
+        bestUncovered = uncovered
         best = cand
         bestConfidence = confidence
         bestReasons = reasons

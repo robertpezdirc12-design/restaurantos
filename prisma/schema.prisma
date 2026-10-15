@@ -1035,6 +1035,20 @@ model InventoryBatch {
   unitCost             Decimal?               @db.Decimal(12, 2)
   status               String                 @default("ACTIVE")
   note                 String                 @default("")
+  // Issue #15 (P1, v1.105.0) — lot governance: opozorilni/odstranitveni datum
+  // (izrecno določena vrednost upravljavca — IZVEDENO brez privzetega števila dni)
+  // + karantena/odpoklic (hold) z razlogom, osebo, referenco in izrecno
+  // sprostitvijo (release) — brez tihe razveljavitve. Statusi ostanejo prosti
+  // niz: ACTIVE / EXHAUSTED / QUARANTINE / RECALLED.
+  alertDate            DateTime?
+  removalDate          DateTime?
+  holdReason           String                 @default("")
+  holdAt               DateTime?
+  holdById             String?
+  holdRef              String                 @default("")
+  releaseAt            DateTime?
+  releaseById          String?
+  releaseNote          String                 @default("")
   createdAt            DateTime               @default(now())
   updatedAt            DateTime @updatedAt
   InventoryItem        InventoryItem          @relation(fields: [inventoryItemId], references: [id], onUpdate: Restrict)

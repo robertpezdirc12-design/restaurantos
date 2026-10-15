@@ -2,6 +2,14 @@ import { nid, num } from '@/lib/map'
 import type { Prisma } from '@prisma/client'
 import { auditChainFields } from '@/lib/audit-chain'
 import { flattenDeduction, type RecipeNode } from '@/lib/recipe-cost'
+import {
+  lotGovernanceColumnsReady,
+  usableBatchWhere,
+  usableBatchWhereLegacy,
+  sortUsableFefo,
+  BATCH_SELECT_FULL,
+  BATCH_SELECT_LEGACY,
+} from '@/lib/lot-governance'
 
 type Tx = Prisma.TransactionClient
 
@@ -189,12 +197,26 @@ export async function deductStockForOrderTx(
       shortfalls.push({ inventoryItemId: item.id, name: item.name, requested: req, available: prev })
     }
 
-    // ── FEFO serije: razporedi `actual` po serijah (najprej najzgodnejši datum poteka) ──
-    const batches = await tx.inventoryBatch.findMany({
-      where: { inventoryItemId: item.id, status: 'ACTIVE', quantityRemaining: { gt: 0 } },
-      orderBy: [{ expiryDate: 'asc' }, { receivedAt: 'asc' }],
-      take: 50,
+    // ── FEFO serije (issue #15: lot governance) ──
+    // Razporedi `actual` POLEH uporabne serije:
+    //  - izključene: QUARANTINE/RECALLED (blokirane), PRETEČENE (rok < sedaj),
+    //    ODSTRANJENE (removalDate < sedaj) — nova razknjižba iz njih ni dovoljena;
+    //  - vrstni red: dialekt-determinističen FEFO (removalDate ?? expiryDate,
+    //    nulls ZADNJI — SQLite/Postgres se razlikujeta pri NULL ASC);
+    //  - pre-DDL degradacija: če lot-governance stolpcev še ni, teče legacy
+    //    where/select (prodaja NIKOLI ne pade na šemo).
+    //  - količina brez serijske alokacije (blokirana/izčrpana serija) se izrecno
+    //    zapiše v note — sledljivostna vrzel je VIDLJIVA, ne skrita.
+    const lotReady = await lotGovernanceColumnsReady()
+    const now = new Date()
+    const batchesRaw = await tx.inventoryBatch.findMany({
+      where: {
+        inventoryItemId: item.id,
+        ...(lotReady ? usableBatchWhere(now) : usableBatchWhereLegacy(now)),
+      },
+      select: lotReady ? BATCH_SELECT_FULL : BATCH_SELECT_LEGACY,
     })
+    const batches = sortUsableFefo(batchesRaw).slice(0, 50)
     const batchStock = batches.reduce((s, b) => s + Math.max(0, num(b.quantityRemaining)), 0)
     const txId = nid()
     const useBatches = batches.length > 0 && batchStock > 0
@@ -202,6 +224,16 @@ export async function deductStockForOrderTx(
     // Issue #52: količina, ki je ostala BREZ serijske alokacije ker je serija
     // izpadla po 3 CAS poskusih (sočasen odjem) — ne sme tiho izginiti.
     let batchSkipped = 0
+
+    // Issue #15: PREVZET sličica vseh serij artikla (STANJE PRED dekrementom —
+    // znotraj CAS zanke spodaj se quantityRemaining že spreminja!). Upoštevamo
+    // tudi BLOKIRANE in POTRACLE serije za pojasnilo vrzeli v note.
+    const allLotsPre = toAllocateFromBatches < actual - 0.0005
+      ? await tx.inventoryBatch.findMany({
+          where: { inventoryItemId: item.id, quantityRemaining: { gt: 0 }, status: { in: ['ACTIVE', 'active', 'QUARANTINE', 'RECALLED'] } },
+          select: { status: true, quantityRemaining: true, expiryDate: true },
+        })
+      : []
 
     // KRITIČEN popravek vrstnega reda (bug odkrit z testi, Task 32-c): alokacije
     // (StockBatchAllocation, FK → StockTransaction) se NE smejo zapisovati, preden
@@ -247,7 +279,28 @@ export async function deductStockForOrderTx(
 
     const noteParts: string[] = []
     if (shortfall > 0) noteParts.push(`Primanjkljaj: zahtevano ${req} ${item.unit}, na zalogi ${prev} ${item.unit} — odšteto ${actual}`)
-    if (useBatches && toAllocateFromBatches < actual - 0.0005) noteParts.push(`Serije pokrijejo ${toAllocateFromBatches} ${item.unit} od ${actual}`)
+    if (toAllocateFromBatches < actual - 0.0005 && allLotsPre.length > 0) {
+      // Issue #15: razloži VRZEL (sličica PRED dekrementom): koliko je blokiranih
+      // (karantena/odpoklic/poteklo) in koliko pokrijejo uporabne serije.
+      const blockedQty = r3(
+        allLotsPre
+          .filter((b) => ['QUARANTINE', 'RECALLED'].includes((b.status || '').toUpperCase()))
+          .reduce((s, b) => s + Math.max(0, num(b.quantityRemaining)), 0),
+      )
+      const expiredQty = r3(
+        allLotsPre
+          .filter(
+            (b) =>
+              b.expiryDate !== null &&
+              (b.expiryDate as Date).getTime() <= now.getTime() &&
+              ['ACTIVE', 'active'].includes((b.status || '').toUpperCase()),
+          )
+          .reduce((s, b) => s + Math.max(0, num(b.quantityRemaining)), 0),
+      )
+      noteParts.push(`Serije pokrijejo ${toAllocateFromBatches} ${item.unit} od ${actual}`)
+      if (blockedQty > 0.0005) noteParts.push(`blokirane serije (karantena/odpoklic): ${blockedQty} ${item.unit} — izključene iz razknjižbe`)
+      if (expiredQty > 0.0005) noteParts.push(`potekle serije: ${expiredQty} ${item.unit} — izključene iz razknjižbe`)
+    }
     // Issue #52: izpadle serije (CAS retry izčrpan) — eksplicitna untracked oznaka
     if (batchSkipped > 0.0005) noteParts.push(`Serijska alokacija: ${batchSkipped} ${item.unit} brez serije (sočasen odjem — serija se je izčrpala med rezervacijo)`)
 

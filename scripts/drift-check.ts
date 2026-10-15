@@ -147,6 +147,32 @@ export function isAllergenTruthStatement(stmt: string): boolean {
   })
 }
 
+
+/**
+ * Issue #15 (v1.105.0): lot governance — 9 stolpcev na InventoryBatch
+ * (alertDate/removalDate/holdReason/holdAt/holdById/holdRef/releaseAt/
+ * releaseById/releaseNote). Dvosmerno (kot allergen-truth): pred DDL jih
+ * main schema ima, baza ne → ADD COLUMN; po DDL (in pred umikom iz mirror/
+ * main, če bo kdaj) DROP COLUMN. Matcher STROG po tabeli: samo InventoryBatch
+ * in samo lot-governance stolpci.
+ */
+const LOT_GOVERNANCE_COLUMNS = [
+  'alertDate', 'removalDate', 'holdReason', 'holdAt', 'holdById', 'holdRef',
+  'releaseAt', 'releaseById', 'releaseNote',
+]
+
+export function isLotGovernanceStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"(\w+)"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  if (m[1] !== 'InventoryBatch') return false
+  const clauses = splitTopLevelClauses(m[2])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && LOT_GOVERNANCE_COLUMNS.includes(mm[2])
+  })
+}
+
 /** Split na vejice ZUNAJ oklepajev (DECIMAL(5,2) ne razbije klavzul). */
 function splitTopLevelClauses(s: string): string[] {
   const out: string[] = []
@@ -351,6 +377,20 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'stolpce, baza jih še ne) — DDL apliciramo TAKOJ po deployu (vzorec issue31-36/38), ' +
       'produkcija nima živega prometa v tem oknu.',
     matches: isAllergenTruthStatement,
+  },
+  {
+    id: 'lot-governance',
+    reason:
+      'Lot governance (v1.105.0, issue #15 P1) — 9 stolpcev na InventoryBatch ' +
+      '(alertDate/removalDate/holdReason/holdAt/holdById/holdRef/releaseAt/releaseById/' +
+      'releaseNote): produkcija čaka DDL korak — admin ruta /api/admin/migrate-lot-governance ' +
+      "(konzola Enterprise → Shema migracije → en klik). DDL vključuje tudi podatkovno " +
+      "normalizacijo legacy status='active' → 'ACTIVE' (receive pot ≤ v1.104: SQLite " +
+      'case-sensitive primerjava jih je izpustila iz FEFO). Dvosmerna faza (kot ' +
+      'allergen-truth): po DDL in pred uskladitvijo shem diff generira DROP COLUMN ×9. ' +
+      'Vroča pot (FEFO ob plačilu) je zaščitena s capability-probe (lotGovernanceColumnsReady) ' +
+      '— pre-DDL teče legacy where/select, prodaja ne pada na šemo.',
+    matches: isLotGovernanceStatement,
   },
 ]
 

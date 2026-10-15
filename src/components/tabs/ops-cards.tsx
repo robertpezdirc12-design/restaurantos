@@ -598,22 +598,91 @@ export function NotificationsCard() {
   )
 }
 
-/* ─────────────────── OPS-8 val 2 — inventory batches / expiry (FEFO) ─────────────────── */
+/* ─────────────────── OPS-8 val 2 + issue #15 (v1.105.0) — serije / lot governance ─────────────────── */
 
-interface BatchRowT { id: string; itemName: string; itemUnit: string; lotNumber: string; expiryDate: string | null; quantityRemaining: number; supplierName: string }
+interface BatchRowT {
+  id: string; itemName: string; itemUnit: string; lotNumber: string
+  expiryDate: string | null; alertDate: string | null; removalDate: string | null
+  quantityRemaining: number; quantityInitial: number
+  supplierName: string; supplierId: string | null; locationId: string | null
+  status: string; bucket: string
+  holdReason: string; holdAt: string | null; holdRef: string
+  releaseAt: string | null; releaseNote: string
+  receivedAt: string | null; note: string
+}
 
-/** Inventory batches card (Zaloge tab): expiry badges (<= 7 days amber / expired rose). */
-export function BatchesCard() {
+/** Lot-governance filtri (GET /api/inventory/batches?filter=). */
+const LOT_FILTERS = [
+  { key: 'usable', labelKey: 'bat.filter.usable' },
+  { key: 'expiring', labelKey: 'bat.filter.expiring' },
+  { key: 'expired', labelKey: 'bat.filter.expired' },
+  { key: 'quarantine', labelKey: 'bat.filter.quarantine' },
+  { key: 'recalled', labelKey: 'bat.filter.recalled' },
+  { key: 'exhausted', labelKey: 'bat.filter.exhausted' },
+  { key: 'unknown', labelKey: 'bat.filter.unknown' },
+] as const
+
+type LotAction = { mode: 'dates'; batch: BatchRowT } | { mode: 'hold'; batch: BatchRowT } | { mode: 'recall'; batch: BatchRowT } | { mode: 'release'; batch: BatchRowT } | null
+
+interface TraceReportT {
+  generatedAt: string
+  batch: {
+    id: string; lotNumber: string; itemName: string; unit: string; supplierName: string
+    receivedAt: string | null; expiryDate: string | null; alertDate: string | null; removalDate: string | null
+    status: string; bucket: string; quantityInitial: number; quantityRemaining: number
+    hold: { reason: string; at: string | null; by: string | null; ref: string } | null
+    release: { note: string; at: string | null; by: string | null } | null
+    note: string; locationId: string | null
+  }
+  summary: {
+    received: number; onStock: number; allocatedOut: number; returnsEstimate: number
+    untracked: number; untrackedExplanation: string; crossCheckOk: boolean
+  }
+  allocations: {
+    allocationId: string; date: string; type: string; quantity: number; employeeName: string
+    orderId: string | null; orderNumber: string | null; orderStatus: string | null
+    prepId: string | null; prepStatus: string | null; prepOutputItem: string | null
+    prepOutputQty: number | null; indirect: boolean
+  }[]
+  exposedOrders: {
+    orderId: string; orderNumber: string | null; status: string | null; date: string | null
+    source: string | null; quantityFromLot: number; items: { name: string; qty: number }[]
+  }[]
+  uncertainty: { prepIndirect: string; noLotClaim: string }
+}
+
+const dstr = (d: string | null) => (d ? new Date(d).toLocaleDateString('sl-SI') : '—')
+
+/**
+ * Inventory batches card (Zaloge tab) — issue #15 lot governance:
+ * seznami po klasifikaciji (zapade kmalu / zapadel rok / karantena / odpoklic /
+ * izčrpano / brez roka), upravljanje opozorilnega + odstranitvenega datuma,
+ * karantena/odpoklic/sprostitev (inventory.manage) in sledljivostno poročilo
+ * (datum → alokacije → dokazana naročila + CSV izvoz).
+ */
+export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<BatchRowT[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
+  const [filter, setFilter] = useState<string>('usable')
+  const [busy, setBusy] = useState(false)
+  const [action, setAction] = useState<LotAction>(null)
+  const [aErr, setAErr] = useState('')
+  const [aReason, setAReason] = useState('')
+  const [aRef, setARef] = useState('')
+  const [aSupplierNotified, setASupplierNotified] = useState(false)
+  const [aAlert, setAAlert] = useState('')
+  const [aRemoval, setARemoval] = useState('')
+  const [trace, setTrace] = useState<TraceReportT | null>(null)
+  const [traceBusy, setTraceBusy] = useState(false)
+  const [traceErr, setTraceErr] = useState('')
 
-  const load = async () => {
+  const load = async (f: string = filter) => {
     setLoading(true); setErr('')
     try {
-      const res = await api<{ batches: BatchRowT[] }>('/api/inventory/batches')
+      const res = await api<{ batches: BatchRowT[] }>(`/api/inventory/batches?filter=${f}&take=100`)
       setRows(res.batches || [])
     } catch (e) {
       setErr(String((e as Error).message || e))
@@ -622,12 +691,85 @@ export function BatchesCard() {
     }
   }
 
-  const expiryBadge = (d: string | null) => {
-    if (!d) return null
-    const days = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
-    if (days < 0) return <Badge variant="outline" className="border-rose-300 bg-rose-50 text-rose-700">{t('bat.expired')}</Badge>
-    if (days <= 7) return <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">{t('bat.expiresSoon')}</Badge>
+  const switchFilter = (f: string) => {
+    setFilter(f)
+    setRows(null)
+    void load(f)
+  }
+
+  const expiryBadge = (b: BatchRowT) => {
+    if (b.bucket === 'recalled') return <Badge variant="outline" className="border-rose-400 bg-rose-100 text-rose-800 font-semibold">{t('bat.bRecalled')}</Badge>
+    if (b.bucket === 'quarantined') return <Badge variant="outline" className="border-amber-400 bg-amber-100 text-amber-900 font-semibold">{t('bat.bQuarantined')}</Badge>
+    if (b.bucket === 'expired') return <Badge variant="outline" className="border-rose-300 bg-rose-50 text-rose-700">{t('bat.expired')}</Badge>
+    if (b.bucket === 'removal_due') return <Badge variant="outline" className="border-orange-300 bg-orange-50 text-orange-800">{t('bat.bRemovalDue')}</Badge>
+    if (b.bucket === 'exhausted') return <Badge variant="outline" className="border-stone-300 bg-stone-100 text-stone-600">{t('bat.bExhausted')}</Badge>
+    if (b.bucket === 'unknown_expiry') return <Badge variant="outline" className="border-stone-300 bg-stone-50 text-stone-500">{t('bat.bUnknown')}</Badge>
+    if (b.bucket === 'alert') return <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">{t('bat.expiresSoon')}</Badge>
     return null
+  }
+
+  const openAction = (mode: 'dates' | 'hold' | 'recall' | 'release', batch: BatchRowT) => {
+    setAction({ mode, batch }); setAErr(''); setAReason(''); setARef(''); setASupplierNotified(false)
+    setAAlert(batch.alertDate ? batch.alertDate.slice(0, 10) : '')
+    setARemoval(batch.removalDate ? batch.removalDate.slice(0, 10) : '')
+  }
+
+  const runAction = async () => {
+    if (!action) return
+    setBusy(true); setAErr('')
+    try {
+      if (action.mode === 'dates') {
+        await api('/api/inventory/batches', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            id: action.batch.id,
+            ...(aAlert ? { alertDate: new Date(aAlert).toISOString() } : { alertDate: null }),
+            ...(aRemoval ? { removalDate: new Date(aRemoval).toISOString() } : { removalDate: null }),
+          }),
+        })
+        toast({ description: t('bat.datesSaved') })
+      } else if (action.mode === 'hold') {
+        await api(`/api/inventory/batches/${action.batch.id}/hold`, { method: 'POST', body: JSON.stringify({ reason: aReason, ref: aRef }) })
+        toast({ description: t('bat.holdDone') })
+      } else if (action.mode === 'recall') {
+        await api(`/api/inventory/batches/${action.batch.id}/recall`, { method: 'POST', body: JSON.stringify({ reason: aReason, supplierNotified: aSupplierNotified, ref: aRef }) })
+        toast({ description: t('bat.recallDone') })
+      } else if (action.mode === 'release') {
+        await api(`/api/inventory/batches/${action.batch.id}/release`, { method: 'POST', body: JSON.stringify({ note: aReason }) })
+        toast({ description: t('bat.releaseDone') })
+      }
+      setAction(null)
+      void load(filter)
+    } catch (e) {
+      setAErr(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const openTrace = async (batch: BatchRowT) => {
+    setTrace(null); setTraceErr(''); setTraceBusy(true)
+    try {
+      const res = await api<TraceReportT>(`/api/inventory/batches/${batch.id}/trace`)
+      setTrace(res)
+    } catch (e) {
+      setTraceErr(String((e as Error).message || e))
+    } finally {
+      setTraceBusy(false)
+    }
+  }
+
+  const traceCsv = async (batch: BatchRowT) => {
+    const res = await fetch(`/api/inventory/batches/${batch.id}/trace?format=csv`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+    if (!res.ok) { toast({ description: t('bat.traceCsvErr') }); return }
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `sledljivost-${batch.lotNumber}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   return (
@@ -638,15 +780,26 @@ export function BatchesCard() {
             <CardTitle className="text-base flex items-center gap-1.5"><Clock className="w-4 h-4" /> {t('bat.title')}</CardTitle>
             <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`} />
           </CollapsibleTrigger>
-          <CardDescription>{t('bat.desc')}</CardDescription>
+          <CardDescription>{t('bat.desc15')}</CardDescription>
         </CardHeader>
         <CollapsibleContent>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {LOT_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => switchFilter(f.key)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${filter === f.key ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'}`}
+                >
+                  {t(f.labelKey)}
+                </button>
+              ))}
+            </div>
             {loading && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('bat.loading')}</p>}
             {err && <p className="text-sm text-rose-700">{t('bat.error')} {err}</p>}
             {rows !== null && rows.length === 0 && <p className="text-sm text-stone-500">{t('bat.empty')}</p>}
             {rows !== null && rows.length > 0 && (
-              <div className="max-h-80 overflow-y-auto rounded-xl border border-stone-200">
+              <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
                 <table className="w-full text-sm">
                   <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                     <tr>
@@ -654,29 +807,202 @@ export function BatchesCard() {
                       <th className="p-2">{t('bat.colLot')}</th>
                       <th className="p-2">{t('bat.colExpiry')}</th>
                       <th className="p-2 text-right">{t('bat.colQty')}</th>
+                      <th className="p-2">{t('bat.colSupplier')}</th>
+                      <th className="p-2 text-right">{t('bat.colActions')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((b) => (
-                      <tr key={b.id} className="border-t border-stone-100">
+                      <tr key={b.id} className={`border-t border-stone-100 ${b.bucket === 'recalled' ? 'bg-rose-50/70' : b.bucket === 'quarantined' ? 'bg-amber-50/70' : ''}`}>
                         <td className="p-2 font-medium max-w-40 truncate" title={b.itemName}>{b.itemName}</td>
                         <td className="p-2 text-stone-600 max-w-40 truncate" title={b.lotNumber}>{b.lotNumber}</td>
                         <td className="p-2">
                           <span className="flex items-center gap-1.5 flex-wrap">
-                            {b.expiryDate ? new Date(b.expiryDate).toLocaleDateString('sl-SI') : '—'}
-                            {expiryBadge(b.expiryDate)}
+                            <span title={t('bat.colExpiry')}>{dstr(b.expiryDate)}</span>
+                            {expiryBadge(b)}
+                            {b.alertDate && <span className="text-[10px] text-amber-700" title={t('bat.alertDate')}>⚠ {dstr(b.alertDate)}</span>}
+                            {b.removalDate && <span className="text-[10px] text-orange-700" title={t('bat.removalDate')}>⇥ {dstr(b.removalDate)}</span>}
                           </span>
                         </td>
                         <td className="p-2 text-right font-semibold">{b.quantityRemaining} {b.itemUnit}</td>
+                        <td className="p-2 text-stone-600 max-w-32 truncate text-xs" title={b.supplierName}>{b.supplierName || '—'}</td>
+                        <td className="p-2 text-right whitespace-nowrap">
+                          <button className="text-xs px-1.5 py-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => void openTrace(b)} title={t('bat.trace')}>{t('bat.trace')}</button>
+                          {canManage && (
+                            <>
+                              <button className="text-xs px-1.5 py-1 ml-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => openAction('dates', b)} title={t('bat.dates')}>{t('bat.dates')}</button>
+                              {b.bucket !== 'recalled' && b.bucket !== 'quarantined' && (
+                                <>
+                                  <button className="text-xs px-1.5 py-1 ml-1 rounded border border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => openAction('hold', b)} title={t('bat.hold')}>{t('bat.hold')}</button>
+                                  <button className="text-xs px-1.5 py-1 ml-1 rounded border border-rose-300 text-rose-800 hover:bg-rose-50" onClick={() => openAction('recall', b)} title={t('bat.recall')}>{t('bat.recall')}</button>
+                                </>
+                              )}
+                              {b.bucket === 'quarantined' && (
+                                <button className="text-xs px-1.5 py-1 ml-1 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50" onClick={() => openAction('release', b)} title={t('bat.release')}>{t('bat.release')}</button>
+                              )}
+                            </>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+            {rows !== null && <p className="text-[11px] text-stone-400">{t('bat.fefoNote')}</p>}
           </CardContent>
         </CollapsibleContent>
       </Card>
+
+      {/* ── akcija: datumi / karantena / odpoklic / sprostitev ── */}
+      <Dialog open={action !== null} onOpenChange={(v) => { if (!v) setAction(null) }}>
+        <DialogContent className="sm:max-w-md">
+          {action && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {action.mode === 'dates' && t('bat.datesTitle')}
+                  {action.mode === 'hold' && t('bat.holdTitle')}
+                  {action.mode === 'recall' && t('bat.recallTitle')}
+                  {action.mode === 'release' && t('bat.releaseTitle')}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p className="text-stone-600">{action.batch.itemName} · <span className="font-mono text-xs">{action.batch.lotNumber}</span> · {action.batch.quantityRemaining} {action.batch.itemUnit}</p>
+
+                {action.mode === 'dates' && (
+                  <>
+                    <div>
+                      <Label htmlFor="bat-alert">{t('bat.alertDate')}</Label>
+                      <Input id="bat-alert" type="date" value={aAlert} onChange={(e) => setAAlert(e.target.value)} />
+                      <p className="text-xs text-stone-400 mt-0.5">{t('bat.alertDateHint')}</p>
+                    </div>
+                    <div>
+                      <Label htmlFor="bat-removal">{t('bat.removalDate')}</Label>
+                      <Input id="bat-removal" type="date" value={aRemoval} onChange={(e) => setARemoval(e.target.value)} />
+                      <p className="text-xs text-stone-400 mt-0.5">{t('bat.removalDateHint')}</p>
+                    </div>
+                  </>
+                )}
+
+                {(action.mode === 'hold' || action.mode === 'recall' || action.mode === 'release') && (
+                  <div>
+                    <Label htmlFor="bat-reason">{action.mode === 'release' ? t('bat.releaseReason') : t('bat.reason')}</Label>
+                    <Textarea id="bat-reason" rows={3} value={aReason} onChange={(e) => setAReason(e.target.value)} placeholder={t('bat.reasonPh')} />
+                  </div>
+                )}
+
+                {(action.mode === 'hold' || action.mode === 'recall') && (
+                  <div>
+                    <Label htmlFor="bat-ref">{t('bat.ref')}</Label>
+                    <Input id="bat-ref" value={aRef} onChange={(e) => setARef(e.target.value)} placeholder={t('bat.refPh')} />
+                  </div>
+                )}
+
+                {action.mode === 'recall' && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" className="h-4 w-4 accent-emerald-700" checked={aSupplierNotified} onChange={(e) => setASupplierNotified(e.target.checked)} />
+                    {t('bat.supplierNotified')}
+                  </label>
+                )}
+
+                {action.mode === 'hold' && <p className="text-xs text-amber-700">{t('bat.holdNote')}</p>}
+                {action.mode === 'recall' && <p className="text-xs text-rose-700">{t('bat.recallNote')}</p>}
+                {action.mode === 'release' && <p className="text-xs text-emerald-700">{t('bat.releaseNote')}</p>}
+                {aErr && <p className="text-sm text-rose-700">{aErr}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAction(null)}>{t('common.cancel')}</Button>
+                <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" disabled={busy} onClick={() => void runAction()}>
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />} {t('common.confirm')}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── sledljivostno poročilo ── */}
+      <Dialog open={trace !== null || traceBusy} onOpenChange={(v) => { if (!v) { setTrace(null); setTraceErr('') } }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-1.5"><ClipboardList className="w-4 h-4" /> {t('bat.traceTitle')}</DialogTitle>
+          </DialogHeader>
+          {traceBusy && <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('bat.loading')}</p>}
+          {traceErr && <p className="text-sm text-rose-700">{traceErr}</p>}
+          {trace && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-lg border border-stone-200 p-3 space-y-1">
+                <p className="font-semibold">{trace.batch.itemName} · <span className="font-mono text-xs">{trace.batch.lotNumber}</span></p>
+                <p className="text-xs text-stone-600">{t('bat.supplier')}: {trace.batch.supplierName || '—'} · {t('bat.colExpiry')}: {dstr(trace.batch.expiryDate)} · {t('bat.received')}: {dstr(trace.batch.receivedAt)}</p>
+                <div className="flex gap-1.5 flex-wrap pt-1">
+                  {trace.batch.status === 'RECALLED' && <Badge variant="outline" className="border-rose-400 bg-rose-100 text-rose-800 font-semibold">{t('bat.bRecalled')}</Badge>}
+                  {trace.batch.status === 'QUARANTINE' && <Badge variant="outline" className="border-amber-400 bg-amber-100 text-amber-900 font-semibold">{t('bat.bQuarantined')}</Badge>}
+                  {trace.batch.hold && <span className="text-xs text-stone-500">{t('bat.reason')}: {trace.batch.hold.reason}</span>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                <div className="rounded-lg border border-stone-200 p-2"><p className="text-xs text-stone-500">{t('bat.tr.received')}</p><p className="font-bold">{trace.summary.received}</p></div>
+                <div className="rounded-lg border border-stone-200 p-2"><p className="text-xs text-stone-500">{t('bat.tr.onStock')}</p><p className="font-bold">{trace.summary.onStock}</p></div>
+                <div className="rounded-lg border border-stone-200 p-2"><p className="text-xs text-stone-500">{t('bat.tr.allocated')}</p><p className="font-bold">{trace.summary.allocatedOut}</p></div>
+                <div className="rounded-lg border border-stone-200 p-2"><p className="text-xs text-stone-500">{t('bat.tr.returns')}</p><p className="font-bold">{trace.summary.returnsEstimate}</p></div>
+                <div className="rounded-lg border border-stone-300 p-2 bg-stone-50"><p className="text-xs text-stone-500">{t('bat.tr.untracked')}</p><p className="font-bold">{trace.summary.untracked}</p></div>
+              </div>
+
+              <div>
+                <p className="font-semibold mb-1">{t('bat.tr.allocations')} ({trace.allocations.length})</p>
+                {trace.allocations.length === 0 && <p className="text-xs text-stone-500">{t('bat.tr.noAlloc')}</p>}
+                {trace.allocations.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-lg border border-stone-200">
+                    <table className="w-full text-xs">
+                      <thead className="bg-stone-50 text-left sticky top-0">
+                        <tr><th className="p-1.5">{t('bat.tr.date')}</th><th className="p-1.5">{t('bat.tr.type')}</th><th className="p-1.5 text-right">{t('bat.tr.qty')}</th><th className="p-1.5">{t('bat.tr.doc')}</th><th className="p-1.5">{t('bat.tr.person')}</th></tr>
+                      </thead>
+                      <tbody>
+                        {trace.allocations.map((a) => (
+                          <tr key={a.allocationId} className="border-t border-stone-100">
+                            <td className="p-1.5">{new Date(a.date).toLocaleString('sl-SI')}</td>
+                            <td className="p-1.5">{a.type === 'SALE' ? t('bat.tr.sale') : a.type === 'BATCH_INPUT' ? t('bat.tr.prep') : a.type}</td>
+                            <td className="p-1.5 text-right font-semibold">{a.quantity}</td>
+                            <td className="p-1.5">
+                              {a.orderNumber ? <span>#{a.orderNumber} {a.indirect ? '' : '✓'}</span> : null}
+                              {a.prepId && !a.orderNumber ? <span title={t('bat.tr.indirect')}>{a.prepOutputItem} ⚠</span> : null}
+                            </td>
+                            <td className="p-1.5 text-stone-600">{a.employeeName || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {trace.exposedOrders.length > 0 && (
+                <div>
+                  <p className="font-semibold mb-1">{t('bat.tr.exposed')} ({trace.exposedOrders.length})</p>
+                  <div className="space-y-1.5">
+                    {trace.exposedOrders.map((o) => (
+                      <div key={o.orderId} className="rounded-lg border border-stone-200 p-2 text-xs">
+                        <p className="font-semibold">#{o.orderNumber} · {o.date ? new Date(o.date).toLocaleString('sl-SI') : ''} · {t('bat.tr.fromLot')}: {o.quantityFromLot} {trace.batch.unit}</p>
+                        <p className="text-stone-600">{o.items.map((i) => `${i.qty}× ${i.name}`).join(', ')}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-stone-500 rounded-md bg-stone-50 p-2">{trace.uncertainty.prepIndirect}</p>
+
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => trace && void traceCsv({ id: trace.batch.id, lotNumber: trace.batch.lotNumber } as BatchRowT)}>
+                  <Download className="w-3.5 h-3.5" /> {t('bat.tr.csv')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   )
 }

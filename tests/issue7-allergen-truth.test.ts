@@ -712,12 +712,12 @@ describe('H. javni meni: kanonične kode + status + opcije', () => {
 /* ─────────────── I. register + DDL idempotenca ─────────────── */
 
 describe('I. register + DDL', () => {
-  it('SCHEMA_MIGRATIONS vsebuje allergen-truth (17 vnosov) + endpoint na disku', () => {
+  it('SCHEMA_MIGRATIONS vsebuje allergen-truth (18 vnosov z lot-governance) + endpoint na disku', () => {
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'allergen-truth')
     expect(m).not.toBeUndefined()
     expect(m!.endpoint).toBe('/api/admin/migrate-allergen-truth')
     expect(m!.descKey).toBe('mig.allergenTruth.desc')
-    expect(SCHEMA_MIGRATIONS.length).toBe(17)
+    expect(SCHEMA_MIGRATIONS.length).toBe(18)
     expect(slDict['mig.allergenTruth.desc']).toBeTruthy()
     expect(hrDict['mig.allergenTruth.desc']).toBeTruthy()
   })

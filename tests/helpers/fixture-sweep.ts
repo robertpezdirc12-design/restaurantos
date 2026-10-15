@@ -70,6 +70,7 @@ export const TEST_PREFIXES = [
   'i25-', // issue25-error-report (v1.102.0)
   'i18a-', // issue18-ap-3way-match (v1.103.0)
   'i7-', // issue7-allergen-truth (v1.104.0)
+  'i15-', // issue15-lot-governance (v1.105.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

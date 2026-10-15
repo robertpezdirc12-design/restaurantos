@@ -276,6 +276,23 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
       ['OrderItem', 'allergenWarning'],
     ]),
   },
+  {
+    // Issue #15 (P1, v1.105.0): lot governance — 9 stolpcev na InventoryBatch
+    // (alert/removal datum + karantena/odpoklic hold/release sled) + podatkovna
+    // normalizacija legacy status='active' (receive pot ≤ v1.104 ni bila FEFO
+    // razporejena — SQLite case-sensitive). Statusi QUARANTINE/RECALLED so
+    // proste vrednosti obstoječega status stolpca (brez DDL).
+    id: 'lot-governance',
+    descKey: 'mig.lotGovernance.desc',
+    endpoint: '/api/admin/migrate-lot-governance',
+    probe: () => columnsAll([
+      ['InventoryBatch', 'alertDate'], ['InventoryBatch', 'removalDate'],
+      ['InventoryBatch', 'holdReason'], ['InventoryBatch', 'holdAt'],
+      ['InventoryBatch', 'holdById'], ['InventoryBatch', 'holdRef'],
+      ['InventoryBatch', 'releaseAt'], ['InventoryBatch', 'releaseById'],
+      ['InventoryBatch', 'releaseNote'],
+    ]),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */
