@@ -2748,3 +2748,33 @@ Stage Summary:
 - 18 odprtih issue-jev; naslednji val kandidati: #15 (sledljivost serij P1) / #17 (varianca porabe P1/P2) / #13 (rezervacije P1/P2)
 - UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
 - Inertni ostanki i7 na produkciji (namerno): receptura Big smash burger + alergeni Moka/Mocarela + potrjen profil + naročilo #700 z opozorilom (odprto, TAKEAWAY)
+
+---
+Task ID: v1.105.0-session
+Agent: glavni agent (Z.ai)
+Task: uporabnik potrdil nadaljevanje ("odlicno nadaljuj") → izveden RestaurantOS val issue #15 (P1 — sledljivost serij živil, opozorila o roku uporabe in postopek odpoklica: lot governance).
+
+Work Log:
+- STANJE: repo eb6cbb1 usklajen; produkcija v1.104.0 healthy; 18 odprtih; izbran #15 (P1, priporočilo v1.104.0)
+- FAZA 0 INVENTURA: InventoryBatch (lot/dobavitelj/rok/status prost niz), StockBatchAllocation→StockTransaction (orderId/BatchPreparation) = obstoječa sled; FEFO 2 mesti (SALE + BATCH_INPUT) NE izključujeta poteklih (orderBy asc → PREDNOST!), waste/adjust/popis brez lot alokacij (vrzel)
+- NAJDEN P1 CASE-BUG: receive piše status 'active' (male), FEFO sprašuje 'ACTIVE' → GRN serije NIKOLI FEFO razporejene (SQLite case-sensitive); popravek + DDL normalizacija legacy
+- NOV src/lib/lot-governance.ts: usableBatchWhere (blokirane/potekle/odstranjene IZKLJUČENE iz nove razknjižbe), sortUsableFefo (dialekt-deterministično, nulls ZADNJI), batchBucket 8 klasifikacij, validateLotDates (alert ≤ removal ≤ expiry), lotGovernanceColumnsReady (capability-probe, cache — PRE-DDL degradacija: vroča pot plačila NE pade na šemo)
+- FEFO SPREMEMBE: inventory.ts (SALE) + batch-preparations (BATCH_INPUT) — usable where + select + pomnilniški sort; VRZEL vidna v note (blokirane/potekle količine, sličica PRED dekrementom — Task 32-c lekcija); storno: vračilo na blokirano serijo ohrani blokiran status
+- DDL lot-governance: 9 stolpcev InventoryBatch (alertDate/removalDate/hold*/release*) + normalizacija statusa; register #18 + konzola HANDLERS + drift-check matcher (LOT_GOVERNANCE_COLUMNS) + i18n mig SL/HR
+- POPRAVEK DDL: DATETIME → TIMESTAMP (Postgres 42704 — SQLite oboje sprejme, odkrito na produkciji; drugi commit 94a5e97)
+- RUTE: PATCH /api/inventory/batches (datumi, inventory.manage, 503 pre-DDL); POST hold (karantena, razlog ≥10, audit+LOT_BLOCKED push+event) / recall (TERMINALEN, supplierNotified+ref) / release (samo QUARANTINE, razlog ≥10); GET batches?filter= (usable/expiring/expired/quarantine/recalled/exhausted/unknown — klasifikacija v pomnilniku); GET batches/[id]/trace (dokazane SALE alokacije → exposedOrders z jedmi; priprave POSREDNE; summary prejeto=zaloga+dodeljeno−vračila crossCheck; nezvezano z razlago; CSV BOM+Content-Disposition)
+- LOT_ALERT/LOT_BLOCKED push tipi (14→16) + src/lib/lot-alert.ts (cron daily korak: samo IZREČEN alertDate, state marker Integration, re-arm ob premiku v prihodnost) + cron daily lotAlert korak
+- BONUS ROBUSTNOST: ap-match proposeLinks DETERMINISTIČNI tie-break (enake točke → višji uncovered → id) — prej odvisno od SQLite query plana; empirično: 4/5 fail ob moji shemi (dokazano z 5× fresh runs), po popravku 5/5; BAZA flakiness #18 testa 6 razrešča (dobropis se poveže na PRAVO postavko)
+- UI: BatchesCard (ops-cards.tsx) — 7 filtrov, badge-i (ODPOKLICANO/KARANTENA/⚠/⇥/brez roka), akcije Datumi/Karantena/Odpoklic/Sprosti (inventory.manage), sledljivostni dialog (5 ploščic, alokacije, izpostavljena naročila, negotovost, CSV); zaloga-tab preda canManage; i18n SL/HR ~70 ključev; i18n regresijski test sprožil podniz "teče" v komentarju → prebesedeno
+- LEKCIJE: (1) sandbox DATABASE_URL env kaže na my-project/db/custom.db — restaurantos db push MUSSI eksplicitno DATABASE_URL=file:./db/... (drug incident, obnovljeno takoj: my-project User/Post nazaj, :3000 healthy); (2) Postgres ne pozna DATETIME (vzorec allergen: TIMESTAMP); (3) [^"] regex v i18n testu sežre čez vrstice — podnizi v KOMENTARJIH sprožijo "hardcoded" detekcijo; (4) Prisma select brez orderBy = nedoločen vrstni red → motorji TIE-BREAK morejo biti deterministični
+- TESTI: tests/issue15-lot-governance.test.ts ×28 → 1614/1614 sveža prisma/db/ci-fresh.db (96 datotek); tsc 0; eslint 0; check-secrets OK; drift-check OK (sqlite); števci: registra 17→18 (migrations-console ×4 + stroski-ddl + issue7), push tipi 14→16 (ops11-val2/val3), i15- prefix
+- DEPLOY 0baff05 → 1.105.0 healthy; POPRAVEK 94a5e97 (DDL TIMESTAMP) → 1.105.0 healthy; DDL APLICIRAN (konzola lot-governance ok:200, allApplied:true, pending:0; retry alreadyApplied:true)
+- ŽIVA VERIFIKACIJA (vodja@ MANAGER Ljubljana): PO-20261015-0002 → submit/approve → GRN-20261015-0001 (serija ACTIVE z rokom 25.10!) → PATCH alert/removal → bucket ok→alert (pretekli alertDate) → filter=expiring → karantena (razlog+ref, audit) → filter=quarantine → trace (crossCheckOk, hold) + CSV → sprostitev (+audit) → odpoklic (+supplierNotified, ODP-2026-001, audit) → filter=recalled → release/recall na RECALLED 409/409 → kratek razlog 400 → brez žetona 401 → audit veriga BATCH_QUARANTINED→RELEASED→RECALLED; agent-browser: Zaloge → Serije (#15 opis) → 7 filtrov → Odpoklic → ODPOKLICANO badge + ⚠/⇥ datumi → Sledi → dialog (ploščice, 0 alokacij, negotovost, CSV gumb) → 0 konzolnih napak (1 benign a11y opozorilo DialogDescription)
+- GitHub #15 zaprt z dokaznim komentarjem (6186836271) → 17 odprtih; GitLab usklajen (3. poskus — 2× prehodni 403)
+
+Stage Summary:
+- Produkcija v1.105.0 (94a5e97) healthy + DDL lot-governance apliciran: serije imajo poln življenjski cikel — GRN ustvari ACTIVE serijo (case-bug popravljen), FEFO izključi blokirane/potekle/odstranjene iz nove razknjižbe (vrzel vidna v note), opozorilni/odstranitveni datum z validacijo + dnevni LOT_ALERT push, karantena/odpoklic z audit verigo (terminalen odpoklic, izrecna sprostitev, storno ne reaktivira blokirane), sledljivostno poročilo (dokazane naročila + posredne priprave + nezvezano + CSV) — poštena sledljivost po 178/2002, aplikacija NE nadomešča odgovorne osebe
+- ap-match dobil deterministični tie-break (latentna SQLite-plan nestabilnost razrešena)
+- 17 odprtih issue-jev; naslednji val kandidati: #17 (varianca porabe P1/P2) / #13 (rezervacije P1/P2) / #19 (razlogi/odobritev popustov P1/P2)
+- UPORABNIŠKI KORAKI (URGENTNO, nespremenjeno): VAPID rotacija; rotacija GitHub/GitLab žetonov; MFA vpis info@+vodja@
+- Inertni ostanki i15 na produkciji (namerno): PO-20261015-0002 + GRN-20261015-0001 + serija GRN-20261015-0001-1 (RECALLED, 10 kg) + artikel/dobavitelj i15-* + audit/event sledi (append-only)
