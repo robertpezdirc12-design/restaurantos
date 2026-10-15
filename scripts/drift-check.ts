@@ -367,6 +367,13 @@ export function isReservationWidgetStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+/** Issue #21 (v1.111.0): klic vodje iz POS-a — NOVA tabela ManagerCall
+ * (strogo po tabeli — vzorec ReservationWidget/HaccpAction). */
+export function isManagerCallStatement(stmt: string): boolean {
+  if (!/"ManagerCall"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -568,6 +575,19 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'rezervacijski tok POS se ne dotakne. Ko je DDL apliciran, drift izgine in ' +
       'vnos postane mrtva koda.',
     matches: isReservationWidgetStatement,
+  },
+  {
+    id: 'manager-call',
+    reason:
+      'Klic vodje iz POS-a (v1.111.0, issue #21 P1/P2) — NOVA tabela ManagerCall ' +
+      '(življenjski cikel zahtev za pomoč: OPEN → ESCALATED (krogi, max 3) / ' +
+      'ACKNOWLEDGED → IN_PROGRESS → RESOLVED / CANCELLED; skalarne vezave brez FK, ' +
+      'snapshot imen, dostavna evidenca, idempotencyKey — EventLog/ReservationWidget ' +
+      'vzorec): produkcija čaka DDL korak — admin ruta /api/admin/migrate-manager-call ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL rute /api/manager-call** ' +
+      'graceful degradirajo (503/ddlPending — POS tok se ne dotakne). Ko je DDL ' +
+      'apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isManagerCallStatement,
   },
 ]
 

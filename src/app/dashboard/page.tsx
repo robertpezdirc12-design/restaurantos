@@ -69,11 +69,12 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
 } from '@/components/dashboard-tabs'
+import { ManagerCallButton } from '@/components/manager-call-dialog'
 import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2 } from 'lucide-react'
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
@@ -1686,6 +1687,8 @@ function DashboardInner() {
                 )
               })}
             </div>
+            {/* Issue #21 (v1.111.0) — plošča klicev vodje (15 s polling = pogon lenih eskalacij) */}
+            {canManage && <ManagerCallsCard />}
             <Card>
               <CardHeader><CardTitle className="text-base">{t('dash.activeOrders')}</CardTitle></CardHeader>
               <CardContent>
@@ -1715,10 +1718,12 @@ function DashboardInner() {
 
           <TabsContent value="mize" className="space-y-6">
             {/* OPS-4 v1.67.0 — tloris lokala: vizualni prikaz miz + vlečenje (shema posX/posY) */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Button size="sm" variant={tableView === 'grid' ? 'default' : 'outline'} className={tableView === 'grid' ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setTableView('grid')}>{t('tables.gridView')}</Button>
               <Button size="sm" variant={tableView === 'plan' ? 'default' : 'outline'} className={tableView === 'plan' ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setTableView('plan')}>{t('tables.planView')}</Button>
               {tableView === 'plan' && <span className="text-xs text-stone-500">{t('tables.planHint')}</span>}
+              {/* Issue #21 (v1.111.0) — klic vodje (osebje vseh vlog) */}
+              <ManagerCallButton size="sm" className="ml-auto" />
             </div>
             {tableView === 'plan' && (
               <div
@@ -2516,6 +2521,8 @@ function DashboardInner() {
             <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
             {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
             <ReservationWidgetCard />
+            {/* Issue #21 (v1.111.0) — nastavitve klica vodje (dovoljene vrste + čas eskalacije) */}
+            <ManagerCallSettingsCard />
             {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za
                 prijavljenega uporabnika — step-up PIN, recovery kode, enforcement */}
             <MfaCard />
@@ -2863,6 +2870,8 @@ function DashboardInner() {
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('sheet.sendItems')}
               </Button>
             )}
+            {/* Issue #21 (v1.111.0) — klic vodje s kontekstom tega naročila (mizo izpelje strežnik) */}
+            {orderSheet && <ManagerCallButton size="sm" orderId={orderSheet.id} orderNumber={orderSheet.orderNumber ?? undefined} />}
             <Button variant="outline" className="h-9" onClick={() => { if (orderSheet) { setMoveTableId(''); const mv = orderSheet; setOrderSheet(null); setMoveOrder(mv) } }} title={t('mmv.move')}>
               <ArrowRightLeft className="w-4 h-4" />
             </Button>

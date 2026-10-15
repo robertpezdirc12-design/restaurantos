@@ -76,6 +76,7 @@ export const TEST_PREFIXES = [
   'i16-', // issue16-cash-movements (v1.108.0)
   'i20-', // issue20-haccp-ops (v1.109.0)
   'i13-', // issue13-reservation-widget (v1.110.0)
+  'i21-', // issue21-manager-call (v1.111.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -225,6 +226,10 @@ const LOCATION_CHILD_SWEEP = [
   // predpona živi v locationId (skalar, NE SetNull) → prehod po locationId
   // počisti vrstico pred brisanjem lokacije (drugače bi ostala sirota).
   'reservationWidget',
+  // v1.111.0 (issue #21): klic vodje — nid() id brez predpone (MC…),
+  // predpona živi v locationId (skalar brez FK) → lokacijski prehod počisti
+  // vrstice pred brisanjem lokacije (drugače bi ostale sirote).
+  'managerCall',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }

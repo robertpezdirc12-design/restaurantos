@@ -30,6 +30,13 @@
  * HACCP_DEVIATION (issue #20): meritev je IZVEN meje (warning/critical) —
  * takojšen push ob vnosu (vodstvo; opozorilna odstopanja niso dogodek —
  * samo critical, da opozorila ne postanejo šum).
+ *
+ * MANAGER_CALL (issue #21, v1.111.0): zaposleni iz POS-a zahteva pomoč
+ * vodje (en klik — tip zahteve + miza/naročilo). Takojšen push vodstvu na
+ * lokaciji; matrika lahko prejemnike omeji/izklopi.
+ * MANAGER_CALL_ESCALATED (issue #21): klic je ZAPADEL brez potrditve —
+ * eskalacijski krog (max 3) leno ob GET poll-u; širši bazni cilj
+ * (vodstvo/admin/lastnik).
  */
 export const PUSH_EVENT_TYPES = [
   'ORDER_NEW',
@@ -51,6 +58,8 @@ export const PUSH_EVENT_TYPES = [
   'CASH_MOVEMENT',
   'HACCP_OVERDUE',
   'HACCP_DEVIATION',
+  'MANAGER_CALL',
+  'MANAGER_CALL_ESCALATED',
 ] as const
 
 export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]

@@ -2227,6 +2227,43 @@ model ReservationWidget {
   @@index([enabled])
 }
 
+// Issue #21 (P1/P2, v1.111.0) — klic vodje iz POS-a. Ogledalo glavne sheme
+// (skalarne vezave brez FK; tipi/statusi so String — enako na obeh shemah).
+model ManagerCall {
+  id                  String    @id
+  locationId          String
+  requestorId         String
+  requestorName       String
+  type                String
+  status              String    @default("OPEN")
+  note                String    @default("")
+  orderId             String?
+  orderNumber         String?
+  tableNumber         Int?
+  deliveryStatus      String    @default("pending")
+  notifiedCount       Int       @default(0)
+  escalatedCount      Int       @default(0)
+  lastEscalatedAt     DateTime?
+  acknowledgedAt      DateTime?
+  acknowledgedById    String?
+  acknowledgedByName  String?
+  inProgressAt        DateTime?
+  inProgressById      String?
+  resolvedAt          DateTime?
+  resolvedById        String?
+  resolvedByName      String?
+  resolutionNote      String    @default("")
+  cancelledAt         DateTime?
+  cancelledById       String?
+  idempotencyKey      String?   @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([locationId, status])
+  @@index([requestorId, createdAt])
+  @@index([createdAt])
+}
+
 model RestaurantSettings {
   id                    String   @id
   name                  String   @default("RestaurantOS")

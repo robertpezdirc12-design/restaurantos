@@ -2256,6 +2256,49 @@ model ReservationWidget {
   @@index([enabled])
 }
 
+// Issue #21 (P1/P2, v1.111.0) — klic vodje iz POS-a. NOVA tabela ManagerCall:
+// zaposleni zahteva pomoč vodje (tip + kontekst mize/naročila), življenjski
+// cikel OPEN → ESCALATED (krogi, max 3) / ACKNOWLEDGED → IN_PROGRESS →
+// RESOLVED / CANCELLED. Vezave so SKALARNE brez FK (EventLog/CashMovement/
+// ReservationWidget vzorec — snapshot imena prosilca/prevzemnika preživi
+// izbris zaposlenega, revizijska sled ostane). deliveryStatus/notifiedCount
+// sta POŠTENA evidencija poskusa dostave (ne dokaz prejema — potrditev je
+// izključno ack akcija). idempotencyKey + dedup okno varujeta pred dvojniki.
+model ManagerCall {
+  id                  String    @id
+  locationId          String
+  requestorId         String
+  requestorName       String
+  type                String
+  status              String    @default("OPEN")
+  note                String    @default("")
+  orderId             String?
+  orderNumber         String?
+  tableNumber         Int?
+  deliveryStatus      String    @default("pending")
+  notifiedCount       Int       @default(0)
+  escalatedCount      Int       @default(0)
+  lastEscalatedAt     DateTime?
+  acknowledgedAt      DateTime?
+  acknowledgedById    String?
+  acknowledgedByName  String?
+  inProgressAt        DateTime?
+  inProgressById      String?
+  resolvedAt          DateTime?
+  resolvedById        String?
+  resolvedByName      String?
+  resolutionNote      String    @default("")
+  cancelledAt         DateTime?
+  cancelledById       String?
+  idempotencyKey      String?   @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([locationId, status])
+  @@index([requestorId, createdAt])
+  @@index([createdAt])
+}
+
 model RestaurantSettings {
   id                    String   @id
   name                  String   @default("RestaurantOS")

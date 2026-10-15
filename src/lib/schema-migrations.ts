@@ -376,6 +376,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-reservation-widget',
     probe: async () => (await tableExists('ReservationWidget')),
   },
+  {
+    // Issue #21 (P1/P2, v1.111.0): klic vodje iz POS-a — NOVA tabela
+    // ManagerCall (življenjski cikel zahtev za pomoč: OPEN → ESCALATED
+    // (krogi, max 3) / ACKNOWLEDGED → IN_PROGRESS → RESOLVED / CANCELLED;
+    // skalarne vezave brez FK, snapshot imen, dostavna evidenca,
+    // idempotencyKey). locationId je skalar brez FK (EventLog vzorec).
+    // Do DDL: rute klica vodja odgovarjajo 503 (graceful) — POS tok
+    // se ne dotakne.
+    id: 'manager-call',
+    descKey: 'mig.managerCall.desc',
+    endpoint: '/api/admin/migrate-manager-call',
+    probe: async () => (await tableExists('ManagerCall')),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

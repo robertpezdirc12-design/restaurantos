@@ -30,13 +30,14 @@ import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { enqueueOp, flushQueue, isNetworkError, newOperationId, subscribeQueue } from '@/lib/offline-queue'
 import { processTerminalPayment } from '@/lib/devices/terminal'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
+import { ManagerCallButton } from '@/components/manager-call-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Loader2, LogOut, ChevronLeft, Smartphone, Search, CheckCircle2, MessageSquare, Monitor, ArrowUpRight, QrCode, Users} from 'lucide-react'
 
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station?: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; tableId?: string | null; items: OrderItemT[]; paymentStatus?: string | null }
-interface TableT { id: string; name: string; zone: string; status: string; seats: number; locationId?: string | null; activeOrder?: { id: string; total: number } | null }
+interface TableT { id: string; name: string; zone: string; status: string; seats: number; number?: number; locationId?: string | null; activeOrder?: { id: string; total: number } | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null }
 interface CategoryT { id: string; name: string }
 interface BillT { subtotal: number; tax: number; grossTotal: number; discountTotal: number; totalDue: number; autoDiscounts?: { name: string; amount: number }[] }
@@ -388,6 +389,8 @@ function HandheldInner() {
           <p className="text-[11px] opacity-90 truncate">{me?.name} · {t('hh.sub')}</p>
         </div>
         <LanguageToggle />
+        {/* Issue #21 (v1.111.0) — klic vodje (kontekst izbrane mize, če je) */}
+        <ManagerCallButton size="sm" tableNumber={selTable?.number} />
         <button aria-label={t('header.logout')} onClick={logout} className="p-2 rounded-lg hover:bg-emerald-800 min-h-11 min-w-11 flex items-center justify-center"><LogOut className="w-5 h-5" /></button>
       </header>
 
