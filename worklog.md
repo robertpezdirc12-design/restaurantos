@@ -3660,3 +3660,23 @@ Stage Summary:
 - ŽIVO: LaborCoverageCard v 'pregled' (za LaborCostCard, lazy useInViewOnce), filtri (obdobje 7/14/28/30 + lokacija + vloga + dow + razpon ur client-side), KPI (Labor %/SPH/CPO/varianca s pasovi), dnevi (namizna tabela + mobilne kartice, zastavice ⚠), urna matrika, napoved 7 dni (vzorci/zaupanje/razponi), pokritost (flag barve + overlaps/longNoBreak/incomplete opozorila), vloge, dq pasica s čipi lcov.dq.*, parametrska noga (metoda/vzorci/števci/valute/generatedAt), CSV z filtri; lcov.* 94+94 SL/HR
 - HROŠČI NAJDENI IN POPRAVLJENI (4): tipizacija jobOpts, oh.day7 surovi ključ (1- vs 0-osnovni dow), mobilni preliv (overflow-auto + min-w-0), lažni zeleni tsc (zastarel buildinfo)
 - NASLEDNJI KORAKI (glavni agent): celotna zbirka na sveži ci-fresh.db → FEATURE commit v1.117.0 'Closes #10' → push → Vercel (BREZ DDL — 0 shemskih sprememb) → živa verifikacija → dokazni komentar → zaprtje #10
+
+---
+Task ID: v1.117.0-deploy
+Agent: glavni agent (Z.ai)
+Task: objava v1.117.0 + živa verifikacija + zaprtje #10 (brez DDL koraka — 0 shemskih sprememb)
+
+Work Log:
+- GLAVNA VERIFIKACIJA pred commitom: sveža ci-fresh.db → **2144 pass / 0 fail / 10 768 expect / 108 datotek / 57,4 s** (izhodišče 2102 + 42); rm tsconfig.tsbuildinfo + tsc 0; scripts/check-secrets.sh OK; eslint 0 (1 notice tests/**); git status točno pričakovana datotečna množica
+- COMMIT 717911f 'FEATURE v1.117.0: issue #10 (P2) … Closes #10' (13 datotek: 4 nove — motor/loader/ruta/testi + 9 sprememb) → PUSH main brez blokade
+- ISSUE #10: samodejno zaprt ob potisku (closed 17:56:51 UTC)
+- PRODUKCIJA: Vercel ~90 s → health **1.117.0 / 717911f / database connected**
+- BREZ DDL (0 shemskih sprememb po dizajnu) — konzola preverjena: **28/28 migracij, 0 čakajočih, allApplied: true**
+- ŽIVA VERIFIKACIJA (negativno/read-only — produkcija čista): 401 brez žetona; 200 z ADMIN (struktura 28 dni/168 ur/vloge/skupaj/kakovost/napoved; honest dq zastavice rate-zero/unapproved/missing-rate-shifts nad realnimi vrsticami — poročilo je iskreno tudi do manjkajočih postavk); 400 slab format; 404 neznana lokacija; CSV 200 (BOM + SL glave + labor-pokritost_2026-09-19_2026-10-16.csv); JSON sekcija ista pogodba; vodja (manager, reports.view) 200 s scope; brskalnik (ADMIN): kartica se izriše z realnimi podatki + pasica kakovosti + CSV, 0 konzolnih/page napak (screenshot .zscripts/prod-10-card.png)
+- DOKAZNI KOMENTAR na #10: obseg + dokazi (testi/živo/E2E) + poštene meje (napoved = statistika istih dni tedna, zastavice informativne z disclaimerjem, odprti vnosi = živi delež) → **comment id 6221600739**; /tmp artefakti pobrisani
+- ODPRTE issue po zaprtju #10: 6 (#2, #3, #4 P1; #9, #11, #69 P2 — #69 'Vizualni QA' je NOV, med valom #10 ga ni bilo)
+
+Stage Summary:
+- Issue #10 ŽIV V PRODUKCIJI v1.117.0 (717911f): strošek dela + napoved pokritosti izmen (brez AI, 0 DDL) — čist motor, isti obračun za UI/izvoz, LaborCoverageCard v pregledu, lcov.* 94+94 SL/HR; 2144/2144 testov (108 datotek)
+- Naslednji kandidati: #9 (sinhronizacija menija) ali #11 (CRM gostov) ali #69 (vizualni QA — nov, izključno UI, morda hiter naslednji val) ali P1 trojka (#2 CI/produkcija, #3 POS pripravljenost, #4 e-računi)
+- UPORABNIŠKI KORAKI (nespremenjeni): rotacija GitHub PAT (ghp_RiaF… v pogovoru), Actions kvota 1. 11., MFA vpis
