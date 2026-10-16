@@ -82,6 +82,20 @@ import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type
 import { stationViewKey } from '@/lib/kds-station-routing'
 import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check } from 'lucide-react'
 
+const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
+  ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
+  ['prodaja', Zap], ['kuhinja', ChefHat], ['meni', BookOpen], ['rezervacije', CalendarDays],
+  ['racuni', ReceiptText], ['inzeniring', ChartScatter], ['popusti', Percent], ['integracije', Plug],
+  ['zaloge', PackageSearch], ['izmene', Clock], ['delovnicas', Timer], ['urnik', CalendarRange],
+  ['haccp', Thermometer], ['stroski', Wallet], ['zvestoba', HeartHandshake], ['mnenja', Star],
+  ['dostava', Truck], ['napitnine', Coins], ['obracun', ReceiptText], ['nabava', ShoppingCart],
+  ['prenosi', ArrowLeftRight], ['darilne', Gift], ['odpad', Trash2], ['cakalna', Hourglass],
+  ['odpiralnicas', CalendarClock], ['zaposleni', Users], ['nastavitve', Settings], ['enterprise', Building2],
+];
+const DASHBOARD_PRIMARY_TABS = new Set(['pregled', 'mize', 'narocila', 'prodaja', 'kuhinja', 'meni', 'rezervacije', 'racuni']);
+const DASHBOARD_MOBILE_PRIMARY_TABS = new Set(['pregled', 'mize', 'narocila', 'prodaja', 'kuhinja']);
+const DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG = new Set(['meni', 'rezervacije', 'racuni']);
+
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
 interface LocationRowT { id: string; name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string | null; timezone: string; currency: string; isActive: boolean }
@@ -1741,26 +1755,58 @@ function DashboardInner() {
 
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList data-region="dashboard-tabs" className="w-full justify-start overflow-x-auto h-auto flex-nowrap bg-white border border-stone-200 p-1">
-            {([
-              ['pregled', t('tabs.pregled'), LayoutDashboard], ['mize', t('tabs.mize'), Utensils], ['narocila', t('tabs.narocila'), ClipboardList],
-              ['prodaja', t('tabs.prodaja'), Zap], ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
-              ['racuni', t('tabs.racuni'), ReceiptText], ['inzeniring', t('tabs.inzeniring'), ChartScatter], ['popusti', t('tabs.popusti'), Percent], ['integracije', t('tabs.integracije'), Plug], ['zaloge', t('tabs.zaloge'), PackageSearch], ['izmene', t('tabs.izmene'), Clock],
-              ['delovnicas', t('tabs.delovnicas'), Timer],
-              ['urnik', t('tabs.urnik'), CalendarRange],
-              ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
-              ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['obracun', t('tabs.obracun'), ReceiptText], ['nabava', t('tabs.nabava'), ShoppingCart], ['prenosi', t('tabs.prenosi'), ArrowLeftRight], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings], ['enterprise', t('tabs.enterprise'), Building2],
-            ] as [string, string, typeof LayoutDashboard | null][])
-              // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno;
-              // N8 fail-closed: vsak zavihek ima izrecen vnos v TAB_PERM (src/lib/tab-permissions.ts),
-              // neznan/undefined id → zavihek NI viden
-              .filter(([v]) => tabHasPerm(v, { canManage, perms }))
-              .map(([v, , Icon]) => (
-              <TabsTrigger key={v} value={v} className="gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap">
-                {Icon && <Icon className="w-4 h-4" />} {t(`tabs.${v}`)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div data-region="dashboard-nav" className="flex min-w-0 items-center gap-2">
+            <TabsList data-region="dashboard-tabs" className="min-w-0 flex-1 justify-start overflow-hidden h-auto flex-nowrap bg-white border border-stone-200 p-1">
+              {DASHBOARD_TABS
+                .filter(([v]) => DASHBOARD_PRIMARY_TABS.has(v))
+                // UI gating po dovoljenjih — backend uveljavlja neodvisno; neznan zavihek ostane skrit.
+                .filter(([v]) => tabHasPerm(v, { canManage, perms }))
+                .map(([v, Icon]) => (
+                  <TabsTrigger
+                    key={v}
+                    value={v}
+                    aria-label={t(`tabs.${v}`)}
+                    title={t(`tabs.${v}`)}
+                    className={`min-w-0 gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap ${DASHBOARD_MOBILE_PRIMARY_TABS.has(v) ? 'inline-flex' : 'hidden lg:inline-flex'}`}
+                  >
+                    {Icon && <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />}
+                    <span className="hidden sm:inline">{t(`tabs.${v}`)}</span>
+                  </TabsTrigger>
+                ))}
+            </TabsList>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-label={t('tabs.more')}
+                  title={t('tabs.more')}
+                  className="h-10 shrink-0 gap-1.5 rounded-xl px-3"
+                >
+                  <MoreVertical className="w-4 h-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{t('tabs.more')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
+                {DASHBOARD_TABS
+                  .filter(([v]) => !DASHBOARD_MOBILE_PRIMARY_TABS.has(v))
+                  .filter(([v]) => tabHasPerm(v, { canManage, perms }))
+                  .map(([v, Icon]) => (
+                    <DropdownMenuItem
+                      key={v}
+                      onSelect={() => setActiveTab(v)}
+                      className={`${activeTab === v ? 'bg-emerald-50 text-emerald-900 focus:bg-emerald-100' : ''} ${DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG.has(v) ? 'lg:hidden' : ''}`}
+                    >
+                      {Icon && <Icon className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />}
+                      <span>{t(`tabs.${v}`)}</span>
+                      {activeTab === v && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           <TabsContent value="pregled" className="space-y-6">
             {viewLoc && (
