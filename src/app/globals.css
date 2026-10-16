@@ -634,3 +634,46 @@ main[data-screen="login"] button {
 
 /* Dark mode table headers: maintain readable contrast on dark surfaces. */
 .dark thead th { color: oklch(0.78 0.015 155); }
+
+/* Staff language toggle — consistent, thumb-friendly SL/HR control.
+   The guest SL/HR/EN switch already uses 44px targets; keep staff controls legible
+   while preserving the compact desktop header. Presentation only, no locale logic. */
+.os-language-toggle {
+  gap: 0.125rem;
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+  box-shadow: 0 1px 2px oklch(0.2 0.03 155 / 5%);
+}
+.os-language-toggle > button {
+  min-width: 2.375rem;
+  min-height: 2.125rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.os-language-toggle > button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid oklch(0.62 0.13 160 / 85%);
+  outline-offset: 2px;
+}
+.dark .os-language-toggle {
+  border-color: oklch(1 0 0 / 14%);
+  background-color: oklch(0.20 0.01 155);
+}
+.dark .os-language-toggle > button:not([aria-pressed="true"]) {
+  color: oklch(0.82 0.012 155);
+}
+.dark .os-language-toggle > button:not([aria-pressed="true"]):hover {
+  color: oklch(0.98 0.004 155);
+  background-color: oklch(1 0 0 / 7%);
+}
+@media (max-width: 640px) {
+  .os-language-toggle > button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
+  }
+}
+
