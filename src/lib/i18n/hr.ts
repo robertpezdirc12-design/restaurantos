@@ -77,6 +77,7 @@ export const hr: Record<string, string> = {
   'tabs.popusti': 'Popusti',
   'tabs.integracije': 'Integracije',
   'tabs.enterprise': 'Enterprise',
+  'tabs.more': 'Više',
   'ent.kpiOrgs': 'Organizacije',
   'ent.kpiBrands': 'Brendovi',
   'ent.kpiProperties': 'Objekti',
