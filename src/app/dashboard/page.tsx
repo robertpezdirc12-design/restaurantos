@@ -1665,8 +1665,8 @@ function DashboardInner() {
   const filteredRes = filterReservations(reservations, resFilter, Date.now())
 
   return (
-    <main className="min-h-screen flex flex-col bg-stone-100">
-      <header className="sticky top-0 z-20 bg-white border-b border-stone-200 shadow-sm">
+    <main data-screen="dashboard" className="min-h-screen flex flex-col bg-stone-50">
+      <header data-region="dashboard-header" className="sticky top-0 z-20 bg-white border-b border-stone-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
@@ -1741,7 +1741,7 @@ function DashboardInner() {
 
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="w-full justify-start overflow-x-auto h-auto flex-nowrap bg-white border border-stone-200 p-1">
+          <TabsList data-region="dashboard-tabs" className="w-full justify-start overflow-x-auto h-auto flex-nowrap bg-white border border-stone-200 p-1">
             {([
               ['pregled', t('tabs.pregled'), LayoutDashboard], ['mize', t('tabs.mize'), Utensils], ['narocila', t('tabs.narocila'), ClipboardList],
               ['prodaja', t('tabs.prodaja'), Zap], ['kuhinja', t('tabs.kuhinja'), ChefHat], ['meni', t('tabs.meni'), BookOpen], ['rezervacije', t('tabs.rezervacije'), CalendarDays],
