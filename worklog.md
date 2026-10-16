@@ -3545,3 +3545,21 @@ Work Log:
 Stage Summary:
 - Issue #8 implementiran v celoti: odpremnica/tranzit/prevzem s CAS idempotenco, serije + expiry + unitCost prenos, weighted cost na cilju, variance (missing/damaged) NE knjižena, cross-tenant 403, audit veriga, DDL #28
 - NASLEDNJI KORAK: commit → push → Vercel → produkcijski DDL stock-transfers → živa verifikacija → zaprtje #8
+
+---
+Task ID: v1.116.0-deploy
+Agent: glavni agent (Z.ai)
+Task: objava v1.116.0 + produkcijski DDL + živa verifikacija + zaprtje #8
+
+Work Log:
+- PUSH: FEATURE 81799f2 (35 datotek, +4729/−20) → main BREZ blokade; "Closes #8" je samodejno zaprl issue (state closed/completed)
+- PRODUKCIJA: Vercel deploy ~1 min → health **1.116.0 / 81799f2 / database connected**
+- DDL: login info@restaurantos.app (ADMIN, token 194 zn) → POST /api/admin/migrate-stock-transfers → **{"applied":["StockTransfer","StockTransferItem"],"skipped":[],"alreadyApplied":false}** → konzola **28/28, pending: 0, allApplied: true**; /tmp/prod_token.txt zbrisan
+- ŽIVA VERIFIKACIJA (negativno/read-only — produkcija čista, 1 lokacija): GET /api/transfers brez žetona → **401**; z adminom → **200 {"transfers":[]}** (post-DDL, NE 503); fake ID dispatch/cancel → **404**; POST from=to → **400** 'Izvorna in ciljna lokacija sta enaki…'; browser (vodja@ PIN 754825): dashboard?tab=prenosi → zavihek IZBRAN + 'Medlokacijski prenosi' + iskren namig 'Za prenos sta potrebni vsaj dve lokaciji.'; 0 page/konzolnih napak
+- ZAPRTJE #8: dokazni komentar (obseg + dokazi + poštene meje: approve korak izpuščen po 'če je potrebno', vračilo = nov prenos v obratni smeri, pozitivni prenos na produkciji namenoma preskočen) → **comment id 6218966840**; GET verify: closed/completed/1 komentar
+- OPEN ISSUES: 6 (#2, #3, #4 P1; #9, #10, #11 P2)
+
+Stage Summary:
+- Issue #8 ŽIV V PRODUKCIJI v1.116.0 (81799f2): medlokacijski prenosi s CAS idempotenco, serijami, obteženo ceno in varianco; DDL 28/28; 2102/2102 testov (107 datotek)
+- Naslednji kandidati: #10 (strošek dela — sinergija s plačami #22) ali #9 (sinhronizacija menija) ali #4 (e-računi P1 — eSLOG)
+- UPORABNIŠKI KORAKI: rotacija GitHub PAT (ghp_RiaF… v pogovoru), Actions kvota 1. 11., MFA, VAPID rotacija
