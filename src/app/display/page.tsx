@@ -315,8 +315,9 @@ function DisplayInner() {
           <div className="w-full max-w-3xl">
             <h2 className="text-3xl font-bold text-stone-300">{p.tableName || t('guest.display.currentOrder')}</h2>
             <div className="mt-6 space-y-3">
+              {/* i69 vizualni QA: ime/cena sta se pri ozkih zaslonih dotikala (3px) — gap-3 loči brez logike */}
               {(p.lines || []).map((l, i) => (
-                <div key={i} className="flex items-baseline justify-between border-b border-stone-800 pb-3">
+                <div key={i} className="flex items-baseline justify-between gap-3 border-b border-stone-800 pb-3">
                   <div>
                     <span className="text-2xl font-semibold">{l.qty}× {l.name}</span>
                     {l.modifiers && l.modifiers.length > 0 && (

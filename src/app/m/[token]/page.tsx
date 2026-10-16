@@ -354,7 +354,8 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         ) : (
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             {!fbOpen ? (
-              <button type="button" className="w-full flex items-center justify-between text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
+              /* i69 vizualni QA: cilj na dotik je bil le 20px — py-2.5 ga približa 40px (className-only) */
+              <button type="button" className="w-full flex items-center justify-between py-2.5 text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
                 <span>{t('guest.feedback.cta')}</span>
                 <Star className="h-4 w-4 text-amber-500" />
               </button>

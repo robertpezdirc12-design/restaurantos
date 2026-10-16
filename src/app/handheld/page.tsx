@@ -390,7 +390,8 @@ function HandheldInner() {
         </div>
         <LanguageToggle />
         {/* Issue #21 (v1.111.0) — klic vodje (kontekst izbrane mize, če je) */}
-        <ManagerCallButton size="sm" tableNumber={selTable?.number} />
+        {/* i69 vizualni QA: h-11 izenači z Odjava v isti vrstici (36→44px, boljši dotik) */}
+        <ManagerCallButton size="sm" className="h-11" tableNumber={selTable?.number} />
         <button aria-label={t('header.logout')} onClick={logout} className="p-2 rounded-lg hover:bg-emerald-800 min-h-11 min-w-11 flex items-center justify-center"><LogOut className="w-5 h-5" /></button>
       </header>
 
