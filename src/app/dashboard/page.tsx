@@ -1672,7 +1672,7 @@ function DashboardInner() {
             <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
               <Utensils className="w-4 h-4" />
             </div>
-            <span className="font-bold truncate">RestavrantOS</span>
+            <span className="font-bold truncate">RestaurantOS</span>
             <Badge variant="outline" className="hidden md:inline-flex shrink-0">{APP_VERSION}</Badge>
             {/* Triage ⑧ — pogledi: preklopnik lokacije za centralne vloge (OWNER/ADMIN) */}
             {isCentralUIRole(user?.role) && locList.length > 0 && (
