@@ -386,6 +386,14 @@ export function isKdsStationsStatement(stmt: string): boolean {
   return false
 }
 
+/** Issue #24 (v1.114.0): etikete pripravljene hrane — NOVI tabeli PrepLabel + LabelShelfRule. */
+export function isPrepLabelsStatement(stmt: string): boolean {
+  if (/"PrepLabel"|"LabelShelfRule"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  return false
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -617,6 +625,21 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       '(graceful — queue + stationTargets + POS/KDS tok se ne dotaknejo). Ko je ' +
       'DDL apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isKdsStationsStatement,
+  },
+  {
+    id: 'prep-labels',
+    reason:
+      'Etikete za pripravljeno hrano in odprte serije (v1.114.0, issue #24 P2) — ' +
+      'NOVI tabeli PrepLabel (zamrznjen posnetek etikete ob izdaji: naziv, ' +
+      'količina, serija, območje, priprava/odprtje, ROK iz potrjenega pravila, ' +
+      'alergeni, odgovorna oseba, QR token skrivnost, printCount) in ' +
+      'LabelShelfRule (potrjeno pravilo roka po pripravi/odprtju po artiklu, ' +
+      'revizijska sled) — skalarne vezave brez FK (StationTask/PrintJob ' +
+      'vzorec): produkcija čaka DDL korak — admin ruta /api/admin/migrate-prep-labels ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL /api/labels* ' +
+      'rute vračajo 503 (graceful — serije/priprava/tisk tokovi se ne dotaknejo). ' +
+      'Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isPrepLabelsStatement,
   },
 ]
 

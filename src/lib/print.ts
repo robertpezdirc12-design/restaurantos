@@ -14,7 +14,7 @@
  */
 import { r2 } from '@/lib/map'
 
-export const PRINT_KINDS = ['receipt', 'kitchen', 'bar', 'report', 'other'] as const
+export const PRINT_KINDS = ['receipt', 'kitchen', 'bar', 'report', 'other', 'label'] as const
 export const PRINT_TARGETS = ['browser', 'agent', 'simulator'] as const
 export const PRINT_STATUSES = ['printed', 'failed', 'simulated'] as const
 
@@ -85,6 +85,7 @@ export function inferPrintKind(title: string): PrintKind {
   if (t.includes('BAR')) return 'bar'
   if (t.includes('RAČUN') || t.includes('RACUN') || t.includes('RECEIPT') || t.includes('DOKLAD')) return 'receipt'
   if (t.includes('POROČILO') || t.includes('POROCILO') || t.includes('Z-') || t.includes('REPORT')) return 'report'
+  if (t.includes('ETIKET')) return 'label'
   return 'other'
 }
 

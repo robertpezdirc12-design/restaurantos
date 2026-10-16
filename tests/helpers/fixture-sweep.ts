@@ -79,6 +79,7 @@ export const TEST_PREFIXES = [
   'i21-', // issue21-manager-call (v1.111.0)
   'i14-', // issue14-kds-stations (v1.112.0)
   'i12-', // issue12-recommendations (v1.113.0)
+  'i24-', // issue24-labels (v1.114.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

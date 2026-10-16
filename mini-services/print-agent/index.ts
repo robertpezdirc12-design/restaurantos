@@ -9,6 +9,8 @@
  *   POST /print  → {host, port?=9100, payloadBase64}            (raw bytes passthrough)
  *   POST /text   → {host, port?, text, align?, bold?, cut?=true} (builds ESC/POS, CP852)
  *   POST /layout → {host, port?, title?, lines:[{text,align?,bold?,size?}], cut?} (per-line styles)
+ *   POST /label  → {host, port?, title?, lines:[...], qrText?, qrSize?=5(3–8), cut?=true}
+ *                (issue #24 — per-line styles + ESC/POS QR GS ( k, model 2, EC M)
  *
  * All printer-attempt outcomes respond 200 with ok:true|false (caller checks `ok`).
  * No external dependencies — Bun + node:net only.
@@ -363,6 +365,48 @@ function buildEscPosLines(title: string, lines: LayoutLine[], cut = true): Uint8
   return Uint8Array.from(out);
 }
 
+// ---------------------------------------------------------------------------
+// Issue #24 — ESC/POS QR (GS ( k) — etiketa z QR kodo
+// ---------------------------------------------------------------------------
+
+/** ESC/POS QR — GS ( k funkcije 165/167/169/180/181; model 2, EC level M. */
+function escposQrChunks(text: string, moduleSize: number): Buffer[] {
+  const data = Buffer.from(text, "utf8");
+  const len = data.length + 3;
+  return [
+    Buffer.from([0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x32]), // fn 165: model 2
+    Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, moduleSize]), // fn 167: module size
+    Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31]), // fn 169: EC level M
+    Buffer.concat([Buffer.from([0x1d, 0x28, 0x6b, len & 0xff, (len >> 8) & 0xff, 0x31, 0x50]), data]), // fn 180: store data
+    Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]), // fn 181: print
+  ];
+}
+
+/**
+ * Issue #24 — etiketa: vrstice (init + CP852 + per-line stili, isto kot /layout)
+ * + QR kodo. Vrstni red: ESC @ → vrstice → \n\n (feed 2) → QR chunks →
+ * \n\n\n (feed 3 — odmor za odrez) → GS V B 0 (cut). CP852 za besedilo OSTANE
+ * (QR ukazi so binarni in se codepage-a ne dotaknejo).
+ */
+function buildEscPosLabel(
+  title: string,
+  lines: LayoutLine[],
+  qrText: string,
+  qrSize: number,
+  cut: boolean,
+): Uint8Array {
+  // vrstice: init + codepage + renderLine logika iz /layout (cut=false — odrez pride ZA QR)
+  const textPart = buildEscPosLines(title, lines, false);
+  const chunks: Buffer[] = [Buffer.from(textPart)];
+  if (qrText) {
+    chunks.push(Buffer.from("\n\n", "utf8")); // feed 2 vrstici pred QR
+    chunks.push(...escposQrChunks(qrText, qrSize));
+    chunks.push(Buffer.from("\n\n\n", "utf8")); // feed 3 vrstice za QR (odmor za odrez)
+  }
+  if (cut) chunks.push(Buffer.from([0x1d, 0x56, 0x42, 0x00])); // GS V B 0 — partial cut
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
 function buildEscPosText(job: TextJob): Uint8Array {
   const align = job.align && job.align in ALIGN ? job.align : "left";
   const bold = job.bold === true;
@@ -538,8 +582,11 @@ async function handle(req: Request): Promise<Response> {
     return json({ ok: true, service: "print-agent", ts: Date.now() });
   }
 
-  // POST /print | POST /text | POST /layout
-  if (req.method === "POST" && (path === "/print" || path === "/text" || path === "/layout")) {
+  // POST /print | POST /text | POST /layout | POST /label
+  if (
+    req.method === "POST" &&
+    (path === "/print" || path === "/text" || path === "/layout" || path === "/label")
+  ) {
     // §7 auth: token required whenever PRINT_AGENT_TOKEN is configured
     if (!tokenOk(req)) {
       logReject(path, "unauthenticated", "missing/invalid x-agent-token");
@@ -587,6 +634,24 @@ async function handle(req: Request): Promise<Response> {
       bytes = buildEscPosLines(
         typeof body.title === "string" ? body.title : "",
         lines,
+        body.cut !== false
+      );
+    } else if (path === "/label") {
+      // Issue #24 — etiketa z QR: per-line stili (isto kot /layout) + ESC/POS QR
+      const lines = Array.isArray(body.lines) ? (body.lines as LayoutLine[]) : [];
+      const qrText = typeof body.qrText === "string" ? body.qrText.slice(0, 1024) : "";
+      if (lines.length === 0 && !qrText) return json({ ok: false, error: "missing lines" }, 400);
+      // qrSize 3–8 (ESC/POS module size); neveljaven/manjkajoč → privzeto 5
+      let qrSize = 5;
+      if (body.qrSize !== undefined) {
+        const q = Number(body.qrSize);
+        if (Number.isInteger(q) && q >= 3 && q <= 8) qrSize = q;
+      }
+      bytes = buildEscPosLabel(
+        typeof body.title === "string" ? body.title : "",
+        lines,
+        qrText,
+        qrSize,
         body.cut !== false
       );
     } else {

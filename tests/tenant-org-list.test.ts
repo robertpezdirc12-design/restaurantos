@@ -192,7 +192,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // postaj v uporabnikovem obsegu, additive KDS polja) → 56
     // Issue #12 (v1.113.0): purchase-orders/recommendations GET (priporočeni
     // nabavni nalogi — poraba/roki/pakiranja v uporabnikovem obsegu) → 57
-    expect(wired.length).toBe(57)
+    // Issue #24 (v1.114.0): labels GET (etikete pripravljene hrane — seznam
+    // etiket znotraj obsega uporabnika, locationScope) → 58
+    expect(wired.length).toBe(58)
   })
 })
 

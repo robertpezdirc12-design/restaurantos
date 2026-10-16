@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
+import { api, fmtEUR, downloadCSV, getToken, getUser } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
@@ -21,7 +21,7 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download, Tag } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 import { heatClass } from '@/lib/sales-by-hour'
 import { durationLabel } from '@/lib/timeclock'
@@ -29,6 +29,8 @@ import { scaleBatchLines } from '@/lib/batch'
 import { dueInMs, isRemindable, remindMsForRule } from '@/lib/recurring-po'
 import { PUSH_EVENT_TYPES } from '@/lib/push-events'
 import { isAdInWindow, isValidDateStr } from '@/lib/display-promos'
+/* Issue #24 (v1.114.0) — prepared-food label dialog (issue + print + QR + void). */
+import { LabelDialog } from '@/components/label-dialog'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
@@ -678,6 +680,8 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
   const [trace, setTrace] = useState<TraceReportT | null>(null)
   const [traceBusy, setTraceBusy] = useState(false)
   const [traceErr, setTraceErr] = useState('')
+  // issue #24 — label dialog target row (source='batch', open lot)
+  const [labelFor, setLabelFor] = useState<BatchRowT | null>(null)
 
   const load = async (f: string = filter) => {
     setLoading(true); setErr('')
@@ -828,6 +832,16 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
                         <td className="p-2 text-stone-600 max-w-32 truncate text-xs" title={b.supplierName}>{b.supplierName || '—'}</td>
                         <td className="p-2 text-right whitespace-nowrap">
                           <button className="text-xs px-1.5 py-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => void openTrace(b)} title={t('bat.trace')}>{t('bat.trace')}</button>
+                          {/* issue #24 — issue/print a label for this open batch (auth only; blocked lots get 409) */}
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center min-h-8 min-w-8 ml-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700"
+                            onClick={() => setLabelFor(b)}
+                            title={t('lbl.button')}
+                            aria-label={`${t('lbl.button')} ${b.itemName} ${b.lotNumber}`}
+                          >
+                            <Tag className="w-3 h-3" aria-hidden />
+                          </button>
                           {canManage && (
                             <>
                               <button className="text-xs px-1.5 py-1 ml-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => openAction('dates', b)} title={t('bat.dates')}>{t('bat.dates')}</button>
@@ -1003,6 +1017,22 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── issue #24 — label issue/print for the selected open batch ── */}
+      <LabelDialog
+        open={labelFor !== null}
+        onOpenChange={(v) => { if (!v) setLabelFor(null) }}
+        source="batch"
+        batchId={labelFor?.id}
+        context={{
+          itemName: labelFor?.itemName ?? '',
+          lotNumber: labelFor?.lotNumber ?? '',
+          unit: labelFor?.itemUnit ?? '',
+          defaultQuantity: labelFor?.quantityRemaining ?? 0,
+        }}
+        canManage={canManage}
+        onDone={() => { void load(filter) }}
+      />
     </Collapsible>
   )
 }
@@ -1040,6 +1070,14 @@ export function BatchPrepCard() {
   const [bomLines, setBomLines] = useState<BomPreviewLineT[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [dlgErr, setDlgErr] = useState('')
+  // issue #24 — label dialog target row (source='preparation', COMPLETED runs only)
+  const [labelFor, setLabelFor] = useState<BatchPrepRowT | null>(null)
+  // void action inside the label dialog needs inventory.manage (server enforces it too)
+  const user = getUser()
+  const canManageLabels = Boolean(
+    (user?.permissions ?? []).includes('inventory.manage') ||
+    user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER',
+  )
 
   const load = async () => {
     setLoading(true); setErr('')
@@ -1167,6 +1205,19 @@ export function BatchPrepCard() {
                               <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" disabled={busy} onClick={() => void cancelBatch(b.id)}>{t('batch.cancelBtn')}</Button>
                             </>
                           )}
+                          {/* issue #24 — completed preparations get a food label (expiry + QR) */}
+                          {b.status === 'COMPLETED' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 gap-1"
+                              disabled={busy}
+                              onClick={() => setLabelFor(b)}
+                              aria-label={`${t('lbl.button')} ${b.outputItemName}`}
+                            >
+                              <Tag className="w-3.5 h-3.5" aria-hidden /> {t('lbl.button')}
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1233,6 +1284,22 @@ export function BatchPrepCard() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            {/* issue #24 — label issue/print for the selected completed preparation */}
+            <LabelDialog
+              open={labelFor !== null}
+              onOpenChange={(v) => { if (!v) setLabelFor(null) }}
+              source="preparation"
+              preparationId={labelFor?.id}
+              context={{
+                itemName: labelFor?.outputItemName ?? '',
+                lotNumber: '',
+                unit: labelFor?.outputUnit ?? '',
+                defaultQuantity: labelFor?.outputQuantity ?? 0,
+              }}
+              canManage={canManageLabels}
+              onDone={() => { void load() }}
+            />
           </CardContent>
         </CollapsibleContent>
       </Card>

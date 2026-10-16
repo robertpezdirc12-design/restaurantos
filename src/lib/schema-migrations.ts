@@ -408,6 +408,17 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
       ['PrepStation', 'isExpo'],
     ])),
   },
+  {
+    // Issue #24 (P2, v1.114.0) — etikete za pripravljeno hrano in odprte serije.
+    // NOVI tabeli PrepLabel (zamrznjen posnetek etikete + QR token skrivnost)
+    // in LabelShelfRule (potrjeno pravilo roka po pripravi/odprtju po artiklu).
+    // Do DDL: /api/labels* → 503 (graceful) — serije/priprava/tisk tokovi se
+    // ne dotaknejo.
+    id: 'prep-labels',
+    descKey: 'mig.prepLabels.desc',
+    endpoint: '/api/admin/migrate-prep-labels',
+    probe: async () => tablesAll(['PrepLabel', 'LabelShelfRule']),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

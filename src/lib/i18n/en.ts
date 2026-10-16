@@ -225,4 +225,21 @@ export const en: Record<string, string> = {
   'resv.public.replay': 'Duplicate entry',
   'resv.public.replayNote': 'This reservation has already been submitted.',
   'resv.public.confirmationNote': 'We sent a confirmation to your e-mail / phone (if configured).',
+  // Issue #24 — public label status page (/label/<token>, guest surface — staff
+  // scans the QR on a prepared-food label; tourists get EN like on /pay and /r)
+  'lbl.public.loading': 'Loading …',
+  'lbl.public.notFoundTitle': 'Label not found',
+  'lbl.public.notFoundBody': 'The QR code is not valid or the label no longer exists.',
+  'lbl.public.status.ok': 'Valid',
+  'lbl.public.status.alert': 'Expiring soon',
+  'lbl.public.status.expired': 'Expired',
+  'lbl.public.status.exhausted': 'Used up',
+  'lbl.public.status.quarantined': 'Quarantined',
+  'lbl.public.status.recalled': 'Recalled',
+  'lbl.public.status.review': 'Needs review',
+  'lbl.public.status.void': 'Voided',
+  'lbl.public.expiry': 'Use by',
+  'lbl.public.noExpiry': 'No expiry date set',
+  'lbl.public.prepared': 'Prepared',
+  'lbl.public.footer': 'RestaurantOS — label status',
 }

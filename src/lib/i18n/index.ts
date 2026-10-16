@@ -31,12 +31,13 @@ const DICTS: Record<Locale, Record<string, string>> = { sl, hr, en }
 
 /**
  * EN je NAMERNO DELNI slovar (P1-5): pokriva SAMO gostujoče površine
- * ('guest.*' + 'pay.*' — QR meni, kiosk, display, javna plačilna povezava).
+ * ('guest.*' + 'pay.*' + 'resv.public.' + 'lbl.public.' — QR meni, kiosk,
+ * display, javna plačilna/rezervacijska povezava in status etikete /label).
  * Dashboard/osebje ostaja SL/HR; manjkajoč ključ v EN → t() vrne SL vrednost
  * (fallback en → sl, isti varovalni vzorec kot manjkajoč HR ključ).
  * Pokritost teh dveh predpon uveljavlja tests/i18n-guest.test.ts.
  */
-export const EN_GUEST_PREFIXES = ['guest.', 'pay.', 'resv.public.'] as const
+export const EN_GUEST_PREFIXES = ['guest.', 'pay.', 'resv.public.', 'lbl.public.'] as const
 
 /**
  * 'sl-SI' | 'sl' | 'hr-HR' | 'hr' | 'en' | 'en-US' | nepoznano → normaliziran Locale

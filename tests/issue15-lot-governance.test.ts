@@ -634,7 +634,7 @@ describe('H. register + DDL idempotentnost', () => {
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'lot-governance')
     expect(m).toBeTruthy()
     expect(m!.endpoint).toBe('/api/admin/migrate-lot-governance')
-    expect(SCHEMA_MIGRATIONS.length).toBe(25) // v1.111.0: +manager-call (#21)
+    expect(SCHEMA_MIGRATIONS.length).toBe(26) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     expect(slDict['mig.lotGovernance.desc']).toBeTruthy()
     expect(hrDict['mig.lotGovernance.desc']).toBeTruthy()
   })

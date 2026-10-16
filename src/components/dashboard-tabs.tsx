@@ -41,6 +41,8 @@ export { ManagerCallsCard } from './tabs/manager-calls-card'
 export { ManagerCallSettingsCard } from './tabs/manager-call-settings-card'
 /* Issue #14 (v1.112.0) — KDS: config kartica pripravljalnih postaj + usmerjanje artiklov */
 export { PrepStationsCard } from './tabs/prep-stations-card'
+/* Issue #24 (v1.114.0) — label shelf-life rules (Settings, inventory.manage) */
+export { LabelRulesCard } from './tabs/label-rules-card'
 export { EnterpriseTab, MigrationsConsoleSection } from './tabs/enterprise-tab'
 export { StaffScheduleTab } from './tabs/urnik-izmen-tab'
 export type { StaffShiftRowT, TimeOffRowT } from './tabs/urnik-izmen-tab'

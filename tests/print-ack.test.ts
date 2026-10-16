@@ -64,6 +64,10 @@ describe('inferPrintKind (Issue #10 P2-3)', () => {
     expect(inferPrintKind('Z-POROČILO')).toBe('report')
     expect(inferPrintKind('Naslov brez konteksta')).toBe('other')
   })
+
+  it('ETIKETA v naslovu → kind label (#24 — PRINT_KINDS razširjen)', () => {
+    expect(inferPrintKind('=== ETIKETA #24 ===')).toBe('label')
+  })
 })
 
 describe('cleanPrintError (Issue #10 P2-3)', () => {

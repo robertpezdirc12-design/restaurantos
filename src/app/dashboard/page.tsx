@@ -69,7 +69,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -230,10 +230,12 @@ function DashboardInner() {
   const [mergeTargetId, setMergeTargetId] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   // OPS-4 v1.67.0: zacetni zavihek iz URL (?tab=) — zaslon sank/kuhinje na svoji napravi
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window === 'undefined') return 'pregled'
-    return new URLSearchParams(window.location.search).get('tab') ?? 'pregled'
-  })
+  // FIX (E2E 8-e2e): hydration-safe init — the old lazy initializer read
+  // window.location on the client (server always got 'pregled') → the Tabs
+  // aria-selected tree mismatched on every deep link (?tab=zaloge …). The URL
+  // param is applied by the dedicated effect below (line ~419), which already
+  // handles the router.push-after-render timing; direct loads switch after mount.
+  const [activeTab, setActiveTab] = useState('pregled')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
 
@@ -242,16 +244,21 @@ function DashboardInner() {
   // in jih page.tsx shrani) — prvi izris ŽE ve, kdo je prijavljen → zavihki ne
   // utripajo skozi permisivno stanje (prej perms=[] → tabHasPerm dovolil VSE do /me).
   // /api/auth/me v load() ostaja kot osvežitev (takojšen učinek spremembe pravic).
-  const [perms, setPerms] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return []
+  // FIX (E2E 8-e2e): hydration-safe — the lazy initializer read localStorage on the
+  // client (server always got perms=[]) so the permission-gated TabsList rendered
+  // a different tab set during hydration (console error + full client re-render).
+  // Permissions now hydrate from localStorage in the effect below (same-frame,
+  // before /me — the anti-flicker goal of P1-A is preserved, only one paint later).
+  const [perms, setPerms] = useState<string[]>([])
+  useEffect(() => {
     try {
       const raw = localStorage.getItem('ro_user')
       const parsed = raw ? JSON.parse(raw) : null
-      return Array.isArray(parsed?.permissions) ? parsed.permissions : []
+      if (Array.isArray(parsed?.permissions)) setPerms(parsed.permissions)
     } catch {
-      return []
+      /* leave empty — /me refresh in load() is authoritative */
     }
-  })
+  }, [])
   const [online, setOnline] = useState(true)
   const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
   const [syncing, setSyncing] = useState(false)
@@ -296,7 +303,24 @@ function DashboardInner() {
   const [splitOpen, setSplitOpen] = useState(false)
   const [splitSel, setSplitSel] = useState<Record<string, boolean>>({})
   // OPS-7 (v1.70.0): Web Push stanje + omogočanje (zvonček v glavi)
-  const [pushState, setPushState] = useState<'unsupported' | 'default' | 'granted' | 'denied'>(() => (typeof window !== 'undefined' && !('serviceWorker' in navigator && 'PushManager' in window) ? 'unsupported' : typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? 'granted' : Notification.permission === 'denied' ? 'denied' : 'default') : 'unsupported'))
+  // FIX (E2E 8-e2e): the old lazy initializer read window/Notification during
+  // render — SSR rendered the header WITHOUT the bell button while the client
+  // hydrated WITH it (hydration mismatch console error on every load). Push
+  // state is now computed after mount (SSV renders 'unsupported').
+  const [pushState, setPushState] = useState<'unsupported' | 'default' | 'granted' | 'denied'>('unsupported')
+  useEffect(() => {
+    setPushState(
+      !('serviceWorker' in navigator && 'PushManager' in window)
+        ? 'unsupported'
+        : typeof Notification !== 'undefined'
+          ? Notification.permission === 'granted'
+            ? 'granted'
+            : Notification.permission === 'denied'
+              ? 'denied'
+              : 'default'
+          : 'unsupported',
+    )
+  }, [])
 
   async function enablePush() {
     try {
@@ -2662,6 +2686,8 @@ function DashboardInner() {
             <ReservationWidgetCard />
             {/* Issue #21 (v1.111.0) — nastavitve klica vodje (dovoljene vrste + čas eskalacije) */}
             <ManagerCallSettingsCard />
+            {/* Issue #24 (v1.114.0) — potrjena etiketna pravila roka uporabe (inventory.manage) */}
+            <LabelRulesCard />
             {/* Issue #14 (v1.112.0) — KDS named stations config + item routing editor
                 (settings.manage render gate inside the card; menu.manage gates routing) */}
             <PrepStationsCard />

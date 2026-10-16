@@ -9,6 +9,7 @@
  */
 
 import { allergenLabels } from '@/lib/allergen-catalog'
+import { getToken } from '@/lib/client'
 
 export type PrintTarget = 'browser' | 'agent' | 'simulator'
 
@@ -57,7 +58,7 @@ export interface PrintResult {
 
 /** Issue #10 P2-3 — opcijski kontekst ACK-evidence (nič od tega ne vpliva na tisk). */
 export interface PrintContext {
-  kind?: 'receipt' | 'kitchen' | 'bar' | 'report' | 'other'
+  kind?: 'receipt' | 'kitchen' | 'bar' | 'report' | 'other' | 'label'
   refId?: string
 }
 
@@ -68,9 +69,13 @@ export interface PrintContext {
 function sendPrintAck(title: string, target: PrintTarget, res: PrintResult, ctx?: PrintContext, device = ''): void {
   try {
     const kind = ctx?.kind || inferKindFromTitle(title)
+    // FIX (E2E 8-e2e): /api/print/ack je requireAuth — brez Bearer glave je bil vsak
+    // ACK iz brskalnika 401 in PrintJob evidenca tiskov NIKOLI ni nastala (vidno
+    // šele v živem toku #24: simulator je izpisal etiketo, dokaz pa mankal).
+    const token = getToken()
     void fetch('/api/print/ack', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       keepalive: true,
       body: JSON.stringify({
         kind,
@@ -89,6 +94,7 @@ function inferKindFromTitle(title: string): PrintContext['kind'] {
   if (t.includes('KUHINJ')) return 'kitchen'
   if (t.includes('BAR')) return 'bar'
   if (t.includes('RAČUN') || t.includes('RACUN') || t.includes('DOKLAD')) return 'receipt'
+  if (t.includes('ETIKET')) return 'label'
   return 'other'
 }
 
@@ -189,4 +195,82 @@ export function buildKitchenTicketLines(order: {
   out.push({ text: '--------------------------------' })
   out.push({ text: `Št. artiklov: ${items.reduce((s, i) => s + i.qty, 0)}` })
   return out
+}
+
+/** Issue #24 — etiketa z QR kodo (print pot kot printLines, + QR). */
+export interface LabelPrintPayload {
+  title: string
+  lines: PrintLine[]
+  /** URL, ki ga QR nosi (agent ga zagrize v ESC/POS QR; browser prikaže sliko). */
+  qrText?: string
+  /** PNG data URL (strežnik ga izdá prek /api/labels/[id]/print) za browser izpis. */
+  qrDataUrl?: string
+  ctx?: PrintContext
+}
+
+/** Natisni ETIKETO prek konfiguriranega cilja (+ QR). ACK evidence: kind='label', refId. */
+export async function printLabelDocument(payload: LabelPrintPayload): Promise<PrintResult> {
+  const cfg = getPrintConfig()
+  if (cfg.target === 'simulator') {
+    console.info(
+      `[PRINT SIMULATOR] ${payload.title}`,
+      payload.lines.map((l) => l.text).join('\n'),
+      payload.qrText || '',
+    )
+    const res: PrintResult = { ok: true, simulated: true }
+    sendPrintAck(payload.title, 'simulator', res, payload.ctx)
+    return res
+  }
+  if (cfg.target === 'agent') {
+    const res = await fetch('/label?XTransformPort=3031', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        host: cfg.host,
+        port: cfg.port,
+        title: payload.title,
+        lines: payload.lines,
+        qrText: payload.qrText || '',
+        qrSize: 5,
+        cut: true,
+      }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+    const out: PrintResult = data.ok
+      ? { ok: true }
+      : { ok: false, error: data.error || 'Tiskalnik ni odziven.' }
+    sendPrintAck(payload.title, 'agent', out, payload.ctx, `${cfg.host}:${cfg.port}`)
+    return out
+  }
+  printLabelBrowser(payload)
+  const out: PrintResult = { ok: true }
+  sendPrintAck(payload.title, 'browser', out, payload.ctx)
+  return out
+}
+
+/** 80mm HTML izpis etikete z QR sliko (browser cilj). */
+function printLabelBrowser(payload: LabelPrintPayload) {
+  const w = window.open('', '_blank', 'width=380,height=560')
+  if (!w) return
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const rows = payload.lines
+    .map((l) => {
+      const cls = [
+        l.align === 'center' ? 'center' : l.align === 'right' ? 'right' : 'left',
+        l.bold ? 'bold' : '',
+        l.size === 'large' ? 'large' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
+      return `<div class="${cls}">${esc(l.text)}</div>`
+    })
+    .join('')
+  w.document.write(
+    `<!doctype html><html><head><title>${esc(payload.title)}</title><style>body{font-family:monospace;width:72mm;margin:0 auto;padding:4mm}.center{text-align:center}.right{text-align:right}.bold{font-weight:700}.large{font-size:18px}img.qr{display:block;margin:2mm auto;width:30mm;height:30mm}</style></head><body>${rows}${
+      payload.qrDataUrl ? `<img class="qr" src="${payload.qrDataUrl}" alt="QR"/>` : ''
+    }</body></html>`,
+  )
+  w.document.close()
+  w.focus()
+  w.print()
 }

@@ -211,6 +211,76 @@ model BatchPreparationLine {
   @@index([inventoryItemId])
 }
 
+/// Issue #24 (P2, v1.114.0) — etikete za pripravljeno hrano in odprte serije.
+/// ZAMRZNJEN POSNETEK ob izdaji (issue #24: "nova etiketa uporablja trenutno
+/// potrjene podatke; zgodovinski zapis se tiho ne spremeni"). Ponovni tisk =
+/// ISTA vrstica (printCount++ + NOV PrintJob poskus, refId = id) — ne podvoji
+/// serije, količine, StockTransaction ali izvorne preparacije. Vir:
+/// InventoryBatch (odprta embalaža/serija) ali BatchPreparation (pripravljena
+/// sestavina/podrecept). token = QR skrivnost (32 hex, vzorec guest.ts) → javna
+/// statusna stran /label/<token> (brez PII/ID-jev — samo naziv + rok + status,
+/// usklajeno z lot-governance #15 klasifikacijo). Skalarne vezave BREZ FK
+/// (StationTask/PrintJob vzorec — DDL prek migracijske konzole).
+model PrepLabel {
+  id              String    @id
+  locationId      String
+  source          String    @default("batch")
+  batchId         String?
+  preparationId   String?
+  inventoryItemId String
+  itemName        String    @default("")
+  itemUnit        String    @default("")
+  lotNumber       String    @default("")
+  quantity        Decimal   @default(0) @db.Decimal(12, 3)
+  area            String    @default("")
+  preparedAt      DateTime?
+  expiresAt       DateTime?
+  ruleSource      String    @default("none")
+  ruleHours       Int?
+  ruleConfirmedBy String    @default("")
+  needsReview     Boolean   @default(false)
+  allergens       String    @default("[]")
+  preparedById    String    @default("")
+  preparedByName  String    @default("")
+  status          String    @default("ACTIVE")
+  token           String    @unique
+  printCount      Int       @default(0)
+  lastPrintedAt   DateTime?
+  note            String    @default("")
+  voidReason      String    @default("")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([locationId, createdAt])
+  @@index([batchId])
+  @@index([preparationId])
+  @@index([inventoryItemId])
+  @@index([status])
+}
+
+/// Issue #24 — POTRJENO pravilo roka po pripravi/odprtju (filozofija #15:
+/// IZRECNOST, brez izmišljenih privzetih dni). Ure namesto dni (kuhinjska
+/// realnost: 4 h / 24 h / 48 h …). Eno pravilo PO ARTIKLU (@@unique —
+/// kanonična resnica, brez ambivalentnosti po lokacijah). Potrditev:
+/// inventory.manage + revizijska sled (LABEL_RULE_CONFIRMED). Etiketa ob
+/// izdaji ZAMRZNE posnetek pravila (ruleHours + ruleConfirmedBy) — kasnejša
+/// sprememba pravila NE razveljavlja obstoječih etiket; nova izdaja uporabi
+/// novo pravilo. shelfLifeHours = 0 pomeni izrecno "pravilo: rok NI določen"
+/// (nižje od ročnega vnosa) — enako izrecen kot vsak drug vnos.
+model LabelShelfRule {
+  id              String   @id
+  inventoryItemId String
+  shelfLifeHours  Int
+  note            String   @default("")
+  confirmedById   String   @default("")
+  confirmedByName String   @default("")
+  confirmedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([inventoryItemId])
+}
+
 model BiometricCredential {
   id           String    @id
   credentialId String    @unique
