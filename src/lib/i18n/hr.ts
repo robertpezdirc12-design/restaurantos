@@ -171,9 +171,24 @@ export const hr: Record<string, string> = {
   'header.offline': 'Offline',
   'header.syncing': 'Sinkroniziram…',
   'header.queued': '{n} u redu',
+  // Issue #3 §A (P0): dead-letter offline operacije — badge intervenkcije (števec mrtvih op)
+  'header.netDead': 'Potrebna intervencija: {n}',
   'header.syncHint': 'Sinkronizacija offline promjena — kliknite za ručni pokušaj',
   'header.commands': 'Naredbe',
   'header.logout': 'Odjava',
+
+  // ── Offline dead-letter (issue #3 §A) ──
+  'sync.deadTitle': 'Neuspjele offline operacije',
+  'sync.deadHint': 'Operacije koje nakon 10 pokušaja sinkronizacije nisu uspjele ostale su lokalno spremljene (ništa nije izgubljeno). Provjeri grešku, po potrebi je riješi u sustavu i operaciju ponovno pošalji — ili je odbaci uz dokaz u dnevniku.',
+  'sync.deadRetry': 'Ponovno pošalji',
+  'sync.deadClear': 'Odbaci',
+  'sync.deadExport': 'Izvezi',
+  'sync.deadAttempts': 'Pokušaji: {n}',
+  'sync.deadLast': 'Greška: {err}',
+  'sync.deadKind.order.create': 'Narudžba',
+  'sync.deadKind.order.addItems': 'Dodavanje artikala',
+  'sync.deadKind.kitchen.status': 'Promjena statusa kuhinje',
+  'sync.deadDone': 'Obavljeno — red je prazan.',
 
   // ── Pregled ──
   'dash.viewLabel': 'Pogled: {name}',
@@ -265,7 +280,9 @@ export const hr: Record<string, string> = {
   'pay.loading': 'Učitavam …',
   'pay.notFound': 'Poveznica ne postoji ili je istekla.',
   'pay.errorRetry': 'Plaćanje nije uspjelo. Pokušajte ponovno.',
-  'pay.errorSessionInvalid': 'Plaćanje se ne može potvrditi — obavijestite osoblje.',
+  'pay.errorSessionInvalid': 'Plaćanje se ne može potvrditi — prosimo, obavijestite osoblje.',
+  // Issue #3 §B (P2): Stripe verify fail-closed (502) — pošteno sporočilo za gosta
+  'pay.errorVerifyUnavailable': 'Provjera plaćanja trenutno nije dostupna. Pokušajte ponovno.',
   'pay.order': 'Narudžba',
   'pay.table': 'Stol',
   'pay.subtotal': 'Međuzbroj',

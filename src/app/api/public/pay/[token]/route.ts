@@ -303,7 +303,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (verifySession !== link.sessionId) {
       return fail('Plačilna seja ni veljavna za to povezavo.', 409)
     }
-    const status = await stripeSessionStatus(provider.secretKey, verifySession)
+    // Issue #3 §B (P2): stripeSessionStatus lahko pade na omrežju/API (prej surov 500 s
+    // tehničnim sporočilom). Gost dobi POŠTENO prijazno sporočilo (502), povezava
+    // OSTA odprta — ponovni poskus potrditve je varen (seja ni plačana = ne poravnava).
+    let status: Awaited<ReturnType<typeof stripeSessionStatus>>
+    try {
+      status = await stripeSessionStatus(provider.secretKey, verifySession)
+    } catch {
+      return fail('Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.', 502)
+    }
     if (!status.paid) return fail('Plačilo še ni potrjeno.', 409)
     // #37 točka 2: strežniško preverjena VEZAVA na TO povezavo (Stripe echo id,
     // metadata, ki jih klient ne more ponarediti; valuta/mode/znesek)

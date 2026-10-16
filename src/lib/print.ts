@@ -16,7 +16,18 @@ import { r2 } from '@/lib/map'
 
 export const PRINT_KINDS = ['receipt', 'kitchen', 'bar', 'report', 'other', 'label'] as const
 export const PRINT_TARGETS = ['browser', 'agent', 'simulator'] as const
-export const PRINT_STATUSES = ['printed', 'failed', 'simulated'] as const
+/**
+ * Issue #3 §C (P0) — poštenost statusov tiska:
+ *  - 'sent'      = ESC/POS bajti zapisani na TCP 9100 vtičnico BREZ napake — print-agent
+ *                  NE bere statusa tiskalnika (noben DLE/status protokol) → to NI potrjen
+ *                  tisk, samo potrjena dostava do jedra. Naloga za runbook: DLE statusno
+ *                  anketiranje (docs/HARDWARE-MATRIX.md, docs/INCIDENT-RUNBOOK.md).
+ *  - 'printed'   = SAMO za brskalniško izrisane dokumente (window.print — izris v pogovorno
+ *                  okno tiskalnika) ali prihodnje potrjene protokole (printer status read).
+ *  - 'simulated' = simulator (jasno ločena simulacija, issue #1).
+ *  - 'failed'    = napaka dostave/izrisa (napaka ACK vsebuje razlog).
+ */
+export const PRINT_STATUSES = ['printed', 'failed', 'simulated', 'sent'] as const
 
 export type PrintKind = (typeof PRINT_KINDS)[number]
 export type PrintTarget = (typeof PRINT_TARGETS)[number]

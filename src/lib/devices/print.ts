@@ -54,6 +54,14 @@ export interface PrintResult {
   ok: boolean
   simulated?: boolean
   error?: string
+  /**
+   * Issue #3 §C (P0) — ACK status za /api/print/ack evidenco:
+   * 'sent' = bajti dostavljeni do tiskalnikove vtičnice (agent pot, BREZ
+   * potrditve tiska); 'printed' = izrisan v brskalniku (window.print). agent
+   * pot nastavi 'sent', ker dostava do jedra ≠ potrjen tisk — print-agent sam
+   * priznava z note 'delivered-to-kernel' in NE bere statusa tiskalnika.
+   */
+  ackStatus?: 'sent' | 'printed'
 }
 
 /** Issue #10 P2-3 — opcijski kontekst ACK-evidence (nič od tega ne vpliva na tisk). */
@@ -81,7 +89,9 @@ function sendPrintAck(title: string, target: PrintTarget, res: PrintResult, ctx?
         kind,
         refId: ctx?.refId || '',
         target,
-        status: res.simulated ? 'simulated' : res.ok ? 'printed' : 'failed',
+        // Issue #3 §C: agent → 'sent', browser → 'printed' (izris v tiskalniško
+        // pogovorno okno je izrecno dokumentiran kot izjema), simulator ostane 'simulated'
+        status: res.simulated ? 'simulated' : res.ok ? (res.ackStatus ?? 'printed') : 'failed',
         error: res.error || '',
         device,
       }),
@@ -120,7 +130,10 @@ export async function printLines(title: string, lines: PrintLine[], ctx?: PrintC
       }),
     })
     const data = (await res.json()) as { ok: boolean; error?: string }
-    const out: PrintResult = data.ok ? { ok: true } : { ok: false, error: data.error || 'Tiskalnik ni odziven.' }
+    // Issue #3 §C: agent ok = ESC/POS bajti odpihnjeni do jedra socket BREZ napake —
+    // dobi oznako 'sent' (ne 'printed': dostava ≠ potrjen tisk; print-agent sam
+    // vrača note 'delivered-to-kernel' brez branja statusa tiskalnika)
+    const out: PrintResult = data.ok ? { ok: true, ackStatus: 'sent' } : { ok: false, error: data.error || 'Tiskalnik ni odziven.' }
     sendPrintAck(title, 'agent', out, ctx, `${cfg.host}:${cfg.port}`)
     return out
   }
@@ -236,8 +249,10 @@ export async function printLabelDocument(payload: LabelPrintPayload): Promise<Pr
       }),
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+    // Issue #3 §C: enaka poštenost kot printLines — agent ok = 'sent' (dostava do
+    // vtičnice, ne potrjen tisk etikete)
     const out: PrintResult = data.ok
-      ? { ok: true }
+      ? { ok: true, ackStatus: 'sent' }
       : { ok: false, error: data.error || 'Tiskalnik ni odziven.' }
     sendPrintAck(payload.title, 'agent', out, payload.ctx, `${cfg.host}:${cfg.port}`)
     return out

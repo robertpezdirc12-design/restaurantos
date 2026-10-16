@@ -132,6 +132,11 @@ function HandheldInner() {
       } catch { /* api() ob 401 samo preusmeri */ }
     })()
     pollRef.current = setInterval(() => { void load().catch(() => null) }, 15000)
+    // Issue #3 §D (P1): flush tudi ob ZAGONU (ne samo ob 'online' dogodku) —
+    // natakar po prekinitvi omrežja ponovno odpre PWA, ko je omrežje ŽE nazaj
+    // (dogodka 'online' ni bilo, ker je bil ob odprtju že online) — vrsta
+    // bi sicer čakala do naslednje spremembe omrežja.
+    void flushQueue().catch(() => null)
     const onOnline = () => {
       setOnline(true)
       void flushQueue().catch(() => null)

@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -30,6 +30,7 @@ import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
   ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer, Wifi, WifiOff, CloudUpload,
+  AlertTriangle, Download,
   QrCode,
   MoreVertical,
   ShoppingCart,
@@ -56,7 +57,8 @@ import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { downloadCSV } from '@/lib/client'
 import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
 import {
-  enqueueOp, flushQueue, getQueue, isNetworkError, newOperationId, subscribeQueue,
+  enqueueOp, flushQueue, getQueue, getDeviceId, isNetworkError, newOperationId, subscribeQueue,
+  clearDeadOps, resetDeadOp,
   type QueuedOp,
 } from '@/lib/offline-queue'
 import {
@@ -263,6 +265,8 @@ function DashboardInner() {
   const [online, setOnline] = useState(true)
   const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
   const [syncing, setSyncing] = useState(false)
+  // Issue #3 §A (P0): dead-letter offline operacije — intervencijski pogled (badge → dialog)
+  const [deadOpen, setDeadOpen] = useState(false)
   const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'mobile' | 'giftcard'>('cash')
   // Issue #1 §6: plačilni dialog — kanonični račun, popusti, zvestoba, deljeno plačilo
   const [bill, setBill] = useState<BillT | null>(null)
@@ -588,6 +592,39 @@ function DashboardInner() {
   useEffect(() => {
     if (online) void doSync()
   }, [online, doSync])
+
+  // ── Issue #3 §A (P0): dead-letter intervencija ──
+  const deadOps = useMemo(() => queueOps.filter((o) => o.status === 'dead'), [queueOps])
+
+  /** Ponovno pošlji eno dead operacijo (reset attempts → flush). */
+  const retryDead = useCallback((clientOperationId: string) => {
+    resetDeadOp(clientOperationId)
+    void doSync()
+  }, [doSync])
+
+  /** Zavrzi VSE dead operacije (izguba ni več tiha — drop je bil že zabeležen prek /api/sync/drop). */
+  const discardDead = useCallback(() => {
+    const n = clearDeadOps()
+    if (n > 0) toast({ title: t('sync.deadTitle'), description: t('sync.deadDone') })
+  }, [t])
+
+  /** Izvoz diagnostike BREZ vsebine payload (skrivnosti/količine ostanejo lokalne). */
+  const exportDead = useCallback(() => {
+    const diag = deadOps.map((o) => ({
+      clientOperationId: o.clientOperationId,
+      kind: o.kind,
+      createdAt: o.createdAt,
+      attempts: o.attempts,
+      lastError: o.lastError || '',
+    }))
+    const blob = new Blob([JSON.stringify({ device: getDeviceId(), exportedAt: new Date().toISOString(), ops: diag }, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `offline-diag-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [deadOps])
 
   /** Odjava NE SME izgubiti offline vrste in konfiguracije naprave (issue #1) */
   function logout() {
@@ -1691,7 +1728,20 @@ function DashboardInner() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo */}
+            {/* online/offline/sync status (issue #1) — klik za ročno sinhronizacijo;
+                Issue #3 §A (P0): dead operacije → rdeča intervencija (klik odpri pogled) */}
+            {deadOps.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setDeadOpen(true)}
+                title={t('sync.deadTitle')}
+                aria-live="polite"
+                className="flex items-center gap-1 rounded-full border border-red-300 bg-red-100 text-red-800 px-2 py-1 text-xs font-semibold transition hover:bg-red-200"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{t('header.netDead', { n: deadOps.length })}</span>
+              </button>
+            ) : (
             <button
               type="button"
               onClick={() => void doSync()}
@@ -1718,6 +1768,7 @@ function DashboardInner() {
               )}
               <span>{!online ? `${t('header.offline')}${queueOps.length ? ` · ${queueOps.length}` : ''}` : syncing ? t('header.syncing') : queueOps.length > 0 ? t('header.queued', { n: queueOps.length }) : t('header.online')}</span>
             </button>
+            )}
             <ThemeToggle />
             <LanguageToggle />
             {/* OPS-7 (v1.70.0): push obvestila — en klik za omogočitev (nova naročila → kuhinja, pripravljeno → natakar) */}
@@ -1914,6 +1965,42 @@ function DashboardInner() {
               )
             })}
           </TabsContent>
+
+          {/* Issue #3 §A (P0): dead-letter offline operacije — intervencijski pogled (retry / zavzi / izvoz) */}
+          <Dialog open={deadOpen} onOpenChange={setDeadOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 text-red-600" /> {t('sync.deadTitle')}</DialogTitle>
+                <DialogDescription>{t('sync.deadHint')}</DialogDescription>
+              </DialogHeader>
+              <div className="max-h-72 overflow-y-auto space-y-2">
+                {deadOps.length === 0 ? (
+                  <p className="text-sm text-stone-500 py-4 text-center">{t('sync.deadDone')}</p>
+                ) : deadOps.map((o) => (
+                  <div key={o.clientOperationId} className="rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{t(`sync.deadKind.${o.kind}`)}</span>
+                      <Button size="sm" variant="outline" onClick={() => retryDead(o.clientOperationId)}>
+                        <RefreshCw className="w-3.5 h-3.5" /> {t('sync.deadRetry')}
+                      </Button>
+                    </div>
+                    <div className="text-xs text-stone-600">
+                      {t('sync.deadAttempts', { n: o.attempts })} · {new Date(o.createdAt).toLocaleString()}
+                    </div>
+                    {o.lastError && <div className="text-xs text-red-700 break-all">{t('sync.deadLast', { err: o.lastError })}</div>}
+                  </div>
+                ))}
+              </div>
+              <DialogFooter className="gap-2 sm:justify-between">
+                <Button variant="outline" size="sm" onClick={exportDead} disabled={deadOps.length === 0}>
+                  <Download className="w-3.5 h-3.5" /> {t('sync.deadExport')}
+                </Button>
+                <Button variant="destructive" size="sm" onClick={discardDead} disabled={deadOps.length === 0}>
+                  <Trash2 className="w-3.5 h-3.5" /> {t('sync.deadClear')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Issue #3: QR meni dialog — QR slika, URL, izklop/vklop naročanja, regeneracija (revokacija) */}
           <Dialog open={!!qrTable} onOpenChange={(o) => !o && setQrTable(null)}>

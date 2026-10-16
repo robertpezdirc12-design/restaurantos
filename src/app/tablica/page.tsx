@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
-import { enqueueOp, isNetworkError, newOperationId } from '@/lib/offline-queue'
+import { enqueueOp, flushQueue, isNetworkError, newOperationId } from '@/lib/offline-queue'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -85,8 +85,20 @@ function TablicaInner() {
         setReady(true)
       } catch { /* api() ob 401 samo preusmeri */ }
     })()
+    // Issue #3 §D (P1): tablica prej NI splaknila vrste (uvozila je SAMO enqueueOp —
+    // vrsta je splaknila šele, ko je isti natakar odprl dashboard/handheld v istem
+    // brskalniku). Zdaj: flush ob zagonu (ostanki po ponovnem zagonu PWA) + ob dogodku
+    // 'online' (zrcalno handheld page.tsx ~137) — offline naročila odidejo, takoj ko je
+    // omrežje spet na voljo, iz KATERE KOLI površine.
+    void flushQueue().catch(() => null)
+    const onOnline = () => { void flushQueue().catch(() => null) }
+    window.addEventListener('online', onOnline)
     pollRef.current = setInterval(() => { void load().catch(() => null) }, 15000)
-    return () => { alive = false; if (pollRef.current) clearInterval(pollRef.current) }
+    return () => {
+      alive = false
+      window.removeEventListener('online', onOnline)
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
   }, [router, load])
 
   /** naročilo odprte mize (aktivno = tekoče, neplačano ali delno plačano) */

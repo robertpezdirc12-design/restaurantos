@@ -158,6 +158,8 @@ export const en: Record<string, string> = {
   'pay.notFound': 'This link does not exist or has expired.',
   'pay.errorRetry': 'Payment failed. Please try again.',
   'pay.errorSessionInvalid': 'The payment cannot be confirmed — please notify the staff.',
+  // Issue #3 §B (P2): Stripe verify fail-closed (502) — honest message for the guest
+  'pay.errorVerifyUnavailable': 'Payment verification is currently unavailable. Please try again.',
   'pay.order': 'Order',
   'pay.table': 'Table',
   'pay.subtotal': 'Subtotal',

@@ -171,9 +171,24 @@ export const sl: Record<string, string> = {
   'header.offline': 'Offline',
   'header.syncing': 'Sinhroniziram…',
   'header.queued': '{n} v vrsti',
+  // Issue #3 §A (P0): dead-letter offline operacije — badge intervenkcije (števec mrtvih op)
+  'header.netDead': 'Zahteva posredovanje: {n}',
   'header.syncHint': 'Sinhronizacija offline sprememb — klikni za ročni poskus',
   'header.commands': 'Ukazi',
   'header.logout': 'Odjava',
+
+  // ── Offline dead-letter (issue #3 §A) ──
+  'sync.deadTitle': 'Neuspešne offline operacije',
+  'sync.deadHint': 'Operacije, ki po 10 poskusih sinhronizacije niso uspele, so ostale shranjene lokalno (nič ni izgubljeno). Preveri napako, jo po potrebi odpravi v sistemu in operacijo ponovno pošlji — ali jo zavzi z dokazilom v dnevniku.',
+  'sync.deadRetry': 'Ponovno pošlji',
+  'sync.deadClear': 'Zavrzi',
+  'sync.deadExport': 'Izvozi',
+  'sync.deadAttempts': 'Poskusi: {n}',
+  'sync.deadLast': 'Napaka: {err}',
+  'sync.deadKind.order.create': 'Naročilo',
+  'sync.deadKind.order.addItems': 'Dodajanje artiklov',
+  'sync.deadKind.kitchen.status': 'Sprememba statusa kuhinje',
+  'sync.deadDone': 'Opravljeno — vrsta je prazna.',
 
   // ── Pregled ──
   'dash.viewLabel': 'Pogled: {name}',
@@ -266,6 +281,8 @@ export const sl: Record<string, string> = {
   'pay.notFound': 'Povezava ne obstaja ali je potekla.',
   'pay.errorRetry': 'Plačilo ni uspelo. Poskusite znova.',
   'pay.errorSessionInvalid': 'Plačila ni mogoče potrditi — prosimo, obvestite osebje.',
+  // Issue #3 §B (P2): Stripe verify fail-closed (502) — pošteno sporočilo za gosta
+  'pay.errorVerifyUnavailable': 'Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.',
   'pay.order': 'Naročilo',
   'pay.table': 'Miza',
   'pay.subtotal': 'Medseštevek',

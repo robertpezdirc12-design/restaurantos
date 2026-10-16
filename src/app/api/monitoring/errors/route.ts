@@ -22,8 +22,17 @@ export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'settings.manage')
   if (isResponse(user)) return user
   const scope = await locationScope(user)
+  // Issue #3 §G/H (P2): filter je ujel SAMO akcije z 'ERROR' v imenu — PRINT_FAILED
+  // (issue #10), FISCAL_SUBMIT_FAILED (issue #3 §B) in SYNC_OP_DROPPED (issue #3 §A)
+  // so operativne napake BREZ 'ERROR' podniza in so bile NEVIDNE v diagnostiki.
   const errors = await db.auditLog.findMany({
-    where: { action: { contains: 'ERROR' }, ...(scope.locationId ? { locationId: scope.locationId } : {}) },
+    where: {
+      OR: [
+        { action: { contains: 'ERROR' } },
+        { action: { in: ['PRINT_FAILED', 'FISCAL_SUBMIT_FAILED', 'SYNC_OP_DROPPED'] } },
+      ],
+      ...(scope.locationId ? { locationId: scope.locationId } : {}),
+    },
     orderBy: { timestamp: 'desc' },
     take: 50,
   })

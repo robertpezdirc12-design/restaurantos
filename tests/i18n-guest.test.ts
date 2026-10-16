@@ -351,6 +351,8 @@ describe('i18n gostov — javne API napake prevedene (P1-5)', () => {
     'Seja ni bila ustvarjena.',
     'Znesek seje se ne ujema s povezavo.',
     'Napitnina je izven dovoljenega obsega (0 do zneska računa).',
+    // Issue #3 §B (P2): Stripe verify fail-closed 502
+    'Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.',
   ]
 
   test('vsak znan SL niz javnega API-ja ima preslikavo v i18n ključ', () => {

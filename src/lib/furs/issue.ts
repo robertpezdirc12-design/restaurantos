@@ -30,7 +30,7 @@ import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { certFromEnv, signZoi, fursInvoice } from '@/lib/furs/client'
 import { cisCertFromEnv, signZki, cisInvoice, hrNacinPlac } from '@/lib/cis/client'
-import { auditChainFields } from '@/lib/audit-chain'
+import { auditChainFields, writeAudit } from '@/lib/audit-chain'
 import { approvalAttestationProfile, paymentPolicyError, type PaymentAttestationProfile } from '@/lib/payments-policy'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
 
@@ -842,6 +842,23 @@ export async function issueFursReceipt(req: NextRequest) {
           url: '/dashboard?tab=racuni',
           tag: `receipt-failed-${receipt.twin.id}`,
         }, { roles: ['manager', 'admin'], locationId: orderPre.locationId })
+        // Issue #3 §B (P0): fiskalizacijska napaka mora biti VIDNA v diagnostiki — prej
+        // samo console.warn + push (noben AuditLog) → /api/monitoring/errors je ni ujel.
+        // Fire-and-forget AuditLog zapis; račun OSTANE 'pending' (izrecno NE uvajamo
+        // 'error' statusa — prod-smoke šteje pending, SubsequentSubmit pot je runbook).
+        void writeAudit(db, {
+          userId: user.sub,
+          action: 'FISCAL_SUBMIT_FAILED',
+          entityType: 'Receipt',
+          entityId: receipt.twin.id,
+          details: jstr({
+            provider: 'FURS',
+            receiptNumber: receipt.twin.receiptNumber,
+            orderId: orderPre.id,
+            error: String((e as Error).message || 'napaka').slice(0, 200),
+          }),
+          locationId: location.id,
+        }).catch(() => null)
       }
     }
     // Naloga 38: JIR — CIS SOAP klic PO transakciji (zrcalno FURS EOR; omrežje ne sme
@@ -879,6 +896,22 @@ export async function issueFursReceipt(req: NextRequest) {
           url: '/dashboard?tab=racuni',
           tag: `receipt-failed-${receipt.twin.id}`,
         }, { roles: ['manager', 'admin'], locationId: orderPre.locationId })
+        // Issue #3 §B (P0): zrcalno FURS — AuditLog FISCAL_SUBMIT_FAILED (provider CIS);
+        // račun ostane 'pending' (cisStatus 'pending'), SubsequentSubmit/NakDost=true je
+        // okrevanje po runbooku (docs/FURS-CERT-RUNBOOK.md korak 5).
+        void writeAudit(db, {
+          userId: user.sub,
+          action: 'FISCAL_SUBMIT_FAILED',
+          entityType: 'Receipt',
+          entityId: receipt.twin.id,
+          details: jstr({
+            provider: 'CIS',
+            receiptNumber: receipt.twin.receiptNumber,
+            orderId: orderPre.id,
+            error: String((e as Error).message || 'napaka').slice(0, 200),
+          }),
+          locationId: location.id,
+        }).catch(() => null)
       }
     }
     // Issue #11 §3 — dogodek izdaje računa (evidenca, fire-and-forget)

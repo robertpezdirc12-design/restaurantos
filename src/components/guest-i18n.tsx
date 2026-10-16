@@ -240,6 +240,8 @@ const GUEST_API_ERROR_KEY_MAP: Record<string, string> = {
   'Napitnina je izven dovoljenega obsega (0 do zneska deleža).': 'pay.tipRange',
   'Račun se je spremenil — prosite osebje za novo povezavo.': 'pay.billChanged',
   'Nič ni več za plačilo prek te povezave.': 'pay.errorRetry',
+  // Issue #3 §B (P2): Stripe verify fail-closed 502 — gost vidi pošteno sporočilo
+  'Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.': 'pay.errorVerifyUnavailable',
 }
 
 /** Znan SL niz iz javnega API-ja → i18n ključ; neznan → null (surovi prikaz). */

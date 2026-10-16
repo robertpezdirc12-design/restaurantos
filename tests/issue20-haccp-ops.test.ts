@@ -649,7 +649,12 @@ describe('J. schedule plošča', () => {
 
 describe('K. poročilo + CSV izvoz', () => {
   it('K1: CSV — BOM, `;`, glave, vrstice s korektivom/verifikacijo + sledljivost ID', async () => {
-    const res = await reportGET(req('GET', `/api/haccp/report?format=csv&from=${dateKey(today())}`, tokCleanerA))
+    // FIX (issue #3 session): dateKey(today()) se razčleni kot UTC polnoč — v
+    // oknu 00:00–02:00 CEST je ta v PRIHODNOSTI glede na now → ruta upravičeno
+    // zavrne (from > to). Varni from = lokalni včeraj (vedno ≤ now UTC).
+    const y = zonedDateParts(new Date(Date.now() - 24 * 3600 * 1000), 'Europe/Ljubljana')
+    const yesterdayKey = `${y.y}-${String(y.m).padStart(2, '0')}-${String(y.d).padStart(2, '0')}`
+    const res = await reportGET(req('GET', `/api/haccp/report?format=csv&from=${yesterdayKey}`, tokCleanerA))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('text/csv')
     expect(res.headers.get('content-disposition')).toContain('attachment')
