@@ -218,7 +218,7 @@ export function KdsStationBoard({
   )
 
   return (
-    <Card className="border-stone-200">
+    <Card data-component="kds-station-card" className="border-stone-200">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2 flex-wrap">
           <span className="truncate min-w-0">{station.name}</span>
