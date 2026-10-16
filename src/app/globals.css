@@ -680,24 +680,24 @@ main[data-screen="login"] button {
 
 /* Mobile settings panel: constrain intrinsic-width cards and long diagnostic text. */
 @media (max-width: 767px) {
-  [data-screen="dashboard"] [role="tabpanel"][id$="-content-nastavitve"] {
+  [role="tabpanel"][id$="-content-nastavitve"] {
     min-width: 0;
     max-width: 100%;
   }
 
-  [data-screen="dashboard"] [role="tabpanel"][id$="-content-nastavitve"] [class~="lg:grid-cols-2"] {
+  [role="tabpanel"][id$="-content-nastavitve"] [class~="lg:grid-cols-2"] {
     grid-template-columns: minmax(0, 1fr);
     min-width: 0;
     max-width: 100%;
   }
 
-  [data-screen="dashboard"] [role="tabpanel"][id$="-content-nastavitve"] [class~="lg:grid-cols-2"] > *,
-  [data-screen="dashboard"] [role="tabpanel"][id$="-content-nastavitve"] .rounded-lg.border {
+  [role="tabpanel"][id$="-content-nastavitve"] [class~="lg:grid-cols-2"] > *,
+  [role="tabpanel"][id$="-content-nastavitve"] .rounded-lg.border {
     min-width: 0;
     max-width: 100%;
   }
 
-  [data-screen="dashboard"] [role="tabpanel"][id$="-content-nastavitve"] .rounded-lg.border {
+  [role="tabpanel"][id$="-content-nastavitve"] .rounded-lg.border {
     overflow-wrap: anywhere;
   }
 }
