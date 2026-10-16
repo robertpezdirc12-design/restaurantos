@@ -300,3 +300,75 @@ tbody tr:hover {
 }
 .dark tbody tr:hover { background-color: oklch(0.27 0.012 155 / 75%); }
 .dark input, .dark textarea, .dark select, .dark [role="combobox"] { border-color: oklch(1 0 0 / 15%); }
+
+
+/* Login and device activation — premium branded entry, behavior unchanged. */
+main:has(.max-w-md) {
+  isolation: isolate;
+  overflow: hidden;
+  background-color: oklch(0.965 0.018 155);
+  background-image:
+    radial-gradient(ellipse at 50% 10%, oklch(0.91 0.07 155 / 72%), transparent 36rem),
+    linear-gradient(145deg, oklch(0.985 0.008 155), oklch(0.94 0.02 155));
+}
+main:has(.max-w-md)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.25;
+  background-image: radial-gradient(oklch(0.42 0.035 155 / 28%) 0.65px, transparent 0.65px);
+  background-size: 15px 15px;
+  mask-image: linear-gradient(to bottom, black, transparent 70%);
+}
+main:has(.max-w-md) .max-w-md {
+  position: relative;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid oklch(1 0 0 / 90%);
+  border-radius: 1.6rem;
+  background: oklch(0.995 0.003 155 / 92%);
+  box-shadow: 0 24px 70px oklch(0.28 0.05 155 / 11%), 0 2px 8px oklch(0.28 0.05 155 / 4%);
+  backdrop-filter: blur(16px);
+}
+main:has(.max-w-md) h1 {
+  letter-spacing: -0.045em;
+}
+main:has(.max-w-md) .mx-auto.w-14.h-14 {
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 1.2rem;
+  box-shadow: 0 8px 20px oklch(0.35 0.11 155 / 24%);
+}
+main:has(.max-w-md) form {
+  gap: 1.1rem;
+}
+main:has(.max-w-md) input {
+  min-height: 2.9rem;
+  border-radius: 0.7rem;
+}
+main:has(.max-w-md) button {
+  border-radius: 0.7rem;
+}
+.dark main:has(.max-w-md) {
+  background-color: oklch(0.16 0.015 155);
+  background-image: radial-gradient(ellipse at 50% 10%, oklch(0.28 0.045 155 / 70%), transparent 36rem), linear-gradient(145deg, oklch(0.17 0.01 155), oklch(0.13 0.008 155));
+}
+.dark main:has(.max-w-md) .max-w-md {
+  border-color: oklch(1 0 0 / 9%);
+  background: oklch(0.20 0.01 155 / 94%);
+  box-shadow: 0 24px 70px oklch(0 0 0 / 28%);
+}
+/* Handheld POS: larger, clearer tap targets without changing layout logic. */
+@media (max-width: 640px) {
+  main:has(.max-w-md) .max-w-md {
+    padding: 1.15rem;
+    border-radius: 1.25rem;
+  }
+  main:has(.max-w-md) .text-center h1 {
+    font-size: 1.7rem;
+  }
+  button, [role="button"] {
+    touch-action: manipulation;
+  }
+}
