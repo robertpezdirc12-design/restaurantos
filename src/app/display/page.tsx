@@ -194,7 +194,7 @@ function DisplayInner() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-950 p-6">
+      <div data-screen="customer-display-setup" className="min-h-screen flex items-center justify-center bg-stone-950 p-6">
         <GuestLanguageToggle variant="dark" className="fixed top-4 right-4" />
         <div className="w-full max-w-md rounded-3xl bg-stone-900 border border-stone-800 p-8 text-stone-100">
           <div className="flex items-center gap-3 mb-4">
@@ -261,7 +261,7 @@ function DisplayInner() {
   const phase = p?.state || 'idle'
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
+    <div data-screen="customer-display" className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
       {stale && (
         <div role="status" aria-live="polite" className="fixed top-0 left-0 right-0 z-50 bg-amber-900/90 text-amber-200 text-sm font-medium px-4 py-2 flex items-center justify-center gap-2">
           <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -286,7 +286,7 @@ function DisplayInner() {
           )}
         </div>
       )}
-      <header className={`px-8 py-5 border-b border-stone-800 flex items-center justify-between relative z-10 ${showPromoCarousel ? 'bg-stone-950/70 backdrop-blur-sm' : ''}`}>
+      <header data-region="customer-display-header" className={`px-8 py-5 border-b border-stone-800 flex items-center justify-between relative z-10 ${showPromoCarousel ? 'bg-stone-950/70 backdrop-blur-sm' : ''}`}>
         <div className="flex items-center gap-3">
           <Monitor className="h-6 w-6 text-stone-500" />
           <span className="text-lg font-semibold">{info?.posName || 'POS'}</span>
@@ -302,7 +302,7 @@ function DisplayInner() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-10 relative z-10">
+      <main data-region="customer-display-content" className="flex-1 flex flex-col items-center justify-center p-10 relative z-10">
         {phase === 'idle' && !showPromoCarousel && (
           <div className="text-center">
             <h2 className="text-5xl font-bold text-stone-300">{t('guest.display.welcome')}</h2>
