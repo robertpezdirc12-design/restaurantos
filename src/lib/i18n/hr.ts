@@ -8,7 +8,7 @@
 
 export const hr: Record<string, string> = {
   // ── Zajedničko ──
-  'common.app': 'RestavrantOS',
+  'common.app': 'RestaurantOS',
   'common.save': 'Spremi',
   'common.cancel': 'Odustani',
   'common.confirm': 'Potvrdi',
@@ -64,7 +64,7 @@ export const hr: Record<string, string> = {
   'login.deviceFailed': 'Aktivacija nije uspjela.',
   'login.devicePlaceholder': 'npr. 12345678',
   'login.deviceNameFallback': 'uređaj',
-  'login.footer': 'RestavrantOS · Fiskalna simulacija · EUR',
+  'login.footer': 'RestaurantOS · Fiskalna simulacija · EUR',
 
   // ── Kartice (zavihci) ──
   'tabs.pregled': 'Pregled',
@@ -178,7 +178,7 @@ export const hr: Record<string, string> = {
   'dash.openTables': 'Zauzeti stolovi',
   'dash.todayRevenue': 'Današnji promet',
   'dash.todayOrders': 'Današnje narudžbe',
-  'dash.footer': 'RestavrantOS rekonstrukcija {v} · offline-first + FURS (simulacija/produkcija odvojena) · EUR',
+  'dash.footer': 'RestaurantOS rekonstrukcija {v} · offline-first + FURS (simulacija/produkcija odvojena) · EUR',
 
   // ── Stolovi ──
   'tables.seats': '{n} mjesta',
@@ -533,7 +533,7 @@ export const hr: Record<string, string> = {
   'shifts.taxBreakdown': 'Promet po poreznim stopama (mjesec)',
   'shifts.noTraffic': 'Nema prometa.',
   'shifts.vatBadge': 'PDV {rate} % · {qty} stavki',
-  'shifts.csvTitle': 'Financijsko izvjesce RestavrantOS',
+  'shifts.csvTitle': 'Financijsko izvjesce RestaurantOS',
   'shifts.csvPeriod': 'Razdoblje',
   'shifts.csvRevenue': 'Prihodi (EUR)',
   'shifts.csvTax': 'Porez (EUR)',
@@ -1695,7 +1695,7 @@ export const hr: Record<string, string> = {
   'print.termManual': 'Ručno (kod odobrenja s terminala)',
   'print.saved': 'Konfiguracija uređaja spremljena ✓',
   'print.testBtn': 'Testni ispis',
-  'print.testLine1': 'RestavrantOS — test pisača',
+  'print.testLine1': 'RestaurantOS — test pisača',
   'print.testLine2': 'Č Š Ž č š ž — CP852 provjera',
   'print.failed': 'Ispis nije uspio: {error}',
   'print.simTest': 'SIMULACIJA — testni redci u konzoli.',
@@ -1758,7 +1758,7 @@ export const hr: Record<string, string> = {
   'audit.title': 'Revizijski dnevnik',
   'audit.none': 'Nema revizijskih unosa.',
   'sys.title': 'O sustavu',
-  'sys.version': 'RestavrantOS — verzija {v} (offline-first rekonstrukcija)',
+  'sys.version': 'RestaurantOS — verzija {v} (offline-first rekonstrukcija)',
   'sys.modules': 'Moduli: blagajna, narudžbe, stolovi, kuhinja (KDS), meni, smjene, FURS (simulacija), HACCP, zalihe, vjernost, rezervacije, izvješća.',
   'sys.db': 'Baza: Neon PostgreSQL (naslijeđene env varijable ostaju na Vercel projektu).',
   // Offline red (alerti)
