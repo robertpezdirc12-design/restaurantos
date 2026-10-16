@@ -238,7 +238,17 @@ export function mapTable(t: Row, activeOrder?: Row | null) {
     seats: t.capacity as number,
     posX: num(t.posX),
     posY: num(t.posY),
-    status: activeOrder ? 'OCCUPIED' : tableStatusToUI(t.status as string),
+    // Issue #70 §1 (P1, v1.121.0): KANONIČNA izpeljava zasedenosti = AKTIVNO naročilo
+    // (open/sent/prepared — include v /api/tables). DB 'occupied' BREZ aktivnega naročila
+    // je zastarelo demo/odvodno stanje (vsak zaključek naročila — plačilo/storno/preklic —
+    // postavi mizo v 'cleaning') → samodejno prikažemo kot DIRTY ("za pospraviti"), NE kot
+    // zasedeno. 0 DDL: popravek je čisto v preslikavi, produkcijski podatki ostanejo
+    // nedotaknjeni; dashboard/handheld/tablica izrisujejo IZKLJUČNO iz tega statusa.
+    status: activeOrder
+      ? 'OCCUPIED'
+      : t.status === 'occupied'
+        ? 'DIRTY'
+        : tableStatusToUI(t.status as string),
     activeOrder: activeOrder
       ? {
           id: activeOrder.id as string,

@@ -30,7 +30,7 @@ import { useCallback, useState } from 'react'
 import { useI18n } from '@/components/i18n'
 import { getToken } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
-import { delayThresholdForTarget } from '@/lib/kds-delays'
+import { delayThresholdForTarget, isStaleKdsTicket, staleTicketHours } from '@/lib/kds-delays'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -114,6 +114,9 @@ const oldestAge = (tasks: KdsTaskT[]): number => {
   return Number.isFinite(ms) ? Math.max(0, Math.floor((Date.now() - ms) / 60000)) : 0
 }
 
+/** Issue #70 §2: skupina je zastarjša (> 8 h) — določi z najstarejšo nalogo skupine. */
+const groupIsStale = (g: TaskGroupT): boolean => isStaleKdsTicket(oldestAge(g.tasks))
+
 interface TaskGroupT { orderId: string; orderNumber: number | null; tableNumber: number | null; orderType: string; tasks: KdsTaskT[] }
 
 /** Group tasks by order, oldest order first (server order: sequence, createdAt). */
@@ -188,19 +191,30 @@ export function KdsStationBoard({
   const threshold = delayThresholdForTarget(station.avgPrepTime)
   const prepTasks = tasks.filter((task) => task.stationId === station.id && task.kind !== 'expo')
   const expoTasks = station.isExpo ? tasks.filter((task) => task.stationId === station.id && task.kind === 'expo') : []
-  const prepGroups = groupByOrder(prepTasks)
-  const expoGroups = groupByOrder(expoTasks)
+  // Issue #70 §2: zastarele skupine (> 8 h — demo/prejšnja izmena) NA KONEC table (stabilno —
+  // znotraj skupine ohrani najstarejša-prvi vrstni red); aktivne naloge ostanejo na vrhu.
+  const staleLast = (groups: TaskGroupT[]): TaskGroupT[] => {
+    const active = groups.filter((g) => !groupIsStale(g))
+    const stale = groups.filter((g) => groupIsStale(g))
+    return [...active, ...stale]
+  }
+  const prepGroups = staleLast(groupByOrder(prepTasks))
+  const expoGroups = staleLast(groupByOrder(expoTasks))
   const total = prepTasks.length + expoTasks.length
 
   const orderLabel = (g: TaskGroupT): string =>
     g.tableNumber ? t('kds.stTable', { n: g.tableNumber }) : g.orderType
 
-  const orderHeader = (g: TaskGroupT, age: number) => (
+  const orderHeader = (g: TaskGroupT, age: number, stale = false) => (
     <CardTitle className="text-base flex items-center gap-2 flex-wrap">
       <span className="truncate min-w-0">{orderLabel(g)}</span>
       <span className="text-xs font-normal text-stone-500 shrink-0">#{g.orderNumber ?? '?'}</span>
-      <span className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${ageClass(age, threshold)}`}>
-        {t('kds.minutes', { m: age })}
+      {/* Issue #70 §2: zastareli listek — siva oznaka ZASTARELO + starost v urah (ne minutah) */}
+      <span
+        className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(age, threshold)}`}
+        title={stale ? `${t('kds.stale')} — ${t('kds.minutes', { m: age })}` : undefined}
+      >
+        {stale ? `${t('kds.stale')}: ${t('kds.staleHours', { h: staleTicketHours(age) })}` : t('kds.minutes', { m: age })}
       </span>
       {onPrintOrder && (
         <Button
@@ -238,8 +252,8 @@ export function KdsStationBoard({
         {expoGroups.map((g) => {
           const age = oldestAge(tasks.filter((task) => task.orderId === g.orderId))
           return (
-            <div key={`expo-${g.orderId}`} className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
-              {orderHeader(g, age)}
+            <div key={`expo-${g.orderId}`} className={`rounded-xl border p-3 space-y-2 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-emerald-200 bg-emerald-50/40'}`}>
+              {orderHeader(g, age, groupIsStale(g))}
               {g.tasks.map((task) => {
                 // sibling prep tasks of the SAME item — sync chips (issue §3)
                 const siblings = tasks.filter((s) => s.itemId === task.itemId && s.kind !== 'expo')
@@ -249,7 +263,8 @@ export function KdsStationBoard({
                   <div key={task.id} className="rounded-lg border border-stone-200 bg-white px-3 py-2 space-y-1.5 min-w-0">
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <p className="font-medium truncate min-w-0">{task.quantity}× {task.title}</p>
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${ageClass(taskAge(task.firedAt), threshold)}`}>{taskAge(task.firedAt)}′</span>
+                      {/* Issue #70 §2: zastareli listki — starost naloge v urah (ne "13.496′") */}
+                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${groupIsStale(g) ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(taskAge(task.firedAt), threshold)}`}>{groupIsStale(g) ? t('kds.staleHours', { h: staleTicketHours(taskAge(task.firedAt)) }) : `${taskAge(task.firedAt)}′`}</span>
                     </div>
                     {task.detail && <p className="text-xs text-stone-500 min-w-0">ℹ {task.detail}</p>}
                     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('kds.stStatsTitle')}>
@@ -295,8 +310,11 @@ export function KdsStationBoard({
         {prepGroups.map((g) => {
           const age = oldestAge(g.tasks)
           return (
-            <div key={g.orderId} className="rounded-xl border border-stone-200 p-3 space-y-2 min-w-0">
-              {orderHeader(g, age)}
+            <div key={g.orderId} className={`rounded-xl border p-3 space-y-2 min-w-0 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'}`}>
+              {orderHeader(g, age, groupIsStale(g))}
+              {groupIsStale(g) && (
+                <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('kds.staleHint')}</p>
+              )}
               {g.tasks.map((task) => {
                 const st = KDS_TASK_STATUS[task.status] ?? KDS_TASK_STATUS.pending
                 const taskBusy = busy.startsWith(task.id + ':')
@@ -312,7 +330,7 @@ export function KdsStationBoard({
                           <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 shrink-0">{t('kds.stTaskKind.expo')}</Badge>
                         )}
                       </p>
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${ageClass(taskAge(task.firedAt), threshold)}`}>{taskAge(task.firedAt)}′</span>
+                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${groupIsStale(g) ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(taskAge(task.firedAt), threshold)}`}>{groupIsStale(g) ? t('kds.staleHours', { h: staleTicketHours(taskAge(task.firedAt)) }) : `${taskAge(task.firedAt)}′`}</span>
                     </div>
                     {task.detail && <p className="text-xs text-stone-500 min-w-0">ℹ {task.detail}</p>}
                     <div className="flex items-center justify-between gap-2 flex-wrap">

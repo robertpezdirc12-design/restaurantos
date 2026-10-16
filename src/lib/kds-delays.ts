@@ -22,6 +22,45 @@
 /** Late threshold in minutes — mirrors the KDS board escalation (> 10 min = red/late). */
 export const KDS_DELAY_THRESHOLD_MIN = 10
 
+/**
+ * Issue #70 §2 (P1, v1.121.0): STALE ticket threshold — 8 ur (480 min).
+ *
+ * Živi demo v produkciji je pokazal listke s starostjo ~13.413 min (~9,3 dni) in
+ * ~2.343 min (~1,6 dneva) na VRHU kuhinjske vrste (strežnik vrača createdAt ASC,
+ * torej najstarejši prvi). Vsaka realna izmena gostinskega obrata je krajša od 8 h,
+ * zato je listek, starejši od 8 h, ZAGOTovo iz prejšnje izmene ali iz demo/testnih
+ * podatkov — ne iz trenutne obratovalne vrste.
+ *
+ * Semantika (izbor "a" iz issue #70): zastareli listki NE izginejo (vidni za revizijo)
+ * in ostanejo operabilni (kuhinja jih lahko zaključi), a so:
+ *  - prikazani na KONCU vrste (ne preglasijo prioritete aktivnih naročil),
+ *  - vizualno ločeni (sivi/črtkani listek + oznaka ZASTARELO + starost v urah,
+ *    ne v minutah — "225 h" namesto "13.496 min"),
+ *  - izključeni iz aktivne vrste v smislu zaporedja/prioritete (vliv na vrstni red).
+ *
+ * 0 DDL: odločitev je čisto v prikazu/preslikavi; podatki naročil ostanejo nedotaknjeni
+ * (issue #70: "ne popravljati produkcijskih koordinat ročno" — enako za stanja naročil).
+ */
+export const KDS_STALE_THRESHOLD_MIN = 480
+
+/**
+ * Issue #70 §2: je listek zastarel (> 8 h od nastanka)?
+ * Ne-številčna/negativna starost → false (ni podatka → nikoli zastarelo).
+ */
+export function isStaleKdsTicket(ageMin: number | null | undefined): boolean {
+  if (ageMin === null || ageMin === undefined || !Number.isFinite(ageMin)) return false
+  return ageMin > KDS_STALE_THRESHOLD_MIN
+}
+
+/**
+ * Issue #70 §2: starost zastarelega listka v CELIH urah (prikaz "225 h" namesto
+ * "13.496 min"). Za ne-številčne vrednosti vrne 0 (varna privzeta vrednost).
+ */
+export function staleTicketHours(ageMin: number | null | undefined): number {
+  if (ageMin === null || ageMin === undefined || !Number.isFinite(ageMin) || ageMin <= 0) return 0
+  return Math.floor(ageMin / 60)
+}
+
 /** Fixed reason catalog (i18n keys live under `kds.delay.<reason>` in sl.ts/hr.ts). */
 export const KDS_DELAY_REASONS = ['out_of_stock', 'busy', 'equipment', 'redo', 'other'] as const
 

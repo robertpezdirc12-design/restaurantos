@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
-import { KDS_DELAY_REASONS, delayThresholdForTarget, isLatePrep } from '@/lib/kds-delays'
+import { KDS_DELAY_REASONS, delayThresholdForTarget, isLatePrep, isStaleKdsTicket, staleTicketHours } from '@/lib/kds-delays'
+import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
 import { tabHasPerm } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1638,21 +1639,15 @@ function DashboardInner() {
   const [planPos, setPlanPos] = useState<Record<string, { x: number; y: number }>>({})
   const dragIdRef = useRef<string | null>(null)
   const draggedRef = useRef(false)
-  // tloris platno: seed/hramba posX/posY je v px na dizajn-platnu 440x380 (prgmta 40..400/40..340);
-  // v UI delamo z % in pretvorimo v obe smeri, da je vlečenje perzistentno v istih enotah.
-  const PLAN_W = 440
-  const PLAN_H = 380
-  const planPosOf = (tb: TableT): { x: number; y: number } => {
-    const clampPct = (v: number): number => Math.min(97, Math.max(3, v))
-    const cached = planPos[tb.id]
-    if (cached) return cached
-    if (tb.posX || tb.posY) return { x: clampPct((tb.posX ?? 0) / PLAN_W * 100), y: clampPct((tb.posY ?? 0) / PLAN_H * 100) }
-    // privzeto (novi mizi brez pozicije): cona = stolpec, miza znotraj cone = vrstica (5 vrst)
-    const zi = Math.max(0, [...new Set(viewTables.map((x) => x.zone))].sort().indexOf(tb.zone))
-    const zoneTables = viewTables.filter((x) => x.zone === tb.zone)
-    const idx = Math.max(0, zoneTables.findIndex((x) => x.id === tb.id))
-    return { x: clampPct(15 + (zi % 5) * 17), y: clampPct(16 + (idx % 5) * 18) }
-  }
+  // tloris platno: posX/posY ima DVE zgodovinski enoti — seed + trenutni PATCH
+  // shranjujeta PX na dizajn-platnu 440×380 (40..400/40..340), starejši demo zapisi
+  // v produkciji pa ODSTOTKE (8..70). Issue #70 §4: pozicije razrešuje skupna čista
+  // preslikava src/lib/floor-plan.ts (detekcija enote NABORA + avto-mreža za mize
+  // brez pozicije) — brez mutacije obstoječih DB vrednosti; v UI delamo z %.
+  const PLAN_W = FLOOR_PLAN_W
+  const PLAN_H = FLOOR_PLAN_H
+  const planPosOf = (tb: TableT): { x: number; y: number } =>
+    planPos[tb.id] ?? planPositionOf({ id: tb.id, zone: tb.zone, posX: tb.posX ?? 0, posY: tb.posY ?? 0 }, viewTables.map((x) => ({ id: x.id, zone: x.zone, posX: x.posX ?? 0, posY: x.posY ?? 0 })))
   const planPointerDown = (tb: TableT) => (e: React.PointerEvent<HTMLButtonElement>) => {
     dragIdRef.current = tb.id; draggedRef.current = false
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -1672,7 +1667,13 @@ function DashboardInner() {
     if (!id || !draggedRef.current) return
     const pos = planPos[id]
     if (!pos) return
-    void api(`/api/tables/${id}`, { method: 'PATCH', body: JSON.stringify({ posX: Math.round(pos.x / 100 * PLAN_W), posY: Math.round(pos.y / 100 * PLAN_H) }) }).catch(() => null)
+    // Issue #70 §4: persist v ENOTO NABORA — odstotkovski (stari demo) nabor ostane
+    // homogen odstotkovski, px nabor (seed) ostane px; mešanje enot ne nastane.
+    const percent = floorPlanUnitIsPercent(viewTables.map((x) => ({ id: x.id, zone: x.zone, posX: x.posX ?? 0, posY: x.posY ?? 0 })))
+    const body = percent
+      ? { posX: Math.round(pos.x), posY: Math.round(pos.y) }
+      : { posX: Math.round(pos.x / 100 * PLAN_W), posY: Math.round(pos.y / 100 * PLAN_H) }
+    void api(`/api/tables/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).catch(() => null)
   }
 
   async function submitSale() {
@@ -1923,7 +1924,12 @@ function DashboardInner() {
                           <p className="font-bold text-lg">{tb.name}</p>
                           <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
                           {tb.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(tb.activeOrder.total)}</p>}
-                          <p className="text-[11px] mt-1 opacity-80">{tb.activeOrder ? stL('OCCUPIED') : tb.status === 'DIRTY' ? t('tables.clickClean') : stL(tb.status)}</p>
+                          <p className="text-[11px] mt-1 opacity-80">
+                            {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
+                                OCCUPIED iz statusa pomeni isto kot activeOrder (mapTable), zato sta
+                                plosci (grid) in handheld/tablica vedno usklajena */}
+                            {tb.status === 'DIRTY' ? t('tables.clickClean') : stL(tb.status)}
+                          </p>
                         </button>
                         {/* Issue #3: QR meni za to mizo — (span, ker gosta ne sme biti gnezdena v gumbu) */}
                         <span
@@ -2323,17 +2329,33 @@ function DashboardInner() {
                 }}
               />
             )}
+            {/* Issue #70 §2: zastareli listki (> 8 h — demo/prejšnja izmena) so NA KONCU vrste
+                (stabilno sortiranje ohrani createdAt ASC znotraj skupine), vizualno ločeni in
+                označeni ZASTARELO z starostjo v urah — ne preglasijo prioritete aktivnih listkov,
+                ostanejo pa vidni/operabilni za revizijo (kuhinja jih lahko zaključi). */}
             {!kdsCustomView && viewKitchen
               .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+              .slice()
+              .sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))
               .map((o) => {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
+                const stale = isStaleKdsTicket(ageMin)
                 return (
-                  <Card key={o.id}>
+                  <Card key={o.id} className={stale ? 'border-dashed border-stone-300 bg-stone-50' : undefined}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                         {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
+                        {stale ? (
+                          <span
+                            className="text-xs font-bold px-2 py-0.5 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
+                            title={`${t('kds.stale')} — ${t('kds.minutes', { m: ageMin })}`}
+                          >
+                            {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
+                          </span>
+                        ) : (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
+                        )}
                         <span className="ml-auto flex gap-1.5">
                           <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
                             <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
@@ -2345,6 +2367,11 @@ function DashboardInner() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
+                      {stale && (
+                        <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">
+                          {t('kds.staleHint')}
+                        </p>
+                      )}
                       {items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
                         const itAge = kdsItemAge(it, o)
@@ -2369,7 +2396,8 @@ function DashboardInner() {
                             </div>
                             <div className="flex gap-1.5 shrink-0 items-center flex-wrap justify-end">
                               {/* OPS-9 val 3: per-item live timer (firedAt → order clock); OPS-11 val 1: red escalation per station (target → max(10, ceil(target×1.25))) */}
-                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{itAge}′</span>
+                              {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne "13.496′") */}
+                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
                               {perms.includes('menu.availability') && mi && (
                                 <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
                                   <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}

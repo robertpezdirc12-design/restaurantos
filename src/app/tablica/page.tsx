@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { enqueueOp, flushQueue, isNetworkError, newOperationId } from '@/lib/offline-queue'
+import { tableStatusLabelKey } from '@/lib/table-status'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -205,7 +206,9 @@ function TablicaInner() {
               <p className="text-[11px] opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
               {tb.activeOrder && <p className="text-sm font-bold mt-1">{fmtEUR(tb.activeOrder.total)}</p>}
               <p className="text-[11px] mt-1 opacity-80">
-                {tb.activeOrder ? t('tlb.occupied') : tb.status === 'DIRTY' ? t('tables.clickClean') : tb.status === 'RESERVED' ? t('tables.reserved') : t('tables.available')}
+                {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
+                    enaka preslikava kot handheld (src/lib/table-status) */}
+                {t(tableStatusLabelKey(tb.status))}
               </p>
             </button>
           </div>

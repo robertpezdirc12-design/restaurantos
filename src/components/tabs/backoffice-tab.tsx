@@ -29,6 +29,7 @@ import { scaleBatchLines } from '@/lib/batch'
 import { dueInMs, isRemindable, remindMsForRule } from '@/lib/recurring-po'
 import { PUSH_EVENT_TYPES } from '@/lib/push-events'
 import { isAdInWindow, isValidDateStr } from '@/lib/display-promos'
+import { deliveryOrderIsActive } from '@/lib/delivery-view'
 
 
 /* ─────────────────────────── BACK-OFFICE (dostava + računovodstvo + napitnine) (AUDIT-FIX val 4) ─────────────────────────── */
@@ -113,6 +114,17 @@ const NEXT_STATUS: Record<string, { to: string; label: string } | null> = {
 const platformOf = (note: string | null): 'GLOVO' | 'WOLT' | 'DOMAČA' =>
   note?.includes('Glovo') ? 'GLOVO' : note?.includes('Wolt') ? 'WOLT' : 'DOMAČA'
 
+/** Issue #70 §3: status NAROČILA (dostava brez DeliveryInfo) → i18n ključ. */
+const ORDER_STATUS_KEYS: Record<string, string> = {
+  OPEN: 'status.OPEN', SENT: 'status.SENT', PREPARED: 'status.PREPARED', PAID: 'status.PAID', CANCELLED: 'status.CANCELLED',
+}
+const statusKey = (s: string): string => ORDER_STATUS_KEYS[s] ?? 'status.OPEN'
+/** Issue #70 §3: barvne razredice statusa naročila (usklajeno s statusColors na dashboardu). */
+const statusBadgeBg: Record<string, string> = {
+  OPEN: 'bg-amber-600 text-white', SENT: 'bg-orange-600 text-white', PREPARED: 'bg-emerald-600 text-white',
+  PAID: 'bg-stone-500 text-white', CANCELLED: 'bg-red-600 text-white',
+}
+
 /** OPS-9 val 3: provider ETA → "HH:MM" (null-safe; only rendered when the field is set). */
 const fmtEta = (iso: string): string => new Date(iso).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
 
@@ -142,7 +154,14 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
       .catch(() => null)
   }, [])
 
-  const active = orders.filter((o) => !['PAID', 'CANCELLED'].includes(o.status) && o.delivery && o.delivery.status !== 'DELIVERED' && o.delivery.status !== 'CANCELLED')
+  // Issue #70 §3 (P1, v1.121.0): sekcija dost.history je semantično SKLADNA — v zgodovino
+  // gredo SAMO terminalni zapisi (naročilo PLAČANO/PREKLICANO ali dostava DOSTAVLJENA/
+  // PREKLICANA). Dostavna naročila BREZ DeliveryInfo (zastareli demo zapisi, status OPEN)
+  // — prej so padla v zgodovino in pokazala oznako OPEN — so AKTIVNA (niso zaključena)
+  // in dobijo svojo kartico z opombo "brez dostavnih podatkov" (brez prehodov — rut
+  // /api/delivery PATCH za te zapise vrne 404). Preskočitev je izločena v čisto funkcijo
+  // src/lib/delivery-view.ts (enotsko testirana, client-safe).
+  const active = orders.filter(deliveryOrderIsActive)
   const history = orders.filter((o) => !active.includes(o))
 
   async function transition(o: DeliveryOrderT, to: string, extra?: { driverName?: string; driverPhone?: string; note?: string }) {
@@ -189,7 +208,26 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
         )}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {active.map((o) => {
-            const d = o.delivery!
+            const d = o.delivery
+            // Issue #70 §3: dostavno naročilo BREZ DeliveryInfo (zastareli demo zapis) —
+            // kompaktna kartica z opombo, BREZ prehodov (/api/delivery PATCH → 404) in
+            // z oznako statusa NAROČILA (OPEN — pošteno: naročilo ni zaključeno).
+            if (!d) {
+              return (
+                <Card key={o.id} className="border-dashed border-stone-300 bg-stone-50">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="text-base">#{o.orderNumber} <Badge variant="outline" className="ml-1">{platformOf(o.note)}</Badge></CardTitle>
+                      <Badge className={statusBadgeBg[o.status] || 'bg-amber-600 text-white'}>{t(statusKey(o.status))}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <p className="text-xs text-stone-500">{t('dost.itemsCount', { n: o.items.length })} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span></p>
+                    <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('dost.noInfo')}</p>
+                  </CardContent>
+                </Card>
+              )
+            }
             const plat = platformOf(o.note)
             const next = NEXT_STATUS[d.status]
             return (
@@ -241,7 +279,13 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                     <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm min-w-0 truncate">#{o.orderNumber} · {d?.recipientName || '—'} · {fmtEUR(o.total)}</p>
-                        <Badge className={DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white'}>{DELIVERY_STATUS_KEYS[d?.status || ''] ? t(DELIVERY_STATUS_KEYS[d?.status || '']) : d?.status || o.status}</Badge>
+                        {/* Issue #70 §3: oznaka zgodovine je VEDNO terminalna — naročilo
+                            PLAČANO/PREKLICANO pokaže status NAROČILA, sicer status dostave
+                            (DOSTAVLJENA/PREKLICANA); surov niz "OPEN" ne more več padla v
+                            "zaključenih" zapiseh */}
+                        <Badge className={['PAID', 'CANCELLED'].includes(o.status) ? (statusBadgeBg[o.status] || 'bg-stone-400 text-white') : (DELIVERY_STATUS_BG[d?.status || ''] || 'bg-stone-400 text-white')}>
+                          {['PAID', 'CANCELLED'].includes(o.status) ? t(statusKey(o.status)) : (d?.status && DELIVERY_STATUS_KEYS[d.status] ? t(DELIVERY_STATUS_KEYS[d.status]) : t(statusKey(o.status)))}
+                        </Badge>
                       </div>
                       {(d?.driver?.name || d?.driver?.employeeName) && (
                         <p className="text-xs text-stone-400 mt-0.5 truncate">{t('dost.driver', { name: d.driver.employeeName || d.driver.name })}</p>

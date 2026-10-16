@@ -1320,9 +1320,9 @@ describe('G. registri: TEST_PREFIXES, verzija, reasons enum, 0 DDL', () => {
     expect(TEST_PREFIXES).toContain('i10-')
   })
 
-  it('G2. APP_VERSION === 1.120.0', () => {
-    // v1.120.0 (issue #3 pos-readiness) — verzijski register posodablja vsak val
-    expect(APP_VERSION).toBe('1.120.0')
+  it('G2. APP_VERSION === 1.121.0', () => {
+    // v1.121.0 (issue #70 state-consistency) — verzijski register posodablja vsak val
+    expect(APP_VERSION).toBe('1.121.0')
   })
 
   it('G3. dataQuality.reasons so stabilen nabor kod (UI preslika lcov.dq.*)', () => {

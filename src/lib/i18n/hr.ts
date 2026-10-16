@@ -966,6 +966,8 @@ export const hr: Record<string, string> = {
   // Dostava (DeliveryTab)
   'dost.active': 'Aktivna dostava ({n})',
   'dost.activeNone': 'Nema aktivnih dostavnih narudžbi.',
+  // Issue #70 §3 (P1, v1.121.0): dostavna narudžba bez DeliveryInfo (zastarjeli demo zapis)
+  'dost.noInfo': 'Bez podataka o dostavi — narudžba nije u dostavnom toku (demo/ostatak).',
   'dost.status.PENDING': 'Nova',
   'dost.status.CONFIRMED': 'Potvrđena',
   'dost.status.ASSIGNED': 'Dodijeljena',
@@ -1797,6 +1799,10 @@ export const hr: Record<string, string> = {
   'kds.sound': 'Zvok',
   'kds.fullscreen': 'Puni ekran',
   'kds.minutes': '{m} min',
+  // Issue #70 §2 (P1, v1.121.0): zastarjeli KDS listci (> 8 h — demo/prethodna smjena)
+  'kds.stale': 'Zastarjelo',
+  'kds.staleHours': '{h} h',
+  'kds.staleHint': 'Listak je stariji od 8 sati (prethodna smjena/demo) — nije u aktivnom redu. Provjeri i završi ga ili otkaži.',
   'kds.markUnavailable': 'Označi rasprodano (86)',
   // Issue #7 (P1, v1.104.0) — KDS: izričito alergensko upozorenje na stavki
   'kds.allergenWarning': 'ALERGIJA',

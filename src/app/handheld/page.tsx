@@ -29,6 +29,7 @@ import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { enqueueOp, flushQueue, isNetworkError, newOperationId, subscribeQueue } from '@/lib/offline-queue'
 import { processTerminalPayment } from '@/lib/devices/terminal'
+import { tableStatusLabelKey } from '@/lib/table-status'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { ManagerCallButton } from '@/components/manager-call-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -430,7 +431,9 @@ function HandheldInner() {
                   <p className="text-[11px] opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
                   {tb.activeOrder && <p className="text-sm font-bold mt-1">{fmtEUR(tb.activeOrder.total)}</p>}
                   <p className="text-[11px] mt-1 opacity-80">
-                    {tb.activeOrder ? t('tlb.occupied') : tb.status === 'DIRTY' ? t('tables.clickClean') : tb.status === 'RESERVED' ? t('tables.reserved') : t('tables.available')}
+                    {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
+                        prej je handheld za OCCUPIED brez activeOrder pokazal "Na voljo" (neskladje z dashboardom) */}
+                    {t(tableStatusLabelKey(tb.status))}
                   </p>
                   {pend > 0 && (
                     <span className="absolute top-2 right-2 rounded-full bg-white/95 text-amber-700 text-[10px] font-bold px-2 py-0.5 border border-amber-300">
