@@ -7,6 +7,8 @@ import { salesByHour, type SalesHourSample } from '@/lib/sales-by-hour'
 import { laborByDay, laborByRole, laborPct, type LaborSample } from '@/lib/labor-cost'
 import { dayKeyOf } from '@/lib/sales-by-hour'
 import { liveMinutes, totalPayCents } from '@/lib/timeclock'
+import { laborCoverageReport } from '@/lib/labor-coverage'
+import { loadLaborCoverageData, resolveLaborCoverageWindow } from '@/lib/labor-coverage-data'
 
 type VatRow = { base: number; vat: number }
 
@@ -292,6 +294,133 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="labor-stroski_${day(from)}_${day(to)}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  // Issue #10 (P2, v1.117.0): section=labor-coverage — strošek dela + napoved
+  // pokritosti izmen glede na prodajo. ISTI motor in ISTI viri kot
+  // /api/reports/labor-coverage (skupni loader src/lib/labor-coverage-data.ts)
+  // — izvoz uporablja ISTI obračun kot UI (zahteva issue #10).
+  // Okno ima lastno strogo validacijo (privzeto zadnjih 28 dni, ≤ 90 dni,
+  // to ≤ danes — resolveLaborCoverageWindow); extra query: locationId?, jobId?
+  // (drugi odseki ostajajo brez eksplicitnega lokacijskega/vložnega filtra).
+  if (section === 'labor-coverage') {
+    const lcWin = resolveLaborCoverageWindow(fromP, toP)
+    if ('error' in lcWin) return fail(lcWin.error, 400)
+    const data = await loadLaborCoverageData(
+      user,
+      lcWin.from,
+      lcWin.to,
+      url.searchParams.get('locationId'),
+      url.searchParams.get('jobId'),
+    )
+    if (isResponse(data)) return data
+    const report = laborCoverageReport(data.input)
+    const genAt = new Date().toISOString()
+
+    if (format === 'json') {
+      return ok({
+        section: 'labor-coverage',
+        ...report,
+        exportMeta: {
+          exportedAt: genAt,
+          from: lcWin.from,
+          to: lcWin.to,
+          locationId: url.searchParams.get('locationId'),
+          jobId: url.searchParams.get('jobId'),
+        },
+      })
+    }
+
+    // CSV — BOM + `;` + CRLF, 2 decimalki (p2), SL glave (vzorec drugih sekcij)
+    const eur = (cents: number | null) => (cents === null ? '' : p2(cents / 100))
+    const mnum = (v: number | null) => (v === null ? '' : String(r2(v)))
+    const L10: string[] = []
+    // ── PARAMETRI ──
+    L10.push(`LABOR POKRITOST - RestaurantOS`)
+    L10.push(`Obdobje;${report.parameters.from};${report.parameters.to}`)
+    L10.push(`Ustvarjeno;${genAt}`)
+    L10.push(`Lokacije;${report.parameters.locationIds.join(',')}`)
+    L10.push(`Valute;${report.parameters.currencies.join(',')}`)
+    if (report.parameters.jobId) L10.push(`Filter vloga (jobId);${report.parameters.jobId}`)
+    L10.push(`Ciljni Labor %;${report.parameters.targetPct}`)
+    L10.push(`Opozorilni %;${report.parameters.warnPct}`)
+    L10.push(`Nizki %;${report.parameters.lowPct}`)
+    L10.push(`Napoved (dni);${report.parameters.forecastDays}`)
+    L10.push(`Vzorci (dnevi z prodajo);${report.parameters.sampleDays}`)
+    L10.push(`Zaprti dnevi (brez naročil);${report.parameters.closedDays}`)
+    L10.push(`Naložene vrstice;naročila;${report.parameters.counts.orders};vnosi;${report.parameters.counts.entries};izmene;${report.parameters.counts.shifts}`)
+    L10.push('')
+    // ── DNEVI ──
+    L10.push(`DNEVI`)
+    L10.push(`Datum;Neto prodaja (EUR);Naročila;Načrtovane minute;Načrtovani strošek (EUR);Nepopolne izmene;Dejanske minute;Dejanski strošek (EUR);Odprti vnosi;Nepotrjeni;Stopnja 0;Nadure minute;Varianca minute;Labor %;SPH (EUR);Strošek/naročilo (EUR)`)
+    for (const d of report.days) {
+      L10.push([
+        d.date, p2(d.netSalesCents / 100), d.orders, d.plannedMinutes, p2(d.plannedCostCents / 100),
+        d.plannedIncomplete, mnum(d.actualMinutes), p2(d.actualCostCents / 100), d.openEntries,
+        d.unapproved, d.rateZero, mnum(d.overtimeMinutes), mnum(d.varianceMinutes),
+        mnum(d.laborPct), eur(d.sphCents), eur(d.costPerOrderCents),
+      ].join(';'))
+    }
+    const t = report.totals
+    L10.push([
+      `SKUPAJ`, p2(t.netSalesCents / 100), t.orders, t.plannedMinutes, p2(t.plannedCostCents / 100),
+      ``, mnum(t.actualMinutes), p2(t.actualCostCents / 100), ``, ``, ``,
+      mnum(t.overtimeMinutes), mnum(t.varianceMinutes), mnum(t.laborPct), eur(t.sphCents), eur(t.costPerOrderCents),
+    ].join(';'))
+    L10.push('')
+    // ── URE (7×24) ──
+    L10.push(`PRODAJA IN DELO PO URAH (7x24, dan = 1 ponedeljek)`)
+    L10.push(`Dan;Ura;Neto prodaja (EUR);Naročila;Delo minute;Zaposleni`)
+    for (const h of report.hours) {
+      L10.push([h.dow, h.hour, p2(h.netSalesCents / 100), h.orders, mnum(h.laborMinutes), mnum(h.staffOn)].join(';'))
+    }
+    L10.push('')
+    // ── NAPOVED PRODAJE ──
+    L10.push(`NAPOVED PRODAJE (povprečje istega dneva tedna)`)
+    L10.push(`Datum;Pričakovana neto prodaja (EUR);Min (EUR);Maks (EUR);Vzorci;Zaupanje;Zaprti dnevi`)
+    for (const f of report.forecast.days) {
+      L10.push([
+        f.date, eur(f.expectedNetSalesCents), eur(f.minCents), eur(f.maxCents),
+        f.sampleCount, f.confidence, f.closedDays,
+      ].join(';'))
+    }
+    L10.push('')
+    // ── POKRITOST (prihodnje izmene) ──
+    L10.push(`POKRITOST PRIHODNJIH IZMEN`)
+    L10.push(`Datum;Načrtovane minute;Načrtovani strošek (EUR);Nepopolna stopnja;Pričakovana neto prodaja (EUR);Pričakovani Labor %;Zastavica;Prekrivanja;Dolge brez odmora`)
+    for (const c of report.forecast.coverage) {
+      L10.push([
+        c.date, c.plannedMinutes, p2(c.plannedCostCents / 100), mnum(c.incompleteRate),
+        eur(c.expectedNetSalesCents), mnum(c.expectedPct), c.flag ?? '', c.overlaps, c.longNoBreak,
+      ].join(';'))
+    }
+    L10.push('')
+    // ── VLOGE ──
+    L10.push(`VLOGE`)
+    L10.push(`Vloga;Načrtovane minute;Načrtovani strošek (EUR);Dejanske minute;Dejanski strošek (EUR)`)
+    for (const r of report.roles) {
+      L10.push([r.name, mnum(r.plannedMinutes), p2(r.plannedCostCents / 100), mnum(r.actualMinutes), p2(r.actualCostCents / 100)].join(';'))
+    }
+    L10.push('')
+    // ── IZJEME (podatkovna kakovost) ──
+    const dq = report.dataQuality
+    L10.push(`IZJEME (PODATKOVNA KAKOVOST)`)
+    L10.push(`Odprti vnosi;${dq.openEntries}`)
+    L10.push(`Stopnja 0 (zaprti vnosi);${dq.rateZero}`)
+    L10.push(`Prekrivajoči vnosi (pari);${dq.overlapPairs}`)
+    L10.push(`Nepotrjeni vnosi;${dq.unapproved}`)
+    L10.push(`Izmene brez postavke;${dq.missingRateShifts}`)
+    L10.push(`Mešane valute;${dq.mixedCurrencies > 1 ? `DA (${dq.mixedCurrencies})` : 'NE'}`)
+    if (dq.reasons.length > 0) L10.push(`Razlogi (kode);${dq.reasons.join(',')}`)
+    const csv10 = '\uFEFF' + L10.join('\r\n')
+    return new NextResponse(csv10, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="labor-pokritost_${report.parameters.from}_${report.parameters.to}.csv"`,
         'Cache-Control': 'no-store',
       },
     })

@@ -15,7 +15,7 @@
  */
 
 export {
-  SalesByHourCard, LaborCostCard, DursCheckButton, NotificationsCard,
+  SalesByHourCard, LaborCostCard, LaborCoverageCard, DursCheckButton, NotificationsCard,
   BatchesCard, BatchPrepCard, UpsellCard, DisplayPromosCard,
 } from './tabs/ops-cards'
 export { NabavaTab } from './tabs/nabava-tab'
