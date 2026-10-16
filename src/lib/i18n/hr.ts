@@ -42,6 +42,10 @@ export const hr: Record<string, string> = {
   'login.submit': 'Prijava',
   'login.failed': 'Prijava nije uspjela.',
   'login.connection': 'Povezava sa serverom nije uspjela.',
+  // demo vstop brez gesla (zahteva lastnika 16. 10. 2026 — za čas dela)
+  'login.demoBtn': 'Ulaz bez lozinke (demo)',
+  'login.demoHint': 'Za brzi rad tijekom razvoja — prijava kao vodeći račun, svaki ulaz se upisuje u dnevnik.',
+  'login.demoFailed': 'Demo ulaz nije uspio.',
   // v1.94.0 — MFA drugi stupanj + obavezni upis (issue #12/#31)
   'login.mfaRequired': 'Potreban je drugi stupanj prijave (MFA kod).',
   'login.mfaCodeLabel': 'Kod iz aplikacije (MFA)',

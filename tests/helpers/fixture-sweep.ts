@@ -83,6 +83,7 @@ export const TEST_PREFIXES = [
   'i22-', // issue22-payroll (v1.115.0)
   'i8-', // issue8-stock-transfers (v1.116.0)
   'i10-', // issue10 labor-coverage (v1.117.0)
+  'adl-', // auth-demo-login (v1.118.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

@@ -42,6 +42,10 @@ export const sl: Record<string, string> = {
   'login.submit': 'Prijava',
   'login.failed': 'Prijava ni uspela.',
   'login.connection': 'Povezava s strežnikom ni uspela.',
+  // demo vstop brez gesla (zahteva lastnika 16. 10. 2026 — za čas dela)
+  'login.demoBtn': 'Vstop brez gesla (demo)',
+  'login.demoHint': 'Za hitro delo med razvojem — prijava kot vodstveni račun, vsak vstop se zapiše v dnevnik.',
+  'login.demoFailed': 'Demo vstop ni uspel.',
   // v1.94.0 — MFA druga stopnja + obvezni vpis (issue #12/#31)
   'login.mfaRequired': 'Zahtevana je druga stopnja prijave (MFA koda).',
   'login.mfaCodeLabel': 'Koda iz aplikacije (MFA)',

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown, ShieldCheck } from 'lucide-react'
+import { UtensilsCrossed, Loader2, MapPin, MonitorSmartphone, ChevronDown, ShieldCheck, KeyRound } from 'lucide-react'
 import { landingTab } from '@/lib/tab-permissions'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
@@ -33,6 +33,7 @@ function LoginPageInner() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [demoBusy, setDemoBusy] = useState(false)
   const [checking, setChecking] = useState(true)
   // v1.94.0 (issue #12/#31): druga stopnja — MFA koda pri 401 mfaRequired
   const [mfaRequired, setMfaRequired] = useState(false)
@@ -83,6 +84,31 @@ function LoginPageInner() {
     } catch {
       setProvError(t('login.connection'))
     } finally { setProvBusy(false) }
+  }
+
+  /** DEMO VSTOP BREZ GESLA (zahteva lastnika 16. 10. 2026, za čas dela na aplikaciji):
+   *  strežnik prijavi najstarejši AKTIVEN vodstveni račun brez MFA — isti račun,
+   *  kot bi ga lastnik sicer uporabil, samo brez vpisa e-pošte/PIN. */
+  async function demoLogin() {
+    setError('')
+    setDemoBusy(true)
+    try {
+      const res = await fetch('/api/auth/demo-login', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || t('login.demoFailed'))
+        return
+      }
+      localStorage.setItem('ro_token', data.token)
+      localStorage.setItem('ro_user', JSON.stringify(data.employee))
+      localStorage.removeItem('ro_bootstrap')
+      const landing = landingTab(String(data.employee?.role || ''), Array.isArray(data.employee?.permissions) ? data.employee.permissions : [])
+      router.push(landing.station ? `/dashboard?tab=${landing.tab}&station=${landing.station}` : `/dashboard?tab=${landing.tab}`)
+    } catch {
+      setError(t('login.connection'))
+    } finally {
+      setDemoBusy(false)
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -349,6 +375,18 @@ function LoginPageInner() {
                 <Button type="submit" disabled={loading} className="w-full h-11 bg-emerald-700 hover:bg-emerald-800">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('login.submit')}
                 </Button>
+                {/* DEMO VSTOP BREZ GESLA — zahteva lastnika (16. 10. 2026), za čas dela.
+                    Strežnik sam izbere vodstveni račun brez MFA; vsak vstop se zapiše v audit (DEMO_LOGIN). */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={demoBusy || loading}
+                  onClick={demoLogin}
+                  className="w-full h-11 mt-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                >
+                  {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-4 h-4 mr-1.5" aria-hidden />{t('login.demoBtn')}</>}
+                </Button>
+                <p className="text-[11px] text-stone-400 text-center">{t('login.demoHint')}</p>
               </form>
             </CardContent>
           </Card>
