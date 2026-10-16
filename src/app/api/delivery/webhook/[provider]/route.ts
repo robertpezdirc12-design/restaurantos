@@ -185,6 +185,11 @@ export async function POST(
       locationId: integration?.locationId ?? null,
       items: mapped.items,
       type: 'DELIVERY',
+      // Issue #9 (v1.119.0): platformsko naročilo nosi vir 'delivery' (četrti vir
+      // poleg pos/qr/kiosk — isti kanonični Order pipeline). Replay-context
+      // varovalka (ops.ts) primerja tudi orderSource, zato podvojeni webhook
+      // ostane idempotenten pri ISTEM viru.
+      orderSource: 'delivery',
       note: mapped.note,
       clientOperationId: webhookIdempotencyKey(p as 'glovo' | 'wolt', mapped.platformOrderId),
       delivery: {

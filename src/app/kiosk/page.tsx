@@ -71,6 +71,31 @@ function KioskInner() {
     if (t) loadMenu(t)
   }, [])
 
+  /* Issue #9 (v1.119.0) — osveževanje razpoložljivosti (86) brez ponovnega nalaganja:
+     lahkotna javna ruta /api/public/menu/availability (isti napravin žeton, ETag/304),
+     polling vsakih 30 s + takoj ob vrnitvi v vidno stanje. Kiosk je 24/7 naprava —
+     razprodani artikel izgine iz naročanja (disabled) v ≤30 s; strežnik je edini vir. */
+  useEffect(() => {
+    if (!token || !menu) return
+    let alive = true
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/public/menu/availability', { cache: 'no-store', headers: { 'X-Device-Token': token } })
+        if (!res.ok || res.status === 304) return
+        const d = (await res.json()) as { availability?: { id: string; isAvailable: boolean }[] }
+        if (!alive || !d.availability?.length) return
+        const byId = new Map(d.availability.map((a) => [a.id, a.isAvailable]))
+        setMenu((prev) => (prev
+          ? { ...prev, items: prev.items.map((it) => (byId.has(it.id) ? { ...it, isAvailable: byId.get(it.id)! } : it)) }
+          : prev))
+      } catch { /* tiho — naslednji cikel */ }
+    }
+    const iv = setInterval(refresh, 30_000)
+    const onVis = () => { if (document.visibilityState === 'visible') void refresh() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { alive = false; clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  }, [token, menu !== null])
+
   // vrnitev omrežja — takojšen poskus (svež budget poskusov), če meni še ni naložen
   useEffect(() => {
     const onOnline = () => {

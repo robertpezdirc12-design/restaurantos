@@ -73,11 +73,21 @@ async function setup() {
 
 const setupP = setup()
 
+// Task 58 higiena (dopolnilo issue #9, v1.119.0): POST /api/integrations ustvari
+// id z nid() BREZ testne predpone — vrstice API-ustvarjenih fiksur zbiramo tu in
+// jih pobrišemo v afterAll (prej je ${PREFIX}Glovo (provider 'glovo') ostal kot
+// sirota v skupnem teku suite-a in povozil provider lookup poznejših testov).
+const apiIntegrationIds: string[] = []
+
 afterAll(async () => {
   await db.auditLog.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { entityId: { startsWith: PREFIX } }] } }).catch(() => null)
   await db.eventLog.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { entityId: { startsWith: PREFIX } }] } }).catch(() => null)
   await db.integrationLog.deleteMany({ where: { integrationId: { startsWith: PREFIX } } }).catch(() => null)
   await db.integration.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
+  // API-ustvarjene integracije (nid() id) — IntegrationLog/ostali otroci kaskadirajo
+  if (apiIntegrationIds.length > 0) {
+    await db.integration.deleteMany({ where: { id: { in: apiIntegrationIds } } }).catch(() => null)
+  }
   await db.employee.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
 })
@@ -104,6 +114,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
     expect(d.locationId).toBe(locA)
     const audit = await db.auditLog.count({ where: { action: 'INTEGRATION_CREATED', entityId: d.id } })
     expect(audit).toBe(1)
+    apiIntegrationIds.push(d.id)
   })
 
   test('POST validacija: brez imena → 400; napačen baseUrl → 400', async () => {
@@ -118,6 +129,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
       name: `${PREFIX}Bizi`, type: 'delivery', config: { apiKey_bizi: 'sk-secret-42', region: 'si' },
     }))
     const id = ((await created.json()) as { integration: { id: string } }).integration.id
+    apiIntegrationIds.push(id)
     await db.integration.update({ where: { id }, data: { lastSyncError: 'stari napaki' } })
 
     // issue #5 (v1.88.0): GET zahteva settings.manage — waiter sploh NE pride do seznama
@@ -139,6 +151,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
       name: `${PREFIX}Wolt`, config: { apiKey_wolt: 'sk-real-77', city: 'lj' },
     }))
     const id = ((await created.json()) as { integration: { id: string } }).integration.id
+    apiIntegrationIds.push(id)
     const r = await integrationPATCH(req(`/api/integrations/${id}`, owner, 'PATCH', {
       config: { apiKey_wolt: '••••', city: 'kp' }, syncInterval: 120,
     }), { params: Promise.resolve({ id }) })
@@ -161,6 +174,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
       name: `${PREFIX}Notranji`, baseUrl: 'http://127.0.0.1:3000',
     }))
     const id = ((await created.json()) as { integration: { id: string } }).integration.id
+    apiIntegrationIds.push(id)
     const e = await isErr(testConnectionPOST(req(`/api/integrations/${id}/test`, owner, 'POST'), { params: Promise.resolve({ id }) }), 400)
     expect(e.error).toContain('zasebnih')
   })
@@ -171,6 +185,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
       name: `${PREFIX}Mrtvi`, baseUrl: 'https://integ60-definitivno-ne-obstaja.invalid',
     }))
     const id = ((await created.json()) as { integration: { id: string } }).integration.id
+    apiIntegrationIds.push(id)
     const r = await testConnectionPOST(req(`/api/integrations/${id}/test`, owner, 'POST'), { params: Promise.resolve({ id }) })
     expect(r.status).toBe(200)
     const d = (await r.json()) as { connectionStatus: string; reachable: boolean }
@@ -194,6 +209,7 @@ describe('Task 60 — admin integracije (API za povezovanje)', () => {
     const { owner } = await setupP
     const created = await integrationsPOST(req('/api/integrations', owner, 'POST', { name: `${PREFIX}Ubriši` }))
     const id = ((await created.json()) as { integration: { id: string } }).integration.id
+    apiIntegrationIds.push(id)
     const r = await integrationDELETE(req(`/api/integrations/${id}`, owner, 'DELETE'), { params: Promise.resolve({ id }) })
     expect(r.status).toBe(200)
     const d = (await r.json()) as { disabled: boolean; integration: { isActive: boolean; connectionStatus: string } }

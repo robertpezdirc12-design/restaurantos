@@ -115,6 +115,32 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     return () => { window.removeEventListener('online', upd); window.removeEventListener('offline', upd) }
   }, [loadMenu])
 
+  /* Issue #9 (v1.119.0) — osveževanje razpoložljivosti (86) brez ponovnega nalaganja:
+     lahkotna javna ruta /api/public/menu/availability (isti qr žeton, ETag/304),
+     polling vsakih 30 s + takoj, ko zavihek postane spet viden. Samo isAvailable
+     se splakne v obstoječi menu (cena/struktura se osvežita ob ponovnem nalaganju);
+     strežnik ostaja edini vir resnice. */
+  useEffect(() => {
+    if (!menu || done) return
+    let alive = true
+    const refresh = async () => {
+      try {
+        const res = await fetch(`/api/public/menu/availability?qr=${encodeURIComponent(token)}`, { cache: 'no-store' })
+        if (!res.ok || res.status === 304) return
+        const d = (await res.json()) as { availability?: { id: string; isAvailable: boolean }[] }
+        if (!alive || !d.availability?.length) return
+        const byId = new Map(d.availability.map((a) => [a.id, a.isAvailable]))
+        setMenu((prev) => (prev
+          ? { ...prev, items: prev.items.map((it) => (byId.has(it.id) ? { ...it, isAvailable: byId.get(it.id)! } : it)) }
+          : prev))
+      } catch { /* tiho — naslednji cikel */ }
+    }
+    const iv = setInterval(refresh, 30_000)
+    const onVis = () => { if (document.visibilityState === 'visible') void refresh() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { alive = false; clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  }, [token, menu !== null, done])
+
   // status polling po oddaji
   useEffect(() => {
     if (!done) return
