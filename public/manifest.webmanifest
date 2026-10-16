@@ -1,6 +1,6 @@
 {
-  "name": "RestavrantOS",
-  "short_name": "RestavrantOS",
+  "name": "RestaurantOS",
+  "short_name": "RestaurantOS",
   "description": "Restavracijski POS — mize, naročila, kuhinja, šank, FURS računi",
   "start_url": "/tablica",
   "scope": "/",
