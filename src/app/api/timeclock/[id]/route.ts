@@ -14,6 +14,7 @@ import {
   type TimeclockType,
 } from '@/lib/timeclock'
 import { writeAudit } from '@/lib/audit-chain'
+import { payrollTablesReady } from '@/lib/payroll-schema'
 
 const FUTURE_SKEW_MS = 5 * 60 * 1000
 
@@ -26,6 +27,13 @@ const FUTURE_SKEW_MS = 5 * 60 * 1000
  *     (totalMinutes/totalPay se preračunajo iz posnetka payRate vnosu).
  * Location fail-closed (issue #4 §1): recenzija vnosa tujega zaposlenega → 403.
  * Audit TIMECLOCK_UPDATE z before/after.
+ *
+ * Issue #22 (v1.115.0) — ZAKLEP OBDOBJA: vnos, ki pade v ZAKLJUČENO
+ * obračunsko obdobje (PayrollPeriod.status='closed', periodStart ≤ clockIn <
+ * periodEnd za lokacijo vnosa/zaposlenega), se NE spreminja → 409 (najprej
+ * ponovno odprtje obdobja — sicer bi izvozi/plačna osnova tiho razpadla).
+ * Pre-DDL (tabele payroll še niso aplicirane) se čuvar MIRNO PRESKOČI —
+ * timeclock NIKOLI ne 500-a zaradi payroll migracije (probe filozofija #24).
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'employees.manage')
@@ -42,6 +50,33 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const locRes = await guardResource(user, entry.Employee?.locationId ?? entry.locationId)
   if (locRes) return locRes
+
+  // Issue #22 — zaklep obračunskega obdobja: PRED vsakim popravljanjem vnosa
+  // preverimo, ali clockIn pade v ZAKLJUČENO obdobje. Prekrivanje enega samega
+  // where stavka: period.locationId = lokacija VNOSA (oz. zaposlenega, če vnos
+  // nima lastne — ista OR konvencija kot /api/payroll/[id]). periodStart/periodEnd
+  // sta UTC meji lokalnih polnoči; periodEnd je ekskluziven.
+  // Pre-DDL: probe (payrollTablesReady) + try/catch — migracija payroll-a nikoli
+  // ne izbriše evidence (graceful skip, vzorec #24 label probe).
+  try {
+    if (await payrollTablesReady()) {
+      const entryLoc = entry.locationId ?? entry.Employee?.locationId ?? null
+      const closedPeriod = await db.payrollPeriod.findFirst({
+        where: {
+          status: 'closed',
+          locationId: entryLoc,
+          periodStart: { lte: entry.clockIn },
+          periodEnd: { gt: entry.clockIn },
+        },
+        select: { id: true },
+      })
+      if (closedPeriod) {
+        return fail('Vnos pripada zaključenemu obračunskemu obdobju — najprej ga ponovno odprite (Obračun).', 409)
+      }
+    }
+  } catch {
+    // payroll DDL/tabela v prehodnem stanju → varovalka preskočena (edit dovoljen)
+  }
 
   const before = {
     status: entry.status,

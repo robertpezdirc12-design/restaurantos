@@ -29,6 +29,7 @@ import { POST as reservationWidgetPOST } from '../migrate-reservation-widget/rou
 import { POST as managerCallPOST } from '../migrate-manager-call/route'
 import { POST as kdsStationsPOST } from '../migrate-kds-stations/route'
 import { POST as prepLabelsPOST } from '../migrate-prep-labels/route'
+import { POST as payrollPeriodsPOST } from '../migrate-payroll-periods/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -71,6 +72,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'manager-call': managerCallPOST,
   'kds-stations': kdsStationsPOST,
   'prep-labels': prepLabelsPOST,
+  'payroll-periods': payrollPeriodsPOST,
 }
 
 interface ConsoleResult {

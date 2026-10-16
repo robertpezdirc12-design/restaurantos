@@ -80,6 +80,7 @@ export const TEST_PREFIXES = [
   'i14-', // issue14-kds-stations (v1.112.0)
   'i12-', // issue12-recommendations (v1.113.0)
   'i24-', // issue24-labels (v1.114.0)
+  'i22-', // issue22-payroll (v1.115.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -238,6 +239,11 @@ const LOCATION_CHILD_SWEEP = [
   // prehod počisti vrstice pred brisanjem lokacije (drugače bi ostale sirote).
   'stationTask',
   'menuItemStation',
+  // v1.115.0 (issue #22): obračunsko obdobje — nid() id brez predpone, predpona
+  // živi v locationId (skalar brez FK) → lokacijski prehod počisti vrstice pred
+  // brisanjem lokacije (drugače bi ostale sirote). PayrollExport NIMA locationId
+  // → NI v sweep-u (testi ga čistijo ročno po periodId).
+  'payrollPeriod',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }

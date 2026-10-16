@@ -419,6 +419,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-prep-labels',
     probe: async () => tablesAll(['PrepLabel', 'LabelShelfRule']),
   },
+  {
+    // Issue #22 (P2, v1.115.0) — obračun plač pripravljeni podatki. NOVI tabeli
+    // PayrollPeriod (agregatni zaklep nad obstoječo evidenco časa: obdobje po
+    // lokaciji s časovnim pasom, status draft/closed, zaklep/ponovno odprtje,
+    // števci vnosi/potrjene ure/izjeme, centni zneski) in PayrollExport
+    // (zabeležka vsakega izvoza: seq, format, contentHash + rowDigest brez PII
+    // vsebine). Do DDL: /api/payroll* → 503 (graceful) — timeclock/tips/urnik
+    // tokovi se ne dotaknejo.
+    id: 'payroll-periods',
+    descKey: 'mig.payrollPeriods.desc',
+    endpoint: '/api/admin/migrate-payroll-periods',
+    probe: async () => tablesAll(['PayrollPeriod', 'PayrollExport']),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

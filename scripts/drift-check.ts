@@ -394,6 +394,14 @@ export function isPrepLabelsStatement(stmt: string): boolean {
   return false
 }
 
+/** Issue #22 (v1.115.0): obračun plač — NOVI tabeli PayrollPeriod + PayrollExport. */
+export function isPayrollPeriodsStatement(stmt: string): boolean {
+  if (/"PayrollPeriod"|"PayrollExport"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  return false
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -640,6 +648,22 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'rute vračajo 503 (graceful — serije/priprava/tisk tokovi se ne dotaknejo). ' +
       'Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isPrepLabelsStatement,
+  },
+  {
+    id: 'payroll-periods',
+    reason:
+      'Obračun plač pripravljeni podatki (v1.115.0, issue #22 P2) — NOVI tabeli ' +
+      'PayrollPeriod (agregatni zaklep nad obstoječo evidenco časa: obdobje po ' +
+      'lokaciji s časovnim pasom, status draft/closed, zaklep/ponovno odprtje s ' +
+      'razlogom, števci vnosi/potrjene ure/izjeme, centni zneski bruto plače in ' +
+      'napitnin) in PayrollExport (zabeležka vsakega izvoza: zaporedna številka, ' +
+      'format, contentHash + rowDigest brez PII vsebine) + indeksi — skalarne ' +
+      'vezave brez FK (PrepLabel/PrintJob vzorec): pred aplikacijo na produkcijo ' +
+      'je drift pričakovan — DDL korak: admin ruta /api/admin/migrate-payroll-periods ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL /api/payroll* ' +
+      'rute vračajo 503 (graceful — timeclock/tips/urnik tokovi se ne dotaknejo). ' +
+      'Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isPayrollPeriodsStatement,
   },
 ]
 

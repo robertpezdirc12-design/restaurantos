@@ -3023,6 +3023,64 @@ model TipPool {
   @@index([status])
 }
 
+// ─── PAYROLL (issue #22, v1.115.0) ─────────────────────────────────────────────
+// Obračunsko obdobje: agregatni zaklep nad obstoječo evidenco časa
+// (TimeEntry/StaffShift/TipPool/TipDistribution — BREZ novega časovnega sistema).
+// Skalarne vezave brez FK (vzorec PrepLabel/PrintJob). periodStart/periodEnd sta
+// UTC meji lokalne polnoči (Location.timezone); periodEnd je EKSKLUZIVNA meja.
+model PayrollPeriod {
+  id                 String    @id
+  locationId         String?
+  periodStart        DateTime
+  periodEnd          DateTime
+  timezone           String    @default("Europe/Ljubljana")
+  status             String    @default("draft") // draft | closed
+  closedAt           DateTime?
+  closedById         String?
+  closeNote          String    @default("")
+  reopenCount        Int       @default(0)
+  version            Int       @default(1) // = 1 + reopenCount ob vsakem zaključku
+  entryCount         Int       @default(0) // vsi vnosi v obdobju
+  approvedCount      Int       @default(0) // status = approved
+  exceptionCount     Int       @default(0) // podatkovne izjeme ob zaključku
+  netMinutesApproved Int       @default(0) // plačljive neto minute (samo approved)
+  grossPayCents      Int       @default(0) // bruto v centih (samo approved)
+  cashTipsCents      Int       @default(0)
+  cardTipsCents      Int       @default(0)
+  tipsPendingCents   Int       @default(0) // pending ≠ izplačano
+  tipsPaidCents      Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([locationId])
+  @@index([periodStart, periodEnd])
+  @@index([status])
+}
+
+// Zabeležka vsakega izvoza (verzija/dokaz): contentHash = sha256 kanonikalnega
+// JSON izvoza; rowDigest = minimalni digest vrstic (entryId:minute:centi:status)
+// za primerjavo različic BREZ shranjevanja vsebine (PII ostaja izven audita/DB).
+model PayrollExport {
+  id                  String   @id
+  periodId            String
+  seq                 Int // 1..N zaporedni izvoz obdobja
+  format              String   @default("csv") // csv | json
+  contentHash         String
+  grossPayCents       Int      @default(0)
+  netMinutesTotal     Int      @default(0)
+  tipsCentsTotal      Int      @default(0)
+  entryCount          Int      @default(0)
+  changedEntries      Int      @default(0) // razlika vrstic vs. prejšnji izvoz
+  identicalToPrevious Boolean  @default(false)
+  rowDigest           String   @default("")
+  exportedById        String?
+  exportedAt          DateTime @default(now())
+  note                String   @default("")
+
+  @@unique([periodId, seq])
+  @@index([periodId])
+}
+
 model VideoAnalyticsSession {
   id               String    @id
   cameraId         String

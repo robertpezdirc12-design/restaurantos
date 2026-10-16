@@ -69,7 +69,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard, PayrollTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1748,7 +1748,7 @@ function DashboardInner() {
               ['delovnicas', t('tabs.delovnicas'), Timer],
               ['urnik', t('tabs.urnik'), CalendarRange],
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
-              ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings], ['enterprise', t('tabs.enterprise'), Building2],
+              ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['obracun', t('tabs.obracun'), ReceiptText], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings], ['enterprise', t('tabs.enterprise'), Building2],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno;
               // N8 fail-closed: vsak zavihek ima izrecen vnos v TAB_PERM (src/lib/tab-permissions.ts),
@@ -2594,6 +2594,12 @@ function DashboardInner() {
 
           <TabsContent value="napitnine">
             <NapitnineTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
+          </TabsContent>
+
+          <TabsContent value="obracun">
+            {/* Issue #22 (v1.115.0) — obračun plač: obdobja + zaklep + izvozi + plačne postavke
+                (backend: requirePermission employees.manage — enako kot gating tukaj) */}
+            <PayrollTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={hasPerm('employees.manage')} />
           </TabsContent>
 
           <TabsContent value="nabava">

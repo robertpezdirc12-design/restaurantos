@@ -194,7 +194,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // nabavni nalogi — poraba/roki/pakiranja v uporabnikovem obsegu) → 57
     // Issue #24 (v1.114.0): labels GET (etikete pripravljene hrane — seznam
     // etiket znotraj obsega uporabnika, locationScope) → 58
-    expect(wired.length).toBe(58)
+    // Issue #22 (v1.115.0): payroll GET (obračunska obdobja — seznam obdobij
+    // znotraj obsega uporabnika, locationScope) → 59
+    expect(wired.length).toBe(59)
   })
 })
 
