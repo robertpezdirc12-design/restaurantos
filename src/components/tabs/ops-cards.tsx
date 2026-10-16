@@ -60,10 +60,12 @@ function useInViewOnce<T extends HTMLElement>(): [React.RefObject<T | null>, boo
   return [ref, inView]
 }
 
-/** CSV download of an /api/reports/export section (Bearer-authenticated, blob save). */
-async function downloadReportSection(section: string, from: string, to: string, filename: string) {
+/** CSV download of an /api/reports/export section (Bearer-authenticated, blob save).
+ * `extraQuery` (issue #10): dodatni query parametri (npr. locationId/jobId) —
+ * neobvezno, nazajkompatibilno (ostali klicatelji brez spremembe). */
+async function downloadReportSection(section: string, from: string, to: string, filename: string, extraQuery?: string) {
   const token = getToken()
-  const res = await fetch(`/api/reports/export?section=${section}&from=${from}&to=${to}`, {
+  const res = await fetch(`/api/reports/export?section=${section}&from=${from}&to=${to}${extraQuery ? `&${extraQuery}` : ''}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!res.ok) {
@@ -388,6 +390,602 @@ export function LaborCostCard() {
                 </div>
               </div>
             )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────────── Issue #10 (v1.117.0) — labor coverage card ─────────────────── */
+
+/*
+ * Pokritost izmen Pregled card (lcov) — načrtovano vs. dejansko po
+ * dnevih/vlogah + urna matrika 7×24 (client-side filtri) + forecast prodaje
+ * in pokritost prihodnjih izmen (pasovi low/ok/warn/alarm) + banner podatkovne
+ * kakovosti + parameters footnote.
+ * (Komentar je v angleščini/kraticah — besedila, ki bi jih reg-resijski
+ * i18n sken (tests/i18n.test.ts) razbral kot trdo kodirane nize, se tu
+ * namenoma izogiba.)
+ *
+ * DESIGN ADAPTATION: 10-design §5 je predvidel novo datoteko
+ * labor-coverage-card.tsx, a kartica živi TUKAJ — oba helperja
+ * (useInViewOnce/downloadReportSection) in obe sestrske kartici
+ * (SalesByHourCard/LaborCostCard) sta v ops-cards.tsx (vzorec razreza
+ * monolita AUDIT-FIX v1.82.1) → ena sama lokacija, 0 novih uvozov.
+ *
+ * Lokacijski filter: kartica dobi `locations` prop iz dashboarda (locStats)
+ * in prikaže Select SAMO če je v obsegu >1 lokacija (vzorec TransfersTab
+ * 'needTwoLocs' — ena lokacija = filter brez pomena).
+ *
+ * Job filter: izhodi roles[] iz poročila; pod aktivnim filtrom se roles
+ * skrči → opcije se zlivajo z UNIONOM vseh doslej videnih (stabilen seznam).
+ *
+ * Urna matrika: API vrne CELO 7×24 matriko (168 celic) — dow + razpon ur sta
+ * CLIENT-SIDE filtra (10-design odločitev). Prikaz: vrstice URE (0–23) ×
+ * izbrani dnevi, celice = neto + minute + povprečni zaposleni — 390px varno
+ * (7 stolpcev matrike bi bilo preširoko).
+ *
+ * DENAR = centi (fmtEUR(cents/100)), minute = r2 floati (durationLabel zaokroži),
+ * laborPct/sph/cpo = null → '—' (NIKOLI 0/∞). money je lahko mešana valuta →
+ * samo zastavica (dataQuality.mixedCurrencies > 1).
+ */
+
+/** Lokalni odgovor GET /api/reports/labor-coverage (brez uvoza strežniškega tipa — client-safe). */
+interface LcovRespT {
+  parameters: {
+    from: string; to: string; locationIds: string[]; jobId: string | null
+    targetPct: number; warnPct: number; lowPct: number; forecastDays: number
+    currencies: string[]; sampleDays: number; closedDays: number
+    counts: { orders: number; entries: number; shifts: number }
+  }
+  days: { date: string; dow: number; netSalesCents: number; orders: number; plannedMinutes: number; plannedCostCents: number; plannedIncomplete: number; actualMinutes: number; actualCostCents: number; openEntries: number; unapproved: number; rateZero: number; overtimeMinutes: number; varianceMinutes: number; laborPct: number | null; sphCents: number | null; costPerOrderCents: number | null }[]
+  hours: { dow: number; hour: number; netSalesCents: number; orders: number; laborMinutes: number; staffOn: number }[]
+  roles: { jobId: string | null; name: string; plannedMinutes: number; plannedCostCents: number; actualMinutes: number; actualCostCents: number }[]
+  totals: { netSalesCents: number; orders: number; plannedMinutes: number; plannedCostCents: number; actualMinutes: number; actualCostCents: number; laborPct: number | null; sphCents: number | null; costPerOrderCents: number | null; varianceMinutes: number; overtimeMinutes: number }
+  dataQuality: { incompleteData: boolean; reasons: string[]; openEntries: number; rateZero: number; overlapPairs: number; unapproved: number; missingRateShifts: number; mixedCurrencies: number }
+  forecast: {
+    method: 'same-weekday-average'
+    days: { date: string; dow: number; expectedNetSalesCents: number | null; minCents: number | null; maxCents: number | null; sampleCount: number; closedDays: number; confidence: 'low' | 'ok' }[]
+    coverage: { date: string; dow: number; shiftCount: number; plannedMinutes: number; plannedCostCents: number; incompleteRate: number; expectedNetSalesCents: number | null; expectedPct: number | null; flag: 'low' | 'ok' | 'warn' | 'alarm' | null; overtimeMinutes: number; overlaps: number; longNoBreak: number }[]
+  }
+  generatedAt: string
+}
+
+/** Labor % / pokritost badge — 4 pasovi (10-design): low <20 · ok 20–32 · warn 32–38 · alarm >38 · null = brez ocene (muted, NE rdeče). */
+const lcovBandCls = (pct: number | null): string =>
+  pct === null
+    ? 'bg-stone-100 text-stone-500'
+    : pct < 20
+      ? 'bg-orange-100 text-orange-800'
+      : pct <= 32
+        ? 'bg-emerald-100 text-emerald-800'
+        : pct <= 38
+          ? 'bg-amber-100 text-amber-800'
+          : 'bg-rose-100 text-rose-800'
+
+/** Varianca minut (načrtovano − dejansko) — ± barva: nad načrtom rose, pod emerald. */
+const lcovVarCls = (v: number): string => (v > 0 ? 'text-emerald-700' : v < 0 ? 'text-rose-700' : 'text-stone-500')
+const lcovVarLabel = (v: number): string => `${v > 0 ? '+' : ''}${Math.round(v)} min`
+
+/** API dow je 1-osnovni (1=pon..7=ned); ključi oh.day* pa 0-osnovni (0=ned) → preslikava (7→0). */
+const ohDay = (dow: number) => `oh.day${dow % 7}`
+
+/** Okno analize: zadnjih n dni ZAKLJUČNO s koncem danes (from/to = YYYY-MM-DD, UTC). */
+const lcovWinOf = (n: number): { from: string; to: string } => {
+  const to = new Date()
+  const from = new Date(to.getTime() - (n - 1) * 86400000)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { from: iso(from), to: iso(to) }
+}
+
+/** Client-side razponi ur za urno matriko (API vrne celo 7×24). */
+const LCOV_HOUR_RANGES: { value: 'all' | '0' | '6' | '12' | '18'; key: string; from: number; to: number }[] = [
+  { value: 'all', key: 'lcov.hoursRangeAll', from: 0, to: 23 },
+  { value: '0', key: 'lcov.hoursRangeNight', from: 0, to: 5 },
+  { value: '6', key: 'lcov.hoursRangeMorning', from: 6, to: 11 },
+  { value: '12', key: 'lcov.hoursRangeAfternoon', from: 12, to: 17 },
+  { value: '18', key: 'lcov.hoursRangeEvening', from: 18, to: 23 },
+]
+
+/** Koda razloga podatkovne kakovosti → števec (no-sales = brez števca). */
+const LCOV_DQ_KEYS = ['open-entries', 'rate-zero', 'overlap', 'unapproved', 'missing-rate-shifts', 'mixed-currencies', 'no-sales'] as const
+
+/** Pokritost izmen Pregled card (issue #10, lcov.*) — lazy fetch ko je vidna. */
+export function LaborCoverageCard({ locations }: { locations?: { id: string; name: string }[] }) {
+  const { t, locale } = useI18n()
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
+  const [days, setDays] = useState<'7' | '14' | '28' | '30'>('28')
+  const [locId, setLocId] = useState('all')
+  const [jobId, setJobId] = useState('all')
+  const [jobOpts, setJobOpts] = useState<{ jobId: string; name: string }[]>([])
+  const [dow, setDow] = useState('all')
+  const [hRange, setHRange] = useState<'all' | '0' | '6' | '12' | '18'>('all')
+  const [data, setData] = useState<LcovRespT | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+  const [csvBusy, setCsvBusy] = useState(false)
+
+  useEffect(() => {
+    if (!inView) return
+    let alive = true
+    ;(async () => {
+      setBusy(true); setErr('')
+      try {
+        const { from, to } = lcovWinOf(Number(days))
+        const q = new URLSearchParams({ from, to })
+        if (locId !== 'all') q.set('locationId', locId)
+        if (jobId !== 'all') q.set('jobId', jobId)
+        const d = await api<LcovRespT>(`/api/reports/labor-coverage?${q.toString()}`)
+        if (!alive) return
+        setData(d)
+        // opcije vlog: UNION vseh doslej videnih (roles se pod filtrom skrči)
+        setJobOpts((prev) => {
+          const map = new Map(prev.map((j) => [j.jobId, j]))
+          for (const r of d.roles) if (r.jobId) map.set(r.jobId, { jobId: r.jobId, name: r.name })
+          return [...map.values()]
+        })
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [inView, days, locId, jobId, reload])
+
+  const csvExport = async () => {
+    setCsvBusy(true)
+    try {
+      const { from, to } = lcovWinOf(Number(days))
+      const extra = new URLSearchParams()
+      if (locId !== 'all') extra.set('locationId', locId)
+      if (jobId !== 'all') extra.set('jobId', jobId)
+      await downloadReportSection('labor-coverage', from, to, `labor-pokritost_${from}_${to}.csv`, extra.toString() || undefined)
+    } catch (e) {
+      toast({ title: String((e as Error).message || e), variant: 'destructive' })
+    } finally {
+      setCsvBusy(false)
+    }
+  }
+
+  // ── urna matrika: client-side agregacija (dow × razpon ur) ──
+  const dows = dow === 'all' ? [1, 2, 3, 4, 5, 6, 7] : [Number(dow)]
+  const hr = LCOV_HOUR_RANGES.find((r) => r.value === hRange) ?? LCOV_HOUR_RANGES[0]
+  const hourRows: { h: number; net: number; orders: number; minutes: number; staff: number }[] = []
+  for (let h = hr.from; h <= hr.to; h++) {
+    const cells = (data?.hours ?? []).filter((c) => c.hour === h && dows.includes(c.dow))
+    const net = cells.reduce((a, c) => a + c.netSalesCents, 0)
+    const orders = cells.reduce((a, c) => a + c.orders, 0)
+    const minutes = cells.reduce((a, c) => a + c.laborMinutes, 0)
+    const withStaff = cells.filter((c) => c.laborMinutes > 0)
+    const staff = withStaff.length ? withStaff.reduce((a, c) => a + c.staffOn, 0) / withStaff.length : 0
+    if (hRange === 'all' && net === 0 && orders === 0 && minutes === 0) continue // "Vse" = samo aktivne ure
+    hourRows.push({ h, net, orders, minutes, staff })
+  }
+  const hourTot = hourRows.reduce((a, r) => ({ net: a.net + r.net, orders: a.orders + r.orders, minutes: a.minutes + r.minutes }), { net: 0, orders: 0, minutes: 0 })
+
+  const tt = data?.totals
+  const dq = data?.dataQuality
+  const genLabel = data ? new Date(data.generatedAt).toLocaleString(locale === 'hr' ? 'hr-HR' : 'sl-SI') : ''
+  const showLocFilter = !!locations && locations.length > 1
+
+  return (
+    <Card ref={ref}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+          <Timer className="w-4 h-4" /> {t('lcov.title')}
+          <span className="ml-auto flex items-center gap-2">
+            <Select value={days} onValueChange={(v) => setDays(v as '7' | '14' | '28' | '30')}>
+              <SelectTrigger className="h-7 w-24 text-xs" aria-label={t('kds.stats.period')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">{t('kds.stats.days7')}</SelectItem>
+                <SelectItem value="14">{t('kds.stats.days14')}</SelectItem>
+                <SelectItem value="28">{t('lcov.days28')}</SelectItem>
+                <SelectItem value="30">{t('kds.stats.days30')}</SelectItem>
+              </SelectContent>
+            </Select>
+            {data && (
+              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+                {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('lcov.csv')}
+              </Button>
+            )}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">{t('lcov.desc')}</p>
+        {err && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">{t('lcov.error')} <span className="text-red-500/80">{err}</span></p>
+            <Button size="sm" variant="outline" onClick={() => setReload((r) => r + 1)} className="shrink-0 gap-1"><RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}</Button>
+          </div>
+        )}
+        {inView && busy && !data && (
+          <div className="space-y-2" aria-busy="true">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        )}
+        {inView && !busy && !data && !err && <p className="text-sm text-stone-500">{t('common.none')}</p>}
+        {data && (
+          <>
+            {(showLocFilter || jobOpts.length > 0) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {showLocFilter && (
+                  <Select value={locId} onValueChange={setLocId}>
+                    <SelectTrigger className="h-8 w-40 text-xs" aria-label={t('lcov.filterLoc')}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('lcov.locAll')}</SelectItem>
+                      {locations!.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                {jobOpts.length > 0 && (
+                  <Select value={jobId} onValueChange={setJobId}>
+                    <SelectTrigger className="h-8 w-40 text-xs" aria-label={t('lcov.filterJob')}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('lcov.jobAll')}</SelectItem>
+                      {jobOpts.map((j) => <SelectItem key={j.jobId} value={j.jobId}>{j.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+            {dq?.incompleteData && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {t('lcov.dqTitle')}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {dq.reasons.map((code) => {
+                    const key = LCOV_DQ_KEYS.find((k) => k === code)
+                    if (!key) return null
+                    const cnt =
+                      code === 'open-entries' ? dq.openEntries
+                        : code === 'rate-zero' ? dq.rateZero
+                          : code === 'overlap' ? dq.overlapPairs
+                            : code === 'unapproved' ? dq.unapproved
+                              : code === 'missing-rate-shifts' ? dq.missingRateShifts
+                                : code === 'mixed-currencies' ? dq.mixedCurrencies
+                                  : -1
+                    return (
+                      <span key={code} className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] text-amber-800">
+                        {t(`lcov.dq.${code}`)}{cnt >= 0 ? ` (${cnt})` : ''}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {tt && (
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <div className="rounded-lg border border-stone-200 p-2.5">
+                  <p className="text-[11px] text-stone-500">{t('lcov.kpiLabor')}</p>
+                  <span className={`mt-0.5 inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${lcovBandCls(tt.laborPct)}`}>
+                    {tt.laborPct === null ? '—' : `${tt.laborPct.toFixed(2)} %`}
+                  </span>
+                  <p className="mt-0.5 text-[10px] text-stone-400">{t('lcov.kpiLaborHint')}</p>
+                </div>
+                <div className="rounded-lg border border-stone-200 p-2.5">
+                  <p className="text-[11px] text-stone-500">{t('lcov.kpiSph')}</p>
+                  <p className="text-sm font-semibold">{tt.sphCents === null ? '—' : fmtEUR(tt.sphCents / 100)}</p>
+                  <p className="text-[10px] text-stone-400">{t('lcov.kpiSphHint')}</p>
+                </div>
+                <div className="rounded-lg border border-stone-200 p-2.5">
+                  <p className="text-[11px] text-stone-500">{t('lcov.kpiCpo')}</p>
+                  <p className="text-sm font-semibold">{tt.costPerOrderCents === null ? '—' : fmtEUR(tt.costPerOrderCents / 100)}</p>
+                  <p className="text-[10px] text-stone-400">{t('lcov.kpiCpoHint')}</p>
+                </div>
+                <div className="rounded-lg border border-stone-200 p-2.5" title={t('lcov.varianceNote')}>
+                  <p className="text-[11px] text-stone-500">{t('lcov.kpiVariance')}</p>
+                  <p className={`text-sm font-semibold ${lcovVarCls(tt.varianceMinutes)}`}>{lcovVarLabel(tt.varianceMinutes)}</p>
+                  <p className="text-[10px] text-stone-400">{t('lcov.kpiVarianceHint')}</p>
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-stone-500">{t('lcov.daysTitle')}</p>
+              <div className="overflow-auto max-h-96 rounded-lg border border-stone-200 hidden md:block">
+                <table className="w-full min-w-[680px] text-sm">
+                  <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">{t('lcov.colDate')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colNet')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colOrders')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colPlannedMin')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colPlannedCost')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colActualMin')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colActualCost')}</th>
+                      <th className="px-3 py-2 font-medium text-right" title={t('lcov.varianceNote')}>{t('lcov.colVariance')}</th>
+                      <th className="px-3 py-2 font-medium text-right">{t('lcov.colPct')}</th>
+                      <th className="px-2 py-2 font-medium text-center">⚠</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.days.map((d) => (
+                      <tr key={d.date} className="border-t border-stone-100 hover:bg-stone-50/60">
+                        <td className="px-3 py-2 font-medium whitespace-nowrap">
+                          {shortDay(d.date)} <span className="text-xs font-normal text-stone-500">{t(ohDay(d.dow))}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{fmtEUR(d.netSalesCents / 100)}</td>
+                        <td className="px-3 py-2 text-right">{d.orders}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{durationLabel(d.plannedMinutes)}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{fmtEUR(d.plannedCostCents / 100)}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{durationLabel(d.actualMinutes)}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{fmtEUR(d.actualCostCents / 100)}</td>
+                        <td className={`px-3 py-2 text-right whitespace-nowrap ${lcovVarCls(d.varianceMinutes)}`}>{lcovVarLabel(d.varianceMinutes)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(d.laborPct)}`}>
+                            {d.laborPct === null ? '—' : `${d.laborPct.toFixed(2)} %`}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-center whitespace-nowrap">
+                          {d.openEntries > 0 && <span title={`${t('lcov.flagOpen')}: ${d.openEntries}`} className="inline-flex text-amber-600"><Hourglass className="w-3.5 h-3.5" /></span>}
+                          {d.unapproved > 0 && <span title={`${t('lcov.flagUnapproved')}: ${d.unapproved}`} className="inline-flex text-amber-600"><XCircle className="w-3.5 h-3.5" /></span>}
+                          {d.rateZero > 0 && <span title={`${t('lcov.flagRateZero')}: ${d.rateZero}`} className="inline-flex text-amber-600"><Wallet className="w-3.5 h-3.5" /></span>}
+                          {d.plannedIncomplete > 0 && <span title={`${t('lcov.flagIncomplete')}: ${d.plannedIncomplete}`} className="inline-flex text-amber-600"><AlertTriangle className="w-3.5 h-3.5" /></span>}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-stone-200 bg-stone-50/60 font-medium">
+                      <td className="px-3 py-2">{t('lcov.sum')}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtEUR(data.totals.netSalesCents / 100)}</td>
+                      <td className="px-3 py-2 text-right">{data.totals.orders}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{durationLabel(data.totals.plannedMinutes)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtEUR(data.totals.plannedCostCents / 100)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{durationLabel(data.totals.actualMinutes)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{fmtEUR(data.totals.actualCostCents / 100)}</td>
+                      <td className={`px-3 py-2 text-right whitespace-nowrap ${lcovVarCls(data.totals.varianceMinutes)}`}>{lcovVarLabel(data.totals.varianceMinutes)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${lcovBandCls(data.totals.laborPct)}`}>
+                          {data.totals.laborPct === null ? '—' : `${data.totals.laborPct.toFixed(2)} %`}
+                        </span>
+                      </td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {/* Mobilne kartice (390 px) — skladne vrstice namesto tabele (vzorec TransfersTab) */}
+              <div className="max-h-96 overflow-y-auto space-y-2 md:hidden">
+                {data.days.map((d) => (
+                  <div key={d.date} className="rounded-lg border border-stone-200 p-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium whitespace-nowrap">{shortDay(d.date)} <span className="text-xs font-normal text-stone-500">{t(ohDay(d.dow))}</span></span>
+                      <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(d.laborPct)}`}>
+                        {d.laborPct === null ? '—' : `${d.laborPct.toFixed(2)} %`}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-stone-600">
+                      <span className="truncate">{t('lcov.colNet')}: <span className="font-medium">{fmtEUR(d.netSalesCents / 100)}</span></span>
+                      <span>{t('lcov.colOrders')}: <span className="font-medium">{d.orders}</span></span>
+                      <span className="truncate">{t('lcov.plannedShort')}: <span className="font-medium">{durationLabel(d.plannedMinutes)}</span> · {fmtEUR(d.plannedCostCents / 100)}</span>
+                      <span className="truncate">{t('lcov.actualShort')}: <span className="font-medium">{durationLabel(d.actualMinutes)}</span> · {fmtEUR(d.actualCostCents / 100)}</span>
+                      <span className={lcovVarCls(d.varianceMinutes)}>{t('lcov.colVariance')}: {lcovVarLabel(d.varianceMinutes)}</span>
+                      <span className="flex flex-wrap items-center gap-1.5 text-amber-600">
+                        {d.openEntries > 0 && <span title={`${t('lcov.flagOpen')}: ${d.openEntries}`}><Hourglass className="w-3.5 h-3.5" /></span>}
+                        {d.unapproved > 0 && <span title={`${t('lcov.flagUnapproved')}: ${d.unapproved}`}><XCircle className="w-3.5 h-3.5" /></span>}
+                        {d.rateZero > 0 && <span title={`${t('lcov.flagRateZero')}: ${d.rateZero}`}><Wallet className="w-3.5 h-3.5" /></span>}
+                        {d.plannedIncomplete > 0 && <span title={`${t('lcov.flagIncomplete')}: ${d.plannedIncomplete}`}><AlertTriangle className="w-3.5 h-3.5" /></span>}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                <p className="text-xs font-medium text-stone-500">{t('lcov.hoursTitle')}</p>
+                <span className="ml-auto flex items-center gap-2">
+                  <Select value={dow} onValueChange={setDow}>
+                    <SelectTrigger className="h-7 w-32 text-xs" aria-label={t('lcov.hoursDow')}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('lcov.hoursDowAll')}</SelectItem>
+                      {[1, 2, 3, 4, 5, 6, 7].map((n) => <SelectItem key={n} value={String(n)}>{t(ohDay(n))}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={hRange} onValueChange={(v) => setHRange(v as 'all' | '0' | '6' | '12' | '18')}>
+                    <SelectTrigger className="h-7 w-24 text-xs" aria-label={t('lcov.hoursRange')}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LCOV_HOUR_RANGES.map((r) => <SelectItem key={r.value} value={r.value}>{t(r.key)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </span>
+              </div>
+              {hourRows.length === 0 ? (
+                <p className="text-sm text-stone-500">{t('lcov.hoursEmpty')}</p>
+              ) : (
+                <div className="max-h-80 overflow-auto rounded-lg border border-stone-200">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                      <tr>
+                        <th className="px-2.5 py-1.5 font-medium">{t('lcov.colHour')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colHourNet')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colHourOrders')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colHourLabor')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right" title={t('lcov.hoursStaffNote')}>{t('lcov.colHourStaff')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hourRows.map((r) => (
+                        <tr key={r.h} className="border-t border-stone-100">
+                          <td className="px-2.5 py-1.5 font-medium whitespace-nowrap">{String(r.h).padStart(2, '0')}:00</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.net > 0 ? fmtEUR(r.net / 100) : '—'}</td>
+                          <td className="px-2.5 py-1.5 text-right">{r.orders || '—'}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.minutes > 0 ? `${Math.round(r.minutes)} min` : '—'}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.staff > 0 ? (r.staff % 1 === 0 ? String(Math.round(r.staff)) : r.staff.toFixed(1)) : '—'}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-stone-200 bg-stone-50/60 font-medium">
+                        <td className="px-2.5 py-1.5">{t('lcov.sum')}</td>
+                        <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{hourTot.net > 0 ? fmtEUR(hourTot.net / 100) : '—'}</td>
+                        <td className="px-2.5 py-1.5 text-right">{hourTot.orders || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{hourTot.minutes > 0 ? `${Math.round(hourTot.minutes)} min` : '—'}</td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <div className="min-w-0">
+                <p className="mb-1.5 text-xs font-medium text-stone-500">{t('lcov.fcTitle', { n: data.parameters.forecastDays })}</p>
+                {data.forecast.days.length === 0 ? (
+                  <p className="text-sm text-stone-500">{t('lcov.fcEmpty')}</p>
+                ) : (
+                  <div className="max-h-64 overflow-auto rounded-lg border border-stone-200">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                        <tr>
+                          <th className="px-2.5 py-1.5 font-medium">{t('lcov.fcDate')}</th>
+                          <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.fcExpected')}</th>
+                          <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.fcSamples')}</th>
+                          <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.fcClosed')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.forecast.days.map((f) => (
+                          <tr key={f.date} className="border-t border-stone-100">
+                            <td className="px-2.5 py-1.5 whitespace-nowrap font-medium">
+                              {shortDay(f.date)} <span className="font-normal text-stone-500">{t(ohDay(f.dow))}</span>
+                            </td>
+                            <td className="px-2.5 py-1.5 text-right whitespace-nowrap">
+                              {f.expectedNetSalesCents === null ? (
+                                <span className="text-stone-400" title={t('lcov.fcNoSamples')}>— {t('lcov.fcNoSamples')}</span>
+                              ) : (
+                                <>
+                                  <span className="font-medium">{fmtEUR(f.expectedNetSalesCents / 100)}</span>
+                                  {f.minCents !== null && f.maxCents !== null && (
+                                    <span className="block text-[10px] text-stone-400">{t('lcov.fcRange')} {fmtEUR(f.minCents / 100)}–{fmtEUR(f.maxCents / 100)}</span>
+                                  )}
+                                </>
+                              )}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-right whitespace-nowrap">
+                              {f.sampleCount}{' '}
+                              <span className={`ml-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${f.confidence === 'ok' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                {f.confidence === 'ok' ? t('lcov.fcConfOk') : t('lcov.fcConfLow')}
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-1.5 text-right text-stone-500">{f.closedDays || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="mb-1.5 text-xs font-medium text-stone-500">{t('lcov.covTitle')}</p>
+                {data.forecast.coverage.length === 0 ? (
+                  <p className="text-sm text-stone-500">{t('lcov.covEmpty')}</p>
+                ) : (
+                  <>
+                    <div className="max-h-64 overflow-auto rounded-lg border border-stone-200 hidden md:block">
+                      <table className="w-full min-w-[480px] text-xs">
+                        <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                          <tr>
+                            <th className="px-2.5 py-1.5 font-medium">{t('lcov.fcDate')}</th>
+                            <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.covShifts')}</th>
+                            <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.covPlanned')}</th>
+                            <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.covExpectedNet')}</th>
+                            <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.covExpectedPct')}</th>
+                            <th className="px-2 py-1.5 font-medium text-center">⚠</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.forecast.coverage.map((c) => (
+                            <tr key={c.date} className="border-t border-stone-100">
+                              <td className="px-2.5 py-1.5 whitespace-nowrap font-medium">
+                                {shortDay(c.date)} <span className="font-normal text-stone-500">{t(ohDay(c.dow))}</span>
+                              </td>
+                              <td className="px-2.5 py-1.5 text-right">{c.shiftCount}</td>
+                              <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{durationLabel(c.plannedMinutes)} · {fmtEUR(c.plannedCostCents / 100)}</td>
+                              <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{c.expectedNetSalesCents === null ? '—' : fmtEUR(c.expectedNetSalesCents / 100)}</td>
+                              <td className="px-2.5 py-1.5 text-right">
+                                <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-[11px] font-medium ${lcovBandCls(c.expectedPct)}`} title={c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}>
+                                  {c.flag === null ? t('lcov.covNoVerdict') : `${c.expectedPct === null ? '—' : `${c.expectedPct.toFixed(2)} %`} · ${t(`lcov.flag.${c.flag}`)}`}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                                {c.incompleteRate > 0 && <span title={`${t('lcov.covIncomplete')}: ${Math.round(c.incompleteRate * 100)} %`} className="inline-flex text-amber-600"><AlertTriangle className="w-3.5 h-3.5" /></span>}
+                                {c.overlaps > 0 && <span title={`${t('lcov.covOverlaps')}: ${c.overlaps}`} className="inline-flex text-amber-600"><Repeat className="w-3.5 h-3.5" /></span>}
+                                {c.longNoBreak > 0 && <span title={`${t('lcov.covLongNoBreak')}: ${c.longNoBreak}`} className="inline-flex text-amber-600"><Coffee className="w-3.5 h-3.5" /></span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Mobilne kartice (390 px) — pokritost */}
+                    <div className="max-h-64 overflow-y-auto space-y-2 md:hidden">
+                      {data.forecast.coverage.map((c) => (
+                        <div key={c.date} className="rounded-lg border border-stone-200 p-2.5 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium whitespace-nowrap">{shortDay(c.date)} <span className="text-xs font-normal text-stone-500">{t(ohDay(c.dow))}</span></span>
+                            <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-[11px] font-medium ${lcovBandCls(c.expectedPct)}`}>
+                              {c.expectedPct === null ? '—' : `${c.expectedPct.toFixed(2)} %`} · {c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-stone-600">
+                            <span className="truncate">{t('lcov.covShifts')}: <span className="font-medium">{c.shiftCount}</span></span>
+                            <span className="truncate">{t('lcov.covPlanned')}: <span className="font-medium">{durationLabel(c.plannedMinutes)}</span> · {fmtEUR(c.plannedCostCents / 100)}</span>
+                            <span className="truncate">{t('lcov.covExpectedNet')}: <span className="font-medium">{c.expectedNetSalesCents === null ? '—' : fmtEUR(c.expectedNetSalesCents / 100)}</span></span>
+                            <span className="flex items-center gap-1.5 text-amber-600">
+                              {c.incompleteRate > 0 && <span title={`${t('lcov.covIncomplete')}: ${Math.round(c.incompleteRate * 100)} %`}><AlertTriangle className="w-3.5 h-3.5" /></span>}
+                              {c.overlaps > 0 && <span title={`${t('lcov.covOverlaps')}: ${c.overlaps}`}><Repeat className="w-3.5 h-3.5" /></span>}
+                              {c.longNoBreak > 0 && <span title={`${t('lcov.covLongNoBreak')}: ${c.longNoBreak}`}><Coffee className="w-3.5 h-3.5" /></span>}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            {data.roles.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-stone-500">{t('lcov.rolesTitle')}</p>
+                <div className="max-h-64 overflow-auto rounded-lg border border-stone-200">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                      <tr>
+                        <th className="px-2.5 py-1.5 font-medium">{t('lcov.colRole')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colPlannedMin')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colPlannedCost')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colActualMin')}</th>
+                        <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colActualCost')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.roles.map((r) => (
+                        <tr key={r.jobId ?? 'none'} className="border-t border-stone-100">
+                          <td className="px-2.5 py-1.5 font-medium">{r.name}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{durationLabel(r.plannedMinutes)}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{fmtEUR(r.plannedCostCents / 100)}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{durationLabel(r.actualMinutes)}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{fmtEUR(r.actualCostCents / 100)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {data.roles.length === 0 && <p className="text-xs text-stone-500">{t('lcov.rolesEmpty')}</p>}
+            <div className="space-y-0.5 border-t border-stone-100 pt-2 text-[11px] text-stone-400">
+              <p>{t('lcov.footMethod')} · {t('lcov.footSamples', { n: data.parameters.sampleDays, m: data.parameters.closedDays })}</p>
+              <p>
+                {t('lcov.footCounts', { orders: data.parameters.counts.orders, entries: data.parameters.counts.entries, shifts: data.parameters.counts.shifts })}{' '}
+                · {t('lcov.footCurrencies', { list: data.parameters.currencies.join(', ') })}
+                {data.dataQuality.mixedCurrencies > 1 && <span className="ml-1 font-medium text-amber-700">{t('lcov.footMixed')}</span>}
+              </p>
+              <p>{t('lcov.footGenerated', { ts: genLabel })} · {t('lcov.disclaimer')}</p>
+            </div>
           </>
         )}
       </CardContent>
