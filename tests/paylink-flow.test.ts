@@ -489,13 +489,21 @@ describe('paylink — produkcijski DDL korak (migrate-paylink + 503 degradacija)
     const link = await mkLink(oid)
     try {
       // PENDING simulacija (issue-10 vzorec iz migrations-console): drop tabelo
-      await db.$executeRawUnsafe('DROP TABLE "PayLink"')
+      // (tolerantno, če je tabela ravno že padla — vzporedni worker)
+      await db.$executeRawUnsafe('DROP TABLE "PayLink"').catch((e) => {
+        if (!String((e as Error).message).includes('no such table')) throw e
+      })
       resetPayLinkProbe()
       const res = await publicPayGET(req(`/api/public/pay/${link.token}`, ''), { params: Promise.resolve({ token: link.token }) })
       expect(res.status).toBe(503)
       // ponovna vzpostavitev (DDL rute brez ALTER CONSTRAINT — SQLite kompatibilno;
-      // produkcijski Postgres dobi CELOTEN DDL prek /api/admin/migrate-paylink)
-      await db.$executeRawUnsafe(`CREATE TABLE "PayLink" (
+      // produkcijski Postgres dobi CELOTEN DDL prek /api/admin/migrate-paylink).
+      // issue #2 CI: IDEMPOTENTNO (IF NOT EXISTS) — suite poganja datoteke v
+      // VZPOREDNIH workerjih nad skupno SQLite bazo; med oknom drop→create je
+      // lahko sočasni worker (npr. delegacija migracijske konzole) tabelo že
+      // znova postavil. Semantika testa se ne spremeni: po obnovitvi mora
+      // obstajati tabela in javna ruta vrniti 404 (prazna) namesto 503.
+      await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PayLink" (
         "id" TEXT NOT NULL,
         "token" TEXT NOT NULL,
         "orderId" TEXT NOT NULL,
@@ -517,11 +525,11 @@ describe('paylink — produkcijski DDL korak (migrate-paylink + 503 degradacija)
         "updatedAt" DATETIME NOT NULL,
         CONSTRAINT "PayLink_pkey" PRIMARY KEY ("id")
       )`)
-      await db.$executeRawUnsafe('CREATE UNIQUE INDEX "PayLink_token_key" ON "PayLink"("token")')
+      await db.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "PayLink_token_key" ON "PayLink"("token")')
       // P1-6: orderId NI VEČ unikaten (N povezav na naročilo)
-      await db.$executeRawUnsafe('CREATE INDEX "PayLink_createdAt_idx" ON "PayLink"("createdAt")')
-      await db.$executeRawUnsafe('CREATE INDEX "PayLink_locationId_idx" ON "PayLink"("locationId")')
-      await db.$executeRawUnsafe('CREATE INDEX "PayLink_status_idx" ON "PayLink"("status")')
+      await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "PayLink_createdAt_idx" ON "PayLink"("createdAt")')
+      await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "PayLink_locationId_idx" ON "PayLink"("locationId")')
+      await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "PayLink_status_idx" ON "PayLink"("status")')
       resetPayLinkProbe()
       // tabela je prazna (vrstica je padla z dropom) — token ne obstaja → čist 404, ne več 500/503
       const res2 = await publicPayGET(req(`/api/public/pay/${link.token}`, ''), { params: Promise.resolve({ token: link.token }) })
