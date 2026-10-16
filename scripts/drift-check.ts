@@ -143,7 +143,14 @@ export function isAllergenTruthStatement(stmt: string): boolean {
   return clauses.every((c) => {
     // IF NOT EXISTS je dovoljen vmes (naša DDL ruta ga izdaje; prisma diff ne)
     const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
-    return !!mm && allowed.includes(mm[2])
+    if (mm) return allowed.includes(mm[2])
+    // Issue #2 (faza B po DDL, CI run 38964400094): DDL ruta je allergensConfirmedAt
+    // ustvarila kot goli TIMESTAMP (µs natančnost), prisma DateTime pa generira
+    // TIMESTAMP(3) (ms — aplikacija piše izključno ms). Dokler normalizacija ni
+    // aplicirana, diff zahteva SET DATA TYPE TIMESTAMP(3) (varna prirezava µs→ms).
+    const tp =
+      /^ALTER\s+COLUMN\s+"allergensConfirmedAt"\s+SET\s+DATA\s+TYPE\s+TIMESTAMP\(3\)$/i.exec(c)
+    return !!tp && allowed.includes('allergensConfirmedAt')
   })
 }
 
@@ -161,6 +168,8 @@ const LOT_GOVERNANCE_COLUMNS = [
   'releaseAt', 'releaseById', 'releaseNote',
 ]
 
+const LOT_GOVERNANCE_TIMESTAMP_COLS = ['alertDate', 'removalDate', 'holdAt', 'releaseAt']
+
 export function isLotGovernanceStatement(stmt: string): boolean {
   const m = /^ALTER\s+TABLE\s+"(\w+)"\s+([\s\S]+)$/i.exec(stmt)
   if (!m) return false
@@ -169,7 +178,13 @@ export function isLotGovernanceStatement(stmt: string): boolean {
   if (clauses.length === 0) return false
   return clauses.every((c) => {
     const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
-    return !!mm && LOT_GOVERNANCE_COLUMNS.includes(mm[2])
+    if (mm) return LOT_GOVERNANCE_COLUMNS.includes(mm[2])
+    // Issue #2 (faza B po DDL, CI run 38964400094): lot-governance DDL ruta je
+    // 4 časovne stolpce ustvarila kot goli TIMESTAMP (µs), prisma DateTime pa
+    // generira TIMESTAMP(3) (ms). Dokler normalizacija ni aplicirana, diff
+    // zahteva SET DATA TYPE TIMESTAMP(3) (varna prirezava µs→ms).
+    const tp = /^ALTER\s+COLUMN\s+"(\w+)"\s+SET\s+DATA\s+TYPE\s+TIMESTAMP\(3\)$/i.exec(c)
+    return !!tp && LOT_GOVERNANCE_TIMESTAMP_COLS.includes(tp[1])
   })
 }
 
@@ -327,6 +342,39 @@ export function isCashMovementStatement(stmt: string): boolean {
   return false
 }
 
+/**
+ * Issue #2 (CI run 38964400094 — prvi neon-smoke po DDL valovih 13.–16. 10.
+ * 2026): ZDRUŽENI RestaurantSettings stavek. prisma migrate diff vse
+ * manjkajoče/odvečne stolpce ENE tabele združi v EN ALTER TABLE stavek,
+ * ne glede na to, iz katere funkcije izhajajo. Posamične faze (pred DDL /
+ * po DDL) pokrivajo ap-tolerance, exception-policy in cash-movements svoje
+ * vnose; PO apliciranju VEČ DDL korakov pred uskladitvijo main sheme pa
+ * diff generira ENEGA združenega DROP COLUMN ×15, ki ga posamični matcher
+ * ne pokriva. Ta matcher sprejme ZDRUŽENO obliko: unija 15 dokumentiranih
+ * pending stolpcev. STROG: tabela RestaurantSettings, VSAKA klavzula je
+ * ADD/DROP COLUMN izključno iz unije — vsak drug (nov, nedokumentiran)
+ * stolpec ostane hard fail. Ko naslednja schema naloga prevzame polja v
+ * prisma/schema.prisma (že so v prisma/schema.sqlite.prisma), drift izgine
+ * in vnos postane mrtva koda (vzorec stroski-kategorije, faza B→C).
+ */
+const SETTINGS_PENDING_MERGED_COLUMNS = new Set<string>([
+  'apMatchQtyTolerancePct', 'apMatchPriceTolerancePct',
+  'apMatchVatTolerancePct', 'apMatchAmountToleranceCents',
+  ...CASH_POLICY_COLS,
+  ...EXCEPTION_POLICY_COLUMNS,
+])
+
+export function isRestaurantSettingsPendingMergedStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"RestaurantSettings"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && SETTINGS_PENDING_MERGED_COLUMNS.has(mm[2])
+  })
+}
+
 /** Issue #20 (v1.109.0): HACCP operativni tok — HaccpEntry/HaccpPlan novi
  * stolpci + NOVA tabela HaccpAction (strogo po tabelah, vzorec cash-movements). */
 const HACCP_OPS_ENTRY_COLS = new Set([
@@ -351,8 +399,24 @@ export function isHaccpOpsStatement(stmt: string): boolean {
     return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
   }
   // 2) HaccpEntry novi stolpci (CREATE INDEX ISTO imena tabel dovoljena zgoraj)
+  //    + planId nullability uskladitev (issue #2, faza B po DDL): DDL ruta je
+  //    planId ustvarila kot TEXT NOT NULL DEFAULT '', main schema pa ima planId
+  //    String? @default("") — dokler ni usklajeno, diff zahteva
+  //    ALTER COLUMN "planId" DROP NOT NULL (sprostitev omejitve, brez
+  //    podatkovne spremembe). Vsak drug HaccpEntry stolpec/klavzula → fail.
   let m = /^ALTER\s+TABLE\s+"HaccpEntry"\s+([\s\S]+)$/i.exec(stmt)
-  if (m) return allClausesHaccpColumn(splitTopLevelClauses(m[1]), HACCP_OPS_ENTRY_COLS)
+  if (m) {
+    const clauses = splitTopLevelClauses(m[1])
+    return (
+      clauses.length > 0 &&
+      clauses.every((c) => {
+        const col = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c.trim())
+        if (col) return HACCP_OPS_ENTRY_COLS.has(col[2])
+        const nullab = /^ALTER\s+COLUMN\s+"planId"\s+DROP\s+(?:NOT\s+NULL|DEFAULT)$/i.exec(c.trim())
+        return !!nullab
+      })
+    )
+  }
   // 3) HaccpPlan novi stolpci
   m = /^ALTER\s+TABLE\s+"HaccpPlan"\s+([\s\S]+)$/i.exec(stmt)
   if (m) return allClausesHaccpColumn(splitTopLevelClauses(m[1]), HACCP_OPS_PLAN_COLS)
@@ -430,7 +494,11 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       '/api/admin/migrate-haccp-ops (konzola Enterprise → Shema migracije → en klik). ' +
       'Rute graceful degradirajo (capability probe → 503 s prijaznim sporočilom); ' +
       'obstoječi tokovi (načrti brez novih polj, ad-hoc vnosi, zgodovina) delujejo ' +
-      'nespremenjeno. Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+      'nespremenjeno. Ko je DDL apliciran, drift izgine in vnos postane mrtva koda. ' +
+      'POZOR (issue #2, faza B po DDL): planId je DDL ruta ustvarila kot TEXT NOT ' +
+      'NULL DEFAULT \'\', main schema pa ima planId String? @default("") — dokler ' +
+      'uskladitev nullability ni aplicirana, diff zahteva ALTER COLUMN "planId" ' +
+      'DROP NOT NULL (sprostitev omejitve, brez podatkovne spremembe).',
     matches: isHaccpOpsStatement,
   },
   {
@@ -543,7 +611,10 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'DROP COLUMN. POZOR — vroče tabele (MenuItem/InventoryItem/OrderItem): v oknu ' +
       'deploy→DDL tipizirane poizvedbe (naročila/KDS/meni) vrnejo P2022 (client pozna ' +
       'stolpce, baza jih še ne) — DDL apliciramo TAKOJ po deployu (vzorec issue31-36/38), ' +
-      'produkcija nima živega prometa v tem oknu.',
+      'produkcija nima živega prometa v tem oknu. POZOR (issue #2, faza B po DDL): ' +
+      'allergensConfirmedAt je DDL ruta ustvarila kot goli TIMESTAMP (µs), prisma ' +
+      'DateTime pa generira TIMESTAMP(3) — dokler normalizacija ni aplicirana, diff ' +
+      'zahteva SET DATA TYPE TIMESTAMP(3) (varna prirezava µs→ms, aplikacija piše ms).',
     matches: isAllergenTruthStatement,
   },
   {
@@ -557,7 +628,11 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'case-sensitive primerjava jih je izpustila iz FEFO). Dvosmerna faza (kot ' +
       'allergen-truth): po DDL in pred uskladitvijo shem diff generira DROP COLUMN ×9. ' +
       'Vroča pot (FEFO ob plačilu) je zaščitena s capability-probe (lotGovernanceColumnsReady) ' +
-      '— pre-DDL teče legacy where/select, prodaja ne pada na šemo.',
+      '— pre-DDL teče legacy where/select, prodaja ne pada na šemo. POZOR (issue #2, ' +
+      'faza B po DDL): 4 časovni stolpci (alertDate/removalDate/holdAt/releaseAt) so ' +
+      'DDL ruta ustvarila kot goli TIMESTAMP (µs), prisma DateTime generira ' +
+      'TIMESTAMP(3) — dokler normalizacija ni aplicirana, diff zahteva SET DATA TYPE ' +
+      'TIMESTAMP(3) (varna prirezava µs→ms, aplikacija piše ms).',
     matches: isLotGovernanceStatement,
   },
   {
@@ -687,6 +762,26 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'rute vračajo 503 (graceful degradacija). Ko je DDL apliciran ' +
       '(Enterprise → Shema migracije), drift izgine in vnos postane mrtva koda.',
     matches: isStockTransfersStatement,
+  },
+  {
+    id: 'settings-pending-merged',
+    reason:
+      'RestaurantSettings pending stolpci — ZDRUŽENI stavek več DDL valov (issue #2, ' +
+      'CI run 38964400094): prisma migrate diff vse odvečne/manjkajoče stolpce ENE ' +
+      'tabele združi v EN ALTER TABLE stavek, ne glede na funkcijo izvora. ' +
+      'ap-tolerance (v1.103.0, issue #18 — 4 stolpci), exception-policy (v1.107.0, ' +
+      'issue #19 — 9 stolpcev) in cash-movements (v1.108.0, issue #16 — 2 stolpca) ' +
+      'imajo VSAK svoj fazni vnos (admin rute /api/admin/migrate-ap-tolerance, ' +
+      '/api/admin/migrate-exception-policy, /api/admin/migrate-cash-movements — ' +
+      'konzola Enterprise → Shema migracije → en klik); ko produkcija aplicira VEČ teh DDL korakov pred ' +
+      'uskladitvijo main sheme (polja so že v prisma/schema.sqlite.prisma, v ' +
+      'prisma/schema.prisma jih prevzame naslednja schema naloga), diff generira ' +
+      'ENEGA združenega DROP COLUMN ×15, ki ga posamični matcher ne pokriva. ' +
+      'Matcher STROG: tabela RestaurantSettings, vsaka klavzula ADD/DROP COLUMN ' +
+      'izključno iz množice 15 dokumentiranih stolpcev — vsak drug (nov, ' +
+      'nedokumentiran) stolpec ostane hard fail. Ko main schema prevzame polja, ' +
+      'drift izgine in vnos postane mrtva koda (faza B→C, vzorec stroski-kategorije).',
+    matches: isRestaurantSettingsPendingMergedStatement,
   },
 ]
 

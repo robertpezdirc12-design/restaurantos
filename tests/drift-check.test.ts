@@ -5,6 +5,9 @@ import {
   isIssue38EventTenantStatement,
   isStroskiKategorijeStatement,
   isAllergenTruthStatement,
+  isLotGovernanceStatement,
+  isHaccpOpsStatement,
+  isRestaurantSettingsPendingMergedStatement,
   parseStatements,
   KNOWN_DRIFTS,
 } from '../scripts/drift-check'
@@ -258,5 +261,168 @@ describe('drift-check: isAllergenTruthStatement (v1.104.0, issue #7)', () => {
     }
     const ids = KNOWN_DRIFTS.map((k) => k.id)
     expect(ids).toContain('allergen-truth')
+  })
+})
+
+/**
+ * Issue #2 (faza B po DDL valovih 13.–16. 10. 2026): prvi neon-smoke po
+ * vrnitvi CI (run 38964400094) je razkril 5 stavkov, ki jih posamični
+ * fazni matcherji niso pokrili — prisma migrate diff ZDRUŽI vse stolpce
+ * ene tabele v EN stavek (ne glede na funkcijo izvora) in za tipne/nullability
+ * razlike po DDL apliciranju generira SET DATA TYPE / DROP NOT NULL oblike.
+ * Fixtures spodaj so TOČNO stavki iz tega runa (izpis koraka drift-check).
+ */
+const I2_PROD_HACCP_PLANID =
+  'ALTER TABLE "HaccpEntry" ALTER COLUMN "planId" DROP NOT NULL'
+const I2_PROD_INVBATCH_TP =
+  'ALTER TABLE "InventoryBatch" ALTER COLUMN "alertDate" SET DATA TYPE TIMESTAMP(3), ' +
+  'ALTER COLUMN "removalDate" SET DATA TYPE TIMESTAMP(3), ' +
+  'ALTER COLUMN "holdAt" SET DATA TYPE TIMESTAMP(3), ' +
+  'ALTER COLUMN "releaseAt" SET DATA TYPE TIMESTAMP(3)'
+const I2_PROD_INVITEM_TP =
+  'ALTER TABLE "InventoryItem" ALTER COLUMN "allergensConfirmedAt" SET DATA TYPE TIMESTAMP(3)'
+const I2_PROD_MENUITEM_TP =
+  'ALTER TABLE "MenuItem" ALTER COLUMN "allergensConfirmedAt" SET DATA TYPE TIMESTAMP(3)'
+const I2_PROD_SETTINGS_MERGED_15 =
+  'ALTER TABLE "RestaurantSettings" DROP COLUMN "apMatchAmountToleranceCents", ' +
+  'DROP COLUMN "apMatchPriceTolerancePct", DROP COLUMN "apMatchQtyTolerancePct", ' +
+  'DROP COLUMN "apMatchVatTolerancePct", DROP COLUMN "cashBlindCount", ' +
+  'DROP COLUMN "cashVarianceThresholdCents", DROP COLUMN "excCancelApprovalAmountCents", ' +
+  'DROP COLUMN "excDiscountApprovalAmountCents", DROP COLUMN "excDiscountApprovalPct", ' +
+  'DROP COLUMN "excRequireReasonCancel", DROP COLUMN "excRequireReasonDiscount", ' +
+  'DROP COLUMN "excRequireReasonStorno", DROP COLUMN "excRequireReasonVoid", ' +
+  'DROP COLUMN "excStornoApprovalAmountCents", DROP COLUMN "excVoidApprovalAmountCents"'
+
+describe('drift-check: isAllergenTruthStatement — TIMESTAMP(3) normalizacija (issue #2, faza B)', () => {
+  test('SET DATA TYPE TIMESTAMP(3) za allergensConfirmedAt (InventoryItem + MenuItem) → znan', () => {
+    expect(isAllergenTruthStatement(I2_PROD_INVITEM_TP)).toBe(true)
+    expect(isAllergenTruthStatement(I2_PROD_MENUITEM_TP)).toBe(true)
+  })
+
+  test('mešani stavek (DROP COLUMN + SET DATA TYPE) iste funkcije → znan', () => {
+    const mixed =
+      'ALTER TABLE "MenuItem" DROP COLUMN "allergensOverride", ' +
+      'ALTER COLUMN "allergensConfirmedAt" SET DATA TYPE TIMESTAMP(3)'
+    expect(isAllergenTruthStatement(mixed)).toBe(true)
+  })
+
+  test('tuj stolpec / druga natančnost / OrderItem → NI znan', () => {
+    // OrderItem nima allergensConfirmedAt (ima samo allergenSnapshot/allergenWarning)
+    expect(isAllergenTruthStatement(I2_PROD_INVITEM_TP.replace('InventoryItem', 'OrderItem'))).toBe(false)
+    expect(isAllergenTruthStatement(
+      'ALTER TABLE "MenuItem" ALTER COLUMN "allergensConfirmedAt" SET DATA TYPE TIMESTAMP(6)',
+    )).toBe(false)
+    // TEXT stolpec ne more biti del TIMESTAMP(3) normalizacije
+    expect(isAllergenTruthStatement(
+      'ALTER TABLE "MenuItem" ALTER COLUMN "allergensOverride" SET DATA TYPE TIMESTAMP(3)',
+    )).toBe(false)
+  })
+})
+
+describe('drift-check: isLotGovernanceStatement — TIMESTAMP(3) normalizacija (issue #2, faza B)', () => {
+  test('produkcijski 4-klavzulni stavek + posamične oblike → znane', () => {
+    expect(isLotGovernanceStatement(I2_PROD_INVBATCH_TP)).toBe(true)
+    expect(isLotGovernanceStatement(
+      'ALTER TABLE "InventoryBatch" ALTER COLUMN "holdAt" SET DATA TYPE TIMESTAMP(3)',
+    )).toBe(true)
+  })
+
+  test('TEXT/polje iz druge tabele v SET DATA TYPE → NI znan', () => {
+    expect(isLotGovernanceStatement(
+      'ALTER TABLE "InventoryBatch" ALTER COLUMN "holdReason" SET DATA TYPE TIMESTAMP(3)',
+    )).toBe(false) // holdReason je TEXT
+    expect(isLotGovernanceStatement(
+      'ALTER TABLE "InventoryItem" ALTER COLUMN "alertDate" SET DATA TYPE TIMESTAMP(3)',
+    )).toBe(false) // napačna tabela
+  })
+})
+
+describe('drift-check: isHaccpOpsStatement — planId nullability (issue #2, faza B)', () => {
+  test('produkcijski DROP NOT NULL + mešan s DROP COLUMN → znana', () => {
+    expect(isHaccpOpsStatement(I2_PROD_HACCP_PLANID)).toBe(true)
+    expect(isHaccpOpsStatement(
+      'ALTER TABLE "HaccpEntry" DROP COLUMN "planName", ALTER COLUMN "planId" DROP NOT NULL',
+    )).toBe(true)
+  })
+
+  test('nullability za DRUG stolpec / SET NOT NULL → NI znan', () => {
+    expect(isHaccpOpsStatement(
+      'ALTER TABLE "HaccpEntry" ALTER COLUMN "planName" DROP NOT NULL',
+    )).toBe(false)
+    expect(isHaccpOpsStatement(
+      'ALTER TABLE "HaccpEntry" ALTER COLUMN "planId" SET NOT NULL',
+    )).toBe(false)
+  })
+})
+
+describe('drift-check: isRestaurantSettingsPendingMergedStatement (issue #2, CI run 38964400094)', () => {
+  test('produkcijski združeni DROP COLUMN ×15 → znan', () => {
+    expect(isRestaurantSettingsPendingMergedStatement(I2_PROD_SETTINGS_MERGED_15)).toBe(true)
+  })
+
+  test('podmnožica in preurejena razporeditev klavzul → znana', () => {
+    expect(isRestaurantSettingsPendingMergedStatement(
+      'ALTER TABLE "RestaurantSettings" DROP COLUMN "excRequireReasonVoid", ' +
+      'DROP COLUMN "apMatchQtyTolerancePct", DROP COLUMN "cashBlindCount"',
+    )).toBe(true)
+  })
+
+  test('tuji/nedokumentiran stolpec ali druga tabela → NI znan (hard fail)', () => {
+    expect(isRestaurantSettingsPendingMergedStatement(
+      'ALTER TABLE "RestaurantSettings" DROP COLUMN "futureCol"',
+    )).toBe(false)
+    expect(isRestaurantSettingsPendingMergedStatement(
+      'ALTER TABLE "RestaurantSettings" DROP COLUMN "cashBlindCount", DROP COLUMN "futureCol"',
+    )).toBe(false)
+    expect(isRestaurantSettingsPendingMergedStatement(
+      'ALTER TABLE "VoidReason" DROP COLUMN "kind"',
+    )).toBe(false)
+  })
+})
+
+describe('drift-check: classifyDrift — CELA produkcijska diffa (run 38964400094) → 0 nepričakovanih', () => {
+  const FULL_DIFF = [
+    '-- AlterTable',
+    I2_PROD_HACCP_PLANID + ';',
+    I2_PROD_INVBATCH_TP + ';',
+    I2_PROD_INVITEM_TP + ';',
+    I2_PROD_MENUITEM_TP + ';',
+    I2_PROD_SETTINGS_MERGED_15 + ';',
+    '-- znani pred-popravilom:',
+    'ALTER TABLE "AccountsPayable" DROP COLUMN "category";',
+    'ALTER TABLE "CashMovement" ALTER COLUMN "amount" DROP DEFAULT, ' +
+      'ALTER COLUMN "voidedAt" SET DATA TYPE TIMESTAMP(3);',
+    'ALTER TABLE "ZReport" DROP COLUMN "cashGuestRefund", ' +
+      'DROP COLUMN "cashPaidIn", DROP COLUMN "cashPaidOut";',
+    'ALTER TABLE "VoidReason" DROP COLUMN "kind", DROP COLUMN "requireComment";',
+    '',
+  ].join('\n')
+
+  test('vseh 10 stavkov klasificiranih kot znani, 0 blokatorjev', () => {
+    const cls = classifyDrift(FULL_DIFF)
+    expect(cls.unexpected).toHaveLength(0)
+    const ids = cls.known.map((k) => k.id)
+    expect(ids).toContain('haccp-ops')
+    expect(ids).toContain('lot-governance')
+    expect(ids).toContain('allergen-truth')
+    expect(ids).toContain('settings-pending-merged')
+    expect(ids).toContain('stroski-kategorije')
+    expect(ids).toContain('cash-movements')
+    expect(ids).toContain('exception-reasons')
+  })
+
+  test('regresijska varovalka: nov nedokumentiran RestaurantSettings stolpec → hard fail ostane', () => {
+    const cls = classifyDrift(
+      '-- AlterTable\nALTER TABLE "RestaurantSettings" DROP COLUMN "brandNewCol";\n',
+    )
+    expect(cls.unexpected).toHaveLength(1)
+  })
+
+  test('register vsebuje settings-pending-merged z referencami na vse tri DDL rute', () => {
+    const entry = KNOWN_DRIFTS.find((k) => k.id === 'settings-pending-merged')
+    expect(entry).toBeDefined()
+    expect(entry!.reason).toContain('/api/admin/migrate-ap-tolerance')
+    expect(entry!.reason).toContain('/api/admin/migrate-exception-policy')
+    expect(entry!.reason).toContain('/api/admin/migrate-cash-movements')
   })
 })
