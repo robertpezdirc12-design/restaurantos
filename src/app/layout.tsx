@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { PwaRegister } from "@/components/pwa-register";
 
 export const metadata: Metadata = {
-  title: "RestavrantOS — restavracijski sistem (rekonstrukcija)",
+  title: "RestaurantOS — restavracijski POS",
   description:
     "Restavracijski POS: blagajna, naročila, mize, kuhinja, plačilne povezave, zaloga, HACCP.",
   icons: {
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "RestavrantOS" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "RestaurantOS" },
 };
 
 export const viewport: Viewport = {
