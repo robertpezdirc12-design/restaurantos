@@ -3091,3 +3091,20 @@ Stage Summary:
 - Issue #12 POPOLN kot v1.113.0: čisti motor priporočil (formula iz issue-ja: poraba × (rok + pregled) + varnostna zaloga − uporabna zaloga − potrjene dobave) + pakiranjever zaokrožitev + GET/apply API + UI kartica + 22 testov; ZERO DDL (vs polja že obstajala)
 - Ključne odločitve: (1) OSNUTEK ni "potrjena dobava v teku" — incoming šteje samo submitted/approved/partial (issue besedilo "potrjene dobave"); (2) WATCH ohranja dedni PAR signal (artikli pod pragom, a pokrito) — novo je NADGRADNJA, ne zamenjava obstoječe PAR kartice; (3) STORNO_RETURN in BATCH_OUTPUT zmanjšata neto porabo (brez dvojnega odštevanja); (4) ReorderRule/PackagingConfig ostajata mrtva — issue eksplicitno prepoveduje nove modele
 - NASLEDNJI KORAK: push + zaprtje #12 + produkcija (health 1.113.0) — v teku
+---
+Task ID: v1.113.0-session (produkcija + zaprtje — dodatek)
+Agent: glavni agent (Z.ai)
+Task: "odlicno nadaljuj" — dokončanje verige v1.113.0: push + zaprtje #12 + produkcija.
+
+Work Log:
+- OBNOVLJENA SEJA (sandbox reset): repo na /home/z/restaurantos usklajen babfd19 (FEATURE v1.113.0 #12, vključno z worklog zapisom); prejšnji kontekstni povzetek je opisoval ZASTAREL načrt #18 (že zaprt v1.103.0/e4d95607) → delo nadaljevano po DEJANSKEM stanju
+- PUSH: babfd19 ŽE na origin/main (verifikacija git fetch + log origin/main..HEAD = prazno)
+- GITHUB #12: ŽE ZAPRT (state: closed) z dokaznim komentarjem 6209094579
+- PRODUKCIJA ŽIVA: health → {"status":"ok","version":"1.113.0","commit":"babfd19b…","database":"connected"} (200, 0,27 s) — ZERO DDL za to izdajo, nič za aplicirati
+- ŽIVA API VERIFIKACIJA (ADMIN info@ prijava → Bearer): GET /api/purchase-orders/recommendations → 200 {recommendations:0, grouped:0, watch:2, summary:{windowDays:28, itemsConsidered:28, recommend:0, watch:2, skipped:26}} — smiselno (produkcija nima zgodovine porabe → WATCH dedni PAR, ni RECOMMEND); 401 na neprijavljen GET in na apply POST (obe poti varovani)
+- DEV: :3000 my-project (uporabnikova vidna pot) 200 + :3007 restaurantos 200, oba strežnika živa
+
+Stage Summary:
+- v1.113.0 veriga POPOLNOMA zaključena: koda pushana, #12 zaprt z dokazi, produkcija živa na 1.113.0/babfd19b, API deluje z varovanimi potmi
+- 9 odprtih issue-jev; izbran NASLEDNJI: #24 (P2 — etikete pripravljene hrane in odprte serije; priporočilo v1.113, naravna nadaljevava lot-governance #15/alergeni #7/HACCP #20)
+- GitLab mirror: token okrajen v worklogu (sandbox reset), trenutna veriga gre samo prek GitHub→Vercel; sinhronizacija možna ob novem žetonu (uporabniški korak)
