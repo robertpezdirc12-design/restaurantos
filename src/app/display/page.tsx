@@ -228,7 +228,7 @@ function DisplayInner() {
   // Parjenje
   if (info && !info.paired) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-950 p-6">
+      <div data-screen="customer-display-setup" className="min-h-screen flex items-center justify-center bg-stone-950 p-6">
         <GuestLanguageToggle variant="dark" className="fixed top-4 right-4" />
         <div className="w-full max-w-md rounded-3xl bg-stone-900 border border-stone-800 p-8 text-stone-100 text-center">
           <Link2 className="h-10 w-10 mx-auto text-stone-500" />
