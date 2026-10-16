@@ -191,7 +191,7 @@ function LoginPageInner() {
   }
 
   return (
-    <main className="relative min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
+    <main data-screen="login" className="relative min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
         <LanguageToggle />
         <ThemeToggle />
