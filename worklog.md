@@ -3419,3 +3419,24 @@ Stage Summary:
 - Issue #22 (P1/P2 obračun plač) KOMPLETNO implementiran in verifikiran LOKALNO: backend (5 rut + čisti motor + timeclock zaklep varovalka), DDL register (payroll-periods, 26→27), UI zavihek Obračun (106 payr.* i18n SL/HR), 57 novih testov
 - BLOKADA: push/GitHub zaprtje/produkcija DDL čakajo NOV GitHub PAT (klasičen, scope repo) od uporabnika — takoj po prejetju: push → Vercel deploy → health 1.115.0 → DDL payroll-periods prek konzole → dokazni komentar + zaprtje #22
 - NASLEDNJI VAL po #22: #8 (medlokacijski prenosi P2) ali #10 (strošek dela P2)
+
+---
+Task ID: v1.115.0-deploy
+Agent: glavni agent (Z.ai)
+Task: "nadaljuj" z novim GitHub PAT — push v1.115.0, produkcijski deploy, DDL, živa verifikacija in zaključek #22
+
+Work Log:
+- NOV PAT: uporabnik posredoval ghp_RiaF… v pogovoru → validiran (robertpezdirc12-design, 249648337); vstavljen SAMO v remote URL + curl/py glave (nikoli v datoteke; /tmp/prod_token.txt po uporabi zbrisan)
+- AMEND: commit P1/P2 → P2 (issue nima oznak, naslov pravi P2) → **ae41a94** → push 8ea8598..ae41a94 main BREZ blokade
+- SAMODEJNO ZAPRTJE: "Closes #22" v telesu commita → issue #22 state closed/completed takoj po pushu
+- PRODUKCIJA: Vercel deploy ~2 min → health **1.115.0 / ae41a94 / database connected** (restaurantos-theta.vercel.app direktno; restaurantos.app za curl še vedno Cloudflare izziv)
+- DDL: login info@restaurantos.app (ADMIN, token 194 znakov) → POST /api/admin/migrate-payroll-periods → **{"applied":["PayrollPeriod","PayrollExport"],"skipped":[],"alreadyApplied":false}** → konzola **27/27, pending: 0, allApplied: true**
+- ŽIVA VERIFIKACIJA (samo negativne/read-only poti — produkcija ČISTA): GET /api/payroll brez žetona → **401**; z adminom → **200 {"periods":[]}** (post-DDL, ne 503); fake ID (detail/close z note/reopen z razlogom/export?format=csv) → vsi **404 'Obračunsko obdobje ne obstaja.'**; export?format=xml → **400 'Neveljaven format izvoza (csv ali json).'**; GET /api/employees/[id]/jobs → **200 {"jobs":[]}** (EmployeeJob tabela živa)
+- ZAPRTJE #22: dokazni komentar (obseg + dokazi + poštene meje: pozitivna pot namenoma samo na dev/testih) → **comment id 6216946122** (issues/22#issuecomment-6216946122); GET verify: number 22, closed, completed, 5 komentarjev
+- OPEN ISSUES: 7 (#2, #3, #4 P1; #8, #9, #10, #11 P2)
+- NASLEDNJI KANDIDATI: #8 (medlokacijski prenosi — P2, naravna nadaljevava inventory domene) ali #10 (strošek dela — P2, sinhrgičen s plačami, deli agregate) ali #4 (e-računi P1 — eSLOG uvoz povezava z AP #65)
+
+Stage Summary:
+- Issue #22 ŽIV V PRODUKCIJI v1.115.0 (ae41a94): obdobja z zaklepom + izvoza CSV/JSON + izjeme + napitnine + plačne postavke; DDL 27/27; 2039/2039 testov
+- Delovni vzorec obnovljen: PAT samo v glavah, nikoli v datotekah (check-secrets zelena); pozitivni tokovi na dev E2E, produkcija samo negativno/read-only
+- Uporabniški koraki: rotacija PAT po zaključku (bil v pogovoru), GitHub Actions kvota (reset 1. 11.), MFA vpis, VAPID rotacija
