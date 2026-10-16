@@ -427,3 +427,206 @@ main:has(.max-w-md) button {
     column-gap: 0.15rem;
   }
 }
+
+
+/* Screen-specific visual direction — shared styling, no interaction changes. */
+[data-screen="dashboard"] {
+  background-color: var(--background);
+  background-image: radial-gradient(ellipse at 50% -15%, oklch(0.95 0.025 155 / 55%), transparent 48rem);
+}
+[data-screen="dashboard"] > [data-region="dashboard-header"] {
+  background-color: color-mix(in oklch, var(--card) 92%, transparent);
+  border-color: var(--border);
+  box-shadow: 0 4px 20px oklch(0.2 0.03 155 / 4%);
+  backdrop-filter: blur(16px);
+}
+[data-screen="dashboard"] [data-region="dashboard-tabs"] {
+  gap: 0.2rem;
+  border-radius: 1rem;
+  padding: 0.35rem;
+  background-color: color-mix(in oklch, var(--card) 94%, transparent);
+  box-shadow: 0 4px 18px oklch(0.2 0.03 155 / 4%);
+}
+[data-screen="dashboard"] [data-region="dashboard-tabs"] [role="tab"] {
+  min-height: 2.4rem;
+  border-radius: 0.7rem;
+  font-weight: 550;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+[data-screen="dashboard"] [data-region="dashboard-tabs"] [role="tab"][data-state="active"] {
+  box-shadow: 0 2px 6px oklch(0.2 0.03 155 / 12%);
+}
+.dark [data-screen="dashboard"] {
+  background-image: radial-gradient(ellipse at 50% -15%, oklch(0.29 0.035 155 / 24%), transparent 48rem);
+}
+.dark [data-screen="dashboard"] > [data-region="dashboard-header"] {
+  box-shadow: 0 4px 20px oklch(0 0 0 / 16%);
+}
+.dark [data-screen="dashboard"] [data-region="dashboard-tabs"] {
+  box-shadow: 0 4px 18px oklch(0 0 0 / 15%);
+}
+
+/* Waiter handheld POS — clear emerald chrome and quiet content surfaces. */
+[data-screen="handheld-pos"] {
+  background-image: linear-gradient(180deg, oklch(0.98 0.01 155), oklch(0.965 0.009 155));
+}
+[data-screen="handheld-pos"] > [data-region="handheld-header"] {
+  background-image: linear-gradient(110deg, oklch(0.43 0.12 158), oklch(0.36 0.105 158));
+  box-shadow: 0 5px 18px oklch(0.28 0.07 155 / 18%);
+  padding-top: max(0.7rem, env(safe-area-inset-top));
+}
+[data-screen="handheld-pos"] input,
+[data-screen="handheld-pos"] textarea,
+[data-screen="handheld-pos"] [role="combobox"] {
+  border-radius: 0.8rem;
+  background-color: var(--card);
+}
+[data-screen="handheld-pos"] button.rounded-xl.border,
+[data-screen="handheld-pos"] button.rounded-2xl.border {
+  box-shadow: 0 2px 5px oklch(0.2 0.03 155 / 4%);
+}
+[data-screen="handheld-pos"] button:focus-visible {
+  outline-offset: 3px;
+}
+.dark [data-screen="handheld-pos"] {
+  background-image: linear-gradient(180deg, oklch(0.18 0.009 155), oklch(0.15 0.007 155));
+}
+.dark [data-screen="handheld-pos"] > [data-region="handheld-header"] {
+  background-image: linear-gradient(110deg, oklch(0.32 0.09 158), oklch(0.26 0.075 158));
+}
+
+/* Kitchen/display station cards need scan-friendly contrast at a glance. */
+[data-component="kds-station-card"] {
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 5px 20px oklch(0.2 0.03 155 / 5%);
+}
+[data-component="kds-station-card"] [data-slot="card-header"] {
+  background: linear-gradient(180deg, oklch(0.99 0.006 155), var(--card));
+}
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-xl"],
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-lg"] {
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-xl"]:hover,
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-lg"]:hover {
+  border-color: oklch(0.78 0.045 155);
+  box-shadow: 0 3px 12px oklch(0.2 0.03 155 / 5%);
+}
+.dark [data-component="kds-station-card"] [data-slot="card-header"] {
+  background: linear-gradient(180deg, oklch(0.23 0.01 155), var(--card));
+}
+
+/* Self-service kiosk — high contrast, spacious tiles, responsive category rail. */
+[data-screen="kiosk-activation"] {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(0.31 0.06 158 / 62%), transparent 34rem), linear-gradient(145deg, oklch(0.16 0.012 155), oklch(0.11 0.008 155));
+}
+[data-screen="kiosk-activation"] > div {
+  border-color: oklch(1 0 0 / 10%);
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 70px oklch(0 0 0 / 32%);
+}
+[data-screen="kiosk-pos"] {
+  background-image: radial-gradient(ellipse at 50% -15%, oklch(0.29 0.045 158 / 24%), transparent 42rem), linear-gradient(180deg, oklch(0.13 0.008 155), oklch(0.10 0.006 155));
+}
+[data-screen="kiosk-pos"] > [data-region="kiosk-header"] {
+  border-color: oklch(1 0 0 / 9%);
+  background-color: oklch(0.12 0.008 155 / 92%);
+  backdrop-filter: blur(14px);
+}
+[data-screen="kiosk-pos"] [data-region="kiosk-products"] > button {
+  min-height: 8rem;
+  border-radius: 1.15rem;
+  background: linear-gradient(145deg, oklch(0.22 0.012 155), oklch(0.17 0.01 155));
+  box-shadow: 0 3px 10px oklch(0 0 0 / 12%);
+  transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+[data-screen="kiosk-pos"] [data-region="kiosk-products"] > button:hover:not(:disabled) {
+  border-color: oklch(0.58 0.085 158);
+  background: linear-gradient(145deg, oklch(0.26 0.025 158), oklch(0.19 0.012 155));
+  box-shadow: 0 8px 22px oklch(0 0 0 / 22%);
+  transform: translateY(-1px);
+}
+[data-screen="kiosk-pos"] [data-region="kiosk-products"] > button:active:not(:disabled) {
+  transform: scale(0.99);
+}
+@media (max-width: 640px) {
+  [data-screen="kiosk-pos"] > [data-region="kiosk-header"] {
+    padding: 1rem;
+  }
+  [data-screen="kiosk-pos"] main {
+    padding: 1rem;
+  }
+  [data-screen="kiosk-pos"] [data-region="kiosk-products"] {
+    gap: 0.65rem;
+  }
+  [data-screen="kiosk-pos"] [data-region="kiosk-products"] > button {
+    min-height: 7rem;
+    padding: 0.85rem;
+    border-radius: 0.9rem;
+  }
+}
+
+/* Customer-facing payment display — restrained, cinema-like status surface. */
+[data-screen="customer-display-setup"] {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(0.26 0.045 158 / 38%), transparent 40rem), linear-gradient(145deg, oklch(0.12 0.008 155), oklch(0.075 0.004 155));
+}
+[data-screen="customer-display-setup"] > div {
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 70px oklch(0 0 0 / 30%);
+}
+[data-screen="customer-display"] {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(0.21 0.035 158 / 30%), transparent 56rem), linear-gradient(160deg, oklch(0.09 0.006 155), oklch(0.055 0.003 155));
+}
+[data-screen="customer-display"] > [data-region="customer-display-header"] {
+  padding-top: max(1.25rem, env(safe-area-inset-top));
+  border-color: oklch(1 0 0 / 8%);
+}
+[data-screen="customer-display"] [data-region="customer-display-content"] h2 {
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+@media (max-width: 640px) {
+  [data-screen="customer-display"] > [data-region="customer-display-header"] {
+    padding: 1rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  [data-screen="customer-display"] [data-region="customer-display-content"] {
+    padding: 1.25rem;
+  }
+  [data-screen="customer-display"] [data-region="customer-display-content"] h2 {
+    font-size: clamp(1.65rem, 6vw, 2.4rem);
+  }
+}
+
+/* QR menu — compact food discovery, readable category rail and checkout action. */
+[data-screen="qr-menu"] {
+  background-image: linear-gradient(180deg, oklch(0.98 0.008 155), oklch(0.96 0.006 155));
+}
+[data-screen="qr-menu"] > [data-region="qr-menu-header"] {
+  border-color: oklch(0.9 0.02 155);
+  box-shadow: 0 4px 16px oklch(0.2 0.03 155 / 4%);
+}
+[data-screen="qr-menu"] > [data-region="qr-menu-categories"] {
+  background-color: oklch(0.97 0.008 155 / 96%);
+  backdrop-filter: blur(12px);
+  border-color: oklch(0.9 0.02 155);
+}
+[data-screen="qr-menu"] [data-region="qr-menu-content"] > section {
+  border-radius: 1rem;
+  box-shadow: 0 2px 12px oklch(0.2 0.03 155 / 3%);
+}
+[data-screen="qr-menu"] [data-region="qr-menu-categories"] button {
+  min-height: 2.5rem;
+}
+[data-screen="qr-menu"] [data-region="qr-menu-content"] button:focus-visible {
+  outline-offset: 3px;
+}
+[data-screen="qr-menu"] > div.fixed.bottom-0 {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  backdrop-filter: blur(12px);
+}
+.dark [data-screen="qr-menu"] {
+  background-image: linear-gradient(180deg, oklch(0.18 0.009 155), oklch(0.145 0.006 155));
+}
