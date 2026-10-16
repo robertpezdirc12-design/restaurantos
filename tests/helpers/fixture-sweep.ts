@@ -81,6 +81,7 @@ export const TEST_PREFIXES = [
   'i12-', // issue12-recommendations (v1.113.0)
   'i24-', // issue24-labels (v1.114.0)
   'i22-', // issue22-payroll (v1.115.0)
+  'i8-', // issue8-stock-transfers (v1.116.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -127,6 +128,14 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'stockTransaction', alt: 'inventoryItemId' },
   { model: 'stocktakeItem' },
   { model: 'stocktake' },
+  // Issue #8 (v1.116.0): medlokacijski prenosi — postavke pred glavo
+  // (transferId FK Cascade: StockTransferItem MORA pasti pred StockTransfer).
+  // StockTransfer NIMA locationId stolpca (from/to skalarna) → NI v
+  // LOCATION_CHILD_SWEEP; API-ustvarjene glave (nid() id) čistijo testi ročno
+  // (kot PayrollExport), id-predponske fiksre pa pokrije ta prehod (+ alt
+  // inventoryItemId za postavke, ki kažejo na i8- izvorne artikle).
+  { model: 'stockTransferItem', alt: 'inventoryItemId' },
+  { model: 'stockTransfer' },
   { model: 'inventoryBatch' },
   { model: 'inventoryItem' },
   { model: 'recipeItem' },

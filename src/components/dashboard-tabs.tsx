@@ -51,3 +51,6 @@ export { ExceptionsReportCard } from './tabs/exceptions-card'
 /* Issue #22 (v1.115.0) — obračun plač: obdobja + zaklep + izvozi + plačne postavke */
 export { PayrollTab } from './tabs/payroll-tab'
 export type { PayrollPeriodT } from './tabs/payroll-tab'
+/* Issue #8 (v1.116.0) — medlokacijski prenosi zalog */
+export { TransfersTab } from './tabs/transfers-tab'
+export type { TransferT, TransferLineT } from './tabs/transfers-tab'

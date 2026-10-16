@@ -785,7 +785,7 @@ describe('N. DDL idempotenca + drift-check + push tipi', () => {
   it('N3: push tipi 19 — HACCP_OVERDUE + HACCP_DEVIATION registrirana', () => {
     expect(PUSH_EVENT_TYPES).toContain('HACCP_OVERDUE')
     expect(PUSH_EVENT_TYPES).toContain('HACCP_DEVIATION')
-    expect(PUSH_EVENT_TYPES.length).toBe(21)
-    expect(new Set(PUSH_EVENT_TYPES).size).toBe(21)
+    expect(PUSH_EVENT_TYPES.length).toBe(23) // v1.116.0: +TRANSFER_DISPATCHED/TRANSFER_RECEIVED (#8)
+    expect(new Set(PUSH_EVENT_TYPES).size).toBe(23)
   })
 })

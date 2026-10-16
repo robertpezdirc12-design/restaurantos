@@ -30,6 +30,7 @@ import { POST as managerCallPOST } from '../migrate-manager-call/route'
 import { POST as kdsStationsPOST } from '../migrate-kds-stations/route'
 import { POST as prepLabelsPOST } from '../migrate-prep-labels/route'
 import { POST as payrollPeriodsPOST } from '../migrate-payroll-periods/route'
+import { POST as stockTransfersPOST } from '../migrate-stock-transfers/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -73,6 +74,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'kds-stations': kdsStationsPOST,
   'prep-labels': prepLabelsPOST,
   'payroll-periods': payrollPeriodsPOST,
+  'stock-transfers': stockTransfersPOST,
 }
 
 interface ConsoleResult {

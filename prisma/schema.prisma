@@ -3092,6 +3092,67 @@ model PayrollExport {
   @@index([periodId])
 }
 
+// ─── STOCK TRANSFERS (issue #8, v1.116.0) ─────────────────────────────────────
+// Medlokacijski prenos zalog: odpremnica (izvorna lokacija odšteje zalogo +
+// serijo, TRANSFER_OUT) → tranzit (DISPATCHED — cilj NE vidi zaloge) → prevzem
+// (ciljna lokacija prišteje, avto-resolved/ustvari ciljni artikel, TRANSFER_IN,
+// serija TRF-n/i) → RECEIVED/PARTIAL (varianca missing/damaged zapisana, NE
+// knjižena); DRAFT → CANCELLED (samo pred odpremo, razlog).
+// Skalarne vezave brez FK na Location/InventoryItem (PrepLabel/PayrollPeriod
+// konvencija); EDINA relacija je transfer → items (Cascade — brisanje osnutka
+// pobriše postavke). Status je prost niz (GRN/WasteRecord konvencija).
+model StockTransfer {
+  id             String             @id
+  transferNumber String             @unique
+  fromLocationId String
+  toLocationId   String
+  status         String             @default("DRAFT") // DRAFT | DISPATCHED | RECEIVED | PARTIAL | CANCELLED
+  note           String             @default("")
+  idempotencyKey String?
+  createdById    String?
+  dispatchedById String?
+  dispatchedAt   DateTime?
+  receivedById   String?
+  receivedAt     DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String            @default("")
+  createdAt      DateTime          @default(now())
+  items          StockTransferItem[]
+
+  @@unique([fromLocationId, idempotencyKey])
+  @@index([fromLocationId, status])
+  @@index([toLocationId, status])
+  @@index([status, createdAt])
+  @@index([createdAt])
+}
+
+// Postavka prenosa: snapshot imena/enote (zgodovina če artikel pobrišejo),
+// requested/dispatched/received/damaged količine, izvorna serija (batchId +
+// lotNumber/expiryDate posnetek), razrešen ciljni artikel ob prevzemu.
+model StockTransferItem {
+  id              String    @id
+  transferId      String
+  inventoryItemId String
+  itemName        String    @default("")
+  unit            String    @default("")
+  requestedQty    Decimal   @db.Decimal(12, 3)
+  dispatchedQty   Decimal   @default(0) @db.Decimal(12, 3)
+  receivedQty     Decimal   @default(0) @db.Decimal(12, 3)
+  damagedQty      Decimal   @default(0) @db.Decimal(12, 3)
+  unitCost        Decimal?  @db.Decimal(12, 2)
+  batchId         String?
+  lotNumber       String?
+  expiryDate      DateTime?
+  targetItemId    String?
+  note            String    @default("")
+  createdAt       DateTime  @default(now())
+  transfer        StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([transferId])
+  @@index([inventoryItemId])
+  @@index([targetItemId])
+}
+
 model VideoAnalyticsSession {
   id               String    @id
   cameraId         String

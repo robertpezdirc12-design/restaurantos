@@ -40,6 +40,7 @@ import {
   CalendarClock,
   Power,
   ArrowRightLeft,
+  ArrowLeftRight,
   GitMerge,
   Flame,
   Pencil,
@@ -69,7 +70,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard, PayrollTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard, PayrollTab, TransfersTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1748,7 +1749,7 @@ function DashboardInner() {
               ['delovnicas', t('tabs.delovnicas'), Timer],
               ['urnik', t('tabs.urnik'), CalendarRange],
               ['haccp', t('tabs.haccp'), Thermometer], ['stroski', t('tabs.stroski'), Wallet], ['zvestoba', t('tabs.zvestoba'), HeartHandshake],
-              ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['obracun', t('tabs.obracun'), ReceiptText], ['nabava', t('tabs.nabava'), ShoppingCart], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings], ['enterprise', t('tabs.enterprise'), Building2],
+              ['mnenja', t('tabs.mnenja'), Star], ['dostava', t('tabs.dostava'), Truck], ['napitnine', t('tabs.napitnine'), Coins], ['obracun', t('tabs.obracun'), ReceiptText], ['nabava', t('tabs.nabava'), ShoppingCart], ['prenosi', t('tabs.prenosi'), ArrowLeftRight], ['darilne', t('tabs.darilne'), Gift], ['odpad', t('tabs.odpad'), Trash2], ['cakalna', t('tabs.cakalna'), Hourglass], ['odpiralnicas', t('tabs.odpiralnicas'), CalendarClock], ['zaposleni', t('tabs.zaposleni'), Users], ['nastavitve', t('tabs.nastavitve'), Settings], ['enterprise', t('tabs.enterprise'), Building2],
             ] as [string, string, typeof LayoutDashboard | null][])
               // UI gating po dovoljenjih (issue #1, naloga 3) — backend uveljavlja neodvisno;
               // N8 fail-closed: vsak zavihek ima izrecen vnos v TAB_PERM (src/lib/tab-permissions.ts),
@@ -2549,6 +2550,12 @@ function DashboardInner() {
 
           <TabsContent value="zaloge">
             <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} menuItems={menu.map((m) => ({ id: m.id, name: m.name }))} canManage={canManage} onReload={load} />
+          </TabsContent>
+
+          {/* Issue #8 (v1.116.0) — medlokacijski prenosi zalog (backend: requirePermission
+              inventory.manage — enako kot gating tukaj; TAB_PERM vnos že obstane v tab-permissions) */}
+          <TabsContent value="prenosi">
+            <TransfersTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={hasPerm('inventory.manage')} />
           </TabsContent>
 
           <TabsContent value="izmene">

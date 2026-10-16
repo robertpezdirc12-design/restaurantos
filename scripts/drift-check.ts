@@ -402,6 +402,14 @@ export function isPayrollPeriodsStatement(stmt: string): boolean {
   return false
 }
 
+/** Issue #8 (v1.116.0): medlokacijski prenosi — NOVI tabeli StockTransfer + StockTransferItem. */
+export function isStockTransfersStatement(stmt: string): boolean {
+  if (/"StockTransfer"|"StockTransferItem"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  return false
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -664,6 +672,21 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'rute vračajo 503 (graceful — timeclock/tips/urnik tokovi se ne dotaknejo). ' +
       'Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isPayrollPeriodsStatement,
+  },
+  {
+    id: 'stock-transfers',
+    reason:
+      'Medlokacijski prenosi zalog (v1.116.0, issue #8 P2) — NOVI tabeli ' +
+      'StockTransfer (glava: številka TRF-dan-zaporedna, izvorna/ciljna ' +
+      'lokacija kot skalar, status DRAFT/DISPATCHED/RECEIVED/PARTIAL/CANCELLED, ' +
+      'idempotencyKey @@unique(from+key), odprem/prevzem/preklic sled) in ' +
+      'StockTransferItem (snapshot imena/enote, količine requested/dispatched/' +
+      'received/damaged, izvorna serija, razrešen ciljni artikel; transferId ' +
+      'FK Cascade) + indeksi — skalarne vezave brez FK na Location/' +
+      'InventoryItem (PrepLabel/PayrollPeriod vzorec). Do DDL /api/transfers* ' +
+      'rute vračajo 503 (graceful degradacija). Ko je DDL apliciran ' +
+      '(Enterprise → Shema migracije), drift izgine in vnos postane mrtva koda.',
+    matches: isStockTransfersStatement,
   },
 ]
 

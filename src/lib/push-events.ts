@@ -60,6 +60,11 @@ export const PUSH_EVENT_TYPES = [
   'HACCP_DEVIATION',
   'MANAGER_CALL',
   'MANAGER_CALL_ESCALATED',
+  // Issue #8 (v1.116.0): medlokacijski prenosi — odpremitev obvešča CILJNO
+  // lokacijo (blago je v tranzitu), prevzem pa IZVORNO (odpošiljatelj ve,
+  // da je prenos zaključen). Vloge: manager/warehouse (fail-soft).
+  'TRANSFER_DISPATCHED',
+  'TRANSFER_RECEIVED',
 ] as const
 
 export type PushEventType = (typeof PUSH_EVENT_TYPES)[number]

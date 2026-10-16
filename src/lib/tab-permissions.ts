@@ -39,6 +39,7 @@ export const TAB_PERM: Record<string, string | string[]> = {
   dostava: 'delivery.manage', // OPS-4 v1.67.0 — sprejem dostav/con = delivery.manage (vodstvo)
   napitnine: 'reports.view',
   obracun: 'employees.manage', // Issue #22 (v1.115.0) — obračunsko obdobje + izvoz (backend requirePermission employees.manage)
+  prenosi: 'inventory.manage', // Issue #8 (v1.116.0) — medlokacijski prenosi zalog (backend requirePermission inventory.manage)
   nabava: 'inventory.manage',
   darilne: 'giftcards.manage', // OPS-4 v1.67.0 — izdaja/polnjenje darilnih kartic (vodstvo); lookup pri plačilu ostaja orders.pay
   odpad: 'inventory.manage',

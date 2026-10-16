@@ -279,20 +279,29 @@ export interface FcReport {
 // ─────────────────────────── Klasifikacija transakcij ───────────────────────────
 
 export type FcTxGroup =
-  | 'receipt' // purchase (GRN), RECEIVE
+  | 'receipt' // purchase (GRN), RECEIVE, TRANSFER_IN (issue #8 — priliv lokacije)
   | 'return' // STORNO_RETURN
   | 'production' // BATCH_OUTPUT
   | 'prep' // BATCH_INPUT
   | 'sale' // SALE
-  | 'waste' // WASTE
+  | 'waste' // WASTE, TRANSFER_OUT (issue #8 — dokumentiran odliv lokacije)
   | 'correction' // STOCKTAKE, ADJUST
   | 'unknown'
 
-/** Case-insensitive klasifikacija (GRN piše 'purchase' z malo — issue #18 ruta). */
+/**
+ * Case-insensitive klasifikacija (GRN piše 'purchase' z malo — issue #18 ruta).
+ *
+ * Issue #8 (v1.116.0): TRANSFER_IN je priliv (kot prejem — v receiptsQty, v
+ * isti vlogi kot GRN za porabo) in TRANSFER_OUT je dokumentiran ODLIV, ki se
+ * NE primerja s teoretično porabo (v nasprotnem bi krajši shortfall iz
+ * odpremnic izničil prodajno primerjavo) → skupina 'waste' (razložena
+ * komponenta variance, ne 'sale').
+ */
 export function txGroupOf(type: string): FcTxGroup {
   switch ((type || '').trim().toLowerCase()) {
     case 'purchase':
     case 'receive':
+    case 'transfer_in':
       return 'receipt'
     case 'storno_return':
       return 'return'
@@ -303,6 +312,7 @@ export function txGroupOf(type: string): FcTxGroup {
     case 'sale':
       return 'sale'
     case 'waste':
+    case 'transfer_out':
       return 'waste'
     case 'stocktake':
     case 'adjust':

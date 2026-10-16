@@ -432,6 +432,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-payroll-periods',
     probe: async () => tablesAll(['PayrollPeriod', 'PayrollExport']),
   },
+  {
+    // Issue #8 (P2, v1.116.0) — medlokacijski prenosi zalog. NOVI tabeli
+    // StockTransfer (glava: številka TRF, status DRAFT/DISPATCHED/RECEIVED/
+    // PARTIAL/CANCELLED, idempotencyKey from+key) in StockTransferItem
+    // (količine/serija/ciljni artikel; transferId FK Cascade). Skalarne
+    // vezave brez FK na Location/InventoryItem (PrepLabel vzorec).
+    // Do DDL: /api/transfers* rute vračajo 503 (graceful — nabava/zaloga/
+    // serije tokovi se ne dotaknejo).
+    id: 'stock-transfers',
+    descKey: 'mig.stockTransfers.desc',
+    endpoint: '/api/admin/migrate-stock-transfers',
+    probe: async () => tablesAll(['StockTransfer', 'StockTransferItem']),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

@@ -823,6 +823,6 @@ describe('H. register + DDL + drift', () => {
   })
 
   it('H5. register dolžina = 26 (v1.114.0: +prep-labels)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(27) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24)
+    expect(SCHEMA_MIGRATIONS.length).toBe(28) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24)
   })
 })
