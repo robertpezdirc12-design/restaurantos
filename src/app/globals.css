@@ -372,3 +372,58 @@ main:has(.max-w-md) button {
     touch-action: manipulation;
   }
 }
+
+
+/* Dashboard header at narrow widths: keep controls reachable without page overflow. */
+@media (max-width: 767px) {
+  main > header > div.max-w-7xl {
+    height: auto;
+    min-height: 3.5rem;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: 0.5rem;
+    row-gap: 0.4rem;
+  }
+  main > header > div.max-w-7xl > div:first-child {
+    flex: 1 1 9rem;
+    min-width: 0;
+  }
+  main > header > div.max-w-7xl > div:last-child {
+    display: flex;
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+  main > header > div.max-w-7xl > div:last-child > button,
+  main > header > div.max-w-7xl > div:last-child > a {
+    flex: 0 0 auto;
+  }
+  main > header > div.max-w-7xl > div:last-child > button[aria-live="polite"] {
+    max-width: 100%;
+  }
+  main > div.max-w-7xl.w-full.mx-auto {
+    min-width: 0;
+  }
+  main [role="tablist"] {
+    max-width: 100%;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+  main [role="tablist"]::-webkit-scrollbar {
+    display: none;
+  }
+}
+@media (max-width: 380px) {
+  main > header > div.max-w-7xl {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+  main > header > div.max-w-7xl > div:last-child {
+    column-gap: 0.15rem;
+  }
+}
