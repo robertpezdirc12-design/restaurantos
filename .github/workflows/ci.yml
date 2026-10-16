@@ -25,6 +25,11 @@ on:
       - '.zscripts/**'
   workflow_dispatch:
 
+# Runner routing (issue #2): privzeto GitHub-hosted 'ubuntu-latest'. Med izčrpano
+# kvoto hosted minut (reset 1. 11. 2026) začasno usmerja na self-hosted runner
+# prek spremenljivke repozitorija CI_RUNNER_LABELS=self-hosted (Actions → Variables).
+# Po resetu kvote spremenljivko izbrišite/ponastavite na ubuntu-latest — workflow
+# same od sebe vrne na hosted pool. Brez spremembe workflowa ob preklopu.
 concurrency:
   group: ci-main
   cancel-in-progress: true
@@ -34,7 +39,7 @@ jobs:
   # schema applies, CRUD/enum/FK/JSONB work, and that the production schema
   # has zero drift vs the datamodel. Failure = pushaj ne — produkcija tvega.
   neon-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABELS || 'ubuntu-latest' }}
     timeout-minutes: 15
     env:
       NEON_API_KEY_B64: ${{ secrets.NEON_API_KEY_B64 }}
@@ -156,7 +161,7 @@ jobs:
   # Deployment poteka neodvisno prek Vercel Git integration — disciplina je,
   # da pushamo LE po lokalno zelenih testih; ta job je objektivni varovalka.
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABELS || 'ubuntu-latest' }}
     timeout-minutes: 15
     env:
       # file: URL → postinstall + db push uporabita SQLite shemo (schema.sqlite.prisma)
