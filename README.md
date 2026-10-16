@@ -14,6 +14,12 @@
 | CI | GitHub Actions quality gate: Neon Postgres drift-smoke + tsc/lint/cel testni suite |
 | Koda | 100 % zaprta (proprietary) — vse točke zunanjih revizij zaprte, P1–P4 (gl. `docs/RESTAURANTOS-AUDIT.md` + dodatek v1.82.x) |
 
+## Prijava in obnova administratorskega dostopa
+
+- Privzeti računi iz `prisma/seed.ts` veljajo samo za podatkovno bazo, na kateri je bil seed dejansko izveden; niso zagotovljeni na Vercel/Neon okolju.
+- Za lokalni razvoj najprej izvedi `bun run db:seed` po `bun run db:push`.
+- Za izgubljen dostop na Vercelu uporabi začasna `BOOTSTRAP_ADMIN_EMAIL` in `BOOTSTRAP_ADMIN_PIN` iz `.env.example` samo v ustreznem okolju, prijavi se, nato v zavihku **Zaposleni** ustvari ali obnovi trajni račun. Takoj zatem odstrani obe bootstrap spremenljivki in ponovno sproži deployment. Ne uporabljaj demo PIN-a kot produkcijskega gesla.
+
 ## Funkcije
 
 - **POS** — odprti računi, tečaji, KDS kuhinja z 86 ploščo (razprodano + nadomestki), waiter klici, stornacija z revizijo, /handheld enoročni PWA tok (mize → naroči → fire → plačaj pri mizi, offline vrsta), plačilna povezava /pay/<token> (QR položnica: gost plača na svojem telefonu — Stripe Checkout ali simulator, FURS zaključek); javne strani v SL/HR/EN (P1-5: QR meni, kiosk, display, plačilo — angleški turist samodejno vidi EN, API napake prevedene)
@@ -39,6 +45,7 @@
 bun install
 cp .env.example .env        # DATABASE_URL=file:./db/dev.db + APP_SECRET (glej .env.example)
 bun run db:push             # SQLite shema
+bun run db:seed             # začetni lokalni demo podatki in testni računi
 bun run dev                 # http://localhost:3000
 ```
 
