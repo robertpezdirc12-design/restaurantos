@@ -69,6 +69,21 @@ interface NabavaNewLine { inventoryItemId: string; description: string; quantity
 interface NabavaRecvLine { accept: string; reject: string; reason: string; expiry: string }
 interface NabavaSuggestion { itemId: string; itemName: string; unit: string; qty: number; par: number; incoming: number; suggested: number; supplierId: string | null; supplierName: string; costEstimate: number }
 interface NabavaSuggGroup { supplierId: string | null; supplierName: string; items: NabavaSuggestion[]; total: number }
+/** issue #12 — consumption-based recommendation (server shape, src/lib/reorder-recommend.ts). */
+interface NabavaRec {
+  itemId: string; itemName: string; unit: string; verdict: 'RECOMMEND' | 'WATCH'
+  onHand: number; incoming: number; avgDailyUse: number
+  leadTimeDays: number; safetyStock: number; reorderPoint: number; reviewDays: number
+  targetQty: number; needQty: number; suggestedPacks: number; suggestedQty: number; estCost: number
+  supplierId: string | null; supplierName: string
+  coverageDays: number | null; stockoutDate: string | null
+  flags: { noHistory: boolean; noLeadTime: boolean; noSupplier: boolean; belowPar: boolean }
+}
+interface NabavaRecGroup { supplierId: string | null; supplierName: string; items: NabavaRec[]; total: number }
+interface NabavaRecsPayload {
+  recommendations: NabavaRec[]; groupedBySupplier: NabavaRecGroup[]; watch: NabavaRec[]
+  summary: { windowDays: number; reviewDays: number; computedAt: string; itemsConsidered: number; recommend: number; watch: number; estTotal: number; skipped?: number }
+}
 /** OPS-9 val 2 — recurring PO rule (server shape, src/lib/recurring-po.ts). */
 interface RecRuleT {
   id: string; supplierId: string
@@ -147,6 +162,12 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   const [suggLoading, setSuggLoading] = useState(true)
   const [suggErr, setSuggErr] = useState('')
 
+  // — Consumption-based recommendations (issue #12) —
+  const [recs, setRecs] = useState<NabavaRecsPayload | null>(null)
+  const [recsLoading, setRecsLoading] = useState(true)
+  const [recsErr, setRecsErr] = useState('')
+  const [recsApplyBusy, setRecsApplyBusy] = useState(false)
+
   // — eSLOG e-invoice import (OPS-9 val 2) —
   const [eslogFile, setEslogFile] = useState<File | null>(null)
   const [eslogBusy, setEslogBusy] = useState(false)
@@ -172,21 +193,23 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
     let alive = true
     ;(async () => {
       try {
-        const [s, inv, o, sg] = await Promise.all([
+        const [s, inv, o, sg, rc] = await Promise.all([
           api<{ suppliers: NabavaSupplier[] }>('/api/suppliers'),
           api<{ inventory: NabavaInvItem[] }>('/api/inventory'),
           api<{ orders: NabavaPo[] }>('/api/purchase-orders'),
           api<{ groupedBySupplier: NabavaSuggGroup[] }>('/api/purchase-orders/suggestions').catch(() => ({ groupedBySupplier: [] as NabavaSuggGroup[] })),
+          api<NabavaRecsPayload>('/api/purchase-orders/recommendations').catch((e) => { setRecsErr(String((e as Error).message || e)); return null }),
         ])
         if (!alive) return
         setSuppliers(s.suppliers || [])
         setInvItems(inv.inventory || [])
         setOrders(o.orders || [])
         setSuggGroups(sg.groupedBySupplier || [])
+        if (rc) setRecs(rc)
       } catch (e) {
         if (alive) setErr(String((e as Error).message || e))
       } finally {
-        if (alive) { setLoading(false); setSuggLoading(false) }
+        if (alive) { setLoading(false); setSuggLoading(false); setRecsLoading(false) }
       }
     })()
     return () => { alive = false }
@@ -319,6 +342,31 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
       }
     }))
     setPoDialog(true)
+  }
+  /* issue #12 — convert a recommendation group into a DRAFT PO: the server
+   * does the pack math + SupplierItem pricing; the human then reviews and
+   * submits the draft (a draft is NOT a confirmed incoming delivery). */
+  const applyRecommendationGroup = async (g: NabavaRecGroup) => {
+    if (!g.supplierId || g.items.length === 0) return
+    setRecsApplyBusy(true); setRecsErr('')
+    try {
+      const r = await api<{ order: { poNumber: string } }>('/api/purchase-orders/recommendations/apply', {
+        method: 'POST',
+        body: JSON.stringify({
+          supplierId: g.supplierId,
+          notes: t('recs.poNote'),
+          lines: g.items.filter((s) => s.suggestedPacks > 0).map((s) => ({ inventoryItemId: s.itemId, packs: s.suggestedPacks })),
+        }),
+      })
+      toast({ title: t('recs.created', { po: r.order.poNumber }) })
+      await loadOrders()
+      const rc = await api<NabavaRecsPayload>('/api/purchase-orders/recommendations').catch(() => null)
+      if (rc) setRecs(rc)
+    } catch (e) {
+      setRecsErr(String((e as Error).message || e))
+    } finally {
+      setRecsApplyBusy(false)
+    }
   }
   const addPoLineFromInventory = (invId: string) => {
     if (!invId) return
@@ -587,6 +635,108 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
           </div>
         )
       })()}
+
+      {/* 0a — consumption-based recommendations (issue #12): predicted use in
+          lead-time + review cycle + safety stock − on-hand − confirmed incoming,
+          rounded up to supplier packs; WATCH = below threshold but already covered */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+            <PackageSearch className="w-4 h-4" /> {t('recs.title')}
+            {recs && recs.summary.recommend > 0 && (
+              <Badge variant="outline" className="ml-1 border-emerald-300 bg-emerald-50 text-emerald-800">{recs.summary.recommend}</Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            {recs ? t('recs.window', { days: recs.summary.windowDays, review: recs.summary.reviewDays }) : t('recs.desc')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {recsLoading ? (
+            <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('recs.loading')}</p>
+          ) : !recs ? (
+            <p className="text-sm text-rose-700">{t('recs.error')}</p>
+          ) : recs.groupedBySupplier.length === 0 && recs.watch.length === 0 ? (
+            <p className="text-sm text-stone-500">{t('recs.empty')}</p>
+          ) : (
+            <div className="space-y-3">
+              {recs.groupedBySupplier.map((g) => (
+                <div key={g.supplierId || `none-${g.supplierName}`} className="rounded-xl border border-stone-200">
+                  <div className="flex items-center justify-between gap-2 flex-wrap border-b border-stone-100 bg-stone-50 px-3 py-2 rounded-t-xl">
+                    <span className="font-semibold text-sm">{g.supplierName || t('recs.supplierNone')}</span>
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-stone-500">{t('recs.estTotal')}: <strong>{fmtEUR(g.total)}</strong></span>
+                      {canManage && g.supplierId && (
+                        <Button size="sm" className="h-7 px-2 text-xs bg-emerald-700 hover:bg-emerald-800 text-white" disabled={recsApplyBusy} onClick={() => applyRecommendationGroup(g)}>
+                          {recsApplyBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackageSearch className="w-3 h-3" />} {t('recs.createPo')}
+                        </Button>
+                      )}
+                    </span>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white text-left text-xs text-stone-500 sticky top-0">
+                        <tr>
+                          <th className="p-2">{t('recs.colItem')}</th>
+                          <th className="p-2 text-right">{t('recs.colStock')}</th>
+                          <th className="p-2 text-right">{t('recs.colUse')}</th>
+                          <th className="p-2 text-right">{t('recs.colCover')}</th>
+                          <th className="p-2 text-right">{t('recs.colNeed')}</th>
+                          <th className="p-2 text-right">{t('recs.colPacks')}</th>
+                          <th className="p-2 text-right">{t('recs.colQty')}</th>
+                          <th className="p-2 text-right">{t('recs.colCost')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.items.map((s) => (
+                          <tr key={s.itemId} className="border-t border-stone-100">
+                            <td className="p-2 font-medium max-w-48 truncate" title={s.itemName}>
+                              {s.itemName}
+                              {s.flags.noHistory && <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1 py-0">{t('recs.noHistory')}</Badge>}
+                              {s.flags.noLeadTime && <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1 py-0">{t('recs.noLead')}</Badge>}
+                            </td>
+                            <td className="p-2 text-right">{s.onHand} {s.unit}</td>
+                            <td className="p-2 text-right">{s.avgDailyUse}</td>
+                            <td className="p-2 text-right">
+                              {s.coverageDays == null ? '—' : t('recs.days', { n: s.coverageDays })}
+                              {s.stockoutDate && <span className="block text-[10px] text-stone-400">{s.stockoutDate}</span>}
+                            </td>
+                            <td className="p-2 text-right">{s.needQty}</td>
+                            <td className="p-2 text-right">{s.suggestedPacks}</td>
+                            <td className="p-2 text-right font-bold text-emerald-700">{s.suggestedQty} {s.unit}</td>
+                            <td className="p-2 text-right">{fmtEUR(s.estCost)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+
+              {recs.watch.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-1.5 text-sm text-amber-800 font-medium py-1">
+                    <ChevronDown className="w-4 h-4" /> {t('recs.watch')} ({recs.watch.length})
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <p className="text-xs text-stone-500 mb-1.5">{t('recs.watchDesc')}</p>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 divide-y divide-amber-100 max-h-48 overflow-y-auto">
+                      {recs.watch.map((s) => (
+                        <div key={s.itemId} className="px-3 py-1.5 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="font-medium">{s.itemName}</span>
+                          <span className="text-xs text-stone-600">{t('recs.colStock')}: {s.onHand} {s.unit} · {t('recs.colPar')}: {s.reorderPoint}</span>
+                          {s.flags.noHistory && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1 py-0">{t('recs.noHistory')}</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+            </div>
+          )}
+          {recsErr && recs && <p className="text-sm text-rose-700">{t('recs.error')} {recsErr}</p>}
+        </CardContent>
+      </Card>
 
       {/* 0 — reorder suggestions (OPS-8 val 2): PAR - stock - incoming, per supplier */}
       <Card>

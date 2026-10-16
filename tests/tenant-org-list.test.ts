@@ -190,7 +190,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // Issue #21 (v1.111.0): manager-call GET (klici vodje v uporabnikovem obsegu) → 55
     // Issue #14 (v1.112.0): prep-stations GET (KDS poimenovane postaje — seznam
     // postaj v uporabnikovem obsegu, additive KDS polja) → 56
-    expect(wired.length).toBe(56)
+    // Issue #12 (v1.113.0): purchase-orders/recommendations GET (priporočeni
+    // nabavni nalogi — poraba/roki/pakiranja v uporabnikovem obsegu) → 57
+    expect(wired.length).toBe(57)
   })
 })
 
