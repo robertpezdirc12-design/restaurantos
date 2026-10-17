@@ -41,6 +41,13 @@ export async function GET(req: NextRequest) {
 
   // izbrana lokacija ALI org allow-lista (nikoli več globalno / findFirst fallback)
   const counterScope = selectedLocation ? { locationId: selectedLocation } : await locationScope(user)
+  const startOfYesterday = new Date(startOfDay)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  const yesterdayWhere = {
+    createdAt: { gte: startOfYesterday, lt: startOfDay },
+    status: { not: 'cancelled' as const },
+    ...counterScope,
+  }
   const todayWhere = {
     createdAt: { gte: startOfDay },
     status: { not: 'cancelled' as const },
@@ -49,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   // Issue #4 §1: globalni števci se zožijo na lokacijo uporabnika;
   // selectedLocation dodatno zoži tudi centralno vlogo (preklopnik)
-  const [activeOrders, openTables, menuCount, employees, todayOrders, paidToday, topItemsRaw] = await Promise.all([
+  const [activeOrders, openTables, menuCount, employees, todayOrders, paidToday, topItemsRaw, yesterdayAgg] = await Promise.all([
     db.order.count({ where: { status: { in: ORDER_ACTIVE_DB }, ...counterScope } }),
     db.table.count({ where: { status: 'occupied', ...counterScope } }),
     // MenuItem nima locationId (globalen meni prek Menu) — brez scopinga
@@ -73,9 +80,15 @@ export async function GET(req: NextRequest) {
       orderBy: { _sum: { quantity: 'desc' } },
       take: 5,
     }),
+    // v1.129.0 (Toast/Square benchmark): včerajšnji promet — Δ% na KPI kartici prometa
+    showFinancial
+      ? db.order.aggregate({ where: yesterdayWhere, _sum: { total: true } })
+      : Promise.resolve({ _sum: { total: null as number | null } }),
   ])
 
   const todayRevenue = showFinancial ? todayOrders.reduce((s, o) => s + num(o.total), 0) : 0
+  // v1.129.0: včerajšnji promet (cel dan, enak obseg) — null pomeni »ni podatka za Δ«
+  const yesterdayRevenue = showFinancial && yesterdayAgg._sum.total !== null ? num(yesterdayAgg._sum.total) : null
 
   return ok({
     stats: {
@@ -85,6 +98,7 @@ export async function GET(req: NextRequest) {
       employees,
       todayOrders: todayOrders.length,
       todayRevenue,
+      yesterdayRevenue,
       paidToday: { count: paidToday._count, total: showFinancial && paidToday._sum.total ? num(paidToday._sum.total) : 0 },
       financialPerm: showFinancial,
     },

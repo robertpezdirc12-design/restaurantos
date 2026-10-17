@@ -46,7 +46,7 @@ const STATE_CLASSES: Record<string, string> = {
   awaiting_verification: 'bg-sky-600 text-white', closed: 'bg-stone-500 text-white',
 }
 
-export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () => Promise<void> }) {
+export function HaccpTab({ checks, onReload, canManagePlans = true }: { checks: HaccpT[]; onReload: () => Promise<void>; canManagePlans?: boolean }) {
   const { t } = useI18n()
   const [type, setType] = useState('TEMPERATURE')
   const [target, setTarget] = useState('')
@@ -66,7 +66,7 @@ export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () 
   return (
     <div className="space-y-4">
       {/* Issue #20 — plošča terminov (zapadle/današnje/prihodnje kontrole) */}
-      <ScheduleBoard onChanged={onReload} />
+      <ScheduleBoard onChanged={onReload} canManage={canManagePlans} />
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Thermometer className="w-4 h-4" /> {t('haccp.newCheck')}</CardTitle></CardHeader>
@@ -112,7 +112,9 @@ export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () 
 
       <RecentChecks checks={checks} />
 
-      <HaccpPlansSection />
+      {/* v1.129.0: urejevalnik načrtov je upravljalno orodje (backend settings.manage) —
+          izvajalcem (haccp.execute) ostanejo termini, hiter vnos in zadnje kontrole. */}
+      {canManagePlans && <HaccpPlansSection />}
     </div>
   )
 }
@@ -183,7 +185,7 @@ interface OccurrenceT {
   entry?: { id: string; numericValue: number | null; unit: string; status: string; entryState: string }
 }
 
-function ScheduleBoard({ onChanged }: { onChanged: () => Promise<void> }) {
+function ScheduleBoard({ onChanged, canManage = true }: { onChanged: () => Promise<void>; canManage?: boolean }) {
   const { t } = useI18n()
   const [items, setItems] = useState<OccurrenceT[]>([])
   const [summary, setSummary] = useState<Record<string, number>>({})
@@ -247,9 +249,12 @@ function ScheduleBoard({ onChanged }: { onChanged: () => Promise<void> }) {
         <CardTitle className="text-base flex items-center gap-2">
           <CalendarClock className="w-4 h-4" /> {t('haccp.board.title')}
           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => void load()} aria-label={t('common.refresh')}><RefreshCw className="w-4 h-4" /></Button>
-          <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={exportCsv}>
-            <FileDown className="w-4 h-4 mr-1" /> {t('haccp.report.export')}
-          </Button>
+          {/* v1.129.0: CSV izvoz je upravljalno orodje (poročila) — izvajalcem skrit */}
+          {canManage && (
+            <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={exportCsv}>
+              <FileDown className="w-4 h-4 mr-1" /> {t('haccp.report.export')}
+            </Button>
+          )}
         </CardTitle>
         <CardDescription>{t('haccp.board.desc')}</CardDescription>
       </CardHeader>

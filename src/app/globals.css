@@ -211,15 +211,29 @@ body {
   outline: 3px solid oklch(0.68 0.13 160 / 78%);
   outline-offset: 2px;
 }
-/* Refined surfaces while preserving component structure and click targets. */
+/* Refined surfaces while preserving component structure and click targets.
+   v1.131.0 SISTEMSKI POPRAVEK: prvotno pravilo je bilo NEPLASTENO in je v kaskadi
+   premagalo VSE Tailwind utilitije — ukinilo je vsak hover:border-*, vsako
+   ekspresno border-{color} in stranske border-l-{color} (starostni rob KDS
+   listka, amber all-day vrstica, aktivni žetoni na plačilni strani gosta ...).
+   @layer components žal NI zanesljiv (Turbopack ga v dev zapisu odstrani),
+   zato rafinirano barvo obrobe vežemo na :not([class*="border-"]) — element,
+   ki izrecno zahteva svojo barvo obrobe (vključno z hover: obrobo), jo DOBI;
+   senca in prehod pa ostanejo za vse površine. Plast-agnostično po namenu. */
 [data-slot="card"], .rounded-xl.border, .rounded-lg.border {
-  border-color: oklch(0.90 0.012 155 / 88%);
   box-shadow: 0 1px 2px oklch(0.25 0.03 155 / 3%), 0 8px 24px oklch(0.25 0.03 155 / 3%);
   transition: box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
+[data-slot="card"]:not([class*="border-"]),
+.rounded-xl.border:not([class*="border-"]),
+.rounded-lg.border:not([class*="border-"]) {
+  border-color: oklch(0.90 0.012 155 / 88%);
+}
 [data-slot="card"]:hover {
-  border-color: oklch(0.82 0.035 155);
   box-shadow: 0 2px 4px oklch(0.25 0.03 155 / 4%), 0 12px 30px oklch(0.25 0.03 155 / 6%);
+}
+[data-slot="card"]:not([class*="border-"]):hover {
+  border-color: oklch(0.82 0.035 155);
 }
 button, [role="button"], a {
   -webkit-tap-highlight-color: transparent;

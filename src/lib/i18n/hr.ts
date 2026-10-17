@@ -201,10 +201,21 @@ export const hr: Record<string, string> = {
   'dash.openTables': 'Zauzeti stolovi',
   'dash.todayRevenue': 'Današnji promet',
   'dash.todayOrders': 'Današnje narudžbe',
+  // v1.129.0 (POS benchmark): pregled po uzorcima Toast/Square — promet prvi + Δ vs jučer + klik na izvještaje
+  'dash.avgTicket': 'Prosječni račun',
+  'dash.vsYesterday': 'vs jučer',
+  'dash.vsYesterdayNoData': 'jučer bez prometa',
+  'dash.paidToday': 'Plaćeno danas',
+  'dash.paidTodayInfo': '{n} računa · {sum}',
+  'dash.kpiAria': 'Otvori {label}',
+  'dash.noGuestData': '—',
   'dash.footer': 'RestaurantOS rekonstrukcija {v} · offline-first + FURS (simulacija/produkcija odvojena) · EUR',
 
   // ── Stolovi ──
   'tables.seats': '{n} mjesta',
+  // v1.129.0 (Toast uzorak): vrijeme zauzetosti + faza narudžbe na pločici stola
+  'tables.elapsedMin': '{m} min',
+  'tables.sinceOrder': 'Od narudžbe: {m} min',
   // OPS-4 v1.67.0 — tableta (PWA konobar)
   'tlb.title': 'Tableta',
   'tlb.sub': 'Brzo sučelje konobara',
@@ -484,6 +495,14 @@ export const hr: Record<string, string> = {
   'inv.itemCount': 'Artikala',
   'inv.belowMin': 'Ispod minimuma',
   'inv.stockValue': 'Vrijednost zaliha',
+  // v1.129.0 (MarketMan uzorak): prečice akcija skladištarke nad popisom zaliha
+  'inv.actTitle': 'Brze akcije',
+  'inv.actNabava': 'Nabava',
+  'inv.actNabavaDesc': 'Narudžbe i primke robe',
+  'inv.actPrenosi': 'Prenosi',
+  'inv.actPrenosiDesc': 'Među lokacijama',
+  'inv.actOdpad': 'Otpad',
+  'inv.actOdpadDesc': 'Zapis otpisanog',
   'inv.newItem': 'Novi artikl',
   'inv.stockList': 'Stanje zaliha',
   'inv.empty': 'Zaliha je prazna.',
@@ -1941,6 +1960,13 @@ export const hr: Record<string, string> = {
   // P0-3 (v1.83.0) — 86 ploča na KDS: proaktivni 86 + zamjene (TRZNA-VRZELI-2026 §4)
   'kds.boardTitle': '86 ploča — rasprodani artikli',
   'kds.boardEmpty': 'Svi artikli su dostupni.',
+  // v1.129.0 (Toast/Square benchmark): 86 ploča skupljena u redak (listovi DOBIVAJU prostor)
+  'kds.boardToggleAria': 'Proširi ili sakrij 86 ploču',
+  'kds.boardOpenHint': 'Nastavi',
+  'kds.allDayTitle': 'U pripremi — ukupno po artiklima',
+  'kds.allDayEmpty': 'Nema otvorenih stavki.',
+  'kds.bumpAll': 'Cijeli list pripremljen',
+  'kds.bumpAllAria': 'Označi sve stavke ovog lista kao pripremljene',
   'kds.boardSearch': 'Brzi 86 — pronađi artikal…',
   'kds.boardNoHit': 'Nema rezultata.',
   'kds.substitutes': 'Zamjene',

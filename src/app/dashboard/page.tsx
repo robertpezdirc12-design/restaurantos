@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { api, fmtEUR, getUser } from '@/lib/client'
+import { api, fmtEUR, fmtPctSigned, getUser } from '@/lib/client'
 import { vatFromGross } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
@@ -54,6 +54,8 @@ import {
   Bell,
   CalendarRange,
   ChartScatter,
+  ChevronDown,
+  SprayCan,
   Eye,
   CheckCircle2,
 } from 'lucide-react'
@@ -112,7 +114,7 @@ interface WebhookT { id: string; name: string; url: string; events: string[]; is
 interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
 interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
-interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; employees: number; menuItems: number }
+interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
@@ -754,6 +756,34 @@ function DashboardInner() {
       } else {
         toast({ title: (err as Error).message, variant: 'destructive' })
       }
+    }
+  }
+
+  /**
+   * v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — kuhar označi vse odprte
+   * postavke (PENDING/PREPARING → READY) v enem pritisku (Toast: dvoklik = fulfill,
+   * BOA: vsi odkljukani = samodejni bump). Delay-reason dialog se NE sproži — to je
+   * eksplicitno dejanje »vse je pripravljeno«; posamezne zamude se zapišejo prek
+   * obstoječe postavkne poti. En load() na koncu (ne po vsaki postavki).
+   */
+  async function bumpWholeTicket(o: OrderT) {
+    const targets = o.items.filter((it) => !it.voided && (it.status === 'PENDING' || it.status === 'PREPARING'))
+    if (targets.length === 0) return
+    setKdsBumpBusy(o.id)
+    try {
+      for (const it of targets) {
+        await api('/api/kitchen', { method: 'PATCH', body: JSON.stringify({ itemId: it.id, status: 'READY' }) })
+      }
+      await load()
+    } catch (err) {
+      if (isNetworkError(err)) {
+        for (const it of targets) enqueueOp('kitchen.status', { itemId: it.id, status: 'READY' })
+        toast({ title: t('net.offlineStatusQueued') })
+      } else {
+        toast({ title: (err as Error).message, variant: 'destructive' })
+      }
+    } finally {
+      setKdsBumpBusy('')
     }
   }
 
@@ -1621,6 +1651,10 @@ function DashboardInner() {
   const [kdsSound, setKdsSound] = useState(true)
   // P0-3 (v1.83.0): 86 plošča — iskanje za hiter proaktiven 86 (TRZNA-VRZELI-2026 §4 P0-3)
   const [kds86Search, setKds86Search] = useState('')
+  // v1.129.0 (Toast benchmark): 86 plošča skrčena — privzeto ZAPRTO (števec viden v vrstici)
+  const [kdsBoardOpen, setKdsBoardOpen] = useState(false)
+  // v1.129.0: bumpWholeTicket — zaklep proti dvojnemu pritisku (id listka med izvajanjem)
+  const [kdsBumpBusy, setKdsBumpBusy] = useState('')
   const kdsPrevPendingRef = useRef(0)
   // OPS-9 val 3 (v1.76.0): delay-reason dialog — opens when a LATE item (>10 min) is bumped
   const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
@@ -1918,7 +1952,10 @@ function DashboardInner() {
           <div data-region="dashboard-nav" className="flex min-w-0 items-center gap-2">
             <TabsList data-region="dashboard-tabs" className="min-w-0 flex-1 justify-start overflow-hidden h-auto flex-nowrap bg-white border border-stone-200 p-1">
               {DASHBOARD_TABS
-                .filter(([v]) => DASHBOARD_PRIMARY_TABS.has(v))
+                // v1.129.0 (POS benchmark, POPRAVEK): AKTIVEN zavihek je VEDNO viden v vrstici —
+                // čistilka (haccp) in skladiščnik (zaloge) prej niso videli svojega pristajalnega
+                // zavihka, ker ni v trdnem naboru DASHBOARD_PRIMARY_TABS (bil samo v meniju Več).
+                .filter(([v]) => DASHBOARD_PRIMARY_TABS.has(v) || v === activeTab)
                 // UI gating po dovoljenjih — backend uveljavlja neodvisno; neznan zavihek ostane skrit.
                 .filter(([v]) => tabHasPerm(v, { canManage, perms }))
                 .map(([v, Icon]) => (
@@ -1927,7 +1964,7 @@ function DashboardInner() {
                     value={v}
                     aria-label={t(`tabs.${v}`)}
                     title={t(`tabs.${v}`)}
-                    className={`min-w-0 gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap ${DASHBOARD_MOBILE_PRIMARY_TABS.has(v) ? 'inline-flex' : 'hidden lg:inline-flex'}`}
+                    className={`min-w-0 gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap ${DASHBOARD_MOBILE_PRIMARY_TABS.has(v) || v === activeTab ? 'inline-flex' : 'hidden lg:inline-flex'}`}
                   >
                     {Icon && <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />}
                     <span className="hidden sm:inline">{t(`tabs.${v}`)}</span>
@@ -1974,19 +2011,48 @@ function DashboardInner() {
                 <MapPin className="w-4 h-4 text-emerald-700" /> {t('dash.viewLabel', { name: locList.find((l) => l.id === viewLoc)?.name || t('dash.locationFallback') })}
               </p>
             )}
+            {/* v1.129.0 (Toast/Square benchmark): finančni kazalniki PRVI (promet + Δ% vs
+                včeraj + povprečni račun), operativni števci za njimi; vsaka kartica je
+                KLIKLJIVA in vodi v pripadajoči zavihek (Toast: »every number is clickable«).
+                financialPerm (reports.view) določa, ali se finančne kartice sploh pokažejo. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                [t('dash.activeOrders'), stats?.activeOrders, ClipboardList], [t('dash.openTables'), stats?.openTables, Utensils],
-                [t('dash.todayRevenue'), stats ? fmtEUR(stats.todayRevenue) : undefined, Banknote], [t('dash.todayOrders'), stats?.todayOrders, ReceiptText],
-              ].map(([label, value, Icon], i) => {
-                const Ic = Icon as React.ComponentType<{ className?: string }> | undefined
-                return (
-                <Card key={i}>
-                  <CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5">{Ic && <Ic className="w-4 h-4" />} {label as string}</CardTitle></CardHeader>
-                  <CardContent><p className="text-2xl font-bold">{(value as React.ReactNode) ?? '—'}</p></CardContent>
-                </Card>
-                )
-              })}
+              {([
+                {
+                  label: t('dash.todayRevenue'), value: stats && stats.financialPerm ? fmtEUR(stats.todayRevenue) : undefined, Icon: Banknote,
+                  sub: stats && stats.financialPerm
+                    ? `${stats.todayOrders}× · ${stats.yesterdayRevenue !== null && stats.yesterdayRevenue > 0
+                        ? `${t('dash.vsYesterday')} ${fmtPctSigned((stats.todayRevenue - stats.yesterdayRevenue) / stats.yesterdayRevenue)}`
+                        : t('dash.vsYesterdayNoData')}`
+                    : undefined,
+                  tab: 'racuni',
+                },
+                {
+                  label: t('dash.avgTicket'), value: stats && stats.financialPerm && stats.todayOrders > 0 ? fmtEUR(stats.todayRevenue / stats.todayOrders) : undefined, Icon: ReceiptText,
+                  tab: 'racuni',
+                },
+                { label: t('dash.activeOrders'), value: stats?.activeOrders, Icon: ClipboardList, tab: 'narocila' },
+                { label: t('dash.openTables'), value: stats?.openTables, Icon: Utensils, tab: 'mize' },
+              ] as { label: string; value: React.ReactNode; Icon: typeof Banknote; sub?: string; tab: string }[])
+                .filter((k) => k.value !== undefined)
+                .map((k) => {
+                  const Ic = k.Icon
+                  return (
+                    <button
+                      key={k.label}
+                      type="button"
+                      onClick={() => { setActiveTab(k.tab); history.replaceState(null, '', `/dashboard?tab=${k.tab}`) }}
+                      aria-label={t('dash.kpiAria', { label: k.label })}
+                      title={t('dash.kpiAria', { label: k.label })}
+                      className="text-left rounded-xl border border-stone-200 bg-white shadow-sm hover:border-emerald-400 hover:shadow transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    >
+                      <div className="p-4 sm:p-6">
+                        <p className="text-sm font-medium text-stone-500 flex items-center gap-1.5">{Ic && <Ic className="w-4 h-4" />} {k.label}</p>
+                        <p className="text-2xl font-bold tabular-nums">{k.value ?? '—'}</p>
+                        {k.sub && <p className="text-xs text-stone-500 mt-1">{k.sub}</p>}
+                      </div>
+                    </button>
+                  )
+                })}
             </div>
             {/* Issue #21 (v1.111.0) — plošča klicev vodje (15 s polling = pogon lenih eskalacij) */}
             {canManage && <ManagerCallsCard />}
@@ -2081,15 +2147,37 @@ function DashboardInner() {
                             if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
                             if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
-                          className={`w-full rounded-xl p-4 text-left shadow transition ${statusColors[tb.status]} min-h-20`}
+                          className={`w-full rounded-xl p-3 sm:p-4 text-left shadow transition ${statusColors[tb.status]} min-h-20`}
                         >
-                          <p className="font-bold text-lg">{tb.name}</p>
+                          <p className="font-bold text-lg flex items-center gap-2">
+                            {tb.name}
+                            {tb.status === 'DIRTY' && <SprayCan className="w-5 h-5 shrink-0 opacity-90" aria-hidden />}
+                          </p>
                           <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
-                          {tb.activeOrder && <p className="text-xs mt-1 font-semibold">{fmtEUR(tb.activeOrder.total)}</p>}
+                          {/* v1.129.0 (Toast/Square benchmark): zasedena ploščica nosi ČAS (min
+                              od naročila) in FAZO naročila (poslano/v pripravi/pripravljeno),
+                              ne samo znesek — natakar naletu vidi, katera miza čaka hrano.
+                              Toast: elapsed time; Square: turn-yellow-after-X-min prag. */}
+                          {tb.activeOrder && (() => {
+                            const ao = orders.find((x) => x.id === tb.activeOrder!.id)
+                            const elapsed = ao ? kdsMinutes(ao.createdAt) : null
+                            return (
+                              <div className="flex items-baseline justify-between gap-2 mt-1.5 min-w-0">
+                                {elapsed !== null && (
+                                  <span className="text-sm font-extrabold tabular-nums shrink-0" title={t('tables.sinceOrder', { m: elapsed })}>
+                                    ⏱ {t('tables.elapsedMin', { m: elapsed })}
+                                  </span>
+                                )}
+                                <span className="text-sm font-bold tabular-nums ml-auto">{fmtEUR(tb.activeOrder.total)}</span>
+                              </div>
+                            )
+                          })()}
                           <p className="text-[11px] mt-1 opacity-80">
                             {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
                                 OCCUPIED iz statusa pomeni isto kot activeOrder (mapTable), zato sta
-                                plosci (grid) in handheld/tablica vedno usklajena */}
+                                plosci (grid) in handheld/tablica vedno usklajena.
+                                v1.129.0: oznaka ostaja na kanoničnem statusu (faza naročila
+                                je že vidna v vrstici zneska/časa zgoraj) — Toast order-stage vzorec. */}
                             {tb.status === 'DIRTY' ? t('tables.clickClean') : stL(tb.status)}
                           </p>
                         </button>
@@ -2547,59 +2635,9 @@ function DashboardInner() {
                 <Maximize2 className="w-3.5 h-3.5" /> {t('kds.fullscreen')}
               </Button>
             </div>
-            {/* P0-3 (v1.83.0) — 86 PLOŠČA: proaktivni 86 + obnova + nadomestki (TRZNA-VRZELI-2026 §4 P0-3) */}
-            <Card className="border-stone-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
-                  <EyeOff className="w-4 h-4 text-stone-500" /> {t('kds.boardTitle')}
-                  {kdsSoldOut.length > 0 && <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-bold">{kdsSoldOut.length}</Badge>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {kdsSoldOut.length === 0 ? (
-                  <p className="text-xs text-stone-500">{t('kds.boardEmpty')}</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {kdsSoldOut.map((mi) => (
-                      <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {mi.name}
-                            <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">{mi.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
-                          </p>
-                          <p className="text-[11px] text-stone-500 truncate">
-                            {t('kds.substitutes')}: {kdsSubstitutesFor(mi).map((s) => s.name).join(' · ') || t('kds.noSubstitutes')}
-                          </p>
-                        </div>
-                        {perms.includes('menu.availability') && (
-                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs shrink-0" title={t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {perms.includes('menu.availability') && (
-                  <div>
-                    <Input value={kds86Search} onChange={(e) => setKds86Search(e.target.value)} placeholder={t('kds.boardSearch')} className="h-8 text-xs" aria-label={t('kds.boardSearch')} />
-                    {kds86Search.trim() && (
-                      <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
-                        {kds86Candidates.map((mi) => (
-                          <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2.5 py-1.5">
-                            <span className="text-xs truncate min-w-0">{mi.name} · <b>{fmtEUR(mi.price)}</b></span>
-                            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px] gap-1 text-stone-500 hover:text-red-700 shrink-0" title={t('kds.markUnavailable')} onClick={() => void kdsToggleAvailable(mi)}>
-                              <EyeOff className="w-3 h-3" /> 86
-                            </Button>
-                          </div>
-                        ))}
-                        {kds86Candidates.length === 0 && <p className="text-[11px] text-stone-400 px-1">{t('kds.boardNoHit')}</p>}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* v1.129.0 (Toast benchmark): 86 PLOŠČA je premaknjena POD vrsto listkov in
+                SKRČENA v eno vrstico — listki dobijo celoten zaslon na vrhu (prej je plošča
+                porabila ~200px najboljšega prostora nad aktivnimi naročili). Odpri/skrij na klik. */}
             {/* Issue #14 (issue §4): per-station queue load chips on the ALL view —
                 compact badges above the queue; tap switches to that station view
                 (legacy types resolve to their bucket via stationViewKey). */}
@@ -2662,14 +2700,20 @@ function DashboardInner() {
                   <Card
                     key={o.id}
                     data-region="kds-ticket"
-                    className={`min-w-0 gap-2 py-3 sm:py-4 ${stale ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'}`}
+                    /* v1.129.0 (Toast/Square): starost → BARVNI LEVI ROB listka (5′ jantorn /
+                       10′ rdeč). VRSTNI RED razredov je KLJUČEN: cn() (tailwind-merge)
+                       odstrani stransko-specifičen border-l-{color}, če celovit
+                       border-{color} pride ZA njim — najprej nevtralen border, nato leva. */
+                    className={`min-w-0 gap-2 py-3 sm:py-4 border-l-4 ${stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : ageMin >= 10 ? 'border-stone-200 border-l-red-500' : ageMin >= 5 ? 'border-stone-200 border-l-amber-500' : 'border-l-stone-200'}`}
                   >
                     <CardHeader data-region="kds-ticket-header" className="gap-2 px-4 pt-0 pb-0 sm:px-6">
                       <CardTitle className="text-base flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                         <span className="font-bold truncate max-w-full min-w-0">{o.table?.name || o.type}</span>
                         <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
-                        {/* PRIMARNI STATUS — dominantna oznaka stanja naročila (obstoječi statusni slovar/ključi — samo izris) */}
-                        <span className={`ml-auto inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${statusColors[o.status] || 'bg-stone-500 text-white'}`} title={stL(o.status)}>
+                        {/* PRIMARNI STATUS — v1.129.0 (Toast/Square): NEVTRALEN obrobec (stone)
+                            — RDEČA je rezervirana IZKLJUČNO za zamudo (starost listka),
+                            polnjena barva statusa se je kuharjem zlivala z alarmno barvo. */}
+                        <span className={`ml-auto inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide border ${o.status === 'SENT' ? 'border-stone-300 bg-stone-50 text-stone-700' : o.status === 'PREPARED' || o.status === 'READY' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-stone-300 bg-stone-50 text-stone-700'}`} title={stL(o.status)}>
                           {stL(o.status)}
                         </span>
                       </CardTitle>
@@ -2687,11 +2731,11 @@ function DashboardInner() {
                           <span data-region="kds-ticket-timer" className={`text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
                         )}
                         <span className="ml-auto flex gap-1.5 shrink-0">
-                          <Button size="sm" variant="outline" className="gap-1 h-11 sm:h-9 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
-                            <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
+                          <Button size="sm" variant="outline" className="gap-1 h-11 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
+                            <Printer className="w-3.5 h-3.5" /> {t('kitchen.kitchenTicket')}
                           </Button>
-                          <Button size="sm" variant="outline" className="gap-1 h-11 sm:h-9 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
-                            <Printer className="w-3 h-3" /> {t('kitchen.barTicket')}
+                          <Button size="sm" variant="outline" className="gap-1 h-11 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
+                            <Printer className="w-3.5 h-3.5" /> {t('kitchen.barTicket')}
                           </Button>
                         </span>
                       </div>
@@ -2739,10 +2783,12 @@ function DashboardInner() {
                               )}
                               {it.note && <span className="text-xs text-stone-500 min-w-0 truncate" title={it.note}>ℹ {it.note}</span>}
                             </div>
-                            {/* C: dejanja — lastna vrstica, cilji na dotik ≥ 44 px na mobilnem */}
+                            {/* C: dejanja — lastna vrstica; v1.129.0: cilji ≥ 44 px VEDNO
+                                (tudi na velikem zaslonu — KDS JE dotik, tudi na namizju;
+                                prej je sm:h-8 gumb krčil na 32 px ravno tam, kjer je kuhinja) */}
                             <div className="flex items-center gap-1.5 flex-wrap justify-end min-w-0">
                               {perms.includes('menu.availability') && mi && (
-                                <Button size="sm" variant="ghost" className="h-11 sm:h-8 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                                <Button size="sm" variant="ghost" className="h-11 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
                                   <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
                                 </Button>
                               )}
@@ -2752,13 +2798,13 @@ function DashboardInner() {
                                 </span>
                               ) : (
                                 <>
-                              {it.status === 'PENDING' && <Button size="sm" variant="outline" className="h-11 sm:h-8" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
-                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="h-11 sm:h-8 bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
+                              {it.status === 'PENDING' && <Button size="sm" variant="outline" className="h-11 text-sm font-semibold" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
+                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="h-11 text-sm font-semibold bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
                               {it.status === 'READY' && (
                                 <div className="flex items-center gap-1.5">
                                   <Badge className={statusColors.READY}>{t('status.READY')}</Badge>
                                   {/* OPS-7 (v1.70.0): SERVED bump (Lightspeed vzorec — izloči iz vrste) */}
-                                  <Button size="sm" variant="outline" className="h-11 sm:h-8" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
+                                  <Button size="sm" variant="outline" className="h-11" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
                                 </div>
                               )}
                                 </>
@@ -2767,6 +2813,27 @@ function DashboardInner() {
                           </div>
                         )
                       })}
+                      {/* v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — en velik
+                          celoširinski gumb (kitchenski dotik, Toast: dvoklik/fulfill listka).
+                          Prikazan samo, če so vse odprte postavke LEGACY (brez postajnih
+                          nalogov — te upravlja postajni tok) in vsaj ena ni pripravljena. */}
+                      {(() => {
+                        const anyTasked = items.some((it) => kdsTasks.some((task) => task.itemId === it.id))
+                        const openItems = items.filter((it) => !it.voided && (it.status === 'PENDING' || it.status === 'PREPARING'))
+                        if (anyTasked || openItems.length === 0) return null
+                        return (
+                          <Button
+                            data-region="kds-bump-all"
+                            className="w-full h-12 mt-1 text-base font-bold gap-2 bg-emerald-700 hover:bg-emerald-800"
+                            disabled={!!kdsBumpBusy}
+                            onClick={() => void bumpWholeTicket(o)}
+                            aria-label={t('kds.bumpAllAria')}
+                          >
+                            {kdsBumpBusy === o.id ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden /> : <Check className="w-5 h-5" aria-hidden />}
+                            {t('kds.bumpAll')} · {openItems.length}
+                          </Button>
+                        )
+                      })()}
                     </CardContent>
                   </Card>
                 )
@@ -2780,6 +2847,106 @@ function DashboardInner() {
                 <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>
               </div>
             )}
+            {/* v1.129.0 (Toast/Square benchmark): VRSTICA »V PRIPRAVI — SKUPAJ PO ARTIKLIH«
+                (all-day/production view) — skupne količine ODprtih postavk (PENDING/PREPARING,
+                ne pripravljenih) vseh listkov trenutnega pogleda. Toast jo ima v dnu ekrana,
+                Square v stranski vrstici; kuhar vidi brez lista, kaj je v delu. */}
+            {!kdsCustomView && (() => {
+              const openItems = viewKitchen
+                .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+                .flatMap((o) => o.items.filter((it) => !it.voided && (it.status === 'PENDING' || it.status === 'PREPARING') && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+              const byName = new Map<string, number>()
+              for (const it of openItems) byName.set(it.name, (byName.get(it.name) ?? 0) + it.qty)
+              const rows = [...byName.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+              if (rows.length === 0) return null
+              return (
+                <div data-region="kds-allday" className="sticky bottom-0 z-10 rounded-xl border border-amber-300 bg-amber-50/95 backdrop-blur px-3 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]" role="status" aria-label={t('kds.allDayTitle')}>
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-900 mb-1.5">{t('kds.allDayTitle')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rows.map(([name, qty]) => (
+                      <span key={name} className="inline-flex items-baseline gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1 min-w-0">
+                        <span className="text-base font-extrabold tabular-nums text-amber-900">{qty}×</span>
+                        <span className="text-sm font-semibold text-stone-800 truncate">{name}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+            {/* v1.129.0 (Toast benchmark): 86 PLOŠČA — SKRČENA vrstica pod listki (odpri na
+                klik); števec razprodanih je viden TUDI zaprto, vsebina (iskanje + obnova)
+                se razpre šele na zahtevo. Listki zgoraj tako vedno dobijo prvi zaslon. */}
+            {!kdsCustomView && (() => {
+              const open = kdsBoardOpen
+              return (
+                <Card data-region="kds-86board" className={`border-stone-200 ${open ? '' : 'py-0'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setKdsBoardOpen(!open)}
+                    aria-expanded={open}
+                    aria-controls="kds-86board-content"
+                    aria-label={t('kds.boardToggleAria')}
+                    className="w-full flex items-center gap-2 px-4 sm:px-6 text-left min-h-11"
+                  >
+                    <EyeOff className="w-4 h-4 text-stone-500 shrink-0" aria-hidden />
+                    <span className="text-sm font-semibold truncate">{t('kds.boardTitle')}</span>
+                    {kdsSoldOut.length > 0 && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-bold border-amber-400 bg-amber-50 text-amber-900 shrink-0">{kdsSoldOut.length}</Badge>
+                    )}
+                    <span className="ml-auto flex items-center gap-1 text-xs text-stone-500 shrink-0">
+                      {open ? t('kds.boardOpenHint') : kdsSoldOut.length > 0 ? `${kdsSoldOut.length}` : t('kds.boardEmpty')}
+                      <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+                    </span>
+                  </button>
+                  {open && (
+                    <div id="kds-86board-content" className="space-y-3 px-4 pb-4 sm:px-6">
+                      {kdsSoldOut.length === 0 ? (
+                        <p className="text-xs text-stone-500">{t('kds.boardEmpty')}</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {kdsSoldOut.map((mi) => (
+                            <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {mi.name}
+                                  <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">{mi.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
+                                </p>
+                                <p className="text-[11px] text-stone-500 truncate">
+                                  {t('kds.substitutes')}: {kdsSubstitutesFor(mi).map((s) => s.name).join(' · ') || t('kds.noSubstitutes')}
+                                </p>
+                              </div>
+                              {perms.includes('menu.availability') && (
+                                <Button size="sm" variant="outline" className="h-9 gap-1 text-xs shrink-0" title={t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {perms.includes('menu.availability') && (
+                        <div>
+                          <Input value={kds86Search} onChange={(e) => setKds86Search(e.target.value)} placeholder={t('kds.boardSearch')} className="h-9 text-xs" aria-label={t('kds.boardSearch')} />
+                          {kds86Search.trim() && (
+                            <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
+                              {kds86Candidates.map((mi) => (
+                                <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2.5 py-1.5">
+                                  <span className="text-xs truncate min-w-0">{mi.name} · <b>{fmtEUR(mi.price)}</b></span>
+                                  <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] gap-1 text-stone-500 hover:text-red-700 shrink-0" title={t('kds.markUnavailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                                    <EyeOff className="w-3 h-3" /> 86
+                                  </Button>
+                                </div>
+                              ))}
+                              {kds86Candidates.length === 0 && <p className="text-[11px] text-stone-400 px-1">{t('kds.boardNoHit')}</p>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              )
+            })()}
             {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
             {/* OPS-10 v1.77.0 — per-station targets: urejanje samo s settings.manage */}
             <KdsStatsSection canEditTargets={canManage || perms.includes('settings.manage')} />
@@ -3044,7 +3211,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="zaloge">
-            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} menuItems={menu.map((m) => ({ id: m.id, name: m.name }))} canManage={canManage} onReload={load} />
+            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} menuItems={menu.map((m) => ({ id: m.id, name: m.name }))} canManage={canManage} onReload={load} onNavigate={(tab) => setActiveTab(tab)} />
           </TabsContent>
 
           {/* Issue #8 (v1.116.0) — medlokacijski prenosi zalog (backend: requirePermission
@@ -3068,7 +3235,11 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="haccp">
-            <HaccpTab checks={haccp} onReload={load} />
+            {/* v1.129.0 (FoodDocs/SafetyCulture benchmark): čistilka (haccp.execute BREZ
+                settings.manage) dobi IZVEDBENI vmesnik — termini + hiter vnos + zadnje kontrole.
+                Upravljanje načrtov (nov načrt, DDL, CSV izvoz) ostaja vodstvu; prej je
+                urejevalnik načrtov vizualno dostopen tudi izključno izvajalki. */}
+            <HaccpTab checks={haccp} onReload={load} canManagePlans={canManage || hasPerm('settings.manage')} />
           </TabsContent>
 
           <TabsContent value="stroski">

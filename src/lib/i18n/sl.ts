@@ -201,10 +201,21 @@ export const sl: Record<string, string> = {
   'dash.openTables': 'Zasedene mize',
   'dash.todayRevenue': 'Današnji promet',
   'dash.todayOrders': 'Današnja naročila',
+  // v1.129.0 (POS benchmark): pregled po vzorcih Toast/Square — promet prvi + Δ vs včeraj + klik na poročila
+  'dash.avgTicket': 'Povprečni račun',
+  'dash.vsYesterday': 'vs včeraj',
+  'dash.vsYesterdayNoData': 'včeraj brez prometa',
+  'dash.paidToday': 'Plačano danes',
+  'dash.paidTodayInfo': '{n} računov · {sum}',
+  'dash.kpiAria': 'Odpri {label}',
+  'dash.noGuestData': '—',
   'dash.footer': 'RestaurantOS rekonstrukcija {v} · offline-first + FURS (sim/produkcija ločena) · EUR',
 
   // ── Mize ──
   'tables.seats': '{n} mest',
+  // v1.129.0 (Toast vzorec): čas zasedenosti + faza naročila na ploščici mize
+  'tables.elapsedMin': '{m} min',
+  'tables.sinceOrder': 'Od naročila: {m} min',
   // OPS-4 v1.67.0 — tablica (PWA natakar)
   'tlb.title': 'Tablica',
   'tlb.sub': 'Natakarjev hitri vmesnik',
@@ -484,6 +495,14 @@ export const sl: Record<string, string> = {
   'inv.itemCount': 'Artiklov',
   'inv.belowMin': 'Pod minimumom',
   'inv.stockValue': 'Vrednost zaloge',
+  // v1.129.0 (MarketMan vzorec): bližnjice dejanj skladiščnika nad seznamom zalog
+  'inv.actTitle': 'Hitra dejanja',
+  'inv.actNabava': 'Nabava',
+  'inv.actNabavaDesc': 'Naročila in prejemi blaga',
+  'inv.actPrenosi': 'Prenosi',
+  'inv.actPrenosiDesc': 'Med lokacijami',
+  'inv.actOdpad': 'Odpad',
+  'inv.actOdpadDesc': 'Zapis zavrženega',
   'inv.newItem': 'Nov artikel',
   'inv.stockList': 'Sklad zalog',
   'inv.empty': 'Zaloga je prazna.',
@@ -1941,6 +1960,13 @@ export const sl: Record<string, string> = {
   // P0-3 (v1.83.0) — 86 plošča na KDS: proaktivni 86 + nadomestki (TRZNA-VRZELI-2026 §4)
   'kds.boardTitle': '86 plošča — razprodani artikli',
   'kds.boardEmpty': 'Vsi artikli so na voljo.',
+  // v1.129.0 (Toast/Square benchmark): 86 plošča skrčena na vrstico (listki DOBIVIJO prostor)
+  'kds.boardToggleAria': 'Razširi ali skrij 86 ploščo',
+  'kds.boardOpenHint': 'Nadaljuj',
+  'kds.allDayTitle': 'V pripravi — skupaj po artiklih',
+  'kds.allDayEmpty': 'Ni odprtih postavk.',
+  'kds.bumpAll': 'Cel listek pripravljen',
+  'kds.bumpAllAria': 'Označi vse postavke tega listka kot pripravljene',
   'kds.boardSearch': 'Hiter 86 — poišči artikel…',
   'kds.boardNoHit': 'Ni zadetkov.',
   'kds.substitutes': 'Nadomestki',

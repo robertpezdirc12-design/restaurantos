@@ -60,7 +60,7 @@
  *      pogodba kot UI ruta — isti motor/loader → GLOBA identična poročila,
  *      razlikujeta se samo generatedAt/exportMeta — "isti obračun kot UI");
  *      dovoljenja: 401, waiter 403, staff lasten obseg 200, tuja lokacija 403;
- *  G. REGISTRI: 'i10-' v TEST_PREFIXES; APP_VERSION 1.130.0; reasons = enum
+ *  G. REGISTRI: 'i10-' v TEST_PREFIXES; APP_VERSION 1.131.0; reasons = enum
  *      kod; 0 DDL — schema.sqlite.prisma/SCHEMA_MIGRATIONS/konzola HANDLERS/
  *      drift-check BREZ 'labor-coverage' (izraz read-only izračun, 0 tabel).
  *
@@ -1320,9 +1320,9 @@ describe('G. registri: TEST_PREFIXES, verzija, reasons enum, 0 DDL', () => {
     expect(TEST_PREFIXES).toContain('i10-')
   })
 
-  it('G2. APP_VERSION === 1.130.0', () => {
-    // verzijski register posodablja vsak val — zadnji: v1.130.0 (produkcijski tsc gate + filtrirane push vloge)
-    expect(APP_VERSION).toBe('1.130.0')
+  it('G2. APP_VERSION === 1.131.0', () => {
+    // verzijski register posodablja vsak val — zadnji: v1.131.0 (produkcijski tsc gate + filtrirane push vloge)
+    expect(APP_VERSION).toBe('1.131.0')
   })
 
   it('G3. dataQuality.reasons so stabilen nabor kod (UI preslika lcov.dq.*)', () => {

@@ -3956,3 +3956,73 @@ Stage Summary:
 - Push matrika je zdaj odporna na napačno vlogo: neveljavne vloge se zavržejo, izjema pa je obrnjena v pošten `null` namesto tiho izgubljenega obvestila.
 - Delovno drevo: 2410/2410 zelenih, vsi gati zeleni, APP_VERSION 1.130.0. `main` = `wave-1130`; izmerjen in pushan vrh je `b769d1f`, produkcija živi na `1.130.0 @ b769d1f, database connected`. Ta odstavek doda še EN documentacijni commit čez njega — kode ne spreminja, zato zdravje produkcije ostane enako in ga ni treba znova meriti.
 - NASLEDNJI KORAKI: (1) ZAPRTO 17. 10. 2026 — GitHub `main` pushan in gradi produkcijo; GitLab zrcalo USKLAJENO (oba `132773c`, glej GITLAB ZGORAJ). (2) `finite()` nevtralizacija tudi na `Discount.amount` in `MenuItem.price` (ločen poseg). (3) Živi klik-test: push obvestilo in rezervacijski opomnik v brskalniku na produkciji, takoj po deployu. (4) Dvig 5 s stropa pri client-bundle-hygiene/fixture-sweep. (5) Lastnik: rotirati oba žetona na ožji obseg (GitLab žeton ima 14 obsegov, za zrcalo zadosti `write_repository`) in po želji nastaviti GitLab Mirroring; pipeline vprašanje je BREZ PREDMETA, ker je CI/CD na GitLabu izklopljen (`jobs_enabled: false`). (6) Prebrati prvi zagon `typecheck-prod` v Actions zavihku — zame ni dosegljiv (glej CI DOKAZ ZGORAJ). (7) Pojasniti domeno `restaurantos.app` (glej DOMENA ZGORAJ): ali je javni domain strank ali stari pregledni sistem.
+
+Task ID: 2-b
+Agent: waiter-perm-research (research-only, 0 kode)
+
+Work Log:
+- Prebrani: Toast (Ordering Screens, Service Areas/Table Status Colors, Required/Optional Modifiers, Course Firing, Permissions Reference, Assigning User Access, Jobs), Square (Table Mgmt 8146, Coursing 7748, Split 8165, Permission Sets 5822, Open Tickets), Lightspeed L-Series (floors/tables, user groups), TouchBistro (tableside/split)
+- 13 spletnih iskanj + 9 page_reader prebiranj (JSON v .zscripts/research-waiter/)
+- 6 referenčnih screenshotov shranjenih + VLM analiza (layout, barve, pozicije gumbov): ref-toast-{tables,handheld,order}.png, ref-sq-{order,perms}.png, ref-floor-generic.png
+- Toast Go: meni čez cel zaslon → check se zgradi NAD menijem; Hold/Stay/Send ZAKLENJENI spodaj; Split/Popust/Strežnina v overflow (prihranek prostora)
+- Toast barve tabel: Zelena=vsak izdelek izdan (KDS), Rdeča=held/neposlano, Rumena=poslano, Modra=izbrana, Siva=drug natakar, pikčasta=prazna; lastne tabele obarvane, tuje sive (perm 1.8)
+- Square floor plan: časovni pragovi barv (Rumeno po X min, Rdeče po Y), Track seating (samo covers / + sedeži opcijsko/obvezno), Merge = povezane+zasedene, sedeži+računi ostanejo
+- Square split: Actions → Split check → po sedežu (avto-računi) / po postavki / frakcije postavk (⅓ vina, recomb.), popusti sledijo postavkam
+- Toast permisije: številčni katalog (1.x POS modi, 3.x Manager, 8.2 user perms); job-based priporočeno + per-employee override (Default-to-job / Always on/off); »ne moreš podeliti, česar sam nimaš« (blokira tudi ownerja)
+- Square permisije: nivoji Standard/Enhanced/Full + Customize; access points kot CHECKBOX kartice (ikona+naslov+opis+"What is this?"); team passcode (deljen PIN)
+- Povzetek v .zscripts/research-waiter/FINDINGS.md (top-10 priporočil za naš waiter + permission UI)
+
+Stage Summary:
+- Konkurenčna analiza 2-b zaključena: konkretni UI vzorci Toast/Square/Lightspeed/TouchBistro za naročanje (3-nivojski meni, modifier gating, Hold/Stay/Send, coursing, seat-level split) in permisije (številčne kategorije + job presets + access-point kartice + PIN passcode); 6 VLM-analiziranih referenc v .zscripts/research-waiter/ kot podlaga za implementacijske agente
+
+---
+Task ID: 2-c
+Agent: ops-research (general-purpose)
+Task: Raziskava UI benchmarkov za 3 vloge — MANAGER dashboard / ČISTILKA (HACCP checklisti) / SKLADIŠČNIK (inventura) — Toast, Square, Lightspeed, FoodDocs, SafetyCulture, MarketMan (samo raziskava, 0 sprememb kode)
+
+Work Log:
+- 16 web_search poizvedb + 10 page_reader globokih fetchov (Toast Reporting Dashboard weekly overview, Square daily sales + full inventory counts, Toast Inventory get-started, FoodDocs haccp-app, MarketMan, Lightspeed Insights + stock counts, SafetyCulture/Mitti hands-on review, staffedup digital checklists, Square×MarketMan press) — dokazi v .zscripts/research-ops/s-*.json in p-*.json
+- image-search 6×; 7 referenčnih slik shranjenih + 7 VLM analiz (vlm-*.json): Square home KPI, FoodDocs manager+mobile, MarketMan dashboard, HomeGauge (žanr-konkurent) inspection UI, Crunchtime menu-mix/varianca, WISK par list
+- MANAGER: Toast Weekly Overview = 4 sklopa (Net Sales, Labor $+%, Guest Count, Top 7 itemsov) + %Δ proti prejšnjemu tednu/lani/lani-2, urni refresh, KLIK na številko = drill-down poročilo; Square home = barvne KPI kartice z Δ (od lani/6m), Top Items tabela; Lightspeed = lokacije + service periods side-by-side, PDF/CSV/image scheduled reports; benchmarki: labor 25–40 % po segmentu, food cost 28–35 %, prime cost ~60–65 %
+- ČISTILKA/HACCP: FoodDocs mobile »Today's activities« z barvnimi levimi trakovi (rdeče = overdue) + predfilled temperature (samo potrdi); manager grid kartic z velikim krožnim compliance % (zelen/oranžen/rdeč) + weekly koledar z rdečimi dnevi; SafetyCulture: big-button UX, fail → takoj kamera + Instant Action (foto/lokacija/prioriteta), zaključek ukrepa ZAHTEVA foto ali podpis, heatmapa
+- INVENTURA: count iz storage area (Toast), blind full vs guided cycle count (90-dnevno pravilo), partial-count prompt 3 izbire (Cancel/0/Skip), unit conversion ob vnosu (2 UoM polji), review→approve gate s sortom po Variance (kos in €) + Override/Recount, reorder suggestions iz par (MarketMan action »N naročil čaka prejem«, WISK: Par−Store+Emergency+Events=Order)
+- Polno strukturirano poročilo s 10 konkretnimi priporočili shranjeno: .zscripts/research-ops/FINDINGS-2c.md
+
+Stage Summary:
+- Benchmarkni vzorci za vse 3 vloge dokumentirani s primarnimi viri (support docs) + vizualno analizo; 0 kode spremenjene; naslednji agent lahko priporočila (KPI vrstica s %Δ + drill-down, pass/fail + corrective action z dokazilom, blind count + variance-first review) neposredno uporabi pri načrtovanju manager/HACCP/inventory zaslonov
+
+---
+Task ID: 2-a
+Agent: kds-research
+Task: UI benchmark raziskava KDS vzorcev (Toast, Square, Lightspeed, QSR/Crunchtime, Clover, Shift4/Oracle) — samo branje, 0 sprememb kode
+Work Log:
+- Web iskanje (12 poizvedb) + page_reader (15 strani): Toast platform KDS overview, Toast bump bar docs (3), Toast KDS Setup Guide PDF (pdftotext), Square KDS help 7944, Lightspeed L-series (2) + K-series KDS 2.0, Clover KDS, BOA Restaurant KDS, Crunchtime/QSR, Oracle Simphony bump bar funkcije, Rezku blog
+- Image-search (4 poizvedbe) → 7 referenčnih screenshotov v .zscripts/research-kds/images/ (Toast ×2, Square, Lightspeed ×2, Shift4, Deliverect) + 5 VLM analiz (vlm-*.json) — anatomija kartic, barvne konvencije, tipografija
+- Ključne konvencije: starost → barva GLAVE kartice (Toast 5'/10'/15' rumena/oranžna/roza, Square Yellow/Red timer, BOA modra→rumena→rdeča); stanja (Lightspeed K: siva/modra/zelena/rjava/rdeča); alergeni rdeče, opombe modro; all-day seštevki; bump bar 1-10+FULFILL+RECALL; undo 5 s
+- Združeno poročilo v končnem odgovoru glavnega agenta (struktura: produkt → univerzalni vzorci → barve/časi → 10 priporočil za naš KDS)
+Stage Summary: 15 virov + 7 referenčnih slik arhiviranih v .zscripts/research-kds/ (s*.json iskanja, p*.json strani, toast-kds-setup-guide.pdf, vlm-*.json); KDS benchmark zoper Toast/Square/Lightspeed/Clover pripravljen za implementacijsko fazo
+
+---
+Task ID: v1.131.0-interface-benchmark
+Agent: Z.ai Code (glavni agent)
+Task: »primerjaj vmesnike logiko postavitve gumbov logike barve vse ... kuhinja vmesnik natakar dovoljenja manager cistilka skladiscnik vse kaj je mozno primerjaj temeljito klikaj razvijaj poliraj« — temeljita primerjava VSEH vmesnikov z najboljšimi POS (Toast/Square/Lightspeed/Clover/FoodDocs/MarketMan) + implementacija + polir
+
+Work Log:
+- RAZISKAVA (3 vzporedna agenta, 0 kode): 2-a KDS (15 virov + 7 VLM referenc, .zscripts/research-kds/), 2-b natakar+permisije (Toast/Square/Lightspeed/TouchBistro, .zscripts/research-waiter/), 2-c manager+čistilka+skladiščnik (FoodDocs/SafetyCulture/MarketMan/Toast Inventory/Square Counts, .zscripts/research-ops/) — FINDINGS z 10+10+10 priporočili
+- MANAGER (Toast/Square vzorec): finančne KPI kartice PRVE (promet + Δ% vs včeraj + povprečni račun), API agregat yesterdayRevenue (obseg = lokacija uporabnika, financialPerm gating); VSAKA kartica je KLIKABLJIVA (drill-down → zavihek, history.replaceState) — Toast »every number is clickable«; fmtPctSigned (+12,3 % / −4,5 %)
+- MIZE (Toast/Square): zasedena ploščica nosi ⏱ ELAPSED čas (min od naročila) + znesek; SprayCan ikona na umazani mizi; p-3 sm:p-4 gostota
+- KDS (Toast/Square/Lightspeed K): starost → BARVNI LEVI ROB listka (5′ amber / 10′ rdeč, border-l-4) ločeno od statusa; statusni chip NEVTRALEN (rdeča rezervirana zamudi); ALL-DAY vrstica »V pripravi — skupaj po artiklih« (amber, sticky bottom-0 = Toast production view) — skupne količine odprtih postavk; BUMP CELEGA LISTKA (velik celoširni gumb, Toast fulfill-listek, offline enqueue fallback); 86 plošča SKRČENA pod listke (listki dobijo prvi zaslon); dotik ≥ 44 px VEDNO (sm:h-8 odstranjen — KDS je dotik tudi na namizju)
+- ČISTILKA (FoodDocs/SafetyCulture): HaccpTab canManagePlans gating — haccp.execute BREZ settings.manage dobi IZVEDBENI vmesnik (termini + hiter vnos + zadnje kontrole); urejevalnik načrtov in CSV izvoz skriti
+- SKLADIŠČNIK (MarketMan): akcijske bližnjice nad seznamom (Nabava/Prenosi/Odpad → navigacija, badge pod minimumom)
+- ZAVIHKI: AKTIVEN zavihek VEDNO viden v vrstici (čistilka/skladiščnik prej niso videli svojega pristajalnega zavihka)
+- HROŠČ USTVARJEN IN POPRAVLJEN (sistemski, vplival na VSE barve obrob): globals.css pravilo [data-slot=card]{border-color} je bilo NEPLASTENO → v kaskadi je premagalo VSE Tailwind utilitije: vsak hover:border-* (KPI kartice, HACCP/nabava/zaloge ploščice, žetoni za napitnino na plačilni strani gosta), vsak border-l-{color} (starostni rob KDS listka) in vsak border-{color} (amber all-day vrstica). Diagnoza po korakih: testni element z istimi razredi = rdeča, kartica = siva → kaskadna primerjava izračunanih stilov → odkrit vzrok.
+- POPRAVEK v1.131.0 (dokončna oblika): @layer components PRVI poskus žal NI zanesljiv — Turbopack v hladnem dev zapisu plast odstrani (HMR jo je pustil, hladen prevod ne — razloženo, zakaj se je hrošč »vrnil«). Zato je rafinirana barva obrobe vezana na :not([class*="border-"]): element z EKSPRESNO barvno utiliteto jo dobi, senca/prehod pa ostanejo za vse površine. Plast-agnostično (dokazano: osnovna utiliteta border-stone-200 zdaj velja; hover utility je kasneje v isti plasti = zmaga na napravah z hoverjem; (hover:hover) je v headless lažno negativen, a to je omejitev okolja, ne aplikacije — vrstni red v plasti je dokaz)
+- HROŠČ 2 (tw-merge): border-l-red-500 + border-stone-200 v napačnem VRSTNEM REDU — cn()/tailwind-merge je odstranil stransko-specifičen razred, ko je celoviti border-color prišel za njim → vrstni red razredov popravljen (celovit PRED stranskim) + regresijski test E
+- E2E (agent-browser :3007, dev.db, ADMIN + cleaner PIN 5678 + warehouse PIN 7890): KPI Δ% »8× · vs včeraj +112,7 %« prikazan; klik KPI → Računi [selected]; Mize ⏱ 98 min + 27,30 €; KDS: all-day sticky top=686/bottom=844 pri vh=844 (mobilno), listki 44px gumbi, 0 preliva, izračunan borderLeftColor = red-500 ✓ (prej stone!); bump-all klik → listek Pripravljeno; 86 plošča expand/collapse; čistilka: pristane haccp [selected] VIDEN v vrstici, brez CSV/načrtov; skladiščnik: zaloge [selected], bližnjice → Nabava [selected]; skladiščnik na ?tab=sale → preusmerjen (perm gating); 0 konzolnih napak
+- VLM: KDS 7/10 → (po popravku) rdeči rob 10/10 + all-day 9/10 + hierarhija 9/10; Pregled 9/10; temni način 9/10; hitra prodaja košara 3× 10,20 € (regresija 0)
+- VERIFIKACIJA: tsc 0, eslint 0, secrets OK, svež ci-fresh.db 2413/2413 (118 datotek)
+
+Stage Summary:
+- v1.129.0: benchmark implementacija po vzorcih Toast/Square/Lightspeed K/FoodDocs/MarketMan — KPI Δ%+drill-down, mize ⏱, KDS starostni rob + all-day sticky + bump-all + nevtralni statusi, čistilka izvedbeni HACCP, skladiščnik bližnjice, aktivni zavihek vedno viden
+- SISTEMSKI CSS hrošč odkrit in popravljen: unlayered [data-slot=card] border-color je tiho preglašal vse barvne utilitije na karticah (kaskadna plast components) — vpliv na celoten izgled aplikacije, ne le KDS
+- 2413/2413 testov; E2E po vlogah; VLM 9-10/10

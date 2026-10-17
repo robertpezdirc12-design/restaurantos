@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, AlertTriangle, Truck, UtensilsCrossed, Plus } from 'lucide-react'
+import { Loader2, PackageSearch, AlertTriangle, Truck, UtensilsCrossed, Plus, ShoppingCart, ArrowLeftRight, Trash2 } from 'lucide-react'
 import { BatchesCard, BatchPrepCard } from './ops-cards'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
@@ -35,7 +35,7 @@ type StItemRow = {
 }
 type StFull = StRow & { items: StItemRow[] }
 
-export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void> }) {
+export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload, onNavigate }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void>; onNavigate?: (tab: string) => void }) {
   const { t } = useI18n()
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
   const totalValue = items.reduce((s, i) => s + i.qty * i.cost, 0)
@@ -191,6 +191,39 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
   return (
     <div className="space-y-4">
+      {/* v1.129.0 (MarketMan/Square Inventory benchmark): AKCIJSKE bližnjice nad statistiko —
+          skladiščnik pristane na »kaj moram narediti« (nabava/prejem, prenosi, odpad),
+          ne samo na pasivni seznam. Klik vodi v pripadajoči zavihek. */}
+      {onNavigate && (
+        <div data-region="inv-actions" className="grid grid-cols-3 gap-3">
+          {([
+            { tab: 'nabava', Icon: ShoppingCart, label: t('inv.actNabava'), desc: t('inv.actNabavaDesc'), badge: low.length > 0 ? `${low.length}` : null },
+            { tab: 'prenosi', Icon: ArrowLeftRight, label: t('inv.actPrenosi'), desc: t('inv.actPrenosiDesc'), badge: null },
+            { tab: 'odpad', Icon: Trash2, label: t('inv.actOdpad'), desc: t('inv.actOdpadDesc'), badge: null },
+          ] as { tab: string; Icon: typeof ShoppingCart; label: string; desc: string; badge: string | null }[]).map((a) => {
+            const Ic = a.Icon
+            return (
+              <button
+                key={a.tab}
+                type="button"
+                onClick={() => { onNavigate(a.tab); history.replaceState(null, '', `/dashboard?tab=${a.tab}`) }}
+                aria-label={a.label}
+                title={a.desc}
+                className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4 text-left shadow-sm hover:border-emerald-400 hover:shadow transition flex items-center gap-3 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                <span className="rounded-lg bg-emerald-50 text-emerald-700 p-2 shrink-0"><Ic className="w-5 h-5" aria-hidden /></span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-semibold text-stone-900 truncate">{a.label}</span>
+                    {a.badge && <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-900 shrink-0">{a.badge}</span>}
+                  </span>
+                  <span className="block text-xs text-stone-500 truncate">{a.desc}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><PackageSearch className="w-4 h-4" /> {t('inv.itemCount')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{items.length}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {t('inv.belowMin')}</CardTitle></CardHeader><CardContent><p className={`text-2xl font-bold ${low.length > 0 ? 'text-amber-600' : ''}`}>{low.length}</p></CardContent></Card>

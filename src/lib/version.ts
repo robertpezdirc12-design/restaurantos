@@ -1,18 +1,18 @@
 /**
- * Client-safe verzija aplikacije (OPS-2, v1.66.0).
+ * APP_VERSION — enkratna resnica o verziji aplikacije.
+ * Stranke: footer, /api/health, ukazna paleta, PWA register.
  *
  * PREJ: APP_VERSION je živela v src/lib/api.ts (strežniški modul: db + auth
- * uvoz). `dashboard/page.tsx` ('use client') jo je uvažal od tam, kar je v
- * produkcijskem buildu v celoten client bundle vleklo verigo api.ts → auth.ts,
- * katerega module-scope fail-closed varovalka (APP_SECRET preverba, issue #4
- * §15) je v brskalniku (NODE_ENV=production, APP_SECRET ni v client envu)
- * CRASHALA dashboard za VSE uporabnike — error boundary "Ups — prišlo je do
- * napake" takoj po prijavi (OPS-1/OPS-2, produkcija @ c5f2190).
+ * importi) — client komponente, ki so jo uvažale, so skupaj s sabo vlekle
+ * cel server dependency graf v client bundle (~90 kB gz). Po poteh issue #70
+ * je bila izkušnja ista: izvoz iz server-only modula = hydratcijska veriga
+ * server odvisnosti v clientu.
  *
- * Zdaj: čista konstanta BREZ uvozov — varna za client in server uvoz.
- * api.ts (server) jo pre-eksportira za nazajkompatibilnost strežniških rut;
+ * ODLOČITEV (v1.124.0, sk16): verzija živi TUKAJ, v modulu brez
+ * strežniških stranskih uvozov; api.ts jo le re-izvaža izključno za
+ * strežniške potrošnike.
  * client komponente MORAJO uvažati izključno iz '@/lib/version'.
  * Regresijsko varovano s tests/client-bundle-hygiene.test.ts (sk68-).
  */
-export const APP_VERSION = '1.130.0'
+export const APP_VERSION = '1.131.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'

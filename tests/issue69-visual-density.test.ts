@@ -55,8 +55,12 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
 
   it('glava listka: PRIMARNI STATUS iz obstoječega statusnega slovarja (stL + statusColors)', () => {
     const d = dash()
-    // dominantna oznaka stanja naročila — obstoječa preslikava, samo izris
-    expect(d).toContain('${statusColors[o.status] || \'bg-stone-500 text-white\'}')
+    // dominantna oznaka stanja naročila — obstoječa preslikava, samo izris.
+    // v1.129.0 (Toast/Square benchmark): status v glavi KDS listka je NEVTRALEN
+    // (stone/emerald obrobe po fazah) — RDEČA je rezervirana izključno za ZAMUDO
+    // (starost listka); prej je polnjena statusna barva odvzela pomen alarmu.
+    expect(d).toContain("o.status === 'SENT' ? 'border-stone-300 bg-stone-50 text-stone-700'")
+    expect(d).toContain("o.status === 'PREPARED' || o.status === 'READY' ? 'border-emerald-300 bg-emerald-50 text-emerald-800'")
     expect(d).toContain('{stL(o.status)}')
   })
 
@@ -91,8 +95,11 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
   it('postavke: dejanja v lastni vrstici s ciljem na dotik 44 px na mobilnem', () => {
     const d = dash()
     expect(d).toContain('flex items-center gap-1.5 flex-wrap justify-end min-w-0')
-    expect(d).toContain('className="h-11 sm:h-8 bg-emerald-700 hover:bg-emerald-800"')
-    expect(d).toContain('className="h-11 sm:h-8 px-2 text-xs gap-1 text-stone-500 hover:text-red-700"')
+    // v1.129.0 (Toast/Square): cilj ≥ 44 px VEČ ne samo na mobilnem — KDS JE dotik
+    // tudi na namizju (sm:h-8 krčil gumb na 32 px tam, kjer je kuhinja/dotik).
+    expect(d).toContain('className="h-11 text-sm font-semibold bg-emerald-700 hover:bg-emerald-800"')
+    expect(d).toContain('className="h-11 px-2 text-xs gap-1 text-stone-500 hover:text-red-700"')
+    expect(d).not.toContain('sm:h-8 bg-emerald-700')
   })
 
   it('gostota: Card ploščata (py-3 sm:py-4, gap-2), strnjena vsebina (space-y-1.5)', () => {
@@ -105,7 +112,13 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     const d = dash()
     // vrstni red: aktivni prvi, zastareli konec — logika NEDOTAKNJENA
     expect(d).toContain('.sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))')
-    expect(d).toContain("stale ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'")
+    expect(d).toContain("stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50'")
+    // v1.129.0 (Toast/Square): starost → BARVNI LEVI ROB listka (5′ jantorn / 10′ rdeč;
+    // Toast glava listka, Square timer) — semantika zamende ločena od statičnega statusa.
+    // VRSTNI RED: celovit border-{color} MORA priti PRED border-l-{color} — cn()
+    // (tailwind-merge) sicer odstrani stransko-specifičen barvni razred.
+    expect(d).toContain("ageMin >= 10 ? 'border-stone-200 border-l-red-500'")
+    expect(d).toContain("ageMin >= 5 ? 'border-stone-200 border-l-amber-500'")
     expect(d).toContain("{t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}")
     expect(d).toContain("{t('kds.staleHint')}")
     // prag ostaja 8 h (480 min) — vizualna sprememba ne sme premakniti semantike

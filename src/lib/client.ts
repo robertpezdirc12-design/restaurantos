@@ -35,6 +35,14 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
 export const fmtEUR = (n: number) =>
   new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR' }).format(n)
 
+/** v1.129.0 (Toast/Square benchmark): podpisana rast v % za Δ na KPI karticah (+12,3 % / −4,5 %) */
+export const fmtPctSigned = (ratio: number) => {
+  if (!Number.isFinite(ratio)) return '—'
+  const pct = ratio * 100
+  const sign = pct > 0 ? '+' : ''
+  return `${sign}${new Intl.NumberFormat('sl-SI', { maximumFractionDigits: 1 }).format(pct)} %`
+}
+
 /** Izvoz CSV (ločilo ; + BOM za Excel, slovenske kode) */
 export function downloadCSV(filename: string, rows: (string | number | null | undefined)[][]) {
   const esc = (v: string | number | null | undefined) => {

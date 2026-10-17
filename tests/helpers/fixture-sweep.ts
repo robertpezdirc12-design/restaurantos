@@ -90,6 +90,7 @@ export const TEST_PREFIXES = [
   'i4-', // issue4 einvoices SI/HR (v1.125.0)
   'i11-', // issue11 CRM gostov (v1.126.0)
   'i11a-', // issue11 CRM admin/ddl (v1.126.0)
+  'v129-', // role-ui-gating (v1.129.0 — čistilka/skladiščnik gating, Δ% KPI)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
