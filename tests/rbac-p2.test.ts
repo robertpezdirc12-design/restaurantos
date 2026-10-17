@@ -291,13 +291,18 @@ describe('P2 RBAC — N8: UI dovoljenja zavihkov (fail-closed)', () => {
     }
   })
 
-  test('vsak zavihek iz TabsList v page.tsx ima izrecen vnos (regresija N8)', () => {
+  test('vsak zavihek iz DASHBOARD_TABS v page.tsx ima izrecen vnos (regresija N8)', () => {
     const src = readFileSync(join(import.meta.dir, '..', 'src', 'app', 'dashboard', 'page.tsx'), 'utf8')
-    const ids = [...src.matchAll(/\['([a-z]+)', t\('tabs\.[a-z]+'\)/g)].map((m) => m[1])
-    expect(ids.length).toBeGreaterThanOrEqual(23)
-    for (const id of ids) {
+    // v1.122.0 (PR #67): navigacija dashboarda prestrukturirana — zavihki živijo v DASHBOARD_TABS
+    // (['id', Icon]), primarni v TabsList + ostali v dropdownu 'Več'; OBA izpisa filtrirata z
+    // tabHasPerm (neznan/undefined id → zavihek NI viden) — fail-closed pogodba nespremenjena.
+    const ids = [...src.matchAll(/\['([a-z]+)', [A-Z][A-Za-z0-9]*\]/g)].map((m) => m[1])
+    expect(ids.length).toBeGreaterThanOrEqual(31)
+    for (const id of new Set(ids)) {
       expect(TAB_PERM[id]).toBeDefined()
     }
+    // obe poti izpisa (primarni TabsList + 'Več' dropdown) uveljavljata tabHasPerm gating
+    expect((src.match(/tabHasPerm\(v, \{ canManage, perms \}\)/g) || []).length).toBeGreaterThanOrEqual(2)
   })
 })
 
