@@ -193,5 +193,35 @@ jobs:
       - name: Secrets hygiene
         run: bash scripts/check-secrets.sh
 
+  # DRUGI SISTEM kot `tests`: tsc proti PRODUKCIJSKEMU (Postgres) klientu.
+  # Zakaj ločen job: `tests` ima file: DATABASE_URL, zato postinstall generira
+  # SQLite klient, ta pa enumeratov NE pozna (`Reservation.status` je tam String)
+  # in Json polja bere kot String. Na ta razred napak so bile tri obstoječe mreže
+  # slepe — rezervacijski opomnik je v produkciji padel 100 % časa (v1.129.0),
+  # build in tests pa sta bila zelena. Tu je tretja, ki gleda pravo shemo.
+  # Baza ni potrebna: `prisma generate` se ne povezuje, samo generira tipe.
+  # NAMENOMA brez DATABASE_URL — postinstall in eksplicitni generate oba izbereta
+  # prisma/schema.prisma, kadar URL ni `file:` (scripts/prisma-postinstall.cjs).
+  typecheck-prod:
+    runs-on: ${{ vars.CI_RUNNER_LABELS || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate PostgreSQL Prisma client
+        run: bunx prisma generate --schema prisma/schema.prisma
+
+      - name: TypeScript check (produkcijski klient)
+        run: bunx tsc --noEmit
+
   # (deploy job odstranjen v Task 43 — Vercel Git integration deploya samodejno;
   # vzporeden CLI deploy bi povzročil dva builda na push in race za produkcijo.)
