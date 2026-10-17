@@ -41,13 +41,25 @@ import { LabelDialog } from '@/components/label-dialog'
  * DursCheckButton/BatchesCard/BatchPrepCard uvaža monolit (SettingsEditor/InventoryTab).
  */
 
-/** Lazy fetch helper — resolves true once the element first enters the viewport. */
+/** Lazy fetch helper — resolves true once the element first enters the viewport.
+ * v1.132.1 (hidracijska varnost): inicialno stanje je VEDNO false — prej je bil
+ * inicializator `() => typeof IntersectionObserver === 'undefined'`, kar je SSR
+ * (Node: IO ne obstaja → true → „Ni podatkov.“ izrisan) razlikovalo od prvega izrisa
+ * klienta (brskalnik: IO obstaja → false → <p> NI izrisan) → React #418 ob vsakem
+ * polnem nalaganju (strežniško drevo zavrženo, celoten UI izrisan na novo).
+ * Old-brskalniki brez IO: effect takoj postavi true (enako končno stanje). */
 function useInViewOnce<T extends HTMLElement>(): [React.RefObject<T | null>, boolean] {
   const ref = useRef<T | null>(null)
-  // no IntersectionObserver (old browsers) → treat as visible immediately, no effect needed
-  const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined')
+  const [inView, setInView] = useState(false)
   useEffect(() => {
     if (inView) return
+    // no IntersectionObserver (old browsers) → treat as visible, a ASINHRONO
+    // (setTimeout 0 — tako kot IO callback; synchroni setState v effectu povzroča
+    // kaskadne izrise, react-hooks/set-state-in-effect ga prepoveduje)
+    if (typeof IntersectionObserver === 'undefined') {
+      const t = setTimeout(() => setInView(true), 0)
+      return () => clearTimeout(t)
+    }
     const el = ref.current
     if (!el) return
     const io = new IntersectionObserver(

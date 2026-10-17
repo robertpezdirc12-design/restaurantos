@@ -270,3 +270,21 @@ describe('issue #71 audit-2 — kitchen API vključi zaposlenega', () => {
     expect(route).not.toContain('employee: null')
   })
 })
+
+/* ── v1.132.1: hidratacijska varnost useInViewOnce (React #418 v produkciji) ── */
+describe('v1.132.1 — useInViewOnce ne sme razlikovati SSR od prvega izrisa klienta', () => {
+  const ops = readFileSync(join(import.meta.dir, '../src/components/tabs/ops-cards.tsx'), 'utf-8')
+  test('inicializator NE prebere typeof IntersectionObserver (SSR≠klient → React #418)', () => {
+    // prej: useState(() => typeof IntersectionObserver === 'undefined')
+    // SSR (Node): true → »Ni podatkov.« izrisan; klient prvi izris: false → NI izrisan
+    // → strukturno neujemanje → strežniško drevo zavrženo, celoten UI izrisan na novo
+    expect(ops).not.toContain('useState(() => typeof IntersectionObserver')
+  })
+  test('inicialno stanje je konstanta false; IO podpora preverjena v effectu (asinhrono)', () => {
+    expect(ops).toContain('const [inView, setInView] = useState(false)')
+    expect(ops).toContain("if (typeof IntersectionObserver === 'undefined') {")
+    expect(ops).toContain('setTimeout(() => setInView(true), 0)')
+    // asinhrona nastavitev — react-hooks/set-state-in-effect prepoveduje synchroni klic
+    expect(ops).not.toContain("{ setInView(true); return }")
+  })
+})
