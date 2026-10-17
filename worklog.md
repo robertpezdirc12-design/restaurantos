@@ -3774,3 +3774,28 @@ Stage Summary:
 - Issue #70 ZAPRT (P1, 7. po vrsti): ENOTEN kanonični vir statusa mize (occupied-brez-naročila → DIRTY, 0 mutacij), KDS zastareli listki > 8 h jasno označeni in brez dominantne prioritete, dostave semantično skladne (zgodovina = samo terminalni), tloris razprt prek detekcije enot (odstotki vs px) — produkcijski podatki in koordinate NEdotaknjeni
 - 2228/2228 testov + CI polno zelen na 50094cc; produkcija čaka Vercel okno (3. val rate-limit blokade v dokumentirani seriji)
 - ODPRTE issue: 2 (#4 P1 e-računi, #11 P2 CRM); UPORABNIŠKI KORAKI: (1) push/deploy za pristanek v1.120.0+v1.121.0 po sprostitvi kvote, (2) nov Vercel CLI žeton, (3) PAT rotacija, (4) MFA
+
+---
+Task ID: v1.122.0-merge
+Agent: glavni agent (Z.ai)
+Task: "naredil sem veje pa nisem zdruzil preveri" — preveriti in združiti uporabnikovi veji (PR #67 vizualna #69, PR #68 bootstrap auth) + deblokada produkcije z novim vcp_ žetonom
+
+Work Log:
+- PREVERITEV: git fetch → uporabnik je lokalno zaostal 5 commitov za origin (62de429 = overflow fix na pravem DOM-u); obe veji pregledani (PR #67: 26 style-commitov, 0 poslovnih sprememb; PR #68: 5 commitov, +50/−3 — break-glass email claim + /api/auth/me bootstrap DTO + regresijski test + README db:seed)
+- NOV vcp_ žeton (priskrbel lastnik ob sporočilu): /v2/user in whoami → "User not found" (brez user-scope), AMPER /v9/projects/prj_8ymc…?teamId=team_KuVk… → 200 + deployments list → 200 → žeton VELJAVEN za deploy (past iz Task 2448: prejšnji vcp_ je bil obsegan na napačen team — novi ni)
+- ZDRAŽITEV: git merge --no-ff PR #68 (b105ce9) → git merge --no-ff design/visual-polish-oct-2026 (279dd1c) → obe ČISTI (merge-tree dry-run predhodno: 0 konfliktov)
+- VERZIJA: APP_VERSION 1.121.0 → 1.122.0 (70a7623); verzijski registri v issue9 D / issue10 G2 / issue70 §R posodobljeni na 1.122.0
+- REGRESIJA UJETA IN POPRAVLJENA: tests/rbac-p2.test.ts N8 (fail-closed zavihkov) je padel — veja je prestrukturirala navigacijo (DASHBOARD_TABS 31 zavihkov, primarni TabsList + dropdown »Več«). Varnostna lastnost OHRANJENA (oba izpisa filtrirata z tabHasPerm — neznan zavihek skrit), test posodobljen na nov vir resnice: regex DASHBOARD_TABS vnosov + ≥2 gating klica + vsak id ima TAB_PERM
+- VALIDACIJA: rm tsbuildinfo + tsc 0 · svež ci-fresh.db **2229/2229** (112 datotek, 11278 expect, 56,5 s) · eslint 0 · check-secrets OK
+- PUSH: 7f27fa9 → main → GitHub SAMOZAVOLJNO označil PR #67 in PR #68 kot MERGED (05:30 UTC)
+- PRODUKCIJA: Vercel rate-limit okno (3. val blokade za v1.120/v1.121) je poteklo → Git integracija SAMO uspešno deployala 7f27fa9 (dpl_9pcYi5fj… READY 05:31 UTC) → health **1.122.0/7f27fa9/connected** (iz 1.119.0 — pristali v1.120+v1.121+v1.122 v enem valu)
+- VERCEL_TOKEN_B64 secret posodobljen prek API (sealed-box, base64 ovit žeton) → rezervna CLI pot oborožena
+- ŽIVA VERIFIKACIJA (agent-browser, samo branje): prijava 6× RestaurantOS 0× stara; navigacija 8 primarnih + Več dropdown (vsi sekundarni zavihki); mobilni 390px nastavitve scrollWidth **390** (QA našel 566 → popravek iz veje DELA v produkciji); mobilni dashboard 5 primarnih zavihkov + Več brez preliva; screenshoti .zscripts/prod-122-{nav,settings-mobile,mobile}.png
+- KOMENTAR #69: dokazni komentar 6230243500 (združitev, validacija, produkcijske izmere, ostanki: KDS gostota + segmentacija menija/nastavitev)
+- Daemon :3007 zagnan (v1.122.0) za nadaljnji vizualni QA podagenta
+
+Stage Summary:
+- Obe uporabnikovi veji ZDRUŽENI v main (PR #67 + PR #68 = merged, zaprta samodejno); produkcija skočila 1.119.0 → **1.122.0** (celotna zamuda vključno z #70)
+- N8 fail-closed RBAC test posodobljen na novo navigacijsko strukturo (isti varnostna pogodba); 2229/2229 + CI (neon-smoke success, tests v teku ob objavi koment. )
+- Nov vcp_ žeton nameščen kot VERCEL_TOKEN_B64 (veljaven, projekt-scope) → rezervna deploy pot pripravljena
+- #69 ostaja ODPRT z 2 remainderji (KDS gostota, segmentacija dolgih strani) — naslednji val v1.123.0; odprti issueji: #69, #11 (P2), #4 (P1)
