@@ -332,6 +332,7 @@ export const sl: Record<string, string> = {
   'tables.gridView': 'Mreža',
   'tables.planView': 'Tloris',
   'tables.planHint': 'Povleci mizo za premik',
+  'tables.legend': 'Legenda statusov miz',
   'tables.qrAria': 'QR meni — {name}',
   'tables.statusAria': 'Status mize — {name}',
   'tables.qrOrdering': 'QR naročanje',
@@ -457,7 +458,7 @@ export const sl: Record<string, string> = {
   'receipt.noItems': '(brez postavk)',
   'receipt.discount': 'Popust',
   'receipt.tip': 'Namig',
-  'receipt.vatRate': 'DDV {rate} % (osnova {base})',
+  'receipt.vatRate': 'DDV {rate} (osnova {base})',
   'receipt.netTotal': 'Vsota brez DDV',
   'receipt.vatTotal': 'DDV skupaj',
   'receipt.grandTotal': 'SKUPAJ ZA PLAČILO',
@@ -1133,7 +1134,7 @@ export const sl: Record<string, string> = {
   'dost.time': 'Čas (min)',
   // Izvoz računovodstva (AccountingExportCard)
   'acct.title': 'Računovodski izvoz',
-  'acct.desc': 'Prodaja po dnevih (neto/DDV/popusti/napitnine), DDV razčlenba po stopnjah, plačila po načinih, računi dobaviteljev in gibanje zalog za izbrano obdobje. CSV je pripravljen za Excel in računovodske programe.',
+  'acct.desc': 'Prodaja po dnevih (neto/DDV/popusti/napitnine), DDV razčlenitev po stopnjah, plačila po načinih, računi dobaviteljev in gibanje zalog za izbrano obdobje. CSV je pripravljen za Excel in računovodske programe.',
   'acct.from': 'Od',
   'acct.to': 'Do',
   'acct.exportCsv': 'Izvozi (CSV)',
@@ -1917,6 +1918,7 @@ export const sl: Record<string, string> = {
   // Kuhinja (dopolnitve)
   'kitchen.start': 'Začni',
   'kitchen.queueEmpty': 'Kuhinjska vrsta je prazna. 🎉',
+  'kitchen.queueClearTitle': 'Kuhinja je čista',
   // Issue #14 (v1.112.0): naslov/aria gumba za tiskanje kuhinjskega lista (deska
   // postaj + legacy vrsta — prej surovi ključ na gumbu, ključ ni obstal v slovarjih)
   'kitchen.printKitchenTitle': 'Natisni kuhinjski list',
@@ -1996,6 +1998,10 @@ export const sl: Record<string, string> = {
   'sale.total': 'Skupaj (z DDV)',
   'sale.payNow': 'Plačaj in izdaj račun',
   'sale.empty': 'Ni artiklov za hitro prodajo.',
+  'sale.cartTitle': 'Košara',
+  'sale.cartEmpty': 'Košara je prazna',
+  'sale.cartEmptyHint': 'Tapni artikel, da ga dodaš.',
+  'sale.clearCart': 'Izprazni',
   'sale.noLocation': 'Izberite lokacijo v preklopniku zgoraj — brez lokacije računa ni mogoče izdati.',
   // Plačilni dialog (dopolnitve)
   'payment.gcMinChars': 'Vpišite vsaj zadnjih 6 znakov številke kartice.',
@@ -3049,7 +3055,7 @@ export const sl: Record<string, string> = {
   'labor.totalCost': 'Strošek skupaj',
   'labor.roles': 'Po vlogah (top 5)',
 
-  // ── OPS-10 val 1 (v1.77.0) — KDS razčlenba po postajah + targeti ──
+  // ── OPS-10 val 1 (v1.77.0) — KDS razčlenitev po postajah + targeti ──
   'kds.stations.title': 'Po postajah',
   'kds.stations.target': 'Cilj (min)',
   'kds.stations.save': 'Shrani',

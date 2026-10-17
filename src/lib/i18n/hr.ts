@@ -332,6 +332,7 @@ export const hr: Record<string, string> = {
   'tables.gridView': 'Mreža',
   'tables.planView': 'Tloris',
   'tables.planHint': 'Povuci stol za premik',
+  'tables.legend': 'Legenda statusa stolova',
   'tables.qrAria': 'QR meni — {name}',
   'tables.statusAria': 'Status stola — {name}',
   'tables.qrOrdering': 'QR naručivanje',
@@ -457,7 +458,7 @@ export const hr: Record<string, string> = {
   'receipt.noItems': '(bez stavki)',
   'receipt.discount': 'Popust',
   'receipt.tip': 'Napojnica',
-  'receipt.vatRate': 'PDV {rate} % (osnovica {base})',
+  'receipt.vatRate': 'PDV {rate} (osnovica {base})',
   'receipt.netTotal': 'Zbroj bez PDV-a',
   'receipt.vatTotal': 'PDV ukupno',
   'receipt.grandTotal': 'UKUPNO ZA PLAĆANJE',
@@ -1917,6 +1918,7 @@ export const hr: Record<string, string> = {
   // Kuhinja (dopune)
   'kitchen.start': 'Započni',
   'kitchen.queueEmpty': 'Red u kuhinji je prazan. 🎉',
+  'kitchen.queueClearTitle': 'Kuhinja je spremna',
   // Issue #14 (v1.112.0): naslov/aria gumba za ispis kuhinjskog lista (ploča
   // postaja + legacy red — prije sirovi ključ na gumbu, ključ nije postojao u rječnicima)
   'kitchen.printKitchenTitle': 'Ispiši kuhinjski list',
@@ -1996,6 +1998,10 @@ export const hr: Record<string, string> = {
   'sale.total': 'Ukupno (s PDV-om)',
   'sale.payNow': 'Plaći i izdaj račun',
   'sale.empty': 'Nema artikala za brzu prodaju.',
+  'sale.cartTitle': 'Košarica',
+  'sale.cartEmpty': 'Košarica je prazna',
+  'sale.cartEmptyHint': 'Dodirni artikl da ga dodaš.',
+  'sale.clearCart': 'Isprazni',
   'sale.noLocation': 'Odaberite lokaciju na preklopniku gore — bez lokacije računa nije moguće izdati.',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',

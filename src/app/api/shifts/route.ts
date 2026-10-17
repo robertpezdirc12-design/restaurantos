@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 /**
  * Zaključek izmene (issue #1: end-to-end prodaja → poročilo/audit).
  * Izračun iz Receipts (fiskalni dokumenti) v oknu izmene:
- *  - promet po načinih plačila, DDV razčlenba (22/9.5/0), št. računov, napitnine
+ *  - promet po načinih plačila, DDV razčlenitev (22/9.5/0), št. računov, napitnine
  *  - posodobi CashRegisterShift totals + ustvari ZReport + AuditLog SHIFT_CLOSE
  *
  * R11 (revizija §6): okno agregacije ni več surovi createdAt-range izven transakcije
@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
           if (orderType === 'takeaway') takeout += amount
           else if (orderType === 'delivery') delivery += amount
           else dineIn += amount
-          // DDV razčlenba iz vatBreakdown (neto konvencija — ključi so stopnje)
+          // DDV razčlenitev iz vatBreakdown (neto konvencija — ključi so stopnje)
           const vb = jparse<Record<string, { base: number; vat: number }>>(rc.vatBreakdown, {})
           for (const [rate, v] of Object.entries(vb)) {
             const key = Number(rate) === 0 ? '0' : Number(rate) <= 9.5 ? '9.5' : '22'

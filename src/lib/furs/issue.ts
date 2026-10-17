@@ -432,9 +432,9 @@ export async function issueFursReceipt(req: NextRequest) {
   const paymentMethod = parts.length === 0 ? 'loyalty' : parts.length === 1 ? parts[0].type : 'mixed'
   const idemBase = idempotencyKey || ''
 
-  // razčlenba DDV po stopnjah
+  // razčlenitev DDV po stopnjah
   const vatMap: Record<string, { base: number; vat: number }> = {}
-  // OPS-7: v split načinu DDV razčlenba SAMO iz postavk izstavka (fiskalna resnica računa)
+  // OPS-7: v split načinu DDV razčlenitev SAMO iz postavk izstavka (fiskalna resnica računa)
   const vatSourceItems = checkScope ? checkScope.items : billItems
   for (const it of vatSourceItems) {
     const rate = it.vatRate.toFixed(2)

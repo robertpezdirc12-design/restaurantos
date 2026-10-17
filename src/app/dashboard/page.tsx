@@ -52,6 +52,7 @@ import {
   CalendarRange,
   ChartScatter,
   Eye,
+  CheckCircle2,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -1721,6 +1722,8 @@ function DashboardInner() {
     && (saleCat === 'ALL' || mi.categoryId === saleCat)
     && mi.name.toLowerCase().includes(saleSearch.trim().toLowerCase()))
   const saleTotal = Object.entries(saleCart).reduce((s, [id, qty]) => s + (menu.find((x) => x.id === id)?.price ?? 0) * qty, 0)
+  // vizualni benchmark (Toast/Square): skupno število kosov za oznako v glavi košare
+  const saleCartCount = Object.values(saleCart).reduce((s, q) => s + q, 0)
 
   // OPS-4 v1.67.0 — tloris lokala (Mize): pogled + vlečenje miz (posX/posY v %)
   const [tableView, setTableView] = useState<'grid' | 'plan'>('grid')
@@ -2014,6 +2017,14 @@ function DashboardInner() {
               {/* Issue #21 (v1.111.0) — klic vodje (osebje vseh vlog) */}
               <ManagerCallButton size="sm" className="ml-auto" />
             </div>
+            {/* Vizualni benchmark (Toast/Lightspeed): trajna legenda statusov — barvne pike
+                z besedilom, da nov sla takoj ve, kaj pomeni barva mize (brez ugibanja). */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-stone-600" role="group" aria-label={t('tables.legend')}>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-emerald-700" aria-hidden /> {stL('FREE')}</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-amber-700" aria-hidden /> {stL('OCCUPIED')}</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full border border-stone-400 bg-stone-200" aria-hidden /> {stL('RESERVED')}</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-stone-700" aria-hidden /> {stL('DIRTY')}</span>
+            </div>
             {tableView === 'plan' && (
               <div
                 className="relative w-full rounded-xl border border-stone-200 bg-stone-100/70 overflow-hidden touch-none"
@@ -2292,56 +2303,129 @@ function DashboardInner() {
 
           <TabsContent value="prodaja" className="space-y-4">
             {/* OPS-4 v1.67.0 — Hitra prodaja (sank): izbira -> kosarica -> racun (FURS) */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="w-full sm:w-64" />
-              <Select value={saleCat} onValueChange={setSaleCat}>
-                <SelectTrigger className="w-full sm:w-52"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">{t('sale.allCat')}</SelectItem>
-                  {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              {saleItems.map((mi) => (
-                <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
-                  className={`rounded-xl border p-3 text-left min-h-16 transition ${mi.available ? 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow' : 'border-stone-200 bg-stone-100 opacity-60 cursor-not-allowed'}`}>
-                  <p className="font-medium text-sm leading-tight">{mi.name}</p>
-                  <p className="text-xs text-stone-500 mt-1">{fmtEUR(mi.price)}</p>
-                  {!mi.available && <Badge variant="outline" className="mt-1 text-[10px]">86</Badge>}
-                </button>
-              ))}
-            </div>
-            {saleItems.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
-            {Object.keys(saleCart).length > 0 && (
-              <Card className="sticky bottom-4 shadow-lg">
-                <CardContent className="p-4 space-y-2">
-                  {Object.entries(saleCart).map(([id, qty]) => {
-                    const mi = menu.find((x) => x.id === id)
-                    if (!mi) return null
-                    return (
-                      <div key={id} className="flex items-center gap-2 text-sm">
-                        <span className="flex-1 truncate">{qty}× {mi.name}</span>
-                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
-                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
-                        <span className="w-20 text-right font-medium">{fmtEUR(mi.price * qty)}</span>
-                      </div>
-                    )
-                  })}
-                  <div className="flex items-center justify-between border-t border-stone-200 pt-2 font-bold">
-                    <span>{t('sale.total')}</span><span>{fmtEUR(saleTotal)}</span>
+            {/* Vizualni benchmark Toast/Square (2026-10): čipi kategorij (en dotik, namesto
+                spustnega menija), trajna desna košara na namizju (lepljiva vsota + pritrjen
+                gumb Plačaj — mreža izbire nikoli pokrita), boljša tipografija cen.
+                Mobilni pogled ohranja lepljivo spodnjo kartico (nespremenjen tok). */}
+            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start lg:gap-4">
+              {/* LEVO: iskanje + čipi kategorij + mreža izbire */}
+              <div className="min-w-0 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-10 w-full sm:w-56" aria-label={t('sale.search')} />
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('sale.allCat')}>
+                    <Button size="sm" variant={saleCat === 'ALL' ? 'default' : 'outline'} className={`h-9 ${saleCat === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => setSaleCat('ALL')}>
+                      {t('sale.allCat')}
+                    </Button>
+                    {categories.map((c) => (
+                      <Button key={c.id} size="sm" variant={saleCat === c.id ? 'default' : 'outline'} className={`h-9 max-w-40 ${saleCat === c.id ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => setSaleCat(c.id)} title={c.name}>
+                        <span className="truncate">{c.name}</span>
+                      </Button>
+                    ))}
                   </div>
-                  <Button className="w-full bg-emerald-700 hover:bg-emerald-800 min-h-12 text-base font-bold" disabled={saleSending} onClick={() => void submitSale()}>
-                    {saleSending ? <Loader2 className="w-5 h-5 animate-spin" /> : t('sale.payNow')}
-                  </Button>
-                  {saleErr && (
-                    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                      {saleErr}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+                  {saleItems.map((mi) => (
+                    <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
+                      className={`flex min-h-[4.5rem] flex-col rounded-xl border p-3 text-left transition ${mi.available ? 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md active:scale-[0.98]' : 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-60'}`}>
+                      <p className="min-w-0 text-sm font-semibold leading-tight">{mi.name}</p>
+                      <p className="mt-auto self-end pt-1 text-sm font-bold tabular-nums text-stone-900">{fmtEUR(mi.price)}</p>
+                      {!mi.available && <Badge variant="outline" className="mt-1 self-start text-[10px]">86</Badge>}
+                    </button>
+                  ))}
+                </div>
+                {saleItems.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
+              </div>
+
+              {/* DESNO (namizni ≥lg): trajna košara — Toast/Square vzorec »right rail«:
+                  glava s števcem, drsni seznam postavk, vsota + Plačaj VEDNO pritrjena spodaj */}
+              <aside className="hidden lg:block" aria-label={t('sale.cartTitle')}>
+                <Card className="sticky top-20 flex max-h-[calc(100vh-6.25rem)] flex-col shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center justify-between gap-2 text-base">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <ShoppingCart className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+                        {t('sale.cartTitle')}
+                        {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
+                      </span>
+                      {saleCartCount > 0 && (
+                        <Button size="sm" variant="ghost" className="h-8 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => setSaleCart({})} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 pb-2">
+                    {saleCartCount === 0 ? (
+                      <div className="flex min-h-36 flex-col items-center justify-center gap-1.5 text-center">
+                        <ShoppingCart className="h-8 w-8 text-stone-300" aria-hidden />
+                        <p className="text-sm font-medium text-stone-500">{t('sale.cartEmpty')}</p>
+                        <p className="text-xs text-stone-400">{t('sale.cartEmptyHint')}</p>
+                      </div>
+                    ) : (
+                      Object.entries(saleCart).map(([id, qty]) => {
+                        const mi = menu.find((x) => x.id === id)
+                        if (!mi) return null
+                        return (
+                          <div key={id} className="flex items-center gap-1.5 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5 text-sm">
+                            <span className="min-w-0 flex-1 truncate">{qty}× {mi.name}</span>
+                            <Button size="sm" variant="outline" className="h-7 w-7 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                            <Button size="sm" variant="outline" className="h-7 w-7 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                            <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                  </CardContent>
+                  <div className="space-y-2 border-t border-stone-200 p-4">
+                    <div className="flex items-center justify-between text-base font-bold">
+                      <span>{t('sale.total')}</span>
+                      <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
+                    </div>
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
+                      {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
+                    </Button>
+                    {saleErr && (
+                      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                        {saleErr}
+                      </p>
+                    )}
+                  </div>
+                </Card>
+              </aside>
+            </div>
+
+            {/* MOBILNI (<lg): lepljiva spodnja kartica košare — obstoječi tok (mreža ostane nad njo) */}
+            <div className="lg:hidden">
+              {saleCartCount > 0 && (
+                <Card className="sticky bottom-4 shadow-lg">
+                  <CardContent className="space-y-2 p-4">
+                    {Object.entries(saleCart).map(([id, qty]) => {
+                      const mi = menu.find((x) => x.id === id)
+                      if (!mi) return null
+                      return (
+                        <div key={id} className="flex items-center gap-2 text-sm">
+                          <span className="flex-1 truncate">{qty}× {mi.name}</span>
+                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                          <span className="w-20 text-right font-medium tabular-nums">{fmtEUR(mi.price * qty)}</span>
+                        </div>
+                      )
+                    })}
+                    <div className="flex items-center justify-between border-t border-stone-200 pt-2 font-bold">
+                      <span>{t('sale.total')}</span><span className="tabular-nums">{fmtEUR(saleTotal)}</span>
+                    </div>
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800" disabled={saleSending} onClick={() => void submitSale()}>
+                      {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
+                    </Button>
+                    {saleErr && (
+                      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                        {saleErr}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </TabsContent>
 
           <TabsContent value="kuhinja" className="space-y-4">
@@ -2601,7 +2685,15 @@ function DashboardInner() {
                   </Card>
                 )
               })}
-            {!kdsCustomView && viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))).length === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
+            {!kdsCustomView && viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))).length === 0 && (
+              /* Vizualni benchmark (Toast KDS): prazno stanje = velik jasni status »kuhinja
+                 čista«, ne iskalna vrstica — ko pride listek, dobi 100 % pozornosti. */
+              <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-stone-50/60 py-10 text-center" role="status">
+                <CheckCircle2 className="h-10 w-10 text-emerald-700" aria-hidden />
+                <p className="text-base font-bold text-stone-800">{t('kitchen.queueClearTitle')}</p>
+                <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>
+              </div>
+            )}
             {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
             {/* OPS-10 v1.77.0 — per-station targets: urejanje samo s settings.manage */}
             <KdsStatsSection canEditTargets={canManage || perms.includes('settings.manage')} />

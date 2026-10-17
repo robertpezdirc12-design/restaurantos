@@ -36,7 +36,7 @@ const day = (d: Date) => d.toISOString().slice(0, 10)
  * Računovodski izvoz (GitLab issue #1 — "ostalo odprto": računovodski izvoz).
  * GET /api/reports/export?from=YYYY-MM-DD&to=YYYY-MM-DD&format=csv|json
  * - Prodaja po dnevih (računi: neto, DDV, popusti, bruto, napitnine)
- * - DDV razčlenba po stopnjah (iz vatBreakdown izdanih računov)
+ * - DDV razčlenitev po stopnjah (iz vatBreakdown izdanih računov)
  * - Plačila po načinih (Payment: cash/card/mobile/voucher/giftcard/loyalty/…)
  * - Stroški — računi dobaviteljev (AccountsPayable) po statusih
  * - Gibanje zalog (StockTransaction: SALE/RECEIVE/ADJUST/WASTE) z vrednostjo
