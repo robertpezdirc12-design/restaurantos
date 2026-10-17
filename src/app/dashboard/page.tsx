@@ -2641,7 +2641,7 @@ function DashboardInner() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold text-stone-700 min-w-0">{t('resv.upcoming')}</h2>
               {canRes && (
-                <div className="flex flex-wrap gap-2 shrink-0">
+                <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => void sendAllReservationReminders()}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
@@ -2902,7 +2902,7 @@ function DashboardInner() {
                 <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> {t('tabs.zaposleni')}{canManage ? t('emp.controlCenter') : ''}</CardTitle>
                 {canManage && <span className="text-xs text-stone-400 hidden sm:inline">{t('emp.clickToEdit')}</span>}
               </CardHeader>
-              <CardContent className="grid gap-2 sm:grid-cols-2">
+              <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {viewEmployees.map((e) => (
                   <button
                     key={e.id}
@@ -3040,7 +3040,7 @@ function DashboardInner() {
               </CardContent>
             </Card>
             {/* Issue #69 (2. val): mreža lokacij/integracij/webhookov ostaja v razdelku naprav */}
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-base flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {t('loc.title')}</CardTitle>
@@ -3120,7 +3120,7 @@ function DashboardInner() {
             </div>
             </SettingsSection>
             <SettingsSection id="logs" title={t('settings.secLogs')}>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Bug className="w-4 h-4" /> {t('errlog.title')}</CardTitle></CardHeader>
                 <CardContent>

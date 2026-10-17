@@ -760,14 +760,14 @@ export function FoodCostVarianceCard() {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
+          <div className="min-w-0">
             <CardTitle className="text-base flex items-center gap-2">
               <Scale className="w-4 h-4 text-stone-500" aria-hidden />
               {t('fc.title')}
             </CardTitle>
             <p className="mt-1 text-xs text-stone-500 max-w-2xl">{t('fc.desc')}</p>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <div className="grid gap-1">
               <Label htmlFor="fc-from" className="text-xs text-stone-500">{t('fc.from')}</Label>
               <Input id="fc-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="h-8 w-36 text-xs" />

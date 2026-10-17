@@ -237,7 +237,7 @@ export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManag
           </div>
         )}
         {jobs.length === 0 && <p className="text-sm text-stone-500">{t('jobs.none')}</p>}
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {jobs.map((j) => (
             <div key={j.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">

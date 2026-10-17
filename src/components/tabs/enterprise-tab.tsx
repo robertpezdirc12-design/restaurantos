@@ -121,7 +121,7 @@ export function MigrationsConsoleSection() {
                 <CheckCircle2 className="w-4 h-4 shrink-0" /> {t('mig.allDone')}
               </div>
             )}
-            <div className="grid gap-2">
+            <div className="flex flex-col gap-2">
               {items.map((m) => (
                 <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
