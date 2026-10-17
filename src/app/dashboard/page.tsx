@@ -2638,10 +2638,10 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="rezervacije" className="space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="font-semibold text-stone-700">{t('resv.upcoming')}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-stone-700 min-w-0">{t('resv.upcoming')}</h2>
               {canRes && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 shrink-0">
                   <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => void sendAllReservationReminders()}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
