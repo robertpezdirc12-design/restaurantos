@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
 import { toast } from '@/hooks/use-toast'
@@ -177,6 +177,24 @@ function KdsTaskChip({ task }: { task: KdsTaskT }) {
       {icon}
       <span className="max-w-24 truncate">{task.stationName}</span>
     </span>
+  )
+}
+
+/* Issue #69 (2. val): sidro kategorije menija — determinističen slug iz id-ja
+   kategorije za čiste sidrske skoke (#cat-…). Čista preslikava niza, brez stanja. */
+const catAnchor = (id: string): string => `cat-${id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+
+/* Issue #69 (2. val): vizualni razdelek nastavitev — naslov + sidro (#set-…) za
+   hitri skok po dolgi strani. Čisto dekorativna lupina: vsebine kartic (njihovi
+   kontrolniki, stanja, dovoljenja) ostanejo nedotaknjene. */
+function SettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section id={`set-${id}`} data-region="settings-section" className="space-y-3 scroll-mt-40">
+      <h2 data-region="settings-section-header" className="text-sm font-bold uppercase tracking-wider text-stone-500 border-b border-stone-200 pb-1.5">
+        {title}
+      </h2>
+      {children}
+    </section>
   )
 }
 
@@ -2388,31 +2406,48 @@ function DashboardInner() {
                 const ageMin = kdsMinutes(o.createdAt)
                 const stale = isStaleKdsTicket(ageMin)
                 return (
-                  <Card key={o.id} className={stale ? 'border-dashed border-stone-300 bg-stone-50' : undefined}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-                        {o.table?.name || o.type} <span className="text-xs font-normal text-stone-500">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
+                  /* Issue #69 (2. val): gostota listka — glava v dveh vrsticah (identiteta +
+                     PRIMARNI STATUS listka, nato ČASOVNIK + tiskanje), postavke v kompaktne
+                     vrstice z ločenimi čipi (postaja / alergeni / opomba) in lastno vrstico
+                     dejanj. Čisto vizualno — logika (sortiranje, zastareli, dejanja) nedotaknjena. */
+                  <Card
+                    key={o.id}
+                    data-region="kds-ticket"
+                    className={`min-w-0 gap-2 py-3 sm:py-4 ${stale ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'}`}
+                  >
+                    <CardHeader data-region="kds-ticket-header" className="gap-2 px-4 pt-0 pb-0 sm:px-6">
+                      <CardTitle className="text-base flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                        <span className="font-bold truncate max-w-full min-w-0">{o.table?.name || o.type}</span>
+                        <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
+                        {/* PRIMARNI STATUS — dominantna oznaka stanja naročila (obstoječi statusni slovar/ključi — samo izris) */}
+                        <span className={`ml-auto inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${statusColors[o.status] || 'bg-stone-500 text-white'}`} title={stL(o.status)}>
+                          {stL(o.status)}
+                        </span>
+                      </CardTitle>
+                      <div data-region="kds-ticket-timer-row" className="flex items-center gap-2 flex-wrap">
+                        {/* ČASOVNIK — starost listka, vidna na fiksni legi v glavi (ne zakopana med postavke) */}
                         {stale ? (
                           <span
-                            className="text-xs font-bold px-2 py-0.5 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
+                            data-region="kds-ticket-timer"
+                            className="text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
                             title={`${t('kds.stale')} — ${t('kds.minutes', { m: ageMin })}`}
                           >
                             {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
                           </span>
                         ) : (
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
+                          <span data-region="kds-ticket-timer" className={`text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
                         )}
-                        <span className="ml-auto flex gap-1.5">
-                          <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
+                        <span className="ml-auto flex gap-1.5 shrink-0">
+                          <Button size="sm" variant="outline" className="gap-1 h-11 sm:h-9 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
                             <Printer className="w-3 h-3" /> {t('kitchen.kitchenTicket')}
                           </Button>
-                          <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
+                          <Button size="sm" variant="outline" className="gap-1 h-11 sm:h-9 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
                             <Printer className="w-3 h-3" /> {t('kitchen.barTicket')}
                           </Button>
                         </span>
-                      </CardTitle>
+                      </div>
                     </CardHeader>
-                    <CardContent className="space-y-2">
+                    <CardContent data-region="kds-ticket-items" className="space-y-1.5 px-4 pb-1 sm:px-6 sm:pb-2">
                       {stale && (
                         <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">
                           {t('kds.staleHint')}
@@ -2425,27 +2460,40 @@ function DashboardInner() {
                         // queue shows per-station sync chips instead of status buttons (no 409s)
                         const itemTasks = kdsTasks.filter((task) => task.itemId === it.id)
                         return (
-                          <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="font-medium truncate">{it.qty}× {it.name} <Badge variant="outline" className="ml-1">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge></p>
-                              {/* Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo — VIDNO vedno (preživi premik/osvežitev) */}
-                              {it.allergenWarning && (
-                                <p className="mt-0.5 rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</p>
-                              )}
-                              {(it.allergenCodes ?? []).length > 0 && (
-                                <p className="text-[11px] text-stone-600">{t('kds.allergenCodes')}: {(it.allergenCodes ?? []).map(allergenLbl).join(', ')}</p>
-                              )}
-                              {it.allergenStatus && it.allergenStatus !== 'confirmed' && !it.allergenWarning && (
-                                <p className="text-[11px] text-amber-700">⚠ {t('kds.allergenUnconfirmed')}</p>
-                              )}
-                              {it.note && <p className="text-xs text-stone-500">ℹ {it.note}</p>}
-                            </div>
-                            <div className="flex gap-1.5 shrink-0 items-center flex-wrap justify-end">
+                          <div key={it.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1.5 min-w-0">
+                            {/* A: količina + ime (levo) / starost postavke (desno) — hitro skeniranje */}
+                            <div className="flex items-baseline justify-between gap-2 min-w-0">
+                              <p className="text-sm sm:text-base font-semibold truncate min-w-0">{it.qty}× {it.name}</p>
                               {/* OPS-9 val 3: per-item live timer (firedAt → order clock); OPS-11 val 1: red escalation per station (target → max(10, ceil(target×1.25))) */}
                               {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne "13.496′") */}
-                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
+                              <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
+                            </div>
+                            {/* B: postaja + alergeni (vidni jantorni čipi) + nepotrjeni profil — ločena vrstica */}
+                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                              <Badge variant="outline" className="shrink-0">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
+                              {/* Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo — VIDNO vedno (preživi premik/osvežitev) */}
+                              {it.allergenWarning && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800 min-w-0">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</span>
+                              )}
+                              {(it.allergenCodes ?? []).length > 0 && (it.allergenCodes ?? []).map((code) => (
+                                <span
+                                  key={code}
+                                  data-region="kds-allergen-chip"
+                                  title={t('kds.allergenCodes')}
+                                  className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 shrink-0"
+                                >
+                                  {allergenLbl(code)}
+                                </span>
+                              ))}
+                              {it.allergenStatus && it.allergenStatus !== 'confirmed' && !it.allergenWarning && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">⚠ {t('kds.allergenUnconfirmed')}</span>
+                              )}
+                              {it.note && <span className="text-xs text-stone-500 min-w-0 truncate" title={it.note}>ℹ {it.note}</span>}
+                            </div>
+                            {/* C: dejanja — lastna vrstica, cilji na dotik ≥ 44 px na mobilnem */}
+                            <div className="flex items-center gap-1.5 flex-wrap justify-end min-w-0">
                               {perms.includes('menu.availability') && mi && (
-                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                                <Button size="sm" variant="ghost" className="h-11 sm:h-8 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
                                   <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
                                 </Button>
                               )}
@@ -2455,13 +2503,13 @@ function DashboardInner() {
                                 </span>
                               ) : (
                                 <>
-                              {it.status === 'PENDING' && <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
-                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
+                              {it.status === 'PENDING' && <Button size="sm" variant="outline" className="h-11 sm:h-8" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
+                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="h-11 sm:h-8 bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
                               {it.status === 'READY' && (
                                 <div className="flex items-center gap-1.5">
                                   <Badge className={statusColors.READY}>{t('status.READY')}</Badge>
                                   {/* OPS-7 (v1.70.0): SERVED bump (Lightspeed vzorec — izloči iz vrste) */}
-                                  <Button size="sm" variant="outline" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
+                                  <Button size="sm" variant="outline" className="h-11 sm:h-8" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
                                 </div>
                               )}
                                 </>
@@ -2526,12 +2574,37 @@ function DashboardInner() {
           <TabsContent value="meni" className="space-y-4">
             {/* OPS-10 val 2 (v1.78.0): per-item kiosk upsell suggestions ("Dodaj še") */}
             <UpsellCard menuItems={menu.map((m) => ({ id: m.id, name: m.name, price: m.price, available: m.available }))} canManage={hasPerm('menu.manage')} />
+            {/* Issue #69 (2. val): hitri skok po kategorijah — lepljiva vrstica čipov nad dolgim
+                seznamom (čista sidra href="#cat-…" → id na glavi razdelka; BREZ stanja/JS logike) */}
+            {menuByCat.length > 0 && (
+              <nav data-region="menu-quickjump" aria-label={t('menu.jumpAria')} className="sticky top-14 z-20 rounded-xl border border-stone-200 p-1.5 shadow-sm">
+                <div className="os-quickjump-track flex gap-1 overflow-x-auto" role="list">
+                  {menuByCat.map((g) => (
+                    <a
+                      key={g.cat.id}
+                      href={`#${catAnchor(g.cat.id)}`}
+                      role="listitem"
+                      className="shrink-0 min-h-11 inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+                    >
+                      <span className="whitespace-nowrap">{g.cat.name}</span>
+                      <span className="text-[11px] font-normal text-stone-500 tabular-nums">{g.items.length}</span>
+                    </a>
+                  ))}
+                </div>
+              </nav>
+            )}
             {menuByCat.map((g) => (
-              <section key={g.cat.id} className="space-y-2">
-                <h2 className="font-semibold text-stone-700">{g.cat.name}</h2>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <section key={g.cat.id} id={catAnchor(g.cat.id)} data-region="menu-category" className="space-y-2 scroll-mt-40">
+                {/* Issue #69: lepljiva glava kategorije — naslov ostane viden med dolgim pomikanjem */}
+                <div data-region="menu-category-header" className="sticky top-[7.125rem] z-10 py-1.5 border-b border-stone-200 bg-stone-50/95 backdrop-blur">
+                  <h2 className="font-semibold text-stone-700 flex items-baseline gap-2 min-w-0">
+                    <span className="truncate">{g.cat.name}</span>
+                    <span className="text-xs font-normal text-stone-500 shrink-0">{t('menu.catCount', { n: g.items.length })}</span>
+                  </h2>
+                </div>
+                <div data-region="menu-category-items" className="grid gap-2 md:gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {g.items.map((m) => (
-                    <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                    <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 md:p-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{m.name}</p>
                         <p className="text-sm text-stone-500">{fmtEUR(m.price)} · {m.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</p>
@@ -2551,11 +2624,11 @@ function DashboardInner() {
                       </div>
                       <div className="flex flex-col shrink-0 gap-1.5">
                         {hasPerm('menu.manage') && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAllergenDlg({ id: m.id, name: m.name })}>
+                          <Button size="sm" variant="outline" className="h-11 sm:h-8 md:h-7 px-2 text-xs" onClick={() => setAllergenDlg({ id: m.id, name: m.name })}>
                             ⚠ {t('menu.allergenBtn')}
                           </Button>
                         )}
-                        <Button size="sm" variant={m.available ? 'outline' : 'secondary'} onClick={() => toggleAvailable(m)}>{m.available ? t('menu.inStock') : t('menu.outOfStock')}</Button>
+                        <Button size="sm" variant={m.available ? 'outline' : 'secondary'} className="h-11 sm:h-8 md:h-8" onClick={() => toggleAvailable(m)}>{m.available ? t('menu.inStock') : t('menu.outOfStock')}</Button>
                       </div>
                     </div>
                   ))}
@@ -2859,25 +2932,58 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="nastavitve" className="space-y-4">
-            <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
-            {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
-            <ReservationWidgetCard />
-            {/* Issue #21 (v1.111.0) — nastavitve klica vodje (dovoljene vrste + čas eskalacije) */}
-            <ManagerCallSettingsCard />
-            {/* Issue #24 (v1.114.0) — potrjena etiketna pravila roka uporabe (inventory.manage) */}
-            <LabelRulesCard />
-            {/* Issue #14 (v1.112.0) — KDS named stations config + item routing editor
-                (settings.manage render gate inside the card; menu.manage gates routing) */}
-            <PrepStationsCard />
-            {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za
-                prijavljenega uporabnika — step-up PIN, recovery kode, enforcement */}
-            <MfaCard />
-            {/* OPS-8 v1.72.0 — notifikacijska matrika (RoxPos: 11 dogodkov x vsi/vloge/izklopno) */}
-            <NotificationsCard />
-            {/* OPS-10 val 2 (v1.78.0) — promocije za customer display (idle carousel) */}
-            <DisplayPromosCard />
-            <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} onChanged={load} />
-            {/* Naprave te naprave (issue #1, naloga 2) — tiskalnik + plačilni terminal */}
+            {/* Issue #69 (2. val): hitri skok po razdelkih nastavitev — dolga stran (~6.190 px
+                pri 1440 px) dobi vizualno segmentacijo + statična sidra (#set-…), brez logike. */}
+            <nav data-region="settings-quickjump" aria-label={t('settings.jumpAria')} className="sticky top-14 z-20 rounded-xl border border-stone-200 p-1.5 shadow-sm">
+              <div className="os-quickjump-track flex gap-1 overflow-x-auto" role="list">
+                {([
+                  ['general', t('settings.secGeneral')],
+                  ['ops', t('settings.secOps')],
+                  ['security', t('settings.secSecurity')],
+                  ['notifications', t('settings.secNotifications')],
+                  ['devices', t('settings.secDevices')],
+                  ['logs', t('settings.secLogs')],
+                  ['system', t('settings.secSystem')],
+                ] as const).map(([id, label]) => (
+                  <a
+                    key={id}
+                    href={`#set-${id}`}
+                    role="listitem"
+                    className="shrink-0 min-h-11 inline-flex items-center rounded-full border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+                  >
+                    <span className="whitespace-nowrap">{label}</span>
+                  </a>
+                ))}
+              </div>
+            </nav>
+            <SettingsSection id="general" title={t('settings.secGeneral')}>
+              <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
+              {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
+              <ReservationWidgetCard />
+            </SettingsSection>
+            <SettingsSection id="ops" title={t('settings.secOps')}>
+              {/* Issue #21 (v1.111.0) — nastavitve klica vodje (dovoljene vrste + čas eskalacije) */}
+              <ManagerCallSettingsCard />
+              {/* Issue #24 (v1.114.0) — potrjena etiketna pravila roka uporabe (inventory.manage) */}
+              <LabelRulesCard />
+              {/* Issue #14 (v1.112.0) — KDS named stations config + item routing editor
+                  (settings.manage render gate inside the card; menu.manage gates routing) */}
+              <PrepStationsCard />
+            </SettingsSection>
+            <SettingsSection id="security" title={t('settings.secSecurity')}>
+              {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za
+                  prijavljenega uporabnika — step-up PIN, recovery kode, enforcement */}
+              <MfaCard />
+            </SettingsSection>
+            <SettingsSection id="notifications" title={t('settings.secNotifications')}>
+              {/* OPS-8 v1.72.0 — notifikacijska matrika (RoxPos: 11 dogodkov x vsi/vloge/izklopno) */}
+              <NotificationsCard />
+              {/* OPS-10 val 2 (v1.78.0) — promocije za customer display (idle carousel) */}
+              <DisplayPromosCard />
+            </SettingsSection>
+            <SettingsSection id="devices" title={t('settings.secDevices')}>
+              <DevicesCard devices={devices} locations={locStats.map((l) => ({ id: l.id, name: l.name }))} onChanged={load} />
+              {/* Naprave te naprave (issue #1, naloga 2) — tiskalnik + plačilni terminal */}
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Printer className="w-4 h-4" /> {t('print.deviceTitle')}</CardTitle></CardHeader>
               <CardContent className="space-y-4 text-sm">
@@ -2933,6 +3039,7 @@ function DashboardInner() {
                 </div>
               </CardContent>
             </Card>
+            {/* Issue #69 (2. val): mreža lokacij/integracij/webhookov ostaja v razdelku naprav */}
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -3010,6 +3117,10 @@ function DashboardInner() {
                   ))}
                 </CardContent>
               </Card>
+            </div>
+            </SettingsSection>
+            <SettingsSection id="logs" title={t('settings.secLogs')}>
+            <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Bug className="w-4 h-4" /> {t('errlog.title')}</CardTitle></CardHeader>
                 <CardContent>
@@ -3049,6 +3160,8 @@ function DashboardInner() {
                 </CardContent>
               </Card>
             </div>
+            </SettingsSection>
+            <SettingsSection id="system" title={t('settings.secSystem')}>
             <Card><CardHeader><CardTitle className="text-base">{t('sys.title')}</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
                 <p>{t('sys.version', { v: APP_VERSION })}</p>
@@ -3056,6 +3169,7 @@ function DashboardInner() {
                 <p>{t('sys.db')}</p>
               </CardContent>
             </Card>
+            </SettingsSection>
           </TabsContent>
         </Tabs>
       </div>

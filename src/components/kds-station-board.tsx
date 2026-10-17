@@ -25,6 +25,13 @@
  * This file lives in src/components/ (NOT tabs/) on purpose — it is outside
  * the i18n regression-scan family; comments still use English/key names only
  * and every user-visible string goes through t().
+ *
+ * Issue #69 (2. val, P2 vizualni QA): gostota listka — glava vsake skupine je
+ * razdeljena v dve vrstici (identiteta / ČASOVNIK + tiskanje), vrstice nalog
+ * so kompaktnejše (py-1.5, space-y-1), starostne oznake so tabular-nums
+ * text-xs, dejanja imajo cilj na dotik 44 px (h-11) in data-region="kds-*"
+ * markerji pokrivajo strukturo (testi #69). IZKLJUČNO izris — dejanja,
+ * sortiranje, zastarela logika (issue #70 §2) ostanejo pri istih klicih.
  */
 import { useCallback, useState } from 'react'
 import { useI18n } from '@/components/i18n'
@@ -206,34 +213,41 @@ export function KdsStationBoard({
     g.tableNumber ? t('kds.stTable', { n: g.tableNumber }) : g.orderType
 
   const orderHeader = (g: TaskGroupT, age: number, stale = false) => (
-    <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-      <span className="truncate min-w-0">{orderLabel(g)}</span>
-      <span className="text-xs font-normal text-stone-500 shrink-0">#{g.orderNumber ?? '?'}</span>
-      {/* Issue #70 §2: zastareli listek — siva oznaka ZASTARELO + starost v urah (ne minutah) */}
-      <span
-        className={`text-xs font-bold px-2 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(age, threshold)}`}
-        title={stale ? `${t('kds.stale')} — ${t('kds.minutes', { m: age })}` : undefined}
-      >
-        {stale ? `${t('kds.stale')}: ${t('kds.staleHours', { h: staleTicketHours(age) })}` : t('kds.minutes', { m: age })}
-      </span>
-      {onPrintOrder && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1 h-7 text-xs ml-auto shrink-0"
-          onClick={() => onPrintOrder(g.orderId)}
-          title={t('kitchen.printKitchenTitle')}
-          aria-label={t('kitchen.printKitchenTitle')}
+    /* Issue #69 (2. val): gostota — identiteta + # v prvi vrstici, ČASOVNIK dominantno
+       v drugi vrstici (fiksna lega v glavi listka, ne med postavkami). Samo izris. */
+    <CardTitle className="space-y-1.5">
+      <div data-region="kds-ticket-identity" className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+        <span className="text-sm sm:text-base font-bold truncate max-w-full min-w-0">{orderLabel(g)}</span>
+        <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{g.orderNumber ?? '?'}</span>
+      </div>
+      <div data-region="kds-ticket-timer-row" className="flex items-center gap-2 flex-wrap">
+        {/* Issue #70 §2: zastareli listek — siva oznaka ZASTARELO + starost v urah (ne minutah) */}
+        <span
+          data-region="kds-ticket-timer"
+          className={`text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(age, threshold)}`}
+          title={stale ? `${t('kds.stale')} — ${t('kds.minutes', { m: age })}` : undefined}
         >
-          <Printer className="w-3 h-3" />
-        </Button>
-      )}
+          {stale ? `${t('kds.stale')}: ${t('kds.staleHours', { h: staleTicketHours(age) })}` : t('kds.minutes', { m: age })}
+        </span>
+        {onPrintOrder && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 h-9 text-xs ml-auto shrink-0"
+            onClick={() => onPrintOrder(g.orderId)}
+            title={t('kitchen.printKitchenTitle')}
+            aria-label={t('kitchen.printKitchenTitle')}
+          >
+            <Printer className="w-3 h-3" />
+          </Button>
+        )}
+      </div>
     </CardTitle>
   )
 
   return (
-    <Card data-component="kds-station-card" className="border-stone-200">
-      <CardHeader className="pb-2">
+    <Card data-component="kds-station-card" data-region="kds-ticket" className="min-w-0 gap-2 py-3 sm:py-4 border-stone-200">
+      <CardHeader data-region="kds-ticket-header" className="pb-0">
         <CardTitle className="text-base flex items-center gap-2 flex-wrap">
           <span className="truncate min-w-0">{station.name}</span>
           {station.isExpo && (
@@ -245,14 +259,14 @@ export function KdsStationBoard({
           <Badge variant="secondary" className="shrink-0">{t('kds.stQueue', { n: total })}</Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent data-region="kds-ticket-items" className="space-y-2.5">
         {total === 0 && <p className="text-sm text-stone-500">{t('kitchen.queueEmpty')}</p>}
 
         {/* ── expo view (dispatch): per-order readiness of ALL prep stations (issue §3) ── */}
         {expoGroups.map((g) => {
           const age = oldestAge(tasks.filter((task) => task.orderId === g.orderId))
           return (
-            <div key={`expo-${g.orderId}`} className={`rounded-xl border p-3 space-y-2 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-emerald-200 bg-emerald-50/40'}`}>
+            <div key={`expo-${g.orderId}`} data-region="kds-ticket-item-group" className={`rounded-xl border p-3 space-y-2 min-w-0 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-emerald-200 bg-emerald-50/40'}`}>
               {orderHeader(g, age, groupIsStale(g))}
               {g.tasks.map((task) => {
                 // sibling prep tasks of the SAME item — sync chips (issue §3)
@@ -260,11 +274,11 @@ export function KdsStationBoard({
                 const blockers = siblings.filter((s) => s.status !== 'ready')
                 const taskBusy = busy.startsWith(task.id + ':')
                 return (
-                  <div key={task.id} className="rounded-lg border border-stone-200 bg-white px-3 py-2 space-y-1.5 min-w-0">
+                  <div key={task.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 min-w-0">
-                      <p className="font-medium truncate min-w-0">{task.quantity}× {task.title}</p>
+                      <p className="text-sm sm:text-base font-semibold truncate min-w-0">{task.quantity}× {task.title}</p>
                       {/* Issue #70 §2: zastareli listki — starost naloge v urah (ne "13.496′") */}
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${groupIsStale(g) ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(taskAge(task.firedAt), threshold)}`}>{groupIsStale(g) ? t('kds.staleHours', { h: staleTicketHours(taskAge(task.firedAt)) }) : `${taskAge(task.firedAt)}′`}</span>
+                      <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${groupIsStale(g) ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(taskAge(task.firedAt), threshold)}`}>{groupIsStale(g) ? t('kds.staleHours', { h: staleTicketHours(taskAge(task.firedAt)) }) : `${taskAge(task.firedAt)}′`}</span>
                     </div>
                     {task.detail && <p className="text-xs text-stone-500 min-w-0">ℹ {task.detail}</p>}
                     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('kds.stStatsTitle')}>
@@ -291,7 +305,7 @@ export function KdsStationBoard({
                       )}
                       <Button
                         size="sm"
-                        className="h-9 gap-1 bg-emerald-700 hover:bg-emerald-800"
+                        className="h-11 gap-1 bg-emerald-700 hover:bg-emerald-800"
                         disabled={blockers.length > 0 || !!busy}
                         onClick={() => void act(task, 'issue')}
                       >
@@ -310,7 +324,7 @@ export function KdsStationBoard({
         {prepGroups.map((g) => {
           const age = oldestAge(g.tasks)
           return (
-            <div key={g.orderId} className={`rounded-xl border p-3 space-y-2 min-w-0 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'}`}>
+            <div key={g.orderId} data-region="kds-ticket-item-group" className={`rounded-xl border p-3 space-y-2 min-w-0 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'}`}>
               {orderHeader(g, age, groupIsStale(g))}
               {groupIsStale(g) && (
                 <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('kds.staleHint')}</p>
@@ -319,9 +333,9 @@ export function KdsStationBoard({
                 const st = KDS_TASK_STATUS[task.status] ?? KDS_TASK_STATUS.pending
                 const taskBusy = busy.startsWith(task.id + ':')
                 return (
-                  <div key={task.id} className="rounded-lg border border-stone-200 bg-white px-3 py-2 space-y-1.5 min-w-0">
+                  <div key={task.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 min-w-0">
-                      <p className="font-medium truncate min-w-0">
+                      <p className="text-sm sm:text-base font-semibold truncate min-w-0">
                         {task.quantity}× {task.title}
                         {task.kind === 'modifier' && (
                           <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 shrink-0">{t('kds.stTaskKind.modifier')}</Badge>
@@ -330,7 +344,8 @@ export function KdsStationBoard({
                           <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 shrink-0">{t('kds.stTaskKind.expo')}</Badge>
                         )}
                       </p>
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${groupIsStale(g) ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(taskAge(task.firedAt), threshold)}`}>{groupIsStale(g) ? t('kds.staleHours', { h: staleTicketHours(taskAge(task.firedAt)) }) : `${taskAge(task.firedAt)}′`}</span>
+                      {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne minutah) */}
+                      <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${groupIsStale(g) ? 'bg-stone-100 text-stone-600 border-stone-300' : ageClass(taskAge(task.firedAt), threshold)}`}>{groupIsStale(g) ? t('kds.staleHours', { h: staleTicketHours(taskAge(task.firedAt)) }) : `${taskAge(task.firedAt)}′`}</span>
                     </div>
                     {task.detail && <p className="text-xs text-stone-500 min-w-0">ℹ {task.detail}</p>}
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -343,7 +358,7 @@ export function KdsStationBoard({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-9 gap-1"
+                            className="h-11 gap-1"
                             disabled
                             title={t('kds.stBlocked')}
                           >
@@ -354,7 +369,7 @@ export function KdsStationBoard({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-9"
+                            className="h-11"
                             disabled={!!busy}
                             onClick={() => void act(task, 'start')}
                           >
@@ -365,7 +380,7 @@ export function KdsStationBoard({
                         {task.status === 'preparing' && (
                           <Button
                             size="sm"
-                            className="h-9 bg-emerald-700 hover:bg-emerald-800"
+                            className="h-11 bg-emerald-700 hover:bg-emerald-800"
                             disabled={!!busy}
                             onClick={() => void act(task, 'ready')}
                           >

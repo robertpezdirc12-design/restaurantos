@@ -701,3 +701,62 @@ main[data-screen="login"] button {
     overflow-wrap: anywhere;
   }
 }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Issue #69 (P2) — 2. val: gostota KDS listka + segmentacija dolgih strani
+   (meni ~17.758 px, nastavitve ~6.190 px @1440). Čisto vizualna plast: hitri
+   skok po razdelkih (lepljiva vrstica čipov s čistimi sidri), lepljive glave
+   kategorij, skriti vodoravni drsnik, temni način. Vzorec = qr-menu-categories.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Hitri skok — vodoravno drsenje brez vidnega drsnika (isti vzorec kot
+   [role="tablist"] na mobilnem) + varovalka proti prelivu širine. */
+.os-quickjump-track {
+  min-width: 0;
+  max-width: 100%;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+.os-quickjump-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* Lepljiva vrstica hitrega skoka pod glavo dashboarda (h-14 = top-14 v
+   Tailwind razredu); mehka prosojna podloga z zameglitvijo, kot TabsList. */
+[data-region="menu-quickjump"],
+[data-region="settings-quickjump"] {
+  background-color: oklch(0.985 0.008 155 / 92%);
+  backdrop-filter: blur(12px);
+}
+.dark [data-region="menu-quickjump"],
+.dark [data-region="settings-quickjump"] {
+  background-color: oklch(0.205 0.008 155 / 92%);
+  border-color: oklch(1 0 0 / 12%);
+}
+
+/* Lepljiva glava kategorije menija — podloga prekrije vsebino, ki drsi pod
+   njo (Tailwind bg-stone-50/95 se v temnem preslika prek žetona --color-stone-50). */
+[data-region="menu-category-header"] {
+  font-variant-numeric: tabular-nums;
+}
+.dark [data-region="menu-category-header"] {
+  border-color: oklch(1 0 0 / 12%);
+}
+
+/* KDS gostota: starosti v tabularnem zamiku (stabilna širina ob 15 s osvežitvi). */
+[data-region="kds-ticket-timer"],
+[data-region="kds-ticket-item"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mobilni (≤640px): vrstica hitrega skoka ostane v širini zaslona. */
+@media (max-width: 640px) {
+  [data-region="menu-quickjump"],
+  [data-region="settings-quickjump"] {
+    min-width: 0;
+    max-width: 100%;
+    margin-inline: -0.25rem;
+    border-radius: 0.9rem;
+  }
+}

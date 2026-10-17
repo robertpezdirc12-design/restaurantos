@@ -1519,6 +1519,18 @@ export const hr: Record<string, string> = {
   'menu.inStock': 'Na zalihi',
   'menu.outOfStock': 'Nije dostupno',
   'menu.other': 'Drugo',
+  // Issue #69 (2. val) — segmentacija menija: brzi skok po kategorijama (statička sidra)
+  'menu.jumpAria': 'Brzi skok po kategorijama menija',
+  'menu.catCount': '{n} artikala',
+  // Issue #69 (2. val) — segmentacija postavki: naslovi odjeljaka + brzi skok
+  'settings.jumpAria': 'Brzi skok po odjeljcima postavki',
+  'settings.secGeneral': 'Opće postavke',
+  'settings.secOps': 'Operativa i stanice',
+  'settings.secSecurity': 'Sigurnost i pristup',
+  'settings.secNotifications': 'Obavijesti i promocije',
+  'settings.secDevices': 'Uređaji i integracije',
+  'settings.secLogs': 'Dnevnici — revizija i greške',
+  'settings.secSystem': 'Sustav',
   // Rezervacije (tab + dijalog) — resv.st* = RES_STATUS_KEYS
   'resv.upcoming': 'Nadolazeće rezervacije',
   'resv.new': 'Nova rezervacija',
