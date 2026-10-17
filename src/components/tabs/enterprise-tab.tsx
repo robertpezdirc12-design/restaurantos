@@ -125,7 +125,7 @@ export function MigrationsConsoleSection() {
               {items.map((m) => (
                 <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium flex items-center gap-2 flex-wrap min-w-0 break-words">
+                    <p className="text-sm font-medium flex items-center gap-2 flex-wrap min-w-0 [overflow-wrap:anywhere]">
                       {t(m.descKey)}
                       {m.applied ? (
                         <Badge className="gap-1 bg-emerald-700 text-white"><CheckCircle2 className="h-3 w-3" />{t('mig.status.applied')}</Badge>
