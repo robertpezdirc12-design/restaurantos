@@ -33,6 +33,7 @@ import { isAdInWindow, isValidDateStr } from '@/lib/display-promos'
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
 import { DursCheckButton } from './ops-cards'
+import { EInvoiceCard } from './einvoice-card'
 
 /*
  * AUDIT-FIX v1.82.1 — prvi val razreza monolita dashboard-tabs.tsx: NABAVA tab
@@ -844,6 +845,9 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
           )}
         </CardContent>
       </Card>
+
+      {/* 0b2 — issue #4 (P1): odhodni B2B e-računi SI/HR (izdaja + izmenjava + statusi) */}
+      <EInvoiceCard canManage={canManage} />
 
       {/* 0c — recurring purchase orders (OPS-9 val 2): rules → draft POs */}
       <Card>

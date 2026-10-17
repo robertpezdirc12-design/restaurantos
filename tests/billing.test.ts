@@ -250,10 +250,10 @@ describe('computeBill — konvencija «vključno z DDV»', () => {
   })
 })
 
-/* ─────────────── REGISTRI — val v1.124.0 ─────────────── */
+/* ─────────────── REGISTRI — val v1.125.0 ─────────────── */
 
-describe('REGISTRI — val v1.124.0 (končna cena z DDV)', () => {
-  test('APP_VERSION === 1.124.0', () => {
-    expect(APP_VERSION).toBe('1.124.0')
+describe('REGISTRI — val v1.125.0 (e-računi SI/HR, issue #4)', () => {
+  test('APP_VERSION === 1.125.0', () => {
+    expect(APP_VERSION).toBe('1.125.0')
   })
 })

@@ -5,6 +5,7 @@ import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/ap
 import { nid, jstr } from '@/lib/map'
 import { apNumberFor, apLineTotalGross, parsePaymentTermsDays } from '@/lib/procurement'
 import { parseEslog, type EslogInvoice } from '@/lib/eslog'
+import { validateIncoming } from '@/lib/einvoice-validate'
 import { writeAudit } from '@/lib/audit-chain'
 import { upsertApAttachments, oversizeNote, type ApAttachmentMeta } from '@/lib/ap-attachments'
 import { pushEvent, apNewPushPayload } from '@/lib/push'
@@ -256,7 +257,10 @@ async function eslogDuplicateResponse(user: AuthPayload, existing: ExistingAp, i
   // OPS-10 val 3: archive attachments also for a duplicate hit (idempotent merge;
   // covers invoices first imported before the attachment support existed)
   const attachmentsSaved = await saveAttachments(user.sub, existing.id, existing.apNumber, existing.notes || '', inv)
-  return ok({ duplicate: true, ap: apResponse(existing), attachmentsSaved })
+  // Issue #4 (aditivno): opozorila validacije prejetega računa (valuta/Σ vrstic/
+  // prihodnji datum/davčna format/stopnje) — NE blokira uvoza, samo prikaže
+  const warnings = validateIncoming(inv)
+  return ok({ duplicate: true, ap: apResponse(existing), attachmentsSaved, warnings })
 }
 
 export async function POST(req: NextRequest) {
@@ -409,7 +413,12 @@ export async function POST(req: NextRequest) {
     { roles: ['accounting', 'manager'], locationId: user.loc || null },
   )
 
-  return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: parsedEcho(inv), attachmentsSaved, linesAutoLinked, matchEvaluated }, 201)
+  // Issue #4 (aditivno): opozorila validacije prejetega računa — NE blokira uvoza
+  // (parser je XXE-varen; opozorila so poslovna: valuta/Σ vrstic/prihodnji
+  // datum/davčna številka/stopnje DDV)
+  const warnings = validateIncoming(inv)
+
+  return ok({ ap: apResponse(ap), supplier: { id: supplier.id, name: supplier.name }, parsed: parsedEcho(inv), attachmentsSaved, linesAutoLinked, matchEvaluated, warnings }, 201)
 }
 
 async function createAp(args: {

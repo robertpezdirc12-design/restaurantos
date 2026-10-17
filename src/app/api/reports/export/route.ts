@@ -9,6 +9,7 @@ import { dayKeyOf } from '@/lib/sales-by-hour'
 import { liveMinutes, totalPayCents } from '@/lib/timeclock'
 import { laborCoverageReport } from '@/lib/labor-coverage'
 import { loadLaborCoverageData, resolveLaborCoverageWindow } from '@/lib/labor-coverage-data'
+import { isMissingSchemaError } from '@/lib/prisma-missing'
 
 type VatRow = { base: number; vat: number }
 
@@ -489,6 +490,46 @@ export async function GET(req: NextRequest) {
     apByStatus.set(s, row)
   }
 
+  // Issue #4 (v1.125.0, aditivno): TERJATVE po statusih (AccountsReceivable —
+  // B2B e-račun kanonični vir) + statusi izmenjave e-računov (EInvoiceOutbox).
+  // LOČENO od prodaje (Receipt tok — BREZ prekrivanja/dvojnega štetja): AR vrstice
+  // nastanejo IZKLJUČNO prek /api/einvoices/issue (B2B terjatve), POS prodaja
+  // ostaja v salesByDay iz Receipts. EInvoiceOutbox: tabela pred DDL morda še ne
+  // obstaja (migrate-einvoice-outbox) → graceful prazna (isMissingSchemaError).
+  const ars = await db.accountsReceivable.findMany({
+    where: { invoiceDate: range, ...locScope },
+    select: { status: true, subtotal: true, vatAmount: true, totalAmount: true, paidAmount: true },
+    take: 20000,
+  })
+  const arByStatus = new Map<string, { count: number; subtotal: number; vat: number; total: number; paid: number }>()
+  for (const a of ars) {
+    const s = a.status || 'open'
+    const row = arByStatus.get(s) || { count: 0, subtotal: 0, vat: 0, total: 0, paid: 0 }
+    row.count += 1
+    row.subtotal = r2(row.subtotal + num(a.subtotal))
+    row.vat = r2(row.vat + num(a.vatAmount))
+    row.total = r2(row.total + num(a.totalAmount))
+    row.paid = r2(row.paid + num(a.paidAmount))
+    arByStatus.set(s, row)
+  }
+  const eInvByStatus = new Map<string, { count: number; total: number }>()
+  try {
+    const eInvoices = await db.eInvoiceOutbox.findMany({
+      where: { createdAt: range, ...locScope },
+      select: { status: true, totalAmount: true },
+      take: 20000,
+    })
+    for (const e of eInvoices) {
+      const row = eInvByStatus.get(e.status) || { count: 0, total: 0 }
+      row.count += 1
+      row.total = r2(row.total + num(e.totalAmount))
+      eInvByStatus.set(e.status, row)
+    }
+  } catch (e) {
+    // DDL pending (tabela še ne obstaja) → prazna sekcija, izvoz NE pade
+    if (!isMissingSchemaError(e)) throw e
+  }
+
   // ── 4) Gibanje zalog ──
   const stockTx = await db.stockTransaction.findMany({
     where: { createdAt: range, type: { in: ['SALE', 'RECEIVE', 'ADJUST', 'WASTE', 'STORNO_RETURN', 'TRANSFER_IN', 'TRANSFER_OUT'] }, ...stockScope },
@@ -574,6 +615,9 @@ export async function GET(req: NextRequest) {
     vatByRate: [...vatByRate.entries()].sort(([a], [b]) => Number(a) - Number(b)).map(([rate, v]) => ({ rate: Number(rate), ...v })),
     paymentsByType: [...payByType.entries()].map(([type, v]) => ({ type, ...v })).sort((a, b) => b.amount - a.amount),
     expensesByStatus: [...apByStatus.entries()].map(([status, v]) => ({ status, ...v })),
+    // Issue #4 (v1.125.0, aditivno): terjatve + statusi izmenjave e-računov
+    receivablesByStatus: [...arByStatus.entries()].map(([status, v]) => ({ status, ...v })),
+    einvoicesByStatus: [...eInvByStatus.entries()].map(([status, v]) => ({ status, ...v })),
     stockByType: [...stockByType.entries()].map(([type, v]) => ({ type, ...v })),
   }
 
@@ -602,6 +646,16 @@ export async function GET(req: NextRequest) {
   L.push(`STROŠKI — RAČUNI DOBAVITELJEV`)
   L.push(`Status;St. dokumentov;Neto;DDV;Skupaj;Plačano (EUR)`)
   for (const e of payload.expensesByStatus) L.push(`${e.status};${e.count};${p2(e.subtotal)};${p2(e.vat)};${p2(e.total)};${p2(e.paid)}`)
+  L.push('')
+  // Issue #4 (v1.125.0, aditivno): terjatve (B2B e-računi) + statusi izmenjave —
+  // LOČENI bloki (brez prekrivanja Receipt prodaje, brez dvojnega štetja)
+  L.push(`TERJATVE — B2B RAČUNI (e-računi)`)
+  L.push(`Status;St. dokumentov;Neto;DDV;Skupaj;Plačano (EUR)`)
+  for (const e of payload.receivablesByStatus) L.push(`${e.status};${e.count};${p2(e.subtotal)};${p2(e.vat)};${p2(e.total)};${p2(e.paid)}`)
+  L.push('')
+  L.push(`E-RAČUNI IZMENJAVA (EInvoiceOutbox)`)
+  L.push(`Status;St. dokumentov;Skupaj (EUR)`)
+  for (const e of payload.einvoicesByStatus) L.push(`${e.status};${e.count};${p2(e.total)}`)
   L.push('')
   L.push(`GIBANJE ZALOG`)
   L.push(`Vrsta;St. premikov;Količina;Vrednost (EUR)`)

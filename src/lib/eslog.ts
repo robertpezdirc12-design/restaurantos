@@ -28,6 +28,10 @@ export interface EslogLine {
   lineId?: string
   /** Issue #18 (aditivno): vrstica iz CreditNoteLine (dobropis) — količina se predznači pri shranjevanju. */
   credited?: boolean
+  /** Issue #4 (aditivno, v1.125.0): KPD klasifikacijska oznaka postavke
+   *  (Item/CommodityClassification/ItemClassificationCode) — prisotna SAMO ko jo
+   *  XML nosi (HR eRačun zahteva 6-mestno KPD 2025 oznako na postavkah). */
+  kpdCode?: string
 }
 
 export interface EslogSupplier {
@@ -67,6 +71,10 @@ export interface EslogInvoice {
   attachments: EslogAttachment[]
   /** Issue #18 (aditivno): korenski dokument je CreditNote (dobropis) in ne Invoice. */
   documentType?: 'invoice' | 'credit_note'
+  /** Issue #4 (aditivno, v1.125.0): DocumentCurrencyCode — valuta računa
+   *  ("EUR", "HRK", …); prisotna SAMO ko jo XML nosi (manjkajoča → opozorilo
+   *  validateIncoming). */
+  currency?: string
 }
 
 export interface EslogParseResult {
@@ -245,6 +253,12 @@ function linesOf(inv: XmlNode): EslogLine[] {
     // toEqual pogodbe obstoječih testov (prazna polja ne smejo biti ključi)
     const unitCode = qtyObj ? attrOf(qtyObj, 'unitCode') : ''
     const lineId = textOf(line['ID'])
+    // Issue #4 (aditivno): KPD klasifikacija postavke — CommodityClassification
+    // (HR eRačun) ali toleranten deepFind na ItemClassificationCode
+    const kpdCode = firstNonEmpty(
+      textOf(pick(line, ['Item', 'CommodityClassification', 'ItemClassificationCode'])),
+      textOf(deepFind(line, 'ItemClassificationCode', 5)),
+    )
     out.push({
       name,
       quantity: Number.isFinite(qty) ? qty : 0,
@@ -252,6 +266,7 @@ function linesOf(inv: XmlNode): EslogLine[] {
       vatRate: Number.isFinite(vatRate) ? vatRate : 0,
       ...(unitCode ? { unit: unitCode } : {}),
       ...(lineId ? { lineId } : {}),
+      ...(kpdCode ? { kpdCode } : {}),
       ...(credited ? { credited } : {}),
     })
   }
@@ -408,6 +423,11 @@ export function parseEslog(xml: string): EslogParseResult {
 
   const issueDate = textOf(root['IssueDate'])
   const dueDate = textOf(root['DueDate'])
+  // Issue #4 (aditivno): DocumentCurrencyCode (valuta) — toleranten fallback
+  const currency = firstNonEmpty(
+    textOf(root['DocumentCurrencyCode']),
+    textOf(deepFind(root, 'DocumentCurrencyCode', 4)),
+  )
 
   const supplier = supplierOf(root)
   const lines = linesOf(root)
@@ -434,6 +454,7 @@ export function parseEslog(xml: string): EslogParseResult {
       total: Number.isFinite(total) ? total : NaN,
       attachments,
       documentType: rootKey && /credit/i.test(rootKey) ? 'credit_note' : 'invoice',
+      ...(currency ? { currency } : {}),
     },
     error: null,
   }

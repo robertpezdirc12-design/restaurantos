@@ -445,6 +445,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-stock-transfers',
     probe: async () => tablesAll(['StockTransfer', 'StockTransferItem']),
   },
+  {
+    // Issue #4 (P1, v1.125.0) — odhodni B2B e-računi SI/HR. NOVA tabela
+    // EInvoiceOutbox (AR vezava SetNull, profil eSLOG 2.0 SI / UBL 2.1 HR,
+    // xmlPayload + xmlHash dokaz, idempotencyKey unique, statusni življenjski
+    // cikel draft→…→accepted/rejected, externalRef, processedEvents dedup).
+    // AR/Location dobita SAMO prisma back-relacijo (0 DDL na obstoječih
+    // tabelah). Do DDL: /api/einvoices* rute 503 degradirajo (graceful),
+    // izvoz receivablesByStatus/einvoicesByStatus se tiho izprazni.
+    id: 'einvoice-outbox',
+    descKey: 'mig.einvoiceOutbox.desc',
+    endpoint: '/api/admin/migrate-einvoice-outbox',
+    probe: async () => tableExists('EInvoiceOutbox'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

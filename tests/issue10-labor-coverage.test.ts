@@ -1320,9 +1320,9 @@ describe('G. registri: TEST_PREFIXES, verzija, reasons enum, 0 DDL', () => {
     expect(TEST_PREFIXES).toContain('i10-')
   })
 
-  it('G2. APP_VERSION === 1.124.0', () => {
-    // verzijski register posodablja vsak val — zadnji: v1.124.0 (končna cena z DDV + UI/a11y val)
-    expect(APP_VERSION).toBe('1.124.0')
+  it('G2. APP_VERSION === 1.125.0', () => {
+    // verzijski register posodablja vsak val — zadnji: v1.125.0 (issue #4 — e-računi SI/HR)
+    expect(APP_VERSION).toBe('1.125.0')
   })
 
   it('G3. dataQuality.reasons so stabilen nabor kod (UI preslika lcov.dq.*)', () => {

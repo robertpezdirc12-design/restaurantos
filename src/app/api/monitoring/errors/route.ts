@@ -25,11 +25,13 @@ export async function GET(req: NextRequest) {
   // Issue #3 §G/H (P2): filter je ujel SAMO akcije z 'ERROR' v imenu — PRINT_FAILED
   // (issue #10), FISCAL_SUBMIT_FAILED (issue #3 §B) in SYNC_OP_DROPPED (issue #3 §A)
   // so operativne napake BREZ 'ERROR' podniza in so bile NEVIDNE v diagnostiki.
+  // Issue #4 (v1.125.0, GAP-7 vzorec): EINVOICE_SEND_FAILED (timeout adapterja) in
+  // EINVOICE_REJECTED (zavrnitev prejemnika) — enaka vrsta operativne napake.
   const errors = await db.auditLog.findMany({
     where: {
       OR: [
         { action: { contains: 'ERROR' } },
-        { action: { in: ['PRINT_FAILED', 'FISCAL_SUBMIT_FAILED', 'SYNC_OP_DROPPED'] } },
+        { action: { in: ['PRINT_FAILED', 'FISCAL_SUBMIT_FAILED', 'SYNC_OP_DROPPED', 'EINVOICE_SEND_FAILED', 'EINVOICE_REJECTED'] } },
       ],
       ...(scope.locationId ? { locationId: scope.locationId } : {}),
     },

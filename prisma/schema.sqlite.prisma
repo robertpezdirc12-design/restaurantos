@@ -99,8 +99,9 @@ model AccountsReceivable {
   notes         String    @default("")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime @updatedAt
-  locationId    String?
-  Location      Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
+  locationId      String?
+  Location        Location? @relation(fields: [locationId], references: [id], onUpdate: SetNull)
+  EInvoiceOutbox  EInvoiceOutbox[]
 
   @@index([customerTaxId])
   @@index([dueDate])
@@ -814,6 +815,43 @@ model EmployeeJob {
   @@index([jobId])
 }
 
+model EInvoiceOutbox {
+  id                String                @id
+  arId              String?
+  direction         String                @default("outgoing")
+  country           String                @default("SI")
+  documentType      String                @default("invoice")
+  profile           String                @default("eslog-2.0-si")
+  currency          String                @default("EUR")
+  invoiceNumber     String                @default("")
+  receiverName      String                @default("")
+  receiverTaxId     String                @default("")
+  receiverCountry   String                @default("")
+  subtotal          Decimal               @default(0)
+  vatAmount         Decimal               @default(0)
+  totalAmount       Decimal               @default(0)
+  xmlPayload        String                @default("")
+  xmlHash           String                @default("")
+  externalRef       String                @default("")
+  idempotencyKey    String                @unique
+  status            String                @default("draft")
+  lastReason        String                @default("")
+  processedEvents   String                @default("[]")
+  attempts          Int                   @default(0)
+  lastAttemptAt     DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  locationId        String?
+  AccountsReceivable AccountsReceivable? @relation(fields: [arId], references: [id], onDelete: SetNull)
+  Location          Location?             @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([arId])
+  @@index([country, status])
+  @@index([locationId])
+  @@index([status])
+}
+
 model GiftCard {
   id                  String                @id
   cardNumber          String                @unique
@@ -1431,6 +1469,7 @@ model Location {
   DiningOption                DiningOption[]
   Discount                    Discount[]
   Employee                    Employee[]
+  EInvoiceOutbox              EInvoiceOutbox[]
   GiftCard                    GiftCard[]
   GoodsReceipt                GoodsReceipt[]
   Guest                       Guest[]

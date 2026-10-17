@@ -87,6 +87,7 @@ export const TEST_PREFIXES = [
   'i9-', // issue9 channel-sync (v1.119.0)
   'i3-', // issue3 pos-readiness (v1.120.0)
   'i70-', // issue70 state-consistency (v1.121.0)
+  'i4-', // issue4 einvoices SI/HR (v1.125.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

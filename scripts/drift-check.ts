@@ -474,6 +474,13 @@ export function isStockTransfersStatement(stmt: string): boolean {
   return false
 }
 
+/** Issue #4 (v1.125.0): odhodni B2B e-računi — NOVA tabela EInvoiceOutbox
+ * (strogo po tabeli — vzorec StockTransfer/ManagerCall). */
+export function isEInvoiceOutboxStatement(stmt: string): boolean {
+  if (!/"EInvoiceOutbox"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -762,6 +769,25 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'rute vračajo 503 (graceful degradacija). Ko je DDL apliciran ' +
       '(Enterprise → Shema migracije), drift izgine in vnos postane mrtva koda.',
     matches: isStockTransfersStatement,
+  },
+  {
+    id: 'einvoice-outbox',
+    reason:
+      'Odhodni B2B e-računi SI/HR (v1.125.0, issue #4 P1) — NOVA tabela ' +
+      'EInvoiceOutbox (kanonični zapis izmenjave: AR vezava SetNull, država/profil ' +
+      '(eSLOG 2.0 SI / UBL 2.1 HR), vrsta dokumenta račun/dobropis, valuta, ' +
+      'zneski, xmlPayload + xmlHash dokaz poslane vsebine, idempotencyKey ' +
+      '@unique, statusni življenjski cikel draft→validated→queued→sent→' +
+      'delivered→accepted/rejected (+ failed/needs_review retry poti), ' +
+      'externalRef, processedEvents webhook dedup) — AR in Location dobita SAMO ' +
+      'prisma back-relacijo (0 DDL na obstoječih tabelah): produkcija čaka DDL ' +
+      'korak — admin ruta /api/admin/migrate-einvoice-outbox (konzola ' +
+      'Enterprise → Shema migracije → en klik). Do DDL /api/einvoices* rute ' +
+      '503 degradirajo (graceful — POS/fiskalizacija/nabava tokovi se ne ' +
+      'dotaknejo); izvoz reports/export bloka receivablesByStatus/' +
+      'einvoicesByStatus se tiho izprazni (isMissingSchemaError). Ko je DDL ' +
+      'apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isEInvoiceOutboxStatement,
   },
   {
     id: 'settings-pending-merged',
