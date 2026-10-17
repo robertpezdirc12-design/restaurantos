@@ -3866,3 +3866,25 @@ Stage Summary:
 - 2278/2278 ZELENO na sveži resni sqlite bazi PO rebaseu #3 (114 datotek, 105745 expect, 139,22 s), tsc = samo 4 bazne okoljske napake, lint 0, check-secrets OK, build OK; 38 datotek v valu (23 src / 14 tests / worklog), 0 DDL, 0 novih tabel
 - Stress/lastnostni fuzz je našel drugo resnično napako (NaN popust → `totalDue` NaN → fiskalni račun brez zneska); oba posega (izvleček DDV + nevtralizacija vhoda) sta zdaj podprta z neodvisnim integer-cent oraklom, ki se s produktom ujema eksaktno na 40.000 parih
 - NASLEDNJI KORAKI: (1) push na GitHub main — po lastnikovem ukazu («pushaj na github», 2026-10-16); GitHub = zrcalo GitLaba in push sproži Vercel build, zato poseg ni več samo lokalni dogodek. (2) Po deployu živno preveriti `health` (APP_VERSION 1.124.0) in QA sklop #69 na produkcijski domeni. (3) Ločen poseg: živi klik-test v brskalniku, ko obstaja dev `.env`. (4) Ločen poseg: dvig 5 s stropa pri client-bundle-hygiene/fixture-sweep, da celotni tek ni odvisen od konkurence. (5) Ločen poseg: enaka nevtralizacija (`finite`) tudi na vhodu za `Discount.amount` in `MenuItem.price` — tam ju danes drži samo to, da `num()` nepravilne stringe ustavi na 0, NaN v Decimal stolpcu pa bi šel naprej.
+
+---
+Task ID: v1.125.0-issue4-close
+Agent: glavni agent (Z.ai)
+Task: issue #4 (P1 — E-računi SI/HR) — UI, validacija, izdaja, produkcijski DDL, zaprtje
+
+Work Log:
+- NOV PAT (uporabnik), remote popravljen; pull v1.124.0 (Qoder DDV val, 2278/2278); odprta #4 (P1) + #11 (P2)
+- 4-design: Faza 0 inventura (Explore podagent potekel — direktno): prejeti tok močan (parser+uvoz+#65 idempotenca+#18 3-way), odhodni tok NE OBSTOJA (AR okost 0 rut) — načrt po vzorcih PayLink/#9-channel-sync/delivery-webhook
+- 4-backend (general-purpose): vsi moduli + rute + DDL + docs + 74 testov; glavni agent odpravil 7 hroščev (receiverTaxId 2×, xmlHash scope, AuditLog timestamp ne createdAt, SQLite brez ALTER ADD CONSTRAINT → inline FK, CreditNote ns, TS narrowing, webhook dup eventId) + dialekt-zavedna DDL ruta
+- 4-ui (glavni agent): EInvoiceCard v nabava-tab (izdaja dialog s vrsticami/KPD hintom, seznam s filtri, send/retry, detail dialog s časovnico + XML dokazom, webhook nasvet) — nov zavihek PREPOVEDAN (issue pravilo), 63 ei.* i18n ključev SL+HR že iz backend vala
+- VALIDACIJA: svež ci-fresh.db 2352/2352 (115 datotek, 106.130 expect) · tsc 4 bazne · eslint 0 · secrets OK · DDL identičen prisma migrate diff (28/28 stolpcev)
+- E2E (:3007): izdaja AR-2026-0001 (veljavna SI davčna mod 11-10) → send (mock externalRef) → webhook delivered (HMAC) + dedup + slab podpis 401 → časovnica 3 dogodki (user/adapter/webhook + korelacija) → XML dokaz → 390px brez preliva; cleanup 0 ostankov (integration + AR + outbox + auditi)
+- RELEASE: 0e10cb4 (Closes #4) → CI tests Padel na DIRKI (vzporedna stroski-ddl konzolna invokacija med testnim DROP → CREATE INDEX already exists) → fix 5caeb29 (IF NOT EXISTS na vseh CREATE — migrate-issue10 vzorec) → CI POLNO ZELENA (tests + neon-smoke, drift v allowlistu faza-pred-DDL)
+- PRODUKCIJA: Vercel 1.125.0 @ 5caeb29 ŽIVA · DDL apliciran (centralni admin, 8 stavkov, re-apply alreadyApplied) · /api/einvoices prazen + deluje · kartica se izriše (1280/390, screenshota prod-4-{card,mobile}.png) · negativne poti: 401 brez žetona, 503 webhook brez secreta, 403 migracija kot manager
+- ZAPRTJE #4: samodejno (Closes v 0e10cb4) + dokazni komentar 6232994087 (6-razdelčno poročilo po strukturi issue: inventura, matrika SI/HR, spremembe, testi, produkcija, zunanje odvisnosti, tveganja)
+- DIAGNOZA INFRA: prod-smoke + neon-backup (ubuntu-latest HOSTED) padajo v 2 s brez zagona = Actions kvota minut IZČRPANA (CI na self-hosted je brezplačen in ZELEN; dnevna posla se povrneta 1. 11. 2026 ali po preusmeritvi na CI_RUNNER_LABELS s psql klientom)
+
+Stage Summary:
+- Issue #4 ZAPRT (9. zaprti): celovit odhodni B2B tok (AR issue → validacija SI/HR checksum + KPD → eSLOG 2.0/UBL 2.1 generator z round-trip dokazom → mock adapter ključavnica → idempotenten send/retry → webhook s podpisom/dedup/forward-only) + ojačan prejeti tok + statusni dogodki v audit verigi + DDL register 29 + matrika SI/HR docs
+- 2352/2352 zelenih na main (5caeb29), CI polno zelen, produkcija 1.125.0 z apliciranim DDL
+- ODPRTE issue: #11 (P2 CRM) — zadnja; GLOBAK korak uporabnika: izbira ponudnika e-poti (docs/E-INVOICES-SI-HR.md §3) + Actions kvota 1. 11. + PAT rotacija (tokrat 6. uporaba)
