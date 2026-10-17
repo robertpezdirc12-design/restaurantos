@@ -537,7 +537,7 @@ describe('issue #5 E — landingTab: pristajalni zavihek po vlogi', () => {
   })
   it('enterprise: warehouse → zaloge; accounting → racuni; BAR brez orders.pay pade na mize (perms > vloga)', () => {
     expect(landingTab('WAREHOUSE', ['inventory.manage'])).toEqual({ tab: 'zaloge' })
-    expect(landingTab('ACCOUNTING', ['reports.view'])).toEqual({ tab: 'racuni' })
+    expect(landingTab('ACCOUNTING', ['reports.sales'])).toEqual({ tab: 'racuni' }) // issue #72 D3
     expect(landingTab('BAR', [])).toEqual({ tab: 'mize' })
   })
 })

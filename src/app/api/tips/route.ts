@@ -13,7 +13,7 @@ import { writeAudit } from '@/lib/audit-chain'
  *   → predogled dneva (zbirke cash/non-cash, ure po zaposlenih, predogled delitve)
  *     + obstoječi bazen za dan (z distribucijami) + zgodovina zadnjih bazenov.
  *     N5 (revizija §4): finančni podatki (zneski napitnin, distribucije) — UI prikaže
- *     zavihek Napitnine samo z 'reports.view' (TAB_PERM.napitnine), zato backend
+ *     zavihek Napitnine samo z 'reports.labour' (TAB_PERM.napitnine), zato backend
  *     uveljavlja isto kanonično dovoljenje (prej: requireAuth).
  *
  * POST /api/tips  { date, locationId?, method, points?, shiftId? }
@@ -85,8 +85,8 @@ function methodWeights(method: TipMethod, rows: BasisRow[], points: Record<strin
 }
 
 export async function GET(req: NextRequest) {
-  // N5: finančni seznam (bazeni, zneski, distribucije) → 'reports.view' (skladen z UI zavihkom)
-  const user = await requirePermission(req, 'reports.view')
+  // N5: finančni seznam (bazeni, zneski, distribucije) → 'reports.labour' (skladen z UI zavihkom)
+  const user = await requirePermission(req, 'reports.labour')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

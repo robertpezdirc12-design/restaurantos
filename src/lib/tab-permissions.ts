@@ -24,8 +24,8 @@ export const TAB_PERM: Record<string, string | string[]> = {
   prodaja: 'orders.pay', // OPS-4 v1.67.0 — hitra prodaja (šank, brez mize)
   meni: 'menu.manage',
   rezervacije: 'reservations.manage',
-  racuni: 'reports.view',
-  inzeniring: 'reports.view', // OPS-8 v1.71.0 — menu engineering (Kasavana-Smith kvadrant; GET /api/menu-engineering = reports.view)
+  racuni: 'reports.sales',
+  inzeniring: 'reports.sales', // OPS-8 v1.71.0 — menu engineering (Kasavana-Smith kvadrant; GET /api/menu-engineering = reports.sales)
   popusti: 'discounts.manage', // Issue #5 P0-A — katalog promocij = discounts.manage (vodstvo); UPORABA popusta ob plačilu ostaja apply_discounts (natakar)
   integracije: 'settings.manage', // Task 60 — admin integracije (backend requirePermission settings.manage)
   zaloge: 'inventory.manage',
@@ -33,12 +33,12 @@ export const TAB_PERM: Record<string, string | string[]> = {
   delovnicas: TAB_PERM_ALL, // Delovni čas — ura je za VSE zaposlene (samooskrba; ekipni del notri gating employees.manage)
   urnik: TAB_PERM_ALL, // OPS-7: urnik izmen — pogled svojih izmen za vse; urejanje gating timeclock.manage (notri + backend)
   haccp: ['settings.manage', 'haccp.execute'], // OPS-4 v1.67.0 — urejanje načrtov (settings.manage) ALI izvedba kontrol (haccp.execute — kuhinja, čistilka)
-  stroski: 'reports.view',
-  zvestoba: 'reports.view',
+  stroski: 'reports.sales',
+  zvestoba: 'reports.sales',
   mnenja: 'reservations.manage',
-  crm: 'reports.view', // Issue #11 (v1.126.0) — CRM gostov (ogled segmentov/gostov = reports.view; mutacije soglasja/kampanj/izvoz = settings.manage strežniško)
+  crm: 'guests.read', // Issue #11 (v1.126.0) + issue #72 D3 — CRM gostov = PII (stiki, privolitve) → guests.read; mutacije soglasja/kampanj/izvoz ostanejo settings.manage strežniško
   dostava: 'delivery.manage', // OPS-4 v1.67.0 — sprejem dostav/con = delivery.manage (vodstvo)
-  napitnine: 'reports.view',
+  napitnine: 'reports.labour', // issue #72 D3 — plačni podatki ločeni od financ (reports.sales),
   obracun: 'employees.manage', // Issue #22 (v1.115.0) — obračunsko obdobje + izvoz (backend requirePermission employees.manage)
   prenosi: 'inventory.manage', // Issue #8 (v1.116.0) — medlokacijski prenosi zalog (backend requirePermission inventory.manage)
   nabava: 'inventory.manage',
@@ -52,7 +52,9 @@ export const TAB_PERM: Record<string, string | string[]> = {
 }
 
 export interface TabPermContext {
-  /** centralne vloge in MANAGER vidijo vse zavihke (enako kot do zdaj v page.tsx) */
+  /** ISSUE #72 C1: CENTRALNE vloge vidijo vse zavihke; MANAGER vidi zavihke SKOZ
+   * SVOJE RAZREŠENE PRAVICE (19 ključev — nastavitve/integracije/enterprise mu
+   * izginejo, enakovredno backendu). Prej je sem sodil tudi MANAGER kot bypass. */
   canManage: boolean
   /** razrešena dovoljenja prijavljenega (/api/auth/me) — prazna PRED nalaganjem */
   perms: string[]
@@ -96,7 +98,7 @@ export function landingTab(uiRole: string, perms: string[]): { tab: string; stat
   const role = (uiRole || '').toUpperCase()
   if (role === 'OWNER' || role === 'ADMIN' || role === 'MANAGER') return { tab: 'pregled' }
   if (role === 'GROUP_OWNER' || role === 'ORG_ADMIN' || role === 'PROPERTY_MANAGER') return { tab: 'pregled' }
-  if (role === 'ACCOUNTING') return { tab: has('reports.view') ? 'racuni' : 'pregled' }
+  if (role === 'ACCOUNTING') return { tab: has('reports.sales') ? 'racuni' : 'pregled' }
   if (role === 'WAREHOUSE') return { tab: has('inventory.manage') ? 'zaloge' : 'pregled' }
   if (role === 'KITCHEN' || role === 'CHEF') return { tab: 'kuhinja' }
   if (role === 'BAR') return { tab: has('orders.pay') ? 'prodaja' : 'mize' }

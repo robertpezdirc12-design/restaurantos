@@ -13,7 +13,7 @@ import { maskEmail, currentConsentMap } from '@/lib/crm'
  * RBAC: reports.view + locationScope (staff = izključno svoja lokacija).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'guests.read')
   if (isResponse(user)) return user
   const scope = await locationScope(user)
   const guests = await db.guest.findMany({

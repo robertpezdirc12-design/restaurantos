@@ -274,9 +274,9 @@ describe('P2 RBAC — N8: UI dovoljenja zavihkov (fail-closed)', () => {
   })
 
   test('override dovoljenj pravilno preklopi vidnost zavihka', () => {
-    // natakar z override dovoljenjem reports.view vidi tudi Račune
+    // natakar z override dovoljenjem reports.sales vidi tudi Račune
     expect(tabHasPerm('racuni', { canManage: false, perms: ['orders.create'] })).toBe(false)
-    expect(tabHasPerm('racuni', { canManage: false, perms: ['orders.create', 'reports.view'] })).toBe(true)
+    expect(tabHasPerm('racuni', { canManage: false, perms: ['orders.create', 'reports.sales'] })).toBe(true)
   })
 
   test('vsak vnos TAB_PERM je veljavno kanonično dovoljenje, OR-seznam veljavnih, ALI "*" (OPS-4)', () => {
@@ -351,12 +351,12 @@ describe('P2 PII — loyalty: maskiranje telefonov', () => {
     expect(res.status).toBe(403)
   })
 
-  test('?full=1 s settings.manage (MANAGER) → nezakriti telefon', async () => {
+  test('?full=1 s settings.manage (OWNER — issue #72 C1: manager ga nima več) → nezakriti telefon', async () => {
     const t = await setupP
     await db.loyaltyAccount.create({
       data: { id: `${PREFIX}loy3-${RUN}`, customerName: `${PREFIX}Gost 3`, customerPhone: '+386 31 555 777', locationId: locId },
     })
-    const res = await loyaltyGET(req('/api/loyalty?full=1', t.manager))
+    const res = await loyaltyGET(req('/api/loyalty?full=1', t.owner))
     expect(res.status).toBe(200)
     const data = await res.json()
     const mine = (data.accounts as Array<{ id: string; phone: string | null }>).find((a) => a.id === `${PREFIX}loy3-${RUN}`)

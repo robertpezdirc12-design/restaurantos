@@ -32,7 +32,7 @@ export const LABOR_TARGET_PCT = 32
  * the pure layer src/lib/labor-cost.ts.
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.labour')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

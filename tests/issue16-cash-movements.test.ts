@@ -73,6 +73,7 @@ let barBId = ''
 let tokBarA = ''
 let tokBarD = ''
 let tokMgrA = ''
+let tokAdmA = ''
 let tokMgrA2 = ''
 let tokWaiterA = ''
 let tokBarB = ''
@@ -177,6 +178,8 @@ beforeAll(async () => {
   const barA = await seedEmp('barA', 'bar', locA)
   const barD = await seedEmp('barD', 'bar', locA)
   const mgrA = await seedEmp('mgrA', 'manager', locA)
+  // ISSUE #72 C1: katalog no-sale razlogov piše settings.manage (centralno) — testni ADMIN
+  const admA = await seedEmp('admA', 'admin', locA)
   const mgrA2 = await seedEmp('mgrA2', 'manager', locA)
   const waiter = await seedEmp('waiterA', 'waiter', locA)
   const barB = await seedEmp('barB', 'bar', locB)
@@ -185,6 +188,7 @@ beforeAll(async () => {
   tokBarA = tok(barAId, `${P}barA`, 'BAR', locA)
   tokBarD = tok(barDId, `${P}barD`, 'BAR', locA)
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
+  tokAdmA = tok(admA.id, `${P}admA`, 'ADMIN', locA)
   tokMgrA2 = tok(mgrA2Id, `${P}mgrA2`, 'MANAGER', locA)
   tokWaiterA = tok(waiterAId, `${P}waiterA`, 'WAITER', locA)
   tokBarB = tok(barBId, `${P}barB`, 'BAR', locB)
@@ -601,27 +605,27 @@ describe('F. /api/shifts/no-sale-reasons', () => {
     expect(Array.isArray(bGet.reasons)).toBe(true)
 
     const name = `${P}Nakup sitnine ${RUN}`
-    const rPost = await reasonsPOST(req('POST', '/api/shifts/no-sale-reasons', tokMgrA, { name, locationId: locA }))
+    const rPost = await reasonsPOST(req('POST', '/api/shifts/no-sale-reasons', tokAdmA, { name, locationId: locA }))
     expect(await status(rPost)).toBe(201)
-    const rDup = await reasonsPOST(req('POST', '/api/shifts/no-sale-reasons', tokMgrA, { name, locationId: locA }))
+    const rDup = await reasonsPOST(req('POST', '/api/shifts/no-sale-reasons', tokAdmA, { name, locationId: locA }))
     expect(await status(rDup)).toBe(409)
 
     // naredi premik s tem razlogom → brisanje 409 (katalog ne sme tiho izginiti)
     const created = (await body(rPost)).reason as { id: string }
     const shiftId = await seedShift(barAId, `${P}barA`, locA, 50, new Date(TS - 3600_000))
     await movementsPOST(req('POST', '/api/shifts/movements', tokBarA, { shiftId, type: 'paid_out', amount: 2, reasonId: created.id }))
-    const rDel = await reasonsDELETE(req('DELETE', `/api/shifts/no-sale-reasons?id=${created.id}`, tokMgrA))
+    const rDel = await reasonsDELETE(req('DELETE', `/api/shifts/no-sale-reasons?id=${created.id}`, tokAdmA))
     expect(await status(rDel)).toBe(409)
     // deaktivacija skrije iz POS izbire, ZGODOVINSKA uporaba pa brisanje
     // blokira TRAJNO (isti vzorec kot VoidReason v #19 — snapshot ostane)
     await db.noSaleReason.update({ where: { id: created.id }, data: { isActive: false } })
-    const rDel2 = await reasonsDELETE(req('DELETE', `/api/shifts/no-sale-reasons?id=${created.id}`, tokMgrA))
+    const rDel2 = await reasonsDELETE(req('DELETE', `/api/shifts/no-sale-reasons?id=${created.id}`, tokAdmA))
     expect(await status(rDel2)).toBe(409)
     // neuporabljen razlog se izbriše čisto
     const fresh = await db.noSaleReason.create({
       data: { id: `${P}nsr3-${RUN}`, name: `${P}Nikoli uporabljen`, isActive: true, sortOrder: 0, locationId: locA },
     })
-    const rDel3 = await reasonsDELETE(req('DELETE', `/api/shifts/no-sale-reasons?id=${fresh.id}`, tokMgrA))
+    const rDel3 = await reasonsDELETE(req('DELETE', `/api/shifts/no-sale-reasons?id=${fresh.id}`, tokAdmA))
     expect(await status(rDel3)).toBe(200)
   })
 

@@ -45,6 +45,10 @@ let locOB = ''
 let miA = ''
 let tokMgrA = ''
 let tokMgrB = ''
+// issue #72 C1: loyalty POST/PATCH = settings.manage → MANAGER nima več;
+// property_manager = poln nabor, a LOKACIJSKO vezan (ne-centralen)
+let tokPmA = ''
+let tokPmB = ''
 let tokWaiter = ''
 let tokKitchen = ''
 let tokCentral = ''
@@ -163,12 +167,16 @@ beforeAll(async () => {
   const kitchen = await seedEmployee('kitchen', 'kitchen', locA, 4)
   const central = await seedEmployee('central', 'admin', null, 5)
   const adminOA = await seedEmployee('adminOA', 'admin', locOA, 6)
+  const pmA = await seedEmployee('pmA', 'property_manager', locA, 7)
+  const pmB = await seedEmployee('pmB', 'property_manager', locB, 8)
   tokMgrA = tok(mgrA, `${P}mgrA`, 'MANAGER', locA)
   tokMgrB = tok(mgrB, `${P}mgrB`, 'MANAGER', locB)
   tokWaiter = tok(waiter, `${P}waiter`, 'WAITER', locA)
   tokKitchen = tok(kitchen, `${P}kitchen`, 'KITCHEN', locA)
   tokCentral = tok(central, `${P}central`, 'ADMIN', null)
   tokAdminOA = tok(adminOA, `${P}adminOA`, 'ADMIN', locOA)
+  tokPmA = tok(pmA, `${P}pmA`, 'PROPERTY_MANAGER', locA)
+  tokPmB = tok(pmB, `${P}pmB`, 'PROPERTY_MANAGER', locB)
 })
 
 afterAll(async () => {
@@ -186,19 +194,20 @@ afterAll(async () => {
 /* ─────────────────────────── #43 — loyalty POST ─────────────────────────── */
 
 describe('#43 — loyalty POST: kanonična lokacija (brez findFirst fallbacka)', () => {
-  it('staff (manager A) ustvari račun na SVOJI lokaciji; audit nosi locationId', async () => {
-    const res = await loyaltyPOST(req('POST', '/api/loyalty', tokMgrA, { guestName: `${P}Ana`, phone: '040123456' }))
+  it('pmA (property_manager, settings.manage) ustvari račun na SVOJI lokaciji; audit nosi locationId', async () => {
+    // issue #72 C1: loyalty POST zahteva settings.manage → akter = pmA (ne-centralen)
+    const res = await loyaltyPOST(req('POST', '/api/loyalty', tokPmA, { guestName: `${P}Ana`, phone: '040123456' }))
     expect(res.status).toBe(201)
     const j = (await res.json()) as { account: { id: string } }
     const acc = await db.loyaltyAccount.findUnique({ where: { id: j.account.id } })
     expect(acc?.locationId).toBe(locA)
     const audit = await db.auditLog.findFirst({ where: { action: 'LOYALTY_ACCOUNT_CREATED', entityId: j.account.id } })
     expect(audit?.locationId).toBe(locA)
-    expect(audit?.userId).toBe(`${P}mgrA-${RUN}`)
+    expect(audit?.userId).toBe(`${P}pmA-${RUN}`)
   })
 
-  it('poskus staff z body.locationB se IGNORIRA — račun ostane na lastni lokaciji', async () => {
-    const res = await loyaltyPOST(req('POST', '/api/loyalty', tokMgrA, { guestName: `${P}Bor`, locationId: locB }))
+  it('poskus z body.locationB se IGNORIRA — račun ostane na lastni lokaciji', async () => {
+    const res = await loyaltyPOST(req('POST', '/api/loyalty', tokPmA, { guestName: `${P}Bor`, locationId: locB }))
     expect(res.status).toBe(201)
     const j = (await res.json()) as { account: { id: string } }
     const acc = await db.loyaltyAccount.findUnique({ where: { id: j.account.id } })
@@ -234,7 +243,7 @@ describe('#43 — loyalty POST: kanonična lokacija (brez findFirst fallbacka)',
   })
 
   it('manjkajoče ime → 400 (validacija ostaja)', async () => {
-    const res = await loyaltyPOST(req('POST', '/api/loyalty', tokMgrA, { guestName: '   ' }))
+    const res = await loyaltyPOST(req('POST', '/api/loyalty', tokPmA, { guestName: '   ' }))
     expect(res.status).toBe(400)
   })
 })
@@ -244,7 +253,7 @@ describe('#43 — loyalty POST: kanonična lokacija (brez findFirst fallbacka)',
 describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
   it('odpis nad saldo (delta=-50, saldo 10) → 409; saldo NESPREMJEN; BREZ novega ledger zapisa (ne tihi clamp)', async () => {
     const acc = await seedAccount(10, locA)
-    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: -50 }))
+    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: -50 }))
     expect(res.status).toBe(409)
     const after = await db.loyaltyAccount.findUnique({ where: { id: acc.id } })
     expect(after?.pointsBalance).toBe(10)
@@ -253,7 +262,7 @@ describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
 
   it('točen odpis do 0 → 200; saldo 0; ledger -10 ≡ sprememba salda; audit zapis', async () => {
     const acc = await seedAccount(10, locA)
-    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: -10 }))
+    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: -10 }))
     expect(res.status).toBe(200)
     const j = (await res.json()) as { account: { points: number } }
     expect(j.account.points).toBe(0)
@@ -266,8 +275,8 @@ describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
   it('SOČASNA odbitka 8 iz salda 10 → natanko ena uspe [200,409]; saldo 2; EN ledger', async () => {
     const acc = await seedAccount(10, locA)
     const [r1, r2] = await Promise.all([
-      loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: -8 })),
-      loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: -8 })),
+      loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: -8 })),
+      loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: -8 })),
     ])
     const statuses = [r1.status, r2.status].sort()
     expect(statuses).toEqual([200, 409])
@@ -279,8 +288,8 @@ describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
   it('SOČASNA prirasta +5/+5 iz 10 → OBA uspeta; saldo 20; lifetime 20; DVA ledgerja (izgubljeni update nemogoč)', async () => {
     const acc = await seedAccount(10, locA)
     const [r1, r2] = await Promise.all([
-      loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: 5 })),
-      loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: 5 })),
+      loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: 5 })),
+      loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: 5 })),
     ])
     expect(r1.status).toBe(200)
     expect(r2.status).toBe(200)
@@ -292,13 +301,13 @@ describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
 
   it('tier/lifetime izpeljana iz iste operacije: earn čez 100 → silver, redeem pod 100 → bronze', async () => {
     const acc = await seedAccount(10, locA)
-    const r1 = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: 95 }))
+    const r1 = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: 95 }))
     expect(r1.status).toBe(200)
     const mid = await db.loyaltyAccount.findUnique({ where: { id: acc.id } })
     expect(mid?.pointsBalance).toBe(105)
     expect(mid?.lifetimePoints).toBe(105)
     expect(mid?.tier).toBe('silver')
-    const r2 = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: -6 }))
+    const r2 = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: -6 }))
     expect(r2.status).toBe(200)
     const end = await db.loyaltyAccount.findUnique({ where: { id: acc.id } })
     expect(end?.pointsBalance).toBe(99)
@@ -306,9 +315,9 @@ describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
     expect(end?.tier).toBe('bronze')
   })
 
-  it('cross-tenant: manager B (locB) ne more spremeniti računa lokacije A → 403', async () => {
+  it('cross-tenant: pmB (locB, settings.manage) ne more spremeniti računa lokacije A → 403', async () => {
     const acc = await seedAccount(10, locA)
-    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrB, { id: acc.id, delta: 5 }))
+    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmB, { id: acc.id, delta: 5 }))
     expect(res.status).toBe(403)
     const after = await db.loyaltyAccount.findUnique({ where: { id: acc.id } })
     expect(after?.pointsBalance).toBe(10)
@@ -317,17 +326,17 @@ describe('#44 — loyalty PATCH: atomaren saldo + ledger (CAS + meje)', () => {
 
   it('meja delte: |delta| > 1.000.000 → 400; neštevilski delta → 400; delta 0 → 400', async () => {
     const acc = await seedAccount(10, locA)
-    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: 2_000_000 }))).status).toBe(400)
-    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: -2_000_000 }))).status).toBe(400)
-    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: 'abc' }))).status).toBe(400)
-    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: acc.id, delta: 0 }))).status).toBe(400)
+    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: 2_000_000 }))).status).toBe(400)
+    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: -2_000_000 }))).status).toBe(400)
+    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: 'abc' }))).status).toBe(400)
+    expect((await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: acc.id, delta: 0 }))).status).toBe(400)
     const after = await db.loyaltyAccount.findUnique({ where: { id: acc.id } })
     expect(after?.pointsBalance).toBe(10)
     expect(await db.loyaltyTransaction.count({ where: { loyaltyAccountId: acc.id } })).toBe(0)
   })
 
   it('neobstoječi račun → 404', async () => {
-    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokMgrA, { id: `${P}nic-${RUN}`, delta: 5 }))
+    const res = await loyaltyPATCH(req('PATCH', '/api/loyalty', tokPmA, { id: `${P}nic-${RUN}`, delta: 5 }))
     expect(res.status).toBe(404)
   })
 })

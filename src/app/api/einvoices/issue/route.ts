@@ -34,7 +34,7 @@ import { validateOutgoing } from '@/lib/einvoice-validate'
  * lokacije NE izda računa iz naročila tuje lokacije.
  */
 export async function POST(req: NextRequest) {
-  const user = await requirePermission(req, 'inventory.manage')
+  const user = await requirePermission(req, 'einvoices.issue')
   if (isResponse(user)) return user
 
   const body = await req.json().catch(() => null)

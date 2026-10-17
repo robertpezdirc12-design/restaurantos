@@ -56,6 +56,11 @@ let tokMgrB = ''
 let tokMgrC = ''
 let tokWaiterA = ''
 let tokAdminB = ''
+// issue #72 C1: soglasja/kampanje/izvoz (settings.manage) MANAGER nima več →
+// property_manager = poln nabor pravic, a LOKACIJSKO vezan (ni centralen)
+let tokPmA = ''
+let tokPmB = ''
+let tokPmC = ''
 
 const guestIds: string[] = []
 const campaignIds: string[] = []
@@ -127,7 +132,7 @@ async function seedGuest(opts: {
 }
 
 async function mkCampaign(overrides: Record<string, unknown> = {}): Promise<string> {
-  const res = await campaignsPOST(req('POST', '/api/crm/campaigns', tokMgrC, {
+  const res = await campaignsPOST(req('POST', '/api/crm/campaigns', tokPmC, {
     name: `${P}Kampanja ${RUN}`,
     channel: 'email',
     segmentType: 'all',
@@ -170,11 +175,18 @@ beforeAll(async () => {
   mgrC = await seedEmployee('mgrC', 'manager', locC, 5)
   waiterA = await seedEmployee('waiterA', 'waiter', locA, 3)
   adminB = await seedEmployee('adminB', 'admin', locB, 4)
+  // issue #72 C1: akterji s settings.manage, a lokacijsko vezani (guard ostane smiseln)
+  const pmA = await seedEmployee('pmA', 'property_manager', locA, 6)
+  const pmB = await seedEmployee('pmB', 'property_manager', locB, 7)
+  const pmC = await seedEmployee('pmC', 'property_manager', locC, 8)
   tokMgrA = tok(mgrA, 'mgrA', 'MANAGER', locA)
   tokMgrB = tok(mgrB, 'mgrB', 'MANAGER', locB)
   tokMgrC = tok(mgrC, 'mgrC', 'MANAGER', locC)
   tokWaiterA = tok(waiterA, 'waiterA', 'WAITER', locA)
   tokAdminB = tok(adminB, 'adminB', 'ADMIN', locB)
+  tokPmA = tok(pmA, 'pmA', 'PROPERTY_MANAGER', locA)
+  tokPmB = tok(pmB, 'pmB', 'PROPERTY_MANAGER', locB)
+  tokPmC = tok(pmC, 'pmC', 'PROPERTY_MANAGER', locC)
 })
 
 afterAll(async () => {
@@ -220,7 +232,7 @@ describe('A — Soglasje: sled, dokaz, ločeni kanali', () => {
 
   it('grant ZAHTEVA dokaz izrecnega dejanja (GDPR člen 7)', async () => {
     const g = await seedGuest({ suffix: 'a2', loc: locA })
-    const bad = await consentPOST(req('POST', '/api/crm/consent', tokMgrA, { guestId: g, channel: 'email', action: 'grant' }))
+    const bad = await consentPOST(req('POST', '/api/crm/consent', tokPmA, { guestId: g, channel: 'email', action: 'grant' }))
     expect(bad.status).toBe(400)
     const rows = await db.guestConsent.findMany({ where: { guestId: g } })
     expect(rows.length).toBe(0)
@@ -228,7 +240,7 @@ describe('A — Soglasje: sled, dokaz, ločeni kanali', () => {
 
   it('grant z dokazom zapiše vrstico (vir, različica, zapisal)', async () => {
     const g = await seedGuest({ suffix: 'a3', loc: locA })
-    const res = await consentPOST(req('POST', '/api/crm/consent', tokMgrA, {
+    const res = await consentPOST(req('POST', '/api/crm/consent', tokPmA, {
       guestId: g, channel: 'email', action: 'grant',
       proof: 'Gost je soglasje potrdil osebno ob plačilu (PIN vnesel natakar).',
     }))
@@ -244,7 +256,7 @@ describe('A — Soglasje: sled, dokaz, ločeni kanali', () => {
 
   it('email in SMS sta LOČENA kanala (stanje se NE predpostavi)', async () => {
     const g = await seedGuest({ suffix: 'a4', loc: locA, phone: '+38641555444' })
-    await consentPOST(req('POST', '/api/crm/consent', tokMgrA, {
+    await consentPOST(req('POST', '/api/crm/consent', tokPmA, {
       guestId: g, channel: 'sms', action: 'grant', proof: 'Gost je potrdil SMS ob prijavi v zvestobo.',
     }))
     const state = (await currentConsentMap([g])).get(g)
@@ -267,11 +279,11 @@ describe('A — Soglasje: sled, dokaz, ločeni kanali', () => {
     expect(state2?.email).toBe('granted')
   })
 
-  it('RBAC: waiter brez settings.manage → 403; manager druge lokacije → 403', async () => {
+  it('RBAC: waiter brez settings.manage → 403; vodja druge lokacije → 403', async () => {
     const g = await seedGuest({ suffix: 'a6', loc: locA })
     const w = await consentPOST(req('POST', '/api/crm/consent', tokWaiterA, { guestId: g, channel: 'email', action: 'revoke' }))
     expect(w.status).toBe(403)
-    const m = await consentPOST(req('POST', '/api/crm/consent', tokMgrB, { guestId: g, channel: 'email', action: 'revoke' }))
+    const m = await consentPOST(req('POST', '/api/crm/consent', tokPmB, { guestId: g, channel: 'email', action: 'revoke' }))
     expect(m.status).toBe(403)
     const rows = await db.guestConsent.findMany({ where: { guestId: g } })
     expect(rows.length).toBe(0)
@@ -374,7 +386,7 @@ describe('C — Kampanje: validacija, cikel, publika', () => {
     await grant(gNoContact, 'email', 'Potrdil, a brez e-pošte.')
 
     const id = await mkCampaign({ segmentType: 'all' })
-    const res = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'preview' }), params(id))
+    const res = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'preview' }), params(id))
     expect(res.status).toBe(200)
     const json = (await res.json()) as { audience: { total: number; consentGranted: number; suppressed: number; missingContact: number; eligible: number } }
     expect(json.audience.total).toBe(4) // c1–c4 (locC gostje)
@@ -390,11 +402,11 @@ describe('C — Kampanje: validacija, cikel, publika', () => {
     await grant(g)
     const id = await mkCampaign({ segmentType: 'all' })
 
-    const ap = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    const ap = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
     expect(ap.status).toBe(200)
-    const badSched = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'schedule', scheduledAt: '2020-01-01T00:00:00Z' }), params(id))
+    const badSched = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'schedule', scheduledAt: '2020-01-01T00:00:00Z' }), params(id))
     expect(badSched.status).toBe(400)
-    const sched = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'schedule', scheduledAt: new Date(Date.now() + 3600_000).toISOString() }), params(id))
+    const sched = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'schedule', scheduledAt: new Date(Date.now() + 3600_000).toISOString() }), params(id))
     expect(sched.status).toBe(200)
 
     // dispatch PREK time-travel: scheduled v prihodnost → NE pošlje
@@ -429,7 +441,7 @@ describe('D — Idempotenca, batch limit, retry', () => {
     const g2 = await seedGuest({ suffix: 'd2', loc: locC, email: `${P}d2-${RUN}@test.local` })
     await grant(g); await grant(g2)
     const id = await mkCampaign({ segmentType: 'all' })
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
 
     const before = sentEmails.length
     const r1 = await dispatchCampaign(id, { sendFn: fakeSendOk })
@@ -459,7 +471,7 @@ describe('D — Idempotenca, batch limit, retry', () => {
     }
     // segment 'inactive' na locC: SAMO dl1–dl3 (c*/d* imajo lastVisitAt null)
     const id = await mkCampaign({ segmentType: 'inactive', name: `${P}Limit ${RUN}` })
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
     const r1 = await dispatchCampaign(id, { sendFn: fakeSendOk, limit: 2 })
     expect(r1.sent).toBe(2)
     expect(r1.completed).toBe(false)
@@ -479,7 +491,7 @@ describe('D — Idempotenca, batch limit, retry', () => {
     await grant(g)
     // segment 'vip' na locC: SAMO d4 (b* so na locA)
     const id = await mkCampaign({ segmentType: 'vip', name: `${P}Fail ${RUN}` })
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
     const r = await dispatchCampaign(id, { sendFn: fakeSendFail })
     expect(r.sent).toBe(0)
     expect(r.failed).toBe(1)
@@ -501,14 +513,14 @@ describe('E — Odjava: enklik, kanalno, takoj učinkovita, idempotentna', () =>
     await grant(g); await grant(g2)
     // segment 'new' na locC: e1 + e2 (c*/d*/dl* imajo firstVisitAt null)
     const id = await mkCampaign({ segmentType: 'new', name: `${P}Unsub ${RUN}` })
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
     // PRVI dispatch z limitom 1 → e1 poslan (vrstni red lastName), e2 OSTANE 'queued'
     const r1 = await dispatchCampaign(id, { sendFn: fakeSendOk, limit: 1 })
     expect(r1.sent + r1.failed).toBe(1)
     const queued = await db.campaignSend.findFirst({ where: { campaignId: id, status: 'queued' } })
     expect(queued).toBeTruthy()
     // PREKLIC soglasja gosta v vrsti (prek consent rute — vodstvo/gost po telefonu)
-    const rv = await consentPOST(req('POST', '/api/crm/consent', tokMgrC, { guestId: queued!.guestId, channel: 'email', action: 'revoke' }))
+    const rv = await consentPOST(req('POST', '/api/crm/consent', tokPmC, { guestId: queued!.guestId, channel: 'email', action: 'revoke' }))
     expect(rv.status).toBe(200)
     // retry dispatch → e2 je IZPUŠČEN (skipped), poslan = 0 — TAKOJ učinkovito
     const r2 = await dispatchCampaign(id, { sendFn: fakeSendOk })
@@ -540,7 +552,7 @@ describe('E — Odjava: enklik, kanalno, takoj učinkovita, idempotentna', () =>
 
     // NASLEDNJA kampanja (segment 'new' — e1/e2 oba odjavljena): gost NI več upravičen
     const id2 = await mkCampaign({ segmentType: 'new', name: `${P}After-unsub ${RUN}` })
-    const prev = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id2}/actions`, tokMgrC, { action: 'preview' }), params(id2))
+    const prev = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id2}/actions`, tokPmC, { action: 'preview' }), params(id2))
     const prevJson = (await prev.json()) as { audience: { eligible: number; suppressed: number } }
     expect(prevJson.audience.eligible).toBe(0)
     expect(prevJson.audience.suppressed).toBeGreaterThanOrEqual(1)
@@ -569,7 +581,7 @@ describe('E — Odjava: enklik, kanalno, takoj učinkovita, idempotentna', () =>
     await grant(g, 'sms', 'SMS potrdil.')
     // segment 'vip' na locC: d4 (samo email soglasje) + e3 → SMS upravičen SAMO e3
     const id = await mkCampaign({ channel: 'sms', segmentType: 'vip', name: `${P}SMS ${RUN}`, subject: '' })
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
     const r = await dispatchCampaign(id, { sendFn: fakeSendOk })
     expect(r.sent).toBe(1)
     const send = await db.campaignSend.findFirst({ where: { campaignId: id } })
@@ -608,13 +620,13 @@ describe('F — Tenant izolacija, PII maskiranje, izvoz', () => {
     }
   })
 
-  it('GET /api/crm/guests: waiter → 403 (ni reports.view)', async () => {
+  it('GET /api/crm/guests: waiter → 403 (ni guests.read)', async () => {
     const res = await guestsGET(req('GET', '/api/crm/guests', tokWaiterA))
     expect(res.status).toBe(403)
   })
 
-  it('izvoz CSV: settings.manage + audit BREZ PII', async () => {
-    const res = await exportGET(req('GET', '/api/crm/guests/export', tokMgrA))
+  it('izvoz CSV: settings.manage (pmA) + audit BREZ PII', async () => {
+    const res = await exportGET(req('GET', '/api/crm/guests/export', tokPmA))
     expect(res.status).toBe(200)
     const csv = await res.text()
     expect(csv.startsWith('\uFEFF')).toBe(true)
@@ -631,17 +643,17 @@ describe('F — Tenant izolacija, PII maskiranje, izvoz', () => {
     expect(audits[0].details).not.toContain('@test.local')
   })
 
-  it('kampanja locC (org A): manager locB → 403 (guardResource); adminB org B → 403 (org meja)', async () => {
-    const res = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${campaignIds[0]}/actions`, tokMgrB, { action: 'preview' }), params(campaignIds[0]))
+  it('kampanja locC (org A): pmB (settings.manage, druga lokacija) → 403 (guardResource); adminB org B → 403 (org meja)', async () => {
+    const res = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${campaignIds[0]}/actions`, tokPmB, { action: 'preview' }), params(campaignIds[0]))
     expect(res.status).toBe(403)
-    const detail = await campaignDetailGET(req('GET', `/api/crm/campaigns/${campaignIds[0]}`, tokMgrB), params(campaignIds[0]))
+    const detail = await campaignDetailGET(req('GET', `/api/crm/campaigns/${campaignIds[0]}`, tokPmB), params(campaignIds[0]))
     expect(detail.status).toBe(403)
     const orgRes = await campaignActionsPOST(req('POST', `/api/crm/campaigns/${campaignIds[0]}/actions`, tokAdminB, { action: 'preview' }), params(campaignIds[0]))
     expect(orgRes.status).toBe(403)
   })
 
-  it('GET /api/crm/campaigns: seznam v obsegu uporabnika (mgrC vidi locC kampanje)', async () => {
-    const res = await campaignsGET(req('GET', '/api/crm/campaigns', tokMgrC))
+  it('GET /api/crm/campaigns: seznam v obsegu uporabnika (pmC vidi locC kampanje)', async () => {
+    const res = await campaignsGET(req('GET', '/api/crm/campaigns', tokPmC))
     expect(res.status).toBe(200)
     const json = (await res.json()) as { campaigns: Array<{ locationId: string | null }> }
     expect(json.campaigns.length).toBeGreaterThan(0)
@@ -675,9 +687,9 @@ describe('G — Meritve rezultatov + cron dispatch', () => {
     await grant(g)
     // segment 'new' na locC: e1/e2 sta odjavljena, g1 edini upravičen
     const id = await mkCampaign({ segmentType: 'new', name: `${P}Cron ${RUN}` })
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'approve' }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'approve' }), params(id))
     // NEzapadla (1h v prihodnosti)
-    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgrC, { action: 'schedule', scheduledAt: new Date(Date.now() + 3600_000).toISOString() }), params(id))
+    await campaignActionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPmC, { action: 'schedule', scheduledAt: new Date(Date.now() + 3600_000).toISOString() }), params(id))
     const r1 = await dispatchDueCampaigns({ sendFn: fakeSendOk, now: new Date() })
     expect(r1.find((x) => x.campaignId === id)?.sent ?? 0).toBe(0) // še ni zapadla
     // ZAPADLA: time-travel 2h naprej
@@ -689,7 +701,7 @@ describe('G — Meritve rezultatov + cron dispatch', () => {
 
   it('detajl kampanje: števci IZ vrstic + pošiljke maskirane + performance', async () => {
     const id = campaignIds[0]
-    const res = await campaignDetailGET(req('GET', `/api/crm/campaigns/${id}`, tokMgrC), params(id))
+    const res = await campaignDetailGET(req('GET', `/api/crm/campaigns/${id}`, tokPmC), params(id))
     expect(res.status).toBe(200)
     const json = (await res.json()) as {
       sends: Array<{ recipientMasked: string | null; status: string }>
@@ -719,7 +731,7 @@ describe('H — Vsebina: [TEST] prefix, noga odjave, subject', () => {
     expect(testBody).toContain('[TEST')
   })
 
-  it('verzija aplikacije je dvignjena na 1.132.1', () => {
-    expect(APP_VERSION).toBe('1.132.1')
+  it('verzija aplikacije je dvignjena na 1.133.0', () => {
+    expect(APP_VERSION).toBe('1.133.0')
   })
 })

@@ -33,6 +33,9 @@ const PIN_BASE = String(Date.now()).slice(-6)
 let locA = ''
 let tokMgr = ''
 let tokWaiter = ''
+// issue #72 C1: kampanje/soglasja/deduplikacije = settings.manage → MANAGER nima
+// več → property_manager na lokaciji (ne-centralen, poln nabor pravic)
+let tokPm = ''
 const guestIds: string[] = []
 const campaignIds: string[] = []
 const orderIds: string[] = []
@@ -70,8 +73,14 @@ beforeAll(async () => {
   await db.employee.create({
     data: { id: waiter, name: `${P}Waiter`, email: `${P}waiter-${RUN}@test.local`, role: 'waiter', status: 'active', sessionVersion: 0, locationId: locA, pin: f2.pin, pinLookup: f2.pinLookup },
   })
+  const pm = `${P}pm-${RUN}`
+  const f3 = employeePinFields(`${PIN_BASE}3`, `${P}pm-${RUN}@test.local`)
+  await db.employee.create({
+    data: { id: pm, name: `${P}Pm`, email: `${P}pm-${RUN}@test.local`, role: 'property_manager', status: 'active', sessionVersion: 0, locationId: locA, pin: f3.pin, pinLookup: f3.pinLookup },
+  })
   tokMgr = tok(mgr, 'mgr', 'MANAGER', locA)
   tokWaiter = tok(waiter, 'waiter', 'WAITER', locA)
+  tokPm = tok(pm, 'pm', 'PROPERTY_MANAGER', locA)
 })
 
 afterAll(async () => {
@@ -137,8 +146,8 @@ describe('A — DDL korak, register #30, i18n', () => {
     expect(gaps.missingInSl).toEqual([])
   })
 
-  it('tab-permissions: crm zavihek ima izrecen vnos (reports.view)', () => {
-    expect(TAB_PERM['crm']).toBe('reports.view')
+  it('tab-permissions: crm zavihek ima izrecen vnos (guests.read — issue #72 D3)', () => {
+    expect(TAB_PERM['crm']).toBe('guests.read')
   })
 
   it('DDL ruta: manager/waiter → 403 (requireCentralRole); dev SQLite → alreadyApplied', async () => {
@@ -260,7 +269,7 @@ describe('B — Podvojeni profili: zaznava, merge (brez podvajanja), dismiss', (
     try { await mergeGuests(gA, gB) } catch (e) { threw = String((e as Error).message) }
     expect(threw).toContain('zvestobni račun')
     // rUTA: 409
-    const res = await dupPOST(req('POST', '/api/crm/duplicates', tokMgr, { action: 'merge', canonicalId: gA, duplicateId: gB }))
+    const res = await dupPOST(req('POST', '/api/crm/duplicates', tokPm, { action: 'merge', canonicalId: gA, duplicateId: gB }))
     expect(res.status).toBe(409)
   })
 
@@ -276,7 +285,7 @@ describe('B — Podvojeni profili: zaznava, merge (brez podvajanja), dismiss', (
     // rUTA RBAC
     const w = await dupGET(req('GET', '/api/crm/duplicates', tokWaiter))
     expect(w.status).toBe(403)
-    const m = await dupGET(req('GET', '/api/crm/duplicates', tokMgr))
+    const m = await dupGET(req('GET', '/api/crm/duplicates', tokPm))
     expect(m.status).toBe(200)
     const dis = await dupPOST(req('POST', '/api/crm/duplicates', tokWaiter, { action: 'dismiss', guestAId: gA, guestBId: gB }))
     expect(dis.status).toBe(403)
@@ -287,7 +296,7 @@ describe('B — Podvojeni profili: zaznava, merge (brez podvajanja), dismiss', (
 
 describe('C — Testna pošiljka, schedule varovalke, cancel', () => {
   it('send-test: NEVELJAVEN naslov → 400; brez SMTP konfiguracije → jasna napaka (brez gostov)', async () => {
-    const res = await (await import('../src/app/api/crm/campaigns/route')).POST(req('POST', '/api/crm/campaigns', tokMgr, {
+    const res = await (await import('../src/app/api/crm/campaigns/route')).POST(req('POST', '/api/crm/campaigns', tokPm, {
       name: `${P}Test campaign ${RUN}`, channel: 'email', segmentType: 'all',
       subject: `${P}Test ${RUN}`,
       bodySl: `${P}Testna vsebina slovensko ${RUN}`,
@@ -300,10 +309,10 @@ describe('C — Testna pošiljka, schedule varovalke, cancel', () => {
     campaignIds.push(id)
     expect(id).not.toBe('')
     // neveljaven naslov
-    const bad = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'send-test', to: 'ni-email' }), params(id))
+    const bad = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'send-test', to: 'ni-email' }), params(id))
     expect(bad.status).toBe(400)
     // veljaven naslov, a SMTP NI konfiguriran (dev brez nastavitev) → 400 z jasno napako
-    const no = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'send-test' }), params(id))
+    const no = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'send-test' }), params(id))
     expect(no.status).toBe(400)
     const noJson = (await no.json()) as { error?: string }
     expect(noJson.error ?? '').toContain('SMTP')
@@ -313,7 +322,7 @@ describe('C — Testna pošiljka, schedule varovalke, cancel', () => {
   })
 
   it('schedule za neodobreno kampanjo → 400; approve dvakrat → 400; cancel iz prvega stanja', async () => {
-    const res = await (await import('../src/app/api/crm/campaigns/route')).POST(req('POST', '/api/crm/campaigns', tokMgr, {
+    const res = await (await import('../src/app/api/crm/campaigns/route')).POST(req('POST', '/api/crm/campaigns', tokPm, {
       name: `${P}Lifecycle ${RUN}`, channel: 'email', segmentType: 'all',
       subject: `${P}LC ${RUN}`, bodySl: `${P}Vsebina SL ${RUN}`, bodyHr: `${P}Sadržaj HR ${RUN}`, locationId: locA,
     }))
@@ -321,38 +330,38 @@ describe('C — Testna pošiljka, schedule varovalke, cancel', () => {
     const id = json.campaign?.id ?? ''
     campaignIds.push(id)
     // schedule pred odobritvijo
-    const s0 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'schedule', scheduledAt: new Date(Date.now() + 3600_000).toISOString() }), params(id))
+    const s0 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'schedule', scheduledAt: new Date(Date.now() + 3600_000).toISOString() }), params(id))
     expect(s0.status).toBe(400)
     // approve
-    const a1 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'approve' }), params(id))
+    const a1 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'approve' }), params(id))
     expect(a1.status).toBe(200)
     // approve 2x
-    const a2 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'approve' }), params(id))
+    const a2 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'approve' }), params(id))
     expect(a2.status).toBe(400)
     // cancel
-    const c1 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'cancel' }), params(id))
+    const c1 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'cancel' }), params(id))
     expect(c1.status).toBe(200)
     const camp = await db.campaign.findUnique({ where: { id } })
     expect(camp?.status).toBe('cancelled')
     expect(camp?.cancelledAt).toBeTruthy()
     // dispatch cancelled → 400
-    const d1 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'dispatch' }), params(id))
+    const d1 = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'dispatch' }), params(id))
     expect(d1.status).toBe(400)
   })
 
   it('napačna akcija → 400; neveljaven id → 404; waiter → 403', async () => {
-    const res = await (await import('../src/app/api/crm/campaigns/route')).POST(req('POST', '/api/crm/campaigns', tokMgr, {
+    const res = await (await import('../src/app/api/crm/campaigns/route')).POST(req('POST', '/api/crm/campaigns', tokPm, {
       name: `${P}Edge ${RUN}`, channel: 'email', segmentType: 'all',
       subject: `${P}E ${RUN}`, bodySl: `${P}Vsebina SL ${RUN}`, bodyHr: `${P}Sadržaj HR ${RUN}`, locationId: locA,
     }))
     const json = (await res.json()) as { campaign?: { id: string } }
     const id = json.campaign?.id ?? ''
     campaignIds.push(id)
-    const badAction = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, { action: 'explode' }), params(id))
+    const badAction = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, { action: 'explode' }), params(id))
     expect(badAction.status).toBe(400)
-    const noBody = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokMgr, {}), params(id))
+    const noBody = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokPm, {}), params(id))
     expect(noBody.status).toBe(400)
-    const missing = await actionsPOST(req('POST', '/api/crm/campaigns/ne-obstaja/actions', tokMgr, { action: 'preview' }), params('ne-obstaja'))
+    const missing = await actionsPOST(req('POST', '/api/crm/campaigns/ne-obstaja/actions', tokPm, { action: 'preview' }), params('ne-obstaja'))
     expect(missing.status).toBe(404)
     const w = await actionsPOST(req('POST', `/api/crm/campaigns/${id}/actions`, tokWaiter, { action: 'preview' }), params(id))
     expect(w.status).toBe(403)
@@ -379,7 +388,7 @@ describe('D — Cron povezava, javna odjava varovanja, audit', () => {
 
   it('audit: consent dogodki zapisani BREZ vsebine dokaza (samo id/kanal)', async () => {
     const g = await seedGuest({ suffix: 'aud', email: `${P}aud-${RUN}@test.local` })
-    await consentPOST(req('POST', '/api/crm/consent', tokMgr, {
+    await consentPOST(req('POST', '/api/crm/consent', tokPm, {
       guestId: g, channel: 'email', action: 'grant', proof: 'Zelo oseben dokaz o soglasju gosta Fernet Vid 2026.',
     }))
     const audits = await db.auditLog.findMany({

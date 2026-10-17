@@ -74,6 +74,8 @@ let tokCleanerA = ''
 let tokCleanerB = ''
 let tokMgrA = ''
 let tokWaiterA = ''
+let tokAdminA = ''
+let tokAdminB = ''
 
 function tok(sub: string, name: string, role: string, loc: string | null): string {
   return createToken({ sub, name, role, loc, sv: 0 })
@@ -111,10 +113,11 @@ async function newLoc(tag: string): Promise<string> {
   return id
 }
 
-/** Ustvari načrt na lokaciji (settings.manage žeton). */
+/** Ustvari načrt na lokaciji (settings.manage žeton — issue #72 C1: MANAGER
+ * je nima več → načrte postavljata ADMIN/OWNER na lokaciji). */
 async function createPlan(loc: string, over: Record<string, unknown> = {}, token?: string): Promise<Record<string, unknown>> {
   const res = await planPOST(
-    req('POST', '/api/haccp/plans', token ?? tokMgrA, {
+    req('POST', '/api/haccp/plans', token ?? tokAdminA, {
       name: `${P}hladilnik ${RUN}`,
       category: 'temperature',
       frequency: 'daily',
@@ -147,11 +150,16 @@ beforeAll(async () => {
   mgrAId = (await seedEmp('mgrA', 'manager', locA)).id
   waiterAId = (await seedEmp('waiterA', 'waiter', locA)).id
   mgrBId = (await seedEmp('mgrB', 'manager', locB)).id
+  // issue #72 C1: načrti (settings.manage) so centralno-only → admina na obeh lokacijah
+  const adminAId = (await seedEmp('adminA', 'admin', locA)).id
+  const adminBId = (await seedEmp('adminB', 'admin', locB)).id
   tokMgrB = tok(mgrBId, `${P}mgrB`, 'MANAGER', locB)
   tokCleanerA = tok(cleanerAId, `${P}cleanerA`, 'CLEANER', locA)
   tokCleanerB = tok(cleanerBId, `${P}cleanerB`, 'CLEANER', locB)
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
   tokWaiterA = tok(waiterAId, `${P}waiterA`, 'WAITER', locA)
+  tokAdminA = tok(adminAId, `${P}adminA`, 'ADMIN', locA)
+  tokAdminB = tok(adminBId, `${P}adminB`, 'ADMIN', locB)
   resetHaccpOpsProbe(true) // dev baza ima stolpce (db push)
 })
 
@@ -446,7 +454,7 @@ describe('G. governed vnos kontrole', () => {
   })
 
   it('G8: načrt DRUge lokacije → 403 (fail-closed)', async () => {
-    const p = await createPlan(locB, {}, tokMgrB)
+    const p = await createPlan(locB, {}, tokAdminB)
     const res = await entryPOST(req('POST', '/api/haccp', tokCleanerA, { planId: String(p.id), numericValue: 3 }))
     expect(res.status).toBe(403)
   })
@@ -591,8 +599,8 @@ describe('I. posnetek pravil (sprememba načrta NE spremeni zgodovine)', () => {
     expect((e.check as Record<string, unknown>).status).toBe('warning')
     // korektiv
     await actionsPOST(req('POST', `/api/haccp/${entryId}/actions`, tokCleanerA, { kind: 'corrective', note: 'Znižanje temperature po postopku.' }), { params: Promise.resolve({ id: entryId }) })
-    // načrt spremeni mejo na 8 (sema #2)
-    const patched = await planPATCH(req('PATCH', `/api/haccp/plans/${planId}`, tokMgrA, { okLimit: 8, warnLimit: 10 }), { params: Promise.resolve({ id: planId }) })
+    // načrt spremeni mejo na 8 (sema #2) — issue #72 C1: settings.manage → admin
+    const patched = await planPATCH(req('PATCH', `/api/haccp/plans/${planId}`, tokAdminA, { okLimit: 8, warnLimit: 10 }), { params: Promise.resolve({ id: planId }) })
     const pj = await body(patched)
     expect((pj.plan as Record<string, unknown>).version).toBe(2)
     expect((pj.plan as Record<string, unknown>).okLimit).toBe(8)
@@ -684,7 +692,7 @@ describe('K. poročilo + CSV izvoz', () => {
 
 describe('L. načrti (admin)', () => {
   it('L1: POST z novimi polji → 201 + izpis; privzeti vrednosti', async () => {
-    const res = await planPOST(req('POST', '/api/haccp/plans', tokMgrA, {
+    const res = await planPOST(req('POST', '/api/haccp/plans', tokAdminA, {
       name: `${P}kuhanje ${RUN}`, category: 'temperature', frequency: 'weekly', weekday: 3,
       measureKind: 'number', unit: '°C', direction: 'above', okLimit: 63, warnLimit: 60,
       critical: true, requiresVerification: false, dueTime: '14:30', locationId: locA,
@@ -702,24 +710,24 @@ describe('L. načrti (admin)', () => {
   })
 
   it('L2: validacije — number brez enote 400, weekly brez dneva 400, monthDay 29 400, confirm+smer 400', async () => {
-    expect((await planPOST(req('POST', '/api/haccp/plans', tokMgrA, { name: `${P}x1 ${RUN}`, category: 'temperature', measureKind: 'number', direction: 'below', okLimit: 4, locationId: locA }))).status).toBe(400)
-    expect((await planPOST(req('POST', '/api/haccp/plans', tokMgrA, { name: `${P}x2 ${RUN}`, category: 'temperature', frequency: 'weekly', locationId: locA }))).status).toBe(400)
-    expect((await planPOST(req('POST', '/api/haccp/plans', tokMgrA, { name: `${P}x3 ${RUN}`, category: 'temperature', frequency: 'monthly', monthDay: 29, locationId: locA }))).status).toBe(400)
-    expect((await planPOST(req('POST', '/api/haccp/plans', tokMgrA, { name: `${P}x4 ${RUN}`, category: 'cleaning', measureKind: 'confirm', direction: 'below', locationId: locA }))).status).toBe(400)
+    expect((await planPOST(req('POST', '/api/haccp/plans', tokAdminA, { name: `${P}x1 ${RUN}`, category: 'temperature', measureKind: 'number', direction: 'below', okLimit: 4, locationId: locA }))).status).toBe(400)
+    expect((await planPOST(req('POST', '/api/haccp/plans', tokAdminA, { name: `${P}x2 ${RUN}`, category: 'temperature', frequency: 'weekly', locationId: locA }))).status).toBe(400)
+    expect((await planPOST(req('POST', '/api/haccp/plans', tokAdminA, { name: `${P}x3 ${RUN}`, category: 'temperature', frequency: 'monthly', monthDay: 29, locationId: locA }))).status).toBe(400)
+    expect((await planPOST(req('POST', '/api/haccp/plans', tokAdminA, { name: `${P}x4 ${RUN}`, category: 'cleaning', measureKind: 'confirm', direction: 'below', locationId: locA }))).status).toBe(400)
   })
 
   it('L3: PATCH semantična sprememba → version 2; napačno vrednost → 400', async () => {
     const p = await createPlan(locA, { name: `${P}patch ${RUN}` })
     const id = String(p.id)
-    const res = await planPATCH(req('PATCH', `/api/haccp/plans/${id}`, tokMgrA, { warnLimit: 7 }), { params: Promise.resolve({ id }) })
+    const res = await planPATCH(req('PATCH', `/api/haccp/plans/${id}`, tokAdminA, { warnLimit: 7 }), { params: Promise.resolve({ id }) })
     const j = await body(res)
     expect((j.plan as Record<string, unknown>).version).toBe(2)
     expect((j.plan as Record<string, unknown>).warnLimit).toBe(7)
-    expect((await planPATCH(req('PATCH', `/api/haccp/plans/${id}`, tokMgrA, { okLimit: 'abc' }), { params: Promise.resolve({ id }) })).status).toBe(400)
+    expect((await planPATCH(req('PATCH', `/api/haccp/plans/${id}`, tokAdminA, { okLimit: 'abc' }), { params: Promise.resolve({ id }) })).status).toBe(400)
   })
 
   it('L4: GET → ddlOpsPending false + plans s novimi polji; čistilka → 403', async () => {
-    const res = await planGET(req('GET', '/api/haccp/plans', tokMgrA))
+    const res = await planGET(req('GET', '/api/haccp/plans', tokAdminA))
     const j = await body(res)
     expect(j.ddlOpsPending).toBe(false)
     expect((await planGET(req('GET', '/api/haccp/plans', tokCleanerA))).status).toBe(403)

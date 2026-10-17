@@ -57,7 +57,7 @@ function amountOf(kind: string, d: Record<string, unknown>): number | null {
 const MAX_ROWS = 2000
 
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
 
   const url = req.nextUrl

@@ -46,7 +46,7 @@ const LIST_SELECT = {
 } satisfies Prisma.EInvoiceOutboxSelect
 
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

@@ -12,7 +12,12 @@
  *    revizija RECEIPT_STORNO, Counter številčenje,
  *  - dvojni storno → 409, neplačano naročilo → 409, storno storna → 409,
  *    kopija → 409, neobstoječ račun → 404,
- *  - manjka dovoljenje furs.issue → 403, tuja lokacija → 403.
+ *  - manjka dovoljenje receipts.storno → 403, tuja lokacija → 403.
+ *
+ * ISSUE #72 D1 (v1.133.0): storno varoval ključ receipts.storno (prej furs.issue)
+ * — imajo ga ADMIN/OWNER/enterprise (tudi property_manager), MANAGER NE več.
+ * Akter happy-path testov je zato property_manager (ne-centralen, a ima pravico —
+ * cross-lokacijska varovalka ostane preizkušena).
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
@@ -180,7 +185,7 @@ beforeAll(async () => {
       id: nidp('mgr'),
       name: 'Test Vodja',
       email: nidp('mgr') + '@example.com',
-      role: 'manager',
+      role: 'property_manager',
       status: 'active',
       sessionVersion: 0,
       locationId,
@@ -292,7 +297,7 @@ describe('fiskalni storno računa — happy path (P1 točka 1)', () => {
   })
 
   test('201: storno račun z negativnimi zneski + povračilo zaloge + revizija', async () => {
-    const res = await callStorno(receiptId, managerId, 'MANAGER', locationId)
+    const res = await callStorno(receiptId, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(201)
     const body = await res.json()
 
@@ -380,7 +385,7 @@ describe('fiskalni storno računa — happy path (P1 točka 1)', () => {
   })
 
   test('dvojni storno → 409', async () => {
-    const res = await callStorno(receiptId, managerId, 'MANAGER', locationId)
+    const res = await callStorno(receiptId, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(409)
     const body = await res.json()
     expect(String(body.error)).toContain('storniran')
@@ -390,7 +395,7 @@ describe('fiskalni storno računa — happy path (P1 točka 1)', () => {
     // storno račun iz happy patha poskusimo stornirati
     const stornoReceipt = await db.receipt.findFirst({ where: { stornoOf: receiptId } })
     expect(stornoReceipt).not.toBeNull()
-    const res = await callStorno(stornoReceipt!.id, managerId, 'MANAGER', locationId)
+    const res = await callStorno(stornoReceipt!.id, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(409)
   })
 })
@@ -398,7 +403,7 @@ describe('fiskalni storno računa — happy path (P1 točka 1)', () => {
 describe('fiskalni storno — varovalke (fail-closed)', () => {
   test('neplačano naročilo → 409', async () => {
     const { receiptId } = await seedPaidOrderWithReceipt({ orderNumber: 9902, receiptNumber: '2026-1-9902-TEST', paymentStatus: 'unpaid' })
-    const res = await callStorno(receiptId, managerId, 'MANAGER', locationId)
+    const res = await callStorno(receiptId, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(409)
     const body = await res.json()
     expect(String(body.error)).toContain('plačano')
@@ -406,31 +411,32 @@ describe('fiskalni storno — varovalke (fail-closed)', () => {
 
   test('kopija računa (isCopy) → 409', async () => {
     const { receiptId } = await seedPaidOrderWithReceipt({ orderNumber: 9903, receiptNumber: '2026-1-9903-TEST', paymentStatus: 'paid', isCopy: true })
-    const res = await callStorno(receiptId, managerId, 'MANAGER', locationId)
+    const res = await callStorno(receiptId, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(409)
     const body = await res.json()
     expect(String(body.error)).toContain('Kopije')
   })
 
   test('neobstoječ račun → 404', async () => {
-    const res = await callStorno(nidp('ne-obstaja'), managerId, 'MANAGER', locationId)
+    const res = await callStorno(nidp('ne-obstaja'), managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(404)
   })
 
-  test('manjka dovoljenje furs.issue (waiter) → 403', async () => {
+  test('manjka dovoljenje receipts.storno (waiter) → 403', async () => {
     const { receiptId } = await seedPaidOrderWithReceipt({ orderNumber: 9904, receiptNumber: '2026-1-9904-TEST', paymentStatus: 'paid' })
     const res = await callStorno(receiptId, waiterId, 'WAITER', locationId)
     expect(res.status).toBe(403)
     const body = await res.json()
-    expect(String(body.error)).toContain('furs.issue')
+    // issue #72 D1: ključ se imenuje receipts.storno (furs.issue odstranjen)
+    expect(String(body.error)).toContain('receipts.storno')
     // stanje nespremenjeno (fail-closed)
     const order = await db.order.findUnique({ where: { id: orderIdOf(receiptId) } })
     expect(order!.paymentStatus).toBe('paid')
   })
 
-  test('tuja lokacija (staff na lokaciji A, račun na lokaciji B) → 403', async () => {
+  test('tuja lokacija (pm na lokaciji A, račun na lokaciji B) → 403', async () => {
     const { receiptId } = await seedPaidOrderWithReceipt({ orderNumber: 9905, receiptNumber: '2026-1-9905-TEST', paymentStatus: 'paid', locId: locationBId })
-    const res = await callStorno(receiptId, managerId, 'MANAGER', locationId)
+    const res = await callStorno(receiptId, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(String(body.error).length).toBeGreaterThan(0)
@@ -457,7 +463,7 @@ describe('fiskalni storno — varovalke (fail-closed)', () => {
         locationId,
       },
     })
-    const res = await callStorno(receiptId, managerId, 'MANAGER', locationId)
+    const res = await callStorno(receiptId, managerId, 'PROPERTY_MANAGER', locationId)
     expect(res.status).toBe(409)
     const body = await res.json()
     expect(String(body.error)).toContain('storniran')

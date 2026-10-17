@@ -34,7 +34,7 @@ export function clampDays(raw: string | null): number {
  *   src/lib/menu-engineering.ts for the pure math.
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

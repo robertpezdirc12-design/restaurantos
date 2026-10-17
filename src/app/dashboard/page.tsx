@@ -74,7 +74,7 @@ import {
   type PrintConfig, type PrintLine, type PrintTarget,
 } from '@/lib/devices/print'
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
-import { PERMISSION_LABELS } from '@/lib/permissions'
+import { PERMISSION_LABELS, effectivePermissionSets } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import { AllergenDialog } from '@/components/allergen-dialog'
@@ -446,6 +446,8 @@ function DashboardInner() {
   const [bootNotice, setBootNotice] = useState('')
   const [empPerms, setEmpPerms] = useState<string[]>([])
   const [empRole, setEmpRole] = useState('WAITER')
+  // ISSUE #72 A1: efektivni nabor za PRIKAZ — pravice iz vloge (brane) + dodani
+  const empEffective = effectivePermissionSets(empRole.toLowerCase(), empPerms)
   const [empActive, setEmpActive] = useState(true)
   const [empPin, setEmpPin] = useState('')
   const [empSaving, setEmpSaving] = useState(false)
@@ -481,12 +483,20 @@ function DashboardInner() {
   // OPS-8 val 3 (v1.73.0): status filter chips for the reservation list
   const [resFilter, setResFilter] = useState<ReservationFilter>('UPCOMING')
 
-  const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  // ISSUE #72 A4/C1: canManage je OD SEDAJ CENTRALNA vloga (OWNER/ADMIN/enterprise).
+  // MANAGER ima od v1.133.0 OMEJEN nabor (19 ključev) in zavihke vidi SKOZ SVOJE
+  // PRICE — nastavitve/integracije/enterprise (settings.manage) mu izginejo iz
+  // navigacije, enakovredno backendu. Prej: canManage vključeval MANAGERJA in bil
+  // hkrati bypass v hasPerm → vodja je videl vse, kar backend 403-a (anti-pattern
+  // »vmesnik prikaže več, kot sme«).
+  const canManage = isCentralUIRole(user?.role)
   // Issue #6 §F: PRAZNA dovoljenja = fail-closed (prej: perms.length === 0 → vsa
   // dovoljenja odprta, da UI ne utripa — v1.88.0 inicializacija iz localStorage je
   // sinhrona, utripanja ni več; prazen seznam pomeni RESNIČNO brez dovoljenj).
   // N8 fail-closed: neznano/undefined dovoljenje → false (prej `!p` → true)
-  const hasPerm = (p?: string) => !!p && (canManage || perms.includes(p))
+  // ISSUE #72: canManage bypass ODSTRANJEN — centralne vloge imajo vse ključe v
+  // razrešenem naboru (CANONICAL), vodja pa svojih 19; UI === backend resnica.
+  const hasPerm = (p?: string) => !!p && perms.includes(p)
   // Issue #6 §F: zrcalo za load() useCallback (endpoint-on-demand brez stale closure)
   const gateRef = useRef({ canManage, perms })
   gateRef.current = { canManage, perms }
@@ -533,7 +543,7 @@ function DashboardInner() {
     else url.searchParams.set('tab', activeTab)
     window.history.replaceState(window.history.state, '', url)
   }, [activeTab])
-  const canRes = canManage || perms.includes('reservations.manage')
+  const canRes = perms.includes('reservations.manage')
 
   // Naloga #11 (polling): 'hot' = operativni krog (mize/naročila/kuhinja/meni/
   // rezervacije/računi/izmene/zaloge/statistika), 'full' doda še počasne vire
@@ -581,11 +591,11 @@ function DashboardInner() {
         soft(api<{ receipts: ReceiptT[] }>('/api/furs')),
         full ? soft(api<{ inventory: InventoryT[] }>('/api/inventory')) : undefined,
         soft(api<{ shifts: ShiftT[] }>('/api/shifts')),
-        full && hp('reports.view') ? soft(api<FinancialT>('/api/reports/financial')) : undefined,
+        full && hp('reports.sales') ? soft(api<FinancialT>('/api/reports/financial')) : undefined,
         full && hpAny('haccp.execute', 'settings.manage') ? soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')) : undefined,
-        full && hp('reports.view') ? soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')) : undefined,
+        full && hp('reports.sales') ? soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')) : undefined,
         full && hp('settings.manage') ? soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')) : undefined,
-        full && hpAny('inventory.manage', 'reports.view', 'settings.manage') ? soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')) : undefined,
+        full && hpAny('inventory.manage', 'reports.sales', 'settings.manage') ? soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')) : undefined,
         full && hp('inventory.manage') ? soft(api<{ recipes: RecipeT[] }>('/api/recipes')) : undefined,
         full && hp('employees.manage') ? soft(api<{ jobContexts: JobT[] }>('/api/jobs')) : undefined,
         full && hp('reservations.manage') ? soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')) : undefined,
@@ -595,7 +605,7 @@ function DashboardInner() {
         full && hp('settings.manage') ? soft(api<{ errors: ErrLogT[] }>('/api/monitoring/errors')) : undefined,
         full && hp('settings.manage') ? soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')) : undefined,
         full && hp('employees.manage') ? soft(api<{ devices: DeviceT[] }>('/api/devices')) : undefined,
-        full && hp('reports.view') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
+        full && hp('reports.sales') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
         full && hp('delivery.manage') ? soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')) : undefined,
         full && hp('settings.manage') ? soft(api<{ locations: LocationRowT[] }>('/api/locations')) : undefined,
       ])
@@ -1379,7 +1389,7 @@ function DashboardInner() {
 
   /** Fiskalni storno računa (P1 audit točka 1) — storno račun + povračilo zaloge
    *  + revizija. Issue #19: obvezen RAZLOG (dialog) pred izvedbo; prag odobritve
-   *  je privzeto izklopljen (furs.issue je vodstveno dovoljenje) — če politika
+   *  je privzeto izklopljen (receipts.storno je vodstveno dovoljenje) — če politika
    *  sproži odobritev, strežnik odgovori 403 in dialog ponudi polja odobritelja. */
   async function stornoReceipt(r: ReceiptT) {
     if (!confirm(t('rcpt.stornoConfirm', { n: r.invoiceNumber, a: fmtEUR(Math.abs(r.total)) }))) return
@@ -2039,6 +2049,18 @@ function DashboardInner() {
 
       <div id="dash-vsebina" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 outline-none">
         <h1 className="sr-only">{t('dash.h1')}</h1>
+        {/* ISSUE #72 B1: uporabnik brez dodeljene lokacije vidi ČISTO STANJE z razlogom
+            (»pokličite vodjo«) namesto praznih seznamov brez sporočila — locationScope
+            senčilo '__no_location__' vrne []/ničle, kar je brez tega videti kot prazen local. */}
+        {user && !user.locationId && !isCentralUIRole(user.role) && (
+          <div role="alert" data-region="no-location-banner" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <MapPin className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-amber-800">{t('emp.noLocTitle')}</p>
+              <p className="text-xs text-amber-700">{t('emp.noLocBody')}</p>
+            </div>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div data-region="dashboard-nav" className="flex min-w-0 items-center gap-2">
             <TabsList data-region="dashboard-tabs" className="min-w-0 flex-1 justify-start overflow-hidden h-auto flex-nowrap bg-white border border-stone-200 p-1">
@@ -2146,7 +2168,7 @@ function DashboardInner() {
                 })}
             </div>
             {/* Issue #21 (v1.111.0) — plošča klicev vodje (15 s polling = pogon lenih eskalacij) */}
-            {canManage && <ManagerCallsCard />}
+            {hasPerm('employees.manage') && <ManagerCallsCard />}
             <Card>
               <CardHeader><CardTitle className="text-base">{t('dash.activeOrders')}</CardTitle></CardHeader>
               <CardContent>
@@ -3136,7 +3158,7 @@ function DashboardInner() {
             })()}
             {/* OPS-8 v1.71.0 — KDS statistika (leni doseg; live plošča ostaja nedotaknjena) */}
             {/* OPS-10 v1.77.0 — per-station targets: urejanje samo s settings.manage */}
-            <KdsStatsSection canEditTargets={canManage || perms.includes('settings.manage')} />
+            <KdsStatsSection canEditTargets={hasPerm('settings.manage')} />
 
             {/* OPS-9 val 3 (v1.76.0): delay-reason dialog when a LATE item (>10 min) is bumped */}
             <Dialog open={!!delayAsk} onOpenChange={(v) => !v && setDelayAsk(null)}>
@@ -3360,13 +3382,13 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="popusti" className="space-y-4">
-            <DiscountsTab canManage={canManage} />
+            <DiscountsTab canManage={hasPerm('discounts.manage')} />
           </TabsContent>
           <TabsContent value="integracije" className="space-y-4">
-            <IntegracijeTab canManage={canManage} />
+            <IntegracijeTab canManage={hasPerm('settings.manage')} />
           </TabsContent>
           <TabsContent value="enterprise" className="space-y-4">
-            <EnterpriseTab canManage={canManage} />
+            <EnterpriseTab canManage={hasPerm('settings.manage')} />
           </TabsContent>
 
           <TabsContent value="racuni" className="space-y-4">
@@ -3406,7 +3428,7 @@ function DashboardInner() {
                           <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
                             <Printer className="w-3.5 h-3.5" /> {t('common.print')}
                           </Button>
-                          {!r.isStorno && !isStorned(r.id) && hasPerm('furs.issue') && (
+                          {!r.isStorno && !isStorned(r.id) && hasPerm('receipts.storno') && (
                             <Button size="sm" variant="outline" className="h-8 gap-1.5 text-red-700 border-red-200 hover:bg-red-50" disabled={stornoing === r.id}
                               onClick={() => stornoReceipt(r)} title={t('rcpt.stornoBtn')}>
                               <Ban className="w-3.5 h-3.5" /> {stornoing === r.id ? t('common.processing') : t('rcpt.stornoBtn')}
@@ -3434,7 +3456,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="zaloge">
-            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} menuItems={menu.map((m) => ({ id: m.id, name: m.name }))} canManage={canManage} onReload={load} onNavigate={(tab) => setActiveTab(tab)} />
+            <InventoryTab items={inventory} suppliers={suppliers} recipes={recipes} menuItems={menu.map((m) => ({ id: m.id, name: m.name }))} canManage={hasPerm('inventory.manage')} onReload={load} onNavigate={(tab) => setActiveTab(tab)} />
           </TabsContent>
 
           {/* Issue #8 (v1.116.0) — medlokacijski prenosi zalog (backend: requirePermission
@@ -3444,7 +3466,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="izmene">
-            <ShiftsTab shifts={shifts} financial={financial} canManage={canManage} onReload={load} />
+            <ShiftsTab shifts={shifts} financial={financial} canManage={hasPerm('cash.manage')} onReload={load} />
           </TabsContent>
 
           <TabsContent value="delovnicas">
@@ -3462,17 +3484,17 @@ function DashboardInner() {
                 settings.manage) dobi IZVEDBENI vmesnik — termini + hiter vnos + zadnje kontrole.
                 Upravljanje načrtov (nov načrt, DDL, CSV izvoz) ostaja vodstvu; prej je
                 urejevalnik načrtov vizualno dostopen tudi izključno izvajalki. */}
-            <HaccpTab checks={haccp} onReload={load} canManagePlans={canManage || hasPerm('settings.manage')} />
+            <HaccpTab checks={haccp} onReload={load} canManagePlans={hasPerm('settings.manage')} />
           </TabsContent>
 
           <TabsContent value="stroski">
-            <ExpensesTab expenses={expenses} canManage={canManage} onReload={load} categoriesEnabled={expCatsEnabled} />
+            <ExpensesTab expenses={expenses} canManage={hasPerm('settings.manage')} onReload={load} categoriesEnabled={expCatsEnabled} />
           </TabsContent>
 
           <TabsContent value="zvestoba">
             {/* v1.97.0 (#43): centralna vloga pošlje izbrano lokacijo pogleda (viewLoc) —
                 strežnik jo validira (org obseg); staff lokacija ostaja strežniško določena */}
-            <LoyaltyTab accounts={loyalty} canManage={canManage} onReload={load} centralLocationId={viewLoc || ''} />
+            <LoyaltyTab accounts={loyalty} canManage={hasPerm('settings.manage')} onReload={load} centralLocationId={viewLoc || ''} />
           </TabsContent>
 
           <TabsContent value="mnenja">
@@ -3484,7 +3506,7 @@ function DashboardInner() {
                 LOČENO, z dokazom izrecnega dejanja), podvojeni profili, kampanje
                 (življenjski cikel + meritve). Podatke si naloži SAM (api klici) —
                 mutacije gating settings.manage strežniško, ogled reports.view. */}
-            <CrmTab canManage={canManage} centralLocationId={viewLoc || ''} />
+            <CrmTab canManage={hasPerm('settings.manage')} centralLocationId={viewLoc || ''} />
           </TabsContent>
 
           <TabsContent value="dostava">
@@ -3497,7 +3519,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="napitnine">
-            <NapitnineTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
+            <NapitnineTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={hasPerm('employees.manage')} />
           </TabsContent>
 
           <TabsContent value="obracun">
@@ -3507,7 +3529,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="nabava">
-            <NabavaTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={canManage} />
+            <NabavaTab locations={locStats.map((l) => ({ id: l.id, name: l.name }))} canManage={hasPerm('inventory.manage')} />
           </TabsContent>
 
           <TabsContent value="darilne">
@@ -3528,7 +3550,7 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="zaposleni" className="space-y-4">
-            {canManage && bootstrapLogin && (
+            {isCentralUIRole(user?.role) && bootstrapLogin && (
               <Card className="border-amber-300 bg-amber-50">
                 <CardContent className="py-3 flex items-start gap-2.5">
                   <KeyRound className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
@@ -3558,8 +3580,8 @@ function DashboardInner() {
             )}
             <Card>
               <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> {t('tabs.zaposleni')}{canManage ? t('emp.controlCenter') : ''}</CardTitle>
-                {canManage && (
+                <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> {t('tabs.zaposleni')}{hasPerm('employees.manage') ? t('emp.controlCenter') : ''}</CardTitle>
+                {hasPerm('employees.manage') && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-stone-400 hidden lg:inline">{t('emp.clickToEdit')}</span>
                     {/* Issue #71 audit-25: viden gumb »Nov zaposleni« (dodajanje je bilo
@@ -3585,15 +3607,19 @@ function DashboardInner() {
                   return shownEmps.map((e) => (
                   <button
                     key={e.id}
-                    onClick={() => canManage && openEmployee(e)}
-                    disabled={!canManage}
-                    className={`flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2 bg-white text-left ${canManage ? 'hover:border-emerald-600 hover:shadow-sm transition' : 'cursor-default'}`}
+                    onClick={() => hasPerm('employees.manage') && openEmployee(e)}
+                    disabled={!hasPerm('employees.manage')}
+                    className={`flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2 bg-white text-left ${hasPerm('employees.manage') ? 'hover:border-emerald-600 hover:shadow-sm transition' : 'cursor-default'}`}
                   >
                     <div className="min-w-0">
                       <p className="font-medium truncate">{e.name}{!e.active && <span className="ml-1.5 text-xs text-red-600">{t('emp.inactiveSuffix')}</span>}</p>
                       <p className="text-xs text-stone-500 truncate">{e.email}</p>
-                      {locList.find((l) => l.id === e.locationId)?.name && (
+                      {locList.find((l) => l.id === e.locationId)?.name ? (
                         <p className="text-[11px] text-stone-400 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {locList.find((l) => l.id === e.locationId)?.name}</p>
+                      ) : (
+                        /* ISSUE #72 E5/B2: brez lokacije je OPERATIVNA težava (prazni seznami,
+                           prazna plošča) — rdeče vidna, ne tiho skrita */
+                        <p className="text-[11px] text-red-600 flex items-center gap-0.5 font-medium"><MapPin className="w-3 h-3" /> {t('emp.noLocation')}</p>
                       )}
                       {(e.permissionOverrides?.length || 0) > 0 && (
                         <p className="text-[11px] text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {t('emp.permsCount', { n: e.permissionOverrides.length })}</p>
@@ -3601,14 +3627,14 @@ function DashboardInner() {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Badge variant="outline">{roleL(e.role)}</Badge>
-                      {canManage && <UserCog className="w-3.5 h-3.5 text-stone-300" />}
+                      {hasPerm('employees.manage') && <UserCog className="w-3.5 h-3.5 text-stone-300" />}
                     </div>
                   </button>
                   ))
                 })()}
               </CardContent>
             </Card>
-            <JobsCard jobs={jobs} canManage={canManage} onReload={load} />
+            <JobsCard jobs={jobs} canManage={hasPerm('inventory.manage')} onReload={load} />
           </TabsContent>
 
           <TabsContent value="nastavitve" className="space-y-4">
@@ -3637,7 +3663,7 @@ function DashboardInner() {
               </div>
             </nav>
             <SettingsSection id="general" title={t('settings.secGeneral')}>
-              <SettingsEditor settings={settings} canManage={canManage} onReload={load} />
+              <SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} />
               {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
               <ReservationWidgetCard />
             </SettingsSection>
@@ -4700,8 +4726,10 @@ function DashboardInner() {
                     <Select value={empRole} onValueChange={(v) => setEmpRole(v)} disabled={user?.role === 'MANAGER' && empRole === 'ADMIN'}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {['OWNER', 'ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'CLEANER'].map((r) => (
-                          <SelectItem key={r} value={r} disabled={(user?.role === 'MANAGER' && r === 'ADMIN') || (user?.role !== 'OWNER' && r === 'OWNER')}>{roleL(r)}</SelectItem>
+                        {/* ISSUE #72 E4: WAREHOUSE/ACCOUNTING dodani v izbor (bili samo v
+                            DB/izračunu); enterprise vloge ostanejo centralna pridržana pravica */}
+                        {['OWNER', 'ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'CLEANER', 'WAREHOUSE', 'ACCOUNTING'].map((r) => (
+                          <SelectItem key={r} value={r} disabled={(user?.role !== 'OWNER' && r === 'OWNER') || (r !== 'WAITER' && r !== 'BAR' && r !== 'KITCHEN' && r !== 'CLEANER' && !isCentralUIRole(user?.role))}>{roleL(r)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4717,17 +4745,35 @@ function DashboardInner() {
 
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> {t('emp.permsLabel')}</Label>
-                  <p className="text-xs text-stone-400">{t('emp.permsHint')}</p>
+                  {/* ISSUE #72 A1: povzetek efektivnega nabora — vloga je BRAN vir (N),
+                      tu se dodaja samo M dodatkov; odvzem ni mogoč (A2 besedilo). */}
+                  <p className="text-xs text-stone-600 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2">
+                    {t('emp.permsSummary', { role: roleL(empRole), n: empEffective.fromRole.length, m: empEffective.added.length })}
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {Object.entries(PERMISSION_LABELS).map(([perm, label]) => (
-                      <label key={perm} className="flex items-center gap-2 rounded-md border border-stone-200 px-2.5 py-2 text-sm cursor-pointer hover:bg-stone-50">
+                    {Object.entries(PERMISSION_LABELS).map(([perm, label]) => {
+                      // A1: pravica iz vloge = ZAKLENJENA (brano, neodstranljivo); dodatki = odstranljivi
+                      const fromRole = (empEffective.fromRole as readonly string[]).includes(perm)
+                      // C2: stropova ključa sme DODATI samo centralna vloga (backend 403 sicer)
+                      const privileged = perm === 'employees.manage' || perm === 'settings.manage'
+                      const cantGrant = privileged && !fromRole && !isCentralUIRole(user?.role)
+                      return (
+                      <label
+                        key={perm}
+                        title={fromRole ? t('emp.permFromRole') : cantGrant ? t('emp.permCentralOnly') : undefined}
+                        className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-sm ${fromRole ? 'border-stone-200 bg-stone-50 cursor-default' : 'border-stone-200 cursor-pointer hover:bg-stone-50'} ${cantGrant && !fromRole ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
                         <Checkbox
-                          checked={empPerms.includes(perm)}
-                          onCheckedChange={(v) => setEmpPerms((p) => (v ? [...p, perm] : p.filter((x) => x !== perm)))}
+                          checked={fromRole || empPerms.includes(perm)}
+                          disabled={fromRole || cantGrant}
+                          onCheckedChange={fromRole || cantGrant ? undefined : (v) => setEmpPerms((p) => (v ? [...p, perm] : p.filter((x) => x !== perm)))}
+                          aria-label={`${label}${fromRole ? ` — ${t('emp.permFromRole')}` : ''}`}
                         />
-                        {label}
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                        {fromRole && <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide text-stone-400">{t('emp.permFromRoleTag')}</span>}
                       </label>
-                    ))}
+                      )
+                    })}
                   </div>
                   <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={empSaving} onClick={() => patchEmployee({ permissionOverrides: empPerms, role: empRole, status: empActive ? 'active' : 'inactive', ...(empLoc ? { locationId: empLoc } : {}) }, t('emp.savedOk'))}>
                     {empSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('emp.saveProfile')}

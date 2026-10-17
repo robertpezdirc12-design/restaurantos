@@ -39,7 +39,7 @@ function iso(d: Date | null | undefined): string {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await requireAnyPermission(req, ['inventory.manage', 'reports.view'])
+  const ctx = await requireAnyPermission(req, ['inventory.manage', 'reports.sales'])
   if (isResponse(ctx)) return ctx
   const user = ctx.user
   const { id } = await params

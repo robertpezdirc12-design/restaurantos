@@ -10,6 +10,7 @@ import {
   ReceiptText, Users, Settings, RefreshCw, Plus, LogOut, Search, ShieldCheck,
   PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Star,
 } from 'lucide-react'
+import { isManagerialRole } from '@/lib/permissions'
 
 /**
  * COMMAND PALETTE (R268) — kanonska avtorizacija akcij:
@@ -29,7 +30,10 @@ interface Props {
   onLogout: () => void
 }
 
-const canManage = (role?: string) => role === 'ADMIN' || role === 'MANAGER'
+// issue #72 A4: EN vir resnice za vodstveni pogled (src/lib/permissions).
+// Prej je tu stal ločen seznam — OWNER (in enterprise vloge) so bili izpuščeni,
+// zato LASTNIK ni videl ukazov, ki jih vidi njegov vodja.
+const canManage = (role?: string) => isManagerialRole(role)
 
 export function CommandPalette({ open, onOpenChange, user, onNavigate, onRefresh, onNewOrder, onLogout }: Props) {
   useEffect(() => {

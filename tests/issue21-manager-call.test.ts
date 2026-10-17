@@ -83,6 +83,7 @@ let waiterGId = ''
 let waiterRLId = ''
 let mgrBId = ''
 let adminBId = ''
+let adminAId = ''
 let tokMgrA = ''
 let tokMgrA2 = ''
 let tokWaiterA = ''
@@ -90,6 +91,7 @@ let tokWaiterB = ''
 let tokWaiterG = ''
 let tokMgrB = ''
 let tokAdminB = ''
+let tokAdminA = ''
 
 /** Snapshot globalne nastavitvene vrstice (Integration 'manager-call-settings'). */
 let settingsSnapshot: { id: string; config: string } | null = null
@@ -240,6 +242,7 @@ beforeAll(async () => {
   waiterRLId = (await seedEmp('waiterRL', 'waiter', locA)).id
   mgrBId = (await seedEmp('mgrB', 'manager', locB)).id
   adminBId = (await seedEmp('adminB', 'admin', locB)).id
+  adminAId = (await seedEmp('adminA', 'admin', locA)).id
 
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
   tokMgrA2 = tok(mgrA2Id, `${P}mgrA2`, 'MANAGER', locA)
@@ -248,6 +251,7 @@ beforeAll(async () => {
   tokWaiterG = tok(waiterGId, `${P}waiterG`, 'WAITER', locA)
   tokMgrB = tok(mgrBId, `${P}mgrB`, 'MANAGER', locB)
   tokAdminB = tok(adminBId, `${P}adminB`, 'ADMIN', locB)
+  tokAdminA = tok(adminAId, `${P}adminA`, 'ADMIN', locA)
 })
 
 afterAll(async () => {
@@ -434,7 +438,7 @@ describe('B. POST /api/manager-call', () => {
     expect(String(bogus.j.error)).toContain('vrsta')
 
     // omejitev prek nastavitev (globalna vrstica — po testu povrnjena)
-    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 5, allowedTypes: ['APPROVAL'] }))
+    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: 5, allowedTypes: ['APPROVAL'] }))
     expect(put.status).toBe(200)
     __resetRateLimitForTests()
     const denied = await postCall(tokWaiterG, 'DEVICE')
@@ -893,7 +897,7 @@ describe('E. eskalacija zapadlih klicev', () => {
   })
 
   it('E8: ackTimeoutMinutes 60 — klic star 10 minut NI eskaliran (+ povratek nastavitev)', async () => {
-    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 60, allowedTypes: ALL_TYPES }))
+    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: 60, allowedTypes: ALL_TYPES }))
     expect(put.status).toBe(200)
     const e8 = await seedCall('e8', { type: 'OTHER', requestorId: waiterAId, requestorName: `${P}waiterA` })
     await ageCall(e8, 10)
@@ -917,41 +921,44 @@ describe('F. GET/PUT /api/manager-call/settings', () => {
     expect(settings.allowedTypes).toEqual(ALL_TYPES)
   })
 
-  it('F2: RBAC — natakar PUT 403; vodja PUT 200 + persist + audit', async () => {
+  it('F2: RBAC — natakar PUT 403; MANAGER PUT 403 (issue #72 C1 — brez settings.manage); admin PUT 200 + persist + audit', async () => {
     const denied = await settingsPUT(req('PUT', '/api/manager-call/settings', tokWaiterA, { ackTimeoutMinutes: 10, allowedTypes: ALL_TYPES }))
     expect(denied.status).toBe(403)
+    // ISSUE #72 C1: manager nima več settings.manage — tudi na lahkih nastavitvah
+    const deniedMgr = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 10, allowedTypes: ALL_TYPES }))
+    expect(deniedMgr.status).toBe(403)
 
-    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 10, allowedTypes: ['APPROVAL', 'UNHAPPY_GUEST', 'TABLE_ISSUE'] }))
+    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: 10, allowedTypes: ['APPROVAL', 'UNHAPPY_GUEST', 'TABLE_ISSUE'] }))
     expect(put.status).toBe(200)
     const putBody = await body(put)
     expect((putBody.settings as { ackTimeoutMinutes?: number }).ackTimeoutMinutes).toBe(10)
 
-    const got = await settingsGET(req('GET', '/api/manager-call/settings', tokMgrA))
+    const got = await settingsGET(req('GET', '/api/manager-call/settings', tokAdminA))
     const gotBody = await body(got)
     expect((gotBody.settings as { ackTimeoutMinutes?: number; allowedTypes?: string[] }).ackTimeoutMinutes).toBe(10)
     expect((gotBody.settings as { allowedTypes?: string[] }).allowedTypes).toEqual(['APPROVAL', 'UNHAPPY_GUEST', 'TABLE_ISSUE'])
 
-    const audit = await db.auditLog.findFirst({ where: { action: 'MANAGER_CALL_SETTINGS_UPDATED', userId: mgrAId } })
+    const audit = await db.auditLog.findFirst({ where: { action: 'MANAGER_CALL_SETTINGS_UPDATED', userId: adminAId } })
     expect(audit).not.toBeNull()
   })
 
   it('F3: validacije — timeout 0/61/10.5/"abc" → 400; allowedTypes []/["NOPE"] → 400', async () => {
     for (const bad of [0, 61, 10.5, 'abc']) {
-      const res = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: bad, allowedTypes: ALL_TYPES }))
+      const res = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: bad, allowedTypes: ALL_TYPES }))
       expect(res.status).toBe(400)
     }
-    const empty = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 5, allowedTypes: [] }))
+    const empty = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: 5, allowedTypes: [] }))
     expect(empty.status).toBe(400)
-    const bogus = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 5, allowedTypes: ['NOPE'] }))
+    const bogus = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: 5, allowedTypes: ['NOPE'] }))
     expect(bogus.status).toBe(400)
     // zavrnjene posodobitve se NISO persistirale (iz F2 ostaja 10 min)
-    const got = await settingsGET(req('GET', '/api/manager-call/settings', tokMgrA))
+    const got = await settingsGET(req('GET', '/api/manager-call/settings', tokAdminA))
     const gotBody = await body(got)
     expect((gotBody.settings as { ackTimeoutMinutes?: number }).ackTimeoutMinutes).toBe(10)
   })
 
   it('F4: omejitev vrst — po PUT allowedTypes ["APPROVAL"] je POST DEVICE zavrnjen', async () => {
-    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokMgrA, { ackTimeoutMinutes: 5, allowedTypes: ['APPROVAL'] }))
+    const put = await settingsPUT(req('PUT', '/api/manager-call/settings', tokAdminA, { ackTimeoutMinutes: 5, allowedTypes: ['APPROVAL'] }))
     expect(put.status).toBe(200)
     __resetRateLimitForTests()
     const { res, j } = await postCall(tokWaiterG, 'DEVICE')

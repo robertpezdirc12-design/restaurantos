@@ -137,7 +137,7 @@ beforeAll(async () => {
     data: { id: nid(), name: `${PREFIX} lokacija`, code: `${PREFIX}-${TS}`, premisesId: `BLGZST${TS % 1000000}`, country: 'SI' },
   })).id
   empId = (await db.employee.create({
-    data: { id: nid(), name: `${PREFIX} natakar`, email: `${PREFIX}-${TS}@test.local`, role: 'manager', pin: `${PREFIX}-pin-${TS}`, locationId: locId },
+    data: { id: nid(), name: `${PREFIX} natakar`, email: `${PREFIX}-${TS}@test.local`, role: 'admin', pin: `${PREFIX}-pin-${TS}`, locationId: locId },
   })).id
 })
 

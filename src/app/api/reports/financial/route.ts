@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, locationScope } from '@
 import { num } from '@/lib/map'
 
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)

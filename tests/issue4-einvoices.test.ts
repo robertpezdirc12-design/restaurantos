@@ -64,6 +64,7 @@ let tokA = ''
 let tokB = ''
 let tokWait = ''
 let tokOwner = ''
+let tokAcctB = ''
 const arIds: string[] = []
 const outboxIds: string[] = []
 const eventSeq = { n: 0 }
@@ -111,7 +112,8 @@ async function seedEmployee(name: string, role: string, loc: string | null, seq:
   return id
 }
 
-/** Izdaja ročnega e-računa prek mgrA (default SI prejemnik, 1 vrstica). */
+/** Izdaja ročnega e-računa prek ownerja (issue #72 D2: einvoices.issue =
+ * ADMIN/OWNER/enterprise/accounting — MANAGER/warehouse NIMATA več pravice). */
 async function issueManual(overrides: Record<string, unknown> = {}): Promise<{ status: number; json: Record<string, unknown> }> {
   const body = {
     customerName: `${P}Podjetje ${RUN}`,
@@ -120,7 +122,7 @@ async function issueManual(overrides: Record<string, unknown> = {}): Promise<{ s
     lines: [{ name: `${P}Storitev ${RUN}`, quantity: 2, unitPriceNet: 5, vatRate: 22 }],
     ...overrides,
   }
-  const r = await issuePOST(req('POST', '/api/einvoices/issue', tokA, body))
+  const r = await issuePOST(req('POST', '/api/einvoices/issue', tokOwner, body))
   const json = (await r.json()) as Record<string, unknown>
   const ei = json.eInvoice as { id?: string } | undefined
   const ar = json.ar as { id?: string } | undefined
@@ -185,10 +187,14 @@ beforeAll(async () => {
   await seedEmployee('mgrB', 'manager', locB, 2)
   await seedEmployee('waitA', 'waiter', locA, 3)
   await seedEmployee('owner', 'owner', locA, 4)
+  // issue #72 D2: računovodja (accounting) na lokaciji B — NI centralen, a ima
+  // einvoices.issue → za cross-lokacijski scope test (404, ne 403)
+  await seedEmployee('acctB', 'accounting', locB, 5)
   tokA = tok(`${P}mgrA-${RUN}`, `${P}mgrA`, 'MANAGER', locA)
   tokB = tok(`${P}mgrB-${RUN}`, `${P}mgrB`, 'MANAGER', locB)
   tokWait = tok(`${P}waitA-${RUN}`, `${P}waitA`, 'WAITER', locA)
   tokOwner = tok(`${P}owner-${RUN}`, `${P}owner`, 'OWNER', locA)
+  tokAcctB = tok(`${P}acctB-${RUN}`, `${P}acctB`, 'ACCOUNTING', locB)
 
   // integracija: type 'einvoice', provider 'mock' (register vedno pozna mock)
   const integ = await db.integration.create({
@@ -446,7 +452,7 @@ describe('C. issue ruta — izdaja terjatve + outbox', () => {
     expect((second.json.ar as Record<string, unknown>).arNumber).toBeDefined()
   })
 
-  it('403 brez pravice (waiter nima inventory.manage)', async () => {
+  it('403 brez pravice (waiter nima einvoices.issue)', async () => {
     const r = await issuePOST(req('POST', '/api/einvoices/issue', tokWait, {
       customerName: 'x', customerTaxId: SI_TAX, customerCountry: 'SI', lines: [{ name: 'a', quantity: 1, unitPriceNet: 1, vatRate: 22 }],
     }))
@@ -454,7 +460,9 @@ describe('C. issue ruta — izdaja terjatve + outbox', () => {
   })
 
   it('cross-lokacija naročila → 404 (scope)', async () => {
-    const r = await issuePOST(req('POST', '/api/einvoices/issue', tokB, { orderId, customerName: 'x', customerTaxId: SI_TAX, customerCountry: 'SI' }))
+    // issue #72 D2: akter ima einvoices.issue (accounting) a je LOKACIJSKO vezan —
+    // sicer bi bil odgovor 403 (manjka pravica), ne 404 (scope)
+    const r = await issuePOST(req('POST', '/api/einvoices/issue', tokAcctB, { orderId, customerName: 'x', customerTaxId: SI_TAX, customerCountry: 'SI' }))
     expect(r.status).toBe(404)
     const j = (await r.json()) as Record<string, unknown>
     expect(String(j.error)).toContain('obsegu')
@@ -599,8 +607,9 @@ describe('E. send/retry — mock adapter, idempotenca, blokade', () => {
       expect(row!.attempts).toBe(1)
       expect(row!.lastReason).toContain('timeout')
       expect(row!.externalRef).toBe('')
-      // monitoring: EINVOICE_SEND_FAILED akcija (GAP-7 vzorec OR action)
-      const r = await monitoringGET(req('GET', '/api/monitoring/errors', tokA))
+      // monitoring: EINVOICE_SEND_FAILED akcija (GAP-7 vzorec OR action) —
+      // issue #72 C1: /api/monitoring/errors zahteva settings.manage → OWNER
+      const r = await monitoringGET(req('GET', '/api/monitoring/errors', tokOwner))
       expect(r.status).toBe(200)
       const j = (await r.json()) as { errors: { action: string; entityId: string | null }[] }
       expect(j.errors.some((e) => e.action === 'EINVOICE_SEND_FAILED' && e.entityId === id)).toBe(true)
@@ -1008,8 +1017,8 @@ describe('H. prejeti eSLOG — opozorila (aditivno) + XXE varnost', () => {
 /* ══════════════ I. registri ══════════════ */
 
 describe('I. registri — verzija, DDL register, predpone, i18n, 0 DDL na obstoječih', () => {
-  it('APP_VERSION === 1.132.1', () => {
-    expect(APP_VERSION).toBe('1.132.1')
+  it('APP_VERSION === 1.133.0', () => {
+    expect(APP_VERSION).toBe('1.133.0')
   })
   it('SCHEMA_MIGRATIONS.length === 29 (+einvoice-outbox #4)', () => {
     expect(SCHEMA_MIGRATIONS.length).toBe(30)

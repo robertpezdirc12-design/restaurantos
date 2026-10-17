@@ -74,6 +74,10 @@ async function setup() {
   const ownerB = await seedEmployee('owner-b', 'owner', pinOf(2), locB)
   const managerA = await seedEmployee('manager-a', 'manager', pinOf(3), locA)
   const managerB = await seedEmployee('manager-b', 'manager', pinOf(4), locB)
+  // ISSUE #72 C1/C2: načrti zahtevajo settings.manage (manager nima več) — oba managerja
+  // dobita ADMIN-om odobren override, da ostane test LOKACIJSKE izolacije veljaven
+  await db.employee.update({ where: { id: managerA.id }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
+  await db.employee.update({ where: { id: managerB.id }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
   const waiterA = await seedEmployee('waiter-a', 'waiter', pinOf(5), locA)
   return {
     ownerA: tokenFor(ownerA.id, ownerA.name, 'OWNER', locA),

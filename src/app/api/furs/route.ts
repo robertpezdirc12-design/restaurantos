@@ -17,16 +17,16 @@ import { issueFursReceipt } from '@/lib/furs/issue'
  * Vključi povezavo na naročilo/mizo za prikaz v UI (zavihek Računi).
  *
  * N5 (revizija §4): finančni seznam izdanih računov — UI prikaže zavihek Računi
- * samo z 'reports.view' (TAB_PERM.racuni), zato backend uveljavlja isto kanonično
+ * samo z 'reports.sales' (TAB_PERM.racuni), zato backend uveljavlja isto kanonično
  * dovoljenje (prej: requireAuth — natakar je prek API-ja videl vse račune).
- * Izbira 'reports.view' (in ne 'furs.issue'): zavihek je ZA VPOGLED v izdane račune
+ * Izbira 'reports.sales' (in ne 'receipts.storno'): zavihek je ZA VPOGLED v izdane račune
  * (seznam + CSV izvoz), ne za izdajo — izdaja gre skozi POST z lastnim gatingom;
- * 'furs.issue' bi po nepotrebnem zaprl seznam tudi financial/accounting rolam,
+ * 'receipts.storno' bi po nepotrebnem zaprl seznam tudi financial/accounting rolam,
  * ki izdajajo ne, a poročila smejo videti. Podrobnost računa (tisk po plačilu,
  * GET /api/furs/[id]) ostaja dostopna blagajni — ni del tega popravka.
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
   const receipts = await db.receipt.findMany({
     // Issue #4 §10: izdani računi so location-scoped (prej: vse lokacije)

@@ -8,7 +8,7 @@ import { jparse } from '@/lib/map'
  * Zahteva reports.view; vrne zadnjih 100 vnosov z jq filtriranjem po akciji.
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
   const action = req.nextUrl.searchParams.get('action')
   const entries = await db.auditLog.findMany({

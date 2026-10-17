@@ -213,7 +213,8 @@ describe('§C Nastavitve — razdelki s naslovi (vsebina kartic nedotaknjena)', 
   it('vse obstoječe kartice ostajajo izrisane (isti vrstni red, isti kontrolniki)', () => {
     const d = dash()
     for (const pin of [
-      '<SettingsEditor settings={settings} canManage={canManage} onReload={load} />',
+      // issue #72 A3: UI ≡ backend — settings kartico ureja nosilec settings.manage
+      "<SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} />",
       '<ReservationWidgetCard />',
       '<ManagerCallSettingsCard />',
       '<LabelRulesCard />',

@@ -64,8 +64,10 @@ const PIN_BASE = String(Date.now()).slice(-6)
 let locA = ''
 let locB = ''
 let mgrA = ''
+let admA = ''
 let mgrB = ''
 let tokA = ''
+let tokAdm = ''
 let tokB = ''
 let supId = ''
 
@@ -225,6 +227,10 @@ beforeAll(async () => {
   mgrB = await seedEmployee('mgrB', 'manager', locB, 2)
   tokA = createToken({ sub: mgrA, name: 'mgrA', role: 'manager', loc: locA, sv: 0 })
   tokB = createToken({ sub: mgrB, name: 'mgrB', role: 'manager', loc: locB, sv: 0 })
+  // ISSUE #72 C1/C3: tolerance (denarna politika) plačila izjem spreminja CENTRALNA
+  // vloga — manager od v1.133.0 nima več settings.manage. Testni politiki piše admin.
+  admA = await seedEmployee('admA', 'admin', locA, 3)
+  tokAdm = createToken({ sub: admA, name: 'admA', role: 'ADMIN', loc: locA, sv: 0 })
 
   supId = `${P}sup-${RUN}`
   await db.supplier.create({
@@ -314,7 +320,7 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     expect(ap!.matchStatus).toBe('blocked')
     expect(ap!.AccountsPayableLine[0].varianceNote).toContain('sprejeto')
     // plačilna varovalka: PATCH status paid → 409
-    const r = await expensePATCH(req('PATCH', `/api/expenses/${apId}`, tokA, { status: 'paid' }), { params: Promise.resolve({ id: apId }) })
+    const r = await expensePATCH(req('PATCH', `/api/expenses/${apId}`, tokAdm, { status: 'paid' }), { params: Promise.resolve({ id: apId }) })
     expect(r.status).toBe(409)
     const eb = await body(r)
     expect(String(eb.error)).toContain('tristranskem ujemanju')
@@ -423,7 +429,7 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     expect((await apOf(apId))!.AccountsPayableLine[0].varianceNote).toContain('Cena na enoto')
 
     // pooblaščena oseba ohlapi tolerance (PUT /api/settings)
-    const s = await settingsPUT(req('PUT', '/api/settings', tokA, { apMatchPriceTolerancePct: 15 }))
+    const s = await settingsPUT(req('PUT', '/api/settings', tokAdm, { apMatchPriceTolerancePct: 15 }))
     expect(s.status).toBe(200)
     const sb = await body(s)
     const tol = (sb.apMatchTolerance ?? {}) as Record<string, unknown>
@@ -435,7 +441,7 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     expect((await apOf(apId))!.matchStatus).toBe('matched')
 
     // povrni politiko na strogo + vrni singleton v prejšnje stanje
-    await settingsPUT(req('PUT', '/api/settings', tokA, { apMatchPriceTolerancePct: 0 }))
+    await settingsPUT(req('PUT', '/api/settings', tokAdm, { apMatchPriceTolerancePct: 0 }))
     if (!settingsExisted) {
       await db.restaurantSettings.deleteMany({})
     }
@@ -447,12 +453,17 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     const { apId } = await importEslog(tokA, eslogXml(`I18-INV-8-${RUN}`, [{ name: 'Kava zrna', qty: 5, price: 5 }]))
     expect((await apOf(apId))!.matchStatus).toBe('blocked')
 
-    // prekratek razlog → 400
-    const r0 = await matchPOST(req('POST', `/api/ap/${apId}/match`, tokA, { action: 'approve_exception', reason: 'kratko' }), { params: Promise.resolve({ id: apId }) })
+    // ISSUE #72 C1: odobritev izjeme je plačilna varovalka (settings.manage) —
+    // manager zdaj 403 (prej je bil pooblaščena oseba); odobri ADMIN
+    const rMgr = await matchPOST(req('POST', `/api/ap/${apId}/match`, tokA, { action: 'approve_exception', reason: 'Dobavitelj je dostavil nadomestno količino po telefonskem dogovoru.' }), { params: Promise.resolve({ id: apId }) })
+    expect(rMgr.status).toBe(403)
+
+    // prekratek razlog → 400 (validacija teče za pooblaščenega admina)
+    const r0 = await matchPOST(req('POST', `/api/ap/${apId}/match`, tokAdm, { action: 'approve_exception', reason: 'kratko' }), { params: Promise.resolve({ id: apId }) })
     expect(r0.status).toBe(400)
 
     // odobritev z razlogom
-    const r1 = await matchPOST(req('POST', `/api/ap/${apId}/match`, tokA, {
+    const r1 = await matchPOST(req('POST', `/api/ap/${apId}/match`, tokAdm, {
       action: 'approve_exception',
       reason: 'Dobavitelj je dostavil nadomestno količino po dogovoru (telefonska potrditev).',
     }), { params: Promise.resolve({ id: apId }) })
@@ -460,7 +471,7 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     expect((await apOf(apId))!.matchStatus).toBe('exception_approved')
 
     // plačilo zdaj deluje
-    const r2 = await expensePATCH(req('PATCH', `/api/expenses/${apId}`, tokA, { status: 'paid' }), { params: Promise.resolve({ id: apId }) })
+    const r2 = await expensePATCH(req('PATCH', `/api/expenses/${apId}`, tokAdm, { status: 'paid' }), { params: Promise.resolve({ id: apId }) })
     expect(r2.status).toBe(200)
 
     // audit: AP_EXCEPTION_APPROVED z razlogom + PO/GRN referencami
@@ -474,7 +485,7 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     expect(Array.isArray(details.purchaseOrderNumbers)).toBe(true)
     expect((details.purchaseOrderNumbers as string[]).length).toBeGreaterThan(0)
     expect(Array.isArray(details.grnNumbers)).toBe(true)
-    expect(String(details.approvedBy)).toContain('mgrA')
+    expect(String(details.approvedBy)).toContain('admA')
     expect(audit!.chainHash).not.toBe('')
 
     // exception_approved je lepenljiv: ponovna evalvacija → 409 (ne prepiše)

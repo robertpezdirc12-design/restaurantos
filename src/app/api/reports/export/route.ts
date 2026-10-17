@@ -43,7 +43,7 @@ const day = (d: Date) => d.toISOString().slice(0, 10)
  * CSV: UTF-8 BOM, ločilo `;` (pripravljeno za slovenske računovodske programe/Excel).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

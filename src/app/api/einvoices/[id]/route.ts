@@ -16,7 +16,7 @@ import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/ap
  * Pravica: reports.view.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
   const { id } = await params
 

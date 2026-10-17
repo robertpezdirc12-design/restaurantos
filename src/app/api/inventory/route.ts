@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const ctx = await requireAuthWithPerms(req)
   if (isResponse(ctx)) return ctx
   const user = ctx.user
-  const showCost = ctx.perms.includes('inventory.manage') || ctx.perms.includes('reports.view')
+  const showCost = ctx.perms.includes('inventory.manage') || ctx.perms.includes('reports.sales')
   const rows = await db.inventoryItem.findMany({
     // Issue #4 §1: staff vidi samo zalogo svoje lokacije
     where: await locationScope(user),

@@ -16,7 +16,7 @@ import {
  * RBAC: reports.view + locationScope (staff = izključno svoja lokacija).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'guests.read')
   if (isResponse(user)) return user
   const url = new URL(req.url)
   const periodDays = Math.max(7, Math.min(730, Number(url.searchParams.get('periodDays')) || 90))

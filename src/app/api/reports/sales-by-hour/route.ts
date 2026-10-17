@@ -21,7 +21,7 @@ export function clampDays(raw: string | null): number {
  * (central roles = whole organization, staff = own location only).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

@@ -24,11 +24,11 @@ import { pushEvent, apNewPushPayload } from '@/lib/push'
 
 /**
  * N5 (revizija §4): GET je finančni seznam (dobaviteljski računi) — UI prikazuje
- * zavihek Stroški samo z 'reports.view' (TAB_PERM.stroski), zato backend uveljavlja
+ * zavihek Stroški samo z 'reports.sales' (TAB_PERM.stroski), zato backend uveljavlja
  * isto kanonično dovoljenje (prej: requireAuth — natakar je prek API-ja videl finance).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.sales')
   if (isResponse(user)) return user
 
   // OPS-10 val 3 (v1.79.0) — attachment archive read-outs (same permission as the list):

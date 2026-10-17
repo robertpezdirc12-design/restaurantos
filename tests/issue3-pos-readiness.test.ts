@@ -88,6 +88,8 @@ let locSI = ''
 let locHR = ''
 let mgrId = ''
 let mgrToken = ''
+let admId = ''
+let admToken = ''
 let mgrHRToken = ''
 
 let orderSeqCounter = 991000
@@ -143,6 +145,9 @@ beforeAll(async () => {
     },
   })
   mgrToken = createToken({ sub: mgrId, name: `${P}Manager`, role: 'manager', loc: locSI, sv: 0 })
+  // ISSUE #72 C1: manager nima settings.manage → za GAP-7 (errors route) admin
+  admId = (await db.employee.create({ data: { id: nid(), name: `${P}Admin`, email: `${P}admin-${RUN}@test.local`, role: 'admin', status: 'active', sessionVersion: 0, locationId: locSI, pin: `${P}-pin-a-${RUN}`, pinLookup: `${P}-pl-a-${RUN}` } })).id
+  admToken = createToken({ sub: admId, name: `${P}Admin`, role: 'admin', loc: locSI, sv: 0 })
   // issue #4 §1: plačilo tujega naročila je ZAVRJENO — HR tok potrebuje lastnega
   // managerja na HR lokaciji (guardResource na orderPre.locationId)
   const fieldsHR = employeePinFields(`${PIN.slice(0, -1)}8`, `${P}mgrhr-${RUN}@test.local`)
@@ -495,7 +500,7 @@ describe('GAP-7 GET /api/monitoring/errors (issue #3 §G/H)', () => {
         locationId: locSI,
       },
     })
-    const r = await errorsGET(req('/api/monitoring/errors', mgrToken))
+    const r = await errorsGET(req('/api/monitoring/errors', admToken))
     expect(r.status).toBe(200)
     const body = (await r.json()) as { errors: { action: string; entityId: string | null }[] }
     expect(body.errors.some((e) => e.action === 'PRINT_FAILED' && e.entityId === `${P}printjob-${RUN}`)).toBe(true)

@@ -28,7 +28,7 @@ import { loadLaborCoverageData, resolveLaborCoverageWindow } from '@/lib/labor-c
  * Audit: NE (read-only poročilo — vzorec labor-cost/sbh poročil).
  */
 export async function GET(req: NextRequest) {
-  const user = await requirePermission(req, 'reports.view')
+  const user = await requirePermission(req, 'reports.labour')
   if (isResponse(user)) return user
 
   const url = new URL(req.url)

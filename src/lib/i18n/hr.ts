@@ -1858,6 +1858,15 @@ export const hr: Record<string, string> = {
   'emp.inactiveF': 'Neaktivan',
   'emp.permsLabel': 'Dozvole (override-i)',
   'emp.permsHint': 'Kanonička autorizacija: prazno = zadano po ulozi.',
+  // ISSUE #72 A1/A2: efektivni skup — uloga je ČITAN izvor, dodaci se mogu ukloniti
+  'emp.permsSummary': 'Uloga {role} donosi {n} čitanih prava; ovdje ih je {m} dodanih. Dozvole su DODATNE — prava uloge nije moguće oduzeti.',
+  'emp.permFromRole': 'Ovo pravo dolazi iz uloge — čitano je i nije ga moguće oduzeti.',
+  'emp.permFromRoleTag': 'uloga',
+  'emp.permCentralOnly': 'Ovu dozvolu može dodati samo vlasnik ili administrator.',
+  // ISSUE #72 B1/E5: nedostajuća lokacija = jasno stanje, ne tiha praznina
+  'emp.noLocation': 'bez lokacije',
+  'emp.noLocTitle': 'Nemate dodijeljenu lokaciju',
+  'emp.noLocBody': 'Vaš račun nije povezan s poslovalnicom, stoga vidite prazne popise. Nazovite voditelja ili vlasnika da vam dodijeli lokaciju.',
   'emp.savedOk': 'Spremljeno ✓',
   'emp.saveProfile': 'Spremi profil',
   // Issue #71 audit-25: pretraga + gumb »Novi zaposleni« na ploči

@@ -20,7 +20,7 @@ import { writeAudit } from '@/lib/audit-chain'
  *   → seznam kartic (lokacijsko omejen po §10) + statistika (aktivne, saldo,
  *     izdane 30 dni, unovčeno 30 dni).
  *     N5 (revizija §4): polni seznam + saldo statistika so finančni podatki — UI
- *     prikaže zavihek Darilne kartice samo z 'reports.view' (TAB_PERM.darilne),
+ *     prikaže zavihek Darilne kartice samo z 'reports.sales' (TAB_PERM.darilne),
  *     zato backend uveljavlja isto kanonično dovoljenje (prej: requireAuth).
  *     POS plačilni tok je ohranjen: iskanje ENE kartice ob plačilu gre prek
  *     GET /api/giftcards/lookup (requireAuth — blagajnik/natakar jo potrebuje
@@ -66,7 +66,7 @@ function mapCard(c: {
 }
 
 export async function GET(req: NextRequest) {
-  // N5: polni seznam + saldo statistika → 'reports.view' (skladen z UI zavihkom);
+  // N5: polni seznam + saldo statistika → 'reports.sales' (skladen z UI zavihkom);
   // plačilni tok ne gre skozi ta seznam (glej /api/giftcards/lookup — requireAuth)
   const user = await requirePermission(req, 'giftcards.manage')
   if (isResponse(user)) return user

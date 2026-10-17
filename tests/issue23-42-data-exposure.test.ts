@@ -97,7 +97,11 @@ beforeAll(async () => {
 
   adminA = await seedEmployee('adminA', 'admin', locA1, 1)
   adminB = await seedEmployee('adminB', 'admin', locB1, 2)
-  managerA = await seedEmployee('managerA', 'manager', locA1, 3) // MANAGER = settings.manage (kot vodja@ na produkciji)
+  // ISSUE #72 C1/C2: manager nima več settings.manage po vlogi — TESTNI vzorec je
+  // zdaj manager z ADMIN-om odobrenim override-om (edina pot, kako ne-centralna
+  // oseba dobi settings.manage; guardResource ga še vedno veže na lastno lokacijo)
+  managerA = await seedEmployee('managerA', 'manager', locA1, 3)
+  await db.employee.update({ where: { id: managerA }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
   // platform-level admin (loc null, kot produkcijski info@) — upravlja GLOBALNE integracije
   adminPlat = await seedEmployee('adminPlat', 'admin', null, 4)
 

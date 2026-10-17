@@ -20,16 +20,16 @@ import { writeAudit } from '@/lib/audit-chain'
  * Supplier NIMA lokacijskega stolpca (P1: DDL sledi) — zato P0: pravice + minimalni DTO:
  *  - inventory.manage (nabava-tab, skladišče) → operativni kontakti (naročanje),
  *    BREZ računovodskih polj;
- *  - reports.view ALI settings.manage → polni profil (računovodski izvoz/urejanje).
+ *  - reports.sales ALI settings.manage → polni profil (računovodski izvoz/urejanje).
  * Oba odgovora ohranjata odgovarjajoča ključa ({taxId: null, …}) — UI ne prelomi.
  */
 export async function GET(req: NextRequest) {
   const ctx = await requireAuthWithPerms(req)
   if (isResponse(ctx)) return ctx
-  const financial = ctx.perms.includes('reports.view') || ctx.perms.includes('settings.manage')
+  const financial = ctx.perms.includes('reports.sales') || ctx.perms.includes('settings.manage')
   const operational = ctx.perms.includes('inventory.manage')
   if (!financial && !operational) {
-    return fail('Dostop zavrnjen — manjka dovoljenje: inventory.manage | reports.view.', 403)
+    return fail('Dostop zavrnjen — manjka dovoljenje: inventory.manage | reports.sales.', 403)
   }
   const rows = await db.supplier.findMany({
     orderBy: { name: 'asc' },

@@ -51,14 +51,11 @@ const CATALOG_KINDS: Record<ExceptionKind, string[]> = {
   storno: ['storno', 'any'],
 }
 
-/** Vodstvene vloge (ista disciplina kot dosedanje 15-% pravilo v discount ruti). */
-export const MANAGERIAL_ROLES = [
-  'MANAGER', 'ADMIN', 'OWNER', 'GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER',
-] as const
-
-export function isManagerialRole(role?: string | null): boolean {
-  return MANAGERIAL_ROLES.includes(String(role ?? '').toUpperCase() as (typeof MANAGERIAL_ROLES)[number])
-}
+/** Vodstvene vloge — ISSUE #72 A4: EN SAM VIR RESNICE je src/lib/permissions.ts
+ * (isManagerialRole / MANAGERIAL_UI_ROLES). Ta modul ga le re-izvaža za
+ * združljivost obstoječih uvozov (exception approval, manager-call, HACCP …). */
+export { isManagerialRole, MANAGERIAL_UI_ROLES as MANAGERIAL_ROLES } from '@/lib/permissions'
+import { isManagerialRole as isManagerialImpl } from '@/lib/permissions'
 
 /** Centralne vloge imajo širši lokacijski dostop (ista semantika kot guardResource). */
 function isCentralRoleForApproval(role: string): boolean {
@@ -228,7 +225,7 @@ export async function resolveExceptionApproval(
   actionLocationId: string,
   input: ApproverInput | null | undefined
 ): Promise<ApprovalResult> {
-  if (isManagerialRole(actor.role)) {
+  if (isManagerialImpl(actor.role)) {
     return { ok: true, approval: { method: 'role', approverId: actor.sub, approverName: actor.name } }
   }
 
@@ -271,7 +268,7 @@ export async function resolveExceptionApproval(
   }
 
   // Vloga odobritelja: vodstvena (Toast vzorec »manager passcode«)
-  if (!isManagerialRole(employee.role)) {
+  if (!isManagerialImpl(employee.role)) {
     return { ok: false, status: 403, message: 'Odobritelj nima vodstvene vloge.' }
   }
 

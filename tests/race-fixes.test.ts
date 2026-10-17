@@ -26,6 +26,7 @@ const PIN = `${String(Date.now()).slice(-6)}1`
 
 let locId = ''
 let managerId = ''
+let adminId = ''
 let waiterId = ''
 
 function req(url: string, token: string, method = 'GET', body?: unknown): NextRequest {
@@ -70,6 +71,10 @@ beforeAll(async () => {
   locId = loc.id
   const manager = await seedEmployee('manager', 'manager', PIN)
   const waiter = await seedEmployee('waiter', 'waiter', `${PIN.slice(0, -1)}2`)
+  // ISSUE #72 C1: POST /api/expenses zahteva settings.manage — manager žeton R12 ne
+  // nosi več; vzporedna kreacija stroškov izvaja ADMIN
+  const admin = await seedEmployee('admin', 'admin', `${PIN.slice(0, -1)}3`)
+  adminId = admin.id
   managerId = manager.id
   waiterId = waiter.id
 })
@@ -148,7 +153,7 @@ describe('R9 — tips payout CAS (dvojno izplačilo nemogoče)', () => {
 
 describe('R12 — stroški: brez duplikatov dobavitelja "Razno" pod konkurenco', () => {
   test('2 vzporedna POST brez supplierId → 2 AccountsPayable, k "Razno" pride največ 1 nov vnos', async () => {
-    const t = { manager: tokenFor(managerId, `${PREFIX}manager`, 'MANAGER', locId) }
+    const t = { manager: tokenFor(adminId, `${PREFIX}admin`, 'ADMIN', locId) }
     const before = await db.supplier.findMany({ where: { name: 'Razno' } })
     const b = before.length
 

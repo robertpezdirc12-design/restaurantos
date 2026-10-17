@@ -140,6 +140,10 @@ beforeAll(async () => {
   mgrAId = (await seedEmp('mgrA', 'manager', locA)).id
   waiterAId = (await seedEmp('waiterA', 'waiter', locA)).id
   mgrBId = (await seedEmp('mgrB', 'manager', locB)).id
+  await db.employee.update({ where: { id: mgrBId }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
+  // ISSUE #72 C1/C2: inicializacija widgeta zahteva settings.manage — managerju
+  // dodan ADMIN-om odobren override (lokacijski testi ostanejo nespremenjeni)
+  await db.employee.update({ where: { id: mgrAId }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
   tokMgrB = tok(mgrBId, `${P}mgrB`, 'MANAGER', locB)
   tokWaiterA = tok(waiterAId, `${P}waiterA`, 'WAITER', locA)

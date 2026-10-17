@@ -18,8 +18,8 @@ import { resolveExceptionApproval } from '@/lib/exception-approval'
  * N5 (revizija §4): seznam izmen (z začetnim/končnim stanjem blagajne) — UI prikaže
  * zavihek Izmene samo z 'orders.pay' (TAB_PERM.izmene; blagajna/izmena), zato backend
  * uveljavlja isto kanonično dovoljenje (prej: requireAuth). Odstopanje od predloga
- * 'reports.view' je namerno: izmene niso zgolj poročila — zavihek uporablja tudi
- * blagajna (natakar ima 'orders.pay' po privzetih pravicah), zato bi 'reports.view'
+ * 'reports.sales' je namerno: izmene niso zgolj poročila — zavihek uporablja tudi
+ * blagajna (natakar ima 'orders.pay' po privzetih pravicah), zato bi 'reports.sales'
  * prekinil zakonit tok (otvoritev/zaključek izmene + pregled svojih izmen).
  * Finančna povzetka (dnešni/mesečni promet) v tem zavihku prihajata iz
  * /api/reports/financial in imata svoj gating (izven obsega tega popravka).

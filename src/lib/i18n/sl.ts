@@ -1858,6 +1858,15 @@ export const sl: Record<string, string> = {
   'emp.inactiveF': 'Neaktiven',
   'emp.permsLabel': 'Dovoljenja (override-ji)',
   'emp.permsHint': 'Kanonska avtorizacija: prazno = privzeto po vlogi.',
+  // ISSUE #72 A1/A2: efektivni nabor — vloga je BRAN vir, dodatki so odstranljivi
+  'emp.permsSummary': 'Vloga {role} prinaša {n} branih pravic; tu jih je {m} dodanih. Dovoljenja so DODATNA — pravic vloge ni mogoče odvzeti.',
+  'emp.permFromRole': 'Ta pravica prihaja iz vloge — brana je in je ni mogoče odvzeti.',
+  'emp.permFromRoleTag': 'vloga',
+  'emp.permCentralOnly': 'To dovoljenje lahko doda samo lastnik ali administrator.',
+  // ISSUE #72 B1/E5: manjkajoča lokacija = jasno stanje, ne tiha praznina
+  'emp.noLocation': 'brez lokacije',
+  'emp.noLocTitle': 'Nimate dodeljene lokacije',
+  'emp.noLocBody': 'Vaš račun ni povezan s poslovalnico, zato vidite prazne sezname. Pokličite vodjo ali lastnika, naj vam dodeli lokacijo.',
   'emp.savedOk': 'Shranjeno ✓',
   'emp.saveProfile': 'Shrani profil',
   // Issue #71 audit-25: iskalnik + gumb »Nov zaposleni« na plošči (ne samo delovna mesta)

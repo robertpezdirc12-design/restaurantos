@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const ctx = await requireAuthWithPerms(req)
   if (isResponse(ctx)) return ctx
   const user = ctx.user
-  const showFinancial = ctx.perms.includes('reports.view')
+  const showFinancial = ctx.perms.includes('reports.sales')
 
   // Triage ⑧ — lokacijski preklopnik (pogledi): centralna vloga sme izbrati
   // lokacijo (?locationId=) — sedaj Z org preverbo; brez parametra = org allow-lista.

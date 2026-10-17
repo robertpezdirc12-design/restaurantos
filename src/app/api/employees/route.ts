@@ -39,13 +39,23 @@ export async function POST(req: NextRequest) {
   // (ima employees.manage) je lahko ustvaril OWNER/ADMIN račun = popoln prevzem.
   // Zrcali PATCH matrico: ENTERPRISE vloge + ADMIN + OWNER sme ustvariti samo
   // centralna vloga (OWNER/ADMIN); MANAGER sme ustvarjati samo operativne vloge.
+  // ISSUE #72 C2: MANAGER je prav tako vodstvena vloga — vodja ne sme ustvarjati
+  // vodij (veriga MANAGER → MANAGER → poljubni override-i je vodila do vseh 20
+  // pravic pri vsakem novem vodji). Ustvarjanje MANAGER-ja = centralna vloga.
   const requestedRole = String(body.role || 'WAITER').toUpperCase()
   const ENTERPRISE_ROLES = ['GROUP_OWNER', 'ORG_ADMIN', 'PROPERTY_MANAGER', 'WAREHOUSE', 'ACCOUNTING']
-  const PRIVILEGED_ROLES = ['OWNER', 'ADMIN', ...ENTERPRISE_ROLES]
+  const PRIVILEGED_ROLES = ['OWNER', 'ADMIN', 'MANAGER', ...ENTERPRISE_ROLES]
   if (PRIVILEGED_ROLES.includes(requestedRole) && !isCentralRole(user)) {
     return fail(`Vloga ${requestedRole} je privilegirana — ustvari jo lahko samo OWNER ali ADMIN.`, 403)
   }
-  // Issue #5: PIN validacija (prej samo v PATCH — POST je sprejel 'abc')
+  // ISSUE #72 B2: operativne vloge ZAHTEVAJOJO lokacijo (prej je prazna vrednost
+  // tiho ustvarila »delavca, ki vidi prazne sezname« — 9/11 računov v produkciji
+  // brez lokacije). Centralne vloge (računovodstvo, uprava) smejo ostati brez nje —
+  // v UI je to izrecno zapisano, ne pa skrita prazna vrednost.
+  const OPERATIVE_ROLES = ['WAITER', 'BAR', 'KITCHEN', 'CHEF', 'CLEANER', 'MANAGER']
+  if (OPERATIVE_ROLES.includes(requestedRole) && !locationId) {
+    return fail('Operativna vloga zahteva dodeljeno lokacijo — izberite poslovalnico.', 400)
+  }
   if (!/^\d{4,8}$/.test(pin)) return ok({ error: 'PIN mora imeti 4–8 številk.' }, 400)
   const fields = employeePinFields(pin, email)
   let employee

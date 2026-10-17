@@ -55,7 +55,7 @@ const STORNO_RETURN_TX_TYPE = 'STORNO_RETURN'
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const user = await requirePermission(req, 'furs.issue')
+  const user = await requirePermission(req, 'receipts.storno')
   if (isResponse(user)) return user
   const { id } = await ctx.params
   // #19: telo nosi razlog storna (+ morebitno poverilnico odobritelja)

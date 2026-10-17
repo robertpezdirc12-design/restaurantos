@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       _count: { select: { Table: true, Employee: true, Order: true } },
     },
   })
-  const showRevenue = ctx.perms.includes('reports.view')
+  const showRevenue = ctx.perms.includes('reports.sales')
   const stats = await Promise.all(
     locations.map(async (l) => {
       const startOfDay = new Date()

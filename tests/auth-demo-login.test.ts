@@ -104,7 +104,7 @@ describe('demo-login (vstop brez gesla) — env-pripet račun', () => {
         new NextRequest('http://localhost:3000/api/anything', {
           headers: { authorization: `Bearer ${d.token}`, 'content-type': 'application/json' },
         }),
-        'reports.view',
+        'reports.sales',
       )
       expect(isResponse(user)).toBe(false)
     } finally {

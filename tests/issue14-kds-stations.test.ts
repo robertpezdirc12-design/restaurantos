@@ -86,6 +86,10 @@ let tokChefA = ''
 let tokWaiterA = ''
 let tokMgrB = ''
 let tokChefB = ''
+// issue #72 C1: CRUD postaj = settings.manage → MANAGER nima več →
+// property_manager (ne-centralen, poln nabor) na obeh lokacijah
+let tokPmA = ''
+let tokPmB = ''
 
 let stSalad = ''
 let stGrill = ''
@@ -214,11 +218,15 @@ beforeAll(async () => {
   const waiterAId = await seedEmp('waiterA', 'waiter', locA)
   const mgrBId = await seedEmp('mgrB', 'manager', locB)
   const chefBId = await seedEmp('chefB', 'kitchen', locB)
+  const pmAId = await seedEmp('pmA', 'property_manager', locA)
+  const pmBId = await seedEmp('pmB', 'property_manager', locB)
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
   tokChefA = tok(chefAId, `${P}chefA`, 'KITCHEN', locA)
   tokWaiterA = tok(waiterAId, `${P}waiterA`, 'WAITER', locA)
   tokMgrB = tok(mgrBId, `${P}mgrB`, 'MANAGER', locB)
   tokChefB = tok(chefBId, `${P}chefB`, 'KITCHEN', locB)
+  tokPmA = tok(pmAId, `${P}pmA`, 'PROPERTY_MANAGER', locA)
+  tokPmB = tok(pmBId, `${P}pmB`, 'PROPERTY_MANAGER', locB)
 
   // postaje lokacije A: solate (sort 1 — VZPOREDNO bočno delo opcije), žar
   // (sort 2 — primarna burgerja), sestava (DELETE testi), izdaja (sort 50),
@@ -385,8 +393,8 @@ describe('A. motor — rollup + prehodi', () => {
 /* ═══════════════ B. CRUD /api/prep-stations ═══════════════ */
 
 describe('B. CRUD postaj', () => {
-  it('B1: POST (manager) ustvari poimenovano postajo — 201 + audit', async () => {
-    const res = await stationPOST(req('POST', '/api/prep-stations', tokMgrA, { name: 'i14 Testna', type: 'test', avgPrepTime: 7, sortOrder: 4 }))
+  it('B1: POST (pm — settings.manage) ustvari poimenovano postajo — 201 + audit', async () => {
+    const res = await stationPOST(req('POST', '/api/prep-stations', tokPmA, { name: 'i14 Testna', type: 'test', avgPrepTime: 7, sortOrder: 4 }))
     expect(res.status).toBe(201)
     const j = await body(res)
     expect(j.station).toMatchObject({ name: 'i14 Testna', type: 'test', avgPrepTime: 7, sortOrder: 4, isExpo: false, isActive: true })
@@ -396,12 +404,12 @@ describe('B. CRUD postaj', () => {
   })
 
   it('B2: POST duplikat imena na lokaciji → 409', async () => {
-    const res = await stationPOST(req('POST', '/api/prep-stations', tokMgrA, { name: 'i14 Testna', type: 'test' }))
+    const res = await stationPOST(req('POST', '/api/prep-stations', tokPmA, { name: 'i14 Testna', type: 'test' }))
     expect(res.status).toBe(409)
   })
 
   it('B3: POST slab tip → 400', async () => {
-    const res = await stationPOST(req('POST', '/api/prep-stations', tokMgrA, { name: 'i14 Slaba', type: 'UPPER!' }))
+    const res = await stationPOST(req('POST', '/api/prep-stations', tokPmA, { name: 'i14 Slaba', type: 'UPPER!' }))
     expect(res.status).toBe(400)
   })
 
@@ -431,18 +439,18 @@ describe('B. CRUD postaj', () => {
   })
 
   it('B6: PATCH preimenovanje uredi; duplikat imena (izvzemajoč sebe) 409', async () => {
-    const res = await stationIdPATCH(req('PATCH', `/api/prep-stations/${stGrill}`, tokMgrA, { name: 'i14-Žar 2', avgPrepTime: 13 }), { params: Promise.resolve({ id: stGrill }) })
+    const res = await stationIdPATCH(req('PATCH', `/api/prep-stations/${stGrill}`, tokPmA, { name: 'i14-Žar 2', avgPrepTime: 13 }), { params: Promise.resolve({ id: stGrill }) })
     expect(res.status).toBe(200)
     const j = await body(res)
     expect(j.station).toMatchObject({ name: 'i14-Žar 2', avgPrepTime: 13 })
     await db.prepStation.update({ where: { id: stGrill }, data: { name: 'i14-Žar', avgPrepTime: 12 } })
 
-    const dupe = await stationIdPATCH(req('PATCH', `/api/prep-stations/${stGrill}`, tokMgrA, { name: 'i14-Solate' }), { params: Promise.resolve({ id: stGrill }) })
+    const dupe = await stationIdPATCH(req('PATCH', `/api/prep-stations/${stGrill}`, tokPmA, { name: 'i14-Solate' }), { params: Promise.resolve({ id: stGrill }) })
     expect(dupe.status).toBe(409)
   })
 
-  it('B7: PATCH tuje lokacije (manager B) → 403 (tenant varovalka)', async () => {
-    const res = await stationIdPATCH(req('PATCH', `/api/prep-stations/${stGrill}`, tokMgrB, { avgPrepTime: 20 }), { params: Promise.resolve({ id: stGrill }) })
+  it('B7: PATCH tuje lokacije (pm B) → 403 (tenant varovalka)', async () => {
+    const res = await stationIdPATCH(req('PATCH', `/api/prep-stations/${stGrill}`, tokPmB, { avgPrepTime: 20 }), { params: Promise.resolve({ id: stGrill }) })
     expect(res.status).toBe(403)
   })
 })
@@ -696,13 +704,13 @@ describe('E. legacy sobivanje', () => {
         sequence: 3, status: 'pending', title: 'Burger i14', quantity: 1,
       },
     })
-    const blocked = await stationIdDELETE(req('DELETE', `/api/prep-stations/${stAssemble}`, tokMgrA), { params: Promise.resolve({ id: stAssemble }) })
+    const blocked = await stationIdDELETE(req('DELETE', `/api/prep-stations/${stAssemble}`, tokPmA), { params: Promise.resolve({ id: stAssemble }) })
     expect(blocked.status).toBe(409)
 
     await db.stationTask.updateMany({ where: { stationId: stAssemble }, data: { status: 'done' } })
     // usmeritve, ki jih DELETE počisti (M:N + Modifier.prepStationId)
     await db.menuItemStation.create({ data: { id: `${P}mis-1-${RUN}`, menuItemId: burgerAId, stationId: stAssemble, locationId: locA } })
-    const res = await stationIdDELETE(req('DELETE', `/api/prep-stations/${stAssemble}`, tokMgrA), { params: Promise.resolve({ id: stAssemble }) })
+    const res = await stationIdDELETE(req('DELETE', `/api/prep-stations/${stAssemble}`, tokPmA), { params: Promise.resolve({ id: stAssemble }) })
     expect(res.status).toBe(200)
     expect(await db.menuItemStation.count({ where: { stationId: stAssemble } })).toBe(0)
     const modAux = await db.modifier.findUnique({ where: { id: modAuxId } })

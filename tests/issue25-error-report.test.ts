@@ -113,6 +113,11 @@ beforeAll(async () => {
   waiterAId = await seedEmployee('waiterA', 'waiter', locA, 1)
   mgrAId = await seedEmployee('mgrA', 'manager', locA, 2)
   mgrBId = await seedEmployee('mgrB', 'manager', locB, 3)
+  // ISSUE #72 C1/C2: /api/monitoring/errors zahteva settings.manage — managerja ga
+  // nita več po vlogi; test 10 preverja LOKACIJSKO izolacijo, zato dobita oba admina
+  // ODobreni override (guardResource ju še vedno veže na lastno lokacijo)
+  await db.employee.update({ where: { id: mgrAId }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
+  await db.employee.update({ where: { id: mgrBId }, data: { permissionOverrides: JSON.stringify(['settings.manage']) } })
   empNoLocId = await seedEmployee('noLoc', 'waiter', null, 4)
 
   tokWaiterA = createToken({ sub: waiterAId, name: 'waiterA', role: 'waiter', loc: locA, sv: 0 })

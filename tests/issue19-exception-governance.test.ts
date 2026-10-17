@@ -58,6 +58,7 @@ let locA = ''
 let locB = ''
 let miA = ''
 let mgrAId = ''
+let tokAdmA = ''
 let mgrA2Id = '' // DRUGI vodja lokacije A (ločena oseba za odobritev)
 let mgrBId = ''
 let waiterAId = ''
@@ -194,11 +195,13 @@ beforeAll(async () => {
   const mgrA = await seedEmployee({ name: 'mgrA', loc: locA })
   const mgrA2 = await seedEmployee({ name: 'mgrA2', loc: locA })
   const mgrB = await seedEmployee({ name: 'mgrB', loc: locB })
+  const admA = await seedEmployee({ name: 'admA', role: 'admin', loc: locA })
   const waiterA = await seedEmployee({ name: 'waiterA', role: 'waiter', loc: locA })
   const voidWaiterA = await seedEmployee({ name: 'voidWaiterA', role: 'waiter', loc: locA, overrides: ['orders.void'] })
   mgrAId = mgrA.id; mgrA2Id = mgrA2.id; mgrBId = mgrB.id; waiterAId = waiterA.id; voidWaiterAId = voidWaiterA.id
   pinMgrA2 = mgrA2.pin; pinMgrB = mgrB.pin; pinWaiterA = waiterA.pin; pinVoidWaiterA = voidWaiterA.pin
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
+  tokAdmA = tok(admA.id, `${P}admA`, 'ADMIN', locA)
   tokMgrA2 = tok(mgrA2Id, `${P}mgrA2`, 'MANAGER', locA)
   tokMgrB = tok(mgrBId, `${P}mgrB`, 'MANAGER', locB)
   tokWaiterA = tok(waiterAId, `${P}waiterA`, 'WAITER', locA)
@@ -260,7 +263,7 @@ describe('A. politika finančnih izjem (exception-policy)', () => {
       await db.restaurantSettings.create({ data: { id: `${P}settings-${RUN}` } })
     }
     resetExceptionPolicyProbe(true)
-    const res = await settingsPUT(req('PUT', '/api/settings', tokMgrA, { excVoidApprovalAmountCents: 1234, excRequireReasonDiscount: true }))
+    const res = await settingsPUT(req('PUT', '/api/settings', tokAdmA, { excVoidApprovalAmountCents: 1234, excRequireReasonDiscount: true }))
     expect(res.status).toBe(200)
     const b = await body(res)
     const pol = (b.exceptionPolicy ?? {}) as Record<string, unknown>
@@ -272,7 +275,7 @@ describe('A. politika finančnih izjem (exception-policy)', () => {
     })
     expect(audit).toBeTruthy()
     // povrni (politika je deljena — ne zastrupi ostalih testov)
-    await settingsPUT(req('PUT', '/api/settings', tokMgrA, { excVoidApprovalAmountCents: 0, excRequireReasonDiscount: false }))
+    await settingsPUT(req('PUT', '/api/settings', tokAdmA, { excVoidApprovalAmountCents: 0, excRequireReasonDiscount: false }))
     resetExceptionPolicyProbe()
   })
 
@@ -528,11 +531,11 @@ describe('F. preklic naročila: razlog obvezen (PATCH CANCELLED + DELETE)', () =
 describe('G. fiskalni storno: razlog obvezen', () => {
   it('G1. brez razloga → 400 (stanje nespremenjeno); z razlogom → 201 + RECEIPT_STORNO s posnetkom', async () => {
     const { receiptId } = await seedPaidOrderWithReceipt(9.9)
-    const r1 = await stornoPOST(req('POST', `/api/receipts/${receiptId}/storno`, tokMgrA), { params: Promise.resolve({ id: receiptId }) })
+    const r1 = await stornoPOST(req('POST', `/api/receipts/${receiptId}/storno`, tokAdmA), { params: Promise.resolve({ id: receiptId }) })
     expect(r1.status).toBe(400)
     // naročilo ostaja 'paid' (napaka PRED transakcijo), brez storno računa
     expect(await db.receipt.count({ where: { stornoOf: receiptId } })).toBe(0)
-    const r2 = await stornoPOST(req('POST', `/api/receipts/${receiptId}/storno`, tokMgrA, { reason: 'gost ni prejel naročila' }), { params: Promise.resolve({ id: receiptId }) })
+    const r2 = await stornoPOST(req('POST', `/api/receipts/${receiptId}/storno`, tokAdmA, { reason: 'gost ni prejel naročila' }), { params: Promise.resolve({ id: receiptId }) })
     expect(r2.status).toBe(201)
     const audit = await db.auditLog.findFirst({ where: { action: 'RECEIPT_STORNO', entityId: { not: receiptId } }, orderBy: { timestamp: 'desc' } })
     const d = JSON.parse(audit!.details) as Record<string, unknown>
@@ -563,7 +566,7 @@ describe('H. void-reasons CRUD (settings.manage + kind)', () => {
   it('H2. POST create (settings.manage) → 201 + vrstica kind/requireComment + audit; waiter → 403', async () => {
     const rWaiter = await reasonsPOST(req('POST', '/api/void-reasons', tokWaiterA, { name: 'Test', kind: 'discount' }))
     expect(rWaiter.status).toBe(403)
-    const r = await reasonsPOST(req('POST', '/api/void-reasons', tokMgrA, { name: 'Kakovost hrane', kind: 'storno', requireComment: true }))
+    const r = await reasonsPOST(req('POST', '/api/void-reasons', tokAdmA, { name: 'Kakovost hrane', kind: 'storno', requireComment: true }))
     expect(r.status).toBe(201)
     const b = (await body(r)).reason as { id: string; name: string; kind: string; requireComment: boolean }
     expect(b.kind).toBe('storno')
@@ -576,7 +579,7 @@ describe('H. void-reasons CRUD (settings.manage + kind)', () => {
 
   it('H3. PATCH preimenovanje/deaktivacija → 200 + audit; deaktiviran IZGINE iz GET', async () => {
     const id = await seedReason('Za deaktivacijo', 'discount')
-    const r = await reasonsPATCH(req('PATCH', '/api/void-reasons', tokMgrA, { id, name: 'Preimenovan razlog', isActive: false }))
+    const r = await reasonsPATCH(req('PATCH', '/api/void-reasons', tokAdmA, { id, name: 'Preimenovan razlog', isActive: false }))
     expect(r.status).toBe(200)
     expect(await db.auditLog.count({ where: { action: 'EXCEPTION_REASON_UPDATED', entityId: id } })).toBe(1)
     const b = await body(await reasonsGET(req('GET', '/api/void-reasons?kind=discount', tokMgrA)))
@@ -584,8 +587,12 @@ describe('H. void-reasons CRUD (settings.manage + kind)', () => {
   })
 
   it('H4. PATCH tuje lokacije → 403 (guardResource); DELETE v uporabi → 409 z navodilom', async () => {
+    // ISSUE #72 C2 vzorec: ne-centralni nosilec settings.manage = manager z ADMIN-om
+    // odobrenim override-om (guardResource ga še vedno veže na lastno lokacijo)
+    const ovr = await seedEmployee({ name: 'mgrOvr', loc: locA, overrides: ['settings.manage'] })
+    const tokOvr = tok(ovr.id, `${P}mgrOvr`, 'MANAGER', locA)
     const foreign = await seedReason('Tuj razlog', 'discount', { loc: locB })
-    const r = await reasonsPATCH(req('PATCH', '/api/void-reasons', tokMgrA, { id: foreign, isActive: false }))
+    const r = await reasonsPATCH(req('PATCH', '/api/void-reasons', tokOvr, { id: foreign, isActive: false }))
     expect(r.status).toBe(403)
 
     // razlog v uporabi: OrderItem.voidReasonId
@@ -593,12 +600,12 @@ describe('H. void-reasons CRUD (settings.manage + kind)', () => {
     const { id: orderId, itemId } = await seedOrder(locA)
     await db.orderItem.update({ where: { id: itemId }, data: { voidReasonId: used, voided: true } })
     void orderId
-    const del = await reasonsDELETE(req('DELETE', `/api/void-reasons?id=${used}`, tokMgrA))
+    const del = await reasonsDELETE(req('DELETE', `/api/void-reasons?id=${used}`, tokOvr))
     expect(del.status).toBe(409)
     expect((await body(del)).error).toContain('deaktivir')
     // neuporabljen razlog gre izbrisat
     const unused = await seedReason('Neuporabljen', 'void')
-    const del2 = await reasonsDELETE(req('DELETE', `/api/void-reasons?id=${unused}`, tokMgrA))
+    const del2 = await reasonsDELETE(req('DELETE', `/api/void-reasons?id=${unused}`, tokOvr))
     expect(del2.status).toBe(200)
     expect(await db.voidReason.findUnique({ where: { id: unused } })).toBeNull()
   })

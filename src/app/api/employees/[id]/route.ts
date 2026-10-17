@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapEmployee, roleToDB, jstr } from '@/lib/map'
+import { mapEmployee, roleToDB, jstr, jparse } from '@/lib/map'
 import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -61,6 +61,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return fail('Enterprise vloge dodeljujejo samo OWNER ali ADMIN.', 403)
     }
     if (user.role === 'MANAGER' && role === 'ADMIN') return fail('MANAGER ne dodeljuje ADMIN vloge.', 403)
+    // ISSUE #72 C2: MANAGER je vodstvena vloga — njeno dodeljevanje je rezervirano
+    // za centralne vloge (prej: vodja je ustvaril vodjo, ta spet vodjo … vsak z
+    // employees.manage in poljubnimi override-i = veriga prevzema)
+    if (role === 'MANAGER' && !isCentralRole(user)) {
+      return fail('Vlogo MANAGER dodeljujejo samo OWNER ali ADMIN.', 403)
+    }
     // LASTNIKA dodeljuje LASTNIK ali ADMIN (prvi lastnik); urejati/odvzeti pa samo LASTNIK
     if (role === 'OWNER' && !['OWNER', 'ADMIN'].includes(user.role)) return fail('Samo LASTNIK dodeljuje LASTNIKA.', 403)
     if (targetRole === 'OWNER' && role !== 'OWNER' && user.role !== 'OWNER') {
@@ -96,6 +102,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const valid = (body.permissionOverrides as string[]).filter((p) =>
       (CANONICAL_PERMISSIONS as readonly string[]).includes(p))
     if (valid.length !== body.permissionOverrides.length) return fail('Neznana dovoljenja.', 400)
+    // ISSUE #72 C2: stropovi (employees.manage, settings.manage) sme DODATI samo
+    // centralna vloga — vodja z employees.manage bi si sicer lahko gojil
+    // naslednjega vodjo ali odprl globalne nastavitve. ODVZEM je vedno dovoljen
+    // (privilegij se zmanjša, nikoli poveča).
+    const targetExisting = jparse<string[]>(target.permissionOverrides, [])
+    const addingPrivileged = valid.some((p) =>
+      (p === 'employees.manage' || p === 'settings.manage') && !targetExisting.includes(p))
+    if (addingPrivileged && !isCentralRole(user)) {
+      return fail('Dodeljevanje dovoljenj employees.manage in settings.manage je rezervirano za OWNER ali ADMIN.', 403)
+    }
     data.permissionOverrides = jstr(valid)
     // Issue #6 §A (P0): sprememba dovoljenj prekliče stare seje — enaka disciplina
     // kot vloga/PIN/lokacija/status. requirePermission sicer razrešuje pravice iz

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, requireAuthWithPerms, isResponse, ok } from '@/lib/api'
+import { requirePermission, requireAuthWithPerms, isResponse, ok, fail, isCentralRole } from '@/lib/api'
 import { nid, jstr, num } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { safeSettingsDto } from '@/lib/secret-dto'
@@ -50,6 +50,20 @@ export async function PUT(req: NextRequest) {
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body) return ok({ error: 'Manjkajo podatki.' }, 400)
+  // ISSUE #72 C3: POJAVNA POLITIKA (tolerance ujemanja, pragovi finančnih izjem,
+  // blagajniški pragi) je globalni singleton — njeno spreminjanje je nad
+  // dovoljenjem settings.manage še dodatno rezervirano za centralno vlogo
+  // (OWNER/ADMIN). Vodja (od v1.133.0 brez settings.manage) in morebitni
+  // override-nosilci tako ne morejo prepi­sati denarne politike vseh lokacij.
+  const POLICY_COLUMNS = new Set<string>([
+    ...(AP_TOLERANCE_COLUMNS as readonly string[]),
+    ...(EXCEPTION_POLICY_COLUMNS as readonly string[]),
+    ...(CASH_POLICY_COLUMNS as readonly string[]),
+  ])
+  const touchesPolicy = Object.keys(body as Record<string, unknown>).some((k) => POLICY_COLUMNS.has(k))
+  if (touchesPolicy && !isCentralRole(user)) {
+    return fail('Spreminjanje denarne politike (tolerance, izjeme, blagajna) je rezervirano za OWNER ali ADMIN.', 403)
+  }
   const data: Record<string, unknown> = {}
   for (const key of EDITABLE) {
     if (body[key] !== undefined) data[key] = body[key]

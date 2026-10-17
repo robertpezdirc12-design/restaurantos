@@ -44,6 +44,7 @@ const ZOI_RE = /^[0-9a-f]{32}$/
 let locA: { id: string }
 let locB: { id: string }
 let mgrA: { id: string; name: string }
+let adminA: { id: string; name: string }
 let mgrB: { id: string; name: string }
 let chefA: { id: string; name: string }
 let mi22: { id: string; name: string }
@@ -185,6 +186,11 @@ beforeAll(async () => {
   })
   mgrB = await db.employee.create({
     data: { id: nid(), name: `${PREFIX} Manager B`, email: `${PREFIX}-mgr-b-${TS}@test.local`, role: 'manager', pin: `${PREFIX}-pin-b-${TS}`, locationId: locB.id },
+  })
+  // ISSUE #72 C1/D1: fiskalni storno (receipts.storno) je lastniško dovoljenje —
+  // manager ga NIMA več; testni storno izvaja admin račun
+  adminA = await db.employee.create({
+    data: { id: nid(), name: `${PREFIX} Admin A`, email: `${PREFIX}-adm-a-${TS}@test.local`, role: 'admin', pin: `${PREFIX}-pin-aa-${TS}`, locationId: locA.id },
   })
   chefA = await db.employee.create({
     data: { id: nid(), name: `${PREFIX} Kuhar A`, email: `${PREFIX}-chef-${TS}@test.local`, role: 'chef', pin: `${PREFIX}-pin-c-${TS}`, locationId: locA.id },
@@ -536,7 +542,7 @@ describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Nal
     expect(res1.status).toBe(201)
     const inv1 = (await res1.json()).invoice
     // 2. fiskalni storno (koti /api/furs: isti furs.issue dovoljenje, lokacija A)
-    const stornoToken = createToken({ sub: mgrA.id, name: mgrA.name, role: 'MANAGER', loc: locA.id, sv: 0 })
+    const stornoToken = createToken({ sub: adminA.id, name: adminA.name, role: 'ADMIN', loc: locA.id, sv: 0 })
     const resS = await stornoPOST(
       new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'testni storno razlog' }) }),
       { params: Promise.resolve({ id: inv1.id }) },
@@ -574,7 +580,7 @@ describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Nal
     const res1 = await payA({ orderId: order.id, type: 'cash', clientOperationId: `${PREFIX}-ovr37-${TS}` })
     expect(res1.status).toBe(201)
     const inv1 = (await res1.json()).invoice
-    const stornoToken = createToken({ sub: mgrA.id, name: mgrA.name, role: 'MANAGER', loc: locA.id, sv: 0 })
+    const stornoToken = createToken({ sub: adminA.id, name: adminA.name, role: 'ADMIN', loc: locA.id, sv: 0 })
     const resS = await stornoPOST(
       new NextRequest('http://localhost/api/receipts/x/storno', { method: 'POST', headers: { authorization: `Bearer ${stornoToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'testni storno razlog' }) }),
       { params: Promise.resolve({ id: inv1.id }) },

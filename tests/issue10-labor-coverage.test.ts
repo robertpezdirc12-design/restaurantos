@@ -60,7 +60,7 @@
  *      pogodba kot UI ruta — isti motor/loader → GLOBA identična poročila,
  *      razlikujeta se samo generatedAt/exportMeta — "isti obračun kot UI");
  *      dovoljenja: 401, waiter 403, staff lasten obseg 200, tuja lokacija 403;
- *  G. REGISTRI: 'i10-' v TEST_PREFIXES; APP_VERSION 1.132.1; reasons = enum
+ *  G. REGISTRI: 'i10-' v TEST_PREFIXES; APP_VERSION 1.133.0; reasons = enum
  *      kod; 0 DDL — schema.sqlite.prisma/SCHEMA_MIGRATIONS/konzola HANDLERS/
  *      drift-check BREZ 'labor-coverage' (izraz read-only izračun, 0 tabel).
  *
@@ -735,13 +735,13 @@ describe('B. ruta labor-coverage (okno/obseg/varovalke/PII)', () => {
     expect(raw).not.toContain(locA2)
   })
 
-  it('B8. 401 brez žetona; 403 waiter (brez reports.view)', async () => {
+  it('B8. 401 brez žetona; 403 waiter (brez reports.labour — issue #72 D3)', async () => {
     const no = await laborCoverageGET(req(`/api/reports/labor-coverage?from=${W_FROM}&to=${W_TO}`))
     expect(no.status).toBe(401)
     expect(String((await body(no)).error)).toContain('Avtentikacija')
     const waiter = await laborCoverageGET(req(`/api/reports/labor-coverage?from=${W_FROM}&to=${W_TO}`, tokWaiter))
     expect(waiter.status).toBe(403)
-    expect(String((await body(waiter)).error)).toContain('reports.view')
+    expect(String((await body(waiter)).error)).toContain('reports.labour')
   })
 
   it('B9. jobId filter: SAMO labor stran (vnosi/izmene) — prodaja ostaja celotna', async () => {
@@ -1279,7 +1279,7 @@ describe('F. export /api/reports/export?section=labor-coverage', () => {
     expect(no.status).toBe(401)
     const waiter = await exportGET(req(`/api/reports/export?section=labor-coverage&format=csv&from=${W_FROM}&to=${W_TO}`, tokWaiter))
     expect(waiter.status).toBe(403)
-    expect(String((await body(waiter)).error)).toContain('reports.view')
+    expect(String((await body(waiter)).error)).toContain('reports.sales')
     // mgrA1 (MANAGER, reports.view, lastni obseg locA1) izvozi svoj obračun
     const own = await exportGET(req(`/api/reports/export?section=labor-coverage&format=csv&from=${W_FROM}&to=${W_TO}`, tokA1))
     expect(own.status).toBe(200)
@@ -1320,9 +1320,9 @@ describe('G. registri: TEST_PREFIXES, verzija, reasons enum, 0 DDL', () => {
     expect(TEST_PREFIXES).toContain('i10-')
   })
 
-  it('G2. APP_VERSION === 1.132.1', () => {
-    // verzijski register posodablja vsak val — zadnji: v1.132.1 (issue #71: 34 UX najdb — KDS izmena+alergeni, jezik vloge)
-    expect(APP_VERSION).toBe('1.132.1')
+  it('G2. APP_VERSION === 1.133.0', () => {
+    // verzijski register posodablja vsak val — zadnji: v1.133.0 (issue #71: 34 UX najdb — KDS izmena+alergeni, jezik vloge)
+    expect(APP_VERSION).toBe('1.133.0')
   })
 
   it('G3. dataQuality.reasons so stabilen nabor kod (UI preslika lcov.dq.*)', () => {
