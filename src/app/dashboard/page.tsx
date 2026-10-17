@@ -2602,7 +2602,7 @@ function DashboardInner() {
                     <span className="text-xs font-normal text-stone-500 shrink-0">{t('menu.catCount', { n: g.items.length })}</span>
                   </h2>
                 </div>
-                <div data-region="menu-category-items" className="grid gap-2 md:gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div data-region="menu-category-items" className="grid grid-cols-1 gap-2 md:gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {g.items.map((m) => (
                     <div key={m.id} className="rounded-lg border border-stone-200 bg-white p-3 md:p-2.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">

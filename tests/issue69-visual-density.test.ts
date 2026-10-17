@@ -162,7 +162,7 @@ describe('§B Meni — segmentacija dolge strani (statična sidra, brez stanja)'
 
   it('gostejša mreža na ≥768 px (4 stolpci na xl, strnjene vrstice)', () => {
     const d = dash()
-    expect(d).toContain('grid gap-2 md:gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4')
+    expect(d).toContain('grid grid-cols-1 gap-2 md:gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4')
     expect(d).toContain('bg-white p-3 md:p-2.5 flex items-center justify-between gap-2')
   })
 
