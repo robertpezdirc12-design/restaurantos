@@ -719,7 +719,7 @@ describe('H — Vsebina: [TEST] prefix, noga odjave, subject', () => {
     expect(testBody).toContain('[TEST')
   })
 
-  it('verzija aplikacije je dvignjena na 1.131.1', () => {
-    expect(APP_VERSION).toBe('1.131.1')
+  it('verzija aplikacije je dvignjena na 1.132.0', () => {
+    expect(APP_VERSION).toBe('1.132.0')
   })
 })

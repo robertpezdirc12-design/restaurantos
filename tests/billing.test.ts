@@ -250,10 +250,10 @@ describe('computeBill — konvencija «vključno z DDV»', () => {
   })
 })
 
-/* ─────────────── REGISTRI — val v1.131.1 ─────────────── */
+/* ─────────────── REGISTRI — val v1.132.0 ─────────────── */
 
-describe('REGISTRI — val v1.131.1 (produkcijski tsc gate + filtrirane push vloge)', () => {
-  test('APP_VERSION === 1.131.1', () => {
-    expect(APP_VERSION).toBe('1.131.1')
+describe('REGISTRI — val v1.132.0 (issue #71: 34 UX najdb — KDS izmena+alergeni, jezik vloge, demo čiščenje)', () => {
+  test('APP_VERSION === 1.132.0', () => {
+    expect(APP_VERSION).toBe('1.132.0')
   })
 })
