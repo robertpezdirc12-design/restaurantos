@@ -27,9 +27,12 @@ import { nid } from '@/lib/map'
  * brati ("Conversion failed"), medtem ko db push isti model ustvari kot
  * DATETIME. Postgres (produkcija) ostaja PRIŠTEVNO identičen prisma diff.
  * DECIMAL(65,30) je v obeh dialektih enak prisma diff izhodu.
+ * IF NOT EXISTS na vseh CREATE stavkih (migrate-issue10 vzorec — "ponovni klic
+ * je VAREN"): vzporedna invokacija (npr. konzolna "uporabi vse čakajoče" med
+ * testno DROP-rekreacijo) je PODVOLJENA — dirka se razreši v no-op, ne v napako.
  */
 const SQLITE_DDL = [
-  `CREATE TABLE "EInvoiceOutbox" (
+  `CREATE TABLE IF NOT EXISTS "EInvoiceOutbox" (
     "id" TEXT NOT NULL,
     "arId" TEXT,
     "direction" TEXT NOT NULL DEFAULT 'outgoing',
@@ -61,14 +64,14 @@ const SQLITE_DDL = [
     CONSTRAINT "EInvoiceOutbox_arId_fkey" FOREIGN KEY ("arId") REFERENCES "AccountsReceivable"("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "EInvoiceOutbox_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE CASCADE
   )`,
-  `CREATE UNIQUE INDEX "EInvoiceOutbox_idempotencyKey_key" ON "EInvoiceOutbox"("idempotencyKey")`,
-  `CREATE INDEX "EInvoiceOutbox_arId_idx" ON "EInvoiceOutbox"("arId")`,
-  `CREATE INDEX "EInvoiceOutbox_country_status_idx" ON "EInvoiceOutbox"("country", "status")`,
-  `CREATE INDEX "EInvoiceOutbox_locationId_idx" ON "EInvoiceOutbox"("locationId")`,
-  `CREATE INDEX "EInvoiceOutbox_status_idx" ON "EInvoiceOutbox"("status")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "EInvoiceOutbox_idempotencyKey_key" ON "EInvoiceOutbox"("idempotencyKey")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_arId_idx" ON "EInvoiceOutbox"("arId")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_country_status_idx" ON "EInvoiceOutbox"("country", "status")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_locationId_idx" ON "EInvoiceOutbox"("locationId")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_status_idx" ON "EInvoiceOutbox"("status")`,
 ]
 const PG_DDL = [
-  `CREATE TABLE "EInvoiceOutbox" (
+  `CREATE TABLE IF NOT EXISTS "EInvoiceOutbox" (
     "id" TEXT NOT NULL,
     "arId" TEXT,
     "direction" TEXT NOT NULL DEFAULT 'outgoing',
@@ -98,11 +101,11 @@ const PG_DDL = [
     "locationId" TEXT,
     CONSTRAINT "EInvoiceOutbox_pkey" PRIMARY KEY ("id")
   )`,
-  `CREATE UNIQUE INDEX "EInvoiceOutbox_idempotencyKey_key" ON "EInvoiceOutbox"("idempotencyKey")`,
-  `CREATE INDEX "EInvoiceOutbox_arId_idx" ON "EInvoiceOutbox"("arId")`,
-  `CREATE INDEX "EInvoiceOutbox_country_status_idx" ON "EInvoiceOutbox"("country", "status")`,
-  `CREATE INDEX "EInvoiceOutbox_locationId_idx" ON "EInvoiceOutbox"("locationId")`,
-  `CREATE INDEX "EInvoiceOutbox_status_idx" ON "EInvoiceOutbox"("status")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "EInvoiceOutbox_idempotencyKey_key" ON "EInvoiceOutbox"("idempotencyKey")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_arId_idx" ON "EInvoiceOutbox"("arId")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_country_status_idx" ON "EInvoiceOutbox"("country", "status")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_locationId_idx" ON "EInvoiceOutbox"("locationId")`,
+  `CREATE INDEX IF NOT EXISTS "EInvoiceOutbox_status_idx" ON "EInvoiceOutbox"("status")`,
   `ALTER TABLE "EInvoiceOutbox" ADD CONSTRAINT "EInvoiceOutbox_arId_fkey" FOREIGN KEY ("arId") REFERENCES "AccountsReceivable"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
   `ALTER TABLE "EInvoiceOutbox" ADD CONSTRAINT "EInvoiceOutbox_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
 ]
