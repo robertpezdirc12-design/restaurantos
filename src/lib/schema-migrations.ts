@@ -458,6 +458,22 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-einvoice-outbox',
     probe: async () => tableExists('EInvoiceOutbox'),
   },
+  {
+    // Issue #11 (P2, v1.126.0) — CRM gostov in kampanje. NOVE tabele
+    // GuestConsent (append-only sled marketing soglasja — kanal email/sms
+    // LOČENO, vir, različica besedila, dokaz izrecnega dejanja; GDPR člen 7),
+    // Campaign (življenjski cikel osnutek→odobritev→načrt→pošiljanje→zaključek,
+    // števci izključno iz vrstic) in CampaignSend (idempotenca
+    // @@unique(campaignId+guestId), enkratni žeton za javno odjavo, statusi
+    // SAMO z dokazom — SMTP sprejem = sent_to_provider, NE dostava).
+    // Skalarne vezave brez FK (EventLog vzorec — 0 DDL na obstoječih
+    // tabelah). Do DDL: /api/crm* rute vračajo 503 (graceful — gostje,
+    // zvestoba, rezervacije tokovi se ne dotaknejo).
+    id: 'crm-campaigns',
+    descKey: 'mig.crmCampaigns.desc',
+    endpoint: '/api/admin/migrate-crm-campaigns',
+    probe: async () => tablesAll(['GuestConsent', 'Campaign', 'CampaignSend']),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

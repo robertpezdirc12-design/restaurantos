@@ -9,6 +9,7 @@ import { sendDailyDigest, type OverdueApEntry } from '@/lib/daily-email'
 import { pushEvent, apOverduePushPayload } from '@/lib/push'
 import { runDailyLotAlerts } from '@/lib/lot-alert'
 import { runDailyHaccpOverdue } from '@/lib/haccp-overdue'
+import { dispatchDueCampaigns } from '@/lib/crm'
 import {
   CRON_DAILY_MARKER,
   MAX_OVERDUE_APS,
@@ -132,12 +133,14 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     apOverdue: { count: number }
     lotAlert: { count: number }
     haccpOverdue: { count: number }
+    campaigns: { count: number; sent: number }
   } = {
     recurring: { created: 0, skipped: 0 },
     digest: { sent: false },
     apOverdue: { count: 0 },
     lotAlert: { count: 0 },
     haccpOverdue: { count: 0 },
+    campaigns: { count: 0, sent: 0 },
   }
 
   // 1) recurring purchase-order rules (shared core with the UI route)
@@ -199,6 +202,21 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     if (digest.error) errors.push(`digest: ${digest.error}`)
   } catch (e) {
     errors.push(`digest: ${String((e as Error).message || e).slice(0, 200)}`)
+  }
+
+  // 3e) Issue #11 (v1.126.0): CRM kampanje — pošiljanje ZAPADLIH načrtovanih
+  //     kampanj (scheduledAt <= now, max CRM_CAMPAIGNS_PER_RUN) + retry
+  //     nedokončanih. Omejeno (CRM_BATCH_LIMIT/klic), idempotentno
+  //     (@@unique(campaignId+guestId)), send-time re-check soglasja.
+  //     Neodobrene/brez SMTP se NE pošiljajo (dispatchCampaign varuje).
+  try {
+    const results = await dispatchDueCampaigns({ now })
+    steps.campaigns = {
+      count: results.filter((r) => r.created + r.sent + r.failed + r.skipped > 0).length,
+      sent: results.reduce((s, r) => s + r.sent, 0),
+    }
+  } catch (e) {
+    errors.push(`campaigns: ${String((e as Error).message || e).slice(0, 200)}`)
   }
 
   // 4) persist the idempotency marker (after a fully dispatched run)

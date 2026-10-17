@@ -291,7 +291,7 @@ describe('§E i18n — novi ključi #69 obstajajo v OBEH slovarjih', () => {
 
 describe('§F 0 DDL — vizualna sprememba brez sheme', () => {
   it('SCHEMA_MIGRATIONS.length (29 — dvignil #4 val; #69 val sam 0 DDL)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(29) // v1.125.0: +einvoice-outbox (#4) — #69 val dodal 0
+    expect(SCHEMA_MIGRATIONS.length).toBe(30) // v1.125.0: +einvoice-outbox (#4) — #69 val dodal 0
   })
 
   it('prisma/migrations ima samo init migracijo (ni novih SQL datotek)', () => {

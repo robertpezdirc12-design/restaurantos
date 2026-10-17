@@ -88,6 +88,8 @@ export const TEST_PREFIXES = [
   'i3-', // issue3 pos-readiness (v1.120.0)
   'i70-', // issue70 state-consistency (v1.121.0)
   'i4-', // issue4 einvoices SI/HR (v1.125.0)
+  'i11-', // issue11 CRM gostov (v1.126.0)
+  'i11a-', // issue11 CRM admin/ddl (v1.126.0)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -259,6 +261,12 @@ const LOCATION_CHILD_SWEEP = [
   // brisanjem lokacije (drugače bi ostale sirote). PayrollExport NIMA locationId
   // → NI v sweep-u (testi ga čistijo ročno po periodId).
   'payrollPeriod',
+  // v1.126.0 (issue #11): CRM — kampanje/soglasja/pošiljke z nid() id BREZ predpone,
+  // predpona živi v locationId (skalar brez FK) → lokacijski prehod počisti vrstice
+  // pred brisanjem lokacije (drugače bi ostale sirote).
+  'guestConsent',
+  'campaign',
+  'campaignSend',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }

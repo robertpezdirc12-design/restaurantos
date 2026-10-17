@@ -1059,6 +1059,93 @@ model GuestVisit {
   @@index([orderId])
 }
 
+/// Issue #11 (v1.126.0) — CRM gostov: sled marketing soglasja (append-only).
+/// Kanonično stanje = NAJNOVEJŠA vrstica po (guestId, channel, purpose).
+/// Vnos e-pošte/telefona ob rezervaciji/računu NE ustvari vrstice 'granted'
+/// (privzeto stanje = ni potrjenega soglasja). Preklic/odjava je TAKOJ
+/// učinkovit: pošiljanje preveri trenutno stanje OB VSAKI pošiljki.
+/// Brez FK na Guest/Location (EventLog vzorec — skalar tenant ključ).
+model GuestConsent {
+  id          String   @id
+  guestId     String
+  channel     String   @default("email") // 'email' | 'sms' — LOČENA stanja
+  purpose     String   @default("marketing")
+  status      String   // 'granted' | 'revoked'
+  source      String   @default("manual") // manual|loyalty|public_optin|unsubscribe_link
+  textVersion String   @default("crm-consent-v1")
+  proof       String   @default("")
+  recordedBy  String?
+  locationId  String?
+  actedAt     DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([guestId, channel, purpose, createdAt])
+  @@index([locationId])
+  @@index([status])
+}
+
+/// Issue #11 (v1.126.0) — kampanja: osnutek → predogled → odobritev →
+/// načrtovanje → pošiljanje (omejeno, idempotentno) → zaključek.
+/// Števci so izključno iz dejanskih CampaignSend vrstic; 'delivered'/
+/// 'bounced' se NE zapisujeta brez ponudnikovega dokaza (SMTP potrditev
+/// sprejema = 'sent_to_provider', ne dostava).
+model Campaign {
+  id                String    @id
+  name              String
+  channel           String    @default("email") // 'email' | 'sms'
+  segmentType       String    @default("all") // all|vip|loyalty|frequent|new|inactive
+  segmentPeriodDays Int       @default(90)
+  subject           String    @default("")
+  bodySl            String    @default("")
+  bodyHr            String    @default("")
+  status            String    @default("draft") // draft|approved|scheduled|sending|sent|failed|cancelled
+  scheduledAt       DateTime?
+  approvedBy        String?
+  approvedAt        DateTime?
+  sentAt            DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  eligibleCount     Int       @default(0)
+  sentCount         Int       @default(0)
+  failedCount       Int       @default(0)
+  unsubscribedCount Int       @default(0)
+  testRecipient     String    @default("")
+  lastError         String    @default("")
+  createdBy         String?
+  locationId        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([locationId])
+  @@index([status, scheduledAt])
+}
+
+/// Issue #11 (v1.126.0) — pošiljanje po naslovniku (idempotentno:
+/// @@unique(campaignId, guestId); retry NE podvoji). Odjava prek enkratnega
+/// žetona (unsubscribeToken) je javna, enklik, takoj učinkovita.
+model CampaignSend {
+  id               String    @id
+  campaignId       String
+  guestId          String
+  channel          String    @default("email")
+  recipient        String    @default("")
+  status           String    @default("queued") // queued|sent_to_provider|failed|skipped|unsubscribed
+  attempts         Int       @default(0)
+  unsubscribeToken String    @unique
+  providerMessageId String   @default("")
+  sentAt           DateTime?
+  failedAt         DateTime?
+  errorMessage     String    @default("")
+  unsubscribedAt   DateTime?
+  locationId       String?
+  createdAt        DateTime  @default(now())
+
+  @@unique([campaignId, guestId])
+  @@index([campaignId, status])
+  @@index([guestId])
+  @@index([locationId])
+}
+
 model HaccpEntry {
   id               String        @id
   date             DateTime      @default(now())

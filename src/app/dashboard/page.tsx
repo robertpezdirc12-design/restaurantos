@@ -74,7 +74,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard, PayrollTab, TransfersTab,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -84,14 +84,14 @@ import { ManagerCallButton } from '@/components/manager-call-dialog'
    (component lives in src/components/ — outside the i18n scan family). */
 import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type KdsStationStatT } from '@/components/kds-station-board'
 import { stationViewKey } from '@/lib/kds-station-routing'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
   ['prodaja', Zap], ['kuhinja', ChefHat], ['meni', BookOpen], ['rezervacije', CalendarDays],
   ['racuni', ReceiptText], ['inzeniring', ChartScatter], ['popusti', Percent], ['integracije', Plug],
   ['zaloge', PackageSearch], ['izmene', Clock], ['delovnicas', Timer], ['urnik', CalendarRange],
-  ['haccp', Thermometer], ['stroski', Wallet], ['zvestoba', HeartHandshake], ['mnenja', Star],
+  ['haccp', Thermometer], ['stroski', Wallet], ['zvestoba', HeartHandshake], ['mnenja', Star], ['crm', Megaphone],
   ['dostava', Truck], ['napitnine', Coins], ['obracun', ReceiptText], ['nabava', ShoppingCart],
   ['prenosi', ArrowLeftRight], ['darilne', Gift], ['odpad', Trash2], ['cakalna', Hourglass],
   ['odpiralnicas', CalendarClock], ['zaposleni', Users], ['nastavitve', Settings], ['enterprise', Building2],
@@ -2905,6 +2905,14 @@ function DashboardInner() {
 
           <TabsContent value="mnenja">
             <FeedbackTab feedback={feedback} tables={viewTables.map((t) => ({ id: t.id, name: t.name }))} />
+          </TabsContent>
+
+          <TabsContent value="crm">
+            {/* Issue #11 (v1.126.0) — CRM gostov: segmenti, soglasje (email/sms
+                LOČENO, z dokazom izrecnega dejanja), podvojeni profili, kampanje
+                (življenjski cikel + meritve). Podatke si naloži SAM (api klici) —
+                mutacije gating settings.manage strežniško, ogled reports.view. */}
+            <CrmTab canManage={canManage} centralLocationId={viewLoc || ''} />
           </TabsContent>
 
           <TabsContent value="dostava">

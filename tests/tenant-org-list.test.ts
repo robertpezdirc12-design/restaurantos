@@ -198,9 +198,12 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // znotraj obsega uporabnika, locationScope) → 59
     // Issue #8 (v1.116.0): transfers GET (medlokacijski prenosi — seznam
     // prenosov znotraj obsega uporabnika, OR from/to locationScope) → 60
+    // Issue #11 (v1.126.0): +5 rut (crm/segments, crm/guests, crm/guests/export,
+    // crm/campaigns, crm/duplicates GET — segmenti/gosti/kampanje/dedupe v
+    // uporabnikovem obsegu, locationScope) → 71
     // Issue #4 (v1.125.0): +6 rut (einvoices GET/detail/send/retry/xml/issue —
     // B2B e-računi: izdaja iz naročila v obsegu + seznam/dokaz/statusi v obsegu) → 66
-    expect(wired.length).toBe(66)
+    expect(wired.length).toBe(71)
   })
 })
 

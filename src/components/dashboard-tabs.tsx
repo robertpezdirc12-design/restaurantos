@@ -54,3 +54,5 @@ export type { PayrollPeriodT } from './tabs/payroll-tab'
 /* Issue #8 (v1.116.0) — medlokacijski prenosi zalog */
 export { TransfersTab } from './tabs/transfers-tab'
 export type { TransferT, TransferLineT } from './tabs/transfers-tab'
+/* Issue #11 (v1.126.0) — CRM gostov: segmenti, soglasje, kampanje, dedupe */
+export { CrmTab } from './tabs/crm-tab'

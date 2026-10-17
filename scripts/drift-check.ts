@@ -481,6 +481,11 @@ export function isEInvoiceOutboxStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+export function isCrmCampaignsStatement(stmt: string): boolean {
+  if (!/"GuestConsent"|"Campaign"|"CampaignSend"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Register znanih, dokumentiranih pending driftov. Novi vnosi dodajaj tukaj. */
 export const KNOWN_DRIFTS: KnownDrift[] = [
   {
@@ -788,6 +793,23 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'einvoicesByStatus se tiho izprazni (isMissingSchemaError). Ko je DDL ' +
       'apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isEInvoiceOutboxStatement,
+  },
+  {
+    id: 'crm-campaigns',
+    reason:
+      'CRM gostov in kampanje (v1.126.0, issue #11 P2) — NOVE tabele ' +
+      'GuestConsent (append-only sled marketing soglasja — kanal email/sms ' +
+      'LOČENO, vir, različica besedila, dokaz izrecnega dejanja; GDPR člen 7), ' +
+      'Campaign (življenjski cikel osnutek→odobritev→načrt→pošiljanje→zaključek, ' +
+      'števci izključno iz vrstic) in CampaignSend (idempotenca ' +
+      '@@unique(campaignId+guestId), enkratni žeton za javno enklik odjavo, ' +
+      'statusi SAMO z dokazom — SMTP sprejem = sent_to_provider, NE dostava) — ' +
+      'skalarne vezave brez FK (EventLog vzorec; 0 DDL na obstoječih tabelah). ' +
+      'Produkcija čaka DDL korak: admin ruta /api/admin/migrate-crm-campaigns ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL /api/crm* rute ' +
+      'vračajo 503/graceful napako (gostje, zvestoba, rezervacije tokovi se ne ' +
+      'dotaknejo). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isCrmCampaignsStatement,
   },
   {
     id: 'settings-pending-merged',

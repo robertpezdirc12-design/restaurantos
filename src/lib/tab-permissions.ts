@@ -36,6 +36,7 @@ export const TAB_PERM: Record<string, string | string[]> = {
   stroski: 'reports.view',
   zvestoba: 'reports.view',
   mnenja: 'reservations.manage',
+  crm: 'reports.view', // Issue #11 (v1.126.0) — CRM gostov (ogled segmentov/gostov = reports.view; mutacije soglasja/kampanj/izvoz = settings.manage strežniško)
   dostava: 'delivery.manage', // OPS-4 v1.67.0 — sprejem dostav/con = delivery.manage (vodstvo)
   napitnine: 'reports.view',
   obracun: 'employees.manage', // Issue #22 (v1.115.0) — obračunsko obdobje + izvoz (backend requirePermission employees.manage)
