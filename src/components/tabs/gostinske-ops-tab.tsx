@@ -340,7 +340,7 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">{t('gc.topupAmount')}</Label>
-                <Input type="number" step="0.01" min="0.01" value={topupForm.amount} onChange={(e) => setTopupForm((f) => ({ ...f, amount: e.target.value }))} placeholder="10.00" autoFocus />
+                <Input inputMode="decimal" value={topupForm.amount} onChange={(e) => setTopupForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, '') }))} placeholder="10,00" autoFocus />
                 <p className="text-xs text-stone-500">{t('gc.topupMaxHint')}</p>
               </div>
               <div className="space-y-1.5">

@@ -26,7 +26,8 @@ import { NextRequest } from 'next/server'
 import { createToken } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { sweepTestFixtures } from './helpers/fixture-sweep'
-import { nid, num } from '@/lib/map'
+import { nid, num, r2 } from '@/lib/map'
+import { vatFromGross } from '@/lib/billing'
 import { POST as fursPOST } from '../src/app/api/furs/route'
 import { POST as stornoPOST } from '../src/app/api/receipts/[id]/storno/route'
 import { PATCH as ordersPATCH } from '../src/app/api/orders/[id]/route'
@@ -67,13 +68,14 @@ interface ItemSpec {
   vatRate: number
 }
 
-/** VAT po postavki v centih (konsistentno z OrderItem.vatAmount, ki ga route kar vzame) */
-const vatOf = (base: number, rate: number) => Math.round((base * rate + Number.EPSILON)) / 100
+/** DDV, IZVLEČEN iz končne cene postavke (Naloga #6: cena v bazi je končna cena
+ *  za gosta) — ista funkcija kot v produkciji, da fiksur ne morejo zaiti. */
+const vatOf = vatFromGross
 
 async function createOrder(specs: ItemSpec[], status = 'open') {
   const orderId = nid()
-  const subtotal = specs.reduce((s, it) => s + it.unitPrice * it.quantity, 0)
   const tax = specs.reduce((s, it) => s + vatOf(it.unitPrice * it.quantity, it.vatRate), 0)
+  const subtotal = r2(specs.reduce((s, it) => s + it.unitPrice * it.quantity, 0) - tax)
   const order = await db.order.create({
     data: {
       id: orderId,
@@ -229,7 +231,7 @@ describe('POST /api/furs — veselja pot (plačilo + račun + zaloga + revizija 
     expect(body.invoice.fiscalStatus).toBe('verified')
     expect(body.invoice.fiscalVerified).toBe(true)
     expect(body.fursEnvironment).toBe('simulation')
-    expect(body.invoice.total).toBe(46.3)
+    expect(body.invoice.total).toBe(40)
     expect(body.invoice.paymentMethod).toBe('cash')
 
     // številka računa: `leto-mesec-sek-PREMISES` (sek = count ob izdaji + 1)
@@ -266,17 +268,17 @@ describe('POST /api/furs — veselja pot (plačilo + račun + zaloga + revizija 
     // Payment vrstica z idempotenčnim ključem `key#p0`
     const payment = await db.payment.findFirst({ where: { idempotencyKey: `${PREFIX}-happy-${TS}#p0` } })
     expect(payment).not.toBeNull()
-    expect(num(payment?.amount)).toBe(46.3)
+    expect(num(payment?.amount)).toBe(40)
     expect(payment?.type).toBe('cash')
     expect(payment?.employeeId).toBe(mgrA.id)
 
     // razčlenba DDV na računu (ključi toFixed(2), kot jih piše route)
     const receiptRow = await db.receipt.findFirst({ where: { orderId: order.id } })
     const vb = JSON.parse(String(receiptRow?.vatBreakdown))
-    expect(vb['22.00']).toEqual({ base: 20, vat: 4.4 })
-    expect(vb['9.50']).toEqual({ base: 20, vat: 1.9 })
-    expect(num(receiptRow?.totalVat)).toBe(6.3)
-    expect(num(receiptRow?.subtotal)).toBe(40)
+    expect(vb['22.00']).toEqual({ base: 16.39, vat: 3.61 })
+    expect(vb['9.50']).toEqual({ base: 18.26, vat: 1.74 })
+    expect(num(receiptRow?.totalVat)).toBe(5.35)
+    expect(num(receiptRow?.subtotal)).toBe(34.65)
   })
 
   test('številčenje po sekvenci lokacije: naslednji račun dobi sek+1', async () => {
@@ -420,23 +422,23 @@ describe('POST /api/furs — dovoljenja, lokacija in stanje naročila', () => {
 })
 
 describe('POST /api/furs — deljeno plačilo (parts)', () => {
-  test('cash 26.30 + card 20.00 (z odobritvijo) → mixed, 2 Payment vrstici s ključema #p0/#p1', async () => {
+  test('cash 26.30 + card 13.70 (z odobritvijo) → mixed, 2 Payment vrstici s ključema #p0/#p1', async () => {
     const order = await createOrder([
       { menuItemId: mi22.id, name: mi22.name, quantity: 2, unitPrice: 10, vatRate: 22 },
       { menuItemId: mi95.id, name: mi95.name, quantity: 1, unitPrice: 20, vatRate: 9.5 },
     ])
-    // total = 40 + 6.3 = 46.30
+    // total = 34.65 (neto) + 5.35 (izvlečeni DDV) = 40.00 za plačilo
     const res = await payA({
       orderId: order.id,
       parts: [
         { type: 'cash', amount: 26.3 },
-        { type: 'card', amount: 20, terminal: { approvalCode: `APPR-${TS}` } },
+        { type: 'card', amount: 13.7, terminal: { approvalCode: `APPR-${TS}` } },
       ],
     })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.invoice.paymentMethod).toBe('mixed')
-    expect(body.invoice.total).toBe(46.3)
+    expect(body.invoice.total).toBe(40)
 
     const checks = await db.check.findMany({ where: { orderId: order.id } })
     expect(checks).toHaveLength(1)
@@ -445,10 +447,10 @@ describe('POST /api/furs — deljeno plačilo (parts)', () => {
     const cashPart = payments.find((p) => p.type === 'cash')
     const cardPart = payments.find((p) => p.type === 'card')
     expect(num(cashPart?.amount)).toBe(26.3)
-    expect(num(cardPart?.amount)).toBe(20)
+    expect(num(cardPart?.amount)).toBe(13.7)
     expect(cardPart?.authorizationCode).toBe(`APPR-${TS}`)
     // vsota delov = za plačanje (preprečitev preplačila)
-    expect(payments.reduce((s, p) => s + num(p.amount), 0)).toBe(46.3)
+    expect(payments.reduce((s, p) => s + num(p.amount), 0)).toBe(40)
     expect(await db.receipt.count({ where: { orderId: order.id } })).toBe(1)
   })
 
@@ -480,7 +482,7 @@ describe('POST /api/furs — deljeno plačilo (parts)', () => {
     expect(stx).not.toBeNull()
     const allocs = await db.stockBatchAllocation.findMany({ where: { stockTransactionId: stx!.id } })
     expect(allocs).toHaveLength(1)
-    expect(body.invoice.total).toBe(6.1)
+    expect(body.invoice.total).toBe(5)
   })
 
   test('vsota delov ≠ znesek za plačanje → 400 in BREZ računa/plačila', async () => {
@@ -507,7 +509,7 @@ describe('POST /api/furs — deljeno plačilo (parts)', () => {
     ])
     const res = await payA({
       orderId: order.id,
-      parts: [{ type: 'card', amount: 12.2 }],
+      parts: [{ type: 'card', amount: 10 }],
     })
     expect(res.status).toBe(402)
     expect(await db.receipt.count({ where: { orderId: order.id } })).toBe(0)

@@ -7,6 +7,7 @@ import { guardResource } from '@/lib/tenant'
 import type { AuthPayload } from '@/lib/auth'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
 import { createOrderCore, OrderError } from '@/lib/ops'
+import { splitVat, vatFromGross } from '@/lib/billing'
 import { tasksForItem, completeTasksForItem } from '@/lib/station-task-service'
 
 /**
@@ -234,7 +235,7 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
         if (!mi) throw new OrderError('Artikel ne obstaja ali ni na voljo na lokaciji naročila.')
         const qty = Math.max(1, Math.round(Number(i.qty) || 1))
         const price = Number(mi.price); const vatRate = Number(mi.vatRate) || 22
-        return { id: nid(), orderId, menuItemId: mi.id, quantity: qty, price, vatRate, vatAmount: (price * qty * vatRate) / 100, menuItemName: mi.name, status: itemStatusToDB('PENDING') as OrderItemStatus, notes: i.note || '' }
+        return { id: nid(), orderId, menuItemId: mi.id, quantity: qty, price, vatRate, vatAmount: vatFromGross(price * qty, vatRate), menuItemName: mi.name, status: itemStatusToDB('PENDING') as OrderItemStatus, notes: i.note || '' }
       })
       // R5 popravek (P0 audit): createMany + recalcTotals + update v ISTI transakciji s CAS
       // gate na plačano naročilo (enako kot PATCH /api/orders/[id])
@@ -280,9 +281,8 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
 async function recalcTotals(orderId: string, tx?: Prisma.TransactionClient) {
   const dbx = tx ?? db
   const items = await dbx.orderItem.findMany({ where: { orderId, voided: false } })
-  let subtotal = 0; let tax = 0
-  for (const it of items) { subtotal += Number(it.price) * (it.quantity || 0); tax += Number(it.vatAmount) }
-  const totals = { subtotal: Math.round(subtotal * 100) / 100, tax: Math.round(tax * 100) / 100, total: Math.round((subtotal + tax) * 100) / 100 }
+  const split = splitVat(items, (it) => Number(it.price) * (it.quantity || 0), (it) => Number(it.vatAmount))
+  const totals = { subtotal: split.net, tax: split.vat, total: split.gross }
   await dbx.order.update({ where: { id: orderId }, data: totals })
   return totals
 }

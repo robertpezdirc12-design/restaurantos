@@ -53,8 +53,9 @@ import { resolveExceptionApproval, reasonAuditFields, approvalAuditFields, type 
  *  4. audit/dogodek/push šele PO uspešnem commitu (kuhinja ne dobi obvestila o
  *     preklicu, ki je bil razveljavljen);
  *  5. Issue #39 semantika: odgovor/audit nosita `amountRemovedFromOrder`
- *     (NETO zmanjšanje vrednosti NEPLAČANEGA naročila: qty × price − popust
- *     vrstice), NE `refund` — vračilo denarja/fiskalni storno sta ločeni poti.
+ *     (KONČNI znesek, ki ga gost ne plača več: qty × cena − popust vrstice;
+ *     DDV je v ceni že vsebovan), NE `refund` — vračilo denarja/fiskalni
+ *     storno sta ločeni poti.
  */
 
 /** #39: terminalni konflikt (vračamo status + sporočilo, brez retryja). */

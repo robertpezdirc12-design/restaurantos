@@ -72,14 +72,58 @@ export function isHappyActive(
   return h >= from || h < to
 }
 
-/** Osnova za popust na ciljne kategorije (ali cel račun, če target prazen). */
+/** `num` vrne Number.NaN za number-tipovni NaN — pri denarju ne sme potovati naprej. */
+function finite(v: unknown): number {
+  const n = num(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * Naloga #6 (DDV konvencija): cena artikla v bazi je **končna cena za gosta**
+ * (vključno z DDV), kot je natisnjena na meniju. DDV se zato IZVLEČE iz cene,
+ * ne prišteva k njej.
+ *
+ * `netFromGross` je edini vir resnice za razčlenitev; vsota prikazanih cen na
+ * računu mora biti enaka ZA PLAČATI.
+ */
+export function netFromGross(lineGross: number, vatRate: number): number {
+  const g = Math.max(0, finite(lineGross))
+  const rate = finite(vatRate)
+  return rate > 0 ? r2(g / (1 + rate / 100)) : r2(g)
+}
+
+/** DDV, izvlečen iz končne cene postavke (obračunana razlika — brez dvojinega zaokroževanja). */
+export function vatFromGross(lineGross: number, vatRate: number): number {
+  const g = r2(Math.max(0, finite(lineGross)))
+  return r2(g - netFromGross(g, vatRate))
+}
+
+/** Razčlenitev vrstice (končna cena + izvlečeni DDV) na NETO osnovo, DDV in
+ *  znesek ZA PLAČANJE. `lineTotal` je vedno KONČNA cena (DDV je že v njej),
+ *  `vatOf` iz nje izvlečeni DDV. Vsota `lineTotal` nikoli NE pride nazaj k
+ *  `net` — to je točka, kjer se DDV lahko podvoji. */
+export function splitVat<T>(rows: T[], lineTotal: (r: T) => number, vatOf: (r: T) => number): { net: number; vat: number; gross: number } {
+  let gross = 0
+  let vat = 0
+  for (const r of rows) {
+    gross += finite(lineTotal(r))
+    vat += finite(vatOf(r))
+  }
+  const g = r2(gross)
+  const v = r2(Math.min(vat, gross))
+  return { net: r2(g - v), vat: v, gross: g }
+}
+
+/** Osnova za popust na ciljne kategorije (ali cel račun, če target prazen).
+ *  Popust je vedno na BRUTO osnovi — gost vidi končne cene, zato mora «−10 %»
+ *  pomeniti 10 % tega, kar je prečital na meniju. */
 function discountBase(
   items: BillItem[],
   targetCategoryIds: string,
-  subtotal: number,
+  grossBase: number,
 ): number {
   const cats = targetCategoryIds.split(',').map((s) => s.trim()).filter(Boolean)
-  if (cats.length === 0) return subtotal
+  if (cats.length === 0) return grossBase
   const set = new Set(cats)
   let base = 0
   for (const it of items) {
@@ -120,17 +164,21 @@ export interface BillInput {
   pointsValue: number
 }
 
-/** Kanonični izračun računa — enoten za UI predogled in zaključek plačila (FURS). */
+/** Kanonični izračun računa — enoten za UI predogled in zaključek plačila (FURS).
+ *  `subtotal` je NETO (osnova za DDV), `tax` izvlečeni DDV, `grossTotal` znesek, ki ga
+ *  gost plača — enak vsoti prikazanih cen. Popusti so na bruto osnovi (Naloga #6).
+ *  Neveljavni (NaN/±Infinity) zneski se nevtralizirajo na 0: pokvarjen popust pomeni
+ *  «brez popusta», ne «račun je plačan 0 €» — smer, ki nikoli ne izniži prihodka. */
 export function computeBill(input: BillInput): BillResult {
-  const subtotal = r2(input.subtotal)
-  const tax = r2(input.tax)
+  const subtotal = r2(finite(input.subtotal))
+  const tax = r2(finite(input.tax))
   const grossTotal = r2(subtotal + tax)
 
   // avtomatski popusti (Happy Hour): oceni samo AktIVNE ob 'now', izberi najugodnejšega na osnovi
   const autoDiscounts: AutoDiscountLine[] = []
   for (const d of input.autoCandidates) {
     if (!isHappyActive(d, input.now)) continue
-    const base = discountBase(input.items, d.targetCategoryIds || '', subtotal)
+    const base = discountBase(input.items, d.targetCategoryIds || '', grossTotal)
     const amount = discountAmountOf(d, base)
     if (amount > 0) autoDiscounts.push({ discountId: d.id, name: d.name, amount })
   }
@@ -143,8 +191,8 @@ export function computeBill(input: BillInput): BillResult {
     autoTotal += ad.amount
   }
 
-  const manualDiscount = r2(Math.max(0, Math.min(num(input.manualDiscount), subtotal)))
-  const discountTotal = r2(Math.min(manualDiscount + r2(autoTotal), subtotal))
+  const manualDiscount = r2(Math.max(0, Math.min(finite(input.manualDiscount), grossTotal)))
+  const discountTotal = r2(Math.min(manualDiscount + r2(autoTotal), grossTotal))
   const totalDue = r2(Math.max(0, grossTotal - discountTotal))
 
   const ppv = Math.max(0, num(input.pointsValue, 0.01))

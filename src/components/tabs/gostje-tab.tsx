@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
+import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -39,7 +40,7 @@ export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = 
       // ostane strežniško dodeljena, klientova vrednost se ignorira)
       await api('/api/loyalty', { method: 'POST', body: JSON.stringify({ ...member, locationId: centralLocationId || undefined }) })
       setMember(null); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setMBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setMBusy(false) }
   }
   async function savePoints() {
     if (!pts) return
@@ -47,7 +48,7 @@ export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = 
     try {
       await api('/api/loyalty', { method: 'PATCH', body: JSON.stringify({ id: pts.id, delta: Number(pForm.delta), reason: pForm.reason }) })
       setPts(null); setPForm({ delta: '', reason: '' }); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setPBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setPBusy(false) }
   }
 
   return (

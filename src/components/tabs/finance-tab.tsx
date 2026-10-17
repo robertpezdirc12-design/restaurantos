@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getUser } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
+import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -38,7 +39,7 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   async function startShift() {
     setBusy(true)
     try { await api('/api/shifts', { method: 'POST', body: JSON.stringify({ openingCash: Number(cash) || 0 }) }); setCash(''); await onReload() }
-    catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+    catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
   }
   async function stopShift() {
     setBusy(true)
@@ -60,12 +61,8 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
     catch (err) {
       const msg = (err as Error).message
       // Issue #16: razlika nad pragom → razširjen dialog (razlog + odobritev)
-      if (/presega prag|razlog|odobrit/i.test(msg)) {
-        setAskVariance(true)
-        alert(msg)
-      } else {
-        alert(msg)
-      }
+      if (/presega prag|razlog|odobrit/i.test(msg)) setAskVariance(true)
+      toast({ title: msg, variant: 'destructive' })
     } finally { setBusy(false) }
   }
 
@@ -367,7 +364,7 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
         }),
       })
       setDescription(''); setAmount(''); setCategory(''); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
   }
 
   const statusBadge = (e: ExpenseT) => {

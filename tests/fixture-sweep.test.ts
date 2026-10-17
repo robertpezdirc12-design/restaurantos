@@ -108,7 +108,7 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(res2.remainingLocations).toBe(0)
     const after2 = await countRealLocations()
     expect(after2).toBe(before)
-  }, 20_000)
+  }, 60_000 /* en sam počistni tek ≈ 6,5–10 s na hladnem Windows hostu (merjeno 2026-10-16, test povzame dvakrat) — 20 s ni imelo rezerve */)
 
   test('ključavnica: oddaljena baza (DATABASE_URL brez "file:") je zavrnjena', () => {
     const orig = process.env.DATABASE_URL

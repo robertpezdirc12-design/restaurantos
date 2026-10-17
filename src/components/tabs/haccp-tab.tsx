@@ -60,7 +60,7 @@ export function HaccpTab({ checks, onReload }: { checks: HaccpT[]; onReload: () 
     try {
       await api('/api/haccp', { method: 'POST', body: JSON.stringify({ type: type.toLowerCase(), target, value: value === '' ? null : Number(value.replace(',', '.')), ok, note }) })
       setTarget(''); setValue(''); setNote(''); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
   }
 
   return (
@@ -781,14 +781,14 @@ function HaccpPlansSection() {
       else await api('/api/haccp/plans', { method: 'POST', body })
       setDialogOpen(false)
       await load()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
   }
 
   async function toggleActive(p: HaccpPlanT) {
     try {
       await api(`/api/haccp/plans/${p.id}`, { method: 'PATCH', body: JSON.stringify({ active: !p.active }) })
       await load()
-    } catch (err) { alert((err as Error).message) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) }
   }
 
   async function remove(p: HaccpPlanT) {
@@ -797,7 +797,7 @@ function HaccpPlansSection() {
       await api(`/api/haccp/plans/${p.id}`, { method: 'DELETE' })
       toast({ title: t('haccpPlan.deleted') })
       await load()
-    } catch (err) { alert((err as Error).message) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) }
   }
 
   const isNumber = measureKind === 'number'

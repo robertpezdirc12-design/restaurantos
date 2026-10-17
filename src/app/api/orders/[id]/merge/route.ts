@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { mapOrder, jstr, num, r2 } from '@/lib/map'
+import { mapOrder, jstr, num } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
+import { splitVat } from '@/lib/billing'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -85,13 +86,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     // totali cilja iz NE-voided postavk (isti izračun kot orders/[id] recalcTotals)
     const items = await tx.orderItem.findMany({ where: { orderId: targetOrderId, voided: false } })
-    let subtotal = 0
-    let tax = 0
-    for (const it of items) {
-      subtotal += num(it.price) * (it.quantity || 0)
-      tax += num(it.vatAmount)
-    }
-    const totals = { subtotal: r2(subtotal), tax: r2(tax), total: r2(subtotal + tax) }
+    const split = splitVat(items, (it) => num(it.price) * (it.quantity || 0), (it) => num(it.vatAmount))
+    const totals = { subtotal: split.net, tax: split.vat, total: split.gross }
     await tx.order.update({ where: { id: targetOrderId }, data: totals })
     await writeAudit(tx, { userId: user.sub, action: 'ORDER_MERGE', entityType: 'Order', entityId: id, details: jstr({
           sourceOrderId: id,

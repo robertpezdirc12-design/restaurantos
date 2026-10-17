@@ -30,6 +30,7 @@ import { POST as giftcardsPOST } from '../src/app/api/giftcards/route'
 import { POST as tipsPayoutPOST } from '../src/app/api/tips/payout/route'
 import { approvalAttestationProfile, paymentPolicyError } from '../src/lib/payments-policy'
 import { giftCardIssueId } from '../src/lib/giftcards'
+import { vatFromGross } from '../src/lib/billing'
 import { nid } from '../src/lib/map'
 
 const PREFIX = 'pi49-'
@@ -61,19 +62,19 @@ async function status(r: unknown): Promise<{ code: number; body: Record<string, 
 const pay = (token: string, body: Record<string, unknown>) =>
   status(fursPOST(req('/api/furs', token, 'POST', body)))
 
-/* ── naročilo z eno postavko 10 € + 22 % DDV (12.20 € skupaj) ── */
+/* ── naročilo z eno postavko: 10,00 € KONČNA cena (22 % → 8,20 neto + 1,80 DDV) ── */
 let orderSeq = 991000
 async function mkOrder(loc: string, menuItemId: string): Promise<string> {
   const orderId = `${PREFIX}ord-${++orderSeq}-${RUN}`
   const unitPrice = 10
   const vatRate = 22
-  const vat = Math.round(unitPrice * vatRate + Number.EPSILON) / 100
+  const vat = vatFromGross(unitPrice, vatRate)
   const employeeId = loc === locB1 ? managerB : managerA
   await db.order.create({
     data: {
       id: orderId, orderNumber: orderSeq, locationId: loc,
       status: 'open', paymentStatus: 'unpaid', type: 'dine-in',
-      subtotal: unitPrice, tax: vat, total: unitPrice + vat, employeeId,
+      subtotal: Math.round((unitPrice - vat) * 100) / 100, tax: vat, total: unitPrice, employeeId,
     },
   })
   await db.orderItem.create({
@@ -265,8 +266,8 @@ describe('#49 furs POST — produkcija (FURS_ENVIRONMENT=production)', () => {
     const r = await pay(token, {
       orderId,
       parts: [
-        { type: 'cash', amount: 6.1 },
-        { type: 'card', amount: 6.1, terminal: { approvalCode: 'SIM-888' } },
+        { type: 'cash', amount: 5 },
+        { type: 'card', amount: 5, terminal: { approvalCode: 'SIM-888' } },
       ],
     })
     expect(r.code).toBe(402)
@@ -367,8 +368,8 @@ describe('#50 furs POST — idempotenca vezana na Order', () => {
     const first = await pay(token, {
       orderId: orderA, clientOperationId: K,
       parts: [
-        { type: 'cash', amount: 6.1 },
-        { type: 'card', amount: 6.1, terminal: { approvalCode: 'SIM-SPLIT' } },
+        { type: 'cash', amount: 5 },
+        { type: 'card', amount: 5, terminal: { approvalCode: 'SIM-SPLIT' } },
       ],
     })
     expect(first.code).toBe(201)

@@ -7,6 +7,7 @@ import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals } from '@/lib/ops'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
+import { vatFromGross } from '@/lib/billing'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
 import {
   validateExceptionReason,
@@ -224,7 +225,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         quantity: qty,
         price,
         vatRate,
-        vatAmount: (line * vatRate) / 100,
+        vatAmount: vatFromGross(line, vatRate),
         menuItemName: mi.name,
         status: itemStatusToDB('PENDING'),
         notes: i.note || '',

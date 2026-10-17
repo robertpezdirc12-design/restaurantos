@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
+import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -216,7 +217,7 @@ export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManag
     try {
       await api('/api/jobs', { method: 'POST', body: JSON.stringify({ title, payRate: Number(payRate.replace(',', '.')) || 0 }) })
       setTitle(''); setPayRate(''); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
   }
 
   return (

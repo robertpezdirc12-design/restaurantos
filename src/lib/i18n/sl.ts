@@ -193,6 +193,8 @@ export const sl: Record<string, string> = {
 
   // ── Pregled ──
   'dash.viewLabel': 'Pogled: {name}',
+  'dash.h1': 'Nadzorna plošča — RestavrantOS',
+  'a11y.skipToContent': 'Preskoči na vsebino',
   'dash.locationFallback': 'Lokacija',
   'dash.activeOrders': 'Aktivna naročila',
   'dash.openTables': 'Zasedene mize',
@@ -1879,9 +1881,10 @@ export const sl: Record<string, string> = {
   'kds.cfg.expHint': 'Izdajna postaja sestavi in izda artikel, ko je priprava na vseh postajah končana.',
   'sale.search': 'Išči artikel…',
   'sale.allCat': 'Vse kategorije',
-  'sale.total': 'Skupaj',
+  'sale.total': 'Skupaj (z DDV)',
   'sale.payNow': 'Plačaj in izdaj račun',
   'sale.empty': 'Ni artiklov za hitro prodajo.',
+  'sale.noLocation': 'Izberite lokacijo v preklopniku zgoraj — brez lokacije računa ni mogoče izdati.',
   // Plačilni dialog (dopolnitve)
   'payment.gcMinChars': 'Vpišite vsaj zadnjih 6 znakov številke kartice.',
   'payment.partGcRequired': 'Del {n}: izberite darilno kartico.',

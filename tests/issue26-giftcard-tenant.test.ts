@@ -31,6 +31,7 @@ import { GET as gcDetailGET, PATCH as gcPATCH } from '../src/app/api/giftcards/[
 import { POST as gcTopupPOST } from '../src/app/api/giftcards/[id]/topup/route'
 import { GET as gcLookupGET } from '../src/app/api/giftcards/lookup/route'
 import { POST as fursPOST } from '../src/app/api/furs/route'
+import { vatFromGross } from '@/lib/billing'
 
 const P = 'i26-'
 const RUN = Date.now().toString(36)
@@ -99,13 +100,15 @@ async function seedCard(id: string, cardNumber: string, balance: number, locatio
   })
 }
 
-const vatOf = (base: number, rate: number) => Math.round((base * rate + Number.EPSILON)) / 100
+/** DDV se IZVLEČE iz končne cene (Naloga #6) — ista funkcija kot v produkciji. */
+const vatOf = vatFromGross
 
 let ordSeq = 880001
 async function seedOrderAt(loc: string, employeeId: string) {
   const orderId = `${P}o${++ordSeq}-${RUN}`
-  const subtotal = 5
+  // cena 5,00 € je KONČNA → 4,10 neto + 0,90 DDV = 5,00 za plačilo (Naloga #6)
   const tax = vatOf(5, 22)
+  const subtotal = Math.round((5 - tax) * 100) / 100
   await db.order.create({
     data: {
       id: orderId, orderNumber: ordSeq, locationId: loc, status: 'open',
@@ -458,11 +461,11 @@ describe('#26 — unovčenje ob plačilu: medposlovalnično isti org DA, cross-t
     const res = await fursPOST(req('POST', '/api/furs', tokMgrOA1, { orderId, type: 'giftcard', giftCardId: gcOA2 }))
     expect(res.status).toBe(201)
     const card = await db.giftCard.findUnique({ where: { id: gcOA2 } })
-    // 25 + 5 (topup) − 6.10 (naročilo) = 23.90
-    expect(Math.round(Number(card?.balance) * 100)).toBe(2390)
+    // 25 + 5 (topup) − 5,00 (naročilo = vsota prikazanih cen) = 25,00
+    expect(Math.round(Number(card?.balance) * 100)).toBe(2500)
     const tx = await db.giftCardTransaction.findFirst({ where: { giftCardId: gcOA2, type: 'redeem' }, orderBy: { createdAt: 'desc' } })
     expect(tx).not.toBeNull()
-    expect(Math.round(Number(tx?.amount) * 100)).toBe(-610)
+    expect(Math.round(Number(tx?.amount) * 100)).toBe(-500)
     const order = await db.order.findUnique({ where: { id: orderId } })
     expect(order?.paymentStatus).toBe('paid')
   })

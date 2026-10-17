@@ -219,13 +219,13 @@ function TablicaInner() {
       {/* list za naročanje — od spodaj (palec doseže vse) */}
       <Sheet open={openTable !== null} onOpenChange={(v) => { if (!v) setOpenTable(null) }}>
         <SheetContent side="bottom" className="h-[88vh] p-0 flex flex-col">
-          <SheetHeader className="px-4 pt-4 pb-2 border-b border-stone-200">
+          <SheetHeader className="shrink-0 px-4 pt-4 pb-2 border-b border-stone-200">
             <SheetTitle className="flex items-center gap-2 text-base">
               {openTable?.name}
               {openTable?.activeOrder && <Badge className="bg-amber-600">{fmtEUR(openTable.activeOrder.total)}</Badge>}
             </SheetTitle>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
             {/* obstoječe naročilo */}
             {openOrder && (
               <div className="space-y-1.5">
@@ -264,7 +264,7 @@ function TablicaInner() {
             {items.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
           </div>
           {/* košarica + pošlji — lepljivo dno */}
-          <div className="border-t border-stone-200 bg-white p-4 space-y-2">
+          <div className="shrink-0 border-t border-stone-200 bg-white p-4 space-y-2">
             {cartQty > 0 && (
               <div className="flex items-center justify-between text-sm">
                 <span>{t('tlb.cart', { n: cartQty })}</span>

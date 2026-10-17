@@ -23,7 +23,7 @@ import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { pushEvent } from '@/lib/push'
 import { OrderError } from '@/lib/ops'
-import { computeBill, earnPointsFor, tierForPoints, BillItem } from '@/lib/billing'
+import { computeBill, earnPointsFor, splitVat, tierForPoints, BillItem } from '@/lib/billing'
 import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
 import { maybeNotifyLowStock } from '@/lib/low-stock'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
@@ -145,10 +145,13 @@ export async function issueFursReceipt(req: NextRequest) {
       categoryId: it.MenuItem?.categoryId || null,
       voided: it.voided,
     }))
+  // Naloga #6: cena postavke je KONČNA (z DDV) → computeBill pričakuje NETO
+  // osnovo (vsota prikazanih cen − izvlečeni DDV); DDV se NE prišteva nazaj.
+  const billSplit = splitVat(billItems, (it) => it.unitPrice * it.quantity, (it) => it.vatAmount)
   const bill = computeBill({
     items: billItems,
-    subtotal: r2(billItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0)),
-    tax: r2(billItems.reduce((s, it) => s + it.vatAmount, 0)),
+    subtotal: billSplit.net,
+    tax: billSplit.vat,
     manualDiscount: num(orderPre.discount),
     autoCandidates,
     now,
@@ -203,15 +206,17 @@ export async function issueFursReceipt(req: NextRequest) {
     // postavke izstavka (ne-voided); če izstavek še nima postavk (prazen) → napaka
     const scopeItems = billItems.filter((it) => (checkItemIdsCache.get(it.id) ?? null) === target.id)
     if (scopeItems.length === 0) return fail('Izstavek ne vsebuje plačljivih postavk.', 400)
-    const scopeSubtotal = r2(scopeItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0))
-    const scopeTax = r2(scopeItems.reduce((s, it) => s + it.vatAmount, 0))
-    const scopeGross = r2(scopeSubtotal + scopeTax)
-    // proporcionalni popust; zadnji (edini še neplačani) izstavek absorbira ostanek
+    const scopeSplit = splitVat(scopeItems, (it) => it.unitPrice * it.quantity, (it) => it.vatAmount)
+    const scopeSubtotal = scopeSplit.net
+    const scopeTax = scopeSplit.vat
+    const scopeGross = scopeSplit.gross
+    // proporcionalni popust; zadnji (edini še neplačani) izstavek absorbira ostanek.
+    // Razmerje je na BRUTO osnovi — popust je odštet od končnih cen.
     let scopeDiscount: number
     if (unpaidOthers === 0) {
       scopeDiscount = r2(Math.max(0, bill.discountTotal))
     } else {
-      scopeDiscount = r2(bill.discountTotal * (scopeSubtotal / Math.max(0.01, bill.subtotal)))
+      scopeDiscount = r2(bill.discountTotal * (scopeGross / Math.max(0.01, bill.grossTotal)))
       scopeDiscount = r2(Math.min(scopeDiscount, scopeGross))
     }
     const scopeTotal = r2(Math.max(0, scopeGross - scopeDiscount))
@@ -433,7 +438,8 @@ export async function issueFursReceipt(req: NextRequest) {
   const vatSourceItems = checkScope ? checkScope.items : billItems
   for (const it of vatSourceItems) {
     const rate = it.vatRate.toFixed(2)
-    const base = it.unitPrice * it.quantity
+    // Naloga #6: unitPrice je končna cena → FURS osnova (TaxableAmount) je neto.
+    const base = it.unitPrice * it.quantity - it.vatAmount
     const vat = it.vatAmount
     if (!vatMap[rate]) vatMap[rate] = { base: 0, vat: 0 }
     vatMap[rate].base += base

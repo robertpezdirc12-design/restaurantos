@@ -8,10 +8,10 @@
  *     403 tuja lokacija (Issue #4 §1 — isti varovalki kot plačilo);
  *  2. zlata pot WAITER: POST /api/orders → fire → POST paylink (token 32-hex, QR
  *     dataUrl, audit PAY_LINK_CREATED) → idempotentna izdaja (isti token) →
- *     javni GET (brez prijave! kanonični račun 22,57 €, provider=simulator) →
+ *     javni GET (brez prijave! kanonični račun 18,50 €, provider=simulator) →
  *     javni POST plačilo z napitnino (2,26 €) → kanonični FURS zaključek:
  *     naročilo paid + miza cleaning + Payment card/SIM- + Receipt EOR +
- *     totalWithTip 24,83 + PayLink paid/receiptId + audit PAY_LINK_PAID (userId
+ *     totalWithTip 20,76 + PayLink paid/receiptId + audit PAY_LINK_PAID (userId
  *     null — javni aktor);
  *  3. po plačilu: javni GET = plačano (št. računa/EOR), javni POST = 409,
  *     GET bill = 409 (kanonična ruta);
@@ -246,7 +246,7 @@ describe('paylink — zlata pot (izda → javni ogled → javno plačilo → FUR
     expect(data.link.existing).toBe(true)
   })
 
-  test('3. javni GET (brez prijave): kanonični račun 22,57 € + simulator', async () => {
+  test('3. javni GET (brez prijave): kanonični račun 18,50 € + simulator', async () => {
     const res = await publicPayGET(req(`/api/public/pay/${linkToken}`, ''), { params: Promise.resolve({ token: linkToken }) })
     expect(res.status).toBe(200)
     const data = (await res.json()) as {
@@ -254,8 +254,8 @@ describe('paylink — zlata pot (izda → javni ogled → javno plačilo → FUR
     }
     expect(data.status).toBe('open')
     expect(data.provider).toBe('simulator')
-    expect(data.bill.subtotal).toBe(18.5)
-    expect(data.bill.totalDue).toBe(22.57)
+    expect(data.bill.subtotal).toBe(15.17) // NETO osnova — prikazana cena je končna
+    expect(data.bill.totalDue).toBe(18.5)
     expect(data.order.table).toBe(tableLabel)
     expect(data.location.name).toBe(`${PREFIX} Lokacija A`)
   })
@@ -271,7 +271,7 @@ describe('paylink — zlata pot (izda → javni ogled → javno plačilo → FUR
     const data = (await res.json()) as { status: string; receipt: { receiptNumber: string; eor: string | null; totalWithTip: number; tip: number; paymentMethod: string } }
     expect(data.status).toBe('paid')
     expect(data.receipt.eor).toMatch(UUID_RE)
-    expect(data.receipt.totalWithTip).toBe(24.83)
+    expect(data.receipt.totalWithTip).toBe(20.76)
     expect(data.receipt.tip).toBe(2.26)
     expect(data.receipt.paymentMethod).toBe('card')
 
@@ -389,17 +389,17 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
       expect(res.status).toBe(201)
       const data = (await res.json()) as { redirect: string; amount: number; share: number; sessionId: string }
       expect(data.redirect).toContain('checkout.stripe.com')
-      expect(data.amount).toBe(24.83) // delež + napitnina (seja)
-      expect(data.share).toBe(22.57) // P1-6: amount = delež BREZ napitnine
+      expect(data.amount).toBe(20.76) // delež + napitnina (seja)
+      expect(data.share).toBe(18.5) // P1-6: amount = delež BREZ napitnine
       expect(called).toContain('api.stripe.com')
       // #37: seja je VEZANA na konkretno povezavo/naročilo/lokacijo (server-side)
       expect(createBody).toContain(`metadata%5BpayLinkId%5D=${encodeURIComponent(link.id)}`)
       expect(createBody).toContain(`metadata%5BorderId%5D=${encodeURIComponent(oid)}`)
       expect(createBody).toContain(`client_reference_id=${encodeURIComponent(link.id)}`)
-      expect(createBody).toContain('metadata%5BexpectedAmountCents%5D=2483')
+      expect(createBody).toContain('metadata%5BexpectedAmountCents%5D=2076')
       expect(String(createHeaders['idempotency-key'] || '')).toContain(`paylink-${link.id}-`)
       const row = await db.payLink.findUnique({ where: { token: link.token } })
-      expect(Number(row?.amount)).toBe(22.57)
+      expect(Number(row?.amount)).toBe(18.5)
       expect(Number(row?.tip)).toBe(2.26)
       // #37: KANONIČNI sessionId je atomarno prijavljen na povezavi
       expect(row?.sessionId).toBe('cs_plnk_1')
@@ -416,15 +416,15 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
     const { id: oid } = await mkOrder()
     const link = await mkLink(oid)
     // zakleni znesek + KANONIČNO sejo (kot bi ju checkout — #37)
-    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_plnk_2' } })
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26, sessionId: 'cs_plnk_2' } })
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url)
       if (u.includes('api.stripe.com/v1/checkout/sessions/cs_plnk_2')) {
         return new Response(JSON.stringify({
           id: 'cs_plnk_2', object: 'checkout.session', status: 'complete', mode: 'payment',
-          payment_status: 'paid', payment_intent: 'pi_plnk_2', amount_total: 2483, currency: 'eur',
+          payment_status: 'paid', payment_intent: 'pi_plnk_2', amount_total: 2076, currency: 'eur',
           client_reference_id: link.id,
-          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483', currency: 'eur' },
+          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076', currency: 'eur' },
         }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
@@ -434,7 +434,7 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
       expect(res.status).toBe(200)
       const data = (await res.json()) as { status: string; receipt: { totalWithTip: number } }
       expect(data.status).toBe('paid')
-      expect(data.receipt.totalWithTip).toBe(24.83)
+      expect(data.receipt.totalWithTip).toBe(20.76)
       const payment = await db.payment.findFirst({ where: { idempotencyKey: `plkset:${oid}#p0` } })
       expect(payment?.authorizationCode).toBe('pi_plnk_2')
       expect(payment?.type).toBe('card')
@@ -451,14 +451,14 @@ describe('paylink — Stripe pot (ponudnik prek env, fetch stub)', () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_plnk'
     const { id: oid } = await mkOrder()
     const link = await mkLink(oid)
-    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_plnk_3' } })
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26, sessionId: 'cs_plnk_3' } })
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url)
       if (u.includes('api.stripe.com/v1/checkout/sessions/cs_plnk_3')) {
         return new Response(JSON.stringify({
           id: 'cs_plnk_3', status: 'complete', mode: 'payment', payment_status: 'paid',
           payment_intent: 'pi_plnk_3', amount_total: 9999, currency: 'eur',
-          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483', currency: 'eur' },
+          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076', currency: 'eur' },
         }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
@@ -561,7 +561,7 @@ describe('paylink — produkcijski DDL korak (migrate-paylink + 503 degradacija)
 // POS zaključek preostanka + varovalke konservativnosti zneska.
 // ═══════════════════════════════════════════════════════════════════════════
 describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)', () => {
-  test('1. split izdaja: 3 povezave, centno natančni deleži (Σ = 22,57), audit SPLIT_CREATED', async () => {
+  test('1. split izdaja: 3 povezave, centno natančni deleži (Σ = 18,50), audit SPLIT_CREATED', async () => {
     const { id: oid } = await mkOrder()
     const res = await paylinkPOST(req(`/api/orders/${oid}/paylink`, tokenWaiterA, 'POST', { splitCount: 3 }), { params: Promise.resolve({ id: oid }) })
     expect(res.status).toBe(201)
@@ -574,9 +574,9 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
       expect(l.splitCount).toBe(3)
     }
     expect(data.links.map((l) => l.splitIndex)).toEqual([1, 2, 3])
-    // 22,57 € = 2257 centov / 3 → 753, 752, 752
-    expect(data.links.map((l) => l.amount)).toEqual([7.53, 7.52, 7.52])
-    expect(data.links.reduce((s, l) => s + l.amount, 0)).toBeCloseTo(22.57, 2)
+    // 18,50 € = 1850 centov / 3 → 617, 617, 616
+    expect(data.links.map((l) => l.amount)).toEqual([6.17, 6.17, 6.16])
+    expect(data.links.reduce((s, l) => s + l.amount, 0)).toBeCloseTo(18.5, 2)
     const rows = await db.payLink.findMany({ where: { orderId: oid }, orderBy: { splitIndex: 'asc' } })
     expect(rows).toHaveLength(3)
     expect(rows.every((r) => r.status === 'open')).toBe(true)
@@ -613,8 +613,8 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     expect(res.status).toBe(200)
     const data = (await res.json()) as { status: string; bill: { totalDue: number }; split: { index: number; count: number; share: number; paidShares: number; remaining: number } }
     expect(data.status).toBe('open')
-    expect(data.bill.totalDue).toBe(22.57)
-    expect(data.split).toMatchObject({ index: 2, count: 3, share: 7.52, paidShares: 0, remaining: 22.57 })
+    expect(data.bill.totalDue).toBe(18.5)
+    expect(data.split).toMatchObject({ index: 2, count: 3, share: 6.17, paidShares: 0, remaining: 18.5 })
   })
 
   test('5. vmesni delež: plačan brez računa — order partial, approval na vrstici, audit SHARE_PAID', async () => {
@@ -625,7 +625,7 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     expect(res.status).toBe(200)
     const data = (await res.json()) as { status: string; share: number; tip: number; approvalCode: string; receiptPending: boolean; split: { paidShares: number } }
     expect(data.status).toBe('paid')
-    expect(data.share).toBe(7.53)
+    expect(data.share).toBe(6.17)
     expect(data.tip).toBe(0.75)
     expect(data.approvalCode).toMatch(/^SIM-/)
     expect(data.receiptPending).toBe(true)
@@ -633,7 +633,7 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
 
     const row = await db.payLink.findUnique({ where: { token: d.links[0].token } })
     expect(row?.status).toBe('paid')
-    expect(Number(row?.amount)).toBe(7.53)
+    expect(Number(row?.amount)).toBe(6.17)
     expect(Number(row?.tip)).toBe(0.75)
     expect(row?.approvalCode).toMatch(/^SIM-/)
     expect(row?.receiptId).toBeNull()
@@ -666,9 +666,9 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     const data = (await res.json()) as { status: string; receipt: { receiptNumber: string; eor: string | null; total: number; tip: number; totalWithTip: number; paymentMethod: string }; replayed: boolean }
     expect(data.status).toBe('paid')
     expect(data.receipt.eor).toMatch(UUID_RE)
-    expect(data.receipt.total).toBe(22.57)
+    expect(data.receipt.total).toBe(18.5)
     expect(data.receipt.tip).toBe(1.25) // 0,75 + 0 + 0,50
-    expect(data.receipt.totalWithTip).toBe(23.82)
+    expect(data.receipt.totalWithTip).toBe(19.75)
     expect(data.receipt.paymentMethod).toBe('mixed') // 3 kartični deli
 
     const order = await db.order.findUnique({ where: { id: oid } })
@@ -683,7 +683,7 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     const payments = await db.payment.findMany({ where: { checkId: check?.id } })
     expect(payments).toHaveLength(3)
     expect(payments.every((p) => p.type === 'card' && p.authorizationCode?.startsWith('SIM-'))).toBe(true)
-    expect(payments.reduce((s, p) => s + Number(p.amount), 0)).toBeCloseTo(22.57, 2)
+    expect(payments.reduce((s, p) => s + Number(p.amount), 0)).toBeCloseTo(18.5, 2)
     // idempotenca: plkset:<orderId>
     expect(payments.some((p) => p.idempotencyKey?.startsWith(`plkset:${oid}`))).toBe(true)
     // VSI linki niza: paid + receiptId zapisan
@@ -702,7 +702,7 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     await publicPayPOST(req(`/api/public/pay/${d.links[0].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d.links[0].token }) })
     await publicPayPOST(req(`/api/public/pay/${d.links[1].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d.links[1].token }) })
     // POS: gost 3 odšel brez plačila — osebje pritisne GOTOVINA (klasična pot
-    // brez parts): jedro samodejno plača SAMO PREOSTANEK 7,52 € (Toast-style
+    // brez parts): jedro samodejno plača SAMO PREOSTANEK 6,16 € (Toast-style
     // odprti balance — pobrani deleži se prištejejo med dele)
     const pos = await fursPOST(req('/api/furs', tokenWaiterA, 'POST', {
       orderId: oid, type: 'cash', tip: 0,
@@ -712,15 +712,15 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     const order = await db.order.findUnique({ where: { id: oid } })
     expect(order?.paymentStatus).toBe('paid')
     const receipt = await db.receipt.findFirst({ where: { orderId: oid } })
-    expect(Number(receipt?.total)).toBe(22.57)
-    expect(receipt?.paymentMethod).toBe('mixed') // cash 7,52 + 2 kartična deleža
-    // EKSPlicitni parts z napačno vsoto (staff ročno vpiše CELOTO 22,57 namesto
+    expect(Number(receipt?.total)).toBe(18.5)
+    expect(receipt?.paymentMethod).toBe('mixed') // cash 6,16 + 2 kartična deleža
+    // EKSPlicitni parts z napačno vsoto (staff ročno vpiše CELOTO 18,50 namesto
     // preostanka) → 400 z namigom o pobranih deležih (fail-closed, jasno sporočilo)
     const { id: oid2 } = await mkOrder()
     const r2 = await paylinkPOST(req(`/api/orders/${oid2}/paylink`, tokenWaiterA, 'POST', { splitCount: 3 }), { params: Promise.resolve({ id: oid2 }) })
     const d2 = (await r2.json()) as { links: { token: string }[] }
     await publicPayPOST(req(`/api/public/pay/${d2.links[0].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d2.links[0].token }) })
-    const tooMuch = await fursPOST(req('/api/furs', tokenWaiterA, 'POST', { orderId: oid2, parts: [{ type: 'cash', amount: 22.57 }], clientOperationId: `${PREFIX}-pos3-${TS}-${oid2.slice(-4)}` }))
+    const tooMuch = await fursPOST(req('/api/furs', tokenWaiterA, 'POST', { orderId: oid2, parts: [{ type: 'cash', amount: 18.5 }], clientOperationId: `${PREFIX}-pos3-${TS}-${oid2.slice(-4)}` }))
     expect(tooMuch.status).toBe(400)
     const tm = (await tooMuch.json()) as { error: string }
     expect(tm.error).toContain('prek plačilnih povezav')
@@ -732,7 +732,7 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     const d = (await r.json()) as { links: { token: string }[] }
     await publicPayPOST(req(`/api/public/pay/${d.links[0].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d.links[0].token }) })
     // kuhar doda postavko (račun zrase nad Σ deležev)
-    await db.orderItem.create({ data: { id: nid(), orderId: oid, menuItemId: item5, quantity: 2, price: 5, vatRate: 22, vatAmount: 2.02, menuItemName: 'Dodano' } })
+    await db.orderItem.create({ data: { id: nid(), orderId: oid, menuItemId: item5, quantity: 2, price: 5, vatRate: 22, vatAmount: 1.80, menuItemName: 'Dodano' } })
     const res = await publicPayPOST(req(`/api/public/pay/${d.links[1].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d.links[1].token }) })
     expect(res.status).toBe(409)
     const data = (await res.json()) as { error: string }
@@ -746,10 +746,10 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     const { id: oid } = await mkOrder()
     const bad = await paylinkPOST(req(`/api/orders/${oid}/paylink`, tokenWaiterA, 'POST', { amounts: [30, 1] }), { params: Promise.resolve({ id: oid }) })
     expect(bad.status).toBe(400)
-    const good = await paylinkPOST(req(`/api/orders/${oid}/paylink`, tokenWaiterA, 'POST', { amounts: [20, 2.57] }), { params: Promise.resolve({ id: oid }) })
+    const good = await paylinkPOST(req(`/api/orders/${oid}/paylink`, tokenWaiterA, 'POST', { amounts: [16, 2.5] }), { params: Promise.resolve({ id: oid }) })
     expect(good.status).toBe(201)
     const data = (await good.json()) as { links: { amount: number }[] }
-    expect(data.links.map((l) => l.amount)).toEqual([20, 2.57])
+    expect(data.links.map((l) => l.amount)).toEqual([16, 2.5])
     // splitCount > 10 → 400
     const { id: oid2 } = await mkOrder()
     const tooMany = await paylinkPOST(req(`/api/orders/${oid2}/paylink`, tokenWaiterA, 'POST', { splitCount: 11 }), { params: Promise.resolve({ id: oid2 }) })
@@ -779,16 +779,16 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     expect(r2.status).toBe(201)
     const d2 = (await r2.json()) as { links: { amount: number; splitIndex: number; splitCount: number }[] }
     // 15,04 = 1504 cent / 2 → 752, 752
-    expect(d2.links.map((l) => l.amount)).toEqual([7.52, 7.52])
+    expect(d2.links.map((l) => l.amount)).toEqual([6.17, 6.16])
     expect(d2.links[0].splitCount).toBe(2)
-    // plačilo obeh novih + stari delež = 22,57 → končni račun
+    // plačilo obeh novih + stari delež = 18,50 → končni račun
     await publicPayPOST(req(`/api/public/pay/${d2.links[0].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d2.links[0].token }) })
     const res = await publicPayPOST(req(`/api/public/pay/${d2.links[1].token}`, '', 'POST', {}), { params: Promise.resolve({ token: d2.links[1].token }) })
     expect(res.status).toBe(200)
     const order = await db.order.findUnique({ where: { id: oid } })
     expect(order?.paymentStatus).toBe('paid')
     const receipt = await db.receipt.findFirst({ where: { orderId: oid } })
-    expect(Number(receipt?.total)).toBe(22.57)
+    expect(Number(receipt?.total)).toBe(18.5)
   })
 
   test('12. GET obnova: zadnji delež plačan v konkurenci (brez zaključka) → GET dokonča niz', async () => {
@@ -801,7 +801,7 @@ describe('paylink — P1-6 SPLIT PO GOSTIH (N povezav, partial, končni račun)'
     const res = await publicPayGET(req(`/api/public/pay/${d.links[0].token}`, ''), { params: Promise.resolve({ token: d.links[0].token }) })
     const data = (await res.json()) as { status: string; receipt: { total: number } | null }
     expect(data.status).toBe('paid')
-    expect(data.receipt?.total).toBe(22.57)
+    expect(data.receipt?.total).toBe(18.5)
     const order = await db.order.findUnique({ where: { id: oid } })
     expect(order?.paymentStatus).toBe('paid')
   })

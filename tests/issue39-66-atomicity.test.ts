@@ -126,7 +126,9 @@ async function seedOrderWithItems(loc: string, items: SeedItem[]): Promise<{ ord
       },
     })
     itemIds.push(`${PREFIX}${it.id}-${RUN}`)
-    subtotal += it.price * it.qty
+    // Naloga #6: price je KONČNA cena → subtotal je NETO osnova (line − DDV),
+    // total pa kar vsota končnih cen (recalc povzame isto pravilo).
+    subtotal += it.price * it.qty - it.vatAmount
     tax += it.vatAmount
   }
   await db.order.update({
@@ -202,7 +204,7 @@ describe('issue #39 — atomaren preklic postavke + preračun', () => {
       { id: 'c', qty: 1, price: 8, vatRate: 22, vatAmount: 1.45, discountAmount: 1 },
     ])
     const before = await db.order.findUnique({ where: { id: orderId } })
-    expect(num(before?.total)).toBeCloseTo(38.16, 2)
+    expect(num(before?.total)).toBeCloseTo(33, 2)
 
     const r = await status(voidReq(orderId, itemIds[1]))
     expect(r.code).toBe(200)
@@ -221,12 +223,12 @@ describe('issue #39 — atomaren preklic postavke + preračun', () => {
       expect(it?.voided).toBe(false)
     }
 
-    // zneski ≡ recalc nad preostalimi (iA + iC): 28 + 4,73 — v ENI transakciji zapisano
+    // zneski ≡ recalc nad preostalimi (iA + iC): 23,27 neto + 4,73 ddv = 28,00 za plačilo
     const after = await db.order.findUnique({ where: { id: orderId } })
-    expect(num(after?.subtotal)).toBeCloseTo(28, 2)
+    expect(num(after?.subtotal)).toBeCloseTo(23.27, 2)
     expect(num(after?.tax)).toBeCloseTo(4.73, 2)
-    expect(num(after?.total)).toBeCloseTo(32.73, 2)
-    expect(num(after?.totalWithTip)).toBeCloseTo(32.73, 2)
+    expect(num(after?.total)).toBeCloseTo(28, 2)
+    expect(num(after?.totalWithTip)).toBeCloseTo(28, 2)
 
     // audit: točno en dogodek, ključ amountRemovedFromOrder
     const audits = await db.auditLog.findMany({ where: { action: 'ORDER_ITEM_VOID', entityId: itemIds[1] } })
@@ -261,12 +263,12 @@ describe('issue #39 — atomaren preklic postavke + preračun', () => {
     const i3 = await db.orderItem.findUnique({ where: { id: itemIds[2] } })
     expect(i1?.voided).toBe(true)
     expect(i3?.voided).toBe(true)
-    // preostane SAMO i2: 5 + 0,43 ddv
+    // preostane SAMO i2: 4,57 neto + 0,43 ddv = 5,00 za plačilo
     const after = await db.order.findUnique({ where: { id: orderId } })
-    expect(num(after?.subtotal)).toBeCloseTo(5, 2)
+    expect(num(after?.subtotal)).toBeCloseTo(4.57, 2)
     expect(num(after?.tax)).toBeCloseTo(0.43, 2)
-    expect(num(after?.total)).toBeCloseTo(5.43, 2)
-    expect(num(after?.totalWithTip)).toBeCloseTo(5.43, 2)
+    expect(num(after?.total)).toBeCloseTo(5, 2)
+    expect(num(after?.totalWithTip)).toBeCloseTo(5, 2)
     // en audit na postavko
     expect(await db.auditLog.count({ where: { action: 'ORDER_ITEM_VOID', entityId: { in: itemIds } } })).toBe(2)
   })
@@ -287,8 +289,8 @@ describe('issue #39 — atomaren preklic postavke + preračun', () => {
     expect(it?.voided).toBe(false)
     expect(it?.voidReasonId).toBe(null)
     const order = await db.order.findUnique({ where: { id: orderId } })
-    expect(num(order?.subtotal)).toBeCloseTo(7, 2)
-    expect(num(order?.total)).toBeCloseTo(8.26, 2)
+    expect(num(order?.subtotal)).toBeCloseTo(5.74, 2) // 7,00 končnih − 1,26 DDV (nespremenjeno)
+    expect(num(order?.total)).toBeCloseTo(7, 2)
     expect(await db.auditLog.count({ where: { action: 'ORDER_ITEM_VOID', entityId: itemIds[0] } })).toBe(0)
   })
 

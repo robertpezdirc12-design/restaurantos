@@ -20,7 +20,10 @@ export const viewport: Viewport = {
   themeColor: "#047857",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Naloga #11 (WCAG 1.4.4): maximumScale:1 je onemogočalo pinč-povečavo na
+  // POS in čitalniku — številke na zaslonu so majhne, uporabniki s slabšim
+  // vidom pa so bili ujeti. Povečava je vedno dovoljena; namenski kiosk
+  // terminal svojo omejitev nastavi v lastnem brskalniku, ne prek meta.
 };
 
 export default function RootLayout({

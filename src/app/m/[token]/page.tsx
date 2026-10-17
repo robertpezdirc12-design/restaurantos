@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Star } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, useGuestApiError } from '@/components/guest-i18n'
 import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergens'
+import { vatFromGross } from '@/lib/billing'
 import { ALLERGEN_CODES, ALLERGEN_LABELS, allergenLabel, labelToAllergenCode, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 
 interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
@@ -203,7 +204,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const cartCount = cart.reduce((s, l) => s + l.qty, 0)
   const lineTotal = (l: CartLine) => (l.item.price + l.modifiers.reduce((s, m) => s + m.price, 0)) * l.qty
   const subtotal = cart.reduce((s, l) => s + lineTotal(l), 0)
-  const vatTotal = cart.reduce((s, l) => s + lineTotal(l) * l.item.vatRate / 100, 0)
+  const vatTotal = cart.reduce((s, l) => s + vatFromGross(lineTotal(l), l.item.vatRate), 0)
 
   function detailLineTotal(): number {
     if (!detail) return 0
@@ -544,7 +545,10 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
               <SheetHeader className="px-4 pt-4 pb-2 border-b border-stone-100">
                 <SheetTitle>{t('guest.cart.title')}</SheetTitle>
               </SheetHeader>
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {/* Naloga #8: v stolpčnem flex staršu ima flex-1 otrok min-height:auto,
+                  ki raztegne seznam čez 85vh — brez min-h-0 ni notranjega pomika in
+                  plačilni gumb izgine pod dnom (audit: 27 postavk = 1093 px). */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
                 {cart.map((l) => (
                   <div key={l.key} className="rounded-xl border border-stone-200 p-3">
                     <div className="flex justify-between items-start gap-2">
@@ -580,7 +584,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 </div>
                 {pageErr.error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>}
               </div>
-              <div className="p-4 border-t border-stone-100">
+              <div className="shrink-0 p-4 border-t border-stone-100">
                 <Button size="lg" className="w-full h-14 rounded-2xl text-base" onClick={submitOrder} disabled={submitting || cart.length === 0}>
                   {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
                   {submitting ? t('guest.common.submitting') : `${t('guest.cart.submit')} · ${fmt(subtotal)}`}

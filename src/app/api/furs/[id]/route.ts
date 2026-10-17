@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { num } from '@/lib/map'
+import { vatFromGross } from '@/lib/billing'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -51,8 +52,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     for (const it of items) {
       const key = it.vatRate.toFixed(2)
       const cur = m.get(key) || { rate: it.vatRate, base: 0, vat: 0 }
-      cur.base += it.amount
-      cur.vat += it.vatAmount > 0 ? it.vatAmount : it.amount * (it.vatRate / 100)
+      const vat = it.vatAmount > 0 ? it.vatAmount : vatFromGross(it.amount, it.vatRate)
+      cur.base += it.amount - vat
+      cur.vat += vat
       m.set(key, cur)
     }
     breakdown = [...m.values()].map((v) => ({ rate: v.rate, base: Math.round(v.base * 100) / 100, vat: Math.round(v.vat * 100) / 100 }))

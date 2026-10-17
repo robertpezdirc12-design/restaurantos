@@ -172,7 +172,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
         body: JSON.stringify({ orderId: o.id, status: to, ...extra }),
       })
       await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(null) }
   }
 
   async function createZone() {
@@ -187,7 +187,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
       })
       setAddZone(false); setNz({ name: '', deliveryFee: '2.50', minOrderAmount: '10', estimatedMinutes: '30' })
       await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(null) }
   }
 
   async function toggleZone(z: DeliveryZoneT) {
@@ -195,7 +195,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
     try {
       await api('/api/delivery/zones', { method: 'PATCH', body: JSON.stringify({ id: z.id, isActive: !z.isActive }) })
       await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(null) }
   }
 
   return (
@@ -408,7 +408,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                     driverPhone: driver.phone,
                   }) })
                   setDriverFor(null); await onReload()
-                } catch (err) { alert((err as Error).message) } finally { setBusy(null) }
+                } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(null) }
               }}>{t('dost.assign')}</Button>
           </DialogFooter>
         </DialogContent>

@@ -24,6 +24,7 @@ import { nextSequence } from '@/lib/sequences'
 import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
 import { publishEvent } from '@/lib/events'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
+import { vatFromGross } from '@/lib/billing'
 
 export const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -234,8 +235,9 @@ export async function createOrderCore(
     }))
     const modsTotal = mods.reduce((s, m) => s + m.price, 0)
     const line = (price + modsTotal) * qty
-    const vat = (line * vatRate) / 100
-    subtotal += line
+    // Naloga #6: cena je končna (z DDV) — DDV se izvleče, neto je osnova za FURS.
+    const vat = vatFromGross(line, vatRate)
+    subtotal += r2(line - vat)
     tax += vat
     return {
       id: nid(),
@@ -394,8 +396,10 @@ export async function recalcOrderTotals(orderId: string, tx?: Prisma.Transaction
   let subtotal = 0
   let tax = 0
   for (const it of items) {
-    subtotal += num(it.price) * (it.quantity || 0)
-    tax += num(it.vatAmount)
+    const line = num(it.price) * (it.quantity || 0)
+    const vat = num(it.vatAmount)
+    subtotal += line - vat
+    tax += vat
   }
   return { subtotal: r2(subtotal), tax: r2(tax), total: r2(subtotal + tax) }
 }

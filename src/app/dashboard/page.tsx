@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getUser } from '@/lib/client'
+import { vatFromGross } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
 import { KDS_DELAY_REASONS, delayThresholdForTarget, isLatePrep, isStaleKdsTicket, staleTicketHours } from '@/lib/kds-delays'
@@ -111,7 +112,7 @@ interface Stats { activeOrders: number; openTables: number; todayOrders: number;
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
-interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
+interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 /** OPS-8 val 3 (v1.73.0): + email/duration/specialRequests/source (additive API fields) */
@@ -132,15 +133,17 @@ interface GiftCardSelT { id: string; cardNumber: string; ownerName: string; bala
 
 const r2v = (v: number) => Math.round(v * 100) / 100
 
+// Naloga #11 (WCAG 1.4.3): -600/stone-400 ozadja z belim textom dajejo 2.0–4.0:1
+// na 12 px — na KDS tabli neberljivo. Familija barv ostane, temnjena je svetlost.
 const statusColors: Record<string, string> = {
-  FREE: 'bg-emerald-600 text-white hover:bg-emerald-700',
-  OCCUPIED: 'bg-amber-600 text-white hover:bg-amber-700',
-  RESERVED: 'bg-stone-400 text-white hover:bg-stone-500',
-  DIRTY: 'bg-stone-600 text-white hover:bg-stone-700',
-  OPEN: 'bg-amber-600 text-white', SENT: 'bg-orange-600 text-white',
-  PREPARED: 'bg-emerald-600 text-white', PAID: 'bg-stone-500 text-white',
-  CANCELLED: 'bg-red-600 text-white',
-  PENDING: 'bg-amber-600 text-white', PREPARING: 'bg-orange-600 text-white', READY: 'bg-emerald-600 text-white',
+  FREE: 'bg-emerald-700 text-white hover:bg-emerald-800',
+  OCCUPIED: 'bg-amber-700 text-white hover:bg-amber-800',
+  RESERVED: 'bg-stone-200 text-stone-800 hover:bg-stone-300',
+  DIRTY: 'bg-stone-700 text-white hover:bg-stone-800',
+  OPEN: 'bg-amber-700 text-white', SENT: 'bg-orange-700 text-white',
+  PREPARED: 'bg-emerald-700 text-white', PAID: 'bg-teal-700 text-white',
+  CANCELLED: 'bg-red-700 text-white',
+  PENDING: 'bg-amber-700 text-white', PREPARING: 'bg-orange-700 text-white', READY: 'bg-emerald-700 text-white',
 }
 const statusLabels: Record<string, string> = {
   FREE: 'Prosta', OCCUPIED: 'Zasedena', RESERVED: 'Rezervirana', DIRTY: 'Za pospravit',
@@ -465,9 +468,27 @@ function DashboardInner() {
     const tabParam = new URLSearchParams(window.location.search).get('tab')
     if (tabParam && tabParam !== activeTab) setActiveTab(tabParam)
   }, [])
+
+  // Naloga #10: ?tab= se je samo BRALO. Preklop zavihka je URL pustil na
+  // /dashboard, zato osveži, nazaj in deljenje povezave vrnejo na 'pregled'
+  // (kuhinja/KDS naprava, ki jo natakar zapusti, izgine). Zapis z
+  // replaceState — brez router navigacije, ki bi znova naložila podatke.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('tab') === activeTab) return
+    if (activeTab === 'pregled') url.searchParams.delete('tab')
+    else url.searchParams.set('tab', activeTab)
+    window.history.replaceState(window.history.state, '', url)
+  }, [activeTab])
   const canRes = canManage || perms.includes('reservations.manage')
 
-  const load = useCallback(async () => {
+  // Naloga #11 (polling): 'hot' = operativni krog (mize/naročila/kuhinja/meni/
+  // rezervacije/računi/izmene/zaloge/statistika), 'full' doda še počasne vire
+  // (finančne, konfiguracija, audit, log napak, dobavitelji, recepti, naprave,
+  // dostava, lokacije). Interval klicuje hot, vsak 4. cikel full — pred tem je
+  // 27 končnih točk × 15 s pomenilo ~1,9 zahteve/s v mirujočem zavihku.
+  const load = useCallback(async (scope: 'hot' | 'full' = 'full') => {
+    const full = scope === 'full'
     setRefreshing(true)
     try {
       // sveža dovoljenja (spremembe pravic/uveljavitve delujejo takoj — issue #1)
@@ -502,28 +523,28 @@ function DashboardInner() {
         // queue filter — the task board does its own client-side filtering).
         soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[] }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
         soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
-        hp('employees.manage') ? soft(api<{ employees: EmployeeT[] }>('/api/employees')) : undefined,
+        full && hp('employees.manage') ? soft(api<{ employees: EmployeeT[] }>('/api/employees')) : undefined,
         soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
         soft(api<{ receipts: ReceiptT[] }>('/api/furs')),
-        soft(api<{ inventory: InventoryT[] }>('/api/inventory')),
+        full ? soft(api<{ inventory: InventoryT[] }>('/api/inventory')) : undefined,
         soft(api<{ shifts: ShiftT[] }>('/api/shifts')),
-        hp('reports.view') ? soft(api<FinancialT>('/api/reports/financial')) : undefined,
-        hpAny('haccp.execute', 'settings.manage') ? soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')) : undefined,
-        hp('reports.view') ? soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')) : undefined,
-        hp('settings.manage') ? soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')) : undefined,
-        hpAny('inventory.manage', 'reports.view', 'settings.manage') ? soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')) : undefined,
-        hp('inventory.manage') ? soft(api<{ recipes: RecipeT[] }>('/api/recipes')) : undefined,
-        hp('employees.manage') ? soft(api<{ jobContexts: JobT[] }>('/api/jobs')) : undefined,
-        hp('reservations.manage') ? soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')) : undefined,
-        manage ? soft(api<{ stats: LocationStatT[] }>('/api/locations/stats')) : undefined,
-        hp('settings.manage') ? soft(api<{ integrations: IntegrationT[] }>('/api/integrations')) : undefined,
-        hp('settings.manage') ? soft(api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks')) : undefined,
-        hp('settings.manage') ? soft(api<{ errors: ErrLogT[] }>('/api/monitoring/errors')) : undefined,
-        hp('settings.manage') ? soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')) : undefined,
-        hp('employees.manage') ? soft(api<{ devices: DeviceT[] }>('/api/devices')) : undefined,
-        hp('reports.view') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
-        hp('delivery.manage') ? soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')) : undefined,
-        hp('settings.manage') ? soft(api<{ locations: LocationRowT[] }>('/api/locations')) : undefined,
+        full && hp('reports.view') ? soft(api<FinancialT>('/api/reports/financial')) : undefined,
+        full && hpAny('haccp.execute', 'settings.manage') ? soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')) : undefined,
+        full && hp('reports.view') ? soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')) : undefined,
+        full && hpAny('inventory.manage', 'reports.view', 'settings.manage') ? soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')) : undefined,
+        full && hp('inventory.manage') ? soft(api<{ recipes: RecipeT[] }>('/api/recipes')) : undefined,
+        full && hp('employees.manage') ? soft(api<{ jobContexts: JobT[] }>('/api/jobs')) : undefined,
+        full && hp('reservations.manage') ? soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')) : undefined,
+        full && manage ? soft(api<{ stats: LocationStatT[] }>('/api/locations/stats')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ integrations: IntegrationT[] }>('/api/integrations')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ webhookEndpoints: WebhookT[] }>('/api/webhooks')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ errors: ErrLogT[] }>('/api/monitoring/errors')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ settings: Record<string, unknown> | null }>('/api/settings')) : undefined,
+        full && hp('employees.manage') ? soft(api<{ devices: DeviceT[] }>('/api/devices')) : undefined,
+        full && hp('reports.view') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
+        full && hp('delivery.manage') ? soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ locations: LocationRowT[] }>('/api/locations')) : undefined,
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
@@ -583,15 +604,38 @@ function DashboardInner() {
       .catch(() => { /* stabilnost — naslednji load osveži */ })
   }, [viewLoc])
 
+  // Naloga #7: privzeti pogled čez vse lokacije (glava → preklop lokacije) je
+  // pokazal 437 postavk menija
+  // (mešanica cen, alergenov in razpoložljivosti). POS dejavno potrebuje
+  // en pogled na lastno lokacijo. Izberemo samo ob prvem zagonu in samo enoznačno
+  // (uporabnikova lastna lokacija; sicer natanko ena lokacija). Centralni
+  // uporabniki z več lokacijami ostanejo pri "Vse", dokler ne izberejo.
+  const locAutoPicked = useRef(false)
   useEffect(() => {
-    load()
+    if (locAutoPicked.current || viewLoc || locList.length === 0) return
+    locAutoPicked.current = true
+    const own = user?.locationId && locList.some((l) => l.id === user.locationId) ? user.locationId : ''
+    if (own) setViewLoc(own)
+    else if (locList.length === 1) setViewLoc(locList[0].id)
+  }, [locList, user, viewLoc])
+
+  useEffect(() => {
+    void load()
     setBootstrapLogin(localStorage.getItem('ro_bootstrap') === '1')
     setPcfg(getPrintConfig())
     setTermMode(getTerminalConfig().mode)
-    const iv = setInterval(load, 15000)
-    return () => clearInterval(iv)
+    // Naloga #11: hot poll na 15 s (operativni pregled), en cikel na štiri (60 s)
+    // povsežni; v skritem zavihku se poll ustavi (brskalnik ga itak duši).
+    let tick = 0
+    const iv = setInterval(() => {
+      if (document.hidden) return
+      tick = (tick + 1) % 4
+      void load(tick === 0 ? 'full' : 'hot')
+    }, 15000)
+    const onVis = () => { if (!document.hidden) void load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
   }, [load])
-
   // online/offline status + offline vrsta (issue #1)
   useEffect(() => {
     setOnline(navigator.onLine)
@@ -688,9 +732,9 @@ function DashboardInner() {
         // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
         enqueueOp('order.create', { tableId: newOrderTable.id, items: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), guests: 2, note: '', locationId: newOrderTable.locationId || undefined })
         setCart({}); setNewOrderTable(null)
-        alert(t('net.offlineOrderQueued'))
+        toast({ title: t('net.offlineOrderQueued') })
       } else {
-        alert((err as Error).message)
+        toast({ title: (err as Error).message, variant: 'destructive' })
       }
     } finally { setSending(false) }
   }
@@ -702,9 +746,9 @@ function DashboardInner() {
     } catch (err) {
       if (isNetworkError(err)) {
         enqueueOp('kitchen.status', { itemId, status, ...(delayReason ? { delayReason } : {}) })
-        alert(t('net.offlineStatusQueued'))
+        toast({ title: t('net.offlineStatusQueued') })
       } else {
-        alert((err as Error).message)
+        toast({ title: (err as Error).message, variant: 'destructive' })
       }
     }
   }
@@ -826,7 +870,7 @@ function DashboardInner() {
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     } finally { setSending(false) }
   }
 
@@ -839,7 +883,7 @@ function DashboardInner() {
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     } finally { setSending(false) }
   }
 
@@ -854,7 +898,7 @@ function DashboardInner() {
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     } finally { setSending(false) }
   }
 
@@ -870,7 +914,7 @@ function DashboardInner() {
       const d = await api<{ courses: CourseT[] }>(`/api/orders/${orderSheet.id}/courses`)
       setSheetCourses(d.courses)
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     }
   }
 
@@ -893,7 +937,7 @@ function DashboardInner() {
       const d = await refreshChecks(payingOrder.id)
       setSplitOpen(d.checkCount > 1)
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     } finally { setSending(false) }
   }
 
@@ -937,7 +981,7 @@ function DashboardInner() {
       setManualDiscounts(ds.discounts.filter((d) => d.triggerType !== 'auto' && d.isActive))
       if (openSplit) void refreshChecks(o.id).catch(() => undefined)
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     }
   }
 
@@ -1010,7 +1054,7 @@ function DashboardInner() {
         try {
           const d = await api<{ invoice: { invoiceNumber: string }; storno: { restoredStockItems: number } }>(`/api/receipts/${r.id}/storno`, { method: 'POST', body: JSON.stringify(excBody()) })
           await load()
-          alert(t('rcpt.stornoDone', { n: d.invoice.invoiceNumber, s: d.storno.restoredStockItems }))
+          toast({ title: t('rcpt.stornoDone', { n: d.invoice.invoiceNumber, s: d.storno.restoredStockItems }) })
         } finally { setStornoing(null) }
       } else {
         // discount-apply / discount-remove — #45: zamenjava je eksplicitna
@@ -1082,7 +1126,7 @@ function DashboardInner() {
         setExcAction({ type: 'discount-apply', discountId, switching: false })
         await openExceptionDialog({ titleKey: 'exc.discountTitle', needsReason: true, needsApprover: false, kindCatalog: 'discount' })
       } else {
-        alert(msg)
+        toast({ title: msg, variant: 'destructive' })
       }
     }
   }
@@ -1126,7 +1170,7 @@ function DashboardInner() {
       await api(`/api/tables/${t.id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
       await load()
     } catch (err) {
-      alert((err as Error).message)
+      toast({ title: (err as Error).message, variant: 'destructive' })
     }
   }
 
@@ -1145,7 +1189,7 @@ function DashboardInner() {
             // Issue #1 triage ③: darilna kartica — brez terminala, zahteva izbrano kartico
             const sel = gcPartSel[i]
             if (!sel) {
-              alert(t('payment.partGcRequired', { n: i + 1 }))
+              toast({ title: t('payment.partGcRequired', { n: i + 1 }), variant: 'destructive' })
               return
             }
             bodyParts.push({ type: 'giftcard', amount: r2v(p.amount), giftCardId: sel.id })
@@ -1157,7 +1201,7 @@ function DashboardInner() {
           }
           const term = await processTerminalPayment(p.amount)
           if (!term.approved) {
-            alert(term.error || t('payment.terminalDeclined', { amount: fmtEUR(p.amount) }))
+            toast({ title: term.error || t('payment.terminalDeclined', { amount: fmtEUR(p.amount) }), variant: 'destructive' })
             return
           }
           bodyParts.push({ type: p.type, amount: r2v(p.amount), terminal: { approvalCode: term.approvalCode as string } })
@@ -1167,14 +1211,14 @@ function DashboardInner() {
         if (payMethod === 'giftcard') {
           // Issue #1 triage ③: plačilo z darilno kartico (celoten preostanek)
           if (!gcSel) {
-            alert(t('payment.gcChooseFirst'))
+            toast({ title: t('payment.gcChooseFirst'), variant: 'destructive' })
             return
           }
           bodyParts.push({ type: 'giftcard', amount: due, giftCardId: gcSel.id })
         } else if (payMethod !== 'cash') {
           const term = await processTerminalPayment(due)
           if (!term.approved) {
-            alert(term.error || t('payment.terminalNotApproved'))
+            toast({ title: term.error || t('payment.terminalNotApproved'), variant: 'destructive' })
             return
           }
           bodyParts.push({ type: payMethod, amount: due, terminal: { approvalCode: term.approvalCode as string } })
@@ -1207,7 +1251,9 @@ function DashboardInner() {
       // Issue #3: CFD pokaže "Hvala" z zneskom in številko naročila
       void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: bill.totalDue, message: t('payment.pushPaid') })
       await load()
-    } catch (err) { alert((err as Error).message) } finally { setSending(false) }
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
   }
 
   /** Natisljivi FURS račun — prek konfiguriranega cilja (brskalnik / agent ESC-POS / simulator) */
@@ -1219,7 +1265,7 @@ function DashboardInner() {
       const cfg = getPrintConfig()
       if (cfg.target === 'browser') {
         if (!printReceipt(r, settings?.receiptFooter, locale)) {
-          alert(t('print.popupBlocked'))
+          toast({ title: t('print.popupBlocked'), variant: 'destructive' })
         }
         return
       }
@@ -1245,9 +1291,9 @@ function DashboardInner() {
         ...(settings?.receiptFooter ? [{ text: settings.receiptFooter, align: 'center' } as PrintLine] : []),
       ]
       const res = await printLines(`Racun ${r.invoiceNumber}`, lines)
-      if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
-      else if (res.simulated) alert(t('print.simInvoice'))
-    } catch (err) { alert(t('print.prepareError', { error: (err as Error).message })) } finally { setPrinting(false) }
+      if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
+      else if (res.simulated) toast({ title: t('print.simInvoice') })
+    } catch (err) { toast({ title: t('print.prepareError', { error: (err as Error).message }), variant: 'destructive' }) } finally { setPrinting(false) }
   }
 
   /** Fiskalni storno računa (P1 audit točka 1) — storno račun + povračilo zaloge
@@ -1319,7 +1365,7 @@ function DashboardInner() {
     try {
       await api(`/api/tables/${t.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'FREE' }) })
       await load()
-    } catch (err) { alert((err as Error).message) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) }
   }
 
   /* ── Issue #3: QR meni po mizah ── */
@@ -1328,7 +1374,7 @@ function DashboardInner() {
     try {
       const d = await api<{ dataUrl: string; url: string; qrEnabled: boolean }>(`/api/tables/${t.id}/qr`)
       setQrData(d)
-    } catch (e) { alert((e as Error).message); setQrTable(null) } finally { setQrBusy(false) }
+    } catch (e) { toast({ title: (e as Error).message, variant: 'destructive' }); setQrTable(null) } finally { setQrBusy(false) }
   }
   async function qrAction(action: 'rotate' | 'toggle', enabled?: boolean) {
     if (!qrTable) return
@@ -1337,7 +1383,7 @@ function DashboardInner() {
       await api(`/api/tables/${qrTable.id}/qr`, { method: 'POST', body: JSON.stringify({ action, enabled }) })
       const d = await api<{ dataUrl: string; url: string; qrEnabled: boolean }>(`/api/tables/${qrTable.id}/qr`)
       setQrData(d)
-    } catch (e) { alert((e as Error).message) } finally { setQrBusy(false) }
+    } catch (e) { toast({ title: (e as Error).message, variant: 'destructive' }) } finally { setQrBusy(false) }
   }
 
   /* ── Issue #3: POS → customer display (CFD) push ── */
@@ -1356,8 +1402,8 @@ function DashboardInner() {
       employeeName: o.employee?.name || null,
       items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [] })),
     }, station))
-    if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
-    else if (res.simulated) alert(station === 'BAR' ? t('print.simBar') : t('print.simKitchen'))
+    if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
+    else if (res.simulated) toast(station === 'BAR' ? { title: t('print.simBar') } : { title: t('print.simKitchen') })
   }
 
   async function toggleAvailable(m: MenuT) {
@@ -1393,7 +1439,7 @@ function DashboardInner() {
         }
         return
       }
-      alert(msg)
+      toast({ title: msg, variant: 'destructive' })
     } finally { setSending(false) }
   }
 
@@ -1428,7 +1474,7 @@ function DashboardInner() {
     try {
       await api('/api/reservations', { method: 'PATCH', body: JSON.stringify({ id, status }) })
       await load()
-    } catch (err) { alert((err as Error).message) } finally { setSending(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setSending(false) }
   }
 
   /** Triage ⑧ — lokacije: shrani (POST nova / PATCH urejanje) */
@@ -1451,7 +1497,7 @@ function DashboardInner() {
     try {
       await api(`/api/locations/${l.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !l.isActive }) })
       await load()
-    } catch (err) { alert(`${t('common.error')}: ${(err as Error).message}`) }
+    } catch (err) { toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' }) }
   }
 
   /* ── Employee Control Center akcije ── */
@@ -1499,18 +1545,27 @@ function DashboardInner() {
       const lines = Object.entries(cart).map(([id, qty]) => {
         const m = menu.find((x) => x.id === id)
         const price = (m?.price || 0) * qty
-        return { name: m?.name || id, qty, price }
+        return { name: m?.name || id, qty, price, vatRate: Number(m?.vatRate) || 22 }
       })
-      const subtotal = lines.reduce((s, l) => s + l.price, 0)
-      const tax = Math.round(subtotal * 0.22 * 100) / 100
+      // Naloga #6: prikazane cene so končne → DDV se izvleče po stopnji posameznega artikla
+      const gross = lines.reduce((s, l) => s + l.price, 0)
+      const byRate = new Map<number, { rate: number; amount: number }>()
+      let netTotal = 0
+      for (const l of lines) {
+        const vat = vatFromGross(l.price, l.vatRate)
+        netTotal += l.price - vat
+        const cur = byRate.get(l.vatRate) || { rate: l.vatRate, amount: 0 }
+        cur.amount = r2v(cur.amount + vat)
+        byRate.set(l.vatRate, cur)
+      }
       void pushDisplay({
         state: lines.length ? 'ordering' : 'idle',
         tableName: newOrderTable.name,
-        lines,
-        subtotal: Math.round((subtotal - tax) * 100) / 100,
-        tax,
-        vatBreakdown: lines.length ? [{ rate: 22, amount: tax }] : [],
-        total: subtotal,
+        lines: lines.map(({ vatRate: _r, ...rest }) => rest),
+        subtotal: r2v(netTotal),
+        tax: r2v(gross - netTotal),
+        vatBreakdown: [...byRate.values()].filter((v) => v.amount > 0),
+        total: r2v(gross),
       })
     }, 800)
     return () => clearTimeout(t)
@@ -1574,6 +1629,7 @@ function DashboardInner() {
   const [saleCat, setSaleCat] = useState('ALL')
   const [saleSearch, setSaleSearch] = useState('')
   const [saleSending, setSaleSending] = useState(false)
+  const [saleErr, setSaleErr] = useState('')
 
   const kdsMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
   // OPS-11 val 1: red escalation is per station — threshold = max(10, ceil(target×1.25));
@@ -1636,7 +1692,7 @@ function DashboardInner() {
     try {
       await api(`/api/menus/${mi.id}/availability`, { method: 'PATCH', body: JSON.stringify({ available: !mi.available }) })
       await load()
-    } catch (err) { alert((err as Error).message) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) }
   }
 
   // P0-3 (v1.83.0) — 86 PLOŠČA (Toast/Square vzorec): proaktivni 86 katerega koli artikla,
@@ -1711,6 +1767,15 @@ function DashboardInner() {
   async function submitSale() {
     const items = Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
     if (items.length === 0) return
+    // Naloga #7: lokacija je obvezen parameter CREATE (requireUserLocation). Osebje
+    // jo ima v seji; centralna vloga brez sejske lokacije jo mora izbrati v glavi.
+    // Preverimo PRED oddajo — strežnikova 400 se je doslej pokazala kot blokirni
+    // window.alert šele po kliku, ko je gost že čakal.
+    if (locList.length > 0 && isCentralUIRole(user?.role) && !user?.locationId && !viewLoc) {
+      setSaleErr(t('sale.noLocation'))
+      return
+    }
+    setSaleErr('')
     setSaleSending(true)
     try {
       const j = await api<{ order: { id: string } }>('/api/orders', {
@@ -1726,7 +1791,7 @@ function DashboardInner() {
       const created = fresh.orders.find((x) => x.id === j.order?.id)
       if (created) void openPayment(created)
     } catch (err) {
-      alert((err as Error).message)
+      setSaleErr((err as Error).message)
     } finally { setSaleSending(false) }
   }
   const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
@@ -1736,6 +1801,14 @@ function DashboardInner() {
 
   return (
     <main data-screen="dashboard" className="min-h-screen flex flex-col bg-stone-50">
+      {/* Naloga #11 (WCAG 2.4.1): 31 zavihkov + glava sta pred vsebino — tipkovnica
+          mora preskočiti na vsebino z enim Tab namesto z 40. */}
+      <a
+        href="#dash-vsebina"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-stone-900 focus:shadow-lg focus:outline focus:outline-2 focus:outline-emerald-700"
+      >
+        {t('a11y.skipToContent')}
+      </a>
       <header data-region="dashboard-header" className="sticky top-0 z-20 bg-white border-b border-stone-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -1814,7 +1887,7 @@ function DashboardInner() {
             <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label={t('header.commands')}>
               <Search className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={load} aria-label={t('common.refresh')}>
+            <Button variant="ghost" size="icon" onClick={() => void load()} aria-label={t('common.refresh')}>
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
             <span className="text-sm text-stone-600 hidden sm:block truncate max-w-40">{user?.name}</span>
@@ -1823,7 +1896,8 @@ function DashboardInner() {
         </div>
       </header>
 
-      <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+      <div id="dash-vsebina" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 outline-none">
+        <h1 className="sr-only">{t('dash.h1')}</h1>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div data-region="dashboard-nav" className="flex min-w-0 items-center gap-2">
             <TabsList data-region="dashboard-tabs" className="min-w-0 flex-1 justify-start overflow-hidden h-auto flex-nowrap bg-white border border-stone-200 p-1">
@@ -2260,6 +2334,11 @@ function DashboardInner() {
                   <Button className="w-full bg-emerald-700 hover:bg-emerald-800 min-h-12 text-base font-bold" disabled={saleSending} onClick={() => void submitSale()}>
                     {saleSending ? <Loader2 className="w-5 h-5 animate-spin" /> : t('sale.payNow')}
                   </Button>
+                  {saleErr && (
+                    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                      {saleErr}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -3022,16 +3101,16 @@ function DashboardInner() {
                     </Select>
                   </div>
                   <div className="flex items-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { savePrintConfig(pcfg); saveTerminalConfig({ mode: termMode }); alert(t('print.saved')) }}>{t('common.save')}</Button>
+                    <Button size="sm" variant="outline" onClick={() => { savePrintConfig(pcfg); saveTerminalConfig({ mode: termMode }); toast({ title: t('print.saved') }) }}>{t('common.save')}</Button>
                     <Button size="sm" variant="outline" className="gap-1" onClick={async () => {
                       const res = await printLines(t('print.testBtn'), [
                         { text: t('print.testLine1') },
                         { text: t('print.testLine2'), bold: true },
                         { text: new Date().toLocaleString('sl-SI') },
                       ])
-                      if (!res.ok) alert(t('print.failed', { error: res.error ?? '' }))
-                      else if (res.simulated) alert(t('print.simTest'))
-                      else alert(t('print.sent'))
+                      if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
+                      else if (res.simulated) toast({ title: t('print.simTest') })
+                      else toast({ title: t('print.sent') })
                     }}>
                       <Printer className="w-3.5 h-3.5" /> {t('print.testBtn')}
                     </Button>

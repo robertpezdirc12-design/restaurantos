@@ -268,12 +268,12 @@ describe('33-a POST /api/orders/[id]/merge', () => {
     const t1 = await seedTable('mg1a', 3413, locA, 'occupied')
     const src = await seedOrder('mg1src', { tableId: t1.id })
     const tgt = await seedOrder('mg1tgt')
-    // cilj: 1 postavka (10 €, DDV 2.20)
-    await seedItem(tgt.id, 'mg1t1', { price: 10, qty: 1, vatAmount: 2.2 })
-    await db.order.update({ where: { id: tgt.id }, data: { subtotal: 10, tax: 2.2, total: 12.2 } })
-    // vir: pending 2×5 € (DDV 2.20), fired 1×3 € (DDV 0.66), preklicana 99 € (ostane pri viru)
-    await seedItem(src.id, 'mg1s1', { price: 5, qty: 2, vatAmount: 2.2, status: 'pending' })
-    await seedItem(src.id, 'mg1s2', { price: 3, qty: 1, vatAmount: 0.66, status: 'fired' })
+    // cilj: 1 postavka (10,00 € KONČNA, 22 % → 8,20 neto + 1,80 DDV)
+    await seedItem(tgt.id, 'mg1t1', { price: 10, qty: 1, vatAmount: 1.8 })
+    await db.order.update({ where: { id: tgt.id }, data: { subtotal: 8.2, tax: 1.8, total: 10 } })
+    // vir: pending 2×5 € (10,00 končnih → DDV 1.80), fired 1×3 € (DDV 0.54), preklicana 99 € (ostane pri viru)
+    await seedItem(src.id, 'mg1s1', { price: 5, qty: 2, vatAmount: 1.8, status: 'pending' })
+    await seedItem(src.id, 'mg1s2', { price: 3, qty: 1, vatAmount: 0.54, status: 'fired' })
     await seedItem(src.id, 'mg1s3', { price: 99, qty: 1, vatAmount: 0, status: 'cancelled' })
 
     const res = await mergePOST(req(`/api/orders/${src.id}/merge`, t.waiter, 'POST', { targetOrderId: tgt.id }), { params: Promise.resolve({ id: src.id }) })
@@ -292,9 +292,9 @@ describe('33-a POST /api/orders/[id]/merge', () => {
 
     const tgtRow = await db.order.findUnique({ where: { id: tgt.id }, include: { OrderItem: true } })
     expect(tgtRow?.OrderItem.length).toBe(3)
-    expect(Number(tgtRow?.subtotal)).toBeCloseTo(23, 2)  // 10 + 10 + 3
-    expect(Number(tgtRow?.tax)).toBeCloseTo(5.06, 2)     // 2.2 + 2.2 + 0.66
-    expect(Number(tgtRow?.total)).toBeCloseTo(28.06, 2)
+    expect(Number(tgtRow?.subtotal)).toBeCloseTo(18.86, 2) // 23,00 končnih − 4,14 DDV
+    expect(Number(tgtRow?.tax)).toBeCloseTo(4.14, 2)       // 1.8 + 1.8 + 0.54
+    expect(Number(tgtRow?.total)).toBeCloseTo(23, 2)       // gost plača vsoto prikazanih cen
 
     // miza vira sproščena (vir je edino naročilo na njej)
     expect((await db.table.findUnique({ where: { id: t1.id } }))?.status).toBe('available')

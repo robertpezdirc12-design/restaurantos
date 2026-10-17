@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { api, fmtEUR } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
+import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -128,7 +129,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
         }),
       })
       setRecForm(null); setRecEdit(null); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setRecBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setRecBusy(false) }
   }
 
   async function deleteRecipe(menuItemId: string) {
@@ -136,7 +137,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     try {
       await api(`/api/recipes?menuItemId=${encodeURIComponent(menuItemId)}`, { method: 'DELETE' })
       await onReload()
-    } catch (err) { alert((err as Error).message) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) }
   }
 
   // OPS-9: recursive recipe line renderer — children indented with a sub-recipe badge,
@@ -162,7 +163,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     try {
       await api('/api/inventory', { method: 'POST', body: JSON.stringify({ name: ni.name, unit: ni.unit, qty: ni.qty, minQty: ni.minQty, cost: ni.cost }) })
       setAddItem(false); setNi({ name: '', unit: 'kg', qty: '', minQty: '', cost: '' }); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setNiBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setNiBusy(false) }
   }
   async function saveAdjust() {
     if (!adjust) return
@@ -170,7 +171,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     try {
       await api('/api/inventory', { method: 'PATCH', body: JSON.stringify({ id: adjust.id, delta: adj.delta, setQty: adj.setQty, minQty: adj.minQty, cost: adj.cost }) })
       setAdjust(null); setAdj({ delta: '', setQty: '', minQty: '', cost: '' }); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setAdjBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setAdjBusy(false) }
   }
   async function createSupplier() {
     if (!supForm) return
@@ -178,7 +179,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     try {
       await api('/api/suppliers', { method: 'POST', body: JSON.stringify(supForm) })
       setSupForm(null); await onReload()
-    } catch (err) { alert((err as Error).message) } finally { setSupBusy(false) }
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setSupBusy(false) }
   }
 
   // OPS-9: yield validity (empty = default 100; otherwise 1..100)

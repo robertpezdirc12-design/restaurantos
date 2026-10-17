@@ -412,8 +412,8 @@ describe('#37 — potrditev: SAMO kanonična seja te povezave', () => {
   const origFetch = globalThis.fetch
   const mkSession = (id: string, link: { id: string; orderId: string }, extra: Record<string, unknown> = {}) => ({
     id, object: 'checkout.session', status: 'complete', mode: 'payment', payment_status: 'paid',
-    payment_intent: `pi_${id}`, amount_total: 2483, currency: 'eur', client_reference_id: link.id,
-    metadata: { payLinkId: link.id, orderId: link.orderId, locationId: locA, expectedAmountCents: '2483', currency: 'eur' },
+    payment_intent: `pi_${id}`, amount_total: 2076, currency: 'eur', client_reference_id: link.id,
+    metadata: { payLinkId: link.id, orderId: link.orderId, locationId: locA, expectedAmountCents: '2076', currency: 'eur' },
     ...extra,
   })
 
@@ -427,7 +427,7 @@ describe('#37 — potrditev: SAMO kanonična seja te povezave', () => {
     try {
       const oid = await mkOrder()
       const link = await mkLink(oid)
-      await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_canon_A' } })
+      await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26, sessionId: 'cs_canon_A' } })
       const res = await publicPayPOST(req(`/api/public/pay/${link.token}`, '', 'POST', { verifySession: 'cs_foreign_paid' }), { params: Promise.resolve({ token: link.token }) })
       expect(res.status).toBe(409)
       const d = (await res.json()) as { error: string }
@@ -445,14 +445,14 @@ describe('#37 — potrditev: SAMO kanonična seja te povezave', () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_37'
     const oid = await mkOrder()
     const link = await mkLink(oid)
-    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_m1' } })
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26, sessionId: 'cs_m1' } })
     const cases: [string, Record<string, unknown>][] = [
-      ['cs_m1', { metadata: { payLinkId: `other-${RUN}`, orderId: oid, locationId: locA, expectedAmountCents: '2483' } }],
-      ['cs_m1', { metadata: { payLinkId: link.id, orderId: `other-${RUN}`, locationId: locA, expectedAmountCents: '2483' } }],
-      ['cs_m1', { currency: 'usd', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483' } }],
-      ['cs_m1', { mode: 'subscription', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483' } }],
-      ['cs_m1', { status: 'expired', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483' } }],
-      ['cs_m1', { id: 'cs_NOT_echo', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483' } }],
+      ['cs_m1', { metadata: { payLinkId: `other-${RUN}`, orderId: oid, locationId: locA, expectedAmountCents: '2076' } }],
+      ['cs_m1', { metadata: { payLinkId: link.id, orderId: `other-${RUN}`, locationId: locA, expectedAmountCents: '2076' } }],
+      ['cs_m1', { currency: 'usd', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076' } }],
+      ['cs_m1', { mode: 'subscription', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076' } }],
+      ['cs_m1', { status: 'expired', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076' } }],
+      ['cs_m1', { id: 'cs_NOT_echo', metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076' } }],
     ]
     try {
       for (let i = 0; i < cases.length; i++) {
@@ -474,7 +474,7 @@ describe('#37 — potrditev: SAMO kanonična seja te povezave', () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_37'
     const oid = await mkOrder()
     const link = await mkLink(oid)
-    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26 } }) // sessionId NULL
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26 } }) // sessionId NULL
     let stripeCalls = 0
     globalThis.fetch = (async () => {
       stripeCalls++
@@ -511,7 +511,7 @@ describe('#37 — ustvarjanje: idempotenca, zamenjava, sočasnost', () => {
         return new Response(JSON.stringify({ id: `cs_reuse_${creates}`, url: `https://checkout.stripe.com/c/pay/cs_reuse_${creates}` }), { status: 200 })
       }
       if (url.includes('/checkout/sessions/cs_reuse_1')) {
-        return new Response(JSON.stringify(sess('cs_reuse_1', 'https://checkout.stripe.com/c/pay/cs_reuse_1', 'open', 2483)), { status: 200 })
+        return new Response(JSON.stringify(sess('cs_reuse_1', 'https://checkout.stripe.com/c/pay/cs_reuse_1', 'open', 2076)), { status: 200 })
       }
       return new Response('{}', { status: 200 })
     }) as typeof fetch
@@ -555,8 +555,8 @@ describe('#37 — ustvarjanje: idempotenca, zamenjava, sočasnost', () => {
       if (url.includes('/checkout/sessions/cs_swap_1')) {
         return new Response(JSON.stringify({
           id: 'cs_swap_1', status: 'open', mode: 'payment', payment_status: 'unpaid',
-          amount_total: 2483, currency: 'eur', url: sessions['cs_swap_1'],
-          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483' },
+          amount_total: 2076, currency: 'eur', url: sessions['cs_swap_1'],
+          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076' },
         }), { status: 200 })
       }
       return new Response('{}', { status: 200 })
@@ -605,8 +605,8 @@ describe('#37 — ustvarjanje: idempotenca, zamenjava, sočasnost', () => {
       if (m && sessData[m[1]]) {
         return new Response(JSON.stringify({
           id: m[1], status: 'open', mode: 'payment', payment_status: 'unpaid',
-          amount_total: 2483, currency: 'eur', url: sessData[m[1]],
-          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483' },
+          amount_total: 2076, currency: 'eur', url: sessData[m[1]],
+          metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076' },
         }), { status: 200 })
       }
       return new Response('{}', { status: 200 })
@@ -639,12 +639,12 @@ describe('#37 — poravnava: EN finančni učinek (CAS + plkset idempotenca)', (
     process.env.STRIPE_SECRET_KEY = 'sk_test_37'
     const oid = await mkOrder()
     const link = await mkLink(oid)
-    await db.payLink.update({ where: { token: link.token }, data: { amount: 22.57, tip: 2.26, sessionId: 'cs_dbl' } })
+    await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26, sessionId: 'cs_dbl' } })
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({
         id: 'cs_dbl', status: 'complete', mode: 'payment', payment_status: 'paid',
-        payment_intent: 'pi_dbl', amount_total: 2483, currency: 'eur', client_reference_id: link.id,
-        metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2483', currency: 'eur' },
+        payment_intent: 'pi_dbl', amount_total: 2076, currency: 'eur', client_reference_id: link.id,
+        metadata: { payLinkId: link.id, orderId: oid, locationId: locA, expectedAmountCents: '2076', currency: 'eur' },
       }), { status: 200 })) as typeof fetch
     try {
       const r1 = await publicPayPOST(req(`/api/public/pay/${link.token}`, '', 'POST', { verifySession: 'cs_dbl' }), { params: Promise.resolve({ token: link.token }) })

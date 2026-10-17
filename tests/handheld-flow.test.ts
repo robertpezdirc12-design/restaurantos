@@ -181,7 +181,7 @@ describe('handheld tok — zlata pot WAITER (mize → naroči → dodaj → fire
     expect(items.find((it) => it.menuItemId === item5)?.quantity).toBe(2)
     const ord = await db.order.findUnique({ where: { id: orderId } })
     expect(ord?.splitCount).toBe(3) // gostje se v DB shranijo kot splitCount (mapOrder → guests)
-    expect(ord?.subtotal.toNumber ? ord.subtotal.toNumber() : Number(ord?.subtotal)).toBe(13.5)
+    expect(ord?.subtotal.toNumber ? ord.subtotal.toNumber() : Number(ord?.subtotal)).toBe(11.07) // NETO osnova (13,50 končnih − 2,43 DDV)
   })
 
   test('2. replay z istim clientOperationId → isti id, replayed, brez duplikatov (offline vrsta)', async () => {
@@ -206,7 +206,7 @@ describe('handheld tok — zlata pot WAITER (mize → naroči → dodaj → fire
     expect(res.status).toBe(200)
     expect(await db.orderItem.count({ where: { orderId } })).toBe(3) // +1 vrstica (brez združevanja)
     const ord = await db.order.findUnique({ where: { id: orderId } })
-    expect(Number(ord?.subtotal)).toBe(18.5)
+    expect(Number(ord?.subtotal)).toBe(15.17) // 18,50 končnih − 3,33 DDV
   })
 
   test('4. POST fire → vse pending postavke fired, order.firedAt, revizija ORDER_FIRED', async () => {
@@ -238,9 +238,9 @@ describe('handheld tok — zlata pot WAITER (mize → naroči → dodaj → fire
     const res = await billGET(req(`/api/orders/${orderId}/bill`, tokenWaiterA), { params: Promise.resolve({ id: orderId }) })
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.bill.subtotal).toBe(18.5) // cene artiklov so neto (brez DDV)
-    expect(body.bill.tax).toBe(4.07) // 18,50 × 22 %
-    expect(body.bill.totalDue).toBe(22.57) // subtotal + DDV — kanonično iz strežnika
+    expect(body.bill.subtotal).toBe(15.17) // NETO osnova — cena artiklov je KONČNA (z DDV)
+    expect(body.bill.tax).toBe(3.33) // DDV, izvlečen iz 18,50 (1,80 + 0,63 + 0,90)
+    expect(body.bill.totalDue).toBe(18.5) // = vsota prikazanih cen — gost plača točno toliko
     expect(body.order.id).toBe(orderId)
   })
 
@@ -261,9 +261,9 @@ describe('handheld tok — zlata pot WAITER (mize → naroči → dodaj → fire
     expect(ord?.paidAt).not.toBeNull()
     // zneski zaključka živijo na Računu (fiskalni dokument), ne na Order
     const receipt = await db.receipt.findFirst({ where: { orderId }, orderBy: { createdAt: 'desc' } })
-    expect(Number(receipt?.total)).toBe(22.57)
+    expect(Number(receipt?.total)).toBe(18.5) // = vsota prikazanih cen (DDV je že v ceni)
     expect(Number(receipt?.tip)).toBe(1.5)
-    expect(Number(receipt?.totalWithTip)).toBe(24.07)
+    expect(Number(receipt?.totalWithTip)).toBe(20)
 
     const tbl = await db.table.findUnique({ where: { id: table1 } })
     expect(tbl?.status).toBe('cleaning') // samodejni prehod po plačilu (DIRTY v UI)

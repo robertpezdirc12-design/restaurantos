@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { num, r2 } from '@/lib/map'
-import { computeBill, BillItem } from '@/lib/billing'
+import { computeBill, splitVat, BillItem } from '@/lib/billing'
 
 /**
  * Issue #1 §6 — kanonični predogled računa pred plačilom (isti izračun kot FURS zaključek):
@@ -56,8 +56,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       categoryId: it.MenuItem?.categoryId || null,
       voided: it.voided,
     }))
-  const subtotal = r2(items.reduce((s, it) => s + it.unitPrice * it.quantity, 0))
-  const tax = r2(items.reduce((s, it) => s + it.vatAmount, 0))
+  // Naloga #6: cena na postavki je KONČNA (z DDV), zato je subtotal NETO osnova
+  // (line − izvlečeni DDV). grossTotal = subtotal + tax = vsota prikazanih cen.
+  const split = splitVat(items, (it) => it.unitPrice * it.quantity, (it) => it.vatAmount)
+  const subtotal = split.net
+  const tax = split.vat
 
   const bill = computeBill({
     items,
@@ -83,14 +86,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const itemChecks = new Map(order.OrderItem.filter((it) => !it.voided).map((it) => [it.id, it.checkId ?? null]))
     const scopeItems = items.filter((it) => (itemChecks.get(it.id) ?? null) === target.id)
     if (scopeItems.length === 0) return fail('Izstavek ne vsebuje plačljivih postavk.', 400)
-    const sSub = r2(scopeItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0))
-    const sTax = r2(scopeItems.reduce((s, it) => s + it.vatAmount, 0))
+    const sSplit = splitVat(scopeItems, (it) => it.unitPrice * it.quantity, (it) => it.vatAmount)
+    const sSub = sSplit.net
+    const sTax = sSplit.vat
+    const sGross = sSplit.gross
     const unpaidOthers = checks.filter((c) => c.id !== target.id && c.paymentStatus !== 'paid').length
     let sDiscount: number
     if (unpaidOthers === 0) {
       sDiscount = r2(Math.max(0, bill.discountTotal))
     } else {
-      sDiscount = r2(Math.min(r2(bill.discountTotal * (sSub / Math.max(0.01, bill.subtotal))), sSub + sTax))
+      // razmerje na bruto osnovi — popust je odštet od končnih cen
+      sDiscount = r2(Math.min(r2(bill.discountTotal * (sGross / Math.max(0.01, bill.grossTotal))), sGross))
     }
     checkBill = computeBill({
       items: scopeItems,
@@ -107,13 +113,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     checkBill = {
       ...checkBill,
       discountTotal: sDiscount,
-      totalDue: r2(Math.max(0, sSub + sTax - sDiscount)),
+      totalDue: r2(Math.max(0, sGross - sDiscount)),
       loyalty: {
         enabled: location.loyaltyEnabled,
         pointsPerEuro: Math.max(0, Math.floor(location.loyaltyPointsPerEuro || 0)),
         pointsValue: num(location.loyaltyPointsValue, 0.01),
         maxRedeemablePoints: location.loyaltyEnabled
-          ? Math.floor(r2(Math.max(0, sSub + sTax - sDiscount)) / Math.max(0.01, num(location.loyaltyPointsValue, 0.01)))
+          ? Math.floor(r2(Math.max(0, sGross - sDiscount)) / Math.max(0.01, num(location.loyaltyPointsValue, 0.01)))
           : 0,
       },
     }
