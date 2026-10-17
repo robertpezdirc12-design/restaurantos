@@ -11,8 +11,12 @@ import { sendReminder } from '@/lib/reminders'
  *
  * POST /api/reservations/reminders  body: {hoursBefore?: number (privzeto 24)}
  *  - perm `reservations.manage`
- *  - najde NEplačane prihajajoče rezervacije v oknu [zdaj, zdaj + hoursBefore],
- *    ki še nimajo opomnika (reminderSent=false), in jih pošlje (e-mail/SMS, fail-soft per rezervacija)
+ *  - najde PRIHAJAJOČE rezervacije v oknu [zdaj, zdaj + hoursBefore], ki še nimajo
+ *    opomnika (reminderSent=false), in jih pošlje (e-mail/SMS, fail-soft per rezervacija)
+ *  - statusovni filter je SAMO `confirmed`: `ReservationStatus` (prisma/schema.prisma)
+ *    pozna confirmed|seated|completed|cancelled|no_show — 'pending' NE obstaja in ga
+ *    Postgres zavrne; 'seated' je brez veze (gost je že pri mizi). `tests/schema-enum-literals.test.ts`
+ *    to prepreči vrniti, ker SQLite enumov ne validira.
  *  - vrne poročilo (poslanih/napak/prezrtih brez kontaktov)
  *  - namenjen gumbu "Pošlji vse opomnike" + prihodnjemu cronu
  */
@@ -29,7 +33,7 @@ export async function POST(req: NextRequest) {
     where: {
       dateTime: { gte: now, lte: until },
       reminderSent: false,
-      status: { in: ['confirmed', 'pending'] },
+      status: 'confirmed',
     },
     orderBy: { dateTime: 'asc' },
     take: 50,

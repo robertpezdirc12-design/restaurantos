@@ -26,7 +26,7 @@
  *   (vse vrednosti ≤ 100 = odstotki) se NE stisne v zgornji levi kot;
  *   px nabor (seed 40..400) se deli s 440×380; mize brez pozicije → avto-mreža;
  *   source-pin: dashboard uporablja skupno preslikavo + persist v enoti nabora.
- *  §R REGISTRI: 'i70-' v TEST_PREFIXES; APP_VERSION 1.121.0; 0 DDL (posX/posY
+ *  §R REGISTRI: 'i70-' v TEST_PREFIXES; APP_VERSION 1.129.0; 0 DDL (posX/posY
  *   že obstajata v shemi — patch je čisto v preslikavi).
  *
  * Fiksture s predpono `i70-`. Read-only narava produkcije je spoštovana:
@@ -477,8 +477,8 @@ describe('§4 Tloris — detekcija enote nabora pozicij', () => {
 // ═══ §R — registri ═══
 
 describe('§R Registri — verzija / sweep predpona', () => {
-  it('APP_VERSION je 1.126.0', () => {
-    expect(APP_VERSION).toBe('1.128.0')
+  it('APP_VERSION je 1.129.0', () => {
+    expect(APP_VERSION).toBe('1.129.0')
   })
 
   it("TEST_PREFIXES vsebuje 'i70-'", () => {
