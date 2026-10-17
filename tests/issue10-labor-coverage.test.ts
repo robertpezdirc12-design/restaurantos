@@ -1322,7 +1322,7 @@ describe('G. registri: TEST_PREFIXES, verzija, reasons enum, 0 DDL', () => {
 
   it('G2. APP_VERSION === 1.126.0', () => {
     // verzijski register posodablja vsak val — zadnji: v1.125.0 (issue #4 — e-računi SI/HR)
-    expect(APP_VERSION).toBe('1.127.0')
+    expect(APP_VERSION).toBe('1.128.0')
   })
 
   it('G3. dataQuality.reasons so stabilen nabor kod (UI preslika lcov.dq.*)', () => {

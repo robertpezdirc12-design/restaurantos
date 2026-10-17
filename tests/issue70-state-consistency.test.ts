@@ -478,7 +478,7 @@ describe('§4 Tloris — detekcija enote nabora pozicij', () => {
 
 describe('§R Registri — verzija / sweep predpona', () => {
   it('APP_VERSION je 1.126.0', () => {
-    expect(APP_VERSION).toBe('1.127.0')
+    expect(APP_VERSION).toBe('1.128.0')
   })
 
   it("TEST_PREFIXES vsebuje 'i70-'", () => {

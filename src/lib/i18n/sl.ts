@@ -2003,6 +2003,11 @@ export const sl: Record<string, string> = {
   'sale.cartEmptyHint': 'Tapni artikel, da ga dodaš.',
   'sale.clearCart': 'Izprazni',
   'sale.noLocation': 'Izberite lokacijo v preklopniku zgoraj — brez lokacije računa ni mogoče izdati.',
+  // v1.128.0 — mobilna vrstica + list košare (Square/Toast vzorec)
+  'sale.pay': 'Plačaj',
+  'sale.openCart': 'Odpri košaro',
+  'sale.inCart': 'v košari',
+  'sale.drawerDesc': 'Pregled in urejanje izbranih artiklov pred plačilom.',
   // Plačilni dialog (dopolnitve)
   'payment.gcMinChars': 'Vpišite vsaj zadnjih 6 znakov številke kartice.',
   'payment.partGcRequired': 'Del {n}: izberite darilno kartico.',

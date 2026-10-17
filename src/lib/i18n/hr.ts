@@ -2003,6 +2003,11 @@ export const hr: Record<string, string> = {
   'sale.cartEmptyHint': 'Dodirni artikl da ga dodaš.',
   'sale.clearCart': 'Isprazni',
   'sale.noLocation': 'Odaberite lokaciju na preklopniku gore — bez lokacije računa nije moguće izdati.',
+  // v1.128.0 — mobilna traka + list košarice (Square/Toast obrazac)
+  'sale.pay': 'Plaćaj',
+  'sale.openCart': 'Otvori košaricu',
+  'sale.inCart': 'u košarici',
+  'sale.drawerDesc': 'Pregled i uređivanje odabranih artikala prije plaćanja.',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',
   'payment.partGcRequired': 'Dio {n}: odaberite poklon karticu.',

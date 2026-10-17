@@ -22,6 +22,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import {
+  Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger,
+} from '@/components/ui/drawer'
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
@@ -85,7 +88,7 @@ import { ManagerCallButton } from '@/components/manager-call-dialog'
    (component lives in src/components/ — outside the i18n scan family). */
 import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type KdsStationStatT } from '@/components/kds-station-board'
 import { stationViewKey } from '@/lib/kds-station-routing'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -1631,6 +1634,10 @@ function DashboardInner() {
   const [saleSearch, setSaleSearch] = useState('')
   const [saleSending, setSaleSending] = useState(false)
   const [saleErr, setSaleErr] = useState('')
+  // v1.128.0 — list košare (bottom sheet) za mobilni tok: artikli gredo V KOŠARICO,
+  // ne vsebina, ki se nabira pod mrežo (Square/Toast vzorec vrstice + lista)
+  const [saleCartOpen, setSaleCartOpen] = useState(false)
+  const saleIsMobile = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
 
   const kdsMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
   // OPS-11 val 1: red escalation is per station — threshold = max(10, ceil(target×1.25));
@@ -1776,6 +1783,8 @@ function DashboardInner() {
     // window.alert šele po kliku, ko je gost že čakal.
     if (locList.length > 0 && isCentralUIRole(user?.role) && !user?.locationId && !viewLoc) {
       setSaleErr(t('sale.noLocation'))
+      // v1.128.0: napaka mora biti VIDNA — na mobilnem odpri list košare (in s tem sporočilo)
+      if (saleIsMobile()) setSaleCartOpen(true)
       return
     }
     setSaleErr('')
@@ -1788,6 +1797,8 @@ function DashboardInner() {
         body: JSON.stringify({ items, type: 'TAKEOUT', guests: 1, clientOperationId: newOperationId(), locationId: viewLoc || undefined }),
       })
       setSaleCart({})
+      // v1.128.0: uspešno plačilo zapre list košare (odpre se plačilni dialog naročila)
+      setSaleCartOpen(false)
       const fresh = await api<{ orders: OrderT[] }>('/api/orders')
       setOrders(fresh.orders)
       await load()
@@ -1795,6 +1806,8 @@ function DashboardInner() {
       if (created) void openPayment(created)
     } catch (err) {
       setSaleErr((err as Error).message)
+      // v1.128.0: napaka iz plačila v vrstici → odpri list, da je sporočilo vidno
+      if (saleIsMobile()) setSaleCartOpen(true)
     } finally { setSaleSending(false) }
   }
   const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
@@ -2303,13 +2316,18 @@ function DashboardInner() {
 
           <TabsContent value="prodaja" className="space-y-4">
             {/* OPS-4 v1.67.0 — Hitra prodaja (sank): izbira -> kosarica -> racun (FURS) */}
-            {/* Vizualni benchmark Toast/Square (2026-10): čipi kategorij (en dotik, namesto
-                spustnega menija), trajna desna košara na namizju (lepljiva vsota + pritrjen
-                gumb Plačaj — mreža izbire nikoli pokrita), boljša tipografija cen.
-                Mobilni pogled ohranja lepljivo spodnjo kartico (nespremenjen tok). */}
-            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start lg:gap-4">
+            {/* v1.127.0 (vizualni benchmark Toast/Square): čipi kategorij (en dotik),
+                trajna desna košara z lepljivo vsoto, krepka tipografija cen. */}
+            {/* v1.128.0 — POPRAVEK »artikli gredo v košaro, ne spodaj« (Square/Toast vzorec):
+                • ZAHTA: klik na artikel mora biti VIDEN — prej je spodnja kartica (position:sticky
+                  v staršu brez višine) ostala na dnu DOKUMENTA, pod mrežo, izven zaslona.
+                • ≥md (tablica/namizje): desna košara že od 768px (prej šele 1024px).
+                • <md: FIKSNA vrstica košare (en same višina — mreža NIKOLI pokrita, spodnja
+                  razdalja pb-20 drsi čez njo) + list košare (bottom sheet) s postavkami;
+                  značka količine na ploščici artikla = takojšen povratni signal vnosa. */}
+            <div className="md:grid md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-4 lg:grid-cols-[minmax(0,1fr)_21rem]">
               {/* LEVO: iskanje + čipi kategorij + mreža izbire */}
-              <div className="min-w-0 space-y-3">
+              <div className="min-w-0 space-y-3 pb-20 md:pb-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-10 w-full sm:w-56" aria-label={t('sale.search')} />
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('sale.allCat')}>
@@ -2324,21 +2342,34 @@ function DashboardInner() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
-                  {saleItems.map((mi) => (
-                    <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
-                      className={`flex min-h-[4.5rem] flex-col rounded-xl border p-3 text-left transition ${mi.available ? 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md active:scale-[0.98]' : 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-60'}`}>
-                      <p className="min-w-0 text-sm font-semibold leading-tight">{mi.name}</p>
-                      <p className="mt-auto self-end pt-1 text-sm font-bold tabular-nums text-stone-900">{fmtEUR(mi.price)}</p>
-                      {!mi.available && <Badge variant="outline" className="mt-1 self-start text-[10px]">86</Badge>}
-                    </button>
-                  ))}
+                  {saleItems.map((mi) => {
+                    const inCart = saleCart[mi.id] || 0
+                    return (
+                      <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
+                        aria-label={`${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}`}
+                        className={`relative flex min-h-[4.5rem] flex-col rounded-xl border p-3 text-left transition ${mi.available
+                          ? inCart > 0
+                            ? 'border-emerald-600 bg-emerald-50/60 hover:border-emerald-600 hover:shadow-md active:scale-[0.98]'
+                            : 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md active:scale-[0.98]'
+                          : 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-60'}`}>
+                        {inCart > 0 && (
+                          <span key={inCart} aria-hidden="true" className="absolute right-1.5 top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-700 px-1.5 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
+                            {inCart}×
+                          </span>
+                        )}
+                        <p className={`min-w-0 text-sm font-semibold leading-tight ${inCart > 0 ? 'pr-7' : ''}`}>{mi.name}</p>
+                        <p className="mt-auto self-end pt-1 text-sm font-bold tabular-nums text-stone-900">{fmtEUR(mi.price)}</p>
+                        {!mi.available && <Badge variant="outline" className="mt-1 self-start text-[10px]">86</Badge>}
+                      </button>
+                    )
+                  })}
                 </div>
                 {saleItems.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
               </div>
 
-              {/* DESNO (namizni ≥lg): trajna košara — Toast/Square vzorec »right rail«:
+              {/* DESNO (≥md, tablica/namizje): trajna košara — Toast/Square vzorec »right rail«:
                   glava s števcem, drsni seznam postavk, vsota + Plačaj VEDNO pritrjena spodaj */}
-              <aside className="hidden lg:block" aria-label={t('sale.cartTitle')}>
+              <aside className="hidden md:block" aria-label={t('sale.cartTitle')}>
                 <Card className="sticky top-20 flex max-h-[calc(100vh-6.25rem)] flex-col shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center justify-between gap-2 text-base">
@@ -2370,7 +2401,7 @@ function DashboardInner() {
                             <span className="min-w-0 flex-1 truncate">{qty}× {mi.name}</span>
                             <Button size="sm" variant="outline" className="h-7 w-7 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                             <Button size="sm" variant="outline" className="h-7 w-7 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
-                            <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
+                            <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
                           </div>
                         )
                       })
@@ -2394,27 +2425,82 @@ function DashboardInner() {
               </aside>
             </div>
 
-            {/* MOBILNI (<lg): lepljiva spodnja kartica košare — obstoječi tok (mreža ostane nad njo) */}
-            <div className="lg:hidden">
-              {saleCartCount > 0 && (
-                <Card className="sticky bottom-4 shadow-lg">
-                  <CardContent className="space-y-2 p-4">
-                    {Object.entries(saleCart).map(([id, qty]) => {
-                      const mi = menu.find((x) => x.id === id)
-                      if (!mi) return null
-                      return (
-                        <div key={id} className="flex items-center gap-2 text-sm">
-                          <span className="flex-1 truncate">{qty}× {mi.name}</span>
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
-                          <span className="w-20 text-right font-medium tabular-nums">{fmtEUR(mi.price * qty)}</span>
-                        </div>
-                      )
-                    })}
-                    <div className="flex items-center justify-between border-t border-stone-200 pt-2 font-bold">
-                      <span>{t('sale.total')}</span><span className="tabular-nums">{fmtEUR(saleTotal)}</span>
+            {/* MOBILNI (<md) — v1.128.0 Square/Toast vzorec: FIKSNA vrstica košare (vedno
+                ena višina: ikona + števec, kosi in vsota, gumb Plačaj) + list košare
+                (bottom sheet) s postavkami. Klik na artikel → značka na ploščici + števec
+                vrstice POSKOČITA (košara JASNO prejme artikel); tap vrstice odpere list. */}
+            <div className="md:hidden">
+              <Drawer open={saleCartOpen} onOpenChange={setSaleCartOpen}>
+                {saleCartCount > 0 && (
+                  <div className="fixed inset-x-0 bottom-0 z-30 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+                    <div className="animate-in slide-in-from-bottom-4 duration-200 flex items-stretch gap-2 rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-stone-900/10">
+                      <DrawerTrigger asChild>
+                        <button type="button" className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-xl px-2 text-left active:bg-stone-100"
+                          aria-label={`${t('sale.openCart')} · ${saleCartCount}× · ${fmtEUR(saleTotal)}`}>
+                          <span className="relative shrink-0">
+                            <ShoppingCart className="h-6 w-6 text-emerald-700" aria-hidden />
+                            <span key={saleCartCount} className="absolute -right-2 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-[11px] font-bold tabular-nums text-white shadow animate-in zoom-in-75 duration-150">{saleCartCount}</span>
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-stone-500">{t('sale.cartTitle')} · {saleCartCount}×</span>
+                            <span className="block truncate text-lg font-bold leading-tight tabular-nums text-stone-900">{fmtEUR(saleTotal)}</span>
+                          </span>
+                          <ChevronUp className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                        </button>
+                      </DrawerTrigger>
+                      <Button className="h-12 shrink-0 gap-1.5 rounded-xl bg-emerald-700 px-4 text-sm font-bold hover:bg-emerald-800" disabled={saleSending} onClick={() => void submitSale()} aria-label={`${t('sale.pay')} ${fmtEUR(saleTotal)}`}>
+                        {saleSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" aria-hidden />}
+                        {t('sale.pay')}
+                      </Button>
                     </div>
-                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800" disabled={saleSending} onClick={() => void submitSale()}>
+                  </div>
+                )}
+                <DrawerContent className="max-h-[85vh]">
+                  <DrawerHeader className="pb-2">
+                    <DrawerTitle asChild>
+                      <div className="flex items-center justify-between gap-2 text-base font-semibold">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <ShoppingCart className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+                          {t('sale.cartTitle')}
+                          {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
+                        </span>
+                        {saleCartCount > 0 && (
+                          <Button size="sm" variant="ghost" className="h-9 w-9 shrink-0 p-0 text-stone-500 hover:text-red-700" onClick={() => setSaleCart({})} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </DrawerTitle>
+                    <DrawerDescription className="sr-only">{t('sale.drawerDesc')}</DrawerDescription>
+                  </DrawerHeader>
+                  <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-4 pb-2">
+                    {saleCartCount === 0 ? (
+                      <div className="flex min-h-32 flex-col items-center justify-center gap-1.5 py-6 text-center">
+                        <ShoppingCart className="h-8 w-8 text-stone-300" aria-hidden />
+                        <p className="text-sm font-medium text-stone-500">{t('sale.cartEmpty')}</p>
+                        <p className="text-xs text-stone-400">{t('sale.cartEmptyHint')}</p>
+                      </div>
+                    ) : (
+                      Object.entries(saleCart).map(([id, qty]) => {
+                        const mi = menu.find((x) => x.id === id)
+                        if (!mi) return null
+                        return (
+                          <div key={id} className="flex items-center gap-2 rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-2.5 text-sm">
+                            <span className="min-w-0 flex-1 truncate font-medium">{qty}× {mi.name}</span>
+                            <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                            <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                            <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                  <DrawerFooter className="gap-2 border-t border-stone-200 pt-3">
+                    <div className="flex items-center justify-between text-base font-bold">
+                      <span>{t('sale.total')}</span>
+                      <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
+                    </div>
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
                       {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
                     </Button>
                     {saleErr && (
@@ -2422,9 +2508,9 @@ function DashboardInner() {
                         {saleErr}
                       </p>
                     )}
-                  </CardContent>
-                </Card>
-              )}
+                  </DrawerFooter>
+                </DrawerContent>
+              </Drawer>
             </div>
           </TabsContent>
 
