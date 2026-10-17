@@ -67,20 +67,60 @@ export interface PushPayload {
   tag?: string
 }
 
+/**
+ * `EmployeeRole` iz prisma/schema.prisma. SQLite shema enumeratov nima (`role` je
+ * tam `String`), zato `bun test` in SQLite `tsc` ne preverita vrednosti; na
+ * Postgresu neveljaven člen vrže PrismaClientValidationError, kar v fire-and-forget
+ * dispatcherju pomeni TIHO izgubljen push. `tests/schema-enum-literals.test.ts`
+ * trdi, da je ta nabor ENAK členom enuma v produkcijski shemi.
+ */
+export const EMPLOYEE_ROLE_VALUES = [
+  'owner', 'admin', 'manager', 'staff', 'waiter', 'bar', 'chef', 'kitchen',
+  'group_owner', 'org_admin', 'property_manager', 'warehouse', 'accounting', 'cleaner',
+] as const
+
+export type EmployeeRoleName = (typeof EMPLOYEE_ROLE_VALUES)[number]
+
+interface EmployeeWhere {
+  locationId?: string
+  role?: { in: EmployeeRoleName[] }
+}
+
+export interface SubscriptionWhere {
+  isActive: true
+  employeeId?: { in: string[] }
+  Employee: EmployeeWhere
+}
+
+/**
+ * Filtriranje cilja za poizvedbo po naročbnah (skupno za pushNotify in
+ * managerCallDelivery — ista semantika, pred tem podvojena na dveh mestih).
+ * `null` = vloge so bile zahtevane, a po filtriranju ni ostala NOBENA veljavna:
+ * ne pošiljamo nikomur, namreč zaliti celotno lokacijo zaradi napake v matriki je
+ * slabša napaka kot izpuščen obvestilni krog.
+ */
+export function buildSubscriptionWhere(target: PushTarget): SubscriptionWhere | null {
+  const where: SubscriptionWhere = { isActive: true, Employee: {} }
+  if (target.employeeIds && target.employeeIds.length > 0) where.employeeId = { in: target.employeeIds }
+  if (target.locationId) where.Employee.locationId = target.locationId
+  const valid = (target.roles ?? []).filter(
+    (r): r is EmployeeRoleName => (EMPLOYEE_ROLE_VALUES as readonly string[]).includes(r),
+  )
+  if (valid.length > 0) where.Employee.role = { in: valid }
+  else if (target.roles && target.roles.length > 0) return null
+  return where
+}
+
 /** Pošlji push vsem ujemajočim aktivnim naročninam. Fire-and-forget (klicatelj ne čaka). */
 export async function pushNotify(payload: PushPayload, target: PushTarget = {}): Promise<void> {
   try {
     const cfg = await getVapidConfig()
     if (!cfg) return
     webpush.setVapidDetails(cfg.subject, cfg.publicKey, cfg.privateKey)
+    const where = buildSubscriptionWhere(target)
+    if (!where) return
     const subs = await db.pushSubscription.findMany({
-      where: {
-        isActive: true,
-        ...(target.employeeIds && target.employeeIds.length > 0 ? { employeeId: { in: target.employeeIds } } : {}),
-        ...(target.roles && target.roles.length > 0
-          ? { Employee: { role: { in: target.roles }, ...(target.locationId ? { locationId: target.locationId } : {}) } }
-          : { Employee: target.locationId ? { locationId: target.locationId } : {} }),
-      },
+      where,
       select: { id: true, endpoint: true, p256dhKey: true, authKey: true },
     })
     const json = JSON.stringify(payload)

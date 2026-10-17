@@ -23,7 +23,7 @@
 import { db } from '@/lib/db'
 import { jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
-import { pushEvent, resolvePushTargets, pushToEmployees } from '@/lib/push'
+import { pushEvent, resolvePushTargets, pushToEmployees, buildSubscriptionWhere } from '@/lib/push'
 import type { PushTarget } from '@/lib/push'
 import {
   MANAGER_CALL_TYPE_LABELS_SL,
@@ -97,15 +97,11 @@ export async function managerCallDelivery(target: PushTarget, eventType: 'MANAGE
   try {
     const resolved = await resolvePushTargets(eventType, target)
     if (!resolved) return { deliveryStatus: 'off', notifiedCount: 0 }
-    const subs = await db.pushSubscription.count({
-      where: {
-        isActive: true,
-        ...(resolved.employeeIds && resolved.employeeIds.length > 0 ? { employeeId: { in: resolved.employeeIds } } : {}),
-        ...(resolved.roles && resolved.roles.length > 0
-          ? { Employee: { role: { in: resolved.roles }, ...(resolved.locationId ? { locationId: resolved.locationId } : {}) } }
-          : { Employee: resolved.locationId ? { locationId: resolved.locationId } : {} }),
-      },
-    })
+    const where = buildSubscriptionWhere(resolved)
+    // null = zahtevane vloge nobena ni veljavna → ne poizvedujemo, a NIKOLI ne
+    // trdimo 'off' (matrika je vklopljena); uporabniku pošteno rečemo 'none'
+    if (!where) return { deliveryStatus: 'none', notifiedCount: 0 }
+    const subs = await db.pushSubscription.count({ where })
     return subs > 0 ? { deliveryStatus: 'sent', notifiedCount: subs } : { deliveryStatus: 'none', notifiedCount: 0 }
   } catch {
     return { deliveryStatus: 'none', notifiedCount: 0 }

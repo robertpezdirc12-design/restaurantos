@@ -1,5 +1,5 @@
 /**
- * REGISTRA: v1.129.0
+ * REGISTRA: v1.129.0, razširjeno v1.130.0
  *
  * SQLite shema ne pozna enumeratov (`Reservation.status` je tam `String`), zato
  * `bun test` ne more videti neveljavne vrednosti enuma; na Postgresu Prisma tak
@@ -16,12 +16,14 @@
  * NI POKRITO (zavestno, da ne proizvede lažnih pozitivov, ki bi blokiral CI):
  *  - gnezdene filtre relacij (`where: { items: { some: { status: ... } } }`) —
  *    tam modela ne poznamo brez tipiziranega AST-ja;
- *  - `Prisma.<Enum>_enum.VREDNOST` in spremenljivke — slednje so statistično
- *    tipizirane, zato jih ne razčlenjujemo.
+ *  - `Prisma.<Enum>_enum.VREDNOST` in spremenljivke — slednjih sweeper ne
+ *    razčlenjuje; luknja je zdaj delno zamašena drugače (v1.130.0): koda sme
+ *    imeti lasten nabor SAMO za `EmployeeRole`, enakega preveri drugi blok spodaj.
  */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { EMPLOYEE_ROLE_VALUES, buildSubscriptionWhere } from '@/lib/push'
 
 const ROOT = join(import.meta.dir, '..')
 const SRC = join(ROOT, 'src')
@@ -266,7 +268,7 @@ const models = parseModelFields(schemaText, enums)
 const hits = findHits(models)
 const report = () => hits.map((h) => `src/${h.file}:${h.line} db.${h.model}.${h.field} = '${h.value}' (dovoljeni: ${h.allowed.join('|')})`)
 
-/* ── 4 testi ─────────────────────────────────────────────────────────── */
+/* ── 4 testi: literali v db.<model>.<metoda> klicih ──────────────────── */
 
 describe('schema enum literal guard (SQLite ne validira enumeratov)', () => {
   test('razčlenjevalnik vidi ReservationStatus in Reservation.status kot enum polje', () => {
@@ -300,5 +302,48 @@ describe('schema enum literal guard (SQLite ne validira enumeratov)', () => {
 
   test('rezervacijski opomniki smejo biti samo za status, ki ga enum pozna', () => {
     expect(hits.filter((h) => h.model === 'reservation' && h.field === 'status')).toEqual([])
+  })
+})
+
+/* ── 5. REGISTRA v1.130.0: nabori, ki jih KODA deklarira sama ─────────── */
+
+/**
+ * Prejšnji štirje testi ujamejo literale v `db.<model>.<metoda>` klicih. Ostane
+ * ena luknja: vrednosti, ki zlezejo v `string[]` spremenljivko in potem v filter
+ * (`role: { in: target.roles }`). SQLite klient tega ne vidi, na Postgresu pa
+ * Prisma neveljaven član zavrne — celoten push tiho pade v `try/catch`.
+ *
+ * Zato koda samega enuma NE citira iz spomina: `EMPLOYEE_ROLE_VALUES` mora biti
+ * enak členom `enum EmployeeRole`, `buildSubscriptionWhere` pa pred poizvedbo
+ * zavrže vse, ki jih shema ne pozna.
+ */
+describe('enum nabor, ki ga deklarira koda (push vloge)', () => {
+  test('EMPLOYEE_ROLE_VALUES je natanko enum EmployeeRole iz produkcijske sheme', () => {
+    const fromSchema = [...(enums.get('EmployeeRole') ?? [])].sort()
+    expect(fromSchema.length).toBeGreaterThan(0)
+    expect([...EMPLOYEE_ROLE_VALUES].sort()).toEqual(fromSchema)
+  })
+
+  test('buildSubscriptionWhere zavrže vloge, ki jih shema ne pozna', () => {
+    const w = buildSubscriptionWhere({ roles: ['bar', 'kichen', 'chef'], locationId: 'loc1' })
+    expect(w).not.toBeNull()
+    expect(w!.Employee.role!.in).toEqual(['bar', 'chef'])
+    expect(w!.Employee.locationId).toBe('loc1')
+    expect(w!.isActive).toBe(true)
+  })
+
+  test('če po filtriranju ne ostane Nobena veljavna vloga, poizvedbe NI (noben ni obvesten)', () => {
+    // admin matrica z vsemi napačnimi vlogami: varna odločitev je NE pošiljati
+    // nikomur, ne pa zaliti cele lokacije — prazen seznam ni enak izpuščenemu filtru
+    expect(buildSubscriptionWhere({ roles: ['kichen', 'ghost'], locationId: 'loc1' })).toBeNull()
+  })
+
+  test('brez vlog filter ostane samo lokacijski (obnašanje ostane kot prej)', () => {
+    const loc = buildSubscriptionWhere({ locationId: 'loc1' })
+    expect(loc).toEqual({ isActive: true, Employee: { locationId: 'loc1' } })
+    expect(buildSubscriptionWhere({})).toEqual({ isActive: true, Employee: {} })
+    const byIds = buildSubscriptionWhere({ employeeIds: ['e1', 'e2'], roles: ['bar'] })
+    expect(byIds!.employeeId).toEqual({ in: ['e1', 'e2'] })
+    expect(byIds!.Employee.role!.in).toEqual(['bar'])
   })
 })

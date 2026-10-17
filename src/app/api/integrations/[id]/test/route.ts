@@ -41,7 +41,12 @@ interface TestableIntegration {
   baseUrl: string
   apiKey: string
   apiSecret: string
-  config: string
+  /**
+   * `Integration.config` je na Postgresu `Json` (Prisma vrne ŽE razčlenjen
+   * objekt), na SQLite pa `String`. `jparse` obvlada obe oblike, zato tip ne
+   * sme trditi `string` — sicer produkcijski `tsc` ne prevede vrstice naprej.
+   */
+  config: unknown
 }
 
 /**

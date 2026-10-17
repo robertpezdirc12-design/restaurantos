@@ -28,7 +28,7 @@
  *     DOSLEDNA izbira namesto 'error', ker gre za register ključavnico, ne
  *     napako adapterja) + audit CHANNEL_SYNC_FAILED + 0 omrežnih klicev;
  *     neobstoječ integrationId → ok:false (NE meče).
- *  D. REGISTRI: APP_VERSION 1.129.0 (register dvigne vsak val); 'i9-' v TEST_PREFIXES; 0 DDL —
+ *  D. REGISTRI: APP_VERSION 1.130.0 (register dvigne vsak val); 'i9-' v TEST_PREFIXES; 0 DDL —
  *     schema.sqlite.prisma BREZ ChannelSync/availability-sync modelov,
  *     Webhook/WebhookDelivery NE-prevzeti (channel-sync jih ne omenja).
  *
@@ -490,8 +490,8 @@ describe('C. channel-sync — register/ključavnica/sinhronizacija', () => {
 /* ─────────────── D. REGISTRI ─────────────── */
 
 describe('D. Registri — verzija / sweep predpona / 0 DDL', () => {
-  it('APP_VERSION je 1.129.0', () => {
-    expect(APP_VERSION).toBe('1.129.0')
+  it('APP_VERSION je 1.130.0', () => {
+    expect(APP_VERSION).toBe('1.130.0')
   })
 
   it("TEST_PREFIXES vsebuje 'i9-'", () => {

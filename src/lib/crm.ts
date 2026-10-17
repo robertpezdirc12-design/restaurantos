@@ -844,7 +844,9 @@ export async function mergeGuests(canonicalId: string, duplicateId: string): Pro
     }
     void loyaltyMoved
     // agregati: MAX (nikoli vsota — isto osebo ne štejemo dvakrat)
-    const unionJson = (a: string, b: string): string => {
+    // `unknown` (ne `string`): na Postgresu so Json polja VRAČENA kot objekt,
+    // na SQLite kot String — jparse obvlada obe oblike, nossa pa ne.
+    const unionJson = (a: unknown, b: unknown): string => {
       const list = [...(jparse<string[]>(a, []) ?? []), ...(jparse<string[]>(b, []) ?? [])]
       return jstr([...new Set(list)])
     }
