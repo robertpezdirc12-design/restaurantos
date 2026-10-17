@@ -63,7 +63,7 @@ async function loginRateLimited(ip: string, email: string): Promise<boolean> {
 
 /** #34: break-glass prijava — VEDNO ločena bootstrap identiteta (2 h). */
 async function bootstrapSession(email: string, ip: string, existingAccountId: string | null) {
-  const token = createToken({ sub: 'bootstrap', name: 'Bootstrap Admin', role: 'ADMIN', loc: null }, 2)
+  const token = createToken({ sub: 'bootstrap', name: 'Bootstrap Admin', email, role: 'ADMIN', loc: null }, 2)
   // Jasen dogodek za način prijave brez (uspešnega) PIN-a zaposlenega — brez
   // razkrivanja skrivnosti; LOGIN_FAILED ni končni zapis break-glass poti.
   await writeAudit(db, {

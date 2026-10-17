@@ -37,6 +37,8 @@ if (isProd && !process.env.PIN_LOOKUP_SALT) {
 export interface AuthPayload {
   sub: string
   name: string
+  /** Email for temporary environment-backed bootstrap identities. */
+  email?: string
   role: string
   loc: string | null
   exp: number

@@ -4,6 +4,7 @@ import { createToken } from '../src/lib/auth'
 import { requireAuth, requirePermission, requireCentralRole, isResponse } from '../src/lib/api'
 import { CANONICAL_PERMISSIONS } from '../src/lib/permissions'
 import { GET as expensesGET } from '../src/app/api/expenses/route'
+import { GET as meGET } from '../src/app/api/auth/me/route'
 
 /**
  * Bootstrap admin break-glass (audit §3 vrstica: "bootstrap break-glass — dokumentiran
@@ -23,7 +24,7 @@ function req(url: string, token: string, method = 'GET'): NextRequest {
 }
 
 /** Žeton natanko tak, kot ga izda /api/auth/login bootstrap veja (brez sv — break-glass). */
-const bootstrapToken = createToken({ sub: 'bootstrap', name: 'Bootstrap Admin', role: 'ADMIN', loc: null }, 2)
+const bootstrapToken = createToken({ sub: 'bootstrap', name: 'Bootstrap Admin', email: 'bootstrap-admin@example.test', role: 'ADMIN', loc: null }, 2)
 
 describe('bootstrap admin fast-path (auth + permission + central role)', () => {
   test('requireAuth: bootstrap žeton preide brez Employee vrstice', async () => {
@@ -33,6 +34,25 @@ describe('bootstrap admin fast-path (auth + permission + central role)', () => {
       expect(user.sub).toBe('bootstrap')
       expect(user.role).toBe('ADMIN')
     }
+  })
+
+  test('GET /api/auth/me returns the temporary bootstrap identity without an Employee row', async () => {
+    const res = await meGET(req('/api/auth/me', bootstrapToken))
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      bootstrap?: boolean
+      employee?: { id?: string; name?: string; email?: string; role?: string; location?: unknown; permissions?: unknown[] }
+    }
+    expect(body.bootstrap).toBe(true)
+    expect(body.employee).toMatchObject({
+      id: 'bootstrap',
+      name: 'Bootstrap Admin',
+      email: 'bootstrap-admin@example.test',
+      role: 'ADMIN',
+      location: null,
+    })
+    expect(Array.isArray(body.employee?.permissions)).toBe(true)
+    expect(body.employee?.permissions?.length).toBeGreaterThan(0)
   })
 
   test('requirePermission: bootstrap preide za VSIM kanoničnimi dovoljenji', async () => {
