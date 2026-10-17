@@ -301,7 +301,7 @@ function KioskInner() {
   // ——— Aktivacija (onboarding) ———
   if (!token || (!menu && !loading)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-900 p-6">
+      <div data-screen="kiosk-activation" className="min-h-screen flex items-center justify-center bg-stone-900 p-6">
         <GuestLanguageToggle variant="dark" className="fixed top-3 right-3 z-50" />
         <div className="w-full max-w-md rounded-3xl bg-stone-800 border border-stone-700 p-8 text-stone-100">
           <div className="flex items-center gap-3 mb-4">
@@ -332,8 +332,8 @@ function KioskInner() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col">
-      <header className="px-6 py-4 border-b border-stone-800 flex items-center justify-between gap-3">
+    <div data-screen="kiosk-pos" className="min-h-screen bg-stone-900 text-stone-100 flex flex-col">
+      <header data-region="kiosk-header" className="px-6 py-4 border-b border-stone-800 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold truncate">{menu?.restaurant}</h1>
           <p className="text-sm text-stone-400">{t('guest.kiosk.subtitle')}</p>
@@ -376,7 +376,7 @@ function KioskInner() {
           </nav>
 
           <main className="flex-1 overflow-y-auto p-6">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+            <div data-region="kiosk-products" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
               {(itemsByCat.get(activeCat) || []).map((it) => (
                 <button
                   key={it.id}

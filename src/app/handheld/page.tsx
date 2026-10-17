@@ -386,9 +386,9 @@ function HandheldInner() {
   }
 
   return (
-    <main className="flex flex-col min-h-dvh bg-stone-50">
+    <main data-screen="handheld-pos" className="flex flex-col min-h-dvh bg-stone-50">
       {/* header — minimalen chrome, veliki cilji */}
-      <header className="sticky top-0 z-20 bg-emerald-700 text-white px-4 py-3 flex items-center gap-2">
+      <header data-region="handheld-header" className="sticky top-0 z-20 bg-emerald-700 text-white px-4 py-3 flex items-center gap-2">
         <Smartphone className="w-5 h-5 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-bold leading-tight truncate">{t('hh.title')}</p>
@@ -396,7 +396,8 @@ function HandheldInner() {
         </div>
         <LanguageToggle />
         {/* Issue #21 (v1.111.0) — klic vodje (kontekst izbrane mize, če je) */}
-        <ManagerCallButton size="sm" tableNumber={selTable?.number} />
+        {/* i69 vizualni QA: h-11 izenači z Odjava v isti vrstici (36→44px, boljši dotik) */}
+        <ManagerCallButton size="sm" className="h-11" tableNumber={selTable?.number} />
         <button aria-label={t('header.logout')} onClick={logout} className="p-2 rounded-lg hover:bg-emerald-800 min-h-11 min-w-11 flex items-center justify-center"><LogOut className="w-5 h-5" /></button>
       </header>
 

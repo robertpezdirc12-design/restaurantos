@@ -217,7 +217,7 @@ function LoginPageInner() {
   }
 
   return (
-    <main className="relative min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
+    <main data-screen="login" className="relative min-h-screen flex flex-col bg-gradient-to-b from-stone-100 to-stone-200">
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
         <LanguageToggle />
         <ThemeToggle />
@@ -228,7 +228,7 @@ function LoginPageInner() {
             <div className="mx-auto w-14 h-14 rounded-2xl bg-emerald-700 text-white flex items-center justify-center shadow-lg">
               <UtensilsCrossed className="w-7 h-7" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">RestavrantOS</h1>
+            <h1 className="text-2xl font-bold tracking-tight">RestaurantOS</h1>
             <p className="text-sm text-stone-500">{t('login.subtitle')}</p>
           </div>
 

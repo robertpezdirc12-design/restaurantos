@@ -183,3 +183,521 @@
 .dark .text-red-700,
 .dark .text-red-800 { color: oklch(0.76 0.14 22); }
 .dark .border-red-100 { border-color: oklch(0.40 0.07 22); }
+
+
+/* RestaurantOS visual polish — 2026-10
+   Presentation-only layer: no application state, APIs, permissions or workflows changed. */
+:root {
+  --radius: 0.85rem;
+  --background: oklch(0.985 0.006 155);
+  --card: oklch(1 0 0);
+  --border: oklch(0.91 0.012 155);
+  --ring: oklch(0.62 0.13 160);
+}
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+body {
+  background-image: radial-gradient(ellipse at 8% 0%, oklch(0.95 0.025 155 / 42%), transparent 34rem);
+  letter-spacing: -0.008em;
+}
+::selection {
+  color: white;
+  background: oklch(0.43 0.12 158);
+}
+:focus-visible {
+  outline: 3px solid oklch(0.68 0.13 160 / 78%);
+  outline-offset: 2px;
+}
+/* Refined surfaces while preserving component structure and click targets. */
+[data-slot="card"], .rounded-xl.border, .rounded-lg.border {
+  border-color: oklch(0.90 0.012 155 / 88%);
+  box-shadow: 0 1px 2px oklch(0.25 0.03 155 / 3%), 0 8px 24px oklch(0.25 0.03 155 / 3%);
+  transition: box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+[data-slot="card"]:hover {
+  border-color: oklch(0.82 0.035 155);
+  box-shadow: 0 2px 4px oklch(0.25 0.03 155 / 4%), 0 12px 30px oklch(0.25 0.03 155 / 6%);
+}
+button, [role="button"], a {
+  -webkit-tap-highlight-color: transparent;
+}
+button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+button:active:not(:disabled), [role="button"]:active:not([aria-disabled="true"]) {
+  transform: translateY(1px);
+}
+input, textarea, select, [role="combobox"] {
+  border-color: oklch(0.86 0.012 155);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+input:focus, textarea:focus, select:focus, [role="combobox"]:focus {
+  border-color: oklch(0.62 0.13 160);
+  box-shadow: 0 0 0 3px oklch(0.62 0.13 160 / 13%);
+}
+/* Cleaner dense operational tables and list rows. */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+thead th {
+  color: oklch(0.46 0.025 155);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+tbody tr {
+  transition: background-color 120ms ease;
+}
+tbody tr:hover {
+  background-color: oklch(0.96 0.018 155 / 70%);
+}
+/* More consistent scrollbars on long admin panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.78 0.018 155) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb {
+  background: oklch(0.78 0.018 155);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: oklch(0.66 0.035 155); }
+/* Mobile: prevent dense controls and headers from forcing horizontal overflow. */
+@media (max-width: 640px) {
+  body { background-image: none; }
+  [data-slot="card"], .rounded-xl.border, .rounded-lg.border {
+    border-radius: 0.8rem;
+  }
+  input, textarea, select, [role="combobox"] {
+    font-size: 16px;
+  }
+  table { font-size: 0.875rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+.dark {
+  --background: oklch(0.16 0.008 155);
+  --card: oklch(0.205 0.008 155);
+  --border: oklch(1 0 0 / 11%);
+}
+.dark body { background-image: radial-gradient(ellipse at 8% 0%, oklch(0.30 0.035 155 / 20%), transparent 34rem); }
+.dark [data-slot="card"], .dark .rounded-xl.border, .dark .rounded-lg.border {
+  border-color: oklch(1 0 0 / 10%);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 12%), 0 8px 24px oklch(0 0 0 / 8%);
+}
+.dark tbody tr:hover { background-color: oklch(0.27 0.012 155 / 75%); }
+.dark input, .dark textarea, .dark select, .dark [role="combobox"] { border-color: oklch(1 0 0 / 15%); }
+
+
+/* Login and device activation — premium branded entry, behavior unchanged. */
+main[data-screen="login"] {
+  isolation: isolate;
+  overflow: hidden;
+  background-color: oklch(0.965 0.018 155);
+  background-image:
+    radial-gradient(ellipse at 50% 10%, oklch(0.91 0.07 155 / 72%), transparent 36rem),
+    linear-gradient(145deg, oklch(0.985 0.008 155), oklch(0.94 0.02 155));
+}
+main[data-screen="login"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.25;
+  background-image: radial-gradient(oklch(0.42 0.035 155 / 28%) 0.65px, transparent 0.65px);
+  background-size: 15px 15px;
+  mask-image: linear-gradient(to bottom, black, transparent 70%);
+}
+main[data-screen="login"] .max-w-md {
+  position: relative;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid oklch(1 0 0 / 90%);
+  border-radius: 1.6rem;
+  background: oklch(0.995 0.003 155 / 92%);
+  box-shadow: 0 24px 70px oklch(0.28 0.05 155 / 11%), 0 2px 8px oklch(0.28 0.05 155 / 4%);
+  backdrop-filter: blur(16px);
+}
+main[data-screen="login"] h1 {
+  letter-spacing: -0.045em;
+}
+main[data-screen="login"] .mx-auto.w-14.h-14 {
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 1.2rem;
+  box-shadow: 0 8px 20px oklch(0.35 0.11 155 / 24%);
+}
+main[data-screen="login"] form {
+  gap: 1.1rem;
+}
+main[data-screen="login"] input {
+  min-height: 2.9rem;
+  border-radius: 0.7rem;
+}
+main[data-screen="login"] button {
+  border-radius: 0.7rem;
+}
+.dark main[data-screen="login"] {
+  background-color: oklch(0.16 0.015 155);
+  background-image: radial-gradient(ellipse at 50% 10%, oklch(0.28 0.045 155 / 70%), transparent 36rem), linear-gradient(145deg, oklch(0.17 0.01 155), oklch(0.13 0.008 155));
+}
+.dark main[data-screen="login"] .max-w-md {
+  border-color: oklch(1 0 0 / 9%);
+  background: oklch(0.20 0.01 155 / 94%);
+  box-shadow: 0 24px 70px oklch(0 0 0 / 28%);
+}
+/* Handheld POS: larger, clearer tap targets without changing layout logic. */
+@media (max-width: 640px) {
+  main[data-screen="login"] .max-w-md {
+    padding: 1.15rem;
+    border-radius: 1.25rem;
+  }
+  main[data-screen="login"] .text-center h1 {
+    font-size: 1.7rem;
+  }
+  button, [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+
+/* Dashboard header at narrow widths: keep controls reachable without page overflow. */
+@media (max-width: 767px) {
+  main > header > div.max-w-7xl {
+    height: auto;
+    min-height: 3.5rem;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: 0.5rem;
+    row-gap: 0.4rem;
+  }
+  main > header > div.max-w-7xl > div:first-child {
+    flex: 1 1 9rem;
+    min-width: 0;
+  }
+  main > header > div.max-w-7xl > div:last-child {
+    display: flex;
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+  main > header > div.max-w-7xl > div:last-child > button,
+  main > header > div.max-w-7xl > div:last-child > a {
+    flex: 0 0 auto;
+  }
+  main > header > div.max-w-7xl > div:last-child > button[aria-live="polite"] {
+    max-width: 100%;
+  }
+  main > div.max-w-7xl.w-full.mx-auto {
+    min-width: 0;
+  }
+  main [role="tablist"] {
+    max-width: 100%;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+  main [role="tablist"]::-webkit-scrollbar {
+    display: none;
+  }
+}
+@media (max-width: 380px) {
+  main > header > div.max-w-7xl {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+  main > header > div.max-w-7xl > div:last-child {
+    column-gap: 0.15rem;
+  }
+}
+
+
+/* Screen-specific visual direction — shared styling, no interaction changes. */
+[data-screen="dashboard"] {
+  background-color: var(--background);
+  background-image: radial-gradient(ellipse at 50% -15%, oklch(0.95 0.025 155 / 55%), transparent 48rem);
+}
+[data-screen="dashboard"] > [data-region="dashboard-header"] {
+  background-color: color-mix(in oklch, var(--card) 92%, transparent);
+  border-color: var(--border);
+  box-shadow: 0 4px 20px oklch(0.2 0.03 155 / 4%);
+  backdrop-filter: blur(16px);
+}
+[data-screen="dashboard"] [data-region="dashboard-tabs"] {
+  gap: 0.2rem;
+  border-radius: 1rem;
+  padding: 0.35rem;
+  background-color: color-mix(in oklch, var(--card) 94%, transparent);
+  box-shadow: 0 4px 18px oklch(0.2 0.03 155 / 4%);
+}
+[data-screen="dashboard"] [data-region="dashboard-tabs"] [role="tab"] {
+  min-height: 2.4rem;
+  border-radius: 0.7rem;
+  font-weight: 550;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+[data-screen="dashboard"] [data-region="dashboard-tabs"] [role="tab"][data-state="active"] {
+  box-shadow: 0 2px 6px oklch(0.2 0.03 155 / 12%);
+}
+.dark [data-screen="dashboard"] {
+  background-image: radial-gradient(ellipse at 50% -15%, oklch(0.29 0.035 155 / 24%), transparent 48rem);
+}
+.dark [data-screen="dashboard"] > [data-region="dashboard-header"] {
+  box-shadow: 0 4px 20px oklch(0 0 0 / 16%);
+}
+.dark [data-screen="dashboard"] [data-region="dashboard-tabs"] {
+  box-shadow: 0 4px 18px oklch(0 0 0 / 15%);
+}
+
+/* Waiter handheld POS — clear emerald chrome and quiet content surfaces. */
+[data-screen="handheld-pos"] {
+  background-image: linear-gradient(180deg, oklch(0.98 0.01 155), oklch(0.965 0.009 155));
+}
+[data-screen="handheld-pos"] > [data-region="handheld-header"] {
+  background-image: linear-gradient(110deg, oklch(0.43 0.12 158), oklch(0.36 0.105 158));
+  box-shadow: 0 5px 18px oklch(0.28 0.07 155 / 18%);
+  padding-top: max(0.7rem, env(safe-area-inset-top));
+}
+[data-screen="handheld-pos"] input,
+[data-screen="handheld-pos"] textarea,
+[data-screen="handheld-pos"] [role="combobox"] {
+  border-radius: 0.8rem;
+  background-color: var(--card);
+}
+[data-screen="handheld-pos"] button.rounded-xl.border,
+[data-screen="handheld-pos"] button.rounded-2xl.border {
+  box-shadow: 0 2px 5px oklch(0.2 0.03 155 / 4%);
+}
+[data-screen="handheld-pos"] button:focus-visible {
+  outline-offset: 3px;
+}
+.dark [data-screen="handheld-pos"] {
+  background-image: linear-gradient(180deg, oklch(0.18 0.009 155), oklch(0.15 0.007 155));
+}
+.dark [data-screen="handheld-pos"] > [data-region="handheld-header"] {
+  background-image: linear-gradient(110deg, oklch(0.32 0.09 158), oklch(0.26 0.075 158));
+}
+
+/* Kitchen/display station cards need scan-friendly contrast at a glance. */
+[data-component="kds-station-card"] {
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 5px 20px oklch(0.2 0.03 155 / 5%);
+}
+[data-component="kds-station-card"] [data-slot="card-header"] {
+  background: linear-gradient(180deg, oklch(0.99 0.006 155), var(--card));
+}
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-xl"],
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-lg"] {
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-xl"]:hover,
+[data-component="kds-station-card"] [data-slot="card-content"] > div[class*="rounded-lg"]:hover {
+  border-color: oklch(0.78 0.045 155);
+  box-shadow: 0 3px 12px oklch(0.2 0.03 155 / 5%);
+}
+.dark [data-component="kds-station-card"] [data-slot="card-header"] {
+  background: linear-gradient(180deg, oklch(0.23 0.01 155), var(--card));
+}
+
+/* Self-service kiosk — high contrast, spacious tiles, responsive category rail. */
+[data-screen="kiosk-activation"] {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(0.31 0.06 158 / 62%), transparent 34rem), linear-gradient(145deg, oklch(0.16 0.012 155), oklch(0.11 0.008 155));
+}
+[data-screen="kiosk-activation"] > div {
+  border-color: oklch(1 0 0 / 10%);
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 70px oklch(0 0 0 / 32%);
+}
+[data-screen="kiosk-pos"] {
+  background-image: radial-gradient(ellipse at 50% -15%, oklch(0.29 0.045 158 / 24%), transparent 42rem), linear-gradient(180deg, oklch(0.13 0.008 155), oklch(0.10 0.006 155));
+}
+[data-screen="kiosk-pos"] > [data-region="kiosk-header"] {
+  border-color: oklch(1 0 0 / 9%);
+  background-color: oklch(0.12 0.008 155 / 92%);
+  backdrop-filter: blur(14px);
+}
+[data-screen="kiosk-pos"] [data-region="kiosk-products"] > button {
+  min-height: 8rem;
+  border-radius: 1.15rem;
+  background: linear-gradient(145deg, oklch(0.22 0.012 155), oklch(0.17 0.01 155));
+  box-shadow: 0 3px 10px oklch(0 0 0 / 12%);
+  transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+[data-screen="kiosk-pos"] [data-region="kiosk-products"] > button:hover:not(:disabled) {
+  border-color: oklch(0.58 0.085 158);
+  background: linear-gradient(145deg, oklch(0.26 0.025 158), oklch(0.19 0.012 155));
+  box-shadow: 0 8px 22px oklch(0 0 0 / 22%);
+  transform: translateY(-1px);
+}
+[data-screen="kiosk-pos"] [data-region="kiosk-products"] > button:active:not(:disabled) {
+  transform: scale(0.99);
+}
+@media (max-width: 640px) {
+  [data-screen="kiosk-pos"] > [data-region="kiosk-header"] {
+    padding: 1rem;
+  }
+  [data-screen="kiosk-pos"] main {
+    padding: 1rem;
+  }
+  [data-screen="kiosk-pos"] [data-region="kiosk-products"] {
+    gap: 0.65rem;
+  }
+  [data-screen="kiosk-pos"] [data-region="kiosk-products"] > button {
+    min-height: 7rem;
+    padding: 0.85rem;
+    border-radius: 0.9rem;
+  }
+}
+
+/* Customer-facing payment display — restrained, cinema-like status surface. */
+[data-screen="customer-display-setup"] {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(0.26 0.045 158 / 38%), transparent 40rem), linear-gradient(145deg, oklch(0.12 0.008 155), oklch(0.075 0.004 155));
+}
+[data-screen="customer-display-setup"] > div {
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 70px oklch(0 0 0 / 30%);
+}
+[data-screen="customer-display"] {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(0.21 0.035 158 / 30%), transparent 56rem), linear-gradient(160deg, oklch(0.09 0.006 155), oklch(0.055 0.003 155));
+}
+[data-screen="customer-display"] > [data-region="customer-display-header"] {
+  padding-top: max(1.25rem, env(safe-area-inset-top));
+  border-color: oklch(1 0 0 / 8%);
+}
+[data-screen="customer-display"] [data-region="customer-display-content"] h2 {
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+@media (max-width: 640px) {
+  [data-screen="customer-display"] > [data-region="customer-display-header"] {
+    padding: 1rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  [data-screen="customer-display"] [data-region="customer-display-content"] {
+    padding: 1.25rem;
+  }
+  [data-screen="customer-display"] [data-region="customer-display-content"] h2 {
+    font-size: clamp(1.65rem, 6vw, 2.4rem);
+  }
+}
+
+/* QR menu — compact food discovery, readable category rail and checkout action. */
+[data-screen="qr-menu"] {
+  background-image: linear-gradient(180deg, oklch(0.98 0.008 155), oklch(0.96 0.006 155));
+}
+[data-screen="qr-menu"] > [data-region="qr-menu-header"] {
+  border-color: oklch(0.9 0.02 155);
+  box-shadow: 0 4px 16px oklch(0.2 0.03 155 / 4%);
+}
+[data-screen="qr-menu"] > [data-region="qr-menu-categories"] {
+  background-color: oklch(0.97 0.008 155 / 96%);
+  backdrop-filter: blur(12px);
+  border-color: oklch(0.9 0.02 155);
+}
+[data-screen="qr-menu"] [data-region="qr-menu-content"] > section {
+  border-radius: 1rem;
+  box-shadow: 0 2px 12px oklch(0.2 0.03 155 / 3%);
+}
+[data-screen="qr-menu"] [data-region="qr-menu-categories"] button {
+  min-height: 2.5rem;
+}
+[data-screen="qr-menu"] [data-region="qr-menu-content"] button:focus-visible {
+  outline-offset: 3px;
+}
+[data-screen="qr-menu"] > div.fixed.bottom-0 {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  backdrop-filter: blur(12px);
+}
+.dark [data-screen="qr-menu"] {
+  background-image: linear-gradient(180deg, oklch(0.18 0.009 155), oklch(0.145 0.006 155));
+}
+
+
+/* Dark mode table headers: maintain readable contrast on dark surfaces. */
+.dark thead th { color: oklch(0.78 0.015 155); }
+
+/* Staff language toggle — consistent, thumb-friendly SL/HR control.
+   The guest SL/HR/EN switch already uses 44px targets; keep staff controls legible
+   while preserving the compact desktop header. Presentation only, no locale logic. */
+.os-language-toggle {
+  gap: 0.125rem;
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+  box-shadow: 0 1px 2px oklch(0.2 0.03 155 / 5%);
+}
+.os-language-toggle > button {
+  min-width: 2.375rem;
+  min-height: 2.125rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.os-language-toggle > button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid oklch(0.62 0.13 160 / 85%);
+  outline-offset: 2px;
+}
+.dark .os-language-toggle {
+  border-color: oklch(1 0 0 / 14%);
+  background-color: oklch(0.20 0.01 155);
+}
+.dark .os-language-toggle > button:not([aria-pressed="true"]) {
+  color: oklch(0.82 0.012 155);
+}
+.dark .os-language-toggle > button:not([aria-pressed="true"]):hover {
+  color: oklch(0.98 0.004 155);
+  background-color: oklch(1 0 0 / 7%);
+}
+@media (max-width: 640px) {
+  .os-language-toggle > button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
+  }
+}
+
+
+/* Mobile settings panel: constrain intrinsic-width cards and long diagnostic text. */
+@media (max-width: 767px) {
+  [role="tabpanel"][id$="-content-nastavitve"] {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  [role="tabpanel"][id$="-content-nastavitve"] [class~="lg:grid-cols-2"] {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  [role="tabpanel"][id$="-content-nastavitve"] [class~="lg:grid-cols-2"] > *,
+  [role="tabpanel"][id$="-content-nastavitve"] .rounded-lg.border {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  [role="tabpanel"][id$="-content-nastavitve"] .rounded-lg.border {
+    overflow-wrap: anywhere;
+  }
+}

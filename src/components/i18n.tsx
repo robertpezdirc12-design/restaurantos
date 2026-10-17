@@ -97,7 +97,7 @@ export function LanguageToggle({ className }: { className?: string }) {
   const { locale, setLocale, t } = useI18n()
   return (
     <div
-      className={`inline-flex items-center rounded-lg border border-stone-200 bg-white p-0.5 text-xs font-semibold ${className || ''}`}
+      className={`os-language-toggle inline-flex items-center rounded-lg border border-stone-200 bg-white p-0.5 text-xs font-semibold ${className || ''}`}
       role="group"
       aria-label={t('lang.aria')}
     >

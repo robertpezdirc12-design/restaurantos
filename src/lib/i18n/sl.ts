@@ -8,7 +8,7 @@
 
 export const sl: Record<string, string> = {
   // ── Skupno ──
-  'common.app': 'RestavrantOS',
+  'common.app': 'RestaurantOS',
   'common.save': 'Shrani',
   'common.cancel': 'Prekliči',
   'common.confirm': 'Potrdi',
@@ -68,7 +68,7 @@ export const sl: Record<string, string> = {
   'login.deviceFailed': 'Aktivacija ni uspela.',
   'login.devicePlaceholder': 'npr. 12345678',
   'login.deviceNameFallback': 'naprava',
-  'login.footer': 'RestavrantOS · FURS simulacija · EUR',
+  'login.footer': 'RestaurantOS · FURS simulacija · EUR',
 
   // ── Zavihki ──
   'tabs.pregled': 'Pregled',
@@ -81,6 +81,7 @@ export const sl: Record<string, string> = {
   'tabs.popusti': 'Popusti',
   'tabs.integracije': 'Integracije',
   'tabs.enterprise': 'Enterprise',
+  'tabs.more': 'Več',
   'ent.kpiOrgs': 'Organizacije',
   'ent.kpiBrands': 'Blagovne znamke',
   'ent.kpiProperties': 'Objekti',
@@ -197,7 +198,7 @@ export const sl: Record<string, string> = {
   'dash.openTables': 'Zasedene mize',
   'dash.todayRevenue': 'Današnji promet',
   'dash.todayOrders': 'Današnja naročila',
-  'dash.footer': 'RestavrantOS rekonstrukcija {v} · offline-first + FURS (sim/produkcija ločena) · EUR',
+  'dash.footer': 'RestaurantOS rekonstrukcija {v} · offline-first + FURS (sim/produkcija ločena) · EUR',
 
   // ── Mize ──
   'tables.seats': '{n} mest',
@@ -554,7 +555,7 @@ export const sl: Record<string, string> = {
   'shifts.taxBreakdown': 'Promet po davčnih stopnjah (mesec)',
   'shifts.noTraffic': 'Ni prometa.',
   'shifts.vatBadge': 'DDV {rate} % · {qty} postavk',
-  'shifts.csvTitle': 'Financno porocilo RestavrantOS',
+  'shifts.csvTitle': 'Financno porocilo RestaurantOS',
   'shifts.csvPeriod': 'Obdobje',
   'shifts.csvRevenue': 'Prihodki (EUR)',
   'shifts.csvTax': 'Davek (EUR)',
@@ -1718,7 +1719,7 @@ export const sl: Record<string, string> = {
   'print.termManual': 'Ročno (koda odobritve s terminala)',
   'print.saved': 'Konfiguracija naprave shranjena ✓',
   'print.testBtn': 'Testni tisk',
-  'print.testLine1': 'RestavrantOS — test tiskalnika',
+  'print.testLine1': 'RestaurantOS — test tiskalnika',
   'print.testLine2': 'Č Š Ž č š ž — CP852 preverjanje',
   'print.failed': 'Tisk ni uspel: {error}',
   'print.simTest': 'SIMULACIJA — testne vrstice v konzoli.',
@@ -1781,7 +1782,7 @@ export const sl: Record<string, string> = {
   'audit.title': 'Revizijski dnevnik',
   'audit.none': 'Ni revizijskih vnosov.',
   'sys.title': 'O sistemu',
-  'sys.version': 'RestavrantOS — različica {v} (offline-first rekonstrukcija)',
+  'sys.version': 'RestaurantOS — različica {v} (offline-first rekonstrukcija)',
   'sys.modules': 'Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.',
   'sys.db': 'Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).',
   // Offline vrsta (alerti)

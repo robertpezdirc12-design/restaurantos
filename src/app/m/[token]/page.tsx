@@ -339,8 +339,8 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-28">
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
+    <div data-screen="qr-menu" className="min-h-screen bg-stone-50 pb-28">
+      <header data-region="qr-menu-header" className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h1 className="font-bold text-stone-900 leading-tight truncate">{menu?.restaurant}</h1>
@@ -380,7 +380,8 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         ) : (
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             {!fbOpen ? (
-              <button type="button" className="w-full flex items-center justify-between text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
+              /* i69 vizualni QA: cilj na dotik je bil le 20px — py-2.5 ga približa 40px (className-only) */
+              <button type="button" className="w-full flex items-center justify-between py-2.5 text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
                 <span>{t('guest.feedback.cta')}</span>
                 <Star className="h-4 w-4 text-amber-500" />
               </button>
@@ -433,7 +434,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         </div>
       )}
 
-      <nav className="sticky top-[70px] z-10 bg-stone-50 border-b border-stone-200">
+      <nav data-region="qr-menu-categories" className="sticky top-[70px] z-10 bg-stone-50 border-b border-stone-200">
         <div className="max-w-lg mx-auto flex gap-2 overflow-x-auto px-4 py-2 no-scrollbar">
           {menu?.categories.map((c) => (
             <button
@@ -447,7 +448,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         </div>
       </nav>
 
-      <main className="max-w-lg mx-auto px-4 py-4 space-y-3">
+      <main data-region="qr-menu-content" className="max-w-lg mx-auto px-4 py-4 space-y-3">
         {/* OPS-9 val 3 (v1.76.0): allergen filter chips (gate: RestaurantSettings.allergenFilterEnabled)
             Selected chip = HIDE items containing that allergen (client-side exclusion). */}
         {allergenFilterOn && allergenChips.length > 0 && (
