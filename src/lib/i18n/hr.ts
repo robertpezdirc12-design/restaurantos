@@ -148,6 +148,9 @@ export const hr: Record<string, string> = {
   'tabs.izmene': 'Smjene',
   'tabs.delovnicas': 'Radno vrijeme',
   'tabs.haccp': 'HACCP',
+  // Issue #71 audit-27: nepoznat/zatvoren tab — obavijest umjesto prazne ploče
+  'tabs.unknown': 'Ovaj tab ne postoji — preusmjereni ste na pregled.',
+  'tabs.noPerm': 'Nemate dopuštenje za ovaj tab — preusmjereni ste na pregled.',
   'tabs.stroski': 'Troškovi',
   'tabs.zvestoba': 'Vjernost',
   'tabs.mnenja': 'Ocjene',
@@ -356,10 +359,20 @@ export const hr: Record<string, string> = {
   'orders.payFurs': 'Plaćanje + FURS',
   'orders.persons': 'osobe',
   'orders.newTitle': 'Nova narudžba',
+  // Issue #71 audit-2/audit-5: ljudska oznaka tipa narudžbe (ne sirovi enum DINE_IN)
+  'order.type.DINE_IN': 'Na licu mjesta',
+  'order.type.TAKEAWAY': 'Za ponijeti',
+  'order.type.DELIVERY': 'Dostava',
+  // Issue #71 audit-23: sažimanje stavaka narudžbe (3 + »＋ N ostalih«)
+  'orders.moreItems': '＋ {n} ostalih',
+  'orders.showAllItems': 'Prikaži sve stavke',
+  'orders.showLessItems': 'Prikaži manje',
 
   // ── Kuhinja (KDS) ──
   'kitchen.kitchenTicket': 'Listić za kuhinju',
   'kitchen.barTicket': 'Listić za šank',
+  // Issue #71 audit-6: nedostajući ključ — sirovi ključ se ispisivao na gumbu
+  'kitchen.printBarTitle': 'Ispiši listić za šank',
 
   // ── Dijalog plaćanja ──
   'payment.method': 'Način plaćanja:',
@@ -505,6 +518,13 @@ export const hr: Record<string, string> = {
   'inv.actOdpadDesc': 'Zapis otpisanog',
   'inv.newItem': 'Novi artikl',
   'inv.stockList': 'Stanje zaliha',
+  // Issue #71 audit-24: pretraga + filteri nad popisom zaliha
+  'inv.search': 'Traži artikl…',
+  'inv.filterAll': 'Svi',
+  'inv.filterLow': 'Ispod minimuma ({n})',
+  'inv.filterOut': 'Nestalo ({n})',
+  'inv.outBadge': 'Nestalo',
+  'inv.searchNone': 'Nijedan artikl ne odgovara pretrazi/filteru — očistite pretragu ili prebacite na »Svi«.',
   'inv.empty': 'Zaliha je prazna.',
   'inv.minShort': 'min.',
   'inv.adjust': 'Prilagodi',
@@ -621,6 +641,10 @@ export const hr: Record<string, string> = {
   'haccp.target': 'Cilj (uređaj / prostor)',
   'haccp.targetPlaceholder': 'npr. Rashladna vitrina 1',
   'haccp.value': 'Vrijednost (°C)',
+  // Issue #71 audit-17: oznaka vrijednosti slijedi VRSTI kontrole + razlog onemogućenog gumba
+  'haccp.valueGeneral': 'Vrijednost',
+  'haccp.valueDelivery': 'Vrijednost (kg/l)',
+  'haccp.submitHint': 'Unesite cilj (npr. »≤ 4 °C«) — kontrolu možete zapisati kad je obrazac potpun.',
   'haccp.valuePlaceholder': 'npr. 4.5',
   'haccp.result': 'Rezultat',
   'haccp.okSelect': '✅ U redu',
@@ -1157,6 +1181,8 @@ export const hr: Record<string, string> = {
   'acct.from': 'Od',
   'acct.to': 'Do',
   'acct.exportCsv': 'Izvozi (CSV)',
+  // Issue #71 audit-6 (test ga je ujel): manjkajući ključ na gumbu pretpregleda X/Z
+  'acct.preview': 'Pretpregled',
   'acct.exportJson': 'Izvozi (JSON)',
   'acct.exportFailed': 'Izvoz nije uspio.',
 
@@ -1668,7 +1694,7 @@ export const hr: Record<string, string> = {
   // Rezervacije (tab + dijalog) — resv.st* = RES_STATUS_KEYS
   'resv.upcoming': 'Nadolazeće rezervacije',
   'resv.new': 'Nova rezervacija',
-  'resv.empty': 'Nema nadolazećih rezervacija.',
+  'resv.empty': 'Nema nadolazećih rezervacija — kad gosti potvrde dolazak, pojavit će se ovdje. Stvorite prvu rezervaciju gumbom gore.',
   'resv.stConfirmed': 'Potvrđena',
   'resv.stSeated': 'Gost je došao',
   'resv.stCompleted': 'Završena',
@@ -1731,6 +1757,9 @@ export const hr: Record<string, string> = {
   'resv.wid.save': 'Spremi postavke',
   'resv.wid.saved': 'Postavke spremljene ✓',
   'resv.wid.notConfigured': 'Widget još nije postavljen.',
+  // Issue #71 audit-4: ljudska greška umjesto sirove poruke + korak
+  'resv.wid.errNoLocation': 'Lokacija nije određena — odaberite lokaciju u gornjem redu i pokušajte ponovno.',
+  'resv.wid.errGeneric': 'Postavka widgeta se nije učitala ({msg}). Pokušajte ponovno ili kontaktirajte podršku.',
   'resv.wid.init': 'Stvori poveznicu',
   'resv.wid.open': 'Otvori poveznicu',
   // Issue #21 (v1.111.0) — poziv voditelja iz POS-a (callv.*)
@@ -1767,7 +1796,7 @@ export const hr: Record<string, string> = {
   'callv.status.CANCELLED': 'Otkazan',
   'callv.card.title': 'Pozivi voditelja',
   'callv.card.desc': 'Zahtjevi osoblja za pomoć — preuzmite, obradite, riješite.',
-  'callv.card.empty': 'Nema aktivnih poziva.',
+  'callv.card.empty': 'Nema aktivnih poziva — ekipa ih pokreće gumbom »Pozovi vodju« na svom uređaju.',
   'callv.card.filter.active': 'Aktivni',
   'callv.card.filter.overdue': 'Zapadli',
   'callv.card.filter.resolved': 'Riješeni',
@@ -1821,7 +1850,7 @@ export const hr: Record<string, string> = {
   'emp.bootCreate': 'Stvori trajan profil',
   'emp.bootExisting': 'Klikni svoj profil dolje, postavi si trajan PIN (može biti isti kao sada) pa se zatim odjavi i ponovno prijavi. Nakon ponovne prijave ovo upozorenje nestaje.',
   'emp.bootCreated': 'Profil stvoren ✓ — odjavi se i prijavi s adresom {email} i novim PIN-om.',
-  'emp.controlCenter': ' — Kontrolni centar',
+  'emp.controlCenter': ' — kontrolna ploča',
   'emp.clickToEdit': 'klikni profil za uređivanje',
   'emp.inactiveSuffix': '(neaktivan)',
   'emp.permsCount': '{n} dozvola',
@@ -1831,6 +1860,19 @@ export const hr: Record<string, string> = {
   'emp.permsHint': 'Kanonička autorizacija: prazno = zadano po ulozi.',
   'emp.savedOk': 'Spremljeno ✓',
   'emp.saveProfile': 'Spremi profil',
+  // Issue #71 audit-25: pretraga + gumb »Novi zaposleni« na ploči
+  'emp.new': 'Novi zaposleni',
+  'emp.newTitle': 'Novi zaposleni',
+  'emp.newDesc': 'Stvori profil s PIN-om — zaposleni se prijavljuje e-poštom i PIN-om.',
+  'emp.newName': 'Ime i prezime',
+  'emp.newEmail': 'E-pošta',
+  'emp.newPin': 'PIN (4–8 znamenki)',
+  'emp.newRole': 'Uloga',
+  'emp.newCreate': 'Stvori zaposlenog',
+  'emp.created': 'Zaposleni stvoren ✓',
+  'emp.exists': 'Zaposleni s tom e-poštom već postoji.',
+  'emp.search': 'Traži zaposlenog…',
+  'emp.searchNone': 'Nijedan zaposleni ne odgovara pretrazi — očistite pretragu.',
   'emp.locationLabel': 'Lokacija (poslovnica)',
   'emp.locAria': 'Lokacija zaposlenika',
   'emp.unassigned': '(nedodijeljeno)',
@@ -1925,6 +1967,9 @@ export const hr: Record<string, string> = {
   // Dnevnik grešaka / Revizijski dnevnik / O sustavu
   'errlog.title': 'Dnevnik grešaka',
   'errlog.none': 'Nema zabilježenih grešaka.',
+  // Issue #71 audit-28: grupiranje po potpisu + tehnički payload skriven
+  'errlog.occurrences': '×{n}',
+  'errlog.details': 'Detalji (tehnički)',
   'audit.title': 'Revizijski dnevnik',
   'audit.none': 'Nema revizijskih unosa.',
   'sys.title': 'O sustavu',
@@ -1956,6 +2001,15 @@ export const hr: Record<string, string> = {
   'kds.allergenWarning': 'ALERGIJA',
   'kds.allergenCodes': 'Alergeni',
   'kds.allergenUnconfirmed': 'Alergenski podaci nisu potvrđeni — provjeri!',
+  // Issue #71 audit-1: odvojeni odjeli — aktivna smjena vs zastarjelo
+  'kds.activeShift': 'Aktivna smjena',
+  'kds.staleSection': 'Zastarjelo (prethodna smjena/demo)',
+  'kds.staleToggle': 'Prikaži/sakrij zastarjele listiće',
+  'kds.staleCount': '{n} listića',
+  // Issue #71 audit-14: alergeni — pravi alarm = crvena traka, nedostajući = JEDAN zbirnik na listiću
+  'kds.allergyBand': 'ALERGIJE — sigurnost hrane gostiju',
+  'kds.unconfirmedAllergens': '{n} od {m} stavki bez potvrđenih alergenskih podataka',
+  'kds.guestsShort': '{n} osoba',
   'kds.markAvailable': 'Vrati na raspolaganju',
   // P0-3 (v1.83.0) — 86 ploča na KDS: proaktivni 86 + zamjene (TRZNA-VRZELI-2026 §4)
   'kds.boardTitle': '86 ploča — rasprodani artikli',
@@ -2024,6 +2078,8 @@ export const hr: Record<string, string> = {
   'sale.total': 'Ukupno (s PDV-om)',
   'sale.payNow': 'Plaći i izdaj račun',
   'sale.empty': 'Nema artikala za brzu prodaju.',
+  // Issue #71 audit-16: 86 na pločici artikla — razlog u crvenom, ne sivom
+  'sale.soldOut': 'Rasprodano (86)',
   'sale.cartTitle': 'Košarica',
   'sale.cartEmpty': 'Košarica je prazna',
   'sale.cartEmptyHint': 'Dodirni artikl da ga dodaš.',
@@ -2295,6 +2351,12 @@ export const hr: Record<string, string> = {
   'resv.reminderSend': 'Pošalji podsjetnik',
   'resv.reminderSent': 'Podsjetnik poslan',
   'resv.reminderAll': 'Pošalji sve podsjetnike (24 h)',
+  // Issue #71 audit-18: potvrda prije masovnog slanja (nepovratna javna radnja)
+  'resv.reminderConfirmTitle': 'Poslati sve podsjetnike?',
+  'resv.reminderConfirmBody': 'Gostima će biti poslano {n} podsjetnika (e-pošta/SMS) za rezervacije koje počinju u sljedeća 24 sata. Ovu radnju nije moguće poništiti.',
+  'resv.reminderConfirmList': 'Obuhvaćene rezervacije',
+  'resv.reminderConfirmSend': 'Pošalji {n} podsjetnika',
+  'resv.reminderNoneCandidates': 'Nema rezervacija kojima treba podsjetnik u sljedeća 24 sata.',
   'resv.reminderDone': 'Podsjetnik poslan',
   'resv.reminderNone': 'Nema rezervacija za podsjetnik',
   'resv.reminderFailed': 'Podsjetnik NI poslan',
@@ -2537,7 +2599,7 @@ export const hr: Record<string, string> = {
   'notif.loadError': 'Greška pri učitavanju pravila.',
   'notif.event.ORDER_NEW': 'Nova narudžba',
   'notif.event.ORDER_READY': 'Narudžba pripremljena',
-  'notif.event.ORDER_FIRE': 'Slano u pripremu',
+  'notif.event.ORDER_FIRE': 'Iduće jelo poslano u pripremu',
   'notif.event.DELIVERY_NEW': 'Nova dostavna narudžba',
   'notif.event.RESERVATION_NEW': 'Nova rezervacija',
   'notif.event.LOW_STOCK': 'Niska zaliha',

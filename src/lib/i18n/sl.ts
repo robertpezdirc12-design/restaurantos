@@ -148,6 +148,9 @@ export const sl: Record<string, string> = {
   'tabs.izmene': 'Izmene',
   'tabs.delovnicas': 'Delovni čas',
   'tabs.haccp': 'HACCP',
+  // Issue #71 audit-27: neznan/zaprt zavihek — obvestilo namesto prazne plošče
+  'tabs.unknown': 'Zavihek ne obstaja — preusmerjen na pregled.',
+  'tabs.noPerm': 'Za ta zavihek nimate dovoljenja — preusmerjen na pregled.',
   'tabs.stroski': 'Stroški',
   'tabs.zvestoba': 'Zvestoba',
   'tabs.mnenja': 'Mnenja',
@@ -356,10 +359,20 @@ export const sl: Record<string, string> = {
   'orders.payFurs': 'Plačilo + FURS',
   'orders.persons': 'osebi',
   'orders.newTitle': 'Novo naročilo',
+  // Issue #71 audit-2/audit-5: čLOVEŠKA oznaka tipa naročila (ne surovi enum DINE_IN)
+  'order.type.DINE_IN': 'Na mestu',
+  'order.type.TAKEAWAY': 'Odnes',
+  'order.type.DELIVERY': 'Dostava',
+  // Issue #71 audit-23: zgoščevanje postavic naročila (3 + »＋ N ostalih«)
+  'orders.moreItems': '＋ {n} ostalih',
+  'orders.showAllItems': 'Prikaži vse postavke',
+  'orders.showLessItems': 'Prikaži manj',
 
   // ── Kuhinja (KDS) ──
   'kitchen.kitchenTicket': 'Kuhinjski list',
   'kitchen.barTicket': 'Bar list',
+  // Issue #71 audit-6: manjkajoč ključ — surovi ključ se je izpisal na gumbu
+  'kitchen.printBarTitle': 'Natisni bar list',
 
   // ── Plačilni dialog ──
   'payment.method': 'Način plačila:',
@@ -505,6 +518,13 @@ export const sl: Record<string, string> = {
   'inv.actOdpadDesc': 'Zapis zavrženega',
   'inv.newItem': 'Nov artikel',
   'inv.stockList': 'Sklad zalog',
+  // Issue #71 audit-24: iskalnik + filtri nad seznamom zalog (ne gol abecedni seznam)
+  'inv.search': 'Išči artikel…',
+  'inv.filterAll': 'Vsi',
+  'inv.filterLow': 'Pod minimumom ({n})',
+  'inv.filterOut': 'Zmanjkalo ({n})',
+  'inv.outBadge': 'Zmanjkalo',
+  'inv.searchNone': 'Noben artikel ne ustreza iskanju/filteru — počisti iskalnik ali preklopi na »Vsi«.',
   'inv.empty': 'Zaloga je prazna.',
   'inv.minShort': 'min',
   'inv.adjust': 'Prilagodi',
@@ -621,6 +641,10 @@ export const sl: Record<string, string> = {
   'haccp.target': 'Cilj (naprava / prostor)',
   'haccp.targetPlaceholder': 'npr. Hladilna vitrina 1',
   'haccp.value': 'Vrednost (°C)',
+  // Issue #71 audit-17: oznaka vrednosti sledi VRSTI kontrole (ne °C za vse) + razlog zakaj je gumb onemogočen
+  'haccp.valueGeneral': 'Vrednost',
+  'haccp.valueDelivery': 'Vrednost (kg/l)',
+  'haccp.submitHint': 'Vnesite cilj (npr. »≤ 4 °C«) — kontrolo lahko zapišete, ko je obrazec popoln.',
   'haccp.valuePlaceholder': 'npr. 4.5',
   'haccp.result': 'Rezultat',
   'haccp.okSelect': '✅ V redu',
@@ -663,7 +687,7 @@ export const sl: Record<string, string> = {
   'haccp.state.closed': 'Zaprto',
   'haccp.board.title': 'Termini kontrol',
   'haccp.board.desc': 'Zapadli in današnji termini po načrtih — dnevi brez izvedbe so vidni kot zapadli.',
-  'haccp.board.none': 'Ni načrtovih terminov v oknu (ustvarite načrt spodaj).',
+  'haccp.board.none': 'Ni načrtovanih terminov v oknu (ustvarite načrt spodaj).',
   'haccp.board.today': 'Danes',
   'haccp.board.perform': 'Izvedi',
   'haccp.board.detail': 'Podrobnost',
@@ -1157,6 +1181,8 @@ export const sl: Record<string, string> = {
   'acct.from': 'Od',
   'acct.to': 'Do',
   'acct.exportCsv': 'Izvozi (CSV)',
+  // Issue #71 audit-6 (test ga je ujel): manjkajoči ključ na gumbu predogleda X/Z
+  'acct.preview': 'Predogled',
   'acct.exportJson': 'Izvozi (JSON)',
   'acct.exportFailed': 'Izvoz ni uspel.',
 
@@ -1668,7 +1694,7 @@ export const sl: Record<string, string> = {
   // Rezervacije (tab + dialog) — resv.st* = RES_STATUS_KEYS
   'resv.upcoming': 'Prihajajoče rezervacije',
   'resv.new': 'Nova rezervacija',
-  'resv.empty': 'Ni prihajajočih rezervacij.',
+  'resv.empty': 'Ni prihajajočih rezervacij — ko gostje potrdijo prihod, se bodo prikazali tukaj. Ustvari prvo rezervacijo z gumbom zgoraj.',
   'resv.stConfirmed': 'Potrjena',
   'resv.stSeated': 'Gost prišel',
   'resv.stCompleted': 'Zaključena',
@@ -1731,6 +1757,9 @@ export const sl: Record<string, string> = {
   'resv.wid.save': 'Shrani nastavitve',
   'resv.wid.saved': 'Nastavitve shranjene ✓',
   'resv.wid.notConfigured': 'Widget še ni nastavljen.',
+  // Issue #71 audit-4: čLOVEŠKA napaka namesto surovega razvijalskega sporočila + korak
+  'resv.wid.errNoLocation': 'Lokacija ni določena — izberite lokacijo v zgornji vrstici in poskusite znova.',
+  'resv.wid.errGeneric': 'Nastavitev widgeta se ni naložila ({msg}). Poskusite znova ali kontaktirate podporo.',
   'resv.wid.init': 'Ustvari povezavo',
   'resv.wid.open': 'Odpri povezavo',
   // Issue #21 (v1.111.0) — klic vodje iz POS-a (callv.*)
@@ -1767,7 +1796,7 @@ export const sl: Record<string, string> = {
   'callv.status.CANCELLED': 'Preklican',
   'callv.card.title': 'Klici vodje',
   'callv.card.desc': 'Zahteve osebja po pomoči — prevzemite, obdelajte, rešite.',
-  'callv.card.empty': 'Ni aktivnih klicev.',
+  'callv.card.empty': 'Ni aktivnih klicev — ekipa jih sproži prek gumba »Kliči vodjo« na svoji napravi.',
   'callv.card.filter.active': 'Aktivni',
   'callv.card.filter.overdue': 'Zapadli',
   'callv.card.filter.resolved': 'Rešeni',
@@ -1821,7 +1850,7 @@ export const sl: Record<string, string> = {
   'emp.bootCreate': 'Ustvari trajen profil',
   'emp.bootExisting': 'Klikni svoj profil spodaj, nastavi si trajen PIN (lahko isti kot zdaj) ter se nato odjavi in znova prijavi. Po ponovni prijavi to opozorilo izgine.',
   'emp.bootCreated': 'Profil ustvarjen ✓ — odjavi se in prijavi z naslovom {email} in novim PIN-om.',
-  'emp.controlCenter': ' — Control Center',
+  'emp.controlCenter': ' — kontrolna plošča',
   'emp.clickToEdit': 'klikni profil za urejanje',
   'emp.inactiveSuffix': '(neaktiven)',
   'emp.permsCount': '{n} dovoljenj',
@@ -1831,6 +1860,19 @@ export const sl: Record<string, string> = {
   'emp.permsHint': 'Kanonska avtorizacija: prazno = privzeto po vlogi.',
   'emp.savedOk': 'Shranjeno ✓',
   'emp.saveProfile': 'Shrani profil',
+  // Issue #71 audit-25: iskalnik + gumb »Nov zaposleni« na plošči (ne samo delovna mesta)
+  'emp.new': 'Nov zaposleni',
+  'emp.newTitle': 'Nov zaposleni',
+  'emp.newDesc': 'Ustvari profil s PIN-om — zaposleni se prijavi z e-pošto in PIN-om.',
+  'emp.newName': 'Ime in priimek',
+  'emp.newEmail': 'E-pošta',
+  'emp.newPin': 'PIN (4–8 številk)',
+  'emp.newRole': 'Vloga',
+  'emp.newCreate': 'Ustvari zaposlenega',
+  'emp.created': 'Zaposleni ustvarjen ✓',
+  'emp.exists': 'Zaposleni s to e-pošto že obstaja.',
+  'emp.search': 'Išči zaposlenega…',
+  'emp.searchNone': 'Noben zaposleni ne ustreza iskanju — počisti iskalnik.',
   'emp.locationLabel': 'Lokacija (poslovalnica)',
   'emp.locAria': 'Lokacija zaposlenega',
   'emp.unassigned': '(nedodeljeno)',
@@ -1925,6 +1967,9 @@ export const sl: Record<string, string> = {
   // Dnevnik napak / Revizijski dnevnik / O sistemu
   'errlog.title': 'Dnevnik napak',
   'errlog.none': 'Ni zabeleženih napak.',
+  // Issue #71 audit-28: združevanje po podpisu + tehnični payload skrit
+  'errlog.occurrences': '×{n}',
+  'errlog.details': 'Podrobnosti (tehnično)',
   'audit.title': 'Revizijski dnevnik',
   'audit.none': 'Ni revizijskih vnosov.',
   'sys.title': 'O sistemu',
@@ -1956,6 +2001,15 @@ export const sl: Record<string, string> = {
   'kds.allergenWarning': 'ALERGIJA',
   'kds.allergenCodes': 'Alergeni',
   'kds.allergenUnconfirmed': 'Alergenski podatki niso potrjeni — preveri!',
+  // Issue #71 audit-1: ločena oddelka — aktivna izmena vs zastarelo
+  'kds.activeShift': 'Aktivna izmena',
+  'kds.staleSection': 'Zastarelo (prejšnja izmena/demo)',
+  'kds.staleToggle': 'Prikaži/skrij zastarele listke',
+  'kds.staleCount': '{n} listkov',
+  // Issue #71 audit-14: alergeni — resnični alarm = rdeč pas, manjkajoči = EN zbirnik na listku
+  'kds.allergyBand': 'ALERGIJE — živilska varnost gostov',
+  'kds.unconfirmedAllergens': '{n} od {m} postavic brez potrjenih alergenskih podatkov',
+  'kds.guestsShort': '{n} oseb',
   'kds.markAvailable': 'Vrni na voljo',
   // P0-3 (v1.83.0) — 86 plošča na KDS: proaktivni 86 + nadomestki (TRZNA-VRZELI-2026 §4)
   'kds.boardTitle': '86 plošča — razprodani artikli',
@@ -2024,6 +2078,8 @@ export const sl: Record<string, string> = {
   'sale.total': 'Skupaj (z DDV)',
   'sale.payNow': 'Plačaj in izdaj račun',
   'sale.empty': 'Ni artiklov za hitro prodajo.',
+  // Issue #71 audit-16: 86 na ploščici artikla — razlog v rdečem, ne sivi sivi
+  'sale.soldOut': 'Razprodano (86)',
   'sale.cartTitle': 'Košara',
   'sale.cartEmpty': 'Košara je prazna',
   'sale.cartEmptyHint': 'Tapni artikel, da ga dodaš.',
@@ -2175,8 +2231,8 @@ export const sl: Record<string, string> = {
   'guest.display.waitingPos': 'Čakam na podatke POS-a …',
 
   // ==== 33-a: selitev/združevanje/fire (P2 audit §54/§57) ====
-  'mmv.fire': 'Pošlji na kuhinjo',
-  'mmv.fireDone': 'Postavke poslane na kuhinjo ({n}).',
+  'mmv.fire': 'Pošlji v kuhinjo',
+  'mmv.fireDone': 'Postavke poslane v kuhinjo ({n}).',
   'mmv.move': 'Premakni mizo',
   'mmv.moveTitle': 'Premakni naročilo na drugo mizo',
   'mmv.moveHint': 'Naročilo: {name}. Izberite prosto mizo — trenutna miza se samodejno sprosti.',
@@ -2271,8 +2327,8 @@ export const sl: Record<string, string> = {
   'urnik.night': 'Nočna',
   'urnik.split': 'Razdeljena',
   'urnik.full': 'Celodnevna',
-  'urnik.timeOff': 'Zahteve za prostost',
-  'urnik.noRequests': 'Ni zahtev za prostost.',
+  'urnik.timeOff': 'Zahteve za dopust',
+  'urnik.noRequests': 'Ni zahtev za dopust.',
   'urnik.requestTimeOff': 'Zahtevaj prostost',
   'urnik.requestSent': 'Zahteva poslana',
   'urnik.submitRequest': 'Pošlji zahtevo',
@@ -2295,6 +2351,12 @@ export const sl: Record<string, string> = {
   'resv.reminderSend': 'Pošlji opomnik',
   'resv.reminderSent': 'Opomnik poslan',
   'resv.reminderAll': 'Pošlji vse opomnike (24 h)',
+  // Issue #71 audit-18: potrditveno okno pred množičnim pošiljanjem (neponovljivo javno dejanje)
+  'resv.reminderConfirmTitle': 'Pošlji vse opomnike?',
+  'resv.reminderConfirmBody': 'Gostom bo poslanih {n} opomnikov (e-pošta/SMS) za rezervacije, ki se začnejo v naslednjih 24 urah. Tega dejanja ni mogoče razveljaviti.',
+  'resv.reminderConfirmList': 'Prizadete rezervacije',
+  'resv.reminderConfirmSend': 'Pošlji {n} opomnikov',
+  'resv.reminderNoneCandidates': 'Ni rezervacij, ki bi potrebovale opomnik v naslednjih 24 urah.',
   'resv.reminderDone': 'Opomnik poslan',
   'resv.reminderNone': 'Ni rezervacij za opomnik',
   'resv.reminderFailed': 'Opomnik NI poslan',
@@ -2537,13 +2599,13 @@ export const sl: Record<string, string> = {
   'notif.loadError': 'Napaka pri nalaganju pravil.',
   'notif.event.ORDER_NEW': 'Novo naročilo',
   'notif.event.ORDER_READY': 'Naročilo pripravljeno',
-  'notif.event.ORDER_FIRE': 'Tečaj poslan v pripravo',
+  'notif.event.ORDER_FIRE': 'Nadaljnji hod poslan v pripravo',
   'notif.event.DELIVERY_NEW': 'Novo dostavno naročilo',
   'notif.event.RESERVATION_NEW': 'Nova rezervacija',
   'notif.event.LOW_STOCK': 'Nizka zaloga',
   'notif.event.PO_APPROVED': 'Nabavno naročilo odobreno',
   'notif.event.PO_RECEIVED': 'Prevzem blaga (GRN)',
-  'notif.event.TIME_OFF_STATUS': 'Status zahteve za prostost',
+  'notif.event.TIME_OFF_STATUS': 'Status zahteve za dopust',
   'notif.event.RECEIPT_FAILED': 'Napaka fiskalizacije',
   'notif.event.Z_CLOSED': 'Zaključek izmene (Z)',
   'notif.event.DRIVER_ASSIGNED': 'Voznik dodeljen (dostava)',

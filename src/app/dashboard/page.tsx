@@ -8,7 +8,7 @@ import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
 import { KDS_DELAY_REASONS, delayThresholdForTarget, isLatePrep, isStaleKdsTicket, staleTicketHours } from '@/lib/kds-delays'
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
-import { tabHasPerm } from '@/lib/tab-permissions'
+import { tabHasPerm, TAB_PERM } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -144,7 +144,11 @@ const r2v = (v: number) => Math.round(v * 100) / 100
 const statusColors: Record<string, string> = {
   FREE: 'bg-emerald-700 text-white hover:bg-emerald-800',
   OCCUPIED: 'bg-amber-700 text-white hover:bg-amber-800',
-  RESERVED: 'bg-stone-200 text-stone-800 hover:bg-stone-300',
+  /* Issue #71 audit-21: rezervirana = lastni akcent (bele ploščice s PREKINJENIM robom +
+     temnim besedilom) — prej stone-200 s text-stone-800 je imel kontrast ~2,6:1 in je
+     na sončni tablici izginil. Barva NI edini nosilec pomena — ploščica nosi tudi
+     besedilo »Rezervirana« (statusLabels). */
+  RESERVED: 'bg-white text-stone-900 border-2 border-dashed border-stone-500 hover:bg-stone-50 shadow-sm',
   DIRTY: 'bg-stone-700 text-white hover:bg-stone-800',
   OPEN: 'bg-amber-700 text-white', SENT: 'bg-orange-700 text-white',
   PREPARED: 'bg-emerald-700 text-white', PAID: 'bg-teal-700 text-white',
@@ -160,6 +164,30 @@ const statusLabels: Record<string, string> = {
 /* EMPLOYEE CONTROL CENTER (R265) — kanonska dovoljenja sedaj v src/lib/permissions.ts */
 const ROLE_LABELS: Record<string, string> = {
   OWNER: 'Lastnik', ADMIN: 'Administrator', MANAGER: 'Vodja', WAITER: 'Natakar', BAR: 'Bar', KITCHEN: 'Kuhinja', CLEANER: 'Čistilka',
+  // Issue #71 audit-5: vse vloge iz baze imajo čLOVEŠKO oznako — ne surovi enum
+  STAFF: 'Natakar', CHEF: 'Kuhar', WAREHOUSE: 'Skladiščnik', ACCOUNTING: 'Računovodstvo',
+  GROUP_OWNER: 'Lastnik skupine', ORG_ADMIN: 'Administrator organizacije', PROPERTY_MANAGER: 'Upravnik objekta',
+}
+/* Issue #71 audit-5: revizijski dogodki govorijo jezik vloge, ne razvijalski jezik.
+   Znani dogodki imajo izrecen prevod; neznan se OLEPI (podčrtaj → presledek,
+   velika začetnica) — nikoli več gol `SCHEMA_MIGRATION_CRM_CAMPAIGNS`. */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  DEMO_LOGIN: 'Prijava brez gesla (demo)',
+  ERROR_REPORT: 'Poročilo o napaki',
+  AUDIT_DEMO_CLEANUP: 'Čiščenje demo podatkov',
+}
+const auditActionL = (a: string): string => {
+  if (AUDIT_ACTION_LABELS[a]) return AUDIT_ACTION_LABELS[a]
+  if (a.startsWith('SCHEMA_MIGRATION_')) return `Migracija sheme: ${a.replace('SCHEMA_MIGRATION_', '').toLowerCase().replace(/_/g, ' ')}`
+  if (/^[A-Z0-9_]+$/.test(a)) return a.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+  return a
+}
+const auditEntityL = (e: string): string => {
+  const map: Record<string, string> = {
+    Order: 'Naročilo', Employee: 'Zaposleni', Table: 'Miza', Reservation: 'Rezervacija',
+    Schema: 'Shema baze', Maintenance: 'Vzdrževanje', Settings: 'Nastavitve', Menu: 'Meni',
+  }
+  return map[e] ?? e
 }
 const RES_STATUS_KEYS: Record<string, string> = {
   CONFIRMED: 'resv.stConfirmed', SEATED: 'resv.stSeated', COMPLETED: 'resv.stCompleted', CANCELLED: 'resv.stCancelled', NO_SHOW: 'resv.stNoShow',
@@ -403,6 +431,12 @@ function DashboardInner() {
 
   // Employee Control Center stanje
   const [editEmployee, setEditEmployee] = useState<EmployeeT | null>(null)
+  // Issue #71 audit-25: iskalnik po zaposlenih + gumb/dialog »Nov zaposleni«
+  const [empSearch, setEmpSearch] = useState('')
+  const [newEmpDlg, setNewEmpDlg] = useState(false)
+  const [newEmp, setNewEmp] = useState({ name: '', email: '', pin: '', role: 'WAITER' })
+  const [newEmpBusy, setNewEmpBusy] = useState(false)
+  const [newEmpErr, setNewEmpErr] = useState('')
   /** Vaja PIN-ov: ali je trenutna seja prijavljena prek začasnega bootstrap dostopa (2 h)? */
   const [bootstrapLogin, setBootstrapLogin] = useState(false)
   /** Vaja PIN-ov: ustvarjanje trajnega profila za bootstrap e-pošto (ce profil se ne obstaja) */
@@ -459,12 +493,17 @@ function DashboardInner() {
   // Issue #5 (P1-B): clamp aktivnega zavihka — URL ?tab=<privilegiran> za vlogo brez
   // dovoljenja se spravi na 'pregled' takoj, ko so perms znani (paneli sicer ostanejo
   // izrisani brez podatkov — backend 403; to je UI-hardening, ne varnostna plast)
+  // Issue #71 audit-27: clamp je ZDAJ GLASEN — uporabnik izve, zakaj je pristal na
+  // pregledu, ne da bi mislil, da mu je aplikacija »vzela« zavihek.
   useEffect(() => {
     if (canManage) return
     // issue #6 §F: tudi PRAZNA dovoljenja se clampajo (tabHasPerm fail-closed →
     // privilegiran ?tab= pristane na 'pregled', ne da bi čakal na /me)
-    if (!tabHasPerm(activeTab, { canManage, perms })) setActiveTab('pregled')
-  }, [perms, canManage, activeTab])
+    if (activeTab !== 'pregled' && !tabHasPerm(activeTab, { canManage, perms })) {
+      toast({ title: t('tabs.noPerm') })
+      setActiveTab('pregled')
+    }
+  }, [perms, canManage, activeTab, t])
 
   // Issue #5 (P1-A lekcija): pri router.push iz prijave App Router posodobi URL ŠELE
   // PO prvem renderu nove strani → useState inicializator je prebral STAR URL ('').
@@ -472,7 +511,15 @@ function DashboardInner() {
   // (varnost: clamp effect zgoraj neodvisno preveri dovoljenje — tuji param ne poviša).
   useEffect(() => {
     const tabParam = new URLSearchParams(window.location.search).get('tab')
-    if (tabParam && tabParam !== activeTab) setActiveTab(tabParam)
+    if (!tabParam || tabParam === activeTab) return
+    // Issue #71 audit-27: ?tab=neobstoječi je prej pustil PRAZNO ploščo brez sporočila —
+    // izmerjeno ?tab=hitra-prodaja (pravi id: prodaja). Zdaj: obvestilo + preusmeritev.
+    if (!TAB_PERM[tabParam]) {
+      toast({ title: t('tabs.unknown') })
+      setActiveTab('pregled')
+      return
+    }
+    setActiveTab(tabParam)
   }, [])
 
   // Naloga #10: ?tab= se je samo BRALO. Preklop zavihka je URL pustil na
@@ -1546,6 +1593,24 @@ function DashboardInner() {
     setEmpLoc(e.locationId || '')
   }
 
+  /** Issue #71 audit-25: ustvarjanje zaposlenega neposredno s plošče (prej samo delovna mesta). */
+  async function createEmployee() {
+    setNewEmpBusy(true); setNewEmpErr('')
+    try {
+      const d = await api<{ employee: EmployeeT }>('/api/employees', {
+        method: 'POST',
+        body: JSON.stringify({ name: newEmp.name.trim(), email: newEmp.email.trim(), pin: newEmp.pin, role: newEmp.role, locationId: viewLoc || user?.locationId || locList[0]?.id || undefined }),
+      })
+      setEmployees((list) => [...list, d.employee])
+      toast({ title: t('emp.created'), description: d.employee.name })
+      setNewEmpDlg(false)
+      setNewEmp({ name: '', email: '', pin: '', role: 'WAITER' })
+    } catch (err) {
+      const msg = (err as Error).message
+      setNewEmpErr(/že obstaja/i.test(msg) ? t('emp.exists') : msg)
+    } finally { setNewEmpBusy(false) }
+  }
+
   async function patchEmployee(payload: Record<string, unknown>, okMsg: string) {
     if (!editEmployee) return
     setEmpSaving(true)
@@ -1627,11 +1692,24 @@ function DashboardInner() {
   const stL = (s: string): string => { const v = t(`status.${s}`); return v === `status.${s}` ? (statusLabels[s] || s) : v }
   const roleL = (r: string): string => { const v = t(`roles.${r}`); return v === `roles.${r}` ? (ROLE_LABELS[r] || r) : v }
   const zoneL = (z: string): string => { const v = t(`zones.${z}`); return v === `zones.${z}` ? (ZONE_LABELS[z] || z) : v }
+  // Issue #71 audit-2/audit-5: tip naročila v ČLOVEŠKI obliki — naslov listka/kartice je
+  // ime mize, fallback pa "Na mestu"/"Odnes"/"Dostava", NE surovi enum DINE_IN.
+  const orderTypeL = (ty: string): string => { const v = t(`order.type.${ty}`); return v === `order.type.${ty}` ? ty : v }
   // Triage ⑧ — pogledi: preklopnik filtrira sezname (viri brez locationId ostanejo vidni)
   const viewTables = filterByLocation(tables, viewLoc)
   const viewOrders = filterByLocation(orders, viewLoc)
   const viewKitchen = filterByLocation(kitchen, viewLoc)
   const viewEmployees = filterByLocation(employees, viewLoc)
+  // Issue #71 audit-18: kandidati za množični opomnik — ZRCALI strežniško logiko
+  // (status=confirmed, začetek v naslednjih 24 h, reminderSent=false), da potrditveno
+  // okno pokaže TOČNO število, ki ga bo strežnik poslal. (Rezervacije API že vrača
+  // obseg lokacije uporabnika — brez dodatnega filterByLocation.)
+  const reminderCandidates = reservations.filter((r) => {
+    if (r.reminderSent || r.status !== 'confirmed') return false
+    const start = new Date(r.reservedAt).getTime()
+    const now = Date.now()
+    return start >= now && start <= now + 24 * 3600 * 1000
+  })
   // OPS-4 v1.67.0 — KDS: stanje postaje/zvoka + hitra prodaja (sank)
   // Issue #14 (v1.112.0): kdsStation accepts CUSTOM station ids too — 'ALL' plus
   // the two legacy buckets plus any id of a configured named station. The URL
@@ -1655,6 +1733,12 @@ function DashboardInner() {
   const [kdsBoardOpen, setKdsBoardOpen] = useState(false)
   // v1.129.0: bumpWholeTicket — zaklep proti dvojnemu pritisku (id listka med izvajanjem)
   const [kdsBumpBusy, setKdsBumpBusy] = useState('')
+  // Issue #71 audit-1: zastareli listki — LOČEN oddelek, privzeto ZLOŽEN (števec viden)
+  const [kdsStaleOpen, setKdsStaleOpen] = useState(false)
+  // Issue #71 audit-23: zgoščene postavke naročil — razširjeni seznami po id-ju
+  const [expandedOrderItems, setExpandedOrderItems] = useState<Record<string, boolean>>({})
+  // Issue #71 audit-18: potrditveno okno za množične opomnike (neponovljivo dejanje)
+  const [reminderConfirmOpen, setReminderConfirmOpen] = useState(false)
   const kdsPrevPendingRef = useRef(0)
   // OPS-9 val 3 (v1.76.0): delay-reason dialog — opens when a LATE item (>10 min) is bumped
   const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
@@ -1664,7 +1748,14 @@ function DashboardInner() {
   const allergenLbl = (code: string) =>
     (ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, allergenLocale) : code
   const [saleCart, setSaleCart] = useState<Record<string, number>>({})
+  // Issue #71 audit-32: privzeta izbira = PRAVA KATEGORIJA (ne »Vse« — 436 ploščic naenkrat
+  // redči mrežo in zatika drsenje na tablici). Uporabnikov izbor vedno premaga privzeto.
   const [saleCat, setSaleCat] = useState('ALL')
+  const saleCatTouched = useRef(false)
+  useEffect(() => {
+    if (saleCatTouched.current || saleCat !== 'ALL' || categories.length === 0) return
+    setSaleCat(categories[0].id)
+  }, [categories, saleCat])
   const [saleSearch, setSaleSearch] = useState('')
   const [saleSending, setSaleSending] = useState(false)
   const [saleErr, setSaleErr] = useState('')
@@ -2063,7 +2154,7 @@ function DashboardInner() {
                   {viewOrders.slice(0, 6).map((o) => (
                     <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-semibold truncate">{o.table?.name || o.type}</p>
+                        <p className="font-semibold truncate">{o.table?.name || orderTypeL(o.type)}</p>
                         <p className="text-xs text-stone-500">{t('dash.itemsCount', { n: o.items.length, name: o.employee?.name || '—' })}</p>
                       </div>
                       <div className="text-right shrink-0">
@@ -2154,6 +2245,10 @@ function DashboardInner() {
                             {tb.status === 'DIRTY' && <SprayCan className="w-5 h-5 shrink-0 opacity-90" aria-hidden />}
                           </p>
                           <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
+                          {/* Issue #71 audit-21: status je BESEDILO, ne samo barva (barvna slepota,\n                              sončna svetloba na tablici) */}
+                          {tb.status !== 'FREE' && (
+                            <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide opacity-95">{stL(tb.status)}</p>
+                          )}
                           {/* v1.129.0 (Toast/Square benchmark): zasedena ploščica nosi ČAS (min
                               od naročila) in FAZO naročila (poslano/v pripravi/pripravljeno),
                               ne samo znesek — natakar naletu vidi, katera miza čaka hrano.
@@ -2301,12 +2396,31 @@ function DashboardInner() {
                 {viewOrders.filter((o) => orderFilter === 'ALL' || o.status === orderFilter).map((o) => (
                   <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold">{o.table?.name || o.type} · {o.guests} {t('orders.persons')}</p>
+                      <p className="font-semibold">{o.table?.name || orderTypeL(o.type)} · {o.guests} {t('orders.persons')}</p>
                       <Badge className={statusColors[o.status]}>{stL(o.status)}</Badge>
                     </div>
-                    <ScrollArea className="max-h-32">
-                      <ul className="text-sm space-y-1">{o.items.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
-                    </ScrollArea>
+                    {/* Issue #71 audit-23: privzeto 3 postavke + »＋ N ostalih« — naročilo z 27
+                        postavicami ne sme biti neskončno drsenje; število in vsota ostaneta vidni. */}
+                    {(() => {
+                      const expanded = expandedOrderItems[o.id]
+                      const shown = expanded ? o.items : o.items.slice(0, 3)
+                      const rest = o.items.length - shown.length
+                      return (
+                        <div className="text-sm">
+                          <ul className="space-y-1">{shown.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
+                          {rest > 0 && (
+                            <button type="button" onClick={() => setExpandedOrderItems((pr) => ({ ...pr, [o.id]: true }))} className="mt-1 min-h-11 w-full rounded-md border border-dashed border-stone-300 text-xs font-semibold text-stone-600 hover:bg-stone-50 hover:text-stone-800 transition-colors">
+                              {t('orders.moreItems', { n: rest })}
+                            </button>
+                          )}
+                          {expanded && o.items.length > 3 && (
+                            <button type="button" onClick={() => setExpandedOrderItems((pr) => ({ ...pr, [o.id]: false }))} className="mt-1 min-h-11 w-full rounded-md text-xs font-medium text-stone-500 hover:text-stone-800 transition-colors">
+                              {t('orders.showLessItems')}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })()}
                     <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                       <p className="font-bold">{fmtEUR(o.total)}</p>
                       {o.status !== 'PAID' && (
@@ -2419,11 +2533,11 @@ function DashboardInner() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-10 w-full sm:w-56" aria-label={t('sale.search')} />
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('sale.allCat')}>
-                    <Button size="sm" variant={saleCat === 'ALL' ? 'default' : 'outline'} className={`h-9 ${saleCat === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => setSaleCat('ALL')}>
+                    <Button size="sm" variant={saleCat === 'ALL' ? 'default' : 'outline'} className={`h-9 ${saleCat === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat('ALL') }}>
                       {t('sale.allCat')}
                     </Button>
                     {categories.map((c) => (
-                      <Button key={c.id} size="sm" variant={saleCat === c.id ? 'default' : 'outline'} className={`h-9 max-w-40 ${saleCat === c.id ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => setSaleCat(c.id)} title={c.name}>
+                      <Button key={c.id} size="sm" variant={saleCat === c.id ? 'default' : 'outline'} className={`h-9 max-w-40 ${saleCat === c.id ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat(c.id) }} title={c.name}>
                         <span className="truncate">{c.name}</span>
                       </Button>
                     ))}
@@ -2434,20 +2548,24 @@ function DashboardInner() {
                     const inCart = saleCart[mi.id] || 0
                     return (
                       <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
-                        aria-label={`${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}`}
+                        aria-label={`${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
                         className={`relative flex min-h-[4.5rem] flex-col rounded-xl border p-3 text-left transition ${mi.available
                           ? inCart > 0
                             ? 'border-emerald-600 bg-emerald-50/60 hover:border-emerald-600 hover:shadow-md active:scale-[0.98]'
                             : 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md active:scale-[0.98]'
-                          : 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-60'}`}>
+                          : 'cursor-not-allowed border-red-200 bg-red-50/70'}`}>
                         {inCart > 0 && (
                           <span key={inCart} aria-hidden="true" className="absolute right-1.5 top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-700 px-1.5 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
                             {inCart}×
                           </span>
                         )}
-                        <p className={`min-w-0 text-sm font-semibold leading-tight ${inCart > 0 ? 'pr-7' : ''}`}>{mi.name}</p>
-                        <p className="mt-auto self-end pt-1 text-sm font-bold tabular-nums text-stone-900">{fmtEUR(mi.price)}</p>
-                        {!mi.available && <Badge variant="outline" className="mt-1 self-start text-[10px]">86</Badge>}
+                        {/* Issue #71 audit-16: 86 iz KDS-a je viden NA PLOŠČICI (rdeči trak),
+                            ne tiho mrk — natakar NE proda artikla, ki ga je kuhinja že umaknila */}
+                        {!mi.available && (
+                          <span aria-hidden="true" className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
+                        )}
+                        <p className={`min-w-0 text-sm font-semibold leading-tight ${inCart > 0 || !mi.available ? 'pt-5' : ''}`}>{mi.name}</p>
+                        <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
                       </button>
                     )
                   })}
@@ -2684,14 +2802,25 @@ function DashboardInner() {
                 (stabilno sortiranje ohrani createdAt ASC znotraj skupine), vizualno ločeni in
                 označeni ZASTARELO z starostjo v urah — ne preglasijo prioritete aktivnih listkov,
                 ostanejo pa vidni/operabilni za revizijo (kuhinja jih lahko zaključi). */}
-            {!kdsCustomView && viewKitchen
-              .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
-              .slice()
-              .sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))
-              .map((o) => {
+            {/* Issue #71 audit-1: DVE LOCI — »Aktivna izmena« in »Zastarelo« (ločen oddelek,
+                privzeto ZLOŽEN s števcem). Kuhar vidi, kaj je ZDAJ na vrsti; ostanki
+                prejšnjih izmen/demo ostanejo dosegljivi za revizijo, a IZVEN aktivne vrste. */}
+            {!kdsCustomView && (() => {
+              const kdsQueue = viewKitchen
+                .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+                .slice()
+                .sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))
+              const kdsActive = kdsQueue.filter((o) => !isStaleKdsTicket(kdsMinutes(o.createdAt)))
+              const kdsStale = kdsQueue.filter((o) => isStaleKdsTicket(kdsMinutes(o.createdAt)))
+              const renderKdsTicket = (o: (typeof viewKitchen)[number]) => {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
                 const stale = isStaleKdsTicket(ageMin)
+                // Issue #71 audit-14: alergeni — hierarhija resnosti. RESNIČNI alarm (alergijsko
+                // opozorilo) = RDEČ pas na vrhu listka; manjkajoči podatki = EN sivi zbirnik
+                // (»N od M postavic«), ne 24+ enakih rumenih čipov, ki utišajo pravi alarm.
+                const allergyItems = items.filter((it) => it.allergenWarning)
+                const unconfirmedCount = items.filter((it) => it.allergenStatus && it.allergenStatus !== 'confirmed' && !it.allergenWarning).length
                 return (
                   /* Issue #69 (2. val): gostota listka — glava v dveh vrsticah (identiteta +
                      PRIMARNI STATUS listka, nato ČASOVNIK + tiskanje), postavke v kompaktne
@@ -2708,8 +2837,12 @@ function DashboardInner() {
                   >
                     <CardHeader data-region="kds-ticket-header" className="gap-2 px-4 pt-0 pb-0 sm:px-6">
                       <CardTitle className="text-base flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-                        <span className="font-bold truncate max-w-full min-w-0">{o.table?.name || o.type}</span>
-                        <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI')}</span>
+                        <span className="font-bold truncate max-w-full min-w-0">{o.table?.name || orderTypeL(o.type)}</span>
+                        {/* Issue #71 audit-2: tip naročila je ZNAČKA ob naslovu (miza = identiteta),
+                            ne surovi enum; podnaslov #num + ura brez sekund + osebe + natakar */}
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-600">{orderTypeL(o.type)}</span>
+                        {o.employee?.name && <span className="text-xs font-normal text-stone-400 min-w-0 shrink truncate" title={o.employee.name}>· {o.employee.name}</span>}
+                        <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })} · {t('kds.guestsShort', { n: o.guests })}</span>
                         {/* PRIMARNI STATUS — v1.129.0 (Toast/Square): NEVTRALEN obrobec (stone)
                             — RDEČA je rezervirana IZKLJUČNO za zamudo (starost listka),
                             polnjena barva statusa se je kuharjem zlivala z alarmno barvo. */}
@@ -2746,6 +2879,26 @@ function DashboardInner() {
                           {t('kds.staleHint')}
                         </p>
                       )}
+                      {/* Issue #71 audit-14: RDEČ PAS za resnične alergije — živilska varnost gostov.
+                          Edini alergijski alarm, ki si zasluži rdečo, je potrjeno opozorilo. */}
+                      {allergyItems.length > 0 && (
+                        <div data-region="kds-ticket-allergies" className="rounded border-l-4 border-red-600 bg-red-50 px-2.5 py-1.5" role="alert">
+                          <p className="text-xs font-extrabold uppercase tracking-wide text-red-800">⚠ {t('kds.allergyBand')}</p>
+                          <ul className="mt-0.5 space-y-0.5">
+                            {allergyItems.map((ait) => (
+                              <li key={ait.id} className="text-xs font-bold text-red-800 break-words">{ait.qty}× {ait.name} — {ait.allergenWarning}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {/* Issue #71 audit-14: manjkajoči alergenski podatki = EN sivi zbirnik na listeku
+                          (ne ponovljen rumen čip na vsaki postavki — vizualni šum, ki utiša pravi alarm) */}
+                      {unconfirmedCount > 0 && (
+                        <p data-region="kds-ticket-allergen-unconfirmed" className="flex items-center gap-1.5 px-1 text-xs text-stone-500">
+                          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-stone-300 text-[9px] font-bold text-stone-500" aria-hidden>?</span>
+                          {t('kds.unconfirmedAllergens', { n: unconfirmedCount, m: items.length })}
+                        </p>
+                      )}
                       {items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
                         const itAge = kdsItemAge(it, o)
@@ -2761,13 +2914,11 @@ function DashboardInner() {
                               {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne "13.496′") */}
                               <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
                             </div>
-                            {/* B: postaja + alergeni (vidni jantorni čipi) + nepotrjeni profil — ločena vrstica */}
+                            {/* B: postaja + potrjeni alergeni (jantorni čipi) + opomba — ločena vrstica.
+                                Issue #71 audit-14: RDEČ pas je ZDAJ samo na vrhu listka (resnične alergije);
+                                per-item opozorilo ostane rdeče, vendar kot pas, ne majhen čip. */}
                             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                               <Badge variant="outline" className="shrink-0">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
-                              {/* Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo — VIDNO vedno (preživi premik/osvežitev) */}
-                              {it.allergenWarning && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800 min-w-0">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</span>
-                              )}
                               {(it.allergenCodes ?? []).length > 0 && (it.allergenCodes ?? []).map((code) => (
                                 <span
                                   key={code}
@@ -2778,11 +2929,13 @@ function DashboardInner() {
                                   {allergenLbl(code)}
                                 </span>
                               ))}
-                              {it.allergenStatus && it.allergenStatus !== 'confirmed' && !it.allergenWarning && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">⚠ {t('kds.allergenUnconfirmed')}</span>
-                              )}
                               {it.note && <span className="text-xs text-stone-500 min-w-0 truncate" title={it.note}>ℹ {it.note}</span>}
                             </div>
+                            {/* Issue #7 (P1, v1.104.0) → Issue #71 audit-14: izrecno alergensko
+                                opozorilo na postavki — RDEČ PAS (44 px vrstica, oster kontrast) */}
+                            {it.allergenWarning && (
+                              <p className="rounded border-l-4 border-red-600 bg-red-50 px-2 py-1 text-xs font-bold text-red-800 break-words min-w-0" role="alert">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</p>
+                            )}
                             {/* C: dejanja — lastna vrstica; v1.129.0: cilji ≥ 44 px VEDNO
                                 (tudi na velikem zaslonu — KDS JE dotik, tudi na namizju;
                                 prej je sm:h-8 gumb krčil na 32 px ravno tam, kjer je kuhinja) */}
@@ -2837,7 +2990,35 @@ function DashboardInner() {
                     </CardContent>
                   </Card>
                 )
-              })}
+              }
+              return (
+                <>
+                  {kdsActive.length > 0 && (
+                    <p data-region="kds-section-active" className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-stone-500 px-1">
+                      {t('kds.activeShift')}
+                      <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsActive.length })}</span>
+                    </p>
+                  )}
+                  {kdsActive.map(renderKdsTicket)}
+                  {kdsStale.length > 0 && (
+                    <section data-region="kds-section-stale" className="space-y-2 rounded-xl border border-dashed border-stone-300 bg-stone-50/60 p-2.5" aria-label={t('kds.staleSection')}>
+                      <button
+                        type="button"
+                        onClick={() => setKdsStaleOpen((v) => !v)}
+                        aria-expanded={kdsStaleOpen}
+                        aria-label={t('kds.staleToggle')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-stone-500 hover:bg-stone-100 hover:text-stone-800 transition-colors min-h-11"
+                      >
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${kdsStaleOpen ? '' : '-rotate-90'}`} aria-hidden />
+                        <span className="truncate min-w-0">{t('kds.staleSection')}</span>
+                        <span className="ml-auto shrink-0 rounded-full border border-stone-300 bg-stone-200 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsStale.length })}</span>
+                      </button>
+                      {kdsStaleOpen && kdsStale.map(renderKdsTicket)}
+                    </section>
+                  )}
+                </>
+              )
+            })()}
             {!kdsCustomView && viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))).length === 0 && (
               /* Vizualni benchmark (Toast KDS): prazno stanje = velik jasni status »kuhinja
                  čista«, ne iskalna vrstica — ko pride listek, dobi 100 % pozornosti. */
@@ -3072,7 +3253,9 @@ function DashboardInner() {
               <h2 className="font-semibold text-stone-700 min-w-0">{t('resv.upcoming')}</h2>
               {canRes && (
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => void sendAllReservationReminders()}>
+                  {/* Issue #71 audit-18: množični opomnik = neponovljivo javno dejanje —
+                      POTRDITVENO okno s številom prizadetih (samo vodja) NE neposredni klic */}
+                  <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => setReminderConfirmOpen(true)}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
                   <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '' })}>
@@ -3081,6 +3264,40 @@ function DashboardInner() {
                 </div>
               )}
             </div>
+            {/* Issue #71 audit-18: potrditveno okno — predogled prizadetih rezervacij +
+                nedvoumen izpis, da dejanja NI mogoče razveljaviti (e-pošta/SMS gostom) */}
+            <Dialog open={reminderConfirmOpen} onOpenChange={setReminderConfirmOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{t('resv.reminderConfirmTitle')}</DialogTitle>
+                  <DialogDescription>{t('resv.reminderConfirmBody', { n: reminderCandidates.length })}</DialogDescription>
+                </DialogHeader>
+                {reminderCandidates.length === 0 ? (
+                  <p className="text-sm text-stone-500">{t('resv.reminderNoneCandidates')}</p>
+                ) : (
+                  <ScrollArea className="max-h-48">
+                    <ul className="space-y-1.5 pr-2">
+                      {reminderCandidates.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-stone-200 px-2.5 py-2 text-sm">
+                          <span className="font-medium truncate min-w-0">{r.guestName} · {r.guests} {t('orders.persons')}</span>
+                          <span className="text-xs text-stone-500 shrink-0">{new Date(r.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </ScrollArea>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setReminderConfirmOpen(false)}>{t('common.cancel')}</Button>
+                  <Button
+                    className="bg-emerald-700 hover:bg-emerald-800"
+                    disabled={sending || reminderCandidates.length === 0}
+                    onClick={() => { setReminderConfirmOpen(false); void sendAllReservationReminders() }}
+                  >
+                    {t('resv.reminderConfirmSend', { n: reminderCandidates.length })}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             {/* OPS-8 val 3 (v1.73.0): status filter chips (client-side) */}
             <div className="flex flex-wrap gap-1.5">
               {([
@@ -3342,10 +3559,30 @@ function DashboardInner() {
             <Card>
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base flex items-center gap-1.5"><UserCog className="w-4 h-4" /> {t('tabs.zaposleni')}{canManage ? t('emp.controlCenter') : ''}</CardTitle>
-                {canManage && <span className="text-xs text-stone-400 hidden sm:inline">{t('emp.clickToEdit')}</span>}
+                {canManage && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-stone-400 hidden lg:inline">{t('emp.clickToEdit')}</span>
+                    {/* Issue #71 audit-25: viden gumb »Nov zaposleni« (dodajanje je bilo
+                        dosegljivo samo prek delovnih mest) */}
+                    <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => { setNewEmp({ name: '', email: '', pin: '', role: 'WAITER' }); setNewEmpErr(''); setNewEmpDlg(true) }}>
+                      <Plus className="w-3.5 h-3.5" /> {t('emp.new')}
+                    </Button>
+                  </div>
+                )}
               </CardHeader>
+              {/* Issue #71 audit-25: iskalnik po imenu/vlogi/e-pošti (28+ profilov brez njega) */}
+              <CardContent className="pb-3 pt-0">
+                <Input value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} placeholder={t('emp.search')} className="h-9 max-w-xs" aria-label={t('emp.search')} />
+              </CardContent>
               <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {viewEmployees.map((e) => (
+                {(() => {
+                  /* Issue #71 audit-25: filtriran po iskalniku (ime / vloga / e-pošta) */
+                  const q = empSearch.trim().toLowerCase()
+                  const shownEmps = q
+                    ? viewEmployees.filter((e) => e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || e.role.toLowerCase().includes(q))
+                    : viewEmployees
+                  if (shownEmps.length === 0) return <p className="text-sm text-stone-500">{t('emp.searchNone')}</p>
+                  return shownEmps.map((e) => (
                   <button
                     key={e.id}
                     onClick={() => canManage && openEmployee(e)}
@@ -3367,7 +3604,8 @@ function DashboardInner() {
                       {canManage && <UserCog className="w-3.5 h-3.5 text-stone-300" />}
                     </div>
                   </button>
-                ))}
+                  ))
+                })()}
               </CardContent>
             </Card>
             <JobsCard jobs={jobs} canManage={canManage} onReload={load} />
@@ -3569,15 +3807,35 @@ function DashboardInner() {
                   {errLog.length === 0 && <p className="text-sm text-stone-500">{t('errlog.none')}</p>}
                   <ScrollArea className="max-h-72">
                     <div className="space-y-2">
-                      {errLog.map((l) => (
-                        <div key={l.id} className="rounded-lg border border-stone-200 bg-white p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-medium truncate">{l.action} <span className="text-xs font-normal text-stone-400">· {l.entity}</span></p>
-                            <span className="text-xs text-stone-400 shrink-0">{new Date(l.createdAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                          {l.data && <p className="text-xs text-stone-500 break-all mt-0.5">{l.data.length > 160 ? `${l.data.slice(0, 160)}…` : l.data}</p>}
-                        </div>
-                      ))}
+                      {/* Issue #71 audit-28: napake ZDRUŽENE po podpisu (vrsta + začetek sporočila) —
+                          »x pojavitev, zadnji ob …« namesto 20 identičnih vrstic surovega JSON-a.
+                          audit-5: vrsta napake v jeziku vloge; tehnični payload skrit pod »Podrobnosti«. */}
+                      {(() => {
+                        const groups = new Map<string, { count: number; last: (typeof errLog)[number] }>()
+                        for (const l of errLog) {
+                          const firstLine = (l.data ?? '').split(/[\n{]/)[0].slice(0, 90)
+                          const key = `${l.action}·${l.entity}·${firstLine}`
+                          const g = groups.get(key)
+                          if (g) { g.count++; if (new Date(l.createdAt) > new Date(g.last.createdAt)) g.last = l } else groups.set(key, { count: 1, last: l })
+                        }
+                        return [...groups.values()].sort((a, b) => new Date(b.last.createdAt).getTime() - new Date(a.last.createdAt).getTime()).map((g) => {
+                          const l = g.last
+                          return (
+                            <div key={`${l.id}-g`} className="rounded-lg border border-stone-200 bg-white p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-medium truncate min-w-0">{auditActionL(l.action)} <span className="text-xs font-normal text-stone-400">· {auditEntityL(l.entity)}</span></p>
+                                <span className="text-xs text-stone-400 shrink-0 tabular-nums">{g.count > 1 ? `${t('errlog.occurrences', { n: g.count })} · ` : ''}{new Date(l.createdAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              {l.data && (
+                                <details className="mt-1">
+                                  <summary className="text-xs text-stone-500 cursor-pointer select-none hover:text-stone-700">{t('errlog.details')}</summary>
+                                  <p className="text-xs text-stone-500 break-all mt-1">{l.data.length > 400 ? `${l.data.slice(0, 400)}…` : l.data}</p>
+                                </details>
+                              )}
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
                   </ScrollArea>
                 </CardContent>
@@ -3591,10 +3849,17 @@ function DashboardInner() {
                       {auditLog.map((a) => (
                         <div key={a.id} className="rounded-lg border border-stone-200 bg-white p-3">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="font-medium truncate">{a.action} <span className="text-xs font-normal text-stone-400">· {a.entityType}</span></p>
+                            {/* Issue #71 audit-5: dogodek + entiteta v jeziku vloge (ne DEMO_LOGIN/Schema) */}
+                            <p className="font-medium truncate">{auditActionL(a.action)} <span className="text-xs font-normal text-stone-400">· {auditEntityL(a.entityType)}</span></p>
                             <span className="text-xs text-stone-400 shrink-0">{new Date(a.timestamp).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
-                          {Object.keys(a.details || {}).length > 0 && <p className="text-xs text-stone-500 break-all mt-0.5">{JSON.stringify(a.details).slice(0, 160)}</p>}
+                          {/* Issue #71 audit-5/28: tehnični payload skrit pod »Podrobnosti« (details) */}
+                          {Object.keys(a.details || {}).length > 0 && (
+                            <details className="mt-1">
+                              <summary className="text-xs text-stone-500 cursor-pointer select-none hover:text-stone-700">{t('errlog.details')}</summary>
+                              <p className="text-xs text-stone-500 break-all mt-1">{JSON.stringify(a.details).slice(0, 400)}</p>
+                            </details>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -4377,6 +4642,47 @@ function DashboardInner() {
       </Dialog>
 
       {/* ── EMPLOYEE CONTROL CENTER (R265) ── */}
+      {/* Issue #71 audit-25: dialog NOV zaposleni (prej samo urejanje + delovna mesta) */}
+      <Dialog open={newEmpDlg} onOpenChange={setNewEmpDlg}>
+        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Plus className="w-5 h-5" /> {t('emp.newTitle')}</DialogTitle>
+            <DialogDescription>{t('emp.newDesc')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {newEmpErr && <p className="text-xs rounded-md bg-red-50 px-2.5 py-1.5 text-red-700">{newEmpErr}</p>}
+            <div className="space-y-1.5">
+              <Label htmlFor="ne-name">{t('emp.newName')}</Label>
+              <Input id="ne-name" value={newEmp.name} onChange={(e) => setNewEmp((f) => ({ ...f, name: e.target.value }))} placeholder="Ana Novak" autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ne-email">{t('emp.newEmail')}</Label>
+              <Input id="ne-email" type="email" value={newEmp.email} onChange={(e) => setNewEmp((f) => ({ ...f, email: e.target.value }))} placeholder="ana@restavracija.si" autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ne-pin">{t('emp.newPin')}</Label>
+              <Input id="ne-pin" inputMode="numeric" maxLength={8} value={newEmp.pin} onChange={(e) => setNewEmp((f) => ({ ...f, pin: e.target.value.replace(/\D/g, '') }))} placeholder="1234" autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t('emp.newRole')}</Label>
+              <Select value={newEmp.role} onValueChange={(v) => setNewEmp((f) => ({ ...f, role: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['WAITER', 'BAR', 'KITCHEN', 'CHEF', 'MANAGER', 'CLEANER', 'WAREHOUSE'].map((r) => (
+                    <SelectItem key={r} value={r}>{roleL(r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewEmpDlg(false)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={newEmpBusy || !newEmp.name.trim() || !newEmp.email.trim() || !/^\d{4,8}$/.test(newEmp.pin)} onClick={() => void createEmployee()}>
+              {newEmpBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('emp.newCreate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!editEmployee} onOpenChange={(v) => { if (!v) { setEditEmployee(null); setEmpNotice('') } }}>
         <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>

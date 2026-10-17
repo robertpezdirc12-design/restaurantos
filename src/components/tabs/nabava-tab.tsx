@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
+import { api, fmtEUR, downloadCSV, getToken, fmtNumSI } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
@@ -1361,7 +1361,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                             <tr key={i} className="border-t border-stone-100">
                               <td className="p-2">{inv?.name || h.inventoryItemId || '—'}</td>
                               <td className="p-2 text-right font-semibold">{fmtEUR(h.unitPrice)}</td>
-                              <td className="p-2 text-right">{h.vatRate != null ? `${h.vatRate} %` : '—'}</td>
+                              <td className="p-2 text-right">{h.vatRate != null ? `${fmtNumSI(h.vatRate, { max: 1 })} %` : '—'}</td>
                               <td className="p-2 text-stone-600">{h.source === 'goods_receipt' ? t('proc.srcReceipt') : h.source === 'purchase_order' ? t('proc.srcOrder') : h.source}</td>
                               <td className="p-2 text-right text-stone-500">{new Date(h.observedAt).toLocaleDateString('sl-SI')}</td>
                             </tr>

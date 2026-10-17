@@ -731,3 +731,48 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
     expect(dash).toContain('useI18n')
   })
 })
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Issue #71 audit-6 — PREPREKA: noben t('…') ključ v UI viru ne sme manjkati
+ * v slovarjih. Surovi ključ se je v produkciji izpisal na gumbu za tiskanje
+ * bar listka (kitchen.printBarTitle obstajal samo v page.tsx, ne v sl/hr).
+ * Sken: dobesedni (statični) t('ključ') klici v dashboardu + komponentah.
+ * ──────────────────────────────────────────────────────────────────────────── */
+describe('i18n — uporabljeni ključi obstajajo v slovarjih (audit-6 prepreka)', () => {
+  const UI_SOURCES = [
+    '../src/app/dashboard/page.tsx',
+    '../src/app/page.tsx',
+  ]
+  // vse odjemalske komponente z uporabo t()
+  const tabsDir = join(import.meta.dir, '../src/components/tabs')
+  for (const f of readdirSync(tabsDir)) {
+    if (f.endsWith('.tsx')) UI_SOURCES.push(`../src/components/tabs/${f}`)
+  }
+  const compDir = join(import.meta.dir, '../src/components')
+  for (const f of readdirSync(compDir)) {
+    if (f.endsWith('.tsx')) UI_SOURCES.push(`../src/components/${f}`)
+  }
+
+  // dobesedni klici: t('a.b') / t('a.b', { … }) — preskoči interpolirane `t(${…})`
+  const literalKey = /\bt\(\s*'([A-Za-z0-9_.:-]+)'\s*(?=[,)])/g
+
+  for (const rel of UI_SOURCES) {
+    test(`${rel.split('/').pop()} — vsi dobesedni t() ključi imajo prevod`, () => {
+      const src = readFileSync(join(import.meta.dir, rel), 'utf-8')
+      const missing: string[] = []
+      let m: RegExpExecArray | null
+      literalKey.lastIndex = 0
+      while ((m = literalKey.exec(src)) !== null) {
+        const key = m[1]
+        // kratek ali pogojni ključ (objekt/lokalni pomožnik) ima drugačen vzorec —
+        // zajemamo samo slovarske ključe (vsebuje piko in ni izraz)
+        if (!key.includes('.')) continue
+        if (!(key in sl) && !(key in hr)) missing.push(key)
+      }
+      if (missing.length > 0) {
+        throw new Error(`Manjkajoči i18n ključi v slovarjih (v produkciji se izpiše SUROV ključ):\n  ${missing.join('\n  ')}`)
+      }
+      expect(missing).toEqual([])
+    })
+  }
+})

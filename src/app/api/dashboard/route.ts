@@ -58,7 +58,11 @@ export async function GET(req: NextRequest) {
   // selectedLocation dodatno zoži tudi centralno vlogo (preklopnik)
   const [activeOrders, openTables, menuCount, employees, todayOrders, paidToday, topItemsRaw, yesterdayAgg] = await Promise.all([
     db.order.count({ where: { status: { in: ORDER_ACTIVE_DB }, ...counterScope } }),
-    db.table.count({ where: { status: 'occupied', ...counterScope } }),
+    // Issue #71 audit-3: KPI »Zasedene mize« šteje IZPELJANO stanje (miza z AKTIVNIM naročilom),
+    // ne surovega DB statusa 'occupied' — DB occupied brez aktivnega naročila se v tlorisu
+    // prikaže kot DIRTY (map.ts: Issue #70 §1) in je povzročal protislovje: KPI 5 zasedenih,
+    // tloris 1 zasedena + 5 za pospraviti. EN vir resnice za obe plošči.
+    db.table.count({ where: { Order: { some: { status: { in: ORDER_ACTIVE_DB }, ...counterScope } }, ...counterScope } }),
     // MenuItem nima locationId (globalen meni prek Menu) — brez scopinga
     db.menuItem.count({ where: { isAvailable: true } }),
     db.employee.count({ where: { status: 'active', ...counterScope } }),

@@ -88,8 +88,11 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     expect(d).toContain('data-region="kds-allergen-chip"')
     expect(d).toMatch(/data-region="kds-allergen-chip"[^/]*title=\{t\('kds\.allergenCodes'\)\}/)
     expect(d).toContain('border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800')
-    // rdeče izrecno opozorilo (issue #7) ostane vidno kot čip
-    expect(d).toContain('border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800')
+    // Issue #71 audit-14: red explicit warning (issue #7) je zdaj RDEČ PAS (ne čip enake
+    // teže kot rumeni) + pas na vrhu listka + zbirnik manjkajočih alergenov na listku
+    expect(d).toContain('border-l-4 border-red-600 bg-red-50 px-2 py-1 text-xs font-bold text-red-800')
+    expect(d).toContain('data-region="kds-ticket-allergies"')
+    expect(d).toContain('data-region="kds-ticket-allergen-unconfirmed"')
   })
 
   it('postavke: dejanja v lastni vrstici s ciljem na dotik 44 px na mobilnem', () => {

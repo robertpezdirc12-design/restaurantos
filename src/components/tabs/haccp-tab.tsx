@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, getToken } from '@/lib/client'
+import { api, getToken, fmtNumSI } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
@@ -88,7 +88,9 @@ export function HaccpTab({ checks, onReload, canManagePlans = true }: { checks: 
           </div>
           <div className="grid sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="h-value">{t('haccp.value')}</Label>
+              {/* Issue #71 audit-17: oznaka vrednosti sledi VRSTI kontrole — temperatura/
+                  hlajenje nosita °C enoto, prevzem kg/l, ostalo splošno besedilo */}
+              <Label htmlFor="h-value">{type === 'TEMPERATURE' || type === 'COOLING' ? t('haccp.value') : type === 'DELIVERY' ? t('haccp.valueDelivery') : t('haccp.valueGeneral')}</Label>
               <Input id="h-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.,-]/g, ''))} placeholder={t('haccp.valuePlaceholder')} />
             </div>
             <div className="space-y-1.5">
@@ -106,7 +108,12 @@ export function HaccpTab({ checks, onReload, canManagePlans = true }: { checks: 
               <Input id="h-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('haccp.optional')} />
             </div>
           </div>
-          <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !target} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('haccp.submit')}</Button>
+          {/* Issue #71 audit-17: onemogočen gumb nosi INLINE RAZLOG — zakonsko obvezen zapis
+              ne sme biti »gumb, ki se ne da pritisniti, in neče povedati zakaj« */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !target} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('haccp.submit')}</Button>
+            {!busy && !target && <p className="text-xs text-amber-700" role="note">{t('haccp.submitHint')}</p>}
+          </div>
         </CardContent>
       </Card>
 
@@ -155,7 +162,8 @@ function RecentChecks({ checks }: { checks: HaccpT[] }) {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    {c.value !== null && c.value !== undefined && <p className="font-bold">{c.value}{c.unit || '°'}</p>}
+                    {/* Issue #71 audit-12: sl-SI decimalna vejica (4,2 ° — ne 4.2°) */}
+                    {c.value !== null && c.value !== undefined && <p className="font-bold">{fmtNumSI(c.value, { unit: c.unit || '°' })}</p>}
                     <Badge className={state === 'done' ? 'bg-emerald-600 text-white' : state === 'deviation' ? 'bg-orange-600 text-white' : state === 'awaiting_verification' ? 'bg-sky-600 text-white' : state === 'closed' ? 'bg-stone-500 text-white' : 'bg-amber-600 text-white'}>
                       {t(STATE_KEYS[state] ?? 'haccp.state.done')}
                     </Badge>
@@ -544,7 +552,7 @@ function EntryDetailDialog({ entryId, onClose, onChanged }: { entryId: string | 
               <p className="text-stone-600">
                 {t('haccp.perform.value')}:{' '}
                 <span className="font-bold">
-                  {check.value !== null && check.value !== undefined ? `${check.value} ${check.unit || ''}`.trim() : check.status === 'ok' ? t('haccp.ok') : t('haccp.noteSelect')}
+                  {check.value !== null && check.value !== undefined ? `${fmtNumSI(Number(check.value), { unit: String(check.unit || '') })}`.trim() : check.status === 'ok' ? t('haccp.ok') : t('haccp.noteSelect')}
                 </span>
                 {' · '}{String(check.status).toUpperCase()}
               </p>

@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
+import { api, fmtEUR, downloadCSV, getToken, fmtNumSI } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
@@ -700,7 +700,7 @@ export function AccountingExportCard() {
                 <Row label={t('acct.xzNet')} value={fmtEUR(xzPreview.netSales)} />
                 <Row label={t('acct.xzVatTotal')} value={fmtEUR(xzPreview.vatTotal)} />
                 {xzPreview.vatByRate.map((v) => (
-                  <Row key={v.rate} sub label={`${t('acct.xzVatRate')} ${v.rate}%`} value={fmtEUR(v.amount)} />
+                  <Row key={v.rate} sub label={`${t('acct.xzVatRate')} ${fmtNumSI(v.rate, { max: 1 })} %`} value={fmtEUR(v.amount)} />
                 ))}
                 <Row label={t('acct.xzDiscounts')} value={fmtEUR(xzPreview.discountsTotal)} />
                 <Row label={t('acct.xzTips')} value={fmtEUR(xzPreview.tipsTotal)} />

@@ -19,6 +19,7 @@ const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 type KitchenOrder = Prisma.OrderGetPayload<{
   include: {
     Table: true
+    Employee_Order_employeeIdToEmployee: { select: { name: true } }
     OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } }
   }
 }>
@@ -53,6 +54,9 @@ export async function GET(req: NextRequest) {
     where: { ...scope, status: { in: ORDER_ACTIVE_DB }, OrderItem: { some: { status: { in: ITEM_ACTIVE_PRISMA } } } },
     include: {
       Table: true,
+      // Issue #71 audit-2: listek pove, kdo je naročil — natakar na glavi listka
+      // (tekalec/kuharna vprašanje »kdo je odprl #706?« reši brez radija)
+      Employee_Order_employeeIdToEmployee: { select: { name: true } },
       OrderItem: {
         where: { status: { in: ITEM_ACTIVE_PRISMA }, voided: false },
         orderBy: { createdAt: 'asc' },
@@ -63,7 +67,7 @@ export async function GET(req: NextRequest) {
   }) as unknown as KitchenOrder[]
 
   const mapped = orders.map((o) => ({
-    ...mapOrder({ ...o, items: o.OrderItem, table: o.Table, employee: null }),
+    ...mapOrder({ ...o, items: o.OrderItem, table: o.Table, employee: (o as unknown as { Employee_Order_employeeIdToEmployee?: { name: string } | null }).Employee_Order_employeeIdToEmployee ?? null }),
     items: o.OrderItem.map((it) =>
       mapOrderItem({ ...it, menuItem: it.MenuItem ? { prepStation: it.MenuItem.PrepStation } : undefined })
     ),

@@ -35,6 +35,14 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
 export const fmtEUR = (n: number) =>
   new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR' }).format(n)
 
+/**
+ * Issue #71 audit-12: ENOTNO oblikovanje števil za vse izpise meritev/vrednosti
+ * (HACCP temperature, DDV stopnje, recepture …) — sl-SI decimalna VEJICA
+ * (»4,2 °C«, »9,5 %«), ne pika. Ena sama funkcija = ena sama oblika.
+ */
+export const fmtNumSI = (n: number, opts?: { max?: number; unit?: string }) =>
+  `${new Intl.NumberFormat('sl-SI', { maximumFractionDigits: opts?.max ?? 2 }).format(n)}${opts?.unit ?? ''}`
+
 /** v1.129.0 (Toast/Square benchmark): podpisana rast v % za Δ na KPI karticah (+12,3 % / −4,5 %) */
 export const fmtPctSigned = (ratio: number) => {
   if (!Number.isFinite(ratio)) return '—'

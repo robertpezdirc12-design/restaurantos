@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
-import { api, fmtEUR } from '@/lib/client'
+import { api, fmtEUR, fmtNumSI } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -38,7 +38,18 @@ type StFull = StRow & { items: StItemRow[] }
 export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload, onNavigate }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void>; onNavigate?: (tab: string) => void }) {
   const { t } = useI18n()
   const low = items.filter((i) => i.minQty > 0 && i.qty <= i.minQty)
+  const out = items.filter((i) => i.qty <= 0)
   const totalValue = items.reduce((s, i) => s + i.qty * i.cost, 0)
+  /* Issue #71 audit-24: iskalnik + filtri — KPI šteje artikle pod-minimumom, seznam
+     pa je bil gol abecedni spust; artikel z 0 kg ni bil označen. Zdaj: iskanje + trije filtri. */
+  const [invSearch, setInvSearch] = useState('')
+  const [invFilter, setInvFilter] = useState<'ALL' | 'LOW' | 'OUT'>('ALL')
+  const visibleItems = items.filter((i) => {
+    if (invFilter === 'LOW' && !(i.minQty > 0 && i.qty <= i.minQty)) return false
+    if (invFilter === 'OUT' && i.qty > 0) return false
+    const q = invSearch.trim().toLowerCase()
+    return !q || i.name.toLowerCase().includes(q)
+  })
   const [addItem, setAddItem] = useState(false)
   const [ni, setNi] = useState({ name: '', unit: 'kg', qty: '', minQty: '', cost: '' })
   const [niBusy, setNiBusy] = useState(false)
@@ -151,7 +162,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
             <span className="truncate">{line.name}</span>
             {line.yieldPercent !== undefined && line.yieldPercent !== 100 && <span className="shrink-0 text-stone-400">· {line.yieldPercent} %</span>}
           </span>
-          <span className="shrink-0 font-medium">{line.qty} {line.unit}</span>
+          <span className="shrink-0 font-medium">{fmtNumSI(line.qty, { max: 3 })} {line.unit}</span>
         </li>
         {(line.children ?? []).map((c) => renderRecipeLine(c, depth + 1))}
       </Fragment>
@@ -242,23 +253,38 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
         </div>
       )}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">{t('inv.stockList')}</CardTitle></CardHeader>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t('inv.stockList')}</CardTitle>
+          {/* Issue #71 audit-24: iskalnik + filtri (vsi / pod-minimumom / zmanjkalo) */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <Input value={invSearch} onChange={(e) => setInvSearch(e.target.value)} placeholder={t('inv.search')} className="h-9 w-full sm:w-52" aria-label={t('inv.search')} />
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('inv.filterAll')}>
+              <Button size="sm" variant={invFilter === 'ALL' ? 'default' : 'outline'} className={`h-9 ${invFilter === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => setInvFilter('ALL')}>{t('inv.filterAll')}</Button>
+              <Button size="sm" variant={invFilter === 'LOW' ? 'default' : 'outline'} className={`h-9 ${invFilter === 'LOW' ? 'bg-amber-600 hover:bg-amber-700' : ''}`} onClick={() => setInvFilter('LOW')}>{t('inv.filterLow', { n: low.length })}</Button>
+              <Button size="sm" variant={invFilter === 'OUT' ? 'default' : 'outline'} className={`h-9 ${invFilter === 'OUT' ? 'bg-red-700 hover:bg-red-800' : ''}`} onClick={() => setInvFilter('OUT')}>{t('inv.filterOut', { n: out.length })}</Button>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent>
           {items.length === 0 && <p className="text-sm text-stone-500">{t('inv.empty')}</p>}
+          {items.length > 0 && visibleItems.length === 0 && <p className="text-sm text-stone-500">{t('inv.searchNone')}</p>}
           <ScrollArea className="max-h-[55vh]">
             <div className="grid gap-2 sm:grid-cols-2">
-              {items.map((i) => {
+              {visibleItems.map((i) => {
                 const isLow = i.minQty > 0 && i.qty <= i.minQty
+                const isOut = i.qty <= 0
                 return (
-                  <div key={i.id} className={`rounded-lg border bg-white p-3 flex items-center justify-between gap-2 ${isLow ? 'border-amber-300 bg-amber-50/60' : 'border-stone-200'}`}>
+                  <div key={i.id} className={`rounded-lg border bg-white p-3 flex items-center justify-between gap-2 ${isOut ? 'border-red-300 bg-red-50/50' : isLow ? 'border-amber-300 bg-amber-50/60' : 'border-stone-200'}`}>
                     <div className="min-w-0">
                       <p className="font-medium truncate">{i.name}</p>
-                      <p className="text-xs text-stone-500">{i.cost > 0 ? `${fmtEUR(i.cost)}/${i.unit}` : i.unit}{isLow && ` · ${t('inv.minShort')} ${i.minQty}`}</p>
+                      <p className="text-xs text-stone-500">{i.cost > 0 ? `${fmtEUR(i.cost)}/${i.unit}` : i.unit}{isLow && ` · ${t('inv.minShort')} ${fmtNumSI(i.minQty)}`}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
-                        <p className="font-bold">{i.qty} {i.unit}</p>
-                        {isLow && <Badge className="bg-amber-600 text-white mt-0.5">{t('inv.belowMin')}</Badge>}
+                        {/* Issue #71 audit-12: količine v sl-SI obliki (0,08 kg — ne 0.08 kg) */}
+                        <p className={`font-bold ${isOut ? 'text-red-700' : ''}`}>{fmtNumSI(i.qty)} {i.unit}</p>
+                        {isOut && <Badge className="bg-red-700 text-white mt-0.5">{t('inv.outBadge')}</Badge>}
+                        {isLow && !isOut && <Badge className="bg-amber-600 text-white mt-0.5">{t('inv.belowMin')}</Badge>}
                       </div>
                       {canManage && (
                         <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setAdjust(i); setAdj({ delta: '', setQty: String(i.qty), minQty: String(i.minQty), cost: String(i.cost) }) }}>

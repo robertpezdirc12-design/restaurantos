@@ -67,7 +67,12 @@ export function ReservationWidgetCard() {
   const load = useCallback(async () => {
     setErr('')
     try {
-      const d = await api<{ widget: WidgetT | null; token?: string; publicUrl?: string }>('/api/reservations/widget')
+      // Issue #71 audit-4: GET brez locationId je za uporabnika brez lastne lokacije
+      // (admin/centralna vloga) vrnil HTTP 400 (manjka lokacija) kot surov
+      // razvijalski error. Zdaj: eksplicitno pošljemo locationId iz profila (če ga ima)
+      // in napako prevedemo v čLOVEŠKO sporočilo z naslednjim korakom.
+      const qs = user?.locationId ? `?locationId=${encodeURIComponent(user.locationId)}` : ''
+      const d = await api<{ widget: WidgetT | null; token?: string; publicUrl?: string }>(`/api/reservations/widget${qs}`)
       if (d.widget) {
         setWidget(d.widget)
         setExists(true)
@@ -79,11 +84,14 @@ export function ReservationWidgetCard() {
         setExists(false)
       }
     } catch (e) {
-      setErr(String((e as Error).message || e))
+      // Issue #71 audit-4: razvijalska napaka → človeško sporočilo z akcijo
+      const raw = String((e as Error).message || e)
+      if (/locationId|lokacij/i.test(raw)) setErr(t('resv.wid.errNoLocation'))
+      else setErr(t('resv.wid.errGeneric', { msg: raw.slice(0, 120) }))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t, user?.locationId])
 
   useEffect(() => { if (canConfigure) void load() }, [canConfigure, load])
 
