@@ -2861,12 +2861,18 @@ function DashboardInner() {
               if (rows.length === 0) return null
               return (
                 <div data-region="kds-allday" className="sticky bottom-0 z-10 rounded-xl border border-amber-300 bg-amber-50/95 backdrop-blur px-3 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]" role="status" aria-label={t('kds.allDayTitle')}>
-                  <p className="text-xs font-bold uppercase tracking-wide text-amber-900 mb-1.5">{t('kds.allDayTitle')}</p>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-amber-900 min-w-0 shrink-0">{t('kds.allDayTitle')}</p>
+                    <p className="text-[11px] font-medium text-amber-700/80 ml-auto shrink-0" aria-hidden>{rows.length}</p>
+                  </div>
+                  {/* Toast production view: ENA vrstica z horizontalnim drsenjem (nowrap) —
+                      ovijanje čipov je na mobilnem naredilo 800px+ blok, višji od zaslona,
+                      in sticky ni mogel prilepiti na dno (izmerjeno: bottom 1137 > vh 844). */}
+                  <div className="flex gap-1.5 overflow-x-auto flex-nowrap [scrollbar-width:thin]">
                     {rows.map(([name, qty]) => (
-                      <span key={name} className="inline-flex items-baseline gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1 min-w-0">
+                      <span key={name} className="inline-flex items-baseline gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1 shrink-0 whitespace-nowrap">
                         <span className="text-base font-extrabold tabular-nums text-amber-900">{qty}×</span>
-                        <span className="text-sm font-semibold text-stone-800 truncate">{name}</span>
+                        <span className="text-sm font-semibold text-stone-800">{name}</span>
                       </span>
                     ))}
                   </div>

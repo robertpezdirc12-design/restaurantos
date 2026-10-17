@@ -103,6 +103,10 @@ describe('v1.129.0 E — KDS vizualni popravek (tailwind-merge past)', () => {
     expect(page).toContain('data-region="kds-allday"')
     expect(page).toContain('className="sticky bottom-0 z-10')
   })
+  test('v1.131.1: all-day čipi so ENOVrstIČNI z horizontalnim drsenjem (nowrap) — ovijanje je na mobilnem naredilo blok višji od zaslona (878px > 844), sticky ni mogel prilepiti (izmerjeno bottom 1137 > vh 844)', () => {
+    expect(page).toContain('overflow-x-auto flex-nowrap')
+    expect(page).toContain('shrink-0 whitespace-nowrap')
+  })
 })
 
 describe('v1.131.0 F — sistemski popravek obrob (unlayered border-color past)', () => {

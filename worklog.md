@@ -4026,3 +4026,20 @@ Stage Summary:
 - v1.129.0: benchmark implementacija po vzorcih Toast/Square/Lightspeed K/FoodDocs/MarketMan — KPI Δ%+drill-down, mize ⏱, KDS starostni rob + all-day sticky + bump-all + nevtralni statusi, čistilka izvedbeni HACCP, skladiščnik bližnjice, aktivni zavihek vedno viden
 - SISTEMSKI CSS hrošč odkrit in popravljen: unlayered [data-slot=card] border-color je tiho preglašal vse barvne utilitije na karticah (kaskadna plast components) — vpliv na celoten izgled aplikacije, ne le KDS
 - 2413/2413 testov; E2E po vlogah; VLM 9-10/10
+
+---
+Task ID: v1.131.1-mobile-allday-hotfix
+Agent: Z.ai Code (glavni agent)
+Task: Produkcijska verifikacija v1.131.0 je odkrila mobilni propad sticky all-day vrstice — popravek (vzorec Toast horizontalni production strip)
+
+Work Log:
+- PRODUKCIJSKA VERIFIKACIJA v1.131.0 @ 1d193f7 (ADMIN, 1280 + 390): KPI »1× · vs včeraj −95,7 %« ✓; KDS 6 listkov, 5 bump-all gumbov; DESKTOP: levi rob listka red-500, all-day amber-300, sticky bottom = 577 = vh ✓ (CSS :not() popravek deluje V produkciji!); MOBILNO: stickyBottom 1137 > vh 844 ✗
+- DIAGNOZA (DOM): all-day vrstica je na 390px OVILA 15+ čipov v blok višine 878 px — višji od zaslona; sticky element višji od viewport-a se ne more prilepiti (brskalnik obdrži naravno pozicijo)
+- POPRAVEK (Toast production-strip vzorec): čipi v ENI vrstici z horizontalnim drsenjem — overflow-x-auto flex-nowrap, shrink-0 whitespace-nowrap čipi; glava vrstice nosi naslov + števec artiklov; [scrollbar-width:thin]
+- VERIFIKACIJA: mobilno stickyBottom = 844 = vh, višina vrstice 79 px (prej 878), horizontalno drsenje deluje (scrollWidth > clientWidth); tsc 0, eslint 0, 2424/2424 (nov regresijski test nowrap)
+- CI: prvi zagon v1.131.0 (1d193f7) FAILURE — exit 137 = OOM na tsc KORAKU, vzrok: moj :3007 dev strežnik + brskalnik sta MED zagonom tečala (self-hosted runner = isti stroj; lekcija znova potrjena) → procesi ustavljeni → rerun-failed-jobs: SUCCESS (koda je bila v redu: lokalno tsc 0)
+
+Stage Summary:
+- v1.131.1: mobilni KDS all-day vrstica prilepljena na dno (79 px, horizontalno drsenje) — vzorec Toast production view
+- Potrjeno: :not([class*="border-"]) CSS popravek deluje tudi v produkciji (rdeči starostni rob + amber vrstica viden v živo)
+- OOM lekcija utrjena: pred in MED CI zagoni NE sme teči noben lokalni next/bun strežnik
