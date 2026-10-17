@@ -3799,3 +3799,39 @@ Stage Summary:
 - N8 fail-closed RBAC test posodobljen na novo navigacijsko strukturo (isti varnostna pogodba); 2229/2229 + CI (neon-smoke success, tests v teku ob objavi koment. )
 - Nov vcp_ žeton nameščen kot VERCEL_TOKEN_B64 (veljaven, projekt-scope) → rezervna deploy pot pripravljena
 - #69 ostaja ODPRT z 2 remainderji (KDS gostota, segmentacija dolgih strani) — naslednji val v1.123.0; odprti issueji: #69, #11 (P2), #4 (P1)
+
+---
+Task ID: 69-density
+Agent: frontend-styling-expert (podagent) + glavni agent (Z.ai) — nadzor in dokončanje
+Task: issue #69 (2. val) — gostota KDS listka + segmentacija dolgih strani (meni/nastavitve)
+
+Work Log:
+- KDS gostota: dvovrstična glava listka (identiteta + PRIMARNI STATUS / ČASOVNIK + tiskanje), kompaktne postavke (py-1.5, space-y-1), ločeni alergenski čipi (amber, data-region=kds-allergen-chip), dejanja ≥ 44 px (h-11) na mobilnem; kds-station-board.tsx ista hierarhija + tabular-nums časovniki; #70 zastarela logika (konec vrste, ZASTARELO) NEdotaknjena
+- Meni: hitri skok po kategorijah (statična sidra href="#cat-<slug>", brez stanja/JS), lepljive glave kategorij (sticky top-[7.125rem] + backdrop-blur), gostejša mreža (sm:2/lg:3/xl:4), catAnchor determinističen slug
+- Nastavitve: 7 razdelkov SettingsSection (id #set-*, scroll-mt-40, naslovi) + hitri skok s sidri; vsebina kartic NEdotaknjena
+- i18n SL+HR: 12 novih ključev (menu.jumpAria, menu.catCount, settings.jumpAria, settings.secGeneral/ops/security/notifications/devices/logs/system)
+- CSS: os-quickjump-track (drsenje brez vidnega drsnika), temni način, prefers-reduced-motion varovalka
+- TESTI: tests/issue69-visual-density.test.ts — 29 testov (§A KDS 11, §B meni 6, §C nastavitve 4+4, §D CSS + registri); 0 DDL; E2E seed/cleanup .zscripts/e2e-69-{seed,cleanup}.ts (i69e2e- predpona, 0 ostankov po čiščenju)
+- NADZOR (glavni agent): validacija 2258/2258 (113 datotek) + tsc 0 + eslint 0 + secrets OK; živa verifikacija na :3007 (390/1280, vrstni red stale-na-konec OHRANJEN, sidrni skok deluje y=5067, 7 razdelkov nastavitev) + VLM pregled screenshotov; produkcija je razkrila 2 skrite prelive (dolga imena artiklov → implicitna grid sled 498px; neprelomljivi žeton Organization/Brand/Property/Workstation/EventLog ~300px) — popravljena v release verigi
+
+Stage Summary:
+- #69 (2. val) implementiran kot čisto vizualen (0 DDL, 0 poslovne logike); 29 novih testov; Screenshots .zscripts/e2e-69-*.png + prod-123-*.png
+
+---
+Task ID: v1.123.0-release
+Agent: glavni agent (Z.ai)
+Task: issue #69 (P2 vizualni QA) — 2. val do produkcijskega zaprtja + utrditev horizontalnih prelivov
+
+Work Log:
+- VERZIJA 1.123.0 + verzijski registri (issue9 D / issue10 G2 / issue70 §R)
+- VALIDACIJA: rm tsbuildinfo + tsc 0 · svež ci-fresh.db **2258/2258** (113 datotek, 11.430 expect) · eslint 0 · check-secrets OK (vsak fix valja posebej)
+- OBJAVA veriga: 5fe2e2b FEATURE v1.123.0 (Closes #69) → b3f654c fix meni grid-cols-1 (implicitna sled 498px iz truncate nowrap) → dd214d4 fix rezervacije flex-wrap → 4bf1786 fix 4 zavihki (zaposleni+jobs grid-cols-1, food-cost filtri flex-wrap, enterprise gride) → 55a7005 break-words → f232b21 overflow-wrap:anywhere (break-word NE zmanjša min-content v Chromu)
+- PRODUKCIJA: vsak push avtomatsko deployan (Git integracija, okno odprto); health 1.123.0 @ f232b21
+- ŽIVA VERIFIKACIJA (agent-browser, samo branje, demo ADMIN): KDS 390px (5 listkov, 5 časovnikov, 4 alergenski čipi, scrollW=390) + meni (9→39 kategorij produkcijsko: čipi + lepljive glave, sidrni skok) + nastavitve (7 razdelkov + 7 čipov) + PREGLED VSEH 31 ZAVIHKOV pri 390 px: **31/31 scrollWidth=390** (0 horizontalnega drsenja — sprejemni pogoj #69); 0 hydratacijskih napak v produkciji
+- VLM potrditev screenshotov (KDS hierarhija jasna, čipi vidni, brez rezanja)
+- CI (preverjeno po objavi, API check-runs): tests + neon-smoke ZELENA na 5fe2e2b, 4bf1786 in f232b21 (runs 39009306633 / 39010756106 / 39011482992, vsi completed/success)
+- ZAPRTJE #69: dokazni komentar (spodaj) → closed/completed
+
+Stage Summary:
+- Issue #69 ZAPRT (8. po vrsti): vizualni sistem poenoten (PR #67 1. val + KDS gostota/segmentacija 2. val), VSI zavihki brez horizontalnega preliva pri 390 px (dokazano v produkciji), 2258/2258 testov, produkcija 1.123.0
+- ODPRTI issue: #4 (P1 e-računi), #11 (P2 CRM) — naslednji kandidat: #4
