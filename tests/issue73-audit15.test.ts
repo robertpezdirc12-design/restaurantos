@@ -199,9 +199,12 @@ describe('issue73 audit-15 C: dashboard — ploščica »jed · različica · ve
   it('košara razloči dvoumna imena s kontekstom kategorije (−1 ne zadane napačne)', () => {
     expect(dash).toContain('const saleAmbiguous = useMemo(')
     expect(dash).toContain('normItemName(mi.name)')
-    expect(dash).toContain('const saleCartName = (mi: MenuT): ReactNode =>')
-    // obe vrstici košare (namizje + mobilni list) uporabljata razločeno ime
-    expect(dash.match(/\{qty\}× \{saleCartName\(mi\)\}/g)?.length).toBe(2)
+    expect(dash).toContain('const SaleCartLineName = ({ mi, qty }: { mi: MenuT; qty: number }) =>')
+    // dvovrstična postavitev: kontekst kategorije ima SVOJO vrstico (E2E/VLM
+    // odkritje: enovrstični »ime · kategorija« se v ozkem tiru truncate stran)
+    expect(dash).toContain("text-xs leading-tight text-stone-400\">{cn}")
+    // obe vrstici košare (namizje + mobilni list) uporabljata komponento
+    expect(dash.match(/<SaleCartLineName mi=\{mi\} qty=\{qty\} \/>/g)?.length).toBe(2)
   })
 
   it('normalizacija UI ≡ API (isti vir resnice menu-dup)', () => {

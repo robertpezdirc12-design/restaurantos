@@ -2018,10 +2018,19 @@ function DashboardInner() {
     }
     return new Set([...cnt.entries()].filter(([, n]) => n > 1).map(([k]) => k))
   }, [menu])
-  const saleCartName = (mi: MenuT): ReactNode => {
-    if (!saleAmbiguous.has(normItemName(mi.name))) return mi.name
-    const cn = saleCatNameOf(mi)
-    return cn ? <>{mi.name} <span className="font-normal text-stone-400">· {cn}</span></> : mi.name
+  // ISSUE #73 audit-15 (dopolnitev po E2E): enovrstični »ime · kategorija« v
+  // ozkem desnem tiru košare TRUNCIRA kontekst stran (VLM preverba: vidno je
+  // bilo »1× Bolognese …«) — razločitev mora biti VIDNA, ne odrezana. Zato
+  // dvovrstična postavitev: ime v 1. vrstici, kontekst kategorije v 2. (samo
+  // pri dvoumnih imenih). −1 na napačni vrstici v naglici = izgubljen račun.
+  const SaleCartLineName = ({ mi, qty }: { mi: MenuT; qty: number }) => {
+    const cn = saleAmbiguous.has(normItemName(mi.name)) ? saleCatNameOf(mi) : ''
+    return (
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="min-w-0 truncate font-medium leading-tight">{qty}× {mi.name}</span>
+        {cn ? <span className="min-w-0 truncate text-xs leading-tight text-stone-400">{cn}</span> : null}
+      </span>
+    )
   }
 
   // OPS-4 v1.67.0 — tloris lokala (Mize): pogled + vlečenje miz (posX/posY v %)
@@ -2864,7 +2873,7 @@ function DashboardInner() {
                         if (!mi) return null
                         return (
                           <div key={id} className="flex items-center gap-1.5 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5 text-sm">
-                            <span className="min-w-0 flex-1 truncate">{qty}× {saleCartName(mi)}</span>
+                            <SaleCartLineName mi={mi} qty={qty} />
                             <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                             <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
                             <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
@@ -2952,7 +2961,7 @@ function DashboardInner() {
                         if (!mi) return null
                         return (
                           <div key={id} className="flex items-center gap-2 rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-2.5 text-sm">
-                            <span className="min-w-0 flex-1 truncate font-medium">{qty}× {saleCartName(mi)}</span>
+                            <SaleCartLineName mi={mi} qty={qty} />
                             <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                             <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
                             <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
