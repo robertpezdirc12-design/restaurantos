@@ -4248,3 +4248,26 @@ Stage Summary:
 - KDS zdaj odštevalni (kuharjev zorni kot), tloris miz prostorski, temni način POS/KDS
 - GitHub: žeton v remote URL-u MRTEV (401) — commit je LOKALNO na main (pred remote); push in more branje novih issuejev zahtevata nov žeton od lastnika
 - Dokazni posnetki: .zscripts/v141-sale-cards.png, v141-sale-compact.png, v141-tables-plan.png, v141-kds-countdown.png, v141-kds-overdue.png, v141-zaloga.png, v141-zaloga2.png, v141-sale-dark.png, v141-pay-done.png, v141-order-sent.png (+ VLM json v /tmp)
+
+---
+
+Task ID: v1.142.0-issue76
+Agent: glavni agent (Z.ai)
+Task: GitHub issue #76 — produkcija HTTP 500 (prazna telesa) na /api/auth/locations in /api/auth/demo-login; health javlja database: "disconnected" brez vzroka. Diagnostika + popravek + push (nov žeton od lastnika).
+
+Work Log:
+- DIAGNOSTIKA (brez dostopa do Vercel logov): produkcija v1.139.0 @ 1a02af7 je na STAREM commitu — v1.141.0 (6 POS izboljšav) je bila LOKALNO na mainu, ker je prejšnji žeton v remote URL-u crknil (401). Root cause DB izpada (SELECT 1 throw-a) ni videti iz javnega JSON-a — zato je popravek usmerjen v OBSERVABILITY: natančno klasifikacijo napake v health + runtime logih, odpravo praznih 500 teles in odstranitev module-scope throw-a, ki je lahko zakril DB vzrok
+- NOVA KNJIŽNICA src/lib/db-error.ts: describeDbError() — VARNA javna klasifikacija (Prisma P1xxx/P2xxx kode + tekstovni vzorci → 9 kategorij: env_missing/invalid_url/unreachable/auth/tls/timeout/not_found/schema/unknown, s slovenskimi namigi, BREZ sporočila izjeme/hosta/poverilnic); logDbError() — console.error s kodo+sporočilom+stackom za Vercel runtime loge
+- /api/health: DVOSTOPENJSKA sonda — (1) connectivity `SELECT 1`, (2) schema `SELECT 1 FROM "Location" LIMIT 1` (skipped, če povezava ne uspe) — loči izpad povezave od zamude sheme, javno poroča dbError {code, category, hint} + latencyMs
+- /api/auth/locations in /api/auth/demo-login: try/catch okoli DB klicev → 503 {error, code: DB_UNAVAILABLE, dbError} namesto praznega 500; demo-login tudi wrap createToken (CONFIG_MISSING 500 s telesom) in writeAudit .catch logira (ne tiho)
+- src/lib/auth.ts: APP_SECRET/PIN_LOOKUP_SALT LAZY (appSecret()/pinLookupSalt() z cache) — fail-closed ob PRVI uporabi, ne ob uvozu modula (module-scope throw je praznil telesa HTTP 500 in lahko zakril DB vzrok); dev fallback in PIN warning ostajajo; varnost nespremenjena (brez APP_SECRET se žeton ne izda)
+- VERZIJA 1.141.0 → 1.142.0 (version.ts + 6 test pinov); tests/audit-fixes.test.ts: posodobljen assertion (lazy sol) + NOV statični test za issue #76 (DB_UNAVAILABLE/CONFIG_MISSING/logDbError/dvostopenjska sonda)
+- LOKALNA VALIDACIJA (:3007, SQLite): zdrava baza — health ok/connected/schema ok, locations 200, demo 200 (token Ana Admin); SCENARIO A (manjkajoča sqlite baza — Prisma jo avto-ustvari) — health degraded/schema: drift/RAW_SCHEMA, oba endpointa 503 DB_UNAVAILABLE+P2021; SCENARIO B (napačen URL protokol) — health disconnected/schema: skipped/INVALID_URL, endpointa 503; ugotovitev testa: OS env preglasi .env (perzistentni shell DATABASE_URL) in next-server worker je treba ubijati po lastniku porta (ss pid), ne po vzorcu "3007"
+- E2E (agent-browser): Odjava → "Vstop brez gesla (demo)" → /dashboard?tab=pregled naložen (networkidle, 0 page errorjev); med testom OOM killer ubil next-server (my-project :3000 816 MB) → po OOM disciplini 3000 začasno dol, E2E ponovljen čist
+- VERIFIKACIJA: tsc 0 · eslint 0 · bun test 2656/2656 (+1)
+- PUSH: nov žeton (ghp_…) v remote URL → main pushan z vsemi 3 commiti (69a9fb4 FEATURE 6 izboljšav, 9f1848e DOCS, FIX v1.142.0) → Vercel avto-deploy; produkcijski smoke test po deployu
+
+Stage Summary:
+- Issue #76: prazni HTTP 500 IZKORENINJENI (503 s strukturiranim JSON + runtime logi), health dvostopenjski s varno klasifikacijo vzroka, APP_SECRET lazy — root cause DB izpada bo v produkciji takoj viden v /api/health dbError + Vercel logih (brez razkritja skrivnosti)
+- v1.141.0 (6 POS izboljšav) končno pushana v produkcijo (blokirana od prejšnje seje zaradi mrtvega žetona)
+- Dokazi: .zscripts/i76-e2e-dashboard.png, i76-e2e-final.png (+ i76-e2e-login-ok.png iz OOM periode)

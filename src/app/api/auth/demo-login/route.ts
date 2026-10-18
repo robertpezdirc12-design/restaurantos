@@ -5,6 +5,7 @@ import { roleToUI } from '@/lib/map'
 import { resolvePermissions } from '@/lib/permissions'
 import { rateLimitSharedAsync } from '@/lib/rate-limit'
 import { writeAudit } from '@/lib/audit-chain'
+import { describeDbError, logDbError } from '@/lib/db-error'
 
 /**
  * DEMO VSTOP BREZ GESLA (zahteva lastnika, 16. 10. 2026 — "dokler delamo":
@@ -32,6 +33,18 @@ function ipOf(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
 
+async function fetchCandidates() {
+  return db.employee.findMany({
+    where: { status: 'active' },
+    select: {
+      id: true, name: true, email: true, role: true, locationId: true,
+      sessionVersion: true, permissionOverrides: true, mfaEnabled: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 500,
+  })
+}
+
 const CENTRAL_DB_ROLES = ['owner', 'admin']
 
 export async function POST(req: NextRequest) {
@@ -44,15 +57,24 @@ export async function POST(req: NextRequest) {
 
   const pinned = String(process.env.DEMO_LOGIN_EMAIL || '').trim().toLowerCase()
 
-  const candidates = await db.employee.findMany({
-    where: { status: 'active' },
-    select: {
-      id: true, name: true, email: true, role: true, locationId: true,
-      sessionVersion: true, permissionOverrides: true, mfaEnabled: true,
-    },
-    orderBy: { createdAt: 'asc' },
-    take: 500,
-  })
+  // Issue #76: ob izpadu baze NE ujeta izjema več sesuje route v prazen HTTP 500 —
+  // vrni 503 s strukturiranim telesom (DB_UNAVAILABLE + varna kategorija) in
+  // izjemo/stack zapiši v Vercel runtime loge.
+  let candidates: Awaited<ReturnType<typeof fetchCandidates>>
+  try {
+    candidates = await fetchCandidates()
+  } catch (err) {
+    logDbError('POST /api/auth/demo-login — db.employee.findMany', err)
+    const { code, category } = describeDbError(err)
+    return NextResponse.json(
+      {
+        error: 'Podatkovna baza trenutno ni dosegljiva. Poskusite znova kasneje.',
+        code: 'DB_UNAVAILABLE',
+        dbError: { code, category },
+      },
+      { status: 503 },
+    )
+  }
 
   let pick: (typeof candidates)[number] | undefined
   if (pinned) {
@@ -78,13 +100,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const token = createToken({
-    sub: pick.id,
-    name: pick.name,
-    role: roleToUI(pick.role),
-    loc: pick.locationId,
-    sv: pick.sessionVersion,
-  })
+  // Issue #76: APP_SECRET validacija je zdaj LAZY (uporaba, ne uvoz modula) — ob
+  // mankajoči skrivnosti dobimo tukaj jasen CONFIG error (500 s telesom), ne sesutega
+  // uvoza z modulsko izjemo, ki bi praznila telo odgovora.
+  let token: string
+  try {
+    token = createToken({
+      sub: pick.id,
+      name: pick.name,
+      role: roleToUI(pick.role),
+      loc: pick.locationId,
+      sv: pick.sessionVersion,
+    })
+  } catch (err) {
+    console.error('[auth] demo-login: izdaja žetona ni uspela — APP_SECRET?', (err as Error).message)
+    return NextResponse.json(
+      { error: 'Prijava trenutno ni na voljo (manjka strežniška konfiguracija).', code: 'CONFIG_MISSING' },
+      { status: 500 },
+    )
+  }
 
   await writeAudit(db, {
     userId: pick.id,
@@ -94,7 +128,11 @@ export async function POST(req: NextRequest) {
     details: 'Demo vstop brez gesla (zahteva lastnika med razvojem) — izdana polna seja.',
     ipAddress: ip,
     locationId: pick.locationId,
-  }).catch(() => {})
+  }).catch((auditErr: unknown) => {
+    // Issue #76: demo vstop je sledljiv tudi kadar audit zapis spodleti — napaka
+    // ni več tiha, gre v runtime loge (ne vpliva odgovora).
+    logDbError('POST /api/auth/demo-login — writeAudit (DEMO_LOGIN zapis)', auditErr)
+  })
 
   return NextResponse.json({
     token,

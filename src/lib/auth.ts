@@ -10,9 +10,26 @@ import { NextRequest } from 'next/server'
  * Lokalni dev sme uporabiti fallback.
  */
 const isProd = process.env.NODE_ENV === 'production'
-const APP_SECRET = process.env.APP_SECRET || (isProd ? '' : 'restaurantos-reconstruction-dev-secret')
-if (isProd && !APP_SECRET) {
-  throw new Error('APP_SECRET ni nastavljen — produkcija zahteva APP_SECRET env (issue #4 §15).')
+
+/**
+ * Issue #76 — LAZY fail-closed: APP_SECRET se preveri ob PRVI uporabi (podpis
+ * žetona), ne ob uvozu modula. Vzrok: module-scope throw je (a) praznil telo
+ * HTTP 500 na vseh endpointih, ki uvažajo ta modul (demo-login), in (b) lahko
+ * zakril namerano DB napako iz issue #76. Varnost je nespremenjena: brez
+ * APP_SECRET v produkciji se žeton NE izda (createToken vrže napako, ujeto v
+ * route handlerju z jasnim telesom CONFIG_MISSING).
+ */
+const DEV_APP_SECRET = 'restaurantos-reconstruction-dev-secret'
+let appSecretCache: string | null = null
+
+function appSecret(): string {
+  if (appSecretCache !== null) return appSecretCache
+  const s = process.env.APP_SECRET
+  if (isProd && !s) {
+    throw new Error('[auth] APP_SECRET ni nastavljen — produkcija zahteva APP_SECRET env (issue #4 §15).')
+  }
+  appSecretCache = s || DEV_APP_SECRET
+  return appSecretCache
 }
 // PIN_LOOKUP_SALT: rotacija bi zaklenila obstoječe PIN-e (scrypt hash je vezan na salt)
 // → rotacija samo z usklajeno ponastavitvijo vseh PIN-ov (glej PRODUCTION-HARDENING-REPORT.md)
@@ -25,13 +42,26 @@ if (isProd && !APP_SECRET) {
 // Fail-closed throw bi ONEMOGOČIL deploy, če env ni nastavljen (za razliko od
 // APP_SECRET ga ne moremo preveriti iz repozitorija) — izvedena sol je varna
 // alternativa brez izpadov.
-const PIN_LOOKUP_SALT = process.env.PIN_LOOKUP_SALT
-  || (isProd
-    ? crypto.createHmac('sha256', APP_SECRET).update('restaurantos-pin-lookup-salt-v1').digest('hex')
-    : 'restaurantos-pin-lookup-v1')
-if (isProd && !process.env.PIN_LOOKUP_SALT) {
-  // glasen zapis — operator naj nastavi eksplicitni env (rotacija: glej komentar zgoraj)
-  console.error('[auth] PIN_LOOKUP_SALT ni nastavljen — izveden iz APP_SECRET. Priporočeno: nastavite PIN_LOOKUP_SALT env na Vercelu.')
+// Issue #76: izvedba soli je LAZY (ob prvem iskanju PIN-a) — enaka disciplina
+// kot appSecret(): modul se uvozi tudi v okoljih brez env vrednosti.
+const DEV_PIN_LOOKUP_SALT = 'restaurantos-pin-lookup-v1'
+let pinSaltCache: string | null = null
+
+function pinLookupSalt(): string {
+  if (pinSaltCache !== null) return pinSaltCache
+  const explicit = process.env.PIN_LOOKUP_SALT
+  if (explicit) {
+    pinSaltCache = explicit
+    return pinSaltCache
+  }
+  if (isProd) {
+    pinSaltCache = crypto.createHmac('sha256', appSecret()).update('restaurantos-pin-lookup-salt-v1').digest('hex')
+    // glasen zapis — operator naj nastavi eksplicitni env (rotacija: glej komentar zgoraj)
+    console.error('[auth] PIN_LOOKUP_SALT ni nastavljen — izveden iz APP_SECRET. Priporočeno: nastavite PIN_LOOKUP_SALT env na Vercelu.')
+  } else {
+    pinSaltCache = DEV_PIN_LOOKUP_SALT
+  }
+  return pinSaltCache
 }
 
 export interface AuthPayload {
@@ -55,7 +85,7 @@ export interface AuthPayload {
 }
 
 function sign(data: string): string {
-  return crypto.createHmac('sha256', APP_SECRET).update(data).digest('base64url')
+  return crypto.createHmac('sha256', appSecret()).update(data).digest('base64url')
 }
 
 export function createToken(p: Omit<AuthPayload, 'exp'>, hours = 12): string {
@@ -118,7 +148,7 @@ export function hashPin(pin: string, salt: string): string {
 }
 
 export function pinLookupValue(pin: string): string {
-  return crypto.createHmac('sha256', PIN_LOOKUP_SALT).update(pin).digest('hex')
+  return crypto.createHmac('sha256', pinLookupSalt()).update(pin).digest('hex')
 }
 
 /**

@@ -195,11 +195,31 @@ describe('AUDIT-FIX v1.82.1 — razrez monolita dashboard-tabs (barrel nazajkomp
 
   test('PIN_LOOKUP_SALT: javna konstanta ni več produkcija fallback (dev/test ostaja)', async () => {
     const src = readFileSync(join(import.meta.dir, '../src/lib/auth.ts'), 'utf-8')
-    // izvedena sol iz APP_SECRET v produkciji (brez env) — ne javna konstanta
-    expect(src).toContain("createHmac('sha256', APP_SECRET)")
+    // izvedena sol iz APP_SECRET v produkciji (brez env) — ne javna konstanta.
+    // Issue #76: izvedba je LAZY (pinLookupSalt() → createHmac('sha256', appSecret())),
+    // module-scope throw je bil umaknjen, dev/test fallback in warning ostajata.
+    expect(src).toContain("createHmac('sha256', appSecret())")
     // dev/test fallback ostaja (prijava v testih temelji na njem)
     expect(src).toContain("'restaurantos-pin-lookup-v1'")
     // glasnе opozorilo v produkciji
     expect(src).toContain('PIN_LOOKUP_SALT ni nastavljen')
+  })
+
+  test('Issue #76: APP_SECRET fail-closed je LAZY (uporaba, ne uvoz modula) — prazni HTTP 500 so izkoreninjeni', async () => {
+    const src = readFileSync(join(import.meta.dir, '../src/lib/auth.ts'), 'utf-8')
+    // preverba ob prvi uporabi skrivnosti (ne module-scope throw, ki je sesujeval uvoz)
+    expect(src).toContain('function appSecret(): string')
+    expect(src).not.toMatch(/^const APP_SECRET = /m)
+    // endpointa iz issue #76 morata vrniti strukturiran JSON (503/CONFIG) in log:
+    const locations = readFileSync(join(import.meta.dir, '../src/app/api/auth/locations/route.ts'), 'utf-8')
+    expect(locations).toContain('DB_UNAVAILABLE')
+    expect(locations).toContain('logDbError')
+    const demo = readFileSync(join(import.meta.dir, '../src/app/api/auth/demo-login/route.ts'), 'utf-8')
+    expect(demo).toContain('DB_UNAVAILABLE')
+    expect(demo).toContain('CONFIG_MISSING')
+    // health: dvostopenjska sonda (connectivity ločeno od sheme) + varna klasifikacija
+    const health = readFileSync(join(import.meta.dir, '../src/app/api/health/route.ts'), 'utf-8')
+    expect(health).toContain('SELECT 1 FROM "Location"')
+    expect(health).toContain('describeDbError')
   })
 })
