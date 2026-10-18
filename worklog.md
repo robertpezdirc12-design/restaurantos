@@ -4157,3 +4157,31 @@ Stage Summary:
 - Neon backup veriga OBNOVLJENA po 5 dneh tihe odpovedi (P1): dnevni pg_dump + validacija + artifact 90 dni spet delujejo; prod-smoke prav tako
 - Root vzrok: kvota hosted minut (reset 1. 11.) + neuveljavljeno preusmerjeni workflowi; rešitev je vzorec-neutralna (deluje na obeh runnerjih, brez sudo)
 - v1.137.0 celoten: audit-15 (issue #73) + backup/prod-smoke infra; produkcija @ 5868760; CI 3/3 zelen
+
+---
+Task ID: v1.138.0-issue73-audit10-11
+Agent: glavni agent (Z.ai)
+Task: nadaljevanje issue #73 — 3. prioriteta audit-10 + audit-11 (navigacijska prenova: stranski steber s skupinami + iskalnik, mobilna vrstica po vlogi, enoten besednjak).
+
+Work Log:
+- STANJE: #73 pokriva 1.+2. prioriteto (v1.136.0 audit-19+26, v1.137.0 audit-15); preostanek: audit-10/11 (3.), audit-22/33 (4.)
+- ANALIZA: horizontalna vrstica (8 primarnih + 27 v spustnem meniju ⋮ "Več") = uporabnik pod 1024 px vidi 5 ikon, ne vidi kaj aplikacija zna; besednjak meša jezike (Menu inženiring, CRM gostov, Enterprise) + 4 časovni zavihki (Delovni čas/Odpiralni čas/Urnik/Izmene) + Zaloge/Nabava/Odpad kot trije vhodi
+- IMPLEMENTACIJA audit-10 (nova arhitektura, 2 nova modula):
+  * src/lib/nav-groups.ts: NAV_GROUP_OF (VSEH 32 zavihkov, ne le menija Več), NAV_STANDALONE_TABS (pregled = domov nad skupinami), MOBILE_ROLE_TABS (14 vlog × 4–5 zavihkov), mobileTabsForRole (dovoljenja premagajo vlogo, fallback MOBILE_FALLBACK_TABS, nikoli prazna), normNavText (iskanje brez diakritike, đ→d — NFD ne razstavi sestavljene črke)
+  * src/components/dashboard-nav.tsx: DashboardSidebar (≥ lg, w-64, sticky top-14, 5 skupin + iskalnik), MobileBottomNav (< lg, fixed bottom-0, safe-area, 4–5 zavihkov vloge + gumb "Več" — aktivni zavihek VEDNO viden [v1.129.0 pogodba prenesena]), MobileNavDrawer (vaul predal s celotnim drevesom + iskalnik); semantika <nav> + aria-current (APG navigacija, ne tablist — 32 postavk v tablistu bi prelomilo Tab tipko)
+  * page.tsx: Tabs root je zdaj layout nosilec (flex vrstica: steber + vsebina); stara vrstica + DropdownMenu "Več" IZBRISANA; TabsList/TabsTrigger uvozi odstranjeni; dash-vsebina pb-[calc(5.5rem+safe-area)] za fiksno vrstico; noga mb na mobilnem
+- IMPLEMENTACIJA audit-11 (enoten besednjak, SL+HR):
+  * Preimenovanja zavihkov: Analiza menija (Menu inženiring), Razpored delovnih ur (Urnik), Odprtost lokala (Odpiralni čas), Smene (Izmene), Odnosi z gosti (CRM gostov), Organizacija (Enterprise), skupina Naročanje (Operativa); Popisi (st.title — mnoški naslov razdelka kot Dobavitelji/Recepture)
+  * Uskladitve istih besed drugje: me.title (Analiza menija/jelovnika), lcov.covShifts (Smene), ukazna paleta ("Smene + Z-poročila")
+  * Nova tipka nav.* (mainAria/quickAria/drawerTitle/drawerDesc/moreAria/searchLabel/searchPlaceholder/noResults) v SL+HR (pariteta slovarjev)
+- TESTI: tests/issue73-audit10-11.test.ts (27: skupine pokritje 32, vloge mobilne vrstice, norma đ, struktura page.tsx, besednjak SL/HR, nav.* pariteta, komponente brez hardcode); rbac-p2 N8 (gating prenesen v dashboard-nav.tsx — 3 poti ctx={{canManage,perms}}); v129 pogodba aktivnega zavihka prenesena na MobileBottomNav
+- CI: prvi tek 73d2843 FAIL (6 testov pripenja APP_VERSION na 1.137.0 — verižni registri vsake izdaje) → 476fbc6 bump 6 datotek → SUCCESS 3/3; Vercel Git integration samodejno deployal
+- E2E PRODUKCIJA (v1.138.0 @ 476fbc64, agent-browser): namizno 1440 — steber 256 px, skupine ops:8+guests:4+finance:10+staff:6+system:3 (+pregled = 32), iskalnik "racuni" → "Računi · Zaloge in finance" (brez diakritike!), klik navigira ?tab=racuni, aria-current; besednjak ŽIV: Analiza menija/Razpored delovnih ur/Odprtost lokala/Smene/Odnosi z gosti/Organizacija + skupine Naročanje… — stara imena IZGINILA; HR preklop: Naručivanje/Analiza jelovnika/Raspored radnih sati/Otvaranje lokala/Smjene/Odnosi s gostima; mobilno 390 — vrstica prilepljena na dno (bottom:0), admin 5 zavihkov vloge + Več, pb 88 px, aktivni izven nabora (Smene) SE PRIKAŽE (pogodba), predal s skupinami + iskanje "analiza" → "Analiza jelovnika · Zalihe i financije", izbor zapre predal; steber drsljiv (scrollHeight, zadnja postavka Organizacija); 0 napak strani + 0 konzolnih
+- VLM dokazi: audit10-desktop-admin.png (skupine+iskalnik+aktiven), audit10-mobile-admin-bar.png (ikona+napis, aktiven Računi zelen, ne prekriva), audit10-mobile-drawer-search-hr.png (predal+iskalnik+zadetek), audit11-desktop-hr.png (HR besednjak)
+- OOM past (znova): lokalni dev :3007 umrl 3× med E2E (dmesg oom-kill, rss 1,39 GB) — sandbox 4 GB skupen z my-project strežnikom + CI runnerjem → E2E na produkciji (vzorec v1.137.0); CI discipline UPOTEVANA (brskalnik zaprt med teki)
+- VERIFIKACIJA: tsc 0 · eslint 0 · secrets OK · 2609/2609 (127 datotek, +27 issue73-audit10-11) · CI SUCCESS (476fbc6) · produkcija v1.138.0 @ 476fbc64 ŽIVA
+
+Stage Summary:
+- v1.138.0: audit-10 (navigacijski steber s skupinami + iskalnik + mobilna vrstica po vlogi + predal Več) in audit-11 (enoten besednjak brez izposojenk, 8 preimenovanj SL/HR) IZVEDENA v produkciji
+- #73 pokrite 1.+2.+3. prioriteta; preostanek: audit-22 (KDS tap-karta), audit-33 (inline pomoč) — issue ostaja ODPORT
+- Dokazni posnetki: .zscripts/audit10-desktop-admin.png, audit10-desktop-full.png, audit10-mobile-admin-bar.png, audit10-mobile-drawer-search-hr.png, audit11-desktop-hr.png
