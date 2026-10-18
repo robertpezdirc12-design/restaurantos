@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, getToken } from '@/lib/client'
 import { isNetworkError } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
+import { EmptyStat } from '@/components/empty-stat'
 import { toast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -220,9 +221,7 @@ export function ManagerCallsCard() {
               {t('callv.card.stats', { ack: fmtMin(stats.avgMinutesToAcknowledge), resolve: fmtMin(stats.avgMinutesToResolve), esc: stats.escalatedRounds })}
             </p>
           ) : (
-            <p className="text-xs text-stone-400 italic" title={t('emptystat.noDataHint')}>
-              {t('emptystat.noData')}
-            </p>
+            <EmptyStat kind="no-data" />
           )
         )}
 

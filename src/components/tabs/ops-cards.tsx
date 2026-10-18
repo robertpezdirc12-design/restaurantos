@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken, getUser } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
+import { EmptyStat } from '@/components/empty-stat'
 import { toast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -689,19 +690,21 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                 <div className="rounded-lg border border-stone-200 p-2.5">
                   <p className="text-xs text-stone-500">{t('lcov.kpiLabor')}</p>
-                  <span className={`mt-0.5 inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${tt.laborPct === null ? 'bg-stone-100 text-stone-500' : lcovBandCls(tt.laborPct)}`} title={tt.laborPct === null ? t('emptystat.notComputedHint') : undefined}>
-                    {tt.laborPct === null ? t('emptystat.noData') : `${tt.laborPct.toFixed(2)} %`}
-                  </span>
+                  {tt.laborPct === null ? <EmptyStat kind="not-computed" /> : (
+                    <span className={`mt-0.5 inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${lcovBandCls(tt.laborPct)}`}>
+                      {`${tt.laborPct.toFixed(2)} %`}
+                    </span>
+                  )}
                   <p className="mt-0.5 text-xs text-stone-400">{t('lcov.kpiLaborHint')}</p>
                 </div>
                 <div className="rounded-lg border border-stone-200 p-2.5" title={tt.sphCents === null ? t('emptystat.notComputedHint') : undefined}>
                   <p className="text-xs text-stone-500">{t('lcov.kpiSph')}</p>
-                  <p className="text-sm font-semibold">{tt.sphCents === null ? t('emptystat.noData') : fmtEUR(tt.sphCents / 100)}</p>
+                  <p className="text-sm font-semibold">{tt.sphCents === null ? <EmptyStat kind="not-computed" /> : fmtEUR(tt.sphCents / 100)}</p>
                   <p className="text-xs text-stone-400">{t('lcov.kpiSphHint')}</p>
                 </div>
                 <div className="rounded-lg border border-stone-200 p-2.5" title={tt.costPerOrderCents === null ? t('emptystat.notComputedHint') : undefined}>
                   <p className="text-xs text-stone-500">{t('lcov.kpiCpo')}</p>
-                  <p className="text-sm font-semibold">{tt.costPerOrderCents === null ? t('emptystat.noData') : fmtEUR(tt.costPerOrderCents / 100)}</p>
+                  <p className="text-sm font-semibold">{tt.costPerOrderCents === null ? <EmptyStat kind="not-computed" /> : fmtEUR(tt.costPerOrderCents / 100)}</p>
                   <p className="text-xs text-stone-400">{t('lcov.kpiCpoHint')}</p>
                 </div>
                 <div className="rounded-lg border border-stone-200 p-2.5" title={t('lcov.varianceNote')}>
