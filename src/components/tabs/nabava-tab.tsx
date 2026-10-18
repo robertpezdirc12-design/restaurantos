@@ -639,7 +639,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
 
       {/* 0a — consumption-based recommendations (issue #12): predicted use in
           lead-time + review cycle + safety stock − on-hand − confirmed incoming,
-          rounded up to supplier packs; WATCH = below threshold but already covered */}
+          rounded-sm up to supplier packs; WATCH = below threshold but already covered */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
@@ -693,14 +693,14 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                           <tr key={s.itemId} className="border-t border-stone-100">
                             <td className="p-2 font-medium max-w-48 truncate" title={s.itemName}>
                               {s.itemName}
-                              {s.flags.noHistory && <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1 py-0">{t('recs.noHistory')}</Badge>}
-                              {s.flags.noLeadTime && <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1 py-0">{t('recs.noLead')}</Badge>}
+                              {s.flags.noHistory && <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-50 text-amber-800 text-xs px-1 py-0">{t('recs.noHistory')}</Badge>}
+                              {s.flags.noLeadTime && <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-50 text-amber-800 text-xs px-1 py-0">{t('recs.noLead')}</Badge>}
                             </td>
                             <td className="p-2 text-right">{s.onHand} {s.unit}</td>
                             <td className="p-2 text-right">{s.avgDailyUse}</td>
                             <td className="p-2 text-right">
                               {s.coverageDays == null ? '—' : t('recs.days', { n: s.coverageDays })}
-                              {s.stockoutDate && <span className="block text-[10px] text-stone-400">{s.stockoutDate}</span>}
+                              {s.stockoutDate && <span className="block text-xs text-stone-400">{s.stockoutDate}</span>}
                             </td>
                             <td className="p-2 text-right">{s.needQty}</td>
                             <td className="p-2 text-right">{s.suggestedPacks}</td>
@@ -726,7 +726,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                         <div key={s.itemId} className="px-3 py-1.5 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
                           <span className="font-medium">{s.itemName}</span>
                           <span className="text-xs text-stone-600">{t('recs.colStock')}: {s.onHand} {s.unit} · {t('recs.colPar')}: {s.reorderPoint}</span>
-                          {s.flags.noHistory && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1 py-0">{t('recs.noHistory')}</Badge>}
+                          {s.flags.noHistory && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-xs px-1 py-0">{t('recs.noHistory')}</Badge>}
                         </div>
                       ))}
                     </div>

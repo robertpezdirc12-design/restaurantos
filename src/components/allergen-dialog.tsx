@@ -196,8 +196,8 @@ export function AllergenDialog({
         </DialogHeader>
 
         {loading && <p className="text-sm text-stone-500">…</p>}
-        {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
-        {notice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{notice}</p>}
+        {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm px-3 py-2">{error}</p>}
+        {notice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-sm px-3 py-2">{notice}</p>}
 
         {profile && (
           <div className="space-y-4">

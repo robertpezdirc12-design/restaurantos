@@ -121,7 +121,7 @@ export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = 
               <div className="space-y-1.5">
                 <Label htmlFor="pt-delta">{t('loy.pointsDelta')}</Label>
                 <Input id="pt-delta" inputMode="numeric" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder={t('loy.deltaPlaceholder')} />
-                <p className="text-[11px] text-stone-400">{t('loy.tierHint')}</p>
+                <p className="text-xs text-stone-400">{t('loy.tierHint')}</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pt-reason">{t('loy.reason')}</Label>

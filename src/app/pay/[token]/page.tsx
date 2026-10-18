@@ -369,7 +369,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
             <><CreditCard className="mr-2 h-5 w-5" />{isSplit ? t('pay.payShare') : t('pay.pay')} · {fmt(payTotal)}</>
           )}
         </Button>
-        <p className="mt-2 text-center text-[11px] text-stone-400">{t('pay.footer')}</p>
+        <p className="mt-2 text-center text-xs text-stone-400">{t('pay.footer')}</p>
       </div>
     </Shell>
   )

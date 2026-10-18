@@ -481,13 +481,13 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
                         {statusBadge(e)}
                         {/* Issue #18 — status tristranskega ujemanja + PO referenca */}
                         {matchBadge(e)}
-                        {e.poNumber && <Badge variant="outline" className="text-stone-500 border-stone-300 font-mono text-[10px]">{e.poNumber}</Badge>}
+                        {e.poNumber && <Badge variant="outline" className="text-stone-500 border-stone-300 font-mono text-xs">{e.poNumber}</Badge>}
                         {categoriesEnabled && e.category && e.category !== 'OSTALO' && <Badge variant="outline" className="text-stone-600 border-stone-300">{e.category}</Badge>}
                         {/* OPS-10 val 3 — archived eSLOG attachments (click opens the preview dialog) */}
                         {e.apNumber && (attIndex[e.apNumber] || 0) > 0 && (
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-100"
+                            className="inline-flex items-center gap-1 rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-xs text-stone-700 hover:bg-stone-100"
                             onClick={() => void openAttachments(e.apNumber as string, e.description)}
                             aria-label={t('apatt.badge', { n: attIndex[e.apNumber] })}
                           >
@@ -610,7 +610,7 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
                   </div>
                 ))}
                 {attTruncated && <p className="text-xs text-amber-700">{t('apatt.truncated')}</p>}
-                <p className="text-[11px] text-stone-400">{t('apatt.retention')}</p>
+                <p className="text-xs text-stone-400">{t('apatt.retention')}</p>
               </div>
             )}
             {attPreview && (
@@ -806,7 +806,7 @@ function ApMatchDialog({ apId, description, onClose, onReload }: { apId: string;
                       {/* povezava na PO postavko: trenutna ali ročni izbor */}
                       <div className="flex flex-wrap items-center gap-2 mt-1.5">
                         {l.purchaseOrderItemId ? (
-                          <Badge variant="outline" className="text-stone-600 border-stone-300 font-mono text-[10px] gap-1">
+                          <Badge variant="outline" className="text-stone-600 border-stone-300 font-mono text-xs gap-1">
                             <Link2 className="w-3 h-3" />
                             {detail.poCandidates.find((c) => c.id === l.purchaseOrderItemId)?.poNumber
                               || detail.linkedPurchaseOrders.find((p) => p.grnCount >= 0)?.poNumber
@@ -829,7 +829,7 @@ function ApMatchDialog({ apId, description, onClose, onReload }: { apId: string;
                           </Select>
                         )}
                         {l.proposal && !l.purchaseOrderItemId && (
-                          <span className="text-[11px] text-stone-400">{l.proposal.reasons.join(' · ')}</span>
+                          <span className="text-xs text-stone-400">{l.proposal.reasons.join(' · ')}</span>
                         )}
                       </div>
                     </div>

@@ -336,7 +336,7 @@ export function ManagerCallButton({
                         <p className="text-sm font-medium truncate min-w-0">{t(`callv.type.${c.type}`)}</p>
                         <Badge variant="outline" className={`shrink-0 ${STATUS_STYLE[c.status] ?? ''}`}>{t(`callv.status.${c.status}`)}</Badge>
                       </div>
-                      <p className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <p className="flex flex-wrap items-center gap-1.5 text-xs">
                         {c.ageMinutes !== null && c.ageMinutes !== undefined && (
                           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-stone-600">{t('callv.card.age', { n: Math.round(c.ageMinutes) })}</span>
                         )}
@@ -355,7 +355,7 @@ export function ManagerCallButton({
                         )}
                       </p>
                       {c.note && <p className="text-xs text-stone-600 min-w-0">{c.note}</p>}
-                      {c.acknowledgedByName && <p className="text-[11px] text-stone-500">{t('callv.card.ackBy', { name: c.acknowledgedByName })}</p>}
+                      {c.acknowledgedByName && <p className="text-xs text-stone-500">{t('callv.card.ackBy', { name: c.acknowledgedByName })}</p>}
 
                       {resolving ? (
                         <div className="space-y-1.5 pt-1">

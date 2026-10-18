@@ -303,7 +303,7 @@ function KioskInner() {
     return (
       <div data-screen="kiosk-activation" className="min-h-screen flex items-center justify-center bg-stone-900 p-6">
         <GuestLanguageToggle variant="dark" className="fixed top-3 right-3 z-50" />
-        <div className="w-full max-w-md rounded-3xl bg-stone-800 border border-stone-700 p-8 text-stone-100">
+        <div className="w-full max-w-md rounded-xl bg-stone-800 border border-stone-700 p-8 text-stone-100">
           <div className="flex items-center gap-3 mb-4">
             <Monitor className="h-8 w-8" />
             <h1 className="text-2xl font-bold">{t('guest.kiosk.title')}</h1>

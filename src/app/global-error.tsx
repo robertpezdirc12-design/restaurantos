@@ -25,7 +25,7 @@ export default function GlobalError({
         <main className="min-h-screen flex items-center justify-center p-6">
           <div
             role="alert"
-            className="w-full max-w-md rounded-3xl bg-white border border-stone-200 p-8 text-center shadow-sm"
+            className="w-full max-w-md rounded-xl bg-white border border-stone-200 p-8 text-center shadow-sm"
           >
             <AlertTriangle className="h-12 w-12 mx-auto text-amber-500" aria-hidden />
             <h1 className="mt-4 text-xl font-bold text-stone-900">Napaka aplikacije</h1>

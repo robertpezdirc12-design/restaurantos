@@ -140,7 +140,7 @@ export function PaletteButton({ onClick }: { onClick: () => void }) {
       aria-label="Odpri ukazno paleto"
     >
       <Search className="w-3.5 h-3.5" /> Ukazi
-      <kbd className="ml-1 rounded border border-stone-300 bg-white px-1 text-[10px] font-semibold">Ctrl K</kbd>
+      <kbd className="ml-1 rounded-sm border border-stone-300 bg-white px-1 text-xs font-semibold">Ctrl K</kbd>
     </button>
   )
 }

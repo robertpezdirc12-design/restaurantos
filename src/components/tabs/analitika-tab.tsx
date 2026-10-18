@@ -427,7 +427,7 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                 <Card><CardContent className="p-4">
                   <p className="text-xs text-stone-500">{t('kds.stats.onTime')}</p>
                   <p className="text-2xl font-bold">{kpi.onTimePct.toFixed(1)} %</p>
-                  <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-stone-500">
+                  <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-stone-500">
                     <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {kpi.okPct.toFixed(1)} % {t('kds.stats.ok')}</span>
                     <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {kpi.warnPct.toFixed(1)} % {t('kds.stats.warn')}</span>
                     <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {kpi.latePct.toFixed(1)} % {t('kds.stats.late')}</span>
@@ -449,7 +449,7 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                     />
                   ))}
                 </div>
-                <p className="mt-1.5 flex flex-wrap gap-x-3 text-[11px] text-stone-500">
+                <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-stone-500">
                   <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> {t('kds.stats.ok')}</span>
                   <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> {t('kds.stats.warn')}</span>
                   <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" /> {t('kds.stats.late')}</span>
@@ -563,7 +563,7 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-1.5 flex flex-wrap gap-x-3 text-[11px] text-stone-500">
+                <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-stone-500">
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {t('kds.stats.ok')}</span>
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {t('kds.stats.warn')}</span>
                   <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {t('kds.stats.late')}</span>
@@ -698,7 +698,7 @@ function FcComponentChips({ it, t }: { it: FcItem; t: (k: string) => string }) {
   return (
     <div className="flex flex-wrap gap-1">
       {chips.map((c, i) => (
-        <Badge key={i} variant="outline" className={`whitespace-nowrap text-[10px] ${c.cls}`} title={c.title}>{c.label}</Badge>
+        <Badge key={i} variant="outline" className={`whitespace-nowrap text-xs ${c.cls}`} title={c.title}>{c.label}</Badge>
       ))}
     </div>
   )
@@ -872,13 +872,13 @@ export function FoodCostVarianceCard() {
                         <td className="px-3 py-2"><FcComponentChips it={it} t={t} /></td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
                           {it.price != null ? fmtEUR(it.price) : '—'}
-                          <span className="block text-[10px] text-stone-400">{t(FC_BASIS_LABEL[it.priceBasis])}</span>
+                          <span className="block text-xs text-stone-400">{t(FC_BASIS_LABEL[it.priceBasis])}</span>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
-                            {it.unitMismatch && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200" title={t('fc.flag.unitHint')}>{t('fc.flag.unit')}</Badge>}
-                            {it.recipeChangedSinceFrom && <Badge variant="outline" className="text-[10px] bg-violet-50 text-violet-700 border-violet-200" title={t('fc.flag.recipeHint')}>{t('fc.flag.recipe')}</Badge>}
-                            {it.priceBasis === 'unknown' && <Badge variant="outline" className="text-[10px] bg-stone-100 text-stone-600 border-stone-200" title={t('fc.price.unknown')}>{t('fc.flag.price')}</Badge>}
+                            {it.unitMismatch && <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-200" title={t('fc.flag.unitHint')}>{t('fc.flag.unit')}</Badge>}
+                            {it.recipeChangedSinceFrom && <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200" title={t('fc.flag.recipeHint')}>{t('fc.flag.recipe')}</Badge>}
+                            {it.priceBasis === 'unknown' && <Badge variant="outline" className="text-xs bg-stone-100 text-stone-600 border-stone-200" title={t('fc.price.unknown')}>{t('fc.flag.price')}</Badge>}
                           </div>
                         </td>
                       </tr>
@@ -930,24 +930,24 @@ export function FoodCostVarianceCard() {
               </DialogHeader>
               <div className="grid gap-3 text-sm">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <div className="rounded border border-stone-200 p-2">
+                  <div className="rounded-sm border border-stone-200 p-2">
                     <p className="text-xs text-stone-500">{t('fc.d.opening')}</p>
                     <p className="font-semibold">{fcQty(sel.openingQty)} {sel.unit}</p>
-                    <p className="text-[10px] text-stone-400">{t(FC_BASIS_LABEL[sel.openingBasis])}{sel.openingStocktakeId ? ` · ${sel.openingStocktakeId.slice(0, 10)}` : ''}</p>
+                    <p className="text-xs text-stone-400">{t(FC_BASIS_LABEL[sel.openingBasis])}{sel.openingStocktakeId ? ` · ${sel.openingStocktakeId.slice(0, 10)}` : ''}</p>
                   </div>
-                  <div className="rounded border border-stone-200 p-2">
+                  <div className="rounded-sm border border-stone-200 p-2">
                     <p className="text-xs text-stone-500">{t('fc.d.receipts')}</p>
                     <p className="font-semibold">{fcQty(sel.receiptsQty)} {sel.unit}</p>
-                    <p className="text-[10px] text-stone-400">{t('fc.d.production')}: {fcQty(sel.productionQty)}</p>
+                    <p className="text-xs text-stone-400">{t('fc.d.production')}: {fcQty(sel.productionQty)}</p>
                   </div>
-                  <div className="rounded border border-stone-200 p-2">
+                  <div className="rounded-sm border border-stone-200 p-2">
                     <p className="text-xs text-stone-500">{t('fc.d.closing')}</p>
                     <p className="font-semibold">{fcQty(sel.closingQty)} {sel.unit}</p>
-                    <p className="text-[10px] text-stone-400">{t(FC_BASIS_LABEL[sel.closingBasis])}{sel.closingStocktakeId ? ` · ${sel.closingStocktakeId.slice(0, 10)}` : ''}</p>
+                    <p className="text-xs text-stone-400">{t(FC_BASIS_LABEL[sel.closingBasis])}{sel.closingStocktakeId ? ` · ${sel.closingStocktakeId.slice(0, 10)}` : ''}</p>
                   </div>
                 </div>
 
-                <div className="rounded border border-stone-200 p-2">
+                <div className="rounded-sm border border-stone-200 p-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-stone-500">{t('fc.d.theoretical')}</p>
                     <p className="font-semibold">{fcQty(sel.theoreticalQty)} {sel.unit} · {sel.theoreticalValue != null ? fmtEUR(sel.theoreticalValue) : '—'}</p>
@@ -964,7 +964,7 @@ export function FoodCostVarianceCard() {
                   </div>
                 </div>
 
-                <div className="rounded border border-stone-200 p-2">
+                <div className="rounded-sm border border-stone-200 p-2">
                   <p className="text-xs text-stone-500 mb-1">{t('fc.d.components')}</p>
                   <table className="w-full text-xs">
                     <tbody>
@@ -986,7 +986,7 @@ export function FoodCostVarianceCard() {
                   </table>
                 </div>
 
-                <div className="rounded border border-stone-200 p-2 text-xs space-y-0.5">
+                <div className="rounded-sm border border-stone-200 p-2 text-xs space-y-0.5">
                   <p className="text-stone-500">{t('fc.d.price')}</p>
                   <p>{sel.price != null ? `${fmtEUR(sel.price)} / ${sel.unit}` : t('fc.price.unknown')} — {t(FC_BASIS_LABEL[sel.priceBasis])}</p>
                   {sel.priceChangeImpact != null && (
@@ -994,7 +994,7 @@ export function FoodCostVarianceCard() {
                   )}
                 </div>
 
-                <div className="rounded border border-stone-200 p-2 text-xs space-y-1">
+                <div className="rounded-sm border border-stone-200 p-2 text-xs space-y-1">
                   <p className="text-stone-500">{t('fc.d.evidence')}</p>
                   {sel.saleOrderNumbers.length > 0 && <p>{t('fc.ev.orders')}: {sel.saleOrderNumbers.join(', ')}</p>}
                   {sel.receiptDocs.length > 0 && <p>{t('fc.ev.receipts')}: {sel.receiptDocs.join(', ')}</p>}
@@ -1005,7 +1005,7 @@ export function FoodCostVarianceCard() {
                   )}
                 </div>
 
-                <p className="text-[10px] text-stone-500 border-t border-stone-100 pt-2">{t('fc.q.disclaimer')}</p>
+                <p className="text-xs text-stone-500 border-t border-stone-100 pt-2">{t('fc.q.disclaimer')}</p>
               </div>
             </>
           )}

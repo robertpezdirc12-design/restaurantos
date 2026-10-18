@@ -349,7 +349,7 @@ export function LabelDialog({
           <div className="space-y-4 text-sm">
             {/* read-only origin data (server re-reads the record — this is a preview) */}
             <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{t('lbl.subtitle')}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{t('lbl.subtitle')}</p>
               <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="min-w-0">
                   <dt className="text-xs text-stone-500">{t('lbl.lot')}</dt>
@@ -383,7 +383,7 @@ export function LabelDialog({
                   className="h-10"
                   aria-describedby={context.unit ? `lbl-qty-unit` : undefined}
                 />
-                {context.unit && <p id="lbl-qty-unit" className="text-[11px] text-stone-400">{context.unit}</p>}
+                {context.unit && <p id="lbl-qty-unit" className="text-xs text-stone-400">{context.unit}</p>}
               </div>
               <div className="space-y-1">
                 <Label htmlFor="lbl-expiry" className="text-xs">{t('lbl.manualExpiry')}</Label>
@@ -394,7 +394,7 @@ export function LabelDialog({
                   onChange={(e) => setManualExpiry(e.target.value)}
                   className="h-10"
                 />
-                <p className="text-[11px] text-stone-400">{t('lbl.manualExpiryHint')}</p>
+                <p className="text-xs text-stone-400">{t('lbl.manualExpiryHint')}</p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="lbl-note" className="text-xs">{t('lbl.note')}</Label>
@@ -407,7 +407,7 @@ export function LabelDialog({
                   placeholder={t('lbl.noteHint')}
                   className="min-h-16"
                 />
-                <p className="text-[11px] text-stone-400">{t('lbl.noteHint')}</p>
+                <p className="text-xs text-stone-400">{t('lbl.noteHint')}</p>
               </div>
 
               {/* rule hint (issue #24: shelf life comes ONLY from a confirmed rule) */}
@@ -454,11 +454,11 @@ export function LabelDialog({
                           <div key={l.id} className="rounded-lg border border-stone-200 bg-white p-2.5 space-y-1.5 min-w-0">
                             <div className="flex items-center justify-between gap-2 min-w-0 flex-wrap">
                               <p className="text-sm font-medium truncate min-w-0">{l.itemName}</p>
-                              <Badge variant="outline" className={`shrink-0 text-[10px] ${SCAN_STYLE[l.scanStatus] ?? ''}`}>
+                              <Badge variant="outline" className={`shrink-0 text-xs ${SCAN_STYLE[l.scanStatus] ?? ''}`}>
                                 {t(`lbl.scan.${l.scanStatus}`)}
                               </Badge>
                             </div>
-                            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-stone-500">
+                            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-500">
                               <span>{new Date(l.createdAt).toLocaleDateString('sl-SI')}</span>
                               <span
                                 className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-stone-600"

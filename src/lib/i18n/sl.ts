@@ -44,7 +44,7 @@ export const sl: Record<string, string> = {
   'login.connection': 'Povezava s strežnikom ni uspela.',
   // demo vstop brez gesla (zahteva lastnika 16. 10. 2026 — za čas dela)
   'login.demoBtn': 'Vstop brez gesla (demo)',
-  'login.demoHint': 'Za hitro delo med razvojem — prijava kot vodstveni račun, vsak vstop se zapiše v dnevnik.',
+  'login.demoHint': 'Demo vstop — vodstveni račun; vsak vstop se zapiše v dnevnik.',
   'login.demoFailed': 'Demo vstop ni uspel.',
   // v1.94.0 — MFA druga stopnja + obvezni vpis (issue #12/#31)
   'login.mfaRequired': 'Zahtevana je druga stopnja prijave (MFA koda).',
@@ -68,7 +68,7 @@ export const sl: Record<string, string> = {
   'login.deviceFailed': 'Aktivacija ni uspela.',
   'login.devicePlaceholder': 'npr. 12345678',
   'login.deviceNameFallback': 'naprava',
-  'login.footer': 'RestaurantOS · FURS simulacija · EUR',
+  'login.footer': 'RestaurantOS · EUR',
 
   // ── Zavihki ──
   'tabs.pregled': 'Pregled',
@@ -82,6 +82,13 @@ export const sl: Record<string, string> = {
   'tabs.integracije': 'Integracije',
   'tabs.enterprise': 'Enterprise',
   'tabs.more': 'Več',
+  /* ISSUE #74 V-17: razdelki menija Več; V-18: kratek napis Hitra prodaja na mobilnem */
+  'tabs.groupOps': 'Operativa',
+  'tabs.groupGuests': 'Gostje',
+  'tabs.groupFinance': 'Zaloge in finance',
+  'tabs.groupStaff': 'Ekipa',
+  'tabs.groupSystem': 'Sistem',
+  'tabs.prodajaShort': 'Prodaja',
   'ent.kpiOrgs': 'Organizacije',
   'ent.kpiBrands': 'Blagovne znamke',
   'ent.kpiProperties': 'Objekti',
@@ -212,7 +219,7 @@ export const sl: Record<string, string> = {
   'dash.paidTodayInfo': '{n} računov · {sum}',
   'dash.kpiAria': 'Odpri {label}',
   'dash.noGuestData': '—',
-  'dash.footer': 'RestaurantOS rekonstrukcija {v} · offline-first + FURS (sim/produkcija ločena) · EUR',
+  'dash.footer': 'RestaurantOS · EUR',
 
   // ── Mize ──
   'tables.seats': '{n} mest',
@@ -356,7 +363,7 @@ export const sl: Record<string, string> = {
   // ── Naročila ──
   'orders.allActive': 'Vsa aktivna naročila',
   'orders.none': 'Ni aktivnih naročil.',
-  'orders.payFurs': 'Plačilo + FURS',
+  'orders.payFurs': 'Plačaj',
   'orders.persons': 'osebi',
   'orders.newTitle': 'Novo naročilo',
   // Issue #71 audit-2/audit-5: čLOVEŠKA oznaka tipa naročila (ne surovi enum DINE_IN)
@@ -369,10 +376,12 @@ export const sl: Record<string, string> = {
   'orders.showLessItems': 'Prikaži manj',
 
   // ── Kuhinja (KDS) ──
-  'kitchen.kitchenTicket': 'Kuhinjski list',
-  'kitchen.barTicket': 'Bar list',
+  /* ISSUE #74 V-11 (Stopnja 2, v1.135.0): enoten besednjak LISTEK — prej so bili
+     za isti objekt trije izrazi (Kuhinjski list / LISTKOV / Cel listek). */
+  'kitchen.kitchenTicket': 'Kuhinjski listek',
+  'kitchen.barTicket': 'Bar listek',
   // Issue #71 audit-6: manjkajoč ključ — surovi ključ se je izpisal na gumbu
-  'kitchen.printBarTitle': 'Natisni bar list',
+  'kitchen.printBarTitle': 'Natisni bar listek',
 
   // ── Plačilni dialog ──
   'payment.method': 'Način plačila:',
@@ -419,7 +428,7 @@ export const sl: Record<string, string> = {
   'payment.guestSearchAria': 'Iskanje gosta zvestobe',
   'payment.remove': 'Odstrani',
   'payment.title': 'Plačilo {name}',
-  'payment.grossTotal': 'Skupaj (z DDV)',
+  'payment.grossTotal': 'Skupaj',
   'payment.manualDiscount': 'Ročni popust',
   'payment.discountTotal': 'Popust skupaj',
   'payment.due': 'ZA PLAČATI',
@@ -617,7 +626,7 @@ export const sl: Record<string, string> = {
   'shifts.csvOpening': 'Odpiranje (EUR)',
   'shifts.csvClosing': 'Zakljucek (EUR)',
   'shifts.csvStatus': 'Status',
-  'shifts.exportCsv': 'Izvozi poročilo (CSV)',
+  'shifts.exportCsv': 'Izvozi (CSV)',
   'shifts.openShift': 'Odprta izmena — {name}',
   'shifts.noOpenShift': 'Ni odprte izmene',
   'shifts.closingCashLabel': 'Blagajna ob zaključku (€)',
@@ -812,7 +821,7 @@ export const sl: Record<string, string> = {
   'exp.csvDate': 'Datum',
   'exp.csvCategory': 'Kategorija',
   'exp.csvAmount': 'Znesek (EUR)',
-  'exp.exportCsv': 'Izvozi stroške (CSV)',
+  'exp.exportCsv': 'Izvozi (CSV)',
   'disc.kpiActive': 'Aktivni popusti',
   'disc.kpiAuto': 'Samodejni (Happy Hour)',
   'disc.kpiPromo': 'Promo kode',
@@ -931,7 +940,7 @@ export const sl: Record<string, string> = {
   'crm.guests.total': 'skupaj: {n}',
   'crm.guests.consented': 's soglasjem: {n}',
   'crm.guests.suppressed': 'odjavljeni: {n}',
-  'crm.guests.export': 'Izvozi CSV',
+  'crm.guests.export': 'Izvozi (CSV)',
   'crm.guests.none': 'Ni gostov v obsegu.',
   'crm.guests.visits': '{n} obiskov',
   'crm.guests.email': 'E-pošta',
@@ -1828,7 +1837,7 @@ export const sl: Record<string, string> = {
   'callv.set.saved': 'Nastavitve shranjene ✓',
   'callv.set.saving': 'Shranjevanje …',
   // Računi (tab) — receipt.* ostaja za NATISNJEN račun (src/lib/receipt.ts)
-  'rcpt.exportCsv': 'Izvozi račune (CSV)',
+  'rcpt.exportCsv': 'Izvozi (CSV)',
   'rcpt.csvNumber': 'St. racuna',
   'rcpt.csvOrder': 'Narocilo',
   'rcpt.csvPayMethod': 'Nacin placila',
@@ -1984,7 +1993,7 @@ export const sl: Record<string, string> = {
   'audit.title': 'Revizijski dnevnik',
   'audit.none': 'Ni revizijskih vnosov.',
   'sys.title': 'O sistemu',
-  'sys.version': 'RestaurantOS — različica {v} (offline-first rekonstrukcija)',
+  'sys.version': 'RestaurantOS — različica {v}',
   'sys.modules': 'Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.',
   'sys.db': 'Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).',
   // Offline vrsta (alerti)
@@ -1996,7 +2005,7 @@ export const sl: Record<string, string> = {
   'kitchen.queueClearTitle': 'Kuhinja je čista',
   // Issue #14 (v1.112.0): naslov/aria gumba za tiskanje kuhinjskega lista (deska
   // postaj + legacy vrsta — prej surovi ključ na gumbu, ključ ni obstal v slovarjih)
-  'kitchen.printKitchenTitle': 'Natisni kuhinjski list',
+  'kitchen.printKitchenTitle': 'Natisni kuhinjski listek',
   // OPS-4 v1.67.0 — KDS upgrade + hitra prodaja (šank)
   'tabs.prodaja': 'Hitra prodaja',
   'kds.all': 'Vse postaje',
@@ -2023,10 +2032,12 @@ export const sl: Record<string, string> = {
   'kds.guestsShort': '{n} oseb',
   'kds.markAvailable': 'Vrni na voljo',
   // P0-3 (v1.83.0) — 86 plošča na KDS: proaktivni 86 + nadomestki (TRZNA-VRZELI-2026 §4)
-  'kds.boardTitle': '86 plošča — razprodani artikli',
+  /* ISSUE #74 V-11: »86 plošča« (kuhinjaški žargon) → RAZPRODANO (86) — lastnik
+     ne sme ugibati, kaj pomeni številka 86. */
+  'kds.boardTitle': 'Razprodano (86)',
   'kds.boardEmpty': 'Vsi artikli so na voljo.',
   // v1.129.0 (Toast/Square benchmark): 86 plošča skrčena na vrstico (listki DOBIVIJO prostor)
-  'kds.boardToggleAria': 'Razširi ali skrij 86 ploščo',
+  'kds.boardToggleAria': 'Razširi ali skrij razprodane artikle (86)',
   'kds.boardOpenHint': 'Nadaljuj',
   'kds.allDayTitle': 'V pripravi — skupaj po artiklih',
   'kds.allDayEmpty': 'Ni odprtih postavk.',
@@ -2036,6 +2047,51 @@ export const sl: Record<string, string> = {
   'kds.boardNoHit': 'Ni zadetkov.',
   'kds.substitutes': 'Nadomestki',
   'kds.noSubstitutes': 'ni nadomestkov v kategoriji',
+  /* ISSUE #74 (v1.135.0) Stopnja 2+3 — statusni jezik + ergonomija KDS/POS: */
+  // V-3: število listkov po slovensko (dvojina/množina — ne "2 LISTKOV")
+  'kds.countOne': '{n} listek',
+  'kds.countTwo': '{n} listka',
+  'kds.countFew': '{n} listki',
+  'kds.countMany': '{n} listkov',
+  // V-3: nastavljivi starostni pragovi (popover ⚙ v KDS glavi, localStorage)
+  'kds.settings': 'Nastavitve zaslona',
+  'kds.settingsAgeTitle': 'Starostni pragovi (minute)',
+  'kds.ageFreshUntil': 'Sveže do',
+  'kds.ageWarnFrom': 'Opozorilo od',
+  'kds.ageLateFrom': 'Zamuda od',
+  'kds.settingsSaved': 'Pragovi so shranjeni.',
+  'kds.settingsAgeHint': 'Zadnjih 5 min pred pragom zamude listek utripa oranžno; prag postaje (cilj × 1,25) pragove lahko samo dvigne.',
+  // V-8: velikost pisave listka (S/M/L/XL — Toast "do Enormous" vzorec) + gostota + stolpci
+  'kds.settingsFont': 'Velikost pisave listka',
+  'kds.fontS': 'Majhna',
+  'kds.fontM': 'Srednja',
+  'kds.fontL': 'Velika',
+  'kds.fontXL': 'Največja',
+  'kds.settingsDensity': 'Gostota',
+  'kds.densityCompact': 'Kompaktno',
+  'kds.densityNormal': 'Normalno',
+  'kds.settingsColumns': 'Stolpci seznama',
+  // V-9: pogled — stolpci po statusu (board) ali navpičen seznam
+  'kds.viewBoard': 'Stolpci',
+  'kds.viewList': 'Seznam',
+  'kds.colNew': 'Novi',
+  'kds.colPreparing': 'V pripravi',
+  'kds.colReady': 'Pripravljeni',
+  'kds.colEmpty': 'Ni listkov.',
+  // V-10: potrditev ob pošiljanju v kuhinjo, če manjkajo alergenski podatki
+  'allergen.confirmTitle': 'Manjkajoči alergenski podatki',
+  'allergen.confirmBody': 'Naslednji artikli nimajo potrjenih alergenskih podatkov (Uredba EU 1169/2011) — kuhinja jih bo videla z rdečim pasom. Preveri pred pošiljanjem.',
+  'allergen.confirmSend': 'Vseeno pošlji',
+  // V-13: zasedena ploščica mize — gostje naročila
+  'tables.guestsShort': '{n} gostov',
+  // V-15: tri stanja namesto "—" (ni podatka / ni izračunano / nalaganje)
+  'emptystat.noData': 'ni še podatkov',
+  'emptystat.noDataHint': 'Ni zapisov v obdobju — vrednost se izračuna, ko pridejo podatki.',
+  'emptystat.notComputedHint': 'Ni izračunano — v obdobju ni prometa (deljenje z 0).',
+  // V-15: klici vodje — segmentirana statistika (namesto enega stavka z "—")
+  'callv.stat.ack': 'Povprečno do potrditve: {v}',
+  'callv.stat.resolve': 'do rešitve: {v}',
+  'callv.stat.esc': 'eskalacije: {n}',
   // Issue #14 (P1/P2, v1.112.0) — KDS postajni pogledi: deska nalog + izdajna postaja
   'kds.stView': 'Pogled postaje',
   'kds.stExpo': 'Izdajna postaja',
@@ -2086,14 +2142,14 @@ export const sl: Record<string, string> = {
   'kds.cfg.expHint': 'Izdajna postaja sestavi in izda artikel, ko je priprava na vseh postajah končana.',
   'sale.search': 'Išči artikel…',
   'sale.allCat': 'Vse kategorije',
-  'sale.total': 'Skupaj (z DDV)',
+  'sale.total': 'Skupaj',
   'sale.payNow': 'Plačaj in izdaj račun',
   'sale.empty': 'Ni artiklov za hitro prodajo.',
   // Issue #71 audit-16: 86 na ploščici artikla — razlog v rdečem, ne sivi sivi
   'sale.soldOut': 'Razprodano (86)',
   'sale.cartTitle': 'Košara',
   'sale.cartEmpty': 'Košara je prazna',
-  'sale.cartEmptyHint': 'Tapni artikel, da ga dodaš.',
+  'sale.cartEmptyHint': 'Klikni artikel, da ga dodaš.',
   'sale.clearCart': 'Izprazni',
   'sale.noLocation': 'Izberite lokacijo v preklopniku zgoraj — brez lokacije računa ni mogoče izdati.',
   // v1.128.0 — mobilna vrstica + list košare (Square/Toast vzorec)

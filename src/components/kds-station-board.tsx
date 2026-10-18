@@ -286,7 +286,7 @@ export function KdsStationBoard({
                         <span
                           key={s.id}
                           title={`${s.stationName} — ${t(KDS_TASK_STATUS[s.status]?.labelKey ?? 'kds.stWaiting')}`}
-                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${KDS_TASK_STATUS[s.status]?.cls ?? KDS_TASK_STATUS.waiting.cls}`}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 ${KDS_TASK_STATUS[s.status]?.cls ?? KDS_TASK_STATUS.waiting.cls}`}
                         >
                           <TaskStatusIcon status={s.status} />
                           <span className="max-w-24 truncate">{s.stationName}</span>
@@ -327,7 +327,7 @@ export function KdsStationBoard({
             <div key={g.orderId} data-region="kds-ticket-item-group" className={`rounded-xl border p-3 space-y-2 min-w-0 ${groupIsStale(g) ? 'border-dashed border-stone-300 bg-stone-50' : 'border-stone-200'}`}>
               {orderHeader(g, age, groupIsStale(g))}
               {groupIsStale(g) && (
-                <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('kds.staleHint')}</p>
+                <p className="rounded-sm border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('kds.staleHint')}</p>
               )}
               {g.tasks.map((task) => {
                 const st = KDS_TASK_STATUS[task.status] ?? KDS_TASK_STATUS.pending
@@ -338,10 +338,10 @@ export function KdsStationBoard({
                       <p className="text-sm sm:text-base font-semibold truncate min-w-0">
                         {task.quantity}× {task.title}
                         {task.kind === 'modifier' && (
-                          <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 shrink-0">{t('kds.stTaskKind.modifier')}</Badge>
+                          <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 shrink-0">{t('kds.stTaskKind.modifier')}</Badge>
                         )}
                         {task.kind === 'expo' && (
-                          <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 shrink-0">{t('kds.stTaskKind.expo')}</Badge>
+                          <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 shrink-0">{t('kds.stTaskKind.expo')}</Badge>
                         )}
                       </p>
                       {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne minutah) */}
@@ -389,7 +389,7 @@ export function KdsStationBoard({
                           </Button>
                         )}
                         {task.status === 'ready' && (
-                          <span className="text-[11px] text-stone-500 truncate min-w-0" title={task.readyByName}>
+                          <span className="text-xs text-stone-500 truncate min-w-0" title={task.readyByName}>
                             {task.readyByName ? `${task.readyByName} · ` : ''}{t('kds.stReady')}
                           </span>
                         )}

@@ -266,7 +266,7 @@ function LoginPageInner() {
                       <div className="space-y-1.5">
                         <Label htmlFor="dev-code">{t('login.deviceCode')}</Label>
                         <Input id="dev-code" inputMode="numeric" value={provCode} onChange={(e) => setProvCode(e.target.value.replace(/[^\d]/g, '').slice(0, 8))} placeholder={t('login.devicePlaceholder')} className="tracking-[0.3em] font-mono" />
-                        <p className="text-[11px] text-stone-400">{t('login.deviceCodeHint')}</p>
+                        <p className="text-xs text-stone-400">{t('login.deviceCodeHint')}</p>
                       </div>
                       {provError && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{provError}</p>}
                       <Button size="sm" className="w-full bg-emerald-700 hover:bg-emerald-800" disabled={provBusy || provCode.length !== 8} onClick={claimDevice}>
@@ -295,8 +295,8 @@ function LoginPageInner() {
                     )}
                     <div className="space-y-1.5 min-w-0 flex-1">
                       <p className="text-xs text-amber-800">{t('login.mfaScanHint')}</p>
-                      <p className="text-[11px] text-stone-500">{t('login.mfaManual')}</p>
-                      <p className="font-mono text-xs break-all bg-white border border-amber-200 rounded px-2 py-1 select-all">{enroll.secret}</p>
+                      <p className="text-xs text-stone-500">{t('login.mfaManual')}</p>
+                      <p className="font-mono text-xs break-all bg-white border border-amber-200 rounded-sm px-2 py-1 select-all">{enroll.secret}</p>
                     </div>
                   </div>
                   <div className="space-y-1.5">
@@ -315,7 +315,7 @@ function LoginPageInner() {
                   <p className="text-xs text-emerald-700">{t('login.mfaRecoveryHint')}</p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {recovery.map((c) => (
-                      <p key={c} className="font-mono text-xs bg-white border border-emerald-200 rounded px-2 py-1 select-all">{c}</p>
+                      <p key={c} className="font-mono text-xs bg-white border border-emerald-200 rounded-sm px-2 py-1 select-all">{c}</p>
                     ))}
                   </div>
                   <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(recovery.join('\n')); }}>{t('dev.copyCode')}</Button>
@@ -364,7 +364,7 @@ function LoginPageInner() {
                       className="h-11 tracking-[0.3em] font-mono"
                       autoFocus
                     />
-                    <p className="text-[11px] text-stone-400">{t('login.mfaHint')}</p>
+                    <p className="text-xs text-stone-400">{t('login.mfaHint')}</p>
                   </div>
                 )}
                 {error && (
@@ -386,7 +386,7 @@ function LoginPageInner() {
                 >
                   {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-4 h-4 mr-1.5" aria-hidden />{t('login.demoBtn')}</>}
                 </Button>
-                <p className="text-[11px] text-stone-400 text-center">{t('login.demoHint')}</p>
+                <p className="text-xs text-stone-400 text-center">{t('login.demoHint')}</p>
               </form>
             </CardContent>
           </Card>

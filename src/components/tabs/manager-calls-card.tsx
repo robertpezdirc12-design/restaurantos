@@ -144,7 +144,16 @@ export function ManagerCallsCard() {
     return true
   })
 
+  /* ISSUE #74 V-14: prazen modul = ena vrstica (active filter, 0 klicev, ni napake). */
+  const emptyActive = !loading && !err && filtered.length === 0 && filter === 'active'
+
   const fmtMin = (n: number | null | undefined) => (n === null || n === undefined ? '—' : String(n))
+  /* ISSUE #74 V-15: NI PODATKA ni enako vrednosti — sivi »Povprečno — min do
+     potrditve« je bil vizualno enak skeletonu nalaganja. Ko povprečja še ni, se
+     izpiše razločno stanje (emptystat.noData + tooltip z razlago), ne »—«. */
+  const hasWaitStats = stats != null
+    && stats.avgMinutesToAcknowledge !== null && stats.avgMinutesToAcknowledge !== undefined
+    && stats.avgMinutesToResolve !== null && stats.avgMinutesToResolve !== undefined
 
   return (
     <Card>
@@ -156,6 +165,10 @@ export function ManagerCallsCard() {
               {filter === 'active' ? stats.total - stats.byStatus.resolved - stats.byStatus.cancelled : filtered.length}
             </Badge>
           )}
+          {/* ISSUE #74 V-14: PRAZEN modul je ENA VRSTICA — v glavi enovrstično
+              »ni aktivnih«, brez naloženega praznega Content bloka (prej je
+              »Klici vodje 0« zasedel celotno širino in višino nad gubo). */}
+          {emptyActive && <span className="text-xs font-normal text-stone-400">— {t('callv.card.empty')}</span>}
           <Button
             size="sm"
             variant="outline"
@@ -170,24 +183,26 @@ export function ManagerCallsCard() {
         <p className="text-xs text-stone-500">{t('callv.card.desc')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* filtri */}
-        <div role="group" aria-label={t('common.all')} className="flex flex-wrap gap-1.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              aria-pressed={filter === f.key}
-              className={`min-h-8 rounded-full px-3 py-1 text-xs font-semibold border transition ${
-                filter === f.key
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-white border-stone-200 text-stone-600 hover:border-stone-400'
-              }`}
-            >
-              {t(f.labelKey)}
-            </button>
-          ))}
-        </div>
+        {/* filtri — skriti, ko je modul prazen (V-14: ena vrstica, ne tri) */}
+        {!emptyActive && (
+          <div role="group" aria-label={t('common.all')} className="flex flex-wrap gap-1.5">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFilter(f.key)}
+                aria-pressed={filter === f.key}
+                className={`min-h-8 rounded-full px-3 py-1 text-xs font-semibold border transition ${
+                  filter === f.key
+                    ? 'bg-emerald-700 text-white border-emerald-700'
+                    : 'bg-white border-stone-200 text-stone-600 hover:border-stone-400'
+                }`}
+              >
+                {t(f.labelKey)}
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading && <Skeleton className="h-24 w-full" />}
         {err && (
@@ -196,15 +211,23 @@ export function ManagerCallsCard() {
           </p>
         )}
 
-        {/* statistike (issue §4: časi do potrditve/rešitve + eskalacije) */}
+        {/* statistike (issue §4: časi do potrditve/rešitve + eskalacije);
+            ISSUE #74 V-15: ločena stanja — povprečja obstajajo → številke; ni
+     podatkov → razločno besedilo z tooltipom (ne sivi »—« pill) */}
         {stats && (
-          <p className="text-xs text-stone-500 flex flex-wrap gap-x-1">
-            {t('callv.card.stats', { ack: fmtMin(stats.avgMinutesToAcknowledge), resolve: fmtMin(stats.avgMinutesToResolve), esc: stats.escalatedRounds })}
-          </p>
+          hasWaitStats ? (
+            <p className="text-xs text-stone-500 flex flex-wrap gap-x-1">
+              {t('callv.card.stats', { ack: fmtMin(stats.avgMinutesToAcknowledge), resolve: fmtMin(stats.avgMinutesToResolve), esc: stats.escalatedRounds })}
+            </p>
+          ) : (
+            <p className="text-xs text-stone-400 italic" title={t('emptystat.noDataHint')}>
+              {t('emptystat.noData')}
+            </p>
+          )
         )}
 
-        {/* seznam */}
-        {!loading && !err && (
+        {/* seznam — V-14: ko je modul prazen (emptyActive), je empty že v glavi */}
+        {!emptyActive && !loading && !err && (
           <>
             {filtered.length === 0 && (
               <p className="text-sm text-stone-500">{filter === 'active' ? t('callv.card.empty') : t('common.none')}</p>
@@ -233,7 +256,7 @@ export function ManagerCallsCard() {
                           </>
                         )}
                       </p>
-                      <p className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <p className="flex flex-wrap items-center gap-1.5 text-xs">
                         {c.ageMinutes !== null && c.ageMinutes !== undefined && !terminal(c.status) && (
                           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-stone-600">{t('callv.card.age', { n: Math.round(c.ageMinutes) })}</span>
                         )}
@@ -251,7 +274,7 @@ export function ManagerCallsCard() {
                         )}
                       </p>
                       {c.note && <p className="text-xs text-stone-600 min-w-0">{c.note}</p>}
-                      <p className="text-[11px] text-stone-400 min-w-0">
+                      <p className="text-xs text-stone-400 min-w-0">
                         {c.acknowledgedByName ? t('callv.card.ackBy', { name: c.acknowledgedByName }) : ''}
                         {c.acknowledgedByName && c.resolvedByName ? ' · ' : ''}
                         {c.resolvedByName ? t('callv.card.resolvedBy', { name: c.resolvedByName }) : ''}

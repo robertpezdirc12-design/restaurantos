@@ -243,7 +243,7 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
 
   function statusBadge(status: string) {
     return (
-      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 whitespace-nowrap ${STATUS_BADGE[status] ?? 'border-stone-300 bg-stone-50 text-stone-600'}`}>
+      <Badge variant="outline" className={`text-xs px-1.5 py-0 whitespace-nowrap ${STATUS_BADGE[status] ?? 'border-stone-300 bg-stone-50 text-stone-600'}`}>
         {t(`ei.status.${status}`)}
       </Badge>
     )
@@ -326,11 +326,11 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
                     <td className="p-2 font-medium whitespace-nowrap">{r.invoiceNumber}</td>
                     <td className="p-2 max-w-40 truncate" title={r.receiverName}>
                       {r.receiverName}
-                      <span className="block text-[10px] text-stone-400">{r.receiverTaxId} · {r.country}</span>
+                      <span className="block text-xs text-stone-400">{r.receiverTaxId} · {r.country}</span>
                     </td>
                     <td className="p-2">
                       {statusBadge(r.status)}
-                      {r.lastReason && <span className="block text-[10px] text-rose-600 max-w-44 truncate" title={r.lastReason}>{r.lastReason}</span>}
+                      {r.lastReason && <span className="block text-xs text-rose-600 max-w-44 truncate" title={r.lastReason}>{r.lastReason}</span>}
                     </td>
                     <td className="p-2 text-right tabular-nums">{r.attempts}</td>
                     <td className="p-2 text-xs text-stone-600 max-w-32 truncate" title={r.externalRef}>{r.externalRef || '—'}</td>
@@ -419,23 +419,23 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
               {lines.map((l, i) => (
                 <div key={i} className="grid grid-cols-12 gap-1.5 items-end">
                   <div className="col-span-4 space-y-1">
-                    {i === 0 && <Label className="text-[10px]" htmlFor={`ei-l-name-${i}`}>{t('ei.issue.name')}</Label>}
+                    {i === 0 && <Label className="text-xs" htmlFor={`ei-l-name-${i}`}>{t('ei.issue.name')}</Label>}
                     <Input id={`ei-l-name-${i}`} className="h-8 text-xs" value={l.name} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
                   </div>
                   <div className="col-span-1 space-y-1">
-                    {i === 0 && <Label className="text-[10px]" htmlFor={`ei-l-qty-${i}`}>{t('ei.issue.qty')}</Label>}
+                    {i === 0 && <Label className="text-xs" htmlFor={`ei-l-qty-${i}`}>{t('ei.issue.qty')}</Label>}
                     <Input id={`ei-l-qty-${i}`} className="h-8 text-xs" inputMode="decimal" value={l.qty} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
                   </div>
                   <div className="col-span-2 space-y-1">
-                    {i === 0 && <Label className="text-[10px]" htmlFor={`ei-l-price-${i}`}>{t('ei.issue.priceNet')}</Label>}
+                    {i === 0 && <Label className="text-xs" htmlFor={`ei-l-price-${i}`}>{t('ei.issue.priceNet')}</Label>}
                     <Input id={`ei-l-price-${i}`} className="h-8 text-xs" inputMode="decimal" value={l.priceNet} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, priceNet: e.target.value } : x)))} />
                   </div>
                   <div className="col-span-1 space-y-1">
-                    {i === 0 && <Label className="text-[10px]" htmlFor={`ei-l-vat-${i}`}>{t('ei.issue.vat')}</Label>}
+                    {i === 0 && <Label className="text-xs" htmlFor={`ei-l-vat-${i}`}>{t('ei.issue.vat')}</Label>}
                     <Input id={`ei-l-vat-${i}`} className="h-8 text-xs" inputMode="decimal" value={l.vat} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, vat: e.target.value } : x)))} />
                   </div>
                   <div className="col-span-3 space-y-1">
-                    {i === 0 && <Label className="text-[10px]" htmlFor={`ei-l-kpd-${i}`}>{t('ei.issue.kpd')}</Label>}
+                    {i === 0 && <Label className="text-xs" htmlFor={`ei-l-kpd-${i}`}>{t('ei.issue.kpd')}</Label>}
                     <Input id={`ei-l-kpd-${i}`} className="h-8 text-xs" inputMode="numeric" maxLength={6} value={l.kpd} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, kpd: e.target.value } : x)))} />
                   </div>
                   <div className="col-span-1">
@@ -448,7 +448,7 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setLines([...lines, { name: '', qty: '1', priceNet: '', vat: '22', kpd: '' }])}>
                 <Plus className="w-3 h-3" /> {t('ei.issue.lines')}
               </Button>
-              {custCountry === 'HR' && <p className="text-[10px] text-amber-800">{t('ei.issue.kpdHint')}</p>}
+              {custCountry === 'HR' && <p className="text-xs text-amber-800">{t('ei.issue.kpdHint')}</p>}
             </div>
           )}
 
@@ -481,12 +481,12 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                 <div><span className="block text-xs text-stone-500">{t('ei.col.number')}</span><strong>{detail.eInvoice.invoiceNumber}</strong></div>
-                <div><span className="block text-xs text-stone-500">{t('ei.col.receiver')}</span><strong className="block truncate">{detail.eInvoice.receiverName}</strong><span className="text-[10px] text-stone-400">{detail.eInvoice.receiverTaxId}</span></div>
+                <div><span className="block text-xs text-stone-500">{t('ei.col.receiver')}</span><strong className="block truncate">{detail.eInvoice.receiverName}</strong><span className="text-xs text-stone-400">{detail.eInvoice.receiverTaxId}</span></div>
                 <div><span className="block text-xs text-stone-500">{t('ei.detail.status')}</span>{statusBadge(detail.eInvoice.status)}</div>
                 <div><span className="block text-xs text-stone-500">{t('ei.col.total')}</span><strong className="tabular-nums">{fmtEUR(detail.eInvoice.totalAmount)}</strong></div>
                 <div><span className="block text-xs text-stone-500">Profil</span><span className="text-xs">{detail.eInvoice.profile}</span></div>
                 <div><span className="block text-xs text-stone-500">{t('ei.col.externalRef')}</span><span className="text-xs">{detail.eInvoice.externalRef || '—'}</span></div>
-                <div className="col-span-2"><span className="block text-xs text-stone-500 break-all">XML hash</span><span className="text-[10px] font-mono break-all">{detail.eInvoice.xmlHash}</span></div>
+                <div className="col-span-2"><span className="block text-xs text-stone-500 break-all">XML hash</span><span className="text-xs font-mono break-all">{detail.eInvoice.xmlHash}</span></div>
               </div>
 
               <div>
@@ -499,7 +499,7 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
                     return (
                       <div key={ev.id} className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-xs flex flex-wrap items-center gap-x-3 gap-y-0.5">
                         <span className="font-semibold">{eiWhen(ev.timestamp)}</span>
-                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-stone-300 text-stone-600">{ev.action}</Badge>
+                        <Badge variant="outline" className="text-xs px-1 py-0 border-stone-300 text-stone-600">{ev.action}</Badge>
                         <span className="text-stone-600">{t('ei.detail.origin')}: {meta.origin}</span>
                         {meta.correlationId && <span className="text-stone-400 truncate max-w-32" title={meta.correlationId}>{t('ei.detail.correlation')}: {meta.correlationId}</span>}
                         {meta.reason && <span className="text-rose-600 truncate max-w-44" title={meta.reason}>{meta.reason}</span>}
@@ -527,7 +527,7 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
                   )}
                 </div>
                 {detailXml && (
-                  <pre className="text-[10px] font-mono bg-stone-900 text-stone-100 rounded-lg p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">{detailXml.slice(0, 4000)}{detailXml.length > 4000 ? '\n…' : ''}</pre>
+                  <pre className="text-xs font-mono bg-stone-900 text-stone-100 rounded-lg p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">{detailXml.slice(0, 4000)}{detailXml.length > 4000 ? '\n…' : ''}</pre>
                 )}
               </div>
             </div>

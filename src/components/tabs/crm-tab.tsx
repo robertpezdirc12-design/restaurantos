@@ -554,7 +554,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                   <div className="grid gap-1.5">
                     {detail.sends.length === 0 && <p className="text-sm text-stone-500">{t('crm.detail.noSends')}</p>}
                     {detail.sends.map((s) => (
-                      <div key={s.id} className="rounded border border-stone-200 bg-white p-2 text-xs flex items-center justify-between gap-2 flex-wrap">
+                      <div key={s.id} className="rounded-sm border border-stone-200 bg-white p-2 text-xs flex items-center justify-between gap-2 flex-wrap">
                         <span className="font-medium">{s.guestName} · {s.recipientMasked || '—'}</span>
                         <span className="flex items-center gap-1.5">
                           <Badge className={

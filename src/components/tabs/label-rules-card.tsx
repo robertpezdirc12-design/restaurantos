@@ -300,7 +300,7 @@ export function LabelRulesCard() {
                     onChange={(e) => setForm((c) => ({ ...c, hours: e.target.value }))}
                     className="h-9 text-sm"
                   />
-                  <p className="text-[11px] text-stone-400">{t('lbl.rules.hoursHint')}</p>
+                  <p className="text-xs text-stone-400">{t('lbl.rules.hoursHint')}</p>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="lr-note" className="text-xs">{t('lbl.rules.note')}</Label>
@@ -387,7 +387,7 @@ export function LabelRulesCard() {
                                 />
                               </div>
                             </div>
-                            <p className="text-[11px] text-stone-400">{t('lbl.rules.hoursHint')}</p>
+                            <p className="text-xs text-stone-400">{t('lbl.rules.hoursHint')}</p>
                             <div className="flex flex-wrap gap-2">
                               <Button size="sm" className="h-9 bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={() => void saveEdit(r)}>
                                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('lbl.rules.save')}

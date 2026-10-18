@@ -482,7 +482,7 @@ export function PayrollTab({ locations, canManage }: { locations: { id: string; 
                   <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <p className="text-xs text-stone-500">{t('payr.sumNeto')}</p>
                     <p className="text-lg font-bold">{fmtMin(detail.totals.netMinutesApproved)}</p>
-                    <p className="text-[11px] text-stone-400">{detail.totals.approvedCount}/{detail.totals.entryCount} {t('payr.entries')}</p>
+                    <p className="text-xs text-stone-400">{detail.totals.approvedCount}/{detail.totals.entryCount} {t('payr.entries')}</p>
                   </div>
                   <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <p className="text-xs text-stone-500">{t('payr.sumGross')}</p>
@@ -492,13 +492,13 @@ export function PayrollTab({ locations, canManage }: { locations: { id: string; 
                     <p className="text-xs text-stone-500">{t('payr.tips')}</p>
                     <p className="text-lg font-bold">{fmtEUR((detail.totals.tipsPaidCents + detail.totals.tipsPendingCents) / 100)}</p>
                     {detail.totals.tipsPendingCents > 0 && (
-                      <p className="text-[11px] text-amber-700">{fmtEUR(detail.totals.tipsPendingCents / 100)} · {t('payr.tipsPendingNote')}</p>
+                      <p className="text-xs text-amber-700">{fmtEUR(detail.totals.tipsPendingCents / 100)} · {t('payr.tipsPendingNote')}</p>
                     )}
                   </div>
                   <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <p className="text-xs text-stone-500">{t('payr.exceptions')}</p>
                     <p className={`text-lg font-bold ${detail.exceptions.length > 0 ? 'text-red-700' : ''}`}>{detail.exceptions.length}</p>
-                    <p className="text-[11px] text-stone-400">
+                    <p className="text-xs text-stone-400">
                       {t('payr.version')} v{p.version}{p.reopenCount > 0 ? ` · ${p.reopenCount}× ${t('payr.reopenedF')}` : ''}
                     </p>
                   </div>
@@ -618,7 +618,7 @@ export function PayrollTab({ locations, canManage }: { locations: { id: string; 
                             ) : (
                               <>
                                 {fmtEUR(tipsTotal / 100)}
-                                {row.tipsPendingCents > 0 && <span className="block text-[11px] text-amber-700">+ {fmtEUR(row.tipsPendingCents / 100)} {t('payr.pendingF')}</span>}
+                                {row.tipsPendingCents > 0 && <span className="block text-xs text-amber-700">+ {fmtEUR(row.tipsPendingCents / 100)} {t('payr.pendingF')}</span>}
                               </>
                             )}
                           </td>
@@ -817,7 +817,7 @@ function EmployeeTable({ rows }: { rows: EmployeeAggT[] }) {
               })}
             </tbody>
           </table>
-          <p className="p-2 text-[11px] text-stone-400 border-t border-stone-100">{t('payr.varianceNote')} · {t('payr.approvedOnlyNote')}</p>
+          <p className="p-2 text-xs text-stone-400 border-t border-stone-100">{t('payr.varianceNote')} · {t('payr.approvedOnlyNote')}</p>
         </div>
       )}
     </div>
@@ -841,8 +841,8 @@ function ExceptionsTable({ rows }: { rows: PayrollExceptionT[] }) {
               <p className="flex items-center gap-1.5 flex-wrap">
                 <Badge variant="outline" className={EX_BADGE[x.code] || ''}>{exLabel(t, x.code)}</Badge>
                 <span className="font-medium">{x.employeeName || '—'}</span>
-                {x.entryId && <span className="text-[11px] text-stone-400 font-mono" title={t('payr.entryId')}>…{x.entryId.slice(-8)}</span>}
-                {x.shiftId && <span className="text-[11px] text-stone-400 font-mono" title={t('payr.shiftId')}>…{x.shiftId.slice(-8)}</span>}
+                {x.entryId && <span className="text-xs text-stone-400 font-mono" title={t('payr.entryId')}>…{x.entryId.slice(-8)}</span>}
+                {x.shiftId && <span className="text-xs text-stone-400 font-mono" title={t('payr.shiftId')}>…{x.shiftId.slice(-8)}</span>}
               </p>
               <p className="text-xs text-stone-600 mt-1">{x.detail}</p>
             </div>

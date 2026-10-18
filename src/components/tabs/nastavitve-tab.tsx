@@ -132,7 +132,7 @@ export function MfaCard() {
             <div className="space-y-1.5">
               <Label htmlFor="mfa-pin">{t('mfa.pinLabel')}</Label>
               <Input id="mfa-pin" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="w-40 tracking-[0.3em] font-mono" />
-              <p className="text-[11px] text-stone-400">{t('mfa.pinHint')}</p>
+              <p className="text-xs text-stone-400">{t('mfa.pinHint')}</p>
             </div>
             <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || pin.length < 4} onClick={startEnroll}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mfa.start')}
@@ -147,8 +147,8 @@ export function MfaCard() {
               {enroll.qrDataUrl && <img src={enroll.qrDataUrl} alt={t('mfa.qrAlt')} className="rounded-lg bg-white p-1 border border-amber-200 w-28 h-28" />}
               <div className="space-y-1 min-w-0 flex-1">
                 <p className="text-xs text-amber-800">{t('mfa.scanHint')}</p>
-                <p className="text-[11px] text-stone-500">{t('mfa.manual')}</p>
-                <p className="font-mono text-xs break-all bg-white border border-amber-200 rounded px-2 py-1 select-all">{enroll.secret}</p>
+                <p className="text-xs text-stone-500">{t('mfa.manual')}</p>
+                <p className="font-mono text-xs break-all bg-white border border-amber-200 rounded-sm px-2 py-1 select-all">{enroll.secret}</p>
               </div>
             </div>
             <div className="grid sm:grid-cols-2 gap-2">
@@ -169,7 +169,7 @@ export function MfaCard() {
             <p className="text-xs text-emerald-700">{t('mfa.recoveryHint')}</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               {recovery.map((c) => (
-                <p key={c} className="font-mono text-xs bg-white border border-emerald-200 rounded px-2 py-1 select-all">{c}</p>
+                <p key={c} className="font-mono text-xs bg-white border border-emerald-200 rounded-sm px-2 py-1 select-all">{c}</p>
               ))}
             </div>
             <Button size="sm" variant="outline" onClick={() => { navigator.clipboard?.writeText(recovery.join('\n')); setNotice(t('dev.copied')) }}>{t('dev.copyCode')}</Button>
@@ -186,7 +186,7 @@ export function MfaCard() {
               <div className="space-y-1.5">
                 <Label htmlFor="mfa-code-off">{t('mfa.codeLabel')}</Label>
                 <Input id="mfa-code-off" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12))} placeholder="••••••" className="tracking-[0.2em] font-mono" />
-                <p className="text-[11px] text-stone-400">{t('mfa.disableCodeHint')}</p>
+                <p className="text-xs text-stone-400">{t('mfa.disableCodeHint')}</p>
               </div>
             </div>
             <Button size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" disabled={busy || pin.length < 4 || code.length < 4} onClick={confirmDisable}>
@@ -354,7 +354,7 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
                 <SelectItem value="production">{t('set.envProduction')}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-amber-600">{t('set.fursWarning')}</p>
+            <p className="text-xs text-amber-600">{t('set.fursWarning')}</p>
           </div>
           {txt('receiptFooter', t('set.receiptFooter'), t('set.receiptFooterPlaceholder'))}
         </div>
@@ -515,20 +515,20 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
               <div className="min-w-0">
                 <p className="font-medium truncate">{d.name} <Badge variant="outline" className="ml-1">{DEVICE_TYPE_KEYS[d.type] ? t(DEVICE_TYPE_KEYS[d.type]) : d.type}</Badge></p>
                 <p className="text-xs text-stone-500 truncate">{locName(d.locationId) || t('dev.withoutLocation')} · {t('dev.token', { token: d.token })}</p>
-                <p className="text-[11px] text-stone-400">{t('dev.lastSeen', { when: d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : t('dev.never') })}{d.revoked ? t('dev.revoked') : ''}</p>
+                <p className="text-xs text-stone-400">{t('dev.lastSeen', { when: d.lastSeen ? new Date(d.lastSeen).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : t('dev.never') })}{d.revoked ? t('dev.revoked') : ''}</p>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <Badge className={d.revoked ? 'bg-red-600 text-white' : d.status === 'online' ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{d.revoked ? 'revoked' : d.status}</Badge>
                 <div className="flex gap-1">
                   {d.type.toUpperCase() === 'POS' && !d.revoked && (
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => showPairCode(d)}>{t('dev.cfdCode')}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => showPairCode(d)}>{t('dev.cfdCode')}</Button>
                   )}
                   {d.revoked ? (
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'restore')}>{t('dev.restore')}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => deviceAction(d.id, 'restore')}>{t('dev.restore')}</Button>
                   ) : (
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={busy} onClick={() => deviceAction(d.id, 'revoke')}>{t('dev.revoke')}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => deviceAction(d.id, 'revoke')}>{t('dev.revoke')}</Button>
                   )}
-                  <Button size="sm" variant="outline" className="h-7 text-[11px] text-red-700" disabled={busy} onClick={() => deviceAction(d.id, 'delete')}>{t('common.delete')}</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-700" disabled={busy} onClick={() => deviceAction(d.id, 'delete')}>{t('common.delete')}</Button>
                 </div>
               </div>
             </div>

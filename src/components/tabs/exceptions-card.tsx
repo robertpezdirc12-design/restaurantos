@@ -147,7 +147,7 @@ export function ExceptionsReportCard() {
                   <p className="text-xs text-stone-500 truncate">{kindLabel(k)}</p>
                   <p className="text-lg font-bold">{data.byKind[k].count}</p>
                   {data.byKind[k].amount !== null && (
-                    <p className="text-[11px] text-stone-400">{data.byKind[k].amount?.toFixed(2)} €</p>
+                    <p className="text-xs text-stone-400">{data.byKind[k].amount?.toFixed(2)} €</p>
                   )}
                 </div>
               ))}
@@ -174,7 +174,7 @@ export function ExceptionsReportCard() {
                       {e.reasonName || e.reasonText || t('exc.report.noReason')}
                       {e.reasonComment ? ` · ${e.reasonComment}` : ''}
                     </p>
-                    <p className="text-[11px] text-stone-400 mt-0.5">
+                    <p className="text-xs text-stone-400 mt-0.5">
                       {new Date(e.at).toLocaleString('sl-SI')} · {e.actorName || '—'}
                       {e.approved && e.approverName ? ` · ${t('exc.report.approvers')}: ${e.approverName} (${e.approvalMethod})` : ''}
                     </p>

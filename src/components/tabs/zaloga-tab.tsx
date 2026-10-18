@@ -158,7 +158,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       <Fragment key={line.inventoryItemId}>
         <li className={`text-xs text-stone-600 flex justify-between gap-2 ${depth > 0 ? 'ml-4' : ''}`}>
           <span className="truncate flex items-center gap-1 min-w-0">
-            {depth > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">{t('recipe.subRecipe')}</Badge>}
+            {depth > 0 && <Badge variant="outline" className="text-xs px-1 py-0 shrink-0">{t('recipe.subRecipe')}</Badge>}
             <span className="truncate">{line.name}</span>
             {line.yieldPercent !== undefined && line.yieldPercent !== 100 && <span className="shrink-0 text-stone-400">· {line.yieldPercent} %</span>}
           </span>
@@ -226,7 +226,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5">
                     <span className="font-semibold text-stone-900 truncate">{a.label}</span>
-                    {a.badge && <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-900 shrink-0">{a.badge}</span>}
+                    {a.badge && <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 text-xs font-bold text-amber-900 shrink-0">{a.badge}</span>}
                   </span>
                   <span className="block text-xs text-stone-500 truncate">{a.desc}</span>
                 </span>
@@ -316,7 +316,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               <div className="flex items-center gap-2">
                 <Badge className={stOpen.status === 'DRAFT' ? 'bg-stone-600 text-white' : 'bg-amber-600 text-white'}>{t(`st.status.${stOpen.status}`)}</Badge>
                 <span className="text-xs text-stone-500">{stOpen.counted}/{stOpen.total} · {t('st.counted')}</span>
-                {stOpen.recountCount > 0 && <Badge variant="outline" className="text-[10px]">{t('st.recounts')}: {stOpen.recountCount}</Badge>}
+                {stOpen.recountCount > 0 && <Badge variant="outline" className="text-xs">{t('st.recounts')}: {stOpen.recountCount}</Badge>}
               </div>
               <ScrollArea className="max-h-56">
                 <div className="space-y-1.5">
@@ -366,7 +366,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="text-xs text-stone-500">{s.counted}/{s.total}</span>
                     {s.varianceValue !== 0 && <span className={`text-xs font-medium ${s.varianceValue > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{s.varianceValue > 0 ? '+' : ''}{s.varianceValue.toFixed(2)} €</span>}
-                    <Badge variant="outline" className="text-[10px]">{t(`st.status.${s.status}`)}</Badge>
+                    <Badge variant="outline" className="text-xs">{t(`st.status.${s.status}`)}</Badge>
                   </div>
                 </div>
               ))}
@@ -389,7 +389,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                 <p className="text-xs text-stone-500 truncate">
                   {s.contact || '—'}{s.phone ? ` · ${s.phone}` : ''}{s.email ? ` · ${s.email}` : ''}
                 </p>
-                {s.address && <p className="text-[11px] text-stone-400 truncate">{s.address}</p>}
+                {s.address && <p className="text-xs text-stone-400 truncate">{s.address}</p>}
               </div>
             ))}
           </div>
@@ -413,15 +413,15 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                     <div className="min-w-0">
                       <p className="font-medium truncate">{r.name}</p>
                       {/* OPS-9: computed cost per serving (recursive BOM; from GET, refreshes on reload) */}
-                      <p className="text-[11px] text-stone-500">
+                      <p className="text-xs text-stone-500">
                         {t('recipe.costPerServing')}:{' '}
                         {r.costKnown ? <span className="font-medium text-stone-700">{fmtEUR(r.costPerServing || 0)}</span> : <span className="text-amber-600">{t('recipe.costUnknown')}</span>}
                       </p>
                     </div>
                     {canManage && (
                       <div className="shrink-0 flex gap-1">
-                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => openRecipe(r)}>{t('common.edit')}</Button>
-                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] text-red-700 hover:text-red-800" onClick={() => deleteRecipe(r.id)}>{t('common.delete')}</Button>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => openRecipe(r)}>{t('common.edit')}</Button>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-xs text-red-700 hover:text-red-800" onClick={() => deleteRecipe(r.id)}>{t('common.delete')}</Button>
                       </div>
                     )}
                   </div>
@@ -483,9 +483,9 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                     {/* OPS-9: mark a line as sub-recipe of another line (same menu item) */}
                     {recForm.lines.length > 1 && (
                       <div className="flex items-center gap-1.5 pl-1">
-                        <span className="text-[10px] text-stone-400 shrink-0">{t('recipe.parentOf')}</span>
+                        <span className="text-xs text-stone-400 shrink-0">{t('recipe.parentOf')}</span>
                         <Select value={line.parent || '__none__'} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, parent: v === '__none__' ? '' : v } : l) })}>
-                          <SelectTrigger className="h-7 flex-1 text-[11px]"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-7 flex-1 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent className="max-h-72">
                             <SelectItem value="__none__">{t('recipe.parentNone')}</SelectItem>
                             {recForm.lines.map((l, i) => (i !== idx && l.inventoryItemId && l.inventoryItemId !== line.inventoryItemId) ? (
@@ -562,7 +562,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               <div className="space-y-1.5">
                 <Label htmlFor="adj-delta">{t('inv.deltaLabel', { unit: adjust.unit })}</Label>
                 <Input id="adj-delta" inputMode="decimal" value={adj.delta} onChange={(e) => setAdj({ ...adj, delta: e.target.value.replace(/[^\d.,-]/g, '').replace(',', '.') })} placeholder={t('inv.deltaPlaceholder')} />
-                <p className="text-[11px] text-stone-400">{t('inv.deltaHint')}</p>
+                <p className="text-xs text-stone-400">{t('inv.deltaHint')}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">

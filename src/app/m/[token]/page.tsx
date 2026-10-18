@@ -476,7 +476,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 </button>
               )}
             </div>
-            <p className="mt-2 text-[11px] text-stone-400">{t('guest.menu.allergenFilterHint')}</p>
+            <p className="mt-2 text-xs text-stone-400">{t('guest.menu.allergenFilterHint')}</p>
           </section>
         )}
         {visibleItems.map((it) => (
@@ -506,10 +506,10 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergens', { allergens: itemCodes(it).map(gLbl).join(', ') })}</p>
                 )}
                 {(it.allergenCrossContact ?? []).length > 0 && (
-                  <p className="text-[11px] text-amber-700 mt-0.5">{t('guest.menu.allergenMayContain', { allergens: (it.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">{t('guest.menu.allergenMayContain', { allergens: (it.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
                 )}
                 {it.allergenStatus && it.allergenStatus !== 'confirmed' && (
-                  <p className="text-[11px] text-stone-500 mt-0.5">⚠ {it.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
+                  <p className="text-xs text-stone-500 mt-0.5">⚠ {it.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
                 )}
                 {itemCodes(it).length === 0 && it.allergenStatus === 'confirmed' && (
                   <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergenNoneKnown')}</p>
@@ -526,7 +526,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         {allergenFilterOn && selAllergens.length > 0 && (itemsByCat.get(activeCat) || []).length > 0 && visibleItems.length === 0 && (
           <p className="text-center text-stone-400 text-sm py-10">{t('guest.menu.allergenNoneLeft')}</p>
         )}
-        <p className="text-center text-[11px] text-stone-400 pt-4">
+        <p className="text-center text-xs text-stone-400 pt-4">
           {t('guest.menu.vatNote')}
         </p>
       </main>
@@ -541,7 +541,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 {t('guest.cart.button')} · {cartCount} {cartCount === 1 ? t('guest.cart.itemOne') : t('guest.cart.itemMany')} · {fmt(subtotal)}
               </Button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl p-0 flex flex-col">
+            <SheetContent side="bottom" className="h-[85vh] rounded-t-xl p-0 flex flex-col">
               <SheetHeader className="px-4 pt-4 pb-2 border-b border-stone-100">
                 <SheetTitle>{t('guest.cart.title')}</SheetTitle>
               </SheetHeader>
@@ -608,20 +608,20 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span className="text-xs font-medium text-stone-500">{t('guest.menu.allergenFilter')}:</span>
                     {itemCodes(detail).map((code) => (
-                      <Badge key={code} variant="outline" className="text-[11px] border-stone-300 text-stone-600">{gLbl(code)}</Badge>
+                      <Badge key={code} variant="outline" className="text-xs border-stone-300 text-stone-600">{gLbl(code)}</Badge>
                     ))}
                   </div>
                 )}
                 {(detail.allergenCrossContact ?? []).length > 0 && (
-                  <p className="text-[11px] text-amber-700">⚠ {t('guest.menu.allergenMayContain', { allergens: (detail.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
+                  <p className="text-xs text-amber-700">⚠ {t('guest.menu.allergenMayContain', { allergens: (detail.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
                 )}
                 {detail.allergenStatus && detail.allergenStatus !== 'confirmed' && (
-                  <p className="text-[11px] text-stone-500">⚠ {detail.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
+                  <p className="text-xs text-stone-500">⚠ {detail.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
                 )}
                 {(() => {
                   const modCodes = [...new Set(detail.modifierGroups.flatMap((g) => (g.options ?? []).flatMap((o) => o.allergenCodes || [])))]
                   return modCodes.length > 0 ? (
-                    <p className="text-[11px] text-stone-500">{t('guest.menu.allergenModifier', { allergens: modCodes.map(gLbl).join(', ') })}</p>
+                    <p className="text-xs text-stone-500">{t('guest.menu.allergenModifier', { allergens: modCodes.map(gLbl).join(', ') })}</p>
                   ) : null
                 })()}
               </DialogHeader>

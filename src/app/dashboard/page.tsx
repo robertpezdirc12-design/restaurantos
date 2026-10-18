@@ -6,7 +6,14 @@ import { api, fmtEUR, fmtPctSigned, getUser } from '@/lib/client'
 import { vatFromGross } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
-import { KDS_DELAY_REASONS, delayThresholdForTarget, isLatePrep, isStaleKdsTicket, staleTicketHours } from '@/lib/kds-delays'
+/* ISSUE #74 V-3 (v1.135.0): pet razredov starosti listka + nastavljivi pragovi —
+   enoten vir (kds-delays.ts) za page.tsx IN kds-station-board (prej dve ločeni
+   kopiji iste logike z dvema različnima pragoma). */
+import {
+  KDS_AGE_DEFAULTS, KDS_AGE_THRESHOLD_LS_KEY, KDS_DELAY_REASONS, delayThresholdForTarget,
+  isLatePrep, isStaleKdsTicket, kdsAgeBorderCls, kdsAgeClass, kdsAgePillCls,
+  normalizeKdsAgeThresholds, staleTicketHours, type KdsAgeThresholds,
+} from '@/lib/kds-delays'
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
 import { tabHasPerm, TAB_PERM } from '@/lib/tab-permissions'
 import { Button } from '@/components/ui/button'
@@ -30,7 +37,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
@@ -89,8 +97,11 @@ import { ManagerCallButton } from '@/components/manager-call-dialog'
 /* Issue #14 (v1.112.0) — KDS station views: task board + expo dispatch board
    (component lives in src/components/ — outside the i18n scan family). */
 import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type KdsStationStatT } from '@/components/kds-station-board'
+/* ISSUE #74 V-7: fotografije kategorij na POS ploščicah (skupni vir za dashboard
+   in handheld — čista preslikava v lib, brez per-artikel slik v bazi) */
+import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
 import { stationViewKey } from '@/lib/kds-station-routing'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -105,6 +116,25 @@ const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
 const DASHBOARD_PRIMARY_TABS = new Set(['pregled', 'mize', 'narocila', 'prodaja', 'kuhinja', 'meni', 'rezervacije', 'racuni']);
 const DASHBOARD_MOBILE_PRIMARY_TABS = new Set(['pregled', 'mize', 'narocila', 'prodaja', 'kuhinja']);
 const DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG = new Set(['meni', 'rezervacije', 'racuni']);
+
+/* ISSUE #74 V-17: meni »Več« dobi RAZDELKE — 27 ciljev v ravnem seznamu je bilo
+   nepregledno (issue: »32 ciljev, 24 brez razdelkov, brez iskalnika«). Skupine
+   po vsebini dela (Toast/Square vzorec: Operativa / Gostje / Zaloge in
+   finance / Ekipa / Sistem); nepoznani zavihki padejo v Operativo (fail-safe). */
+const TAB_GROUP_KEYS = ['ops', 'guests', 'finance', 'staff', 'system'] as const
+type TabGroupKeyT = (typeof TAB_GROUP_KEYS)[number]
+const TAB_GROUP_LABEL_KEY: Record<TabGroupKeyT, string> = {
+  ops: 'tabs.groupOps', guests: 'tabs.groupGuests', finance: 'tabs.groupFinance', staff: 'tabs.groupStaff', system: 'tabs.groupSystem',
+}
+const TAB_GROUP_OF: Record<string, TabGroupKeyT> = {
+  meni: 'ops', rezervacije: 'ops', dostava: 'ops', cakalna: 'ops',
+  zvestoba: 'guests', mnenja: 'guests', crm: 'guests', darilne: 'guests',
+  racuni: 'finance', obracun: 'finance', stroski: 'finance', napitnine: 'finance',
+  zaloge: 'finance', nabava: 'finance', odpad: 'finance', prenosi: 'finance',
+  inzeniring: 'finance', popusti: 'finance',
+  zaposleni: 'staff', izmene: 'staff', delovnicas: 'staff', urnik: 'staff', odpiralnicas: 'staff', haccp: 'staff',
+  nastavitve: 'system', integracije: 'system', enterprise: 'system',
+}
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
@@ -209,7 +239,7 @@ function KdsTaskChip({ task }: { task: KdsTaskT }) {
   return (
     <span
       title={`${task.stationName} — ${t(st.labelKey)}`}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${st.cls}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 ${st.cls}`}
     >
       {icon}
       <span className="max-w-24 truncate">{task.stationName}</span>
@@ -220,6 +250,53 @@ function KdsTaskChip({ task }: { task: KdsTaskT }) {
 /* Issue #69 (2. val): sidro kategorije menija — determinističen slug iz id-ja
    kategorije za čiste sidrske skoke (#cat-…). Čista preslikava niza, brez stanja. */
 const catAnchor = (id: string): string => `cat-${id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+
+/* ═══ ISSUE #74 (v1.135.0) Stopnja 2+3 — KDS ergonomija in statusni jezik ═══ */
+
+/** V-11: število listkov po slovensko — dvojina/množina (ne "2 LISTKOV"). */
+function listekCountKey(n: number): 'kds.countOne' | 'kds.countTwo' | 'kds.countFew' | 'kds.countMany' {
+  if (n === 1) return 'kds.countOne'
+  if (n === 2) return 'kds.countTwo'
+  if (n >= 3 && n <= 4) return 'kds.countFew'
+  return 'kds.countMany'
+}
+
+/** V-8: velikost pisave listka S/M/L/XL (Toast "do Enormous" vzorec). Nazivna
+    vrstica + postavke + starostne pili sorazmerno; dejanja (44 px cilji) ostanejo. */
+export type KdsFontSizeT = 'S' | 'M' | 'L' | 'XL'
+const KDS_FONT_SIZES: KdsFontSizeT[] = ['S', 'M', 'L', 'XL']
+const KDS_FONT_CLS: Record<KdsFontSizeT, { title: string; item: string; timer: string }> = {
+  S: { title: 'text-[13px]', item: 'text-[13px]', timer: 'text-xs' },
+  M: { title: 'text-[15px]', item: 'text-[15px]', timer: 'text-sm' },
+  L: { title: 'text-lg', item: 'text-base', timer: 'text-base' },
+  XL: { title: 'text-2xl', item: 'text-xl', timer: 'text-lg' },
+}
+const KDS_FONT_LABEL_KEY: Record<KdsFontSizeT, string> = {
+  S: 'kds.fontS', M: 'kds.fontM', L: 'kds.fontL', XL: 'kds.fontXL',
+}
+
+/** V-8: gostota listka — kompaktno (mala plošča, več listkov) ali normalno. */
+export type KdsDensityT = 'compact' | 'normal'
+const KDS_DENSITY_CLS: Record<KdsDensityT, { card: string; items: string; item: string }> = {
+  compact: { card: 'min-w-0 gap-1.5 py-2 sm:py-2.5', items: 'space-y-1 px-4 pb-1 sm:px-6 sm:pb-1.5', item: 'px-3 py-1 space-y-1' },
+  normal: { card: 'min-w-0 gap-2 py-3 sm:py-4', items: 'space-y-1.5 px-4 pb-1 sm:px-6 sm:pb-2', item: 'px-3 py-1.5 space-y-1.5' },
+}
+
+/** V-8: število stolpcev NAVPIČNEGA SEZNAMA (4/6/8/10 — Square 4–10 stolpcev).
+    Stolpci krmilijo mrežo listkov v "Seznam" pogledu; "Stolpci" (board) ima
+    fiksnih 3 statusne stolpce (Novi/V pripravi/Pripravljeni). */
+const KDS_COLUMN_OPTIONS = [4, 6, 8, 10] as const
+type KdsColumnsT = (typeof KDS_COLUMN_OPTIONS)[number]
+const KDS_COLUMN_CLS: Record<KdsColumnsT, string> = {
+  4: 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4',
+  6: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6',
+  8: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8',
+  10: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 2xl:grid-cols-10',
+}
+
+/** V-12: širina ploščice mize ∝ številu sedežev (2–3 / 4–6 / 7+) — fiksna
+    višina vseh stanj preprečuje nazobčane vrstice v coni. */
+const tableTileWidthCls = (seats: number): string => (seats <= 3 ? 'w-44' : seats <= 6 ? 'w-52' : 'w-60')
 
 /* Issue #69 (2. val): vizualni razdelek nastavitev — naslov + sidro (#set-…) za
    hitri skok po dolgi strani. Čisto dekorativna lupina: vsebine kartic (njihovi
@@ -1737,6 +1814,52 @@ function DashboardInner() {
   const kdsStationRef = useRef<string>(kdsStation)
   useEffect(() => { kdsStationRef.current = kdsStation }, [kdsStation])
   const [kdsSound, setKdsSound] = useState(true)
+  /* ISSUE #74 V-3/V-8/V-9 (v1.135.0) — KDS ergonomija, shranjena NA NAPRAVO
+     (localStorage — isto kot jezik/tisk konfig; vloga/dovoljenja niso prizadeta):
+      - starostni pragovi (ro_kds_age_thresholds): siva/emerald/amber/utrip/rdeča
+      - velikost pisave listka (ro_kds_font_size): S/M/L/XL
+      - gostota (ro_kds_density): kompaktno/normalno
+      - stolpci navpičnega seznama (ro_kds_columns): 4/6/8/10
+      - pogled (ro_kds_view): 'columns' (board po statusu) | 'list'
+     Hidracija: vse vrednosti se preberejo TEKOM mount efekta (SSR izriše privzete —
+     enak vzorec kot ro_user perms — brez hidracijskega razpada). */
+  const [kdsAgeTh, setKdsAgeTh] = useState<KdsAgeThresholds>(KDS_AGE_DEFAULTS)
+  const [kdsAgeDraft, setKdsAgeDraft] = useState<KdsAgeThresholds>(KDS_AGE_DEFAULTS)
+  const [kdsFontSize, setKdsFontSize] = useState<KdsFontSizeT>('M')
+  const [kdsDensity, setKdsDensity] = useState<KdsDensityT>('normal')
+  const [kdsColumns, setKdsColumns] = useState<KdsColumnsT>(6)
+  const [kdsView, setKdsView] = useState<'columns' | 'list'>('columns')
+  useEffect(() => {
+    try {
+      const rawTh = localStorage.getItem(KDS_AGE_THRESHOLD_LS_KEY)
+      if (rawTh) {
+        const th = normalizeKdsAgeThresholds(JSON.parse(rawTh))
+        setKdsAgeTh(th); setKdsAgeDraft(th)
+      }
+      const fs = localStorage.getItem('ro_kds_font_size')
+      if (fs === 'S' || fs === 'M' || fs === 'L' || fs === 'XL') setKdsFontSize(fs)
+      const dn = localStorage.getItem('ro_kds_density')
+      if (dn === 'compact' || dn === 'normal') setKdsDensity(dn)
+      const cl = Number(localStorage.getItem('ro_kds_columns'))
+      if ((KDS_COLUMN_OPTIONS as readonly number[]).includes(cl)) setKdsColumns(cl as KdsColumnsT)
+      const vw = localStorage.getItem('ro_kds_view')
+      if (vw === 'columns' || vw === 'list') setKdsView(vw)
+    } catch { /* zasebni način — privzete vrednosti ostanejo */ }
+  }, [])
+  /** V-3: takojšen učinek + persist (ob obnovitvi zaslona se pragovi spomnijo). */
+  const kdsSaveAgeThresholds = (th: KdsAgeThresholds) => {
+    const norm = normalizeKdsAgeThresholds(th)
+    setKdsAgeTh(norm); setKdsAgeDraft(norm)
+    try { localStorage.setItem(KDS_AGE_THRESHOLD_LS_KEY, JSON.stringify(norm)) } catch { /* brez shramve — velja do osvežitve */ }
+    toast({ title: t('kds.settingsSaved') })
+  }
+  /** V-8/V-9: persist pomočnik za preproste izbire. */
+  const kdsPersist = (key: string, value: string) => {
+    try { localStorage.setItem(key, value) } catch { /* brez shramve */ }
+  }
+  // izpeljenke (SSR-varne privzete vrednosti izračunamo tik pred izrisom)
+  const kdsFont = KDS_FONT_CLS[kdsFontSize] ?? KDS_FONT_CLS.M
+  const kdsDensityCls = KDS_DENSITY_CLS[kdsDensity] ?? KDS_DENSITY_CLS.normal
   // P0-3 (v1.83.0): 86 plošča — iskanje za hiter proaktiven 86 (TRZNA-VRZELI-2026 §4 P0-3)
   const [kds86Search, setKds86Search] = useState('')
   // v1.129.0 (Toast benchmark): 86 plošča skrčena — privzeto ZAPRTO (števec viden v vrstici)
@@ -1775,9 +1898,12 @@ function DashboardInner() {
   const saleIsMobile = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
 
   const kdsMinutes = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
-  // OPS-11 val 1: red escalation is per station — threshold = max(10, ceil(target×1.25));
-  // without a target (no station / no config) the historical global 10 min applies.
-  const kdsAgeClass = (m: number, threshold = 10): string => (m >= threshold ? 'bg-red-100 text-red-700 border-red-200' : m >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+  /* ISSUE #74 V-3: starostni razred listka — PET stopenj (siva/emerald/amber/
+     oranžni utrip/rdeča) z NASTAVLJIVIMI pragovi (kdsAgeTh iz localStorage) in
+     per-postajnim ciljem (OPS-11: max(10, ceil(cilj×1.25)) prag lahko samo dvigne).
+     Zamenjava lokalne kdsAgeClass (siva/emerald/amber/rdeča, prag 5/10) — enoten
+     vir v kds-delays.ts skupaj s kds-station-board. */
+  const kdsAgeCls = (m: number, targetMin?: number | null) => kdsAgeClass(m, targetMin, kdsAgeTh)
   // OPS-11 val 1: station prep target of an item (bucket from mapOrderItem) — null → global 10 min
   const kdsTargetOf = (it: OrderItemT): number | null => stationTargets?.[it.station || 'KITCHEN'] ?? null
   // OPS-9 val 3: per-item live timer — firedAt when present (matches server prepMin), else order clock
@@ -1967,11 +2093,15 @@ function DashboardInner() {
               <Utensils className="w-4 h-4" />
             </div>
             <span className="font-bold truncate">RestaurantOS</span>
-            <Badge variant="outline" className="hidden md:inline-flex shrink-0">{APP_VERSION}</Badge>
+            {/* ISSUE #74 V-16: verzija iz glave ODSTRANJENA — ostaja samo v
+                Nastavitve → Sistem (sys.version) in /api/health; lastnik ne potrebuje
+                razvojne oznake ob vsakem pogledu */}
             {/* Triage ⑧ — pogledi: preklopnik lokacije za centralne vloge (OWNER/ADMIN) */}
             {isCentralUIRole(user?.role) && locList.length > 0 && (
               <Select value={viewLoc || 'all'} onValueChange={(v) => setViewLoc(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-8 w-[120px] sm:w-[190px] gap-1.5 text-xs" aria-label={t('header.viewAria')}>
+                {/* ISSUE #74 V-18: ime lokacije se ne reže več brez okrajšave
+                    (»Restaur«) — vsebina sprožilca je truncatirana na mobilnem */}
+                <SelectTrigger className="h-8 w-[120px] sm:w-[190px] gap-1.5 text-xs min-w-0 [&>span]:truncate" aria-label={t('header.viewAria')}>
                   <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
                   <SelectValue />
                 </SelectTrigger>
@@ -2077,10 +2207,13 @@ function DashboardInner() {
                     value={v}
                     aria-label={t(`tabs.${v}`)}
                     title={t(`tabs.${v}`)}
-                    className={`min-w-0 gap-1.5 data-[state=active]:bg-emerald-700 data-[state=active]:text-white whitespace-nowrap ${DASHBOARD_MOBILE_PRIMARY_TABS.has(v) || v === activeTab ? 'inline-flex' : 'hidden lg:inline-flex'}`}
+                    /* ISSUE #74 V-18: mobilna navigacija ni več »same ikone« — napis POD
+                       ikono (flex-col, text-xs, truncate 64 px) na <sm, običajna vodoravna
+                       vrstica od sm. Prej: 5 gumbov brez besedilnih oznak pri 390 px. */
+                    className={`min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-1.5 items-center data-[state=active]:bg-emerald-700 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-700 dark:data-[state=active]:text-white whitespace-nowrap ${DASHBOARD_MOBILE_PRIMARY_TABS.has(v) || v === activeTab ? 'inline-flex' : 'hidden lg:inline-flex'}`}
                   >
                     {Icon && <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />}
-                    <span className="hidden sm:inline">{t(`tabs.${v}`)}</span>
+                    <span className="max-w-16 truncate text-xs sm:max-w-none sm:text-sm">{v === 'prodaja' ? (t('tabs.prodajaShort') || t('tabs.prodaja')) : t(`tabs.${v}`)}</span>
                   </TabsTrigger>
                 ))}
             </TabsList>
@@ -2100,20 +2233,32 @@ function DashboardInner() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
-                {DASHBOARD_TABS
-                  .filter(([v]) => !DASHBOARD_MOBILE_PRIMARY_TABS.has(v))
-                  .filter(([v]) => tabHasPerm(v, { canManage, perms }))
-                  .map(([v, Icon]) => (
-                    <DropdownMenuItem
-                      key={v}
-                      onSelect={() => setActiveTab(v)}
-                      className={`${activeTab === v ? 'bg-emerald-50 text-emerald-900 focus:bg-emerald-100' : ''} ${DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG.has(v) ? 'lg:hidden' : ''}`}
-                    >
-                      {Icon && <Icon className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />}
-                      <span>{t(`tabs.${v}`)}</span>
-                      {activeTab === v && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
-                    </DropdownMenuItem>
-                  ))}
+                {/* ISSUE #74 V-17: razdelki — Operativa / Gostje / Zaloge in finance /
+                    Ekipa / Sistem (prej 27 ciljev v ravnem seznamu brez razdelkov) */}
+                {TAB_GROUP_KEYS.map((g, gi) => {
+                  const groupTabs = DASHBOARD_TABS
+                    .filter(([v]) => !DASHBOARD_MOBILE_PRIMARY_TABS.has(v))
+                    .filter(([v]) => tabHasPerm(v, { canManage, perms }))
+                    .filter(([v]) => (TAB_GROUP_OF[v] ?? 'ops') === g)
+                  if (groupTabs.length === 0) return null
+                  return (
+                    <DropdownMenuGroup key={g}>
+                      {gi > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel className="text-[11px] font-bold uppercase tracking-wider text-stone-400">{t(TAB_GROUP_LABEL_KEY[g])}</DropdownMenuLabel>
+                      {groupTabs.map(([v, Icon]) => (
+                        <DropdownMenuItem
+                          key={v}
+                          onSelect={() => setActiveTab(v)}
+                          className={`${activeTab === v ? 'bg-emerald-50 text-emerald-900 focus:bg-emerald-100' : ''} ${DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG.has(v) ? 'lg:hidden' : ''}`}
+                        >
+                          {Icon && <Icon className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />}
+                          <span>{t(`tabs.${v}`)}</span>
+                          {activeTab === v && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  )
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -2167,28 +2312,33 @@ function DashboardInner() {
                   )
                 })}
             </div>
-            {/* Issue #21 (v1.111.0) — plošča klicev vodje (15 s polling = pogon lenih eskalacij) */}
-            {hasPerm('employees.manage') && <ManagerCallsCard />}
-            <Card>
-              <CardHeader><CardTitle className="text-base">{t('dash.activeOrders')}</CardTitle></CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {viewOrders.slice(0, 6).map((o) => (
-                    <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold truncate">{o.table?.name || orderTypeL(o.type)}</p>
-                        <p className="text-xs text-stone-500">{t('dash.itemsCount', { n: o.items.length, name: o.employee?.name || '—' })}</p>
+            {/* Issue #21 (v1.111.0) — plošča klicev vodje (15 s polling = pogon lenih
+                eskalacij). ISSUE #74 V-14: nad gubo NISTA več dva nalogena modula —
+                klici in aktivna naročila sta v ENI vrstici (lg 2 stolpca), prazen
+                modul klicev se skrči na glavo z enovrstičnim »ni aktivnih«. */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {hasPerm('employees.manage') && <ManagerCallsCard />}
+              <Card>
+                <CardHeader><CardTitle className="text-base">{t('dash.activeOrders')}</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {viewOrders.slice(0, 6).map((o) => (
+                      <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{o.table?.name || orderTypeL(o.type)}</p>
+                          <p className="text-xs text-stone-500">{t('dash.itemsCount', { n: o.items.length, name: o.employee?.name || '—' })}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold">{fmtEUR(o.total)}</p>
+                          <Badge className={`mt-1 ${statusColors[o.status]}`}>{stL(o.status)}</Badge>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-bold">{fmtEUR(o.total)}</p>
-                        <Badge className={`mt-1 ${statusColors[o.status]}`}>{stL(o.status)}</Badge>
-                      </div>
-                    </div>
-                  ))}
-                  {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                    {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
             {/* OPS-10 val 1 (v1.77.0) — analitika: prodaja po urah + labor stroški (lazy fetch ko sta vidna) */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <SalesByHourCard />
@@ -2235,7 +2385,7 @@ function DashboardInner() {
                         if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
                         if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                       }}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-lg shadow px-2 py-1.5 text-[11px] font-bold cursor-grab active:cursor-grabbing ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-lg shadow px-2 py-1.5 text-xs font-bold cursor-grab active:cursor-grabbing ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                       aria-label={tb.name}
                     >
@@ -2251,16 +2401,21 @@ function DashboardInner() {
               return (
                 <section key={zone} className="space-y-3">
                   <h2 className="font-semibold text-stone-700">{zoneL(zone)}</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {/* ISSUE #74 V-12: prej rigidna mreža (vse ploščice 197 px ne glede na
+                      2–10 sedežev) + višina odvisna od stanja (97 proti 115–119 px) →
+                      nazobčane vrstice, gumb je padal iz kartice. Zdaj: FLEX vrstice s
+                      širino ∝ sedežem (tableTileWidthCls: w-44/w-52/w-60) + FIKSNA
+                      višina h-32 vseh stanj — QR/⋮ ostane VZNOTRIJ kartice. */}
+                  <div className="flex flex-wrap gap-3">
                     {zt.map((tb) => (
-                      <div key={tb.id} className="relative">
+                      <div key={tb.id} className={`relative ${tableTileWidthCls(tb.seats)}`}>
                         <button
                           onClick={() => {
                             // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
                             if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
                             if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
-                          className={`w-full rounded-xl p-3 sm:p-4 text-left shadow transition ${statusColors[tb.status]} min-h-20`}
+                          className={`flex h-32 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
                         >
                           <p className="font-bold text-lg flex items-center gap-2">
                             {tb.name}
@@ -2269,27 +2424,36 @@ function DashboardInner() {
                           <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
                           {/* Issue #71 audit-21: status je BESEDILO, ne samo barva (barvna slepota,\n                              sončna svetloba na tablici) */}
                           {tb.status !== 'FREE' && (
-                            <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide opacity-95">{stL(tb.status)}</p>
+                            <p className="mt-0.5 text-xs font-bold uppercase tracking-wide opacity-95">{stL(tb.status)}</p>
                           )}
                           {/* v1.129.0 (Toast/Square benchmark): zasedena ploščica nosi ČAS (min
                               od naročila) in FAZO naročila (poslano/v pripravi/pripravljeno),
                               ne samo znesek — natakar naletu vidi, katera miza čaka hrano.
-                              Toast: elapsed time; Square: turn-yellow-after-X-min prag. */}
+                              Toast: elapsed time; Square: turn-yellow-after-X-min prag.
+                              ISSUE #74 V-13: dodana št. naročila in gostje — ploščica je
+                              samozadosten vir (prej: znesek + čas, brez identitete naročila). */}
                           {tb.activeOrder && (() => {
                             const ao = orders.find((x) => x.id === tb.activeOrder!.id)
                             const elapsed = ao ? kdsMinutes(ao.createdAt) : null
                             return (
-                              <div className="flex items-baseline justify-between gap-2 mt-1.5 min-w-0">
-                                {elapsed !== null && (
-                                  <span className="text-sm font-extrabold tabular-nums shrink-0" title={t('tables.sinceOrder', { m: elapsed })}>
+                              <div className="min-w-0">
+                                {ao && (
+                                  <p className="text-xs font-semibold tabular-nums opacity-95 truncate">
+                                    #{ao.orderNumber ?? '?'}{ao.guests > 0 ? ` · ${ao.guests} ${t('orders.persons')}` : ''}
+                                  </p>
+                                )}
+                                <div className="flex items-baseline justify-between gap-2 mt-0.5 min-w-0">
+                                  {elapsed !== null && (
+                                    <span className="text-sm font-extrabold tabular-nums shrink-0" title={t('tables.sinceOrder', { m: elapsed })}>
                                     ⏱ {t('tables.elapsedMin', { m: elapsed })}
                                   </span>
                                 )}
                                 <span className="text-sm font-bold tabular-nums ml-auto">{fmtEUR(tb.activeOrder.total)}</span>
+                                </div>
                               </div>
                             )
                           })()}
-                          <p className="text-[11px] mt-1 opacity-80">
+                          <p className="text-xs pt-1 opacity-80 mt-auto">
                             {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
                                 OCCUPIED iz statusa pomeni isto kot activeOrder (mapTable), zato sta
                                 plosci (grid) in handheld/tablica vedno usklajena.
@@ -2394,7 +2558,7 @@ function DashboardInner() {
                   <Button variant="outline" className="w-full" disabled={qrBusy} onClick={() => void qrAction('rotate')}>
                     <RefreshCw className="w-3.5 h-3.5 mr-1" /> {t('tables.qrNew')}
                   </Button>
-                  <p className="text-[11px] text-stone-400">{t('tables.qrHint')}</p>
+                  <p className="text-xs text-stone-400">{t('tables.qrHint')}</p>
                 </div>
               )}
             </DialogContent>
@@ -2418,7 +2582,16 @@ function DashboardInner() {
                 {viewOrders.filter((o) => orderFilter === 'ALL' || o.status === orderFilter).map((o) => (
                   <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold">{o.table?.name || orderTypeL(o.type)} · {o.guests} {t('orders.persons')}</p>
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{o.table?.name || orderTypeL(o.type)} · {o.guests} {t('orders.persons')}</p>
+                        {/* ISSUE #74 V-22: kartica naročila ima IDENTITETO — miza je že v
+                            naslovu, tu pa številka naročila, ura in natakar (prej sta se
+                            obe karti glasili enako »Na mesto · 1 osebi« brez razlike). */}
+                        <p className="text-xs text-stone-500 truncate">
+                          #{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}
+                          {o.employee?.name ? ` · ${o.employee.name}` : ''}
+                        </p>
+                      </div>
                       <Badge className={statusColors[o.status]}>{stL(o.status)}</Badge>
                     </div>
                     {/* Issue #71 audit-23: privzeto 3 postavke + »＋ N ostalih« — naročilo z 27
@@ -2431,7 +2604,7 @@ function DashboardInner() {
                         <div className="text-sm">
                           <ul className="space-y-1">{shown.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
                           {rest > 0 && (
-                            <button type="button" onClick={() => setExpandedOrderItems((pr) => ({ ...pr, [o.id]: true }))} className="mt-1 min-h-11 w-full rounded-md border border-dashed border-stone-300 text-xs font-semibold text-stone-600 hover:bg-stone-50 hover:text-stone-800 transition-colors">
+                            <button type="button" onClick={() => setExpandedOrderItems((pr) => ({ ...pr, [o.id]: true }))} className="mt-1 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 text-xs font-semibold text-stone-600 hover:bg-stone-100 hover:text-stone-800 transition-colors">
                               {t('orders.moreItems', { n: rest })}
                             </button>
                           )}
@@ -2447,7 +2620,7 @@ function DashboardInner() {
                       <p className="font-bold">{fmtEUR(o.total)}</p>
                       {o.status !== 'PAID' && (
                         <div className="flex gap-1.5">
-                          <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => void openOrderSheet(o)} title={t('orders.edit')}>
+                          <Button size="sm" variant="outline" className="h-10 gap-1" onClick={() => void openOrderSheet(o)} title={t('orders.edit')}>
                             <Pencil className="w-3.5 h-3.5" /> {t('orders.edit')}
                           </Button>
                           <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => void openPayment(o)}>
@@ -2460,16 +2633,16 @@ function DashboardInner() {
                     {hasPerm('orders.create') && isOrderOpenUi(o) && (
                       <div className="flex flex-wrap gap-1.5">
                         {o.items.some((it) => it.status === 'PENDING' && !it.voided) && (
-                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                          <Button size="sm" variant="outline" className="h-10 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
                             disabled={mmvBusy} onClick={() => void fireOrder(o)} title={t('mmv.fire')}>
                             <Flame className="w-3 h-3" /> {t('mmv.fire')}
                           </Button>
                         )}
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" disabled={mmvBusy}
+                        <Button size="sm" variant="outline" className="h-10 gap-1 text-xs" disabled={mmvBusy}
                           onClick={() => { setMoveTableId(''); setMoveOrder(o) }} title={t('mmv.move')}>
                           <ArrowRightLeft className="w-3 h-3" /> {t('mmv.move')}
                         </Button>
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                        <Button size="sm" variant="outline" className="h-10 gap-1 text-xs"
                           disabled={mmvBusy || mergeTargetsFor(o).length === 0}
                           onClick={() => { setMergeTargetId(''); setMergeOrder(o) }} title={t('mmv.merge')}>
                           <GitMerge className="w-3 h-3" /> {t('mmv.merge')}
@@ -2551,43 +2724,67 @@ function DashboardInner() {
                   značka količine na ploščici artikla = takojšen povratni signal vnosa. */}
             <div className="md:grid md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-4 lg:grid-cols-[minmax(0,1fr)_21rem]">
               {/* LEVO: iskanje + čipi kategorij + mreža izbire */}
-              <div className="min-w-0 space-y-3 pb-20 md:pb-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-10 w-full sm:w-56" aria-label={t('sale.search')} />
-                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('sale.allCat')}>
-                    <Button size="sm" variant={saleCat === 'ALL' ? 'default' : 'outline'} className={`h-9 ${saleCat === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat('ALL') }}>
-                      {t('sale.allCat')}
-                    </Button>
-                    {categories.map((c) => (
-                      <Button key={c.id} size="sm" variant={saleCat === c.id ? 'default' : 'outline'} className={`h-9 max-w-40 ${saleCat === c.id ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat(c.id) }} title={c.name}>
-                        <span className="truncate">{c.name}</span>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+              {/* ISSUE #74 V-6 (blocker): prej 40 gumbov kategorij v 6 ovitih vrstah —
+                mreža izbire se je začela šele pri y=429/860 px (na mobilnem 61 % višine).
+                Toast/Square vzorec: iskanje VEDNO v svoji vrstici + ENA vodoravno drsna
+                vrstica kategorij (flex-nowrap + overflow-x-auto) — mreža pri y≈140. */}
+            <div className="min-w-0 space-y-3 pb-20 md:pb-0">
+              <div className="flex items-center gap-2">
+                <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-11 w-full sm:w-56" aria-label={t('sale.search')} />
+              </div>
+              {/* V-6: horizontalni TRAK kategorij (nowrap) — gumbi se nikoli ne ovijejo;
+                  V-19: cilji 44 px (h-11) na POS, rounded-full chip videz (Square) */}
+              <div
+                className="flex items-center gap-1.5 overflow-x-auto flex-nowrap -mx-1 px-1 pb-1 [scrollbar-width:thin]"
+                role="group" aria-label={t('sale.allCat')} tabIndex={0}
+              >
+                <Button size="sm" variant={saleCat === 'ALL' ? 'default' : 'outline'} className={`h-11 shrink-0 rounded-full whitespace-nowrap ${saleCat === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat('ALL') }}>
+                  {t('sale.allCat')}
+                </Button>
+                {categories.map((c) => (
+                  <Button key={c.id} size="sm" variant={saleCat === c.id ? 'default' : 'outline'} className={`h-11 max-w-44 shrink-0 rounded-full whitespace-nowrap ${saleCat === c.id ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat(c.id) }} title={c.name}>
+                    <span className="truncate">{c.name}</span>
+                  </Button>
+                ))}
+              </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
                   {saleItems.map((mi) => {
                     const inCart = saleCart[mi.id] || 0
+                    /* ISSUE #74 V-7 (blocker): FOTOGRAFIJA na ploščici artikla — prej
+                       imgCount=0 v celem POS (bele kartice z imenom in ceno); slika 4:3
+                       iz kategorije artikla (categoryImageForCategory), lazy loading. */
+                    const img = mi.categoryId
+                      ? categoryImageForCategory(categories.find((c) => c.id === mi.categoryId)?.name)
+                      : CATEGORY_IMAGE_DEFAULT
                     return (
                       <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
                         aria-label={`${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
-                        className={`relative flex min-h-[4.5rem] flex-col rounded-xl border p-3 text-left transition ${mi.available
+                        className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition ${mi.available
                           ? inCart > 0
-                            ? 'border-emerald-600 bg-emerald-50/60 hover:border-emerald-600 hover:shadow-md active:scale-[0.98]'
-                            : 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md active:scale-[0.98]'
+                            ? 'border-emerald-600 bg-white hover:border-emerald-600 hover:shadow-md'
+                            : 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md'
                           : 'cursor-not-allowed border-red-200 bg-red-50/70'}`}>
-                        {inCart > 0 && (
-                          <span key={inCart} aria-hidden="true" className="absolute right-1.5 top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-700 px-1.5 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
-                            {inCart}×
-                          </span>
-                        )}
-                        {/* Issue #71 audit-16: 86 iz KDS-a je viden NA PLOŠČICI (rdeči trak),
-                            ne tiho mrk — natakar NE proda artikla, ki ga je kuhinja že umaknila */}
-                        {!mi.available && (
-                          <span aria-hidden="true" className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
-                        )}
-                        <p className={`min-w-0 text-sm font-semibold leading-tight ${inCart > 0 || !mi.available ? 'pt-5' : ''}`}>{mi.name}</p>
-                        <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
+                        <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden bg-stone-100" aria-hidden="true">
+                          <img src={img} alt="" loading="lazy" draggable={false}
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.04] group-active:scale-[0.97]" />
+                          {inCart > 0 && (
+                            <span key={inCart} aria-hidden="true" className="absolute right-1.5 top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-700 px-1.5 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
+                              {inCart}×
+                            </span>
+                          )}
+                          {/* Issue #71 audit-16: 86 iz KDS-a je viden NA PLOŠČICI (rdeči trak),
+                              ne tiho mrk — natakar NE proda artikla, ki ga je kuhinja že umaknila */}
+                          {!mi.available && (
+                            <>
+                              <span className="absolute inset-0 bg-stone-100/60" />
+                              <span className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
+                            </>
+                          )}
+                        </span>
+                        <span className="flex min-h-16 flex-1 flex-col p-2.5">
+                          <p className="min-w-0 text-sm font-semibold leading-tight line-clamp-2">{mi.name}</p>
+                          <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
+                        </span>
                       </button>
                     )
                   })}
@@ -2607,7 +2804,7 @@ function DashboardInner() {
                         {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
                       </span>
                       {saleCartCount > 0 && (
-                        <Button size="sm" variant="ghost" className="h-8 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => setSaleCart({})} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                        <Button size="sm" variant="ghost" className="h-10 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => setSaleCart({})} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -2627,8 +2824,8 @@ function DashboardInner() {
                         return (
                           <div key={id} className="flex items-center gap-1.5 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5 text-sm">
                             <span className="min-w-0 flex-1 truncate">{qty}× {mi.name}</span>
-                            <Button size="sm" variant="outline" className="h-7 w-7 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
-                            <Button size="sm" variant="outline" className="h-7 w-7 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                            <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                            <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
                             <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
                           </div>
                         )
@@ -2640,7 +2837,7 @@ function DashboardInner() {
                       <span>{t('sale.total')}</span>
                       <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
                     </div>
-                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
                       {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
                     </Button>
                     {saleErr && (
@@ -2667,10 +2864,10 @@ function DashboardInner() {
                           aria-label={`${t('sale.openCart')} · ${saleCartCount}× · ${fmtEUR(saleTotal)}`}>
                           <span className="relative shrink-0">
                             <ShoppingCart className="h-6 w-6 text-emerald-700" aria-hidden />
-                            <span key={saleCartCount} className="absolute -right-2 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-[11px] font-bold tabular-nums text-white shadow animate-in zoom-in-75 duration-150">{saleCartCount}</span>
+                            <span key={saleCartCount} className="absolute -right-2 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-xs font-bold tabular-nums text-white shadow animate-in zoom-in-75 duration-150">{saleCartCount}</span>
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-stone-500">{t('sale.cartTitle')} · {saleCartCount}×</span>
+                            <span className="block truncate text-xs font-medium uppercase tracking-wide text-stone-500">{t('sale.cartTitle')} · {saleCartCount}×</span>
                             <span className="block truncate text-lg font-bold leading-tight tabular-nums text-stone-900">{fmtEUR(saleTotal)}</span>
                           </span>
                           <ChevronUp className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
@@ -2728,7 +2925,7 @@ function DashboardInner() {
                       <span>{t('sale.total')}</span>
                       <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
                     </div>
-                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
                       {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
                     </Button>
                     {saleErr && (
@@ -2774,6 +2971,131 @@ function DashboardInner() {
               <Button size="sm" variant="outline" className="gap-1" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.() }}>
                 <Maximize2 className="w-3.5 h-3.5" /> {t('kds.fullscreen')}
               </Button>
+              {/* ISSUE #74 V-9: preklop pogleda — STOLPCI po statusu (board, privzeto)
+                  ali navpičen SEZNAM (vprašljiva nega Toastova "radikalna sprememba"
+                  — obstoječa postavitev ostane kot opcija, geste se ne prestavijo). */}
+              {!kdsCustomView && (
+                <div className="inline-flex rounded-lg border border-stone-300 bg-white p-0.5" role="group" aria-label={t('kds.stView')}>
+                  {(['columns', 'list'] as const).map((vw) => (
+                    <button
+                      key={vw}
+                      type="button"
+                      aria-pressed={kdsView === vw}
+                      aria-label={vw === 'columns' ? t('kds.viewBoard') : t('kds.viewList')}
+                      title={vw === 'columns' ? t('kds.viewBoard') : t('kds.viewList')}
+                      onClick={() => { setKdsView(vw); kdsPersist('ro_kds_view', vw) }}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition ${
+                        kdsView === vw ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      {vw === 'columns' ? <Columns3 className="w-3.5 h-3.5" aria-hidden /> : <List className="w-3.5 h-3.5" aria-hidden />}
+                      <span className="hidden sm:inline">{vw === 'columns' ? t('kds.viewBoard') : t('kds.viewList')}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* ISSUE #74 V-3/V-8: ⚙ NASTAVITVE ZASLONA (popover) — starostni pragovi
+                  (siva→emerald→amber→utrip→rdeča), velikost pisave S/M/L/XL, gostota,
+                  stolpci seznama. Toast/Square/Lightspeed reference: operater nastavi
+                  ergonomske razrede, ker jih oblikovalec ne more uganiti. */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1" aria-label={t('kds.settings')} title={t('kds.settings')}>
+                    <Settings2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t('kds.settings')}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 space-y-4">
+                  {/* V-3: starostni pragovi */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-500">{t('kds.settingsAgeTitle')}</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['warn', 'urgent', 'late'] as const).map((k) => (
+                        <label key={k} className="space-y-1">
+                          <span className="block text-xs font-medium text-stone-600">
+                            {k === 'warn' ? t('kds.ageFreshUntil') : k === 'urgent' ? t('kds.ageWarnFrom') : t('kds.ageLateFrom')}
+                          </span>
+                          <Input
+                            type="number" min={1} max={600} inputMode="numeric"
+                            value={kdsAgeDraft[k]}
+                            onChange={(e) => setKdsAgeDraft({ ...kdsAgeDraft, [k]: Number(e.target.value) })}
+                            aria-label={k === 'warn' ? t('kds.ageFreshUntil') : k === 'urgent' ? t('kds.ageWarnFrom') : t('kds.ageLateFrom')}
+                            className="h-9 tabular-nums"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-stone-500">{t('kds.settingsAgeHint')}</p>
+                    <Button size="sm" className="h-9 w-full bg-emerald-700 hover:bg-emerald-800" onClick={() => kdsSaveAgeThresholds(kdsAgeDraft)}>
+                      <Check className="w-3.5 h-3.5" /> {t('common.save')}
+                    </Button>
+                  </div>
+                  {/* V-8: velikost pisave (A− A A+ A++ — velikost vidna NA gumbu, Toast vzorec) */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-500">{t('kds.settingsFont')}</p>
+                    <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={t('kds.settingsFont')}>
+                      {KDS_FONT_SIZES.map((fs) => (
+                        <button
+                          key={fs}
+                          type="button"
+                          aria-pressed={kdsFontSize === fs}
+                          aria-label={t(KDS_FONT_LABEL_KEY[fs])}
+                          title={t(KDS_FONT_LABEL_KEY[fs])}
+                          onClick={() => { setKdsFontSize(fs); kdsPersist('ro_kds_font_size', fs) }}
+                          className={`rounded-lg border py-2 font-bold transition ${
+                            kdsFontSize === fs
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-stone-400'
+                          } ${fs === 'S' ? 'text-xs' : fs === 'M' ? 'text-sm' : fs === 'L' ? 'text-base' : 'text-lg'}`}
+                        >
+                          {fs === 'S' ? 'A−' : fs === 'M' ? 'A' : fs === 'L' ? 'A+' : 'A++'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* V-8: gostota */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-500">{t('kds.settingsDensity')}</p>
+                    <div className="grid grid-cols-2 gap-1.5" role="group" aria-label={t('kds.settingsDensity')}>
+                      {(['compact', 'normal'] as const).map((dn) => (
+                        <button
+                          key={dn}
+                          type="button"
+                          aria-pressed={kdsDensity === dn}
+                          onClick={() => { setKdsDensity(dn); kdsPersist('ro_kds_density', dn) }}
+                          className={`rounded-lg border py-2 text-xs font-semibold transition ${
+                            kdsDensity === dn
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-stone-400'
+                          }`}
+                        >
+                          {dn === 'compact' ? t('kds.densityCompact') : t('kds.densityNormal')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* V-8: stolpci NAVPIČNEGA SEZNAMA (board ima fiksne 3 statusne) */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-500">{t('kds.settingsColumns')}</p>
+                    <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={t('kds.settingsColumns')}>
+                      {KDS_COLUMN_OPTIONS.map((cl) => (
+                        <button
+                          key={cl}
+                          type="button"
+                          aria-pressed={kdsColumns === cl}
+                          onClick={() => { setKdsColumns(cl); kdsPersist('ro_kds_columns', String(cl)) }}
+                          className={`rounded-lg border py-2 text-sm font-bold tabular-nums transition ${
+                            kdsColumns === cl
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-stone-400'
+                          }`}
+                        >
+                          {cl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             {/* v1.129.0 (Toast benchmark): 86 PLOŠČA je premaknjena POD vrsto listkov in
                 SKRČENA v eno vrstico — listki dobijo celoten zaslon na vrhu (prej je plošča
@@ -2838,31 +3160,39 @@ function DashboardInner() {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
                 const stale = isStaleKdsTicket(ageMin)
-                // Issue #71 audit-14: alergeni — hierarhija resnosti. RESNIČNI alarm (alergijsko
-                // opozorilo) = RDEČ pas na vrhu listka; manjkajoči podatki = EN sivi zbirnik
-                // (»N od M postavic«), ne 24+ enakih rumenih čipov, ki utišajo pravi alarm.
+                /* ISSUE #74 V-3: starostni razred listka (5 stopenj) — en vir za LEVI ROB
+                   (kdsAgeBorderCls) in PILL (kdsAgePillCls); oranžni utrip = urgent. */
+                const ageCls = kdsAgeCls(ageMin)
+                // Issue #71 audit-14 → #74 V-10: alergeni — hierarhija resnosti. RESNIČNI
+                // alarm (alergijsko opozorilo) = RDEČ pas na vrhu listka; manjkajoči
+                // podatki = RDEČ PAS z ikono (zakonsko obvezen podatek — uredba EU
+                // 1169/2011; Lightspeed: alergen ima svojo fiksno rdečo vejo, ne sivo
+                // mikroskupino, ki je bila najtjiša stvar na zaslonu).
                 const allergyItems = items.filter((it) => it.allergenWarning)
                 const unconfirmedCount = items.filter((it) => it.allergenStatus && it.allergenStatus !== 'confirmed' && !it.allergenWarning).length
                 return (
                   /* Issue #69 (2. val): gostota listka — glava v dveh vrsticah (identiteta +
                      PRIMARNI STATUS listka, nato ČASOVNIK + tiskanje), postavke v kompaktne
                      vrstice z ločenimi čipi (postaja / alergeni / opomba) in lastno vrstico
-                     dejanj. Čisto vizualno — logika (sortiranje, zastareli, dejanja) nedotaknjena. */
+                     dejanj. ISSUE #74 V-8: gostota (kompaktno/normalno) in velikost pisave
+                     (S/M/L/XL — kdsFont) iz nastavitev zaslona. */
                   <Card
                     key={o.id}
                     data-region="kds-ticket"
-                    /* v1.129.0 (Toast/Square): starost → BARVNI LEVI ROB listka (5′ jantorn /
-                       10′ rdeč). VRSTNI RED razredov je KLJUČEN: cn() (tailwind-merge)
+                    /* v1.129.0 (Toast/Square): starost → BARVNI LEVI ROB listka.
+                       ISSUE #74 V-3: rob sedaj po RAZREDU starosti (5 stopenj), ne prag 5/10.
+                       VRSTNI RED razredov je KLJUČEN: cn() (tailwind-merge)
                        odstrani stransko-specifičen border-l-{color}, če celovit
                        border-{color} pride ZA njim — najprej nevtralen border, nato leva. */
-                    className={`min-w-0 gap-2 py-3 sm:py-4 border-l-4 ${stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : ageMin >= 10 ? 'border-stone-200 border-l-red-500' : ageMin >= 5 ? 'border-stone-200 border-l-amber-500' : 'border-l-stone-200'}`}
+                    className={`${kdsDensityCls.card} border-l-4 ${stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : kdsAgeBorderCls(ageCls)}`}
                   >
                     <CardHeader data-region="kds-ticket-header" className="gap-2 px-4 pt-0 pb-0 sm:px-6">
                       <CardTitle className="text-base flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-                        <span className="font-bold truncate max-w-full min-w-0">{o.table?.name || orderTypeL(o.type)}</span>
+                        {/* ISSUE #74 V-8: nazivna vrstica sledi velikosti pisave (S=13 → XL=22 px) */}
+                        <span className={`font-bold truncate max-w-full min-w-0 ${kdsFont.title}`}>{o.table?.name || orderTypeL(o.type)}</span>
                         {/* Issue #71 audit-2: tip naročila je ZNAČKA ob naslovu (miza = identiteta),
                             ne surovi enum; podnaslov #num + ura brez sekund + osebe + natakar */}
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-600">{orderTypeL(o.type)}</span>
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-xs font-semibold text-stone-600">{orderTypeL(o.type)}</span>
                         {o.employee?.name && <span className="text-xs font-normal text-stone-400 min-w-0 shrink truncate" title={o.employee.name}>· {o.employee.name}</span>}
                         <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })} · {t('kds.guestsShort', { n: o.guests })}</span>
                         {/* PRIMARNI STATUS — v1.129.0 (Toast/Square): NEVTRALEN obrobec (stone)
@@ -2883,7 +3213,7 @@ function DashboardInner() {
                             {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
                           </span>
                         ) : (
-                          <span data-region="kds-ticket-timer" className={`text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border ${kdsAgeClass(ageMin)}`}>{t('kds.minutes', { m: ageMin })}</span>
+                          <span data-region="kds-ticket-timer" className={`${kdsFont.timer} font-extrabold tabular-nums px-2.5 py-1 rounded-full border ${kdsAgePillCls(ageCls)}`}>{t('kds.minutes', { m: ageMin })}</span>
                         )}
                         <span className="ml-auto flex gap-1.5 shrink-0">
                           <Button size="sm" variant="outline" className="gap-1 h-11 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
@@ -2895,16 +3225,16 @@ function DashboardInner() {
                         </span>
                       </div>
                     </CardHeader>
-                    <CardContent data-region="kds-ticket-items" className="space-y-1.5 px-4 pb-1 sm:px-6 sm:pb-2">
+                    <CardContent data-region="kds-ticket-items" className={kdsDensityCls.items}>
                       {stale && (
-                        <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">
+                        <p className="rounded-sm border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">
                           {t('kds.staleHint')}
                         </p>
                       )}
                       {/* Issue #71 audit-14: RDEČ PAS za resnične alergije — živilska varnost gostov.
                           Edini alergijski alarm, ki si zasluži rdečo, je potrjeno opozorilo. */}
                       {allergyItems.length > 0 && (
-                        <div data-region="kds-ticket-allergies" className="rounded border-l-4 border-red-600 bg-red-50 px-2.5 py-1.5" role="alert">
+                        <div data-region="kds-ticket-allergies" className="rounded-sm border-l-4 border-red-600 bg-red-50 px-2.5 py-1.5" role="alert">
                           <p className="text-xs font-extrabold uppercase tracking-wide text-red-800">⚠ {t('kds.allergyBand')}</p>
                           <ul className="mt-0.5 space-y-0.5">
                             {allergyItems.map((ait) => (
@@ -2913,13 +3243,18 @@ function DashboardInner() {
                           </ul>
                         </div>
                       )}
-                      {/* Issue #71 audit-14: manjkajoči alergenski podatki = EN sivi zbirnik na listeku
-                          (ne ponovljen rumen čip na vsaki postavki — vizualni šum, ki utiša pravi alarm) */}
+                      {/* ISSUE #74 V-10 (blocker): manjkajoči alergenski podatki so ZAKONSKO
+                          obvezen podatek (Uredba EU 1169/2011) — RDEČI PAS z ikono (Lightspeed:
+                          alergen ima svojo fiksno rdečo vejo), ne utišana siva mikroskupina,
+                          ki je bila najtišja stvar na zaslonu. Isti vizualni jezik kot
+                          potrjena alergijska opozorila (role=alert, border-l-4). */}
                       {unconfirmedCount > 0 && (
-                        <p data-region="kds-ticket-allergen-unconfirmed" className="flex items-center gap-1.5 px-1 text-xs text-stone-500">
-                          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-stone-300 text-[9px] font-bold text-stone-500" aria-hidden>?</span>
-                          {t('kds.unconfirmedAllergens', { n: unconfirmedCount, m: items.length })}
-                        </p>
+                        <div data-region="kds-ticket-allergen-unconfirmed" role="alert" className="rounded-sm border-l-4 border-red-600 bg-red-50 px-2.5 py-1.5">
+                          <p className="flex items-center gap-1.5 text-xs font-bold text-red-800">
+                            <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-red-300 bg-red-100 text-xs font-extrabold text-red-700" aria-hidden>?</span>
+                            {t('kds.unconfirmedAllergens', { n: unconfirmedCount, m: items.length })}
+                          </p>
+                        </div>
                       )}
                       {items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
@@ -2956,7 +3291,7 @@ function DashboardInner() {
                             {/* Issue #7 (P1, v1.104.0) → Issue #71 audit-14: izrecno alergensko
                                 opozorilo na postavki — RDEČ PAS (44 px vrstica, oster kontrast) */}
                             {it.allergenWarning && (
-                              <p className="rounded border-l-4 border-red-600 bg-red-50 px-2 py-1 text-xs font-bold text-red-800 break-words min-w-0" role="alert">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</p>
+                              <p className="rounded-sm border-l-4 border-red-600 bg-red-50 px-2 py-1 text-xs font-bold text-red-800 break-words min-w-0" role="alert">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</p>
                             )}
                             {/* C: dejanja — lastna vrstica; v1.129.0: cilji ≥ 44 px VEDNO
                                 (tudi na velikem zaslonu — KDS JE dotik, tudi na namizju;
@@ -3066,7 +3401,7 @@ function DashboardInner() {
                 <div data-region="kds-allday" className="sticky bottom-0 z-10 rounded-xl border border-amber-300 bg-amber-50/95 backdrop-blur px-3 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]" role="status" aria-label={t('kds.allDayTitle')}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <p className="text-xs font-bold uppercase tracking-wide text-amber-900 min-w-0 shrink-0">{t('kds.allDayTitle')}</p>
-                    <p className="text-[11px] font-medium text-amber-700/80 ml-auto shrink-0" aria-hidden>{rows.length}</p>
+                    <p className="text-xs font-medium text-amber-700/80 ml-auto shrink-0" aria-hidden>{rows.length}</p>
                   </div>
                   {/* Toast production view: ENA vrstica z horizontalnim drsenjem (nowrap) —
                       ovijanje čipov je na mobilnem naredilo 800px+ blok, višji od zaslona,
@@ -3100,7 +3435,7 @@ function DashboardInner() {
                     <EyeOff className="w-4 h-4 text-stone-500 shrink-0" aria-hidden />
                     <span className="text-sm font-semibold truncate">{t('kds.boardTitle')}</span>
                     {kdsSoldOut.length > 0 && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-bold border-amber-400 bg-amber-50 text-amber-900 shrink-0">{kdsSoldOut.length}</Badge>
+                      <Badge variant="outline" className="text-xs px-1.5 py-0 font-bold border-amber-400 bg-amber-50 text-amber-900 shrink-0">{kdsSoldOut.length}</Badge>
                     )}
                     <span className="ml-auto flex items-center gap-1 text-xs text-stone-500 shrink-0">
                       {open ? t('kds.boardOpenHint') : kdsSoldOut.length > 0 ? `${kdsSoldOut.length}` : t('kds.boardEmpty')}
@@ -3118,9 +3453,9 @@ function DashboardInner() {
                               <div className="min-w-0">
                                 <p className="text-sm font-medium truncate">
                                   {mi.name}
-                                  <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">{mi.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
+                                  <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0">{mi.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
                                 </p>
-                                <p className="text-[11px] text-stone-500 truncate">
+                                <p className="text-xs text-stone-500 truncate">
                                   {t('kds.substitutes')}: {kdsSubstitutesFor(mi).map((s) => s.name).join(' · ') || t('kds.noSubstitutes')}
                                 </p>
                               </div>
@@ -3141,12 +3476,12 @@ function DashboardInner() {
                               {kds86Candidates.map((mi) => (
                                 <div key={mi.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2.5 py-1.5">
                                   <span className="text-xs truncate min-w-0">{mi.name} · <b>{fmtEUR(mi.price)}</b></span>
-                                  <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] gap-1 text-stone-500 hover:text-red-700 shrink-0" title={t('kds.markUnavailable')} onClick={() => void kdsToggleAvailable(mi)}>
+                                  <Button size="sm" variant="ghost" className="h-8 px-2 text-xs gap-1 text-stone-500 hover:text-red-700 shrink-0" title={t('kds.markUnavailable')} onClick={() => void kdsToggleAvailable(mi)}>
                                     <EyeOff className="w-3 h-3" /> 86
                                   </Button>
                                 </div>
                               ))}
-                              {kds86Candidates.length === 0 && <p className="text-[11px] text-stone-400 px-1">{t('kds.boardNoHit')}</p>}
+                              {kds86Candidates.length === 0 && <p className="text-xs text-stone-400 px-1">{t('kds.boardNoHit')}</p>}
                             </div>
                           )}
                         </div>
@@ -3220,7 +3555,7 @@ function DashboardInner() {
                       className="shrink-0 min-h-11 inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
                     >
                       <span className="whitespace-nowrap">{g.cat.name}</span>
-                      <span className="text-[11px] font-normal text-stone-500 tabular-nums">{g.items.length}</span>
+                      <span className="text-xs font-normal text-stone-500 tabular-nums">{g.items.length}</span>
                     </a>
                   ))}
                 </div>
@@ -3244,14 +3579,14 @@ function DashboardInner() {
                         {/* Issue #7 (P1, v1.104.0): alergenski status + kode na kartici menija */}
                         <p className="mt-0.5 flex flex-wrap items-center gap-1">
                           {m.allergenStatus && (
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${
                               m.allergenStatus === 'confirmed' ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                                 : m.allergenStatus === 'review_required' ? 'border-amber-300 bg-amber-50 text-amber-800'
                                   : 'border-red-300 bg-red-50 text-red-800'
                             }`}>{t(`menu.allergenStatus.${m.allergenStatus}`)}</span>
                           )}
                           {(m.allergenCodes ?? []).length > 0 && (
-                            <span className="text-[10px] text-stone-500">{(m.allergenCodes ?? []).map(allergenLbl).slice(0, 4).join(', ')}{(m.allergenCodes ?? []).length > 4 ? ' …' : ''}</span>
+                            <span className="text-xs text-stone-500">{(m.allergenCodes ?? []).map(allergenLbl).slice(0, 4).join(', ')}{(m.allergenCodes ?? []).length > 4 ? ' …' : ''}</span>
                           )}
                         </p>
                       </div>
@@ -3276,8 +3611,10 @@ function DashboardInner() {
               {canRes && (
                 <div className="flex flex-wrap gap-2">
                   {/* Issue #71 audit-18: množični opomnik = neponovljivo javno dejanje —
-                      POTRDITVENO okno s številom prizadetih (samo vodja) NE neposredni klic */}
-                  <Button size="sm" variant="outline" className="gap-1" disabled={sending} onClick={() => setReminderConfirmOpen(true)}>
+                      POTRDITVENO okno s številom prizadetih (samo vodja) NE neposredni klic.
+                      ISSUE #74 V-24: gumb je ONEMOGOČEN, ko ni kandidatov (prej omogočen
+                      kljub 0 rezervacijam — 85 % praznega zaslona je bilo klikabilno). */}
+                  <Button size="sm" variant="outline" className="h-11 gap-1" disabled={sending || reminderCandidates.length === 0} onClick={() => setReminderConfirmOpen(true)}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
                   <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '' })}>
@@ -3330,14 +3667,21 @@ function DashboardInner() {
                 ['NO_SHOW', t('resv.stNoShow')],
                 ['CANCELLED', t('resv.stCancelled')],
               ] as [ReservationFilter, string][]).map(([key, label]) => (
-                <Button key={key} size="sm" variant="outline" className={`h-8 px-3 text-xs ${resFilter === key ? 'bg-stone-800 text-white border-stone-800 hover:bg-stone-800' : 'text-stone-600'}`} onClick={() => setResFilter(key)}>
+                <Button key={key} size="sm" variant="outline" className={`h-10 px-3 text-xs ${resFilter === key ? 'bg-emerald-700 text-white border-emerald-700 hover:bg-emerald-700' : 'text-stone-600'}`} onClick={() => setResFilter(key)}>
                   {label}
                 </Button>
               ))}
             </div>
             <Card>
               <CardContent className="pt-4">
-                {filteredRes.length === 0 && <p className="text-sm text-stone-500">{resFilter === 'UPCOMING' ? t('resv.empty') : t('resv.emptyGeneric')}</p>}
+                {/* ISSUE #74 V-24: prazno stanje ima poziv ZNOTRAJ kartice (ikona + CTA
+                    besedilo) — prej gola siva vrstica na 85 % praznem zaslonu */}
+                {filteredRes.length === 0 && (
+                  <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50/60 p-6 text-center">
+                    <CalendarClock className="h-10 w-10 text-stone-300" aria-hidden />
+                    <p className="max-w-sm text-sm text-stone-500">{resFilter === 'UPCOMING' ? t('resv.empty') : t('resv.emptyGeneric')}</p>
+                  </div>
+                )}
                 <div className="grid gap-2 sm:grid-cols-2">
                   {filteredRes.map((r) => (
                     <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
@@ -3345,8 +3689,8 @@ function DashboardInner() {
                         <p className="font-medium truncate">
                           {r.guestName} <span className="text-xs text-stone-400">· {r.guests} {t('orders.persons')}</span>
                           {/* Issue #13: vir rezervacije (spletna povezava = takoj prepoznavna) */}
-                          {r.source === 'website' && <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-[10px] bg-sky-50 text-sky-800 border-sky-200">🌐 {t('resv.srcWebsite')}</Badge>}
-                          {r.source === 'app' && <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-[10px] bg-stone-50 text-stone-600 border-stone-200">{t('resv.srcApp')}</Badge>}
+                          {r.source === 'website' && <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-xs bg-sky-50 text-sky-800 border-sky-200">🌐 {t('resv.srcWebsite')}</Badge>}
+                          {r.source === 'app' && <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-xs bg-stone-50 text-stone-600 border-stone-200">{t('resv.srcApp')}</Badge>}
                         </p>
                         <p className="text-xs text-stone-500">{new Date(r.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{r.phone ? ` · ${r.phone}` : ''}</p>
                         {r.note && <p className="text-xs text-stone-400 truncate">ℹ {r.note}</p>}
@@ -3359,18 +3703,18 @@ function DashboardInner() {
                             {r.reminderSent ? (
                               <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 gap-1"><Bell className="w-3 h-3" /> {t('resv.reminderSent')}</Badge>
                             ) : (
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" disabled={sending} onClick={() => void sendReservationReminder(r.id, r.guestName)} title={t('resv.reminderSend')}>
+                              <Button size="sm" variant="outline" className="h-10 px-2 text-xs gap-1" disabled={sending} onClick={() => void sendReservationReminder(r.id, r.guestName)} title={t('resv.reminderSend')}>
                                 <Bell className="w-3 h-3" /> {t('resv.reminderSend')}
                               </Button>
                             )}
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>{t('resv.seatedBtn')}</Button>
+                            <Button size="sm" variant="outline" className="h-10 px-2 text-xs" disabled={sending} onClick={() => setReservationStatus(r.id, 'SEATED')}>{t('resv.seatedBtn')}</Button>
                             {/* OPS-8 val 3 (v1.73.0): NO_SHOW on upcoming reservations (confirm-guarded) */}
                             {r.status === 'CONFIRMED' && (
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-rose-700 border-rose-200 hover:bg-rose-50" disabled={sending} onClick={() => { if (confirm(t('resv.noShowConfirm'))) void setReservationStatus(r.id, 'NO_SHOW') }} title={t('resv.stNoShow')}>
+                              <Button size="sm" variant="outline" className="h-10 px-2 text-xs text-rose-700 border-rose-200 hover:bg-rose-50" disabled={sending} onClick={() => { if (confirm(t('resv.noShowConfirm'))) void setReservationStatus(r.id, 'NO_SHOW') }} title={t('resv.stNoShow')}>
                                 {t('resv.stNoShow')}
                               </Button>
                             )}
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>{t('common.cancel')}</Button>
+                            <Button size="sm" variant="outline" className="h-10 px-2 text-xs text-amber-700 border-amber-200 hover:bg-amber-50" disabled={sending} onClick={() => setReservationStatus(r.id, 'CANCELLED')}>{t('common.cancel')}</Button>
                           </>
                         )}
                       </div>
@@ -3414,7 +3758,7 @@ function DashboardInner() {
                         <div className="min-w-0">
                           <p className="font-medium truncate">{r.invoiceNumber}{r.tableName ? ` · ${r.tableName}` : ''}</p>
                           <p className="text-xs text-stone-500">{new Date(r.createdAt).toLocaleString('sl-SI')} · {r.paymentMethod.toUpperCase()}{r.orderNumber ? ` · ${t('rcpt.orderShort', { n: r.orderNumber })}` : ''}</p>
-                          <p className="text-[11px] text-stone-400 font-mono truncate max-w-xs sm:max-w-md">EOR: {r.eor}</p>
+                          <p className="text-xs text-stone-400 font-mono truncate max-w-xs sm:max-w-md">EOR: {r.eor}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-bold">{fmtEUR(r.total)}</p>
@@ -3615,14 +3959,14 @@ function DashboardInner() {
                       <p className="font-medium truncate">{e.name}{!e.active && <span className="ml-1.5 text-xs text-red-600">{t('emp.inactiveSuffix')}</span>}</p>
                       <p className="text-xs text-stone-500 truncate">{e.email}</p>
                       {locList.find((l) => l.id === e.locationId)?.name ? (
-                        <p className="text-[11px] text-stone-400 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {locList.find((l) => l.id === e.locationId)?.name}</p>
+                        <p className="text-xs text-stone-400 flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {locList.find((l) => l.id === e.locationId)?.name}</p>
                       ) : (
                         /* ISSUE #72 E5/B2: brez lokacije je OPERATIVNA težava (prazni seznami,
                            prazna plošča) — rdeče vidna, ne tiho skrita */
-                        <p className="text-[11px] text-red-600 flex items-center gap-0.5 font-medium"><MapPin className="w-3 h-3" /> {t('emp.noLocation')}</p>
+                        <p className="text-xs text-red-600 flex items-center gap-0.5 font-medium"><MapPin className="w-3 h-3" /> {t('emp.noLocation')}</p>
                       )}
                       {(e.permissionOverrides?.length || 0) > 0 && (
-                        <p className="text-[11px] text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {t('emp.permsCount', { n: e.permissionOverrides.length })}</p>
+                        <p className="text-xs text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {t('emp.permsCount', { n: e.permissionOverrides.length })}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -3765,7 +4109,7 @@ function DashboardInner() {
                         <div className="min-w-0">
                           <p className="font-medium truncate">
                             {l.name}
-                            {!l.isActive && <Badge variant="outline" className="ml-1.5 text-[10px]">{t('dost.inactiveF')}</Badge>}
+                            {!l.isActive && <Badge variant="outline" className="ml-1.5 text-xs">{t('dost.inactiveF')}</Badge>}
                           </p>
                           <p className="text-xs text-stone-500 truncate">
                             {st ? t('loc.meta', { tables: st.tables, employees: st.employees, orders: st.orders }) : [l.city, l.country].filter(Boolean).join(' · ') || l.code}
@@ -3818,7 +4162,7 @@ function DashboardInner() {
                         <Badge className={w.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{w.isActive ? t('integ.activeF') : t('integ.offF')}</Badge>
                       </div>
                       <p className="text-xs text-stone-500 truncate">{w.url}</p>
-                      <p className="text-[11px] text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : t('integ.noEvents')}{w.failureCount > 0 ? t('integ.errorsCount', { n: w.failureCount }) : ''}{w.lastTriggered ? t('integ.lastTriggered', { when: new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : ''}</p>
+                      <p className="text-xs text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : t('integ.noEvents')}{w.failureCount > 0 ? t('integ.errorsCount', { n: w.failureCount }) : ''}{w.lastTriggered ? t('integ.lastTriggered', { when: new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : ''}</p>
                     </div>
                   ))}
                 </CardContent>
@@ -3926,9 +4270,9 @@ function DashboardInner() {
                          že v košarici izpred 86). Nadomestki = ista kategorija (g.items). */
                       <div key={m.id} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${m.available ? 'border-stone-200' : 'border-stone-200 bg-stone-100 opacity-70'}`}>
                         <div className="min-w-0">
-                          <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-[10px] px-1.5 py-0">86</Badge>}</p>
+                          <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}</p>
                           {!m.available && (
-                            <p className="text-[11px] text-stone-500 truncate">
+                            <p className="text-xs text-stone-500 truncate">
                               {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
                             </p>
                           )}
@@ -3948,7 +4292,7 @@ function DashboardInner() {
           <DialogFooter className="items-center gap-2 sm:gap-0">
             <span className="mr-auto font-bold">{t('orders.total', { amount: fmtEUR(cartTotal) })}</span>
             <Button variant="outline" onClick={() => setNewOrderTable(null)}>{t('common.cancel')}</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || cartTotal === 0} onClick={createOrder}>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:hover:bg-stone-200" disabled={sending || cartTotal === 0} onClick={createOrder}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('orders.submit')}
             </Button>
           </DialogFooter>
@@ -3969,7 +4313,7 @@ function DashboardInner() {
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase text-stone-400">{t('sheet.items')}</p>
                 {orderSheet?.items.some((it) => it.status === 'PENDING' && !it.voided) && (
-                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
+                  <Button size="sm" variant="outline" className="h-10 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
                     disabled={sending} onClick={() => void fireSheetAll()}>
                     <Flame className="w-3 h-3" /> {t('sheet.fire')}
                   </Button>
@@ -3981,7 +4325,7 @@ function DashboardInner() {
                     <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2 py-1.5">
                       <span className="min-w-0 truncate">{it.qty}× {it.name}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{it.status}</Badge>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">{it.status}</Badge>
                         {hasPerm('orders.void') && orderSheet.paymentStatus !== 'paid' && (
                           <Button size="icon" variant="outline" className="h-6 w-6 text-red-700 hover:bg-red-50 hover:text-red-800" disabled={sending} onClick={() => void openVoidDialog(it)} title={t('sheet.void')} aria-label={t('sheet.void')}>
                             <Ban className="w-3 h-3" />
@@ -3990,7 +4334,7 @@ function DashboardInner() {
                         {hasPerm('orders.create') && it.status === 'PENDING' && (
                           <Select value={it.courseId || 'none'}
                             onValueChange={(v) => void assignCourse(it.id, v)}>
-                            <SelectTrigger className="h-6 w-[104px] text-[11px] gap-1"><SelectValue placeholder={t('sheet.noCourse')} /></SelectTrigger>
+                            <SelectTrigger className="h-6 w-[104px] text-xs gap-1"><SelectValue placeholder={t('sheet.noCourse')} /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">{t('sheet.noCourse')}</SelectItem>
                               {sheetCourses.filter((c) => c.status === 'pending').map((c) => (
@@ -4011,7 +4355,7 @@ function DashboardInner() {
                     <div key={c.id} className="flex items-center gap-1 rounded-full border border-stone-200 pl-2 pr-1 py-0.5 text-xs">
                       <span className={c.status === 'fired' ? 'text-emerald-700' : ''}>{c.courseNumber}. {c.name} {c.status === 'fired' ? '🔥' : ''}</span>
                       {c.status === 'pending' && hasPerm('orders.create') && (
-                        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[11px] gap-0.5" disabled={sending} onClick={() => void fireCourse(c.id)}>
+                        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-xs gap-0.5" disabled={sending} onClick={() => void fireCourse(c.id)}>
                           <Flame className="w-3 h-3" /> {t('sheet.fireCourse')}
                         </Button>
                       )}
@@ -4028,16 +4372,16 @@ function DashboardInner() {
                 <div className="space-y-3 pr-2">
                   {orderDialogMenu.map((g) => (
                     <div key={g.cat.id}>
-                      <p className="text-[11px] font-semibold uppercase text-stone-400 mb-1">{g.cat.name}</p>
+                      <p className="text-xs font-semibold uppercase text-stone-400 mb-1">{g.cat.name}</p>
                       <div className="space-y-1">
                         {g.items.map((m) => (
                           /* P0-3 (v1.83.0): prej tiho skrito (filter available) — natakar ni vedel,
                              DA artikel obstaja in je razprodan; zdaj sivi + 86 + nadomestki. */
                           <div key={m.id} className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${m.available ? 'border-stone-100' : 'border-stone-100 bg-stone-100 opacity-70'}`}>
                             <div className="min-w-0">
-                              <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-[10px] px-1.5 py-0">86</Badge>}</p>
+                              <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}</p>
                               {!m.available && (
-                                <p className="text-[11px] text-stone-500 truncate">
+                                <p className="text-xs text-stone-500 truncate">
                                   {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
                                 </p>
                               )}
@@ -4244,7 +4588,7 @@ function DashboardInner() {
                 <div className="rounded-xl border border-stone-200 p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase text-stone-400">{t('payment.splitTitle')}</p>
-                    <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => { const nx = !splitOpen; setSplitOpen(nx); if (nx && payingOrder && !checksData) void refreshChecks(payingOrder.id).catch(() => undefined) }}>
+                    <Button size="sm" variant="outline" className="h-10 gap-1 text-xs" onClick={() => { const nx = !splitOpen; setSplitOpen(nx); if (nx && payingOrder && !checksData) void refreshChecks(payingOrder.id).catch(() => undefined) }}>
                       <Split className="w-3 h-3" /> {splitOpen ? t('common.close') : t('payment.splitManage')}
                     </Button>
                   </div>
@@ -4774,7 +5118,7 @@ function DashboardInner() {
                           aria-label={`${label}${fromRole ? ` — ${t('emp.permFromRole')}` : ''}`}
                         />
                         <span className="min-w-0 flex-1 truncate">{label}</span>
-                        {fromRole && <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide text-stone-400">{t('emp.permFromRoleTag')}</span>}
+                        {fromRole && <span className="ml-auto shrink-0 text-xs font-semibold uppercase tracking-wide text-stone-400">{t('emp.permFromRoleTag')}</span>}
                       </label>
                       )
                     })}
@@ -5004,7 +5348,9 @@ function DashboardInner() {
       />
 
       <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {t('dash.footer', { v: APP_VERSION })}
+        {/* ISSUE #74 V-16: noga brez verzije/besed rekonstrukcija/simulacija —
+            tehnične podrobnosti živijo v Nastavitve → Sistem */}
+        {t('dash.footer')}
       </footer>
     </main>
   )

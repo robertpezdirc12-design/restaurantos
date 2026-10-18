@@ -184,7 +184,7 @@ function TablicaInner() {
         <Utensils className="w-5 h-5 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-bold leading-tight truncate">{t('tlb.title')}</p>
-          <p className="text-[11px] opacity-90 truncate">{me?.name} · {t('tlb.sub')}</p>
+          <p className="text-xs opacity-90 truncate">{me?.name} · {t('tlb.sub')}</p>
         </div>
         <LanguageToggle />
         <button aria-label={t('tlb.handheld')} onClick={() => router.push('/handheld')} className="p-2 rounded-lg hover:bg-emerald-800"><Smartphone className="w-5 h-5" /></button>
@@ -203,9 +203,9 @@ function TablicaInner() {
               className={`w-full rounded-2xl p-4 text-left shadow min-h-24 transition ${TAB_COLORS[tb.status] ?? 'bg-stone-500 text-white'}`}
             >
               <p className="font-bold text-lg leading-tight">{tb.name}</p>
-              <p className="text-[11px] opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
+              <p className="text-xs opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
               {tb.activeOrder && <p className="text-sm font-bold mt-1">{fmtEUR(tb.activeOrder.total)}</p>}
-              <p className="text-[11px] mt-1 opacity-80">
+              <p className="text-xs mt-1 opacity-80">
                 {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
                     enaka preslikava kot handheld (src/lib/table-status) */}
                 {t(tableStatusLabelKey(tb.status))}

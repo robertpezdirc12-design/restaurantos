@@ -154,7 +154,9 @@ export function SalesByHourCard() {
   const totalOrders = data ? data.totals.reduce((a, b) => a + b.orders, 0) : 0
   const totalRevenue = data ? data.totals.reduce((a, b) => a + b.revenue, 0) : 0
   const hasData = !!data && totalOrders > 0
-  const chartData = data?.totals.filter((b) => b.orders > 0).map((b) => ({ ura: `${String(b.hour).padStart(2, '0')}`, prodaja: b.revenue })) || []
+  /* ISSUE #74 V-20: x-os je ZVEZNA (vseh 24 ur, tudi brez prometa) — prej filter
+     orders>0 je pustil os samo na vrednostih s podatki (14, 17, 18, 21). */
+  const chartData = data?.totals.map((b) => ({ ura: `${String(b.hour).padStart(2, '0')}`, prodaja: b.revenue })) || []
 
   return (
     <Card ref={ref}>
@@ -171,7 +173,7 @@ export function SalesByHourCard() {
               </SelectContent>
             </Select>
             {hasData && (
-              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+              <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
                 {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('sbh.csv')}
               </Button>
             )}
@@ -201,7 +203,7 @@ export function SalesByHourCard() {
                 <div className="min-w-[520px] space-y-0.5">
                   {data.days.map((d) => (
                     <div key={d.date} className="flex items-center gap-1.5">
-                      <span className="w-12 shrink-0 text-[11px] text-stone-500">{shortDay(d.date)}</span>
+                      <span className="w-12 shrink-0 text-xs text-stone-500">{shortDay(d.date)}</span>
                       <div className="grid flex-1 gap-0.5" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                         {d.dayBuckets.map((b) => (
                           <div
@@ -214,7 +216,7 @@ export function SalesByHourCard() {
                     </div>
                   ))}
                   <div className="flex items-center gap-1.5">
-                    <span className="w-12 shrink-0 text-[11px] font-medium text-stone-500">{t('sbh.allDays')}</span>
+                    <span className="w-12 shrink-0 text-xs font-medium text-stone-500">{t('sbh.allDays')}</span>
                     <div className="grid flex-1 gap-0.5" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
                       {data.totals.map((b) => (
                         <div
@@ -225,9 +227,21 @@ export function SalesByHourCard() {
                       ))}
                     </div>
                   </div>
+                  {/* ISSUE #74 V-20: oznake ur pod mrežo (vsako 3. uro) — prej je bila
+                      mreža 22/24 prazna brez readable časovne osi. */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-12 shrink-0" aria-hidden />
+                    <div className="grid flex-1 gap-0.5" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }} aria-hidden>
+                      {data.totals.map((b) => (
+                        <span key={b.hour} className="text-center text-xs text-stone-400 tabular-nums">
+                          {b.hour % 3 === 0 ? String(b.hour).padStart(2, '0') : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-stone-500">
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-stone-500">
                 <span>{t('sbh.low')}</span>
                 {SBH_HEAT_CLASSES.map((c, i) => <span key={i} className={`h-2.5 w-4 rounded-sm ${c}`} />)}
                 <span>{t('sbh.high')}</span>
@@ -244,7 +258,7 @@ export function SalesByHourCard() {
                       <XAxis dataKey="ura" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
                       <YAxis tick={{ fontSize: 10 }} width={54} tickFormatter={(v: number) => fmtEUR(v)} />
                       <RTooltip formatter={(v) => fmtEUR(Number(v))} />
-                      <Bar dataKey="prodaja" fill="#ea580c" radius={[3, 3, 0, 0]} name={t('sbh.revenue')} />
+                      <Bar dataKey="prodaja" fill="#047857" radius={[3, 3, 0, 0]} name={t('sbh.revenue')} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -328,7 +342,7 @@ export function LaborCostCard() {
               </SelectContent>
             </Select>
             {hasData && (
-              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+              <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
                 {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('labor.csv')}
               </Button>
             )}
@@ -599,7 +613,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
               </SelectContent>
             </Select>
             {data && (
-              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+              <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
                 {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('lcov.csv')}
               </Button>
             )}
@@ -663,7 +677,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                                 : code === 'mixed-currencies' ? dq.mixedCurrencies
                                   : -1
                     return (
-                      <span key={code} className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] text-amber-800">
+                      <span key={code} className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-800">
                         {t(`lcov.dq.${code}`)}{cnt >= 0 ? ` (${cnt})` : ''}
                       </span>
                     )
@@ -674,26 +688,26 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
             {tt && (
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                 <div className="rounded-lg border border-stone-200 p-2.5">
-                  <p className="text-[11px] text-stone-500">{t('lcov.kpiLabor')}</p>
-                  <span className={`mt-0.5 inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${lcovBandCls(tt.laborPct)}`}>
-                    {tt.laborPct === null ? '—' : `${tt.laborPct.toFixed(2)} %`}
+                  <p className="text-xs text-stone-500">{t('lcov.kpiLabor')}</p>
+                  <span className={`mt-0.5 inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${tt.laborPct === null ? 'bg-stone-100 text-stone-500' : lcovBandCls(tt.laborPct)}`} title={tt.laborPct === null ? t('emptystat.notComputedHint') : undefined}>
+                    {tt.laborPct === null ? t('emptystat.noData') : `${tt.laborPct.toFixed(2)} %`}
                   </span>
-                  <p className="mt-0.5 text-[10px] text-stone-400">{t('lcov.kpiLaborHint')}</p>
+                  <p className="mt-0.5 text-xs text-stone-400">{t('lcov.kpiLaborHint')}</p>
                 </div>
-                <div className="rounded-lg border border-stone-200 p-2.5">
-                  <p className="text-[11px] text-stone-500">{t('lcov.kpiSph')}</p>
-                  <p className="text-sm font-semibold">{tt.sphCents === null ? '—' : fmtEUR(tt.sphCents / 100)}</p>
-                  <p className="text-[10px] text-stone-400">{t('lcov.kpiSphHint')}</p>
+                <div className="rounded-lg border border-stone-200 p-2.5" title={tt.sphCents === null ? t('emptystat.notComputedHint') : undefined}>
+                  <p className="text-xs text-stone-500">{t('lcov.kpiSph')}</p>
+                  <p className="text-sm font-semibold">{tt.sphCents === null ? t('emptystat.noData') : fmtEUR(tt.sphCents / 100)}</p>
+                  <p className="text-xs text-stone-400">{t('lcov.kpiSphHint')}</p>
                 </div>
-                <div className="rounded-lg border border-stone-200 p-2.5">
-                  <p className="text-[11px] text-stone-500">{t('lcov.kpiCpo')}</p>
-                  <p className="text-sm font-semibold">{tt.costPerOrderCents === null ? '—' : fmtEUR(tt.costPerOrderCents / 100)}</p>
-                  <p className="text-[10px] text-stone-400">{t('lcov.kpiCpoHint')}</p>
+                <div className="rounded-lg border border-stone-200 p-2.5" title={tt.costPerOrderCents === null ? t('emptystat.notComputedHint') : undefined}>
+                  <p className="text-xs text-stone-500">{t('lcov.kpiCpo')}</p>
+                  <p className="text-sm font-semibold">{tt.costPerOrderCents === null ? t('emptystat.noData') : fmtEUR(tt.costPerOrderCents / 100)}</p>
+                  <p className="text-xs text-stone-400">{t('lcov.kpiCpoHint')}</p>
                 </div>
                 <div className="rounded-lg border border-stone-200 p-2.5" title={t('lcov.varianceNote')}>
-                  <p className="text-[11px] text-stone-500">{t('lcov.kpiVariance')}</p>
+                  <p className="text-xs text-stone-500">{t('lcov.kpiVariance')}</p>
                   <p className={`text-sm font-semibold ${lcovVarCls(tt.varianceMinutes)}`}>{lcovVarLabel(tt.varianceMinutes)}</p>
-                  <p className="text-[10px] text-stone-400">{t('lcov.kpiVarianceHint')}</p>
+                  <p className="text-xs text-stone-400">{t('lcov.kpiVarianceHint')}</p>
                 </div>
               </div>
             )}
@@ -811,7 +825,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
               ) : (
                 <div className="max-h-80 overflow-auto rounded-lg border border-stone-200">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                    <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
                       <tr>
                         <th className="px-2.5 py-1.5 font-medium">{t('lcov.colHour')}</th>
                         <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colHourNet')}</th>
@@ -850,7 +864,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                 ) : (
                   <div className="max-h-64 overflow-auto rounded-lg border border-stone-200">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                      <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
                         <tr>
                           <th className="px-2.5 py-1.5 font-medium">{t('lcov.fcDate')}</th>
                           <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.fcExpected')}</th>
@@ -871,14 +885,14 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                                 <>
                                   <span className="font-medium">{fmtEUR(f.expectedNetSalesCents / 100)}</span>
                                   {f.minCents !== null && f.maxCents !== null && (
-                                    <span className="block text-[10px] text-stone-400">{t('lcov.fcRange')} {fmtEUR(f.minCents / 100)}–{fmtEUR(f.maxCents / 100)}</span>
+                                    <span className="block text-xs text-stone-400">{t('lcov.fcRange')} {fmtEUR(f.minCents / 100)}–{fmtEUR(f.maxCents / 100)}</span>
                                   )}
                                 </>
                               )}
                             </td>
                             <td className="px-2.5 py-1.5 text-right whitespace-nowrap">
                               {f.sampleCount}{' '}
-                              <span className={`ml-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${f.confidence === 'ok' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                              <span className={`ml-0.5 inline-block rounded-full px-1.5 py-0.5 text-xs font-medium ${f.confidence === 'ok' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
                                 {f.confidence === 'ok' ? t('lcov.fcConfOk') : t('lcov.fcConfLow')}
                               </span>
                             </td>
@@ -898,7 +912,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                   <>
                     <div className="max-h-64 overflow-auto rounded-lg border border-stone-200 hidden md:block">
                       <table className="w-full min-w-[480px] text-xs">
-                        <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                        <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
                           <tr>
                             <th className="px-2.5 py-1.5 font-medium">{t('lcov.fcDate')}</th>
                             <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.covShifts')}</th>
@@ -918,7 +932,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                               <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{durationLabel(c.plannedMinutes)} · {fmtEUR(c.plannedCostCents / 100)}</td>
                               <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{c.expectedNetSalesCents === null ? '—' : fmtEUR(c.expectedNetSalesCents / 100)}</td>
                               <td className="px-2.5 py-1.5 text-right">
-                                <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-[11px] font-medium ${lcovBandCls(c.expectedPct)}`} title={c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}>
+                                <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(c.expectedPct)}`} title={c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}>
                                   {c.flag === null ? t('lcov.covNoVerdict') : `${c.expectedPct === null ? '—' : `${c.expectedPct.toFixed(2)} %`} · ${t(`lcov.flag.${c.flag}`)}`}
                                 </span>
                               </td>
@@ -938,7 +952,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                         <div key={c.date} className="rounded-lg border border-stone-200 p-2.5 space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium whitespace-nowrap">{shortDay(c.date)} <span className="text-xs font-normal text-stone-500">{t(ohDay(c.dow))}</span></span>
-                            <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-[11px] font-medium ${lcovBandCls(c.expectedPct)}`}>
+                            <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(c.expectedPct)}`}>
                               {c.expectedPct === null ? '—' : `${c.expectedPct.toFixed(2)} %`} · {c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}
                             </span>
                           </div>
@@ -964,7 +978,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                 <p className="mb-1.5 text-xs font-medium text-stone-500">{t('lcov.rolesTitle')}</p>
                 <div className="max-h-64 overflow-auto rounded-lg border border-stone-200">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-stone-50 text-left text-[11px] uppercase tracking-wide text-stone-500">
+                    <thead className="sticky top-0 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
                       <tr>
                         <th className="px-2.5 py-1.5 font-medium">{t('lcov.colRole')}</th>
                         <th className="px-2.5 py-1.5 font-medium text-right">{t('lcov.colPlannedMin')}</th>
@@ -989,7 +1003,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
               </div>
             )}
             {data.roles.length === 0 && <p className="text-xs text-stone-500">{t('lcov.rolesEmpty')}</p>}
-            <div className="space-y-0.5 border-t border-stone-100 pt-2 text-[11px] text-stone-400">
+            <div className="space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-400">
               <p>{t('lcov.footMethod')} · {t('lcov.footSamples', { n: data.parameters.sampleDays, m: data.parameters.closedDays })}</p>
               <p>
                 {t('lcov.footCounts', { orders: data.parameters.counts.orders, entries: data.parameters.counts.entries, shifts: data.parameters.counts.shifts })}{' '}
@@ -1434,18 +1448,18 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
                           <span className="flex items-center gap-1.5 flex-wrap">
                             <span title={t('bat.colExpiry')}>{dstr(b.expiryDate)}</span>
                             {expiryBadge(b)}
-                            {b.alertDate && <span className="text-[10px] text-amber-700" title={t('bat.alertDate')}>⚠ {dstr(b.alertDate)}</span>}
-                            {b.removalDate && <span className="text-[10px] text-orange-700" title={t('bat.removalDate')}>⇥ {dstr(b.removalDate)}</span>}
+                            {b.alertDate && <span className="text-xs text-amber-700" title={t('bat.alertDate')}>⚠ {dstr(b.alertDate)}</span>}
+                            {b.removalDate && <span className="text-xs text-orange-700" title={t('bat.removalDate')}>⇥ {dstr(b.removalDate)}</span>}
                           </span>
                         </td>
                         <td className="p-2 text-right font-semibold">{b.quantityRemaining} {b.itemUnit}</td>
                         <td className="p-2 text-stone-600 max-w-32 truncate text-xs" title={b.supplierName}>{b.supplierName || '—'}</td>
                         <td className="p-2 text-right whitespace-nowrap">
-                          <button className="text-xs px-1.5 py-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => void openTrace(b)} title={t('bat.trace')}>{t('bat.trace')}</button>
+                          <button className="text-xs px-1.5 py-1 rounded-sm border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => void openTrace(b)} title={t('bat.trace')}>{t('bat.trace')}</button>
                           {/* issue #24 — issue/print a label for this open batch (auth only; blocked lots get 409) */}
                           <button
                             type="button"
-                            className="inline-flex items-center justify-center min-h-8 min-w-8 ml-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700"
+                            className="inline-flex items-center justify-center min-h-8 min-w-8 ml-1 rounded-sm border border-stone-200 hover:border-stone-400 text-stone-700"
                             onClick={() => setLabelFor(b)}
                             title={t('lbl.button')}
                             aria-label={`${t('lbl.button')} ${b.itemName} ${b.lotNumber}`}
@@ -1454,15 +1468,15 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
                           </button>
                           {canManage && (
                             <>
-                              <button className="text-xs px-1.5 py-1 ml-1 rounded border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => openAction('dates', b)} title={t('bat.dates')}>{t('bat.dates')}</button>
+                              <button className="text-xs px-1.5 py-1 ml-1 rounded-sm border border-stone-200 hover:border-stone-400 text-stone-700" onClick={() => openAction('dates', b)} title={t('bat.dates')}>{t('bat.dates')}</button>
                               {b.bucket !== 'recalled' && b.bucket !== 'quarantined' && (
                                 <>
-                                  <button className="text-xs px-1.5 py-1 ml-1 rounded border border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => openAction('hold', b)} title={t('bat.hold')}>{t('bat.hold')}</button>
-                                  <button className="text-xs px-1.5 py-1 ml-1 rounded border border-rose-300 text-rose-800 hover:bg-rose-50" onClick={() => openAction('recall', b)} title={t('bat.recall')}>{t('bat.recall')}</button>
+                                  <button className="text-xs px-1.5 py-1 ml-1 rounded-sm border border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => openAction('hold', b)} title={t('bat.hold')}>{t('bat.hold')}</button>
+                                  <button className="text-xs px-1.5 py-1 ml-1 rounded-sm border border-rose-300 text-rose-800 hover:bg-rose-50" onClick={() => openAction('recall', b)} title={t('bat.recall')}>{t('bat.recall')}</button>
                                 </>
                               )}
                               {b.bucket === 'quarantined' && (
-                                <button className="text-xs px-1.5 py-1 ml-1 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50" onClick={() => openAction('release', b)} title={t('bat.release')}>{t('bat.release')}</button>
+                                <button className="text-xs px-1.5 py-1 ml-1 rounded-sm border border-emerald-300 text-emerald-800 hover:bg-emerald-50" onClick={() => openAction('release', b)} title={t('bat.release')}>{t('bat.release')}</button>
                               )}
                             </>
                           )}
@@ -1473,7 +1487,7 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
                 </table>
               </div>
             )}
-            {rows !== null && <p className="text-[11px] text-stone-400">{t('bat.fefoNote')}</p>}
+            {rows !== null && <p className="text-xs text-stone-400">{t('bat.fefoNote')}</p>}
           </CardContent>
         </CollapsibleContent>
       </Card>
@@ -1616,7 +1630,7 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
                 </div>
               )}
 
-              <p className="text-[11px] text-stone-500 rounded-md bg-stone-50 p-2">{trace.uncertainty.prepIndirect}</p>
+              <p className="text-xs text-stone-500 rounded-md bg-stone-50 p-2">{trace.uncertainty.prepIndirect}</p>
 
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => trace && void traceCsv({ id: trace.batch.id, lotNumber: trace.batch.lotNumber } as BatchRowT)}>

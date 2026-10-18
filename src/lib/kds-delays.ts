@@ -52,6 +52,131 @@ export function isStaleKdsTicket(ageMin: number | null | undefined): boolean {
   return ageMin > KDS_STALE_THRESHOLD_MIN
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Issue #74 V-3 (Stopnja 2, v1.135.0) — PET razredov starosti KDS listka.
+ *
+ * Merjena napaka v produkciji 1.132.0: enak rdeči pill za 67 min in za
+ * 423 min listka — barva ni bila stroj stanj. Referenca (Lightspeed KDS):
+ * Nov (siva) → V pripravi (modra) → Pripravljen (zelena), zamuda = oranžni
+ * utrip — dokumentirana, nastavljiva semantika.
+ *
+ * Razredi (barve so del aplikacijskega statusnega jezika, ne okras):
+ *  - 'fresh'  siva     — sveže (<< warn, privzeto < 10 min)
+ *  - 'ok'     emerald  — v roku (warn..urgent, privzeto 10–15 min)
+ *  - 'warn'   amber    — blizu praga (urgent..late−5)
+ *  - 'urgent' oranžni  — zadnjih KDS_AGE_URGENT_WINDOW_MIN (5) min pred pragom,
+ *                        ANIMIRAN utrip (animate-pulse) — zadnji klic pred zamudo
+ *  - 'late'   rdeča    — zapadlo (≥ prag; prag = max(nastavitev, postajni cilj))
+ *
+ * Prag (late) je po abscisi ISTI kot obstoječa isLatePrep/delayThresholdForTarget
+ * logika (per postaja: max(10, ceil(cilj × 1.25))) — uporabniška nastavitev
+ * (localStorage `ro_kds_age_thresholds`, popover v KDS glavi) lahko prag samo
+ * DVIGNE nad postajni cilj, nikoli ga ne spusti pod zakonski servisni prag
+ * (novo sveže meso v kuhinji ne more takoj utripati rdeče).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+export type KdsAgeClassT = 'fresh' | 'ok' | 'warn' | 'urgent' | 'late'
+
+/** Nastavljive prage (minute) — shranjene v localStorage `ro_kds_age_thresholds`. */
+export interface KdsAgeThresholds {
+  /** starost, od katere listek NI več "svež" (siva → emerald). */
+  warn: number
+  /** starost, od katere je listek "blizu praga" (emerald → amber). */
+  urgent: number
+  /** prag zamude (amber/utrip → rdeča). */
+  late: number
+}
+
+/** Privzete prage: sveže <10 · v roku 10–15 · blizu 15–20 · utrip 20–25 · zapadlo ≥25. */
+export const KDS_AGE_DEFAULTS: KdsAgeThresholds = { warn: 10, urgent: 15, late: 25 }
+
+/** Okno utripanja (oranžna) pred pragom — Lightspeed "delay blink" vzorec. */
+export const KDS_AGE_URGENT_WINDOW_MIN = 5
+
+/** localStorage ključ za uporabniško nastavljene prage (KDS glava ⚙ popover). */
+export const KDS_AGE_THRESHOLD_LS_KEY = 'ro_kds_age_thresholds'
+
+/**
+ * Varna pretvorba neznane vrednosti (localStorage / JSON) v veljavne prage.
+ * Neveljavni/negativni/nesortirani vnosi → privzete vrednosti (fail-closed,
+ * enak vzorec kot ostale KDS odločitve: brez podatka nikoli alarm).
+ */
+export function normalizeKdsAgeThresholds(raw: unknown): KdsAgeThresholds {
+  const r = raw as Partial<Record<keyof KdsAgeThresholds, unknown>> | null
+  const num = (v: unknown): number | null => {
+    const x = Number(v)
+    return Number.isFinite(x) && x >= 1 && x <= 600 ? Math.round(x) : null
+  }
+  const warn = num(r?.warn)
+  const urgent = num(r?.urgent)
+  const late = num(r?.late)
+  // monotonost: warn < urgent < late — sicer zavržemo (uporabnik je vpisal šala)
+  if (warn === null || urgent === null || late === null || !(warn < urgent && urgent < late)) {
+    return { ...KDS_AGE_DEFAULTS }
+  }
+  return { warn, urgent, late }
+}
+
+/**
+ * Učinkoviti prag zamude: nastavitev uporabnika ali postajni cilj — kar je
+ * VIŠJE (postajni cilj lahko prag le dvigne; npr. žar s ciljem 30 min NE
+ * pokaže rdeče pri 26 min, ker njegov servisni prag je 38 min).
+ */
+export function kdsLateThreshold(targetMin?: number | null, th: KdsAgeThresholds = KDS_AGE_DEFAULTS): number {
+  return Math.max(th.late, delayThresholdForTarget(targetMin))
+}
+
+/**
+ * Razred starosti listka/postavke → 'fresh' | 'ok' | 'warn' | 'urgent' | 'late'.
+ * Ne-številčna/negativna starost → 'fresh' (brez podatka = ni alarm).
+ */
+export function kdsAgeClass(
+  minutes: number,
+  targetMin?: number | null,
+  th: KdsAgeThresholds = KDS_AGE_DEFAULTS,
+): KdsAgeClassT {
+  if (!Number.isFinite(minutes) || minutes < 0) return 'fresh'
+  if (minutes < th.warn) return 'fresh'
+  if (minutes < th.urgent) return 'ok'
+  const late = kdsLateThreshold(targetMin, th)
+  if (minutes >= late) return 'late'
+  if (minutes >= late - KDS_AGE_URGENT_WINDOW_MIN) return 'urgent'
+  return 'warn'
+}
+
+/** CSS razredi za STAROSTNI PILL (chip z minutami) po razredu. */
+export function kdsAgePillCls(cls: KdsAgeClassT): string {
+  switch (cls) {
+    case 'fresh':
+      return 'bg-stone-100 text-stone-600 border-stone-300'
+    case 'ok':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    case 'warn':
+      return 'bg-amber-100 text-amber-700 border-amber-200'
+    case 'urgent':
+      // oranžni utrip — zadnjih 5 min pred pragom (Lightspeed delay blink)
+      return 'bg-orange-100 text-orange-800 border-orange-300 animate-pulse'
+    default:
+      return 'bg-red-100 text-red-700 border-red-200'
+  }
+}
+
+/** CSS razredi za BARVNI LEVI ROB listka po razredu (border-{color} PRED border-l-{color}). */
+export function kdsAgeBorderCls(cls: KdsAgeClassT): string {
+  switch (cls) {
+    case 'fresh':
+      return 'border-stone-200 border-l-stone-200'
+    case 'ok':
+      return 'border-stone-200 border-l-emerald-500'
+    case 'warn':
+      return 'border-stone-200 border-l-amber-500'
+    case 'urgent':
+      return 'border-stone-200 border-l-orange-500'
+    default:
+      return 'border-stone-200 border-l-red-500'
+  }
+}
+
 /**
  * Issue #70 §2: starost zastarelega listka v CELIH urah (prikaz "225 h" namesto
  * "13.496 min"). Za ne-številčne vrednosti vrne 0 (varna privzeta vrednost).

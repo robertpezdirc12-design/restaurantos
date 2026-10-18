@@ -67,8 +67,10 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
   it('glava listka: ČASOVNIK dominanten (tabular-nums, ekstra bold) na fiksni legi', () => {
     const d = dash()
     // svež in zastarel primer (oba izrišta časovnik v isti dominantni obliki)
-    expect(d).toContain('data-region="kds-ticket-timer" className={`text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border')
-    expect(d).toMatch(/data-region="kds-ticket-timer"\s*\n\s*className="text-sm font-extrabold tabular-nums px-2\.5 py-1 rounded-full border bg-stone-100/)
+    // ISSUE #74 V-8 (v1.135.0): velikost pisave časovnika sledi nastavitvi S/M/L/XL
+    // (kdsFont.timer — privzeta M = text-sm); font-extrabold + tabular-nums ostaneta.
+    expect(d).toContain('data-region="kds-ticket-timer" className={`${kdsFont.timer} font-extrabold tabular-nums px-2.5 py-1 rounded-full border')
+    expect(d).toContain("M: { title: 'text-[15px]', item: 'text-[15px]', timer: 'text-sm' },")
   })
 
   it('glava listka: identiteta + # + čas dovolita ovijanje (flex-wrap) — brez rezanja imena', () => {
@@ -116,12 +118,13 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     // vrstni red: aktivni prvi, zastareli konec — logika NEDOTAKNJENA
     expect(d).toContain('.sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))')
     expect(d).toContain("stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50'")
-    // v1.129.0 (Toast/Square): starost → BARVNI LEVI ROB listka (5′ jantorn / 10′ rdeč;
-    // Toast glava listka, Square timer) — semantika zamende ločena od statičnega statusa.
-    // VRSTNI RED: celovit border-{color} MORA priti PRED border-l-{color} — cn()
-    // (tailwind-merge) sicer odstrani stransko-specifičen barvni razred.
-    expect(d).toContain("ageMin >= 10 ? 'border-stone-200 border-l-red-500'")
-    expect(d).toContain("ageMin >= 5 ? 'border-stone-200 border-l-amber-500'")
+    // v1.129.0 (Toast/Square): starost → BARVNI LEVI ROB listka — Toast glava
+    // listka, Square timer — semantika zamende ločena od statičnega statusa.
+    // ISSUE #74 V-3 (v1.135.0): pet stopenj iz ENOTNEGA vira (kds-delays.ts) —
+    // kdsAgeBorderCls(ageCls); VRSTNI RED razredov (celovit PRED stranskim)
+    // varuje tests/issue74-visual.test.ts na sami funkciji.
+    expect(d).toContain('kdsAgeBorderCls(ageCls)')
+    expect(d).toContain('kdsAgePillCls(ageCls)')
     expect(d).toContain("{t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}")
     expect(d).toContain("{t('kds.staleHint')}")
     // prag ostaja 8 h (480 min) — vizualna sprememba ne sme premakniti semantike

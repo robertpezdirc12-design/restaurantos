@@ -202,9 +202,9 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
               <Card key={key} className={`min-h-32 ${isToday ? 'border-emerald-300' : ''}`}>
                 <CardHeader className="pb-1 pt-3"><CardTitle className={`text-xs font-semibold ${isToday ? 'text-emerald-700' : 'text-stone-500'}`}>{dayName(d)}</CardTitle></CardHeader>
                 <CardContent className="space-y-1.5 pb-3">
-                  {dayShifts.length === 0 && <p className="text-[11px] text-stone-400">—</p>}
+                  {dayShifts.length === 0 && <p className="text-xs text-stone-400">—</p>}
                   {dayShifts.map((s) => (
-                    <div key={s.id} className={`rounded-lg border px-2 py-1.5 text-[11px] ${SHIFT_STATUS_BADGE[s.status] || SHIFT_STATUS_BADGE.scheduled}`}>
+                    <div key={s.id} className={`rounded-lg border px-2 py-1.5 text-xs ${SHIFT_STATUS_BADGE[s.status] || SHIFT_STATUS_BADGE.scheduled}`}>
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-semibold truncate">{s.employeeName}</span>
                         {canManage && (

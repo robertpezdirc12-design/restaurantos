@@ -306,7 +306,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
           {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CalendarDays className="mr-2 h-5 w-5" />}
           {t('resv.public.cta')}
         </Button>
-        <p className="text-[11px] text-stone-400 text-center mt-1.5">{t('resv.public.termsNote')}</p>
+        <p className="text-xs text-stone-400 text-center mt-1.5">{t('resv.public.termsNote')}</p>
       </div>
     </Shell>
   )

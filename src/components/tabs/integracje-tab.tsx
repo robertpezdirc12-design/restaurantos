@@ -209,7 +209,7 @@ export function IntegracijeTab({ canManage }: { canManage: boolean }) {
                   {' · '}{t('integ.intervalSec', { n: d.syncInterval })}
                 </p>
                 {d.maskedFields && d.maskedFields.length > 0 && (
-                  <p className="text-[11px] text-stone-400">{t('integ.maskedNote')}: {d.maskedFields.join(', ')}</p>
+                  <p className="text-xs text-stone-400">{t('integ.maskedNote')}: {d.maskedFields.join(', ')}</p>
                 )}
                 {canManage && (
                   <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -271,7 +271,7 @@ export function IntegracijeTab({ canManage }: { canManage: boolean }) {
             <div className="space-y-1.5">
               <Label htmlFor="ig-config">{t('integ.config')}</Label>
               <Textarea id="ig-config" className="font-mono text-xs" rows={5} value={form.config} onChange={(e) => setF({ config: e.target.value })} />
-              <p className="text-[11px] text-stone-400">{t('integ.configHint')}</p>
+              <p className="text-xs text-stone-400">{t('integ.configHint')}</p>
             </div>
             {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
           </div>

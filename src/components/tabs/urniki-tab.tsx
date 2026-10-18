@@ -982,7 +982,7 @@ export function DiscountsTab({ canManage }: { canManage: boolean }) {
             {cats.length > 0 && (
               <div className="space-y-1.5">
                 <Label>{t('disc.cats')}</Label>
-                <p className="text-[11px] text-stone-400">{t('disc.catsHint')}</p>
+                <p className="text-xs text-stone-400">{t('disc.catsHint')}</p>
                 <ScrollArea className="max-h-32 rounded-lg border border-stone-200 p-2">
                   <div className="flex flex-wrap gap-1.5">
                     {cats.map((c) => (

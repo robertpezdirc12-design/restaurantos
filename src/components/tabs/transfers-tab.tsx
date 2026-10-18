@@ -601,7 +601,7 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
                   <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <p className="text-xs text-stone-500">{t('trf.requested')}</p>
                     <p className="text-lg font-bold">{fmtQty(sumRequested(tr))}</p>
-                    <p className="text-[11px] text-stone-400">{tr.itemCount} × {t('trf.lines')}</p>
+                    <p className="text-xs text-stone-400">{tr.itemCount} × {t('trf.lines')}</p>
                   </div>
                   <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <p className="text-xs text-stone-500">{t('trf.sumDispatched')}</p>
@@ -611,7 +611,7 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
                     <p className="text-xs text-stone-500">{t('trf.sumReceived')}</p>
                     <p className={`text-lg font-bold ${tr.status === 'PARTIAL' ? 'text-orange-700' : ''}`}>{fmtQty(sumQty(tr, 'receivedQty'))}</p>
                     {tr.variance && tr.variance.damagedQty > 0.0005 && (
-                      <p className="text-[11px] text-amber-700">{t('trf.damaged')}: {fmtQty(tr.variance.damagedQty)}</p>
+                      <p className="text-xs text-amber-700">{t('trf.damaged')}: {fmtQty(tr.variance.damagedQty)}</p>
                     )}
                   </div>
                   <div className={`rounded-xl border p-3 ${
@@ -626,7 +626,7 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
                       {tr.variance ? fmtQty(r3(tr.variance.missingQty + tr.variance.damagedQty)) : '—'}
                     </p>
                     {tr.variance && (tr.variance.missingQty > 0.0005 || tr.variance.damagedQty > 0.0005) && (
-                      <p className="text-[11px] text-amber-700">{t('trf.missing')} {fmtQty(tr.variance.missingQty)} · {t('trf.damaged')} {fmtQty(tr.variance.damagedQty)}</p>
+                      <p className="text-xs text-amber-700">{t('trf.missing')} {fmtQty(tr.variance.missingQty)} · {t('trf.damaged')} {fmtQty(tr.variance.damagedQty)}</p>
                     )}
                   </div>
                 </div>
@@ -705,8 +705,8 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
                             <tr key={l.id} className="border-t border-stone-100">
                               <td className="p-2 font-medium">
                                 {l.itemName}
-                                {l.unit ? <span className="block text-[11px] text-stone-400 font-normal">{l.unit}</span> : null}
-                                {l.note ? <span className="block text-[11px] text-stone-400 font-normal truncate max-w-56" title={l.note}>{l.note}</span> : null}
+                                {l.unit ? <span className="block text-xs text-stone-400 font-normal">{l.unit}</span> : null}
+                                {l.note ? <span className="block text-xs text-stone-400 font-normal truncate max-w-56" title={l.note}>{l.note}</span> : null}
                               </td>
                               <td className="p-2 text-right whitespace-nowrap">{fmtQty(l.requestedQty)}</td>
                               <td className="p-2 text-right whitespace-nowrap">{l.dispatchedQty > 0.0005 ? fmtQty(l.dispatchedQty) : '—'}</td>
@@ -718,8 +718,8 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
                               <td className="p-2 text-right whitespace-nowrap">{l.unitCost != null ? fmtEUR(l.unitCost) : '—'}</td>
                               <td className="p-2">
                                 <div className="flex flex-wrap gap-1">
-                                  {l.lotNumber && <Badge variant="outline" className="font-mono text-[11px]">{l.lotNumber}</Badge>}
-                                  {l.expiryDate && <Badge variant="outline" className="text-[11px]">{t('trf.expiry')}: {fmtDay(l.expiryDate)}</Badge>}
+                                  {l.lotNumber && <Badge variant="outline" className="font-mono text-xs">{l.lotNumber}</Badge>}
+                                  {l.expiryDate && <Badge variant="outline" className="text-xs">{t('trf.expiry')}: {fmtDay(l.expiryDate)}</Badge>}
                                   {!l.lotNumber && !l.expiryDate && <span className="text-stone-400">—</span>}
                                 </div>
                               </td>
@@ -1014,8 +1014,8 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
                             )}
                             {batch && (
                               <div className="flex flex-wrap gap-1">
-                                {batch.lotNumber && <Badge variant="outline" className="font-mono text-[11px]">{batch.lotNumber}</Badge>}
-                                {batch.expiryDate && <Badge variant="outline" className="text-[11px]">{t('trf.expiry')}: {fmtDay(batch.expiryDate)}</Badge>}
+                                {batch.lotNumber && <Badge variant="outline" className="font-mono text-xs">{batch.lotNumber}</Badge>}
+                                {batch.expiryDate && <Badge variant="outline" className="text-xs">{t('trf.expiry')}: {fmtDay(batch.expiryDate)}</Badge>}
                               </div>
                             )}
                           </div>

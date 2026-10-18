@@ -92,12 +92,14 @@ describe('v1.129.0 D — dashboard API: yesterdayRevenue za Δ%', () => {
 
 describe('v1.129.0 E — KDS vizualni popravek (tailwind-merge past)', () => {
   const page = read('src/app/dashboard/page.tsx')
-  test('starostni LEVI rob: celovit border-{color} PRED border-l-{color} (cn/tw-merge)', () => {
-    // tailwind-merge odstrani border-l-red-500, če pride border-stone-200 ZA njim
-    // (celovita barva obroba preglasi stransko) — vrstni red je semantično kritičen.
-    expect(page).toContain("ageMin >= 10 ? 'border-stone-200 border-l-red-500'")
-    expect(page).toContain("ageMin >= 5 ? 'border-stone-200 border-l-amber-500'")
+  test('starostni LEVI rob: enoten vir kdsAgeBorderCls (issue #74 V-3 pet stopenj) + stale pas', () => {
+    // tailwind-merge odstrani border-l-{color}, če pride celovit border-{color} ZA njim.
+    // v1.135.0 (issue #74 V-3): starostni razred izračuna enoten vir kdsAgeClass/
+    // kdsAgeBorderCls v src/lib/kds-delays.ts (prej dve kopiji logike z pragoma 5/10);
+    // vrstni red razredov varuje tests/issue74-visual.test.ts (regex na kdsAgeBorderCls).
+    expect(page).toContain('kdsAgeBorderCls(ageCls)')
     expect(page).toContain("stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50'")
+    expect(page).toContain('kdsAgePillCls(ageCls)')
   })
   test('all-day vrstica je LEPLJIVA na dnu zaslona (Toast production view)', () => {
     expect(page).toContain('data-region="kds-allday"')

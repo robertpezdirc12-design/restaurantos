@@ -196,7 +196,7 @@ function DisplayInner() {
     return (
       <div data-screen="customer-display-setup" className="min-h-screen flex items-center justify-center bg-stone-950 p-6">
         <GuestLanguageToggle variant="dark" className="fixed top-4 right-4" />
-        <div className="w-full max-w-md rounded-3xl bg-stone-900 border border-stone-800 p-8 text-stone-100">
+        <div className="w-full max-w-md rounded-xl bg-stone-900 border border-stone-800 p-8 text-stone-100">
           <div className="flex items-center gap-3 mb-4">
             <Monitor className="h-8 w-8" />
             <h1 className="text-2xl font-bold">{t('guest.display.title')}</h1>
@@ -230,7 +230,7 @@ function DisplayInner() {
     return (
       <div data-screen="customer-display-setup" className="min-h-screen flex items-center justify-center bg-stone-950 p-6">
         <GuestLanguageToggle variant="dark" className="fixed top-4 right-4" />
-        <div className="w-full max-w-md rounded-3xl bg-stone-900 border border-stone-800 p-8 text-stone-100 text-center">
+        <div className="w-full max-w-md rounded-xl bg-stone-900 border border-stone-800 p-8 text-stone-100 text-center">
           <Link2 className="h-10 w-10 mx-auto text-stone-500" />
           <h1 className="text-xl font-bold mt-3">{t('guest.display.connectPos')}</h1>
           <p className="text-sm text-stone-400 mt-2">{t('guest.display.pairHint')}</p>

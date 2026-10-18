@@ -245,7 +245,7 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <Building2 className="h-4 w-4 text-emerald-700" />
                   <CardTitle className="text-base">{o.name}</CardTitle>
-                  <Badge variant="outline" className="font-mono text-[11px]">{o.slug}</Badge>
+                  <Badge variant="outline" className="font-mono text-xs">{o.slug}</Badge>
                   {!o.isActive && <Badge variant="secondary">{t('ent.inactive')}</Badge>}
                   {canWriteOrg(o.id) && (
                     <Button size="sm" variant="outline" className="ml-auto gap-1" onClick={() => openDialog('brand', { organizationId: o.id })}>
@@ -283,7 +283,7 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
                             </Button>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
                           <span>{t('ent.locCount', { n: p.locations.length })}</span>
                           <span>{t('ent.rcCount', { n: p.revenueCenters.length, m: p.workstations.length })}</span>
                           {p.locations.map((l) => (
@@ -312,7 +312,7 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
               <div className="space-y-1.5">
                 <Label htmlFor="ent-name">{t('ent.orgName')}</Label>
                 <Input id="ent-name" value={form.name} onChange={(e) => setF({ name: e.target.value })} />
-                <p className="text-[11px] text-stone-400">{t('ent.slugAuto')}</p>
+                <p className="text-xs text-stone-400">{t('ent.slugAuto')}</p>
               </div>
             )}
             {kind === 'brand' && (

@@ -223,7 +223,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <p className="text-xs text-stone-500">{t('dost.itemsCount', { n: o.items.length })} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span></p>
-                    <p className="rounded border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('dost.noInfo')}</p>
+                    <p className="rounded-sm border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('dost.noInfo')}</p>
                   </CardContent>
                 </Card>
               )
@@ -248,7 +248,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                     <p className="text-xs font-medium text-stone-700">🚚 {t('dost.eta', { time: fmtEta(d.estimatedTime) })}</p>
                   )}
                   {o.status === 'PAID' && <Badge className="bg-emerald-600 text-white">{t('status.PAID')}</Badge>}
-                  {o.fursEor && <p className="text-[11px] text-stone-400">FURS EOR: {o.fursEor}</p>}
+                  {o.fursEor && <p className="text-xs text-stone-400">FURS EOR: {o.fursEor}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     {next && next.to !== 'ASSIGNED' && (
                       <Button size="sm" disabled={busy === o.id} onClick={() => transition(o, next.to)} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t(next.label)}</Button>
@@ -334,7 +334,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
           <CardContent>
             {platformIntegrations.length === 0 && (
               <p className="text-sm text-stone-500">
-                {t('dost.noIntegrationA')} <code className="text-xs bg-stone-100 px-1 rounded">glovo</code>{t('dost.or')} <code className="text-xs bg-stone-100 px-1 rounded ml-1">wolt</code> {t('dost.noIntegrationB')} <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/glovo</code>, <code className="text-xs bg-stone-100 px-1 rounded">/api/delivery/webhook/wolt</code>.
+                {t('dost.noIntegrationA')} <code className="text-xs bg-stone-100 px-1 rounded-sm">glovo</code>{t('dost.or')} <code className="text-xs bg-stone-100 px-1 rounded-sm ml-1">wolt</code> {t('dost.noIntegrationB')} <code className="text-xs bg-stone-100 px-1 rounded-sm">/api/delivery/webhook/glovo</code>, <code className="text-xs bg-stone-100 px-1 rounded-sm">/api/delivery/webhook/wolt</code>.
               </p>
             )}
             <div className="space-y-2">
@@ -351,7 +351,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                       : (
                         <div className="mt-1.5 space-y-1">
                           {errors.slice(0, 5).map((l) => (
-                            <p key={l.id} className="text-xs text-red-700 bg-red-50 rounded px-2 py-1 truncate">
+                            <p key={l.id} className="text-xs text-red-700 bg-red-50 rounded-sm px-2 py-1 truncate">
                               {l.statusCode} · {l.action}: {l.errorMessage || t('dost.error')}
                             </p>
                           ))}
@@ -709,7 +709,7 @@ export function AccountingExportCard() {
                 <Row label={t('acct.xzWaste')} value={fmtEUR(xzPreview.wasteTotal)} />
               </div>
               <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzPayments')}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzPayments')}</p>
                 {xzPreview.paymentsByMethod.length === 0 ? (
                   <p className="text-xs text-stone-400">{t('common.none')}</p>
                 ) : (
@@ -717,13 +717,13 @@ export function AccountingExportCard() {
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzGuests')}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzGuests')}</p>
                 <Row label={t('acct.xzCovers')} value={String(xzPreview.covers)} />
                 <Row label={t('acct.xzAvgCheck')} value={fmtEUR(xzPreview.avgCheck)} />
                 <Row label={t('acct.xzAvgParty')} value={xzPreview.avgPartySize.toLocaleString('sl-SI', { minimumFractionDigits: 2 })} />
               </div>
               <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
                   {t('acct.xzCompare')} ({xzPreview.comparison.prevFrom} – {xzPreview.comparison.prevTo})
                 </p>
                 <Row label={t('acct.xzPrevNet')} value={fmtEUR(xzPreview.comparison.prevNetSales)} />
@@ -803,12 +803,12 @@ export function GlJournalCard() {
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <p className="font-medium text-sm">{e.date} · {e.entryNo}</p>
                       {!e.persisted && (
-                        <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">{t('gl.previewBadge')}</Badge>
+                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">{t('gl.previewBadge')}</Badge>
                       )}
                     </div>
                     <p className="text-xs text-stone-500 mb-2">{e.memo}</p>
                     <div className="space-y-0.5">
-                      <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 text-[10px] uppercase tracking-wide text-stone-400 font-medium">
+                      <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 text-xs uppercase tracking-wide text-stone-400 font-medium">
                         <span>{t('gl.account')}</span>
                         <span className="text-right">{t('gl.debit')}</span>
                         <span className="text-right">{t('gl.credit')}</span>

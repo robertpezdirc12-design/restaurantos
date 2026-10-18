@@ -303,7 +303,7 @@ export function PrepStationsCard() {
                           <Input id={`ps-edit-order-${st.id}`} type="number" inputMode="numeric" min={0} max={999} value={edit.order} onChange={(e) => setEdit((c) => ({ ...c, order: e.target.value }))} className="h-8 text-sm" />
                         </div>
                       </div>
-                      <p className="text-[11px] text-stone-500">{t('kds.cfg.typeHint')}</p>
+                      <p className="text-xs text-stone-500">{t('kds.cfg.typeHint')}</p>
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" className="h-9 bg-emerald-700 hover:bg-emerald-800" disabled={rowBusy} onClick={() => void saveEdit(st.id)}>
                           {rowBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('kds.cfg.save')}
@@ -317,13 +317,13 @@ export function PrepStationsCard() {
                     <>
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <p className="text-sm font-medium truncate min-w-0">{st.name}</p>
-                        <Badge variant="outline" className="shrink-0 text-[10px]">{st.type}</Badge>
+                        <Badge variant="outline" className="shrink-0 text-xs">{st.type}</Badge>
                         {st.isExpo && (
                           <Badge variant="outline" className="gap-1 shrink-0 border-emerald-300 bg-emerald-50 text-emerald-800">
                             <Ship className="w-3 h-3" aria-hidden /> {t('kds.cfg.expo')}
                           </Badge>
                         )}
-                        <Badge variant="outline" className="shrink-0 text-[10px] text-stone-500">
+                        <Badge variant="outline" className="shrink-0 text-xs text-stone-500">
                           {t('kds.cfg.inUse', { n: st.menuItemCount })}
                         </Badge>
                         <span className="ml-auto flex gap-1 shrink-0">
@@ -408,7 +408,7 @@ export function PrepStationsCard() {
             <Checkbox id="ps-new-expo" checked={form.expo} onCheckedChange={(v) => setForm((c) => ({ ...c, expo: v === true }))} />
             <span>{t('kds.cfg.expo')}</span>
           </label>
-          <p className="text-[11px] text-stone-500">{t('kds.cfg.typeHint')} · {t('kds.cfg.expHint')}</p>
+          <p className="text-xs text-stone-500">{t('kds.cfg.typeHint')} · {t('kds.cfg.expHint')}</p>
           <Button size="sm" className="h-9 gap-1 bg-emerald-700 hover:bg-emerald-800" disabled={creating} onClick={() => void create()}>
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             {t('kds.cfg.add')}
@@ -461,7 +461,7 @@ export function PrepStationsCard() {
                           )}
                         </div>
                         <div className="space-y-1">
-                          <Label htmlFor={`ps-route-${mi.id}`} className="text-[11px]">{t('kds.cfg.primaryStation')}</Label>
+                          <Label htmlFor={`ps-route-${mi.id}`} className="text-xs">{t('kds.cfg.primaryStation')}</Label>
                           <Select value={draft.prep} onValueChange={(v) => setPrimary(mi.id, v)}>
                             <SelectTrigger id={`ps-route-${mi.id}`} className="h-8 text-xs">
                               <SelectValue />
@@ -475,7 +475,7 @@ export function PrepStationsCard() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[11px] text-stone-500">{t('kds.cfg.additional')}</p>
+                          <p className="text-xs text-stone-500">{t('kds.cfg.additional')}</p>
                           <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('kds.cfg.additional')}>
                             {stations
                               .filter((s) => s.id !== draft.prep)

@@ -30,6 +30,7 @@ import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { enqueueOp, flushQueue, isNetworkError, newOperationId, subscribeQueue } from '@/lib/offline-queue'
 import { processTerminalPayment } from '@/lib/devices/terminal'
 import { tableStatusLabelKey } from '@/lib/table-status'
+import { categoryImageForCategory } from '@/lib/category-images'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { ManagerCallButton } from '@/components/manager-call-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -392,7 +393,7 @@ function HandheldInner() {
         <Smartphone className="w-5 h-5 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-bold leading-tight truncate">{t('hh.title')}</p>
-          <p className="text-[11px] opacity-90 truncate">{me?.name} · {t('hh.sub')}</p>
+          <p className="text-xs opacity-90 truncate">{me?.name} · {t('hh.sub')}</p>
         </div>
         <LanguageToggle />
         {/* Issue #21 (v1.111.0) — klic vodje (kontekst izbrane mize, če je) */}
@@ -429,15 +430,15 @@ function HandheldInner() {
                   className={`relative w-full rounded-2xl p-4 text-left shadow min-h-24 transition ${TAB_COLORS[tb.status] ?? 'bg-stone-500 text-white'}`}
                 >
                   <p className="font-bold text-lg leading-tight">{tb.name}</p>
-                  <p className="text-[11px] opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
+                  <p className="text-xs opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
                   {tb.activeOrder && <p className="text-sm font-bold mt-1">{fmtEUR(tb.activeOrder.total)}</p>}
-                  <p className="text-[11px] mt-1 opacity-80">
+                  <p className="text-xs mt-1 opacity-80">
                     {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
                         prej je handheld za OCCUPIED brez activeOrder pokazal "Na voljo" (neskladje z dashboardom) */}
                     {t(tableStatusLabelKey(tb.status))}
                   </p>
                   {pend > 0 && (
-                    <span className="absolute top-2 right-2 rounded-full bg-white/95 text-amber-700 text-[10px] font-bold px-2 py-0.5 border border-amber-300">
+                    <span className="absolute top-2 right-2 rounded-full bg-white/95 text-amber-700 text-xs font-bold px-2 py-0.5 border border-amber-300">
                       {t('hh.unfired', { n: pend })}
                     </span>
                   )}
@@ -460,7 +461,7 @@ function HandheldInner() {
             <button aria-label={t('hh.backTables')} onClick={backToTables} className="p-2 rounded-lg hover:bg-stone-100 min-h-11 min-w-11 flex items-center justify-center"><ChevronLeft className="w-6 h-6" /></button>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-base leading-tight truncate">{openOrder ? t('hh.orderMeta', { n: openOrder.orderNumber ?? '—' }) : t('hh.newOrderFor', { name: selTable.name })}</p>
-              <p className="text-[11px] text-stone-500 truncate">{selTable.name} · {selTable.zone} · {t('tables.seats', { n: selTable.seats })}</p>
+              <p className="text-xs text-stone-500 truncate">{selTable.name} · {selTable.zone} · {t('tables.seats', { n: selTable.seats })}</p>
             </div>
             {openOrder && <Badge className="bg-amber-600 shrink-0">{fmtEUR(openOrder.total)}</Badge>}
           </div>
@@ -477,7 +478,7 @@ function HandheldInner() {
                       {it.note ? <span className="text-stone-400"> ({it.note})</span> : null}
                     </span>
                     <span className="text-stone-500 shrink-0 text-xs">{fmtEUR(it.unitPrice * it.qty)}</span>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${ITEM_STATUS_BADGE[it.status] ?? ITEM_STATUS_BADGE.PENDING}`}>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${ITEM_STATUS_BADGE[it.status] ?? ITEM_STATUS_BADGE.PENDING}`}>
                       {['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(it.status) ? t(`status.${it.status}`) : it.status}
                     </span>
                   </div>
@@ -498,17 +499,24 @@ function HandheldInner() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               {items.map((mi) => (
+                /* ISSUE #74 V-7: FOTOGRAFIJA na ploščici (enak vzorec kot hitra prodaja
+                   v dashboardu) — prej bele kartice; slika 4:3 iz kategorije artikla. */
                 <button
                   key={mi.id}
                   disabled={!mi.available}
                   onClick={() => inc(mi.id)}
-                  className={`rounded-xl border p-3 text-left min-h-16 transition ${mi.available ? 'border-stone-200 bg-white active:border-emerald-600 active:shadow' : 'border-stone-200 bg-stone-100'}`}
+                  className={`group overflow-hidden rounded-xl border text-left min-h-16 transition ${mi.available ? 'bg-white active:border-emerald-600 active:shadow' : 'border-stone-200 bg-stone-100'}`}
                 >
-                  <p className={`text-sm font-medium leading-tight ${mi.available ? '' : 'line-through text-stone-400'}`}>{mi.name}</p>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className={`text-xs ${mi.available ? 'text-stone-500' : 'text-stone-400'}`}>{fmtEUR(mi.price)}</p>
-                    {!mi.available && <Badge className="bg-stone-500 text-[10px] leading-none">{t('hh.soldOut')}</Badge>}
-                  </div>
+                  <span className="relative block aspect-[4/3] w-full overflow-hidden bg-stone-100" aria-hidden="true">
+                    <img src={categoryImageForCategory(categories.find((c) => c.id === mi.categoryId)?.name)} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover" />
+                  </span>
+                  <span className="block p-2.5 pb-2">
+                    <p className={`text-sm font-medium leading-tight ${mi.available ? '' : 'line-through text-stone-400'}`}>{mi.name}</p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className={`text-xs ${mi.available ? 'text-stone-500' : 'text-stone-400'}`}>{fmtEUR(mi.price)}</p>
+                      {!mi.available && <Badge className="bg-stone-500 text-xs leading-none">{t('hh.soldOut')}</Badge>}
+                    </div>
+                  </span>
                 </button>
               ))}
             </div>
@@ -598,7 +606,7 @@ function HandheldInner() {
               </button>
             )}
             {openOrder && pendingCount === 0 && activeItems.length > 0 && (
-              <p className="text-[11px] text-stone-400 text-center">{t('hh.noPending')}</p>
+              <p className="text-xs text-stone-400 text-center">{t('hh.noPending')}</p>
             )}
           </div>
         </div>
@@ -611,7 +619,7 @@ function HandheldInner() {
             <button aria-label={t('hh.backOrder')} onClick={() => setView('order')} className="p-2 rounded-lg hover:bg-stone-100 min-h-11 min-w-11 flex items-center justify-center"><ChevronLeft className="w-6 h-6" /></button>
             <div className="flex-1">
               <p className="font-bold text-base leading-tight">{t('hh.bill')} · {t('hh.orderMeta', { n: openOrder.orderNumber ?? '—' })}</p>
-              <p className="text-[11px] text-stone-500 truncate">{selTable?.name}</p>
+              <p className="text-xs text-stone-500 truncate">{selTable?.name}</p>
             </div>
           </div>
 
@@ -677,7 +685,7 @@ function HandheldInner() {
                 <div className="space-y-2 bg-white rounded-xl border border-stone-200 p-3">
                   <div className="flex items-center gap-1.5">
                     <Users className="w-4 h-4 text-stone-400 shrink-0" aria-hidden />
-                    <p className="text-[11px] font-semibold text-stone-500 flex-1">{t('hh.plinkSplit')}</p>
+                    <p className="text-xs font-semibold text-stone-500 flex-1">{t('hh.plinkSplit')}</p>
                     <div className="flex gap-1">
                       {[1, 2, 3, 4, 5].map((n) => (
                         <button
@@ -723,9 +731,9 @@ function HandheldInner() {
                               {pl.amount != null && <span className="text-emerald-700"> · {fmtEUR(pl.amount)}</span>}
                             </p>
                           ) : null}
-                          <p className="text-[10px] text-stone-500 break-all select-all leading-tight">{pl.url}</p>
+                          <p className="text-xs text-stone-500 break-all select-all leading-tight">{pl.url}</p>
                           {pl.sms && (
-                            <p className={`text-[11px] font-semibold ${pl.sms.sent ? 'text-emerald-700' : 'text-amber-700'}`}>
+                            <p className={`text-xs font-semibold ${pl.sms.sent ? 'text-emerald-700' : 'text-amber-700'}`}>
                               {pl.sms.sent ? t('hh.plinkSent') : `${t('hh.plinkSendFail')} — ${pl.sms.detail}`}
                             </p>
                           )}
@@ -782,7 +790,7 @@ function HandheldInner() {
             >
               {paying ? <><Loader2 className="w-5 h-5 animate-spin" /> {t('hh.paying')}</> : `${t('hh.pay')} ${fmtEUR(payTotal)}`}
             </button>
-            {!online && <p className="text-[11px] text-amber-700 text-center font-semibold">{t('hh.payNeedsNet')}</p>}
+            {!online && <p className="text-xs text-amber-700 text-center font-semibold">{t('hh.payNeedsNet')}</p>}
           </div>
         </div>
       )}
@@ -796,7 +804,7 @@ function HandheldInner() {
             <p className="text-3xl font-extrabold">{fmtEUR(paidInfo.total)}</p>
             {paidInfo.tip > 0 && <p className="text-sm text-stone-500">{t('hh.tip')}: {fmtEUR(paidInfo.tip)}</p>}
             {paidInfo.invoiceNumber && <p className="text-sm text-stone-600">{t('hh.receipt', { n: paidInfo.invoiceNumber })}</p>}
-            {paidInfo.eor && <p className="text-[10px] text-stone-400 font-mono break-all max-w-xs">{t('hh.eor', { code: paidInfo.eor })}</p>}
+            {paidInfo.eor && <p className="text-xs text-stone-400 font-mono break-all max-w-xs">{t('hh.eor', { code: paidInfo.eor })}</p>}
             <p className="text-xs text-stone-500 pt-2">{t('hh.tableDirty')}</p>
           </div>
           <div className="shrink-0 border-t border-stone-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
