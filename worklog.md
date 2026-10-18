@@ -4110,3 +4110,30 @@ Work Log:
 Stage Summary:
 - #75: sklop 0 dokumentiran (komentar), varovalka T živa (226 rut × metoda, javni register 15 vnosov), 5.1 tri ravni izvedene, 5.2/5.3 zaklenjeni
 - Odprto za naslednji korak: #74 (vizualna presoja, 25 najdb) in #73 (7 UX najdb) — več izdaj
+
+---
+Task ID: v1.137.0-session
+Agent: glavni agent (Z.ai)
+Task: nadaljevanje issue #73 (odloženi sklopi) — 2. prioriteta audit-15 (podvojena prikazna imena v hitri prodaji) po v1.136.0 (1. prioriteta audit-19+26).
+
+Work Log:
+- Prebrano stanje: #73 edini odprti issue; v1.136.0 (9201101) pokriva 1. prioriteto; preostanek: audit-15 → audit-10/11 → audit-22/33
+- ANALIZA PRODUKCIJSKIH PODATKOV (agent-browser, brez pisanja): 436 ploščic v »Vse kategorije«; 17 golih imen prilagodb (»S piščancem«, »Z gobami« — Testenine/Pizze); 3 podvojena imena ČEZ kategorije z različnimi cenami (Bolognese 10,90/12,50, Napoli 9,90/11,50, Ocvrte bučke 4,90/8,50); UI za ustvarjanje artiklov ne obstaja → vnosna varovalka spada v API
+- IMPLEMENTACIJA audit-15:
+  - src/lib/menu-dup.ts (NOVA): normItemName (trim+collapse+lowercase), findDuplicateDisplayName (excludeId za PATCH lastnega imena), dupItemNameMessage (dokaz kolizije z imenom+ceno, vejica)
+  - POST /api/menus: 409 na normalizirano podvojeno ime V ISTI kategoriji (po validaciji kategorije, pred ustvarjanjem)
+  - PATCH /api/menus/[id]: isti varovalki (select razširjen z categoryId; excludeId = sama); isto ime v drugi kategoriji dovoljeno po zasnovi
+  - dashboard prodaja: saleMixed (ALL ali iskanje) → overline s kategorijo na ploščici (jed·različica·velikost; aria-label s prefiksom; aria-hidden na overline) + iskanje po ŽETONIH (every token v ime+kategorija — »pizze bolognese« kljub ločilom) + košara: dvoumna imena (count>1 čez kategorije, useMemo saleAmbiguous) dobijo kontekst
+- E2E LOKALNO (dev :3007, svež e2e.db + seed): privzeta kategorija = brez overline (prav); Vse kategorije = 12/12 z overline + aria; OOM ubil next-dev dvakrat med prevajanjem dashboarda (sandbox 4 GB) → nadaljeval na produkciji
+- E2E PRODUKCIJA (v1.137.0 @ 94a4727, agent-browser): 436/436 overline; Bolognese razločena (aria »Testenine, njoki · Bolognese 10,90 €« / »Pizze · Bolognese 12,50 €«); token iskanje deluje; košara enovrstično POKAZALA truncate »1× Bolognese …« (VLM odkritje!) → 8b6e215: SaleCartLineName komponenta — dvovrstično (ime 1. vrstica, kontekst 2. vrstica xs stone-400, samo dvoumna)
+- API E2E PRODUKCIJA: POST Bolognese v Testenine → 409 z dokazom (ime+cena); PATCH Z gobami→Bolognese → 409; PATCH na lastno ime → 200; NI testnih ostankov v DB (preverjeno)
+- CI: prvi tek 94a4727 SUCCESS; 8b6e215 dvakrat exit 137 (OOM self-hosted runnerja — runner teče NA TEM STROJU, moji E2E brskalniki so izčrpali pomnilnik) → po chome --all close re-run SUCCESS (3/3)
+- VERIFIKACIJA: tsc 0 · eslint 0 · secrets OK · 2582/2582 (126 datotek, +15 issue73-audit15); produkcija 1.137.0 @ 8b6e215 ŽIVA; dokazni komentar na #73 (id 6247384682)
+- ODKRITO OB KRAJU (ni del #73, NERESENO): dnevni Neon backup (pg_dump) workflow odpoveduje VSAK dan od 13. 10. (8/8 failure — schedule + dispatch) — produkcijska baza NIMA backupov; ločen P1 infra problem za naslednji korak
+- Lokalna dev baza: prisma/db/dev.db je onesnažena s testnimi fiksturami (196 zaposlenih i60-…); za dev E2E uporabljen svež prisma/db/e2e.db + seed
+
+Stage Summary:
+- v1.137.0: audit-15 izveden po obeh straneh — pošiljevalna (ploščica jed·različica·velikost, token iskanje, dvovrstična košara) in vnosna (409 varovalki na POST/PATCH, ena normalizacija API≡UI)
+- Produkcija: 1.137.0 @ 8b6e215; CI zelen (3/3); issue #73 odprt, pokrite 1.+2. prioriteta; preostanek: audit-10/11 (navigacijska prenova), audit-22 (KDS tap-karta), audit-33 (inline pomoč)
+- URESNIČENA LEKCIJA: E2E + VLM veriga je ujela truncate bug, ki ga DOM assertion ni (text bil v DOM, odrezan vizualno) — dvovrstična rešitev
+- ODPRI NALOGI: Neon backup failure (vsakodnevni, P1 infra); audit-10/11/22/33 iz #73
