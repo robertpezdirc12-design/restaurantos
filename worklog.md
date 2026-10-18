@@ -4185,3 +4185,36 @@ Stage Summary:
 - v1.138.0: audit-10 (navigacijski steber s skupinami + iskalnik + mobilna vrstica po vlogi + predal Več) in audit-11 (enoten besednjak brez izposojenk, 8 preimenovanj SL/HR) IZVEDENA v produkciji
 - #73 pokrite 1.+2.+3. prioriteta; preostanek: audit-22 (KDS tap-karta), audit-33 (inline pomoč) — issue ostaja ODPORT
 - Dokazni posnetki: .zscripts/audit10-desktop-admin.png, audit10-desktop-full.png, audit10-mobile-admin-bar.png, audit10-mobile-drawer-search-hr.png, audit11-desktop-hr.png
+
+---
+Task ID: v1.139.0-issue73-audit22-33
+Agent: glavni agent (Z.ai)
+Task: zadnja dva sklopa issue #73 — audit-22 (KDS vrstica kot tap-karta) + audit-33 (inline pomoč: izrazi, prvi vhod v modul, namestitev widgeta).
+
+Work Log:
+- STANJE: #73 pokriva 1.+2.+3. prioriteto (v1.136.0 audit-19+26, v1.137.0 audit-15, v1.138.0 audit-10/11); preostanek: audit-22, audit-33
+- ANALIZA audit-22: vsaka KDS postavka ima tri enakovredne gumbe (86 ghost, Začni outline, Pripravljeno emerald) + tisk v glavi — glavni napredek NI najvidnejši predmet; kuhar v naglici tvega napačen tap
+- IMPLEMENTACIJA audit-22 (3 komponente + 2 prenovi):
+  * src/components/kds-tap-card.tsx (NOV): vrstica = tarča dotika za NAPREDEK (klik/Enter/Space), dolg pritisk 550 ms = 86 preklop, drift > 12 px preklic (drsenje), tipkovnica Shift+Enter = dolg pritisk, data-region prop (sidri #69)
+  * dashboard legacy vrsta: itRow — PENDING/PREPARING vrstice so KdsTapCard (setItemStatus/bumpReady z delay-dialogom), READY/tasked vrstice navaden div; NASLEDNJI-KORAK čip (kds-next-chip, min-h-11, stone-800→emerald-700) dominanten, gumbi Izbrisani; 86 = onLongPress + povratna toast (kds.86Done/86Back)
+  * kds-station-board.tsx: vrstice nalog enak vzorec (act start/ready na dotik), izdaja (expo) OSTANE gumb (blocker 409 na strežniku)
+- IMPLEMENTACIJA audit-33 (2 komponenti + 6 vgraditev):
+  * src/components/term-tip.tsx (NOV): dotted podčrtan izraz + Radix tooltip (hover/focus/dotik), razlaga po tipKey iz slovarjev
+  * src/components/module-intro.tsx (NOV): enkratna pomoč ob prvem vhodu (5 modulov), odpoved v localStorage ro_intro_<modul>, useSyncExternalStore hidratacijska vrata (BREZ setState-in-effect — react-hooks v6 pravilo)
+  * TermTip na mestih uporabe: FEFO + karantena/odpoklic (serije), GRN (prevzemi v nabavi), AP (stroški), izdajna postaja (KDS plošča + nastavitve postaj), eskalacija (klici vodje)
+  * ModuleIntro: kds (geste!), lots, proc, ap, calls
+  * reservation-widget-card.tsx: oddelek Namestitev (data-region resv-widget-install) — povezava (e-pošta/QR/social) + iframe vzorec s kopiranjem + opomba o rotaciji
+- i18n: 31 novih ključev SL+HR (kds.tap*/86Done/86Back, term.* ×13, intro.* ×11, resv.wid.install* ×6)
+- TESTI: tests/issue73-audit22-33.test.ts ×18 (tap-karta pogodba, dolg pritisk z zatiranjem, TermTip na vseh 6 mestih, ModuleIntro 5 modulov, widget iframe); issue69 pripne posodobljene (kds-next-chip, KdsTapCard, dataRegion prop — 44 px disciplina ohranjena); i18n pini (kds.stInPrep/stMarkReady namesto kitchen.start/status.PREPARED); 2629/2629 (129 datotek, +18)
+- IZDAJA: 59bf7da (FEATURE) → CI SUCCESS → Vercel 1.139.0 ŽIVA; E2E odkril 2 napaki → 5c8c19f (FIX):
+  * a11y: READY vrstica z gumbom Servirano NE SME biti aria-disabled ovojnica (bralnik bi javil gumb kot onemogočen) → itRow = navaden div za nedejavne vrstice
+  * dvojno dejanje: zatiranje sledilnega klika po dolgem pritisku je bilo ČASOVNO okno (400 ms) — dolg drž (>950 ms) je sprožil OBE dejanji (86 + napredek) → zatiranje drži do NASLEDNJEGA pritiska
+- E2E PRODUKCIJA (v1.139.0 @ 5c8c19f, agent-browser): KDS intro se prikaže ob prvem vhodu + X odpoved se zapomni (ro_intro_kds=1, po osvežitvi ni več); TAP-KARTA polni cikel: PENDING (čip V pripravi, stone-800) → dotik → PREPARING (čip Pripravljeno, emerald) → dotik → delay-dialog (Zakaj je artikel zamudil? → Gost promet) → READY (nedejavna vrstica, Servirano gumb BREZ [disabled]) → SERVED (vrsta čista); DOLG PRITISK 1,2 s = SAMO 86 preklop (toast "Alter 2021: spet na voljo", vrstica NI napredovala — fix dokazan); mobilni 390 px: vrstica 321×114 px (cilj >> 44 px), tap deluje, VLM 8/10 (čip najvidnejši, ni odrezanega); TermTipi ŽIVI na vseh 6 mestih (hover odpre razlago — FEFO/karantena, GRN, AP, eskalacija, izdajna postaja ×2); intro lots/proc/ap/calls se prikaže enkrat; widget inicializiran za demo lokacijo (PUT settings.manage) → oddelek Namestitev ŽIV (naslov, namig, iframe s pravo povezavo, gumb Kopiraj primer), VLM 9/10
+- ČIŠČENJE PRODUKCIJE: demo vrstice Alter 2021/Amaro dokončane do SERVED; widget inicializiran (namenjeno stanje — lastnik dobi namestitveno navodilo); 3 predhodno razprodani artikli nedotaknjeni; Miza 9: testno naročilo #711 plačano z gotovino (FURS simulacija) + miza pospravljena s polno pointer sekvenco
+- VERIFIKACIJA: tsc 0 · eslint 0 · secrets OK · 2629/2629 · CI SUCCESS (59bf7da + 5c8c19f) · produkcija v1.139.0 @ 5c8c19f ŽIVA · :3000 nadzorna plošča povrnjena po CI (OOM disciplina)
+
+Stage Summary:
+- v1.139.0: audit-22 (KDS vrstica = tap-karta z naslednji-korak čipom, 86 na dolg pritisk, tisk v glavi) in audit-33 (TermTip slovar izrazov, ModuleIntro za 5 modulov, namestitveno navodilo widgeta z iframe primerom) IZVEDENA v produkciji
+- VSI sklopi #73 (7/7) pokriti: audit-19, audit-26, audit-15, audit-10, audit-11, audit-22, audit-33 — issue ZAPRT z dokaznim komentarjem
+- E2E pasti ujeti v produkciji in popravljena isti dan: (1) aria-disabled ovojnica okoli Servirano gumba, (2) časovno okno zatiranja klika po dolgem pritisku — obe varovalki v testih
+- Dokazni posnetki: .zscripts/audit22-kds-intro.png, audit22-kds-ready.png, audit22-kds-queue-clean.png, audit22-kds-mobile.png, audit22-kds-mobile-preparing.png, audit22-kds-desktop-final.png, audit33-lots-intro.png, audit33-lots-fefo-tooltip.png, audit33-nabava-intro.png, audit33-finance-ap.png, audit33-calls-intro.png, audit33-calls-esc-tooltip.png, audit33-widget-install.png (+ VLM json)

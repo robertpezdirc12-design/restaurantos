@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Na podlagi posnetka zaslona ocenjujem odsek **Namestitev na spletno strani** (v okviru nastavitvene kartice Javni rezervacijski widget) po naslednjih kriterijih:\n\n**1) Jasnost razlage obeh možnosti (deljenje povezave + vdelava iframe):**  \nBesedilo jasno navaja, da lahko uporabnik **\"Povezavo deli gostom (e-pošta, socialna omrežja, QR koda...)\"** ALI **\"vstavi widget na svojo spletno stran s spodnjim primerom – prilepi ga v HTML\"**. Razmejitev med \"deljenjem povezave\" (zgornje polje z URL-jem in ikonami za deljenje) ter \"vdelavo iframe\" (spodnji oddelek z HTML kodo) je **zelo jasna in intuitivna**.\n\n**2) Videz vzorčne kode iframe:**  \nKoda je prikazana v **monospace (končni) pisavi**, kar je standard za izvorno kodo. Ob njej je **vidna gumba \"Kopiraj primer\"** (z ikono odložišča), ki omogoča enostavno kopiranje. Koda je vidna v celoti brezrezno (čeprav je dolga, se ne preliva zunaj vidnega območja).\n\n**3) Berljivost in prelivanje:**  \nVsebina je **popolnoma berljiva**, ni znakov prelivanja (overflow) elementov ali rezanja besedila. Razmiki med sekcijami so ustrezni, kontrast je dober, polja za vnos so pravilno poravnana.\n\n---\n\n### **Skupna ocena: 9/10**\n\n**Razlog za odštevanje točke:** Edini manjkajoči element je **manjkajoča ikona/gumb za kopiranje same osnovne povezave** (URL-ja v zgornjem polju). Medtem ko ima iframe-koda jasno vidno gumb \"Kopiraj primer\", pri zgornji povezavi so le generične ikone za deljenje (kopiraj, osveži, zunanja povezava), ki so manj izrazite kot poseben \"Copy\" gumb pri kodi. Vse ostalo (jasnost navodil, monospace font, popolna berljivost) je izvedeno odlično.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1792323351,
+  "id": "20261018193533bc82dc8e3c81430b",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20261018193533bc82dc8e3c81430b",
+  "usage": {
+    "completion_tokens": 603,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1014,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "total_tokens": 1617
+  }
+}
