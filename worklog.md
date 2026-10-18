@@ -4137,3 +4137,23 @@ Stage Summary:
 - Produkcija: 1.137.0 @ 8b6e215; CI zelen (3/3); issue #73 odprt, pokrite 1.+2. prioriteta; preostanek: audit-10/11 (navigacijska prenova), audit-22 (KDS tap-karta), audit-33 (inline pomoč)
 - URESNIČENA LEKCIJA: E2E + VLM veriga je ujela truncate bug, ki ga DOM assertion ni (text bil v DOM, odrezan vizualno) — dvovrstična rešitev
 - ODPRI NALOGI: Neon backup failure (vsakodnevni, P1 infra); audit-10/11/22/33 iz #73
+
+---
+Task ID: v1.137.0-infra-backup
+Agent: glavni agent (Z.ai)
+Task: odkrit in popravljen vsakodnevni odpoved Neon backup (pg_dump produkcije) + prod-smoke (P1 infra — produkcijska baza 5 dni brez varnostnih kopij).
+
+Work Log:
+- VZROKISCENJE: backup workflow (schedule 02:30 UTC) odpoveduje VSAK dan 13.-18. 10. (zadnji uspeh 12. 10.); jobi se končajo v 1 s, brez runnerja/stegov/logov → hosted ubuntu-latest kvota IZČRPANA (reset 1. 11. 2026), GitHub zavrne job takoj; ci.yml je bil preusmerjen prek vars.CI_RUNNER_LABELS (self-hosted) že prej, neon-backup.yml in prod-smoke.yml pa NE
+- OVIRA: self-hosted runner (Debian trixie, sandbox-ci-runner-1) NIMA sudo → apt/sudo namestitev postgresql-client-17 ne gre; EDB portable binarke (403); REŠITEV: apt-get download BREZ root (trixie main ima pg17) + dpkg-deb -x izpis + LD_LIBRARY_PATH (lokalno preizkušeno: pg_dump/psql 17.11 delujeta); fallback pot za hosted Ubuntu: pgdg prek zasebne sources.list z -o Dir::State/Cache/Ect overrides (trusted=yes)
+- POPRAVEK: oba workflowa runs-on prek vars.CI_RUNNER_LABELS || ubuntu-latest (vzorec ci.yml — po resetu kvote in brisanju spremenljivke samodejno nazaj na hosted); namestitveni korak zamenjan (PG_BIN + LD_LIBRARY_PATH v GITHUB_ENV); $PG_BIN/pg_dump|psql|pg_restore v vseh nadaljnjih korakih
+- VERIFIKACIJA (workflow_dispatch na 5868760):
+  - neon-backup: SUCCESS (vsi 4+1 stepov) — dump 654.489 B, validacija 135 tabel + 135 podatkovnih sekcij, artifact neon-backup-39110190199 (217 KB, retencija 90 dni, expires 2027-01-16), efemerna vloga izbrisana
+  - prod-smoke: SUCCESS — 135 public tabel (>=100), vse invariance zdrave (»produkcija strukturno in vsebinsko zdrava«)
+- CI na 5868760: prvi tek OOM (exit 137 — moja E2E brskalniška seja je živela med CI; runner teče na istem 4 GB sandboxu) → po agent-browser close --all re-run SUCCESS 3/3
+- DISCIPLINA (zapis za bodoče teke): na skupnem sandboxu NE pustiti agent-browser/z dev strežnikov živih med CI teki — typecheck-prod (prisma generate pg klient + tsc) + tests + E2E brskalnik skupaj presežejo 4 GB
+
+Stage Summary:
+- Neon backup veriga OBNOVLJENA po 5 dneh tihe odpovedi (P1): dnevni pg_dump + validacija + artifact 90 dni spet delujejo; prod-smoke prav tako
+- Root vzrok: kvota hosted minut (reset 1. 11.) + neuveljavljeno preusmerjeni workflowi; rešitev je vzorec-neutralna (deluje na obeh runnerjih, brez sudo)
+- v1.137.0 celoten: audit-15 (issue #73) + backup/prod-smoke infra; produkcija @ 5868760; CI 3/3 zelen
