@@ -4271,3 +4271,6 @@ Stage Summary:
 - Issue #76: prazni HTTP 500 IZKORENINJENI (503 s strukturiranim JSON + runtime logi), health dvostopenjski s varno klasifikacijo vzroka, APP_SECRET lazy — root cause DB izpada bo v produkciji takoj viden v /api/health dbError + Vercel logih (brez razkritja skrivnosti)
 - v1.141.0 (6 POS izboljšav) končno pushana v produkcijo (blokirana od prejšnje seje zaradi mrtvega žetona)
 - Dokazi: .zscripts/i76-e2e-dashboard.png, i76-e2e-final.png (+ i76-e2e-login-ok.png iz OOM periode)
+- PUSH USPEŠEN (nov žeton): 1a02af7..7378994 (3 commiti) → Vercel deploy ~80 s
+- PRODUKCIJSKI SMOKE (restaurantos-theta.vercel.app @ 7378994): health → degraded/database: disconnected/schema: skipped/dbError{category: unreachable, hint Neon unpause} — ROOT CAUSE KONČNO JAVNO VIDEN; /api/auth/locations → 503 {DB_UNAVAILABLE, unreachable} (prej prazen 500); /api/auth/demo-login → 503 {DB_UNAVAILABLE, unreachable} (prej prazen 500); login frontend prikazuje slovensko sporočilo iz data.error
+- ZAKLJUČEK #76: koda/diagnostika popravljeni in verificirane; vzrok DB izpada je v INFRASTRUKTURI (baza nedosegljiva — najverjetneje Neon avto-suspend) → action item za lastnika: unpause Neon + preveriti DATABASE_URL v Vercel Production env, nato /api/health mora vrniti status ok
