@@ -6,6 +6,14 @@ name: Neon backup (pg_dump production)
 # pg_dump custom format, validacija strukture+podatkov, artifact 90 dni,
 # vloga se izbriše vedno (always()).
 # Brez dodatnih GitHub secrets — uporablja isti Neon org key kot deploy.
+#
+# FIX (v1.137.0, 18. 10. 2026): workflow je odpovedoval VSAK dan od 13. 10.
+# (zadnji uspeh 12. 10.) — job se je končal v 1 s, brez runnerja: hosted
+# ubuntu-latest kvota je IZČRPANA (reset 1. 11. 2026) in GitHub takoj zavrne.
+# Popravek po vzorcu ci.yml: runs-on prek CI_RUNNER_LABELS (self-hosted,
+# Debian trixie — BREZ sudo) + namestitev pg17 klienta BREZ root:
+# apt-get download (trenutno trixie glavni repo) ali pgdg prek zasebne
+# sources.list z -o Dir::* overrides; dpkg-deb -x izpis + LD_LIBRARY_PATH.
 
 on:
   schedule:
@@ -21,7 +29,9 @@ concurrency:
 
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    # FIX: hosted kvota izčrpana → isti runner-routing kot ci.yml; po 1. 11.
+    # (reset kvote + brisanje CI_RUNNER_LABELS) samodejno nazaj na hosted.
+    runs-on: ${{ vars.CI_RUNNER_LABELS || 'ubuntu-latest' }}
     timeout-minutes: 15
     env:
       NEON_API_KEY_B64: ${{ secrets.NEON_API_KEY_B64 }}
@@ -30,17 +40,31 @@ jobs:
       NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
       BACKUP_DB: restaurantos
     steps:
-      - name: Install PostgreSQL 17 client (pg_dump >= server version)
+      - name: PostgreSQL 17 client BREZ root (portable .deb izpis)
         run: |
           set -e
-          CODENAME=$(lsb_release -cs)
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $CODENAME-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-17
-          /usr/lib/postgresql/17/bin/pg_dump --version
-          /usr/lib/postgresql/17/bin/pg_restore --version
+          # Self-hosted runner nima sudo → apt-get download + dpkg-deb -x.
+          # Pot 1: sistemski repo (Debian trixie: postgresql-client-17 v main).
+          # Pot 2 (fallback, hosted Ubuntu): pgdg prek zasebne sources.list
+          # z -o Dir::State/Cache/Etc overrides (no-root apt update+download).
+          if ! apt-get download -qq postgresql-client-17 libpq5 2>/dev/null; then
+            echo "sistemski repo nima pg17 — prek pgdg (no-root apt)"
+            mkdir -p .apt .apt-state/lists/partial .apt-cache/archives/partial
+            printf 'deb [trusted=yes] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$(lsb_release -cs)" > .apt/pgdg.list
+            APT_OPTS=(-o "Dir::Etc::sourcelist=$PWD/.apt/pgdg.list" -o "Dir::Etc::sourceparts=/dev/null" -o "Dir::State=$PWD/.apt-state" -o "Dir::Cache=$PWD/.apt-cache")
+            apt-get "${APT_OPTS[@]}" update -qq
+            apt-get "${APT_OPTS[@]}" download -qq postgresql-client-17 libpq5
+          fi
+          mkdir -p "$RUNNER_TEMP/pgbin"
+          dpkg-deb -x postgresql-client-17_*.deb "$RUNNER_TEMP/pgbin/"
+          dpkg-deb -x libpq5_*.deb "$RUNNER_TEMP/pgbin/"
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/pgbin/usr/lib/x86_64-linux-gnu"
+          "$RUNNER_TEMP/pgbin/usr/lib/postgresql/17/bin/pg_dump" --version
+          "$RUNNER_TEMP/pgbin/usr/lib/postgresql/17/bin/pg_restore" --version
+          {
+            echo "PG_BIN=$RUNNER_TEMP/pgbin/usr/lib/postgresql/17/bin"
+            echo "LD_LIBRARY_PATH=$RUNNER_TEMP/pgbin/usr/lib/x86_64-linux-gnu"
+          } >> "$GITHUB_ENV"
 
       - name: Ephemeral backup role + pg_dump + validation
         run: |
@@ -85,7 +109,7 @@ jobs:
 
           mkdir -p backup
           DUMP="backup/neon-backup-$STAMP.dump"
-          /usr/lib/postgresql/17/bin/pg_dump "postgresql://$ROLE_NAME:$ROLE_PW@$EP_HOST/$BACKUP_DB?sslmode=require" \
+          "$PG_BIN/pg_dump" "postgresql://$ROLE_NAME:$ROLE_PW@$EP_HOST/$BACKUP_DB?sslmode=require" \
             --format=custom --no-owner --no-acl --file="$DUMP"
           echo "dump: $DUMP ($(stat -c%s "$DUMP") bytes)"
 
@@ -93,9 +117,9 @@ jobs:
           # (2) število CREATE TABLE v plain SQL, (3) podatkovne sekcije
           # (robustno: TOC identitetni format ni stabilen za grep — zato
           #  grejemo izpisano --schema-only SQL, ne TOC vrstic)
-          /usr/lib/postgresql/17/bin/pg_restore --schema-only --no-owner --no-acl --file=/tmp/check.sql "$DUMP"
+          "$PG_BIN/pg_restore" --schema-only --no-owner --no-acl --file=/tmp/check.sql "$DUMP"
           TABLES=$( grep -c '^CREATE TABLE' /tmp/check.sql || true )
-          DATAITEMS=$( /usr/lib/postgresql/17/bin/pg_restore --list "$DUMP" | grep -c 'TABLE DATA' || true )
+          DATAITEMS=$( "$PG_BIN/pg_restore" --list "$DUMP" | grep -c 'TABLE DATA' || true )
           echo "validacija: $TABLES tabel, $DATAITEMS podatkovnih sekcij"
           if [ "$TABLES" -lt 100 ] || [ "$DATAITEMS" -lt 1 ]; then
             echo "INVALID DUMP — struktur ali podatkov premalo"; exit 1
