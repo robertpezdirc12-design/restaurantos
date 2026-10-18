@@ -3252,12 +3252,14 @@ function DashboardInner() {
                         const itInteractive = itemTasks.length === 0 && (it.status === 'PENDING' || it.status === 'PREPARING')
                         const itNext = it.status === 'PENDING' ? t('kds.stInPrep') : it.status === 'PREPARING' ? t('kds.stMarkReady') : ''
                         const can86 = perms.includes('menu.availability') && !!mi
-                        return (
+                        /* E2E lekcija: NEDEJAVNA vrstica (READY s Servirano gumbom,
+                           postajni tok) je navaden div — aria-disabled ovojnica bi
+                           bralcem zaslonov javila gumb Servirano kot onemogočen. */
+                        const itRow = (rowBody: ReactNode) => itInteractive ? (
                           <KdsTapCard
                             key={it.id}
                             dataRegion="kds-ticket-item"
-                            ariaLabel={t('kds.tapAria', { q: it.qty, name: it.name, next: itInteractive ? itNext : t('status.READY') })}
-                            disabled={!itInteractive}
+                            ariaLabel={t('kds.tapAria', { q: it.qty, name: it.name, next: itNext })}
                             onAdvance={() => {
                               if (it.status === 'PENDING') setItemStatus(it.id, 'PREPARING')
                               else bumpReady(it, o)
@@ -3267,12 +3269,17 @@ function DashboardInner() {
                               toast({ description: t(mi.available ? 'kds.86Done' : 'kds.86Back', { name: it.name }) })
                             } : undefined}
                             longPressHint={can86 ? t('kds.tapHint') : undefined}
-                            className={`rounded-lg border px-3 py-1.5 space-y-1.5 min-w-0 ${
-                              itInteractive
-                                ? 'border-stone-200 bg-white hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 active:bg-stone-50'
-                                : 'border-stone-200 bg-white'
-                            }`}
+                            className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1.5 min-w-0 hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 active:bg-stone-50"
                           >
+                            {rowBody}
+                          </KdsTapCard>
+                        ) : (
+                          <div key={it.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1.5 min-w-0">
+                            {rowBody}
+                          </div>
+                        )
+                        return itRow(
+                          <>
                             {/* A: količina + ime (levo) / starost postavke (desno) — hitro skeniranje */}
                             <div className="flex items-baseline justify-between gap-2 min-w-0">
                               <p className="text-sm sm:text-base font-semibold truncate min-w-0">{it.qty}× {it.name}</p>
@@ -3330,7 +3337,7 @@ function DashboardInner() {
                                 </div>
                               ) : null}
                             </div>
-                          </KdsTapCard>
+                          </>
                         )
                       })}
                       {/* v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — en velik

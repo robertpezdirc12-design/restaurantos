@@ -28,8 +28,6 @@ import { useRef, useState, type ReactNode } from 'react'
 export const KDS_LONG_PRESS_MS = 550
 /** Finger drift (px) that cancels a pending hold (scroll intent). */
 const DRIFT_CANCEL_PX = 12
-/** Window (ms) in which the synthesized click after a long-press is ignored. */
-const CLICK_SUPPRESS_MS = 400
 
 export interface KdsTapCardProps {
   /** main progress action (tap / click / Enter / Space) */
@@ -74,12 +72,12 @@ export function KdsTapCard({
 
   const longFire = () => {
     if (disabled || !onLongPress) return
+    /* E2E lekcija: zatiranje sledilnega klika drži do NASLEDNJEGA pritiska
+       (ne časovno okno) — dolg drž (> longFire) bi sicer sprožil obe dejanji
+       (preklop 86 + napredek), ker bi okno poteklo pred izpustom pritiska. */
     suppressClickRef.current = true
     setHolding(false)
     onLongPress()
-    setTimeout(() => {
-      suppressClickRef.current = false
-    }, CLICK_SUPPRESS_MS)
   }
 
   return (
@@ -105,6 +103,9 @@ export function KdsTapCard({
       onPointerDown={(e) => {
         if (disabled || !onLongPress) return
         if (e.pointerType === 'mouse' && e.button !== 0) return
+        /* nov pritisk = novo dejanje: zatiranje iz prejšnjega dolgega pritiska
+           se Ponastavi (klik tega pritiska je zaklenjen, naslednji je prost) */
+        suppressClickRef.current = false
         startRef.current = { x: e.clientX, y: e.clientY }
         setHolding(true)
         timerRef.current = setTimeout(longFire, KDS_LONG_PRESS_MS)

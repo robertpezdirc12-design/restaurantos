@@ -50,6 +50,10 @@ describe('issue73 audit-22 — vrstica = tap-karta, sekundarna dejanja umaknjena
     expect(tapCard).toContain('suppressClickRef')
     expect(KDS_LONG_PRESS_MS).toBeGreaterThanOrEqual(400)
     expect(KDS_LONG_PRESS_MS).toBeLessThanOrEqual(1000)
+    /* E2E lekcija (dolg drž > longFire): zatiranje klika drži do NASLEDNEGA
+       pritiska — ČASOVNO okno bi poteklo pred izpustom in sprožilo obe dejanji. */
+    expect(tapCard).toContain('suppressClickRef.current = false')
+    expect(tapCard).not.toContain('CLICK_SUPPRESS_MS')
   })
 
   test('dashboard legacy vrsta: napredek na dotik (PENDING→PREPARING, PREPARING→READY)', () => {
@@ -88,6 +92,14 @@ describe('issue73 audit-22 — vrstica = tap-karta, sekundarna dejanja umaknjena
   test('naloge v postajnem toku so inertne (brez 409 iz legacy poglede)', () => {
     expect(dash).toContain('const itInteractive = itemTasks.length === 0 && (it.status === \'PENDING\' || it.status === \'PREPARING\')')
     expect(board).toContain("const tapActive = (task.status === 'pending' || task.status === 'preparing') && !busy")
+  })
+
+  test('E2E a11y lekcija: nedejavna vrstica je navaden div (Servirano gumb ne sme pasti pod aria-disabled)', () => {
+    // itRow: interaktivna vrstica = KdsTapCard; READY/tasked vrstica = div BREZ
+    // role=button ovojnice — drugače bi bralci zaslonov gumb Servirano javili kot onemogočen
+    expect(dash).toContain('const itRow = (rowBody: ReactNode) => itInteractive ? (')
+    expect(dash).toContain('<div key={it.id} data-region="kds-ticket-item"')
+    expect(dash).toContain('onClick={() => setItemStatus(it.id, \'SERVED\')}')
   })
 })
 
