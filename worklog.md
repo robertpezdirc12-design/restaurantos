@@ -4043,3 +4043,70 @@ Stage Summary:
 - v1.131.1: mobilni KDS all-day vrstica prilepljena na dno (79 px, horizontalno drsenje) — vzorec Toast production view
 - Potrjeno: :not([class*="border-"]) CSS popravek deluje tudi v produkciji (rdeči starostni rob + amber vrstica viden v živo)
 - OOM lekcija utrjena: pred in MED CI zagoni NE sme teči noben lokalni next/bun strežnik
+
+---
+Task ID: v1.132.0+v1.132.1-issue71
+Agent: Z.ai Code (glavni agent)
+Task: »napišal sem ti issue na GitHubu, preberi, razmisli če mam prav, naredi ali poročaj če se motim« — issue #71: P0 UX revizija produkcije v1.130.0 (34 najdb: 4 blocker / 24 major / 6 minor)
+
+Work Log:
+- OCENA ISSUE: revizija je TEMELJITA in PRAVILNA (12 zaslonov, Nielsen 10 + responsive + performance, dokazi uid/datoteka:vrstica, 7 iskreno zapisanih omejitev) → implementacija brez prigovarjanja; v1.132.0 (0448f9d, prejšnja seja) je implementiral 26/34
+- CI PADCI (2): 0448f9d tests job — 6 registrov verzije je ostalo na 1.131.1 (dvig verzije PO lokalnem testiranju) → popravek 089802f (2497/2497 lokalno, CI SUCCESS)
+- PRODUKCIJSKA E2E v1.132.0 (agent-browser, ADMIN info@): KDS »AKTIVNA IZMENA (2)« + »ZASTARELO (5)« zloženo s številcem + človeško pojasnilo (audit-1); naslovi listkov »Miza 9«/»Odnes«/»Na mestu« + »· Ana Novak« + ura brez sekund (audit-2); alergenski zbirnik »N od M postavic« 1× na listek (audit-14); 0 surovih DINE_IN/TAKEAWAY (audit-5); opomniki — potrditveno okno s številom, neponovljivostjo, onemogočen gumb pri 0, PREKLIC (audit-18, 0 poslano); fmtNumSI »4,2°« (audit-12); zaloge iskalnik+3 filtri (audit-24); zaposleni iskalnik+»Nov zaposleni« (audit-25); hitra prodaja privzeta kategorija »Penine in Šampanjci« 12 ploščic (audit-16/32); ?tab=neveljaven → preusmeritev+obvestilo (audit-27); dnevnik napak združen »×2« + JSON pod Podrobnosti (audit-28); KPI »Zasedene mize 0« ≡ tloris (audit-3)
+- DEMO ČIŠČENJE IZVEDENO (audit-9, prioriteta #2 issue): POST /api/admin/cleanup-demo purge (confirm=IZBRISI-DEMO): 5 zastarelih naročil zaključenih (fiskalna sled ostaja, mize→čiščenje), Ana Demo deaktivirana (FK), Super Admin+verify94 izbrisana, 3 demo popisi + VERIF HACCP načrt odstranjeni; predhodno scan (samo-branje) preverjen
+- NAJDBA MED ZAKLJUČNO VERIFIKACIJO: poln nalagalnik /dashboard = 1× React #418 na VSAKEM obisku (client-nav 0) → DIAGNOZA: /dashboard je statično predizrisan (x-nextjs-prerender); produkt build lokalno + popravljen React (throwOnHydrationMismatch → window.__hydrationMismatches) → POT KOMPONENT: TabsContent→Presence→CardContent »Strošek dela in pokritost izmen« → vzrok: useInViewOnce useState(() => typeof IntersectionObserver === 'undefined') — SSR/Node true (»Ni podatkov.« izrisan), klient prvi izris false (<p> NI izrisan) → strukturno neujemanje → React ZAVRŽE celotno hidrirano drevo (SSR zaman, vpliva na audit-30/31 počasnost); uvedeno v1.117.0 (issue #10)
+- POPRAVEK v1.132.1 (96de44e): inicialno stanje VEDNO false (SSR ≡ klient); IO opazovanje po mountu; stari brskalniki → setTimeout(0) asinhrono (react-hooks/set-state-in-effect čist); +2 regresijska testa (inicializator NE sme prebrati typeof IntersectionObserver)
+- ODKRITA PAST MED DIAGNOZO: next start strežnik je držal STARI build (pkill -f "next start" ni ubil procesa "next-server (v16...)") → testi so tekli proti staremu bundle-u; ubit po PID
+- VERIFIKACIJA: tsc 0, eslint 0, secrets OK, 2499/2499 (120 datotek); CI SUCCESS (089802f, 96de44e); produkcija v1.132.1 @ 96de44e: 6 polnih nalaganj = 0 napak strani + 0 konzolnih (prej 1× #418 vsak); skripti: prod132-kds-clean/prod132-sale-defaultcat/prod132-mize-after/prod1321-kds.png
+- ZAKLJUČEK ISSUE #71: zaprt completed z dokaznim komentarjem (26/34 + 2 delno); 7 odloženih (audit-10/11/15/19/22/26/33 — zasnovski posegi) → nova zadeva #73
+
+Stage Summary:
+- v1.132.0: 26/34 revizij (4/4 blockerjev) — KDS izmena+alergeni, jezik vloge, demo čiščenje IZVEDENO v produkciji, opomniki potrditev, hitri popravki in majorji po dokumentu
+- v1.132.1: hidratacijski React #418 popravljen (SSR drevo se ne zavrže več — 0 napak na 6 polnih nalaganjih v produkciji)
+- Produkcija: v1.132.1 @ 96de44e ŽIVA; issue #71 ZAPRT; #73 odprt za 7 odloženih zasnovskih posegov
+
+---
+Task ID: v1.133.0-issue72
+Agent: Z.ai Code (glavni agent)
+Task: »nadaljuj kjer si ostal« — issue #72 (P0 model dovoljenj, 21 najdb A1–E5) + zaključek verige v1.132.x
+
+Work Log:
+- NADALJEVANJE: v1.132.0/v1.132.1 izdani (issue #71 zaprt), CI popravljen (089802f), hidratacija #418 popravljena (96de44e, 6 polnih nalaganj = 0 napak) — vnos v worklog + issue #71 dokazi + #73 za odložene
+- ISSUE #72 (ustvarjen med delom 21:16): lastnikova revizija modela dovoljenj (branje produkcijskega DOM-a + izračun matrike 14 vlog × 32 zavihkov iz virov) — OCENA: pravilna, implementacija po lastnikovem vrstnem redu
+- IMPLEMENTACIJA v1.133.0 (1a4b0e6, 68 datotek):
+  * D1: furs.issue ODSTRANJEN (varoval storno) → receipts.storno (novo, lastniško); D4: orders.discount (phantom) ODSTRANJEN
+  * D2: e-račun B2B: inventory.manage → einvoices.issue (skladiščnik NE izda fiskalnega dokumenta več)
+  * D3: reports.view RAZSTAVLJEN → reports.sales + reports.labour (napitnine/plačni) + guests.read (PII); skladiščnik izgubi PII
+  * C1: manager = 19 ključev (brez settings.manage/receipts.storno/einvoices.issue); C2: ustvarjanje MANAGER + dodajanje stropov v override = centralno-only (odvzem vedno dovoljen); C3: denarna politika PUT settings = centralno-only
+  * B1: banner »Nimate dodeljene lokacije«; B2: operativne vloge zahtevajo locationId; B4: neznana vloga → PRAZEN nabor (prej padec na staff = delala pravico do plačila)
+  * A1/A2: dialog zaposlenih = efektivni nabor (povzetek + brane pravice vloge ZAKLENJENE z oznako VLOGA + stropova ključa centralno); besedilo additivnosti SL/HR
+  * A3: canManage = centralna vloga; hasPerm BREZ bypassa (vodja vidi zavihke skoz 19 pravic; nastavitve/integracije/enterprise izginejo); ShiftsTab = hasPerm(cash.manage) → BAR vidi vsebino; A4: isManagerialRole en vir (exception-approval re-izvaža); ukazna paleta + LASTNIK
+  * E5: brez lokacije = RDEČA oznaka; E4: WAREHOUSE/ACCOUNTING v izboru
+- TESTI: ~136 padlih po uvedbi (pričakovano — manager žetoni za lastniška dejanja, stari ključi); popravljeni v dveh valovih: podagent (7 datotek, 200 potez) + ročno (~20 datotek: admin žetoni za politiko/storno; **manager+settings.manage override vzorec** za lokacijske teste — C2 pot v praksi); permissions-core prenovljen (44 testov novi model); +17 issue72-permission-model
+- PAST odkrita in popravljena: isCentralRole je občutljiv na velike/male črke (žetoni prijave = VELIKE; testni lowercase so bili implicitno ne-centralni) → obdržana občutljivost, testni žetoni na VELIKE
+- E2E (dev :3007 + produkcija): A1 povzetek »19 branih pravic« + zaklenjene kljukice VLOGA; C1: vodja NE vidi Nastavitev/Integracij/Enterprise (meni Več 21 postavk), Računi BREZ storno gumba; E5 »brez lokacije« rdeče; 0 napak strani
+- VERIFIKACIJA: tsc 0, eslint 0, secrets OK, 2524/2524 (121 datotek); CI SUCCESS (1a4b0e6); produkcija v1.133.0 @ 1a4b0e6 ŽIVA; issue #72 ZAPRT z dokaznim komentarjem
+
+Stage Summary:
+- v1.133.0: celoten model dovoljenj po issue #72 — ključi pomenijo to kar piše (D), ravni vlog MANAGER≠LASTNIK (C), lokacije niso tiha praznina (B), vmesnik === backend (A)
+- Produkcija: v1.133.0 @ 1a4b0e6; issue #72 zaprt completed; odprta ostaja samo #73 (UX odloženi sklopi)
+- 2524/2524; E2E po vlogah (admin + vodja); VLM dokazi: prod133-manager-racuni.png, e2e133-manager-racuni.png
+
+---
+Task ID: v1.134.0-issue75-a
+Agent: Z.ai Code (glavni agent)
+Task: Issue #75 (P0 varnostni izvajalni načrt iz #72) — ocena stanja, sklop 0 odločitve, varovalka T, sklop 5.1/5.2
+
+Work Log:
+- OCENA: v1.133.0 je že pokril sklope 1–4 + B1/B2/A1/A4/C2/C3 (einvoices.issue, odstranjen orders.discount/furs.issue, razstavljen reports.view, fail-closed neznana vloga, lokacija obvezna, efektivni nabor v dialogu, isManagerialRole, touchesPolicy centralni strop). Manjkali: T, sklop 0 komentar, 5.1 (property_manager 23/23 superuporabnik), del 5.3 (strop za receipts.storno/einvoices.issue grant)
+- SKLOP 0: tri odločitve objavljene kot komentar na #75 (6245888776): 0.1 vodja = operativni vodja brez denarne politike; 0.2 OWNER/ADMIN centralni da, MANAGER brez lokacije fail-closed; 0.3 alergeni = rdeči pas + potrditev, ne blokada
+- VAROVALKA T: tests/route-coverage.test.ts — rekurzivni sprehod 226 route.ts, per-handler (GET/POST/PUT/PATCH/DELETE/HEAD) presoja: varovalka v telesu (11 vzorcev: requireAuth/requirePermission/requireAuthWithPerms/requireAnyPermission/requireCentralRole/requireUserLocation/deviceFromToken/posIdentity/verifyWebhookSignature/bearerMatches/issueFursReceipt) ALI izrecen javni register (15 poti z utemeljitvijo). Negativni test preverjen: nova nevarovana ruta → takoj rdeča
+- 5.1 (C1): PERMISSION_TIERS (standard/enhanced/full) + permissionTierFor() + FULL_ONLY_PERMISSIONS (settings.manage, receipts.storno, einvoices.issue) + PERMISSION_TIER_LABELS; property_manager iz CANONICAL (23/23) → ENHANCED_PERMISSIONS (19, vodstvo brez lastniških ključev); escape hatch = centralni override
+- 5.1/5.3 strop: employees/[id] PATCH — grant strop razširjen z employees.manage+settings.manage NA VSE FULL_ONLY ključe (manager ni mogel podeliti receipts.storno/einvoices.issue naprej); sporočilo 403 posodobljeno
+- UI: dialog dovoljenj — značka ravni vloge (emp.tierBadge, PERMISSION_TIER_LABELS[permissionTierFor(empRole)]) + privileged seznam iz FULL_ONLY_PERMISSIONS (enak strop kot backend); i18n SL/HR
+- TESTI: tests/issue75-security-plan.test.ts (14) + tests/route-coverage.test.ts (4) + permissions-core FULL_ROLES brez property_manager (3 nova) + posodobljen issue72 niz + 6 testnih datotek z pm sejanjem: settings.manage/receipts.storno override (issue14, issue43, issue11-crm-core, issue11-crm-admin, receipt-storno — testni namen »ne-centralen imetnik« ohranjen izrecno)
+- Suite: 2543/2543 (123 datotek), tsc 0, lint 0
+
+Stage Summary:
+- #75: sklop 0 dokumentiran (komentar), varovalka T živa (226 rut × metoda, javni register 15 vnosov), 5.1 tri ravni izvedene, 5.2/5.3 zaklenjeni
+- Odprto za naslednji korak: #74 (vizualna presoja, 25 najdb) in #73 (7 UX najdb) — več izdaj

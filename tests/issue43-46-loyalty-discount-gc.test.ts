@@ -66,7 +66,7 @@ function req(method: string, url: string, token: string, body?: unknown): NextRe
   })
 }
 
-async function seedEmployee(name: string, role: string, loc: string | null, seq: number): Promise<string> {
+async function seedEmployee(name: string, role: string, loc: string | null, seq: number, overrides: string[] = []): Promise<string> {
   const id = `${P}${name}-${RUN}`
   const pin = `${PIN_BASE}${seq}`
   const f = employeePinFields(pin, `${P}${name}-${RUN}@test.local`)
@@ -75,6 +75,7 @@ async function seedEmployee(name: string, role: string, loc: string | null, seq:
       id, name: `${P}${name}`, email: `${P}${name}-${RUN}@test.local`,
       role, status: 'active', sessionVersion: 0, locationId: loc,
       pin: f.pin, pinLookup: f.pinLookup,
+      ...(overrides.length ? { permissionOverrides: JSON.stringify(overrides) } : {}),
     },
   })
   return id
@@ -167,8 +168,10 @@ beforeAll(async () => {
   const kitchen = await seedEmployee('kitchen', 'kitchen', locA, 4)
   const central = await seedEmployee('central', 'admin', null, 5)
   const adminOA = await seedEmployee('adminOA', 'admin', locOA, 6)
-  const pmA = await seedEmployee('pmA', 'property_manager', locA, 7)
-  const pmB = await seedEmployee('pmB', 'property_manager', locB, 8)
+  // ISSUE #75 5.1: property_manager = Razširjena raven — testni namen »ne-centralen
+  // imetnik settings.manage« zdaj izrecen prek centralno podeljenega override-a
+  const pmA = await seedEmployee('pmA', 'property_manager', locA, 7, ['settings.manage'])
+  const pmB = await seedEmployee('pmB', 'property_manager', locB, 8, ['settings.manage'])
   tokMgrA = tok(mgrA, `${P}mgrA`, 'MANAGER', locA)
   tokMgrB = tok(mgrB, `${P}mgrB`, 'MANAGER', locB)
   tokWaiter = tok(waiter, `${P}waiter`, 'WAITER', locA)

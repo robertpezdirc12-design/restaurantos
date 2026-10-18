@@ -75,8 +75,10 @@ beforeAll(async () => {
   })
   const pm = `${P}pm-${RUN}`
   const f3 = employeePinFields(`${PIN_BASE}3`, `${P}pm-${RUN}@test.local`)
+  // ISSUE #75 5.1: property_manager = Razširjena raven; testni namen (ne-centralen
+  // settings.manage imetnik za CRM skrbniške rute) izrecen prek override-a
   await db.employee.create({
-    data: { id: pm, name: `${P}Pm`, email: `${P}pm-${RUN}@test.local`, role: 'property_manager', status: 'active', sessionVersion: 0, locationId: locA, pin: f3.pin, pinLookup: f3.pinLookup },
+    data: { id: pm, name: `${P}Pm`, email: `${P}pm-${RUN}@test.local`, role: 'property_manager', status: 'active', sessionVersion: 0, locationId: locA, pin: f3.pin, pinLookup: f3.pinLookup, permissionOverrides: JSON.stringify(['settings.manage']) },
   })
   tokMgr = tok(mgr, 'mgr', 'MANAGER', locA)
   tokWaiter = tok(waiter, 'waiter', 'WAITER', locA)

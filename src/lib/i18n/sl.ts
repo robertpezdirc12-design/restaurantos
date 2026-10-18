@@ -1858,6 +1858,8 @@ export const sl: Record<string, string> = {
   'emp.inactiveF': 'Neaktiven',
   'emp.permsLabel': 'Dovoljenja (override-ji)',
   'emp.permsHint': 'Kanonska avtorizacija: prazno = privzeto po vlogi.',
+  // ISSUE #75 5.1: značka ravni vloge (tri ravni po vzoru Square)
+  'emp.tierBadge': 'Raven',
   // ISSUE #72 A1/A2: efektivni nabor — vloga je BRAN vir, dodatki so odstranljivi
   'emp.permsSummary': 'Vloga {role} prinaša {n} branih pravic; tu jih je {m} dodanih. Dovoljenja so DODATNA — pravic vloge ni mogoče odvzeti.',
   'emp.permFromRole': 'Ta pravica prihaja iz vloge — brana je in je ni mogoče odvzeti.',

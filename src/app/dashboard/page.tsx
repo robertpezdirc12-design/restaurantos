@@ -74,7 +74,7 @@ import {
   type PrintConfig, type PrintLine, type PrintTarget,
 } from '@/lib/devices/print'
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
-import { PERMISSION_LABELS, effectivePermissionSets } from '@/lib/permissions'
+import { PERMISSION_LABELS, effectivePermissionSets, FULL_ONLY_PERMISSIONS, permissionTierFor, PERMISSION_TIER_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import { AllergenDialog } from '@/components/allergen-dialog'
@@ -4746,16 +4746,20 @@ function DashboardInner() {
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> {t('emp.permsLabel')}</Label>
                   {/* ISSUE #72 A1: povzetek efektivnega nabora — vloga je BRAN vir (N),
-                      tu se dodaja samo M dodatkov; odvzem ni mogoč (A2 besedilo). */}
-                  <p className="text-xs text-stone-600 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2">
-                    {t('emp.permsSummary', { role: roleL(empRole), n: empEffective.fromRole.length, m: empEffective.added.length })}
+                      tu se dodaja samo M dodatkov; odvzem ni mogoč (A2 besedilo).
+                      ISSUE #75 5.1: značka RAVNI vloge (Standard/Razširjena/Polna) —
+                      tri ravni po vzoru Square, viden vir resnice o hierarhiji. */}
+                  <p className="text-xs text-stone-600 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2 flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center rounded-full border border-stone-300 bg-white px-2 py-0.5 font-semibold">{t('emp.tierBadge')}: {PERMISSION_TIER_LABELS[permissionTierFor(empRole)]}</span>
+                    <span className="min-w-0">{t('emp.permsSummary', { role: roleL(empRole), n: empEffective.fromRole.length, m: empEffective.added.length })}</span>
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {Object.entries(PERMISSION_LABELS).map(([perm, label]) => {
                       // A1: pravica iz vloge = ZAKLENJENA (brano, neodstranljivo); dodatki = odstranljivi
                       const fromRole = (empEffective.fromRole as readonly string[]).includes(perm)
-                      // C2: stropova ključa sme DODATI samo centralna vloga (backend 403 sicer)
-                      const privileged = perm === 'employees.manage' || perm === 'settings.manage'
+                      // C2 + issue #75 5.1: lastniške ključe (FULL_ONLY) in employees.manage
+                      // sme DODATI samo centralna vloga (backend 403 sicer)
+                      const privileged = (FULL_ONLY_PERMISSIONS as readonly string[]).includes(perm) || perm === 'employees.manage'
                       const cantGrant = privileged && !fromRole && !isCentralUIRole(user?.role)
                       return (
                       <label

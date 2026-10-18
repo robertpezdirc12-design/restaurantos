@@ -253,7 +253,7 @@ describe('computeBill — konvencija «vključno z DDV»', () => {
 /* ─────────────── REGISTRI — val v1.133.0 ─────────────── */
 
 describe('REGISTRI — val v1.133.0 (issue #71 + hidracijski popravek useInViewOnce — React #418)', () => {
-  test('APP_VERSION === 1.133.0', () => {
-    expect(APP_VERSION).toBe('1.133.0')
+  test('APP_VERSION === 1.134.0', () => {
+    expect(APP_VERSION).toBe('1.134.0')
   })
 })

@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapEmployee, roleToDB, jstr, jparse } from '@/lib/map'
-import { CANONICAL_PERMISSIONS } from '@/lib/permissions'
+import { CANONICAL_PERMISSIONS, FULL_ONLY_PERMISSIONS } from '@/lib/permissions'
 import { writeAudit } from '@/lib/audit-chain'
 
 export { CANONICAL_PERMISSIONS }
@@ -102,15 +102,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const valid = (body.permissionOverrides as string[]).filter((p) =>
       (CANONICAL_PERMISSIONS as readonly string[]).includes(p))
     if (valid.length !== body.permissionOverrides.length) return fail('Neznana dovoljenja.', 400)
-    // ISSUE #72 C2: stropovi (employees.manage, settings.manage) sme DODATI samo
-    // centralna vloga — vodja z employees.manage bi si sicer lahko gojil
-    // naslednjega vodjo ali odprl globalne nastavitve. ODVZEM je vedno dovoljen
+    // ISSUE #72 C2 + ISSUE #75 5.1: stropovi — lastniške ključe (settings.manage,
+    // receipts.storno, einvoices.issue — glej FULL_ONLY_PERMISSIONS) in
+    // employees.manage sme DODATI samo centralna vloga — vodja/upravnik s
+    // employees.manage bi si sicer lahko gojil naslednjega vodjo, odpiral globalne
+    // nastavitve ali podeljeval fiskalna pooblastila. ODVZEM je vedno dovoljen
     // (privilegij se zmanjša, nikoli poveča).
     const targetExisting = jparse<string[]>(target.permissionOverrides, [])
     const addingPrivileged = valid.some((p) =>
-      (p === 'employees.manage' || p === 'settings.manage') && !targetExisting.includes(p))
+      ((FULL_ONLY_PERMISSIONS as readonly string[]).includes(p) || p === 'employees.manage')
+      && !targetExisting.includes(p))
     if (addingPrivileged && !isCentralRole(user)) {
-      return fail('Dodeljevanje dovoljenj employees.manage in settings.manage je rezervirano za OWNER ali ADMIN.', 403)
+      return fail('Dodeljevanje lastniških ključev (settings.manage, receipts.storno, einvoices.issue) in employees.manage je rezervirano za OWNER ali ADMIN.', 403)
     }
     data.permissionOverrides = jstr(valid)
     // Issue #6 §A (P0): sprememba dovoljenj prekliče stare seje — enaka disciplina

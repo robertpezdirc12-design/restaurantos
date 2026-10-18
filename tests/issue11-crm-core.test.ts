@@ -91,7 +91,7 @@ function params(id: string): { params: Promise<{ id: string }> } {
   return { params: Promise.resolve({ id }) }
 }
 
-async function seedEmployee(name: string, role: string, loc: string | null, seq: number): Promise<string> {
+async function seedEmployee(name: string, role: string, loc: string | null, seq: number, overrides: string[] = []): Promise<string> {
   const id = `${P}${name}-${RUN}`
   const f = employeePinFields(`${PIN_BASE}${seq}`, `${P}${name}-${RUN}@test.local`)
   await db.employee.create({
@@ -99,6 +99,7 @@ async function seedEmployee(name: string, role: string, loc: string | null, seq:
       id, name: `${P}${name}`, email: `${P}${name}-${RUN}@test.local`,
       role, status: 'active', sessionVersion: 0, locationId: loc,
       pin: f.pin, pinLookup: f.pinLookup,
+      ...(overrides.length ? { permissionOverrides: JSON.stringify(overrides) } : {}),
     },
   })
   return id
@@ -176,9 +177,11 @@ beforeAll(async () => {
   waiterA = await seedEmployee('waiterA', 'waiter', locA, 3)
   adminB = await seedEmployee('adminB', 'admin', locB, 4)
   // issue #72 C1: akterji s settings.manage, a lokacijsko vezani (guard ostane smiseln)
-  const pmA = await seedEmployee('pmA', 'property_manager', locA, 6)
-  const pmB = await seedEmployee('pmB', 'property_manager', locB, 7)
-  const pmC = await seedEmployee('pmC', 'property_manager', locC, 8)
+  // ISSUE #75 5.1: property_manager = Razširjena raven; testni namen (ne-centralen
+  // settings.manage za CRM kampanje/izvoze) izrecen prek centralno podeljenega override-a
+  const pmA = await seedEmployee('pmA', 'property_manager', locA, 6, ['settings.manage'])
+  const pmB = await seedEmployee('pmB', 'property_manager', locB, 7, ['settings.manage'])
+  const pmC = await seedEmployee('pmC', 'property_manager', locC, 8, ['settings.manage'])
   tokMgrA = tok(mgrA, 'mgrA', 'MANAGER', locA)
   tokMgrB = tok(mgrB, 'mgrB', 'MANAGER', locB)
   tokMgrC = tok(mgrC, 'mgrC', 'MANAGER', locC)
@@ -731,7 +734,7 @@ describe('H — Vsebina: [TEST] prefix, noga odjave, subject', () => {
     expect(testBody).toContain('[TEST')
   })
 
-  it('verzija aplikacije je dvignjena na 1.133.0', () => {
-    expect(APP_VERSION).toBe('1.133.0')
+  it('verzija aplikacije je dvignjena na 1.134.0', () => {
+    expect(APP_VERSION).toBe('1.134.0')
   })
 })

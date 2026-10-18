@@ -1858,6 +1858,8 @@ export const hr: Record<string, string> = {
   'emp.inactiveF': 'Neaktivan',
   'emp.permsLabel': 'Dozvole (override-i)',
   'emp.permsHint': 'Kanonička autorizacija: prazno = zadano po ulozi.',
+  // ISSUE #75 5.1: značka razine uloge (tri razine po uzoru Square)
+  'emp.tierBadge': 'Razina',
   // ISSUE #72 A1/A2: efektivni skup — uloga je ČITAN izvor, dodaci se mogu ukloniti
   'emp.permsSummary': 'Uloga {role} donosi {n} čitanih prava; ovdje ih je {m} dodanih. Dozvole su DODATNE — prava uloge nije moguće oduzeti.',
   'emp.permFromRole': 'Ovo pravo dolazi iz uloge — čitano je i nije ga moguće oduzeti.',

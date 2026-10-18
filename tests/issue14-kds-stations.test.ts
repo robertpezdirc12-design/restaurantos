@@ -138,13 +138,13 @@ async function body(res: Response): Promise<Record<string, unknown>> {
   return (await res.json().catch(() => ({}))) as Record<string, unknown>
 }
 
-async function seedEmp(tag: string, role: string, loc: string): Promise<string> {
+async function seedEmp(tag: string, role: string, loc: string, overrides: string[] = []): Promise<string> {
   const id = `${P}emp-${tag}-${RUN}`
   const email = `${P}${tag}-${RUN}@test.local`
   const pin = String(Math.floor(100000 + Math.random() * 900000))
   const f = employeePinFields(pin, email)
   await db.employee.create({
-    data: { id, name: `${P}${tag}`, email, role, status: 'active', sessionVersion: 0, locationId: loc, pin: f.pin, pinLookup: f.pinLookup },
+    data: { id, name: `${P}${tag}`, email, role, status: 'active', sessionVersion: 0, locationId: loc, pin: f.pin, pinLookup: f.pinLookup, ...(overrides.length ? { permissionOverrides: JSON.stringify(overrides) } : {}) },
   })
   return id
 }
@@ -218,8 +218,10 @@ beforeAll(async () => {
   const waiterAId = await seedEmp('waiterA', 'waiter', locA)
   const mgrBId = await seedEmp('mgrB', 'manager', locB)
   const chefBId = await seedEmp('chefB', 'kitchen', locB)
-  const pmAId = await seedEmp('pmA', 'property_manager', locA)
-  const pmBId = await seedEmp('pmB', 'property_manager', locB)
+  // ISSUE #75 5.1: property_manager = Razširjena raven; testni namen (ne-centralen
+  // settings.manage za prep-stations) izrecen prek centralno podeljenega override-a
+  const pmAId = await seedEmp('pmA', 'property_manager', locA, ['settings.manage'])
+  const pmBId = await seedEmp('pmB', 'property_manager', locB, ['settings.manage'])
   tokMgrA = tok(mgrAId, `${P}mgrA`, 'MANAGER', locA)
   tokChefA = tok(chefAId, `${P}chefA`, 'KITCHEN', locA)
   tokWaiterA = tok(waiterAId, `${P}waiterA`, 'WAITER', locA)

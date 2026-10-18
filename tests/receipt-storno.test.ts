@@ -15,8 +15,10 @@
  *  - manjka dovoljenje receipts.storno → 403, tuja lokacija → 403.
  *
  * ISSUE #72 D1 (v1.133.0): storno varoval ključ receipts.storno (prej furs.issue)
- * — imajo ga ADMIN/OWNER/enterprise (tudi property_manager), MANAGER NE več.
- * Akter happy-path testov je zato property_manager (ne-centralen, a ima pravico —
+ * — imajo ga ADMIN/OWNER/enterprise, MANAGER NE več. ISSUE #75 5.1:
+ * property_manager je zdaj Razširjena raven (brez receipts.storno po vlogi) —
+ * akter happy-path testov ostaja property_manager z IZRECNO centralno podeljenim
+ * override-om (ne-centralen, a ima pravico — enak testni namen).
  * cross-lokacijska varovalka ostane preizkušena).
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test'
@@ -190,6 +192,8 @@ beforeAll(async () => {
       sessionVersion: 0,
       locationId,
       pin: nidp('pin-mgr'),
+      // ISSUE #75 5.1: receipts.storno = lastniški ključ — podeljen centralno (override)
+      permissionOverrides: JSON.stringify(['receipts.storno']),
     },
   })
   managerId = mgr.id

@@ -22,6 +22,16 @@
  *   · 'guests.read'    — CRM gostov: e-naslovi, telefoni, privolitve (PII)
  * - DODAN 'einvoices.issue' — izdaja e-računov B2B (prej pod inventory.manage,
  *   kar je skladišniku dalo pravico do fiskalnega dokumenta).
+ *
+ * ISSUE #75 (v1.134.0) sklop 5.1 — TRI RAVNI po vzoru Square (Standard / Enhanced / Full):
+ * - property_manager NI VEČ superuporabnik (prej 23/23 kanoničnih, enako kot lastnik
+ *   — »šest vlog z identičnim naborom«). Upravnik objekta = RAZŠIRJENA raven
+ *   (vodstveni nabor, brez lastniških ključev); lastniške ključe sme dobiti SAMO
+ *   kot izrecen override, ki ga podelijo izključno centralne vloge (C2 strop).
+ * - FULL_ONLY_PERMISSIONS: settings.manage (denarna politika), receipts.storno
+ *   (fiskalna razveljavitev), einvoices.issue (fiskalni B2B dokument) — podelitev
+ *   je centralna pravica (glej employees/[id] PATCH varovalko).
+ * - permissionTierFor(): enoten vir resnice o ravni vloge za UI značke in stropove.
  */
 import { jparse } from '@/lib/map'
 
@@ -57,6 +67,52 @@ export const CANONICAL_PERMISSIONS = [
 ] as const
 
 export type CanonicalPermission = (typeof CANONICAL_PERMISSIONS)[number]
+
+/**
+ * ISSUE #75 5.1 (C1) — lastniški (FULL-only) ključi: globalna denarna politika,
+ * fiskalna razveljavitev in fiskalni B2B dokument. Dodelitev kot override je
+ * rezervirana za centralne vloge (OWNER/ADMIN) — vodja/upravnik jih ne more
+ * podeliti naprej (fiskalna pooblastila se dedijo samo od lastništva).
+ */
+export const FULL_ONLY_PERMISSIONS = [
+  'settings.manage',
+  'receipts.storno',
+  'einvoices.issue',
+] as const
+
+/** Tri ravni po vzoru Square (issue #75 5.1): Standard / Enhanced / Full. */
+export type PermissionTier = 'standard' | 'enhanced' | 'full'
+
+export const PERMISSION_TIER_LABELS: Record<PermissionTier, string> = {
+  standard: 'Standard',
+  enhanced: 'Razširjena',
+  full: 'Polna (lastniška)',
+}
+
+/**
+ * Vloga → raven. Standard = operativna tla (natakar/kuhinja/…), Enhanced =
+ * vodstvo lokacije/objekta (manager, property_manager), Full = lastništvo
+ * in centralna/organizacijska uprava (owner, admin, group_owner, org_admin).
+ * warehouse/accounting sta namenska nabora (zaloge/finance) — nista vlogi ravni.
+ */
+export function permissionTierFor(roleDB: string): PermissionTier {
+  const role = (roleDB || '').toLowerCase()
+  if (['owner', 'admin', 'group_owner', 'org_admin'].includes(role)) return 'full'
+  if (['manager', 'property_manager'].includes(role)) return 'enhanced'
+  return 'standard'
+}
+
+/**
+ * ISSUE #75 5.1 (C1) — RAZŠIRJENI (vodstveni) nabor: skupen managerju in
+ * property_managerju (operativa + kadri + poročila; BREZ lastniških ključev).
+ */
+const ENHANCED_PERMISSIONS: readonly CanonicalPermission[] = [
+  'orders.create', 'orders.pay', 'apply_discounts', 'kitchen.update',
+  'reservations.manage', 'menu.manage', 'inventory.manage',
+  'reports.sales', 'reports.labour', 'guests.read', 'employees.manage',
+  'orders.void', 'cash.manage', 'menu.availability', 'haccp.execute',
+  'timeclock.manage', 'delivery.manage', 'giftcards.manage', 'discounts.manage',
+]
 
 export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
   'orders.create': 'Naročila — ustvarjanje',
@@ -100,15 +156,9 @@ export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
 const ROLE_DEFAULTS: Record<string, readonly CanonicalPermission[]> = {
   owner: CANONICAL_PERMISSIONS,
   admin: CANONICAL_PERMISSIONS,
-  // issue #72 C1: vodja = operativa + kadri + poročila; brez settings.manage,
-  // brez receipts.storno, brez einvoices.issue (fiskalni dokumenti = lastnik/računovodstvo)
-  manager: [
-    'orders.create', 'orders.pay', 'apply_discounts', 'kitchen.update',
-    'reservations.manage', 'menu.manage', 'inventory.manage',
-    'reports.sales', 'reports.labour', 'guests.read', 'employees.manage',
-    'orders.void', 'cash.manage', 'menu.availability', 'haccp.execute',
-    'timeclock.manage', 'delivery.manage', 'giftcards.manage', 'discounts.manage',
-  ],
+  // issue #72 C1 / issue #75 5.1: vodja = RAZŠIRJENA raven (operativa + kadri +
+  // poročila); brez settings.manage, receipts.storno, einvoices.issue
+  manager: ENHANCED_PERMISSIONS,
   // OPS-4 matrica: natakar dobi tudi 86 (razpoložljivost) — brez urejanja menija.
   staff: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage', 'menu.availability'],
   waiter: ['orders.create', 'orders.pay', 'apply_discounts', 'reservations.manage', 'menu.availability'],
@@ -119,10 +169,13 @@ const ROLE_DEFAULTS: Record<string, readonly CanonicalPermission[]> = {
   kitchen: ['kitchen.update', 'menu.availability', 'haccp.execute'],
   // OPS-4 (v1.67.0): NOVA vloga čistilke — samo izvedba HACCP kontrol + lastni delovni čas.
   cleaner: ['haccp.execute'],
-  // issue #11 §1 — enterprise vloge
+  // issue #11 §1 — enterprise vloge. ISSUE #75 5.1: property_manager je
+  // RAZŠIRJENA raven (upravnik ENEGA objekta — ne superuporabnik); lastniške
+  // ključe (settings.manage, receipts.storno, einvoices.issue) dobi izključno
+  // prek centralnega override-a. group_owner/org_admin ostajata Full (org uprava).
   group_owner: CANONICAL_PERMISSIONS,
   org_admin: CANONICAL_PERMISSIONS,
-  property_manager: CANONICAL_PERMISSIONS,
+  property_manager: ENHANCED_PERMISSIONS,
   // issue #72 D3: skladiščnik izgubi PII (guests.read) in plačne podatke
   // (reports.labour) — dobi samo finančni vpogled prodaje (reports.sales)
   warehouse: ['inventory.manage', 'reports.sales'],

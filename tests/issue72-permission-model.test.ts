@@ -81,7 +81,8 @@ describe('issue #72 C1/C2/C3 — ravni vlog in stropovi (rute)', () => {
     expect(post).toContain("const PRIVILEGED_ROLES = ['OWNER', 'ADMIN', 'MANAGER', ...ENTERPRISE_ROLES]")
     const patch = read('../src/app/api/employees/[id]/route.ts')
     expect(patch).toContain("if (role === 'MANAGER' && !isCentralRole(user))")
-    expect(patch).toContain("Dodeljevanje dovoljenj employees.manage in settings.manage je rezervirano")
+    // ISSUE #75 5.1: strop razširjen na VSE lastniške ključe (ne le settings.manage)
+    expect(patch).toContain("Dodeljevanje lastniških ključev (settings.manage, receipts.storno, einvoices.issue)")
   })
 
   test('C2: dodeljevanje stropov (employees.manage/settings.manage) = ODVZEM dovoljen, DODATEK centralno', () => {

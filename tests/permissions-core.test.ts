@@ -31,8 +31,10 @@ const ALL_DB_ROLES = [
   'group_owner', 'org_admin', 'property_manager', 'warehouse', 'accounting', 'cleaner',
 ] as const
 
-/** ISSUE #72 C1: MANAGER ni več med polnimi vlogami — omejen nabor (19 ključev) */
-const FULL_ROLES = ['owner', 'admin', 'group_owner', 'org_admin', 'property_manager']
+/** ISSUE #72 C1: MANAGER ni več med polnimi vlogami — omejen nabor (19 ključev)
+ * ISSUE #75 5.1: tudi PROPERTY_MANAGER ni več poln — Razširjena raven (upravnik
+ * objekta ≠ superuporabnik; lastniške ključe dobi le prek centralnega override-a). */
+const FULL_ROLES = ['owner', 'admin', 'group_owner', 'org_admin']
 const canonical = [...CANONICAL_PERMISSIONS]
 
 const sortedEq = (a: readonly string[], b: readonly string[]) =>
@@ -68,6 +70,21 @@ describe('resolvePermissions — vloge s polnim naborom dovoljenj', () => {
 
   test('velike črke vloga se normalizira (DB/UI mešanica) — "MANAGER" omejen nabor', () => {
     expect(sortedEq(resolvePermissions('MANAGER', []), [...MANAGER_EXPECTED])).toBe(true)
+  })
+
+  test('ISSUE #75 5.1: "property_manager" = RAZŠIRJENA raven (enak nabor kot manager)', () => {
+    const perms = resolvePermissions('property_manager', [])
+    expect(sortedEq(perms, [...MANAGER_EXPECTED])).toBe(true)
+    expect(perms).not.toContain('settings.manage')
+    expect(perms).not.toContain('receipts.storno')
+    expect(perms).not.toContain('einvoices.issue')
+  })
+
+  test('ISSUE #75 5.1: property_manager + CENTRALNI override settings.manage deluje (escape hatch)', () => {
+    // Lastniški ključ se sme izrecno podeliti (samo centralne vloge ga lahko dodajo)
+    const perms = resolvePermissions('property_manager', ['settings.manage'])
+    expect(perms).toContain('settings.manage')
+    expect(perms).toHaveLength(MANAGER_EXPECTED.length + 1)
   })
 })
 
