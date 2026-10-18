@@ -80,15 +80,25 @@ export const hr: Record<string, string> = {
   'tabs.racuni': 'Računi',
   'tabs.popusti': 'Popusti',
   'tabs.integracije': 'Integracije',
-  'tabs.enterprise': 'Enterprise',
+  'tabs.enterprise': 'Organizacija',
   'tabs.more': 'Više',
-  /* ISSUE #74 V-17: odjeljci izbornika Više; V-18: kratica Brza prodaja na mobilnom */
-  'tabs.groupOps': 'Operativa',
+  /* ISSUE #74 V-17: odjeljci; V-18: kratica; #73 audit-11 (v1.138.0): jedinstven rječnik */
+  'tabs.groupOps': 'Naručivanje',
   'tabs.groupGuests': 'Gosti',
   'tabs.groupFinance': 'Zalihe i financije',
   'tabs.groupStaff': 'Ekipa',
   'tabs.groupSystem': 'Sustav',
   'tabs.prodajaShort': 'Prodaja',
+
+  /* Issue #73 audit-10 (v1.138.0): navigacijski stupac + mobilna traka + ladica Više */
+  'nav.mainAria': 'Glavna navigacija',
+  'nav.quickAria': 'Brza navigacija',
+  'nav.drawerTitle': 'Svi odjeljci',
+  'nav.drawerDesc': 'Cijelo navigacijsko stablo s pretragom po odjeljcima.',
+  'nav.moreAria': 'Svi odjeljci (ladica navigacije)',
+  'nav.searchLabel': 'Pretraga po odjeljcima',
+  'nav.searchPlaceholder': 'Pronađi odjeljak…',
+  'nav.noResults': 'Nema rezultata.',
   'ent.kpiOrgs': 'Organizacije',
   'ent.kpiBrands': 'Brendovi',
   'ent.kpiProperties': 'Objekti',
@@ -161,7 +171,7 @@ export const hr: Record<string, string> = {
   'tabs.stroski': 'Troškovi',
   'tabs.zvestoba': 'Vjernost',
   'tabs.mnenja': 'Ocjene',
-  'tabs.crm': 'CRM gostiju', // Issue #11 v1.126.0 — segmenti, suglasnost, kampanje
+  'tabs.crm': 'Odnosi s gostima', // Issue #11 v1.126.0 — segmenti, suglasnost, kampanje; #73 audit-11: bez posuđenice CRM
   'tabs.dostava': 'Dostava',
   'tabs.napitnine': 'Napojnice',
   'tabs.obracun': 'Obračun', // Issue #22 v1.115.0 — plaće (payroll)
@@ -170,10 +180,10 @@ export const hr: Record<string, string> = {
   'tabs.darilne': 'Poklon kartice',
   'tabs.odpad': 'Otpad',
   'tabs.cakalna': 'Lista čekanja',
-  'tabs.odpiralnicas': 'Radno vrijeme objekta',
+  'tabs.odpiralnicas': 'Otvaranje lokala',
   'tabs.zaposleni': 'Zaposleni',
   'tabs.nastavitve': 'Postavke',
-  'tabs.inzeniring': 'Inženjering jelovnika',
+  'tabs.inzeniring': 'Analiza jelovnika',
 
   // ── Zaglavlje ──
   'header.allLocations': 'Sve lokacije',
@@ -543,7 +553,7 @@ export const hr: Record<string, string> = {
   'inv.recipe': 'Receptura',
   'inv.noRecipes': 'Nema spremljenih recepata — bez recepture se zaliha pri prodaji ne umanjuje.',
   'inv.noIngredients': 'bez sastojaka',
-  'st.title': 'Popis zalihe',
+  'st.title': 'Popisi',
   'st.open': 'Započni popis',
   'st.note': 'Napomena (neobavezno)',
   'st.active': 'Popis u tijeku',
@@ -2380,7 +2390,7 @@ export const hr: Record<string, string> = {
   'payment.checkPay': 'Plati',
   'payment.checkBanner': 'Plaćanje računa {n} — iznosi vrijede samo za taj račun.',
   'orders.edit': 'Uredi',
-  'tabs.urnik': 'Raspored',
+  'tabs.urnik': 'Raspored radnih sati',
   'urnik.newShift': 'Nova smjena',
   'urnik.editShift': 'Uredi smjenu',
   'urnik.employee': 'Zaposleni',
@@ -2501,7 +2511,7 @@ export const hr: Record<string, string> = {
   'orders.filterAll': 'Sve narudžbe',
 
   // ── OPS-8 v1.71.0 — Menu inženiring (Kasavana-Smith) ──
-  'me.title': 'Inženjering jelovnika',
+  'me.title': 'Analiza jelovnika', // #73 audit-11: usklajeno s tabs.inzeniring (bez posuđenice)
   'me.desc': 'Analiza popularnosti i marže (Kasavana-Smith): zvijezde zaštiti, radne konje repricing, zagonetke promoviraj, pse preskoči ili obnovi.',
   'me.period': 'Razdoblje',
   'me.days30': '30 dana',

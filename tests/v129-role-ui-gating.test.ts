@@ -75,9 +75,12 @@ describe('v1.129.0 C — tab gating po vlogah (čistilka/skladiščnik)', () => 
     expect(landingTab('CLEANER', cleaner.perms).tab).toBe('haccp')
     expect(landingTab('WAREHOUSE', warehouse.perms).tab).toBe('zaloge')
   })
-  test('aktivni zavihek je vedno viden v vrstici (page.tsx filter)', () => {
-    const page = read('src/app/dashboard/page.tsx')
-    expect(page).toContain('DASHBOARD_PRIMARY_TABS.has(v) || v === activeTab')
+  test('aktivni zavihek je vedno viden v (mobilni) vrstici (v1.138.0: MobileBottomNav)', () => {
+    // v1.129.0 pogodba prenesena na novo navigacijo (issue #73 audit-10):
+    // horizontalna vrstica → stranski steber (≥ lg, vidi vse) + mobilna
+    // spodnja vrstica (vloga + AKTIVEN zavihek vedno viden).
+    const nav = read('src/components/dashboard-nav.tsx')
+    expect(nav).toContain('roleSet.includes(v) || v === activeTab')
   })
 })
 

@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
@@ -39,7 +39,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
   LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
@@ -69,6 +69,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
+import { DashboardSidebar, MobileBottomNav, MobileNavDrawer } from '@/components/dashboard-nav'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { downloadCSV } from '@/lib/client'
@@ -114,28 +115,12 @@ const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['prenosi', ArrowLeftRight], ['darilne', Gift], ['odpad', Trash2], ['cakalna', Hourglass],
   ['odpiralnicas', CalendarClock], ['zaposleni', Users], ['nastavitve', Settings], ['enterprise', Building2],
 ];
-const DASHBOARD_PRIMARY_TABS = new Set(['pregled', 'mize', 'narocila', 'prodaja', 'kuhinja', 'meni', 'rezervacije', 'racuni']);
-const DASHBOARD_MOBILE_PRIMARY_TABS = new Set(['pregled', 'mize', 'narocila', 'prodaja', 'kuhinja']);
-const DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG = new Set(['meni', 'rezervacije', 'racuni']);
-
-/* ISSUE #74 V-17: meni »Več« dobi RAZDELKE — 27 ciljev v ravnem seznamu je bilo
-   nepregledno (issue: »32 ciljev, 24 brez razdelkov, brez iskalnika«). Skupine
-   po vsebini dela (Toast/Square vzorec: Operativa / Gostje / Zaloge in
-   finance / Ekipa / Sistem); nepoznani zavihki padejo v Operativo (fail-safe). */
-const TAB_GROUP_KEYS = ['ops', 'guests', 'finance', 'staff', 'system'] as const
-type TabGroupKeyT = (typeof TAB_GROUP_KEYS)[number]
-const TAB_GROUP_LABEL_KEY: Record<TabGroupKeyT, string> = {
-  ops: 'tabs.groupOps', guests: 'tabs.groupGuests', finance: 'tabs.groupFinance', staff: 'tabs.groupStaff', system: 'tabs.groupSystem',
-}
-const TAB_GROUP_OF: Record<string, TabGroupKeyT> = {
-  meni: 'ops', rezervacije: 'ops', dostava: 'ops', cakalna: 'ops',
-  zvestoba: 'guests', mnenja: 'guests', crm: 'guests', darilne: 'guests',
-  racuni: 'finance', obracun: 'finance', stroski: 'finance', napitnine: 'finance',
-  zaloge: 'finance', nabava: 'finance', odpad: 'finance', prenosi: 'finance',
-  inzeniring: 'finance', popusti: 'finance',
-  zaposleni: 'staff', izmene: 'staff', delovnicas: 'staff', urnik: 'staff', odpiralnicas: 'staff', haccp: 'staff',
-  nastavitve: 'system', integracije: 'system', enterprise: 'system',
-}
+/* ISSUE #73 audit-10 (v1.138.0): horizontalna vrstica zavihkov + gumb ⋮ »Več«
+   (27 ciljev v spustnem meniju) je ZAMENJANA z navigacijskim stolpcem:
+   - ≥ lg: levi steber s skupinami + iskalnik zavihkov (DashboardSidebar),
+   - < lg: spodnja vrstica z 4–5 zavihki DEJANSKE vloge + predal »Več«
+     (MobileBottomNav + MobileNavDrawer).
+   Skupine/loge/iskanje: src/lib/nav-groups.ts; besednjak: t(`tabs.${id}`). */
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
@@ -388,6 +373,8 @@ function DashboardInner() {
   // handles the router.push-after-render timing; direct loads switch after mount.
   const [activeTab, setActiveTab] = useState('pregled')
   const [paletteOpen, setPaletteOpen] = useState(false)
+  /* Issue #73 audit-10: predal »Več« mobilne spodnje vrstice (celotno drevo + iskalnik) */
+  const [navMoreOpen, setNavMoreOpen] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   // Offline/local-first + pravice (issue #1)
@@ -396,7 +383,7 @@ function DashboardInner() {
   // utripajo skozi permisivno stanje (prej perms=[] → tabHasPerm dovolil VSE do /me).
   // /api/auth/me v load() ostaja kot osvežitev (takojšen učinek spremembe pravic).
   // FIX (E2E 8-e2e): hydration-safe — the lazy initializer read localStorage on the
-  // client (server always got perms=[]) so the permission-gated TabsList rendered
+  // client (server always got perms=[]) so the permission-gated navigation rendered
   // a different tab set during hydration (console error + full client re-render).
   // Permissions now hydrate from localStorage in the effect below (same-frame,
   // before /me — the anti-flicker goal of P1-A is preserved, only one paint later).
@@ -2217,91 +2204,26 @@ function DashboardInner() {
         </div>
       </header>
 
-      <div id="dash-vsebina" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 outline-none">
-        <h1 className="sr-only">{t('dash.h1')}</h1>
-        {/* ISSUE #72 B1: uporabnik brez dodeljene lokacije vidi ČISTO STANJE z razlogom
+      {/* ISSUE #73 audit-10 (v1.138.0): Tabs je zdaj nosilec LAYOUTA — navigacijski
+          steber (≥ lg) + vsebina + mobilna spodnja vrstica (< lg) sestavljajo eno
+          celoto; TabsContent ploskosti ŽIVIJO neposredno v dash-vsebina. */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex min-h-0 flex-col">
+        <div className="flex min-w-0 flex-1">
+          <DashboardSidebar tabs={DASHBOARD_TABS} activeTab={activeTab} onSelect={setActiveTab} ctx={{ canManage, perms }} />
+          <div id="dash-vsebina" tabIndex={-1} className="flex-1 min-w-0 max-w-7xl w-full mx-auto px-4 py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-6 outline-none">
+            <h1 className="sr-only">{t('dash.h1')}</h1>
+            {/* ISSUE #72 B1: uporabnik brez dodeljene lokacije vidi ČISTO STANJE z razlogom
             (»pokličite vodjo«) namesto praznih seznamov brez sporočila — locationScope
             senčilo '__no_location__' vrne []/ničle, kar je brez tega videti kot prazen local. */}
-        {user && !user.locationId && !isCentralUIRole(user.role) && (
-          <div role="alert" data-region="no-location-banner" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <MapPin className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-amber-800">{t('emp.noLocTitle')}</p>
-              <p className="text-xs text-amber-700">{t('emp.noLocBody')}</p>
-            </div>
-          </div>
-        )}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div data-region="dashboard-nav" className="flex min-w-0 items-center gap-2">
-            <TabsList data-region="dashboard-tabs" className="min-w-0 flex-1 justify-start overflow-hidden h-auto flex-nowrap bg-white border border-stone-200 p-1">
-              {DASHBOARD_TABS
-                // v1.129.0 (POS benchmark, POPRAVEK): AKTIVEN zavihek je VEDNO viden v vrstici —
-                // čistilka (haccp) in skladiščnik (zaloge) prej niso videli svojega pristajalnega
-                // zavihka, ker ni v trdnem naboru DASHBOARD_PRIMARY_TABS (bil samo v meniju Več).
-                .filter(([v]) => DASHBOARD_PRIMARY_TABS.has(v) || v === activeTab)
-                // UI gating po dovoljenjih — backend uveljavlja neodvisno; neznan zavihek ostane skrit.
-                .filter(([v]) => tabHasPerm(v, { canManage, perms }))
-                .map(([v, Icon]) => (
-                  <TabsTrigger
-                    key={v}
-                    value={v}
-                    aria-label={t(`tabs.${v}`)}
-                    title={t(`tabs.${v}`)}
-                    /* ISSUE #74 V-18: mobilna navigacija ni več »same ikone« — napis POD
-                       ikono (flex-col, text-xs, truncate 64 px) na <sm, običajna vodoravna
-                       vrstica od sm. Prej: 5 gumbov brez besedilnih oznak pri 390 px. */
-                    className={`min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-1.5 items-center data-[state=active]:bg-emerald-700 data-[state=active]:text-white dark:data-[state=active]:bg-emerald-700 dark:data-[state=active]:text-white whitespace-nowrap ${DASHBOARD_MOBILE_PRIMARY_TABS.has(v) || v === activeTab ? 'inline-flex' : 'hidden lg:inline-flex'}`}
-                  >
-                    {Icon && <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />}
-                    <span className="max-w-16 truncate text-xs sm:max-w-none sm:text-sm">{v === 'prodaja' ? (t('tabs.prodajaShort') || t('tabs.prodaja')) : t(`tabs.${v}`)}</span>
-                  </TabsTrigger>
-                ))}
-            </TabsList>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  aria-label={t('tabs.more')}
-                  title={t('tabs.more')}
-                  className="h-10 shrink-0 gap-1.5 rounded-xl px-3"
-                >
-                  <MoreVertical className="w-4 h-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">{t('tabs.more')}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
-                {/* ISSUE #74 V-17: razdelki — Operativa / Gostje / Zaloge in finance /
-                    Ekipa / Sistem (prej 27 ciljev v ravnem seznamu brez razdelkov) */}
-                {TAB_GROUP_KEYS.map((g, gi) => {
-                  const groupTabs = DASHBOARD_TABS
-                    .filter(([v]) => !DASHBOARD_MOBILE_PRIMARY_TABS.has(v))
-                    .filter(([v]) => tabHasPerm(v, { canManage, perms }))
-                    .filter(([v]) => (TAB_GROUP_OF[v] ?? 'ops') === g)
-                  if (groupTabs.length === 0) return null
-                  return (
-                    <DropdownMenuGroup key={g}>
-                      {gi > 0 && <DropdownMenuSeparator />}
-                      <DropdownMenuLabel className="text-[11px] font-bold uppercase tracking-wider text-stone-400">{t(TAB_GROUP_LABEL_KEY[g])}</DropdownMenuLabel>
-                      {groupTabs.map(([v, Icon]) => (
-                        <DropdownMenuItem
-                          key={v}
-                          onSelect={() => setActiveTab(v)}
-                          className={`${activeTab === v ? 'bg-emerald-50 text-emerald-900 focus:bg-emerald-100' : ''} ${DASHBOARD_PRIMARY_TABS_HIDDEN_BELOW_LG.has(v) ? 'lg:hidden' : ''}`}
-                        >
-                          {Icon && <Icon className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />}
-                          <span>{t(`tabs.${v}`)}</span>
-                          {activeTab === v && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  )
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+            {user && !user.locationId && !isCentralUIRole(user.role) && (
+              <div role="alert" data-region="no-location-banner" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <MapPin className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-amber-800">{t('emp.noLocTitle')}</p>
+                  <p className="text-xs text-amber-700">{t('emp.noLocBody')}</p>
+                </div>
+              </div>
+            )}
 
           <TabsContent value="pregled" className="space-y-6">
             {viewLoc && (
@@ -4298,8 +4220,13 @@ function DashboardInner() {
             </Card>
             </SettingsSection>
           </TabsContent>
-        </Tabs>
-      </div>
+          </div>
+        </div>
+        {/* Issue #73 audit-10: mobilna spodnja vrstica — 4–5 zavihkov DEJANSKE
+            vloge + gumb »Več« (predal s celotnim drevesom + iskalnik). */}
+        <MobileBottomNav tabs={DASHBOARD_TABS} activeTab={activeTab} onSelect={setActiveTab} ctx={{ canManage, perms }} role={user?.role} onOpenMore={() => setNavMoreOpen(true)} />
+        <MobileNavDrawer open={navMoreOpen} onOpenChange={setNavMoreOpen} tabs={DASHBOARD_TABS} activeTab={activeTab} onSelect={setActiveTab} ctx={{ canManage, perms }} />
+      </Tabs>
 
       {/* ── Novo naročilo ── */}
       <Dialog open={!!newOrderTable} onOpenChange={(v) => !v && setNewOrderTable(null)}>
@@ -5397,9 +5324,11 @@ function DashboardInner() {
         onLogout={() => setConfirmLogout(true)}
       />
 
-      <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <footer className="mt-auto bg-white border-t border-stone-200 py-3 text-center text-xs text-stone-400 pb-[max(0.75rem,env(safe-area-inset-bottom))] mb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:mb-0">
         {/* ISSUE #74 V-16: noga brez verzije/besed rekonstrukcija/simulacija —
-            tehnične podrobnosti živijo v Nastavitve → Sistem */}
+            tehnične podrobnosti živijo v Nastavitve → Sistem.
+            Issue #73 audit-10: odmik na mobilnem (fiksna spodnja vrstica ne sme
+            prekrivati noge, ko uporabnik drsa na konec strani). */}
         {t('dash.footer')}
       </footer>
     </main>

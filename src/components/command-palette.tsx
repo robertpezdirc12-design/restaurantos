@@ -82,7 +82,7 @@ export function CommandPalette({ open, onOpenChange, user, onNavigate, onRefresh
             <PackageSearch className="w-4 h-4" /> Zaloge
           </CommandItem>
           <CommandItem onSelect={() => run(() => onNavigate('izmene'))}>
-            <Clock className="w-4 h-4" /> Izmene + Z-poročila
+            <Clock className="w-4 h-4" /> Smene + Z-poročila
           </CommandItem>
           <CommandItem onSelect={() => run(() => onNavigate('haccp'))}>
             <Thermometer className="w-4 h-4" /> HACCP kontrole

@@ -80,15 +80,28 @@ export const sl: Record<string, string> = {
   'tabs.racuni': 'Računi',
   'tabs.popusti': 'Popusti',
   'tabs.integracije': 'Integracije',
-  'tabs.enterprise': 'Enterprise',
+  'tabs.enterprise': 'Organizacija',
   'tabs.more': 'Več',
+
+  /* Issue #73 audit-11 (v1.138.0): enoten besednjak — skupine preimenovane
+     (Operativa → Naročanje po issue #71 audit-10 naboru skupin). */
   /* ISSUE #74 V-17: razdelki menija Več; V-18: kratek napis Hitra prodaja na mobilnem */
-  'tabs.groupOps': 'Operativa',
+  'tabs.groupOps': 'Naročanje',
   'tabs.groupGuests': 'Gostje',
   'tabs.groupFinance': 'Zaloge in finance',
   'tabs.groupStaff': 'Ekipa',
   'tabs.groupSystem': 'Sistem',
   'tabs.prodajaShort': 'Prodaja',
+
+  /* Issue #73 audit-10 (v1.138.0): navigacijski steber + mobilna vrstica + predal Več */
+  'nav.mainAria': 'Glavna navigacija',
+  'nav.quickAria': 'Hitra navigacija',
+  'nav.drawerTitle': 'Vsi razdelki',
+  'nav.drawerDesc': 'Celotno navigacijsko drevo z iskalnikom po razdelkih.',
+  'nav.moreAria': 'Vsi razdelki (predal navigacije)',
+  'nav.searchLabel': 'Iskanje po razdelkih',
+  'nav.searchPlaceholder': 'Poišči razdelek…',
+  'nav.noResults': 'Ni zadetkov.',
   'ent.kpiOrgs': 'Organizacije',
   'ent.kpiBrands': 'Blagovne znamke',
   'ent.kpiProperties': 'Objekti',
@@ -152,7 +165,7 @@ export const sl: Record<string, string> = {
   'integ.typeEcommerce': 'E-trgovina',
   'integ.typeOther': 'Drugo',
   'tabs.zaloge': 'Zaloge',
-  'tabs.izmene': 'Izmene',
+  'tabs.izmene': 'Smene',
   'tabs.delovnicas': 'Delovni čas',
   'tabs.haccp': 'HACCP',
   // Issue #71 audit-27: neznan/zaprt zavihek — obvestilo namesto prazne plošče
@@ -161,7 +174,7 @@ export const sl: Record<string, string> = {
   'tabs.stroski': 'Stroški',
   'tabs.zvestoba': 'Zvestoba',
   'tabs.mnenja': 'Mnenja',
-  'tabs.crm': 'CRM gostov', // Issue #11 v1.126.0 — segmenti, soglasje, kampanje
+  'tabs.crm': 'Odnosi z gosti', // Issue #11 v1.126.0 — segmenti, soglasje, kampanje; #73 audit-11: brez izposojenke CRM
   'tabs.dostava': 'Dostava',
   'tabs.napitnine': 'Napitnine',
   'tabs.obracun': 'Obračun', // Issue #22 v1.115.0 — plače (payroll)
@@ -170,10 +183,10 @@ export const sl: Record<string, string> = {
   'tabs.darilne': 'Darilne kartice',
   'tabs.odpad': 'Odpad',
   'tabs.cakalna': 'Čakalna lista',
-  'tabs.odpiralnicas': 'Odpiralni čas',
+  'tabs.odpiralnicas': 'Odprtost lokala',
   'tabs.zaposleni': 'Zaposleni',
   'tabs.nastavitve': 'Nastavitve',
-  'tabs.inzeniring': 'Menu inženiring',
+  'tabs.inzeniring': 'Analiza menija',
 
   // ── Glava ──
   'header.allLocations': 'Vse lokacije',
@@ -544,7 +557,7 @@ export const sl: Record<string, string> = {
   'inv.recipe': 'Receptura',
   'inv.noRecipes': 'Ni shranjenih receptov — brez recepture se zaloga ob prodaji ne razknjiži.',
   'inv.noIngredients': 'brez sestavin',
-  'st.title': 'Popis zaloge',
+  'st.title': 'Popisi',
   'st.open': 'Začni popis',
   'st.note': 'Opomba (neobvezno)',
   'st.active': 'Popis v teku',
@@ -2382,7 +2395,7 @@ export const sl: Record<string, string> = {
   'payment.checkPay': 'Plačaj',
   'payment.checkBanner': 'Plačilo izstavka {n} — zneski veljajo samo za ta izstavek.',
   'orders.edit': 'Uredi',
-  'tabs.urnik': 'Urnik',
+  'tabs.urnik': 'Razpored delovnih ur',
   'urnik.newShift': 'Nova izmena',
   'urnik.editShift': 'Uredi izmeno',
   'urnik.employee': 'Zaposleni',
@@ -2503,7 +2516,7 @@ export const sl: Record<string, string> = {
   'orders.filterAll': 'Vsa naročila',
 
   // ── OPS-8 v1.71.0 — Menu inženiring (Kasavana-Smith) ──
-  'me.title': 'Menu inženiring',
+  'me.title': 'Analiza menija', // #73 audit-11: usklajeno s tabs.inzeniring (brez izposojenke)
   'me.desc': 'Analiza popularnosti in marže (Kasavana-Smith): zvezdice zaščiti, vprege repricing, uganke promoviraj, pse preskoči ali prenovi.',
   'me.period': 'Obdobje',
   'me.days30': '30 dni',
@@ -3540,7 +3553,7 @@ export const sl: Record<string, string> = {
   'lcov.fcNoSamples': 'ni vzorcev',
   'lcov.fcEmpty': 'Ni podatkov za napoved.',
   'lcov.covTitle': 'Pokritost prihodnjih izmen',
-  'lcov.covShifts': 'Izmene',
+  'lcov.covShifts': 'Smene', // #73 audit-11: usklajeno s tabs.izmene → Smene
   'lcov.covPlanned': 'Načrt (min · strošek)',
   'lcov.covExpectedNet': 'Pričakovana neto prodaja',
   'lcov.covExpectedPct': 'Prič. Labor %',

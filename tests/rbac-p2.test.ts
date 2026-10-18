@@ -294,15 +294,20 @@ describe('P2 RBAC — N8: UI dovoljenja zavihkov (fail-closed)', () => {
   test('vsak zavihek iz DASHBOARD_TABS v page.tsx ima izrecen vnos (regresija N8)', () => {
     const src = readFileSync(join(import.meta.dir, '..', 'src', 'app', 'dashboard', 'page.tsx'), 'utf8')
     // v1.122.0 (PR #67): navigacija dashboarda prestrukturirana — zavihki živijo v DASHBOARD_TABS
-    // (['id', Icon]), primarni v TabsList + ostali v dropdownu 'Več'; OBA izpisa filtrirata z
-    // tabHasPerm (neznan/undefined id → zavihek NI viden) — fail-closed pogodba nespremenjena.
+    // (['id', Icon]). v1.138.0 (issue #73 audit-10): horizontalna vrstica + dropdown 'Več' sta
+    // zamenjana s stranskim stebrom + mobilno vrstico + predalom (src/components/dashboard-nav.tsx);
+    // izpis filtrira z tabHasPerm (neznan/undefined id → zavihek NI viden) — fail-closed
+    // pogodba nespremenjena.
     const ids = [...src.matchAll(/\['([a-z]+)', [A-Z][A-Za-z0-9]*\]/g)].map((m) => m[1])
     expect(ids.length).toBeGreaterThanOrEqual(31)
     for (const id of new Set(ids)) {
       expect(TAB_PERM[id]).toBeDefined()
     }
-    // obe poti izpisa (primarni TabsList + 'Več' dropdown) uveljavljata tabHasPerm gating
-    expect((src.match(/tabHasPerm\(v, \{ canManage, perms \}\)/g) || []).length).toBeGreaterThanOrEqual(2)
+    // vse tri poti izpisa (steber + mobilna vrstica preko vloge + predal Več) uveljavljajo
+    // tabHasPerm gating v dashboard-nav.tsx; page.tsx prejme DASHBOARD_TABS in ctx {canManage, perms}
+    const nav = readFileSync(join(import.meta.dir, '..', 'src', 'components', 'dashboard-nav.tsx'), 'utf8')
+    expect((nav.match(/tabHasPerm\(v, ctx\)/g) || []).length).toBeGreaterThanOrEqual(2)
+    expect((src.match(/ctx=\{\{ canManage, perms \}\}/g) || []).length).toBeGreaterThanOrEqual(3)
   })
 })
 
