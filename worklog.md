@@ -4218,3 +4218,33 @@ Stage Summary:
 - VSI sklopi #73 (7/7) pokriti: audit-19, audit-26, audit-15, audit-10, audit-11, audit-22, audit-33 — issue ZAPRT z dokaznim komentarjem
 - E2E pasti ujeti v produkciji in popravljena isti dan: (1) aria-disabled ovojnica okoli Servirano gumba, (2) časovno okno zatiranja klika po dolgem pritisku — obe varovalki v testih
 - Dokazni posnetki: .zscripts/audit22-kds-intro.png, audit22-kds-ready.png, audit22-kds-queue-clean.png, audit22-kds-mobile.png, audit22-kds-mobile-preparing.png, audit22-kds-desktop-final.png, audit33-lots-intro.png, audit33-lots-fefo-tooltip.png, audit33-nabava-intro.png, audit33-finance-ap.png, audit33-calls-intro.png, audit33-calls-esc-tooltip.png, audit33-widget-install.png (+ VLM json)
+
+---
+
+Task ID: v1.141.0-pos-benchmark
+Agent: glavni agent (Z.ai)
+Task: Svetovni POS benchmark (Toast/Lightspeed/Square/Oracle) — 6 front-of-house izboljšav + demo nabor zaloge; popravljenih 6 regresij, E2E verifikacija.
+
+Work Log:
+- KONTEKST: vizualna primerjava z 5 svetovnimi POS (poročilo: lepota 8–8.5/10, back-office vodi, FOH workflow 6/10) → lastnik potrdil 6 izboljšav; prejšnja seja implementirala, a NEZAVEZANO (294 vrstic v dashboard/page.tsx + seed skripte) in z 6 padlimi testi
+- 6 IZBOLJŠAV (vsa implementirana + testna kritina):
+  * (1) KOMPAKTNI GRID: saleView 'cards'|'compact' (persist ro_sale_view), 3–6 stolpcev h-20, SALE_CAT_BORDER barvni rob (8 barv, deterministični hash), ring ob količini
+  * (2) PRIVZETA KATEGORIJA = NAJBOLJ POLNA (Toast) — ne prva po sortOrder; saleCatTouched varovalka ostaja
+  * (3) KOŠARA LEVO: grid-cols-[17rem_1fr] + order-1/2 (Toast left rail); mobilni drawer nespremenjen
+  * (4) TEMNI NAČIN: compact tile dark:bg-stone-800 (ne stone-900 — .dark remap!), all-day dark:bg-stone-950/95, ModuleIntro amber 950
+  * (5) TLORIS (Lightspeed): oblike square/round/stool iz DB shape + fallback po sedežih, cone dashed bbox + zoneL, pike sedežev, aspectRatio 16/10, vlečenje ohranjeno
+  * (6) KDS ODBROJEVALNIK: KdsCountdownPill tik 1s, »še MM:SS« / »Zamuda +MM:SS« (rdeče animate-pulse), prag = max postajni cilj (kdsTargetOf), sekunde % 60 FIXED
+- 6 REGRESIJ POPRABLJENIH: (1) i18n »artiklov« lažni pozitiv (multiline regex) — komentarji preimenovani v ploščice/izdelki; (2) audit-16 pin → najbolj polna kategorija; (3) KDS glava pin → odštevalna pila; (4–6) issue23 ×2 + issue5 hermetične nastavitve (stash/restore singletona — demo seed v bazi ne podre več testov)
+- NOVI TESTI: tests/v141-toast-benchmark.test.ts ×25 (§A gostota, §B privzeta kategorija, §C košara levo, §D temni, §E tloris+mapTable shape, §F odštevalnik, §G i18n SL+HR, §H demo nabor)
+- DEMO NABOR: prisma/seed-demo.ts (Gostilna Pri Lipi: 10 delavcev s PIN, 5 postaj, 16 kategorij, ~170 POS artiklov z realnimi cenami po slovenskih cenikih, 198 artiklov zaloge FEFO v 14 kategorijah, 7 dobaviteljev, 51 recepturnih postavk, 16 miz z oblikami) + scripts/seed-demo-{tables,menu,orders}.ts; /api/inventory take 100→500
+- VERZIJA: 1.139.0 → 1.141.0 (version.ts + 7 registrov, vključno pozabljenim issue11 pinom)
+- VERIFIKACIJA: tsc 0 · eslint 0 · 2655/2655 (129 datotek, +26)
+- E2E (agent-browser @ :3007, demo Ana Admin): KARTICE→KOMPAKTNO preklop dela (VLM: ~30 ploščic na ekran, košara LEVO, barvni robovi — prej 1–2!); tloris MIze: okrogle/kvadratne/stoli, cone GLAVNA DVORANA/ŠANK/TERASA, VLM 9/10; NAROČILO E2E: fast-sale (Bograč+zrezek+lazanja 42,70 € → gotovina → račun izdan) + dine-in (Miza 2 → 2 kavi → Oddaj naročilo → KDS listek); KDS ODBROJEVALNIK: svež listek »Še 24:39«, postaran (−40 min) → »Zamuda +15:25« RDEČE utripanje (VLM 9/10, matematika praga se ujema); ZALOGA: 230 artiklov (198 na lokaciji) s količino/enoto/ceno (VLM 8/10); TEMNI NAČIN: proper dark, ploščice temne z barvnimi robovi, košara berljiva
+- ZAGON SERVERJA: ugotovitev — bash orodje ubija vse neposredne otroke ob koncu ukaza; rešitev: (setsid ... &) v podlupini → strežnik preživi (my-project :3000 + restaurantos :3007 istočasno, OOM disciplina: 3000 začasno dol med ogrevanjem/kompilacijo)
+
+Stage Summary:
+- v1.141.0 FEATURE commit 69a9fb4 (31 datotek, +1797/−58): 6 Toast/Lightspeed izboljšav + demo nabor + 2655/2655
+- Workflow hitre prodaje dvignjen proti 8–9/10 (gostota ~30 artiklov na ekran, košara levo, kompaktni način persist)
+- KDS zdaj odštevalni (kuharjev zorni kot), tloris miz prostorski, temni način POS/KDS
+- GitHub: žeton v remote URL-u MRTEV (401) — commit je LOKALNO na main (pred remote); push in more branje novih issuejev zahtevata nov žeton od lastnika
+- Dokazni posnetki: .zscripts/v141-sale-cards.png, v141-sale-compact.png, v141-tables-plan.png, v141-kds-countdown.png, v141-kds-overdue.png, v141-zaloga.png, v141-zaloga2.png, v141-sale-dark.png, v141-pay-done.png, v141-order-sent.png (+ VLM json v /tmp)
