@@ -41,7 +41,11 @@ import { delayThresholdForTarget, isStaleKdsTicket, staleTicketHours } from '@/l
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Check, Clock, Loader2, Lock, Printer, Ship } from 'lucide-react'
+import { Check, Clock, Loader2, Lock, Play, Printer, Ship } from 'lucide-react'
+/* ISSUE #73 audit-22 (v1.139.0) — row as a tap-card (progress on tap). */
+import { KdsTapCard } from '@/components/kds-tap-card'
+/* ISSUE #73 audit-33 (v1.139.0) — inline term tooltip (dispatch station jargon). */
+import { TermTip } from '@/components/term-tip'
 
 /** Station as returned by GET /api/kitchen (additive `stations` field). */
 export interface KdsStationT {
@@ -252,7 +256,7 @@ export function KdsStationBoard({
           <span className="truncate min-w-0">{station.name}</span>
           {station.isExpo && (
             <Badge variant="outline" className="gap-1 shrink-0 border-emerald-300 bg-emerald-50 text-emerald-800">
-              <Ship className="w-3 h-3" aria-hidden /> {t('kds.stExpo')}
+              <Ship className="w-3 h-3" aria-hidden /> <TermTip tipKey="term.expoTip">{t('kds.stExpo')}</TermTip>
             </Badge>
           )}
           <Badge variant="outline" className="shrink-0 text-stone-600">{t('kds.stTarget', { n: station.avgPrepTime })}</Badge>
@@ -332,8 +336,24 @@ export function KdsStationBoard({
               {g.tasks.map((task) => {
                 const st = KDS_TASK_STATUS[task.status] ?? KDS_TASK_STATUS.pending
                 const taskBusy = busy.startsWith(task.id + ':')
+                /* ISSUE #73 audit-22: row = TAP-CARD — pending/preparing rows
+                   advance on tap (start/ready, the server 409 path is unchanged);
+                   waiting/ready rows render inert. No more per-row buttons. */
+                const tapActive = (task.status === 'pending' || task.status === 'preparing') && !busy
+                const nextLabel = task.status === 'pending' ? t('kds.stInPrep') : t('kds.stMarkReady')
                 return (
-                  <div key={task.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1 min-w-0">
+                  <KdsTapCard
+                    key={task.id}
+                    dataRegion="kds-ticket-item"
+                    ariaLabel={t('kds.tapAria', { q: task.quantity, name: task.title, next: nextLabel })}
+                    disabled={!tapActive}
+                    onAdvance={() => void act(task, task.status === 'pending' ? 'start' : 'ready')}
+                    className={`rounded-lg border px-3 py-1.5 space-y-1 min-w-0 ${
+                      tapActive
+                        ? 'border-stone-200 bg-white hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 active:bg-stone-50'
+                        : 'border-stone-200 bg-white'
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <p className="text-sm sm:text-base font-semibold truncate min-w-0">
                         {task.quantity}× {task.title}
@@ -353,49 +373,26 @@ export function KdsStationBoard({
                         <TaskStatusIcon status={task.status} />
                         {t(st.labelKey)}
                       </Badge>
-                      <div className="flex gap-1.5 shrink-0">
-                        {task.status === 'waiting' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-11 gap-1"
-                            disabled
-                            title={t('kds.stBlocked')}
-                          >
-                            <Lock className="w-4 h-4" aria-hidden /> {t('kds.stWaiting')}
-                          </Button>
-                        )}
-                        {task.status === 'pending' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-11"
-                            disabled={!!busy}
-                            onClick={() => void act(task, 'start')}
-                          >
-                            {taskBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : null}
-                            {t('kds.stStart')}
-                          </Button>
-                        )}
-                        {task.status === 'preparing' && (
-                          <Button
-                            size="sm"
-                            className="h-11 bg-emerald-700 hover:bg-emerald-800"
-                            disabled={!!busy}
-                            onClick={() => void act(task, 'ready')}
-                          >
-                            {taskBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : null}
-                            {t('kds.stMarkReady')}
-                          </Button>
-                        )}
-                        {task.status === 'ready' && (
-                          <span className="text-xs text-stone-500 truncate min-w-0" title={task.readyByName}>
-                            {task.readyByName ? `${task.readyByName} · ` : ''}{t('kds.stReady')}
-                          </span>
-                        )}
-                      </div>
+                      {/* audit-22: NASLEDNJI KORAK kot dominanten čip (44 px) — vrstica
+                          je sama tarča dotika; čip napove dejanje, gumba ni več. */}
+                      {task.status === 'pending' || task.status === 'preparing' ? (
+                        <span
+                          data-region="kds-next-chip"
+                          aria-hidden
+                          className={`ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-bold shrink-0 ${
+                            task.status === 'preparing' ? 'bg-emerald-700 text-white' : 'bg-stone-800 text-white'
+                          }`}
+                        >
+                          {taskBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : task.status === 'pending' ? <Play className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                          {nextLabel}
+                        </span>
+                      ) : task.status === 'ready' ? (
+                        <span className="text-xs text-stone-500 truncate min-w-0" title={task.readyByName}>
+                          {task.readyByName ? `${task.readyByName} · ` : ''}{t('kds.stReady')}
+                        </span>
+                      ) : null}
                     </div>
-                  </div>
+                  </KdsTapCard>
                 )
               })}
             </div>

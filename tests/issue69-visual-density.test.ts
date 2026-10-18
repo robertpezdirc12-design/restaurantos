@@ -50,7 +50,9 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     expect(d).toContain('data-region="kds-ticket-header"')
     expect(d).toContain('data-region="kds-ticket-timer"')
     expect(d).toContain('data-region="kds-ticket-items"')
-    expect(d).toContain('data-region="kds-ticket-item"')
+    // ISSUE #73 audit-22 (v1.139.0): vrstica je KdsTapCard — marker se podaja
+    // prek dataRegion propa (DOM sidro ostane data-region="kds-ticket-item")
+    expect(d).toContain('dataRegion="kds-ticket-item"')
   })
 
   it('glava listka: PRIMARNI STATUS iz obstoječega statusnega slovarja (stL + statusColors)', () => {
@@ -101,9 +103,12 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     const d = dash()
     expect(d).toContain('flex items-center gap-1.5 flex-wrap justify-end min-w-0')
     // v1.129.0 (Toast/Square): cilj ≥ 44 px VEČ ne samo na mobilnem — KDS JE dotik
-    // tudi na namizju (sm:h-8 krčil gumb na 32 px tam, kjer je kuhinja/dotik).
-    expect(d).toContain('className="h-11 text-sm font-semibold bg-emerald-700 hover:bg-emerald-800"')
-    expect(d).toContain('className="h-11 px-2 text-xs gap-1 text-stone-500 hover:text-red-700"')
+    // ISSUE #73 audit-22 (v1.139.0): vrstica = TAP-KARTA — tarča je CELA vrstica
+    // (KdsTapCard min-h-11) + NASLEDNJI-KORAK čip (min-h-11, dominanten), ne trije
+    // enakovredni gumbi; preostala izrecna dejanja ostajajo h-11.
+    expect(d).toContain('min-h-11')
+    expect(d).toContain('<KdsTapCard')
+    expect(d).toContain('data-region="kds-next-chip"')
     expect(d).not.toContain('sm:h-8 bg-emerald-700')
   })
 
@@ -131,7 +136,7 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     expect(KDS_STALE_THRESHOLD_MIN).toBe(480)
   })
 
-  it('kds-station-board: ista hierarhija (dve vrstici glave + markerji + h-11 dejanja)', () => {
+  it('kds-station-board: ista hierarhija (dve vrstici glave + markerji + tap-karta)', () => {
     const b = board()
     expect(b).toContain('data-region="kds-ticket"')
     expect(b).toContain('data-region="kds-ticket-header"')
@@ -141,8 +146,12 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     expect(b).toContain('data-region="kds-ticket-item-group"')
     expect(b).toContain('data-region="kds-ticket-item"')
     expect(b).toContain('text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border')
-    expect(b).toContain('className="h-11 bg-emerald-700 hover:bg-emerald-800"')
-    expect(b).toContain('className="h-11 gap-1 bg-emerald-700 hover:bg-emerald-800"')
+    // ISSUE #73 audit-22 (v1.139.0): vrstice nalog so tap-karte — napredek na
+    // dotik, naslednji korak kot dominanten čip (min-h-11); izdaja ostaja gumb
+    // (blocker logika strežnika). 44 px disciplina iz v1.129.0 ostaja.
+    expect(b).toContain('KdsTapCard')
+    expect(b).toContain('data-region="kds-next-chip"')
+    expect(b).toContain('min-h-11')
     // zastareli na konec (staleLast) ostaja v komponenti
     expect(b).toContain('const staleLast = (groups: TaskGroupT[]): TaskGroupT[] =>')
   })

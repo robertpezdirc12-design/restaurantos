@@ -176,8 +176,10 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
       ['Kuhinjska vrsta je prazna. 🎉', 'kitchen.queueEmpty'],
       ['Natisni kuhinjski list', 'kitchen.printKitchenTitle'],
       ['Natisni bar list', 'kitchen.printBarTitle'],
-      ['Začni', 'kitchen.start'],
-      ['Pripravljeno', 'status.PREPARED'],
+      // ISSUE #73 audit-22 (v1.139.0): gumb »Začni«/»Pripravljeno« na vrstici je
+      // zamenjal tap-karta znaslednjim-korakom čipom — pini sledijo novim ključem
+      ['Začni', 'kds.stInPrep'],
+      ['Pripravljeno', 'kds.stMarkReady'],
       ['Na zalogi', 'menu.inStock'],
       ['Ni na voljo', 'menu.outOfStock'],
       ['Prekliči', 'common.cancel'],

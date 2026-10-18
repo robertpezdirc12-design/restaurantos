@@ -14,6 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Loader2, Clock, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Trash2, Hourglass, Pencil, RotateCcw, Eye, Paperclip, Download, Scale, Link2 } from 'lucide-react'
 import { CashMovementsCard } from '@/components/tabs/cash-movements-card'
+/* ISSUE #73 audit-33 (v1.139.0) — inline term tooltip + one-time module intro. */
+import { TermTip } from '@/components/term-tip'
+import { ModuleIntro } from '@/components/module-intro'
 
 export interface ShiftT { id: string; employeeId?: string | null; employee?: { name: string; role: string } | null; startedAt: string; endedAt?: string | null; openingCash: number; closingCash: number; status: string }
 export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number }; taxBreakdown: { taxRate: number; qty: number }[] }
@@ -406,6 +409,9 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
 
   return (
     <div className="space-y-4">
+      {/* ISSUE #73 audit-33: kratka pomoč ob prvem vhodu v module stroškov —
+          AP okrajšava + tristransko ujemanje (PO ↔ prevzem ↔ račun). */}
+      <ModuleIntro module="ap" titleKey="intro.ap.title" bodyKey="intro.ap.body" />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> {t('exp.month')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(monthTotal)}</p></CardContent></Card>
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><Hourglass className="w-4 h-4" /> {t('exp.kpiOpen')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(openTotal)}</p></CardContent></Card>
@@ -453,7 +459,12 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
       </div>
       <Card>
         <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">{t('exp.title')}</CardTitle>
+          <CardTitle className="text-base">
+            {t('exp.title')}
+            {/* ISSUE #73 audit-33: AP okrajšava razložena na mestu uporabe
+                (tristransko ujemanje razloži intro + badge tooltipi). */}
+            <span className="ml-1.5 text-xs font-normal text-stone-400">(<TermTip tipKey="term.apTip">{t('term.ap')}</TermTip>)</span>
+          </CardTitle>
           <div className="flex items-center gap-3">
             {categories.length > 0 && (
               <Select value={catFilter} onValueChange={setCatFilter}>

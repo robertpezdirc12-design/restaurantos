@@ -99,11 +99,16 @@ import { ManagerCallButton } from '@/components/manager-call-dialog'
 /* Issue #14 (v1.112.0) — KDS station views: task board + expo dispatch board
    (component lives in src/components/ — outside the i18n scan family). */
 import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type KdsStationStatT } from '@/components/kds-station-board'
+/* ISSUE #73 audit-22 (v1.139.0) — KDS row as a tap-card (progress on tap,
+   sold-out toggle on long-press). */
+import { KdsTapCard } from '@/components/kds-tap-card'
+/* ISSUE #73 audit-33 (v1.139.0) — one-time module intro (KDS jargon + gestures). */
+import { ModuleIntro } from '@/components/module-intro'
 /* ISSUE #74 V-7: fotografije kategorij na POS ploščicah (skupni vir za dashboard
    in handheld — čista preslikava v lib, brez per-artikel slik v bazi) */
 import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
 import { stationViewKey } from '@/lib/kds-station-routing'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -2912,6 +2917,11 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="kuhinja" className="space-y-4">
+            {/* ISSUE #73 audit-33: kratka pomoč ob prvem vhodu v KDS modul —
+                geste (tap = napredek, dolg pritisk = razprodano) in izrazi
+                (izdajna postaja), ki jih ni moglo biti na gumbe. Odpoved
+                (X) se zapomni v localStorage. */}
+            <ModuleIntro module="kds" titleKey="intro.kds.title" bodyKey="intro.kds.body" />
             {/* OPS-4 v1.67.0 — KDS upgrade: filtri postaj (zaslon sank = BAR), casovniki, zvok, 86 */}
             {/* Issue #14: named stations join the picker (type ≠ legacy buckets); the
                 expo station carries a Ship badge (dispatch view) — small, wraps on mobile. */}
@@ -3234,8 +3244,35 @@ function DashboardInner() {
                         // Issue #14: tasked items are managed by the station flow — the legacy
                         // queue shows per-station sync chips instead of status buttons (no 409s)
                         const itemTasks = kdsTasks.filter((task) => task.itemId === it.id)
+                        /* ISSUE #73 audit-22: row = TAP-CARD. The whole row is the tap
+                           target for the MAIN progress (queued → preparing → ready);
+                           the 86 sold-out toggle moves to a long-press (550 ms), print
+                           stays in the ticket header (#69 layout). Tasked items and
+                           ready items render inert. */
+                        const itInteractive = itemTasks.length === 0 && (it.status === 'PENDING' || it.status === 'PREPARING')
+                        const itNext = it.status === 'PENDING' ? t('kds.stInPrep') : it.status === 'PREPARING' ? t('kds.stMarkReady') : ''
+                        const can86 = perms.includes('menu.availability') && !!mi
                         return (
-                          <div key={it.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1.5 min-w-0">
+                          <KdsTapCard
+                            key={it.id}
+                            dataRegion="kds-ticket-item"
+                            ariaLabel={t('kds.tapAria', { q: it.qty, name: it.name, next: itInteractive ? itNext : t('status.READY') })}
+                            disabled={!itInteractive}
+                            onAdvance={() => {
+                              if (it.status === 'PENDING') setItemStatus(it.id, 'PREPARING')
+                              else bumpReady(it, o)
+                            }}
+                            onLongPress={can86 ? () => {
+                              void kdsToggleAvailable(mi)
+                              toast({ description: t(mi.available ? 'kds.86Done' : 'kds.86Back', { name: it.name }) })
+                            } : undefined}
+                            longPressHint={can86 ? t('kds.tapHint') : undefined}
+                            className={`rounded-lg border px-3 py-1.5 space-y-1.5 min-w-0 ${
+                              itInteractive
+                                ? 'border-stone-200 bg-white hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 active:bg-stone-50'
+                                : 'border-stone-200 bg-white'
+                            }`}
+                          >
                             {/* A: količina + ime (levo) / starost postavke (desno) — hitro skeniranje */}
                             <div className="flex items-baseline justify-between gap-2 min-w-0">
                               <p className="text-sm sm:text-base font-semibold truncate min-w-0">{it.qty}× {it.name}</p>
@@ -3265,34 +3302,35 @@ function DashboardInner() {
                             {it.allergenWarning && (
                               <p className="rounded-sm border-l-4 border-red-600 bg-red-50 px-2 py-1 text-xs font-bold text-red-800 break-words min-w-0" role="alert">⚠ {t('kds.allergenWarning')}: {it.allergenWarning}</p>
                             )}
-                            {/* C: dejanja — lastna vrstica; v1.129.0: cilji ≥ 44 px VEDNO
-                                (tudi na velikem zaslonu — KDS JE dotik, tudi na namizju;
-                                prej je sm:h-8 gumb krčil na 32 px ravno tam, kjer je kuhinja) */}
+                            {/* C: stanje + NASLEDNJI KORAK — ISSUE #73 audit-22: vrstica je
+                                tap-karta; naslednji korak napoveduje velik emerald čip
+                                (dominanten, min 44 px), ne trije enakovredni gumbi.
+                                v1.129.0 disciplina o 44 px ciljih ostaja (KDS JE dotik). */}
                             <div className="flex items-center gap-1.5 flex-wrap justify-end min-w-0">
-                              {perms.includes('menu.availability') && mi && (
-                                <Button size="sm" variant="ghost" className="h-11 px-2 text-xs gap-1 text-stone-500 hover:text-red-700" title={mi.available ? t('kds.markUnavailable') : t('kds.markAvailable')} onClick={() => void kdsToggleAvailable(mi)}>
-                                  <EyeOff className="w-3.5 h-3.5" />{mi.available ? '' : '86'}
-                                </Button>
-                              )}
                               {itemTasks.length > 0 ? (
                                 <span className="flex flex-wrap gap-1 justify-end" role="group" aria-label={t('kds.stStatsTitle')}>
                                   {itemTasks.map((task) => <KdsTaskChip key={task.id} task={task} />)}
                                 </span>
-                              ) : (
-                                <>
-                              {it.status === 'PENDING' && <Button size="sm" variant="outline" className="h-11 text-sm font-semibold" onClick={() => setItemStatus(it.id, 'PREPARING')}>{t('kitchen.start')}</Button>}
-                              {(it.status === 'PENDING' || it.status === 'PREPARING') && <Button size="sm" className="h-11 text-sm font-semibold bg-emerald-700 hover:bg-emerald-800" onClick={() => bumpReady(it, o)}>{t('status.PREPARED')}</Button>}
-                              {it.status === 'READY' && (
+                              ) : it.status === 'PENDING' || it.status === 'PREPARING' ? (
+                                <span
+                                  data-region="kds-next-chip"
+                                  aria-hidden
+                                  className={`ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-bold shrink-0 ${
+                                    it.status === 'PREPARING' ? 'bg-emerald-700 text-white' : 'bg-stone-800 text-white'
+                                  }`}
+                                >
+                                  {it.status === 'PENDING' ? <Play className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                                  {itNext}
+                                </span>
+                              ) : it.status === 'READY' ? (
                                 <div className="flex items-center gap-1.5">
                                   <Badge className={statusColors.READY}>{t('status.READY')}</Badge>
                                   {/* OPS-7 (v1.70.0): SERVED bump (Lightspeed vzorec — izloči iz vrste) */}
                                   <Button size="sm" variant="outline" className="h-11" onClick={() => setItemStatus(it.id, 'SERVED')}>{t('status.SERVED')}</Button>
                                 </div>
-                              )}
-                                </>
-                              )}
+                              ) : null}
                             </div>
-                          </div>
+                          </KdsTapCard>
                         )
                       })}
                       {/* v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — en velik

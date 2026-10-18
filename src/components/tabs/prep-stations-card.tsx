@@ -33,6 +33,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+/* ISSUE #73 audit-33 (v1.139.0) — dispatch-station term tooltip. */
+import { TermTip } from '@/components/term-tip'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -320,7 +322,7 @@ export function PrepStationsCard() {
                         <Badge variant="outline" className="shrink-0 text-xs">{st.type}</Badge>
                         {st.isExpo && (
                           <Badge variant="outline" className="gap-1 shrink-0 border-emerald-300 bg-emerald-50 text-emerald-800">
-                            <Ship className="w-3 h-3" aria-hidden /> {t('kds.cfg.expo')}
+                            <Ship className="w-3 h-3" aria-hidden /> <TermTip tipKey="term.expoTip">{t('kds.cfg.expo')}</TermTip>
                           </Badge>
                         )}
                         <Badge variant="outline" className="shrink-0 text-xs text-stone-500">

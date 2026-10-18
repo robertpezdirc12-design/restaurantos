@@ -144,6 +144,19 @@ export function ReservationWidgetCard() {
     }
   }
 
+  /* ISSUE #73 audit-33: copyable embed example for the widget — the public
+     link the guest sees (placeholder before the first token exists). */
+  const embedSnippet = `<iframe src="${publicUrl || `${typeof window !== 'undefined' ? window.location.origin : ''}/r/…`}" title="${t('resv.wid.installFrameTitle')}" style="width:100%;height:720px;border:0"></iframe>`
+
+  async function copyEmbed() {
+    try {
+      await navigator.clipboard.writeText(embedSnippet)
+      toast({ description: t('resv.wid.installCopied') })
+    } catch {
+      toast({ description: t('resv.wid.installCopied') })
+    }
+  }
+
   if (!canConfigure) return null
   if (loading) {
     return (
@@ -207,6 +220,29 @@ export function ReservationWidgetCard() {
                 )}
               </div>
               <p className="text-xs text-stone-400">{t('resv.wid.rotateHint')}</p>
+              {/* ISSUE #73 audit-33 (v1.139.0): namestitveno navodilo s primerom —
+                  javna povezava (e-pošta/QR) + vdelava na spletno stran (iframe
+                  vzorec s kopiranjem). Pred rotacijo tokena opozori, da primer
+                  vsebuje trenutni naslov. */}
+              <div data-region="resv-widget-install" className="space-y-1.5 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+                <p className="text-xs font-semibold text-stone-600">{t('resv.wid.installTitle')}</p>
+                <p className="text-xs text-stone-500">{t('resv.wid.installHint')}</p>
+                <div className="flex items-start gap-2 min-w-0">
+                  <pre className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-stone-200 bg-white px-3 py-2 font-mono text-[11px] leading-relaxed text-stone-700">{embedSnippet}</pre>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1 shrink-0"
+                    onClick={() => void copyEmbed()}
+                    aria-label={t('resv.wid.installCopy')}
+                    title={t('resv.wid.installCopy')}
+                  >
+                    <Copy className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{t('resv.wid.installCopy')}</span>
+                  </Button>
+                </div>
+                <p className="text-xs text-stone-400">{t('resv.wid.installRotateNote')}</p>
+              </div>
             </div>
 
             {/* vklop */}

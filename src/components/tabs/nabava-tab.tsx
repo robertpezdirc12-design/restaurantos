@@ -21,6 +21,9 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
+/* ISSUE #73 audit-33 (v1.139.0) — inline term tooltip + one-time module intro. */
+import { TermTip } from '@/components/term-tip'
+import { ModuleIntro } from '@/components/module-intro'
 import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 import { heatClass } from '@/lib/sales-by-hour'
@@ -607,6 +610,9 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
 
   return (
     <div className="space-y-4">
+      {/* ISSUE #73 audit-33: kratka pomoč ob prvem vhodu v nabavni tok —
+          PO/GRN okrajšave in pot (izraz GRN ima tudi TermTip v prevzemih). */}
+      <ModuleIntro module="proc" titleKey="intro.proc.title" bodyKey="intro.proc.body" />
       <p className="text-xs text-stone-500">{t('proc.desc')}</p>
 
       {/* OPS-10 val 3 — reminder banner for recurring POs due soon / freshly overdue (no polling:
@@ -1310,7 +1316,11 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-stone-500 mb-1">{t('proc.receiptsCount', { n: detail.receipts.length })}</p>
+                <p className="text-xs font-semibold text-stone-500 mb-1">
+                  {t('proc.receiptsCount', { n: detail.receipts.length })}
+                  {/* ISSUE #73 audit-33: GRN okrajšava razložena na mestu uporabe */}
+                  <span className="ml-1.5 font-normal text-stone-400">(<TermTip tipKey="term.grnTip">{t('term.grn')}</TermTip>)</span>
+                </p>
                 {detail.receipts.length === 0 ? (
                   <p className="text-sm text-stone-500">{t('proc.noReceipts')}</p>
                 ) : (

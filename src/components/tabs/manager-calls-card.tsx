@@ -32,6 +32,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { BellRing, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { canTransition, MANAGER_CALL_TERMINAL_STATUSES, type ManagerCallAction } from '@/lib/manager-call-registry'
 import type { ManagerCallT } from '@/components/manager-call-dialog'
+/* ISSUE #73 audit-33 (v1.139.0) — inline term tooltip + one-time module intro. */
+import { TermTip } from '@/components/term-tip'
+import { ModuleIntro } from '@/components/module-intro'
 
 interface CallsStatsT {
   total: number
@@ -181,9 +184,16 @@ export function ManagerCallsCard() {
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
         </CardTitle>
-        <p className="text-xs text-stone-500">{t('callv.card.desc')}</p>
+        <p className="text-xs text-stone-500">
+          {t('callv.card.desc')}{' '}
+          {/* ISSUE #73 audit-33: izraz eskalacija razložen na mestu uporabe */}
+          <TermTip tipKey="term.escTip">{t('term.esc')}</TermTip>
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* ISSUE #73 audit-33: kratka pomoč ob prvem vhodu v modul klicev —
+            pot klica, potrditev in eskalacija. */}
+        <ModuleIntro module="calls" titleKey="intro.calls.title" bodyKey="intro.calls.body" />
         {/* filtri — skriti, ko je modul prazen (V-14: ena vrstica, ne tri) */}
         {!emptyActive && (
           <div role="group" aria-label={t('common.all')} className="flex flex-wrap gap-1.5">

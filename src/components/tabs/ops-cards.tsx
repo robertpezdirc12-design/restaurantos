@@ -30,6 +30,9 @@ import { scaleBatchLines } from '@/lib/batch'
 import { dueInMs, isRemindable, remindMsForRule } from '@/lib/recurring-po'
 import { PUSH_EVENT_TYPES } from '@/lib/push-events'
 import { isAdInWindow, isValidDateStr } from '@/lib/display-promos'
+/* ISSUE #73 audit-33 (v1.139.0) — inline term tooltips + one-time module intro. */
+import { TermTip } from '@/components/term-tip'
+import { ModuleIntro } from '@/components/module-intro'
 /* Issue #24 (v1.114.0) — prepared-food label dialog (issue + print + QR + void). */
 import { LabelDialog } from '@/components/label-dialog'
 
@@ -1466,6 +1469,15 @@ export function BatchesCard({ canManage = false }: { canManage?: boolean }) {
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="space-y-3">
+            {/* ISSUE #73 audit-33: kratka pomoč ob prvem razprtju modula serij —
+                FEFO razknjižba, karantena/odpoklic (razlage tudi kot TermTip). */}
+            <ModuleIntro module="lots" titleKey="intro.lots.title" bodyKey="intro.lots.body" />
+            {/* Slovar izrazov: FEFO + karantena/odpoklic (dolg pritisk/hover razloži) */}
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-stone-500">
+              <TermTip tipKey="term.fefoTip">{t('term.fefo')}</TermTip>
+              <span aria-hidden>·</span>
+              <TermTip tipKey="term.quarTip">{t('term.quar')}</TermTip>
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {LOT_FILTERS.map((f) => (
                 <button
