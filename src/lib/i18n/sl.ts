@@ -1093,6 +1093,11 @@ export const sl: Record<string, string> = {
   'set.emailReports': 'E-poštna poročila',
   'set.emailReportsDesc': 'Pošiljanje poročil po e-pošti',
   'set.save': 'Shrani nastavitve',
+  /* ISSUE #73 audit-19 (v1.136.0): shranjevanje po razdelku + neshranjene spremembe */
+  'set.unsaved': 'Neshranjene spremembe ({n})',
+  'set.revert': 'Prekliči spremembe',
+  'set.reverted': 'Spremembe preklicane — obnovljeno zadnje shranjeno.',
+  'set.saveSection': 'Shrani razdelek',
   'set.saved': 'Nastavitve shranjene ✓',
   // Naprave (DevicesCard) — dev.type.* = badge, dev.sel.* = izbira tipa (različna besedila)
   'dev.title': 'Naprave — onboarding',
@@ -2660,6 +2665,10 @@ export const sl: Record<string, string> = {
   'notif.modeOff': 'Izključeno',
   'notif.roles': 'Vloge',
   'notif.save': 'Shrani pravila',
+  /* ISSUE #73 audit-26 (v1.136.0): predloga po vlogah kot prvi korak */
+  'notif.templateBtn': 'Uporabi predlogo po vlogah',
+  'notif.templateHint': 'Vsak dogodek obvešča samo vloge, ki z njim dejansko operirajo (kuhinja za naročila, skladišče za zaloge, računovodstvo za finance).',
+  'notif.templateApplied': 'Predloga uporabljena — preglej vrstice in shrani.',
   'notif.saved': 'Pravila obvestil so shranjena.',
   'notif.loading': 'Nalagam pravila…',
   'notif.error': 'Napaka pri shranjevanju pravil.',

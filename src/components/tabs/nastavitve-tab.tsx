@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, Briefcase, Store, MonitorSmartphone, ShieldAlert, ShieldCheck, Plus } from 'lucide-react'
+import { Loader2, Briefcase, Store, MonitorSmartphone, ShieldAlert, ShieldCheck, Plus, AlertTriangle, Check } from 'lucide-react'
 import { DursCheckButton } from './ops-cards'
 
 /* ─────────────────────────── VARNOST — MFA (v1.94.0, issue #31–#36) ─────────────────────────── */
@@ -270,6 +270,22 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
   const [notice, setNotice] = useState('')
   useEffect(() => { setForm(settings) }, [settings])
 
+  /* ISSUE #73 audit-19 (v1.136.0): tveganje TIHE IZGUBE podatkov — en obrazec s
+     več razdelki in enim gumbom Shrani na koncu dolge strani (uporabnik spremeni
+     razdelek, scrolla, odide → spremembe izginejo brez sledi). Zdaj:
+      - neshranjena sprememba je VEDNO vidna (dirtyKeys števec, lepljiva vrstica),
+      - jasen izhod: Prekliči (reset na zadnje shranjeno) ali Shrani (nad vrstico),
+      - Shrani tudi na koncu vsakega razdelka (akcija blizu spremembe). */
+  const dirtyKeys = useMemo(() => {
+    if (!form || !settings) return [] as string[]
+    return Object.keys(form).filter((k) => {
+      const a = (form as unknown as Record<string, unknown>)[k]
+      const b = (settings as unknown as Record<string, unknown>)[k]
+      return String(a ?? '') !== String(b ?? '')
+    })
+  }, [form, settings])
+  const revert = () => { setForm(settings); setNotice(t('set.reverted')) }
+
   if (!form) {
     return canManage ? (
       <Card><CardContent className="text-sm text-stone-500">{t('set.notCreated')}</CardContent></Card>
@@ -314,6 +330,16 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
     </div>
   )
 
+  /* audit-19: mini gumb na koncu razdelka — akcija blizu spremembe (isti PUT,
+         ki shranjuje celoten form; gumb je kontekstno vezan na razdelek). */
+  const sectionSave = (
+    <div className="flex justify-end pt-1">
+      <Button size="sm" variant="outline" className="h-10 gap-1" disabled={saving || dirtyKeys.length === 0} onClick={save}>
+        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} {t('set.saveSection')}
+      </Button>
+    </div>
+  )
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -321,6 +347,22 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
       </CardHeader>
       <CardContent className="space-y-4">
         {notice && <p className={`text-xs rounded-md px-2.5 py-1.5 ${notice.startsWith(t('common.error')) ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</p>}
+
+        {/* ISSUE #73 audit-19: LEPLJIVA vrstica neshranjenih sprememb — vidna na
+            vsaki višini scrolla (ne samo na dnu); N šteje spremenjena polja,
+            Prekliči obnovi zadnje shranjeno, Shrani potrdi. */}
+        {dirtyKeys.length > 0 && (
+          <div className="sticky top-20 z-20 -mx-4 sm:-mx-6 mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 backdrop-blur" role="status" aria-live="polite">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" aria-hidden />
+            <p className="min-w-0 flex-1 text-xs font-bold text-amber-900">{t('set.unsaved', { n: dirtyKeys.length })}</p>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button size="sm" variant="outline" className="h-9" disabled={saving} onClick={revert}>{t('set.revert')}</Button>
+              <Button size="sm" className="h-9 bg-emerald-700 hover:bg-emerald-800" disabled={saving} onClick={save}>
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t('set.save')}
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {txt('name', t('jobs.name'), t('set.namePlaceholder'))}
@@ -343,6 +385,7 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
           </div>
           {txt('registerNumber', t('set.registerNumber'), t('set.registerPlaceholder'))}
         </div>
+        {sectionSave}
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
@@ -358,6 +401,7 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
           </div>
           {txt('receiptFooter', t('set.receiptFooter'), t('set.receiptFooterPlaceholder'))}
         </div>
+        {sectionSave}
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {txt('defaultVatRate', t('set.vatBasic'), '22')}
@@ -365,6 +409,7 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
           {txt('currency', t('set.currency'), 'EUR')}
           {txt('locale', t('set.localeLabel'), 'sl-SI')}
         </div>
+        {sectionSave}
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5">
@@ -376,6 +421,7 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
             <Switch checked={form.emailEnabled} onCheckedChange={(v) => set('emailEnabled', v)} />
           </div>
         </div>
+        {sectionSave}
 
         <div className="flex items-center gap-3">
           <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={saving} onClick={save}>

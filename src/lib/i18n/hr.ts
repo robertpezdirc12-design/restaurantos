@@ -1092,6 +1092,11 @@ export const hr: Record<string, string> = {
   'set.emailReports': 'E-poštna izvješća',
   'set.emailReportsDesc': 'Slanje izvješća e-poštom',
   'set.save': 'Spremi postavke',
+  /* ISSUE #73 audit-19 (v1.136.0): shranjevanje po razdelku + neshranjene spremembe */
+  'set.unsaved': 'Nespremljene promjene ({n})',
+  'set.revert': 'Poništi promjene',
+  'set.reverted': 'Promjene poništene — vraćeno na zadnje spremljeno.',
+  'set.saveSection': 'Spremi odjeljak',
   'set.saved': 'Postavke spremljene ✓',
   // Uređaji (DevicesCard) — dev.type.* = bedž, dev.sel.* = odabir tipa (različiti tekstovi)
   'dev.title': 'Uređaji — onboarding',
@@ -2658,6 +2663,10 @@ export const hr: Record<string, string> = {
   'notif.modeOff': 'Isključeno',
   'notif.roles': 'Uloge',
   'notif.save': 'Spremi pravila',
+  /* ISSUE #73 audit-26 (v1.136.0): predloga po ulogama kao prvi korak */
+  'notif.templateBtn': 'Primijeni predložak po ulogama',
+  'notif.templateHint': 'Svaki događaj obavještava samo uloge koje s njim stvarno rade (kuhinja za narudžbe, skladište za zalihe, računovodstvo za financije).',
+  'notif.templateApplied': 'Predložak primijenjen — pregledaj retke i spremi.',
   'notif.saved': 'Pravila obavijesti su spremljena.',
   'notif.loading': 'Učitavam pravila…',
   'notif.error': 'Greška pri spremanju pravila.',

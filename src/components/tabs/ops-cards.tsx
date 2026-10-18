@@ -22,7 +22,7 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download, Tag } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download, Tag, Wand2 } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 import { heatClass } from '@/lib/sales-by-hour'
 import { durationLabel } from '@/lib/timeclock'
@@ -1112,6 +1112,38 @@ const NOTIF_ROLES = ['waiter', 'bar', 'kitchen', 'chef', 'staff', 'manager', 'wa
 
 type NotifMode = 'everyone' | 'roles' | 'off'
 
+/* ISSUE #73 audit-26 (v1.136.0): PREDLOGA PO VLOGI — privzeti režim matrike.
+   Merjena napaka: 24 spustnikov, vsi privzeto »Vsi« → vsak dogodec zveni celotni
+   ekipi (hrup), ročno prilagajanje = 22+ klikov po vrstici. Toast/Square vzorec:
+   ob nastavitvi ponudiš PREDLOGO po vlogah, ne prazno matriko.
+   Preslikava dogodek → vloge, ki z njim DEJANSKO operirajo (kuhinja za naročila,
+   skladišče za zaloge, računovodstvo za finance). Neznan dogodek → manager (fail-safe). */
+const NOTIF_ROLE_TEMPLATE: Record<string, readonly string[]> = {
+  ORDER_NEW: ['kitchen', 'chef', 'bar'],
+  ORDER_READY: ['waiter', 'staff'],
+  ORDER_FIRE: ['kitchen', 'chef', 'bar'],
+  DELIVERY_NEW: ['manager', 'waiter', 'staff'],
+  DRIVER_ASSIGNED: ['manager', 'waiter', 'staff'],
+  RESERVATION_NEW: ['manager', 'waiter'],
+  LOW_STOCK: ['warehouse', 'manager'],
+  PO_APPROVED: ['warehouse', 'manager', 'accounting'],
+  PO_RECEIVED: ['warehouse', 'manager'],
+  AP_NEW: ['accounting', 'manager'],
+  AP_OVERDUE: ['accounting', 'manager'],
+  TIME_OFF_STATUS: ['manager'],
+  RECEIPT_FAILED: ['manager', 'admin'],
+  Z_CLOSED: ['manager', 'accounting', 'admin'],
+  LOT_BLOCKED: ['warehouse', 'manager', 'chef'],
+  LOT_ALERT: ['warehouse', 'manager'],
+  CASH_MOVEMENT: ['manager', 'accounting'],
+  HACCP_OVERDUE: ['manager', 'staff'],
+  HACCP_DEVIATION: ['manager', 'chef'],
+  MANAGER_CALL: ['manager', 'admin'],
+  MANAGER_CALL_ESCALATED: ['manager', 'admin'],
+  TRANSFER_DISPATCHED: ['warehouse', 'manager'],
+  TRANSFER_RECEIVED: ['warehouse', 'manager'],
+}
+
 /** Notifications card (Nastavitve tab): event types x {everyone | selected roles | off} —
  *  rows render dynamically from PUSH_EVENT_TYPES (client-safe registry, @/lib/push-events)
  *  so a new server event type appears in the matrix without a UI change. */
@@ -1162,6 +1194,17 @@ export function NotificationsCard() {
     }
   }
 
+  /* ISSUE #73 audit-26: en klik → vsa 24 vrstic v mode 'roles' s predlogo po vlogah
+     (zato brez »Vsi« hrupa); uporabnik pregleda/prilagadi posamične vrstice in shrani. */
+  const applyRoleTemplate = () => {
+    setNotice('')
+    setRules(Object.fromEntries(PUSH_EVENT_TYPES.map((ev) => [
+      ev,
+      { mode: 'roles' as NotifMode, roles: [...(NOTIF_ROLE_TEMPLATE[ev] || ['manager'])] },
+    ])))
+    setNotice(t('notif.templateApplied'))
+  }
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -1169,6 +1212,14 @@ export function NotificationsCard() {
         <CardDescription>{t('notif.desc')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* ISSUE #73 audit-26: predloga po vlogi kot PRVI korak (ne prazna matrika
+            s 24× »Vsi«); en klik nastavi smiseln nabor vlog za vsak dogodek. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" className="h-10 gap-1" disabled={busy || loading} onClick={applyRoleTemplate} title={t('notif.templateHint')}>
+            <Wand2 className="w-3.5 h-3.5" /> {t('notif.templateBtn')}
+          </Button>
+          <p className="min-w-0 flex-1 text-xs text-stone-500">{t('notif.templateHint')}</p>
+        </div>
         {loading ? (
           <p className="text-sm text-stone-500 flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> {t('notif.loading')}</p>
         ) : (
