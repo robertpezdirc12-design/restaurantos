@@ -5,6 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { mapMenuItem, num, jstr, nid } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { validateStationsForLocation } from '@/lib/station-task-service'
+import { findDuplicateDisplayName, dupItemNameMessage } from '@/lib/menu-dup'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Issue #4 §1: inline role check → kanonično dovoljenje menu.manage
@@ -29,11 +30,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Issue #4 §1: artikel menija je location-scoped prek lanca do Menu.locationId
   const existing = await db.menuItem.findUnique({
     where: { id },
-    select: { Category: { select: { Menu: { select: { locationId: true } } } } },
+    select: { categoryId: true, Category: { select: { Menu: { select: { locationId: true } } } } },
   })
   if (!existing) return fail('Artikel ne obstaja.', 404)
   const locRes = await guardResource(user, existing.Category?.Menu?.locationId)
   if (locRes) return locRes
+  // ISSUE #73 audit-15: preimenovanje na podvojeno prikazno ime V ISTI kategoriji
+  // je zavrnjeno (409) — isti varovalki kot pri ustvarjanju, normalizacija enaka.
+  if (typeof data.name === 'string' && data.name.trim()) {
+    const siblings = await db.menuItem.findMany({
+      where: { categoryId: existing.categoryId },
+      select: { id: true, name: true, price: true },
+    })
+    const dupe = findDuplicateDisplayName(
+      siblings.map((s) => ({ id: s.id, name: s.name, price: Number(s.price) })),
+      data.name,
+      id,
+    )
+    if (dupe) return fail(dupItemNameMessage(dupe), 409)
+  }
   const itemLocationId = existing.Category?.Menu?.locationId ?? null
   if (itemLocationId && typeof data.prepStationId === 'string' && data.prepStationId) {
     const ps = await db.prepStation.findUnique({ where: { id: data.prepStationId }, select: { id: true, locationId: true } })

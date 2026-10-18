@@ -16,6 +16,7 @@ import {
 } from '@/lib/kds-delays'
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
 import { tabHasPerm, TAB_PERM } from '@/lib/tab-permissions'
+import { normItemName } from '@/lib/menu-dup'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -1985,13 +1986,43 @@ function DashboardInner() {
     : []
 
   // OPS-4 hitra prodaja (sank): izbira -> kosarica -> POST (TAKEOUT) -> placilni dialog
+  // ISSUE #73 audit-15: ploščica »jed · različica · velikost« — v MEŠANEM pogledu
+  // (Vse kategorije / iskanje čez kategorije) ploščica dobi OVERLINE s kategorijo
+  // (jed), ime artikla je različica, velikost je del imena (»0,5 l«). Golih imen
+  // prilagodb (»Z gobami«) in podvojenih imen z različnima cenama (»Bolognese
+  // 10,90/12,50«) v mešanem pogledu ni več mogoče zamenjati.
+  const saleMixed = saleCat === 'ALL' || saleSearch.trim() !== ''
+  const saleCatNameOf = (mi: MenuT) => categories.find((c) => c.id === mi.categoryId)?.name ?? ''
+  // iskanje po ŽETONIH: vsaka beseda poizvedbe mora biti v (ime + kategorija)
+  // (»pizze bolognese«, »testenine gobami«) — nadloga poišče artikel tudi po
+  // kontekstu jedi; ŽETONI, ne sosednji podniz, da preskočijo ločila
+  const saleQ = saleSearch.trim().toLowerCase()
+  const saleTokens = saleQ ? saleQ.split(/\s+/).filter(Boolean) : []
   const saleItems = menu.filter((mi) =>
     mi.available
     && (saleCat === 'ALL' || mi.categoryId === saleCat)
-    && mi.name.toLowerCase().includes(saleSearch.trim().toLowerCase()))
+    && (saleTokens.length === 0
+      || saleTokens.every((tok) => `${mi.name} ${saleCatNameOf(mi)}`.toLowerCase().includes(tok))))
   const saleTotal = Object.entries(saleCart).reduce((s, [id, qty]) => s + (menu.find((x) => x.id === id)?.price ?? 0) * qty, 0)
   // vizualni benchmark (Toast/Square): skupno število kosov za oznako v glavi košare
   const saleCartCount = Object.values(saleCart).reduce((s, q) => s + q, 0)
+  // ISSUE #73 audit-15: podvojena prikazna imena ČEZ kategorije (isti niz,
+  // različna artikla — »Bolognese« testenina/pica) — v košari morajo biti
+  // RAZLOČNA: −1 na napačni vrstici v naglici pomeni izgubljen račun.
+  // Kontekst kategorije se prikaže SAMO pri dvoumnih imenih (ne vsi).
+  const saleAmbiguous = useMemo(() => {
+    const cnt = new Map<string, number>()
+    for (const mi of menu) {
+      const k = normItemName(mi.name)
+      cnt.set(k, (cnt.get(k) ?? 0) + 1)
+    }
+    return new Set([...cnt.entries()].filter(([, n]) => n > 1).map(([k]) => k))
+  }, [menu])
+  const saleCartName = (mi: MenuT): ReactNode => {
+    if (!saleAmbiguous.has(normItemName(mi.name))) return mi.name
+    const cn = saleCatNameOf(mi)
+    return cn ? <>{mi.name} <span className="font-normal text-stone-400">· {cn}</span></> : mi.name
+  }
 
   // OPS-4 v1.67.0 — tloris lokala (Mize): pogled + vlečenje miz (posX/posY v %)
   const [tableView, setTableView] = useState<'grid' | 'plan'>('grid')
@@ -2756,9 +2787,12 @@ function DashboardInner() {
                     const img = mi.categoryId
                       ? categoryImageForCategory(categories.find((c) => c.id === mi.categoryId)?.name)
                       : CATEGORY_IMAGE_DEFAULT
+                    // ISSUE #73 audit-15: overline »jed« = kategorija (samo v mešanem
+                    // pogledu — znotraj izbrane kategorije je kontekst že v čipu)
+                    const catOverline = saleMixed ? saleCatNameOf(mi) : ''
                     return (
                       <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
-                        aria-label={`${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
+                        aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
                         className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition ${mi.available
                           ? inCart > 0
                             ? 'border-emerald-600 bg-white hover:border-emerald-600 hover:shadow-md'
@@ -2782,6 +2816,13 @@ function DashboardInner() {
                           )}
                         </span>
                         <span className="flex min-h-16 flex-1 flex-col p-2.5">
+                          {/* ISSUE #73 audit-15: ploščica »jed · različica · velikost« —
+                              overline (kategorija/jed) loči isto ime dveh različnih jedi
+                              (»Bolognese« testenina/pica) in da starša golim imenom
+                              prilagodb (»Z gobami« → »Testenine, njoki · Z gobami«). */}
+                          {catOverline && (
+                            <span className="mb-0.5 truncate text-[10px] font-semibold uppercase leading-tight tracking-wider text-stone-400" aria-hidden="true">{catOverline}</span>
+                          )}
                           <p className="min-w-0 text-sm font-semibold leading-tight line-clamp-2">{mi.name}</p>
                           <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
                         </span>
@@ -2823,7 +2864,7 @@ function DashboardInner() {
                         if (!mi) return null
                         return (
                           <div key={id} className="flex items-center gap-1.5 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5 text-sm">
-                            <span className="min-w-0 flex-1 truncate">{qty}× {mi.name}</span>
+                            <span className="min-w-0 flex-1 truncate">{qty}× {saleCartName(mi)}</span>
                             <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                             <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
                             <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
@@ -2911,7 +2952,7 @@ function DashboardInner() {
                         if (!mi) return null
                         return (
                           <div key={id} className="flex items-center gap-2 rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-2.5 text-sm">
-                            <span className="min-w-0 flex-1 truncate font-medium">{qty}× {mi.name}</span>
+                            <span className="min-w-0 flex-1 truncate font-medium">{qty}× {saleCartName(mi)}</span>
                             <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                             <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
                             <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>

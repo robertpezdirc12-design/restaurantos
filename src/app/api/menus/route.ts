@@ -6,6 +6,7 @@ import { mapMenuItem, mapCategory, nid, num, jstr, stationToUI } from '@/lib/map
 import { writeAudit } from '@/lib/audit-chain'
 import { getMenuItemAllergenProfiles } from '@/lib/allergen-profile'
 import { validateStationsForLocation } from '@/lib/station-task-service'
+import { findDuplicateDisplayName, dupItemNameMessage } from '@/lib/menu-dup'
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req)
@@ -97,6 +98,22 @@ export async function POST(req: NextRequest) {
     if (catLocRes) return catLocRes
   } else if (body?.locationId && cat.Menu?.locationId !== locId) {
     return fail('Kategorija ne pripada podani lokaciji.', 400)
+  }
+  // ISSUE #73 audit-15: prikazno ime artikla je v kategoriji EDINSTVENO — isti
+  // imeni z različnima cenama na dveh ploščicah (»Bolognese 10,90/12,50«) v
+  // naročilnem toku pomenita napačen tap v naglici. Normalizacija: trim +
+  // collapse presledkov + lowercase (»Bolognese " ≡ "bolognese").
+  const newName = String(body.name).trim()
+  if (newName) {
+    const siblings = await db.menuItem.findMany({
+      where: { categoryId },
+      select: { id: true, name: true, price: true },
+    })
+    const dupe = findDuplicateDisplayName(
+      siblings.map((s) => ({ id: s.id, name: s.name, price: Number(s.price) })),
+      newName,
+    )
+    if (dupe) return fail(dupItemNameMessage(dupe), 409)
   }
   let prepStationId: string | null = null
   const itemLocationId = cat.Menu?.locationId ?? locId
