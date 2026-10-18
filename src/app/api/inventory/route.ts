@@ -23,7 +23,9 @@ export async function GET(req: NextRequest) {
     // Issue #4 §1: staff vidi samo zalogo svoje lokacije
     where: await locationScope(user),
     orderBy: { name: 'asc' },
-    take: 100,
+    // Demo nabor podatkov: ~160 artiklov zaloge — prag dvignjen s 100 na 500,
+    // da zaloga tab pokaže CELO zalogo (iskanje/filtri so odjemalec).
+    take: 500,
   })
   return ok({
     inventory: rows.map((r) => ({

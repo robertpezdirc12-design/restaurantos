@@ -65,6 +65,10 @@ let orderVoid = '', item1 = '', item2 = '', voidReasonA = ''
 let tableA = '', discountB = ''
 let miI5 = ''
 let shiftOrderSeq = 7500
+/* v1.141.0: /api/settings GET je globalni singleton (findFirst) — da fiksna
+   vrstica ZAGOTOVO zadene (tudi na demo-sejani bazi), obstoječe nastavitve
+   odložimo pred testom in jih po testu povrnemo (hermetičen test). */
+let settingsStash: Awaited<ReturnType<typeof db.restaurantSettings.findMany>> = []
 
 function tok(sub: string, name: string, role: string, loc: string | null): string {
   return createToken({ sub, name, role, loc, sv: 0 })
@@ -132,6 +136,9 @@ beforeAll(async () => {
   managerA = await seedEmployee('managerA', 'manager', locA1, 6)
 
   // nastavitve z SKRIVNOSTMI (settings leak test)
+  // v1.141.0: singleton getFirst() mora zadeti TO vrstico — demo nastavitve odložimo
+  settingsStash = await db.restaurantSettings.findMany()
+  if (settingsStash.length) await db.restaurantSettings.deleteMany({})
   await db.restaurantSettings.create({
     data: {
       id: `${PREFIX}settings-${RUN}`, name: 'I5 Test', fursCertPassword: 'SECRET-FURS-123',
@@ -188,6 +195,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await sweepTestFixtures(db, [PREFIX])
+  // v1.141.0: povrni odložene (demo) nastavitve — hermetičen test, baza ostane nespremenjena
+  if (settingsStash.length) {
+    await db.restaurantSettings.createMany({ data: settingsStash })
+    settingsStash = []
+  }
 })
 
 /* ══════════════════════ A. read-leaks ══════════════════════ */

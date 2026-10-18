@@ -62,14 +62,14 @@ export function ModuleIntro({ module, titleKey, bodyKey }: { module: string; tit
       data-region="module-intro"
       data-module={module}
       aria-label={t(titleKey)}
-      className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3"
+      className="rounded-xl border border-amber-200 bg-amber-50/70 dark:border-amber-700/60 dark:bg-amber-950/40 px-4 py-3"
     >
       <div className="flex items-start justify-between gap-3 min-w-0">
         <div className="min-w-0 space-y-1">
-          <p className="flex items-center gap-1.5 text-sm font-bold text-amber-900">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-amber-900 dark:text-amber-300">
             <Info className="w-4 h-4 shrink-0" aria-hidden /> {t(titleKey)}
           </p>
-          <p className="text-xs leading-relaxed text-amber-800/90">{t(bodyKey)}</p>
+          <p className="text-xs leading-relaxed text-amber-800/90 dark:text-amber-200/80">{t(bodyKey)}</p>
         </div>
         <button
           type="button"

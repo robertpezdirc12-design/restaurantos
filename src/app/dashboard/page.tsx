@@ -11,7 +11,7 @@ import { APP_VERSION } from '@/lib/version'
    kopiji iste logike z dvema različnima pragoma). */
 import {
   KDS_AGE_DEFAULTS, KDS_AGE_THRESHOLD_LS_KEY, KDS_DELAY_REASONS, delayThresholdForTarget,
-  isLatePrep, isStaleKdsTicket, kdsAgeBorderCls, kdsAgeClass, kdsAgePillCls,
+  isLatePrep, isStaleKdsTicket, kdsAgeBorderCls, kdsAgeClass, kdsAgePillCls, kdsLateThreshold,
   normalizeKdsAgeThresholds, staleTicketHours, type KdsAgeThresholds,
 } from '@/lib/kds-delays'
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
@@ -108,7 +108,7 @@ import { ModuleIntro } from '@/components/module-intro'
    in handheld — čista preslikava v lib, brez per-artikel slik v bazi) */
 import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
 import { stationViewKey } from '@/lib/kds-station-routing'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -136,7 +136,7 @@ interface ErrLogT { id: string; employeeId?: string | null; action: string; enti
 interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
-interface TableT { id: string; name: string; zone: string; seats: number; status: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
+interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
@@ -242,6 +242,49 @@ function KdsTaskChip({ task }: { task: KdsTaskT }) {
    kategorije za čiste sidrske skoke (#cat-…). Čista preslikava niza, brez stanja. */
 const catAnchor = (id: string): string => `cat-${id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
 
+/* v1.141.0 (Toast/professionalski KDS benchmark): ODBROJEVALNI ČASOVNIK.
+   Prej je listek kazal SAMO pretečene minute (»109 min«) — kuhar mora v glavi
+   računati, kdaj bo zamuda. Zdaj pila kaže koliko časa je OSTALO do praga
+   zamude (MM:SS), ob presegu pa ZAMUDA +MM:SS (rdeče, utripanje).
+   Tik vsako sekundo (ločeno od poll cikla — ura teče tudi med molkom API-ja). */
+function KdsCountdownPill({ createdAt, lateMin, staleNode, stale, fontCls, pillCls, ageMin }: {
+  createdAt: string
+  lateMin: number
+  staleNode: ReactNode
+  stale: boolean
+  fontCls: string
+  pillCls: string
+  ageMin: number
+}) {
+  const { t } = useI18n()
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => (n + 1) % 1_000_000), 1000)
+    return () => clearInterval(id)
+  }, [])
+  if (stale) return <>{staleNode}</>
+  const elapsedS = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 1000)
+  const rem = lateMin * 60 - elapsedS
+  const two = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0')
+  const overdue = rem <= 0
+  const mm = overdue ? two((rem * -1) / 60) : two(rem / 60)
+  const ss = overdue ? two((rem * -1) % 60) : two(rem % 60)
+  return (
+    <span
+      data-region="kds-ticket-timer"
+      className={`${fontCls} font-extrabold tabular-nums px-2.5 py-1 rounded-full border inline-flex items-center gap-1.5 ${
+        overdue ? 'bg-red-600 text-white border-red-700 animate-pulse' : pillCls
+      }`}
+      title={`${t('kds.minutes', { m: ageMin })} · ${overdue ? t('kds.overdue') : t('kds.remaining')}`}
+    >
+      <TimerReset className="w-4 h-4 shrink-0" aria-hidden />
+      {overdue
+        ? <>{t('kds.overdue')} +{mm}:{ss}</>
+        : <>{t('kds.remaining')} {mm}:{ss}</>}
+    </span>
+  )
+}
+
 /* ═══ ISSUE #74 (v1.135.0) Stopnja 2+3 — KDS ergonomija in statusni jezik ═══ */
 
 /** V-11: število listkov po slovensko — dvojina/množina (ne "2 LISTKOV"). */
@@ -288,6 +331,20 @@ const KDS_COLUMN_CLS: Record<KdsColumnsT, string> = {
 /** V-12: širina ploščice mize ∝ številu sedežev (2–3 / 4–6 / 7+) — fiksna
     višina vseh stanj preprečuje nazobčane vrstice v coni. */
 const tableTileWidthCls = (seats: number): string => (seats <= 3 ? 'w-44' : seats <= 6 ? 'w-52' : 'w-60')
+
+/* v1.141.0 (Toast/Square benchmark) — barvno kodiranje KATEGORIJ v kompaktnem
+   POS gridu: deterministični hash ključa → barvni levi rob ploščice (8-barvna
+   toplo-hladna paleta brez indigo/modre). Natakar na prvi pogled loči skupine
+   artikelov (Toast: barva = kategorija). */
+const SALE_CAT_BORDER = [
+  'border-l-emerald-600', 'border-l-amber-500', 'border-l-orange-600', 'border-l-rose-500',
+  'border-l-violet-500', 'border-l-teal-600', 'border-l-lime-600', 'border-l-yellow-500',
+] as const
+const saleCatBorderCls = (key: string): string => {
+  let h = 0
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) % 9973
+  return SALE_CAT_BORDER[h % SALE_CAT_BORDER.length]
+}
 
 /* Issue #69 (2. val): vizualni razdelek nastavitev — naslov + sidro (#set-…) za
    hitri skok po dolgi strani. Čisto dekorativna lupina: vsebine kartic (njihovi
@@ -1819,7 +1876,7 @@ function DashboardInner() {
   const [kdsAgeTh, setKdsAgeTh] = useState<KdsAgeThresholds>(KDS_AGE_DEFAULTS)
   const [kdsAgeDraft, setKdsAgeDraft] = useState<KdsAgeThresholds>(KDS_AGE_DEFAULTS)
   const [kdsFontSize, setKdsFontSize] = useState<KdsFontSizeT>('M')
-  const [kdsDensity, setKdsDensity] = useState<KdsDensityT>('normal')
+  const [kdsDensity, setKdsDensity] = useState<KdsDensityT>('compact')
   const [kdsColumns, setKdsColumns] = useState<KdsColumnsT>(6)
   const [kdsView, setKdsView] = useState<'columns' | 'list'>('columns')
   useEffect(() => {
@@ -1874,14 +1931,37 @@ function DashboardInner() {
   const allergenLbl = (code: string) =>
     (ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, allergenLocale) : code
   const [saleCart, setSaleCart] = useState<Record<string, number>>({})
+  /* v1.141.0 (Toast benchmark): način prikaza mreže — 'cards' (foto
+     kartice, 1–2 na ekran) ali 'compact' (gost tekstovni grid, 12–20 ploščic
+     hkrati, barvno kodirana kategorija) — persist v localStorage. */
+  const [saleView, setSaleView] = useState<'cards' | 'compact'>('cards')
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('ro_sale_view')
+      if (v === 'cards' || v === 'compact') setSaleView(v)
+    } catch { /* zasebni način */ }
+  }, [])
+  const saleViewSet = (v: 'cards' | 'compact') => {
+    setSaleView(v)
+    try { localStorage.setItem('ro_sale_view', v) } catch { /* brez shramve */ }
+  }
   // Issue #71 audit-32: privzeta izbira = PRAVA KATEGORIJA (ne »Vse« — 436 ploščic naenkrat
   // redči mrežo in zatika drsenje na tablici). Uporabnikov izbor vedno premaga privzeto.
   const [saleCat, setSaleCat] = useState('ALL')
   const saleCatTouched = useRef(false)
   useEffect(() => {
     if (saleCatTouched.current || saleCat !== 'ALL' || categories.length === 0) return
-    setSaleCat(categories[0].id)
-  }, [categories, saleCat])
+    /* v1.141.0 (Toast vzorec): privzeta kategorija = NAJBOLJ POLNA (z največ
+       razpoložljivimi artikli), ne slučajno prva po sortOrder — natakar začne
+       takoj v delovni kategoriji (pijače/vroče jedi), ne v prazni robinji. */
+    let best = categories[0]
+    let bestN = -1
+    for (const c of categories) {
+      const n = menu.filter((mi) => mi.categoryId === c.id && mi.available).length
+      if (n > bestN) { bestN = n; best = c }
+    }
+    if (bestN > 0) setSaleCat(best.id)
+  }, [categories, saleCat, menu])
   const [saleSearch, setSaleSearch] = useState('')
   const [saleSending, setSaleSending] = useState(false)
   const [saleErr, setSaleErr] = useState('')
@@ -2335,14 +2415,52 @@ function DashboardInner() {
               <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-stone-700" aria-hidden /> {stL('DIRTY')}</span>
             </div>
             {tableView === 'plan' && (
+              /* v1.141.0 (Lightspeed benchmark) — PROSTORSKI TLORIS: mize so
+                 OBLIKE (kvadrat/pravokotnik/okrogel/barski stol), ne besedilne
+                 ploščice; cone imajo svoje ozadje z oznako; sedeži so PIKE.
+                 Direktno barvanje po statusu (statusColors) ostaja. */
               <div
                 className="relative w-full rounded-xl border border-stone-200 bg-stone-100/70 overflow-hidden touch-none"
                 style={{ aspectRatio: '16 / 10' }}
                 onPointerMove={planPointerMove}
                 onPointerUp={planPointerUp}
               >
+                {/* cone — označena območja (bounding box miz cone + 6 % blazine) */}
+                {[...new Set(viewTables.map((t) => t.zone))].map((zone) => {
+                  const zt = viewTables.filter((t) => t.zone === zone)
+                  if (zt.length === 0) return null
+                  const ps = zt.map(planPosOf)
+                  const minX = Math.max(0, Math.min(...ps.map((p) => p.x)) - 9)
+                  const minY = Math.max(0, Math.min(...ps.map((p) => p.y)) - 10)
+                  const maxX = Math.min(100, Math.max(...ps.map((p) => p.x)) + 9)
+                  const maxY = Math.min(100, Math.max(...ps.map((p) => p.y)) + 10)
+                  return (
+                    <div
+                      key={`zone-${zone}`}
+                      aria-hidden
+                      className="pointer-events-none absolute rounded-xl border-2 border-dashed border-stone-300/80 bg-stone-200/40"
+                      style={{ left: `${minX}%`, top: `${minY}%`, width: `${maxX - minX}%`, height: `${maxY - minY}%` }}
+                    >
+                      <span className="absolute left-2 top-1.5 rounded-full bg-stone-200/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-500 shadow-sm">
+                        {zoneL(zone)}
+                      </span>
+                    </div>
+                  )
+                })}
                 {viewTables.map((tb) => {
                   const pos = planPosOf(tb)
+                  /* v1.141.0: oblika ∝ sedežem/podatku — 1 sedež = barski STOL
+                     (mali krog), okrogla (shape=round ali ≥6 sedežev) = KROG,
+                     2–3 sedeža = mali kvadrat, 4–5 = pravokotnik. */
+                  const shape = tb.shape || (tb.seats <= 1 ? 'stool' : tb.seats >= 6 ? 'round' : 'square')
+                  const shapeCls =
+                    shape === 'stool'
+                      ? 'w-9 h-9 rounded-full text-[10px]'
+                      : shape === 'round'
+                        ? 'w-16 h-16 rounded-full'
+                        : tb.seats <= 3
+                          ? 'w-12 h-12 rounded-xl'
+                          : 'w-20 h-14 rounded-xl'
                   return (
                     <button
                       key={tb.id}
@@ -2352,11 +2470,22 @@ function DashboardInner() {
                         if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
                         if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                       }}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-lg shadow px-2 py-1.5 text-xs font-bold cursor-grab active:cursor-grabbing ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 shadow text-xs font-bold cursor-grab active:cursor-grabbing ${shapeCls} ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                      aria-label={tb.name}
+                      aria-label={`${tb.name} · ${stL(tb.status)} · ${tb.seats}`}
+                      title={`${tb.name} · ${stL(tb.status)}`}
                     >
-                      {tb.name}{tb.activeOrder ? ` · ${fmtEUR(tb.activeOrder.total)}` : ''}
+                      <span className="leading-none">{tb.name.replace('Miza ', '')}</span>
+                      {tb.activeOrder ? (
+                        <span className="text-[10px] font-semibold leading-none tabular-nums">{fmtEUR(tb.activeOrder.total)}</span>
+                      ) : (
+                        /* sedeži kot PIKE (Lightspeed: hitri pregled kapacitete) */
+                        <span className="flex gap-0.5 leading-none" aria-hidden>
+                          {Array.from({ length: Math.min(tb.seats, 8) }).map((_, i) => (
+                            <span key={i} className="size-1 rounded-full bg-current opacity-70" />
+                          ))}
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -2689,15 +2818,51 @@ function DashboardInner() {
                 • <md: FIKSNA vrstica košare (en same višina — mreža NIKOLI pokrita, spodnja
                   razdalja pb-20 drsi čez njo) + list košare (bottom sheet) s postavkami;
                   značka količine na ploščici artikla = takojšen povratni signal vnosa. */}
-            <div className="md:grid md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-4 lg:grid-cols-[minmax(0,1fr)_21rem]">
-              {/* LEVO: iskanje + čipi kategorij + mreža izbire */}
+            {/* v1.141.0 (Toast benchmark): KOŠARA LEVO — natakarjevo oko ostaja na
+                mreži izdelkov, košara pa v levem robu kot Toast »left rail« (prej
+                desno — oko je moralo potovati čez cel zaslon). Vrstni red = grid
+                order (1=košara, 2=mreža) — mobilna postavitev (fiksna vrstica
+                spodaj) je NEODVISNA od tega (aside skrit < md). */}
+            <div className="md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-start md:gap-4 lg:grid-cols-[21rem_minmax(0,1fr)]">
+              {/* LEVO: iskanje + čipi kategorij + mreža izbire (order-2 za md+) */}
               {/* ISSUE #74 V-6 (blocker): prej 40 gumbov kategorij v 6 ovitih vrstah —
                 mreža izbire se je začela šele pri y=429/860 px (na mobilnem 61 % višine).
                 Toast/Square vzorec: iskanje VEDNO v svoji vrstici + ENA vodoravno drsna
                 vrstica kategorij (flex-nowrap + overflow-x-auto) — mreža pri y≈140. */}
-            <div className="min-w-0 space-y-3 pb-20 md:pb-0">
+            <div className="min-w-0 space-y-3 pb-20 md:order-2 md:pb-0">
               <div className="flex items-center gap-2">
                 <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-11 w-full sm:w-56" aria-label={t('sale.search')} />
+                {/* v1.141.0 (Toast gostota): preklop KARTICE ↔ KOMPAKTNO — foto kartice
+                    (lepota, 1–2 na ekran) ali gost tekstovni grid (12–20 ploščic hkrati,
+                    barvno kodirane kategorije, mišični spomin). Persist v localStorage. */}
+                <div className="ml-auto inline-flex shrink-0 rounded-lg border border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-950 p-0.5" role="group" aria-label={t('sale.viewMode')}>
+                  <button
+                    type="button"
+                    aria-pressed={saleView === 'cards'}
+                    aria-label={t('sale.viewCards')}
+                    title={t('sale.viewCards')}
+                    onClick={() => saleViewSet('cards')}
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold transition ${
+                      saleView === 'cards' ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <LayoutGrid className="w-4 h-4" aria-hidden />
+                    <span className="hidden lg:inline">{t('sale.viewCards')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={saleView === 'compact'}
+                    aria-label={t('sale.viewCompact')}
+                    title={t('sale.viewCompact')}
+                    onClick={() => saleViewSet('compact')}
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold transition ${
+                      saleView === 'compact' ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <Rows3 className="w-4 h-4" aria-hidden />
+                    <span className="hidden lg:inline">{t('sale.viewCompact')}</span>
+                  </button>
+                </div>
               </div>
               {/* V-6: horizontalni TRAK kategorij (nowrap) — gumbi se nikoli ne ovijejo;
                   V-19: cilji 44 px (h-11) na POS, rounded-full chip videz (Square) */}
@@ -2714,6 +2879,42 @@ function DashboardInner() {
                   </Button>
                 ))}
               </div>
+                {/* v1.141.0 (Toast gostota) — DVA načina mreže: KARTICE (foto, za
+                    učenje/lepoto) ali KOMPAKTNO (12–20 ploščic na ekran, barvni rob
+                    kategorije, tekst za mišični spomin — Toast/Oracle »tiered grid«). */}
+                {saleView === 'compact' ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
+                  {saleItems.map((mi) => {
+                    const inCart = saleCart[mi.id] || 0
+                    const catKey = mi.categoryId || (categories.find((c) => c.name === saleCatNameOf(mi))?.id ?? mi.name)
+                    const catOverline = saleMixed ? saleCatNameOf(mi) : ''
+                    return (
+                      <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
+                        aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
+                        className={`relative flex h-20 flex-col items-start justify-between border-l-4 px-2.5 py-2 text-left transition ${
+                          mi.available
+                            ? `${saleCatBorderCls(catKey)} border-y-stone-200 border-r-stone-200 dark:border-y-stone-700 dark:border-r-stone-700 bg-white dark:bg-stone-800 shadow-sm hover:bg-stone-50 dark:hover:bg-stone-700 hover:shadow active:scale-[0.98] ${inCart > 0 ? 'ring-2 ring-emerald-600' : ''}`
+                            : 'cursor-not-allowed border-l-red-400 border-y-red-200 border-r-red-200 dark:border-y-red-900 dark:border-r-red-900 bg-red-50/70 dark:bg-red-950/40'
+                        }`}
+                      >
+                        {inCart > 0 && (
+                          <span key={inCart} aria-hidden className="absolute right-1 top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
+                            {inCart}×
+                          </span>
+                        )}
+                        {!mi.available && (
+                          <span className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
+                        )}
+                        <p className={`min-w-0 self-stretch pr-6 text-[13px] font-semibold leading-tight line-clamp-2 break-words ${mi.available ? 'text-stone-900' : 'text-red-700/60 dark:text-red-400/70 line-through'}`}>{mi.name}</p>
+                        <span className="flex w-full items-baseline justify-between gap-1">
+                          {catOverline && <span className="truncate text-[10px] font-medium uppercase tracking-wide text-stone-400" aria-hidden>{catOverline}</span>}
+                          <span className={`ml-auto shrink-0 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 dark:text-red-400'}`}>{fmtEUR(mi.price)}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
                   {saleItems.map((mi) => {
                     const inCart = saleCart[mi.id] || 0
@@ -2766,12 +2967,14 @@ function DashboardInner() {
                     )
                   })}
                 </div>
+                )}
                 {saleItems.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
               </div>
 
-              {/* DESNO (≥md, tablica/namizje): trajna košara — Toast/Square vzorec »right rail«:
-                  glava s števcem, drsni seznam postavk, vsota + Plačaj VEDNO pritrjena spodaj */}
-              <aside className="hidden md:block" aria-label={t('sale.cartTitle')}>
+              {/* KOŠARA — Toast »left rail« (v1.141.0): trajna košara LEVO (md:order-1)
+                  — natakarjevo oko ostaja na mreži; glava s števcem, drsni seznam
+                  postavk, vsota + Plačaj VEDNO pritrjena spodaj */}
+              <aside className="hidden md:block md:order-1" aria-label={t('sale.cartTitle')}>
                 <Card className="sticky top-20 flex max-h-[calc(100vh-6.25rem)] flex-col shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center justify-between gap-2 text-base">
@@ -2814,11 +3017,11 @@ function DashboardInner() {
                       <span>{t('sale.total')}</span>
                       <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
                     </div>
-                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200 dark:disabled:bg-stone-800 dark:disabled:text-stone-400 dark:disabled:hover:bg-stone-800" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
                       {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
                     </Button>
                     {saleErr && (
-                      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                      <p role="alert" className="rounded-lg bg-red-50 dark:bg-red-950/40 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300">
                         {saleErr}
                       </p>
                     )}
@@ -3185,24 +3388,37 @@ function DashboardInner() {
                         </span>
                       </CardTitle>
                       <div data-region="kds-ticket-timer-row" className="flex items-center gap-2 flex-wrap">
-                        {/* ČASOVNIK — starost listka, vidna na fiksni legi v glavi (ne zakopana med postavke) */}
-                        {stale ? (
-                          <span
-                            data-region="kds-ticket-timer"
-                            className="text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
-                            title={`${t('kds.stale')} — ${t('kds.minutes', { m: ageMin })}`}
-                          >
-                            {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
-                          </span>
-                        ) : (
-                          <span data-region="kds-ticket-timer" className={`${kdsFont.timer} font-extrabold tabular-nums px-2.5 py-1 rounded-full border ${kdsAgePillCls(ageCls)}`}>{t('kds.minutes', { m: ageMin })}</span>
-                        )}
+                        {/* ČASOVNIK — v1.141.0: ODBROJEVALNI kuharjev zorni kot (še-MM:SS do
+                            praga zamude; prek → ZAMUDA +MM:SS rdeče). Prag = najvišji
+                            postajni cilj listka (kdsTargetOf) ali globalni late prag. */}
+                        <KdsCountdownPill
+                          createdAt={o.createdAt}
+                          lateMin={(() => {
+                            const tt = Math.max(0, ...items.map((it) => kdsTargetOf(it) ?? 0))
+                            return kdsLateThreshold(tt > 0 ? tt : null, kdsAgeTh)
+                          })()}
+                          stale={stale}
+                          staleNode={(
+                            <span
+                              data-region="kds-ticket-timer"
+                              className="text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
+                              title={`${t('kds.stale')} — ${t('kds.minutes', { m: ageMin })}`}
+                            >
+                              {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
+                            </span>
+                          )}
+                          fontCls={kdsFont.timer}
+                          pillCls={kdsAgePillCls(ageCls)}
+                          ageMin={ageMin}
+                        />
+                        {/* v1.141.0: kompaktni listki — tiskanje IKONSKO (naslov v tooltipu),
+                            v normalni gostoti pa besedilno kot prej */}
                         <span className="ml-auto flex gap-1.5 shrink-0">
-                          <Button size="sm" variant="outline" className="gap-1 h-11 text-xs" onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')}>
-                            <Printer className="w-3.5 h-3.5" /> {t('kitchen.kitchenTicket')}
+                          <Button size="sm" variant="outline" className={kdsDensity === 'compact' ? 'h-11 w-11 p-0' : 'gap-1 h-11 text-xs'} onClick={() => void printKitchenTicket(o, 'KITCHEN')} title={t('kitchen.printKitchenTitle')} aria-label={t('kitchen.printKitchenTitle')}>
+                            <Printer className="w-4 h-4" /> {kdsDensity !== 'compact' && t('kitchen.kitchenTicket')}
                           </Button>
-                          <Button size="sm" variant="outline" className="gap-1 h-11 text-xs" onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')}>
-                            <Printer className="w-3.5 h-3.5" /> {t('kitchen.barTicket')}
+                          <Button size="sm" variant="outline" className={kdsDensity === 'compact' ? 'h-11 w-11 p-0' : 'gap-1 h-11 text-xs'} onClick={() => void printKitchenTicket(o, 'BAR')} title={t('kitchen.printBarTitle')} aria-label={t('kitchen.printBarTitle')}>
+                            <Printer className="w-4 h-4" /> {kdsDensity !== 'compact' && t('kitchen.barTicket')}
                           </Button>
                         </span>
                       </div>
@@ -3415,19 +3631,19 @@ function DashboardInner() {
               const rows = [...byName.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
               if (rows.length === 0) return null
               return (
-                <div data-region="kds-allday" className="sticky bottom-0 z-10 rounded-xl border border-amber-300 bg-amber-50/95 backdrop-blur px-3 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]" role="status" aria-label={t('kds.allDayTitle')}>
+                <div data-region="kds-allday" className="sticky bottom-0 z-10 rounded-xl border border-amber-300 bg-amber-50/95 dark:border-amber-700/60 dark:bg-stone-950/95 backdrop-blur px-3 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.4)]" role="status" aria-label={t('kds.allDayTitle')}>
                   <div className="flex items-center gap-2 mb-1.5">
-                    <p className="text-xs font-bold uppercase tracking-wide text-amber-900 min-w-0 shrink-0">{t('kds.allDayTitle')}</p>
-                    <p className="text-xs font-medium text-amber-700/80 ml-auto shrink-0" aria-hidden>{rows.length}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-amber-900 dark:text-amber-300 min-w-0 shrink-0">{t('kds.allDayTitle')}</p>
+                    <p className="text-xs font-medium text-amber-700/80 dark:text-amber-400/70 ml-auto shrink-0" aria-hidden>{rows.length}</p>
                   </div>
                   {/* Toast production view: ENA vrstica z horizontalnim drsenjem (nowrap) —
                       ovijanje čipov je na mobilnem naredilo 800px+ blok, višji od zaslona,
                       in sticky ni mogel prilepiti na dno (izmerjeno: bottom 1137 > vh 844). */}
                   <div className="flex gap-1.5 overflow-x-auto flex-nowrap [scrollbar-width:thin]">
                     {rows.map(([name, qty]) => (
-                      <span key={name} className="inline-flex items-baseline gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1 shrink-0 whitespace-nowrap">
-                        <span className="text-base font-extrabold tabular-nums text-amber-900">{qty}×</span>
-                        <span className="text-sm font-semibold text-stone-800">{name}</span>
+                      <span key={name} className="inline-flex items-baseline gap-1.5 rounded-lg border border-amber-200 dark:border-stone-700 bg-white dark:bg-stone-800 px-2.5 py-1 shrink-0 whitespace-nowrap">
+                        <span className="text-base font-extrabold tabular-nums text-amber-900 dark:text-amber-400">{qty}×</span>
+                        <span className="text-sm font-semibold text-stone-800 dark:text-stone-900">{name}</span>
                       </span>
                     ))}
                   </div>

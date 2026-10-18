@@ -33,6 +33,10 @@ let locA1 = '', locB1 = '', locA2 = ''
 let adminA = '', adminB = '', managerA = '', adminPlat = ''
 let integGlobal = '', integA = '', integB = ''
 let integrationSeq = 0
+/* v1.141.0: /api/settings GET je globalni singleton (findFirst) — da fiksna
+   vrstica ZAGOTOVO zadene (tudi na demo-sejani bazi), obstoječe nastavitve
+   odložimo pred testom in jih po testu povrnemo (hermetičen test). */
+let settingsStash: Awaited<ReturnType<typeof db.restaurantSettings.findMany>> = []
 
 function tok(sub: string, name: string, role: string, loc: string | null): string {
   return createToken({ sub, name, role, loc, sv: 0 })
@@ -106,6 +110,9 @@ beforeAll(async () => {
   adminPlat = await seedEmployee('adminPlat', 'admin', null, 4)
 
   // nastavitve z živimi skrivnostmi (enak vzorec kot issue5 fiksatura)
+  // v1.141.0: singleton getFirst() mora zadeti TO vrstico — demo nastavitve odložimo
+  settingsStash = await db.restaurantSettings.findMany()
+  if (settingsStash.length) await db.restaurantSettings.deleteMany({})
   await db.restaurantSettings.create({
     data: {
       id: `${PREFIX}settings-${RUN}`, name: 'I23 Test', fursCertPassword: 'SECRET-FURS-123',
@@ -125,6 +132,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await sweepTestFixtures(db, [PREFIX])
+  // v1.141.0: povrni odložene (demo) nastavitve — hermetičen test, baza ostane nespremenjena
+  if (settingsStash.length) {
+    await db.restaurantSettings.createMany({ data: settingsStash })
+    settingsStash = []
+  }
 })
 
 /* ══════════════════════ #23 — maskiranje skrivnosti ══════════════════════ */

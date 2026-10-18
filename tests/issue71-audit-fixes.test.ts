@@ -211,10 +211,15 @@ describe('issue #71 audit-27 — neznan ?tab= ne pusti prazne plošče', () => {
 
 /* ── audit-32/16 (major): hitra prodaja ── */
 describe('issue #71 audit-16/32 — hitra prodaja: privzeta kategorija + 86 na ploščici', () => {
-  test('privzeta izbira = prva kategorija (ne Vse = 436 ploščic)', () => {
+  test('privzeta izbira = NAJBOLJ POLNA kategorija (v1.141.0 Toast vzorec, ne Vse = 436 ploščic)', () => {
     const d = dash()
     expect(d).toContain('saleCatTouched')
-    expect(d).toContain('setSaleCat(categories[0].id)')
+    // v1.141.0: privzeta kategorija je tista z NAJVEČ razpoložljivimi izdelki
+    // (natakar začne takoj v delovni kategoriji — pijače/vroče), ne prva po sortOrder
+    expect(d).toContain('setSaleCat(best.id)')
+    expect(d).toContain('mi.categoryId === c.id && mi.available')
+    // uporabnikov izbor vedno premaga privzeto (varovalka ostaja)
+    expect(d).toContain('saleCatTouched.current || saleCat !== \'ALL\'')
   })
   test('razprodan artikel: rdeča ploščica + 86 trak + razlog v aria', () => {
     const d = dash()

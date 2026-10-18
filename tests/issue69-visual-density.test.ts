@@ -66,12 +66,17 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
     expect(d).toContain('{stL(o.status)}')
   })
 
-  it('glava listka: ČASOVNIK dominanten (tabular-nums, ekstra bold) na fiksni legi', () => {
+  it('glava listka: ODBROJEVALNI ČASOVNIK dominanten (v1.141.0 — kuharjev zorni kot)', () => {
     const d = dash()
-    // svež in zastarel primer (oba izrišta časovnik v isti dominantni obliki)
-    // ISSUE #74 V-8 (v1.135.0): velikost pisave časovnika sledi nastavitvi S/M/L/XL
-    // (kdsFont.timer — privzeta M = text-sm); font-extrabold + tabular-nums ostaneta.
-    expect(d).toContain('data-region="kds-ticket-timer" className={`${kdsFont.timer} font-extrabold tabular-nums px-2.5 py-1 rounded-full border')
+    // v1.141.0 (profesionalni KDS benchmark): pila ni več zgolj STAROST, temveč
+    // ODBROJEVALNIK — »še MM:SS« do praga zamude, prek pa »Zamuda +MM:SS« rdeče utripanje.
+    // ISSUE #74 V-8 (v1.135.0) ostaja: velikost pisave sledi kdsFont.timer (M = text-sm).
+    expect(d).toContain('data-region="kds-ticket-timer"')
+    expect(d).toContain('font-extrabold tabular-nums px-2.5 py-1 rounded-full border inline-flex items-center gap-1.5')
+    // zamuda = rdeče utripanje (zorni kot kuharja), svež listek = pomirjen specialist
+    expect(d).toContain("overdue ? 'bg-red-600 text-white border-red-700 animate-pulse' : pillCls")
+    expect(d).toContain("{t('kds.remaining')} {mm}:{ss}")
+    expect(d).toContain("{t('kds.overdue')} +{mm}:{ss}")
     expect(d).toContain("M: { title: 'text-[15px]', item: 'text-[15px]', timer: 'text-sm' },")
   })
 

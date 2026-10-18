@@ -238,6 +238,10 @@ export function mapTable(t: Row, activeOrder?: Row | null) {
     seats: t.capacity as number,
     posX: num(t.posX),
     posY: num(t.posY),
+    /** v1.141.0 (Lightspeed benchmark): oblika mize za prostorski tloris —
+        'square' (kvadratna, 2–6 sedežev), 'round' (okrogla, velika/barska),
+        'stool' (barski stol, 1 sedež). Zgodovinske mize brez oblike → 'square'. */
+    shape: ((t.shape as string) === 'round' || (t.shape as string) === 'stool') ? (t.shape as string) : 'square',
     // Issue #70 §1 (P1, v1.121.0): KANONIČNA izpeljava zasedenosti = AKTIVNO naročilo
     // (open/sent/prepared — include v /api/tables). DB 'occupied' BREZ aktivnega naročila
     // je zastarelo demo/odvodno stanje (vsak zaključek naročila — plačilo/storno/preklic —

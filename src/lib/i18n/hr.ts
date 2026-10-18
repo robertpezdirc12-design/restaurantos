@@ -2206,6 +2206,13 @@ export const hr: Record<string, string> = {
   'sale.openCart': 'Otvori košaricu',
   'sale.inCart': 'u košarici',
   'sale.drawerDesc': 'Pregled i uređivanje odabranih artikala prije plaćanja.',
+  // v1.141.0 (Toast gustina): preklop kartice ↔ kompaktni grid
+  'sale.viewMode': 'Način prikaza mreže',
+  'sale.viewCards': 'Kartice',
+  'sale.viewCompact': 'Kompaktno',
+  // v1.141.0 (KDS benchmark): odbrojevalni sat
+  'kds.remaining': 'još',
+  'kds.overdue': 'Kašnjenje',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',
   'payment.partGcRequired': 'Dio {n}: odaberite poklon karticu.',
