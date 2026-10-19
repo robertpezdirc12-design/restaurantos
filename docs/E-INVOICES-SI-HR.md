@@ -161,5 +161,24 @@ kode in testov (MOCK-TESTIRANO, razen kjer je označeno drugače).
 - Statusni cikel: `src/lib/einvoice-lifecycle.ts` (forward-only, terminal
   accepted/rejected, retry poti failed/rejected/needs_review → queued);
 - DDV konvencija: odhodni račun = **neto osnova + DDV**; iz POS naročila se neto
-  izpelje iz končne cene (`netFromGross`/`vatFromGross`, v1.124.0 pravilo);
-- Testi: `tests/issue4-einvoices.test.ts` (predpona fiksur `i4-`).
+  izpelje iz končne cene **CELOTNE VRSTICE** (`netFromGross(bruto vrstice, stopnja)`,
+  DDV je preostanek do bruto zneska). Zaokrožitev NA ENOTI je prepovedana (revizija
+  2026-10 №6): `r2(enota) × količina` ne vrne izpisanega zneska vrstice, sicer pa
+  EN 16931 zahteva BT-111 = BT-118 × BT-146. Kadar dvodecimalna cena ne vrne
+  pomnožka, generator izpiše **4 decimalke** (`priceAmount` v `eslog-export.ts`);
+  neto znesek vrstice nosi `lineNetAmount`, ki ima prednost pred `količina × cena`.
+- Znesek računa iz naročila (revizija 2026-10 №5): **bruto, ki ga stranka res
+  dolguje** — `Σ Check.total` plačanih izstavkov, SAMO če ni več NEPLAČANEGA
+  izstavka (vključno s happy hour in samodejnimi popusti); pri delno plačani mizi
+  ali brez izstavkov `Σ postavk − Order.discount − OrderItem.discountAmount`.
+  Popust se po vrsticah razreže cent-exact in deterministično (`src/lib/einvoice-lines.ts`,
+  ostanek po padajočem ulomku, izenačenje → nižji indeks), zato je vsota vrstic
+  enaka terjatvi. Če postavke ne dosegajo pričakovanega zneska (`shortfallCents > 0`,
+  npr. artikel spremenjen po plačilu) ali je znesek 0, ruta zavrne **fail-closed z
+  409** — računa po domnevi ne izdaja.
+- Validacija glave: pri računu iz naročila `totalAmount` NNI izračunan iz vrstic,
+  ampak je neodvisen podatek (plačilo), zato `validateOutgoing` res preverja
+  ujemanje vrstic in glave; ob vsaki vrstici poleg tega opozori, kadar DDV vrstice
+  ne ustreza «osnova × stopnja» (neblokirno — davčniku je treba cent razložiti).
+- Testi: `tests/issue4-einvoices.test.ts` (predpona `i4-`) in
+  `tests/audit56-einvoice-lines.test.ts` (predpona `a56-`, v1.149.0 — №5/№6).
