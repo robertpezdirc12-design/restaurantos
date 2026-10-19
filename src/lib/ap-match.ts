@@ -189,7 +189,6 @@ export async function evaluateApMatch(
     const poPrice = Number(poItem.unitPrice)
     const poVat = Number(poItem.vatRate)
     const cum = cumulative.get(poItem.id) ?? 0
-    const cumAbs = Math.abs(cum)
 
     // 1. količinska kontrola (kumulativno, predznačeno za dobropise)
     const qtyTolOrdered = (ordered * tolerance.qtyTolerancePct) / 100
@@ -217,8 +216,14 @@ export async function evaluateApMatch(
     }
     // 4. skladnost zneska vrstice (količina × fakturirana cena × DDV)
     const vatMult = vatRate == null ? 1 : 1 + vatRate / 100
-    const recomputed = Math.abs(qty) * unitPrice * vatMult
-    if (Math.abs(lineTotal) - recomputed > tolerance.amountToleranceCents / 100 + 1e-9) {
+    const recomputed = Math.abs(qty * unitPrice * vatMult)
+    // audit #13: razlika mora biti DVOSMERNA. Prej je bil preizkus enostranski
+    // (|lineTotal| − recomputed > toleranca), zato je bila PODFakturirana vrstica
+    // (npr. tipkanih 10,00 namesto 61,00) VEDNO 'match' — razlika je negativna in
+    // nikoli ne preseže tolerance. Tudi obe strani sta magnitudi, da predznačena
+    // vrstica dobropisa ne odstopa sama od sebe.
+    const lineAmountDiff = Math.abs(Math.abs(lineTotal) - recomputed)
+    if (lineAmountDiff > tolerance.amountToleranceCents / 100 + 1e-9) {
       reasons.push(`Znesek vrstice (${lineTotal.toFixed(2)}) ne ustreza količini × ceni × DDV (${recomputed.toFixed(2)}).`)
     }
     // 5. pričakovani znesek po PO (varianca v centih)

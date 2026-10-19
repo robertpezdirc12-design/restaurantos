@@ -3,14 +3,13 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, r2, jparse, jstr, mapReceipt } from '@/lib/map'
-import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { fiscalCerts, stampFiscalCodes, submitFiscalDocument } from '@/lib/furs/submit'
 import { writeAudit } from '@/lib/audit-chain'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
-import { localYearMonth } from '@/lib/fiscal-time'
+import { allocateReceiptNumber } from '@/lib/furs/receipt-number'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
 import {
   validateExceptionReason,
@@ -176,12 +175,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       const dup = await tx.receipt.findFirst({ where: { stornoOf: original.id }, select: { id: true } })
       if (dup) throw new OrderError('Račun je že storniran.', 409)
 
-      // ── Številčenje: ISTI Counter vzorec kot /api/furs (location-scoped, atomaren) ──
-      const seqFloor = await tx.receipt.count({ where: { locationId: location.id } })
-      const seq = await nextSequence(tx, `receipt:${location.id}`, seqFloor + 1)
-      // audit #2: lokalni koledar lokacije (ne sistemski/UTC) — isti vzorec kot /api/furs
-      const { y, m } = localYearMonth(now, location.timezone)
-      const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
+      // ── Številčenje: ISTA pot kot /api/furs (audit #14, v1.146.0: skupni
+      // allocateReceiptNumber — Counter + preizkus zasedenosti, da reža v
+      // obstoječih številkah ne more dvigniti P2002 in rewindati storna) ──
+      const { seq, receiptNumber } = await allocateReceiptNumber(tx, location, now)
 
       // ── Fiskalne kode: ISTA pot kot /api/furs (audit #3, v1.144.0) ──
       // Pred tem je ruta klicala samo `fiscal.computeCodes`, ki v PRODUKCIJI vrne

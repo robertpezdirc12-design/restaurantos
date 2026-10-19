@@ -19,7 +19,6 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource, isCrossTenantLocations, isBootstrapAdmin } from '@/lib/tenant'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
-import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, splitVat, tierForPoints, vatBreakdownAfterDiscount, BillItem, VatDiscountLine } from '@/lib/billing'
@@ -30,7 +29,7 @@ import { fiscalAdapterFor } from '@/lib/fiscal'
 import { auditChainFields } from '@/lib/audit-chain'
 import { approvalAttestationProfile, paymentPolicyError, type PaymentAttestationProfile } from '@/lib/payments-policy'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
-import { localYearMonth } from '@/lib/fiscal-time'
+import { allocateReceiptNumber } from '@/lib/furs/receipt-number'
 import { fiscalCerts, stampFiscalCodes, submitFiscalDocument } from '@/lib/furs/submit'
 
 interface PaymentPart {
@@ -512,12 +511,10 @@ export async function issueFursReceipt(req: NextRequest) {
         }
       }
 
-      const seqFloor = await tx.receipt.count({ where: { locationId: location.id } })
-      const seq = await nextSequence(tx, `receipt:${location.id}`, seqFloor + 1)
-      // audit #2: številka računa je po LOKALNEM koledarju lokacije — sicer se
-      // `leto-mesec` iz številke in `IssueDateTime` razideta (nočna izdaja)
-      const { y, m } = localYearMonth(now, location.timezone)
-      const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
+      // audit #14 (v1.146.0): numberjenje je skupno s stornom — Counter z zapisano
+      // spodnjo mejo + preizkus, da številka še ni zasedena (reže obstoječih
+      // številk sicer dvignejo P2002 in rewindaJO celotno plačilno transakcijo)
+      const { seq, receiptNumber } = await allocateReceiptNumber(tx, location, now)
 
       // Fiskalne kode dokumenta (SI ZOI/EOR, HR ZKI/JIR) — audit #3 (v1.144.0):
       // LOGIKA je izenačena s stornom, da se ne moreta raziti (prej kopija tu,
