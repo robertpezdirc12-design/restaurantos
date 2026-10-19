@@ -30,6 +30,18 @@ ne vzdržujemo ločenega `tenant_id` na vsakem modelu (duplikat istega dejstva).
      `assertResourceLocation` klic v src/app).
    - **CREATE rute**: `assertOrgScope(user, locationId)` tik za `requireUserLocation`
      (18 mest) — blokira kreiranje virov na lokaciji tuje org (forged locationId).
+   - **PREMIK rute (v1.147.0, audit #8)**: `body.locationId` na obstoječem viru
+     sme spremeniti lokacijo SAMO, če je overjeno **OBOJE** — vir (trenutna
+     lokacija) IN cilj: `guardResource(user, cilj)` pred vpisom (vzorec
+     `integrations/[id]`, issue #42 točki 3 in 4). Odklop na `locationId = null`
+     je platform-level posest (`guardGlobalResource`): takšnih virov seznam
+     `locationScope` ne pokaže nobeni organizacijsko vezani vlogi, kar pa seznam
+     ne pokaže, sme tudi mutirati samo bootstrap admin. Pokrito:
+     `employees/[id]` PATCH, `devices/[id]` PATCH. Zakaj je to varnostno in ne
+     estetsko vprašanje: lokacija nosi dostop do podatkov (seje, poročila,
+     zaloge), naprava pa nosi device žeton, premakniti pa jo je mogoče v tuj
+     FURS poslovni prostor — javni `GET /api/auth/locations` (audit #9) je zato
+     razkrival veljavne ciljne ID-je.
    - **Seznamski endpointi** (`locationScope`): **✅ org allow-lista ŽIVO (Task 54,
      v1.55.0)** — centralne vloge vidijo lokacije SVOJE organizacije + nevezane legacy
      (`propertyId null`, migracijsko varno — isti pravilnik kot assertTenantScope/

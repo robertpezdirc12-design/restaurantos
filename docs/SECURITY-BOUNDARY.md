@@ -31,7 +31,7 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 |---|---|
 | `/api/health` | samo status/version/baza — brez PII |
 | `/api/auth/login` | email+PIN (scrypt + `pinLookup` HMAC); MFA druga stopnja; bootstrap break-glass prek env |
-| `/api/auth/locations` | samo id/name/code lokacij za izbiro prijave |
+| `/api/auth/locations` | samo id/name aktivnih lokacij za izbiro prijave; rate limit 30/min po IP + `Cache-Control: no-store` (v1.147.0, audit #9 — kopija imenika ne sme ostati v brskalniku/CDN/proxy-ju) |
 | `/api/public/menu` | samo javni meni lokacije (iz qrToken/device) |
 | `/api/public/orders` | lokacija+miza rešeni SERVER-SIDE; cene iz DB; idempotencija; rate limit 10/min; audit `GUEST_ORDER_CREATED` |
 | `/api/public/orders/status` | samo statusi vidni gostu (mapiranje) |
