@@ -18,6 +18,7 @@
  */
 import type { EslogInvoice } from '@/lib/eslog'
 import type { OutgoingEInvoice } from '@/lib/eslog-export'
+import { lineNetAmountOf } from '@/lib/eslog-export'
 
 export interface ValidationIssue {
   field: string
@@ -143,6 +144,19 @@ export function validateOutgoing(
       if (!Number.isFinite(vat) || vat < 0 || vat > 30) {
         errors.push({ field: `lines[${i}].vatRate`, message: `Vrstica ${n}: DDV stopnja mora biti med 0 in 30 %.` })
       }
+      // Opozorilo, ne blokada: DDV vrstice se mora do centu ujemati z
+      // «osnova × stopnja». Odstopanje pomeni par, ki NI bil izpeljan iz
+      // končne cene vrstice — davčnemu zvezniku bi moral cent razložiti.
+      if (Number.isFinite(vat) && Number.isFinite(lineNetAmountOf(l))) {
+        const declared = Number.isFinite(l.lineVatAmount) ? r2(Number(l.lineVatAmount)) : r2(lineNetAmountOf(l) * (vat / 100))
+        const byRate = r2(lineNetAmountOf(l) * (vat / 100))
+        if (Math.abs(declared - byRate) > 0.004) {
+          warnings.push({
+            field: `lines[${i}].lineVatAmount`,
+            message: `Vrstica ${n}: DDV ${declared.toFixed(2)} ne ustreza osnova × stopnja (${byRate.toFixed(2)}).`,
+          })
+        }
+      }
       if (profile === 'ubl-2.1-hr') {
         const kpd = String(l.kpdCode ?? '').trim()
         if (!kpd) {
@@ -154,16 +168,22 @@ export function validateOutgoing(
     })
   }
 
-  // Σ vrstic ≈ glavni zneski (±0.02) — samo ko klicatelj poda glavo (AR zneski)
+  // Σ vrstic ≈ glavni zneski (±0,02) — samo ko klicatelj poda glavo (AR zneski).
+  // v1.149.0 (revizija #5): glava NNI VEČ izračunana iz istih vrstic. Ruta za
+  // račun iz naročila poda bruto znesek, KI GA STRANKA DOLGUJE (plačani Check-i
+  // ali `Order.discount`), vrstice pa so izpeljane z razrezom popusta v
+  // `@/lib/einvoice-lines`. Prevera torej prvič res preverja nekaj: če razrez in
+  // plačilo ne sovpadata, izdaja propade, namesto da bi si validacija sama
+  // potrdila lastni seštevek.
   if (Array.isArray(inv.lines) && inv.lines.length > 0 && header) {
-    const linesNet = r2(inv.lines.reduce((a, l) => a + Number(l.quantity) * Number(l.unitPriceNet), 0))
+    const linesNet = r2(inv.lines.reduce((a, l) => a + lineNetAmountOf(l), 0))
     const linesVat = r2(
       inv.lines.reduce(
         (a, l) =>
           a +
           (Number.isFinite(l.lineVatAmount)
             ? Number(l.lineVatAmount)
-            : Number(l.quantity) * Number(l.unitPriceNet) * (Number(l.vatRate) / 100)),
+            : lineNetAmountOf(l) * (Number(l.vatRate) / 100)),
         0,
       ),
     )

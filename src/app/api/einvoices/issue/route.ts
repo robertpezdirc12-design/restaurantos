@@ -2,9 +2,9 @@ import { NextRequest } from 'next/server'
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
-import { nid, r2 } from '@/lib/map'
+import { nid, num, r2 } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
-import { netFromGross, vatFromGross } from '@/lib/billing'
+import { buildOrderLines, grossOfOrderItems, type EinvoiceOrderLineInput } from '@/lib/einvoice-lines'
 import { generateEslogXml, computeOutgoingTotals, type OutgoingEInvoice, type OutgoingEInvoiceLine } from '@/lib/eslog-export'
 import { validateOutgoing } from '@/lib/einvoice-validate'
 
@@ -17,8 +17,15 @@ import { validateOutgoing } from '@/lib/einvoice-validate'
  *
  * Kanonični vir = AccountsReceivable (sklep issue §C): iz tokov POS/FURS se
  * NIKOLI ne retroaktivno dela B2B račun — iz orderId se naredi NOVA terjatev.
- * Cene v OrderItem so KONČNE (v1.124.0 DDV pravilo) → neto osnova se izpelje
- * z netFromGross/vatFromGross; ročne vrstice so NETO (B2B račun = net + DDV).
+ * Cene v OrderItem so KONČNE (v1.124.0 DDV pravilo) → neto osnova se IZVLEČE iz
+ * cene CELOTNE VRSTICE (v1.149.0 #6), ročne vrstice pa so NETO (B2B račun =
+ * net + DDV).
+ *
+ * Račun iz naročila izda NATANČNO znesek, ki ga stranka dolguje (v1.149.0 #5):
+ * bruto osnova je Σ _total_ plačanih računov (Check), sicer Σ postavk −
+ * `Order.discount` − `OrderItem.discountAmount`. Popust se po vrsticah razreže
+ * cent-exact v `@/lib/einvoice-lines`, zato AR in e-račun ne moreta biti višja
+ * od plačila.
  *
  * Pravila:
  *  - validacija (validateOutgoing) prej — napake → 400 {errors:[{field,message}]}
@@ -69,6 +76,11 @@ export async function POST(req: NextRequest) {
   // ── vrstice: iz naročila (končne cene → net) ali ročne (neto) ──
   let lines: OutgoingEInvoiceLine[] = []
   let orderId: string | null = null
+  /** bruto, ki ga NAROČILO res dolguje — glava računa se šteje od tod (v1.149.0 #5) */
+  let orderGross: number | null = null
+  /** sled za revizijo: bruto pred razrezom in kolikor popusta je bilo razdeljenega */
+  let grossBefore = 0
+  let discountSpread = 0
 
   if (body.orderId != null && String(body.orderId).trim()) {
     orderId = String(body.orderId).trim()
@@ -78,28 +90,57 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         locationId: true,
+        discount: true,
         OrderItem: {
           where: { voided: false },
-          select: { menuItemName: true, quantity: true, price: true, vatRate: true },
+          select: { menuItemName: true, quantity: true, price: true, vatRate: true, discountAmount: true },
         },
       },
     })
     if (!order) return fail('Naročilo ni v vašem obsegu ali ne obstaja.', 404)
     if (!locationId) locationId = order.locationId
-    lines = order.OrderItem.map((it) => {
-      const gross = Number(it.price)
-      const rate = Number(it.vatRate)
-      // v1.124.0: cena je KONČNA (z DDV) → neto enota + DDV po vrstici
-      const netUnit = netFromGross(gross, rate)
-      const vatUnit = vatFromGross(gross, rate)
-      return {
-        name: it.menuItemName || `Postavka ${it.quantity}×`,
-        quantity: Number(it.quantity),
-        unitPriceNet: netUnit,
-        vatRate: rate,
-        lineVatAmount: r2(Number(it.quantity) * vatUnit),
-      }
+
+    const items: EinvoiceOrderLineInput[] = order.OrderItem.map((it) => ({
+      name: it.menuItemName || `Postavka ${it.quantity}×`,
+      quantity: Number(it.quantity),
+      unitPrice: Number(it.price),
+      vatRate: Number(it.vatRate),
+      lineDiscount: num(it.discountAmount),
+    }))
+    const grossItems = grossOfOrderItems(items)
+
+    // Pričakovani bruto: če je naročilo POCELO izstavljeno in plačano, je edini
+    // pravi znesek tisti, ki so ga plačilni izstavki (Check.total = ZA PLAČANJE, že
+    // po vseh popustih — tudi happy hour). Če KATERIKOLI izstavek še čaka na
+    // plačilo (delna poravnava mize), plačani seštevek NI celotno naročilo: račun
+    // bi moral vse artiklje in bi iz neplačanega dela naredil fiktiven popust.
+    // Takrat ostanemo pri postavkah minus ročni popust naročila.
+    const unpaidChecks = await db.check.count({ where: { orderId: order.id, paymentStatus: { not: 'paid' } } })
+    const paidChecks = await db.check.aggregate({
+      where: { orderId: order.id, paymentStatus: 'paid' },
+      _sum: { total: true },
     })
+    const billedGross = unpaidChecks === 0 ? r2(num(paidChecks._sum.total)) : 0
+    const expectedGross = billedGross > 0 ? billedGross : r2(Math.max(0, grossItems - num(order.discount)))
+
+    if (expectedGross <= 0) {
+      return fail('Naročilo nima zneska za izdajo računa (popoln popust ali brez veljavnih postavk).', 409)
+    }
+
+    const built = buildOrderLines(items, expectedGross)
+    if (built.shortfallCents > 0) {
+      // Postavke so bile po plačilu spremenjene/izbrisane, zato iz njih NE morem
+      // sestaviti računa, ki bi znašal toliko, kot stranka dolguje. Bolje
+      // zavrniti (fail-closed) kot izstaviti račun po domnevi.
+      return fail(
+        `Znesek naročila (${expectedGross.toFixed(2)} €) presega vrednost postavk (${built.grossBefore.toFixed(2)} €) — izdaja e-računa je zavrnjena, uskladite naročilo.`,
+        409,
+      )
+    }
+    orderGross = expectedGross
+    grossBefore = built.grossBefore
+    discountSpread = built.discountSpread
+    lines = built.lines
   } else if (Array.isArray(body.lines)) {
     lines = (body.lines as Record<string, unknown>[]).map((l) => {
       const unitCode = String(l.unitCode ?? '').trim()
@@ -132,6 +173,11 @@ export async function POST(req: NextRequest) {
 
   const profile = customerCountry === 'HR' ? 'ubl-2.1-hr' : 'eslog-2.0-si'
   const totals = computeOutgoingTotals(lines)
+  // v1.149.0 (#5): pri računu iz naročila skupni znesek NI seštevek vrstic, ampak
+  // znesek, ki ga stranka dolguje. Validacija dobi NEODVISEN kontrolni podatek —
+  // če se razrez popusta po vrsticah ne ujema s plačilom, izdaja propade, namesto
+  // da bi si glava sama potrdila lastno vsoto.
+  const invoiceTotal = orderGross ?? totals.totalAmount
 
   // ── idempotenca: orderId + odprta AR → 409 duplicate (brez nove terjatve) ──
   if (orderId) {
@@ -171,7 +217,7 @@ export async function POST(req: NextRequest) {
     lines,
     documentType,
   }
-  const validation = validateOutgoing(draft, profile, { subtotal: totals.subtotal, vatAmount: totals.vatAmount, totalAmount: totals.totalAmount })
+  const validation = validateOutgoing(draft, profile, { subtotal: totals.subtotal, vatAmount: totals.vatAmount, totalAmount: invoiceTotal })
   if (validation.errors.length > 0) {
     return ok({ error: 'E-račun ni veljaven — izdaja blokirana.', errors: validation.errors }, 400)
   }
@@ -200,7 +246,7 @@ export async function POST(req: NextRequest) {
             dueDate: dueDate ? new Date(`${dueDate}T00:00:00Z`) : new Date(now.getTime() + 30 * 86400000),
             subtotal: totals.subtotal,
             vatAmount: totals.vatAmount,
-            totalAmount: totals.totalAmount,
+            totalAmount: invoiceTotal,
             status: 'open',
             notes: `B2B e-račun (${profile}) za ${customerName}`,
             locationId,
@@ -221,7 +267,7 @@ export async function POST(req: NextRequest) {
             receiverCountry: customerCountry,
             subtotal: totals.subtotal,
             vatAmount: totals.vatAmount,
-            totalAmount: totals.totalAmount,
+            totalAmount: invoiceTotal,
             xmlPayload: xml,
             xmlHash,
             externalRef: '',
@@ -261,7 +307,9 @@ export async function POST(req: NextRequest) {
       receiverTaxId: customerTaxId,
       subtotal: totals.subtotal,
       vatAmount: totals.vatAmount,
-      totalAmount: totals.totalAmount,
+      totalAmount: invoiceTotal,
+      grossBefore: orderId ? grossBefore : null,
+      discountSpread: orderId ? discountSpread : null,
       lines: lines.length,
       xmlHash: createdFinal.xmlHash,
       locationId,
@@ -272,7 +320,7 @@ export async function POST(req: NextRequest) {
 
   return ok(
     {
-      ar: { id: createdFinal.arId, arNumber: createdFinal.arNumber, customerName, totalAmount: totals.totalAmount, status: 'open' },
+      ar: { id: createdFinal.arId, arNumber: createdFinal.arNumber, customerName, totalAmount: invoiceTotal, status: 'open' },
       eInvoice: {
         id: createdFinal.outboxId,
         status: 'draft',
@@ -282,7 +330,7 @@ export async function POST(req: NextRequest) {
         invoiceNumber: createdFinal.arNumber,
         subtotal: totals.subtotal,
         vatAmount: totals.vatAmount,
-        totalAmount: totals.totalAmount,
+        totalAmount: invoiceTotal,
         xmlHash: createdFinal.xmlHash,
         idempotencyKey: createdFinal.outboxId,
         warnings: validation.warnings,

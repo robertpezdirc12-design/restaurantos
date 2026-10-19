@@ -32,6 +32,13 @@ export interface OutgoingEInvoiceLine {
    * neto×stopnja (exaktna usklajenost z glavo AR: neto + DDV = končna cena).
    */
   lineVatAmount?: number
+  /**
+   * Neto znesek VRSTICE (override za `količina × neto cena`). v1.149.0 (revizija
+   * #6): ko se osnova izpelje iz KONČNE cene CELE vrstice (zaokroževanje po
+   * vrstici, ne po enoti), enota ni več dvodecimalna — brez tega polja bi
+   * vsota ponovno pomnožila ceno in izgubila cent.
+   */
+  lineNetAmount?: number
   /** koda enote (UN/ECE rec 20, npr. H87/KGM); neznana → atribut izpustimo */
   unitCode?: string
   /** referenca vrstice (cbc:ID); privzeto zaporedna številka */
@@ -96,6 +103,30 @@ function qty(v: number): string {
 }
 
 /**
+ * Neto znesek vrstice. v1.149.0 (revizija #6): kadar je osnova izpeljana iz
+ * KONČNE cene celotne vrstice, enotna neto cena ni več dvodecimalna — `lineNetAmount`
+ * je tedaj edini vir, ki ohrani vsoto vrstic enako glavi. Brez override-a ostane
+ * star račun `količina × neto cena` (ročne vrstice, ki jih vnese človek).
+ */
+export function lineNetAmountOf(l: OutgoingEInvoiceLine): number {
+  if (Number.isFinite(l.lineNetAmount)) return r2(l.lineNetAmount as number)
+  return r2((Number.isFinite(l.quantity) ? l.quantity : 0) * (Number.isFinite(l.unitPriceNet) ? l.unitPriceNet : 0))
+}
+
+/**
+ * Cena na enoto za <cbc:PriceAmount>. Pravilo EN 16931 (BT-111 = BT-118 × BT-146)
+ * zahteva, da izpisana cena, pomnožena z izpisano količino, DA izpisani znesek
+ * vrstice. Če jo zaokrožim na 2 decimalki in pomnožek ne štima več, izpišem 4
+ * decimalke (UBL to dovoljuje) — sicer bi prejemnik dobil račun, ki ga njegov
+ * validator zavrne zaradi notranje protislovnosti.
+ */
+function priceAmount(unitPrice: number, quantity: number, lineNet: number): string {
+  const two = r2(unitPrice)
+  if (r2(two * (Number.isFinite(quantity) ? quantity : 0)) === lineNet) return two.toFixed(2)
+  return String(Math.round((Number.isFinite(unitPrice) ? unitPrice : 0) * 10000) / 10000)
+}
+
+/**
  * Profilna oznaka (CustomizationID). IZHODIŠČNI nizi — lastnikova potrditev
  * pred produkcijo (docs/E-INVOICES-SI-HR.md §3 matrika, uradni viri z datumi).
  */
@@ -151,7 +182,7 @@ export function computeOutgoingTotals(lines: OutgoingEInvoiceLine[]): EslogExpor
   let subtotal = 0
   const byRate = new Map<number, { taxableAmount: number; taxAmount: number }>()
   for (const l of lines) {
-    const net = r2((Number.isFinite(l.quantity) ? l.quantity : 0) * (Number.isFinite(l.unitPriceNet) ? l.unitPriceNet : 0))
+    const net = lineNetAmountOf(l)
     const rate = Number.isFinite(l.vatRate) ? l.vatRate : 0
     // lineVatAmount (izpeljano iz končne cene, v1.124.0) ima prednost pred neto×stopnja
     const vat = Number.isFinite(l.lineVatAmount) ? r2(l.lineVatAmount ?? 0) : r2(net * (rate / 100))
@@ -216,7 +247,7 @@ export function generateEslogXml(inv: OutgoingEInvoice, opts?: { profile?: EInvo
   inv.lines.forEach((l, i) => {
     const lineId = l.lineId && String(l.lineId).trim() ? String(l.lineId).trim() : String(i + 1)
     const unitAttr = l.unitCode && String(l.unitCode).trim() ? ` unitCode="${xmlEscape(l.unitCode)}"` : ''
-    const net = r2(l.quantity * l.unitPriceNet)
+    const net = lineNetAmountOf(l)
     L.push(`  <cac:${lineTag}>`)
     L.push(`    <cbc:ID>${xmlEscape(lineId)}</cbc:ID>`)
     L.push(`    <cbc:${quantityTag}${unitAttr}>${qty(l.quantity)}</cbc:${quantityTag}>`)
@@ -229,7 +260,7 @@ export function generateEslogXml(inv: OutgoingEInvoice, opts?: { profile?: EInvo
     }
     L.push(`      <cac:ClassifiedTaxCategory><cbc:Percent>${percent(l.vatRate)}</cbc:Percent>${taxSchemeXml()}</cac:ClassifiedTaxCategory>`)
     L.push('    </cac:Item>')
-    L.push(`    <cac:Price><cbc:PriceAmount currencyID="${currency}">${amount(l.unitPriceNet)}</cbc:PriceAmount></cac:Price>`)
+    L.push(`    <cac:Price><cbc:PriceAmount currencyID="${currency}">${priceAmount(l.unitPriceNet, l.quantity, net)}</cbc:PriceAmount></cac:Price>`)
     L.push(`  </cac:${lineTag}>`)
   })
 
