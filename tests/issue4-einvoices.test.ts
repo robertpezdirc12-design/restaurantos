@@ -40,7 +40,6 @@ import { POST as webhookPOST } from '../src/app/api/einvoices/webhook/[provider]
 import { POST as ddlPOST } from '../src/app/api/admin/migrate-einvoice-outbox/route'
 import { POST as eslogImportPOST } from '../src/app/api/ap/import-eslog/route'
 import { GET as monitoringGET } from '../src/app/api/monitoring/errors/route'
-import { netFromGross, vatFromGross } from '../src/lib/billing'
 
 const P = 'i4-'
 const RUN = Date.now().toString(36)
@@ -420,12 +419,15 @@ describe('C. issue ruta — izdaja terjatve + outbox', () => {
     expect(audit).not.toBeNull()
   })
 
-  it('iz orderId: 201, vrstice iz OrderItem (net iz netFromGross — končna cena)', async () => {
+  it('iz orderId: 201, vrstice iz OrderItem — neto in DDV ZAOKROŽENA PO VRSTICI (#6)', async () => {
     const { status, json } = await issueManual({ orderId, lines: undefined })
     expect(status).toBe(201)
     const ei = json.eInvoice as Record<string, unknown>
-    expect(Number(ei.subtotal)).toBeCloseTo(netFromGross(10, 22) * 3, 2)
-    expect(Number(ei.vatAmount)).toBeCloseTo(vatFromGross(10, 22) * 3, 2)
+    // 3 × 10,00 € KONČNE cene pri 22 %: neto vrstice = r2(30 / 1,22) = 24,59,
+    // DDV je preostanek do bruto = 5,41. STARA napaka je zaokroževala na ENOTI
+    // (8,20 × 3 = 24,60 in 1,80 × 3 = 5,40) → osnova za en cent mimo plačila.
+    expect(Number(ei.subtotal)).toBeCloseTo(24.59, 2)
+    expect(Number(ei.vatAmount)).toBeCloseTo(5.41, 2)
     expect(Number(ei.totalAmount)).toBeCloseTo(30, 2)
     const row = await db.eInvoiceOutbox.findUnique({ where: { id: ei.id as string } })
     expect(row!.arId).not.toBeNull()
@@ -1018,7 +1020,7 @@ describe('H. prejeti eSLOG — opozorila (aditivno) + XXE varnost', () => {
 
 describe('I. registri — verzija, DDL register, predpone, i18n, 0 DDL na obstoječih', () => {
   it('APP_VERSION === 1.134.0', () => {
-    expect(APP_VERSION).toBe('1.148.0')
+    expect(APP_VERSION).toBe('1.149.0')
   })
   it('SCHEMA_MIGRATIONS.length === 29 (+einvoice-outbox #4)', () => {
     expect(SCHEMA_MIGRATIONS.length).toBe(30)

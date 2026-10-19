@@ -100,6 +100,7 @@ export const TEST_PREFIXES = [
   'a89-', // audit89-tenant-move-scope (v1.147.0 — audit #8/#9: cilj premika + javna lista lokacij)
   'a22-', // audit22-drawer-cash (v1.148.0 — audit #22: meje števanja predala + predaja med izmenama)
   'aw10-', // audit10-writers (v1.148.0 — audit #10 razred: dostava, webhook, popust, čistilec)
+  'a56-', // audit56-einvoice-lines (v1.149.0 — audit #5/#6: popust in zaokroževanje na B2B e-računu)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
