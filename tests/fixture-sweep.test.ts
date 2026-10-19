@@ -187,6 +187,37 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     await db.organization.delete({ where: { id: realOrg.id } })
   })
 
+  test('late FIELD_SWEEP: Employee sirota (nid() id, predpona v @unique pin, NULL lokacija) pobrana, realni PIN nedotaknjen (v1.147.0)', async () => {
+    // Dokazan odpovedni način (dogodilo se je v teku suite-a): tests/issue49-51-64-payments.test.ts
+    // zaposlenemu napiše DOBESEDNO predponiran `pin` (pin je @unique), id pa je nid()
+    // BREZ predpone. Če tek crashne, sirota ostane; ko njena testna lokacija kasneje
+    // izgine, locationId postane NULL — torej je ne vidi ne id- ne lokacijski prehod.
+    // Naslednji tek pade na P2002 (`pin`) ŽE v beforeAll, bun pa preskoči CELTO
+    // datoteko (19 testov), kar je videti kot "napaka izdelka", čeprav je nicenje.
+    await seedJunk()
+    const loc = await db.location.create({ data: { id: `${P}locL-${RUN}`, name: `${P}Lokacija L`, code: `SW58L-${RUN.toUpperCase()}` } })
+    const orphan = await db.employee.create({
+      data: { id: `nid${RUN}orf`, name: `${P}Sirota`, email: `nid${RUN}orf@test.local`, role: 'manager', status: 'active', sessionVersion: 0, locationId: null, pin: `${P}a` },
+    })
+    const real = await db.employee.create({
+      data: { id: `nid${RUN}real`, name: 'Realni vodja', email: `nid${RUN}real@test.local`, role: 'manager', status: 'active', sessionVersion: 0, locationId: null, pin: '4711' },
+    })
+    // FK ovira (StaffShift → Employee, Restrict) z locirano predpono: dokaže, da mora
+    // besedilni prehod za Employee teči ZADNJI, sicer brisanje vrže napako.
+    await db.staffShift.create({
+      data: { id: `nid${RUN}shift`, employeeId: orphan.id, shiftDate: new Date(), startTime: '10:00', endTime: '16:00', locationId: loc.id },
+    })
+
+    const res: SweepResult = await sweepTestFixtures(db, [P])
+
+    expect(res.errors).toEqual([])
+    expect(await db.employee.count({ where: { id: orphan.id } })).toBe(0)
+    expect(await db.staffShift.count({ where: { id: `nid${RUN}shift` } })).toBe(0)
+    // realni PIN (4–8 številk, brez testne predpone) sme ostati
+    expect(await db.employee.count({ where: { id: real.id } })).toBe(1)
+    await db.employee.delete({ where: { id: real.id } })
+  })
+
   test('znane testne predpone so pokrite (uhajanje nove fiksurne datoteke = vidna lokacija na prijavi)', () => {
     for (const p of ['rp1-', 'rfix-', 'rbac-p2-', '33a-', '33c-', 'uc-', 'gfb-', 'tst57-', 'stockded', 'zrepvat', 'furspost', 'storno-test-', 'torg-', 'torgl-', 'disc59-', 'integ60-', 'exp61-', 'ent62-']) {
       expect(TEST_PREFIXES).toContain(p)

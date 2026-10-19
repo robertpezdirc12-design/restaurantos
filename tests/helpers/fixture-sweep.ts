@@ -22,11 +22,14 @@ import type { PrismaClient } from '@prisma/client'
  *
  * BRISANJE je omejeno na vrstice, katerih id (oziroma znano alternativno polje)
  * se začne s testno predpono — realni (ne-testni) podatki so nedotaknjeni.
- * Vrstni red: otroci → starši (FK), trije prehodi:
+ * Vrstni red: otroci → starši (FK), prehodi:
+ *  0. FIELD_SWEEP po besedilnih poljih (strežniški nid() id-ji brez predpone),
  *  1. blok prehod po id (+ znana alternativna polja entityId/inventoryItemId),
  *  2. odkleni prehod po locationId (aplikacijsko ustvarjeni otroci testnih
  *     lokacij, npr. Receipt/Payment, ki imajo samodejne id-je brez predpone),
- *  3. ponovni prehod po id (ovire so zdaj odstranjene).
+ *  3. ponovni prehod po id (ovire so zdaj odstranjene),
+ *  4. izbris lokacij, 5. varovalčni ponovni lokacijski prehod,
+ *  6. late FIELD_SWEEP (besedilne sirote, ki jih ovira FK — npr. Employee.pin).
  * Napake posamezne tabele se zberejo in sporočijo; brisanje ne ustavi testov.
  */
 
@@ -94,6 +97,7 @@ export const TEST_PREFIXES = [
   'fsub-', // fiscal-submit (v1.144.0 — skupna fiskalna oddaja: storno + obnova pending)
   'ocon-', // order-concurrency (v1.145.0 — audit #10/#11/#12: CAS preklic/move/merge)
   'seqfl-', // sequence-receipt-number (v1.146.0 — audit #14: spodnja meja sekvence + reže)
+  'a89-', // audit89-tenant-move-scope (v1.147.0 — audit #8/#9: cilj premika + javna lista lokacij)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -294,7 +298,7 @@ type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Prom
  * lokacije — SetNull) → potrebujejo lasten prehod po besedilnih poljih.
  * `contains`: predpona je SRED imena, ne na začetku (Counter `receipt:<locId>`).
  */
-const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; contains?: boolean }> = [
+const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; contains?: boolean; late?: boolean }> = [
   { model: 'accountsPayable', fields: ['invoiceNumber', 'notes', 'apNumber'] },
   // Task 62: enterprise drevo (property → brand → organization) — POST /api/enterprise
   // ustvarja id z nid(), testna predpona živi v name (org tudi slug). Restriktivne FK
@@ -318,6 +322,17 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // vrstice. Izbris je v dev SQLite tudi sicer samoceljiv: nextSequence in
   // allocateReceiptNumber Counter ustvarita znova.
   { model: 'counter', fields: ['name'], contains: true },
+  // v1.147.0 (release audit #8/#9): Employee.pin je @unique, testi pa v njega
+  // napišejo dobesedno vrednost s predpono (`pin: 'pi49-a'`), id pa je nid() BREZ
+  // predpone. Če tek crashne, ostane tak zaposlen; ko kasneje izbrisan njegova
+  // testna lokacija, FK nastavi locationId na NULL — sirota torej uide obema
+  // prehodoma (po id in po locationId). Naslednji tek nato pade na P2002 (`pin`)
+  // že v beforeAll, bun pa preskoči CELTO datoteko (19 testov izgubljenih).
+  // `late` zaradi FK: Employee je starš StaffShift/TimeEntry/Order (Restrict),
+  // zato se mora brisati šele PO id- in lokacijskem prehodu — sicer prehod vrže
+  // napako, ki jo testi števajo kot odpad. Realni PIN (4–8 številk) predpone ne
+  // more vsebovati, zato je poseg v varnostno smer omejen samo na testne vrstice.
+  { model: 'employee', fields: ['pin'], late: true },
 ]
 
 /**
@@ -358,6 +373,7 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     //    Teko PRVI (pred id- prehodom), ker je AP list — sicer FK do dobavitelja
     //    pokvari starševski prehod (supplier deleteMany P2003).
     for (const spec of FIELD_SWEEP) {
+      if (spec.late) continue
       await dele(spec.model, {
         OR: spec.fields.map((f) => ({ [f]: spec.contains ? { contains: p } : { startsWith: p } })),
       })
@@ -387,6 +403,15 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     // 5. varovalka: morebitni SetNull sirote ponovno po locationId, potem končni id prehod
     for (const model of LOCATION_CHILD_SWEEP) {
       await dele(model, { locationId: { startsWith: p } })
+    }
+    // 6. late FIELD_SWEEP — besedilno poimenske sirote, ki so FK-ovirane (npr.
+    //    Employee.pin s predpono in locationId NULL): šele zdaj so vsi otroci
+    //    (StaffShift/TimeEntry/Order) odstranjeni, zato brisanje ne vrže napake.
+    for (const spec of FIELD_SWEEP) {
+      if (!spec.late) continue
+      await dele(spec.model, {
+        OR: spec.fields.map((f) => ({ [f]: spec.contains ? { contains: p } : { startsWith: p } })),
+      })
     }
   }
 

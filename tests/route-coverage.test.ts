@@ -48,7 +48,7 @@ const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   { methods: ['GET'], path: '/api/setup/status', why: 'status namestitve (bootstrap) — brez skrivnosti' },
   { methods: ['POST'], path: '/api/auth/login', why: 'prijava — rate-limit 10/min po IP' },
   { methods: ['POST'], path: '/api/auth/demo-login', why: 'demo prijava — env DEMO_LOGIN_EMAIL pin + rate-limit 10/min po IP' },
-  { methods: ['GET'], path: '/api/auth/locations', why: 'izbira lokacije pred prijavo — samo imena aktivnih lokacij' },
+  { methods: ['GET'], path: '/api/auth/locations', why: 'izbira lokacije pred prijavo — samo imena aktivnih lokacij, rate-limit 30/min po IP + no-store (audit #9)' },
   // Vercel cron: Authorization: Bearer CRON_SECRET (timing-safe, v handle());
   // brez skrivnosti (dev) pusti le sejo admin/manager — varovalka v isti datoteki.
   { methods: ['GET', 'POST'], path: '/api/cron/daily', why: 'cron — Bearer CRON_SECRET (timing-safe) ali seja; varovalka v handle()' },
