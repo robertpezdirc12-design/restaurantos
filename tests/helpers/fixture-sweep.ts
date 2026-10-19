@@ -92,6 +92,7 @@ export const TEST_PREFIXES = [
   'i11a-', // issue11 CRM admin/ddl (v1.126.0)
   'v129-', // role-ui-gating (v1.129.0 — čistilka/skladiščnik gating, Δ% KPI)
   'fsub-', // fiscal-submit (v1.144.0 — skupna fiskalna oddaja: storno + obnova pending)
+  'ocon-', // order-concurrency (v1.145.0 — audit #10/#11/#12: CAS preklic/move/merge)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -220,6 +221,12 @@ const LOCATION_CHILD_SWEEP = [
   'inventoryBatch',
   'stocktake',
   'deviceRegistry',
+  // v1.145.0 (audit #10): DeviceSyncOperation ima OBAVEZEN locationId FK, vrstic pa
+  // ustvarjajo rute z nid() id-jem BREZ testne predpone (claim/upsert v /api/sync).
+  // ID_SWEEP ga ujame samo po id-predponi → test, ki pošilja sync operacije, je
+  // blokiral izbris testne lokacije (RESTRICT). Pred tem so ga testi čistili ročno
+  // po deviceId (tests/race-fixes.test.ts); zdaj je pokrit centralno.
+  'deviceSyncOperation',
   'guestFeedback',
   'receipt',
   'timeEntry',
