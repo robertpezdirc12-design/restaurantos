@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
-import { guardResource } from '@/lib/tenant'
+import { guardGlobalResource, guardResource } from '@/lib/tenant'
 
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -56,13 +56,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!DEVICE_TYPES.includes(type)) return fail('Neznan tip naprave.', 400)
     data.type = type
   }
+  // audit #8 (v1.147.0): tudi premik naprave mora preveriti CILJ, ne samo vira
+  // (zgoraj). Naprava nosi device žeton (POS/KDS/kiosk/customer display), zato
+  // njena vezava na tujo lokacijo pomeni tuj fiskalni prostor in tuja naročila.
+  // Enako pravilo kot `integrations/[id]` (issue #42 točki 3 in 4): cilj =
+  // `guardResource`, odklop (`locationId = null`) = platform-level posest =
+  // `guardGlobalResource`. Zakaj strogo pri odklopu: seznam (`locationScope`)
+  // takšne naprave ne pokaže nikomur razen bootstrap adminu, zato je ne sme
+  // razvezati nobena organizacijsko vezana vloga — sicer bi vezan ADMIN napravo
+  // izrinil iz lastnega dosega, ne da bi jo kje videl.
   if (body?.locationId !== undefined) {
     const locationId = String(body.locationId || '').trim()
     if (locationId) {
       const location = await db.location.findUnique({ where: { id: locationId } })
       if (!location) return fail('Lokacija ne obstaja.', 400)
+      const targetGuard = await guardResource(user, location.id)
+      if (targetGuard) return targetGuard
       data.locationId = location.id
     } else {
+      const globalGuard = await guardGlobalResource(user)
+      if (globalGuard) return globalGuard
       data.locationId = null
     }
   }

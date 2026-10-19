@@ -141,12 +141,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // Triage ⑧ — pravice po lokaciji: dodelitev zaposlenega poslovalnici.
   // Lokacija določa dostop do podatkov (fail-closed scoping), zato je sprememba
   // občutljiva: + sessionVersion (žeton nosi staro lokacijo → ponovna prijava).
+  // audit #8 (v1.147.0): preverjen je bil samo VIR (`guardResource` zgoraj na
+  // target.locationId), CILJ pa samo to, da OBSTAJA. Vodja svoje lokacije je
+  // zato z `employees.manage` in znanim locationId (javno dostopnim na
+  // /api/auth/locations) lahko sodelavca premaknil v TUJO poslovalnico ali celo
+  // v TUJO organizacijo — in na osebo, ki zanje nima pooblastila, prenesel njene
+  // dostope (seje, poročila, zaloge). Enako pravilo kot `integrations/[id]`
+  // (issue #42 točka 3): premik preveri OBOJE — vir IN cilj.
   if (body.locationId !== undefined) {
     const locId = String(body.locationId || '').trim()
     if (!locId) return fail('Lokacija je obvezna — podaj locationId.', 400)
     if (locId !== target.locationId) {
       const loc = await db.location.findUnique({ where: { id: locId }, select: { id: true, name: true, isActive: true } })
       if (!loc) return fail('Lokacija ne obstaja.', 404)
+      const targetGuard = await guardResource(user, loc.id)
+      if (targetGuard) return targetGuard
       data.locationId = locId
       data.sessionVersion = (Number(target.sessionVersion) || 0) + 1
       sensitive.push(`sprememba lokacije v ${loc.name}${loc.isActive ? '' : ' (NEAKTIVNA)'}`)
