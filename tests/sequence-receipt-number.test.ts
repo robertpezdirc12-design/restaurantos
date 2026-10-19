@@ -322,7 +322,10 @@ describe('C — pini vira (najdba #14)', () => {
   test('Counter ima čistilno pravilo v sweep-u (predpona živi SRED imena)', () => {
     const sweep = readFileSync(join(process.cwd(), 'tests', 'helpers', 'fixture-sweep.ts'), 'utf8')
     expect(sweep).toMatch(/\{ model: 'counter', fields: \['name'\], contains: true \}/)
-    expect(sweep).toMatch(/spec\.contains \? \{ contains: p \} : \{ startsWith: p \}/)
+    // v1.148.0: predpone so ZDRUŽENE v OR-seznam (en stavek na polje) — `contains`
+    // se mora še vedno odločati per spec, ne per predpona
+    expect(sweep).toMatch(/spec\.contains \? 'contains' : 'startsWith'/)
+    expect(sweep).toMatch(/forField\(f, mode\)/)
     expect(TEST_PREFIXES).toContain(PREFIX)
   })
 })

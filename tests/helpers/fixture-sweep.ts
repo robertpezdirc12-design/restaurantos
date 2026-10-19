@@ -98,6 +98,8 @@ export const TEST_PREFIXES = [
   'ocon-', // order-concurrency (v1.145.0 — audit #10/#11/#12: CAS preklic/move/merge)
   'seqfl-', // sequence-receipt-number (v1.146.0 — audit #14: spodnja meja sekvence + reže)
   'a89-', // audit89-tenant-move-scope (v1.147.0 — audit #8/#9: cilj premika + javna lista lokacij)
+  'a22-', // audit22-drawer-cash (v1.148.0 — audit #22: meje števanja predala + predaja med izmenama)
+  'aw10-', // audit10-writers (v1.148.0 — audit #10 razred: dostava, webhook, popust, čistilec)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -364,59 +366,69 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     }
   }
 
-  for (const p of prefixes) {
-    // 0. FIELD_SWEEP: strežniško generirani id-ji (nid()) — testna predpona živi v
-    //    BESEDILOVIH poljih, ne v id. Lekcija Task 61: AccountsPayable POST ruta ustvari
-    //    id z nid(), predpona ostane le v invoiceNumber/notes; po izbrisu testne lokacije
-    //    je še locationId NULL (SetNull) → sirota, nevidna za id- in lokacijske prehode.
-    //    Dokaz: 128 stroškov v dev bazi (72 rfix- + 56 exp61-) — vsi testni odpadki.
-    //    Teko PRVI (pred id- prehodom), ker je AP list — sicer FK do dobavitelja
-    //    pokvari starševski prehod (supplier deleteMany P2003).
-    for (const spec of FIELD_SWEEP) {
-      if (spec.late) continue
-      await dele(spec.model, {
-        OR: spec.fields.map((f) => ({ [f]: spec.contains ? { contains: p } : { startsWith: p } })),
-      })
-    }
-    // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
-    //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
-    //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil
-    //    locationId na NULL in jih prehod 2 ne bi več našel.
-    for (const spec of ID_SWEEP) {
-      if (spec.model === 'location') continue
-      const or: Record<string, unknown>[] = [{ id: { startsWith: p } }]
-      if (spec.alt) or.push({ [spec.alt]: { startsWith: p } })
-      await dele(spec.model, { OR: or })
-    }
-    // 2. odkleni prehod po locationId — aplikacijsko ustvarjeni otroci testnih
-    //    lokacij (samodejni id-ji brez predpone); lokacija ŠE obstaja
-    for (const model of LOCATION_CHILD_SWEEP) {
-      await dele(model, { locationId: { startsWith: p } })
-    }
-    // 3. ponovni prehod po id (BREZ location) — ovire so zdaj odstranjene
-    for (const spec of ID_SWEEP) {
-      if (spec.model === 'location') continue
-      await dele(spec.model, { id: { startsWith: p } })
-    }
-    // 4. lokacija ZADNJA — uspeh pomeni, da ni več FK ovir
-    await dele('location', { id: { startsWith: p } })
-    // 5. varovalka: morebitni SetNull sirote ponovno po locationId, potem končni id prehod
-    for (const model of LOCATION_CHILD_SWEEP) {
-      await dele(model, { locationId: { startsWith: p } })
-    }
-    // 6. late FIELD_SWEEP — besedilno poimenske sirote, ki so FK-ovirane (npr.
-    //    Employee.pin s predpono in locationId NULL): šele zdaj so vsi otroci
-    //    (StaffShift/TimeEntry/Order) odstranjeni, zato brisanje ne vrže napake.
-    for (const spec of FIELD_SWEEP) {
-      if (!spec.late) continue
-      await dele(spec.model, {
-        OR: spec.fields.map((f) => ({ [f]: spec.contains ? { contains: p } : { startsWith: p } })),
-      })
-    }
+  /* ZDRUŽENE predpone, NE zanka po predponi.
+   * Zakaj: TEST_PREFIXES ima 64 vnosev, faz pa je ~190 deleteMany na pregled.
+   * Zanko po predponi smo merili: 64 × 190 × 2 pregleda (beforeAll + afterAll v
+   * vsakem DB testu) ≈ 24.000 krožnih poklicev do baze; tests/fixture-sweep.test.ts
+   * je zato počil na lastnem timeoutu (60 s) čeprav so bile poslovne tabele
+   * PRAZNE. Z OR-seznamom čez vse predpone je število izjav ~190 na pregled —
+   * neodvisno od števila predpon. Vrstni red faz in otroci→starši je identičen
+   * prejšnjemu; predpone v istem stavku so med seboj neodvisne (vrstica pripada
+   * eni sami predponi), zato se FK-odvisnosti ne spremenijo. */
+  /** OR-pogoji čez vse predpone za eno polje (`field`). */
+  const forField = (field: string, mode: 'startsWith' | 'contains'): Record<string, unknown>[] =>
+    prefixes.map((p) => ({ [field]: { [mode]: p } }))
+
+  // 0. FIELD_SWEEP: strežniško generirani id-ji (nid()) — testna predpona živi v
+  //    BESEDILOVIH poljih, ne v id. Lekcija Task 61: AccountsPayable POST ruta ustvari
+  //    id z nid(), predpona ostane le v invoiceNumber/notes; po izbrisu testne lokacije
+  //    je še locationId NULL (SetNull) → sirota, nevidna za id- in lokacijske prehode.
+  //    Dokaz: 128 stroškov v dev bazi (72 rfix- + 56 exp61-) — vsi testni odpadki.
+  //    Teko PRVI (pred id- prehodom), ker je AP list — sicer FK do dobavitelja
+  //    pokvari starševski prehod (supplier deleteMany P2003).
+  for (const spec of FIELD_SWEEP) {
+    if (spec.late) continue
+    const mode = spec.contains ? 'contains' : 'startsWith'
+    await dele(spec.model, { OR: spec.fields.flatMap((f) => forField(f, mode)) })
+  }
+  // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
+  //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
+  //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil
+  //    locationId na NULL in jih prehod 2 ne bi več našel.
+  for (const spec of ID_SWEEP) {
+    if (spec.model === 'location') continue
+    await dele(spec.model, { OR: forField('id', 'startsWith').concat(spec.alt ? forField(spec.alt, 'startsWith') : []) })
+  }
+  // 2. odkleni prehod po locationId — aplikacijsko ustvarjeni otroci testnih
+  //    lokacij (samodejni id-ji brez predpone); lokacija ŠE obstaja
+  for (const model of LOCATION_CHILD_SWEEP) {
+    await dele(model, { OR: forField('locationId', 'startsWith') })
+  }
+  // 3. ponovni prehod po id (BREZ location) — ovire so zdaj odstranjene
+  for (const spec of ID_SWEEP) {
+    if (spec.model === 'location') continue
+    await dele(spec.model, { OR: forField('id', 'startsWith') })
+  }
+  // 4. lokacija ZADNJA — uspeh pomeni, da ni več FK ovir
+  await dele('location', { OR: forField('id', 'startsWith') })
+  // 5. varovalka: morebitni SetNull sirote ponovno po locationId, potem končni id prehod
+  for (const model of LOCATION_CHILD_SWEEP) {
+    await dele(model, { OR: forField('locationId', 'startsWith') })
+  }
+  // 6. late FIELD_SWEEP — besedilno poimenske sirote, ki so FK-ovirane (npr.
+  //    Employee.pin s predpono in locationId NULL): šele zdaj so vsi otroci
+  //    (StaffShift/TimeEntry/Order) odstranjeni, zato brisanje ne vrže napake.
+  for (const spec of FIELD_SWEEP) {
+    if (!spec.late) continue
+    const mode = spec.contains ? 'contains' : 'startsWith'
+    await dele(spec.model, { OR: spec.fields.flatMap((f) => forField(f, mode)) })
   }
 
   let remainingLocations = 0
   try {
+    // `forField` vrne Record<string, unknown> (primeren je samo za brisanje prek
+    // delegata); count potrebuje tipiziran WHERE, zato je oblika ročna — ZDRUŽENA
+    // čez vse predpone
     remainingLocations = await db.location.count({
       where: { OR: prefixes.map((p) => ({ id: { startsWith: p } })) },
     })

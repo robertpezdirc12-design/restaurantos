@@ -5,11 +5,14 @@ import { join } from 'node:path'
 import { db } from '../src/lib/db'
 import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
-import { claimMutableOrder, isMutableOrderState } from '../src/lib/ops'
+import {
+  claimMutableOrder, isMutableOrderState, ORDER_PAYABLE_STATUS, ORDER_MUTABLE_PAYMENT,
+} from '../src/lib/ops'
 import { PATCH as orderPATCH, DELETE as orderDELETE } from '../src/app/api/orders/[id]/route'
 import { PATCH as kitchenPATCH } from '../src/app/api/kitchen/route'
 import { POST as movePOST } from '../src/app/api/orders/[id]/move/route'
 import { POST as mergePOST } from '../src/app/api/orders/[id]/merge/route'
+import { POST as fursPOST } from '../src/app/api/furs/route'
 import { POST as syncPOST } from '../src/app/api/sync/route'
 
 /**
@@ -27,9 +30,12 @@ import { POST as syncPOST } from '../src/app/api/sync/route'
  *     zavrnjen preklic NE PUSTI stranskih učinkov)
  *  D) dvakratni DELETE istega naročila (#11) — deterministično (samo ENA revizija)
  *  E) selitev mize (#12): ignoriran CAS rezultat, dvojna sočasna selitev, happy path
- *  F) združevanje (#12): oba zapisa v tx + rollback premika postavk
+ *  F) združevanje (#12): oba zapisa v tx + rollback premika postavk; SOČASNO
+ *     plačilo vira meri NARAVNOZADETO determinističnost (natanko ena zmaga —
+ *     v1.148.0 je moral plačilni CAS dobiti še status-pogoj)
  *  G) offline replay (sync) addItems na PREKLICANEM naročilu (#10) — deterministično
- *  H) pini vira: nobena od prizadetih rut nima več brezpogojnega zapisa stanja
+ *  H) pini vira: nobena od prizadetih rut nima več brezpogojnega zapisa stanja,
+ *     plačilna pot (`issue.ts`) pa pogojuje tudi `status`
  *
  * Fiksature s predpono `ocon-`; cleanup = sweepTestFixtures (obrnjen FK vrstni red).
  */
@@ -106,8 +112,16 @@ async function seedLink(orderId: string) {
  * @returns true = plačilo je commitnilo
  */
 async function commitPayment(orderId: string): Promise<boolean> {
+  // SIMULACIJA plačilne poti (`issueFursReceipt`) z ISTIMA pogojema zapisa kot
+  // jedro (v1.148.0): `status IN ORDER_PAYABLE_STATUS` + `paymentStatus IN
+  // ORDER_MUTABLE_PAYMENT`. Seznama sta UVOŽENA iz `src/lib/ops.ts`, ne
+  // kopirana — sicer bi test lahko "zmagal" dirko, ki je v produkciji izgubljena.
   const paid = await db.order.updateMany({
-    where: { id: orderId, paymentStatus: { in: ['unpaid', 'partial'] } },
+    where: {
+      id: orderId,
+      status: { in: [...ORDER_PAYABLE_STATUS] },
+      paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] },
+    },
     data: { status: 'paid', paymentStatus: 'paid', paidAt: new Date() },
   })
   if (paid.count === 0) return false
@@ -386,7 +400,7 @@ describe('F — merge: oba zapisa v transakciji, premik postavk se povrne', () =
     expect(srcRow?.cancelReason).toBe('')
   })
 
-  test('sočasno plačilo vira med združevanjem → nikoli preklican plačan vir', async () => {
+  test('sočasno plačilo vira med združevanjem → natanko ENA zmaga, nikoli preklican plačan vir', async () => {
     const src = await seedOrder('sent', 'unpaid')
     const tgt = await seedOrder('sent', 'unpaid')
     await seedItem(src.id, 'preparing')
@@ -394,16 +408,87 @@ describe('F — merge: oba zapisa v transakciji, premik postavk se povrne', () =
     await new Promise((r) => setTimeout(r, 3))
     const paidFirst = await commitPayment(src.id)
     const res = await call
+    const merged = res.status === 200
     const row = await orderRow(src.id)
     const receipts = await db.receipt.count({ where: { orderId: src.id } })
+    // ZAMIK (3 ms) ne pove, katera stran je commitnila prva, zato test NE sklepa
+    // iz časovnega vrstnega reda — izpita mora biti determinističen kar iz
+    // izidov: obe strani pogojujeta Z ISTA dva pogoja (status IN plačljivih +
+    // paymentStatus IN mutabilnih), edina možna izhoda sta torej PLAČILO ALI
+    // ZDRUŽEVANJE, ne oba.
+    // PREJ (v1.148.0 popravljeno): plačilna pot je pogojevala SAMO plačilno
+    // stanje, združevanje pa na viru PUSTI `paymentStatus: 'unpaid'` → oba
+    // "zmaga" in je bil fiskaliziran račun (ZOI/EOR) na 'cancelled' naročilu.
+    expect(paidFirst && merged).toBe(false)
+    expect(paidFirst || merged).toBe(true)
+    // vedno veljajoča invarianta: nikoli preklicano naročilo z računom
     expect(row?.status === 'cancelled' && receipts > 0).toBe(false)
     if (paidFirst) {
       expect(res.status).toBe(409)
       expect(row?.status).toBe('paid')
+      expect(receipts).toBe(1)
       // rollback: premik postavk je izničen, ciljno naročilo nespremenjeno
       expect(await db.orderItem.count({ where: { orderId: tgt.id } })).toBe(0)
+      expect(await db.orderItem.count({ where: { orderId: src.id } })).toBe(1)
       expect(await countAudits('ORDER_MERGE', src.id)).toBe(0)
+    } else {
+      expect(row?.status).toBe('cancelled')
+      expect(receipts).toBe(0)
+      expect(await db.orderItem.count({ where: { orderId: tgt.id } })).toBe(1)
+      expect(await countAudits('ORDER_MERGE', src.id)).toBe(1)
     }
+  })
+
+  /* DETERMINISTIČNI DOKAZ ISTE LUKNJE (v1.148.0): zgornji test meri dirko, katere
+   * zmagovalna stran je odvisna od zaklopa SQLite — kontrolni pogoj zato NE sme
+   * biti dirka. Spodaj je preostanek združitve ustvarjen NAMERNO in zaporedno,
+   * nato pa se piše z OBEMA semantikama: staro (samo plačilni seznam) in novo
+   * (plačilni + statusni seznam, kot ju zahteva `issue.ts`). */
+  test('preostanek združitve (terminalen status + „unpaid") NI plačljiv — zapis je zavrnjen', async () => {
+    const src = await seedOrder('sent', 'unpaid')
+    const tgt = await seedOrder('sent', 'unpaid')
+    await seedItem(src.id, 'preparing')
+    expect((await mergePOST(req(`/api/orders/${src.id}/merge`, tokenFor(waiterId, 'w', 'WAITER', locId), 'POST', { targetOrderId: tgt.id }), { params: Promise.resolve({ id: src.id }) })).status).toBe(200)
+    const row = await orderRow(src.id)
+    // ZAVESTNO preostanek: `status` je terminalen, `paymentStatus` pa ostane
+    // 'unpaid' (zgodovina plačil se ne izganja — merge/route.ts:110).
+    expect(row?.status).toBe('cancelled')
+    expect(row?.paymentStatus).toBe('unpaid')
+    // (a) NOVA semantika (oba seznama, kot ju piše `issue.ts:506`) → 0 vrstic.
+    const guarded = await db.order.updateMany({
+      where: {
+        id: src.id,
+        status: { in: [...ORDER_PAYABLE_STATUS] },
+        paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] },
+      },
+      data: { status: 'paid', paymentStatus: 'paid' },
+    })
+    expect(guarded.count).toBe(0)
+    expect((await orderRow(src.id))?.status).toBe('cancelled')
+    // (b) STARA semantika (samo plačilni seznam) → zapis bi USPEL. Če ta trditev
+    //     kdaj pade, je bila luknja zaprta na drugem mestu, test F pa ni več
+    //     dokaz ničesar — takrat ga je treba preoblikovati, ne samo utišati.
+    const unguarded = await db.order.updateMany({
+      where: { id: src.id, paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] } },
+      data: { paymentMethod: 'card' },
+    })
+    expect(unguarded.count).toBe(1)
+  })
+
+  test('kanonična pot (POST /api/furs) na združenem viru → 409 BREZ računa', async () => {
+    const src = await seedOrder('sent', 'unpaid')
+    const tgt = await seedOrder('sent', 'unpaid')
+    await seedItem(src.id, 'preparing')
+    expect((await mergePOST(req(`/api/orders/${src.id}/merge`, tokenFor(waiterId, 'w', 'WAITER', locId), 'POST', { targetOrderId: tgt.id }), { params: Promise.resolve({ id: src.id }) })).status).toBe(200)
+    const res = await fursPOST(req('/api/furs', tokenFor(waiterId, 'w', 'WAITER', locId), 'POST', { orderId: src.id, type: 'cash' }))
+    expect(res.status).toBe(409)
+    expect(await db.receipt.count({ where: { orderId: src.id } })).toBe(0)
+    const row = await orderRow(src.id)
+    expect(row?.status).toBe('cancelled')
+    // plačilo ne sme pustiti nobenega sledu: plačilno stanje in čas plačila
+    // ostaneta kot pred zavrnjenim klicem (razen združitvenega preklica)
+    expect(row?.paymentStatus).toBe('unpaid')
+    expect(row?.paidAt).toBeNull()
   })
 })
 
@@ -460,5 +545,25 @@ describe('H — nobena pot ne piše več stanja naročila brezpogojno', () => {
 
   test("'ocon-' je registriran v TEST_PREFIXES (samoceljivost fiksur)", () => {
     expect(TEST_PREFIXES).toContain(PREFIX)
+  })
+
+  test('plačilna pot pogojuje tudi STATUS — ne samo plačilnega stanja (v1.148.0)', () => {
+    const ops = readFileSync(join(import.meta.dir, '..', 'src', 'lib', 'ops.ts'), 'utf8')
+    const issue = readFileSync(join(import.meta.dir, '..', 'src', 'lib', 'furs', 'issue.ts'), 'utf8')
+    // Plačljivo stanje = mutabilni trije PLUS 'paid' (ročno označen 'paid' brez
+    // računa sme kanonična pot še izdati račun). 'cancelled' in 'storno' NISTA na
+    // seznamu — prav ta mora veljati OB ZAPISU, sicer preklic ali združevanje, ki
+    // commitneta med branjem in plačilno transakcijo, pusti fiskaliziran račun na
+    // naročilu, ki ga v dejanskem delovnem toku ni več.
+    expect(ops.includes("export const ORDER_PAYABLE_STATUS = [...ORDER_MUTABLE_STATUS, 'paid'] as const")).toBe(true)
+    // vsi trije zapisi stanja v plačilni poti (glavni CAS, check-settle, partial)
+    // morajo nositi status-pogoj; doslej je bil samo paymentStatus
+    const guarded = issue.match(/status: \{ in: \[\.\.\.ORDER_PAYABLE_STATUS\] \}/g) ?? []
+    expect(guarded.length).toBe(3)
+    // branje plačilne poti (guard PREJ, pred transakcijo) uporablja ISTI seznam
+    expect(issue.includes('ORDER_PAYABLE_STATUS as readonly string[]')).toBe(true)
+    // in nima nikoli brezpogojnega zapisa naročila
+    expect(issue).not.toMatch(/tx\.order\.update\(/)
+    expect(issue).not.toMatch(/db\.order\.update\(/)
   })
 })

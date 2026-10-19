@@ -79,9 +79,12 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(await db.deliveryZone.count({ where: { id: autoChildId } })).toBe(0)
   })
 
-  // 20 s proračun (privzeto 5 s): test izvede DVA polna sweepa po ~117 modelih;
-  // v celotnem suitskem teku (748 testov, vzporedni datoteki) je 5 s premalo —
-  // izolirano teče v ~4 s (raste z modeli, proračun pa ni) — Task 67 lekcija.
+  // 60 s proračun (privzeto 5 s): test izvede DVA polna pregleda čez ~190 izjav.
+  // Z ZDRUŽENIMI predponami (OR-seznam čez TEST_PREFIXES) je to merjeno 6,4 s na
+  // hladnem Windows hostu z logom poizvedb (2026-10-19); proračun ostane velik,
+  // ker je bil pretekli timeout (60 s) prav zaradi zanke PO PREDPONI — glej
+  // spodnji vir-pin. V celotnem suitskem teku (748+ testov, vzporedne datoteke)
+  // je 5 s premalo — Task 67 lekcija.
   test('realni podatki (brez testnih predpon) ostanejo nedotaknjeni', async () => {
     const before = await countRealLocations()
     // LEKCIJA Task 64 (CI rdeča od Task 60 neodkrita): CI tests job uporablja SVEŽO
@@ -108,7 +111,7 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(res2.remainingLocations).toBe(0)
     const after2 = await countRealLocations()
     expect(after2).toBe(before)
-  }, 60_000 /* en sam počistni tek ≈ 6,5–10 s na hladnem Windows hostu (merjeno 2026-10-16, test povzame dvakrat) — 20 s ni imelo rezerve */)
+  }, 60_000 /* dva polna sloga (pred + za) z združenimi predponami; rezerva za počasen CI host */)
 
   test('ključavnica: oddaljena baza (DATABASE_URL brez "file:") je zavrnjena', () => {
     const orig = process.env.DATABASE_URL
@@ -216,6 +219,35 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     // realni PIN (4–8 številk, brez testne predpone) sme ostati
     expect(await db.employee.count({ where: { id: real.id } })).toBe(1)
     await db.employee.delete({ where: { id: real.id } })
+  })
+
+  test('oblika počistnika: število izjav NE sme rasti s številom predpon (v1.148.0)', async () => {
+    // Dokazan povratek: prejšnja oblika je zankala PO PREDPONI (`for (const p of prefixes)`).
+    // TEST_PREFIXES ima 64 vnosev × ~190 faznih deleteMany × 2 pregleda na test
+    // ≈ 24.000 krožnih poklicev do baze, zato je test zgoraj počil na 60 s timeoutu —
+    // VIDNO rdeč, čeprav so bile poslovne tabele prazne. Predpone se morajo združiti
+    // v OR-seznam (en stavek na polje/fazo), vrstni red faz pa mora ostati identičen:
+    // besedilni ← id ← locationId ← id ← lokacija ← locationId ← pozni besedilni.
+    const src = await Bun.file(`${import.meta.dir}/helpers/fixture-sweep.ts`).text()
+    const body = src.slice(src.indexOf('export async function sweepTestFixtures'))
+    // SAMO brisalni del (preštevek na koncu UPORABI isto obliko — tam je tipiziran WHERE)
+    const dele = body.slice(0, body.indexOf('let remainingLocations'))
+    expect(dele).not.toContain('for (const p of prefixes)')
+    expect(body).toContain('const forField = ')
+    // noben fazni stavek ne sme ostati posamičen (brez OR) — id in locationId prehoda sta združena
+    expect(dele).not.toContain('{ locationId: { startsWith: p } }')
+    expect(dele).not.toContain('{ id: { startsWith: p } }')
+    // fazni vrstni red (označbe v komentarjih) — drugčen vrstni red poruši FK-odvisnosti
+    const phases = ['0. FIELD_SWEEP', '1. blok prehod po id', '2. odkleni prehod po locationId',
+      '3. ponovni prehod po id', '4. lokacija ZADNJA', '5. varovalka', '6. late FIELD_SWEEP']
+    let prev = -1
+    for (const ph of phases) {
+      const at = body.indexOf(ph)
+      expect(at, `faza "${ph}" mora biti v počistniku`).toBeGreaterThan(prev)
+      prev = at
+    }
+    // preštevek preostalih lokacij je moral obstati že pred združitvijo — en pregled čez vse predpone
+    expect(body).toContain('prefixes.map((p) => ({ id: { startsWith: p } }))')
   })
 
   test('znane testne predpone so pokrite (uhajanje nove fiksurne datoteke = vidna lokacija na prijavi)', () => {
