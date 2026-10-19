@@ -39,6 +39,8 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { db } from '../src/lib/db'
 import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
@@ -537,6 +539,98 @@ describe('issue #18 — tristransko ujemanje (route)', () => {
     const ap = await apOf(apId)
     expect(ap!.matchStatus).toBe('blocked')
     expect(ap!.AccountsPayableLine.length).toBe(1)
+  })
+
+  /* ── audit #13 (v1.146.0): preizkus zneska vrstice MORA biti dvosmeren ── */
+
+  /**
+   * Ročno prepiše znesek vrstice in GLAVO tako, da je slednja dosledna. Brez
+   * usklajene glave bi blokirala kontrola #6 in test ne bi dokazal ničesar o
+   * preizkusu #4 (količina × cena × DDV).
+   */
+  async function setLineTotalWithConsistentHead(apId: string, lineTotal: number, vatMult = 1.22): Promise<void> {
+    const net = Math.round((lineTotal / vatMult) * 100) / 100
+    const line = await db.accountsPayableLine.findFirstOrThrow({ where: { AccountsPayable: { id: apId } }, orderBy: { createdAt: 'asc' } })
+    await db.accountsPayableLine.update({ where: { id: line.id }, data: { lineTotal } })
+    await db.accountsPayable.update({ where: { id: apId }, data: { subtotal: net, vatAmount: Math.round((lineTotal - net) * 100) / 100, totalAmount: lineTotal } })
+  }
+
+  async function evaluateAp(apId: string): Promise<Record<string, unknown>> {
+    const r = await matchPOST(req('POST', `/api/ap/${apId}/match`, tokA, { action: 'evaluate' }), { params: Promise.resolve({ id: apId }) })
+    expect(r.status).toBe(200)
+    const b = await body(r)
+    return (b.evaluation ?? {}) as Record<string, unknown>
+  }
+
+  /** PO → prevzem → eSLOG račun z enako vrstico (2 × 5 € × 22 % = 12,20). */
+  async function matchedInvoice(tag: string, grnKey: string): Promise<string> {
+    const po = await mkPo([{ description: 'Kava zrna', qty: 10, price: 5 }], locA)
+    await receive(tokA, po.id, [{ purchaseOrderItemId: po.itemIds[0], quantityAccepted: 2 }], grnKey)
+    const { apId } = await importEslog(tokA, eslogXml(`I18-INV-${tag}-${RUN}`, [{ name: 'Kava zrna', qty: 2, price: 5 }]))
+    expect((await apOf(apId))!.matchStatus).toBe('matched')
+    return apId
+  }
+
+  it('14. PODFakturirana vrstica (znesek < količina × cena × DDV) → blocked (audit #13)', async () => {
+    // Prej: preizkus je bil enostranski (|lineTotal| − pričakovano > toleranca),
+    // zato je negativna razlika nikoli ne preseže tolerance → lažni 'matched'.
+    const apId = await matchedInvoice('14', 'i18-grn-14')
+    await setLineTotalWithConsistentHead(apId, 10) // 10,00 namesto 12,20
+    const ev = await evaluateAp(apId)
+    expect(ev.totalsOk).toBe(true) // blokirali je izključno preizkus zneska vrstice
+    expect(ev.matchStatus).toBe('blocked')
+    expect(((ev.reasons ?? []) as string[]).join(' ')).toContain('Znesek vrstice')
+    const line = await db.accountsPayableLine.findFirstOrThrow({ where: { AccountsPayable: { id: apId } } })
+    expect(line.varianceStatus).toBe('blocked')
+    expect(line.varianceNote).toContain('ne ustreza količini × ceni × DDV')
+  })
+
+  it('14b. NADFakturirana vrstica → blocked (regresija: ta smer je že delovala)', async () => {
+    const apId = await matchedInvoice('14b', 'i18-grn-14b')
+    await setLineTotalWithConsistentHead(apId, 20) // 20,00 namesto 12,20
+    const ev = await evaluateAp(apId)
+    expect(ev.totalsOk).toBe(true)
+    expect(ev.matchStatus).toBe('blocked')
+    expect(((ev.reasons ?? []) as string[]).join(' ')).toContain('Znesek vrstice')
+  })
+
+  it('14c. zaokroževanje znotraj tolerance (1 center pod 12,20) → matched (popravek ne sme preveč blokirati)', async () => {
+    const apId = await matchedInvoice('14c', 'i18-grn-14c')
+    await setLineTotalWithConsistentHead(apId, 12.19) // 1 center pod 12,20
+    const ev = await evaluateAp(apId)
+    expect(ev.totalsOk).toBe(true)
+    expect(ev.matchStatus).toBe('matched')
+    const line = await db.accountsPayableLine.findFirstOrThrow({ where: { AccountsPayable: { id: apId } } })
+    expect(line.varianceStatus).toBe('match')
+  })
+
+  it('14d. dobropis: konsistenten → matched, podfakturiran (premalo storniran) → blocked', async () => {
+    const po = await mkPo([{ description: 'Mleko', qty: 10, price: 5 }], locA)
+    await receive(tokA, po.id, [{ purchaseOrderItemId: po.itemIds[0], quantityAccepted: 4 }], 'i18-grn-14d')
+    await importEslog(tokA, eslogXml(`I18-INV-14d-${RUN}`, [{ name: 'Mleko', qty: 4, price: 5 }]))
+
+    // dobropis 2 × 5 € × 22 % = −12,20: predznačen znesek mora ostati SKLADEN
+    // (obe strani primerjave sta magnitudi, sicer bi bil vsak dobropis 'blocked')
+    const cn = await importEslog(tokA, creditNoteXml(`I18-CN-14d-${RUN}`, [{ name: 'Mleko', qty: 2, price: 5 }]))
+    expect((await apOf(cn.apId))!.matchStatus).toBe('matched')
+    const cnLine = await db.accountsPayableLine.findFirstOrThrow({ where: { AccountsPayable: { id: cn.apId } } })
+    expect(Number(cnLine.lineTotal)).toBeLessThan(0)
+    expect(cnLine.varianceStatus).toBe('match')
+
+    // dobavitelj stornira PREMALO (−10,00 namesto −12,20) → enaka vrsta zlorabe
+    // kot podfakturiranje: mora biti blokirana
+    await setLineTotalWithConsistentHead(cn.apId, -10)
+    const ev = await evaluateAp(cn.apId)
+    expect(ev.totalsOk).toBe(true)
+    expect(ev.matchStatus).toBe('blocked')
+    expect(((ev.reasons ?? []) as string[]).join(' ')).toContain('Znesek vrstice')
+  })
+
+  it('14e. pine vira: enostranski preizkus zneska vrstice se NE sme vrniti', () => {
+    const src = readFileSync(join(process.cwd(), 'src/lib/ap-match.ts'), 'utf8')
+    // {expression-start} → enostranska oblika: Math.abs(lineTotal) - recomputed > ...
+    expect(src).not.toMatch(/Math\.abs\(lineTotal\) - recomputed >/)
+    expect(src).toMatch(/Math\.abs\(Math\.abs\(lineTotal\) - recomputed\)/)
   })
 
   it('GET /api/expenses obogaten: matchStatus + matchSummary + poNumber', async () => {

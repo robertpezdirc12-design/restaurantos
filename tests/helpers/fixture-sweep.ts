@@ -93,6 +93,7 @@ export const TEST_PREFIXES = [
   'v129-', // role-ui-gating (v1.129.0 — čistilka/skladiščnik gating, Δ% KPI)
   'fsub-', // fiscal-submit (v1.144.0 — skupna fiskalna oddaja: storno + obnova pending)
   'ocon-', // order-concurrency (v1.145.0 — audit #10/#11/#12: CAS preklic/move/merge)
+  'seqfl-', // sequence-receipt-number (v1.146.0 — audit #14: spodnja meja sekvence + reže)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -291,8 +292,9 @@ type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Prom
  * zapisana v besedilnih poljih (opis/opomba/številka), ne v id. Takšnih vrstic
  * id- in lokacijski prehod ne smetijo (locationId postane NULL po izbrisu
  * lokacije — SetNull) → potrebujejo lasten prehod po besedilnih poljih.
+ * `contains`: predpona je SRED imena, ne na začetku (Counter `receipt:<locId>`).
  */
-const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[] }> = [
+const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; contains?: boolean }> = [
   { model: 'accountsPayable', fields: ['invoiceNumber', 'notes', 'apNumber'] },
   // Task 62: enterprise drevo (property → brand → organization) — POST /api/enterprise
   // ustvarja id z nid(), testna predpona živi v name (org tudi slug). Restriktivne FK
@@ -307,6 +309,15 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[] }> =
   // (SetNull s plan strani) → plan gre lahko v glavni prehod, tu je FIELD_SWEEP
   // zaradi besedilnih polj (id-predpona ni v id).
   { model: 'haccpPlan', fields: ['name', 'target', 'responsible'] },
+  // v1.146.0 (audit #14): Counter vrstice, ki jih ustvari nextSequence(), imajo
+  // nid() id (BREZ predpone), testna predpona pa živi SRED `name`
+  // (`receipt:seqfl-loc-…`, `order:…`). ID_SWEEP (`id startsWith`) jih ne vidi,
+  // lokacijskega stolpca Counter nima → zaostareli številki bi se prenašali iz
+  // enega teka v drugega. Predpona je vedno v lokacijskem delu imena, `nid()` pa
+  // vezaje odstrani (src/lib/map.ts:29), zato `contains` zadene samo testne
+  // vrstice. Izbris je v dev SQLite tudi sicer samoceljiv: nextSequence in
+  // allocateReceiptNumber Counter ustvarita znova.
+  { model: 'counter', fields: ['name'], contains: true },
 ]
 
 /**
@@ -348,7 +359,7 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     //    pokvari starševski prehod (supplier deleteMany P2003).
     for (const spec of FIELD_SWEEP) {
       await dele(spec.model, {
-        OR: spec.fields.map((f) => ({ [f]: { startsWith: p } })),
+        OR: spec.fields.map((f) => ({ [f]: spec.contains ? { contains: p } : { startsWith: p } })),
       })
     }
     // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
