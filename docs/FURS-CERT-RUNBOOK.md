@@ -39,6 +39,15 @@
 - `FURS_ENVIRONMENT=production` (ali `test` najprej) — globalno ali per-location
   (`Location.fursEnvironment`)
 - `FURS_ALLOW_SIMULATION=false` (produkcija: simulacija prepovedana)
+- `FURS_CA_PEM` (v1.144.0) — veriga FURS-ovega CA (ACNP / PoCC), PEM ali base64 PEM,
+  **simetrično HR `FURS_HR_CA_PEM`**. SI transport je mTLS, Node pa strežnikovo
+  verigo preverja ob svojem privzetem naboru korenin — ACNP/PoCC (in mock v
+  testih) v njem NI, brez pine napaka `self signed certificate` → račun ostane
+  'pending'. Node ob nastavljenem `ca` privzeti nabor ZAMENJA, zato mora biti
+  podana CELA veriga do korenine, ne samo certifikat servisa.
+  Dokaz (v1.144.0, `tests/fiscal-submit.test.ts`): z pinano CA je celotna pot
+  produkcijska (oddaja, EOR zapis, storno, naknadna oddaja) — brez nje noben
+  uspešen klic ni testiran.
 
 ### Fail-closed fiskalni profil (issue #53, v1.95.1 — `src/lib/fiscal-profile.ts`)
 Od v1.95.0 fiskalno izdajo (`POST /api/furs` + storno) vodi STREŽNIŠKI profil,
@@ -103,9 +112,20 @@ vrednosti:
 5. `FURS_ENVIRONMENT=production` / `FURS_HR_ENVIRONMENT=production` per lokacija →
    živi računi → preverim EOR/JIR + ZOI/ZKI na računih (QR: porezna.gov.hr/rn za HR).
 6. Fail-safe: SOAP klic teče PO DB transakciji; ob napaki račun ostane 'pending'
-   (plačilo je urejeno) — poznejša fiskalizacija prek SubsequentSubmit/NakDost=true
-   (v kodni pripravi: polje `subsequentSubmit`, za nadaljevanje UI orodje, če se pojavi
-   v praksi).
+   (plačilo je urejeno). **Od v1.144.0 dalje je obnova avtomatizirana:**
+   `POST /api/furs/{id}/resubmit` ponovo odda ISTI dokument (isti ZOI/ZKI, isti
+   znesek in razčlenitev) s `SubsequentSubmit=true` (SI) / `NakDost=true` (HR) →
+   EOR/JIR se zapišeta, račun gre v 'verified', revizija `FISCAL_RESUBMIT`.
+   Dovoljenje: `orders.pay` (isto kot izdaja ob plačilu). Zaostanku gre za
+   tabom «Računi» (badge `fiscalStatus`) ali poizvedbo
+   `SELECT "receiptNumber" FROM "Receipt" WHERE "fiscalStatus" = 'pending'`.
+   Omejitev: dokumenti, izdani **brez** certifikata, imajo prazen ZOI/ZKI — teh ni
+   mogoče naknadno oddati (nova zaščitna koda = nov fiskalni dokument); rutina
+   jih zavrne s 409 in jasnim sporočilom.
+7. Fiskalni STORNO (v1.144.0 dalje) se odda enako kot izdaja — `submitFiscalDocument`
+   iz `src/lib/furs/submit.ts` je SKUPNA pot za izdajo, storno in obnovo. Pred tem je
+   storno kode samo izračunal in ostal 'pending' → negativni račun pri fisku ni
+   obstajal (revizija 2026-10 #3).
 
 ## 5. Referenca
 

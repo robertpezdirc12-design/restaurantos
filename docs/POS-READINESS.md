@@ -35,6 +35,7 @@ channel-sync izhodni push (Glovo/Wolt API poverilnice).
 |---|---|---|
 | `FURS_ENVIRONMENT` | production / test / simulation (globalno > Location.fursEnvironment) | produkcija BREZ vrednosti → 503 (issue #53) |
 | `FURS_CERT_P12_B64` + `FURS_CERT_PASSWORD` | SI kvalificirani certifikat (base64 P12) | manjka → 'pending' (brez lažnega verified) |
+| `FURS_CA_PEM` | CA veriga FURS strežnika (mTLS verifikacija), PEM ali base64 (v1.144.0) | manjka → `self signed certificate` → 'pending' |
 | `FURS_ENDPOINT_URL` | override SOAP endpointa | NASTAVLJENO SAMO za mock teste |
 | `FURS_ALLOW_SIMULATION` / `FURS_PRODUCTION_TEST_MODE` | zastavici simulacije | v produkciji zavrnjeni (fail-closed) |
 | `FURS_HR_ENVIRONMENT`, `FURS_HR_CERT_P12_B64`, `FURS_HR_CERT_PASSWORD`, `FURS_HR_CA_PEM`, `FURS_HR_ENDPOINT_URL` | HR CIS (Fiskalizacija 2.0) | isti vzorec kot SI |
