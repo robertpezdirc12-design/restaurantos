@@ -91,6 +91,12 @@ function handlerSegments(src: string): { method: string; body: string }[] {
 
 const routeFiles = walkRouteFiles(API_ROOT)
 
+/** Datoteka → javna pot rute. Windows `relative()` vrne `\` ločila, zato MORA
+ * normalizacija priti PRED obe odstranitvi (sicer je na Windowsu pot
+ * `/api/health/route.ts` → varovalka lažno javi neobstoječe javne rute). */
+const toApiPath = (file: string): string =>
+  '/' + relative(join(API_ROOT, '..'), file).replace(/\\/g, '/').replace(/^app\//, '').replace(/\/route\.ts$/, '')
+
 function isPublic(method: string, apiPath: string): boolean {
   return PUBLIC_API_ROUTES.some(
     (r) => r.path === apiPath && r.methods.includes(method),
@@ -105,7 +111,7 @@ describe('ISSUE #75 — varovalka T: rute × metode (vse route.ts imajo presojo)
   test('vsak izvoženi handler je varovan (seja/naprava/podpis) ALI javno vpisan', () => {
     const unassessed: string[] = []
     for (const file of routeFiles) {
-      const apiPath = '/' + relative(join(API_ROOT, '..'), file).replace(/\/route\.ts$/, '').replace(/\\/g, '/').replace(/^app\//, '')
+      const apiPath = toApiPath(file)
       const src = readFileSync(file, 'utf-8')
       for (const { method, body } of handlerSegments(src)) {
         // CORS preflight ne izdaja podatkov — preskoči
@@ -120,10 +126,7 @@ describe('ISSUE #75 — varovalka T: rute × metode (vse route.ts imajo presojo)
   })
 
   test('register javnih rut vsebuje SAMO obstoječe poti (brez mrtvih vnosov)', () => {
-    const allPaths = new Set(routeFiles.map((f) => {
-      const rel = relative(join(API_ROOT, '..'), f).replace(/\/route\.ts$/, '')
-      return '/' + rel.replace(/\\/g, '/').replace(/^app\//, '')
-    }))
+    const allPaths = new Set(routeFiles.map(toApiPath))
     const dead = PUBLIC_API_ROUTES.filter((r) => !allPaths.has(r.path))
     expect(dead.map((d) => d.path)).toEqual([])
   })
