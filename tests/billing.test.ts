@@ -5,7 +5,7 @@
  *   discountAmountOf(d: { type: string; amount: number | unknown }, base: number): number
  */
 import { describe, expect, test } from 'bun:test'
-import { computeBill, discountAmountOf, netFromGross, vatFromGross } from '@/lib/billing'
+import { computeBill, discountAmountOf, netFromGross, vatBreakdownAfterDiscount, vatFromGross } from '@/lib/billing'
 import { APP_VERSION } from '@/lib/version'
 import type { BillInput, BillItem } from '@/lib/billing'
 
@@ -250,10 +250,133 @@ describe('computeBill — konvencija «vključno z DDV»', () => {
   })
 })
 
+/* ─────────────── AUDIT 2026-10 #1 — DDV osnova PO popustih (v1.143.0) ─────────────── */
+
+describe('vatBreakdownAfterDiscount — osnova za FURS TaxesPerSeller', () => {
+  const it = (over: Partial<BillItem> = {}): BillItem => ({
+    id: 'x1',
+    menuItemId: 'm1',
+    name: 'Postavka',
+    quantity: 1,
+    unitPrice: 10,
+    vatRate: 22,
+    vatAmount: vatFromGross(10, 22),
+    categoryId: null,
+    voided: false,
+    ...over,
+  })
+  const sum = (vb: Record<string, { base: number; vat: number }>) =>
+    Math.round(Object.values(vb).reduce((s, v) => s + v.base + v.vat, 0) * 100) / 100
+
+  test('primer iz audita: 120,00 € @22 % − 20,00 € popust → osnova 81,97 € + DDV 18,03 €', () => {
+    const items = [it({ quantity: 12, unitPrice: 10, vatAmount: vatFromGross(120, 22) })]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 20, categoryIds: [] }], 100)
+    expect(vb['22.00']).toEqual({ base: 81.97, vat: 18.03 })
+    expect(sum(vb)).toBe(100)
+  })
+
+  test('brez popusta → razčlenitev je enaka predpopustni (nazaj-kompatibilno)', () => {
+    const items = [
+      it({ id: 'a', unitPrice: 20, vatRate: 22, vatAmount: vatFromGross(20, 22) }),
+      it({ id: 'b', unitPrice: 20, vatRate: 9.5, vatAmount: vatFromGross(20, 9.5) }),
+    ]
+    const vb = vatBreakdownAfterDiscount(items, [], 40)
+    expect(vb['22.00']).toEqual({ base: 16.39, vat: 3.61 })
+    expect(vb['9.50']).toEqual({ base: 18.26, vat: 1.74 })
+    expect(sum(vb)).toBe(40)
+  })
+
+  test('splošni popust zniža OBE stopnji sorazmerno, vsota ostane točno znesek za plačilo', () => {
+    const items = [
+      it({ id: 'a', unitPrice: 20, vatRate: 22, vatAmount: vatFromGross(20, 22) }),
+      it({ id: 'b', unitPrice: 20, vatRate: 9.5, vatAmount: vatFromGross(20, 9.5) }),
+    ]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 10, categoryIds: [] }], 30)
+    expect(vb['22.00']).toEqual({ base: 12.3, vat: 2.7 })
+    expect(vb['9.50']).toEqual({ base: 13.7, vat: 1.3 })
+    expect(sum(vb)).toBe(30)
+  })
+
+  test('namenski popust (kategorija) sme znižati SAMO tarčno stopnjo — 22 % ne plača popusta 9,5 % artikla', () => {
+    const items = [
+      it({ id: 'a', unitPrice: 20, vatRate: 22, categoryId: 'vina', vatAmount: vatFromGross(20, 22) }),
+      it({ id: 'b', unitPrice: 20, vatRate: 9.5, categoryId: 'kava', vatAmount: vatFromGross(20, 9.5) }),
+    ]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 5, categoryIds: ['kava'] }], 35)
+    expect(vb['22.00']).toEqual({ base: 16.39, vat: 3.61 }) // nedotaknjena
+    expect(vb['9.50']).toEqual({ base: 13.7, vat: 1.3 }) // 15,00 € bruto namesto 20,00 €
+    expect(sum(vb)).toBe(35)
+  })
+
+  test('tarčna kategorija ni v plačanem obsegu → popust se razdeli sorazmerno (nikoli izgubljen)', () => {
+    const items = [it({ id: 'a', unitPrice: 20, vatRate: 22, categoryId: 'vina', vatAmount: vatFromGross(20, 22) })]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 4, categoryIds: ['sobi'] }], 16)
+    expect(vb['22.00']).toEqual({ base: 13.11, vat: 2.89 })
+    expect(sum(vb)).toBe(16)
+  })
+
+  test('tri stopnje z okroglim ostankom → razdelitev pokrije cent na cent (brez izgubljenega ostanka)', () => {
+    const items = [
+      it({ id: 'a', unitPrice: 10, vatRate: 22, vatAmount: vatFromGross(10, 22) }),
+      it({ id: 'b', unitPrice: 10, vatRate: 9.5, vatAmount: vatFromGross(10, 9.5) }),
+      it({ id: 'c', unitPrice: 10, vatRate: 5, vatAmount: vatFromGross(10, 5) }),
+    ]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 10, categoryIds: [] }], 20)
+    expect(sum(vb)).toBe(20)
+    expect(vb['22.00'].base + vb['22.00'].vat).toBe(6.66)
+    expect(vb['9.50'].base + vb['9.50'].vat).toBe(6.67)
+    expect(vb['5.00'].base + vb['5.00'].vat).toBe(6.67)
+  })
+
+  test('0 % stopnja: osnova = znesek, DDV = 0, kljub popustu', () => {
+    const items = [
+      it({ id: 'a', unitPrice: 10, vatRate: 0, vatAmount: 0 }),
+      it({ id: 'b', unitPrice: 10, vatRate: 22, vatAmount: vatFromGross(10, 22) }),
+    ]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 6, categoryIds: [] }], 14)
+    expect(vb['0.00']).toEqual({ base: 7, vat: 0 })
+    expect(sum(vb)).toBe(14)
+  })
+
+  test('popust v višini celotnega računa → vse stopnje na 0 (nikoli negativna osnova)', () => {
+    const items = [it({ unitPrice: 20, vatRate: 22, vatAmount: vatFromGross(20, 22) })]
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 999, categoryIds: [] }], 0)
+    expect(vb['22.00']).toEqual({ base: 0, vat: 0 })
+    expect(sum(vb)).toBe(0)
+  })
+
+  test('voided postavke ne smejo prispevati osnove (stornirana jed ne gre na FURS)', () => {
+    const items = [
+      it({ id: 'a', unitPrice: 20, vatRate: 22, vatAmount: vatFromGross(20, 22) }),
+      it({ id: 'b', unitPrice: 50, vatRate: 22, voided: true, vatAmount: vatFromGross(50, 22) }),
+    ]
+    const vb = vatBreakdownAfterDiscount(items, [], 20)
+    expect(sum(vb)).toBe(20)
+  })
+
+  test('vsota vrstic se izide z vsoto stopenj tudi pri neenakomernih cantidad (invarianta računa)', () => {
+    // 7 postavk @ 1,11 € / 22 % + 1 postavka @ 3,33 € / 9,5 % − 2,50 € popust
+    const items: BillItem[] = Array.from({ length: 7 }, (_, n) =>
+      it({ id: `p${n}`, unitPrice: 1.11, vatRate: 22, vatAmount: vatFromGross(1.11, 22) }),
+    )
+    items.push(it({ id: 'q', unitPrice: 3.33, vatRate: 9.5, vatAmount: vatFromGross(3.33, 9.5) }))
+    const gross = Math.round(items.reduce((s, x) => s + x.unitPrice * x.quantity, 0) * 100) / 100
+    const total = Math.round((gross - 2.5) * 100) / 100
+    const vb = vatBreakdownAfterDiscount(items, [{ amount: 2.5, categoryIds: [] }], total)
+    expect(gross).toBe(11.1)
+    expect(sum(vb)).toBe(total)
+    expect(total).toBe(8.6)
+    // 22 % stopnja absorbira svoj sorazmeren del (7,77 € od 11,10 €), 9,5 % pa svojega
+    // — nobena stopnja ne sme nikoli nositi bremena tuje kategorije
+    expect(vb['22.00'].base + vb['22.00'].vat).toBe(6.02)
+    expect(vb['9.50'].base + vb['9.50'].vat).toBe(2.58)
+  })
+})
+
 /* ─────────────── REGISTRI — val v1.133.0 ─────────────── */
 
 describe('REGISTRI — val v1.133.0 (issue #71 + hidracijski popravek useInViewOnce — React #418)', () => {
   test('APP_VERSION === 1.134.0', () => {
-    expect(APP_VERSION).toBe('1.142.0')
+    expect(APP_VERSION).toBe('1.143.0')
   })
 })

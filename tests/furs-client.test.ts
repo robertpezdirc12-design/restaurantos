@@ -83,11 +83,14 @@ const ZOI_INPUT = {
   receiptNumber: '2026-10-42-BLG001',
   premisesId: 'BLG001',
   total: 24.2,
+  // cona pripeta (audit 2026-10 #2): FURS kanonični niz gre v LOKALNEM času izdaje
+  timeZone: 'Europe/Ljubljana',
 }
 
 describe('ZOI (FURS spec 1.13 — RSA-SHA256 nad MD5 digesta)', () => {
   test('kanonični niz byte-identičen s simulacijo (siZoiPayload)', () => {
-    const expected = `12345678${ZOI_INPUT.issuedAt.toISOString()}2026-10-42-BLG001BLG00124.20`
+    // 10:00 UTC = 12:00 CEST — lokalni čas brez 'Z' in milisekund
+    const expected = '123456782026-10-10T12:00:002026-10-42-BLG001BLG00124.20'
     expect(siZoiPayload(ZOI_INPUT)).toBe(expected)
   })
 

@@ -11,17 +11,22 @@
 import { describe, expect, test } from 'bun:test'
 import crypto from 'crypto'
 import {
-  fiscalAdapterFor, computeZoi, computeHrTestZki, hrDatv, hrIzn, hrQrContent,
+  fiscalAdapterFor, computeZoi, computeHrTestZki, hrDatv, hrIzn, hrQrContent, siZoiPayload,
 } from '../src/lib/fiscal'
 
-// deterministični vektor
+// deterministični vektor — cona je PRIPETA, da niz ne odvisna od časovnega pasu
+// runnerja (prej: odvisna, ker se je primerjal z `new Date().toISOString()`).
 const VEC = {
   taxId: 'SI12345678',
   issuedAt: new Date('2026-01-15T12:30:45.000Z'),
   receiptNumber: '2026-1-42-BLG001',
   premisesId: 'BLG001',
   total: 125.5,
+  timeZone: 'Europe/Ljubljana',
 }
+// FURS kanonični datum = LOKALNI čas izdaje (12:30 UTC → 13:30 CET), brez 'Z' in
+// milisekund (audit 2026-10 #2). Literal, ne rekonstrukcija z isto funkcijo.
+const VEC_ZOI_PAYLOAD = 'SI123456782026-01-15T13:30:452026-1-42-BLG001BLG001125.50'
 
 describe('SI adapter — FURS (§18: byte-identična pot)', () => {
   test('fabrika: SI je privzet (tudi za neznano/prazno državo)', () => {
@@ -33,11 +38,21 @@ describe('SI adapter — FURS (§18: byte-identična pot)', () => {
   })
 
   test('computeZoi — byte-identičen prejšnji vgradnji v /api/furs', () => {
-    // referenčna implementacija = dobesedno nekdanja koda iz route.ts
-    const payload = `${VEC.taxId}${VEC.issuedAt.toISOString()}${VEC.receiptNumber}${VEC.premisesId}${VEC.total.toFixed(2)}`
-    const expected = crypto.createHash('md5').update(payload).digest('hex')
+    // referenčna implementacija = dobesedno nekdanja koda iz route.ts, ZDAY s
+    // lokalnim (FURS) formatom datuma in pripetim literalom niza
+    const expected = crypto.createHash('md5').update(VEC_ZOI_PAYLOAD).digest('hex')
     expect(computeZoi(VEC)).toBe(expected)
     expect(computeZoi(VEC)).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  test('audit #2: kanonični niz je v lokalnem času izdaje, ne v UTC', () => {
+    // 23:30 UTC = naslednji dan 00:30 CET — FURS bi z UTC-jem dobil PREJŠNJI dan
+    const night = { ...VEC, issuedAt: new Date('2026-01-15T23:30:45.000Z') }
+    expect(siZoiPayload(night)).toContain('2026-01-16T00:30:45')
+    // izpuščena cona → sistemski lokalni čas (nazaj-kompatibilno, brez tipkanja)
+    expect(siZoiPayload({ ...night, timeZone: undefined })).not.toContain('2026-01-16T00:30:45Z')
+    // neveljavna cona v nastavitvah lokacije NE sme pasti na UTC — privzeto Ljubljana
+    expect(siZoiPayload({ ...night, timeZone: 'Mars/Olympus_Mons' })).toContain('2026-01-16T00:30:45')
   })
 
   test('simulacija: ZOI + EOR UUID, označena simulacija', () => {

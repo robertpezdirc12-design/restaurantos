@@ -9,6 +9,7 @@ import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { writeAudit } from '@/lib/audit-chain'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
+import { localYearMonth } from '@/lib/fiscal-time'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
 import {
   validateExceptionReason,
@@ -174,8 +175,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // ── Številčenje: ISTI Counter vzorec kot /api/furs (location-scoped, atomaren) ──
       const seqFloor = await tx.receipt.count({ where: { locationId: location.id } })
       const seq = await nextSequence(tx, `receipt:${location.id}`, seqFloor + 1)
-      const y = now.getFullYear()
-      const m = now.getMonth() + 1
+      // audit #2: lokalni koledar lokacije (ne sistemski/UTC) — isti vzorec kot /api/furs
+      const { y, m } = localYearMonth(now, location.timezone)
       const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
 
       // ── Fiskalne kode: replikacija /api/furs (SI → ZOI/EOR, HR → ZKI/JIR v cis poljih) ──
@@ -188,6 +189,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         premisesId: location.premisesId || 'BLG001',
         total,
         simulation,
+        timeZone: location.timezone,
       })
       const zoi = isHrFiscal ? '' : codes.protective
       const eor = isHrFiscal ? '' : codes.verification

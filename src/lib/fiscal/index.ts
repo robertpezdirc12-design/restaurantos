@@ -20,6 +20,7 @@
  */
 
 import crypto from 'crypto'
+import { hrLocalDateTime, isoLocal, localParts } from '@/lib/fiscal-time'
 
 export interface FiscalInput {
   taxId: string
@@ -28,6 +29,9 @@ export interface FiscalInput {
   premisesId: string
   total: number
   simulation: boolean
+  /** IANA cona lokacije (Location.timezone) — FURS/CIS kanonični niz in IssueDateTime
+   *  morata biti v LOKALNEM času izdaje (audit 2026-10 #2). Izpuščeno = sistemski čas. */
+  timeZone?: string | null
 }
 
 export interface FiscalCodes {
@@ -46,6 +50,7 @@ export interface FiscalQrInput {
   protective: string
   issuedAt: Date
   total: number
+  timeZone?: string | null
 }
 
 export interface FiscalAdapter {
@@ -80,13 +85,20 @@ export interface SiFiscalInput {
   receiptNumber: string
   premisesId: string
   total: number
+  timeZone?: string | null
 }
 
-/** Kanonični niz za ZOI (FURS spec 1.13: davčna|datum|številka|prostor|znesek) — javen,
+/**
+ * Kanonični niz za ZOI (FURS spec 1.13: davčna|datum|številka|prostor|znesek) — javen,
  * ker ga produkcija (src/lib/furs/client.ts) podpiše z RSA-SHA256. Simulacija ostaja
- * byte-identična: computeZoi nad tem istim nizom. */
+ * byte-identična: computeZoi nad tem istim nizom.
+ *
+ * audit 2026-10 #2: datum je `yyyy-MM-ddTHH:mm:ss` v LOKALNEM času izdaje (FURS spec),
+ * ne `toISOString()` — ta niz je istočasno vsebina SOAP polja `IssueDateTime`, zato
+ * ZOI in oddani dokument nikoli ne moreta biti v razkoraku.
+ */
 export function siZoiPayload(input: SiFiscalInput): string {
-  return `${input.taxId}${input.issuedAt.toISOString()}${input.receiptNumber}${input.premisesId}${input.total.toFixed(2)}`
+  return `${input.taxId}${isoLocal(input.issuedAt, input.timeZone)}${input.receiptNumber}${input.premisesId}${input.total.toFixed(2)}`
 }
 
 /** ZOI — izvlečena 1:1 iz /api/furs (SI simulacija). */
@@ -122,16 +134,18 @@ const siAdapter: FiscalAdapter = {
 
 const JIR_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i
 
-/** Testni ZKI (simulacija): SHA-256 → prvih 32 hex znakov (spec: ZKI = 32 znakov). */
+/** Testni ZKI (simulacija): SHA-256 → prvih 32 hex znakov (spec: ZKI = 32 znakov).
+ *  Časovni del je v lokalnem času izdaje — isti niz kot produkcija (hrZkiPayload). */
 export function computeHrTestZki(input: FiscalInput): string {
-  const payload = `${input.taxId}|${input.issuedAt.toISOString()}|${input.receiptNumber}|${input.premisesId}|${input.total.toFixed(2)}`
+  const payload = `${input.taxId}|${hrLocalDateTime(input.issuedAt, input.timeZone)}|${input.receiptNumber}|${input.premisesId}|${input.total.toFixed(2)}`
   return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 32)
 }
 
 /** datv = datum in čas izdaje v uradni obliki YYYYMMDD_HHMM (prim. spec primer 20200921_0630). */
-export function hrDatv(d: Date): string {
+export function hrDatv(d: Date, timeZone?: string | null): string {
+  const l = localParts(d, timeZone)
   const p = (n: number, w = 2) => String(n).padStart(w, '0')
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`
+  return `${l.year}${p(l.month)}${p(l.day)}_${p(l.hour)}${p(l.minute)}`
 }
 
 /** izn = znesek z vejico kot decimalnim ločilom, 2 decimalki (prim. spec primer izn=1000000,00). */
@@ -142,7 +156,7 @@ export function hrIzn(total: number): string {
 /** Uradni QR URL Porezne uprave — JIR, če obstaja, sicer ZKI (prim. spec). */
 export function hrQrContent(input: FiscalQrInput): string {
   const code = input.verification ? `jir=${input.verification}` : `zki=${input.protective}`
-  return `https://porezna.gov.hr/rn?${code}&datv=${hrDatv(input.issuedAt)}&izn=${hrIzn(input.total)}`
+  return `https://porezna.gov.hr/rn?${code}&datv=${hrDatv(input.issuedAt, input.timeZone)}&izn=${hrIzn(input.total)}`
 }
 
 const hrAdapter: FiscalAdapter = {

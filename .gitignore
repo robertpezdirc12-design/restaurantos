@@ -40,7 +40,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
+# LEKCIJA (nadgradnja isto pravilo spodaj, Task 64): ne-ancharan 'local-*' je
+# TIHO pogoltl src/lib/local-time.ts in tests/local-time.test.ts (audit #2,
+# v1.143.0) — datoteka je bila na disku, tests pa so lokalno zeleneli, v git pa
+# ne bi nikoli prišla → CI module-not-found. Sidranje / na koren imenika ohrani
+# namen (lokalni artefakti v korenu) brez požiranja izvorne kode.
+/local-*
 .claude
 .z-ai-config
 *.log

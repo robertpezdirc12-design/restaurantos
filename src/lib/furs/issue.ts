@@ -23,7 +23,7 @@ import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { pushEvent } from '@/lib/push'
 import { OrderError } from '@/lib/ops'
-import { computeBill, earnPointsFor, splitVat, tierForPoints, BillItem } from '@/lib/billing'
+import { computeBill, earnPointsFor, splitVat, tierForPoints, vatBreakdownAfterDiscount, BillItem, VatDiscountLine } from '@/lib/billing'
 import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
 import { maybeNotifyLowStock } from '@/lib/low-stock'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
@@ -33,6 +33,7 @@ import { cisCertFromEnv, signZki, cisInvoice, hrNacinPlac } from '@/lib/cis/clie
 import { auditChainFields, writeAudit } from '@/lib/audit-chain'
 import { approvalAttestationProfile, paymentPolicyError, type PaymentAttestationProfile } from '@/lib/payments-policy'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
+import { isoLocal, localYearMonth } from '@/lib/fiscal-time'
 
 interface PaymentPart {
   type: string
@@ -132,6 +133,10 @@ export async function issueFursReceipt(req: NextRequest) {
     },
     select: { id: true, name: true, type: true, amount: true, happyDays: true, happyFromHour: true, happyToHour: true, targetCategoryIds: true },
   })
+  // audit #1: namenski popust mora znižati DDV osnovo ISTIH kategorij kot znižuje ceno
+  const autoTargets = new Map<string, string[]>(
+    autoCandidates.map((d) => [d.id, (d.targetCategoryIds || '').split(',').map((s) => s.trim()).filter(Boolean)]),
+  )
   const billItems: BillItem[] = orderPre.OrderItem
     .filter((it) => !it.voided)
     .map((it) => ({
@@ -233,9 +238,9 @@ export async function issueFursReceipt(req: NextRequest) {
     }
   }
 
-  const subtotal = checkScope ? checkScope.subtotal : bill.subtotal
-  const totalVat = checkScope ? checkScope.tax : bill.tax
   const total = checkScope ? checkScope.total : bill.totalDue // znesek ZA PLAČANJE (po popustih)
+  // NETO osnova in DDV se ne smeta brati iz predpopustnih vrstic — izpeljeta se iz
+  // iste razčlenitve kot FURS TaxesPerSeller (audit #1, spodaj pri vatMap).
   // Issue #1 (triage ①): napitnina lahko pride direktno s plačilom (body.tip, iz POS dialoga)
   // ali je bila že nastavljena na naročilu (orderPre.tip) — aditivno, nazaj-kompatibilno.
   let tip =
@@ -432,19 +437,25 @@ export async function issueFursReceipt(req: NextRequest) {
   const paymentMethod = parts.length === 0 ? 'loyalty' : parts.length === 1 ? parts[0].type : 'mixed'
   const idemBase = idempotencyKey || ''
 
-  // razčlenitev DDV po stopnjah
-  const vatMap: Record<string, { base: number; vat: number }> = {}
-  // OPS-7: v split načinu DDV razčlenitev SAMO iz postavk izstavka (fiskalna resnica računa)
+  // ── Razčlenitev DDV po stopnjah PO popustih (audit #1, P0) ──
+  // Prej: osnova+DDV iz vrstic PRED popustom, invoiceAmount PA znesek PO popustih →
+  // osnova + DDV ≠ znesek računa in je bil DDV davčno prijavljen previsoko.
+  // OPS-7: v split načinu samo postavke izstavka (fiskalna resnica tega računa).
   const vatSourceItems = checkScope ? checkScope.items : billItems
-  for (const it of vatSourceItems) {
-    const rate = it.vatRate.toFixed(2)
-    // Naloga #6: unitPrice je končna cena → FURS osnova (TaxableAmount) je neto.
-    const base = it.unitPrice * it.quantity - it.vatAmount
-    const vat = it.vatAmount
-    if (!vatMap[rate]) vatMap[rate] = { base: 0, vat: 0 }
-    vatMap[rate].base += base
-    vatMap[rate].vat += vat
-  }
+  const discountLines: VatDiscountLine[] = checkScope
+    ? [{ amount: checkScope.discount, categoryIds: [] }]
+    : [
+        { amount: bill.manualDiscount, categoryIds: [] },
+        // namenski (Happy Hour) popust sme znižati samo tarčne kategorije — sicer bi
+        // 22 % postavka plačala popust 9,5 % artikla
+        ...bill.autoDiscounts.map((ad) => ({
+          amount: ad.amount,
+          categoryIds: autoTargets.get(ad.discountId) || [],
+        })),
+      ]
+  const vatMap = vatBreakdownAfterDiscount(vatSourceItems, discountLines, total)
+  const subtotal = r2(Object.values(vatMap).reduce((s, v) => s + v.base, 0))
+  const totalVat = r2(Object.values(vatMap).reduce((s, v) => s + v.vat, 0))
 
   // zaslužene točke (kanonično pravilo) — samo identified gost + omogočen program
   const earnedPoints = loyaltyAccount && location.loyaltyEnabled
@@ -506,8 +517,9 @@ export async function issueFursReceipt(req: NextRequest) {
 
       const seqFloor = await tx.receipt.count({ where: { locationId: location.id } })
       const seq = await nextSequence(tx, `receipt:${location.id}`, seqFloor + 1)
-      const y = now.getFullYear()
-      const m = now.getMonth() + 1
+      // audit #2: številka računa je po LOKALNEM koledarju lokacije — sicer se
+      // `leto-mesec` iz številke in `IssueDateTime` razideta (nočna izdaja)
+      const { y, m } = localYearMonth(now, location.timezone)
       const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
 
       // Fiskalni adapter po državi lokacije (triage SI/HR fiskalizacija):
@@ -522,6 +534,7 @@ export async function issueFursReceipt(req: NextRequest) {
         premisesId: location.premisesId || 'BLG001',
         total,
         simulation,
+        timeZone: location.timezone,
       })
       let zoi = isHrFiscal ? '' : codes.protective
       const eor = isHrFiscal ? '' : codes.verification
@@ -531,7 +544,14 @@ export async function issueFursReceipt(req: NextRequest) {
       // vedenje (prazne kode → 'pending').
       if (fursProd) {
         zoi = signZoi(
-          { taxId: location.taxId || '', issuedAt: now, receiptNumber, premisesId: location.premisesId || 'BLG001', total },
+          {
+            taxId: location.taxId || '',
+            issuedAt: now,
+            receiptNumber,
+            premisesId: location.premisesId || 'BLG001',
+            total,
+            timeZone: location.timezone,
+          },
           fursProd.cert.keyPem
         )
       }
@@ -549,6 +569,7 @@ export async function issueFursReceipt(req: NextRequest) {
             premisesId: location.premisesId || 'BLG001',
             deviceId: location.registerNumber || '1',
             total,
+            timeZone: location.timezone,
           },
           hrProd.cert.keyPem
         )
@@ -560,8 +581,8 @@ export async function issueFursReceipt(req: NextRequest) {
         ? await tx.check.update({
             where: { id: checkScope.check.id },
             data: {
-              subtotal: checkScope.subtotal,
-              tax: checkScope.tax,
+              subtotal: r2(subtotal),
+              tax: r2(totalVat),
               discount: checkScope.discount,
               appliedDiscountId: bill.autoDiscounts[0]?.discountId || null,
               total: checkScope.total,
@@ -821,7 +842,7 @@ export async function issueFursReceipt(req: NextRequest) {
         const taxNum = parseInt((location.taxId || '').replace(/\D/g, ''), 10)
         const resp = await fursInvoice(fursProd.env, fursProd.cert, {
           taxNumber: taxNum,
-          issueDateTime: now.toISOString().slice(0, 19),
+          issueDateTime: isoLocal(now, location.timezone),
           invoiceNumber: String(Number(receipt.twin.receiptNumber.split('-')[2]) || 0),
           businessPremiseId: location.premisesId || 'BLG001',
           electronicDeviceId: location.registerNumber || 'BLG-001',
@@ -833,6 +854,7 @@ export async function issueFursReceipt(req: NextRequest) {
           operatorTaxNumber: taxNum, // rezidual: ločen OperatorTaxNumber (Location) pride z validacijo testnega okolja
           protectedID: receipt.twin.zoi,
           subsequentSubmit: false,
+          timeZone: location.timezone,
         })
         receipt.twin = await db.receipt.update({
           where: { id: receipt.twin.id },
@@ -888,6 +910,7 @@ export async function issueFursReceipt(req: NextRequest) {
           operatorOib: oibDigits, // rezidual: OIB operaterja (Employee) pride z validacijo testnega okolja
           zki: receipt.twin.cisZki,
           subsequentSubmit: false,
+          timeZone: location.timezone,
         })
         receipt.twin = await db.receipt.update({
           where: { id: receipt.twin.id },
@@ -937,6 +960,7 @@ export async function issueFursReceipt(req: NextRequest) {
       protective: receipt.twin.cisZki || receipt.twin.zoi,
       issuedAt: now,
       total,
+      timeZone: location.timezone,
     })
     return ok({
       invoice: {

@@ -29,6 +29,7 @@ import { sweepTestFixtures } from './helpers/fixture-sweep'
 import { nid, num, r2 } from '@/lib/map'
 import { vatFromGross } from '@/lib/billing'
 import { POST as fursPOST } from '../src/app/api/furs/route'
+import { GET as fursGET } from '../src/app/api/furs/[id]/route'
 import { POST as stornoPOST } from '../src/app/api/receipts/[id]/storno/route'
 import { PATCH as ordersPATCH } from '../src/app/api/orders/[id]/route'
 
@@ -297,6 +298,67 @@ describe('POST /api/furs — veselja pot (plačilo + račun + zaloga + revizija 
     const body = await res.json()
     const now = new Date()
     expect(body.invoice.invoiceNumber).toBe(`${now.getFullYear()}-${now.getMonth() + 1}-${seqBefore + 1}-${PREMISES_A}`)
+  })
+})
+
+describe('POST /api/furs — DDV osnova PO popustih (audit 2026-10 #1, v1.143.0)', () => {
+  /** Poravnava: Σ(osnova + DDV) po stopnjah MORA biti enak znesku računa. */
+  const vbSum = (vb: Record<string, { base: number; vat: number }>) =>
+    Math.round(Object.values(vb).reduce((s, v) => s + v.base + v.vat, 0) * 100) / 100
+
+  test('ročni popust 20,00 € na 120,00 € @22 % → FURS osnova 81,97 € + DDV 18,03 € (ne 98,36 + 21,64)', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 12, unitPrice: 10, vatRate: 22 },
+    ])
+    await db.order.update({ where: { id: order.id }, data: { discount: 20 } })
+    const res = await payA({ orderId: order.id, type: 'cash', amount: 100 })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.invoice.total).toBe(100)
+
+    const row = await db.receipt.findFirst({ where: { orderId: order.id } })
+    const vb = JSON.parse(String(row?.vatBreakdown))
+    expect(vb['22.00']).toEqual({ base: 81.97, vat: 18.03 })
+    expect(vbSum(vb)).toBe(100)
+    // shranjeni povzetek računa se mora izidati z oddanim zneskom (prej osnova+DDV ≠ total)
+    expect(num(row?.subtotal)).toBe(81.97)
+    expect(num(row?.totalVat)).toBe(18.03)
+    expect(r2(num(row?.subtotal) + num(row?.totalVat))).toBe(num(row?.total))
+  })
+
+  test('popust na mešanem računu (22 % + 9,5 %) → obe stopnji sorazmerno znižani, vsota = plačano', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 20, vatRate: 22 },
+      { menuItemId: mi95.id, name: mi95.name, quantity: 1, unitPrice: 20, vatRate: 9.5 },
+    ])
+    await db.order.update({ where: { id: order.id }, data: { discount: 10 } })
+    const res = await payA({ orderId: order.id, type: 'cash', amount: 30 })
+    expect(res.status).toBe(201)
+
+    const row = await db.receipt.findFirst({ where: { orderId: order.id } })
+    const vb = JSON.parse(String(row?.vatBreakdown))
+    expect(vb['22.00']).toEqual({ base: 12.3, vat: 2.7 })
+    expect(vb['9.50']).toEqual({ base: 13.7, vat: 1.3 })
+    expect(vbSum(vb)).toBe(30)
+    expect(num(row?.total)).toBe(30)
+    expect(num(row?.discount)).toBe(10)
+    expect(num(row?.subtotal)).toBe(26)
+    expect(num(row?.totalVat)).toBe(4)
+  })
+
+  test('brez popusta → razčlenitev ostane obstoječa (nazaj-kompatibilnost, 16,39/3,61 + 18,26/1,74)', async () => {
+    const order = await createOrder([
+      { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 20, vatRate: 22 },
+      { menuItemId: mi95.id, name: mi95.name, quantity: 1, unitPrice: 20, vatRate: 9.5 },
+    ])
+    const res = await payA({ orderId: order.id, type: 'cash', amount: 40 })
+    expect(res.status).toBe(201)
+    const row = await db.receipt.findFirst({ where: { orderId: order.id } })
+    const vb = JSON.parse(String(row?.vatBreakdown))
+    expect(vb['22.00']).toEqual({ base: 16.39, vat: 3.61 })
+    expect(vb['9.50']).toEqual({ base: 18.26, vat: 1.74 })
+    expect(num(row?.subtotal)).toBe(34.65)
+    expect(num(row?.totalVat)).toBe(5.35)
   })
 })
 
@@ -624,5 +686,95 @@ describe('POST /api/furs — terminalna stanja: storno/cancelled so KONČNA (Nal
     const body2 = await res2.json()
     expect(body2.replayed).toBe(true)
     expect(body2.invoice.id).toBe(original.id)
+  })
+})
+
+describe('GET /api/furs/[id] — prikaz storno računa (audit 2026-10 #4, v1.143.0)', () => {
+  const fetchReceipt = (id: string) =>
+    fursGET(
+      new NextRequest(`http://localhost/api/furs/${id}`, { headers: { authorization: `Bearer ${tokenA}` } }),
+      { params: Promise.resolve({ id }) },
+    )
+
+  /** Plačanje naročila + fiskalni storno → idja obeh računov. */
+  async function payAndStorno(specs: ItemSpec[], paidAmount: number, discount = 0) {
+    const order = await createOrder(specs)
+    if (discount > 0) await db.order.update({ where: { id: order.id }, data: { discount } })
+    const resPay = await payA({ orderId: order.id, type: 'cash', amount: paidAmount })
+    expect(resPay.status).toBe(201)
+    const originalId = (await resPay.json()).invoice.id
+    const admToken = createToken({ sub: adminA.id, name: adminA.name, role: 'ADMIN', loc: locA.id, sv: 0 })
+    const resS = await stornoPOST(
+      new NextRequest('http://localhost/api/receipts/x/storno', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${admToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason: 'testni storno razlog' }),
+      }),
+      { params: Promise.resolve({ id: originalId }) },
+    )
+    expect(resS.status).toBe(201)
+    const stornoRow = await db.receipt.findFirst({ where: { stornoOf: originalId } })
+    expect(stornoRow).not.toBeNull()
+    return { originalId, stornoId: stornoRow!.id }
+  }
+
+  test('storno: DDV razčlenitev je NEGATIVNA in obstaja (filter `base>0` jo je prej izpraznil)', async () => {
+    const { originalId, stornoId } = await payAndStorno(
+      [{ menuItemId: mi22.id, name: mi22.name, quantity: 12, unitPrice: 10, vatRate: 22 }],
+      100,
+      20,
+    )
+    const o = (await (await fetchReceipt(originalId)).json()).receipt
+    expect(o.total).toBe(100)
+    expect(o.vatBreakdown).toEqual([{ rate: 22, base: 81.97, vat: 18.03 }])
+
+    const s = (await (await fetchReceipt(stornoId)).json()).receipt
+    expect(s.isStorno).toBe(true)
+    expect(s.invoiceNumber).not.toBe(o.invoiceNumber)
+    expect(s.total).toBe(-100)
+    expect(s.subtotal).toBe(-81.97)
+    expect(s.totalVat).toBe(-18.03)
+    expect(s.discount).toBe(-20)
+    // BISTVO #4 — razčlenitev je prisotna in nasprotnega predznaka (ne [] in ne +18.03)
+    expect(s.vatBreakdown).toEqual([{ rate: 22, base: -81.97, vat: -18.03 }])
+    // Σ(osnova + DDV) se mora izidati z negativen zneskom računa
+    expect(r2(s.vatBreakdown.reduce((a: number, x: { base: number; vat: number }) => a + x.base + x.vat, 0))).toBe(-100)
+  })
+
+  test('storno: postavke so negativne (deli si orderId z originalom, ki je pozitiven)', async () => {
+    const { originalId, stornoId } = await payAndStorno(
+      [
+        { menuItemId: mi22.id, name: mi22.name, quantity: 1, unitPrice: 20, vatRate: 22 },
+        { menuItemId: mi95.id, name: mi95.name, quantity: 1, unitPrice: 20, vatRate: 9.5 },
+      ],
+      40,
+    )
+    const o = (await (await fetchReceipt(originalId)).json()).receipt
+    expect(o.items.map((i: { amount: number }) => i.amount)).toEqual([20, 20])
+
+    const s = (await (await fetchReceipt(stornoId)).json()).receipt
+    expect(s.items).toEqual([
+      { name: mi22.name, qty: 1, price: -20, vatRate: 22, vatAmount: -3.61, amount: -20 },
+      { name: mi95.name, qty: 1, price: -20, vatRate: 9.5, vatAmount: -1.74, amount: -20 },
+    ])
+    // predznak se NE sme uporabiti dvakrat: rebuild iz postavk da isto razčlenitev kot shranjena
+    expect(s.vatBreakdown).toEqual([
+      { rate: 22, base: -16.39, vat: -3.61 },
+      { rate: 9.5, base: -18.26, vat: -1.74 },
+    ])
+  })
+
+  test('storno BREZ shranjene razčlenitve → izgradi se iz negativnih postavk, vsota = znesek računa', async () => {
+    const { originalId, stornoId } = await payAndStorno(
+      [{ menuItemId: mi22.id, name: mi22.name, quantity: 3, unitPrice: 10, vatRate: 22 }],
+      30,
+    )
+    // simuliraj račun brez razčlenitve (stari zapisi / ročni popravki) — rebuild mora dati NEGATIVNO osnovo
+    await db.receipt.update({ where: { id: stornoId }, data: { vatBreakdown: '{}' } })
+    const s = (await (await fetchReceipt(stornoId)).json()).receipt
+    expect(s.total).toBe(-30)
+    expect(s.vatBreakdown).toEqual([{ rate: 22, base: -24.59, vat: -5.41 }])
+    expect(r2(s.vatBreakdown[0].base + s.vatBreakdown[0].vat)).toBe(-30)
+    void originalId
   })
 })

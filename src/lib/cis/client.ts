@@ -45,21 +45,21 @@
 import crypto from 'crypto'
 import https from 'https'
 import { loadCertMaterial, type FursCertMaterial } from '@/lib/furs/client'
+import { hrLocalDateTime, hrLocalDateTimeT } from '@/lib/fiscal-time'
 
 export type { FursCertMaterial }
 
 // ── Oblike podatkov (spec v2.7, poglavje 12 + 2.1) ──
 
-/** 'dd.MM.yyyy HH:mm:ss' (presledek!) — ZKI kanonični niz (spec pogl. 12). */
-export function hrZkiDateTime(d: Date): string {
-  const p = (n: number, w = 2) => String(n).padStart(w, '0')
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+/** 'dd.MM.yyyy HH:mm:ss' (presledek!) — ZKI kanonični niz (spec pogl. 12).
+ *  timeZone: lokalni čas izdaje računa (audit 2026-10 #2); izpuščen = sistemski čas. */
+export function hrZkiDateTime(d: Date, timeZone?: string | null): string {
+  return hrLocalDateTime(d, timeZone)
 }
 
 /** 'dd.MM.yyyyTHH:mm:ss' (T!) — Zaglavlje.DatumVrijeme + Racun.DatVrijeme (spec primeri). */
-export function hrMessageDateTime(d: Date): string {
-  const p = (n: number, w = 2) => String(n).padStart(w, '0')
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+export function hrMessageDateTime(d: Date, timeZone?: string | null): string {
+  return hrLocalDateTimeT(d, timeZone)
 }
 
 /** OznNapUr: samo številke 0-9 brez vodilnih ničel (spec) — varni privzetek '1'. */
@@ -88,13 +88,15 @@ export interface HrZkiInput {
   premisesId: string // OznPosPr
   deviceId: string // OznNapUr
   total: number // ukupni iznos (pika kot decimalno ločilo, 2 decalki)
+  /** IANA cona lokacije — DatVrijeme in ZKI morata biti v lokalnem času (audit #2). */
+  timeZone?: string | null
 }
 
 /** Kanonični niz za ZKI (spec v2.7 pogl. 12) — javen, ker ga podpisujemo. */
 export function hrZkiPayload(input: HrZkiInput): string {
   return (
     input.oib +
-    hrZkiDateTime(input.issuedAt) +
+    hrZkiDateTime(input.issuedAt, input.timeZone) +
     input.invoiceNumber +
     input.premisesId +
     input.deviceId +
@@ -148,6 +150,8 @@ export interface HrInvoiceRequest {
   zki: string // ZastKod (32 hex malih)
   subsequentSubmit: boolean // NakDost
   idPoruke?: string // UUID — samodejno, če ni podan
+  /** IANA cona lokacije (audit #2) — velja za DatumVrijeme in DatVrijeme. */
+  timeZone?: string | null
 }
 
 function xmlEscape(s: string): string {
@@ -177,12 +181,12 @@ export function buildRacunZahtjevContent(inv: HrInvoiceRequest): string {
     `<tns:RacunZahtjev Id="RacunZahtjev" xmlns:tns="${NS_TNS}">` +
     `<tns:Zaglavlje>` +
     `<tns:IdPoruke>${xmlEscape(idPoruke)}</tns:IdPoruke>` +
-    `<tns:DatumVrijeme>${xmlEscape(hrMessageDateTime(new Date()))}</tns:DatumVrijeme>` +
+    `<tns:DatumVrijeme>${xmlEscape(hrMessageDateTime(new Date(), inv.timeZone))}</tns:DatumVrijeme>` +
     `</tns:Zaglavlje>` +
     `<tns:Racun>` +
     `<tns:Oib>${xmlEscape(inv.oib)}</tns:Oib>` +
     `<tns:USustPdv>${inv.inVatSystem ? 'true' : 'false'}</tns:USustPdv>` +
-    `<tns:DatVrijeme>${xmlEscape(hrMessageDateTime(inv.issuedAt))}</tns:DatVrijeme>` +
+    `<tns:DatVrijeme>${xmlEscape(hrMessageDateTime(inv.issuedAt, inv.timeZone))}</tns:DatVrijeme>` +
     `<tns:OznSlijed>P</tns:OznSlijed>` +
     `<tns:BrRac>` +
     `<tns:BrOznRac>${xmlEscape(hrInvoiceNumber(inv.invoiceNumber))}</tns:BrOznRac>` +

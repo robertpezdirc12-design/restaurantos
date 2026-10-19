@@ -26,25 +26,33 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     raw = typeof r.vatBreakdown === 'string' ? JSON.parse(r.vatBreakdown) : (r.vatBreakdown ?? {})
   } catch { raw = {} }
 
+  // audit #4: filter je bil `rate > 0 && (base > 0 || vat > 0)` → pobrisal je vse
+  // 0 % stopnje IN celotno negativno razčlenitev storna. Veljaven je vsak znesek,
+  // ki ni ničelen (storno ima namenoma negativno osnovo in DDV).
+  const usable = (x: { rate: number; base: number; vat: number }): boolean =>
+    Number.isFinite(x.rate) && x.rate >= 0 && (x.base !== 0 || x.vat !== 0)
   let breakdown: { rate: number; base: number; vat: number }[] = []
   if (Array.isArray(raw)) {
     breakdown = (raw as Record<string, unknown>[])
       .map((v) => ({ rate: Number(v?.rate ?? 0), base: num(v?.base), vat: num(v?.vat) }))
-      .filter((x) => Number.isFinite(x.rate) && x.rate > 0 && (x.base > 0 || x.vat > 0))
+      .filter(usable)
   } else if (raw && typeof raw === 'object') {
     breakdown = Object.entries(raw as Record<string, unknown>).map(([rate, v]) => {
       const o = v as { base?: unknown; vat?: unknown } | null
       return { rate: Number(rate), base: num(o?.base), vat: num(o?.vat) }
-    }).filter((x) => Number.isFinite(x.rate) && x.rate > 0 && (x.base > 0 || x.vat > 0))
+    }).filter(usable)
   }
 
+  // storno si deli orderId z originalom → postavke so POZITIVNE, dokument negativen.
+  // Predznak dokumenta je edini vir resnice za rebuild in za izpis vrstic.
+  const sign = r.isStorno || num(r.total) < 0 ? -1 : 1
   const items = (r.Order?.OrderItem ?? []).filter((i) => !i.voided).map((i) => ({
     name: i.menuItemName || 'Artikel',
     qty: i.quantity || 1,
-    price: num(i.price),
+    price: num(i.price) * sign,
     vatRate: num(i.vatRate, 22),
-    vatAmount: num(i.vatAmount),
-    amount: num(i.price) * (i.quantity || 1),
+    vatAmount: num(i.vatAmount) * sign,
+    amount: num(i.price) * (i.quantity || 1) * sign,
   }))
 
   if (breakdown.length === 0 && items.length > 0) {
@@ -52,7 +60,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     for (const it of items) {
       const key = it.vatRate.toFixed(2)
       const cur = m.get(key) || { rate: it.vatRate, base: 0, vat: 0 }
-      const vat = it.vatAmount > 0 ? it.vatAmount : vatFromGross(it.amount, it.vatRate)
+      // ze negirani `it.*` (zgoraj) → predznaka ne smemo uporabiti dvakrat
+      const derivedVat = sign > 0 ? vatFromGross(it.amount, it.vatRate) : -vatFromGross(-it.amount, it.vatRate)
+      const vat = Math.abs(it.vatAmount) > 0 ? it.vatAmount : derivedVat
       cur.base += it.amount - vat
       cur.vat += vat
       m.set(key, cur)
@@ -85,6 +95,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         protective: r.cisZki || '',
         issuedAt: r.createdAt,
         total: num(r.totalWithTip) > 0 ? num(r.totalWithTip) : num(r.total),
+        timeZone: r.Location?.timezone,
       }) || undefined
     })(),
   }})

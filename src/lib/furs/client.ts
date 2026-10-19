@@ -20,6 +20,7 @@ import crypto from 'crypto'
 import https from 'https'
 import forge from 'node-forge'
 import { siZoiPayload, type SiFiscalInput } from '@/lib/fiscal'
+import { isoLocal } from '@/lib/fiscal-time'
 
 // ── Certifikat (P12 → PEM) ──
 
@@ -138,6 +139,8 @@ export interface FursInvoiceRequest {
   operatorTaxNumber: number
   protectedID: string // ZOI (produkcija: podpis; test: simulacija)
   subsequentSubmit: boolean
+  /** IANA cona lokacije (audit 2026-10 #2) — `<fu:DateTime>` zaglavlja je lokalni čas. */
+  timeZone?: string | null
 }
 
 export function buildInvoiceRequestXml(inv: FursInvoiceRequest): string {
@@ -151,7 +154,7 @@ export function buildInvoiceRequestXml(inv: FursInvoiceRequest): string {
   return (
     `<InvoiceRequest xmlns="${NS_FU}" Id="data">` +
     `<fu:Header><fu:MessageID>${crypto.randomUUID().toUpperCase()}</fu:MessageID>` +
-    `<fu:DateTime>${new Date().toISOString().slice(0, 19)}</fu:DateTime></fu:Header>` +
+    `<fu:DateTime>${isoLocal(new Date(), inv.timeZone)}</fu:DateTime></fu:Header>` +
     `<fu:Invoice>` +
     `<fu:TaxNumber>${inv.taxNumber}</fu:TaxNumber>` +
     `<fu:IssueDateTime>${xmlEscape(inv.issueDateTime)}</fu:IssueDateTime>` +

@@ -222,6 +222,124 @@ export function earnPointsFor(totalDue: number, pointsPerEuro: number): number {
   return Math.floor(Math.max(0, totalDue) * pointsPerEuro)
 }
 
+/** Popustna vrstica za DDV razčlenitev: znesek in namenske kategorije (prazno = ves račun). */
+export interface VatDiscountLine {
+  amount: number
+  categoryIds: string[]
+}
+
+interface RateBucket {
+  rate: number
+  gross: number
+  byCat: Map<string, number>
+  alloc: number
+}
+
+/**
+ * DDV razčlenitev PO popustih — edini vir za `TaxesPerSeller` na FURS in za
+ * `Receipt.vatBreakdown` (audit #1, v1.143.0).
+ *
+ * ZDDV-1 24. člen: popust zniži davčno osnovo na isti stopnji kot je postavka,
+ * na katero se nanaša. Ker so cene v bazi KONČNE (bruto), mora pot biti:
+ *   bruto osnova po stopnjah → razdelitev popusta po stopnjah → iz znižane
+ *   bruto osnove se izvleče DDV. Prejšnja različica je DDV izvlekla iz
+ *   osnove PRED popustom, na FURS pa je poslala znesek PO popustu, zato
+ *   osnova + DDV ≠ znesek računa in je bil DDV javljen previsoko.
+ *
+ * Nevarnost pri razdelitvi: namenski popust (targetCategoryIds) sme znižati
+ * SAMO tarčne stopnje, sicer bi 22 % postavka plačala popust 9,5 % artikla.
+ * Vsota razdeljenega popusta je vedno enaka dejansko uporabljenemu popustu
+ * (`grossSum - total`), zato velja Σ(osnova + DDV) === total cent na cent.
+ */
+export function vatBreakdownAfterDiscount(
+  items: BillItem[],
+  discountLines: VatDiscountLine[],
+  total: number,
+): Record<string, { base: number; vat: number }> {
+  const buckets: RateBucket[] = []
+  const index = new Map<string, number>()
+  let grossSum = 0
+  for (const it of items) {
+    if (it.voided) continue
+    const lineGross = r2(Math.max(0, finite(it.unitPrice) * finite(it.quantity)))
+    if (lineGross <= 0) continue
+    const rate = finite(it.vatRate)
+    const key = rate.toFixed(2)
+    let i = index.get(key)
+    if (i === undefined) {
+      i = buckets.length
+      index.set(key, i)
+      buckets.push({ rate, gross: 0, byCat: new Map(), alloc: 0 })
+    }
+    const b = buckets[i]
+    b.gross = r2(b.gross + lineGross)
+    if (it.categoryId) b.byCat.set(it.categoryId, r2((b.byCat.get(it.categoryId) || 0) + lineGross))
+    grossSum = r2(grossSum + lineGross)
+  }
+  if (buckets.length === 0) return {}
+
+  const head = (b: RateBucket) => r2(b.gross - b.alloc)
+  /** Razdeli `amount` po `weights`, nikoli čez rezervi posamezne stopnje. */
+  function spread(amount: number, weights: number[]): void {
+    let remaining = r2(amount)
+    const positive = weights.map((w) => Math.max(0, w))
+    let wSum = positive.reduce((s, w) => s + w, 0)
+    if (wSum <= 0) {
+      const fallback = buckets.map((b) => b.gross)
+      positive.forEach((_, i) => (positive[i] = fallback[i]))
+      wSum = positive.reduce((s, w) => s + w, 0)
+      if (wSum <= 0) return
+    }
+    for (let i = 0; i < buckets.length && remaining > 0; i++) {
+      const take = Math.min(r2((amount * positive[i]) / wSum), head(buckets[i]))
+      if (take <= 0) continue
+      buckets[i].alloc = r2(buckets[i].alloc + take)
+      remaining = r2(remaining - take)
+    }
+    // ostanski centi (zaokroževanje deležev ali zablokirana stopnja) po padajoči rezervi
+    if (remaining > 0) {
+      const order = buckets.map((b, i) => i).sort((x, y) => head(buckets[y]) - head(buckets[x]))
+      for (const i of order) {
+        if (remaining <= 0) break
+        const take = Math.min(remaining, head(buckets[i]))
+        buckets[i].alloc = r2(buckets[i].alloc + take)
+        remaining = r2(remaining - take)
+      }
+    }
+  }
+
+  // dejansko uporabljen popust (computeBill ga omeji na grossTotal) — vrstice se
+  // skalirajo, da njihova vsota nima nikoli odstopanja od tega
+  const discountApplied = r2(Math.max(0, Math.min(grossSum, grossSum - finite(total))))
+  const linesSum = r2(discountLines.reduce((s, d) => s + Math.max(0, finite(d.amount)), 0))
+  const scale = linesSum > 0 ? discountApplied / linesSum : 0
+  if (discountApplied > 0 && linesSum > 0) {
+    for (const line of discountLines) {
+      const amount = r2(Math.max(0, finite(line.amount)) * scale)
+      if (amount <= 0) continue
+      const weights = line.categoryIds.length
+        ? buckets.map((b) => {
+            let v = 0
+            for (const c of line.categoryIds) v += b.byCat.get(c) || 0
+            return r2(Math.min(v, b.gross))
+          })
+        : buckets.map((b) => b.gross)
+      spread(amount, weights)
+    }
+  }
+  // popust brez vrstice (ali preostanek po skaliranju) — sorazmerno po vseh stopnjah
+  const residual = r2(discountApplied - buckets.reduce((s, b) => s + b.alloc, 0))
+  if (residual > 0) spread(residual, buckets.map((b) => b.gross))
+
+  const out: Record<string, { base: number; vat: number }> = {}
+  for (const b of buckets) {
+    const reduced = r2(Math.max(0, b.gross - b.alloc))
+    const base = netFromGross(reduced, b.rate)
+    out[b.rate.toFixed(2)] = { base, vat: r2(reduced - base) }
+  }
+  return out
+}
+
 /** Tier po dosedanjih točkah (kanonično pravilo, usklajeno z /api/loyalty). */
 export function tierForPoints(lifetimePoints: number): string {
   return lifetimePoints >= 1000 ? 'platinum' : lifetimePoints >= 500 ? 'gold' : lifetimePoints >= 100 ? 'silver' : 'bronze'
