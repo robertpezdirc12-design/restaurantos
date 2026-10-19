@@ -17,10 +17,10 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource, isCrossTenantLocations, isBootstrapAdmin } from '@/lib/tenant'
-import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } from '@/lib/map'
+import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB } from '@/lib/map'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { publishEvent } from '@/lib/events'
-import { OrderError } from '@/lib/ops'
+import { OrderError, ORDER_PAYABLE_STATUS, ORDER_MUTABLE_PAYMENT } from '@/lib/ops'
 import { computeBill, earnPointsFor, splitVat, tierForPoints, vatBreakdownAfterDiscount, BillItem, VatDiscountLine } from '@/lib/billing'
 import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
 import { maybeNotifyLowStock } from '@/lib/low-stock'
@@ -66,7 +66,7 @@ export async function issueFursReceipt(req: NextRequest) {
   // in izdati račun pod tujim taxId/premisesId)
   const payGuard = await guardResource(user, orderPre.locationId)
   if (payGuard) return payGuard
-  if (!ORDER_ACTIVE_DB.includes(orderPre.status) && orderPre.status !== 'paid') {
+  if (!(ORDER_PAYABLE_STATUS as readonly string[]).includes(orderPre.status)) {
     return fail('Naročilo ni v plačljivem stanju.', 409)
   }
   // Naloga 37: terminalna stanja so KONČNA — plačilo/fakturacija ni več mogoča.
@@ -492,13 +492,36 @@ export async function issueFursReceipt(req: NextRequest) {
           throw new OrderError('Izstavek je že plačan (brez računa).', 409)
         }
       } else {
-        // CAS zaščita (Naloga 37: eksplicitna bela lista plačljivih stanj — fail-closed
-        // tudi ob prihodnjih novih terminalnih vrednostih enuma) → dvojni klic izgubi dirko
+        /* CAS zaščita (Naloga 37: eksplicitna bela lista plačljivih stanj — fail-closed
+         * tudi ob prihodnjih novih terminalnih vrednostih enuma) → dvojni klic izgubi dirko.
+         * v1.148.0 (najdba iz `order-concurrency` F): pogoj je bil doslej SAMO
+         * plačilni stanji. Združevanje (merge) in ročni preklic pustita na
+         * VIRU `paymentStatus` nespremenjenega ('unpaid' — zgodovina plačil se
+         * ne izganja), spremenita pa `status` v 'cancelled'. Plačilna pot, ki
+         * je naročilo prebrala PRED tem zapisom, je torej dirko dobila kljub
+         * že združenem viru: `status: 'paid'` + FISKALIZIRAN račun na
+         * naročilu, ki ga ni več (dvojna prodaja: ciljno naročilo nespremenjeno
+         * odnese postavke). Zato se ta lista zdaj uporabi OB ZAPISU — ista
+         * disciplina kot claimMutableOrder pri stanjskih poteh (v1.145.0). */
         const cas = await tx.order.updateMany({
-          where: { id: orderPre.id, paymentStatus: { in: ['unpaid', 'partial'] } },
+          where: {
+            id: orderPre.id,
+            status: { in: [...ORDER_PAYABLE_STATUS] },
+            paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] },
+          },
           data: { status: 'paid', paymentStatus: 'paid', paidAt: now, paymentMethod },
         })
         if (cas.count === 0) {
+          // razloček izgubljene dirke: TERMINALNO naročilo (preklic/združevanje/
+          // storno) ni enako "že plačano" — prvo mora ostati brez računa in
+          // brez idempotentnega dvajinga tuje seje
+          const cur = await tx.order.findUnique({
+            where: { id: orderPre.id },
+            select: { status: true },
+          })
+          if (cur && !(ORDER_PAYABLE_STATUS as readonly string[]).includes(cur.status)) {
+            throw new OrderError('Naročilo je medtem zaključeno (preklicano ali združeno) — plačilo ni mogoče.', 409)
+          }
           // drug klic je že plačal → vrni njegov račun (idempotentno)
           // Naloga 37: SAMO original (isStorno=false) — storno negacija ni "plačilni" račun
           const twin = await tx.receipt.findFirst({
@@ -701,19 +724,33 @@ export async function issueFursReceipt(req: NextRequest) {
       if (checkScope) {
         const unpaidLeft = await tx.check.count({ where: { orderId: orderPre.id, paymentStatus: { not: 'paid' } } })
         if (unpaidLeft === 0) {
-          await tx.order.update({
-            where: { id: orderPre.id },
+          // v1.148.0 (ista najdba kot zgoraj): v check načinu CAS teče na
+          // CHECK, zapis NAROČILA pa je bil brezpogojen — preklic vira med
+          // plačevanjem izstavkov je torej lahko rodil 'paid' naročilo z
+          // fiskaliziranim računom. Pogoj je isti seznam plačljivih stanj.
+          const settled = await tx.order.updateMany({
+            where: {
+              id: orderPre.id,
+              status: { in: [...ORDER_PAYABLE_STATUS] },
+              paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] },
+            },
             data: { status: 'paid', paymentStatus: 'paid', paidAt: now, paymentMethod },
           })
+          if (settled.count === 0) {
+            throw new OrderError('Naročilo je medtem zaključeno (preklicano ali združeno) — plačilo ni mogoče.', 409)
+          }
           if (orderPre.tableId) {
             await tx.table.update({ where: { id: orderPre.tableId }, data: { status: 'cleaning' } })
           }
         } else {
           // ostali izstavki še odprti → naročilo 'partial' (ne 'paid'), miza ostane zasedena
-          await tx.order.update({
-            where: { id: orderPre.id },
+          const partial = await tx.order.updateMany({
+            where: { id: orderPre.id, status: { in: [...ORDER_PAYABLE_STATUS] } },
             data: { paymentStatus: 'partial' },
           })
+          if (partial.count === 0) {
+            throw new OrderError('Naročilo je medtem zaključeno (preklicano ali združeno) — plačilo ni mogoče.', 409)
+          }
         }
       } else {
         if (orderPre.tableId) {

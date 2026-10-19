@@ -54,8 +54,14 @@ bun run dev                 # http://localhost:3000
 ```bash
 bun run typecheck           # tsc --noEmit
 bun run lint                # eslint
-bun test                    # cel testni suite na sveži SQLite
+bun run test                # cel testni suite na sveži SQLite (--timeout 20000)
 ```
+
+`bun run test` in ne `bun test`: privzeti 5 s proračun na klic je premalo za
+`beforeAll`/`afterAll` hooke, ker ~135 testnih datotek čisti svoje fiksature
+prek ENega SQLite dokumenata in sočasnost (20 datotek) vsak DELETE postavi v
+vrsto za zapis. Proračun je zato en sam vir v `package.json`, CI (GitHub in
+GitLab) pa uporabita isti ukaz (v1.148.0).
 
 Disciplina pusha: lokalno zeleno (tsc + lint + testi) → push → CI potrdi na čistem okolju.
 

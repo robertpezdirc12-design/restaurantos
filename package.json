@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
-    "test": "bun test",
+    "test": "bun test --timeout 20000",
     "typecheck": "tsc --noEmit",
     "db:push": "prisma db push --schema prisma/schema.sqlite.prisma --accept-data-loss",
     "db:generate": "prisma generate --schema prisma/schema.sqlite.prisma",

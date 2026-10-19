@@ -31,6 +31,7 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 |---|---|
 | `/api/health` | samo status/version/baza — brez PII |
 | `/api/auth/login` | email+PIN (scrypt + `pinLookup` HMAC); MFA druga stopnja; bootstrap break-glass prek env |
+| `/api/auth/demo-login` | Razvozna vrata brez gesla (izrecna lastnikova zahteva): POST prijavi NAJSTAREJŠI aktivni vodstveni račun BREZ MFA (rate limit 10/min po IP, vsak vstop zapiše audit `DEMO_LOGIN`, MFA-zavarovan račun nikoli ni izbran). **Zapora (v1.148.0, audit #7)**: `DEMO_LOGIN_ENABLED=0` zapre takoj, `DEMO_LOGIN_EXPIRES_AT=<ISO>` zapre po roku — neveljaven datum zapre (fail-closed); GET na isti poti vrne SAMO stanje vrat (`enabled`/`code`/`expiresAt`, brez imen, e-pošt in ID-jev) + `Cache-Control: no-store`, da prijavni zaslon gumb skrije in ne obeta nečesa, kar je zaprto. Pred javno objavo: nastaviti rok ali zapreti. |
 | `/api/auth/locations` | samo id/name aktivnih lokacij za izbiro prijave; rate limit 30/min po IP + `Cache-Control: no-store` (v1.147.0, audit #9 — kopija imenika ne sme ostati v brskalniku/CDN/proxy-ju) |
 | `/api/public/menu` | samo javni meni lokacije (iz qrToken/device) |
 | `/api/public/orders` | lokacija+miza rešeni SERVER-SIDE; cene iz DB; idempotencija; rate limit 10/min; audit `GUEST_ORDER_CREATED` |

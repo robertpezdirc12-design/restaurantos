@@ -10,6 +10,7 @@ import { guardResource } from '@/lib/tenant'
 import { db } from '@/lib/db'
 import { nid, jstr, mapOrder, mapDeliveryInfo, mapDeliveryZone, ORDER_ACTIVE_DB, DELIVERY_STATUS_DB, deliveryStatusToDB } from '@/lib/map'
 import { maskPhone } from '@/lib/delivery'
+import { claimMutableOrder } from '@/lib/ops'
 import { pushEvent } from '@/lib/push'
 import { writeAudit } from '@/lib/audit-chain'
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,13 @@ const TRANSITIONS: Record<string, string[]> = {
   delivered: [],
   cancelled: [],
 }
+
+/**
+ * v1.148.0 (audit #10 razred): izguba dirke okoli preklica naročila. Razred se
+ * VRŽE ZNOTRAJ $transaction, da rollback razveljavi že zapisan dostavni status in
+ * tracking; zunanji rok ga pretvori v 409 (isti vzorec kot move/merge ruta).
+ */
+class DeliveryRejected extends Error {}
 
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'delivery.manage')
@@ -130,7 +138,7 @@ export async function PATCH(req: NextRequest) {
     return fail(`Nedovoljena tranzicija: ${current} → ${status}.`, 400)
   }
 
-  const t = await db.$transaction(async (tx) => {
+  const settled = await db.$transaction(async (tx) => {
     const di = await tx.deliveryInfo.update({
       where: { id: order.DeliveryInfo!.id },
       data: {
@@ -172,10 +180,18 @@ export async function PATCH(req: NextRequest) {
     }
     // Preklic dostave → tudi naročilo (isti kanonični tok)
     if (status === 'cancelled') {
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: 'cancelled', cancelReason: body.note || 'Preklic dostave', cancelledAt: new Date() },
-      })
+      // v1.148.0 (isti razred napak kot audit #10/#12): zapis je bil prej
+      // BREZPOGOJEN, prebrano stanje naročila pa sploh ni bilo overjeno. Posledica:
+      // dostavni statusni tok je lahko PREKLICAL ŽE PLAČANO naročilo — EOR račun je
+      // ostal sicer fiskaliziran, a na 'cancelled' naročilu (fiskalno neskladje, ki
+      // ga mora lastnik ročno raziskati pri FURS), plačilno stanje 'paid' pa je
+      // ostalo zapisano na preklicanem dokumentu.
+      const claim = await claimMutableOrder(tx, order.id, {
+        status: 'cancelled', cancelReason: body.note || 'Preklic dostave', cancelledAt: new Date(),
+      }, order)
+      // Izguba dirke: napaka se vrže ZNOTRAJ $transaction, da rollback razveljavi
+      // že zapisan dostavni status in tracking (isti vzorec kot MergeRejected).
+      if (!claim.ok) throw new DeliveryRejected('Naročilo je medtem zaključeno (plačano ali preklicano) — preklic dostave ni mogoč.')
     }
     if (status === 'delivered') {
       // Dostavljeno in še neplačano → označi plačilo po obroku (fizično plačilo pri prevzemu)
@@ -186,6 +202,10 @@ export async function PATCH(req: NextRequest) {
     }
     return di
   })
+    .then((di) => ({ di } as const))
+    .catch((e: unknown) => (e instanceof DeliveryRejected ? { err: e.message } : Promise.reject(e)))
+  if ('err' in settled) return fail(settled.err, 409)
+  const t = settled.di
 
   await writeAudit(db, { userId: user.sub, action: 'DELIVERY_STATUS_UPDATE', entityType: 'DeliveryInfo', entityId: t.id, details: jstr({
         orderId: order.id, orderNumber: order.orderNumber,

@@ -188,7 +188,11 @@ jobs:
         run: bun run lint
 
       - name: Full test suite
-        run: bun test
+        # `bun run test` (ne `bun test`): proračun za hook je EN sam vir v
+        # package.json — 135 datotek čisti svoje fiksature prek enega SQLite
+        # dokumenata, zato so pred/all hooki pod sočasnostjo daljši od
+        # privzetih 5 s (v1.148.0, lekcija issue14 afterAll).
+        run: bun run test
 
       - name: Secrets hygiene
         run: bash scripts/check-secrets.sh

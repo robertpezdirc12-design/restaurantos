@@ -14,6 +14,7 @@ import {
   type ReasonEvidence,
   type ApprovalEvidence,
 } from '@/lib/exception-approval'
+import { ORDER_MUTABLE_PAYMENT, ORDER_MUTABLE_STATUS } from '@/lib/ops'
 
 /**
  * Issue #1 §6 — ročni popust na naročilo (check-level).
@@ -62,8 +63,10 @@ import {
  * dokumentirani privzetek za nazajkompatibilnost. */
 export const DISCOUNT_APPROVAL_PERCENT = 15
 
-/** Issue #45: plačljiva stanja naročila za spremembo ročnega popusta (CAS v samem update-u). */
-const PAYABLE: ('unpaid' | 'partial')[] = ['unpaid', 'partial']
+/** Issue #45: plačljiva stanja naročila za spremembo ročnega popusta (CAS v samem update-u).
+ * v1.148.0: SEZNAM NI VEČ KOPIJA — uvožen iz `src/lib/ops.ts`, da je to tisti isti
+ * niz, ki ga uporabljata preklic in plačilna pot (addItems ga je prevzel že v #48). */
+const PAYABLE = ORDER_MUTABLE_PAYMENT
 
 /** Interni reject (#45) — znotraj $transaction povzroči ROLLBACK (naročilo + kvota). */
 class DiscountApplyError extends Error {
@@ -188,10 +191,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (bump.count === 0) throw new DiscountApplyError(409, 'Popust je dosegel omejitev uporabe.')
       }
       // 2) naročilo (#45): CAS na plačljivo stanje + dosedanjo vrednost popusta —
-      //    plačilo/storno/preklic ali konkurenčna pripenjanje med branjem → 409,
-      //    kvota se povrne (rollback transakcije)
+      //    plačilo/storno/preklic ali konkurenčno pripenjanje med branjem → 409,
+      //    kvota se povrne (rollback transakcije).
+      //    v1.148.0: pogoj ima tudi `status`, ker samo plačilno stanje NE vidi
+      //    združitve in preklica, ki na viru PUSTITA paymentStatus 'unpaid' —
+      //    ročni popust se je zato lahko pripel naročilu, ki ga v toku ni več.
       const upd = await tx.order.updateMany({
-        where: { id, paymentStatus: { in: PAYABLE }, discount: previousDiscount },
+        where: { id, status: { in: [...ORDER_MUTABLE_STATUS] }, paymentStatus: { in: [...PAYABLE] }, discount: previousDiscount },
         data: { discount: amount },
       })
       if (upd.count === 0) {
@@ -248,9 +254,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     await db.$transaction(async (tx) => {
       // (#45) CAS v SAMEM update-u: plačljivo stanje + dosedanja vrednost —
-      // prej: preverba pred ločenim update-om (plačilo medtem bi tiho prepisalo)
+      // prej: preverba pred ločenim update-om (plačilo medtem bi tiho prepisalo).
+      // v1.148.0: tudi tu `status`, da odstranitev popusta ne zadenje združenega
+      // ali preklicanega naročila (na viru ostane paymentStatus 'unpaid').
       const upd = await tx.order.updateMany({
-        where: { id, paymentStatus: { in: PAYABLE }, discount: previous },
+        where: { id, status: { in: [...ORDER_MUTABLE_STATUS] }, paymentStatus: { in: [...PAYABLE] }, discount: previous },
         data: { discount: 0 },
       })
       if (upd.count === 0) {

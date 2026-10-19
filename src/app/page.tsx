@@ -52,6 +52,11 @@ function LoginPageInner() {
   const [provToken, setProvToken] = useState('')
   const [provName, setProvName] = useState('')
   const [provError, setProvError] = useState('')
+  // Issue #7 (v1.148.0): demo vrata se lahko zaprejo z env (DEMO_LOGIN_ENABLED=0
+  // ali potekel DEMO_LOGIN_EXPIRES_AT). Stanje se prebere z GET-om, da gumb ne
+  // obeta nečesa, kar je zaprto. Privzeto ODPRT: če stanja ni mogoče prebrati
+  // (izpad omrežja), se vedenje ne sme razlikovati od dosedanjega.
+  const [demoOpen, setDemoOpen] = useState(true)
 
   useEffect(() => {
     const token = localStorage.getItem('ro_token')
@@ -64,6 +69,11 @@ function LoginPageInner() {
       .then((d) => setLocations(d.locations || []))
       .catch(() => setLocations([]))
       .finally(() => setChecking(false))
+    // Issue #7: stanje demo vrat (samo boolean + morebiten rok, brez računov)
+    fetch('/api/auth/demo-login')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && typeof d.enabled === 'boolean') setDemoOpen(d.enabled) })
+      .catch(() => setDemoOpen(true))
   }, [router])
 
   async function claimDevice() {
@@ -376,17 +386,22 @@ function LoginPageInner() {
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('login.submit')}
                 </Button>
                 {/* DEMO VSTOP BREZ GESLA — zahteva lastnika (16. 10. 2026), za čas dela.
-                    Strežnik sam izbere vodstveni račun brez MFA; vsak vstop se zapiše v audit (DEMO_LOGIN). */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={demoBusy || loading}
-                  onClick={demoLogin}
-                  className="w-full h-11 mt-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-                >
-                  {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-4 h-4 mr-1.5" aria-hidden />{t('login.demoBtn')}</>}
-                </Button>
-                <p className="text-xs text-stone-400 text-center">{t('login.demoHint')}</p>
+                    Strežnik sam izbere vodstveni račun brez MFA; vsak vstop se zapiše v audit (DEMO_LOGIN).
+                    Issue #7: skrit, ko je strežnik vrata zaprl (DEMO_LOGIN_ENABLED=0 / potekel rok). */}
+                {demoOpen && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={demoBusy || loading}
+                      onClick={demoLogin}
+                      className="w-full h-11 mt-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                    >
+                      {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-4 h-4 mr-1.5" aria-hidden />{t('login.demoBtn')}</>}
+                    </Button>
+                    <p className="text-xs text-stone-400 text-center">{t('login.demoHint')}</p>
+                  </>
+                )}
               </form>
             </CardContent>
           </Card>

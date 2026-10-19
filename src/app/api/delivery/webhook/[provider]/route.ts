@@ -16,7 +16,7 @@ import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
 import { db } from '@/lib/db'
 import { nid, jstr, num } from '@/lib/map'
-import { createOrderCore, OrderError } from '@/lib/ops'
+import { createOrderCore, OrderError, claimMutableOrder } from '@/lib/ops'
 import {
   rateLimit, verifyWebhookSignature, getPlatformSecret, maskPhone,
   mapGlovoPayload, mapWoltPayload, validateMapped, webhookIdempotencyKey,
@@ -145,13 +145,34 @@ export async function POST(
           await logIntegration(p, integrationId, 'order.cancelled', 'error', 403, 'Preklic zavrnjen — naročilo pripada drugi lokaciji.', Date.now() - t0, { platformOrderId: mapped.platformOrderId })
           return fail('Preklic zavrnjen — naročilo pripada drugi lokaciji.', 403)
         }
-        await db.order.update({ where: { id: existing.id }, data: { status: 'cancelled', cancelReason: `Preklic prek ${p} webhooka` } })
+        // v1.148.0 (isti razred napak kot audit #10/#12): `status !== 'paid'` je
+        // bil prebran ZUNAJ, zapis pa brezpogojen → plačilo, ki je commitnilo med
+        // branjem in updateom, je dobilo 'cancelled' naročilo z EOR računom. Claim
+        // ovrednoti stanje OB ZAPISU (isti beli seznam kot kanonični preklic).
+        const claim = await claimMutableOrder(db, existing.id, {
+          status: 'cancelled', cancelReason: `Preklic prek ${p} webhooka`, cancelledAt: new Date(),
+        })
+        if (!claim.ok) {
+          // ŽE zaključeno (plačano/preklicano) ali spremenjeno po branju: webhook je
+          // idempotentno IGNORIRAN (2xx, da ponudnik ne obuja), dostavni status in
+          // revizijski zapis preklica pa ostaneta nedotaknjena.
+          await logIntegration(p, integrationId, 'webhook', 'success', 200, '', Date.now() - t0, {
+            note: 'cancel ignoriran — naročilo je medtem zaključeno', platformOrderId: mapped.platformOrderId,
+          })
+          return ok({ received: true, ignored: true })
+        }
         await db.deliveryInfo.updateMany({ where: { Order: { id: existing.id } }, data: { status: 'cancelled' } })
         await writeAudit('system', 'DELIVERY_ORDER_CANCELLED', 'Order', existing.id, { provider: p })
         await logIntegration(p, integrationId, 'order.cancelled', 'success', 200, '', Date.now() - t0, { platformOrderId: mapped.platformOrderId })
         return ok({ received: true, cancelled: true })
       }
-      await logIntegration(p, integrationId, 'webhook', 'success', 200, '', Date.now() - t0, { note: 'cancel brez obstoječega naročila' })
+      // Dnevnik napak razlikuje OBE ignorirani poti: »brez naročila« je lahko tudi
+      // zamujen create, »že plačano« pa je finančni podatek, ki ga mora operater
+      // videti (platforma je preklicala plačan order — to je izjema, ne šum).
+      await logIntegration(p, integrationId, 'webhook', 'success', 200, '', Date.now() - t0, {
+        note: existing ? 'cancel ignoriran — naročilo je že plačano' : 'cancel brez obstoječega naročila',
+        platformOrderId: mapped.platformOrderId,
+      })
       return ok({ received: true, ignored: true })
     }
 

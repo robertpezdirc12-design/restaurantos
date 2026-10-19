@@ -25,7 +25,62 @@ import { describeDbError, logDbError } from '@/lib/db-error'
  *
  * To je izrecna zahteva lastnika za obdobje razvoja demo aplikacije. Ko bo
  * delo zaključeno, gumb in to rut(o) enostavno odstranimo.
+ *
+ * Issue #7 (v1.148.0): vrata so bila doslej odprta PO PRIVZETI in brez roka —
+ * edini mehanizem za zaprtje je bilo ročno odstranjanje kode, v produkciji pa je
+ * anonimen klic dobil POLNO lastnikovo sejo. Zdaj imajo vrata tri zavore, vse
+ * nastavljene z env spremenljivkami; nobena ne prekine obstoječega delovnega
+ * toka, dokler lastnik zavor sam ne nastavi:
+ *  - `DEMO_LOGIN_ENABLED=0` (0/false/no/off) — zapre vrata takoj,
+ *  - `DEMO_LOGIN_EXPIRES_AT=<ISO datum>` — zapre po roku; neveljaven zapis
+ *    zapre (fail-closed), ker »nikoli ne poteče« ne sme biti posledica
+ *    tipkarske napake,
+ *  - `GET` na isti poti vrne SAMO stanje vrat (brez imen, e-pošt in računov), da
+ *    prijavni zaslon gumb skrije in ne obeta nekaj, kar je zaprto.
+ * Brez nastavljenega roka vrata ostanejo odprta — to je sedanja lastnikova
+ * odločitev — vsak vstop pa se zabeleži z opombo o (ne)omejenosti.
  */
+
+const DISABLED_VALUES = ['0', 'false', 'no', 'off']
+
+type DemoGate =
+  | { open: true; expiresAt: Date | null }
+  | { open: false; code: 'DEMO_LOGIN_DISABLED' | 'DEMO_LOGIN_EXPIRED' | 'DEMO_LOGIN_CONFIG_INVALID'; error: string }
+
+/**
+ * Stanje demo vrat. `now` je parameter samo zato, da je potek testen brez
+ * pomikanja sistemskih ur.
+ */
+export function demoGate(now = new Date()): DemoGate {
+  const enabled = String(process.env.DEMO_LOGIN_ENABLED || '').trim().toLowerCase()
+  if (DISABLED_VALUES.includes(enabled)) {
+    return { open: false, code: 'DEMO_LOGIN_DISABLED', error: 'Demo prijava je izklopljena (DEMO_LOGIN_ENABLED).' }
+  }
+  const raw = String(process.env.DEMO_LOGIN_EXPIRES_AT || '').trim()
+  if (!raw) return { open: true, expiresAt: null }
+  const expiresAt = new Date(raw)
+  if (Number.isNaN(expiresAt.getTime())) {
+    return { open: false, code: 'DEMO_LOGIN_CONFIG_INVALID', error: 'Demo prijava je onemogočena — neveljaven DEMO_LOGIN_EXPIRES_AT.' }
+  }
+  if (now.getTime() > expiresAt.getTime()) {
+    return { open: false, code: 'DEMO_LOGIN_EXPIRED', error: `Demo prijava je potekla (${expiresAt.toISOString().slice(0, 10)}).` }
+  }
+  return { open: true, expiresAt }
+}
+
+let unboundedWarned = false
+// Zavrnjen poskus je PUBLIC endpoint pred omejitvijo (vrata so zaprta → 403 takoj,
+// brez DB dela), zato bi klica na minuto napisala enako število log vrstic. Opozorilo
+// se donc združi po kodi: vsaka od treh zavor je v procesu zapisana ENKRAT.
+const refusalWarned = new Set<string>()
+
+export async function GET() {
+  const gate = demoGate()
+  const body = gate.open
+    ? { enabled: true, code: null, expiresAt: gate.expiresAt ? gate.expiresAt.toISOString() : null }
+    : { enabled: false, code: gate.code, expiresAt: null }
+  return NextResponse.json(body, { headers: { 'Cache-Control': 'no-store' } })
+}
 
 function ipOf(req: NextRequest): string {
   const vff = req.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim()
@@ -49,6 +104,28 @@ const CENTRAL_DB_ROLES = ['owner', 'admin']
 
 export async function POST(req: NextRequest) {
   const ip = ipOf(req)
+
+  // Issue #7: zaprta vrata se preverijo PRVA (env branje, brez DB dela) —
+  // odgovor je 403 s strojno berljivo kodo, da ujemanje ne ostane samo v
+  // besedilu. Zavrnjen poskus namerno NE piše revizijskega zapisa: vrata so
+  // javna, sicer bi anonimen caller z 403-ji polnil AuditLog (zanj piše samo
+  // dejanski vstop).
+  const gate = demoGate()
+  if (!gate.open) {
+    if (!refusalWarned.has(gate.code)) {
+      refusalWarned.add(gate.code)
+      console.warn(`[auth] demo-login zavrnjen: ${gate.code}`)
+    }
+    return NextResponse.json({ error: gate.error, code: gate.code }, { status: 403, headers: { 'Cache-Control': 'no-store' } })
+  }
+  if (!gate.expiresAt && !unboundedWarned) {
+    // Neomejena vrata so trenutna lastnikova odločitev, ne pozaba — opozorilo
+    // je zato glasno v runtime logih, a ne sme motiti testnega izpisa.
+    unboundedWarned = true
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('[auth] demo-login: vrata so odprta BREZ ROKA (DEMO_LOGIN_EXPIRES_AT ni nastavljen).')
+    }
+  }
 
   // isti burst limit kot prijava (10/min po IP) — demo vrata niso za robote
   if (!(await rateLimitSharedAsync(`demo-login:${ip}`, 10, 60_000)).allowed) {
@@ -125,7 +202,9 @@ export async function POST(req: NextRequest) {
     action: 'DEMO_LOGIN',
     entityType: 'Employee',
     entityId: pick.id,
-    details: 'Demo vstop brez gesla (zahteva lastnika med razvojem) — izdana polna seja.',
+    details: `Demo vstop brez gesla (zahteva lastnika med razvojem) — izdana polna seja. ${
+      gate.expiresAt ? `Vrata potekajo ${gate.expiresAt.toISOString()}.` : 'Vrata brez nastavljenega roka (DEMO_LOGIN_EXPIRES_AT ni nastavljen).'
+    }`,
     ipAddress: ip,
     locationId: pick.locationId,
   }).catch((auditErr: unknown) => {

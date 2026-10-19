@@ -27,7 +27,9 @@ quality-gate:
     - bun install --frozen-lockfile
     - bunx tsc --noEmit
     - bun run lint
-    - bun test
+    # isti proračun hookov kot lokalno in na GitHub Actions (v1.148.0) —
+    # en sam vir v package.json, da se three-way CI ne razhaja
+    - bun run test
     - node scripts/check-schema-drift.cjs
     - bash scripts/check-secrets.sh
 

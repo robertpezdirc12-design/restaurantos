@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCentralRole, isResponse, ok, fail } from '@/lib/api'
 import { nid, ORDER_ACTIVE_DB } from '@/lib/map'
+import { ORDER_MUTABLE_PAYMENT, ORDER_MUTABLE_STATUS } from '@/lib/ops'
 
 /**
  * Issue #71 audit-9 — ENKRATNO čiščenje demo/verifikacijskih sledi iz PRODUKCIJE.
@@ -136,7 +137,22 @@ export async function POST(req: NextRequest) {
   // 1) zastareli listki → preklic (NE brisanje — fiskalna/interna sled)
   for (const o of staleOrders) {
     try {
-      await db.order.update({ where: { id: o.id }, data: { status: 'cancelled', cancelledAt: new Date() } })
+      // v1.148.0 (audit #10 razred): seznam zastarelih listkov je prebran ZUNJ
+      // zanke, med branjem in posameznim zapisom pa lahko plačilo commitni. Zapis
+      // je torej pogojen na mutabilno stanje OB ZAPISU — plačanega listka čistilec
+      // NE prekliče, ampak ga označi kot preskočenega.
+      const cancelled = await db.order.updateMany({
+        where: {
+          id: o.id,
+          status: { in: [...ORDER_MUTABLE_STATUS] },
+          paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] },
+        },
+        data: { status: 'cancelled', cancelledAt: new Date() },
+      })
+      if (cancelled.count === 0) {
+        results.staleOrders.skipped.push(`#${o.orderNumber ?? o.id}: medtem zaključeno (plačano/preklicano)`)
+        continue
+      }
       if (o.tableId) {
         await db.table.update({ where: { id: o.tableId }, data: { status: 'cleaning' } }).catch(() => undefined)
       }

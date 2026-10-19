@@ -11,6 +11,7 @@ import {
   summarizeMovements,
   expectedDrawerCash,
   zReportCashColumnsAvailable,
+  CASH_MOVEMENT_MAX,
 } from '@/lib/cash-movements'
 import { resolveExceptionApproval } from '@/lib/exception-approval'
 
@@ -95,6 +96,38 @@ class LegacyShiftLocationError extends Error {
   }
 }
 
+type DrawerCash = { ok: true; eur: number } | { ok: false; error: string }
+
+/**
+ * Issue #22 (v1.148.0): stanje gotovine v izmeni je bilo doslej zapisano
+ * NEPREVERJENO. `num()` iz vrednosti, ki ni število, naredi 0, negativen in
+ * poljubno velik znesek pa gresta naprej. Posledica: izmena je lahko prikazala
+ * poljubno razliko, ne da bi za njo obstajal reviziran CashMovement — meje
+ * CASH_MOVEMENT_MIN/MAX (src/lib/cash-movements.ts:57-58) so veljale samo za
+ * ročne premike, ne pa za samo števanje predala. Zgornja meja je zato ISTA kot
+ * pri premikih: več kot 100.000 EUR ni vsebina blagajne, je pa lahko napaka
+ * vnosa; resničen večji znesek se revizira kot safe_drop.
+ * Prazan vnos (izpuščen, null, prazen niz) ostane 0 — trenutni UI obrazec
+ * pošlje prazno polje, ko fond ni bil nastavljen. Drugače funkcija NE popravlja
+ * in NE zaokrožuje: drugačen tip (objekt, polje, boolean) vrne napako namesto da bi
+ * neopazno zdrsnil na 0, sicer bi «izmišljena» prazna blagajna izgledala kot
+ * števanje.
+ */
+function parseDrawerCash(raw: unknown, label: string): DrawerCash {
+  const bounds = (n: number): DrawerCash => {
+    if (!Number.isFinite(n)) return { ok: false, error: `${label}: vnesite veljavno število.` }
+    if (n < 0) return { ok: false, error: `${label}: gotovina ne more biti negativna.` }
+    if (n > CASH_MOVEMENT_MAX) return { ok: false, error: `${label}: znesek presega mejo (${CASH_MOVEMENT_MAX} EUR).` }
+    return { ok: true, eur: n }
+  }
+  if (raw === undefined || raw === null) return { ok: true, eur: 0 }
+  if (typeof raw === 'number') return bounds(raw)
+  if (typeof raw !== 'string') return { ok: false, error: `${label}: vnesite veljavno število.` }
+  const s = raw.trim()
+  if (s === '') return { ok: true, eur: 0 }
+  return bounds(Number(s.replace(',', '.')))
+}
+
 export async function POST(req: NextRequest) {
   // Issue #5 (P0, komentar #3): odpiranje/zaključek blagajne = cash.manage
   // (enako kot GET; prej requireAuth — vsak prijavljeni je lahko pognal Z-poročilo).
@@ -109,7 +142,10 @@ export async function POST(req: NextRequest) {
       orderBy: { openedAt: 'desc' },
     })
     if (!open) return fail('Ni odprte izmene.')
-    const closingCash = num(body.closingCash)
+    // Issue #22 (v1.148.0): končno stanje predala je ZAVEZA štejača, ne poljubna vrednost
+    const closing = parseDrawerCash(body.closingCash, 'Končno gotovinsko stanje')
+    if (!closing.ok) return fail(closing.error, 400)
+    const closingCash = closing.eur
 
     /* ── Issue #16 PRE-TX: politika + PREVIEW variance (razlog/odobritev) ──
      * resolveExceptionApproval in probe pomočniki uporabljajo skupno db
@@ -395,6 +431,61 @@ export async function POST(req: NextRequest) {
           .catch(() => null)
       }
 
+      /* ── Issue #22 (v1.148.0): PREDAJA PREDALA MED IZMENAMA ──
+       * `startingCash` doslej ni bila primerjana z ničemer: izmena se je lahko
+       * odprla s poljubnim zneskom, razlika pa ni imela nobene sledi. Ob
+       * zaključku zdaj zapišemo revizijski zapis, če se začetno stanje te
+       * izmene nad pragom politike ne ujema s KONČNIM stanjem predhodne izmene
+       * na isti lokaciji (fizična predaja). Knjigovodski pričakovani znesek
+       * (expectedCash) se zapiše kot drugo merilo, da je razloček viden: če je
+       * že predhodna izmena napačno preštela, se razlika pokaže na obeh merilih;
+       * če je bila gotovina med izmenama dodana ali odvzeta brez reviziranega
+       * CashMovement, se razlika pojavi samo na fizičnem merilu.
+       * Ni nove tabele in ni DDL — samo AuditLog (isti mehanizem kot
+       * SHIFT_CLOSE). Fail-soft: zapis ne sme nikoli prekiniti že uspešnega
+       * zaključka (vzorec e-pošte in ZReport mirror-a zgoraj). */
+      if (movementsReady && result.shift.locationId) {
+        try {
+          const prev = await db.cashRegisterShift.findFirst({
+            where: {
+              locationId: result.shift.locationId,
+              status: 'closed',
+              closedAt: { not: null },
+              id: { not: result.shift.id },
+            },
+            orderBy: { closedAt: 'desc' },
+            select: { id: true, closingCash: true, expectedCash: true, closedAt: true },
+          })
+          if (prev) {
+            const openingEur = num(result.shift.startingCash)
+            const prevClosingEur = num(prev.closingCash)
+            const prevExpectedEur = num(prev.expectedCash)
+            const closingGapCents = Math.round((openingEur - prevClosingEur + Number.EPSILON) * 100)
+            if (Math.abs(closingGapCents) > policy.varianceThresholdCents) {
+              await writeAudit(db, {
+                userId: user.sub,
+                action: 'CASH_HANDOVER_UNAUDITED',
+                entityType: 'CashRegisterShift',
+                entityId: result.shift.id,
+                details: jstr({
+                  previousShiftId: prev.id,
+                  previousClosedAt: prev.closedAt ? new Date(prev.closedAt).toISOString() : null,
+                  openingCash: openingEur,
+                  previousClosingCash: prevClosingEur,
+                  previousExpectedCash: prevExpectedEur,
+                  closingGapEur: r2(openingEur - prevClosingEur),
+                  expectedGapEur: r2(openingEur - prevExpectedEur),
+                  thresholdCents: policy.varianceThresholdCents,
+                }),
+                locationId: result.shift.locationId,
+              })
+            }
+          }
+        } catch {
+          // never block the shift close response
+        }
+      }
+
       // OPS-8 val 2 (v1.72.0): push to management on shift close / Z-report (via
       // notification matrix; fire-and-forget)
       void pushEvent('Z_CLOSED', {
@@ -477,6 +568,11 @@ export async function POST(req: NextRequest) {
   // podaja lokacijo eksplicitno, ostali so vezani na svojo)
   const locationId = requireUserLocation(user)
   if (isResponse(locationId)) return locationId
+  // Issue #22 (v1.148.0): začetno stanje predala je ista zaveza kot končno —
+  // oba konca izmene morata ostati v istem okviru kot revizirani premiki,
+  // sicer se razlika lahko pojavi na vhodu in nima nobene sledi.
+  const opening = parseDrawerCash(body?.openingCash, 'Začetno gotovinsko stanje')
+  if (!opening.ok) return fail(opening.error, 400)
   // R1 popravek (P0 audit): odpiranje izmene v transakciji z ponovno preverbo —
   // dva vzporedna klika ne moreta odpreti dveh izmen (SQLite serializira; PG zoži okno).
   const opened = await db.$transaction(async (tx) => {
@@ -488,12 +584,12 @@ export async function POST(req: NextRequest) {
         employeeId: user.sub,
         employeeName: user.name,
         status: 'open',
-        startingCash: num(body?.openingCash),
+        startingCash: opening.eur,
         locationId,
       },
     })
     // 33-c (audit §6): odpiranje izmene je zdaj revidirano (SHIFT_OPEN) — v ISTI transakciji
-    await writeAudit(tx, { userId: user.sub, action: 'SHIFT_OPEN', entityType: 'CashRegisterShift', entityId: shift.id, details: jstr({ startingCash: num(body?.openingCash), employeeName: user.name }), locationId: locationId })
+    await writeAudit(tx, { userId: user.sub, action: 'SHIFT_OPEN', entityType: 'CashRegisterShift', entityId: shift.id, details: jstr({ startingCash: opening.eur, employeeName: user.name }), locationId: locationId })
     return shift
   })
   if (!opened) return fail('Izmena že teče (sočasno odpiranje zavrnjeno).', 409)

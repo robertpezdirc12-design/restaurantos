@@ -421,6 +421,19 @@ export class OrderError extends Error {
 export const ORDER_MUTABLE_STATUS = ['open', 'sent', 'prepared'] as const
 export const ORDER_MUTABLE_PAYMENT = ['unpaid', 'partial'] as const
 
+/**
+ * Plačljiva stanja (v1.148.0, najdba iz testa `order-concurrency`, F-skupina):
+ * isti trije statusi kot mutabilna PLUS 'paid' — ročno označeno 'paid' naročilo
+ * brez računa sme kanonična pot še izdati račun, kar je pravilno že veljalo za
+ * branje plačilne poti (`issueFursReceipt:69`). 'cancelled' na seznamu NI (edini
+ * preostali terminalni status), na plačilni strani ga dopolnjuje
+ * `ORDER_MUTABLE_PAYMENT`, ki izloči 'paid', 'cancelled' in 'storno'. Prav ta
+ * seznam mora veljati tudi OB ZAPISU plačila, sicer
+ * preklic ali združevanje, ki commitnita med branjem in transakcijo plačila,
+ * pusti fiskaliziran račun na naročilu, ki ne obstaja več.
+ */
+export const ORDER_PAYABLE_STATUS = [...ORDER_MUTABLE_STATUS, 'paid'] as const
+
 /** Write-time preverba: ali je stanje naročila še mutabilno (NE bereno prej). */
 export function isMutableOrderState(o: { status: string; paymentStatus: string } | null | undefined) {
   if (!o) return false
