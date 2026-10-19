@@ -411,3 +411,58 @@ export class OrderError extends Error {
     this.status = status
   }
 }
+
+/**
+ * Bela lista stanj, iz katerih je SOCASNI zapis v naročilo še zakonit
+ * (issue #48 matrika; v1.145.0 centralizirana — audit #10/#11/#12).
+ * Isti seznam uporablja addItems CAS (orders/[id]) — tu je edini vir, da se
+ * matrika ne razide med ruto in jedrom.
+ */
+export const ORDER_MUTABLE_STATUS = ['open', 'sent', 'prepared'] as const
+export const ORDER_MUTABLE_PAYMENT = ['unpaid', 'partial'] as const
+
+/** Write-time preverba: ali je stanje naročila še mutabilno (NE bereno prej). */
+export function isMutableOrderState(o: { status: string; paymentStatus: string } | null | undefined) {
+  if (!o) return false
+  return (ORDER_MUTABLE_STATUS as readonly string[]).includes(o.status) &&
+    (ORDER_MUTABLE_PAYMENT as readonly string[]).includes(o.paymentStatus)
+}
+
+/**
+ * CAS posodobi mutabilno naročilo (v1.145.0, audit #10/#11/#12).
+ *
+ * Prej: rute so naročilo PREBRALE, preverile terminalna stanja in nato napisale
+ * z BREZPOGOJNIM `order.update` — med branjem in zapisom je dirka (plačilo,
+ * storno, preklic, drug klik) lahko commitnila, zapis pa jo je POBRIŠAL:
+ * fiskaliziran račun z EOR-jem je ostal na 'cancelled' naročilu, plačano
+ * naročilo se je vrnilo v 'prepared' (KDS/zakasnel klik), združeno naročilo je
+ * prepisalo totale že plačanega cilja.
+ *
+ * Zdaj: zapis uspeje SAMO, če je vrstica ob zapisu (a) še v mutabilnem stanju in
+ * (b) — kadar je podan `read` — še v ISTEM stanju, kot ga je klicatelj prebral
+ * (optimistična zaščita pred izgubljenim posodobljenim zapisom, vzorec #39).
+ * `ok: false` = dirka → klicatelj vrne 409; znotraj `$transaction` to razveljavi
+ * tudi stranske učinke (plačilne povezave, miza, revizijski zapis), ki jih ruta
+ * opravi za uspehom claims — zato smejo biti SHUPIRANI za claimom.
+ *
+ * @param read sveža ali vonjsko prebrana vrstica (status/paymentStatus [+ tableId])
+ *               — brez = stanje se prebere ZNOTRAJ klica (npr. izven tx)
+ */
+export async function claimMutableOrder(
+  client: Prisma.TransactionClient,
+  id: string,
+  data: Prisma.OrderUncheckedUpdateManyInput,
+  read?: { status: string; paymentStatus: string; tableId?: string | null } | null,
+): Promise<{ ok: boolean; tableId: string | null }> {
+  const cur =
+    read ??
+    (await client.order.findUnique({ where: { id }, select: { status: true, paymentStatus: true, tableId: true } }))
+  if (!isMutableOrderState(cur)) return { ok: false, tableId: null }
+  const claim = await client.order.updateMany({
+    where: { id, status: cur!.status, paymentStatus: cur!.paymentStatus },
+    data,
+  })
+  if (claim.count === 0) return { ok: false, tableId: null }
+  return { ok: true, tableId: cur!.tableId ?? null }
+}
+

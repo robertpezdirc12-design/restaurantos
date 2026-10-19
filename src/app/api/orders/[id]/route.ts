@@ -5,7 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
-import { recalcOrderTotals } from '@/lib/ops'
+import { recalcOrderTotals, claimMutableOrder } from '@/lib/ops'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import { vatFromGross } from '@/lib/billing'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
@@ -57,7 +57,10 @@ const recalcTotals = recalcOrderTotals
  * Mutacije po pravilih matrike:
  *  - PATCH status:    ročni PAID UKINJEN (#47); terminalna stanja zavračajo VSE
  *                     prehode (#48); CANCELLED dovoljen samo iz aktivnega statusa
- *                     + paymentStatus unpaid/partial;
+ *                     + paymentStatus unpaid/partial. OD v1.145.0 (audit #10) se
+ *                     stanje zapiše SAMO z CAS claimom (claimMutableOrder) in vsi
+ *                     stranski učinki preklica so v isti transakciji ZA claimom —
+ *                     pogoji se ne preverjajo le ob prihodu, ampak ob zapisu;
  *  - PATCH addItems:  CAS bela lista — status IN (open,sent,prepared) AND
  *                     paymentStatus IN (unpaid,partial); dirka s preklicom/plačilom
  *                     = rollback transakcije, BREZ delnih zapisov (#48);
@@ -120,6 +123,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const recognized = Array.isArray(body?.addItems) || body?.status !== undefined || body?.note !== undefined || body?.customerName !== undefined
   if (!recognized) return fail('Ni prepoznane akcije (addItems | status | note | customerName).', 400)
 
+  // v1.145.0 (audit #10): dokaz o izjemi za preklic se izračuna tukaj (pred
+  // zapisom), ZAPIŠE pa se šele ob uspelem CAS claimu — glej konec funkcije.
+  let cancelReason: ReasonEvidence | null = null
+  let cancelApproval: ApprovalEvidence | null = null
+  let cancelApprovalBasis: string | null = null
+
   const data: Record<string, unknown> = {}
   if (body?.status && ['OPEN', 'SENT', 'PREPARED', 'PAID', 'CANCELLED'].includes(body.status)) {
     // Issue #47: ROČNI STATUS PAID JE UKINJEN. Prej je override nastavil status 'paid' +
@@ -156,14 +165,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // (excCancelApprovalAmountCents, privzeto 0 = izklopljen; vodstvena
       // izvajalska vloga šteje kot odobritev, sicer poverilnica DRUGE osebe).
       const excPolicy = await exceptionPolicy()
-      let cancelReason: ReasonEvidence | null = null
       if (excPolicy.requireReasonCancel) {
         const rr = await validateExceptionReason('cancel', order.locationId, body)
         if (!rr.ok) return fail(rr.message, rr.status)
         cancelReason = rr.reason
       }
-      let cancelApproval: ApprovalEvidence | null = null
-      let cancelApprovalBasis: string | null = null
       if (amountAboveThreshold(num(order.total), excPolicy.cancelApprovalAmountCents)) {
         cancelApprovalBasis = `amount ${num(order.total).toFixed(2)} > ${(excPolicy.cancelApprovalAmountCents / 100).toFixed(2)}`
         const aa = await resolveExceptionApproval(user, order.locationId, body)
@@ -176,15 +182,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Issue #48: preklic spravi plačilno stanje v terminalno 'cancelled' (samo iz
       // 'unpaid' — 'partial' ostane: delna plačila prek povezav so že v Payment tabeli).
       if (order.paymentStatus === 'unpaid') data.paymentStatus = 'cancelled'
-      // Issue #48: odprte plačilne povezave se prekličejo skupaj z naročilom — gost
-      // ne more plačati preklicanega naročila prek QR povezave.
-      await db.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } }).catch(() => null)
-      if (order.tableId) {
-        await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
-      }
-      // P0 audit (C2): ročni preklic statusa = finančna akcija → obvezen audit
-      // #19: razlog (posnetek) + odobritev (če je prag aktiven) + znesek
-      await writeAudit(db, { userId: user.sub, action: 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name, ...reasonAuditFields(cancelReason), ...approvalAuditFields(cancelApproval, cancelApprovalBasis) }), locationId: order.locationId })
+      // v1.145.0 (audit #10): stranski učinki preklica (razveljavitev plačilnih
+      // povezav, miza, revizijski zapis) so PRESELJENI za uspehen CAS claim — glej
+      // konec funkcije. Prej so se zgodili PRED zapisom, zato je dirka s plačilom
+      // pustila gostu brez veljavne povezave in v bazi lažen sled.
     }
   }
   if (body?.note !== undefined) data.notes = body.note
@@ -305,6 +306,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return ok({ order: mapOrder(normalize(updatedAfterAdd)) })
   }
 
+  // v1.145.0 (audit #10, P1): SPREMEMBA STANJA je sedaj CAS. Prej je bila pot
+  // "preberi → preveri terminalna stanja → brezpogojni update", med branjem
+  // (:115) in zapisom pa je kanonična plačilna pot (issueFursReceipt / paylink
+  // settle) lahko commitnila — rezultat: fiskaliziran račun z EOR-jem na
+  // 'cancelled' naročilu ALI plačano naročilo vrnjeno v 'prepared' (KDS klik).
+  // Stranski učinki preklica so v ISTI transakciji ZA claimom, zato izgubljena
+  // dirka pusti bazo NESPREMENJENO (brez "preklica, ki se ni zgodil" — brez
+  // supersede povezav, brez premika mize, brez lažnega revizijskega zapisa).
+  // Opomba/stranka (vsebina, ne stanje) ostata pisalni tudi na terminalnem
+  // naročilu — dokumentirana matrika zgoraj.
+  if (data.status !== undefined) {
+    const isCancel = data.status === 'cancelled'
+    const applied = await db.$transaction(async (tx) => {
+      const claim = await claimMutableOrder(tx, id, data as Prisma.OrderUncheckedUpdateManyInput, order)
+      if (!claim.ok) return null
+      if (isCancel) {
+        // Issue #48: odprte plačilne povezave se prekličejo skupaj z naročilom — gost
+        // ne more plačati preklicanega naročila prek QR povezave.
+        await tx.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } })
+        if (claim.tableId) await tx.table.update({ where: { id: claim.tableId }, data: { status: 'cleaning' } })
+        // P0 audit (C2): ročni preklic statusa = finančna akcija → obvezen audit
+        // #19: razlog (posnetek) + odobritev (če je prag aktiven) + znesek
+        await writeAudit(tx, { userId: user.sub, action: 'ORDER_STATUS_CANCELLED_OVERRIDE', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), previousStatus: order.status, previousPaymentStatus: order.paymentStatus, by: user.name, ...reasonAuditFields(cancelReason), ...approvalAuditFields(cancelApproval, cancelApprovalBasis) }), locationId: order.locationId })
+      }
+      return tx.order.findUnique({ where: { id }, include: orderInclude })
+    })
+    if (!applied) return fail('Naročilo je medtem zaključeno (plačano, preklicano ali stornirano) — stanja ni mogoče spremeniti.', 409)
+    const updated = applied
+    // Issue #11 §3 — plačilo/storno dogodki (fire-and-forget, nikoli ne vplivata na odgovor)
+    if (updated.status === 'paid') {
+      await publishEvent('PaymentCompleted', { entityType: 'Order', entityId: updated.id, payload: { total: updated.total, locationId: updated.locationId }, locationId: updated.locationId }).catch(() => undefined)
+    }
+    if (updated.status === 'cancelled') {
+      await publishEvent('OrderCancelled', { entityType: 'Order', entityId: updated.id, payload: { by: user.name, locationId: updated.locationId }, locationId: updated.locationId }).catch(() => undefined)
+    }
+    return ok({ order: mapOrder(normalize(updated)) })
+  }
+
   const updated = await db.order.update({ where: { id }, data, include: orderInclude })
   // Issue #11 §3 — plačilo/storno dogodki (fire-and-forget, nikoli ne vplivata na odgovor)
   if (updated.status === 'paid') {
@@ -355,24 +394,46 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     cancelApproval = aa.approval
   }
 
-  await db.order.update({
-    where: { id },
-    // Issue #48: preklic spravi plačilno stanje v terminalno 'cancelled' (iz 'unpaid';
-    // 'partial' ostane — delna plačila so že v Payment vrsticah)
-    data: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub, ...(order.paymentStatus === 'unpaid' ? { paymentStatus: 'cancelled' } : {}) },
+  // v1.145.0 (audit #11, P1): preklic je sedaj CAS ZNOTRAJ transakcije in pogoje
+  // preveri ob ZAPISU, ne le ob prihodu zahtevka. Prej je pot "preberi → guard samo
+  // na paymentStatus (paid/storno) → brezpogojni update" pustila dve napaki:
+  //  1) sočasno plačilo (issueFursReceipt / paylink settle) je commitnilo med
+  //     branjem in zapisom → fiskaliziran račun z EOR-jem je ostal na 'cancelled'
+  //     naročilu (plačilo brez storna, izbrisan iz odprtih postavk);
+  //  2) drugi DELETE istega naročila je SPET uspel (status 'cancelled' ni bil v
+  //     guardu, paymentStatus 'cancelled'/'partial' pa tudi ne) → dvojna
+  //     ORDER_CANCELLED revizija z različnima časoma in miza je bila vrnjena v
+  //     'cleaning', če jo je medtem zasedlo drugo naročilo.
+  // Stranski učinki (supersede povezav, miza, revizija) so za claimom v isti
+  // transakciji → zavrnjen preklic ne pusti nobenega sledu.
+  type CancelOutcome = 'ok' | 'missing' | 'fiscal' | 'raced'
+  const outcome = await db.$transaction<CancelOutcome>(async (tx) => {
+    const cur = await tx.order.findUnique({ where: { id }, select: { status: true, paymentStatus: true, tableId: true } })
+    if (!cur) return 'missing'
+    // R10 + Issue #48 (ponovljeno ob zapisu): fiskalna negacija je ločena pot
+    if (cur.paymentStatus === 'paid' || cur.paymentStatus === 'storno') return 'fiscal'
+    const claim = await claimMutableOrder(
+      tx,
+      id,
+      // Issue #48: preklic spravi plačilno stanje v terminalno 'cancelled' (iz 'unpaid';
+      // 'partial' ostane — delna plačila so že v Payment vrsticah)
+      { status: 'cancelled', cancelledAt: new Date(), cancelledBy: user.name, cancelledById: user.sub, ...(cur.paymentStatus === 'unpaid' ? { paymentStatus: 'cancelled' } : {}) },
+      cur,
+    )
+    if (!claim.ok) return 'raced'
+    // Issue #48: odprte plačilne povezave se prekličejo skupaj z naročilom (gost ne
+    // more plačati preklicanega naročila prek QR povezave)
+    await tx.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } })
+    if (claim.tableId) await tx.table.update({ where: { id: claim.tableId }, data: { status: 'cleaning' } })
+    // P0 audit (C2): storno naročila je finančna akcija → obvezen revizijski zapis
+    // #19: razlog (posnetek) + odobritev (če je prag aktiven)
+    await writeAudit(tx, { userId: user.sub, action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name, ...reasonAuditFields(cancelReason), ...approvalAuditFields(cancelApproval, cancelApprovalBasis) }), locationId: order.locationId })
+    return 'ok'
   })
-  // Issue #48: odprte plačilne povezave se prekličejo skupaj z naročilom (gost ne
-  // more plačati preklicanega naročila prek QR povezave)
-  await db.payLink.updateMany({ where: { orderId: id, status: 'open' }, data: { status: 'superseded' } }).catch(() => null)
-  // P0 audit (C2): storno naročila je finančna akcija → obvezen revizijski zapis
-  // #19: razlog (posnetek) + odobritev (če je prag aktiven)
-  {
-    await writeAudit(db, { userId: user.sub, action: 'ORDER_CANCELLED', entityType: 'Order', entityId: id, details: jstr({ orderNumber: order.orderNumber, total: num(order.total), storno: true, by: user.name, ...reasonAuditFields(cancelReason), ...approvalAuditFields(cancelApproval, cancelApprovalBasis) }), locationId: order.locationId })
-  }
-  // Issue #11 §3 — storno dogodek
+  if (outcome === 'missing') return fail('Naročilo ne obstaja.', 404)
+  if (outcome === 'fiscal') return fail('Plačanega/storniranega naročila ni mogoče stornirati — fiskalni storno/vračilo je ločena pot.', 409)
+  if (outcome === 'raced') return fail('Naročilo je medtem zaključeno (plačano ali preklicano) — preklic ni mogoč.', 409)
+  // Issue #11 §3 — storno dogodek (po commitu: zavrnjen preklic ne sme objaviti dogodka)
   await publishEvent('OrderCancelled', { entityType: 'Order', entityId: order.id, payload: { by: user.name, locationId: order.locationId, storno: true }, locationId: order.locationId }).catch(() => undefined)
-  if (order.tableId) {
-    await db.table.update({ where: { id: order.tableId }, data: { status: 'cleaning' } })
-  }
   return ok({ cancelled: true })
 }

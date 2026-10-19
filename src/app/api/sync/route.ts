@@ -6,7 +6,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail, locationScope } f
 import { guardResource } from '@/lib/tenant'
 import type { AuthPayload } from '@/lib/auth'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
-import { createOrderCore, OrderError } from '@/lib/ops'
+import { createOrderCore, OrderError, claimMutableOrder, ORDER_MUTABLE_STATUS, ORDER_MUTABLE_PAYMENT } from '@/lib/ops'
 import { splitVat, vatFromGross } from '@/lib/billing'
 import { tasksForItem, completeTasksForItem } from '@/lib/station-task-service'
 
@@ -238,13 +238,19 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
         return { id: nid(), orderId, menuItemId: mi.id, quantity: qty, price, vatRate, vatAmount: vatFromGross(price * qty, vatRate), menuItemName: mi.name, status: itemStatusToDB('PENDING') as OrderItemStatus, notes: i.note || '' }
       })
       // R5 popravek (P0 audit): createMany + recalcTotals + update v ISTI transakciji s CAS
-      // gate na plačano naročilo (enako kot PATCH /api/orders/[id])
+      // gate na plačano naročilo (enako kot PATCH /api/orders/[id]).
+      // v1.145.0 (audit #10): BELA LISTA mutabilnih stanj (ista kot online pot v
+      // orders/[id]) — prej `paymentStatus: { not: 'paid' }` je spustil postavke v
+      // PREKLICANO in STORNIRANO naročilo (mimogredo: offline replay po preklicu).
       try {
         await db.$transaction(async (tx) => {
           await tx.orderItem.createMany({ data: rows })
           const totals = await recalcTotals(orderId, tx)
-          const claim = await tx.order.updateMany({ where: { id: orderId, paymentStatus: { not: 'paid' } }, data: { subtotal: totals.subtotal, tax: totals.tax, total: totals.total } })
-          if (claim.count === 0) throw new OrderError('Naročilo je že plačano — postavk ni mogoče dodati.', 409)
+          const claim = await tx.order.updateMany({
+            where: { id: orderId, status: { in: [...ORDER_MUTABLE_STATUS] }, paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] } },
+            data: { subtotal: totals.subtotal, tax: totals.tax, total: totals.total },
+          })
+          if (claim.count === 0) throw new OrderError('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
         })
       } catch (e) {
         if (e instanceof OrderError) throw e
@@ -270,7 +276,9 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
         await completeTasksForItem(client, itemId)
       }
       const remaining = await client.orderItem.count({ where: { orderId: item.orderId, status: { in: ['pending', 'fired', 'preparing'] } } })
-      if (remaining === 0) await client.order.update({ where: { id: item.orderId }, data: { status: 'prepared' } })
+      // v1.145.0 (audit #10): rollup je CAS — offline replay (npr. zamujen KDS
+      // poskus po sočasnom plačilu) ne sme odpreti zaključenega naročila.
+      if (remaining === 0) await claimMutableOrder(client, item.orderId, { status: 'prepared' })
       else await client.order.updateMany({ where: { id: item.orderId, status: 'open' }, data: { status: 'sent' } })
       return item.orderId
     }

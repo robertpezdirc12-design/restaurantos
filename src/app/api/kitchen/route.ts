@@ -6,6 +6,7 @@ import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/ap
 import { guardResource } from '@/lib/tenant'
 import { mapOrder, mapOrderItem, itemStatusToDB, orderStatusToUI, ORDER_ACTIVE_DB, ITEM_ACTIVE_DB, nid, jstr } from '@/lib/map'
 import { stationOf } from '@/lib/kds-stats'
+import { claimMutableOrder } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
 import { pushEvent, pushToEmployees } from '@/lib/push'
 import { auditChainFields, writeAudit } from '@/lib/audit-chain'
@@ -173,7 +174,11 @@ export async function GET(req: NextRequest) {
 async function applyOrderRollup(item: { orderId: string; id: string; menuItemName: string }, user: { sub: string; name: string }) {
   const remaining = await db.orderItem.count({ where: { orderId: item.orderId, status: { in: ['pending', 'fired', 'preparing'] } } })
   if (remaining === 0) {
-    await db.order.update({ where: { id: item.orderId }, data: { status: 'prepared' } })
+    // v1.145.0 (audit #10): rollup je CAS — zakasneli KDS klik (plačilna pot je
+    // commitnila, medtem ko je kuhinja čakala na zadnji artikel) je prej vrnil
+    // PLAČANO naročilo v 'prepared': naročilo je bilo spet vidno kot odprto,
+    // dostopno za addItems/premak mize in drugo izdajo računa.
+    await claimMutableOrder(db, item.orderId, { status: 'prepared' })
     const doneOrder = await db.order.findUnique({ where: { id: item.orderId }, select: { orderNumber: true, locationId: true, employeeId: true } })
     // Issue #11 §3 — kuhinja zaključena (vsi artikli ready)
     // Issue #38: locationId iz prebranega naročila (verifikovan vir, ne klient)

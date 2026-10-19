@@ -3,9 +3,22 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapOrder, jstr } from '@/lib/map'
-import { orderInclude, normalizeOrder } from '@/lib/ops'
+import { orderInclude, normalizeOrder, isMutableOrderState } from '@/lib/ops'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
+
+/**
+ * v1.145.0 (audit #12) — notranji signal za zavrnitev selitve. Vrglje se ZNOTRAJ
+ * transakcije, da rollback razveljavi že opravljeno zasedbo ciljne mize; rok ga
+ * pretvori v HTTP odgovor.
+ */
+class MoveRejected extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
 
 /**
  * P2 audit §54 — selitev naročila na drugo mizo (move).
@@ -17,6 +30,9 @@ import { writeAudit } from '@/lib/audit-chain'
  *  - tableId == trenutni tableId → 400
  *  - v tx: order.tableId + status miz (nova → occupied; stara → available, če brez drugih odprtih naročil)
  *  - revizija ORDER_MOVE + dogodek OrderMoved (fire-and-forget)
+ * v1.145.0 (audit #12): VSI pogoji se ponovijo znotraj transakcije, zasedba ciljne
+ * mize preverja svoj `count`, premik naročila pa je pinned na stanje in mizo,
+ * prebrano v isti transakciji — zavrnjen premak ne pusti zasedene mize.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission(req, 'orders.create')
@@ -55,27 +71,72 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (busy) return fail('Ciljna miza je zasedena (odprto naročilo).', 409)
 
   const fromTableId = order.tableId
-  await db.$transaction(async (tx) => {
-    await tx.order.update({ where: { id }, data: { tableId } })
-    // nova miza → zasedena (CAS vzorec iz createOrderCore — nikoli ne "spusti" zasedene mize)
-    await tx.table.updateMany({ where: { id: tableId, status: { not: 'occupied' } }, data: { status: 'occupied' } })
-    // stara miza → prosta, če na njej ni več odprtega naročila
-    if (fromTableId) {
-      const stillOpen = await tx.order.findFirst({
+  // v1.145.0 (audit #12): selitev je sedaj v celoti preverjena in zapisana
+  // ZNOTRAJ transakcije. Prej sta bila dva pogreška:
+  //  - preizkus zasedenosti ciljne mize je bil PRED transakcijo → dva sočasna
+  //    premika na ISTO mizo sta oba videla "prosto" in oba uspela (dvočna zasedba);
+  //  - rezultat CAS zasedbe mize (status != occupied) je bil IGNORIRAN → naročilo
+  //    je bilo preusmerjeno na mizo, ki je v tlorisu še vedno pokazala tuje
+  //    naročilo, in tabela miz se ni posodobil (miza "prosta" z naročilom);
+  //  - plačano/preklicano naročilo se je lahko premaknilo (branje pogojev pred
+  //    dirko, potem brezpogojni update).
+  try {
+    await db.$transaction(async (tx) => {
+      const cur = await tx.order.findUnique({ where: { id }, select: { status: true, paymentStatus: true, tableId: true } })
+      if (!cur) throw new MoveRejected(404, 'Naročilo ne obstaja.')
+      if (!isMutableOrderState(cur)) throw new MoveRejected(409, 'Zaključenega (plačanega/storniranega) naročila ni mogoče premakniti.')
+      if (cur.tableId === tableId) throw new MoveRejected(400, 'Naročilo je že na tej mizi.')
+
+      const tbl = await tx.table.findFirst({ where: { id: tableId, locationId: order.locationId }, select: { id: true, number: true, status: true } })
+      if (!tbl) throw new MoveRejected(404, 'Ciljna miza ne obstaja na lokaciji naročila.')
+
+      // ciljna miza ne sme imeti drugega odprtega naročila — ZNOTRAJ tx (prej ven:
+      // dve vzporedni selitvi sta obe šli skozi)
+      const busy = await tx.order.findFirst({
         where: {
-          tableId: fromTableId,
+          tableId,
           id: { not: id },
           status: { notIn: ['paid', 'cancelled'] },
           paymentStatus: { not: 'paid' },
         },
-        select: { id: true },
+        select: { id: true, orderNumber: true },
       })
-      if (!stillOpen) {
-        await tx.table.updateMany({ where: { id: fromTableId, status: 'occupied' }, data: { status: 'available' } })
+      if (busy) throw new MoveRejected(409, 'Ciljna miza je zasedena (odprto naročilo).')
+
+      // zasedba ciljne mize: CAS in PREVERJEN rezultat (sicer je miza lahko v
+      // stanju, ki ga tloris obravnava kot zasedenega, brez odprtega naročila)
+      const seat = await tx.table.updateMany({ where: { id: tableId, status: { not: 'occupied' } }, data: { status: 'occupied' } })
+      if (seat.count === 0) throw new MoveRejected(409, 'Ciljna miza je zasedena.')
+
+      // premik naročila: pinned na stanje IN mizo, prebrano znotraj tx (dirka z
+      // drugo selitvijo/preklicom/plačilom → count 0 → rollback zasedbe mize)
+      const moved = await tx.order.updateMany({
+        where: { id, status: cur.status, paymentStatus: cur.paymentStatus, tableId: cur.tableId },
+        data: { tableId },
+      })
+      if (moved.count === 0) throw new MoveRejected(409, 'Naročilo se je medtem spremenilo — selitev ni mogoča.')
+
+      // stara miza → prosta, če na njej ni več odprtega naročila
+      if (cur.tableId) {
+        const stillOpen = await tx.order.findFirst({
+          where: {
+            tableId: cur.tableId,
+            id: { not: id },
+            status: { notIn: ['paid', 'cancelled'] },
+            paymentStatus: { not: 'paid' },
+          },
+          select: { id: true },
+        })
+        if (!stillOpen) {
+          await tx.table.updateMany({ where: { id: cur.tableId, status: 'occupied' }, data: { status: 'available' } })
+        }
       }
-    }
-    await writeAudit(tx, { userId: user.sub, action: 'ORDER_MOVE', entityType: 'Order', entityId: id, details: jstr({ fromTableId, toTableId: tableId, tableNumber: table.number, orderNumber: order.orderNumber, by: user.name }), locationId: order.locationId })
-  })
+      await writeAudit(tx, { userId: user.sub, action: 'ORDER_MOVE', entityType: 'Order', entityId: id, details: jstr({ fromTableId: cur.tableId, toTableId: tableId, tableNumber: tbl.number, orderNumber: order.orderNumber, by: user.name }), locationId: order.locationId })
+    })
+  } catch (e) {
+    if (e instanceof MoveRejected) return fail(e.message, e.status)
+    throw e
+  }
 
   await publishEvent('OrderMoved', {
     entityType: 'Order',
