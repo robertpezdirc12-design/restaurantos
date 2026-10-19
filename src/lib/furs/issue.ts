@@ -21,19 +21,17 @@ import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB, ORDER_ACTIVE_DB } fro
 import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
-import { pushEvent } from '@/lib/push'
 import { OrderError } from '@/lib/ops'
 import { computeBill, earnPointsFor, splitVat, tierForPoints, vatBreakdownAfterDiscount, BillItem, VatDiscountLine } from '@/lib/billing'
 import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
 import { maybeNotifyLowStock } from '@/lib/low-stock'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 import { fiscalAdapterFor } from '@/lib/fiscal'
-import { certFromEnv, signZoi, fursInvoice } from '@/lib/furs/client'
-import { cisCertFromEnv, signZki, cisInvoice, hrNacinPlac } from '@/lib/cis/client'
-import { auditChainFields, writeAudit } from '@/lib/audit-chain'
+import { auditChainFields } from '@/lib/audit-chain'
 import { approvalAttestationProfile, paymentPolicyError, type PaymentAttestationProfile } from '@/lib/payments-policy'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
-import { isoLocal, localYearMonth } from '@/lib/fiscal-time'
+import { localYearMonth } from '@/lib/fiscal-time'
+import { fiscalCerts, stampFiscalCodes, submitFiscalDocument } from '@/lib/furs/submit'
 
 interface PaymentPart {
   type: string
@@ -462,12 +460,11 @@ export async function issueFursReceipt(req: NextRequest) {
     ? earnPointsFor(total, location.loyaltyPointsPerEuro)
     : 0
 
-  // Naloga 36: vezava FURS certifikata IZVEN transakcije (P12 parsing enkrat na zahtevek;
-  // referenca potrebna tako znotraj tx — ZOI — kot po tx — EOR SOAP klic).
-  // Naloga 38: vezava HR CIS certifikata na istem mestu (ZKI v tx, JIR po tx).
+  // Naloga 36/38: vezava FURS in CIS certifikata IZVEN transakcije (P12 parsing
+  // enkrat na zahtevek; referenca potrebna tako znotraj tx — ZOI/ZKI — kot po tx
+  // — EOR/JIR SOAP klic). audit #3 (v1.144.0): razrešitev je skupna s stornom.
   const isHrFiscal = fiscalAdapterFor(location.country).country === 'HR'
-  const fursProd = !simulation && !isHrFiscal ? certFromEnv() : null
-  const hrProd = !simulation && isHrFiscal ? cisCertFromEnv() : null
+  const certs = fiscalCerts(simulation, location.country)
 
   try {
     const receipt = await db.$transaction(async (tx) => {
@@ -522,58 +519,20 @@ export async function issueFursReceipt(req: NextRequest) {
       const { y, m } = localYearMonth(now, location.timezone)
       const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
 
-      // Fiskalni adapter po državi lokacije (triage SI/HR fiskalizacija):
-      //  SI → ZOI/EOR (FURS simulacija / produkcija pending) — pot MORA ostati byte-identična (§18),
-      //  HR → ZKI/JIR (Fiskalizacija 2.0, NN 89/2025 + Pravilnik NN 153/2025; QR = porezna.gov.hr/rn).
-      // Vektor byte-identičnosti SI ZOI: tests/fiscal.test.ts.
-      const fiscal = fiscalAdapterFor(location.country)
-      const codes = fiscal.computeCodes({
-        taxId: location.taxId || '',
-        issuedAt: now,
-        receiptNumber,
-        premisesId: location.premisesId || 'BLG001',
-        total,
-        simulation,
-        timeZone: location.timezone,
-      })
-      let zoi = isHrFiscal ? '' : codes.protective
-      const eor = isHrFiscal ? '' : codes.verification
-
-      // Naloga 36: produkcija s certifikatom → PRAVI ZOI (RSA-SHA256 podpis,
-      // lokalna kripto — varno v transakciji). Brez certifikata ostane dozdajšnje
-      // vedenje (prazne kode → 'pending').
-      if (fursProd) {
-        zoi = signZoi(
-          {
-            taxId: location.taxId || '',
-            issuedAt: now,
-            receiptNumber,
-            premisesId: location.premisesId || 'BLG001',
-            total,
-            timeZone: location.timezone,
-          },
-          fursProd.cert.keyPem
-        )
-      }
-
-      // Naloga 38: produkcija HR s certifikatom → PRAVI ZKI (MD5hex(RSA-SHA256(podpis))
-      // po spec Porezne uprave v2.7 pogl. 12). Brez certifikata ostane simulacijska/prazna
-      // koda (obstoječe vedenje). JIR sledi po tx (cisInvoice SOAP klic).
-      let cisZkiVal = isHrFiscal ? codes.protective : ''
-      if (hrProd) {
-        cisZkiVal = signZki(
-          {
-            oib: (location.taxId || '').replace(/\D/g, ''),
-            issuedAt: now,
-            invoiceNumber: String(seq),
-            premisesId: location.premisesId || 'BLG001',
-            deviceId: location.registerNumber || '1',
-            total,
-            timeZone: location.timezone,
-          },
-          hrProd.cert.keyPem
-        )
-      }
+      // Fiskalne kode dokumenta (SI ZOI/EOR, HR ZKI/JIR) — audit #3 (v1.144.0):
+      // LOGIKA je izenačena s stornom, da se ne moreta raziti (prej kopija tu,
+      // nikoli v storno ruti). Vedenje izdaje je preneseno 1:1:
+      //  - simulacija → deterministične testne kode (vektor byte-identičnosti:
+      //    tests/fiscal.test.ts; SI spec 1.13 / HR Fiskalizacija 2.0 NN 89/2025),
+      //  - produkcija s certifikatom → RSA-SHA256 podpis (Nalogi 36 SI / 38 HR),
+      //  - produkcija brez certifikata → prazne kode → 'pending'.
+      const stamp = stampFiscalCodes(
+        { location, receiptNumber, sequence: seq, total, issuedAt: now, simulation },
+        certs,
+      )
+      const zoi = stamp.zoi
+      const eor = stamp.eor
+      const cisZkiVal = stamp.cisZki
 
       // OPS-7 split: v check načinu POSODOBIMO obstoječi izstavek (že ustvarjen ob delitvi),
       // v celotnem načinu ustvarimo izstavek #1 (nazaj-kompatibilno obnašanje).
@@ -635,7 +594,7 @@ export async function issueFursReceipt(req: NextRequest) {
           locationId: location.id,
           cisStatus: isHrFiscal ? (simulation ? 'verified' : 'pending') : 'none',
           cisZki: cisZkiVal,
-          cisJir: isHrFiscal ? codes.verification : '',
+          cisJir: stamp.cisJir,
         },
       })
 
@@ -834,115 +793,23 @@ export async function issueFursReceipt(req: NextRequest) {
       void maybeNotifyLowStock(receipt.stock.deductions)
     }
 
-    // Naloga 36: EOR — FURS SOAP klic PO transakciji (omrežje ne sme držati DB tx).
-    // Fail-safe: ob napaki račun ostane 'pending' (plačilo je že urejeno; poznejša
-    // fiskalizacija gre prek SubsequentSubmit — runbook korak 5). Uspeh → verified.
-    if (fursProd) {
-      try {
-        const taxNum = parseInt((location.taxId || '').replace(/\D/g, ''), 10)
-        const resp = await fursInvoice(fursProd.env, fursProd.cert, {
-          taxNumber: taxNum,
-          issueDateTime: isoLocal(now, location.timezone),
-          invoiceNumber: String(Number(receipt.twin.receiptNumber.split('-')[2]) || 0),
-          businessPremiseId: location.premisesId || 'BLG001',
-          electronicDeviceId: location.registerNumber || 'BLG-001',
-          invoiceAmount: total,
-          paymentAmount: total,
-          taxesPerSeller: Object.entries(vatMap).map(([rate, v]) => ({
-            vatRate: Number(rate), basis: v.base, taxAmount: v.vat,
-          })),
-          operatorTaxNumber: taxNum, // rezidual: ločen OperatorTaxNumber (Location) pride z validacijo testnega okolja
-          protectedID: receipt.twin.zoi,
-          subsequentSubmit: false,
-          timeZone: location.timezone,
-        })
-        receipt.twin = await db.receipt.update({
-          where: { id: receipt.twin.id },
-          data: { eor: resp.eor, fiscalStatus: 'verified', fiscalVerified: true, verificationDate: new Date() },
-        })
-      } catch (e) {
-        console.warn('[furs] produkcija EOR ni uspel — račun ostane pending:', (e as Error).message)
-        // OPS-8 val 2 (v1.72.0): RECEIPT_FAILED push to management (matrix; fire-and-forget) —
-        // receipt stays pending, later fiscalization goes via SubsequentSubmit
-        void pushEvent('RECEIPT_FAILED', {
-          title: 'FURS fiskalizacija ni uspela',
-          body: `${receipt.twin.receiptNumber} — ${String((e as Error).message || 'napaka').slice(0, 120)}`,
-          url: '/dashboard?tab=racuni',
-          tag: `receipt-failed-${receipt.twin.id}`,
-        }, { roles: ['manager', 'admin'], locationId: orderPre.locationId })
-        // Issue #3 §B (P0): fiskalizacijska napaka mora biti VIDNA v diagnostiki — prej
-        // samo console.warn + push (noben AuditLog) → /api/monitoring/errors je ni ujel.
-        // Fire-and-forget AuditLog zapis; račun OSTANE 'pending' (izrecno NE uvajamo
-        // 'error' statusa — prod-smoke šteje pending, SubsequentSubmit pot je runbook).
-        void writeAudit(db, {
-          userId: user.sub,
-          action: 'FISCAL_SUBMIT_FAILED',
-          entityType: 'Receipt',
-          entityId: receipt.twin.id,
-          details: jstr({
-            provider: 'FURS',
-            receiptNumber: receipt.twin.receiptNumber,
-            orderId: orderPre.id,
-            error: String((e as Error).message || 'napaka').slice(0, 200),
-          }),
-          locationId: location.id,
-        }).catch(() => null)
-      }
+    // Naloge 36 + 38 in audit 2026-10 #3 (v1.144.0): EOR (SI) / JIR (HR) gresta skozi
+    // SKUPNO pot submitFiscalDocument — isti klic zdaj uporablja tudi storno in
+    // obnova pending računov (POST /api/furs/[id]/resubmit), ne več ročni runbook.
+    // Fail-safe: ob napaki račun OSTANE 'pending' (plačilo je že urejeno).
+    if (!simulation) {
+      const submitted = await submitFiscalDocument({
+        receipt: receipt.twin,
+        location,
+        total,
+        vatMap,
+        issuedAt: now,
+        userId: user.sub,
+        simulation,
+      })
+      if (submitted.ok) receipt.twin = submitted.receipt
     }
-    // Naloga 38: JIR — CIS SOAP klic PO transakciji (zrcalno FURS EOR; omrežje ne sme
-    // držati DB tx). Fail-safe: ob napaki račun ostane 'pending' (SubsequentSubmit
-    // pozneje — runbook). Uspeh → cisStatus verified + cisJir + fiscalStatus verified.
-    if (hrProd) {
-      try {
-        const oibDigits = (location.taxId || '').replace(/\D/g, '')
-        const resp = await cisInvoice(hrProd.env, hrProd.cert, {
-          oib: oibDigits,
-          inVatSystem: Boolean(location.taxId),
-          issuedAt: now,
-          invoiceNumber: String(Number(receipt.twin.receiptNumber.split('-')[2]) || 0),
-          premisesId: location.premisesId || 'BLG001',
-          deviceId: location.registerNumber || '1',
-          vatRates: Object.entries(vatMap).map(([rate, v]) => ({
-            rate: Number(rate), base: v.base, amount: v.vat,
-          })),
-          total,
-          paymentMethod: hrNacinPlac(paymentMethod),
-          operatorOib: oibDigits, // rezidual: OIB operaterja (Employee) pride z validacijo testnega okolja
-          zki: receipt.twin.cisZki,
-          subsequentSubmit: false,
-          timeZone: location.timezone,
-        })
-        receipt.twin = await db.receipt.update({
-          where: { id: receipt.twin.id },
-          data: { cisJir: resp.jir, cisStatus: 'verified', cisSubmittedAt: new Date(), fiscalStatus: 'verified', fiscalVerified: true, verificationDate: new Date() },
-        })
-      } catch (e) {
-        console.warn('[cis] produkcija JIR ni uspel — račun ostane pending:', (e as Error).message)
-        // OPS-8 val 2 (v1.72.0): RECEIPT_FAILED push to management (matrix; fire-and-forget)
-        void pushEvent('RECEIPT_FAILED', {
-          title: 'CIS fiskalizacija ni uspela',
-          body: `${receipt.twin.receiptNumber} — ${String((e as Error).message || 'napaka').slice(0, 120)}`,
-          url: '/dashboard?tab=racuni',
-          tag: `receipt-failed-${receipt.twin.id}`,
-        }, { roles: ['manager', 'admin'], locationId: orderPre.locationId })
-        // Issue #3 §B (P0): zrcalno FURS — AuditLog FISCAL_SUBMIT_FAILED (provider CIS);
-        // račun ostane 'pending' (cisStatus 'pending'), SubsequentSubmit/NakDost=true je
-        // okrevanje po runbooku (docs/FURS-CERT-RUNBOOK.md korak 5).
-        void writeAudit(db, {
-          userId: user.sub,
-          action: 'FISCAL_SUBMIT_FAILED',
-          entityType: 'Receipt',
-          entityId: receipt.twin.id,
-          details: jstr({
-            provider: 'CIS',
-            receiptNumber: receipt.twin.receiptNumber,
-            orderId: orderPre.id,
-            error: String((e as Error).message || 'napaka').slice(0, 200),
-          }),
-          locationId: location.id,
-        }).catch(() => null)
-      }
-    }
+
     // Issue #11 §3 — dogodek izdaje računa (evidenca, fire-and-forget)
     // Issue #38: locationId iz preverjenega naročila (orderPre), ne iz klienta
     await publishEvent('InvoiceCreated', {

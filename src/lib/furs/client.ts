@@ -266,3 +266,21 @@ export function certFromEnv(): { cert: FursCertMaterial; env: FursEnvironment } 
   const env = (process.env.FURS_ENVIRONMENT === 'production' ? 'production' : 'test') as FursEnvironment
   return { cert, env }
 }
+
+/**
+ * CA veriga, s katero verifikujemo FURS strežnik (mTLS v obe smeri). Brez nje
+ * Node uporabi svoj privzeti nabor koreninskih certifikatov — kar v praktikah
+ * pomeni, da FURS-ova (ACNP/PoCC) veriga ali TESTNI strežnik z lastno CA odpadata
+ * z napako `self signed certificate` in račun ostane 'pending' (fail-safe).
+ * Simetrično s HR stranjo (FURS_HR_CA_PEM); PEM ali base64 PEM.
+ *
+ * POMEMBNO: Node ob nastavljenem `ca` ZAMENJA privzeti nabor koreninskih certifikatov,
+ * zato mora biti podana CELA veriga do korenine (ne samo certifikat servisa).
+ */
+export function fursCaFromEnv(): string | undefined {
+  const raw = process.env.FURS_CA_PEM
+  if (!raw) return undefined
+  const t = raw.trim()
+  if (t.includes('-----BEGIN')) return t.replace(/\\n/g, '\n')
+  return Buffer.from(t, 'base64').toString('utf8')
+}

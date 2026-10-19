@@ -7,6 +7,7 @@ import { nextSequence } from '@/lib/sequences'
 import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
+import { fiscalCerts, stampFiscalCodes, submitFiscalDocument } from '@/lib/furs/submit'
 import { writeAudit } from '@/lib/audit-chain'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
 import { localYearMonth } from '@/lib/fiscal-time'
@@ -131,6 +132,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     throw e
   }
   const simulation = profile.simulation
+  // audit #3 (v1.144.0): certifikata se razrešita IZVEN transakcije (dekripcija
+  // PKCS#12 sodi pred tx) — ista pot kot pri izdaji (src/lib/furs/issue.ts).
+  const certs = fiscalCerts(simulation, location.country)
 
   // ── Negacija originalnih zneskov (storno TOČNO uniči original — brez preračuna) ──
   const subtotal = r2(-num(original.subtotal))
@@ -179,20 +183,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       const { y, m } = localYearMonth(now, location.timezone)
       const receiptNumber = `${y}-${m}-${seq}-${location.premisesId || 'BLG001'}`
 
-      // ── Fiskalne kode: replikacija /api/furs (SI → ZOI/EOR, HR → ZKI/JIR v cis poljih) ──
+      // ── Fiskalne kode: ISTA pot kot /api/furs (audit #3, v1.144.0) ──
+      // Pred tem je ruta klicala samo `fiscal.computeCodes`, ki v PRODUKCIJI vrne
+      // prazne kode (certifikat obdela podpisna pot v submit.ts) → storno je dobil
+      // `zoi:''` in ga zato ni bilo mogoče oddati NIKOLI VEČ (naknadna oddaja
+      // računa brez zaščitne kode je zavrnjena).
       const fiscal = fiscalAdapterFor(location.country)
       const isHrFiscal = fiscal.country === 'HR'
-      const codes = fiscal.computeCodes({
-        taxId: location.taxId || '',
-        issuedAt: now,
-        receiptNumber,
-        premisesId: location.premisesId || 'BLG001',
-        total,
-        simulation,
-        timeZone: location.timezone,
-      })
-      const zoi = isHrFiscal ? '' : codes.protective
-      const eor = isHrFiscal ? '' : codes.verification
+      const stamp = stampFiscalCodes(
+        { location, receiptNumber, sequence: seq, total, issuedAt: now, simulation },
+        certs,
+      )
+      const zoi = stamp.zoi
+      const eor = stamp.eor
 
       const created = await tx.receipt.create({
         data: {
@@ -223,8 +226,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           printedAt: now,
           locationId: original.locationId,
           cisStatus: isHrFiscal ? (simulation ? 'verified' : 'pending') : 'none',
-          cisZki: isHrFiscal ? codes.protective : '',
-          cisJir: isHrFiscal ? codes.verification : '',
+          cisZki: stamp.cisZki,
+          cisJir: stamp.cisJir,
         },
       })
 
@@ -368,9 +371,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }).catch(() => undefined)
     }
 
+    // audit 2026-10 #3 (v1.144.0): storno je NOV fiskalni dokument in ga je v
+    // produkciji treba PRIJAVITI (ZOI→EOR / ZKI→JIR). Pred tem je ruta kode samo
+    // izračunala in zapisala 'pending' → negativni račun pri FURS/Porezni NI
+    // OBSTAJOČ. Isti fail-safe kot pri izdaji: ob napaki dokument ostane 'pending'
+    // in se obnovi prek POST /api/furs/[id]/resubmit (SubsequentSubmit / NakDost).
+    let stornoDoc = result.created
+    if (!simulation) {
+      const submitted = await submitFiscalDocument({
+        receipt: stornoDoc,
+        location,
+        total,
+        vatMap,
+        issuedAt: now,
+        userId: user.sub,
+        simulation,
+      })
+      if (submitted.ok) stornoDoc = submitted.receipt
+    }
+
     return ok({
       invoice: {
-        ...mapReceipt(result.created),
+        ...mapReceipt(stornoDoc),
         isStorno: true,
         stornoOf: original.id,
         stornoOfReceiptNumber: original.receiptNumber,
@@ -378,10 +400,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       storno: {
         originalReceiptId: original.id,
         originalReceiptNumber: original.receiptNumber,
-        stornoReceiptNumber: result.created.receiptNumber,
+        stornoReceiptNumber: stornoDoc.receiptNumber,
         restoredStockItems: result.stockReversalCount,
-        fiscalVerified: result.created.fiscalVerified,
-        fiscalStatus: result.created.fiscalStatus,
+        fiscalVerified: stornoDoc.fiscalVerified,
+        fiscalStatus: stornoDoc.fiscalStatus,
         simulation,
         // Issue #53: izrecna oznaka okolja — 'test'/'simulation' se razločita od produkcije
         fursEnvironment: profile.environment,
