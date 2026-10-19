@@ -91,6 +91,7 @@ export const TEST_PREFIXES = [
   'i11-', // issue11 CRM gostov (v1.126.0)
   'i11a-', // issue11 CRM admin/ddl (v1.126.0)
   'v129-', // role-ui-gating (v1.129.0 — čistilka/skladiščnik gating, Δ% KPI)
+  'fsub-', // fiscal-submit (v1.144.0 — skupna fiskalna oddaja: storno + obnova pending)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -268,6 +269,12 @@ const LOCATION_CHILD_SWEEP = [
   'guestConsent',
   'campaign',
   'campaignSend',
+  // v1.144.0 (audit #3): publishEvent() piše nid() id BREZ predpone, predpona živi v
+  // locationId. ID_SWEEP eventLog ujame samo id/entityId s predpono → lokacijsko
+  // odani dogodki (npr. storno račun) ostanejo 'pending' in zaidejo v globalni
+  // dispatch drugih testov (dokaz: tests/issue38-event-tenant-scope.test.ts:268 je
+  // v celotnem teku dobil 15 namesto 5 — samoceljivost sweep-a, ne napaka izdelka).
+  'eventLog',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }
