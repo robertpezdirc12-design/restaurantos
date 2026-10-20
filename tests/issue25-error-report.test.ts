@@ -168,7 +168,7 @@ describe('issue #25 — redactSensitiveText (unit)', () => {
     expect(redactSensitiveText('password: mojaGeslo1').text).not.toContain('mojaGeslo1')
     expect(redactSensitiveText('api_key=nekaj123456').text).not.toContain('nekaj123456')
     expect(redactSensitiveText('cvv=999').text).not.toContain('999')
-    expect(redactSensitiveText('PIN=729153').text).not.toContain('729153')
+    expect(redactSensitiveText('PIN=123456').text).not.toContain('123456')
   })
   it('NE zamenja nedolžnih besed z oznako v besedi (mapping/pine)', () => {
     const r = redactSensitiveText('mapping=order in pine=tree ostajata')

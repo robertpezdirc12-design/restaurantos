@@ -189,13 +189,17 @@ describe('A1. №15 — runner routing in čista `.git/config`', () => {
 
   test('secrets scan pregleda tudi .github/ (sicer #15 ne bi bil nikoli ujet)', () => {
     const sh = readFileSync(join(ROOT, 'scripts/check-secrets.sh'), 'utf8')
-    const scanLine = sh
+    // v1.153.0 je scan poti prestavila v ROOTS seznam (manjkajoča pot ne sme
+    // tiho obrniti scan-a v zeleno); ista vsebina, druga oblika vrstice.
+    const rootsLine = sh
       .split(/\r?\n/)
-      .find((l) => /\bsrc\/\s+scripts\//.test(l) && !/^\s*#/.test(l))
-    expect(scanLine).toBeDefined()
-    // .github/ mora biti med skandiranimi POTMI (ne v komentarju ali --include)
-    expect(scanLine).toContain('.github/')
-    expect(scanLine).toContain('.gitlab-ci.yml')
+      .find((l) => /^\s*for p in\s/.test(l) && !/^\s*#/.test(l))
+    expect(rootsLine).toBeDefined()
+    // .github/ in .gitlab-ci.yml morata biti med skeniranimi POTMI (ne v komentarju)
+    expect(rootsLine).toContain('.github')
+    expect(rootsLine).toContain('.gitlab-ci.yml')
+    // seznam mora priti v grep — sicer je mrtev seznam
+    expect(sh).toContain('"${ROOTS[@]}"')
   })
 
   test('neuspeh fetcha in neuspeh pusha vplivata na izhod koraka (brez tega alarm ne more ničesar sprožiti)', () => {
