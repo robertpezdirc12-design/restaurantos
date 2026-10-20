@@ -51,6 +51,31 @@ nima Neon dostopa. Vse ostalo mora biti identično — to pinira sklop A5.
 predpomnika in obratno — isti razred tihe napake kot zgoraj, le da ga povzroči
 predpomnik, zato se pokaže šele takrat, ko runner prejme zadetek.
 
+### Obseg jobskega loga (najdba №23)
+
+GitLab ima na izpis enega joba trdo mejo 4.194.304 B. Ko jo job preseže,
+zbiranje loga prenehe in job umre — brez napake v kodi in brez razloga v
+izpisu.
+
+Vzrok za šest zaporednih rdečih pipeline-ov je bil `log: ['query']` v
+`src/lib/db.ts`: celoten testni proračun je z njim natisnil 17.044.192 B
+(59.255 vrstic `prisma:query`) — štirikrat čez mejo — in job je umrl sredi
+`bun run test`. Zadnja dva koraka (`check-schema-drift.cjs`, `check-secrets.sh`)
+se nikoli nista izvedla. Zrcalni gate je bil torej rdeč zaradi lastnega
+izpisa, ne zaradi vsebine.
+
+Od v1.151.0 `src/lib/db.ts` poizvedbe logira SAMO, če je `PRISMA_LOG_QUERIES=1`,
+in nobena CI konfiguracija tega stikala ne prižge. Ista sprememba je odpravila
+še eno tiho napako: predhodni `log` je bil seznam z ENO samo stopnjo, zato
+Prisma `warn` in `error` sporočil ni pisal nikoli. Zrcalni gate je s tem utišal
+prav tista sporočila, ki opozarjata na neskladje sheme in na težave s povezavo.
+
+Meritev po popravku: celoten suite (2889 testov) zapiše 448.369 B in nobene
+`prisma:query` vrstice — devetkrat prostora pod mejo. Sklop B v
+`tests/audit2324-log-noise.test.ts` to preverja dinamično: sonda
+`scripts/log-noise-probe.ts` zažene pravi Prisma klient, test pa šteje
+`prisma:query` vrstice nje — z stikalom in brez njega.
+
 ### Vercel — deploy, ki je hkrati zapora
 
 Vercel Git integration zgradi in deploya ob pushu na main, neodvisno od CI-ja.
@@ -74,6 +99,39 @@ bilo in napake ni bilo. Koraki so uspeh potrdili ne glede na izid (`|| true`,
 pregrt izhod), run je bil zelen in sinhronizirano ni bilo ničesar. Zato isti
 release fetch, push in tage naredi fail-loud in dodaja varovko zakasnitve
 zrcala — alarm brez resnega izhoda je ornament.
+
+### Dead-man za run, ki se nikoli ne začne (najdba №24)
+
+`if: failure()` je pogoj, ki ga Actions izvede samo za run, ki se je začel in
+končal. Trije načini, kako CI izgine, a nobeden od njih ne povzroči rdečega
+izida: (a) workflow je onemogočen ali pa je njegov `on:` blok neveljaven, tako
+da se ob pushu sploh ne ustvari run; (b) run nastane, a runner nikoli ni
+dodeljen — prazna hosted kvota ali nedosegljiv self-hosted runner, kar je
+točno scenarij najdbe №15; (c) cron sploh ne sproži. V nobenem od teh primerov
+noben job ne odpove, zato noben `ci-alarm` issue ne more biti odprt — najdba
+№16 je bila s tem pokrita samo v polovici.
+
+`ci-canary.yml` je šesti workflow in teče vsako uro (`cron: 17 * * * *`) na
+GitHubovi hosted napravi. To je EDINA izjema od usmerjanja prek
+`vars.CI_RUNNER_LABELS` in je utemeljena v glavi datoteke z oznako
+`IZJEMA-CI-CANARY`: opazovalec ne sme biti nameščen na isto napravo, ki jo
+opazuje, sicer bi prazna kvota ali ugasnjen self-hosted runner utišal tudi
+alarm zanjo. Cena izjeme je ~24 minut hosted-računa na mesec. Pogodba, da se
+izjema ne sme razširiti na pet delivery workflowov, je pinirana v obe smeri
+(sklop C v `tests/audit2324-log-noise.test.ts`).
+
+Sam preizkus je kratek (`node scripts/ci-canary-check.mjs`) in ne kopira
+odločitvenega drevesa v YAML: poišče najnovejši commit na `main`, nato run-e
+tega commita in napove izid po lestvici — prazen odgovor, spremenjena oblika
+API-ja, nič zabeleženih runov na veji, commit brez runa, run zunaj praga 20
+min. Zadnji primer je najbolj verjeten in edini, ki ga GitHub sam ne javi: run
+obstaja, samo nikoli se ni začel.
+
+En primer je namenoma TIH (`exit 0`): če je zadnji run zaključen z napako,
+canary ne odpira ničesar, ker ga `if: failure()` že pokriva. Podvajanje bi vsako
+odpoved spremenilo v dva issuea in alarm razredčilo do neuporabnosti. Ker
+canary ob lastni odpovedi pokliče isti `ci-alarm`, je pokrita tudi zavora
+same zavore.
 
 ## Migracije (varne proti obstoječim podatkom)
 
