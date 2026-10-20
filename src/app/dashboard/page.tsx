@@ -6,6 +6,7 @@ import { api, fmtEUR, fmtPctSigned, getUser } from '@/lib/client'
 import { vatFromGross } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
+import { dashboardPollIncludes } from '@/lib/poll-plan'
 /* ISSUE #74 V-3 (v1.135.0): pet razredov starosti listka + nastavljivi pragovi —
    enoten vir (kds-delays.ts) za page.tsx IN kds-station-board (prej dve ločeni
    kopiji iste logike z dvema različnima pragoma). */
@@ -712,12 +713,14 @@ function DashboardInner() {
         // station ids are ADDITIVE (server ignores unknown values for the legacy
         // queue filter — the task board does its own client-side filtering).
         soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[] }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
-        soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
+        // v1.164.0 (Neon egress): počasni viri samo v polnem 60-sekundnem ciklu
+        // v1.164.0 (Neon egress): počasni viri samo v polnem 60-sekundnem ciklu
+        dashboardPollIncludes(scope, 'menus') ? soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)) : undefined,
         full && hp('employees.manage') ? soft(api<{ employees: EmployeeT[] }>('/api/employees')) : undefined,
-        soft(api<{ reservations: ReservationT[] }>('/api/reservations')),
-        soft(api<{ receipts: ReceiptT[] }>('/api/furs')),
+        dashboardPollIncludes(scope, 'reservations') ? soft(api<{ reservations: ReservationT[] }>('/api/reservations')) : undefined,
+        dashboardPollIncludes(scope, 'furs') ? soft(api<{ receipts: ReceiptT[] }>('/api/furs')) : undefined,
         full ? soft(api<{ inventory: InventoryT[] }>('/api/inventory')) : undefined,
-        soft(api<{ shifts: ShiftT[] }>('/api/shifts')),
+        dashboardPollIncludes(scope, 'shifts') ? soft(api<{ shifts: ShiftT[] }>('/api/shifts')) : undefined,
         full && hp('reports.sales') ? soft(api<FinancialT>('/api/reports/financial')) : undefined,
         full && hpAny('haccp.execute', 'settings.manage') ? soft(api<{ haccpChecks: HaccpT[] }>('/api/haccp')) : undefined,
         full && hp('reports.sales') ? soft(api<{ expenses: ExpenseT[]; categoriesEnabled?: boolean }>('/api/expenses')) : undefined,

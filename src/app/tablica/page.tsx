@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { enqueueOp, flushQueue, isNetworkError, newOperationId } from '@/lib/offline-queue'
+import { menuRefreshDue } from '@/lib/poll-plan'
 import { tableStatusLabelKey } from '@/lib/table-status'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { Badge } from '@/components/ui/badge'
@@ -61,16 +62,19 @@ function TablicaInner() {
   const [search, setSearch] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (withMenu: boolean) => {
     const [tb, or, mn] = await Promise.all([
       api<{ tables: TableT[] }>('/api/tables'),
       api<{ orders: OrderT[] }>('/api/orders'),
-      api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus'),
+      // v1.164.0 (Neon egress): meni le ob withMenu (vsak 4. cikel); mize/naročila 15 s
+      withMenu ? api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus') : Promise.resolve(null),
     ])
     setTables(tb.tables ?? [])
     setOrders(or.orders ?? [])
-    setMenu((mn.items ?? []).filter((m) => m.available))
-    setCategories(mn.categories ?? [])
+    if (mn) {
+      setMenu((mn.items ?? []).filter((m) => m.available))
+      setCategories(mn.categories ?? [])
+    }
   }, [])
 
   useEffect(() => {
@@ -81,7 +85,7 @@ function TablicaInner() {
         const meRes = await api<{ employee: { name: string; role: string } }>('/api/auth/me')
         if (!alive) return
         setMe(meRes.employee ?? getUser())
-        await load()
+        await load(true)
         if (!alive) return
         setReady(true)
       } catch { /* api() ob 401 samo preusmeri */ }
@@ -94,7 +98,12 @@ function TablicaInner() {
     void flushQueue().catch(() => null)
     const onOnline = () => { void flushQueue().catch(() => null) }
     window.addEventListener('online', onOnline)
-    pollRef.current = setInterval(() => { void load().catch(() => null) }, 15000)
+    // v1.164.0 (Neon egress): meni vsak 4. cikel (60 s); mize/naročila ostanejo 15 s
+    let tick = 1
+    pollRef.current = setInterval(() => {
+      void load(menuRefreshDue(tick)).catch(() => null)
+      tick += 1
+    }, 15000)
     return () => {
       alive = false
       window.removeEventListener('online', onOnline)
@@ -125,7 +134,7 @@ function TablicaInner() {
   async function markClean(tb: TableT) {
     try {
       await api(`/api/tables/${tb.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'FREE' }) })
-      await load()
+      await load(true)
     } catch (err) { setNotice((err as Error).message) }
   }
 
@@ -142,7 +151,7 @@ function TablicaInner() {
     try {
       // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
       await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: openTable.id, items, guests: 2, clientOperationId, locationId: openTable.locationId || undefined }) })
-      setCart({}); setOpenTable(null); await load()
+      setCart({}); setOpenTable(null); await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
         enqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '', locationId: openTable.locationId || undefined }, clientOperationId)
@@ -159,7 +168,7 @@ function TablicaInner() {
     const clientOperationId = newOperationId()
     try {
       await api(`/api/orders/${openOrder.id}`, { method: 'PATCH', body: JSON.stringify({ addItems }) })
-      setCart({}); await load()
+      setCart({}); await load(true)
       setOpenTable(null)
     } catch (err) {
       if (isNetworkError(err)) {

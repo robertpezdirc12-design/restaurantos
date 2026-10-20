@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { enqueueOp, flushQueue, isNetworkError, newOperationId, subscribeQueue } from '@/lib/offline-queue'
+import { menuRefreshDue } from '@/lib/poll-plan'
 import { processTerminalPayment } from '@/lib/devices/terminal'
 import { tableStatusLabelKey } from '@/lib/table-status'
 import { categoryImageForCategory } from '@/lib/category-images'
@@ -107,16 +108,19 @@ function HandheldInner() {
   const [plinkBusy, setPlinkBusy] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (withMenu: boolean) => {
     const [tb, or, mn] = await Promise.all([
       api<{ tables: TableT[] }>('/api/tables'),
       api<{ orders: OrderT[] }>('/api/orders'),
-      api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus'),
+      // v1.164.0 (Neon egress): meni le ob withMenu (vsak 4. cikel); mize/naročila 15 s
+      withMenu ? api<{ items: MenuT[]; categories: CategoryT[] }>('/api/menus') : Promise.resolve(null),
     ])
     setTables(tb.tables ?? [])
     setOrders(or.orders ?? [])
-    setMenu(mn.items ?? [])
-    setCategories(mn.categories ?? [])
+    if (mn) {
+      setMenu(mn.items ?? [])
+      setCategories(mn.categories ?? [])
+    }
   }, [])
 
   useEffect(() => {
@@ -128,12 +132,17 @@ function HandheldInner() {
         const meRes = await api<{ employee: { name: string; role: string } }>('/api/auth/me')
         if (!alive) return
         setMe(meRes.employee ?? getUser())
-        await load()
+        await load(true)
         if (!alive) return
         setReady(true)
       } catch { /* api() ob 401 samo preusmeri */ }
     })()
-    pollRef.current = setInterval(() => { void load().catch(() => null) }, 15000)
+    // v1.164.0 (Neon egress): meni vsak 4. cikel (60 s); mize/naročila ostanejo 15 s
+    let tick = 1
+    pollRef.current = setInterval(() => {
+      void load(menuRefreshDue(tick)).catch(() => null)
+      tick += 1
+    }, 15000)
     // Issue #3 §D (P1): flush tudi ob ZAGONU (ne samo ob 'online' dogodku) —
     // natakar po prekinitvi omrežja ponovno odpre PWA, ko je omrežje ŽE nazaj
     // (dogodka 'online' ni bilo, ker je bil ob odprtju že online) — vrsta
@@ -142,7 +151,7 @@ function HandheldInner() {
     const onOnline = () => {
       setOnline(true)
       void flushQueue().catch(() => null)
-      void load().catch(() => null)
+      void load(true).catch(() => null)
     }
     const onOffline = () => setOnline(false)
     window.addEventListener('online', onOnline)
@@ -157,7 +166,7 @@ function HandheldInner() {
     }
   }, [router, load])
 
-  /** izbrana miza — vedno iz svežih podatkov (po load() se activeOrder samodejno prikaže) */
+  /** izbrana miza — vedno iz svežih podatkov (po osvežitvi se activeOrder samodejno prikaže) */
   const selTable = useMemo(() => tables.find((tb) => tb.id === selTableId) ?? null, [tables, selTableId])
   const openOrder = useMemo(() => {
     if (!selTable?.activeOrder) return null
@@ -209,7 +218,7 @@ function HandheldInner() {
   async function markClean(tb: TableT) {
     try {
       await api(`/api/tables/${tb.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'FREE' }) })
-      await load()
+      await load(true)
       if (view === 'paid') { setView('tables'); setSelTableId(null) }
     } catch (err) { setNotice((err as Error).message) }
   }
@@ -235,7 +244,7 @@ function HandheldInner() {
       // requireUserLocation jo sprejme; osebje s lokacijo je strežnik ignorira (user.loc zmaga)
       await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: selTable.id, items: itemsPayload, guests, clientOperationId, locationId: selTable.locationId || undefined }) })
       setCart({}); setNotes({}); setAllergenNotes({}); setNoteOpen(null)
-      await load()
+      await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
         enqueueOp('order.create', { tableId: selTable.id, items: itemsPayload, guests, note: '', locationId: selTable.locationId || undefined }, clientOperationId)
@@ -257,7 +266,7 @@ function HandheldInner() {
     try {
       await api(`/api/orders/${openOrder.id}`, { method: 'PATCH', body: JSON.stringify({ addItems, clientOperationId }) })
       setCart({}); setNotes({}); setNoteOpen(null)
-      await load()
+      await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
         enqueueOp('order.addItems', { orderId: openOrder.id, addItems }, clientOperationId)
@@ -274,7 +283,7 @@ function HandheldInner() {
     try {
       const d = await api<{ firedCount: number; alreadyFired: boolean }>(`/api/orders/${openOrder.id}/fire`, { method: 'POST', body: JSON.stringify({}) })
       setNotice(d.alreadyFired ? t('hh.noPending') : t('hh.firedOk', { n: d.firedCount }))
-      await load()
+      await load(true)
     } catch (err) { setNotice((err as Error).message) } finally { setFiring(false) }
   }
 
@@ -289,7 +298,7 @@ function HandheldInner() {
       setView('bill')
     } catch (err) {
       setNotice((err as Error).message)
-      await load().catch(() => null)
+      await load(true).catch(() => null)
     }
   }
 
@@ -319,10 +328,10 @@ function HandheldInner() {
       })
       setPaidInfo({ invoiceNumber: d.invoice?.invoiceNumber ?? null, eor: d.invoice?.eor ?? null, total: payTotal, tip: tipEur })
       setView('paid')
-      await load()
+      await load(true)
     } catch (err) {
       setNotice((err as Error).message)
-      await load().catch(() => null)
+      await load(true).catch(() => null)
     } finally { setPaying(false) }
   }
 
