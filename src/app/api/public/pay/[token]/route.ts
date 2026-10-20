@@ -1,8 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, fail } from '@/lib/api'
-import { createToken } from '@/lib/auth'
-import { writeAudit } from '@/lib/audit-chain'
 import { r2 } from '@/lib/map'
 import { rateLimitPublic, clientIp } from '@/lib/guest'
 import {
@@ -18,6 +16,14 @@ import {
   payLinkReady,
   payLinkSimulationAllowed,
 } from '@/lib/paylink/core'
+import {
+  paidLinkSum,
+  paidPayload,
+  settleShareCore,
+  settleStripeSession,
+  type LinkRow,
+  type OrderLite,
+} from '@/lib/paylink/settle'
 
 /**
  * P0-2 TRZNA-VRZELI (v1.85.0) + P1-6 SPLIT PO GOSTIH (v1.87.0) — JAVNA plačilna
@@ -63,99 +69,6 @@ import {
  */
 
 const TIP_PRESETS = [0, 5, 10, 15]
-
-interface LinkRow {
-  id: string
-  token: string
-  orderId: string
-  locationId: string
-  status: string
-  amount: { toNumber: () => number } | null
-  tip: { toNumber: () => number } | null
-  splitIndex: number
-  splitCount: number
-  approvalCode: string
-  /** #37: kanonična Stripe Checkout seja za to povezavo. */
-  sessionId: string | null
-  expiresAt: Date | null
-  paidAt: Date | null
-  receiptId: string | null
-}
-
-interface OrderLite {
-  id: string
-  orderNumber: number
-  status: string
-  paymentStatus: string
-  tableId: string | null
-  locationId: string
-}
-
-/** Pobrani deleži povezav naročila (vmesna plačila brez končnega računa). */
-async function paidLinkSum(orderId: string): Promise<{ sum: number; count: number }> {
-  const rows = await db.payLink.findMany({
-    where: { orderId, status: 'paid', receiptId: null, amount: { not: null } },
-    select: { amount: true },
-  })
-  return { sum: rows.length ? r2(rows.reduce((s, l) => s + Number(l.amount), 0)) : 0, count: rows.length }
-}
-
-/** Odgovor za plačano povezavo (iz Receipt vrstice — št. računa, EOR/JIR, znesek). */
-async function paidPayload(link: LinkRow) {
-  const receipt = link.receiptId
-    ? await db.receipt.findUnique({
-        where: { id: link.receiptId },
-        select: {
-          receiptNumber: true,
-          eor: true,
-          zoi: true,
-          cisJir: true,
-          cisZki: true,
-          total: true,
-          tip: true,
-          totalWithTip: true,
-          paymentMethod: true,
-          fiscalStatus: true,
-        },
-      })
-    : null
-  const loc = await db.location.findUnique({ where: { id: link.locationId }, select: { name: true } }).catch(() => null)
-  const paid = await paidLinkSum(link.orderId)
-  const split =
-    link.splitCount > 1 || link.amount != null
-      ? {
-          index: link.splitIndex,
-          count: link.splitCount,
-          share: link.amount == null ? null : r2(Number(link.amount)),
-          paidShares: paid.count,
-          receiptPending: !link.receiptId,
-        }
-      : undefined
-  return {
-    status: 'paid' as const,
-    paidAt: link.paidAt,
-    receiptPending: !link.receiptId,
-    location: { name: loc?.name || '' },
-    receipt: receipt
-      ? {
-          receiptNumber: receipt.receiptNumber,
-          eor: receipt.eor || null,
-          zoi: receipt.zoi || null,
-          jir: receipt.cisJir || null,
-          zki: receipt.cisZki || null,
-          total: r2(Number(receipt.total)),
-          tip: r2(Number(receipt.tip)),
-          totalWithTip: r2(Number(receipt.totalWithTip)),
-          paymentMethod: receipt.paymentMethod,
-          fiscalStatus: receipt.fiscalStatus,
-        }
-      : null,
-    share: link.amount == null ? null : r2(Number(link.amount)),
-    tip: link.tip == null ? null : r2(Number(link.tip)),
-    approvalCode: link.approvalCode || null,
-    split,
-  }
-}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
@@ -330,27 +243,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       return fail('Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.', 502)
     }
     if (!status.paid) return fail('Plačilo še ni potrjeno.', 409)
-    // #37 točka 2: strežniško preverjena VEZAVA na TO povezavo (Stripe echo id,
-    // metadata, ki jih klient ne more ponarediti; valuta/mode/znesek)
-    const expected = Math.round((Number(link.amount) + Number(link.tip)) * 100)
-    const bound =
-      status.id === verifySession &&
-      status.metadata?.payLinkId === link.id &&
-      status.metadata?.orderId === link.orderId &&
-      status.metadata?.locationId === link.locationId &&
-      (status.metadata?.expectedAmountCents == null || Number(status.metadata.expectedAmountCents) === expected) &&
-      (status.currency == null || status.currency === 'eur') &&
-      (status.mode == null || status.mode === 'payment') &&
-      status.sessionStatus !== 'expired'
-    if (!bound) {
-      return fail('Plačilna seja ni veljavna za to povezavo.', 409)
+    // #37 točka 2 + v1.157.0: ENA strežniška vezava in poravnava za vse poti
+    // (gostov POST, podpisani webhook, dnevna uskladitev) — brez podvojenih pravil.
+    const settled = await settleStripeSession({
+      order,
+      link,
+      session: status,
+      verifySessionId: verifySession,
+      ip,
+      allowExpired: false,
+    })
+    if (settled.kind === 'settled') {
+      return ok(settled.replayed ? { ...settled.payload, replayed: true } : settled.payload)
     }
-    // neposrednost: znesek seje se mora ujemati z zaklenjenim deležem+napitnino
-    if (status.amountTotalCents != null && status.amountTotalCents !== expected) {
-      return fail('Znesek seje se ne ujema s povezavo.', 409)
+    if (settled.kind === 'conflict') return fail(settled.error, settled.status)
+    switch (settled.reason) {
+      case 'amount':
+        return fail('Znesek seje se ne ujema s povezavo.', 409)
+      case 'expired':
+        return fail('Povezava je potekla. Prosimo, zaprosite osebje za novo.', 409)
+      case 'order_terminal':
+        return fail('Povezava je preklicana.', 409)
+      case 'order_paid':
+        return fail('Naročilo je že plačano drugje.', 409)
+      case 'bill_changed':
+        return fail('Račun se je spremenil — prosite osebje za novo povezavo.', 409)
+      case 'not_paid':
+        return fail('Plačilo še ni potrjeno.', 409)
+      case 'not_open':
+        return fail('Račun je že plačan.', 409)
+      default:
+        return fail('Plačilna seja ni veljavna za to povezavo.', 409)
     }
-    const approvalCode = (status.paymentIntent || `stripe-${verifySession.slice(0, 20)}`).slice(0, 40)
-    return settleShare(order, link, share, Number(link.tip), approvalCode, ip, openOthers, link.sessionId)
   }
 
   // ── plačilo: najprej kanonični račun (napitnina ≤ DELEŽ) ──
@@ -461,80 +385,9 @@ async function settleShare(
   openOthers: number,
   sessionRef?: string | null,
 ) {
-  const now = new Date()
-  // #37: ATOMARNI prehod open → paid (CAS) — samo zmagovalni zahtevek nadaljuje
-  const cas = await db.payLink.updateMany({
-    where: { id: link.id, status: 'open' },
-    data: {
-      status: 'paid',
-      paidAt: now,
-      amount: share,
-      tip: r2(tip),
-      approvalCode: String(approvalCode || '').slice(0, 40),
-    },
-  })
-  if (cas.count === 0) {
-    // sočasni/dvojni zahtevek — idempotentni odgovor brez drugega učinka
-    const fresh = (await db.payLink.findUnique({ where: { id: link.id } })) as LinkRow | null
-    if (fresh?.status === 'paid') {
-      return ok({ ...(await paidPayload(fresh)), replayed: true })
-    }
-    return fail('Račun je že plačan.', 409)
-  }
-
-  if (openOthers > 0) {
-    // ── vmesni delež: naročilo 'partial' (CAS — unpaid → partial), brez računa ──
-    await db.order
-      .updateMany({ where: { id: order.id, paymentStatus: 'unpaid' }, data: { paymentStatus: 'partial' } })
-      .catch(() => {})
-    await writeAudit(db, {
-      userId: null,
-      action: 'PAY_LINK_SHARE_PAID',
-      entityType: 'PayLink',
-      entityId: link.id,
-      details: `order=#${order.orderNumber} token=${link.token.slice(0, 8)}… share=${share.toFixed(2)} tip=${r2(tip).toFixed(2)} approval=${String(approvalCode).slice(0, 20)}${sessionRef ? ` session=${String(sessionRef).slice(0, 14)}…` : ''} split=${link.splitIndex}/${link.splitCount}`,
-      ipAddress: ip,
-      locationId: order.locationId,
-    }).catch(() => {})
-    const paidNow = await paidLinkSum(order.id)
-    return ok({
-      status: 'paid',
-      paidAt: now,
-      share,
-      tip: r2(tip),
-      approvalCode: String(approvalCode || '').slice(0, 40),
-      split: {
-        index: link.splitIndex,
-        count: link.splitCount,
-        paidShares: paidNow.count,
-        receiptPending: true,
-      },
-      receipt: null,
-      receiptPending: true,
-    })
-  }
-
-  // ── zadnji delež: končni račun prek kanoničnega FURS jedra (0 duplikata) ──
-  const result = await finalizePayLinkSet(order.id, ip)
-  if (!result.ok) {
-    // CAS spor (POS je medtem plačal) → superseded, gost vidi prijazno stanje
-    if (result.status === 409) {
-      await db.payLink.updateMany({ where: { orderId: order.id, status: 'open' }, data: { status: 'superseded' } }).catch(() => {})
-      return fail('Naročilo je že plačano drugje.', 409)
-    }
-    return fail(result.error, result.status)
-  }
-  if (!result.replayed) {
-    await writeAudit(db, {
-      userId: null,
-      action: 'PAY_LINK_PAID',
-      entityType: 'PayLink',
-      entityId: link.id,
-      details: `order=#${order.orderNumber} token=${link.token.slice(0, 8)}… final=1 share=${share.toFixed(2)} tip=${r2(tip).toFixed(2)} approval=${String(approvalCode).slice(0, 20)}${sessionRef ? ` session=${String(sessionRef).slice(0, 14)}…` : ''} split=${link.splitIndex}/${link.splitCount}`,
-      ipAddress: ip,
-      locationId: order.locationId,
-    }).catch(() => {})
-  }
-  const refreshed = (await db.payLink.findUnique({ where: { id: link.id } })) as LinkRow | null
-  return ok({ ...(refreshed ? await paidPayload(refreshed) : { status: 'paid' as const }), replayed: result.replayed })
+  // v1.157.0: skupno jedro (settle.ts) — ista poravnava za javni POST,
+  // podpisani Stripe webhook in dnevno uskladitev.
+  const result = await settleShareCore(order, link, share, tip, approvalCode, ip, openOthers, sessionRef)
+  if (result.kind === 'conflict') return fail(result.error, result.status)
+  return ok(result.replayed ? { ...result.payload, replayed: true } : result.payload)
 }

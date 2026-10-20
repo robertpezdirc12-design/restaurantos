@@ -10,6 +10,7 @@ import { pushEvent, apOverduePushPayload } from '@/lib/push'
 import { runDailyLotAlerts } from '@/lib/lot-alert'
 import { runDailyHaccpOverdue } from '@/lib/haccp-overdue'
 import { dispatchDueCampaigns } from '@/lib/crm'
+import { reconcilePaidStripeSessions } from '@/lib/paylink/reconcile'
 import {
   CRON_DAILY_MARKER,
   MAX_OVERDUE_APS,
@@ -32,6 +33,13 @@ import {
  *      section inside the digest.
  *   3. digest — sendDailyDigest() — yesterday's sales window + recurringToday +
  *      overdue-AP section; ScheduledEmailLog reportType 'DAILY_DIGEST'.
+ *   3f. paylinks (v1.157.0) — reconcilePaidStripeSessions({ limit: 20 }): varovalka
+ *      za Stripe Checkout seje, ki jih je Stripe označil kot plačane, gost pa se
+ *      ni vrnil na povezavo in webhook ni bil dostavljen. Poravna po ISTEN jedru
+ *      kot javni POST in podpisani webhook (src/lib/paylink/settle.ts); vsaka
+ *      neujemajoča seja dobi revizijo PAY_LINK_STRIPE_REVIEW, ne tihe poravnave.
+ *      Hobby plan: brez novega urnika — korak teče znotraj obstoječega dnevnega
+ *      cron-a (0 5 * * *).
  *
  * Auth: CRON_SECRET set → timing-safe Bearer compare (Vercel cron); NOT set +
  * dev → admin/manager session only (curl-able with the login Bearer token);
@@ -134,6 +142,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     lotAlert: { count: number }
     haccpOverdue: { count: number }
     campaigns: { count: number; sent: number }
+    paylinks: { scanned: number; settled: number; skipped: number; errors: number }
   } = {
     recurring: { created: 0, skipped: 0 },
     digest: { sent: false },
@@ -141,6 +150,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     lotAlert: { count: 0 },
     haccpOverdue: { count: 0 },
     campaigns: { count: 0, sent: 0 },
+    paylinks: { scanned: 0, settled: 0, skipped: 0, errors: 0 },
   }
 
   // 1) recurring purchase-order rules (shared core with the UI route)
@@ -217,6 +227,17 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     }
   } catch (e) {
     errors.push(`campaigns: ${String((e as Error).message || e).slice(0, 200)}`)
+  }
+
+  // 3f) v1.157.0: plačane Stripe seje brez gostove vrnitve (webhook fallback).
+  //     Poravna SAMO kanonične, strežniško vezane seje; brez Stripe konfiguracije
+  //     (simulator) je korak no-op in ne kliče zunanjega API-ja.
+  try {
+    const rec = await reconcilePaidStripeSessions({ limit: 20 })
+    steps.paylinks = { scanned: rec.scanned, settled: rec.settled, skipped: rec.skipped, errors: rec.errors }
+    if (rec.errors > 0) errors.push(`paylinks: ${rec.errors} napak pri preverjanju sej`)
+  } catch (e) {
+    errors.push(`paylinks: ${String((e as Error).message || e).slice(0, 200)}`)
   }
 
   // 4) persist the idempotency marker (after a fully dispatched run)
