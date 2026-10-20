@@ -4635,4 +4635,24 @@ Stage Summary:
 - ZAVESTNO NE STORENO: (a) node-forge se NE nadgradi — popravka ni, ocena pa velja le dokler se ne doda preverjanje podpisa; ko se doda, test to takoj ujame; (b) Prisma 7 (ki bi zaprla deepmerge-ts/effect) ni del te izdaje — major migracija z lastnim tveganjem; (c) braces ostane brez popravka; (d) React Compiler refaktor 73 mest ni del te izdaje; (e) next-auth/next-intl/uuid se ne dodajajo nazaj brez dejanskega uvoza.
 - AKCIJA ZA LASTNIKA: (1) ROTIRAJ oba PIN-a (info@ admin in vodja@ manager) v Control Centerju → Zaposleni → Ponastavi PIN — vrednosti so še v git zgodovini obeh oddaljenih kopij; (2) rotiraj GitHub/GitLab/Vercel žetone (stalna točka); (3) vklopi Neon (`patient-violet-36825841`) — health brez njega ostaja `degraded`; (4) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (5) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (6) po pushu preveri Vercel READY, `/api/health` (version 1.154.0, commit = nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
 
+---
+
+Task ID: v1.155.0-doc-truth
+Agent: glavni agent (Qoder)
+Task: Popravek resnicoljubnosti `docs/RESTAURANTOS-AUDIT.md`. Audit (2026-10-09) je bil takrat točen, a je po Task 31-a/33-a/33-b/35/36/38/49 in v1.86.0 na več mestih še vedno trdil "MISSING", "PARTIAL" ali "ni odjemalca". Zastarel dokument ni kozmetika: bralec po njem sklepa, da funkcionalnost manjka, in jo lahko podvaja.
+
+Work Log:
+- PREGLED CELOTNEGA DOKUMENTA (271 vrstic), ne le treh znanih vrstic. Popravljenih osem sklopov: (1) §1 GitLab CI — ponovno aktiven, pipeline #63–#65 zeleni (prej `builds_access_level=disabled`); (2) §2 shema — dev in baseline 117 → **135 tabel**, dual shema 117 → **135 modelov/20 enumov** + SQLite zrcalo 135 modelov/0 enumov; prod-smoke in Neon backup nista več odprta blockerja; (3) §3 vrstica 3 — move/merge **DONE** z rutama, UI gumbi in testi; (4) §3 vrstica 14 — gostujoči i18n **DONE** (SL/HR/EN, prej "PARTIAL"); (5) §5 R10 — kaže na dejanski `POST /api/receipts/[id]/storno`, ne na "MISSING"; (6) §7 — kiosk ni več "SL-only"; (7) §8 — **3375 ključev SL + 3375 HR** (polna pariteta) in **204 ključev EN** (gostujoče predpone), prej 1.073 × 2; (8) §9 FURS — odjemalca SI (`src/lib/furs/client.ts`) in HR (`src/lib/cis/client.ts`) so implementirani, ZOI je **RSA-SHA256** (ne RSA-SHA512), storno obstaja; certifikat ostaja človeški korak, SI QR je pošteno označen kot neimplementiran.
+- NOVI TEST `tests/audit-doc-truth.test.ts` (14 testov / 75 expect-ov): dokument se preverja proti virom, ne proti prepisanemu besedilu — števci modelov/enumov/tabel se berejo iz obeh shem in baselinea, obstoj rut/UI klicev/odjemalcev iz datotečnega sistema, števci i18n iz dejanskih slovarjev, ZOI algoritem iz `client.ts`.
+- RED-GREEN: prvih 14/14 rdečih (0 pass), po popravku dokumenta 14/14 zelenih. MUTACIJSKI DOKAZ (Node fs): M1 `135 modelov/20 enumov` → `117 modelov/20 enumov` = rdeč; M2 move/merge `DONE + VERIFICIRANO` → `MISSING (P1)` = rdeč; po vsaki obnovi iz varnostne kopije byte-identično in končno zeleno.
+- PAST: `bun test` brez `DATABASE_URL` je padel 122× (fixture-sweep fail-closed), ne zaradi spremembe. CI recept: `DATABASE_URL=file:./db/ci-fresh.db` + `prisma db push` na svežo bazo PRED suito; ponovno potrjeno, da brez tega rezultat ni verodostojen.
+- VERZIJA 1.154.0 → 1.155.0 (`src/lib/version.ts` + 6 test pinov).
+- VERIFIKACIJA: `tsc --noEmit` 0 · `eslint` 0 · `check-secrets.sh` 0 · `check-schema-drift.cjs` 0 (135/135) · `git diff --check` 0 · celoten suite **2972 testov / 144 datotek / 108.934 expect-ov / 290 s, 0 fail**.
+- DOKUMENTACIJA: `docs/RESTAURANTOS-AUDIT.md` (edini produkt te izdaje; runtime vedenje nespremenjeno, verzijska konstanta je edina koda).
+
+Stage Summary:
+- Dokument je lagal v smeri "manjka" — in prav ta smer je najdražja, ker vodi v podvajanje že dostavljenega. Gate je zdaj test, ne bralčeva dobra volja.
+- ZAVESTNO NE STORENO: (a) zgodovinske meritve (371 testov, run 37980000848, v1.82.x) ostajajo kot zapis stanja na datum, ne kot trenutne trditve; (b) §9 ne trdi, da je fiskalizacija produkcijsko aktivna — brez certifikata ostaja `pending`; (c) celoten audit ni prepisan v novo poročilo — ohranjena je sled, kaj je bilo kdaj res.
+- AKCIJA ZA LASTNIKA: (1) ROTIRAJ oba PIN-a (info@ admin in vodja@ manager) v Control Centerju → Zaposleni → Ponastavi PIN — vrednosti so še v git zgodovini obeh oddaljenih kopij; (2) rotiraj GitHub/GitLab/Vercel žetone (stalna točka); (3) vklopi Neon (`patient-violet-36825841`) — health brez njega ostaja `degraded`; (4) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (5) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (6) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (7) po pushu preveri Vercel READY, `/api/health` in `bun scripts/sync-check.ts`.
+
 
