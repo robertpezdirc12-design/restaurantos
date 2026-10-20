@@ -33,6 +33,15 @@ ki gleda pravo shemo. Baza tu ni potrebna: `prisma generate` se ne povezuje.
 `src/`, `scripts/`, `mini-services/` in `.gitlab-ci.yml`, workflowe pa ne, zato
 je step "Secrets hygiene" ostal zelen tudi ob razkritem žetonu v `sync.yml`.
 
+Od v1.153.0 (najdba №20) skenira tudi `docs/` in korenske `*.md` ter prepozna
+6-mestni PIN (`PIN`, `PIN:` ali `PIN=` + šest števk) in fine-grained GitHub PAT
+(`github_pat_`). Razlog je isti kot pri №15: živ admin PIN je stal v
+`worklog.md`, `DEPLOYMENT-STATUS.md` in `docs/OPS11-*.md`, scan pa je .md
+namerno izključeval — pokritih je bilo 90 % datotek, v katerih skrivnosti ni, in
+0 % tistih, kjer so. Scan poti se zdaj filtrirajo na obstoječe, prazen seznam pa
+je trda napaka; prej je manjkajoča pot pomenila `grep` exit 2, ki ga je skript
+obravnaval kot "čisto".
+
 ### GitLab CI — zrcalni quality-gate (`.gitlab-ci.yml`)
 
 ```
@@ -226,6 +235,63 @@ same zavore.
   (SQLite `.backup` ali `pg_dump -Fc`) — #11 §8.
 - Validacija migracije: `bun run scripts/validate-migration.ts`
   (prisma validate ×2 + drift + obvezni modeli + vloge).
+
+### Migracijski baseline (najdba №17, v1.153.0)
+
+`prisma/migrations/00000000000000_init/migration.sql` je od v1.153.0 POLNA
+projekcija `prisma/schema.prisma`: **135 `CREATE TABLE` + 20 `CREATE TYPE`**.
+Prejšnja verzija iste mape je imela 118 tabel — 17 tabel (PayLink,
+ReservationWidget, StockTransfer, CashMovement, EInvoiceOutbox, HaccpAction,
+ManagerCall, PrepLabel, LabelShelfRule, PayrollPeriod, PayrollExport,
+StationTask, MenuItemStation, StockTransferItem, GuestConsent, Campaign,
+CampaignSend) je v bazo prišlo prek `db push` in admin DDL rut, migracijska
+zgodovina pa ni bila nikoli vodena. `migrate deploy` na prazno bazo bi torej
+ustvaril shemo brez teh 17 tabel.
+
+Produkcija migracijskega toka ne uporablja (shema je zgrajena z `db push` in
+aditivnimi DDL rutami). Ob morebitni selitvi obstoječe baze na `migrate` tok jo
+je treba najprej označiti kot aplicirano:
+
+```bash
+bunx prisma migrate resolve --applied 00000000000000_init
+```
+
+`tests/audit1719-integrity.test.ts` pinira ujemanje množic modelov in tabel,
+prisotnost vseh 17 nekdanjih tabel, odsotnost `DROP` stavkov v baselineu in
+glavo z zgornjim korakom.
+
+**Drift gate.** 24 vnosov v `KNOWN_DRIFTS` opisuje dokumentiran pending drift:
+znan drift izpiše `::warning::` in konča z exit 0, neznan stavek izpiše
+`::error::` in konča z **exit 1**, infrastrukturna napaka (npr. pavziran Neon)
+pa prav tako exit 1. Trditev iz revizije, da gate "nikoli ne javi `::error::`",
+je bila artefakt iskanja po dobesednem nizu — anotacija se gradi kot
+`` `::${level}::` ``, zato `grep "::error::"` v izvirniku ne najde ničesar.
+Test zato pinuje VEDENJE (`classifyDrift` + oba `return 1`), ne niza.
+
+**Obseg `db:push`.** `package.json` `db:push` cilja izključno na
+`prisma/schema.sqlite.prisma` (SQLite zrcalo, sandbox) in uporablja
+`--accept-data-loss`. Produkcije ne more doseči: tam je Postgres URL, shema pa
+se spreminja prek admin DDL rut. Noben CI recept ne kliče `bun run db:push` in
+ne uporablja `--accept-data-loss`; to pinuje isti test.
+
+## Sandbox reverse proxy (najdba №19, v1.153.0)
+
+`Caddyfile` (port 81) je samo peskovni obhod do aplikacije na 3000 in
+print-agenta na 3031. Prej je bil cilj `localhost:{query.XTransformPort}` —
+vsak neavtenticiran obiskovalec je z `?XTransformPort=<port>` izbral POLJUBNO
+lokalno vrato (5432 → Postgres, 9100 → tiskalnik), kar je SSRF. Zdaj:
+
+- matcher je ENAKOST `query XTransformPort=3031`, ne vzorec;
+- cilj je dobesedni `http://localhost:3031` oziroma `http://localhost:3000`;
+- `X-Forwarded-For` se NASTAVI na `{remote_host}`; Caddy privzeto ignorira
+  odjemalčev XFF, zato prvi člen seznama ni ponaredljiv.
+
+`:81` ostaja brez TLS — to je peskovni zdravstveni kanal, produkcijski promet
+pa gre na Vercel, kjer TLS zaključi platforma. Če se pesek kdaj izpostavi izven
+localhosta, mora TLS/avtentikacijo prevzeti meja platforme; dodajanje
+samopodpisanega TLS v ta Caddyfile tega ne bi rešilo. `tests/audit1719-integrity.test.ts`
+bere samo aktivno konfiguracijo (komentarji so izključeni) in zahteva natanko
+dva dovoljena porta.
 
 ## Post-deploy smoke (rollback sprožilec)
 
