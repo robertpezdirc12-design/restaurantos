@@ -186,6 +186,7 @@ export const en: Record<string, string> = {
   'pay.superseded': 'This bill has already been paid.',
   'pay.supersededNote': 'The payment was completed elsewhere.',
   'pay.simulationNote': 'Demo mode — payment is simulated (no card is charged).',
+  'pay.unavailable': 'Online payment is currently unavailable. Please pay with our staff.',
   'pay.footer': 'Secure payment link by RestaurantOS',
   'pay.share': 'Your share',
   'pay.shareOf': 'of total',

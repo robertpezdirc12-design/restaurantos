@@ -47,6 +47,8 @@ interface SplitInfo {
 interface PayState {
   status: 'open' | 'paid' | 'revoked' | 'superseded' | 'expired'
   provider?: 'simulator' | 'stripe'
+  /** v1.156.0: ali strežnik dovoljuje simulator za to lokacijo (fiskalni profil). */
+  simulatorAllowed?: boolean
   expiresAt?: string | null
   order?: { orderNumber: number; table: string | null }
   location?: { name: string }
@@ -343,10 +345,16 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       </div>
 
       {/* Ponudnik — simulator je VEDNO vidno označen (honest) */}
-      {s.provider === 'simulator' && (
+      {s.provider === 'simulator' && s.simulatorAllowed !== false && (
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
           <Smartphone className="h-4 w-4 shrink-0" />
           <span>{t('pay.simulationNote')}</span>
+        </div>
+      )}
+      {s.provider === 'simulator' && s.simulatorAllowed === false && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700" role="status">
+          <Ban className="h-4 w-4 shrink-0" />
+          <span>{t('pay.unavailable')}</span>
         </div>
       )}
 
@@ -360,7 +368,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       <div className="sticky bottom-0 inset-x-0 -mx-4 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-stone-50 via-stone-50 to-transparent">
         <Button
           className="w-full h-14 text-base font-bold"
-          disabled={paying || splitAmount <= 0}
+          disabled={paying || splitAmount <= 0 || (s.provider === 'simulator' && s.simulatorAllowed === false)}
           onClick={pay}
         >
           {paying ? (

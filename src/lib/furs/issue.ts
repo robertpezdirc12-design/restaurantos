@@ -39,7 +39,8 @@ interface PaymentPart {
   // Issue #1 (triage ③): del plačila z darilno kartico — zahteva giftCardId
   giftCardId?: string
   // Issue #49: profil dokazovanja kartičnega/mobilnega dela — določi STREŽNIK
-  // (samo za KLIENTU poslane dele; PayLink dele overi vrstica povezave status='paid')
+  // (za KLIENTU poslane dele; pri PayLink delih vrstica status='paid' dokazuje
+  // POBRAN delež, SIM- koda pa je v produkciji še vedno zavrnjena — v1.156.0)
   attestation?: PaymentAttestationProfile
 }
 
@@ -418,7 +419,15 @@ export async function issueFursReceipt(req: NextRequest) {
   for (const l of paidLinks) {
     const la = r2(num(l.amount))
     if (la <= 0) continue
-    parts.push({ type: 'card', amount: la, terminalApproval: (l.approvalCode || '').trim().slice(0, 40) })
+    const linkApproval = (l.approvalCode || '').trim().slice(0, 40)
+    // v1.156.0: vrstica status='paid' je strežniška resnica o POBRANEM deležu, a
+    // SIM- odobritev v produkciji ni dokaz plačila (issue #49/#53) — zavrni, preden
+    // se izda račun. Ruta javne povezave simulacijo v produkciji že zavrne; ta
+    // varovalka pokriva vrstice, poravnane pred izdajo te meje.
+    if (approvalAttestationProfile(linkApproval) === 'simulator' && !simulation) {
+      return fail('Delež plačilne povezave je bil poravnan v simulacijskem načinu — v produkciji ni veljaven dokaz plačila.', 402)
+    }
+    parts.push({ type: 'card', amount: la, terminalApproval: linkApproval })
   }
 
   // ── Usklajenost zneskov: deli + unovčene točke = za plačanje (preprečitev preplačila) ──

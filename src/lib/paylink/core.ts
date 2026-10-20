@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { createToken } from '@/lib/auth'
 import { issueFursReceipt } from '@/lib/furs/issue'
+import { resolveFiscalProfile, FiscalConfigError } from '@/lib/fiscal-profile'
 import { clientIp } from '@/lib/guest'
 import { jparse, r2 } from '@/lib/map'
 import { GET as billGET } from '@/app/api/orders/[id]/bill/route'
@@ -74,6 +75,39 @@ export async function resolvePayProvider(locationId: string): Promise<PayProvide
     if (cfg?.provider === 'stripe' && cfg.secretKey) return { kind: 'stripe', secretKey: cfg.secretKey }
   }
   return { kind: 'simulator' }
+}
+
+export interface PayLinkSettlementEnv {
+  FURS_ENVIRONMENT?: string
+  FURS_ALLOW_SIMULATION?: string
+  FURS_PRODUCTION_TEST_MODE?: string
+  NODE_ENV?: string
+}
+
+/**
+ * Ali javna plačilna povezava SME poravnati prek simulatorja za to lokacijo.
+ *
+ * Simulator je edini ponudnik brez konfiguracije, zato mora meja priti iz
+ * STREŽNIŠKEGA fiskalnega profila (issue #53), ne iz klienta. Fail-closed:
+ * manjkajoča/neveljavna produkcijska konfiguracija → false (ruta vrne 503),
+ * v dev/test runtimeu pa ostaja privzeta simulacija (obstoječe vedenje).
+ */
+export function payLinkSimulationAllowed(
+  locationEnv: string | null | undefined,
+  env: PayLinkSettlementEnv = process.env,
+): boolean {
+  try {
+    return resolveFiscalProfile({
+      globalEnv: env.FURS_ENVIRONMENT,
+      locationEnv,
+      allowSimulation: env.FURS_ALLOW_SIMULATION,
+      productionTestMode: env.FURS_PRODUCTION_TEST_MODE,
+      nodeEnv: env.NODE_ENV,
+    }).simulation
+  } catch (e) {
+    if (e instanceof FiscalConfigError) return false
+    throw e
+  }
 }
 
 // ---------- simulator (honest, vidno označen na strani) ----------

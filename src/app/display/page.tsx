@@ -18,6 +18,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2, Monitor, CheckCircle2, Link2, Unlink, WifiOff } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
+import {
+  displayStateUrl,
+  mergeDisplayPoll,
+  type DisplayStateResponse,
+  type DisplayStateView,
+} from '@/lib/display-poll'
 
 const TOKEN_KEY = 'ro_cfd_device_token'
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
@@ -31,22 +37,9 @@ const MAX_BACKOFF_MS = 15000
 /** Povratni odmik: 2000 · 2^min(zaporedneNapake, 3) — 2 s, 4 s, 8 s, nato 15 s. */
 const backoffMs = (failStreak: number) => Math.min(POLL_MS * 2 ** Math.min(failStreak, 3), MAX_BACKOFF_MS)
 
-interface DisplayPayload {
-  state?: 'idle' | 'ordering' | 'paid'
-  tableName?: string
-  orderNumber?: number
-  lines?: { name: string; qty: number; modifiers?: string[]; price: number }[]
-  subtotal?: number
-  tax?: number
-  vatBreakdown?: { rate: number; amount: number }[]
-  total?: number
-  message?: string
-}
-
 /** OPS-10 val 2: active promos ride along on every display state poll (additive key).
  *  OPS-11 val 2: the state API already filters by the campaign window (Od/Do on the
  *  promo card) — this page stays unchanged, it only rotates whatever it receives. */
-interface DisplayPromoT { id: string; imageUrl: string; durationSec: number; active: boolean }
 /** Fallback rotation when a promo has no usable duration (matches sanitize default). */
 const PROMO_FALLBACK_SEC = 15
 
@@ -63,7 +56,9 @@ function DisplayInner() {
   const [token, setToken] = useState('')
   const [codeInput, setCodeInput] = useState('')
   const [info, setInfo] = useState<{ paired: boolean; posName?: string; posOnline?: boolean } | null>(null)
-  const [state, setState] = useState<{ payload: DisplayPayload | null; posOnline: boolean; updatedAt?: string; promos?: DisplayPromoT[] } | null>(null)
+  const [state, setState] = useState<DisplayStateView | null>(null)
+  // zadnja znana različica stanja — ?v= prepreči ponoven prenos nespremenjenega payloada
+  const versionRef = useRef<string | null>(null)
   const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const [connecting, setConnecting] = useState(false)
   const [stale, setStale] = useState(false)
@@ -85,8 +80,8 @@ function DisplayInner() {
    */
   const refresh = useCallback(async (tok: string): Promise<boolean> => {
     try {
-      const res = await fetch('/api/devices/display/state', { headers: { 'X-Device-Token': tok }, cache: 'no-store' })
-      const data = await res.json()
+      const res = await fetch(displayStateUrl(versionRef.current), { headers: { 'X-Device-Token': tok }, cache: 'no-store' })
+      const data = (await res.json()) as DisplayStateResponse
       if (!res.ok) {
         if (res.status >= 500) {
           failStreak.current += 1
@@ -98,8 +93,11 @@ function DisplayInner() {
       failStreak.current = 0
       setStale(false)
       pageErr.clear()
-      setInfo({ paired: data.paired, posName: data.posName, posOnline: data.posOnline })
-      setState({ payload: data.payload, posOnline: data.posOnline, updatedAt: data.updatedAt, promos: Array.isArray(data.promos) ? data.promos : [] })
+      setInfo({ paired: data.paired === true, posName: data.posName, posOnline: data.posOnline === true })
+      setState((prev) => mergeDisplayPoll(prev, data))
+      // ob neparjeni napravi različica ne velja več (naslednje parjenje mora vrniti polno stanje)
+      if (data.paired !== true) versionRef.current = null
+      else if (!data.unchanged && typeof data.version === 'string') versionRef.current = data.version
       return true
     } catch {
       // povezava nedosegljiva — pusti zadnje stanje (ne lažnega), a obvesti:

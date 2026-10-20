@@ -233,6 +233,18 @@ export function deviceFromToken(deviceId: string | null) {
   return db.deviceRegistry.findUnique({ where: { deviceId }, include: { Location: true } })
 }
 
+/**
+ * Lahka različica za pogoste pollinge (CFD vsake 2 s): ne bere celotne vrstice
+ * (displayPayload) niti lokacije — samo polja za avtentikacijo in parjenje.
+ */
+export function deviceFromTokenLite(deviceId: string | null) {
+  if (!deviceId) return null
+  return db.deviceRegistry.findUnique({
+    where: { deviceId },
+    select: { id: true, type: true, revokedAt: true, pairedToDeviceId: true },
+  })
+}
+
 export function deviceAlive<T extends { revokedAt: Date | null; type: string }>(
   device: T | null,
   allowedTypes: string[]

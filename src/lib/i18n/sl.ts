@@ -347,6 +347,7 @@ export const sl: Record<string, string> = {
   'pay.superseded': 'Račun je že plačan.',
   'pay.supersededNote': 'Plačilo je bilo opravljeno drugje.',
   'pay.simulationNote': 'Demo način — plačilo je simulirano (kartica se ne bremeni).',
+  'pay.unavailable': 'Plačilo prek povezave trenutno ni na voljo. Prosimo, plačajte pri osebju.',
   'pay.footer': 'Varna plačilna povezava RestaurantOS',
   'pay.share': 'Vaš delež',
   'pay.shareOf': 'od skupaj',

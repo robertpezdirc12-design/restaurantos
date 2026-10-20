@@ -16,6 +16,7 @@ import {
   loadOrderBill,
   payLinkUrl,
   payLinkReady,
+  payLinkSimulationAllowed,
 } from '@/lib/paylink/core'
 
 /**
@@ -209,10 +210,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   if (!billData) return fail('Računa ni mogoče izračunati.', 409)
   const [table, location, paid] = await Promise.all([
     order.tableId ? db.table.findUnique({ where: { id: order.tableId }, select: { number: true } }) : null,
-    db.location.findUnique({ where: { id: order.locationId }, select: { name: true } }),
+    db.location.findUnique({ where: { id: order.locationId }, select: { name: true, fursEnvironment: true } }),
     paidLinkSum(order.id),
   ])
   const provider = await resolvePayProvider(order.locationId)
+  // v1.156.0: simulator je dovoljen SAMO v strežniškem simulacijskem/testnem
+  // profilu — stran ob nedovoljenem ponudniku skrije CTA (strežnik vseeno
+  // zavrne POST; klient ni vir odločitve).
+  const simulatorAllowed = provider.kind === 'simulator' ? payLinkSimulationAllowed(location?.fursEnvironment) : false
   const split =
     link.splitCount > 1 || link.amount != null
       ? {
@@ -227,6 +232,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   return ok({
     status: 'open',
     provider: provider.kind,
+    simulatorAllowed,
     expiresAt: link.expiresAt,
     order: { orderNumber: order.orderNumber, table: table ? `Miza ${table.number}` : null },
     location: { name: location?.name || '' },
@@ -274,6 +280,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
 
   const provider = await resolvePayProvider(order.locationId)
+
+  // v1.156.0: simulator SAMO v strežniško določenem simulacijskem/testnem
+  // profilu (fiskalna meja issue #53). Prej je produkcija brez Stripe ključa
+  // tiho poravnala "plačilo" s SIM- kodo — brez pravega denarja. Meja je pred
+  // vsakim finančnim učinkom (link/order/Payment/Receipt ostanejo nedotaknjeni).
+  if (provider.kind === 'simulator') {
+    const loc = await db.location.findUnique({ where: { id: order.locationId }, select: { fursEnvironment: true } })
+    if (!payLinkSimulationAllowed(loc?.fursEnvironment)) {
+      return fail('Plačilo prek povezave v tem načinu ni na voljo — prosite osebje za plačilo na blagajni.', 503)
+    }
+  }
 
   // ── P1-6: delež te povezave (fiksni split ali dinamični preostanek) ──
   const billData = await loadOrderBill(order.id)

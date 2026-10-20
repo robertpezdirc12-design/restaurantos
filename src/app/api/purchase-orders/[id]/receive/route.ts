@@ -9,7 +9,6 @@ import {
   validateReceiveLines,
   itemStatusAfter,
   poStatusAfter,
-  weightedAvgCostCents,
   priceHistoryRows,
   parsePaymentTermsDays,
   apNumberFor,
@@ -20,6 +19,8 @@ import {
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { applyApMatchEvaluation } from '@/lib/ap-match'
+import { nextSequence } from '@/lib/sequences'
+import { applyReceiveToStock } from '@/lib/procurement-stock'
 
 /**
  * Issue #1 (triage ②) — prevzem blaga (GRN) z avtomatskim vplivom na zalogo.
@@ -53,6 +54,16 @@ import { applyApMatchEvaluation } from '@/lib/ap-match'
  *     branjem in zapisom → 409 rollback celote);
  *   - sprejet artikel z znano lokacijo mora sovpadati z lokacijo prevzema
  *     (legacy PO s tujo referenco → rollback, zaloga se NE spremeni).
+ *
+ * v1.156.0 — SOČASNOST (dva prevzema istega naročila):
+ *   - GRN številka se dodeli ZNOTRAJ transakcije prek Counterja (nextSequence) s
+ *     spodnjo mejo iz obstoječih številk dneva (prej count+1 zunaj → ista
+ *     številka → P2002 in izgubljen prevzem);
+ *   - zaloga se posodobi s compare-and-set z ponovnim poskusom (prej
+ *     read-modify-write → izgubljen prirastek in napačna utežena cena/serija);
+ *   - quantityReceived/quantityRejected se povečata atomsko, status postavke in
+ *     naročila pa se izračunata iz SVEŽIH vrstic znotraj transakcije (prej iz
+ *     PO, prebranega pred transakcijo → naročilo za vedno 'partial').
  */
 
 const RECEIVABLE: readonly string[] = ['approved', 'partial']
@@ -151,16 +162,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const now = new Date()
   const dayPrefix = grnNumberFor(now, 1).slice(0, 13)
 
-  // številčenje GRN znotraj dneva
-  const seq = (await db.goodsReceipt.count({ where: { grnNumber: { startsWith: dayPrefix } } })) + 1
-  const grnNumber = grnNumberFor(now, seq)
-
-  // per-item določitev statusa (za odgovor in audit)
-  const itemStatuses: ('pending' | 'partial' | 'received')[] = po.PurchaseOrderItem.map((i) => {
-    const line = v.lines.find((l) => l.input.purchaseOrderItemId === i.id)
-    return itemStatusAfter(Number(i.quantityOrdered), Number(i.quantityReceived), line?.input.quantityAccepted ?? 0, line?.input.quantityRejected ?? 0)
-  })
-  const nextPoStatus = poStatusAfter(itemStatuses)
+  // v1.156.0: številka GRN, zaloga in statusi se določijo ZNOTRAJ transakcije —
+  // zunanji izračuni (count+1, quantityReceived iz pred-transakcijskega PO) so
+  // ob dveh sočasnih prevzemih podvajali številko in izgubljali prirastke.
 
   const result = await db
     .$transaction(async (tx) => {
@@ -174,6 +178,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if ((freshPo.locationId || null) !== (po.locationId || null)) {
         throw new OrderError('Lokacija naročila se je spremenila med prevzemom — poskusite znova.', 409)
       }
+
+      // v1.156.0 — atomarna GRN številka: Counter (increment pod zaklepom
+      // vrstice) s spodnjo mejo iz največje obstoječe številke dneva (ročni
+      // zapisi/uvoz brez Counterja). Prej je count+1 zunaj transakcije dvema
+      // sočasnima prevzemoma dodelil ISTO številko → P2002 in razveljavitev.
+      const lastGrn = await tx.goodsReceipt.findFirst({
+        where: { grnNumber: { startsWith: dayPrefix } },
+        orderBy: { grnNumber: 'desc' },
+        select: { grnNumber: true },
+      })
+      const lastSuffix = lastGrn ? Number(lastGrn.grnNumber.slice(dayPrefix.length)) : 0
+      const floor = Number.isFinite(lastSuffix) ? lastSuffix + 1 : 1
+      const seq = await nextSequence(tx, `grn:${dayPrefix}`, floor)
+      const grnNumber = grnNumberFor(now, seq)
 
       // 1. prevzemni dokument + vrstice
       const receipt = await tx.goodsReceipt.create({
@@ -223,69 +241,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const poItem = itemById.get(l.input.purchaseOrderItemId)!
         if (!poItem.inventoryItemId) continue
 
-        const inv = await tx.inventoryItem.findUnique({ where: { id: poItem.inventoryItemId } })
-        if (!inv) continue
-
-        // ── Issue #54: sprejet artikel ne sme povečati zaloge DRUGE lokacije
-        // (legacy PO s tujo referenco bi ob prevzemu dvignil tujim stroškom
-        // nabavno ceno/količino). Artikel z znano lokacijo mora sovpadati z
-        // lokacijo prevzema → sicer rollback celote (400). ──
-        if (inv.locationId && locationId && inv.locationId !== locationId) {
-          throw new OrderError(`Artikel "${inv.name}" pripada drugi lokaciji kot prevzem — prevzem ne sme spreminjati tuje zaloge.`, 400)
-        }
-
-        const oldQty = Number(inv.quantity)
-        const oldCostCents = Math.round(Number(inv.costPerUnit) * 100)
-        const unitPrice = Number(poItem.unitPrice)
-        const addCostCents = Math.round(unitPrice * 100)
-        const newQty = oldQty + acc
-        const newCost = weightedAvgCostCents(oldQty, oldCostCents, acc, addCostCents)
-
-        // 2. zaloga + utežena povprečna cena
-        await tx.inventoryItem.update({
-          where: { id: inv.id },
-          data: { quantity: newQty, costPerUnit: newCost / 100, lastRestocked: now },
-        })
-
-        // 3. serija (sledljivost: dobavitelj, rok, cena)
+        // ── v1.156.0 — compare-and-set zanka (procurement-stock.ts): ob trku
+        // se zaloga prebere in izračuna znova; serija in StockTransaction se
+        // ustvarita šele po uspešnem CAS (nikoli na zastarelih podatkih). ──
         const expiryRaw = expiryByItem.get(l.input.purchaseOrderItemId)
         const expiryDate = expiryRaw ? new Date(expiryRaw) : null
-        await tx.inventoryBatch.create({
-          data: {
-            id: nid(),
-            inventoryItemId: inv.id,
-            locationId,
-            lotNumber: `${grnNumber}-${l.index + 1}`,
-            supplierId: po.supplierId,
-            supplierName: po.Supplier?.name || '',
-            receivedAt: now,
-            expiryDate: expiryDate && !isNaN(expiryDate.getTime()) ? expiryDate : null,
-            quantityInitial: acc,
-            quantityRemaining: acc,
-            unit: inv.unit,
-            unitCost: newCost / 100,
-            status: 'ACTIVE', // v1.105.0 (#15): velike črke — FEFO sprašuje 'ACTIVE' (SQLite case-sensitive; legacy 'active' normalizira DDL lot-governance)
-          },
+        const stock = await applyReceiveToStock(tx, {
+          inventoryItemId: poItem.inventoryItemId,
+          quantityAccepted: acc,
+          unitPrice: Number(poItem.unitPrice),
+          description: poItem.description,
+          locationId,
+          grnNumber,
+          lotNumber: `${grnNumber}-${l.index + 1}`,
+          supplierId: po.supplierId,
+          supplierName: po.Supplier?.name || '',
+          expiryDate: expiryDate && !isNaN(expiryDate.getTime()) ? expiryDate : null,
+          receivedAt: now,
+          userId: user.sub || null,
+          userName: user.name || '',
         })
-
-        // 4. StockTransaction — sled vsake spremembe zaloge
-        await tx.stockTransaction.create({
-          data: {
-            id: nid(),
-            inventoryItemId: inv.id,
-            type: 'purchase',
-            quantity: acc,
-            previousQty: oldQty,
-            newQty,
-            costPerUnit: newCost / 100,
-            totalCost: (addCostCents * acc) / 100,
-            reason: `Prevzem ${grnNumber}`,
-            note: poItem.description,
-            supplierDoc: grnNumber,
-            employeeId: user.sub || null,
-            employeeName: user.name || '',
-          },
-        })
+        if (stock.kind === 'foreign_location') {
+          throw new OrderError(`Artikel "${stock.inventoryName}" pripada drugi lokaciji kot prevzem — prevzem ne sme spreminjati tuje zaloge.`, 400)
+        }
+        if (stock.kind === 'contended') {
+          throw new OrderError(`Zaloge artikla "${poItem.description}" ni bilo mogoče posodobiti zaradi sočasne spremembe — poskusite znova.`, 409)
+        }
       }
 
       // 5. zgodovina nabavnih cen
@@ -311,29 +292,67 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         })
       }
 
-      // 6. statusi postavk + naročila
+      // 6. statusi postavk + naročila — v1.156.0: prirastka sta ATOMARNA
+      // (increment pod zaklepom vrstice), status pa se izračuna iz SVEŽE vrstice.
+      // Prej je drugi sočasni prevzem prepisal prvega (0 + 1 = 1 namesto 2), zato
+      // je naročilo za vedno ostalo 'partial'.
       for (const l of v.lines) {
         const acc = l.input.quantityAccepted
         const rej = l.input.quantityRejected
         if (acc === 0 && rej === 0) continue
         const poItem = itemById.get(l.input.purchaseOrderItemId)!
-        const status = itemStatusAfter(Number(poItem.quantityOrdered), Number(poItem.quantityReceived), acc, rej)
         await tx.purchaseOrderItem.update({
           where: { id: poItem.id },
           data: {
-            quantityReceived: Number(poItem.quantityReceived) + acc,
-            quantityRejected: Number(poItem.quantityRejected) + rej,
-            status,
+            quantityReceived: { increment: acc },
+            quantityRejected: { increment: rej },
           },
         })
+        const freshItem = await tx.purchaseOrderItem.findUnique({
+          where: { id: poItem.id },
+          select: { quantityOrdered: true, quantityReceived: true },
+        })
+        if (freshItem) {
+          const status = itemStatusAfter(
+            Number(freshItem.quantityOrdered),
+            Number(freshItem.quantityReceived) - acc,
+            acc,
+            rej
+          )
+          await tx.purchaseOrderItem.update({ where: { id: poItem.id }, data: { status } })
+        }
       }
-      await tx.purchaseOrder.update({
-        where: { id },
-        data: {
-          status: nextPoStatus,
-          receivedDate: nextPoStatus === 'received' ? now : po.receivedDate,
-        },
+
+      // Status naročila iz SVEŽIH postavk znotraj transakcije — odgovor in audit
+      // uporabita to vrednost, ne izračuna iz pred-transakcijskega branja.
+      const freshItems = await tx.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: id },
+        select: { status: true },
       })
+      const finalPoStatus = poStatusAfter(
+        freshItems.map((i) => (i.status === 'received' ? 'received' : i.status === 'partial' ? 'partial' : 'pending'))
+      )
+
+      // Ne degradiraj 'received' in ne oživi preklicanega naročila: 'partial' se
+      // zapiše samo iz 'approved', 'received' pa samo iz approved/partial. Če je
+      // naročilo med prevzemom preklicano, update ne zadene → 409 razveljavi vse.
+      if (finalPoStatus === 'received') {
+        await tx.purchaseOrder.updateMany({
+          where: { id, status: { in: ['approved', 'partial'] } },
+          data: { status: 'received', receivedDate: now },
+        })
+      } else {
+        await tx.purchaseOrder.updateMany({
+          where: { id, status: 'approved' },
+          data: { status: 'partial' },
+        })
+      }
+      const poAfter = await tx.purchaseOrder.findUnique({ where: { id }, select: { status: true } })
+      // 'received' je veljaven izid TEGA prevzema (ne samo approved/partial);
+      // vse ostalo (cancelled/izbrisano) pomeni sočasen preklic → rollback.
+      if (!poAfter || (poAfter.status !== 'partial' && poAfter.status !== 'received')) {
+        throw new OrderError('Nabavno naročilo je bilo med prevzemom preklicano — prevzem ni shranjen.', 409)
+      }
 
       // 6b. OPS-8 val 2 (v1.72.0) — PO→AccountsPayable bridge (idempotent, fail-safe):
       // a GRN creates the AP liability (due date = supplier payment terms).
@@ -452,12 +471,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             rejected: v.lines.reduce((a, l) => a + l.input.quantityRejected, 0),
             overReceipt: v.overReceipt,
             warnings: v.warnings,
-            poStatus: `${po.status} → ${nextPoStatus}`,
+            poStatus: `${freshPo.status} → ${finalPoStatus}`,
             stockItemsTouched: v.lines.filter((l) => l.input.quantityAccepted > 0 && itemById.get(l.input.purchaseOrderItemId)?.inventoryItemId).length,
             locationId,
           }) })
 
-      return receipt
+      return { receipt, grnNumber, poStatus: finalPoStatus }
     })
     .catch((e: unknown) => {
       // Issue #54: kontekstne napake iz transakcije (sveža preverba statusa/lokacije
@@ -497,7 +516,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         take: 20,
       })
       for (const a of affectedAps) {
-        await applyApMatchEvaluation(a.id, { userId: user.sub, reason: `grn_receive:${grnNumber}` })
+        await applyApMatchEvaluation(a.id, { userId: user.sub, reason: `grn_receive:${result.grnNumber}` })
       }
     }
   } catch (e) {
@@ -516,10 +535,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return ok(
     {
       receipt: {
-        id: result.id,
-        grnNumber: result.grnNumber,
-        status: result.status,
-        poStatus: nextPoStatus,
+        id: result.receipt.id,
+        grnNumber: result.receipt.grnNumber,
+        status: result.receipt.status,
+        poStatus: result.poStatus,
         warnings: v.warnings,
       },
     },

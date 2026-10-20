@@ -33,7 +33,9 @@
  *    ostajajo kanonični (brez vzporednega plačilnega sistema).
  *  - Dokazovanje je za plačilne dele, ki jih pošlje KLIENT (body.parts /
  *    body.terminal). Deli plačilnih POVEZAV (PayLink) so strežniški vir resnice
- *    (status='paid' vrstica iz DB) — zanje ta politika NE odloča.
+ *    za POBRAN delež (status='paid' vrstica iz DB); vendar v1.156.0 jedro tudi
+ *    zanje zavrne SIM- odobritev, ko simulacija ni aktivna — vrstica, poravnana
+ *    s simulatorjem, v produkciji ne sme postati dokaz plačila.
  */
 
 export type PaymentAttestationProfile = 'verified_provider' | 'manual_attestation' | 'simulator'
