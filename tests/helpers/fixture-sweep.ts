@@ -103,6 +103,7 @@ export const TEST_PREFIXES = [
   'a56-', // audit56-einvoice-lines (v1.149.0 — audit #5/#6: popust in zaokroževanje na B2B e-računu)
   'v156-', // cfd-conditional (v1.156.0 — pogojni odgovor stanja zaslona gostov)
   'v156p-', // paylink-sim-guard (v1.156.0 — strežniška meja simulatorja na javni plačilni povezavi)
+  'v158-', // reservation-capacity (v1.158.0 — celodnevna kapaciteta + zaklep sočasnih rezervacij)
   'v156r-', // po-receive-concurrency (v1.156.0 — atomarni GRN/zaloga/statusi ob sočasnem prevzemu)
   'v157-', // stripe-webhook (v1.157.0 — podpisana poravnava plačanih sej + dnevna uskladitev)
 ] as const
