@@ -4627,6 +4627,7 @@ Work Log:
 - VERZIJA 1.153.0 → 1.154.0 (`src/lib/version.ts` + 6 test pinov).
 - VERIFIKACIJA: produkcijski recept `prisma generate --schema prisma/schema.prisma` + `tsc --noEmit` 0 · SQLite client `tsc` 0 · `eslint` 0 · `check-secrets.sh` 0 · `check-schema-drift.cjs` 0 (135/135) · `git diff --check` 0 · `bun install --frozen-lockfile` OK (859 namestitev / 919 paketov) · celoten suite **2958 testov / 143 datotek / 108.859 expect-ov / 198 s, 0 fail**.
 - DOKUMENTACIJA: `docs/SECURITY-BOUNDARY.md` dobi razdelek „Površina odvisnosti (v1.154.0)“ s tabelo prej/zdaj/razlog in oceno vseh preostalih najdb; `docs/DEPLOYMENT-RESILIENCE.md` pododsek, ki poveže frozen-lockfile, meje in test na treh ravneh.
+- POTRDITEV PO OBJAVI (99ee34a): Vercel `dpl_AdKkFP2VgTh2tya7pUfRpG4rqYYc` = `READY` za 99ee34a; `/api/health` vrne version 1.154.0, commit 99ee34a, `database: disconnected` (Neon pavziran — lastnikova točka). GitLab pipeline #64 = `success` z OBEMA joboma: `production-typecheck` (17323364388) in `quality-gate` (17323364386). `bun scripts/sync-check.ts`: local = mirror = prod = 99ee34a, `SYNCED`.
 
 Stage Summary:
 - CRITICAL RCE ni bila v naši kodi, ampak v dobavljenem ogrodju. Gate, ki bere samo naš `src/`, je zelen tudi takrat, ko dobavljeno kodo napade kdorkoli — ista družina slepote kot №23–№30, le na drugi strani meje zaupanja.
