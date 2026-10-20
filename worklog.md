@@ -4575,12 +4575,13 @@ Work Log:
 - VERZIJA 1.152.0 → 1.152.1 (`src/lib/version.ts` + 6 test pinov).
 - VERIFIKACIJA: Postgres client brez `DATABASE_URL` — `prisma generate` 0, `tsc --noEmit` 0 (točno recept novega joba) · SQLite client — `tsc` 0, `eslint` 0 · `check-secrets.sh` 0 · `check-schema-drift.cjs` 0 (135/135) · `git diff --check` 0 · celoten suite 2920 testov / 141 datotek / 108.704 expect-ov / 165 s, 0 fail · YAML parsan z js-yaml: 3 jobi, vse `script` vrstice so nizi (quality-gate 8, production-typecheck 3, production-build 3).
 - DOSLEJ NEZABELEŽENO: GitLab pipeline #59 (sha 3d46c51) je `success` z zelenim `quality-gate` — prvi zeleni zrcalni gate po №23–№30. `production-build` se ni zagnal, ker `DATABASE_URL` ni nastavljen; zato je novi `production-typecheck` edini garantirano izvedeni Postgres typecheck na GitLabu.
+- POTRDITEV PO OBJAVI (ffde3e0): Vercel `dpl_9rVgher2JySuipzKZaCcizJZkk6o` = `READY` — prvi uspešen produkcijski build po bb9f540 (v1.149.0); `/api/health` vrne version 1.152.1, commit ffde3e0, `database: disconnected` (Neon je pavziran — lastnikova točka). GitLab pipeline #60 = `success` z OBEMA joboma: `production-typecheck` (17319167410) in `quality-gate` (17319167409). `bun scripts/sync-check.ts`: local = mirror = prod = ffde3e0, `SYNCED`.
 - SLOVENŠČINA: novi in dotaknjeni teksti pregledani; popravljen `enumerante` v GitHubovem alarmnem namigu.
 
 Stage Summary:
 - Produkcije ni ustavila koda, ki bi padla pri uporabi, ampak RAZLIKA MED DVEMA KLIENTOMA iste sheme. Gate, ki te razlike ne vidi, je zelen samo zato, ker gleda drug svet — ista družina kot №25–№30.
 - Razred je zaprt s treh strani: produkcijski tipski gate teče na obeh sistemih, seed literali so pinirani v testu, ki bere pravo shemo, in predpomniki so poimenovani tako, da klient ne more preskočiti med jobi.
 - ZAVESTNO NE STORENO: (a) Vercel build se ne ponavlja iz CI-ja — Git integracija ostaja edini deployer (dva builda na push bi bila dirka, Task 43); (b) `production-typecheck` je ločen job in ne del `quality-gate`, ker bi sicer podvojil `bun install`; cena je en dodatni job na push; (c) test ne uvaža tipov iz clienta — to je namen, sicer bi bil odvisen od tega, kateri client je generiran.
-- AKCIJA ZA LASTNIKA: (1) po tem pushu počakaj na Vercel deployment in potrdi, da je prvi `READY` po 1.149.0 — to je edini dokaz, da je produkcijska pot spet odprta; (2) rotiraj GitHub/GitLab/Vercel žetone (stalna točka); (3) vklopi Neon (`patient-violet-36825841`), sicer bo build zelen, aplikacija pa brez baze; (4) popravi ali odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme (iz v1.152.0).
+- AKCIJA ZA LASTNIKA: (1) produkcijska pot je potrjena (Vercel READY, health 1.152.1, sync-check SYNCED); ostane vklop Neona — brez njega health ostaja `degraded`; (2) rotiraj GitHub/GitLab/Vercel žetone (stalna točka); (3) popravi ali odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme (iz v1.152.0).
 
 
