@@ -4603,6 +4603,7 @@ Work Log:
 - VERZIJA 1.152.1 → 1.153.0 (`src/lib/version.ts` + 6 test pinov).
 - VERIFIKACIJA: `prisma db push --schema prisma/schema.sqlite.prisma` OK (135 modelov) · `tsc --noEmit` 0 · `eslint` 0 · `check-secrets.sh` 0 · `check-schema-drift.cjs` 0 (135/135) · audit1719 21/21 · audit1516+audit1719 45/45 · celoten suite 2941 testov / 142 datotek / 108.809 expect-ov / 230 s, 0 fail.
 - DOKUMENTACIJA: `docs/DEPLOYMENT-RESILIENCE.md` dobi razdelek o baselineu in drift gate-u, razdelek o Caddy SSRF in razširitev odseka o secrets scan-u (vključno z №20 in filtriranjem poti).
+- POTRDITEV PO OBJAVI (21270c4): Vercel streže v1.153.0 s tem commitom; `/api/health` je `degraded` izključno zaradi `database: disconnected` (Neon pavziran — lastnikova točka), ne zaradi kode. GitLab pipeline #62 = `success` z OBEMA joboma: `production-typecheck` (17321417284) in `quality-gate` (17321417283). `bun scripts/sync-check.ts`: local = mirror = prod = 21270c4, `SYNCED`.
 
 Stage Summary:
 - Najdbe №17/№19/№20 niso bile tri ločene napake, ampak en vzorec: meja zaupanja je bila narisana okoli kode, dokumentacije in peskovnega proxyja, ne okoli tega, kar se dejansko izvaja. Baseline je zdaj popoln, proxy ima dobesedni cilj, dokumentacija pa je pod isto zaporo kot koda.
