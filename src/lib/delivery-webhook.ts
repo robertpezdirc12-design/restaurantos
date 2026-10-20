@@ -29,6 +29,7 @@ import {
   webhookIdempotencyKey, legacyWebhookIdempotencyKey,
   getDeliveryAutoAcceptConfig, autoAcceptsProvider, estimatedTimeFromMinutes,
 } from '@/lib/delivery'
+import type { MappedPlatformOrder } from '@/lib/delivery'
 import { auditChainFields } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 
@@ -127,6 +128,20 @@ async function logIntegration(
   }).catch(() => null)
 }
 
+/**
+ * Operativni povzetek za IntegrationLog: platforma, platformski ID in število
+ * preslikanih/nepreslikanih artiklov. Surov payload se NE zapisuje — vsebuje
+ * ime, telefon, naslov in dostavne opombe gosta (osebni podatki).
+ */
+function deliveryLogSummary(provider: string, mapped: MappedPlatformOrder | null): Record<string, unknown> {
+  return {
+    provider,
+    platformOrderId: mapped?.platformOrderId ?? null,
+    items: mapped?.items.length ?? 0,
+    unmapped: mapped?.unmappedItems.length ?? 0,
+  }
+}
+
 async function writeAudit(
   userId: string, action: string, entityType: string, entityId: string | null, details: unknown,
 ) {
@@ -207,9 +222,10 @@ export async function handleDeliveryWebhook(
     return fail('Payload ni veljaven JSON.', 400)
   }
 
+  let mapped: MappedPlatformOrder | null = null
   try {
     // Preslikava payloada (tolerantna, rekonstruirana) — artikli SAMO iz menija ciljne lokacije
-    const mapped = p === 'glovo' ? await mapGlovoPayload(body, locationId) : await mapWoltPayload(body, locationId)
+    mapped = p === 'glovo' ? await mapGlovoPayload(body, locationId) : await mapWoltPayload(body, locationId)
 
     // Platformski status dogodki (npr. preklic s strani platforme)
     const evtStatus = String(
@@ -268,7 +284,7 @@ export async function handleDeliveryWebhook(
 
     const invalid = validateMapped(mapped)
     if (invalid) {
-      await logIntegration(p, integrationId, 'order.create', 'error', 422, invalid, Date.now() - t0, body)
+      await logIntegration(p, integrationId, 'order.create', 'error', 422, invalid, Date.now() - t0, deliveryLogSummary(p, mapped))
       await writeAudit('system', 'DELIVERY_WEBHOOK_ERROR', 'Integration', integrationId, {
         provider: p, reason: 'mapping', detail: invalid,
       })
@@ -362,7 +378,7 @@ export async function handleDeliveryWebhook(
   } catch (e) {
     const status = e instanceof OrderError ? 422 : 500
     const msg = e instanceof Error ? e.message : 'Neznana napaka.'
-    await logIntegration(p, integrationId, 'order.create', 'error', status, msg, Date.now() - t0, body)
+    await logIntegration(p, integrationId, 'order.create', 'error', status, msg, Date.now() - t0, deliveryLogSummary(p, mapped))
     await writeAudit('system', 'DELIVERY_WEBHOOK_ERROR', 'Integration', integrationId, { provider: p, error: msg })
     return fail(msg, status)
   }
