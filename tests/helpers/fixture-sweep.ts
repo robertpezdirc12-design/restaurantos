@@ -107,6 +107,7 @@ export const TEST_PREFIXES = [
   'v156r-', // po-receive-concurrency (v1.156.0 — atomarni GRN/zaloga/statusi ob sočasnem prevzemu)
   'v157-', // stripe-webhook (v1.157.0 — podpisana poravnava plačanih sej + dnevna uskladitev)
   'v159-', // delivery-tenant (v1.159.0 — webhook vezan na integracijo/lokacijo, ključ po lokaciji)
+  'v160-', // gl-live-day (v1.160.0 — GL tekoči dan se osveži, pretekli zamrzne; ročni se ne prepiše)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
