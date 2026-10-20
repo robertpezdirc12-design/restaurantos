@@ -4757,3 +4757,25 @@ Stage Summary:
 - AKCIJA ZA LASTNIKA: (1) če ima več poslovalnic isto dostavno platformo, v portalu platforme nastavi webhook URL `/api/delivery/webhook/<platforma>/<integrationId>` za vsako integracijo (enaka skrivnost kot doslej); (2) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (3) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (4) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (5) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (6) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (7) po pushu preveri Vercel READY, `/api/health` (version 1.159.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
 
 - POTRDITEV PO OBJAVI (1bb19d2): Vercel služi 1bb19d2 — `/api/health` vrne version 1.159.0, commit 1bb19d20533464c48761464a517b4b53c1aa7c36, `database: disconnected` (Neon pavziran — lastnikova točka). GitLab `main` = 1bb19d2 (preverjeno z `git ls-remote`); statusa pipeline v tej seji ni bilo mogoče odčitati (GitLab MCP ni bil na voljo, projekt je privaten) — preveriti ob naslednji seji. `bun scripts/sync-check.ts`: local = mirror = prod = 1bb19d2, `SYNCED`.
+
+---
+
+Task ID: v1.160.0-gl-live-day
+Agent: glavni agent (Qoder)
+Task: Najdba iz lastnega pregleda dnevne knjige — `GET /api/reports/gl` je obstoječi `JournalEntry` vrnil nespremenjen, zato se je vnos za TEKOČI dan zamrznil ob prvem ogledu: kasnejši promet istega dne se v dnevniku ni nikoli pojavil. Ročni vnosi z isto številko so bili izpostavljeni prepisu.
+
+Work Log:
+- RED (pred popravkom): `tests/v160-gl-live-day.test.ts` — prvi ogled 122 €, dodan promet 61 €, drugi ogled še vedno 122 € (pričakovano 183 €); simuliran vnos iz sredine dneva se po polnoči ni uskladil (1 € namesto 61 €). 2/4 rdeča, 2/4 zelena (stražarja za pretekli dan in ročni vnos).
+- ŽIVI DAN: avtomatski vnos je »živ«, dokler je `postedAt` znotraj svojega dneva (`postedAt < konec dneva`). Takrat se ob vsakem ogledu preračuna; prvi ogled po polnoči ga uskladi s celotnim dnem in s tem zamrzne (`postedAt` = zdaj > konec dneva). Vnos, prvič ustvarjen po koncu dneva, je takoj dokončen.
+- OSVEŽITEV NA MESTU: ista `entryNumber` in isti `JournalEntry.id` ostaneta; v transakciji se zamenjajo samo `JournalLine` vrstice. CAS na `postedAt` + `source='auto'` prepreči dvojno pisanje ob sočasnih ogledih; ob CAS 0 se vrne stanje, ki ga je zapisala druga zahteva. Napaka transakcije pusti star vnos in vrne svež preview (`persisted:false`), enako kot prej.
+- ROČNI VNOSI: `source != 'auto'` se ne dotaknejo niti v pogoju `live` niti v CAS — dvojna zaščita (mutacija samo prvega pogoja je ostala zelena, zato je B2 mutirala oba).
+- MUTACIJSKI DOKAZ (3 mutacije, vse povrnjene): A `live=false` → 2 padca (današnji dan in sredina dneva); B odstranjen `source='auto'` iz `live` IN CAS → 1 padec (ročni vnos); C odstranjena meja `postedAt < konec dneva` → 2 padca (pretekli dan in ponovna osvežitev po zamrznitvi). Po povrnitvi 4/4 zelenih.
+- HIGIENA: nov test čisti GL vnose, ki visijo na lokaciji (route uporablja `nid()` brez testne predpone, GL pa ni v ID_SWEEP) — `beforeEach` + `afterAll`; predpona `v160-` dodana v `fixture-sweep`.
+- VERZIJA 1.159.0 → 1.160.0 (`src/lib/version.ts` + 6 test pinov).
+- VERIFIKACIJA: `tsc --noEmit` 0 · `eslint .` 0 · prisma validate ×2 OK · `check-secrets.sh` 0 · `check-schema-drift.cjs` 0 (135/135) · `git diff --check` 0 · celoten suite **3037 testov / 152 datotek / 109.208 expect-ov / 177,95 s, 0 fail** (pred izdajo 3033/151; +4 novi). BREZ DDL.
+
+Stage Summary:
+- Dnevna knjiga tekočega dne zdaj sledi prometu do konca dneva; po polnoči se enkrat uskladi s celotnim dnem in zamrzne. Računovodja ne dobi več vnosa, ki je nastal ob 8:00 in ignorira ves dnevni promet.
+- Osvežitev je atomska in na mestu (isti ID, ena `entryNumber`), zato so poročila in sklici stabilni; ročni vnosi ostanejo nedotaknjeni.
+- ZAVESTNO NE STORENO: (a) končanih dni se ne preračunava več — poznejša knjižba (npr. plačilo po polnoči) se v GL ne odrazi samodejno; to je meja »orientacijskega« dnevnega obračuna, ne statutarnega; (b) posebnega backfilla ni — stari vnosi se ob prvem ogledu obnašajo po novem pravilu (tisti, ustvarjeni med dnevom, se enkrat uskladijo; tisti, ustvarjeni po koncu dneva, ostanejo, ker so bili izračunani iz celotnih podatkov); (c) preostale najdbe audita (čakalna vrsta brez sprostitve mize, cron dnevni marker ob napaki, PII v IntegrationLog, egress poling) ostajajo za naslednje izdaje.
+- AKCIJA ZA LASTNIKA: (1) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (2) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (3) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (4) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (5) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (6) po pushu preveri Vercel READY, `/api/health` (version 1.160.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
