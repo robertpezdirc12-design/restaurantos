@@ -1,0 +1,59 @@
+name: CI canary (dead-man za run-e, ki se nikoli ne začnejo)
+
+# Audit okt-2026 №24 (v1.151.0). `if: failure()` iz №16 alarmira samo, če se job
+# IZVEDE in vrne napako. Izpad, pri katerem job nikoli ne steče — prazna hosted
+# kvota, onemogočen ali pokvarjen workflow, zataknjen `queued` — nima rdečega izida
+# in torej nima niti alarma. To NI hipotetičen scenarij: №15 je prav tako miroval
+# (zrcalo GitLab je bilo 31 verzij zadaj in pet dni nihče ni opazil).
+#
+# Canary zato ne preverja vsebine gradnje, ampak eno samo dejstvo: zadnji commit
+# na `main` ima OBSTOJEČ in ZAKLJUČEN push run. Meritev in razlaga sta v
+# scripts/ci-canary-check.mjs.
+
+# IZJEMA-CI-CANARY — edina datoteka v `.github/workflows/`, ki SME imeti hosted runnerja, in
+# test C v tests/audit2324-log-noise.test.ts to pinira v obe smeri:
+# (a) nobena druga datoteka ne sme pasti na ubuntu-latest (najdba №15),
+# (b) canary mora ostati NA hosted, ker je prav self-hosted runner tisti, ki ga
+#     canary varuje — opazovalec ne sme biti odvisen od opazovanega.
+# Cena je poznana in sprejeta: en kratek run na uro (~24 min/mesec), brez baze, brez
+# odvisnosti, brez gradnje.
+
+on:
+  schedule:
+    - cron: '17 * * * *' # vsako uro ob 17. minuti (ne ob polni uri, da ne pade v vrsto ob polni uri)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write # alarm korak (#16)
+  actions: read # branje zadnjih runov prek API-ja
+
+concurrency:
+  group: ci-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest # IZJEMA-CI-CANARY: glej utemeljitev zgoraj
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preveri zakasnitev CI-ja na main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_BRANCH: main
+          CANARY_STALL_MINUTES: '20'
+        run: |
+          set -euo pipefail
+          node scripts/ci-canary-check.mjs
+
+      - name: Alarm ob napaki CI
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'canary: main nima zaključenega CI runa'
+          hint: 'Najprej preveri (1) ali so self-hosted runnerji živi (Settings → Actions → Runners), (2) ali hosted kvota ni izčrpana (iz №15: isti znak je bil "no runner could be assigned"), (3) ali je .github/workflows/ci.yml veljaven YAML. Če CI res ne teče, noben drug alarm v tem repozitoriju ne more sprožiti sam sebe.'

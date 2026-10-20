@@ -47,7 +47,15 @@ quality-gate:
     - bunx tsc --noEmit
     - bun run lint
     # isti proračun hookov kot lokalno in na GitHub Actions (v1.148.0) —
-    # en sam vir v package.json, da se three-way CI ne razhaja
+    # en sam vir v package.json, da se three-way CI ne razhaja.
+    #
+    # OMEJITEV, KI JO JE ZABILA NAJDBA №23 (v1.151.0): omejitev jobskega loga
+    # na GitLabu je 4.194.304 B. Z privzetim Prisma query logom je celoten
+    # suite natisnil 17.044.192 B (59.255 `prisma:query` vrstic), job je umrl
+    # sredi testov in oba zadnja koraka (drift + secrets) se NISTA izvedla —
+    # rdeč izid brez razloga. Zato `src/lib/db.ts` logira poizvedbe samo, če je
+    # PRISMA_LOG_QUERIES=1, in ga TU NE prizegamo (pinirano v
+    # tests/audit2324-log-noise.test.ts, skupina A).
     - bun run test
     - node scripts/check-schema-drift.cjs
     - bash scripts/check-secrets.sh
