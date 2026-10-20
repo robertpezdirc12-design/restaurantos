@@ -4804,6 +4804,8 @@ Stage Summary:
 - ZAVESTNO NE STORENO: (a) digest nima dedupe — ročna ponovitev istega dne ga lahko pošlje dvakrat; (b) v aplikaciji ni dead-man monitorja, ki bi bral marker (najdba se nanaša na zunanji nadzor) — marker je zdaj vsaj resničen; (c) brez spremembe sheme/DDL; (d) preostale najdbe audita (čakalna vrsta brez sprostitve mize, PII v IntegrationLog, egress poling) ostajajo za naslednje izdaje.
 - AKCIJA ZA LASTNIKA: (1) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (2) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (3) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (4) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (5) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (6) po pushu preveri Vercel READY, `/api/health` (version 1.161.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
 
+- POTRDITEV PO OBJAVI (70695dd): Vercel je služil 70695dd — `/api/health` je vračal version 1.161.0, commit `70695dd3e7bb9153ee785e10257074750dfa226f` (baza `disconnected` — Neon pavziran, lastnikova točka). `bun scripts/sync-check.ts`: local = mirror = prod = 70695dd, `SYNCED`; GitLab push je uspel. GitHub Actions: tek 39495244375 za 70695dd je bil zaradi concurrency PREKLICAN (`cancelled`, ne `failure`) — zelen CI dokaz za ta SHA zato manjka; lokalni suite je bil 3040/0. Preveriti ob naslednji seji, če se tek ponovi.
+
 ---
 
 Task ID: v1.162.0-waitlist-table-release
