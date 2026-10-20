@@ -49,7 +49,9 @@ import {
  * Idempotency (Vercel retries): Integration marker 'cron-daily-state'
  * config { lastRunDate: 'YYYY-MM-DD' } — a same-day re-invocation returns
  * 200 { ran: false, reason: 'already_ran_today' } WITHOUT running the steps.
- * The marker is updated AFTER the steps (only a fully dispatched run locks the day).
+ * v1.161.0: only a CLEAN run (errors.length === 0) locks the day. A run with a
+ * failed step leaves yesterday's marker → a retry can run the steps again, and
+ * the dead-man monitor does not see a fresh marker while steps are broken.
  *
  * Audit: CRON_DAILY_RAN with details = steps summary (append-only).
  */
@@ -240,26 +242,30 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     errors.push(`paylinks: ${String((e as Error).message || e).slice(0, 200)}`)
   }
 
-  // 4) persist the idempotency marker (after a fully dispatched run)
-  try {
-    const cfgJson = JSON.stringify({ lastRunDate: todayKey, lastRunAt: at })
-    if (markerId) {
-      await db.integration.update({ where: { id: markerId }, data: { config: cfgJson } })
-    } else {
-      await db.integration.create({
-        data: {
-          id: `cron-daily-${Date.now().toString(36)}`,
-          name: CRON_DAILY_MARKER,
-          type: 'other',
-          provider: 'internal',
-          config: cfgJson,
-          isActive: true,
-          syncEnabled: false,
-        },
-      })
+  // 4) persist the idempotency marker — v1.161.0: SAMO ob uspehu. Če je kateri
+  //    korak padel, dan ostane nezasklenjen (ponovitev ga lahko dokonča), marker
+  //    pa ne laže monitoringu. Napake so še vedno v odgovoru + auditu.
+  if (errors.length === 0) {
+    try {
+      const cfgJson = JSON.stringify({ lastRunDate: todayKey, lastRunAt: at })
+      if (markerId) {
+        await db.integration.update({ where: { id: markerId }, data: { config: cfgJson } })
+      } else {
+        await db.integration.create({
+          data: {
+            id: `cron-daily-${Date.now().toString(36)}`,
+            name: CRON_DAILY_MARKER,
+            type: 'other',
+            provider: 'internal',
+            config: cfgJson,
+            isActive: true,
+            syncEnabled: false,
+          },
+        })
+      }
+    } catch (e) {
+      errors.push(`marker: ${String((e as Error).message || e).slice(0, 200)}`)
     }
-  } catch (e) {
-    errors.push(`marker: ${String((e as Error).message || e).slice(0, 200)}`)
   }
 
   // 5) audit (append-only; never fails the response)
