@@ -333,6 +333,21 @@ zaščiteni ruti, (opcijsko) prijavo.
 - `bun run scripts/system-health.ts` — DB/vrsta/naprave/drift/izhodne kode (#11 §8).
 - `scripts/sync-status.ts` — git + DeviceSyncOperation + EventLog stanje.
 
+### Poraba prenosa baze (Neon egress, v1.156.0 + v1.164.0)
+
+Neon free plan šteje prenesene podatke; 24/7 odjemalci so glavni vir. Pravila:
+
+- **customer display**: `?v=<version>` → ob nespremenjenem stanju strežnik vrne le
+  `{unchanged, posOnline}` brez `payload`/`promos` (v1.156.0, test `v156-cfd-conditional`).
+- **dashboard**: 15-sekundni »hot« cikel nosi le statistiko, mize, naročila in kuhinjo;
+  meni, rezervacije, računi in izmene se osvežijo v 60-sekundnem polnem ciklu
+  (v1.164.0, test `v164-poll-egress`).
+- **handheld/tablica**: mize in naročila na 15 s, meni vsak 4. cikel (60 s); po
+  naročilu/plačilu se meni osveži takoj (`load(true)`).
+
+Strežniška validacija naročila ostaja avtoritativna (razpoložljivost/86), zato
+morebitna do 60 s stara kopija menija ne more obiti poslovnih pravil.
+
 ## Sandbox rollback resync (Task 46)
 
 Peskovno okolje lahko **vrne git refse na star snapshot**, medtem ko je GitHub
