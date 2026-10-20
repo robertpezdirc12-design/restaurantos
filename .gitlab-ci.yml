@@ -50,7 +50,7 @@ quality-gate:
     # ničesar o kodi). Če namestitev ne uspe, se skupina B2 preskoči in to je v
     # logu zapisano z oznako PRESKOCENO-B2; na GitHub Actions se vedno izvede
     # (tam runner ima git).
-    - bash -c 'command -v git >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq --no-install-recommends git >/dev/null 2>&1; } || echo "GIT-MISSING: B2 skupina (sync guard) bo preskočena"'
+    - bash -c 'command -v git >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq --no-install-recommends git >/dev/null 2>&1; } || echo "GIT-MISSING — B2 skupina (sync guard) bo preskočena"'
     # sveža SQLite baza (isti korak kot ci.yml:182) — WITHOUT this the suite is not equivalent
     - bunx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
     # №26 (audit okt-2026): vrstni red je OBRNJEN glede na prejšnjega. Dotlej sta
