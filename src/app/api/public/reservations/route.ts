@@ -6,7 +6,7 @@ import { clientIp, rateLimitPublic } from '@/lib/guest'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendBookingConfirmation } from '@/lib/reminders'
-import { resolveWidgetToken, widgetPolicyOf, openingRowsFor, specialsFor, activeReservationsFor, tableSeatsFor, publicSlotsForDate } from '@/lib/reservation-widget'
+import { resolveWidgetToken, widgetPolicyOf, openingRowsFor, specialsFor, activeReservationsFor, tableSeatsFor, publicSlotsForDate, dayBoundsUtc, lockReservationCapacity } from '@/lib/reservation-widget'
 import { publicSlotsPayload, validateSlot, type DayHoursInput } from '@/lib/reservation-slots'
 import { zonedDateParts, localDateKey } from '@/lib/haccp-ops'
 import { isValidDateKey, parseHHMM } from '@/lib/openinghours'
@@ -24,6 +24,9 @@ import { isValidDateKey, parseHHMM } from '@/lib/openinghours'
  *  - PII: samo lastni vnos (ime/telefon/e-pošta/opomba); odgovor NE izdaje
  *    podatkov drugih gostov (samo lastna rezervacija)
  *  - rate limit: 60 GET/min/IP, 5 POST/min/IP
+ *  - kapaciteta: gleda se CELOTEN izbrani dan (ne okno okoli "now"); preverba
+ *    in ustvarjanje tečeta pod zaklepom lokacije (vrstica Counter), zato dve
+ *    sočasni rezervaciji ne moreta obe preseči zmogljivosti (v1.158.0)
  *  - replay: dvojni klik/refresh (isti telefon + isti termin v 2 min) →
  *    ISTA rezervacija z replayed:true (brez dvojnikov)
  *  - vir: ReservationSource.website, status: confirmed (enak internemu
@@ -94,60 +97,86 @@ export async function POST(req: NextRequest) {
     specialsFor(widget.locationId, date, date),
     tableSeatsFor(widget.locationId),
   ])
-  const reservations = await activeReservationsFor(widget.locationId, now, new Date(now.getTime() + 24 * 3600_000))
+  // v1.158.0: zasedenost se gleda za CELOTEN izbrani dan, ne za okno
+  // [now, now+24h] — prihodnji datumi so sicer videli prazno kapaciteto
+  // (prekomerno rezerviranje).
+  const { start: dayStart, end: dayEnd } = dayBoundsUtc(date, timezone)
+  const reservations = await activeReservationsFor(widget.locationId, dayStart, dayEnd)
   const hours: DayHoursInput = { rows, specials }
   const slotCheck = validateSlot(policy, hours, date, time, partySize, now, reservations, seats, timezone)
   if (!slotCheck.ok) return fail(slotCheck.message, 409)
 
-  // ── replay (dvojni klik): isti telefon + isti termin + nedavno ustvarjena ──
+  // ── replay + ustvarjanje POD ZAKLEPOM lokacije ──
+  // Preverba zgoraj je hitra pot za jasno sporočilo. Odloča ponovna preverba
+  // znotraj transakcije, kjer UPSERT na vrstico Counterja drži zaklep do
+  // commita: dve sočasni zahtevi ne moreta obe videti istega prostega termina.
+  // (Prej je bil 409 ob sočasnosti le komentar — obe zahtevi sta ustvarili.)
   const replayWindowStart = new Date(now.getTime() - 2 * 60_000)
-  const replay = await db.reservation.findFirst({
-    where: {
-      locationId: widget.locationId,
-      customerPhone: phone,
-      status: 'confirmed',
-      dateTime: slotCheck.start,
-      createdAt: { gte: replayWindowStart },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-  if (replay) {
+  type ReservationRow = { id: string; dateTime: Date; partySize: number; status: string }
+  let outcome:
+    | { kind: 'replay'; row: ReservationRow }
+    | { kind: 'taken'; message: string }
+    | { kind: 'created'; row: ReservationRow; start: Date }
+  try {
+    outcome = await db.$transaction(async (tx) => {
+      await lockReservationCapacity(tx, widget.locationId)
+
+      // replay (dvojni klik): isti telefon + isti termin + nedavno ustvarjena
+      const replay = await tx.reservation.findFirst({
+        where: {
+          locationId: widget.locationId,
+          customerPhone: phone,
+          status: 'confirmed',
+          dateTime: slotCheck.start,
+          createdAt: { gte: replayWindowStart },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (replay) return { kind: 'replay' as const, row: replay }
+
+      const fresh = await activeReservationsFor(widget.locationId, dayStart, dayEnd, tx)
+      const recheck = validateSlot(policy, hours, date, time, partySize, new Date(), fresh, seats, timezone)
+      if (!recheck.ok) return { kind: 'taken' as const, message: recheck.message }
+
+      // kanonični model — isti vir kot interni POS
+      const row = await tx.reservation.create({
+        data: {
+          id: nid(),
+          customerName: name,
+          customerPhone: phone,
+          customerEmail: email,
+          dateTime: recheck.start,
+          partySize,
+          duration: 120,
+          status: 'confirmed',
+          source: 'website',
+          notes: 'Spletna rezervacija',
+          specialRequests: note,
+          confirmedAt: now,
+          locationId: widget.locationId,
+        },
+      })
+      return { kind: 'created' as const, row, start: recheck.start }
+    })
+  } catch {
+    return fail('Termin je žal pravkar zasedel drug gost. Izberite drug termin.', 409)
+  }
+
+  if (outcome.kind === 'replay') {
     return ok({
       replayed: true,
       reservation: {
-        id: replay.id,
-        dateTime: replay.dateTime,
-        partySize: replay.partySize,
-        status: replay.status,
+        id: outcome.row.id,
+        dateTime: outcome.row.dateTime,
+        partySize: outcome.row.partySize,
+        status: outcome.row.status,
       },
     })
   }
+  if (outcome.kind === 'taken') return fail(outcome.message, 409)
 
-  // ── ustvarjanje (kanonični model — isti vir kot interni POS) ──
-  let row
-  try {
-    row = await db.reservation.create({
-      data: {
-        id: nid(),
-        customerName: name,
-        customerPhone: phone,
-        customerEmail: email,
-        dateTime: slotCheck.start,
-        partySize,
-        duration: 120,
-        status: 'confirmed',
-        source: 'website',
-        notes: 'Spletna rezervacija',
-        specialRequests: note,
-        confirmedAt: now,
-        locationId: widget.locationId,
-      },
-    })
-  } catch {
-    // ozko okno sočasnih rezervacij istega termina — preverba zgoraj je bila
-    // na naboru BREZ konkurentne rezervacije
-    return fail('Termin je žal pravkar zasedel drug gost. Izberite drug termin.', 409)
-  }
+  const row = outcome.row
+  const start = outcome.start
 
   // audit (tamper-evident veriga — isti vzorec kot GUEST_ORDER_CREATED)
   await writeAudit(db, {
@@ -155,7 +184,7 @@ export async function POST(req: NextRequest) {
     action: 'GUEST_RESERVATION_CREATED',
     entityType: 'Reservation',
     entityId: row.id,
-    details: jstr({ vir: 'widget', termin: slotCheck.start.toISOString(), oseb: partySize, ime: name, telefon: phone }),
+    details: jstr({ vir: 'widget', termin: start.toISOString(), oseb: partySize, ime: name, telefon: phone }),
     ipAddress: ip,
     locationId: widget.locationId,
   }).catch(() => {})
@@ -163,7 +192,7 @@ export async function POST(req: NextRequest) {
   // push natakarjem/vodstvu (obstoječi tip RESERVATION_NEW — isti vizual kot interni)
   void pushEvent('RESERVATION_NEW', {
     title: 'Nova spletna rezervacija',
-    body: `${name} · ${slotCheck.start.toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${partySize} oseb`,
+    body: `${name} · ${start.toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${partySize} oseb`,
     url: '/dashboard?tab=rezervacije',
     tag: `reservation-${row.id}`,
   }, { roles: ['waiter', 'manager'], locationId: widget.locationId }).catch(() => {})
@@ -171,7 +200,7 @@ export async function POST(req: NextRequest) {
   // potrditev gostu — fail-soft, NE blokira odgovora
   const loc = await db.location.findUnique({ where: { id: widget.locationId }, select: { locale: true } })
   void sendBookingConfirmation({
-    guestName: name, restaurantName, when: slotCheck.start, partySize, email: email || null, phone,
+    guestName: name, restaurantName, when: start, partySize, email: email || null, phone,
   }, loc?.locale ?? null, widget.locationId).catch(() => {})
 
   return ok({

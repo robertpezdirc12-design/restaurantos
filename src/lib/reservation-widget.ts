@@ -14,8 +14,10 @@
  */
 
 import crypto from 'crypto'
+import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { nid } from '@/lib/map'
+import { zonedTimeToUtc } from './haccp-ops'
 import {
   WIDGET_POLICY_DEFAULTS,
   slotsForDate,
@@ -115,10 +117,30 @@ export async function specialsFor(locationId: string, fromKey: string, toKey: st
   return [...byDate.values()].map(({ loc: _loc, ...s }) => s)
 }
 
+/** UTC meje LOKALNEGA dneva (polnoč → naslednja polnoč) za dateKey v pasu
+ * lokacije. Vstop za activeReservationsFor: kapaciteta se vedno gleda za
+ * IZBRANI dan, ne za okno okoli "now" (v1.158.0 — prihodnji datumi so sicer
+ * videli prazno zasedenost). */
+export function dayBoundsUtc(dateKey: string, timeZone: string): { start: Date; end: Date } {
+  const [y, m, d] = dateKey.split('-').map(Number)
+  const next = new Date(Date.UTC(y, m - 1, d + 1))
+  return {
+    start: zonedTimeToUtc(y, m, d, 0, 0, timeZone),
+    end: zonedTimeToUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), 0, 0, timeZone),
+  }
+}
+
 /** Dejavne rezervacije, ki lahko obsegajo termine na dan dateKey (confirmed +
- * seated; pretekla < današnji − 6 h ne more več obsegati prihodnjih terminov). */
-export async function activeReservationsFor(locationId: string, dayStartUtc: Date, dayEndUtc: Date): Promise<ExistingReservation[]> {
-  const rows = await db.reservation.findMany({
+ * seated). Okno podanega dneva se razširi za ±24 h, da zajame rezervacije,
+ * katerih interval (dolgo trajanje, čez polnoč) sega v izbrani dan.
+ * `client` omogoča branje ZNOTRAJ transakcije (zaklep kapacitete, v1.158.0). */
+export async function activeReservationsFor(
+  locationId: string,
+  dayStartUtc: Date,
+  dayEndUtc: Date,
+  client: Pick<Prisma.TransactionClient, 'reservation'> = db,
+): Promise<ExistingReservation[]> {
+  const rows = await client.reservation.findMany({
     where: {
       locationId,
       status: { in: ['confirmed', 'seated'] },
@@ -128,6 +150,28 @@ export async function activeReservationsFor(locationId: string, dayStartUtc: Dat
     take: 500,
   })
   return rows.map((r) => ({ start: r.dateTime, durationMin: r.duration || 120, partySize: r.partySize, status: r.status }))
+}
+
+/** Minimalna oblika transakcijskega odjemalca za zaklep kapacitete. */
+export type ReservationLockTx = {
+  counter: {
+    upsert: (args: {
+      where: { name: string }
+      create: { id: string; name: string; value: number }
+      update: { value: { increment: number } }
+    }) => Promise<unknown>
+  }
+}
+
+/**
+ * Kratkotrajni zaklep lokacije pred ponovno preverbo kapacitete: UPSERT na
+ * vrstico Counterja drži zapis zaklenjen do konca transakcije (isto načelo kot
+ * nextSequence pri številkah računov). Zaklep je varen na PostgreSQL/Neon in na
+ * SQLite zrcalu v CI, brez DDL — Counter je obstoječi model.
+ */
+export async function lockReservationCapacity(tx: ReservationLockTx, locationId: string): Promise<void> {
+  const name = `resvslot:${locationId}`
+  await tx.counter.upsert({ where: { name }, create: { id: nid(), name, value: 1 }, update: { value: { increment: 1 } } })
 }
 
 /** Seštevek sedežev vseh miz lokacije (fizikalna kapaciteta). */
@@ -150,7 +194,8 @@ export async function publicSlotsForDate(
     specialsFor(widget.locationId, dateKey, dateKey),
     tableSeatsFor(widget.locationId),
   ])
-  const reservations = await activeReservationsFor(widget.locationId, new Date(now.getTime() - 6 * 3600_000), new Date(now.getTime() + 24 * 3600_000))
+  const { start: dayStart, end: dayEnd } = dayBoundsUtc(dateKey, timeZone)
+  const reservations = await activeReservationsFor(widget.locationId, dayStart, dayEnd)
   return slotsForDate(policy, { rows, specials }, dateKey, now, reservations, seats, timeZone)
 }
 
