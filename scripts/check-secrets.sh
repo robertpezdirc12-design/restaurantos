@@ -12,10 +12,16 @@ set -u
 PATTERN='glpat-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|vcp_[A-Za-z0-9]{20,}'
 
 # grep: -r rekurzivno, -l samo imena datotek, -E razširjen regex; manjkajoče poti ignoriraj
+#
+# .github/ je v scan-u ZARADI najdbe №15 (revizija 2026-10): sync.yml je imel
+# GitLab žeton v git URL-u, ta skript pa .github/ nikoli ni pregledal — step
+# "Secrets hygiene" v ci.yml bi torej ostal zelen tudi ob razkritem žetonu v
+# workflowu. Workflowi so koda in morajo biti pod isto zaporo kot src/ — sicer
+# scan pokrije 90 % datotek, v katerih žetonov ni, in 0 % datotek, kjer so.
 matches="$(grep -rlE "$PATTERN" \
   --include='*.ts' --include='*.tsx' --include='*.py' --include='*.sh' \
   --include='*.yml' --include='*.yaml' \
-  src/ scripts/ mini-services/ .gitlab-ci.yml 2>/dev/null)"
+  src/ scripts/ mini-services/ .github/ .gitlab-ci.yml 2>/dev/null)"
 
 status=$?
 
@@ -33,5 +39,5 @@ if [ "$status" -gt 1 ]; then
   echo "WARN: grep exit $status (manjkajoča scan pot?) — obravnavano kot čisto."
 fi
 
-echo "OK: ni najdb skrivnih žetonov (src/, scripts/, mini-services/, .gitlab-ci.yml)."
+echo "OK: ni najdb skrivnih žetonov (src/, scripts/, mini-services/, .github/, .gitlab-ci.yml)."
 exit 0

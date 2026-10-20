@@ -1,0 +1,148 @@
+name: 'Alarm ob napaki CI'
+description: >-
+  Dead-man alarm (audit okt-2026 #16): ob odpovedi joba odpre (ali dopolni)
+  GitHub issue z labelom ci-alarm in dodeli lastniku. Brez tega koraka je
+  rdeč pipeline tiho — pet dni izpadlega backupa (13.–18. 10.) nihče ni
+  opazil, ker noben workflow ni imel `if: failure()`.
+
+# Zakaj issue in ne e-pošta/slack: repozitorij nima nobenega messaging
+# secret-a (edini referencirani so NEON_API_KEY_B64, VERCEL_*, GITLAB_*).
+# Issue z dodelitvijo sproži GitHub obvestilo na račun, ki ga lastnik že
+# bere — brez novega zunanjega sistema in brez novega secret-a.
+#
+# Sam korak NIKOLI ne vrne napake (job je že rdeč); sicer bi alarm zakril
+# pravi vzrok odpovedi v logu.
+
+inputs:
+  token:
+    description: 'GITHUB_TOKEN (zahteva permissions: issues: write)'
+    required: true
+  scope:
+    description: 'Kaj job počne (npr. "backup produkcijske baze")'
+    required: true
+  hint:
+    description: 'Kaj preveriti najprej (potencialni vzrok)'
+    required: false
+    default: ''
+
+outputs:
+  alarm:
+    description: 'odprta | dopolnjena | spodletela'
+    value: ${{ steps.alarm.outputs.state }}
+
+runs:
+  using: composite
+  steps:
+    - name: 'Povzetek koraka (veden takoj, tudi brez API-ja)'
+      shell: bash
+      run: |
+        set -u
+        {
+          echo "## :rotating_light: CI alarm — ${{ inputs.scope }}"
+          echo ""
+          echo "- **workflow:** \`${{ github.workflow }}\`"
+          echo "- **job:** \`${{ github.job }}\`"
+          echo "- **run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (poskus ${{ github.run_attempt }})"
+          echo "- **branch:** \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`"
+          echo "- **sprožil:** \`${{ github.actor }}\`"
+          if [ -n "${{ inputs.hint }}" ]; then
+            echo "- **najprej preveri:** ${{ inputs.hint }}"
+          fi
+          echo ""
+          echo "Odgovoren je korak z oznako **Alarm ob napaki CI**; v logu je zgoraj pravi vzrok odpovedi."
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "::error::${{ inputs.scope }} je odpovedal — issue alarm je poskus"
+
+    - name: 'Odprej ali dopolni issue s tremi vztrajnimi poskusi'
+      id: alarm
+      shell: bash
+      run: |
+        set -u
+        API="${{ github.server_url }}/api/v3/repos/${{ github.repository }}"
+        TITLE="[CI alarm] ${{ github.workflow }} — ${{ inputs.scope }}"
+        BODY_FILE=$(mktemp)
+        cat > "$BODY_FILE" <<EOF
+        Job \`${{ github.job }}\` v workflowu **${{ github.workflow }}** je odpovedal.
+
+        - **run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (poskus ${{ github.run_attempt }})
+        - **branch:** \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`
+        - **sprožil:** \`${{ github.actor }}\` · **runner:** \`${{ runner.name }}\` (${{ runner.os }})
+        $(if [ -n "${{ inputs.hint }}" ]; then echo "- **najprej preveri:** ${{ inputs.hint }}"; fi)
+
+        Issue namenoma NE vsebuje izsečka loga — vsebuje lahko zneske, davčne
+        podatke in kratke odtise skrivnosti (audit okt-2026 #20). Podrobnosti so
+        samo v run-u, dostopnem zgoraj.
+
+        Ta issue je dedupliciran: nadaljnje odpovedi istega workflowa se pripnejo
+        kot komentar, da alarm ne utone v hrup.
+        EOF
+
+        api() { # method endpoint [data_json]
+          local method="$1" ep="$2" data="${3:-}" try out
+          for try in 1 2 3; do
+            if [ -n "$data" ]; then
+              out=$(curl -sS -f -X "$method" "$API$ep" \
+                -H "Authorization: Bearer ${{ inputs.token }}" \
+                -H 'Content-Type: application/json' \
+                --data "$data" 2>/dev/null) || out=''
+            else
+              out=$(curl -sS -f -X "$method" "$API$ep" \
+                -H "Authorization: Bearer ${{ inputs.token }}" 2>/dev/null) || out=''
+            fi
+            [ -n "$out" ] && { echo "$out"; return 0; }
+            sleep $((try * 3))
+          done
+          return 1
+        }
+
+        # 1) label (idempotentno: 422 pri že obstajočem ignoriramo)
+        api POST "/labels" '{"name":"ci-alarm","color":"E11D48","description":"CI job je odpovedal - potreben razlog"}' >/dev/null \
+          || api GET "/labels/ci-alarm" >/dev/null || true
+
+        # 2) ze odprt issue s tem naslovom?
+        NUM=$(api GET "/issues?state=open&labels=ci-alarm&per_page=100" | python3 -c '
+        import json,sys
+        want = sys.argv[1].lower()
+        try:
+            for it in json.load(sys.stdin):
+                if (it.get("title") or "").lower() == want:
+                    print(it["number"]); break
+        except Exception:
+            pass
+        ' "$TITLE" || true)
+
+        if [ -n "$NUM" ]; then
+          BODY=":repeat: nova odpoved istega joba — run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\`${{ github.sha }}\` (${GITHUB_RUN_ATTEMPT:-1}. poskus)"
+          if api POST "/issues/$NUM/comments" "$(python3 -c 'import json,sys; print(json.dumps({"body": sys.argv[1]}))' "$BODY")"; then
+            echo "state=dopolnjena" >> "$GITHUB_OUTPUT"
+            echo "Obstoječ issue #${NUM} dopolnjen z novo odpovedjo."
+            exit 0
+          fi
+        fi
+
+        # 3) nov issue
+        NEW=$(api POST "/issues" "$(python3 -c '
+        import json,sys
+        print(json.dumps({"title": sys.argv[1], "body": open(sys.argv[2]).read(), "labels": ["ci-alarm"]}))
+        ' "$TITLE" "$BODY_FILE")" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("number",""))' 2>/dev/null || true)
+
+        if [ -z "$NEW" ]; then
+          echo "state=spodletela" >> "$GITHUB_OUTPUT"
+          echo "::warning::alarm issue ni bil ustvarjen (API/GITHUB_TOKEN) — preveri run rocno"
+          exit 0
+        fi
+        echo "state=odprta" >> "$GITHUB_OUTPUT"
+        echo "Ustvarjen issue #${NEW}: ${TITLE}"
+
+        # 4) dodelitev = pravi signal (e-pošta/GitHub obvestilo lastniku).
+        #    Ce pade (npr. lastnik ni sodelavec), issue ostane — zato || true.
+        OWNER="${{ github.repository_owner }}"
+        api POST "/issues/$NEW/assignees" "$(python3 -c 'import json,sys; print(json.dumps({"assignees":[sys.argv[1]}]))' "$OWNER")" >/dev/null \
+          || echo "::warning::issue #${NEW} ni bil dodeljen ($OWNER) — alarm je vseeno odprt"
+
+    - name: 'Ce API ni dostopen, vsaj izpisati navodilo'
+      shell: bash
+      if: steps.alarm.outputs.state == 'spodletela'
+      run: |
+        echo "Rocni pregled: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        echo "Ustvari issue rocno z labelom ci-alarm, da ostane sled."

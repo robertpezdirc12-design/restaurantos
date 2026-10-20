@@ -4,6 +4,12 @@
 #
 # DATABASE_URL (optional for production build):
 # GitLab → Settings → CI/CD → Variables → add masked/protected DATABASE_URL.
+#
+# Usklajeno z GitHub Actions (audit okt-2026 #15, sinhronizacija treh sistemov):
+# quality-gate = isti recept kot `tests` job v .github/workflows/ci.yml,
+# production-build = isti proračun kot `typecheck-prod` + build. Kjer se dva
+# sistema razhajata, zelen pomeni nič — zato je recept zapisan z isto vsebino
+# in z isto vrstico komentarja na obeh straneh.
 
 image: oven/bun:1
 
@@ -17,14 +23,27 @@ quality-gate:
     # Run on merge requests and pushes to main.
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main"'
+  variables:
+    # Popravek neskladja (oct-2026): brez DATABASE_URL je bil ta gate čuden —
+    # scripts/prisma-postinstall.cjs brez `file:` URL-ja izbere PRODUKCIJSKI
+    # (Postgres) klient, testi pa odpirajo svežo SQLite bazo. Brez `db push`
+    # baza sploh ni obstajala, zato je `bun run test` tolkel ali po infrastrukturi
+    # ali po napačnih tipih — nikoli ne po kodi, kar je namen gate-a.
+    DATABASE_URL: file:./db/ci-gitlab.db
   cache:
     key:
       files:
         - package.json
+      # Ločen predpomnik po jobu: production-build generira Postgres klient v
+      # node_modules/.prisma; če bi si joba delila isti predpomnik, bi naslednji
+      # quality-gate dobil klient, ki ne ustreza njegovemu `file:` URL-ju.
+      prefix: quality-gate
     paths:
       - node_modules/
   script:
     - bun install --frozen-lockfile
+    # sveža SQLite baza (isti korak kot ci.yml:182) — WITHOUT this the suite is not equivalent
+    - bunx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
     - bunx tsc --noEmit
     - bun run lint
     # isti proračun hookov kot lokalno in na GitHub Actions (v1.148.0) —
@@ -34,6 +53,10 @@ quality-gate:
     - bash scripts/check-secrets.sh
 
 # Production build is optional and only runs when DATABASE_URL is configured.
+# Z `ignoreBuildErrors` odstranjenim (oct-2026 #18) je to hkrati edini typecheck
+# proti PRODUKCIJSKEMU klientu na GitLabu — ustreza `typecheck-prod` jobu na
+# GitHub Actions. Brez nastavljene spremenljivke se job preskoči, zato je
+# poskrbeti zanje tu ALI se zanašati na typecheck-prod na GitHubu (garantirano).
 production-build:
   stage: build
   rules:
@@ -42,6 +65,7 @@ production-build:
     key:
       files:
         - package.json
+      prefix: production-build
     paths:
       - node_modules/
   script:

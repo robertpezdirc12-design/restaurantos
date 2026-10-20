@@ -1,5 +1,25 @@
 name: Dvosmerna sinhronizacija GitLab <-> GitHub
 
+# Audit okt-2026 #15 (koreniti vzrok petdnevnega izpada, 13.–18. 10.):
+#
+# 1) `runs-on` je bil HARDKODIRAN na ubuntu-latest, medtem ko so ci.yml,
+#    neon-backup.yml, prod-smoke.yml in vercel-ops.yml že usmerjeni prek
+#    spremenljivke CI_RUNNER_LABELS. Ko je zmanjkalo hosted minut, je GitHub
+#    takoj zavrgel job — sinhronizacija je zrcalo pustila 31 verzij zadaj
+#    (GitLab na v1.111.0, GitHub na v1.142.0). Kdor auditira prek GitLaba,
+#    je gledal staro kodo.
+# 2) `git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@…"` je token
+#    ZAPISAL v .git/config. Na self-hosted runnerju ta datoteka preživi med
+#    runi in jo lahko razkrije katerikoli kasnejši `cat`/log/artifact.
+# 3) Ne uspešen fetch in ne uspešen push nista vplivala na izhod koraka
+#    (`break` iz retry zanke, `|| true` na tagih) — workflow je bil ZELEN,
+#    čeprav ni sinhroniziral ničesar. Zato alarm iz #16 brez tega ne more
+#    delovati: rdeče ne more nobeno odpovedati.
+# 4) `--force` na tageh v OBE smeri je lahko tiho premaknil že objavljen tag
+#    na drug commit. Za fiskalno aplikacijo pomeni, da vprasanju „koda pod
+#    v1.142.0" ni več odgovora. Tagi se zdaj poslali samo, če NISO v
+#    nasprotju; nasprotje je napaka in ne silentna rešitev.
+
 on:
   push:
     branches: ['**']
@@ -10,6 +30,7 @@ on:
 
 permissions:
   contents: write
+  issues: write # alarm ob napaki (#16)
 
 concurrency:
   group: gitlab-sync
@@ -17,36 +38,70 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    # Isti routing kot ostali workflowi: po resetu kvote (1. 11. 2026)
+    # lastnik izbrise CI_RUNNER_LABELS in vsi jobi sami vrnejo na hosted.
+    runs-on: ${{ vars.CI_RUNNER_LABELS || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    env:
+      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_PROJECT_PATH: ${{ secrets.GITLAB_PROJECT_PATH }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Pridobi vsebino z obeh strani
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITLAB_PROJECT_PATH: ${{ secrets.GITLAB_PROJECT_PATH }}
+      - name: Pripravi dostop do GitLaba brez zapisa gesla
         run: |
+          set -euo pipefail
+          if [ -z "${GITLAB_TOKEN:-}" ] || [ -z "${GITLAB_PROJECT_PATH:-}" ]; then
+            echo "::error::GITLAB_TOKEN ali GITLAB_PROJECT_PATH ni nastavljen — sinhronizacija ne more teči"
+            exit 1
+          fi
+          # Askpass: Git pokliče program in dobi vrednost IZ OKOLJA. V datoteko
+          # je zapisan samo sklic na $GITLAB_TOKEN, nikoli sam token, zato ga
+          # tudi `.git/config` in morebitni artifact ne vsebujeta.
+          cat > "$RUNNER_TEMP/git-askpass.sh" <<'EOS'
+          #!/bin/sh
+          case "$1" in
+            [Uu]sername*) printf 'oauth2\n' ;;
+            *) printf '%s\n' "${GITLAB_TOKEN:?manjka GITLAB_TOKEN}" ;;
+          esac
+          EOS
+          chmod 700 "$RUNNER_TEMP/git-askpass.sh"
+          echo "GIT_ASKPASS=$RUNNER_TEMP/git-askpass.sh" >> "$GITHUB_ENV"
+          git remote add gitlab "https://gitlab.com/${GITLAB_PROJECT_PATH}.git"
+          # Dokaz, da config ostane brez gesla: izpisani URL-ji smejo biti brez '@'.
+          git remote -v | sed -E 's#(https://)[^@/]+@#\1<REDAKTIRANO>@#g'
+
+      - name: Pridobi vsebino z obeh strani
+        run: |
+          set -euo pipefail
           git config user.name "sync-bot"
           git config user.email "sync-bot@users.noreply.github.com"
-          git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_PROJECT_PATH}.git"
+          fetched=""
           for i in 1 2 3; do
             if git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune --force \
             && git fetch gitlab '+refs/heads/*:refs/remotes/gitlab/*' --prune --force \
             && git fetch origin '+refs/tags/*:refs/tags/*' --force \
             && git fetch gitlab '+refs/tags/*:refs/tags/*' --force; then
               echo "fetch OK"
+              fetched=1
               break
             fi
             echo "fetch poskus $i ni uspel, cakam..."
             sleep 15
           done
+          if [ -z "$fetched" ]; then
+            echo "::error::noben od treh fetchov ni uspel — brez tega bi workflow pushal iz zastarelih refov in bil kljub temu zelen"
+            exit 1
+          fi
 
       - name: Zdruzi in poslji vse branche v obe smeri
         run: |
+          set -uo pipefail
           ALLB=$( (git for-each-ref --format='%(refname:short)' refs/remotes/origin | sed 's|^origin/||'; \
                    git for-each-ref --format='%(refname:short)' refs/remotes/gitlab | sed 's|^gitlab/||') | sort -u )
+          FAILED=""
           for BR in $ALLB; do
             case "$BR" in HEAD) continue;; esac
             OB=$(git rev-parse -q --verify "refs/remotes/origin/$BR" 2>/dev/null || true)
@@ -61,12 +116,13 @@ jobs:
               elif git merge-base --is-ancestor "$GB" "$OB"; then
                 WIN="$OB"; echo "$BR: GitHub naprej -> push na GitLab"
               else
-                git checkout --detach "$GB" || continue
+                git checkout --detach "$GB" || { FAILED="$FAILED $BR(checkout)"; continue; }
                 if git merge --no-edit "$OB" -m "sync: merge brancha $BR (GitHub <-> GitLab)"; then
                   WIN="$(git rev-parse HEAD)"; echo "$BR: divergentna -> merge ($WIN)"
                 else
                   git merge --abort 2>/dev/null || true
                   echo "::warning::konflikt na branchu $BR - potreben rocni merge"
+                  FAILED="$FAILED $BR(konflikt)"
                   continue
                 fi
               fi
@@ -75,20 +131,67 @@ jobs:
             else
               WIN="$GB"; echo "$BR: samo na GitLab -> push na GitHub"
             fi
+            pushed=""
             for i in 1 2 3; do
               if git push origin "$WIN:refs/heads/$BR" && git push gitlab "$WIN:refs/heads/$BR"; then
                 echo "$BR: uspesno sinhroniziran"
+                pushed=1
                 break
               fi
               echo "$BR: push poskus $i ni uspel, cakam..."
               sleep 12
             done
+            [ -n "$pushed" ] || FAILED="$FAILED $BR(push)"
           done
+          if [ -n "$FAILED" ]; then
+            echo "::error::nesinhronizirani branchi:${FAILED} — zrcalo ostane zastarelo"
+            exit 1
+          fi
 
-      - name: Sinhroniziraj tage (obe smeri)
+      - name: Sinhroniziraj tage (obe smeri, brez prepisa objavljenih)
         run: |
-          git push origin 'refs/tags/*:refs/tags/*' --force 2>/dev/null || true
-          git push gitlab 'refs/tags/*:refs/tags/*' --force 2>/dev/null || true
+          set -uo pipefail
+          REJ=""
+          for REM in origin gitlab; do
+            # Brez --force: nov tag gre naprej, že objavljen tag z drugo vsebino
+            # je NASPROTJE in ga puste pri miru — sicer izgubimo dokaz, katera
+            # koda je bila pod katero verzijo.
+            if ! git push "$REM" 'refs/tags/*:refs/tags/*' 2>&1; then
+              REJ="$REJ $REM"
+            fi
+          done
+          if [ -n "$REJ" ]; then
+            echo "::error::tagi niso bili poslani na:${REJ} — na eni strani ima isti tag drug commit. Razresite rocno (ki je pravilni); --force je namenoma odstranjen."
+            exit 1
+          fi
+
+      - name: Preveri zakasnitev zrcala (main = main)
+        run: |
+          set -uo pipefail
+          GH=$(git ls-remote origin refs/heads/main | cut -f1 || true)
+          GL=$(git ls-remote gitlab refs/heads/main | cut -f1 || true)
+          echo "GitHub main: ${GH:-nn}"
+          echo "GitLab main: ${GL:-nn}"
+          if [ -z "${GL:-}" ]; then
+            echo "::error::GitLab nima brancha main — zrcalo ne obstaja"
+            exit 1
+          fi
+          if [ "${GH:-}" != "${GL:-}" ]; then
+            BEHIND=$(git rev-list --count "refs/remotes/gitlab/main..refs/remotes/origin/main" 2>/dev/null || echo "?")
+            echo "::error::zrcalo zaostaja za ${BEHIND} commiti ( GitHub=${GH:-nn} GitLab=${GL:-nn} ) — kdor auditira prek GitLaba, gleda staro kodo"
+            exit 1
+          fi
+          echo "Zrcalo je na istem commitu kot GitHub."
 
       - name: Povzetek
-        run: echo "Sinhronizacija zakljucena."
+        run: echo "Sinhronizacija zakljucena (preverjeno na obeh straneh)."
+
+      # #16: brez tega koraka bi bila odpoved vidna samo komu, ki odpre
+      # Actions. Sedaj se odpre issue z dodelitvijo = GitHub e-pošta.
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'sinhronizacija GitLab <-> GitHub'
+          hint: 'Preveri (1) ali je bil runner sploh dodeljen (kvota hosted minut se glasi "no runner could be assigned"), (2) ali GITLAB_TOKEN in GITLAB_PROJECT_PATH še veljata, (3) ali je katerikoli branch ali tag v NASPROTJU med stranema.'

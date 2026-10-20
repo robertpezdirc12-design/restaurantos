@@ -30,6 +30,14 @@ on:
 # prek spremenljivke repozitorija CI_RUNNER_LABELS=self-hosted (Actions → Variables).
 # Po resetu kvote spremenljivko izbrišite/ponastavite na ubuntu-latest — workflow
 # same od sebe vrne na hosted pool. Brez spremembe workflowa ob preklopu.
+#
+# Audit okt-2026 #16: vsak job ima zdaj korak `if: failure()`, ki odpre issue z
+# dodelitvijo. Pred tem nobenih petih workflowov ni imelo alarmnega koraka — zato
+# je bil lahko (in je bil) rdeč pipeline tiho teden dni.
+permissions:
+  contents: read
+  issues: write
+
 concurrency:
   group: ci-main
   cancel-in-progress: true
@@ -105,7 +113,13 @@ jobs:
           echo "endpoint: $EP_ID $EP_HOST"
 
           ROLE_PW=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR_ID/roles" '{"role":{"name":"ci_smoke"}}' 'import json,sys; print(json.load(sys.stdin)["role"]["password"])')
-          echo "role pw: ${ROLE_PW:0:6}..."
+          # Audit okt-2026 #21: izpis prvih šestih znakov gesla v log je bil
+          # »informativen«, a logi Actions so dostopni vsakomur z read pravico
+          # in se hranijo 90 dni. Geslo ni produkcijsko (temporarna `ci_smoke`
+          # vloga na efemernem branchu), a polovično geslo v logu je vseeno
+          # nekaj, česar ni razloga pustiti. To, da je geslo sploh bilo
+          # sprejeto, dokaže že drift in smoke korak, ki se z njim povežeta.
+          echo "role: pripravljen (${#ROLE_PW} znakov)"
 
           DB_OK=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR_ID/databases" '{"database":{"name":"ci_smoke","owner_name":"ci_smoke"}}' 'import json,sys; print(json.load(sys.stdin).get("database",{}).get("name",""))')
           echo "database: $DB_OK"
@@ -155,6 +169,14 @@ jobs:
             echo "ephemeral branch $BR_ID deleted"
           fi
 
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'neon-smoke (shema na resničnem Postgresu)'
+          hint: 'Nepričakan drift pomeni, da produkcija ne ustreza datamodelu — push na main je bloiran, dokler ga ne razrešiš. Infra napaka (Neon API, endpoint ne aktivira) ni koda; preveri NEON_API_KEY_B64 in quota.'
+
   # Hosted quality gate: tsc + lint + celoten test suite na sveži SQLite
   # bazi (testi so samozadostni — potrjeno lokalno na prazni bazi). Nadomešča
   # GitLab CI quality-gate (GitLab compute minutes izčrpane — gl. worklog Task 35).
@@ -197,6 +219,14 @@ jobs:
       - name: Secrets hygiene
         run: bash scripts/check-secrets.sh
 
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'tests (tsc + lint + celoten suite na SQLite)'
+          hint: 'Ta job je objektivna varovalka pred Vercel deployom. Ce je padel tsc, je v produkciji ze verjetno deployano isto stanje (gl. #18) — preveri deployment. Ce je padel samo test, preveri, ali gre za fiksature (`a56-`, `i4-` predponi) ali res napako.'
+
   # DRUGI SISTEM kot `tests`: tsc proti PRODUKCIJSKEMU (Postgres) klientu.
   # Zakaj ločen job: `tests` ima file: DATABASE_URL, zato postinstall generira
   # SQLite klient, ta pa enumeratov NE pozna (`Reservation.status` je tam String)
@@ -226,6 +256,14 @@ jobs:
 
       - name: TypeScript check (produkcijski klient)
         run: bunx tsc --noEmit
+
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'typecheck-prod (tsc proti Postgres klientu)'
+          hint: 'Ta mreža gleda enumerante in Json polja produkcijske sheme. Napaka tu ob zelenem jobu `tests` je točno razred, ki je stal padec rezervacijskega opomnika (v1.129.0). Popravi kodo, ne sheme.'
 
   # (deploy job odstranjen v Task 43 — Vercel Git integration deploya samodejno;
   # vzporeden CLI deploy bi povzročil dva builda na push in race za produkcijo.)

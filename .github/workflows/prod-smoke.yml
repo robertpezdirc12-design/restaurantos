@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  issues: write # alarm ob napaki (#16)
 
 concurrency:
   group: neon-prod-smoke
@@ -141,3 +142,15 @@ jobs:
               -H "Authorization: Bearer $NEON_KEY" || true
             echo "prodsmoke vloga $ROLE_NAME izbrisana"
           fi
+
+      # Audit okt-2026 #16: ta job preverja INVARIENCE v produkciji (negativna
+      # zaloga, osamljeni plačani izstavek, AR brez plačila ...). Brez
+      # alarmnega koraka bi bila kršena invarianca vidna šele, ko jo nekdo
+      # opazi v poročilu ali na davčnem zvezniku.
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'dnevni zdravstveni pregled produkcije (bralne invariance)'
+          hint: 'Korak "Ephemeral read role + production invariants" piše samo SELECT — rdeč pomeni kršeno invariants v podatkih ALI nedosegljiv Neon. Loči ju takoj: če je šlo za infrastrukturo, je naslednji run spet zelen; če je šlo za podatke, ostane rdeč in je potreben ročni poseg (popravek preko API-ja, ne s SQL). '

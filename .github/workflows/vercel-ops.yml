@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  issues: write # alarm ob napaki (#16)
 
 concurrency:
   group: vercel-ops
@@ -73,3 +74,14 @@ jobs:
           # (src/lib/deploy-commit.ts) v health; .git odstranjen PRED deployem.
           rm -rf .git
           npx vercel --prod --yes --token="$TOKEN"
+
+      # Audit okt-2026 #16: ta pot je REZERVNA, ko redna pot (Git integration) ne
+      # dostavi. odpoved tu pomeni, da produkcija NI bila posodobljena — kar je
+      # tiho najhujši od vseh petih workflowov, ker je noben drug korak ne coverage.
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'Vercel OPS (diag ali rezervni CLI deploy)'
+          hint: 'Preveri način, ki je bil izbran (diag ali deploy). Če je deploy padel, produkcija ni posodobljena: Vercel dashboard → Deployments → zadnji READY → Promote (rollback), nato šele razlog odpovedi (VERCEL_TOKEN_B64, VERCEL_ORG_ID/PROJECT_ID). V deploy načinu je bil pred tem korakom namenoma izbrisan .git — to je pričakovano, ne napaka.'

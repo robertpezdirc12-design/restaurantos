@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  issues: write # alarm ob napaki (#16)
 
 concurrency:
   group: neon-backup
@@ -145,3 +146,14 @@ jobs:
               -H "Authorization: Bearer $NEON_KEY" || true
             echo "backup vloga $ROLE_NAME izbrisana"
           fi
+
+      # Audit okt-2026 #16: backup je bil mrtev pet dni (13.–18. 10.), ker
+      # odpovedi ni nihče najal. `if: failure()` je edini mehanizem, ki to
+      # spremeni v dogodek z vsaj enim prejemnikom.
+      - name: Alarm ob napaki
+        if: failure()
+        uses: ./.github/actions/ci-alarm
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'dnevni backup produkcijske baze'
+          hint: 'Backup NISO samo datoteke: preveri (1) ali je dobil runner (izčrpana hosted kvota se glasi "no runner could be assigned"), (2) ali NEON_API_KEY_B64 še velja, (3) artifact tega runa — če ga ni, zadnji zanesljiv dump ni današnji in je treba ga izvesti ročno (workflow_dispatch).'

@@ -30,10 +30,21 @@ export const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  /* config options here */
-  typescript: {
-    ignoreBuildErrors: true, // tsc je ločen gate v CI (tests job) — build hitrejši
-  },
+  /**
+   * Audit okt-2026 #18: prej je bil tukaj `typescript: { ignoreBuildErrors: true }`
+   * s komentarjem „tsc je ločen gate v CI". Drži samo delno: `tests` in
+   * `typecheck-prod` res tečeta, a Vercel Git integration zgradi in deploya ob
+   * pushu — vzporedno s CI-jem in brez odvisnosti od njega. Zapora torej ni
+   * blokirala ničesar: napaka tipov je bila v produkciji, CI jo je potrkal šele
+   * potem, ko je že živela.
+   *
+   * `next build` zdaj tipizira (privzeto, brez izjeme). tsconfig izrecno izpušča
+   * `tests/`, zato testne datoteke ne morejo blokirati deploya; pod Verclovim
+   * Postgres klientom je to isti proračun, kot ga `typecheck-prod` in je zelen.
+   *
+   * Nastavitve ne vnašaj nazaj kot „hitrejši build": build je na uro največ eden,
+   * tipiziranje pa edina zapora, ki dejansko stoji pred produkcijo.
+   */
   reactStrictMode: false,
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
