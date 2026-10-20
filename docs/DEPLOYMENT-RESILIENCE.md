@@ -17,9 +17,9 @@ CI je razdeljen na TRI sisteme, ki morajo izvesti ISTI proračun. To pogodbo
 
 ```
 neon-smoke      : začasna Neon veja (prava Postgres) → prisma DDL + CRUD/enum/FK/JSONB
-                  + drift prevera z dovoljenim seznamom znanih pending driftov
+                  + drift preverba z dovoljenim seznamom znanih pending driftov
 tests           : DATABASE_URL=file:./db/ci-fresh.db → prisma db push (SQLite zrcalo)
-                  → tsc --noEmit → bun run lint → bun run test → check-secrets.sh
+                  → check-secrets.sh → tsc --noEmit → bun run lint → bun run test
 typecheck-prod  : prisma generate (produkcijska Postgres shema) → tsc --noEmit
 ```
 
@@ -36,9 +36,9 @@ je step "Secrets hygiene" ostal zelen tudi ob razkritem žetonu v `sync.yml`.
 ### GitLab CI — zrcalni quality-gate (`.gitlab-ci.yml`)
 
 ```
-quality-gate    : bun install → prisma db push (SQLite) → tsc --noEmit
-                  → bun run lint → bun run test → check-schema-drift.cjs
-                  → check-secrets.sh
+quality-gate    : bun install → (git bootstrap, best-effort) → prisma db push (SQLite)
+                  → check-schema-drift.cjs → check-secrets.sh → tsc --noEmit
+                  → bun run lint → bun run test
 production-build: prisma generate (Postgres) → bun run build
 ```
 
@@ -75,6 +75,63 @@ Meritev po popravku: celoten suite (2889 testov) zapiše 448.369 B in nobene
 `tests/audit2324-log-noise.test.ts` to preverja dinamično: sonda
 `scripts/log-noise-probe.ts` zažene pravi Prisma klient, test pa šteje
 `prisma:query` vrstice nje — z stikalom in brez njega.
+
+### Determinizem zrcalnega gate-a (najdbe №25–№30, v1.152.0)
+
+Po tem, ko je №23 odpravil izpad zaradi obsega loga, smo v pipeline #57 prvič
+dobili ČIST izid: 653.068 B loga, suite se je izvedel do konca in odkril devet
+pravih padcev, odvisnih od okolja. Vseh devet izhaja iz šestih vzrokov, vsak od
+njih pa je bil tiha napaka v repozitoriju — ne v kodi produkta, ampak v tem,
+kako se koda izvaja v CI:
+
+- **№25 — `git` manjka v sliki `oven/bun:1`.** Pet od devetih padcev je bilo
+  `Executable not found in $PATH: "git"` v skupini B2
+  (`tests/audit1516-ci-hygiene.test.ts`), ki dokazuje sync-guard z realnim
+  gitom v temp repozitorijih. Kvaliteta produkta ni bila nikoli ogrožena, a
+  padec zaradi orodja zamaskira vse, kar pride za njim. `quality-gate` zdaj
+  najprej poskuša `apt-get install git` (best-effort; neuspeh odtiska
+  `GIT-MISSING` in ne ustavi joba), skupina B2 pa je vezana na sondo
+  `HAS_GIT` prek `describe.skipIf` — padec zaradi orodja je tako nemogoč,
+  pokritost ostane na GitHub Actions in lokalno.
+- **№26 — varnostna preverba je bila zadnji korak.** `check-secrets.sh` (in na
+  GitLabu `check-schema-drift.cjs`) sta se izvedla ŠELE, če so bili tsc, lint
+  in vsi testi zeleni. Rdeč tsc torej pomeni, da izpuščen žeton NIKOLI ne
+  pride do pregleda — varnostni gate, ki je odvisen od tega, da je vse ostalo
+  zeleno, ni varnostni gate. Oba sistema ju zdaj izvedeta PREJ dragih gate-ov;
+  pogodbo pinirata sklop B v `tests/audit2530-ci-determinism.test.ts` in
+  posodobljeni A5 v `tests/audit1516-ci-hygiene.test.ts`.
+- **№27 — počistilo po neobstoječem stolpcu.** `tests/handheld-flow.test.ts`
+  je v `.catch(() => null)` tiho pogoltnil `Unknown argument 'orderId'`
+  (`Payment` ima samo `checkId`, `prisma/schema.prisma`), 12× na posamezen
+  tek — izjava
+  je od začetka nikoli ne uspela. Odstranjena; edini prehod plačil gre po
+  `checkId` in je piniran v obe smeri.
+- **№28 — Upstash URL brez sheme.** CI spremenljivka
+  `UPSTASH_REDIS_REST_URL` vsebuje vrednost brez `https://` (dokaz:
+  `fetch() URL is invalid` v logu). `getStore()` jo je vseeno sprejel, limiter
+  pa je za vsak zadetek naredil DVA fetch klica, obsojena na neuspeh
+  (INCR + PTTL). Ker
+  testi za plačilne povezave štejejo klice `globalThis.fetch`, je števec
+  Stripe klicev v CI stalno kazal 2 namesto 0. `upstashEndpoint()` zdaj
+  sprejme SAMO absoluten http(s) URL; neuporabna nastavitev pomeni memory
+  store (zaščita ostane aktivna, brez mrežnega poskusa). Lastnik naj
+  spremenljivko popravi ali odstrani.
+- **№29 — padec odvisen od hitrosti stroja.** Zamekana dirka med plačilom in
+  preklicem je na SQLite (en sam pisalec) ob sočasnosti vrgla `P1008 Socket
+  timeout` po 5174 ms — time-out, ki ni napaka izdelka, je pobarval suite
+  rdeče. `raceSweep` zdaj požre SAMO P1008 in jo šteje (več kot ena na skupno
+  dirko je spet odvisnost od stroja), varnostna invarianta pa ima poleg
+  zamekane dirke še dva deterministična primera (plačilo-prej, preklic-prej).
+- **№30 — globalna številka brez imena krivca.** Preklic, ki ga je prehitelo
+  plačilo, pušča `pending` vrstico v `EventLog`, ki pade v globalni dispatch
+  naslednjega teka; bootstrap testu je ob tujih vrsticah padla ena sama
+  številka (`processed`), ne da bi povedala katera vrstica in čigava je.
+  Bootstrap zdaj loči lastne vrstice (točno 5) od tujih in te v sporočilu
+  o napaki IMENUJE.
+
+Vseh šest najdb pokriva 21 novih testov v
+`tests/audit2530-ci-determinism.test.ts` (dinamični dokaz za №28 brez mreže +
+statični pini za ostale), mutacijsko dokazanih z M1–M18.
 
 ### Vercel — deploy, ki je hkrati zapora
 
@@ -219,11 +276,14 @@ bun scripts/sync-check.ts --fix        # fetch origin + reset --hard origin/main
 
 - **GitHub = AVTORITATIVA** (`robertpezdirc12-design/restaurantos`) — Vercel Git
   integration builda produkcijo iz GitHub main (push → deploy ~30 s; Task 43).
-- **GitLab = mirror** (markec-group1/markec-project) — zrcalo istih SHA-jev;
-  push po vsakem GitHub pushu (403 anti-abuse → retry po ~30 s). Zakasnitev
-  zrcala NI več domneva: zadnji korak `sync.yml` primerja `refs/heads/main` na
-  obeh straneh in ob razliki javi napako s številom zaostankov (najdba #15 —
-  mirror je neopazeno miril 31 verzij).
+- **GitLab = mirror** (`robertpezdirc8/restaurantos`, projekt ID 87573786) —
+  zrcalo istih SHA-jev; push po vsakem GitHub pushu (403 anti-abuse → retry po
+  ~30 s). Pot markec-group1/markec-project je ZGODOVINSKA: zrcalo je bilo
+  preseljeno na račun robertpezdirc8 (worklog v1.107.0), `git remote -v` in
+  `git ls-remote` oba potrjujeta novo pot. Zakasnitev zrcala NI več domneva:
+  zadnji korak `sync.yml` primerja `refs/heads/main` na obeh straneh in ob
+  razliki javi napako s številom zaostankov (najdba #15 — mirror je neopazeno
+  miril 31 verzij).
 - **Vercel** produkcija: env APP_SECRET, BOOTSTRAP_ADMIN_*, PIN_LOOKUP_SALT,
   Neon DATABASE_URL. Token `VERCEL_TOKEN_B64` ostane v GitHub secrets kot
   rezervni CLI mehanizem — deploy ne potrebuje več tokena.
