@@ -4781,3 +4781,25 @@ Stage Summary:
 - AKCIJA ZA LASTNIKA: (1) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (2) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (3) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (4) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (5) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (6) po pushu preveri Vercel READY, `/api/health` (version 1.160.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
 
 - POTRDITEV PO OBJAVI (4c948e9): Vercel služi 4c948e9 — `/api/health` vrne version 1.160.0, commit 4c948e970f4bd622fca465b140ef40e763ae7e62, `database: disconnected` (Neon pavziran — lastnikova točka). GitLab `main` = 4c948e9 (preverjeno z `git ls-remote`); statusa pipeline v tej seji ni bilo mogoče odčitati (GitLab MCP ni bil na voljo, projekt je privaten) — preveriti ob naslednji seji. `bun scripts/sync-check.ts`: local = mirror = prod = 4c948e9, `SYNCED`.
+
+---
+
+Task ID: v1.161.0-cron-marker
+Agent: glavni agent (Qoder)
+Task: Najdba iz lastnega pregleda dnevnega cron-a — `/api/cron/daily` je marker `cron-daily-state` zapisal VEDNO, tudi ko je kateri korak padel. Istodnevna ponovitev je zato postala no-op (`already_ran_today`), čeprav je delo ostalo nedokončano, marker pa ni vseboval nobene informacije o napaki.
+
+Work Log:
+- RED (pred popravkom): `tests/v161-cron-marker.test.ts` — prvi test (padel korak `paylinks`) je ob starem zapisu markera pričakoval ODSOTNOST markera, a ga je stara koda zapisala z današnjim datumom. Dokaz po popravku: route, zamenjan z različico iz HEAD → 2 zelena / 1 rdeč natanko na `expect(row?.config?.lastRunDate).not.toBe(todayKey())`; po povrnitvi 3/3 zelenih.
+- POPRAVEK: marker se zapiše SAMO, ko je `errors.length === 0`. Napake ostanejo v odgovoru in v reviziji `CRON_DAILY_RAN`; dan ostane nezasklenjen, da ga ročna ponovitev lahko dokonča. Varovalka `shouldRunDaily` ostaja nespremenjena — uspešen tek še vedno zaklene dan (testa 2 in 3).
+- NAPAKA PRI BRANJU MARKERJA (`guard:`) prav tako prepreči zaklep — fail-open tek se izvede, a se ne zabeleži kot uspešen; to je namerno: marker ne sme izgledati svež, če guard sploh ni mogel preveriti stanja.
+- ZAVESTNA CENA: ker dan ob napaki ni zaklenjen, lahko ročna istodnevna ponovitev izvede korake še enkrat. Ponavljajoča pravila se ne podvojijo (`nextRun` se pomakne), LOT/HACCP imata lastna dnevna stanja, AP opomniki se lahko ponovijo (največ 20), dnevni digest pa se lahko pošlje DRUGIČ (nima dedupe po `ScheduledEmailLog`). To je izbrano zavestno: lažni uspeh v markerju je slabši od dvojnega e-poštnega sporočila ob ročnem ponovnem zagonu; dedupe digesta je kandidat za naslednjo izdajo.
+- TEST: 3 testi — (1) padel korak → markerja ni, napaka `paylinks:` v odgovoru; (2) uspešen tek → marker z današnjim lokalnim datumom, brez napak; (3) istodnevna ponovitev po uspehu → `ran:false`, `already_ran_today`. Edini mock je zadnji korak (`@/lib/paylink/reconcile`), ker drugemu koraku ne moremo deterministično povzročiti napake brez kvara baze; vsi ostali koraki tečejo nad realno SQLite bazo.
+- HIGIENA: test shrani obstoječi marker pred testi in ga po testih povrne (vzorec v1.141.0 settings); brez DDL in brez novih predpon v `fixture-sweep` (test ne ustvarja predponjenih zapisov).
+- VERZIJA 1.160.0 → 1.161.0 (`src/lib/version.ts` + 6 test pinov).
+- VERIFIKACIJA: `tsc --noEmit` 0 · `eslint .` 0 · celoten suite **3040 testov / 153 datotek / 109.210 expect-ov / 194,69 s, 0 fail** (pred izdajo 3037/152; +3 novi). BREZ DDL.
+
+Stage Summary:
+- Marker dnevnega cron-a zdaj pomeni »ta dan je bil v celoti izveden brez napak«; zunanji monitoring lahko svežino markera bere kot dokaz uspeha, ne le kot dokaz zagona.
+- Napaka v enem koraku ne ustavi ostalih (izolacija ostaja) in ne izgine: odgovor in revizija jo naštejeta, dan pa ostane odprt za ročno dokončanje.
+- ZAVESTNO NE STORENO: (a) digest nima dedupe — ročna ponovitev istega dne ga lahko pošlje dvakrat; (b) v aplikaciji ni dead-man monitorja, ki bi bral marker (najdba se nanaša na zunanji nadzor) — marker je zdaj vsaj resničen; (c) brez spremembe sheme/DDL; (d) preostale najdbe audita (čakalna vrsta brez sprostitve mize, PII v IntegrationLog, egress poling) ostajajo za naslednje izdaje.
+- AKCIJA ZA LASTNIKA: (1) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (2) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (3) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (4) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (5) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (6) po pushu preveri Vercel READY, `/api/health` (version 1.161.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
