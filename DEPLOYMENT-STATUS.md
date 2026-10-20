@@ -21,7 +21,7 @@
 - Meni: originalne kategorije ("Penine in Šampanjci", "Hladne predjedi", "Bela Vina"...) ✓
 
 ### Prijava (trajna — bootstrap umaknjen, 2026-10-07)
-- **Prijava:** info@restaurantos.app / PIN 729153 → trajen ADMIN profil **Robert Pezdirc** v bazi (12-urni token).
+- **Prijava:** info@restaurantos.app / PIN [PIN ODSTRANJEN — ROTACIJA OBVEZNA] → trajen ADMIN profil **Robert Pezdirc** v bazi (12-urni token).
 - `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PIN` env sta **izbrisana** s Vercela (deploy dpl_4FkPjoW4u9CSiKG2JDbe68pmSYH2) — fallback prijava ni več mogoča.
 - Vaja PIN-ov v UI: Zaposleni tab med bootstrap sejo prikaže opozorilo (ustvarjanje profila / reset PIN-a v Control Centerju, gumb za naključni PIN). Zaposlenim nastavi PIN v Control Centerju (Zaposleni → klikni profil → Ponastavi PIN); vsak reset poveča `sessionVersion` in se zapiše v revijo.
 - Originalni zaposleni (ana@restaurant.com, eva@restaurant.com, ...) imajo še PIN-e v stari, neznani shemi → prijava zanje, dokler jim admin ne nastavi novega PIN-a, ni mogoča (namerno).

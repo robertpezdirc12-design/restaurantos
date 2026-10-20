@@ -1470,13 +1470,13 @@ Task: Uporabnik na produkciji (restaurantos-theta.vercel.app) ni mogel prijaviti
 
 Work Log:
 - Diagnoza: lokalni seed računi (vodja@restaurantos.app / 4567) obstajajo SAMO v dev SQLite; produkcija ima 9 lastnih Employee vrstic — vodja@restaurantos.app tam NE obstaja, originalni zaposleni (ana@restaurant.com, eva@restaurant.com, ...) imajo PIN-e v stari neznani shemi (namerno blokirano do admin resetta — RECOVERY-NOTES.md).
-- POTRJENO delujoča produkcija prijava: info@restaurantos.app / 729153 → Robert Pezdirc, ADMIN (trajni profil iz obnovitve, DEPLOYMENT-STATUS.md) — preverjeno prek /api/auth/login (HTTP 200, employees.manage GET 200, 9 zaposlenih, lokacija RestaurantOS Ljubljana cmqih3e9e000aay5xf0nq6poh).
+- POTRJENO delujoča produkcija prijava: info@restaurantos.app / [PIN ODSTRANJEN — ROTACIJA OBVEZNA] → Robert Pezdirc, ADMIN (trajni profil iz obnovitve, DEPLOYMENT-STATUS.md) — preverjeno prek /api/auth/login (HTTP 200, employees.manage GET 200, 9 zaposlenih, lokacija RestaurantOS Ljubljana cmqih3e9e000aay5xf0nq6poh).
 - Ustvarjen račun na produkciji prek POST /api/employees (admin token, locationId ekspliciten — admin loc=null, requireUserLocation zahteva body locationId): vodja@restaurantos.app / "Vodja lokala" / MANAGER / HTTP 201.
-- PIN reset prek PATCH /api/employees/[id] (uradna pot iz Control Centerja; sessionVersion bump + EMPLOYEE_SENSITIVE_UPDATE audit) — nov PIN 754825.
-- Finalna verifikacija: /api/auth/login vodja@restaurantos.app + 754825 → HTTP 200 (MANAGER, loc Ljubljana, 11 dovoljenj). Audit trail na produkciji: EMPLOYEE_CREATE + EMPLOYEE_SENSITIVE_UPDATE z admin aktorjem.
+- PIN reset prek PATCH /api/employees/[id] (uradna pot iz Control Centerja; sessionVersion bump + EMPLOYEE_SENSITIVE_UPDATE audit) — nov PIN [PIN ODSTRANJEN — ROTACIJA OBVEZNA].
+- Finalna verifikacija: /api/auth/login vodja@restaurantos.app + [PIN ODSTRANJEN — ROTACIJA OBVEZNA] → HTTP 200 (MANAGER, loc Ljubljana, 11 dovoljenj). Audit trail na produkciji: EMPLOYEE_CREATE + EMPLOYEE_SENSITIVE_UPDATE z admin aktorjem.
 
 Stage Summary:
-- Dostop uporabnika obnovljen: vodja@restaurantos.app / 754825 (MANAGER) + info@restaurantos.app / 729153 (ADMIN) — obe prijavi browser-verificirane prek produkcijskega API.
+- Dostop uporabnika obnovljen: vodja@restaurantos.app / [PIN ODSTRANJEN — ROTACIJA OBVEZNA] (MANAGER) + info@restaurantos.app / [PIN ODSTRANJEN — ROTACIJA OBVEZNA] (ADMIN) — obe prijavi browser-verificirane prek produkcijskega API.
 - Demo PIN 4567 je bil iz lokalnega seeda — na produkciji nikoli obstajal; uporabniku pojasnjena razlika dev/produkcija.
 - Repo nespremenjen (čista operacija prek obstoječih API); brez deploya. Rate limit na prijavi (10/min/IP) omenjen uporabniku.
 ---
@@ -1506,7 +1506,7 @@ Agent: main (Z.ai Code)
 Task: Uporabnikovo poročilo "Ups — prišlo je do napake" po prijavi na produkciji → diagnosticirati, popraviti, deployati. (+ odkritje, da je bila sandbox zgodovina vmes resetirana na staro linijo v1.45)
 
 Work Log:
-- REPRODUKCIJA (agent-browser, produkcija): prijava vodja@restaurantos.app/754825 → 200 → redirect /dashboard → error boundary "Ups — prišlo je do napake / Poskusi znova". Konzola: `Error: APP_SECRET ni nastavljen — produkcija zahteva APP_SECRET env (issue #4 §15)` v CLIENT chunku (b390b677733cccaa.js).
+- REPRODUKCIJA (agent-browser, produkcija): prijava vodja@restaurantos.app/[PIN ODSTRANJEN — ROTACIJA OBVEZNA] → 200 → redirect /dashboard → error boundary "Ups — prišlo je do napake / Poskusi znova". Konzola: `Error: APP_SECRET ni nastavljen — produkcija zahteva APP_SECRET env (issue #4 §15)` v CLIENT chunku (b390b677733cccaa.js).
 - KOREN: `dashboard/page.tsx` ('use client') je uvažal APP_VERSION iz `@/lib/api` → uvozna veriga api.ts → auth.ts v client bundle; auth.ts module-scope fail-closed preverba (APP_SECRET) v brskalniku (NODE_ENV=production, APP_SECRET ni client env) CRASHALA module init → error boundary za VSE uporabnike. Dev je delal (APP_SECRET fallback dovoljen) → E2E na devu napake ni videl nikoli. Bug starejši od v1.65 (prisoten tudi v v1.45 liniji); produkcijahealth je vse tetra pokazala šele zdaj.
 - SANDBOX DISCOVERY: med OPS-1 in tem taskom je bila /home/z/my-project git zgodovina RESETIRANA na starejšo "originalno" linijo (reflog: fd8ff72 v1.39 → reset FETCH_HEAD 4f5bceb v1.45 → 7c098ed worklog sosledne seje "Task 26-main"). Objekti v1.65 linije (2c9169e/b2d357c/c5f2190) lokalno IZGUBLJENI; produkcija (@c5f2190) pa še vedno teče na njej. Remote stanje: github token neveljaven ("Invalid username or token"), origin (robert.pezdirc12 GitLab) 403 blokiran.
 - RECOVERY: `git remote add markec` (markec-group1/markec-project, token iz prejšnje seje) → `git ls-remote` main = c5f21905… (TOČNO produkcijski commit) → fetch → `git checkout -B main c5f2190`. Zgodovina v1.65.0 obnovljena; worklog zapis sosledne seje (26-main) ohranjen (append spodaj).
@@ -1545,12 +1545,12 @@ Work Log:
 - KOREN (definitivno, iz Vercel API): readyStateReason = "The deployment was blocked because Vercel couldn't find a Git account for the commit author." — meta.githubCommitAuthorEmail = "z@container" (sandbox git identiteta "Z User") NI vezan na noben GitHub račun; Vercel za privat repo (hobby) zahteva avtorja commita rešljivega na GitHub račun. Delujoči commiti (c5f2190...) imeli avtorja robertpezdirc12-design <249648337+robertpezdirc12-design@users.noreply.github.com>.
 - FIX: git config (user.name/email = GitHub noreply identiteta) + rebase -i c5f2190 --exec 'git commit --amend --reset-author' → 75cec83/e451767/6c8e559 prekriti kot 4481620/1efbff8/5b35a1b (isti content, pravi avtor) → force-push github (+ markec: pre-receive hook zavrača force na zaščiteni main).
 - REZULTAT: GitHub deployment 7009488956 → "Deployment has completed" (SUCCESS); /api/health = {"version":"1.66.0","commit":"5b35a1b","database":"connected"}.
-- PRODUKCIJSKI E2E (agent-browser): prijava vodja@restaurantos.app/754825 → 200 → /dashboard RENDRA (header 1.66.0, vseh 26 tabov Pregled→Enterprise, lokacijski preklopnik, ukazna paleta), error boundary NI prisoten (0 zadetkov), 0 konzolnih napak / 0 page errors; tab switch Mize ✓.
+- PRODUKCIJSKI E2E (agent-browser): prijava vodja@restaurantos.app/[PIN ODSTRANJEN — ROTACIJA OBVEZNA] → 200 → /dashboard RENDRA (header 1.66.0, vseh 26 tabov Pregled→Enterprise, lokacijski preklopnik, ukazna paleta), error boundary NI prisoten (0 zadetkov), 0 konzolnih napak / 0 page errors; tab switch Mize ✓.
 - markec GitLab: Cloudflare blokira ta egress IP (HK, HTTP 403 "Blocked IP address or country") za WRITE (unprotect API + git push); branje (ls-remote, GET) deluje → markec main ostane na e451767 (1 content-commit za GitHubom; nekritično — GitHub avtoritaten, Vercel deploya iz GitHuba).
 - OPOMBA (recommendacija): sync.yml 30-min bidirekcionalna sinhronizacija lahko merge-a markec main (stari SHA, sync-bot avtor) nazaj v GitHub main → takšni deployi bodo spet BLOCKED (sync-bot ni GitHub račun) — produkcija ostane na zadnjem SUCCESS deployu, ne deluje se, ampak sinhronizacija je v praksi enosmerna dokler se ne uredi (priporočeno: enosmerna GitHub→GitLab mirror ali zaščita prek pravega avtorja).
 
 Stage Summary:
-- PRODUKCIJA = v1.66.0 @ 5b35a1b, dashboard crash ("Ups — prišlo je do napake") POPOLNOMA REŠEN in browser-verificiran: prijava vodja@/754825 in info@/729153 delujeta na restaurantos-theta.vercel.app.
+- PRODUKCIJA = v1.66.0 @ 5b35a1b, dashboard crash ("Ups — prišlo je do napake") POPOLNOMA REŠEN in browser-verificiran: prijava vodja@/[PIN ODSTRANJEN — ROTACIJA OBVEZNA] in info@/[PIN ODSTRANJEN — ROTACIJA OBVEZNA] delujeta na restaurantos-theta.vercel.app.
 - Vzrok "vedno napaka": (1) dashboard crash fix nikoli deployan (mrtev GitHub token), (2) po pushu Vercel blokiral deploye, ker so bili commiti narejeni z avtorjem "Z User <z@container>" brez GitHub računa. Oba odpravljena; git identiteta v sandboxu trajno nastavljena na GitHub noreply obliko.
 - Ostalo: markec za GitHubom (IP blokada za pisanje), priporočena rotacija obeh tokenov (GitHub PAT bil v klepetu), sync.yml smer.
 ---
@@ -3058,7 +3058,7 @@ Work Log:
 - commit ceba0d6 (FEATURE) + 38e9009 (worklog) pushan na GitHub main
 - VERCEL BLOKADA diagnoza: 'Deployment was blocked' + 'GitHub couldn't verify an account for the commit' — vzrok: sandbox privzeta git identiteta 'Z User <z@container>' (avtor commita se ne ujema z GitHub računom Vercel Git integracije) → filter-branch prepis avtorjev zadnjih 3 commitov na robertpezdirc12-design + force push → DEPLOY USPEŠEN
 - PRODUKCIJA: health 1.112.0/80847f3 database connected; 'Deployment has completed'
-- DDL apliciran na produkciji (info@ ADMIN PIN 729153 — dokumentiran v worklog prej): POST /api/admin/migrate-kds-stations → applied [StationTask, MenuItemStation] + columnsApplied [Modifier.prepStationId, PrepStation.isExpo]; konzola allApplied:true, pending:0
+- DDL apliciran na produkciji (info@ ADMIN PIN [PIN ODSTRANJEN — ROTACIJA OBVEZNA] — dokumentiran v worklog prej): POST /api/admin/migrate-kds-stations → applied [StationTask, MenuItemStation] + columnsApplied [Modifier.prepStationId, PrepStation.isExpo]; konzola allApplied:true, pending:0
 - ŽIVA produkcija: /api/prep-stations → 5 POIMENOVANIH postaj (Bar, Hladna kuhinja/cold, Slaščičarna/pastry, Vroča kuhinja/kitchen, Žar/grill); /api/kitchen additive polja (queue 2, stations 5, tasks 0, stationStats 0) delujejo na Postgres — degradacija po DDL nadomeščena z živimi podatki
 - GitHub issue #14 ZAPRT (completed) z dokaznim komentarjem 6203320194 (obseg, 3 popravljene napake, 1916/1916, E2E, produkcija, omejitve)
 - git identiteta projekta vzpostavljena lokalno (robertpezdirc12-design) — bodoči commit-i v tem sandboxu morajo preveriti user.email PRED pushom
@@ -3555,7 +3555,7 @@ Work Log:
 - PUSH: FEATURE 81799f2 (35 datotek, +4729/−20) → main BREZ blokade; "Closes #8" je samodejno zaprl issue (state closed/completed)
 - PRODUKCIJA: Vercel deploy ~1 min → health **1.116.0 / 81799f2 / database connected**
 - DDL: login info@restaurantos.app (ADMIN, token 194 zn) → POST /api/admin/migrate-stock-transfers → **{"applied":["StockTransfer","StockTransferItem"],"skipped":[],"alreadyApplied":false}** → konzola **28/28, pending: 0, allApplied: true**; /tmp/prod_token.txt zbrisan
-- ŽIVA VERIFIKACIJA (negativno/read-only — produkcija čista, 1 lokacija): GET /api/transfers brez žetona → **401**; z adminom → **200 {"transfers":[]}** (post-DDL, NE 503); fake ID dispatch/cancel → **404**; POST from=to → **400** 'Izvorna in ciljna lokacija sta enaki…'; browser (vodja@ PIN 754825): dashboard?tab=prenosi → zavihek IZBRAN + 'Medlokacijski prenosi' + iskren namig 'Za prenos sta potrebni vsaj dve lokaciji.'; 0 page/konzolnih napak
+- ŽIVA VERIFIKACIJA (negativno/read-only — produkcija čista, 1 lokacija): GET /api/transfers brez žetona → **401**; z adminom → **200 {"transfers":[]}** (post-DDL, NE 503); fake ID dispatch/cancel → **404**; POST from=to → **400** 'Izvorna in ciljna lokacija sta enaki…'; browser (vodja@ PIN [PIN ODSTRANJEN — ROTACIJA OBVEZNA]): dashboard?tab=prenosi → zavihek IZBRAN + 'Medlokacijski prenosi' + iskren namig 'Za prenos sta potrebni vsaj dve lokaciji.'; 0 page/konzolnih napak
 - ZAPRTJE #8: dokazni komentar (obseg + dokazi + poštene meje: approve korak izpuščen po 'če je potrebno', vračilo = nov prenos v obratni smeri, pozitivni prenos na produkciji namenoma preskočen) → **comment id 6218966840**; GET verify: closed/completed/1 komentar
 - OPEN ISSUES: 6 (#2, #3, #4 P1; #9, #10, #11 P2)
 
@@ -4583,5 +4583,3 @@ Stage Summary:
 - Razred je zaprt s treh strani: produkcijski tipski gate teče na obeh sistemih, seed literali so pinirani v testu, ki bere pravo shemo, in predpomniki so poimenovani tako, da klient ne more preskočiti med jobi.
 - ZAVESTNO NE STORENO: (a) Vercel build se ne ponavlja iz CI-ja — Git integracija ostaja edini deployer (dva builda na push bi bila dirka, Task 43); (b) `production-typecheck` je ločen job in ne del `quality-gate`, ker bi sicer podvojil `bun install`; cena je en dodatni job na push; (c) test ne uvaža tipov iz clienta — to je namen, sicer bi bil odvisen od tega, kateri client je generiran.
 - AKCIJA ZA LASTNIKA: (1) produkcijska pot je potrjena (Vercel READY, health 1.152.1, sync-check SYNCED); ostane vklop Neona — brez njega health ostaja `degraded`; (2) rotiraj GitHub/GitLab/Vercel žetone (stalna točka); (3) popravi ali odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme (iz v1.152.0).
-
-

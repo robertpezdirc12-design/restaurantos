@@ -1,11 +1,23 @@
 :81 {
+	# Najdba №19 (revizija 2026-10): prej je bil tukaj
+	# `reverse_proxy localhost:{query.XTransformPort}`, kar je vsakemu
+	# neavtenticiranemu zahtevku omogočilo izbiro POLJUBNIH lokalnih vrat
+	# (SSRF): ?XTransformPort=5432 je vodil na Postgres, 3031 na print-agent,
+	# 9100 pa na tiskalnik. Edina vrata, ki jih ta repozitorij uporablja prek
+	# transform poti, so 3031 (print-agent; src/lib/devices/print.ts in
+	# docs/HARDWARE-MATRIX.md). Matcher je zato ENAKOST, ne vzorec, cilj pa je
+	# zapisan dobesedno — iz zahtevka ni več mogoče vplivati na ciljni port.
 	@transform_port_query {
-		query XTransformPort=*
+		query XTransformPort=3031
 	}
 
 	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
+		reverse_proxy http://localhost:3031 {
 			header_up Host {host}
+			# X-Forwarded-For se NASTAVI na dejanski oddaljeni naslov. Caddy
+			# privzeto ignorira vrednost, ki jo pošlje klient (trusted_proxies),
+			# zato prvi člen tega seznama ne more biti ponarejen; aplikacija
+			# bere prav prvega (clientIp).
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
@@ -13,7 +25,7 @@
 	}
 
 	handle {
-		reverse_proxy localhost:3000 {
+		reverse_proxy http://localhost:3000 {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}

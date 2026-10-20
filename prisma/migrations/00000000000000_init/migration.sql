@@ -1,3 +1,21 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RestaurantOS — squashed baseline (v1.153.0, revizija 2026-10, najdba №17)
+--
+-- Ta migracija je POPOLNA baza sheme prisma/schema.prisma (135 modelov).
+-- Prejšnja verzija iste mape je imela 118 CREATE TABLE, ker se je 17 tabel
+-- (PayLink, ReservationWidget, StockTransfer, CashMovement, EInvoiceOutbox,
+-- HaccpAction, ManagerCall, PrepLabel, LabelShelfRule, PayrollPeriod,
+-- PayrollExport, StationTask, MenuItemStation, StockTransferItem,
+-- GuestConsent, Campaign, CampaignSend) v bazo dodalo prek db push in
+-- admin DDL rut — migracijska zgodovina pa ni bila nikoli vodena. Svež
+-- strežnik iz repozitorija zato ni bil reproducibilen.
+--
+-- Po dosedanjih dokazih produkcija migracijskega toka ne uporablja (shema
+-- je bila zgrajena z db push in admin DDL rutami). Ob morebitni selitvi
+-- obstoječe baze na migrate tok jo je treba najprej označiti kot aplicirano
+-- in šele nato dodajati inkrementalne migracije:
+--   bunx prisma migrate resolve --applied 00000000000000_init
+-- ═══════════════════════════════════════════════════════════════════════════
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
@@ -5,7 +23,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 CREATE TYPE "AccountType" AS ENUM ('asset', 'liability', 'equity', 'revenue', 'expense', 'unknown');
 
 -- CreateEnum
-CREATE TYPE "EmployeeRole" AS ENUM ('owner', 'admin', 'manager', 'staff', 'waiter', 'bar', 'chef', 'kitchen', 'group_owner', 'org_admin', 'property_manager', 'warehouse', 'accounting');
+CREATE TYPE "EmployeeRole" AS ENUM ('owner', 'admin', 'manager', 'staff', 'waiter', 'bar', 'chef', 'kitchen', 'group_owner', 'org_admin', 'property_manager', 'warehouse', 'accounting', 'cleaner');
 
 -- CreateEnum
 CREATE TYPE "EmployeeStatus" AS ENUM ('active', 'inactive', 'terminated', 'anonymized');
@@ -234,6 +252,55 @@ CREATE TABLE "BatchPreparationLine" (
 );
 
 -- CreateTable
+CREATE TABLE "PrepLabel" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'batch',
+    "batchId" TEXT,
+    "preparationId" TEXT,
+    "inventoryItemId" TEXT NOT NULL,
+    "itemName" TEXT NOT NULL DEFAULT '',
+    "itemUnit" TEXT NOT NULL DEFAULT '',
+    "lotNumber" TEXT NOT NULL DEFAULT '',
+    "quantity" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "area" TEXT NOT NULL DEFAULT '',
+    "preparedAt" TIMESTAMP(3),
+    "expiresAt" TIMESTAMP(3),
+    "ruleSource" TEXT NOT NULL DEFAULT 'none',
+    "ruleHours" INTEGER,
+    "ruleConfirmedBy" TEXT NOT NULL DEFAULT '',
+    "needsReview" BOOLEAN NOT NULL DEFAULT false,
+    "allergens" TEXT NOT NULL DEFAULT '[]',
+    "preparedById" TEXT NOT NULL DEFAULT '',
+    "preparedByName" TEXT NOT NULL DEFAULT '',
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "token" TEXT NOT NULL,
+    "printCount" INTEGER NOT NULL DEFAULT 0,
+    "lastPrintedAt" TIMESTAMP(3),
+    "note" TEXT NOT NULL DEFAULT '',
+    "voidReason" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PrepLabel_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "LabelShelfRule" (
+    "id" TEXT NOT NULL,
+    "inventoryItemId" TEXT NOT NULL,
+    "shelfLifeHours" INTEGER NOT NULL,
+    "note" TEXT NOT NULL DEFAULT '',
+    "confirmedById" TEXT NOT NULL DEFAULT '',
+    "confirmedByName" TEXT NOT NULL DEFAULT '',
+    "confirmedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LabelShelfRule_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "BiometricCredential" (
     "id" TEXT NOT NULL,
     "credentialId" TEXT NOT NULL,
@@ -314,6 +381,37 @@ CREATE TABLE "CashRegisterShift" (
     "totalRefunds" DECIMAL(12,2) NOT NULL DEFAULT 0,
 
     CONSTRAINT "CashRegisterShift_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CashMovement" (
+    "id" TEXT NOT NULL,
+    "shiftId" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'paid_out',
+    "direction" TEXT NOT NULL DEFAULT 'out',
+    "amount" DECIMAL(12,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'EUR',
+    "reasonId" TEXT,
+    "reasonName" TEXT NOT NULL DEFAULT '',
+    "reasonText" TEXT NOT NULL DEFAULT '',
+    "note" TEXT NOT NULL DEFAULT '',
+    "userId" TEXT NOT NULL,
+    "userName" TEXT NOT NULL DEFAULT '',
+    "deviceId" TEXT NOT NULL DEFAULT '',
+    "receiptRef" TEXT NOT NULL DEFAULT '',
+    "status" TEXT NOT NULL DEFAULT 'confirmed',
+    "voidedById" TEXT,
+    "voidedByName" TEXT NOT NULL DEFAULT '',
+    "voidedAt" TIMESTAMP(3),
+    "voidReason" TEXT NOT NULL DEFAULT '',
+    "reversalOfId" TEXT,
+    "idempotencyKey" TEXT,
+    "expectedAfter" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CashMovement_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -617,6 +715,8 @@ CREATE TABLE "Employee" (
     "mfaEnabled" BOOLEAN NOT NULL DEFAULT false,
     "mfaRecoveryCodes" JSONB NOT NULL DEFAULT '[]',
     "mfaEnrolledAt" TIMESTAMP(3),
+    "mfaLastTotpCounter" INTEGER,
+    "mfaRecoveryVersion" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "Employee_pkey" PRIMARY KEY ("id")
 );
@@ -632,6 +732,39 @@ CREATE TABLE "EmployeeJob" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "EmployeeJob_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "EInvoiceOutbox" (
+    "id" TEXT NOT NULL,
+    "arId" TEXT,
+    "direction" TEXT NOT NULL DEFAULT 'outgoing',
+    "country" TEXT NOT NULL DEFAULT 'SI',
+    "documentType" TEXT NOT NULL DEFAULT 'invoice',
+    "profile" TEXT NOT NULL DEFAULT 'eslog-2.0-si',
+    "currency" TEXT NOT NULL DEFAULT 'EUR',
+    "invoiceNumber" TEXT NOT NULL DEFAULT '',
+    "receiverName" TEXT NOT NULL DEFAULT '',
+    "receiverTaxId" TEXT NOT NULL DEFAULT '',
+    "receiverCountry" TEXT NOT NULL DEFAULT '',
+    "subtotal" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "vatAmount" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "totalAmount" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "xmlPayload" TEXT NOT NULL DEFAULT '',
+    "xmlHash" TEXT NOT NULL DEFAULT '',
+    "externalRef" TEXT NOT NULL DEFAULT '',
+    "idempotencyKey" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "lastReason" TEXT NOT NULL DEFAULT '',
+    "processedEvents" TEXT NOT NULL DEFAULT '[]',
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "lastAttemptAt" TIMESTAMP(3),
+    "sentAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "locationId" TEXT,
+
+    CONSTRAINT "EInvoiceOutbox_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -791,6 +924,76 @@ CREATE TABLE "GuestVisit" (
 );
 
 -- CreateTable
+CREATE TABLE "GuestConsent" (
+    "id" TEXT NOT NULL,
+    "guestId" TEXT NOT NULL,
+    "channel" TEXT NOT NULL DEFAULT 'email',
+    "purpose" TEXT NOT NULL DEFAULT 'marketing',
+    "status" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'manual',
+    "textVersion" TEXT NOT NULL DEFAULT 'crm-consent-v1',
+    "proof" TEXT NOT NULL DEFAULT '',
+    "recordedBy" TEXT,
+    "locationId" TEXT,
+    "actedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "GuestConsent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Campaign" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "channel" TEXT NOT NULL DEFAULT 'email',
+    "segmentType" TEXT NOT NULL DEFAULT 'all',
+    "segmentPeriodDays" INTEGER NOT NULL DEFAULT 90,
+    "subject" TEXT NOT NULL DEFAULT '',
+    "bodySl" TEXT NOT NULL DEFAULT '',
+    "bodyHr" TEXT NOT NULL DEFAULT '',
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "scheduledAt" TIMESTAMP(3),
+    "approvedBy" TEXT,
+    "approvedAt" TIMESTAMP(3),
+    "sentAt" TIMESTAMP(3),
+    "completedAt" TIMESTAMP(3),
+    "cancelledAt" TIMESTAMP(3),
+    "eligibleCount" INTEGER NOT NULL DEFAULT 0,
+    "sentCount" INTEGER NOT NULL DEFAULT 0,
+    "failedCount" INTEGER NOT NULL DEFAULT 0,
+    "unsubscribedCount" INTEGER NOT NULL DEFAULT 0,
+    "testRecipient" TEXT NOT NULL DEFAULT '',
+    "lastError" TEXT NOT NULL DEFAULT '',
+    "createdBy" TEXT,
+    "locationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Campaign_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CampaignSend" (
+    "id" TEXT NOT NULL,
+    "campaignId" TEXT NOT NULL,
+    "guestId" TEXT NOT NULL,
+    "channel" TEXT NOT NULL DEFAULT 'email',
+    "recipient" TEXT NOT NULL DEFAULT '',
+    "status" TEXT NOT NULL DEFAULT 'queued',
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "unsubscribeToken" TEXT NOT NULL,
+    "providerMessageId" TEXT NOT NULL DEFAULT '',
+    "sentAt" TIMESTAMP(3),
+    "failedAt" TIMESTAMP(3),
+    "errorMessage" TEXT NOT NULL DEFAULT '',
+    "unsubscribedAt" TIMESTAMP(3),
+    "locationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CampaignSend_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "HaccpEntry" (
     "id" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -806,8 +1009,69 @@ CREATE TABLE "HaccpEntry" (
     "locationId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "planId" TEXT DEFAULT '',
+    "planName" TEXT NOT NULL DEFAULT '',
+    "planVersion" INTEGER NOT NULL DEFAULT 0,
+    "ruleSnapshot" JSONB NOT NULL DEFAULT '{}',
+    "measureKind" TEXT NOT NULL DEFAULT '',
+    "numericValue" DECIMAL(10,2),
+    "unit" TEXT NOT NULL DEFAULT '',
+    "occurrenceKey" TEXT NOT NULL DEFAULT '',
+    "dueAt" TIMESTAMP(3),
+    "entryState" TEXT NOT NULL DEFAULT 'legacy',
+    "source" TEXT NOT NULL DEFAULT 'manual',
+    "closedAt" TIMESTAMP(3),
 
     CONSTRAINT "HaccpEntry_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "HaccpAction" (
+    "id" TEXT NOT NULL,
+    "entryId" TEXT NOT NULL,
+    "locationId" TEXT,
+    "kind" TEXT NOT NULL,
+    "method" TEXT NOT NULL DEFAULT '',
+    "note" TEXT NOT NULL DEFAULT '',
+    "outcome" TEXT NOT NULL DEFAULT '',
+    "recheckValue" DECIMAL(10,2),
+    "performedById" TEXT NOT NULL DEFAULT '',
+    "performedByName" TEXT NOT NULL DEFAULT '',
+    "managerial" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "HaccpAction_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "HaccpPlan" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "category" "HaccpCategory" NOT NULL,
+    "frequency" TEXT NOT NULL DEFAULT 'daily',
+    "target" TEXT NOT NULL DEFAULT '',
+    "threshold" TEXT NOT NULL DEFAULT '',
+    "steps" JSONB NOT NULL DEFAULT '[]',
+    "responsible" TEXT NOT NULL DEFAULT '',
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "locationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "measureKind" TEXT NOT NULL DEFAULT 'confirm',
+    "unit" TEXT NOT NULL DEFAULT '',
+    "direction" TEXT NOT NULL DEFAULT 'none',
+    "okLimit" DECIMAL(10,2),
+    "warnLimit" DECIMAL(10,2),
+    "rangeMin" DECIMAL(10,2),
+    "rangeMax" DECIMAL(10,2),
+    "critical" BOOLEAN NOT NULL DEFAULT false,
+    "requiresVerification" BOOLEAN NOT NULL DEFAULT true,
+    "dueTime" TEXT NOT NULL DEFAULT '10:00',
+    "weekday" INTEGER,
+    "monthDay" INTEGER,
+    "version" INTEGER NOT NULL DEFAULT 1,
+
+    CONSTRAINT "HaccpPlan_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -891,6 +1155,15 @@ CREATE TABLE "InventoryBatch" (
     "unitCost" DECIMAL(12,2),
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
     "note" TEXT NOT NULL DEFAULT '',
+    "alertDate" TIMESTAMP(3),
+    "removalDate" TIMESTAMP(3),
+    "holdReason" TEXT NOT NULL DEFAULT '',
+    "holdAt" TIMESTAMP(3),
+    "holdById" TEXT,
+    "holdRef" TEXT NOT NULL DEFAULT '',
+    "releaseAt" TIMESTAMP(3),
+    "releaseById" TEXT,
+    "releaseNote" TEXT NOT NULL DEFAULT '',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -922,6 +1195,10 @@ CREATE TABLE "InventoryItem" (
     "leadTimeDays" INTEGER,
     "reorderPoint" DECIMAL(12,3),
     "safetyStock" DECIMAL(12,3),
+    "allergens" TEXT NOT NULL DEFAULT '[]',
+    "allergensCrossContact" TEXT NOT NULL DEFAULT '[]',
+    "allergensConfirmedAt" TIMESTAMP(3),
+    "allergensConfirmedById" TEXT,
 
     CONSTRAINT "InventoryItem_pkey" PRIMARY KEY ("id")
 );
@@ -1119,6 +1396,11 @@ CREATE TABLE "MenuItem" (
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "vatRate" DECIMAL(5,2) NOT NULL DEFAULT 22.00,
     "allergens" TEXT NOT NULL DEFAULT '',
+    "allergensOverride" TEXT,
+    "allergensConfirmedAt" TIMESTAMP(3),
+    "allergensConfirmedById" TEXT,
+    "allergenReviewFlag" BOOLEAN NOT NULL DEFAULT false,
+    "allergenReviewReason" TEXT NOT NULL DEFAULT '',
     "categoryId" TEXT NOT NULL,
     "salesCategoryId" TEXT,
     "priceGroupId" TEXT,
@@ -1148,6 +1430,7 @@ CREATE TABLE "Modifier" (
     "isAvailable" BOOLEAN NOT NULL DEFAULT true,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "allergens" TEXT NOT NULL DEFAULT '',
+    "prepStationId" TEXT,
     "modifierGroupId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -1268,6 +1551,8 @@ CREATE TABLE "OrderItem" (
     "vatAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "notes" TEXT NOT NULL DEFAULT '',
     "modifiersJson" TEXT NOT NULL DEFAULT '[]',
+    "allergenSnapshot" TEXT NOT NULL DEFAULT '{}',
+    "allergenWarning" TEXT NOT NULL DEFAULT '',
     "menuItemName" TEXT NOT NULL DEFAULT '',
     "voided" BOOLEAN NOT NULL DEFAULT false,
     "voidReasonId" TEXT,
@@ -1376,6 +1661,31 @@ CREATE TABLE "Payment" (
 );
 
 -- CreateTable
+CREATE TABLE "PayLink" (
+    "id" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "orderId" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'open',
+    "phone" TEXT NOT NULL DEFAULT '',
+    "smsDetail" TEXT NOT NULL DEFAULT '',
+    "amount" DECIMAL(65,30),
+    "tip" DECIMAL(65,30),
+    "splitIndex" INTEGER NOT NULL DEFAULT 1,
+    "splitCount" INTEGER NOT NULL DEFAULT 1,
+    "approvalCode" TEXT NOT NULL DEFAULT '',
+    "sessionId" TEXT,
+    "expiresAt" TIMESTAMP(3),
+    "paidAt" TIMESTAMP(3),
+    "receiptId" TEXT,
+    "createdBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PayLink_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "PrepStation" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -1383,11 +1693,53 @@ CREATE TABLE "PrepStation" (
     "avgPrepTime" INTEGER NOT NULL DEFAULT 15,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "isExpo" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "locationId" TEXT NOT NULL,
 
     CONSTRAINT "PrepStation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StationTask" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "orderItemId" TEXT NOT NULL,
+    "orderId" TEXT NOT NULL,
+    "stationId" TEXT NOT NULL,
+    "stationName" TEXT NOT NULL DEFAULT '',
+    "stationType" TEXT NOT NULL DEFAULT 'kitchen',
+    "kind" TEXT NOT NULL DEFAULT 'prep',
+    "sequence" INTEGER NOT NULL DEFAULT 0,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "title" TEXT NOT NULL DEFAULT '',
+    "detail" TEXT NOT NULL DEFAULT '',
+    "quantity" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "firedAt" TIMESTAMP(3),
+    "startedAt" TIMESTAMP(3),
+    "readyAt" TIMESTAMP(3),
+    "readyById" TEXT,
+    "readyByName" TEXT NOT NULL DEFAULT '',
+    "issuedAt" TIMESTAMP(3),
+    "issuedById" TEXT,
+    "issuedByName" TEXT NOT NULL DEFAULT '',
+
+    CONSTRAINT "StationTask_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "MenuItemStation" (
+    "id" TEXT NOT NULL,
+    "menuItemId" TEXT NOT NULL,
+    "stationId" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "MenuItemStation_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1627,6 +1979,58 @@ CREATE TABLE "Reservation" (
     "reminderSentAt" TIMESTAMP(3),
 
     CONSTRAINT "Reservation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ReservationWidget" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT false,
+    "slotMinutes" INTEGER NOT NULL DEFAULT 30,
+    "minParty" INTEGER NOT NULL DEFAULT 1,
+    "maxParty" INTEGER NOT NULL DEFAULT 12,
+    "leadMinutes" INTEGER NOT NULL DEFAULT 60,
+    "maxAdvanceDays" INTEGER NOT NULL DEFAULT 30,
+    "maxCoversPerSlot" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReservationWidget_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ManagerCall" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "requestorId" TEXT NOT NULL,
+    "requestorName" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'OPEN',
+    "note" TEXT NOT NULL DEFAULT '',
+    "orderId" TEXT,
+    "orderNumber" TEXT,
+    "tableNumber" INTEGER,
+    "deliveryStatus" TEXT NOT NULL DEFAULT 'pending',
+    "notifiedCount" INTEGER NOT NULL DEFAULT 0,
+    "escalatedCount" INTEGER NOT NULL DEFAULT 0,
+    "lastEscalatedAt" TIMESTAMP(3),
+    "acknowledgedAt" TIMESTAMP(3),
+    "acknowledgedById" TEXT,
+    "acknowledgedByName" TEXT,
+    "inProgressAt" TIMESTAMP(3),
+    "inProgressById" TEXT,
+    "resolvedAt" TIMESTAMP(3),
+    "resolvedById" TEXT,
+    "resolvedByName" TEXT,
+    "resolutionNote" TEXT NOT NULL DEFAULT '',
+    "cancelledAt" TIMESTAMP(3),
+    "cancelledById" TEXT,
+    "idempotencyKey" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ManagerCall_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -2130,6 +2534,98 @@ CREATE TABLE "TipPool" (
 );
 
 -- CreateTable
+CREATE TABLE "PayrollPeriod" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT,
+    "periodStart" TIMESTAMP(3) NOT NULL,
+    "periodEnd" TIMESTAMP(3) NOT NULL,
+    "timezone" TEXT NOT NULL DEFAULT 'Europe/Ljubljana',
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "closedAt" TIMESTAMP(3),
+    "closedById" TEXT,
+    "closeNote" TEXT NOT NULL DEFAULT '',
+    "reopenCount" INTEGER NOT NULL DEFAULT 0,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "entryCount" INTEGER NOT NULL DEFAULT 0,
+    "approvedCount" INTEGER NOT NULL DEFAULT 0,
+    "exceptionCount" INTEGER NOT NULL DEFAULT 0,
+    "netMinutesApproved" INTEGER NOT NULL DEFAULT 0,
+    "grossPayCents" INTEGER NOT NULL DEFAULT 0,
+    "cashTipsCents" INTEGER NOT NULL DEFAULT 0,
+    "cardTipsCents" INTEGER NOT NULL DEFAULT 0,
+    "tipsPendingCents" INTEGER NOT NULL DEFAULT 0,
+    "tipsPaidCents" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PayrollPeriod_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PayrollExport" (
+    "id" TEXT NOT NULL,
+    "periodId" TEXT NOT NULL,
+    "seq" INTEGER NOT NULL,
+    "format" TEXT NOT NULL DEFAULT 'csv',
+    "contentHash" TEXT NOT NULL,
+    "grossPayCents" INTEGER NOT NULL DEFAULT 0,
+    "netMinutesTotal" INTEGER NOT NULL DEFAULT 0,
+    "tipsCentsTotal" INTEGER NOT NULL DEFAULT 0,
+    "entryCount" INTEGER NOT NULL DEFAULT 0,
+    "changedEntries" INTEGER NOT NULL DEFAULT 0,
+    "identicalToPrevious" BOOLEAN NOT NULL DEFAULT false,
+    "rowDigest" TEXT NOT NULL DEFAULT '',
+    "exportedById" TEXT,
+    "exportedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "note" TEXT NOT NULL DEFAULT '',
+
+    CONSTRAINT "PayrollExport_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StockTransfer" (
+    "id" TEXT NOT NULL,
+    "transferNumber" TEXT NOT NULL,
+    "fromLocationId" TEXT NOT NULL,
+    "toLocationId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "note" TEXT NOT NULL DEFAULT '',
+    "idempotencyKey" TEXT,
+    "createdById" TEXT,
+    "dispatchedById" TEXT,
+    "dispatchedAt" TIMESTAMP(3),
+    "receivedById" TEXT,
+    "receivedAt" TIMESTAMP(3),
+    "cancelledAt" TIMESTAMP(3),
+    "cancelReason" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "StockTransfer_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StockTransferItem" (
+    "id" TEXT NOT NULL,
+    "transferId" TEXT NOT NULL,
+    "inventoryItemId" TEXT NOT NULL,
+    "itemName" TEXT NOT NULL DEFAULT '',
+    "unit" TEXT NOT NULL DEFAULT '',
+    "requestedQty" DECIMAL(12,3) NOT NULL,
+    "dispatchedQty" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "receivedQty" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "damagedQty" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "unitCost" DECIMAL(12,2),
+    "batchId" TEXT,
+    "lotNumber" TEXT,
+    "expiryDate" TIMESTAMP(3),
+    "targetItemId" TEXT,
+    "note" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "StockTransferItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "VideoAnalyticsSession" (
     "id" TEXT NOT NULL,
     "cameraId" TEXT NOT NULL,
@@ -2436,6 +2932,7 @@ CREATE TABLE "EventLog" (
     "error" TEXT NOT NULL DEFAULT '',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "processedAt" TIMESTAMP(3),
+    "locationId" TEXT,
 
     CONSTRAINT "EventLog_pkey" PRIMARY KEY ("id")
 );
@@ -2558,6 +3055,27 @@ CREATE INDEX "BatchPreparationLine_inventoryItemId_idx" ON "BatchPreparationLine
 CREATE UNIQUE INDEX "BatchPreparationLine_preparationId_inventoryItemId_key" ON "BatchPreparationLine"("preparationId", "inventoryItemId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "PrepLabel_token_key" ON "PrepLabel"("token");
+
+-- CreateIndex
+CREATE INDEX "PrepLabel_locationId_createdAt_idx" ON "PrepLabel"("locationId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "PrepLabel_batchId_idx" ON "PrepLabel"("batchId");
+
+-- CreateIndex
+CREATE INDEX "PrepLabel_preparationId_idx" ON "PrepLabel"("preparationId");
+
+-- CreateIndex
+CREATE INDEX "PrepLabel_inventoryItemId_idx" ON "PrepLabel"("inventoryItemId");
+
+-- CreateIndex
+CREATE INDEX "PrepLabel_status_idx" ON "PrepLabel"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LabelShelfRule_inventoryItemId_key" ON "LabelShelfRule"("inventoryItemId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "BiometricCredential_credentialId_key" ON "BiometricCredential"("credentialId");
 
 -- CreateIndex
@@ -2604,6 +3122,24 @@ CREATE INDEX "CashRegisterShift_openedAt_idx" ON "CashRegisterShift"("openedAt")
 
 -- CreateIndex
 CREATE INDEX "CashRegisterShift_status_idx" ON "CashRegisterShift"("status");
+
+-- CreateIndex
+CREATE INDEX "CashMovement_shiftId_idx" ON "CashMovement"("shiftId");
+
+-- CreateIndex
+CREATE INDEX "CashMovement_locationId_idx" ON "CashMovement"("locationId");
+
+-- CreateIndex
+CREATE INDEX "CashMovement_type_idx" ON "CashMovement"("type");
+
+-- CreateIndex
+CREATE INDEX "CashMovement_status_idx" ON "CashMovement"("status");
+
+-- CreateIndex
+CREATE INDEX "CashMovement_createdAt_idx" ON "CashMovement"("createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CashMovement_idempotencyKey_key" ON "CashMovement"("idempotencyKey");
 
 -- CreateIndex
 CREATE INDEX "Category_menuId_idx" ON "Category"("menuId");
@@ -2771,6 +3307,21 @@ CREATE INDEX "EmployeeJob_jobId_idx" ON "EmployeeJob"("jobId");
 CREATE UNIQUE INDEX "EmployeeJob_employeeId_jobId_key" ON "EmployeeJob"("employeeId", "jobId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "EInvoiceOutbox_idempotencyKey_key" ON "EInvoiceOutbox"("idempotencyKey");
+
+-- CreateIndex
+CREATE INDEX "EInvoiceOutbox_arId_idx" ON "EInvoiceOutbox"("arId");
+
+-- CreateIndex
+CREATE INDEX "EInvoiceOutbox_country_status_idx" ON "EInvoiceOutbox"("country", "status");
+
+-- CreateIndex
+CREATE INDEX "EInvoiceOutbox_locationId_idx" ON "EInvoiceOutbox"("locationId");
+
+-- CreateIndex
+CREATE INDEX "EInvoiceOutbox_status_idx" ON "EInvoiceOutbox"("status");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "GiftCard_cardNumber_key" ON "GiftCard"("cardNumber");
 
 -- CreateIndex
@@ -2897,6 +3448,36 @@ CREATE INDEX "GuestVisit_guestId_idx" ON "GuestVisit"("guestId");
 CREATE INDEX "GuestVisit_orderId_idx" ON "GuestVisit"("orderId");
 
 -- CreateIndex
+CREATE INDEX "GuestConsent_guestId_channel_purpose_createdAt_idx" ON "GuestConsent"("guestId", "channel", "purpose", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "GuestConsent_locationId_idx" ON "GuestConsent"("locationId");
+
+-- CreateIndex
+CREATE INDEX "GuestConsent_status_idx" ON "GuestConsent"("status");
+
+-- CreateIndex
+CREATE INDEX "Campaign_locationId_idx" ON "Campaign"("locationId");
+
+-- CreateIndex
+CREATE INDEX "Campaign_status_scheduledAt_idx" ON "Campaign"("status", "scheduledAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CampaignSend_unsubscribeToken_key" ON "CampaignSend"("unsubscribeToken");
+
+-- CreateIndex
+CREATE INDEX "CampaignSend_campaignId_status_idx" ON "CampaignSend"("campaignId", "status");
+
+-- CreateIndex
+CREATE INDEX "CampaignSend_guestId_idx" ON "CampaignSend"("guestId");
+
+-- CreateIndex
+CREATE INDEX "CampaignSend_locationId_idx" ON "CampaignSend"("locationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CampaignSend_campaignId_guestId_key" ON "CampaignSend"("campaignId", "guestId");
+
+-- CreateIndex
 CREATE INDEX "HaccpEntry_category_idx" ON "HaccpEntry"("category");
 
 -- CreateIndex
@@ -2907,6 +3488,30 @@ CREATE INDEX "HaccpEntry_locationId_idx" ON "HaccpEntry"("locationId");
 
 -- CreateIndex
 CREATE INDEX "HaccpEntry_status_date_idx" ON "HaccpEntry"("status", "date");
+
+-- CreateIndex
+CREATE INDEX "HaccpEntry_planId_idx" ON "HaccpEntry"("planId");
+
+-- CreateIndex
+CREATE INDEX "HaccpEntry_occurrenceKey_idx" ON "HaccpEntry"("occurrenceKey");
+
+-- CreateIndex
+CREATE INDEX "HaccpEntry_entryState_idx" ON "HaccpEntry"("entryState");
+
+-- CreateIndex
+CREATE INDEX "HaccpAction_entryId_idx" ON "HaccpAction"("entryId");
+
+-- CreateIndex
+CREATE INDEX "HaccpAction_locationId_idx" ON "HaccpAction"("locationId");
+
+-- CreateIndex
+CREATE INDEX "HaccpAction_kind_idx" ON "HaccpAction"("kind");
+
+-- CreateIndex
+CREATE INDEX "HaccpPlan_locationId_idx" ON "HaccpPlan"("locationId");
+
+-- CreateIndex
+CREATE INDEX "HaccpPlan_active_idx" ON "HaccpPlan"("active");
 
 -- CreateIndex
 CREATE INDEX "HappyHourSchedule_isActive_idx" ON "HappyHourSchedule"("isActive");
@@ -3320,6 +3925,18 @@ CREATE INDEX "Payment_status_idx" ON "Payment"("status");
 CREATE INDEX "Payment_type_idx" ON "Payment"("type");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "PayLink_token_key" ON "PayLink"("token");
+
+-- CreateIndex
+CREATE INDEX "PayLink_createdAt_idx" ON "PayLink"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "PayLink_locationId_idx" ON "PayLink"("locationId");
+
+-- CreateIndex
+CREATE INDEX "PayLink_status_idx" ON "PayLink"("status");
+
+-- CreateIndex
 CREATE INDEX "PrepStation_isActive_idx" ON "PrepStation"("isActive");
 
 -- CreateIndex
@@ -3327,6 +3944,36 @@ CREATE INDEX "PrepStation_locationId_idx" ON "PrepStation"("locationId");
 
 -- CreateIndex
 CREATE INDEX "PrepStation_type_idx" ON "PrepStation"("type");
+
+-- CreateIndex
+CREATE INDEX "StationTask_locationId_status_idx" ON "StationTask"("locationId", "status");
+
+-- CreateIndex
+CREATE INDEX "StationTask_stationId_status_idx" ON "StationTask"("stationId", "status");
+
+-- CreateIndex
+CREATE INDEX "StationTask_orderItemId_idx" ON "StationTask"("orderItemId");
+
+-- CreateIndex
+CREATE INDEX "StationTask_orderId_idx" ON "StationTask"("orderId");
+
+-- CreateIndex
+CREATE INDEX "StationTask_status_idx" ON "StationTask"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StationTask_orderItemId_stationId_kind_key" ON "StationTask"("orderItemId", "stationId", "kind");
+
+-- CreateIndex
+CREATE INDEX "MenuItemStation_menuItemId_idx" ON "MenuItemStation"("menuItemId");
+
+-- CreateIndex
+CREATE INDEX "MenuItemStation_stationId_idx" ON "MenuItemStation"("stationId");
+
+-- CreateIndex
+CREATE INDEX "MenuItemStation_locationId_idx" ON "MenuItemStation"("locationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "MenuItemStation_menuItemId_stationId_key" ON "MenuItemStation"("menuItemId", "stationId");
 
 -- CreateIndex
 CREATE INDEX "PriceGroup_isActive_idx" ON "PriceGroup"("isActive");
@@ -3477,6 +4124,30 @@ CREATE INDEX "Reservation_tableId_status_idx" ON "Reservation"("tableId", "statu
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Reservation_tableId_dateTime_key" ON "Reservation"("tableId", "dateTime");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ReservationWidget_locationId_key" ON "ReservationWidget"("locationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ReservationWidget_token_key" ON "ReservationWidget"("token");
+
+-- CreateIndex
+CREATE INDEX "ReservationWidget_token_idx" ON "ReservationWidget"("token");
+
+-- CreateIndex
+CREATE INDEX "ReservationWidget_enabled_idx" ON "ReservationWidget"("enabled");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ManagerCall_idempotencyKey_key" ON "ManagerCall"("idempotencyKey");
+
+-- CreateIndex
+CREATE INDEX "ManagerCall_locationId_status_idx" ON "ManagerCall"("locationId", "status");
+
+-- CreateIndex
+CREATE INDEX "ManagerCall_requestorId_createdAt_idx" ON "ManagerCall"("requestorId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ManagerCall_createdAt_idx" ON "ManagerCall"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "RevenueCenter_isActive_idx" ON "RevenueCenter"("isActive");
@@ -3764,6 +4435,48 @@ CREATE INDEX "TipPool_locationId_idx" ON "TipPool"("locationId");
 CREATE INDEX "TipPool_status_idx" ON "TipPool"("status");
 
 -- CreateIndex
+CREATE INDEX "PayrollPeriod_locationId_idx" ON "PayrollPeriod"("locationId");
+
+-- CreateIndex
+CREATE INDEX "PayrollPeriod_periodStart_periodEnd_idx" ON "PayrollPeriod"("periodStart", "periodEnd");
+
+-- CreateIndex
+CREATE INDEX "PayrollPeriod_status_idx" ON "PayrollPeriod"("status");
+
+-- CreateIndex
+CREATE INDEX "PayrollExport_periodId_idx" ON "PayrollExport"("periodId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PayrollExport_periodId_seq_key" ON "PayrollExport"("periodId", "seq");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StockTransfer_transferNumber_key" ON "StockTransfer"("transferNumber");
+
+-- CreateIndex
+CREATE INDEX "StockTransfer_fromLocationId_status_idx" ON "StockTransfer"("fromLocationId", "status");
+
+-- CreateIndex
+CREATE INDEX "StockTransfer_toLocationId_status_idx" ON "StockTransfer"("toLocationId", "status");
+
+-- CreateIndex
+CREATE INDEX "StockTransfer_status_createdAt_idx" ON "StockTransfer"("status", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "StockTransfer_createdAt_idx" ON "StockTransfer"("createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StockTransfer_fromLocationId_idempotencyKey_key" ON "StockTransfer"("fromLocationId", "idempotencyKey");
+
+-- CreateIndex
+CREATE INDEX "StockTransferItem_transferId_idx" ON "StockTransferItem"("transferId");
+
+-- CreateIndex
+CREATE INDEX "StockTransferItem_inventoryItemId_idx" ON "StockTransferItem"("inventoryItemId");
+
+-- CreateIndex
+CREATE INDEX "StockTransferItem_targetItemId_idx" ON "StockTransferItem"("targetItemId");
+
+-- CreateIndex
 CREATE INDEX "VideoAnalyticsSession_cameraId_idx" ON "VideoAnalyticsSession"("cameraId");
 
 -- CreateIndex
@@ -3934,6 +4647,9 @@ CREATE INDEX "EventLog_status_idx" ON "EventLog"("status");
 -- CreateIndex
 CREATE INDEX "EventLog_createdAt_idx" ON "EventLog"("createdAt");
 
+-- CreateIndex
+CREATE INDEX "EventLog_locationId_idx" ON "EventLog"("locationId");
+
 -- AddForeignKey
 ALTER TABLE "AccountsPayable" ADD CONSTRAINT "AccountsPayable_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;
 
@@ -4037,6 +4753,12 @@ ALTER TABLE "EmployeeJob" ADD CONSTRAINT "EmployeeJob_employeeId_fkey" FOREIGN K
 ALTER TABLE "EmployeeJob" ADD CONSTRAINT "EmployeeJob_jobId_fkey" FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "EInvoiceOutbox" ADD CONSTRAINT "EInvoiceOutbox_arId_fkey" FOREIGN KEY ("arId") REFERENCES "AccountsReceivable"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EInvoiceOutbox" ADD CONSTRAINT "EInvoiceOutbox_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "GiftCard" ADD CONSTRAINT "GiftCard_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -4077,6 +4799,9 @@ ALTER TABLE "GuestVisit" ADD CONSTRAINT "GuestVisit_guestId_fkey" FOREIGN KEY ("
 
 -- AddForeignKey
 ALTER TABLE "HaccpEntry" ADD CONSTRAINT "HaccpEntry_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;
+
+-- AddForeignKey
+ALTER TABLE "HaccpPlan" ADD CONSTRAINT "HaccpPlan_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;
 
 -- AddForeignKey
 ALTER TABLE "HappyHourSchedule" ADD CONSTRAINT "HappyHourSchedule_priceGroupId_fkey" FOREIGN KEY ("priceGroupId") REFERENCES "PriceGroup"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -4244,6 +4969,9 @@ ALTER TABLE "Payment" ADD CONSTRAINT "Payment_giftCardId_fkey" FOREIGN KEY ("gif
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_loyaltyAccountId_fkey" FOREIGN KEY ("loyaltyAccountId") REFERENCES "LoyaltyAccount"("id") ON DELETE SET NULL ON UPDATE SET NULL;
 
 -- AddForeignKey
+ALTER TABLE "PayLink" ADD CONSTRAINT "PayLink_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "PrepStation" ADD CONSTRAINT "PrepStation_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -4403,6 +5131,9 @@ ALTER TABLE "TipDistribution" ADD CONSTRAINT "TipDistribution_tipPoolId_fkey" FO
 ALTER TABLE "TipPool" ADD CONSTRAINT "TipPool_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;
 
 -- AddForeignKey
+ALTER TABLE "StockTransferItem" ADD CONSTRAINT "StockTransferItem_transferId_fkey" FOREIGN KEY ("transferId") REFERENCES "StockTransfer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "VideoAnalyticsSession" ADD CONSTRAINT "VideoAnalyticsSession_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;
 
 -- AddForeignKey
@@ -4461,32 +5192,3 @@ ALTER TABLE "Property" ADD CONSTRAINT "Property_brandId_fkey" FOREIGN KEY ("bran
 
 -- AddForeignKey
 ALTER TABLE "Workstation" ADD CONSTRAINT "Workstation_propertyId_fkey" FOREIGN KEY ("propertyId") REFERENCES "Property"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-
--- CreateTable (Task 64, v1.62.0 — HACCP načrti kontrol; produkcija čaka admin
--- rutо /api/admin/migrate-haccp-plans, issue-13 vzorec — do takrat drift allowlist)
-CREATE TABLE "HaccpPlan" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "category" "HaccpCategory" NOT NULL,
-    "frequency" TEXT NOT NULL DEFAULT 'daily',
-    "target" TEXT NOT NULL DEFAULT '',
-    "threshold" TEXT NOT NULL DEFAULT '',
-    "steps" JSONB NOT NULL DEFAULT '[]',
-    "responsible" TEXT NOT NULL DEFAULT '',
-    "active" BOOLEAN NOT NULL DEFAULT true,
-    "locationId" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "HaccpPlan_pkey" PRIMARY KEY ("id")
-);
-
--- CreateIndex
-CREATE INDEX "HaccpPlan_locationId_idx" ON "HaccpPlan"("locationId");
-
--- CreateIndex
-CREATE INDEX "HaccpPlan_active_idx" ON "HaccpPlan"("active");
-
--- AddForeignKey
-ALTER TABLE "HaccpPlan" ADD CONSTRAINT "HaccpPlan_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;

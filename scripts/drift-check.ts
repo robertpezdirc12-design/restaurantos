@@ -770,8 +770,9 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'StockTransferItem (snapshot imena/enote, količine requested/dispatched/' +
       'received/damaged, izvorna serija, razrešen ciljni artikel; transferId ' +
       'FK Cascade) + indeksi — skalarne vezave brez FK na Location/' +
-      'InventoryItem (PrepLabel/PayrollPeriod vzorec). Do DDL /api/transfers* ' +
-      'rute vračajo 503 (graceful degradacija). Ko je DDL apliciran ' +
+      'InventoryItem (PrepLabel/PayrollPeriod vzorec). Do DDL ' +
+      '/api/admin/migrate-stock-transfers /api/transfers* rute vračajo 503 ' +
+      '(graceful degradacija). Ko je DDL apliciran ' +
       '(Enterprise → Shema migracije), drift izgine in vnos postane mrtva koda.',
     matches: isStockTransfersStatement,
   },

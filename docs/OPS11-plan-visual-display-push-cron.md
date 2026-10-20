@@ -38,4 +38,4 @@ Baza: v1.79.0 @ 4c94176 | 966/966 testov | zero DDL | i18n SL/HR pariteta
 - ZERO DDL; Integration config JSON.stringify + tolerantno branje; Radix Select 'ALL'/'NONE' sentinel (nikoli value='')
 - i18n ključi v OBAH slovarjih; komentarji angleško; pushEvent fire-and-forget void
 - version bump minor v src/lib/version.ts; testi za čisto logiko v tests/ops11-valN.test.ts; `bun test` vse zeleno + tsc 0 + lint 0
-- Commit avtor robertpezdirc12-design; push `git push github`; browser E2E po vsakem valu (dev PIN 4567, produkcija 754825)
+- Commit avtor robertpezdirc12-design; push `git push github`; browser E2E po vsakem valu (dev PIN 4567, produkcija [PIN ODSTRANJEN — ROTACIJA OBVEZNA])
