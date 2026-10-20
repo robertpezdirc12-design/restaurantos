@@ -13,10 +13,14 @@
  * Balancing rule (incl. rounding drift and mismatch absorption) is documented in
  * src/lib/gl.ts → buildGlEntry.
  *
- * Idempotency: one entry per day, entryNumber `GL-YYYYMMDD-01` (unique). If the
- * entry already exists it is returned from the DB untouched. If persistence fails
- * (e.g. missing table) the route responds 200 with `persisted: false` and the
- * computed preview — never a 500 — so the UI can always render the orientation view.
+ * Idempotency: one entry per day, entryNumber `GL-YYYYMMDD-01` (unique).
+ * v1.160.0: automatic entries are LIVE until their day ends — while postedAt is
+ * inside the day, each view recomputes the entry (otherwise the first view of the
+ * day froze the ledger and later sales never appeared). The first view after
+ * midnight refreshes it once with the full day and freezes it; manual entries are
+ * never overwritten. If persistence fails (e.g. missing table) the route responds
+ * 200 with `persisted: false` and the computed preview — never a 500 — so the UI
+ * can always render the orientation view.
  */
 import { NextRequest } from 'next/server'
 import { createHash } from 'crypto'
@@ -150,18 +154,27 @@ export async function GET(req: NextRequest) {
       where: { entryNumber: entryNo },
       include: { JournalLine: { orderBy: { createdAt: 'asc' as const } } },
     })
-    if (existing) {
-      const lines = existing.JournalLine.map((l) => ({ accountCode: l.accountCode, accountName: l.accountName, debit: num(l.debit), credit: num(l.credit) }))
-      entries.push({
+    // v1.160.0: avtomatski vnos je živ, dokler je postedAt znotraj svojega dneva.
+    // Prvi ogled po polnoči ga enkrat uskladi s celotnim dnem in s tem zamrzne.
+    const dayEnd = new Date(`${k}T23:59:59.999`)
+    const live = existing?.source === 'auto' && (!existing.postedAt || existing.postedAt < dayEnd)
+
+    const asView = (row: NonNullable<typeof existing>): GlEntryView => {
+      const lines = row.JournalLine.map((l) => ({ accountCode: l.accountCode, accountName: l.accountName, debit: num(l.debit), credit: num(l.credit) }))
+      return {
         date: k,
         entryNo,
-        memo: existing.description,
+        memo: row.description,
         persisted: true,
         adjustedAccount: null,
         lines,
         debit: r2(lines.reduce((s, l) => s + l.debit, 0)),
         credit: r2(lines.reduce((s, l) => s + l.credit, 0)),
-      })
+      }
+    }
+
+    if (existing && !live) {
+      entries.push(asView(existing))
       continue
     }
 
@@ -181,6 +194,61 @@ export async function GET(req: NextRequest) {
       lines: preview.lines.map((l) => ({ accountCode: l.accountCode, accountName: l.accountName, debit: l.debit, credit: l.credit })),
       debit: preview.debits,
       credit: preview.credits,
+    }
+
+    if (existing) {
+      // osvežitev na mestu: CAS na postedAt prepreči dvojno pisanje ob sočasnih
+      // ogledih; vrstice se zamenjajo v isti transakciji (brez podvajanja).
+      if (!seedOk) {
+        persistFailed = true
+        entries.push(view)
+        continue
+      }
+      try {
+        const refreshed = await db.$transaction(async (tx) => {
+          const cas = await tx.journalEntry.updateMany({
+            where: { id: existing.id, source: 'auto', postedAt: existing.postedAt },
+            data: { description: glMemo(k), postedAt: new Date() },
+          })
+          if (cas.count === 0) return false
+          await tx.journalLine.deleteMany({ where: { journalEntryId: existing.id } })
+          await tx.journalLine.createMany({
+            data: preview.lines.map((l) => ({
+              id: nid(),
+              journalEntryId: existing.id,
+              accountCode: l.accountCode,
+              accountName: l.accountName,
+              accountType: l.accountType as AccountType,
+              debit: l.debit,
+              credit: l.credit,
+              description: 'Avtomatski dnevni obračun prodaje',
+              chartOfAccountCode: l.accountCode,
+              locationId: user.loc || null,
+            })),
+          })
+          return true
+        })
+        if (refreshed) {
+          view.persisted = true
+          entries.push(view)
+        } else {
+          // druga zahteva je osvežitev že opravila — vrni njeno stanje
+          const row = await db.journalEntry.findUnique({
+            where: { id: existing.id },
+            include: { JournalLine: { orderBy: { createdAt: 'asc' as const } } },
+          })
+          if (row) entries.push(asView(row))
+          else {
+            persistFailed = true
+            entries.push(view)
+          }
+        }
+      } catch {
+        // transakcija je atomska — baza obdrži star vnos, uporabnik vidi svež preview
+        persistFailed = true
+        entries.push(view)
+      }
+      continue
     }
 
     if (seedOk) {
