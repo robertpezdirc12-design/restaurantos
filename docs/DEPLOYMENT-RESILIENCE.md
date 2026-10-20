@@ -223,6 +223,19 @@ odpoved spremenilo v dva issuea in alarm razredčilo do neuporabnosti. Ker
 canary ob lastni odpovedi pokliče isti `ci-alarm`, je pokrita tudi zavora
 same zavore.
 
+### Površina odvisnosti (v1.154.0)
+
+Dobavljena koda je enako del produkcijske slike kot naša, zato ima svojo mejo:
+`bun install --frozen-lockfile` na Vercelu in v obeh CI-jih pomeni, da različica
+ne more „uplavati“ med buildom — kar je v `bun.lock`, gre v produkcijo. Spodnje
+meje (next ≥ 16.3.8, sharp ≥ 0.35.5, js-yaml 4.3.2, eslint-plugin-react-hooks
+7.0.1) in ocena preostalih OSV najdb so zapisane v
+`docs/SECURITY-BOUNDARY.md`, zaklene pa jih
+`tests/dependency-advisories.test.ts` na treh ravneh: deklaracija v
+`package.json`, resnično stanje v `bun.lock` in nameščeno stanje v
+`node_modules`. Nadgradnja zato ni „npm install in upanje“, ampak izdaja z
+enakimi vrati kot koda.
+
 ## Migracije (varne proti obstoječim podatkom)
 
 - Pravilo: **samo aditivne, idempotentne DDL** prek in-app endpointov

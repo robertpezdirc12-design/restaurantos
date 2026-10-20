@@ -124,9 +124,47 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
   podatkov, ker jih POS sploh ne vidi); javni odgovori ne vsebujejo
   zaposlenih/PIN (maskiranje telefona `maskPhone`).
 
+## Površina odvisnosti (v1.154.0 — OSV pregled 20. 10. 2026)
+
+Te meje niso naša koda, ampak koda, ki jo dobavimo — zato so zapisane kot test
+(`tests/dependency-advisories.test.ts`, skupine A–D), ne le kot namera. Vercel
+in oba CI-ja nameščata z `bun install --frozen-lockfile`, torej različica med
+buildom ne more „uplavati“: kar je v `bun.lock`, gre v produkcijo.
+
+| Paket | Prej | Zdaj | Razlog |
+|---|---|---|---|
+| next | 16.1.3 (38 najdb) | 16.4.2 (meja **16.3.8**) | GHSA-2xp9-vwfh-vxw4 in GHSA-p293-qw3h-jr36 — dve CRITICAL neavtenticirani RCE (optimizacija slik/AVIF; strežniki na Windowsih) + vrsta SSRF/DoS/CSRF popravkov |
+| sharp | 0.34.5 | **0.35.5** | GHSA-f88m-g3jw-g9cj, GHSA-rgj7-g3m4-5g8c, GHSA-wq5f-xc86-pv6w (libvips/libheif/librsvg) |
+| next-auth | 4.24.13 | odstranjen | GHSA-7rqj-j65f-68wh (CRITICAL homoglyph obhod); paket ni bil uvožen v `src/` |
+| next-intl | 4.7.0 | odstranjen | GHSA-8f24-v5vv-gm5j (odprta preusmeritev); ni bil uvožen v `src/` |
+| uuid | 11.1.0 | odstranjen | GHSA-w5hq-g745-h8pq; ni bil uvožen v `src/` |
+| js-yaml (tranzitivno) | 4.1.1 | **4.3.2** (override) | GHSA-2883-xcg3-v3hh, GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-h67p-54hq-rp68 |
+| eslint-plugin-react-hooks | 7.1.1 | **7.0.1** (override) | ni varnostna najdba: 7.1.1 vklopi React Compiler pravila → 73 napak lint-a; refaktor je ločena izdaja, gate pa do takrat ostane merljiv |
+
+### Preostale najdbe (sprejete, z razlogom)
+
+OSV po nadgradnji (827 nameščenih paketov): 4 paketi s po eno HIGH najdbo.
+Vse štiri so nedosegljive na naši poti izvajanja ali nimajo popravka:
+
+- **braces 3.0.3** — GHSA-vfj7-8cjw-p6xm, popravka ni. Tranzitivno prek
+  micromatch (lint/build); vhod odjemalca ne pride do vzorca.
+- **deepmerge-ts 7.1.5** — GHSA-ggr8-5vv4-36mx, popravek 8.0.0.
+  `@prisma/config` ga pripne točno; teče samo v Prisma CLI ob generate/build,
+  nikoli v strežniku. Nadgradnja na Prisma 7 je ločena izdaja.
+- **effect 3.18.4** — GHSA-38f7-945m-qr2g, popravek 3.20.0. Enak exact pin
+  `@prisma/config`; napaka zahteva sočasni Effect RPC promet, ki ga v CLI ni.
+- **node-forge 1.4.0** — GHSA-86w9-cpqp-85rv, popravka ni. Edina uporaba je
+  branje PKCS#12 v `src/lib/furs/client.ts` (`pkcs12FromAsn1` + pretvorbe v
+  PEM). Podpisovanje in preverjanje tečeta prek `node:crypto`
+  (`createSign('RSA-SHA256')`), zato ranljiva pot preverjanja podpisa ni
+  dosegljiva. Ko bo popravek objavljen, se ocena ponovi.
+
 ## Testi
 
 `tests/mfa.test.ts` (24): RFC 6238 vektorji, okno, fail-closed, base32,
 recovery poraba/replay, vloge. `tests/tenant.test.ts` (15): cross-org deny,
 forged ID-ji, legacy passthrough. `tests/session.test.ts` (4): revokacija.
 `tests/delivery.test.ts` (16): HMAC/idempotencija/rate limit.
+`tests/dependency-advisories.test.ts` (17): spodnje meje next/sharp, lockfile
+proti package.json, nameščeno stanje proti lockfile-u, dokumentirana ocena
+preostalih najdb in dosegljivost node-forge.
