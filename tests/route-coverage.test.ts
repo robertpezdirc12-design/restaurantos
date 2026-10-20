@@ -12,7 +12,7 @@
  * Prepoznane varovalke (sklad s src/lib/api.ts + naprave + webhooki):
  *   - requireAuth( / requirePermission( / requireAuthWithPerms(
  *   - requireAnyPermission( / requireCentralRole( / requireUserLocation(
- *   - deviceFromToken( / posIdentity(        — naprave (x-device-token)
+ *   - deviceFromToken( / deviceFromTokenLite( / posIdentity( — naprave (x-device-token)
  *   - verifyWebhookSignature(                — dostava/e-računi webhook (HMAC)
  *   - bearerMatches( / CRON_SECRET           — Vercel cron (timing-safe Bearer)
  *   - issueFursReceipt(                      — delegirana varovalka (orders.pay)
@@ -32,6 +32,10 @@ const GUARDS = [
   'requireCentralRole(',
   'requireUserLocation(',
   'deviceFromToken(',
+  // v1.156.0 (CFD pogojni polling): lahka različica bere ista avtentikacijska
+  // polja (deviceId/type/revokedAt/pairedToDeviceId), le brez displayPayload in
+  // lokacije — enaka meja kot deviceFromToken, zato je priznana varovalka.
+  'deviceFromTokenLite(',
   'posIdentity(',
   'verifyWebhookSignature(',
   'bearerMatches(',

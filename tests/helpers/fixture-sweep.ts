@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 /**
  * Task 58 — higiena testnih fiksur (samo dev SQLite).
@@ -101,6 +101,9 @@ export const TEST_PREFIXES = [
   'a22-', // audit22-drawer-cash (v1.148.0 — audit #22: meje števanja predala + predaja med izmenama)
   'aw10-', // audit10-writers (v1.148.0 — audit #10 razred: dostava, webhook, popust, čistilec)
   'a56-', // audit56-einvoice-lines (v1.149.0 — audit #5/#6: popust in zaokroževanje na B2B e-računu)
+  'v156-', // cfd-conditional (v1.156.0 — pogojni odgovor stanja zaslona gostov)
+  'v156p-', // paylink-sim-guard (v1.156.0 — strežniška meja simulatorja na javni plačilni povezavi)
+  'v156r-', // po-receive-concurrency (v1.156.0 — atomarni GRN/zaloga/statusi ob sočasnem prevzemu)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -222,6 +225,12 @@ const LOCATION_CHILD_SWEEP = [
   'menu',
   'table',
   'payLink',
+  // v1.156.0: Receipt.Order je OBAVEZEN FK z privzetim Restrict — če bi Order
+  // brisali pred Receipt, bi SQLite zavrnil brisanje naročila (račun ga drži),
+  // naročilo pa nato blokira brisanje lokacije (Order.Location je Restrict).
+  // Dokaz: 13 testnih lokacij je ostalo v dev bazi po teku paylink testov
+  // (račun + plačilo z nid() id-jem, predpona samo v locationId).
+  'receipt',
   'order',
   'cashRegisterShift',
   'zReport',
@@ -236,7 +245,6 @@ const LOCATION_CHILD_SWEEP = [
   // po deviceId (tests/race-fixes.test.ts); zdaj je pokrit centralno.
   'deviceSyncOperation',
   'guestFeedback',
-  'receipt',
   'timeEntry',
   'staffShift',
   'wasteRecord',
@@ -399,6 +407,32 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   for (const spec of ID_SWEEP) {
     if (spec.model === 'location') continue
     await dele(spec.model, { OR: forField('id', 'startsWith').concat(spec.alt ? forField(spec.alt, 'startsWith') : []) })
+  }
+  // 1b. plačila naročil testnih lokacij — Payment → Check je OBAVEZEN FK z
+  //    privzetim Restrict, Check → Order pa Cascade. Plačila, ki jih ustvari API,
+  //    imajo nid() id BREZ predpone in nimajo locationId, zato jih id-predpona
+  //    ne vidi; ob brisanju Order-a (faza 2) Cascade do Check-a pade na Payment
+  //    in naročilo+račun ostaneta, lokacija pa zaradi Restrict FK ne more stran.
+  //    Dokaz: 13 lokacij je ostalo po teku paylink testov (v156p-).
+  try {
+    const testOrders = await db.order.findMany({
+      where: {
+        OR: [...forField('id', 'startsWith'), ...forField('locationId', 'startsWith')],
+      } as unknown as Prisma.OrderWhereInput,
+      select: { id: true },
+    })
+    if (testOrders.length > 0) {
+      const checks = await db.check.findMany({
+        where: { orderId: { in: testOrders.map((o) => o.id) } },
+        select: { id: true },
+      })
+      if (checks.length > 0) {
+        await dele('payment', { checkId: { in: checks.map((c) => c.id) } })
+      }
+    }
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e)
+    errors.push(`payment (po naročilih): ${raw.trim().split('\n')[0] || String(e)}`)
   }
   // 2. odkleni prehod po locationId — aplikacijsko ustvarjeni otroci testnih
   //    lokacij (samodejni id-ji brez predpone); lokacija ŠE obstaja
