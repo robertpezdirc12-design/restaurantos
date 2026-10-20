@@ -169,6 +169,24 @@ describe('B — №26 vrstni red gate-ov (statično, vsak sistem posebej)', () =
     expect(gitlab).not.toMatch(/continue-on-error/)
     expect(gh).not.toMatch(/continue-on-error/)
   })
+
+  test('vsaka `script` vrstica je YAML niz: nepoudarjen skalar ne sme vsebovati `: ` (pipeline #58 brez jobov)', () => {
+    // GitLab pipeline #58 (sha 4b47f63) je bila `failed` z NIČ jobi, ker je
+    // `echo "GIT-MISSING: B2 …"` dvopičje s presledkom spremenilo v preslikavo:
+    // js-yaml vrne {"bash -c '…GIT-MISSING": "B2 …"} namesto niza. Pravilo
+    // YAML: nepoudarjen skalar ne sme vsebovati `: `. Cela vrstica je lahko
+    // niz tudi, če se skalar začne s citatom ali blokom — takrat je `: ` legalen.
+    const lines = read('.gitlab-ci.yml').split('\n')
+    const offenders: string[] = []
+    let inScript = false
+    for (const line of lines) {
+      if (/^ {2}\S/.test(line)) inScript = /^ {2}script:\s*$/.test(line)
+      if (!inScript || !/^ {4}- /.test(line)) continue
+      const scalar = line.slice(6)
+      if (!/^['"|>]/.test(scalar) && /: /.test(scalar)) offenders.push(line.trim())
+    }
+    expect(offenders).toEqual([])
+  })
 })
 
 /* ════════════ C — №25: git kot pogoj, ne kot presenetljiva napaka ════════════ */
