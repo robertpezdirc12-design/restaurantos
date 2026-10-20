@@ -235,6 +235,7 @@ describe('B — KDS rollup ne odpre zaključenega naročila', () => {
 async function raceSweep(kind: 'PATCH' | 'DELETE') {
   const tok = tokenFor(managerId, 'm', 'MANAGER', locId)
   let rejections = 0
+  let lockTimeouts = 0
   for (const delay of [0, 1, 2, 3, 5, 8, 12, 20, 30, 45]) {
     const tbl = await seedTable({ status: 'occupied' })
     const order = await seedOrder('sent', 'unpaid', tbl.id)
@@ -243,7 +244,20 @@ async function raceSweep(kind: 'PATCH' | 'DELETE') {
       ? orderPATCH(req(`/api/orders/${order.id}`, tok, 'PATCH', { status: 'CANCELLED', reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
       : orderDELETE(req(`/api/orders/${order.id}`, tok, 'DELETE', { reason: 'testni razlog preklica' }), { params: Promise.resolve({ id: order.id }) })
     await new Promise((r) => setTimeout(r, delay))
-    const paidFirst = await commitPayment(order.id)
+    let paidFirst: boolean
+    try {
+      paidFirst = await commitPayment(order.id)
+    } catch (e) {
+      // №29: SQLite dopušča samo ENEGA pisalca. Na počasnejšem stroju lahko
+      // preklicni handler drži zaklep dlje, kot je Prisma-ov prag za odgovor baze,
+      // in `updateMany` vrne P1008 (socket timeout). To je artefakt ponudnika, ne
+      // izid dirke — zakasnitev prekinemo in jo ŠTEJEMO, nikoli pa ne utišamo
+      // (glej zaključno trditev).
+      const code = (e as { code?: string })?.code
+      if (code !== 'P1008') throw e
+      lockTimeouts++
+      continue
+    }
     const res = await call
     const row = await orderRow(order.id)
     const receipts = await db.receipt.count({ where: { orderId: order.id } })
@@ -264,19 +278,55 @@ async function raceSweep(kind: 'PATCH' | 'DELETE') {
       expect(await db.eventLog.count({ where: { entityId: order.id, type: 'OrderCancelled' } })).toBe(0)
     }
   }
-  return { rejections }
+  return { rejections, lockTimeouts }
 }
 
 describe('C — sočasno plačilo med preklicem (dirka čez zamike)', () => {
-  test("PATCH status CANCELLED: nikoli 'cancelled' z računom; zavrnjen preklic brez sledu", async () => {
-    const hits = await raceSweep('PATCH')
-    expect(hits.rejections).toBeGreaterThan(0) // dirka je bila vsaj enkrat zadeta
+  /* №29 — dve ZGODOVINSKI trditvi sta bili vezani na prepletanje v realnem času:
+   * `rejections > 0` in varnostna invarianta sta odvisni od tega, kdo pobedi
+   * dirko. Na GitLabovem deljenem stroju (pipeline #57, sha f9371d0) je
+   * `commitPayment` dobil P1008 po 5174 ms in je test pustilo rdeče brez
+   * dokazanega prekrška. Isti dokaz zdaj obstaja DVEKRAT:
+   *   (1) deterministična primera, kjer vrstni red določimo z zaporedjem
+   *       `await`-ov — tu je časovanje nepomembno in trditev velja vedno;
+   *   (2) fuzz zanka z zamiki, ki ohranja invarianto za vsak dokončan poskus in
+   *       zakasnitve zaklepa ŠTEJE (ne požre). */
+  test('deterministično A: plačilo commitnjeno PRED preklicem → preklic je 409 in brez sledi', async () => {
+    for (const kind of ['PATCH', 'DELETE'] as const) {
+      const tbl = await seedTable({ status: 'occupied' })
+      const order = await seedOrder('sent', 'unpaid', tbl.id)
+      const link = await seedLink(order.id)
+      expect(await commitPayment(order.id)).toBe(true)
+      const res = kind === 'PATCH'
+        ? await orderPATCH(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'PATCH', { status: 'CANCELLED', reason: 'deterministic A' }), { params: Promise.resolve({ id: order.id }) })
+        : await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'deterministic A' }), { params: Promise.resolve({ id: order.id }) })
+      expect(res.status, kind).toBe(409)
+      expect((await orderRow(order.id))?.status, kind).toBe('paid')
+      expect((await db.payLink.findUnique({ where: { id: link.id } }))?.status, kind).toBe('open')
+      expect((await db.table.findUnique({ where: { id: tbl.id } }))?.status, kind).toBe('occupied')
+      expect(await db.eventLog.count({ where: { entityId: order.id, type: 'OrderCancelled' } }), kind).toBe(0)
+    }
   })
 
-  test("DELETE (preklic): nikoli 'cancelled' z računom; zavrnjen preklic brez sledu", async () => {
-    const hits = await raceSweep('DELETE')
-    expect(hits.rejections).toBeGreaterThan(0)
+  test('deterministično B: preklic zaključen PRED plačilom → commitPayment ne sme zapisati računa', async () => {
+    const tbl = await seedTable({ status: 'occupied' })
+    const order = await seedOrder('sent', 'unpaid', tbl.id)
+    await seedLink(order.id)
+    const res = await orderDELETE(req(`/api/orders/${order.id}`, tokenFor(managerId, 'm', 'MANAGER', locId), 'DELETE', { reason: 'deterministic B' }), { params: Promise.resolve({ id: order.id }) })
+    expect(res.status).toBe(200)
+    expect(await commitPayment(order.id)).toBe(false) // pogojni UPDATE ne najde več plačljivega stanja
+    expect(await db.receipt.count({ where: { orderId: order.id } })).toBe(0)
+    expect((await orderRow(order.id))?.status).toBe('cancelled')
   })
+
+  test("PATCH/DELETE dirka: nikoli 'cancelled' z fiskalnim računom", async () => {
+    const patch = await raceSweep('PATCH')
+    const del = await raceSweep('DELETE')
+    expect(patch.rejections + del.rejections).toBeGreaterThan(0)
+    // Izposoda zaklepa sme obstajati, ne sme pa postati tiha: dovoljena je ENA
+    // na skupno dirko, sicer je test spet odvisen od hitrosti stroznika.
+    expect(patch.lockTimeouts + del.lockTimeouts, 'P1008 zakasnitev — preveč počasnih zaklepov').toBeLessThanOrEqual(1)
+  }, 60_000)
 })
 
 /* ───────── D) dvakratni preklic istega naročila (#11) ───────── */

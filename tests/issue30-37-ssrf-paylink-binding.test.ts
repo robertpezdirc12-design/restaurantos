@@ -420,10 +420,15 @@ describe('#37 — potrditev: SAMO kanonična seja te povezave', () => {
   test('TUJA plačana seja (isti znesek!) → 409 PRED klicem na Stripe', async () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_37'
     let stripeCalls = 0
-    globalThis.fetch = (async () => {
-      stripeCalls++
+    // №28: števec sme šteti SAMO Stripe klice. Prej je štel VSAK `fetch`, tudi
+    // obnovitev omejitve (Upstash REST), ki prav tako uporablja globalThis.fetch —
+    // v GitLab CI-ju (kjer je bila UPSTASH spremenljivka nastavljena z neveljavnim
+    // URL-jem) je test zato videl 2 namesto 0 in je trdil, da je guard spustil
+    // klic na Stripe, čeprav Stripe nikoli ni bil klican.
+    globalThis.fetch = (async (input: unknown) => {
+      if (String(input).includes('api.stripe.com')) stripeCalls++
       return new Response('{}', { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     try {
       const oid = await mkOrder()
       const link = await mkLink(oid)
@@ -476,10 +481,10 @@ describe('#37 — potrditev: SAMO kanonična seja te povezave', () => {
     const link = await mkLink(oid)
     await db.payLink.update({ where: { token: link.token }, data: { amount: 18.5, tip: 2.26 } }) // sessionId NULL
     let stripeCalls = 0
-    globalThis.fetch = (async () => {
-      stripeCalls++
+    globalThis.fetch = (async (input: unknown) => {
+      if (String(input).includes('api.stripe.com')) stripeCalls++ // №28: samo Stripe
       return new Response('{}', { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     try {
       const res = await publicPayPOST(req(`/api/public/pay/${link.token}`, '', 'POST', { verifySession: 'cs_any' }), { params: Promise.resolve({ token: link.token }) })
       expect(res.status).toBe(409)

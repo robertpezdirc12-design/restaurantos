@@ -262,10 +262,24 @@ describe('issue #38 — POST /api/events/dispatch', () => {
 
   it('bootstrap dispatch obdavi vse (globalni break-glass) — tudi NULL/legacy', async () => {
     __resetHandlersForTests()
+    // №30: bootstrap je GLOBALNA pot, zato njegovo število ni odvisno samo od te
+    // datoteke. Prej je `toBe(5)` v CI-ju padel z "Expected 5, Received 6" in ni
+    // povedal, KDO je onesnažil. Dejanski vzrok je bil P1008 v
+    // tests/order-concurrency.test.ts: tam je preklicni handler držal pisalno
+    // ključavnico (SQLite dopušča enega samega pisalca), `db.eventLog.update()` v
+    // src/lib/events.ts:175 je bil prekinjen in je za seboj pustil vrstico
+    // stanja 'pending'.
+    // Sedaj: lastnih vrst je točno 5 (trdo), tuje se preštejejo in IMENUJEJO —
+    // aritmetika ostane natančna, odpoved pa vodi do storilca namesto do števke.
+    const tujke = await db.eventLog.findMany({
+      where: { status: 'pending', NOT: { id: { startsWith: PREFIX } } },
+      select: { id: true, type: true },
+    })
+    expect(await db.eventLog.count({ where: { status: 'pending', id: { startsWith: PREFIX } } })).toBe(5)
     const r = await status(dispatchPOST(req('/api/events/dispatch', bootTok(), 'POST', { limit: 100 })))
     expect(r.code).toBe(200)
     const d = r.body.dispatched as { processed: number }
-    expect(d.processed).toBe(5)
+    expect(d.processed, `tuje pending vrste (onesnaženje pred tem testom): ${tujke.slice(0, 5).map((t) => `${t.id}=${t.type}`).join(', ') || 'ni jih'}`).toBe(5 + tujke.length)
     for (const id of [`${PREFIX}ev-b1-${RUN}`, `${PREFIX}ev-b2-${RUN}`, `${PREFIX}ev-null-${RUN}`, `${PREFIX}ev-unbound-${RUN}`, `${PREFIX}ev-fake-${RUN}`]) {
       const row = await db.eventLog.findUnique({ where: { id }, select: { status: true } })
       expect(row?.status).toBe('processed')

@@ -334,7 +334,12 @@ describe('A5. tri sistemi morajo izvajata isti proračun (uskladitev GitLab ↔ 
   test('zaporedje ukazov je na obeh sistemih enako (brez GitLab-ovega drift koraka)', () => {
     const gh = tokens(ghCommands(jobBlock(wfText('ci.yml'), 'tests')))
     const gl = tokens(glCommands(gitlabText(), 'quality-gate'))
-    expect(gh).toEqual(['bun install', 'prisma db push', 'tsc --noEmit', 'run lint', 'run test', 'check-secrets'])
+    // PIN namenskega vrstnega reda. v1.152.0 (№26) je bil vrstni red spremenjen
+    // NAMERNO: secrets je bil zadnji korak, zato ga je rdeč tsc zamaskiral —
+    // podrobnosti so v komentarju .github/workflows/ci.yml in v skupini B datoteke
+    // tests/audit2530-ci-determinism.test.ts. Enakost MED sistemoma (spodaj) je
+    // prava varovalka; ta seznam je sidro, da korak ne more tiho izginiti iz OBOJEGA.
+    expect(gh).toEqual(['bun install', 'prisma db push', 'check-secrets', 'tsc --noEmit', 'run lint', 'run test'])
     // drift je na GitLabu DODATEN korak (135/135 zrcenje shem), ki ga GitHub
     // pokriva z `neon-smoke` na resnicnem Postgresu — zato se ga tu odsteje
     expect(gl).toContain('check-schema-drift')
@@ -342,6 +347,12 @@ describe('A5. tri sistemi morajo izvajata isti proračun (uskladitev GitLab ↔ 
     // brez base test ne more teči: db push MORA biti pred testi
     expect(gl.indexOf('prisma db push')).toBeLessThan(gl.indexOf('run test'))
     expect(gh.indexOf('prisma db push')).toBeLessThan(gh.indexOf('run test'))
+    // №26: varnostna koraka (drift, secrets) morata teči PRED dragimi gate-i.
+    // Če sta zadnja, padec tsc/lint/testov pomeni, da se nista nikoli izvedela —
+    // maskiranje je takrat struktura pipeline-a, ne sreča.
+    expect(gh.indexOf('check-secrets')).toBeLessThan(gh.indexOf('tsc --noEmit'))
+    expect(gl.indexOf('check-schema-drift')).toBeLessThan(gl.indexOf('tsc --noEmit'))
+    expect(gl.indexOf('check-secrets')).toBeLessThan(gl.indexOf('tsc --noEmit'))
   })
 
   test('predpomnik node_modules ne more vrniti klienta, ki ne ustreza URL-ju', () => {
@@ -394,7 +405,27 @@ describe('B1. №15 — askpass program (izvlečen iz sync.yml) dejansko deluje'
   }, 45_000)
 })
 
-describe('B2. №15 — guard za zakasnitev zrcala in fail-loud push (pravi git)', () => {
+/**
+ * №25 (audit okt-2026): GitLab `quality-gate` teče v sliki `oven/bun:1`, kjer `git`
+ * NI nameščen (GitHubovi runnerji ga imajo vedno, ker z njim kličejo checkout).
+ * Prvih pet testov te skupine je zato v pipeline #57 padlo na
+ * `Executable not found in $PATH: "git"` — rdeč gate zaradi orodja, ne zaradi kode
+ * (ista družina kot №23). Pogoj za izvedbo je zdaj ekspliciten: skupina se
+ * preskoči, skupno število preskočenih je vidno v povzetku `bun test`, ta datoteka
+ * pa v log izpiše jasno oznako. Pokritost ostane na GitHub Actions (ista suite,
+ * ubuntu runner z gitom) in na vsakem lokalnem teku.
+ */
+const HAS_GIT = (() => {
+  try {
+    execFileSync('git', ['--version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})()
+if (!HAS_GIT) console.log('PRESKOCENO-B2: git ni na voljo v tem okolju — skupina B2 (sync guard) se ne izvede; teče na GitHub Actions in lokalno')
+
+describe.skipIf(!HAS_GIT)('B2. №15 — guard za zakasnitev zrcala in fail-loud push (pravi git)', () => {
   /** Dva bare repozitorija + delovna kopija; vrne pot do delovne kopije. */
   function fixture(name: string) {
     const root = mkTmp(name)

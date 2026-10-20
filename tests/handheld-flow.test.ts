@@ -79,7 +79,11 @@ async function cleanupFixtures() {
       const receiptIds = receipts.map((r) => r.id)
       const checks = await db.check.findMany({ where: { orderId: oid }, select: { id: true } })
       await db.payment.deleteMany({ where: { checkId: { in: checks.map((c) => c.id) } } }).catch(() => null)
-      await db.payment.deleteMany({ where: { orderId: oid } }).catch(() => null)
+      // (audit okt-2026 №27) Prej je tukaj stal še `deleteMany({ where: { orderId: oid } })`.
+      // Payment nima stolpca orderId (prisma/schema.prisma:2052 — edina pot do naročila je
+      // Check.checkId), zato stavek VEDNO vrže `Unknown argument 'orderId'` in ga
+      // .catch(() => null) pogoltne: 12× na tek, brez učinka. Prehod po checkId zgoraj je
+      // edini veljaven in že pokriva vsa plačila tega naročila.
       await db.eventLog.deleteMany({ where: { OR: [{ entityId: { in: [...receiptIds, oid] } }, { payload: { contains: PREFIX } }] } }).catch(() => null)
       await db.auditLog.deleteMany({ where: { OR: [{ entityId: { in: [...receiptIds, oid] } }, { details: { contains: PREFIX } }] } }).catch(() => null)
       await db.check.deleteMany({ where: { orderId: oid } }).catch(() => null)
