@@ -3,9 +3,11 @@
  *
  * SQLite shema ne pozna enumeratov (`Reservation.status` je tam `String`), zato
  * `bun test` ne more videti neveljavne vrednosti enuma; na Postgresu Prisma tak
- * pogovor zavrne. Ker ima `next.config.ts` tudi `ignoreBuildErrors: true` in CI
- * teka `tsc` s SQLite-generiranim clientom, te napake ni videti nikoli — dokler
- * gumb v produkciji ne pade.
+ * pogovor zavrne. `tsc` v quality-gate-u teče s SQLite-generiranim clientom in
+ * te napake ne vidi; `next build` (brez `ignoreBuildErrors` od v1.150.0) in
+ * `production-typecheck` jo vidita šele s Postgres clientom. Ta test jo ujame
+ * že pod SQLite clientom in brez baze. (Seed skripte pokriva
+ * `tests/seed-enum-validity.test.ts` — ta test pregleduje samo `src/`.)
  *
  * Ta test bere prisma/schema.prisma in src/ zato, da ujame ravno ta razred.
  *

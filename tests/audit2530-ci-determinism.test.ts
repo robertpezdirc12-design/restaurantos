@@ -187,6 +187,37 @@ describe('B — №26 vrstni red gate-ov (statično, vsak sistem posebej)', () =
     }
     expect(offenders).toEqual([])
   })
+
+  test('GitLab production-typecheck in GitHub typecheck-prod: isti recept proti Postgres klientu', () => {
+    // SQLite client (quality-gate) pozna enum polja kot String, zato tsc tam ne
+    // vidi neveljavnega literala. Vercel generira Postgres client — in ravno ta
+    // razlika je stala tri ERROR deployment-e (v1.150.0–v1.152.0). Zato sta
+    // joba pinirana v OBEH sistemih z isto vsebino, da eden ne more tiho izginiti.
+    const gitlab = read('.gitlab-ci.yml')
+    const at = gitlab.indexOf('\nproduction-typecheck:')
+    expect(at).toBeGreaterThan(-1)
+    const tail = gitlab.slice(at + '\nproduction-typecheck:'.length)
+    // konec joba: prva vrstica, ki se začne v stolpcu 0 (komentar ali naslednji job)
+    const end = /\n(?=[^\s])/.exec(tail)
+    const body = tail.slice(0, end ? end.index : tail.length)
+    expect(body.length).toBeGreaterThan(200)
+    for (const cmd of ['bunx prisma generate --schema prisma/schema.prisma', 'bunx tsc --noEmit']) {
+      expect(body).toContain(cmd)
+    }
+    expect(body).not.toContain('schema.sqlite.prisma')
+    expect(body).not.toContain('DATABASE_URL')
+
+    const gh = read('.github/workflows/ci.yml')
+    const from = gh.indexOf('\n  typecheck-prod:')
+    expect(from).toBeGreaterThan(-1)
+    const ghTail = gh.slice(from + '\n  typecheck-prod:'.length)
+    const ghEnd = /\n {2}\S/.exec(ghTail)
+    const ghBody = ghTail.slice(0, ghEnd ? ghEnd.index : ghTail.length)
+    for (const cmd of ['prisma generate --schema prisma/schema.prisma', 'tsc --noEmit']) {
+      expect(ghBody).toContain(cmd)
+    }
+    expect(ghBody).not.toContain('schema.sqlite.prisma')
+  })
 })
 
 /* ════════════ C — №25: git kot pogoj, ne kot presenetljiva napaka ════════════ */

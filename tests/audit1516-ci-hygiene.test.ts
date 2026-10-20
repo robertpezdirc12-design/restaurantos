@@ -358,8 +358,18 @@ describe('A5. tri sistemi morajo izvajata isti proračun (uskladitev GitLab ↔ 
   test('predpomnik node_modules ne more vrniti klienta, ki ne ustreza URL-ju', () => {
     const gl = gitlabText()
     const prefixes = g(/prefix: [a-z-]+/g, gl)
-    expect(prefixes.length).toBe(2)
-    expect(new Set(prefixes).size).toBe(2)
+    // Vsak job, ki uporablja predpomnilnik node_modules, mora imeti SVOJEGA.
+    // Trije jobi generirajo tri različne Prisma cliente: quality-gate SQLite,
+    // production-typecheck in production-build pa Postgres. Če si dva delita
+    // istega, drugi dobi klienta prvega — natanko napaka, ki jo ta test
+    // preprečuje (v1.152.1 je dodala tretji job in s tem tretji predpomnilnik).
+    expect(prefixes.length).toBe(3)
+    expect(new Set(prefixes).size).toBe(3)
+    expect(new Set(prefixes)).toEqual(new Set([
+      'prefix: quality-gate',
+      'prefix: production-typecheck',
+      'prefix: production-build',
+    ]))
   })
 })
 
