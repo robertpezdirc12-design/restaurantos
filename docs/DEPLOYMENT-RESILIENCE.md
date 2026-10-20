@@ -129,9 +129,10 @@ kako se koda izvaja v CI:
   Bootstrap zdaj loči lastne vrstice (točno 5) od tujih in te v sporočilu
   o napaki IMENUJE.
 
-Vseh šest najdb pokriva 21 novih testov v
+Vseh šest najdb pokriva 22 novih testov v
 `tests/audit2530-ci-determinism.test.ts` (dinamični dokaz za №28 brez mreže +
-statični pini za ostale), mutacijsko dokazanih z M1–M18.
+statični pini za ostale), mutacijsko dokazanih z M1–M18. V v1.152.1 je sklop B
+dobil še pin produkcijskega tipskega gate-a (spodaj).
 
 ### Vercel — deploy, ki je hkrati zapora
 
@@ -140,6 +141,29 @@ Zato `next.config.ts` od v1.150.0 zastavice `typescript.ignoreBuildErrors` nima
 več (najdba #18): build sam zaustavi tipsko napako, preden ta pride v produkcijo.
 Testnih datotek deploy pri tem ne more zablokirati, ker jih `tsconfig.json`
 izpušča (`exclude: ["tests"]`).
+
+### Produkcijski tipski gate (v1.152.1)
+
+Odprava `ignoreBuildErrors` je razkrila drugo tiho razhajanje: `quality-gate`
+generira SQLite client, kjer so enum polja `String`, Vercel pa si generira
+Postgres client, kjer so pravi Prisma enumerati. `tsc` na SQLite clientu zato
+ne vidi neveljavnega literala, ki ga Postgres client zavrne. Trije takšni
+literali (seed `source: 'web'`, `itemStatus` tipa `string`, `PaymentStatus` v
+`src/lib/ops.ts`) so med v1.150.0 in v1.152.0 pustili produkcijo na 1.149.0:
+vsak deployment se je končal z `ERROR`, build log pa ni bil dosegljiv brez
+`bld_` identifikatorja. Napaka je bila reproducirana lokalno — dovolj je bilo
+generirati Postgres client in zagnati `tsc --noEmit` (točno tri napake).
+
+Zdaj imata oba sistema po dva tipska gate-a: SQLite client (hitro, brez baze)
+in Postgres client (produkcijska resnica). GitHub je imel `typecheck-prod` že
+od v1.150.0; GitLab je v v1.152.1 dobil `production-typecheck` v stopnji
+`verify` (brez `DATABASE_URL`, ker `prisma generate` ne potrebuje povezave).
+Vsak od treh jobov, ki uporablja predpomnilnik `node_modules`, ima svojega, ker
+vsak generira drugega od treh Prisma klientov. Pogodbo pineta A5 v
+`tests/audit1516-ci-hygiene.test.ts` (trije poimenovani predpomniki) in sklop B
+v `tests/audit2530-ci-determinism.test.ts` (isti recept na obeh sistemih).
+Literale v seed skriptah, ki jih prejšnji sweeper ni gledal (pregledoval je
+samo `src/`), zdaj pokriva `tests/seed-enum-validity.test.ts`.
 
 ### Alarm ob izpadu (`.github/actions/ci-alarm`)
 
