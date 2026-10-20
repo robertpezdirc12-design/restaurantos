@@ -120,9 +120,11 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 - Neznano stanje: `Payment.status` (default `completed`) + `refundAmount`;
   provider transakcijski ID/timeout/unknown-state tok = **issue #7**
   (payment orchestration) — ta issue ga ne duplicira (§9).
-- Logi: IntegrationLog/request shranjuje payloadi platform (brez kartičnih
-  podatkov, ker jih POS sploh ne vidi); javni odgovori ne vsebujejo
-  zaposlenih/PIN (maskiranje telefona `maskPhone`).
+- Logi: IntegrationLog hrani SAMO operativne reference (platformski ID naročila,
+  število artiklov, host integracije, idempotency ključe) — surov payload
+  platforme z osebnimi podatki gosta (ime, telefon, naslov, opombe) se NE
+  zapisuje (v1.163.0); javni odgovori ne vsebujejo zaposlenih/PIN (maskiranje
+  telefona `maskPhone`).
 
 ## Površina odvisnosti (v1.154.0 — OSV pregled 20. 10. 2026)
 
