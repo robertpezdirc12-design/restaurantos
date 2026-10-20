@@ -4729,3 +4729,29 @@ Stage Summary:
 - AKCIJA ZA LASTNIKA: (1) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (2) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (3) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (4) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (5) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije in preveri sočasni scenarij na Postgresu; (6) po pushu preveri Vercel READY, `/api/health` (version 1.158.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
 
 - POTRDITEV PO OBJAVI (13d9197): Vercel služi 13d9197 — `/api/health` vrne version 1.158.0, commit 13d91973cbfcdd6b4493e348321904a0f3b4a68e, `database: disconnected` (Neon pavziran — lastnikova točka). GitLab pipeline #72 (2969141897) = `success` z OBEMA joboma: `production-typecheck` (17328389671) in `quality-gate` (17328389670). `bun scripts/sync-check.ts`: local = mirror = prod = 13d9197, `SYNCED`.
+
+---
+
+Task ID: v1.159.0-delivery-tenant
+Agent: glavni agent (Qoder)
+Task: Najdba iz lastnega pregleda dostavnega webhooka — z več aktivnimi integracijami iste platforme je stara pot `/api/delivery/webhook/<platforma>` izbrala PRVO aktivno integracijo (`findFirst` brez vrstnega reda), zato je lahko naročilo iz Wolt/Glovo poslovalnice B nastalo na lokaciji A. Idempotenca `glovo:<id>` je bila globalna (isti platformski ID na dveh lokacijah = drugo naročilo tiho ignorirano), iskanje artikla pa ni bilo omejeno na lokacijo (tuj ID ali enako ime je lahko razrešilo artikel druge lokacije).
+
+Work Log:
+- RED (pred popravkom): `Cannot find module '.../[integration]/route'` pri novem testu; 8 novih testov v `tests/v159-delivery-tenant.test.ts` (predpona `v159-`).
+- SKUPNO JEDRO: POST logika je preseljena iz ovoje v `src/lib/delivery-webhook.ts` (`handleDeliveryWebhook`); obe poti sta tanki ovojnici — stara brez segmenta in nova `/api/delivery/webhook/<platforma>/<integracija>`. GET ostaja »ready« sonda brez podatkov.
+- EKSPLICITNA POT: `findFirst({ id, provider, isActive })`; neznana/neaktivna → 404 fail-closed; skrivnost = `Integration.apiSecret` ali env; podpis se preveri PRED `JSON.parse` in pred zapisom.
+- STARA POT: `findMany` vseh aktivnih integracij platforme (deterministično `createdAt, id`); kandidati se filtrirajo po ujemanju podpisa. 0 ujemanj → 401 (ali 503, če ni nobene skrivnosti); 2+ → 409 `ambiguous_integration` + audit `DELIVERY_WEBHOOK_REJECTED`; natanko 1 → ta integracija. Nikoli tiho naključno usmerjanje.
+- LOKACIJA: `Integration.locationId` je vir resnice; brez nje deterministična prva lokacija (`createdAt, id`) — enako kot prej, zdaj predvidljivo. Brez lokacije → 503.
+- IDEMPOTENCA: `webhookIdempotencyKey(platform, platformOrderId, locationId)` = `<platform>:<lokacija[:12]>:<sha256(lokacija\0id)[:32]>` (≤64). Isti platformski ID na dveh lokacijah = dve naročili, vsako na svoji. Star zapis `legacyWebhookIdempotencyKey` se preveri samo, če pripada ISTI lokaciji (varnost selitve: obstoječa naročila se ne podvojijo); preklic preveri nov ključ, nato starega, s preverbo lokacije.
+- ARTIKLI: `resolveMenuItemId(raw, locationId)` omeji iskanje po ID in po imenu na `Category.Menu.locationId` ciljne lokacije; tuj ID enakega imena razreši artikel ciljne lokacije.
+- MUTACIJSKI DOKAZ (5 mutacij, vse povrnjene): A odstranjen obseg menija → 4 padci; B ključ brez lokacije → 2; C obravnavana le prva integracija → 3; D onemogočena ambiguacija → 1; E odstranjen pre-check starega ključa → 1. Po povrnitvi 8/8 zelenih.
+- PINI VIRA: `tests/audit10-writers.test.ts` pin webhook rute je preusmerjen na jedro + delegiranje obeh ovojnic (sicer bi nova pot zaobšla invariant »claim ob zapisu, ignoriranje 2xx«).
+- ROUTE COVERAGE: register javnih rut zdaj pozna obe poti (stara = HMAC v jedru + rate-limit; nova = per-integration HMAC + ready sonda brez podatkov).
+- VERZIJA 1.158.0 → 1.159.0 (`src/lib/version.ts` + 6 test pinov).
+- VERIFIKACIJA: `tsc --noEmit` 0 · `eslint .` 0 · prisma validate ×2 OK · `check-secrets.sh` 0 · `check-schema-drift.cjs` 0 (135/135) · `git diff --check` 0 · celoten suite **3033 testov / 151 datotek / 109.163 expect-ov / 188,73 s, 0 fail** (pred izdajo 3025/150; +8 novih). BREZ DDL.
+
+Stage Summary:
+- Webhook zdaj ve, kateri poslovalnici pripada: eksplicitni URL je enoličen, stara pot pa se ustavi z 409, namesto da bi ugibala. Napačen podpis ne ustvari ničesar.
+- Isti platformski ID na dveh lokacijah ne pomeni več »replay«; stara naročila ostanejo zaščitena pred podvojitvijo prek iste-lokacijske preverbe starega ključa.
+- ZAVESTNO NE STORENO: (a) brez backfilla `idempotencyKey` obstoječih naročil — stari ključi se berejo kot fallback; (b) platforme, ki uporabljajo staro pot z več integracijami in ISTIM secretom, dobijo 409, dokler lastnik ne preklopi na eksplicitni URL (to je namerno, ne napaka); (c) preostale najdbe audita (GL zamrznjena dnevna knjiga, čakalna vrsta brez sprostitve mize, cron dnevni marker ob napaki, PII v IntegrationLog, egress poling) ostajajo za naslednje izdaje.
+- AKCIJA ZA LASTNIKA: (1) če ima več poslovalnic isto dostavno platformo, v portalu platforme nastavi webhook URL `/api/delivery/webhook/<platforma>/<integrationId>` za vsako integracijo (enaka skrivnost kot doslej); (2) rotiraj oba PIN-a in GitHub/GitLab/Vercel žetone (stalna točka); (3) vklopi Neon (`patient-violet-36825841`, obdobje do 1. 11. 2026); (4) popravi/odstrani `UPSTASH_REDIS_REST_URL`/`_TOKEN` brez sheme v GitLab CI; (5) nastavi `DEMO_LOGIN_ENABLED=0` oziroma veljaven `DEMO_LOGIN_EXPIRES_AT`; (6) ko je baza pokonci, uporabi produkcijske DDL korake v Enterprise → Shema migracije; (7) po pushu preveri Vercel READY, `/api/health` (version 1.159.0, nov SHA), GitLab pipeline in `bun scripts/sync-check.ts`.
