@@ -37,6 +37,10 @@ const GUARDS = [
   // lokacije — enaka meja kot deviceFromToken, zato je priznana varovalka.
   'deviceFromTokenLite(',
   'posIdentity(',
+  // v1.157.0 (Stripe webhook): javni endpoint nima seje — avtentikacija je
+  // HMAC podpis Stripe-Signature (timing-safe, toleranca 300 s), preverjen
+  // PRED branjem dogodka (enako načelo kot verifyWebhookSignature pri dostavi).
+  'verifyStripeSignature(',
   'verifyWebhookSignature(',
   'bearerMatches(',
   'issueFursReceipt(',

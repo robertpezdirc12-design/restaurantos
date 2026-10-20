@@ -104,6 +104,7 @@ export const TEST_PREFIXES = [
   'v156-', // cfd-conditional (v1.156.0 — pogojni odgovor stanja zaslona gostov)
   'v156p-', // paylink-sim-guard (v1.156.0 — strežniška meja simulatorja na javni plačilni povezavi)
   'v156r-', // po-receive-concurrency (v1.156.0 — atomarni GRN/zaloga/statusi ob sočasnem prevzemu)
+  'v157-', // stripe-webhook (v1.157.0 — podpisana poravnava plačanih sej + dnevna uskladitev)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -400,20 +401,12 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     const mode = spec.contains ? 'contains' : 'startsWith'
     await dele(spec.model, { OR: spec.fields.flatMap((f) => forField(f, mode)) })
   }
-  // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
-  //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
-  //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil
-  //    locationId na NULL in jih prehod 2 ne bi več našel.
-  for (const spec of ID_SWEEP) {
-    if (spec.model === 'location') continue
-    await dele(spec.model, { OR: forField('id', 'startsWith').concat(spec.alt ? forField(spec.alt, 'startsWith') : []) })
-  }
-  // 1b. plačila naročil testnih lokacij — Payment → Check je OBAVEZEN FK z
-  //    privzetim Restrict, Check → Order pa Cascade. Plačila, ki jih ustvari API,
-  //    imajo nid() id BREZ predpone in nimajo locationId, zato jih id-predpona
-  //    ne vidi; ob brisanju Order-a (faza 2) Cascade do Check-a pade na Payment
-  //    in naročilo+račun ostaneta, lokacija pa zaradi Restrict FK ne more stran.
-  //    Dokaz: 13 lokacij je ostalo po teku paylink testov (v156p-).
+  // 0b. otroci naročil testnih lokacij, ki jih id-predpona ne vidi: Payment
+  //    (Payment → Check je OBAVEZEN FK z Restrict) in OrderItem (FK na MenuItem
+  //    je Restrict; API-ustvarjene postavke imajo nid() id in le orderId).
+  //    MORATA pasti PRED fazo 1 — sicer menuItem deleteMany pade, ker OrderItem
+  //    še obstaja (napaka je bila vidna v vsakem teku, ki ustvari naročilo prek
+  //    API-ja, npr. paylink testi). Faza 3 bi sicer uspela, a šum ostane.
   try {
     const testOrders = await db.order.findMany({
       where: {
@@ -422,6 +415,7 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
       select: { id: true },
     })
     if (testOrders.length > 0) {
+      await dele('orderItem', { orderId: { in: testOrders.map((o) => o.id) } })
       const checks = await db.check.findMany({
         where: { orderId: { in: testOrders.map((o) => o.id) } },
         select: { id: true },
@@ -432,8 +426,18 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     }
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e)
-    errors.push(`payment (po naročilih): ${raw.trim().split('\n')[0] || String(e)}`)
+    errors.push(`otroci naročil (po naročilih): ${raw.trim().split('\n')[0] || String(e)}`)
   }
+  // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
+  //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
+  //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil
+  //    locationId na NULL in jih prehod 2 ne bi več našel.
+  for (const spec of ID_SWEEP) {
+    if (spec.model === 'location') continue
+    await dele(spec.model, { OR: forField('id', 'startsWith').concat(spec.alt ? forField(spec.alt, 'startsWith') : []) })
+  }
+  // 1b. (premaknjeno v 0b: otroci naročil morajo pasti pred ID_SWEEP, da
+  //    menuItem deleteMany ne zadene Restrict FK-ja.)
   // 2. odkleni prehod po locationId — aplikacijsko ustvarjeni otroci testnih
   //    lokacij (samodejni id-ji brez predpone); lokacija ŠE obstaja
   for (const model of LOCATION_CHILD_SWEEP) {
