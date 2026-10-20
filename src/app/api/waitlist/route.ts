@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { guardResource, assertOrgScope } from '@/lib/tenant'
-import { nid, jstr } from '@/lib/map'
+import { nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import {
   WAITLIST_ACTIVE_STATUSES,
@@ -20,6 +20,7 @@ import { writeAudit } from '@/lib/audit-chain'
  * GET    — aktivni seznam (waiting/notified, FIFO po prijavi) + zaključeni + statistika
  * POST   — nova prijava gosta (status 'waiting')
  * PATCH  — prehodi stanj (notified/seated/left) + urejanje aktivnega vnosa; usaditev zaklene mizo
+ *          in `releaseTable: true` mizo sprosti (v1.162.0 — usajen vnos ostane 'seated')
  * DELETE — brisanje le še aktivnega vnosa (pomota pri vnosu; usajenih ni mogoče brisati)
  */
 
@@ -141,6 +142,44 @@ export async function PATCH(req: NextRequest) {
   if (locRes) return locRes
 
   const to = body?.status !== undefined && body?.status !== null && String(body.status) !== '' ? String(body.status).toLowerCase() : null
+
+  // ── Sprostitev mize, ki jo je zaklenila usaditev (v1.162.0) ──
+  // Dejanje NE spreminja statusa vnosa (ostane 'seated' — statistika »Usajeni
+  // danes« se ne izgubi). Mizo sprosti le, če je še zasedena, brez aktivnega
+  // računa in je medtem ni zasedel novejši usajen vnos — sicer 409, brez ugibanja.
+  if (body?.releaseTable === true) {
+    if (rec.status !== 'seated') return fail('Miza se sprosti le za usajen vnos.', 409)
+    if (!rec.tableId) return fail('Vnos nima dodeljene mize.', 409)
+    const table = await db.table.findUnique({
+      where: { id: rec.tableId },
+      select: { id: true, number: true, locationId: true, status: true },
+    })
+    if (!table) return fail('Miza ne obstaja več.', 404)
+    if (rec.locationId && table.locationId !== rec.locationId) return fail('Miza ne pripada lokaciji vnosa.', 409)
+    if (table.status !== 'occupied') return ok({ released: false, tableId: table.id, reason: 'table_not_occupied' })
+    const activeOrder = await db.order.findFirst({
+      where: { tableId: table.id, status: { in: ORDER_ACTIVE_DB } },
+      select: { id: true },
+    })
+    if (activeOrder) return fail(`Miza ${table.number} ima odprt račun — najprej zaključi naročilo.`, 409)
+    const newer = await db.waitlistEntry.findFirst({
+      where: {
+        tableId: table.id,
+        status: 'seated',
+        id: { not: rec.id },
+        seatedAt: { gt: rec.seatedAt ?? rec.checkedInAt },
+      },
+      select: { guestName: true },
+      orderBy: { seatedAt: 'desc' },
+    })
+    if (newer) return fail(`Mizo ${table.number} je medtem zasedel drug vnos (${newer.guestName}) — sprosti ga tam.`, 409)
+    const freed = await db.table.updateMany({ where: { id: table.id, status: 'occupied' }, data: { status: 'available' } })
+    if (freed.count === 0) return ok({ released: false, tableId: table.id, reason: 'table_not_occupied' })
+    await writeAudit(db, { userId: user.sub, action: 'WAITLIST_TABLE_RELEASED', entityType: 'WaitlistEntry', entityId: id, details: jstr({
+          guestName: rec.guestName, tableId: table.id, tableNumber: table.number, seatedAt: rec.seatedAt,
+        }), locationId: rec.locationId })
+    return ok({ released: true, tableId: table.id, tableNumber: table.number })
+  }
 
   // ── Urejanje aktivnega vnosa (brez prehoda) ──
   if (!to) {

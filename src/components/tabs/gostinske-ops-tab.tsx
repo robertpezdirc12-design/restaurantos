@@ -913,6 +913,26 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
     await transition(seatFor, 'seated', seatTableId)
   }
 
+  async function releaseTable(w: WaitlistEntryT) {
+    if (!window.confirm(t('wl.confirmRelease', { name: w.guestName, table: w.tableNumber ? t('wl.tableN', { n: w.tableNumber }) : '' }))) return
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ released: boolean }>('/api/waitlist', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: w.id, releaseTable: true }),
+      })
+      const table = w.tableNumber ? t('wl.tableN', { n: w.tableNumber }) : ''
+      setOkMsg(d.released ? t('wl.okReleased', { table }) : t('wl.okReleaseNoop', { table }))
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function deleteEntry(w: WaitlistEntryT) {
     if (!window.confirm(t('wl.confirmDelete', { name: w.guestName }))) return
     setBusy(true)
@@ -1055,6 +1075,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
                     <th className="px-3 py-2 font-medium text-right">{t('wl.thWaited')}</th>
                     <th className="px-3 py-2 font-medium">{t('wl.thTable')}</th>
                     <th className="px-3 py-2 font-medium">{t('shifts.csvStatus')}</th>
+                    <th className="px-3 py-2 font-medium text-right">{t('common.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1066,6 +1087,13 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
                         <td className="px-3 py-2 text-right whitespace-nowrap">{w.status === 'seated' ? wlDur(w.actualWaitMinutes) : '—'}</td>
                         <td className="px-3 py-2 text-xs text-stone-600">{w.tableNumber ? t('wl.tableN', { n: w.tableNumber }) : '—'}</td>
                         <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
+                        <td className="px-3 py-2 text-right">
+                          {w.status === 'seated' && w.tableId && tables.find((tb) => tb.id === w.tableId)?.status === 'OCCUPIED' ? (
+                            <Button variant="outline" size="sm" disabled={busy} onClick={() => void releaseTable(w)}>
+                              {t('wl.releaseBtn')}
+                            </Button>
+                          ) : null}
+                        </td>
                       </tr>
                     )
                   })}
