@@ -41,6 +41,7 @@ channel-sync izhodni push (Glovo/Wolt API poverilnice).
 | `FURS_HR_ENVIRONMENT`, `FURS_HR_CERT_P12_B64`, `FURS_HR_CERT_PASSWORD`, `FURS_HR_CA_PEM`, `FURS_HR_ENDPOINT_URL` | HR CIS (Fiskalizacija 2.0) | isti vzorec kot SI |
 | `PAYMENTS_ALLOW_MANUAL_ATTESTATION` | `false` = ročna potrditev terminala onemogočena | nezastavljeno = dovoljena (audit vedno piše profil) |
 | `STRIPE_SECRET_KEY` | plačilne povezave prek Stripe Checkout | manjka → simulator (vidno označen) |
+| `STRIPE_WEBHOOK_SECRET` | podpis Stripe webhooka (`checkout.session.completed` + `async_payment_succeeded`) — poravna plačano sejo, ko se gost ne vrne; dnevni cron (`paylinks`) je varovalka | manjka → webhook 503; lahko se nadomesti z `Integration(type='payments').config.webhookSecret` |
 | `PRINT_AGENT_TOKEN`, `PRINT_AGENT_HOST`, `PRINT_AGENT_ALLOWED_HOSTS`, `PRINT_AGENT_ALLOWED_PORTS` | print-agent (port 3031) | ne-lookback bind BREZ žetona = zavrne zagon (fail-closed) |
 | `APP_SECRET`, `PIN_LOOKUP_SALT`, `CRON_SECRET`, `BOOTSTRAP_ADMIN_*` | varnostni skrivnosti | glej `.env.example` |
 | `UPSTASH_REDIS_REST_URL/TOKEN` | deljeni rate-limit | brez env dormant |
@@ -66,6 +67,12 @@ channel-sync izhodni push (Glovo/Wolt API poverilnice).
 4. **Print-agent** — naprava v LAN, `PRINT_AGENT_TOKEN` + `PRINT_AGENT_ALLOWED_HOSTS`
    (docs/HARDWARE-MATRIX.md §4).
 5. **Stripe** — produkcijski `STRIPE_SECRET_KEY` + preizkus žive povezave 0,01 EUR.
+   Nato v Stripe Dashboard → Developers → Webhooks dodaj endpoint
+   `https://restaurantos-theta.vercel.app/api/public/stripe/webhook` za
+   `checkout.session.completed` in `checkout.session.async_payment_succeeded`
+   ter njegovo signing secret vpiši kot `STRIPE_WEBHOOK_SECRET` (ali v
+   Integration type=payments). Brez webhooka plačilo še vedno poravna vrnitev
+   gosta in dnevna uskladitev, a šele do 24 h kasneje.
 6. **Restore drill** — izvedi dokazano obnovo (docs/BACKUP-RESTORE.md §3 — še NI
    izvedena, dokazališče je na voljo).
 7. **Rollback načrt** — DEPLOYMENT-RESILIENCE.md tabela + INCIDENT-RUNBOOK.md §6.
