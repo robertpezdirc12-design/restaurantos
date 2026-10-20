@@ -108,6 +108,7 @@ export const TEST_PREFIXES = [
   'v157-', // stripe-webhook (v1.157.0 — podpisana poravnava plačanih sej + dnevna uskladitev)
   'v159-', // delivery-tenant (v1.159.0 — webhook vezan na integracijo/lokacijo, ključ po lokaciji)
   'v160-', // gl-live-day (v1.160.0 — GL tekoči dan se osveži, pretekli zamrzne; ročni se ne prepiše)
+  'v162-', // waitlist-table-release (v1.162.0 — sprostitev mize iz čakalne vrste)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
