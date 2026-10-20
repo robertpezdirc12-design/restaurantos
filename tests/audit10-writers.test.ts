@@ -421,13 +421,23 @@ describe('D — pini vira: noben od štirih pisalcev nima več brezpogojnega zap
     expect(src).not.toContain('db.order.update(')
   })
 
-  test('webhook ruta: claim neposredno ob zapisu, ignoriranje vrne 2xx', () => {
-    const src = SRC('app/api/delivery/webhook/[provider]/route.ts')
+  test('webhook jedro: claim neposredno ob zapisu, ignoriranje vrne 2xx', () => {
+    // v1.159.0: POST logika je v skupnem jedru; obe poti sta tanki ovojnici —
+    // pin preverja jedro in delegiranje, sicer bi nova pot zaobšla invariant.
+    const src = SRC('lib/delivery-webhook.ts')
     expect(src).toContain('claimMutableOrder(db, existing.id')
     expect(src).not.toContain('db.order.update(')
     // dve poti, ki platformi vrneta 2xx (brez naročila / izgubljena dirka) —
     // sicer bi platforma preklic vsakič znova poslala
     expect((src.match(/received: true, ignored: true/g) || []).length).toBe(2)
+
+    const legacy = SRC('app/api/delivery/webhook/[provider]/route.ts')
+    const perIntegration = SRC('app/api/delivery/webhook/[provider]/[integration]/route.ts')
+    for (const wrapper of [legacy, perIntegration]) {
+      expect(wrapper).toContain("import { handleDeliveryWebhook } from '@/lib/delivery-webhook'")
+      expect(wrapper).toContain('return handleDeliveryWebhook(req, provider,')
+      expect(wrapper).not.toContain('db.order.update(')
+    }
   })
 
   test('cleanup-demo: oba pogoja v posameznem zapisu + oboje uvoženo iz ops.ts', () => {

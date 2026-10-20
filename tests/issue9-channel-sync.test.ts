@@ -56,6 +56,7 @@ import {
 } from '../src/lib/channel-sync'
 import { GET as availabilityGET } from '../src/app/api/public/menu/availability/route'
 import { POST as webhookPOST } from '../src/app/api/delivery/webhook/[provider]/route'
+import { webhookIdempotencyKey } from '../src/lib/delivery'
 
 const P = 'i9-'
 const RUN = Date.now().toString(36)
@@ -67,7 +68,8 @@ const QR2 = (Date.now().toString(16) + 'c2'.repeat(32)).slice(0, 32) // miza na 
 const KIOSK_DEVICE_ID = `${P}kiosk-dev-${RUN}`
 const GLOVO_SECRET = `${P}glovo-secret-${RUN}`
 const PLAT_ID = `${P}glovo-${RUN}`
-const IDEM = `glovo:${PLAT_ID}`
+// v1.159.0: ključ idempotence je vezan na lokacijo (isti ID dveh lokacij ne trči)
+let IDEM = `glovo:${PLAT_ID}`
 
 let loc1 = ''
 let loc2 = ''
@@ -213,6 +215,7 @@ beforeAll(async () => {
     data: { id: intBlocked, name: `${P}Neznan kanal`, type: 'other', provider: 'nonexistent-provider', locationId: loc1, isActive: true },
   })
   intGlovo = `${P}int-glovo-${RUN}`
+  IDEM = webhookIdempotencyKey('glovo', PLAT_ID, loc1)
   await db.integration.create({
     data: { id: intGlovo, name: `${P}Glovo`, type: 'delivery', provider: 'glovo', locationId: loc1, isActive: true, apiSecret: GLOVO_SECRET },
   })
@@ -321,9 +324,9 @@ describe('A. GET /api/public/menu/availability — avtentikacija + vsebina + ETa
 /* ─────────────── B. orderSource 'delivery' (webhook) ─────────────── */
 
 describe('B. Glovo webhook → orderSource delivery + idempotenca', () => {
-  // POGOJ: ruta izbere NAŠO glovo integracijo (findFirst provider='glovo') in secret
-  // iz nje — na dev.db z ostanki tujih vrstic (prazen apiSecret → 503) ta sklop NI
-  // mogoč; teče na sveži bazi (ci-fresh). vsak B test preveri predpogoj eksplicitno.
+  // POGOJ: edina aktivna glovo integracija je naša fiksatura; stara pot zahteva
+  // ENOLIČNO ujemanje podpisa (v1.159.0) — na dev.db s tujimi vrsticami ta sklop
+  // NI mogoč; teče na sveži bazi (ci-fresh). vsak B test preveri predpogoj eksplicitno.
   async function expectCleanGlovoState(): Promise<void> {
     const pick = await db.integration.findFirst({ where: { provider: 'glovo' }, select: { id: true } })
     if (pick?.id !== intGlovo) {
@@ -334,7 +337,7 @@ describe('B. Glovo webhook → orderSource delivery + idempotenca', () => {
     }
   }
 
-  it('podpisan webhook → 200; naročilo ima orderSource="delivery" (idempotencyKey glovo:i9-…)', async () => {
+  it('podpisan webhook → 200; naročilo ima orderSource="delivery" (ključ vezan na lokacijo)', async () => {
     await expectCleanGlovoState()
     const res = await webhookPOST(glovoWebhook(glovoPayload()), { params: Promise.resolve({ provider: 'glovo' }) })
     expect(res.status).toBe(200)
@@ -491,7 +494,7 @@ describe('C. channel-sync — register/ključavnica/sinhronizacija', () => {
 
 describe('D. Registri — verzija / sweep predpona / 0 DDL', () => {
   it('APP_VERSION je 1.137.0', () => {
-    expect(APP_VERSION).toBe('1.158.0')
+    expect(APP_VERSION).toBe('1.159.0')
   })
 
   it("TEST_PREFIXES vsebuje 'i9-'", () => {

@@ -60,8 +60,11 @@ const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   // Vercel cron: Authorization: Bearer CRON_SECRET (timing-safe, v handle());
   // brez skrivnosti (dev) pusti le sejo admin/manager — varovalka v isti datoteki.
   { methods: ['GET', 'POST'], path: '/api/cron/daily', why: 'cron — Bearer CRON_SECRET (timing-safe) ali seja; varovalka v handle()' },
-  // Webhook »ready« sonde (GET) ne izdajo nič; nosilec (POST) preverja HMAC podpis.
-  { methods: ['GET'], path: '/api/delivery/webhook/[provider]', why: 'webhook pripravljenost — brez podatkov; POST = HMAC podpis' },
+  // Webhook »ready« sonda (GET) ne izda nič; POST preveri HMAC podpis v skupnem
+  // jedru delivery-webhook.ts (v1.159.0) — stara pot z več integracijami
+  // zahteva enolično ujemanje podpisa, sicer 409.
+  { methods: ['GET', 'POST'], path: '/api/delivery/webhook/[provider]', why: 'webhook — GET ready brez podatkov; POST = HMAC v jedru (verifyWebhookSignature) + rate-limit' },
+  { methods: ['GET', 'POST'], path: '/api/delivery/webhook/[provider]/[integration]', why: 'webhook per-integration — HMAC v jedru; GET = ready sonda brez podatkov' },
   { methods: ['GET'], path: '/api/einvoices/webhook/[provider]', why: 'webhook pripravljenost — brez podatkov; POST = HMAC podpis' },
   { methods: ['PUT'], path: '/api/devices/enroll', why: 'unovčenje enrollment kode — 15-min koda, enkraten claim, lokacija server-side' },
   { methods: ['GET', 'POST'], path: '/api/public/crm/unsubscribe', why: 'javna odjava — žeton v URL (PII brez seje)' },

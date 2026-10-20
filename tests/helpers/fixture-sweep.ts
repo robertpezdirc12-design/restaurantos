@@ -106,6 +106,7 @@ export const TEST_PREFIXES = [
   'v158-', // reservation-capacity (v1.158.0 — celodnevna kapaciteta + zaklep sočasnih rezervacij)
   'v156r-', // po-receive-concurrency (v1.156.0 — atomarni GRN/zaloga/statusi ob sočasnem prevzemu)
   'v157-', // stripe-webhook (v1.157.0 — podpisana poravnava plačanih sej + dnevna uskladitev)
+  'v159-', // delivery-tenant (v1.159.0 — webhook vezan na integracijo/lokacijo, ključ po lokaciji)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
