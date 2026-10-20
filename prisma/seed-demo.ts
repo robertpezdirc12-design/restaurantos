@@ -1008,7 +1008,7 @@ async function main() {
       dateTime: new Date(now + 26 * 3600_000),
       partySize: 8,
       status: 'confirmed',
-      source: 'web',
+      source: 'website',
       locationId,
       tableId: nid('tbl-17'),
     },

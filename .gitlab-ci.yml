@@ -7,7 +7,8 @@
 #
 # Usklajeno z GitHub Actions (audit okt-2026 #15, sinhronizacija treh sistemov):
 # quality-gate = isti recept kot `tests` job v .github/workflows/ci.yml,
-# production-build = isti proračun kot `typecheck-prod` + build. Kjer se dva
+# production-typecheck = isti recept kot `typecheck-prod`,
+# production-build = production-typecheck + `bun run build`. Kjer se dva
 # sistema razhajata, zelen pomeni nič — zato je recept zapisan z isto vsebino
 # in z isto vrstico komentarja na obeh straneh.
 
@@ -79,11 +80,34 @@ quality-gate:
     # pipeline #57 je bil 653.068 B — omejitev ni več ozko grlo.
     - bun run test
 
+# №31 (v1.152.1): zrcalo GitHub `typecheck-prod`. Zakaj ločen job: quality-gate
+# generira SQLite client (enum polja so tam String), zato `tsc` tam ne vidi
+# neveljavnih enum literalov; Vercel generira Postgres client in vidi prave
+# enume. To razhajanje je stalo tri ERROR deployment-e (v1.150.0–v1.152.0):
+# seed 'web' in itemStatus tipa string. `production-build` tega ne pokrije, ker
+# brez DATABASE_URL ne teče. Ta job baze ne potrebuje — `prisma generate` se
+# ne poveže.
+production-typecheck:
+  stage: verify
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  cache:
+    key:
+      files:
+        - package.json
+      prefix: production-typecheck
+    paths:
+      - node_modules/
+  script:
+    - bun install --frozen-lockfile
+    - bunx prisma generate --schema prisma/schema.prisma
+    - bunx tsc --noEmit
+
 # Production build is optional and only runs when DATABASE_URL is configured.
-# Z `ignoreBuildErrors` odstranjenim (oct-2026 #18) je to hkrati edini typecheck
-# proti PRODUKCIJSKEMU klientu na GitLabu — ustreza `typecheck-prod` jobu na
-# GitHub Actions. Brez nastavljene spremenljivke se job preskoči, zato je
-# poskrbeti zanje tu ALI se zanašati na typecheck-prod na GitHubu (garantirano).
+# Z `ignoreBuildErrors` odstranjenim (oct-2026 #18) mora build pretipizirati
+# produkcijskega klienta; to isto (brez baze) že preveri production-typecheck
+# zgoraj, zato je ta job zdaj le še build, ne edini tipski gate.
 production-build:
   stage: build
   rules:

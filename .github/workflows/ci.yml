@@ -268,7 +268,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           scope: 'typecheck-prod (tsc proti Postgres klientu)'
-          hint: 'Ta mreža gleda enumerante in Json polja produkcijske sheme. Napaka tu ob zelenem jobu `tests` je točno razred, ki je stal padec rezervacijskega opomnika (v1.129.0). Popravi kodo, ne sheme.'
+          hint: 'Ta mreža gleda enume in Json polja produkcijske sheme. Napaka tu ob zelenem jobu `tests` je točno razred, ki je stal padec rezervacijskega opomnika (v1.129.0). Popravi kodo, ne sheme.'
 
   # (deploy job odstranjen v Task 43 — Vercel Git integration deploya samodejno;
   # vzporeden CLI deploy bi povzročil dva builda na push in race za produkcijo.)

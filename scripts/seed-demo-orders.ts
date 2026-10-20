@@ -24,7 +24,11 @@ async function main() {
     if (allItems.length === 0) continue
     const maxNum = (await db.order.findFirst({ orderBy: { orderNumber: 'desc' }, select: { orderNumber: true } }))?.orderNumber ?? 41000
     // 4 naročila: 3 min (sveže), 9 min (opozorilo), 19 min (zamuda), 34 min (zamuda+)
-    const specs = [
+    // Tip je lokalna unija, ne uvožen enum: SQLite zrcalo enumov ne pozna (String),
+    // Postgres klient pa zahteva člane OrderItemStatus. Test seed-enum-validity
+    // primerja literale s PRODUKCIJSKO shemo, da se ta razlika ne skrije spet.
+    type SeedItemStatus = 'pending' | 'fired' | 'preparing' | 'ready' | 'served' | 'cancelled' | 'voided'
+    const specs: Array<{ age: number; tables: typeof tables; itemCount: number; itemStatus: SeedItemStatus }> = [
       { age: 3, tables: [tables[0]], itemCount: 2, itemStatus: 'fired' },
       { age: 9, tables: [tables[1]], itemCount: 3, itemStatus: 'fired' },
       { age: 19, tables: [tables[2]], itemCount: 2, itemStatus: 'preparing' },

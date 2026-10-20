@@ -472,7 +472,15 @@ export async function claimMutableOrder(
     (await client.order.findUnique({ where: { id }, select: { status: true, paymentStatus: true, tableId: true } }))
   if (!isMutableOrderState(cur)) return { ok: false, tableId: null }
   const claim = await client.order.updateMany({
-    where: { id, status: cur!.status, paymentStatus: cur!.paymentStatus },
+    // Cast je tipsko sidro, ne pobeg: `read` prihaja iz klicev, kjer so vrednosti
+    // preverjene z isMutableOrderState, pod SQLite klientom pa so statusi String,
+    // pod Postgres klientom enum. OrderWhereInput['status'] je v obeh klientih
+    // natanko tip, ki ga `where` pričakuje.
+    where: {
+      id,
+      status: cur!.status as Prisma.OrderWhereInput['status'],
+      paymentStatus: cur!.paymentStatus as Prisma.OrderWhereInput['paymentStatus'],
+    },
     data,
   })
   if (claim.count === 0) return { ok: false, tableId: null }
