@@ -13,11 +13,13 @@
  *  - isti meni/DDV/kuhinja/plačilo/FURS tok kot POS;
  *  - webhook secret NIKOLI v source-u (Integration.apiSecret v DB ali env);
  *  - podpis preverjen PRED zapisom (timingSafeEqual), replay zaščita,
- *    idempotencija prek Order.idempotencyKey (`glovo:<id>` / `wolt:<id>`),
+ *    idempotencija prek Order.idempotencyKey (v1.159.0: ključ vsebuje
+ *    lokacijo — isti platformski ID dveh lokacij ne trči; stari ključi brez
+ *    lokacije ostajajo berljivi za replay/preklic),
  *    rate limiting, audit + IntegrationLog (napake vidne v Dnevniku napak);
  *  - občutljivi podatki (telefon) v logih maskirani.
  */
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import { r2 } from '@/lib/map'
 import { rateLimitBoolAsync } from '@/lib/rate-limit'
 
@@ -47,14 +49,8 @@ export function verifyWebhookSignature(rawBody: string, signatureHeader: string 
   return timingSafeEqual(a, b)
 }
 
-/** Secret za platformo: Integration.apiSecret (DB, provider=glovo/wolt) ali env fallback. */
-export async function getPlatformSecret(provider: string): Promise<string> {
-  const { db } = await import('@/lib/db')
-  const integration = await db.integration.findFirst({
-    where: { provider, isActive: true },
-    select: { apiSecret: true },
-  })
-  if (integration?.apiSecret) return integration.apiSecret
+/** Env secret platforme (uporabljen, ko Integration.apiSecret ni nastavljen). */
+export function deliveryEnvSecret(provider: string): string {
   const envKey = provider === 'glovo' ? 'GLOVO_WEBHOOK_SECRET' : provider === 'wolt' ? 'WOLT_WEBHOOK_SECRET' : ''
   return (envKey && process.env[envKey]) || ''
 }
@@ -105,18 +101,27 @@ function n(v: unknown, fb = 0): number {
   return Number.isFinite(x) ? x : fb
 }
 
-/** Najde lokalni MenuItem: po id, po imenu (case-insensitive) ali po kodi. */
-async function resolveMenuItemId(raw: Row): Promise<string | null> {
+/**
+ * Najde lokalni MenuItem: po id, po imenu (case-insensitive) ali po kodi.
+ * v1.159.0: ko je lokacija znana, se išče SAMO v meniju te lokacije — enako
+ * ime na dveh lokacijah ne sme izbrati tujega artikla (naročilo bi padlo na
+ * "Artikel ni na voljo na tej lokaciji"). Brez lokacije ostane globalno
+ * iskanje (legacy namestitve brez Integration.locationId).
+ */
+async function resolveMenuItemId(raw: Row, locationId: string | null): Promise<string | null> {
   const { db } = await import('@/lib/db')
+  const scope = locationId
+    ? { Category: { is: { Menu: { is: { locationId } } } } }
+    : {}
   const id = s(raw.menuItemId || raw.id || raw.sku)
   if (id) {
-    const byId = await db.menuItem.findUnique({ where: { id }, select: { id: true } })
+    const byId = await db.menuItem.findFirst({ where: { id, ...scope }, select: { id: true } })
     if (byId) return byId.id
   }
   const name = s(raw.name || raw.title || raw.product_name)
   if (name) {
     const byName = await db.menuItem.findFirst({
-      where: { name: { equals: name } },
+      where: { name: { equals: name }, ...scope },
       select: { id: true },
     })
     if (byName) return byName.id
@@ -125,7 +130,7 @@ async function resolveMenuItemId(raw: Row): Promise<string | null> {
 }
 
 /** Glovo: tolerantna preslikava (rekonstruiran contract, ni verbatim iz originala). */
-export async function mapGlovoPayload(body: Row): Promise<MappedPlatformOrder> {
+export async function mapGlovoPayload(body: Row, locationId: string | null = null): Promise<MappedPlatformOrder> {
   const order = (body.order && typeof body.order === 'object' ? (body.order as Row) : body)
   const customer = (order.customer && typeof order.customer === 'object' ? (order.customer as Row) : {})
   const addr = (order.delivery_address && typeof order.delivery_address === 'object'
@@ -137,11 +142,10 @@ export async function mapGlovoPayload(body: Row): Promise<MappedPlatformOrder> {
       ? (order.items as Row[])
       : []
 
-  const { db } = await import('@/lib/db')
   const items: MappedPlatformOrder['items'] = []
   const unmapped: string[] = []
   for (const raw of rawItems) {
-    const menuItemId = await resolveMenuItemId(raw)
+    const menuItemId = await resolveMenuItemId(raw, locationId)
     const qty = Math.max(1, Math.round(n(raw.quantity ?? raw.qty ?? raw.count, 1)))
     if (menuItemId) {
       items.push({ menuItemId, qty, note: s(raw.note || raw.notes || raw.instructions) || undefined })
@@ -149,7 +153,6 @@ export async function mapGlovoPayload(body: Row): Promise<MappedPlatformOrder> {
       unmapped.push(s(raw.name || raw.title || raw.id, 'neznan artikel'))
     }
   }
-  const loc = await db.location.findFirst({ select: { id: true } })
 
   return {
     platformOrderId: s(order.id ?? order.order_id ?? order.code),
@@ -164,13 +167,13 @@ export async function mapGlovoPayload(body: Row): Promise<MappedPlatformOrder> {
     unmappedItems: unmapped,
     deliveryFee: n(order.delivery_fee ?? addr.delivery_fee, 0),
     packagingFee: n(order.packaging_fee, 0),
-    note: `Glovo #${s(order.id ?? order.code)}${loc ? '' : ''}`,
+    note: `Glovo #${s(order.id ?? order.code)}`,
     estimatedMinutes: n(order.eta_minutes ?? order.estimated_minutes ?? order.delivery_time, 0) || undefined,
   }
 }
 
 /** Wolt: tolerantna preslikava (rekonstruiran contract, ni verbatim iz originala). */
-export async function mapWoltPayload(body: Row): Promise<MappedPlatformOrder> {
+export async function mapWoltPayload(body: Row, locationId: string | null = null): Promise<MappedPlatformOrder> {
   const order = (body.order && typeof body.order === 'object' ? (body.order as Row) : body)
   const customer = (order.customer && typeof order.customer === 'object' ? (order.customer as Row) : {})
   const addr = (order.delivery && typeof order.delivery === 'object'
@@ -185,7 +188,7 @@ export async function mapWoltPayload(body: Row): Promise<MappedPlatformOrder> {
   const items: MappedPlatformOrder['items'] = []
   const unmapped: string[] = []
   for (const raw of rawItems) {
-    const menuItemId = await resolveMenuItemId(raw)
+    const menuItemId = await resolveMenuItemId(raw, locationId)
     const qty = Math.max(1, Math.round(n(raw.quantity ?? raw.qty ?? raw.count, 1)))
     if (menuItemId) {
       items.push({ menuItemId, qty, note: s(raw.note || raw.notes) || undefined })
@@ -289,6 +292,19 @@ export async function getDeliveryAutoAcceptConfig(): Promise<DeliveryAutoAcceptC
 
 /* ───── Idempotencija webhookov (Order.idempotencyKey) ───── */
 
-export function webhookIdempotencyKey(platform: 'glovo' | 'wolt', platformOrderId: string): string {
+/** Stari ključ (v1.159.0 in prej): brez lokacije — ostaja za branje obstoječih vrstic. */
+export function legacyWebhookIdempotencyKey(platform: 'glovo' | 'wolt', platformOrderId: string): string {
   return `${platform}:${platformOrderId}`.slice(0, 64)
+}
+
+/**
+ * Ključ idempotence, vezan na lokacijo: isti platformski ID dveh računov
+ * (dveh lokacij) NE sme trčiti — sicer drugo naročilo postane "replay" s
+ * tujim kontekstom in je zavrnjeno. Berljiva predpona + hash (polna lokacija
+ * in ID), zato dolžina ≤ 64 tudi pri dolgih ID-jih.
+ */
+export function webhookIdempotencyKey(platform: 'glovo' | 'wolt', platformOrderId: string, locationId?: string | null): string {
+  if (!locationId) return legacyWebhookIdempotencyKey(platform, platformOrderId)
+  const digest = createHash('sha256').update(`${locationId}\u0000${platformOrderId}`, 'utf8').digest('hex').slice(0, 32)
+  return `${platform}:${locationId.slice(0, 12)}:${digest}`
 }
