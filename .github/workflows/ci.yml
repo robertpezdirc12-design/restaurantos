@@ -203,6 +203,14 @@ jobs:
       - name: Fresh SQLite database (schema push)
         run: bunx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
 
+      # №26 (audit okt-2026): secrets preverjanje je zdaj PRED celotnim suite-om,
+      # ne zadnji korak. Job se ustavi ob prvi napaki (tako Actions kot GitLab),
+      # zato ta korak za rdečim testom ni bil nikoli izveden — izpuščen žeton bi
+      # ostal neviden. Varnostni gate, ki je odvisen od tega, da je vse ostalo
+      # zeleno, ni varnostni gate (isti razlog kot pri №23).
+      - name: Secrets hygiene
+        run: bash scripts/check-secrets.sh
+
       - name: TypeScript check
         run: bunx tsc --noEmit
 
@@ -215,9 +223,6 @@ jobs:
         # dokumenata, zato so pred/all hooki pod sočasnostjo daljši od
         # privzetih 5 s (v1.148.0, lekcija issue14 afterAll).
         run: bun run test
-
-      - name: Secrets hygiene
-        run: bash scripts/check-secrets.sh
 
       - name: Alarm ob napaki
         if: failure()

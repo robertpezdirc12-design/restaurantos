@@ -42,8 +42,28 @@ quality-gate:
       - node_modules/
   script:
     - bun install --frozen-lockfile
+    # №25 (audit okt-2026): slika `oven/bun:1` `git`-a NIMA. Skupina B2 v
+    # tests/audit1516-ci-hygiene.test.ts ga potrebuje (prava bare repozitorija za
+    # sync guard), zato ga poskušamo namestiti. POSKUS JE NAMERNO TAK, DA NE MORE
+    # PODRETI JOBA: job ne sme biti rdeč zaradi manjkajočega orodja, sicer
+    # ponavljamo napako №23 (gate, ki umre zaradi infrastrukture in ne pove
+    # ničesar o kodi). Če namestitev ne uspe, se skupina B2 preskoči in to je v
+    # logu zapisano z oznako PRESKOCENO-B2; na GitHub Actions se vedno izvede
+    # (tam runner ima git).
+    - bash -c 'command -v git >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq --no-install-recommends git >/dev/null 2>&1; } || echo "GIT-MISSING: B2 skupina (sync guard) bo preskočena"'
     # sveža SQLite baza (isti korak kot ci.yml:182) — WITHOUT this the suite is not equivalent
     - bunx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
+    # №26 (audit okt-2026): vrstni red je OBRNJEN glede na prejšnjega. Dotlej sta
+    # bila `check-schema-drift.cjs` in `check-secrets.sh` zadnja koraka za
+    # `bun run test`, job pa se ustavi ob prvi napaki (GitLab vsako vrstico
+    # `script`-a izvede pod `set -e`). Kakršen koli rdeč test ju zato ni nikoli
+    # pognal — v pipeline #57 NISTA tekla, čeprav se je testni del zaključil
+    # (9 padlih testov). Posledica ni neurejenost, ampak NEVIDEN izpuščen žeton
+    # ali drift sheme: varnostni gate, ki je odvisen od tega, da je vse ostalo
+    # zeleno, ni varnostni gate.
+    # Zdaj gresta DVA hitra, neodvisna pregleda PRED drago gradnjo.
+    - node scripts/check-schema-drift.cjs
+    - bash scripts/check-secrets.sh
     - bunx tsc --noEmit
     - bun run lint
     # isti proračun hookov kot lokalno in na GitHub Actions (v1.148.0) —
@@ -55,10 +75,9 @@ quality-gate:
     # sredi testov in oba zadnja koraka (drift + secrets) se NISTA izvedla —
     # rdeč izid brez razloga. Zato `src/lib/db.ts` logira poizvedbe samo, če je
     # PRISMA_LOG_QUERIES=1, in ga TU NE prizegamo (pinirano v
-    # tests/audit2324-log-noise.test.ts, skupina A).
+    # tests/audit2324-log-noise.test.ts, skupina A). Meritev po popravku: log
+    # pipeline #57 je bil 653.068 B — omejitev ni več ozko grlo.
     - bun run test
-    - node scripts/check-schema-drift.cjs
-    - bash scripts/check-secrets.sh
 
 # Production build is optional and only runs when DATABASE_URL is configured.
 # Z `ignoreBuildErrors` odstranjenim (oct-2026 #18) je to hkrati edini typecheck

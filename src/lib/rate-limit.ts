@@ -85,14 +85,36 @@ export const memoryStore: RateLimitStore = {
 
 /* ───── Upstash REST store (brez SDK — samo fetch; dormant do env nastavitve) ───── */
 
-const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '')
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || ''
+/**
+ * KANONIČNA presoja, ali je Upstash nastavljeno UPORABNO (audit okt-2026 №28).
+ *
+ * Prej je zadostovalo `url && token`. GitLab quality-gate ima v projektnih
+ * spremenljivkah obe (z vrednostjo brez sheme), zato je store izbral Upstash in
+ * je vsak omejen zahtevek naredil DVA obsojena `fetch` klica
+ * (`fetch() URL is invalid`), preden je padel nazaj na memory. Posledice:
+ * (a) log hrup + odvečna mrežna pot v vsaki zahtevi, (b) vsak test, ki zamenja
+ * `globalThis.fetch` in šteje klice (npr. "#37: zavrnitev PRED klicem na Stripe"),
+ * je štel rate-limitrove klice za Stripe — v CI je bil števec 2, lokalno 0,
+ * ker lokalno spremenljivki nista nastavljeni.
+ *
+ * Zdaj je neuporabljena nastavitev enaka NENASTAVLJENI: absoluten http(s) URL je
+ * pogoj, sicer memory store brez omrežnega poskusa.
+ */
+export function upstashEndpoint(): { url: string; token: string } | null {
+  const url = (process.env.UPSTASH_REDIS_REST_URL || '').trim().replace(/\/+$/, '')
+  const token = (process.env.UPSTASH_REDIS_REST_TOKEN || '').trim()
+  if (!url || !token) return null
+  if (!/^https?:\/\/[^\s]+$/.test(url)) return null
+  return { url, token }
+}
 
-export const upstashConfigured = Boolean(UPSTASH_URL && UPSTASH_TOKEN)
+export const isUpstashUsable = (): boolean => upstashEndpoint() !== null
 
 async function upstashCommand(args: string[]): Promise<string | null> {
-  const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+  const ep = upstashEndpoint()
+  if (!ep) throw new Error('upstash ni konfiguriran z absolutnim http(s) URL-jem')
+  const res = await fetch(`${ep.url}/${args.map(encodeURIComponent).join('/')}`, {
+    headers: { Authorization: `Bearer ${ep.token}` },
     signal: AbortSignal.timeout(1_500),
   })
   if (!res.ok) throw new Error(`upstash ${res.status}`)
@@ -119,12 +141,10 @@ export const upstashStore: RateLimitStore = {
 
 let activeStore: RateLimitStore | null = null
 
-/** Aktiven store: Upstash, če je konfiguriran, sicer memory (deterministično, env-read ob prvem klicu). */
+/** Aktiven store: Upstash, če je UPORABNO nastavljen (absoluten http(s) URL — №28), sicer memory. */
 function getStore(): RateLimitStore {
   if (activeStore) return activeStore
-  const url = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '')
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || ''
-  activeStore = url && token ? upstashStore : memoryStore
+  activeStore = upstashEndpoint() ? upstashStore : memoryStore
   return activeStore
 }
 
