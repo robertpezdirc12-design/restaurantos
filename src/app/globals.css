@@ -894,3 +894,39 @@ main[data-screen="login"] button {
   background-color: var(--sidebar);
   box-shadow: 0 1px 0 oklch(0 0 0 / 24%);
 }
+
+/* ── v1.166.0 hero zasloni (poliranje, ne predelava — spec §3.4) ─────────── */
+/* KDS listek: IZKLJUČNO dvig (senca). Zvezni se NE posega: border-l-4 nosi
+   STAROST (page.tsx:3375 → kdsAgeBorderCls :341), rdeča pa je rezervirana za
+   zamudo (v1.141.0). `:not(...)` je OBVEZEN (R-8): postaja (kds-station-board.tsx:253)
+   nosi OBA markerja, enaka (0,1,0) specifičnost + naš vrstni red na koncu datoteke
+   bi jej preglašila `border-radius: 1rem` in senco iz :532. Brez ogolja (R-11):
+   --radius-xl: 16px je zavestna Cardoso skala (issue74 V-1). */
+[data-region="kds-ticket"]:not([data-component="kds-station-card"]) {
+  box-shadow: 0 1px 2px oklch(0 0 0 / 18%), 0 10px 26px oklch(0 0 0 / 14%);
+}
+/* KDS postaje: glava kartice dobi emerald laso iz žetona znamke (hue 165). */
+[data-component="kds-station-card"] [data-slot="card-header"] {
+  --emerald-hair: oklch(0.508 0.118 165.612 / 35%);
+  border-bottom: 1px solid var(--emerald-hair);
+}
+/* Natakarski handheld: chrome je že emerald (:506), a s FIKSNIM hue 158 — veže se
+   na žeton znamke. TEMNI način NE sme uporabiti var(--primary): v temi je
+   oklch(0.62 0.13 165) = belo besedilo 3,42:1, glava pa nosi text-xs podnaslov
+   (handheld/page.tsx:404) ⇒ padec AA. Zato dve fiksni stopnji v blondirani hue.
+   VRSTNI RED: temno pravilo JE zvezno pred svetlim — (0,3,0) premaga (0,2,0),
+   zato vrstni red ne vpliva na izris; vpliva pa na §E bralca (R-13, lastIndexOf):
+   selektorska vrstica temnega pravila vsebuje sidro svetlega kot podniz, bi ga
+   zadnji zaden in test 4 bi vedno prebral temno telo. */
+.dark [data-screen="handheld-pos"] > [data-region="handheld-header"] {
+  background-image: linear-gradient(110deg, oklch(0.32 0.09 165), oklch(0.38 0.1 165));
+}
+[data-screen="handheld-pos"] > [data-region="handheld-header"] {
+  background-image: linear-gradient(110deg, var(--primary), oklch(0.42 0.11 165));
+}
+/* PRODAJNI tloris (nov sidrski marker): dvig. `border-color: var(--border)` je
+   namenoma IZPUŠČEN (R-10): v svetlem je številčno enak že uporabljenemu
+   border-stone-200, v temnem 11 % proti 12 % — trditev nikoli ne more pasti. */
+[data-region="pos-floor-plan"] {
+  box-shadow: 0 1px 2px oklch(0.25 0.03 155 / 4%), 0 10px 28px oklch(0.25 0.03 155 / 5%);
+}

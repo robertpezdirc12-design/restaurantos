@@ -9,7 +9,9 @@
  *  C. REGIJE: lupina je obarvana lokalno (region-ski žetoni), ne prek
  *     preimenovanja razredov.
  *  D. RAZREDI LUPINE v TSX: glava / steber / mobilna vrstica / predal.
- *  E. INVARIANTE: --radius 10px, tabular-nums, 0 DDL, pritrjene celote.
+ *  E. HERO ZASLONI (KDS listek/postaja, handheld, tloris): samo sidra, ki
+ *     dokazano obstajajo.
+ *  F. INVARIANTE: --radius 10px, tabular-nums, 0 DDL (Task 7).
  *
  * Čisto source-pin (vzorec issue69): brez DB fiksur, brez API klicev.
  */
@@ -272,5 +274,60 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
     const fg = /--foreground:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
     expect(isCharcoal(popover)).toBe(true)
     expect(ratio(fg, popover)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('v1.166.0 §E — hero zasloni (samo dejanska sidra)', () => {
+  const d = src('app/dashboard/page.tsx')
+  const s = src('app/globals.css')
+  const board = src('components/kds-station-board.tsx')
+  const BELA = 'oklch(1 0 0)'
+  // R-13: zadnjič deklarirano pravilo je tisto, ki ga vidi brauzer (enaka
+  // specifičnost ⇒ source order). Brati MORAMO od desno, sicer najdemo :506/:527.
+  const ruleBody = (anchor: string): string => {
+    const at = s.lastIndexOf(anchor)
+    expect(at).toBeGreaterThanOrEqual(0)
+    return s.slice(at, s.indexOf('}', at))
+  }
+  it('KDS listek: dvignjen s senco, A BREZ posega v starostni rob', () => {
+    expect(s).toContain('[data-region="kds-ticket"]:not([data-component="kds-station-card"]) {\n  box-shadow:')
+    expect(s).not.toMatch(/\[data-region="kds-ticket"\][^{]*\{[^}]*border-left/)
+  })
+  it('dvig listka NE sme preglašiti ogolj postaje (R-8/R-11)', () => {
+    expect(ruleBody('[data-region="kds-ticket"]:not(')).not.toContain('border-radius')
+  })
+  it('KDS postaja: glava kartice dobi emerald laso iz žetona znamke', () => {
+    expect(board).toContain('data-component="kds-station-card"')
+    expect(s).toContain('--emerald-hair: oklch(0.508 0.118 165.612 / 35%);')
+    expect(ruleBody('[data-component="kds-station-card"] [data-slot="card-header"] {\n  --emerald-hair')).toContain('border-bottom: 1px solid var(--emerald-hair);')
+  })
+  it('handheld glava: svetli gradient VEŽE NA ŽETON in ostane AA (≥4,5 na belo)', () => {
+    const body = ruleBody('[data-screen="handheld-pos"] > [data-region="handheld-header"] {\n  background-image:')
+    expect(body).toContain('linear-gradient(110deg, var(--primary), oklch(0.42 0.11 165))')
+    expect(ratio(BELA, tokenIn(css(), ':root', 'primary'))).toBeGreaterThanOrEqual(4.5)
+    expect(ratio(BELA, 'oklch(0.42 0.11 165)')).toBeGreaterThanOrEqual(4.5)
+  })
+  it('handheld glava: temni gradient NE uporablja --primary (3,42:1 = padec AA, R-9)', () => {
+    const body = ruleBody('.dark [data-screen="handheld-pos"] > [data-region="handheld-header"] {')
+    expect(body).not.toContain('var(--primary)')
+    expect(body).toContain('linear-gradient(110deg, oklch(0.32 0.09 165), oklch(0.38 0.1 165))')
+    expect(ratio(BELA, 'oklch(0.32 0.09 165)')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio(BELA, 'oklch(0.38 0.1 165)')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio(BELA, tokenIn(css(), '\\.dark', 'primary'))).toBeLessThan(4.5)
+  })
+  it('PRODAJNI tloris: EN sam sidrski marker, razredi beseda-besed enaki (R-10)', () => {
+    expect(d).toContain('data-region="pos-floor-plan"')
+    expect(d.match(/data-region="pos-floor-plan"/g)?.length).toBe(1)
+    expect(d).toContain('data-region="pos-floor-plan"\n                className="relative w-full rounded-xl border border-stone-200 bg-stone-100/70 overflow-hidden touch-none"')
+    expect(s).toMatch(/\[data-region="pos-floor-plan"\]\s*\{\s*box-shadow:/)
+  })
+  // ── invarianti: MORATA ostati zelena že v RED-u; če padeta, si stopil v obseg ──
+  it('statusColors NI dotaknjen (naloga #11 WCAG 1.4.3)', () => {
+    expect(d).toContain("FREE: 'bg-emerald-700 text-white hover:bg-emerald-800'")
+    expect(d).toContain("RESERVED: 'bg-white text-stone-900 border-2 border-dashed border-stone-500 hover:bg-stone-50 shadow-sm'")
+  })
+  it('starostni rob KDS listka ostane razred-drivana preslikava (page.tsx:3375)', () => {
+    expect(d).toContain('border-l-4 ${stale ?')
+    expect(d).toContain("'border-l-emerald-600', 'border-l-amber-500', 'border-l-orange-600', 'border-l-rose-500',")
   })
 })

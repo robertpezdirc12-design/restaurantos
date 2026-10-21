@@ -2423,6 +2423,7 @@ function DashboardInner() {
                  ploščice; cone imajo svoje ozadje z oznako; sedeži so PIKE.
                  Direktno barvanje po statusu (statusColors) ostaja. */
               <div
+                data-region="pos-floor-plan"
                 className="relative w-full rounded-xl border border-stone-200 bg-stone-100/70 overflow-hidden touch-none"
                 style={{ aspectRatio: '16 / 10' }}
                 onPointerMove={planPointerMove}
