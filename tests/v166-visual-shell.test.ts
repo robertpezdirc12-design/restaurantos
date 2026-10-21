@@ -257,7 +257,6 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
     const bg = /--background:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
     for (const tok of ['--foreground', '--muted-foreground', '--color-stone-500']) {
       const v = new RegExp(`${tok}:\\s*([^;]+);`).exec(b)?.[1]?.trim() ?? ''
-      expect({ tok, r: Number(ratio(v, bg).toFixed(2)) }).toEqual({ tok, r: expect.any(Number) })
       expect(ratio(v, bg)).toBeGreaterThanOrEqual(4.5)
     }
     // --popover JE PODLAGA (0,28), ne besedilo: par surface↔surface (1,13:1) nima
@@ -267,8 +266,6 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
     const popover = /--popover:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
     const fg = /--foreground:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
     expect(isCharcoal(popover)).toBe(true)
-    expect({ par: '--foreground na --popover', r: Number(ratio(fg, popover).toFixed(2)) })
-      .toEqual({ par: '--foreground na --popover', r: expect.any(Number) })
     expect(ratio(fg, popover)).toBeGreaterThanOrEqual(4.5)
   })
 })
