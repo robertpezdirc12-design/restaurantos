@@ -49,6 +49,31 @@ bun run db:seed             # začetni lokalni demo podatki in testni računi
 bun run dev                 # http://localhost:3000
 ```
 
+## Lokalna namestitev — brez oblaka (v1.165.0)
+
+RestaurantOS se lahko v obratu zažene z lokalno bazo SQLite, brez Neon računa in
+brez ročnega urejanja `.env`:
+
+```bash
+bun install
+bun run local               # prvi zagon pripravi bazo, zgradi in zažene aplikacijo
+```
+
+- Baza in skrivnosti nastaneta v podatkovni mapi **zunaj repozitorija**
+  (`%LOCALAPPDATA%\RestaurantOS` na Windows, `~/Library/Application Support/RestaurantOS`
+  na macOS, `$XDG_DATA_HOME/restaurantos` na Linuxu); pot prepiše `RESTAURANTOS_DATA_DIR`.
+- Prvi zagon ustvari lastnika z naključnim 6-mestnim PIN-om; poverilnice zapiše v
+  `PRVIC-ZAGON.txt` (`0600`). Demo računi iz `prisma/seed.ts` se **ne** naložijo.
+- Ponovni zagon ohrani bazo in skrivnosti; pred vsako posodobitvijo sheme nastane
+  kopija v `backups/pre-push-*.db`.
+- Aplikacija posluša na `0.0.0.0`, zato jo terminali v istem omrežju odprejo na
+  izpisanem naslovu `http://<IP>:3000`.
+
+**Vercel ne vidi lokalne baze.** To sta dva profila iste kode: lokalni
+(`DATABASE_URL=file:...`) in oblačni (`postgresql://...`). Omejitve R1 (HTTP v
+lokalnem omrežju, ročne kopije, brez čarovnika) in vrstni red izdaj R2–R5 so v
+`docs/PRD-LOKALNA-BAZA.md`; operativni runbook je `docs/LOKALNI-ZAGON.md`.
+
 ## Testiranje
 
 ```bash
@@ -81,6 +106,8 @@ Disciplina pusha: lokalno zeleno (tsc + lint + testi) → push → CI potrdi na 
 | `docs/SECURITY-BOUNDARY.md` | varnostna meja, avtentikacija, seje |
 | `docs/TENANT-ISOLATION.md` | več-najemniška izolacija (tenant guard, testi) |
 | `docs/DEPLOYMENT-RESILIENCE.md` | odpornost deployev, incidenti, rollback |
+| `docs/PRD-LOKALNA-BAZA.md` | lokalna baza: zahteve, merila sprejema, izdaje R1–R5 |
+| `docs/LOKALNI-ZAGON.md` | runbook lokalne namestitve (zagon, kopije, odpravljanje težav) |
 | `docs/FURS-CERT-RUNBOOK.md` | namestitev FURS SI / FINA HR certifikatov (env + koraki) |
 
 ## Licenca
