@@ -116,7 +116,7 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | ID | Zahteva | Prioriteta |
 |---|---|---|
 | F1 | Podatkovna mapa: `RESTAURANTOS_DATA_DIR`, sicer `%LOCALAPPDATA%\RestaurantOS` (Windows), `~/Library/Application Support/RestaurantOS` (macOS), `$XDG_DATA_HOME/restaurantos` (Linux) | P0 |
-| F2 | Skrivnosti se ustvarijo enkrat, shranijo v `config.json` z `0600` in se ob ponovnem zagonu **ne** rotirajo | P0 |
+| F2 | Skrivnosti se ustvarijo enkrat, shranijo v `config.json` z lastnikovimi pravicami (POSIX `0600`; Windows NTFS ACL brez skupine `Users`) in se ob ponovnem zagonu **ne** rotirajo | P0 |
 | F3 | Shema se ustvari iz `prisma/schema.sqlite.prisma`; na obstoječi bazi brez `--accept-data-loss` | P0 |
 | F4 | Prvi zagon ustvari lokacijo, nastavitve in lastnika z naključnim 6-mestnim PIN-om; PIN se izpiše enkrat in shrani v `PRVIC-ZAGON.txt` | P0 |
 | F5 | Demo seed (`prisma/seed.ts`) se v lokalnem profilu **ne** izvede; demo prijava je izklopljena | P0 |
@@ -168,7 +168,8 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
 ## 10. Varnost in zasebnost
 
-- Naključne skrivnosti, nikoli v repozitoriju ali izpisu; datoteka `0600`.
+- Naključne skrivnosti, nikoli v repozitoriju ali izpisu; datoteka samo za
+  lastnika računa (POSIX `0600`, na Windows NTFS ACL — `LOKALNI-ZAGON.md` §3).
 - Naključen PIN lastnika; brez `1234`/demo PIN-ov; demo prijava privzeto
   izklopljena (`DEMO_LOGIN_ENABLED=0`).
 - `BOOTSTRAP_ADMIN_*` se v lokalnem okolju izpraznita; break-glass ostane

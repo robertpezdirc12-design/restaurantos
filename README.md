@@ -63,7 +63,8 @@ bun run local               # prvi zagon pripravi bazo, zgradi in zažene aplika
   (`%LOCALAPPDATA%\RestaurantOS` na Windows, `~/Library/Application Support/RestaurantOS`
   na macOS, `$XDG_DATA_HOME/restaurantos` na Linuxu); pot prepiše `RESTAURANTOS_DATA_DIR`.
 - Prvi zagon ustvari lastnika z naključnim 6-mestnim PIN-om; poverilnice zapiše v
-  `PRVIC-ZAGON.txt` (`0600`). Demo računi iz `prisma/seed.ts` se **ne** naložijo.
+  `PRVIC-ZAGON.txt` (datoteki sta berljivi samo lastniku računa — `0600` na
+  macOS/Linux, NTFS ACL na Windows). Demo računi iz `prisma/seed.ts` se **ne** naložijo.
 - Ponovni zagon ohrani bazo in skrivnosti; pred vsako posodobitvijo sheme nastane
   kopija v `backups/pre-push-*.db`.
 - Aplikacija posluša na `0.0.0.0`, zato jo terminali v istem omrežju odprejo na

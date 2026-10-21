@@ -23,7 +23,7 @@ bun run local
 
 Prvi zagon:
 
-1. ustvari podatkovno mapo in trajne skrivnosti (`config.json`, `0600`);
+1. ustvari podatkovno mapo in trajne skrivnosti (`config.json`; dovoljenja §3);
 2. pripravi SQLite shemo iz `prisma/schema.sqlite.prisma`;
 3. ustvari lokacijo, nastavitve in **enega lastnika** z naključnim 6-mestnim PIN-om;
 4. zgradi aplikacijo (prvi build traja nekaj minut);
@@ -49,6 +49,13 @@ Mapo prepiše `RESTAURANTOS_DATA_DIR`. V njej so:
 - `config.json` — trajne skrivnosti; **ne** kopirajte v repo in ne delite;
 - `PRVIC-ZAGON.txt` — prve poverilnice;
 - `backups/pre-push-*.db` — kopije pred posodobitvijo sheme (zadnjih 5).
+
+**Dovoljine datotek s skrivnostmi.** Na macOS in Linux ju koda ustvari z `0600` —
+bere ju samo račun, ki jo je ustvaril. Na Windows POSIX `chmod` ne deluje, zato
+`config.json` in `PRVIC-ZAGON.txt` podedujeta NTFS ACL mame `%LOCALAPPDATA`:
+samo trenutni račun, `SYSTEM` in `Administrators`; skupina `Users` dostopa nima
+(preverjeno z `icacls`). Skrbnik istega računalnika ju lahko prebere, zato
+naj lokalni profil teče na računalniku, ki je last obrata.
 
 Mapa je namenoma zunaj repozitorija, zato posodobitev kode ne more povoziti
 podatkov in `git status` ne vidi baze.
