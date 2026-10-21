@@ -1322,7 +1322,7 @@ describe('G. registri: TEST_PREFIXES, verzija, reasons enum, 0 DDL', () => {
 
   it('G2. APP_VERSION === 1.134.0', () => {
     // verzijski register posodablja vsak val — zadnji: v1.133.0 (issue #71: 34 UX najdb — KDS izmena+alergeni, jezik vloge)
-    expect(APP_VERSION).toBe('1.164.0')
+    expect(APP_VERSION).toBe('1.165.0')
   })
 
   it('G3. dataQuality.reasons so stabilen nabor kod (UI preslika lcov.dq.*)', () => {
