@@ -33,7 +33,7 @@ delovne površine, poudarki v emerald barvi znamke, v obeh načinih (svetli/temn
 - Prestrukturiranje postavitev 27 zavihkov (samo vizualna plast).
 - Novi logotipi ali asseti; če lastnik priskrbi svoj asset, gre vmes tak kot je.
 - PWA namestitev / HTTPS (obseg R2).
-- Native aplikacije, certficirana strojna oprema.
+- Native aplikacije, certificirana strojna oprema.
 - Predelava vseh zaslonov — samo hero zasloni.
 - Migracije podatkovne sheme (noben DDL), nobene API spremembe.
 
@@ -92,8 +92,9 @@ Pravilo: **samo tokeni in razredi, API komponent se ne sme spremeniti.**
 - Glava v `src/app/dashboard/page.tsx` (danes `bg-white border-b
   border-stone-200 shadow-sm`): preide na `--shell` v obeh načinih;
   `ThemeToggle` ostane v glavi in preklaplja vsebinski način.
-- Glave KDS, handheld, tablica, kiosk: enaka oglje glava (oz. lastna temna
-  različica, kjer je zaslon že temen — KDS), da je znamka prepoznavna povsod.
+- Glave KDS, handheld in tablice: enako temna (oglje) glava, da je znamka
+  prepoznavna povsod. KDS in kiosk sta že temna zaslona (`bg-stone-900`) —
+  uskladita se z novo paleto, lupine ne dobita.
 - Preostale `stone`/`bg-white` uporabe v app kodi (body v `layout.tsx`,
   quickjump navigacije ipd.) preidejo na semantične tokene; brez strukturnih
   sprememb, brez overlay panelov (navigacija ostane top-bar + zamenjava pogleda).
@@ -126,8 +127,11 @@ Pravilo: **samo tokeni in razredi, API komponent se ne sme spremeniti.**
   ≈163 in kromatiko ≥ 0.1), (b) prisotnost `--shell-*` tokenov, (c) obstoj
   `.dark` bloka. Test mora biti viden, da PADE ob vrnitvi na sivo paleto
   (mutacija: `--primary` nazaj na `oklch(0.205 0 0)`).
-- **A3 — Nedotaknjeno:** pin `--radius: 10px` (issue #74) in testi issue #75
-  ostanejo zeleni brez popravkov.
+- **A3 — Nedotaknjeno:** pin `--radius: 10px` (issue #74), testi issue #75 in
+  CSS-strukturni testi (issue #69 §D: quickjump + `.dark` selektorji,
+  reduced-motion; v1.131.0 F: `:not([class*="border-"])` varovalka) ostanejo
+  zeleni brez popravkov — preverjeno 2026-10-21: noben obstoječi test ne
+  pin-a vrednosti barvne palete, vsi berejo le selektorje/strukturo.
 - **A4 — Lupina:** temen okvir v svetlem IN temnem načinu; `ThemeToggle`
   preklaplja vsebinski način; noben zaslon ne izgubi navigacije.
 - **A5 — Kontrast/fokus:** ročni pregled AA kontrasta lupine + vsebin;
