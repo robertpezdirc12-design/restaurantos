@@ -2220,7 +2220,7 @@ function DashboardInner() {
                   <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-sidebar text-sidebar-foreground">
+                <SelectContent data-region="location-select" className="bg-sidebar text-sidebar-foreground">
                   <SelectItem value="all">{t('header.allLocations')}</SelectItem>
                   {locList.map((l) => (
                     <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? t('header.inactive') : ''}</SelectItem>

@@ -274,7 +274,7 @@ export function MobileNavDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[82vh] bg-sidebar text-sidebar-foreground">
+      <DrawerContent data-region="nav-drawer" className="max-h-[82vh] bg-sidebar text-sidebar-foreground">
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-left text-base">{t('nav.drawerTitle')}</DrawerTitle>
           <DrawerDescription className="sr-only">{t('nav.drawerDesc')}</DrawerDescription>

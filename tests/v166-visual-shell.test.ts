@@ -48,12 +48,38 @@ const isCharcoal = (v: string | null): boolean => {
   const o = v ? oklch(v) : null
   return !!o && o.L <= 0.3
 }
-/** Izlusuje blok lupine (seznamski selektor v treh vrsticah + telo). Vrne ''
-    če blok ne obstaja — testi then PADejo, ne vržejo. */
+/** Izlusuje blok lupine (seznamski selektor + telo). SIDRO IMENUJE VSE PET
+    regij (tri lupine + dva portala) — če ga ni, helper POSTRŽE: zaporni
+    testi ne smejo tiho uspeti na praznem nizu. */
 const shellBlock = (d: string): string => {
-  const anchor = '[data-region="dashboard-header"],\n[data-region="dashboard-sidebar"],\n[data-region="dashboard-mobile-nav"] {'
+  const anchor = '[data-region="dashboard-header"],\n[data-region="dashboard-sidebar"],\n[data-region="dashboard-mobile-nav"],\n[data-region="nav-drawer"],\n[data-region="location-select"] {'
   const start = d.indexOf(anchor)
-  return start < 0 ? '' : d.slice(start, d.indexOf('}', start))
+  if (start < 0) throw new Error('lupinski žetonski blok ni najden po sidru — zaporni testi ne smejo tiho uspeti')
+  return d.slice(start, d.indexOf('}', start))
+}
+/** oklch → linearni sRGB Y (relativni svetlostni delež, Ottossonova matrika).
+    WCAG zahteva Y, ne L — L je perceptualna, ne sorazmerna. */
+const oklchToY = (v: string): number | null => {
+  const o = oklch(v)
+  if (!o) return null
+  const aC = (o.H * Math.PI) / 180
+  const A = o.C * Math.cos(aC)
+  const B = o.C * Math.sin(aC)
+  const l_ = o.L + 0.3963377774 * A + 0.2158037573 * B
+  const m_ = o.L - 0.1055613458 * A - 0.0638541728 * B
+  const s_ = o.L - 0.0894841775 * A - 1.291485548 * B
+  const [l, m, s] = [l_ ** 3, m_ ** 3, s_ ** 3]
+  return (
+    0.2126 * (4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s) +
+    0.7152 * (-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s) +
+    0.0722 * (-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s)
+  )
+}
+const ratio = (a: string, b: string): number => {
+  const ya = oklchToY(a)
+  const yb = oklchToY(b)
+  if (ya === null || yb === null) return 0
+  return (Math.max(ya, yb) + 0.05) / (Math.min(ya, yb) + 0.05)
 }
 
 describe('v1.166.0 §A — blagovni žetoni', () => {
@@ -197,7 +223,9 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
     expect(d).toContain('data-region="dashboard-header" className="sticky top-0 z-20 bg-sidebar text-sidebar-foreground border-b border-sidebar-border')
   })
   it('predal »Več« je ogljen (prej je podedoval bg-background)', () => {
-    expect(nav).toContain('DrawerContent className="max-h-[82vh] bg-sidebar text-sidebar-foreground"')
+    // R-7: sidro zdaj vsebuje lastni regijski marker — brez njega je predal
+    // ogljen samo na korenu, otroki pa ostanejo na svetlih žetonih.
+    expect(nav).toContain('DrawerContent data-region="nav-drawer" className="max-h-[82vh] bg-sidebar text-sidebar-foreground"')
   })
   it('aktivna postavka: emerald rob + --sidebar-accent podlaga', () => {
     expect(nav).toContain("active\n          ? 'border-emerald-400 bg-sidebar-accent font-semibold text-sidebar-accent-foreground'")
@@ -210,6 +238,37 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
       .not.toContain('bg-white')
   })
   it('spuščeni seznam pogledov v glavi je ogljen (portal, P-4)', () => {
-    expect(d).toContain('<SelectContent className="bg-sidebar text-sidebar-foreground">')
+    expect(d).toContain('<SelectContent data-region="location-select" className="bg-sidebar text-sidebar-foreground">')
+  })
+  it('AA helper: oklch(0.145 0 0) na oklch(0.24 0.012 250) = 1,20:1 (kontrolna točka regresije)', () => {
+    expect(ratio('oklch(0.145 0 0)', 'oklch(0.24 0.012 250)')).toBeCloseTo(1.2, 1)
+  })
+  it('predal in padec lokacij sta OWNI regiji (brez markerja regijski žetoni do njunih otrok ne sežejo)', () => {
+    expect(src('components/dashboard-nav.tsx')).toContain('<DrawerContent data-region="nav-drawer" className="max-h-[82vh] bg-sidebar text-sidebar-foreground">')
+    expect(src('app/dashboard/page.tsx')).toContain('<SelectContent data-region="location-select" className="bg-sidebar text-sidebar-foreground">')
+  })
+  it('regijski žetonski blok pokriva OBA portala (enaka seznam, ena deklaracija)', () => {
+    const b = shellBlock(css())
+    expect(b).toContain('[data-region="nav-drawer"]')
+    expect(b).toContain('[data-region="location-select"]')
+  })
+  it('AA na portalu: regijski --foreground in --muted-foreground na regijski --background ≥ 4,5:1', () => {
+    const b = shellBlock(css())
+    const bg = /--background:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
+    for (const tok of ['--foreground', '--muted-foreground', '--color-stone-500']) {
+      const v = new RegExp(`${tok}:\\s*([^;]+);`).exec(b)?.[1]?.trim() ?? ''
+      expect({ tok, r: Number(ratio(v, bg).toFixed(2)) }).toEqual({ tok, r: expect.any(Number) })
+      expect(ratio(v, bg)).toBeGreaterThanOrEqual(4.5)
+    }
+    // --popover JE PODLAGA (0,28), ne besedilo: par surface↔surface (1,13:1) nima
+    // AA smisla, brief ga je uvrstil napačno. Preverjeno je tisto, kar AA res
+    // ogroža — v portalu sme stati samo temna površina, ki nosi regijski
+    // --foreground ≥ 4,5:1 (sicer `bg-popover` vanj vrne belo kartico).
+    const popover = /--popover:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
+    const fg = /--foreground:\s*([^;]+);/.exec(b)?.[1]?.trim() ?? ''
+    expect(isCharcoal(popover)).toBe(true)
+    expect({ par: '--foreground na --popover', r: Number(ratio(fg, popover).toFixed(2)) })
+      .toEqual({ par: '--foreground na --popover', r: expect.any(Number) })
+    expect(ratio(fg, popover)).toBeGreaterThanOrEqual(4.5)
   })
 })

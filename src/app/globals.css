@@ -804,9 +804,16 @@ main[data-screen="login"] button {
    koncem datoteke:
    our [data-region] .x in .dark .x imata obe (0,2,0), odloča source order
    (lekcija v1.131.0 o preglasujočih pravilih). */
+/* Portala (P-4): Vaul/Radix se izportalata na document.body ⇒ `[data-region]`
+   prednika lupine nimata; lastna markerja ju vpišeta v isti žetonski blok, da
+   njuni OTROKI (`DrawerTitle text-foreground`, `SelectItem focus:bg-accent`,
+   `placeholder:text-muted-foreground`, `text-stone-500`) ne ostanejo na svetlih
+   tovarniških žetonih na oglju (regresija 1,20:1, review Task 4). */
 [data-region="dashboard-header"],
 [data-region="dashboard-sidebar"],
-[data-region="dashboard-mobile-nav"] {
+[data-region="dashboard-mobile-nav"],
+[data-region="nav-drawer"],
+[data-region="location-select"] {
   color-scheme: dark;
   /* vsebinski žetoni → oglje; ui/* komponente (Input bg-transparent +
      border-input, Button ghost hover:bg-accent, SelectTrigger) jih podedujejo */
