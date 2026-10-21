@@ -29,7 +29,12 @@ export const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  /**
+   * v1.165.0 — lokalni profil streže `next start`; standalone output bi zahteval
+   * ročno kopiranje `.next/static` in `public` v samostojno mapo. Vercel (brez
+   * RESTAURANTOS_LOCAL) ostaja standalone, zato se oblačni build ne spremeni.
+   */
+  ...(process.env.RESTAURANTOS_LOCAL === "1" ? {} : { output: "standalone" as const }),
   /**
    * Audit okt-2026 #18: prej je bil tukaj `typescript: { ignoreBuildErrors: true }`
    * s komentarjem „tsc je ločen gate v CI". Drži samo delno: `tests` in

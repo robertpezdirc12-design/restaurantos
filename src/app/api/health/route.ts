@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { APP_VERSION, DEPLOY_COMMIT } from '@/lib/api'
 import { describeDbError, dbErrorHint, logDbError, type DbErrorPublic } from '@/lib/db-error'
+import { databaseEngine, runtimeMode } from '@/lib/runtime-info'
 
 /**
  * Issue #76 — dvostopenjska sonda:
@@ -47,6 +48,8 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     version: APP_VERSION,
     commit: DEPLOY_COMMIT,
+    mode: runtimeMode(),
+    databaseEngine: databaseEngine(),
     database,
     schema,
     latencyMs: Date.now() - started,
