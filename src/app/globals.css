@@ -107,8 +107,12 @@
   --chart-3: oklch(0.52 0.11 160);
   --chart-4: oklch(0.8 0.1 175);
   --chart-5: oklch(0.42 0.09 155);
-  /* Luknja je temnejša in hladnejša od vsebinskega ozadja (0.16 0.008 155),
-     da je okvir prepoznaven. */
+  /* Luknja se od vsebinskega ozadja (0.16 0.008 155) LOČI PO ODTENKU (hue 250
+     proti 155) in po žetonu --sidebar-border, NE po svetlosti: izmerjeno (WCAG
+     1.4.3 na linearnih sRGB kanalih) je 0.15 proti 0.16 = 1,01:1 — svetlostna
+     razlika je nevidna; rob nosi kompozit 12 % bele čez oglje = 3,19:1. Žive
+     meritve (Task 6) odločijo o morebitnem posegu v alfe; vrednosti tu niso
+     spremenjene. */
   --sidebar: oklch(0.15 0.012 250);
   --sidebar-foreground: oklch(0.96 0.004 250);
   --sidebar-primary: oklch(0.62 0.13 165);
@@ -788,4 +792,77 @@ main[data-screen="login"] button {
     margin-inline: -0.25rem;
     border-radius: 0.625rem;
   }
+}
+
+/* ── v1.166.0 TEMNA LUPINA ──────────────────────────────────────────────────
+   Glava, stranski steber in mobilna spodnja vrstica so OGLJE v obeh načinih
+   (spec §3.3). Mehanizem je lokalna redeklaracija žetonov na regiji, ker
+   @theme inline (6–47) veže utilite na var(--…): noben TLORISNI razred se ne
+   preimenuje, zato pritisnjeni testi (issue69 §D, v141 §D, issue74) ostanejo
+   zelena. Beli žeton (Tailwind temski color-white) NAMERNO ni prepisan — bel je
+   napis »RestaurantOS« in text-white na emerald znaku. Vrstni red je OBVEZEN za
+   koncem datoteke:
+   our [data-region] .x in .dark .x imata obe (0,2,0), odloča source order
+   (lekcija v1.131.0 o preglasujočih pravilih). */
+[data-region="dashboard-header"],
+[data-region="dashboard-sidebar"],
+[data-region="dashboard-mobile-nav"] {
+  color-scheme: dark;
+  /* vsebinski žetoni → oglje; ui/* komponente (Input bg-transparent +
+     border-input, Button ghost hover:bg-accent, SelectTrigger) jih podedujejo */
+  --background: oklch(0.24 0.012 250);
+  --foreground: oklch(0.96 0.004 250);
+  --card: oklch(0.28 0.014 250);
+  --popover: oklch(0.28 0.014 250);
+  --muted: oklch(0.33 0.016 250);
+  --muted-foreground: oklch(0.78 0.008 250);
+  --secondary: oklch(0.33 0.016 250);
+  --secondary-foreground: oklch(0.96 0.004 250);
+  --accent: oklch(0.32 0.03 165);
+  --accent-foreground: oklch(0.97 0.006 165);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.68 0.13 165);
+  /* hladna stone skala — lahka besedila na oglju (AA) in temni robovi */
+  --color-stone-50: oklch(0.3 0.014 250);
+  --color-stone-100: oklch(0.33 0.016 250);
+  --color-stone-200: oklch(1 0 0 / 12%);
+  --color-stone-300: oklch(1 0 0 / 18%);
+  --color-stone-400: oklch(0.72 0.010 250);
+  --color-stone-500: oklch(0.8 0.008 250);
+  --color-stone-600: oklch(0.87 0.006 250);
+  --color-stone-700: oklch(0.93 0.005 250);
+  --color-stone-900: oklch(0.98 0.004 250);
+  /* pastelni čipi (sync, mize, jezik) — then iz emerald/amber/red tint, ne
+     iz bele ploščice; nasičene 700/800 ostanejo za besedilo na belem */
+  --color-emerald-50: oklch(0.32 0.05 165);
+  --color-emerald-100: oklch(0.36 0.06 165);
+  --color-emerald-200: oklch(0.46 0.08 165);
+  --color-emerald-900: oklch(0.92 0.06 165);
+  --color-amber-50: oklch(0.32 0.05 78);
+  --color-amber-200: oklch(0.48 0.08 78);
+  --color-amber-700: oklch(0.85 0.11 82);
+  --color-red-50: oklch(0.31 0.06 22);
+  --color-red-100: oklch(0.34 0.07 22);
+  --color-red-200: oklch(0.46 0.09 22);
+  --color-red-300: oklch(0.52 0.1 22);
+  --color-red-700: oklch(0.8 0.13 22);
+  --color-red-800: oklch(0.85 0.12 22);
+}
+/* zrnca, ki NISO token-drivana: bg-white (glava sama je v Task 4 že bg-sidebar,
+   tu ujame jezični preklopnik i18n.tsx:100 in PaletteButton command-palette.tsx)
+   v OBEH načinih. (0,2,0) + končni vrstni red ⇒ zmaga nad .dark .bg-white. */
+[data-region="dashboard-header"] .bg-white,
+[data-region="dashboard-sidebar"] .bg-white,
+[data-region="dashboard-mobile-nav"] .bg-white {
+  background-color: oklch(0.3 0.014 250);
+}
+[data-region="dashboard-header"] .hover\:bg-white:hover,
+[data-region="dashboard-sidebar"] .hover\:bg-white:hover {
+  background-color: oklch(0.36 0.016 250);
+}
+/* sence: na oglju mehka črna, ne bleda all-green senca (236) */
+[data-region="dashboard-sidebar"],
+[data-region="dashboard-mobile-nav"] {
+  box-shadow: 0 1px 0 oklch(0 0 0 / 24%);
 }
