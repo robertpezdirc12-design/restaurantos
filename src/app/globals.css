@@ -73,14 +73,14 @@
   --chart-3: oklch(0.72 0.11 172);
   --chart-4: oklch(0.42 0.1 160);
   --chart-5: oklch(0.8 0.09 176);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar: oklch(0.24 0.012 250);
+  --sidebar-foreground: oklch(0.96 0.004 250);
+  --sidebar-primary: oklch(0.508 0.118 165.612);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-accent: oklch(0.32 0.03 165);
+  --sidebar-accent-foreground: oklch(0.97 0.006 165);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.68 0.13 165);
 }
 
 .dark {
@@ -107,14 +107,16 @@
   --chart-3: oklch(0.52 0.11 160);
   --chart-4: oklch(0.8 0.1 175);
   --chart-5: oklch(0.42 0.09 155);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Luknja je temnejša in hladnejša od vsebinskega ozadja (0.16 0.008 155),
+     da je okvir prepoznaven. */
+  --sidebar: oklch(0.15 0.012 250);
+  --sidebar-foreground: oklch(0.96 0.004 250);
+  --sidebar-primary: oklch(0.62 0.13 165);
+  --sidebar-primary-foreground: oklch(0.19 0.02 165);
+  --sidebar-accent: oklch(0.3 0.035 165);
+  --sidebar-accent-foreground: oklch(0.97 0.006 165);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.68 0.13 165);
 }
 
 @layer base {

@@ -68,3 +68,26 @@ describe('v1.166.0 §A — blagovni žetoni', () => {
     expect(isEmerald(tokenIn(css(), ':root', 'ring'))).toBe(true)
   })
 })
+
+describe('v1.166.0 §B — žetoni lupine (oglje v obeh načinih)', () => {
+  it('--sidebar je oglje v svetlem načinu', () => {
+    expect(isCharcoal(tokenIn(css(), ':root', 'sidebar'))).toBe(true)
+  })
+  it('--sidebar je oglje v temnem načinu', () => {
+    expect(isCharcoal(tokenIn(css(), '\\.dark', 'sidebar'))).toBe(true)
+  })
+  it('--sidebar-foreground je skoraj bel (AA besedilo na oglju)', () => {
+    const v = tokenIn(css(), ':root', 'sidebar-foreground')
+    const o = v ? oklch(v) : null
+    expect(!!o && o.L >= 0.9).toBe(true)
+  })
+  it('vijolični tovarniški --sidebar-primary ne sme preostati', () => {
+    // tovarniška vijolična = oklch(0.488 0.243 264.376) — hue ~264
+    const o = oklch(tokenIn(css(), '\\.dark', 'sidebar-primary') ?? '')
+    expect(!!o && o.H > 200 && o.H < 300).toBe(false)
+  })
+  it('--sidebar-accent je emerald-tonirana podlaga aktivne postavke', () => {
+    const o = oklch(tokenIn(css(), ':root', 'sidebar-accent') ?? '')
+    expect(!!o && o.H >= 150 && o.H <= 180 && o.L <= 0.4).toBe(true)
+  })
+})
