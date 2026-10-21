@@ -64,8 +64,8 @@ function NavItem({
       title={showGroup && groupLabel ? `${label} — ${groupLabel}` : label}
       className={`flex w-full items-center gap-2.5 rounded-lg border-l-2 py-2 pl-2.5 pr-2 text-left text-sm transition ${
         active
-          ? 'border-emerald-700 bg-emerald-50 font-semibold text-emerald-900'
-          : 'border-transparent font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900'
+          ? 'border-emerald-400 bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
+          : 'border-transparent font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
       }`}
     >
       {Icon && <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />}
@@ -184,8 +184,8 @@ export function DashboardSidebar({ tabs, activeTab, onSelect, ctx }: NavCommonPr
 
   return (
     <aside data-region="dashboard-sidebar" className="hidden w-64 shrink-0 lg:block">
-      <div className="sticky top-14 flex h-[calc(100vh-3.5rem)] flex-col border-r border-stone-200 bg-white">
-        <div className="border-b border-stone-100 p-3">
+      <div className="sticky top-14 flex h-[calc(100vh-3.5rem)] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+        <div className="border-b border-sidebar-border p-3">
           <NavSearch
             value={query}
             onChange={setQuery}
@@ -217,7 +217,7 @@ export function MobileBottomNav({
     <nav
       data-region="dashboard-mobile-nav"
       aria-label={t('nav.quickAria')}
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-sidebar-border bg-sidebar text-sidebar-foreground pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       <div className="mx-auto flex max-w-lg items-stretch">
         {barTabs.map(([v, Icon]) => {
@@ -230,10 +230,10 @@ export function MobileBottomNav({
               aria-current={active ? 'page' : undefined}
               aria-label={t(`tabs.${v}`)}
               className={`relative flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition ${
-                active ? 'text-emerald-700' : 'text-stone-500 hover:text-stone-700'
+                active ? 'text-emerald-300' : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'
               }`}
             >
-              {active && <span className="absolute inset-x-2 top-0 h-0.5 rounded-b bg-emerald-700" aria-hidden="true" />}
+              {active && <span className="absolute inset-x-2 top-0 h-0.5 rounded-b bg-emerald-400" aria-hidden="true" />}
               {Icon && <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />}
               <span className="max-w-full truncate px-0.5">
                 {v === 'prodaja' ? t('tabs.prodajaShort') : t(`tabs.${v}`)}
@@ -246,7 +246,7 @@ export function MobileBottomNav({
           onClick={onOpenMore}
           aria-haspopup="dialog"
           aria-label={t('nav.moreAria')}
-          className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-stone-500 transition hover:text-stone-700"
+          className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-sidebar-foreground/60 transition hover:text-sidebar-foreground"
         >
           <MoreHorizontal className="h-5 w-5 shrink-0" aria-hidden="true" />
           <span className="max-w-full truncate px-0.5">{t('tabs.more')}</span>
@@ -274,7 +274,7 @@ export function MobileNavDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[82vh]">
+      <DrawerContent className="max-h-[82vh] bg-sidebar text-sidebar-foreground">
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-left text-base">{t('nav.drawerTitle')}</DrawerTitle>
           <DrawerDescription className="sr-only">{t('nav.drawerDesc')}</DrawerDescription>

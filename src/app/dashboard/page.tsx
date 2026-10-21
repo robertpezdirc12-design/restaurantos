@@ -2201,7 +2201,7 @@ function DashboardInner() {
       >
         {t('a11y.skipToContent')}
       </a>
-      <header data-region="dashboard-header" className="sticky top-0 z-20 bg-white border-b border-stone-200 shadow-sm">
+      <header data-region="dashboard-header" className="sticky top-0 z-20 bg-sidebar text-sidebar-foreground border-b border-sidebar-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
@@ -2220,7 +2220,7 @@ function DashboardInner() {
                   <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-sidebar text-sidebar-foreground">
                   <SelectItem value="all">{t('header.allLocations')}</SelectItem>
                   {locList.map((l) => (
                     <SelectItem key={l.id} value={l.id}>{l.name}{!l.isActive ? t('header.inactive') : ''}</SelectItem>

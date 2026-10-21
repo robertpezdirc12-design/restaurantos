@@ -181,3 +181,35 @@ describe('v1.166.0 §C — obarvanje lupine po regijah', () => {
     expect(b).not.toContain('--sidebar:')
   })
 })
+
+describe('v1.166.0 §D — razredi lupine v TSX', () => {
+  const nav = src('components/dashboard-nav.tsx')
+  const d = src('app/dashboard/page.tsx')
+  it(' stranski steber nosi oglje žetone, ne bele plošče', () => {
+    expect(nav).toContain('border-r border-sidebar-border bg-sidebar text-sidebar-foreground')
+    expect(nav).toContain('data-region="dashboard-sidebar"')
+  })
+  it('mobilna spodnja vrstica nosi oglje žetone', () => {
+    expect(nav).toContain('border-t border-sidebar-border bg-sidebar text-sidebar-foreground pb-[env(safe-area-inset-bottom)] lg:hidden')
+    expect(nav).toContain('data-region="dashboard-mobile-nav"')
+  })
+  it('glava dashboarda nosi oglje', () => {
+    expect(d).toContain('data-region="dashboard-header" className="sticky top-0 z-20 bg-sidebar text-sidebar-foreground border-b border-sidebar-border')
+  })
+  it('predal »Več« je ogljen (prej je podedoval bg-background)', () => {
+    expect(nav).toContain('DrawerContent className="max-h-[82vh] bg-sidebar text-sidebar-foreground"')
+  })
+  it('aktivna postavka: emerald rob + --sidebar-accent podlaga', () => {
+    expect(nav).toContain("active\n          ? 'border-emerald-400 bg-sidebar-accent font-semibold text-sidebar-accent-foreground'")
+  })
+  it('neaktivna postavka: muted na oglju, hover iz žetona', () => {
+    expect(nav).toContain('border-transparent font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground')
+  })
+  it('noben razred lupine ne sme vsebovati bg-white (preusmerjeno na žeton)', () => {
+    expect(nav.slice(nav.indexOf('data-region="dashboard-sidebar"'), nav.indexOf('data-region="dashboard-mobile-nav"')))
+      .not.toContain('bg-white')
+  })
+  it('spuščeni seznam pogledov v glavi je ogljen (portal, P-4)', () => {
+    expect(d).toContain('<SelectContent className="bg-sidebar text-sidebar-foreground">')
+  })
+})
