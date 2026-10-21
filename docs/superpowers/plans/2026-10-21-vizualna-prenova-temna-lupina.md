@@ -126,7 +126,7 @@ describe('v1.166.0 §A — blagovni žetoni', () => {
 - [ ] **Step 2: Zaženi test in poglej FAIL**
 
 Run: `cd ros && bun test tests/v166-visual-shell.test.ts --timeout 20000`
-Expected: 5 od 5 §A testov PADЕ („expected false to be true" za `--primary`, `--chart-1`, `--ring`; `--primary-foreground` je že bel in TIHO MORA OSTATI zelen — če pade, je napaka v parserju, ne v CSS). `--chart-1` tovarniško `oklch(0.646 0.222 41.116)` = oranžna → pade; `--ring` tovarniško `oklch(0.708 0 0)` in polish `oklch(0.62 0.13 160)` → zadnji blok je polish (160 = modro-zelena, C 0.13, H 160 → **že zmaga**). Če `--ring` test NE pade, je to potrjeno dejstvo: polish `:root:200` je že emerald — potem test obdrži kot invarianto in ta korak zabeleži »ring je bil že zelen, ni RED-a za ring«.
+Expected: 5 od 5 §A testov PADE („expected false to be true" za `--primary`, `--chart-1`, `--ring`; `--primary-foreground` je že bel in TIHO MORA OSTATI zelen — če pade, je napaka v parserju, ne v CSS). `--chart-1` tovarniško `oklch(0.646 0.222 41.116)` = oranžna → pade; `--ring` tovarniško `oklch(0.708 0 0)` in polish `oklch(0.62 0.13 160)` → zadnji blok je polish (160 = modro-zelena, C 0.13, H 160 → **že zmaga**). Če `--ring` test NE pade, je to potrjeno dejstvo: polish `:root:200` je že emerald — potem test obdrži kot invarianto in ta korak zabeleži »ring je bil že zelen, ni RED-a za ring«.
 
 - [ ] **Step 3: GREEN — zamenjaj blagovne vrednosti**
 
@@ -175,7 +175,7 @@ Expected: §A zelen; celoten suite zelen (3078 testov) — noben obstoječi test
 
 Začasno vrni `--primary: oklch(0.205 0 0);` v tovarniški `:root`.
 Run: `bun test tests/v166-visual-shell.test.ts --timeout 20000`
-Expected: **»--primary je emerald v svetlem načinu« PADЕ.** Povrni vrednost, ponovni zagon → zelen. Zabeleži oboje v poročilu (po vzorcu `verification-mutation-harness` iz spomina: nepreizkušen stražar ni stražar).
+Expected: **»--primary je emerald v svetlem načinu« PADE.** Povrni vrednost, ponovni zagon → zelen. Zabeleži oboje v poročilu (po vzorcu `verification-mutation-harness` iz spomina: nepreizkušen stražar ni stražar).
 
 - [ ] **Step 6: Commit**
 
@@ -229,7 +229,7 @@ describe('v1.166.0 §B — žetoni lupine (oglje v obeh načinih)', () => {
 - [ ] **Step 2: Zaženi in poglej FAIL**
 
 Run: `bun test tests/v166-visual-shell.test.ts --timeout 20000`
-Expected: §B PADЕ na `--sidebar` (svetli `oklch(0.985 0 0)`, temni `oklch(0.205 0 0)` → svetli pade), na `--sidebar-accent` (`oklch(0.97 0 0)`) in na vijoličnem `--sidebar-primary`. `--sidebar-foreground` (0.985) lahko ostane zelen — to je obstoječa tovarniška vrednost in je pričakovana.
+Expected: §B PADE na `--sidebar` (svetli `oklch(0.985 0 0)`, temni `oklch(0.205 0 0)` → svetli pade), na `--sidebar-accent` (`oklch(0.97 0 0)`) in na vijoličnem `--sidebar-primary`. `--sidebar-foreground` (0.985) lahko ostane zelen — to je obstoječa tovarniška vrednost in je pričakovana.
 
 - [ ] **Step 3: GREEN — ogljena lupina**
 
@@ -336,7 +336,7 @@ describe('v1.166.0 §C — obarvanje lupine po regijah', () => {
 - [ ] **Step 2: Zaženi in poglej FAIL**
 
 Run: `bun test tests/v166-visual-shell.test.ts --timeout 20000`
-Expected: §C PADЕ (noben od `[data-region="dashboard-*"]` CSS selektorjev ne obstaja; edini obstoječi je `[data-screen="dashboard"] > [data-region="dashboard-header"]` na 463, ki ne vseguje stebra in mobilne vrstice).
+Expected: §C PADE (noben od `[data-region="dashboard-*"]` CSS selektorjev ne obstaja; edini obstoječi je `[data-screen="dashboard"] > [data-region="dashboard-header"]` na 463, ki ne vseguje stebra in mobilne vrstice).
 
 - [ ] **Step 3: GREEN — dodaj blok na konec `src/app/globals.css`**
 
@@ -480,7 +480,7 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
 - [ ] **Step 2: Zaženi in poglej FAIL**
 
 Run: `bun test tests/v166-visual-shell.test.ts -t "§D" --timeout 20000`
-Expected: vseh 7 PADЕ (trenutno `bg-white`/`border-stone-200`/`bg-emerald-50`).
+Expected: vseh 7 PADE (trenutno `bg-white`/`border-stone-200`/`bg-emerald-50`).
 
 - [ ] **Step 3: GREEN — zamenjaj razrede (samo razrede, DOM nespremenjen)**
 
@@ -548,7 +548,7 @@ Expected: §D zelen; celoten suite zelen. Če `issue73` ali `issue69` pasteta, j
 
 Vrni glavi `bg-white border-b border-stone-200 shadow-sm`.
 Run: `bun test tests/v166-visual-shell.test.ts -t "§D" --timeout 20000`
-Expected: test »glava dashboarda nosi oglje« PADЕ. Povrni → zelen.
+Expected: test »glava dashboarda nosi oglje« PADE. Povrni → zelen.
 
 - [ ] **Step 7: Commit**
 
