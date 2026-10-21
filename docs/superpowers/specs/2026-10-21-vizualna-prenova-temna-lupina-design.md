@@ -1,7 +1,8 @@
 # Design spec: vizualna prenova „temna lupina" — v1.166.0
 
 Datum: 2026-10-21 · Stanje: odobren s strani lastnika (smer Toast-slog, pristop 2) ·
-Obseg: ena izdaja v1.166.0 · Status: čaka na izvedbeni načrt (writing-plans)
+Obseg: ena izdaja v1.166.0 · Status: izvedbeni načrt napisan —
+`docs/superpowers/plans/2026-10-21-vizualna-prenova-temna-lupina.md`
 
 ## 1. Kontekst in cilj
 
