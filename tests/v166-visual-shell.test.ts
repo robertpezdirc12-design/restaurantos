@@ -247,10 +247,15 @@ describe('v1.166.0 §D — razredi lupine v TSX', () => {
     expect(src('components/dashboard-nav.tsx')).toContain('<DrawerContent data-region="nav-drawer" className="max-h-[82vh] bg-sidebar text-sidebar-foreground">')
     expect(src('app/dashboard/page.tsx')).toContain('<SelectContent data-region="location-select" className="bg-sidebar text-sidebar-foreground">')
   })
-  it('regijski žetonski blok pokriva OBA portala (enaka seznam, ena deklaracija)', () => {
-    const b = shellBlock(css())
-    expect(b).toContain('[data-region="nav-drawer"]')
-    expect(b).toContain('[data-region="location-select"]')
+  it('regijski žetonski blok pokriva OBA portala (berem seznam selektorjev, ne helperjev reza)', () => {
+    // shellBlock() SEČE OD SIDRA NAPREJ in sidro že našteje vseh pet regionov ⇒
+    // `toContain` čez njegov rez bi bil tautologija (review Task 4, Minor 1).
+    const d = css()
+    const at = d.indexOf('[data-region="dashboard-header"],\n[data-region="dashboard-sidebar"]')
+    expect(at).toBeGreaterThanOrEqual(0)
+    const list = d.slice(at, d.indexOf('{', at))
+    expect(list).toContain('[data-region="nav-drawer"]')
+    expect(list).toContain('[data-region="location-select"]')
   })
   it('AA na portalu: regijski --foreground in --muted-foreground na regijski --background ≥ 4,5:1', () => {
     const b = shellBlock(css())
