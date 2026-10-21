@@ -148,6 +148,13 @@ describe('v1.166.0 §C — obarvanje lupine po regijah', () => {
   it('bel razred NA elementu regije je nevtraliziran (self-matching selektor)', () => {
     expect(css()).toContain('[data-region="dashboard-mobile-nav"].bg-white')
   })
+  it('self-matching granula leži ZA `.dark .bg-white` (sicer temni način vrne površino hue-95)', () => {
+    // Obe pravili sta (0,2,0) in NESLOJENI → vrstni red je edini odločevalec.
+    // Sidro je niz SKUPAJ z `{`, da ga ne morela zadovoljiti omemba v komentarju.
+    const d = css()
+    expect(d.indexOf('[data-region="dashboard-mobile-nav"].bg-white {'))
+      .toBeGreaterThan(d.indexOf('.dark .bg-white {'))
+  })
   it('emerald besedilo se invertira, žeton --color-emerald-700 ostane (pikca znamke!)', () => {
     const d = css()
     for (const r of ['dashboard-header', 'dashboard-sidebar', 'dashboard-mobile-nav']) {
@@ -164,7 +171,7 @@ describe('v1.166.0 §C — obarvanje lupine po regijah', () => {
       expect(d).toContain(`[data-region="${r}"] .hover\\:bg-white:hover`)
     }
   })
-  it('regijski žetoni so ZA obema .dark blokoma (enaka specifičnost → vrstni red odloča)', () => {
+  it('regijski žetoni so ZA vsemi tremi .dark bloki (enaka specifičnost → vrstni red odloča)', () => {
     const d = css()
     expect(d.indexOf('[data-region="dashboard-header"],')).toBeGreaterThan(d.lastIndexOf('.dark {'))
   })
