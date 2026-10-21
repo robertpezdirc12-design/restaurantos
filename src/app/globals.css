@@ -858,11 +858,32 @@ main[data-screen="login"] button {
   background-color: oklch(0.3 0.014 250);
 }
 [data-region="dashboard-header"] .hover\:bg-white:hover,
-[data-region="dashboard-sidebar"] .hover\:bg-white:hover {
+[data-region="dashboard-sidebar"] .hover\:bg-white:hover,
+[data-region="dashboard-mobile-nav"] .hover\:bg-white:hover {
   background-color: oklch(0.36 0.016 250);
+}
+/* C2 (regijska razsodba R-5.3b): mobilna vrstica nosi `bg-white` NA SAMEM elementu
+   regije (dashboard-nav.tsx:220) — descendant granula zgoraj ga NE more zadeti,
+   `.dark .bg-white` (:154) pa bi premagal spodnje (0,1,0) pravilo in vrnil površino
+   hue-95 namesto oglja. (0,2,0) + končni vrstni red zmaga v OBEH načinih. */
+[data-region="dashboard-mobile-nav"].bg-white {
+  background-color: var(--sidebar);
+}
+/* C1 (regijska razsodba R-5.1): emerald BESEDILA se morajo invertirati, žeton
+   --color-emerald-700 pa NE sme — isti žeton hrani tudi `bg-emerald-700` (pikca
+   znamke page.tsx:2207 s text-white, indeksna črta dashboard-nav.tsx:236). Zato
+   eksplicitna granula z obratom, po vzoru `.dark .text-emerald-700` (:167). */
+[data-region="dashboard-header"] .text-emerald-700,
+[data-region="dashboard-sidebar"] .text-emerald-700,
+[data-region="dashboard-mobile-nav"] .text-emerald-700 {
+  color: oklch(0.8 0.12 165);
 }
 /* sence: na oglju mehka črna, ne bleda all-green senca (236) */
 [data-region="dashboard-sidebar"],
 [data-region="dashboard-mobile-nav"] {
+  /* C2 (regijska razsodba R-5.3a): lupina je oglje PO REGIJI, ne po razredu.
+     Pravilo je izven @layer, zato premaga slojeno .bg-white utilito; `var(--sidebar)`
+     je oglje v obeh načinih (Task 2). Preživi preimenovanje razreda v Task 4. */
+  background-color: var(--sidebar);
   box-shadow: 0 1px 0 oklch(0 0 0 / 24%);
 }

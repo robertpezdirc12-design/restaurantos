@@ -140,4 +140,37 @@ describe('v1.166.0 §C — obarvanje lupine po regijah', () => {
   it('--color-white je namenoma NEDOTAKNJEN (bel napis znamke + text-white na emerald)', () => {
     expect(d).not.toContain('--color-white')
   })
+  it('mobilna regija pobarva SAMI SEBE (descendant granula ne ujame ownega elementa)', () => {
+    // (0,1,0) izven @layer ⇒ premaga slojeno .bg-white utilito. Ta oblika preživi
+    // Task 4 preimenovanje razreda, zato je to pravo sidro — ne niz razreda.
+    expect(css()).toMatch(/\[data-region="dashboard-mobile-nav"\]\s*\{[^}]*background-color:[^}]*\}/)
+  })
+  it('bel razred NA elementu regije je nevtraliziran (self-matching selektor)', () => {
+    expect(css()).toContain('[data-region="dashboard-mobile-nav"].bg-white')
+  })
+  it('emerald besedilo se invertira, žeton --color-emerald-700 ostane (pikca znamke!)', () => {
+    const d = css()
+    for (const r of ['dashboard-header', 'dashboard-sidebar', 'dashboard-mobile-nav']) {
+      expect(d).toContain(`[data-region="${r}"] .text-emerald-700`)
+    }
+    expect(shellBlock(d)).not.toContain('--color-emerald-700')
+    const rule = d.slice(d.indexOf('[data-region="dashboard-header"] .text-emerald-700'))
+    const o = oklch(/color:\s*([^;]+);/.exec(rule)?.[1] ?? '')
+    expect(!!o && o.L >= 0.7 && o.H >= 150 && o.H <= 180).toBe(true)
+  })
+  it('lupina pokriva hover\:bg-white v vseh treh regijah', () => {
+    const d = css()
+    for (const r of ['dashboard-header', 'dashboard-sidebar', 'dashboard-mobile-nav']) {
+      expect(d).toContain(`[data-region="${r}"] .hover\\:bg-white:hover`)
+    }
+  })
+  it('regijski žetoni so ZA obema .dark blokoma (enaka specifičnost → vrstni red odloča)', () => {
+    const d = css()
+    expect(d.indexOf('[data-region="dashboard-header"],')).toBeGreaterThan(d.lastIndexOf('.dark {'))
+  })
+  it('regijski blok ne redefinira --primary ali --sidebar (oba deduje po načinu)', () => {
+    const b = shellBlock(css())
+    expect(b).not.toContain('--primary:')
+    expect(b).not.toContain('--sidebar:')
+  })
 })
