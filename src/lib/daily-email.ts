@@ -17,12 +17,30 @@
  *    obveznosti" overdue-AP section). ScheduledEmailLog reportType 'DAILY_DIGEST'.
  *  - shiftSummaryEmailText output for pre-existing inputs is UNCHANGED (byte-identical
  *    refactor into shared summaryBodyLines; overdue/window fields are additive).
+ *
+ * v1.167.0 — digest sme biti poslan ENKRAT na zajeti dan. Cron marker se ob
+ *  napaki NAMERNO ne zapiše (lažni uspeh v markerju je slabši od ponovitve),
+ *  zato istodnevna ročna ponovitev zažene vse korake znova; e-pošte ni mogoče
+ *  umakniti. Varovalka bere ScheduledEmailLog (reportType 'DAILY_DIGEST',
+ *  status 'sent', reportDate = zajeti dan) in je prva pred SMTP preverbo.
+ *  Status 'failed' NE blokira — nedostavljeno sporočilo mora biti ponovljeno.
  */
 import { db } from '@/lib/db'
 import { nid, num } from '@/lib/map'
 import { smtpTransportForLocation } from '@/lib/reminders'
 import { dueTodayRules, parseRecurringConfig } from '@/lib/recurring-po'
 import { daysOverdue, localDateKey, startOfDay } from '@/lib/cron-daily'
+import type { SendMailOptions } from 'nodemailer'
+
+/**
+ * Minimalni vmesnik pošiljanja — `Transporter` ga izpolnjuje. Obstoji samo
+ * zato, da je veja pošiljanja sploh dosegljiva testu (brez SMTP v bazi in brez
+ * mock-a celega modula, ki v bunu uhane v naslednje testne datoteke); produkcija
+ * uporabi privzeti `smtpTransportForLocation`.
+ */
+export interface DigestMailer {
+  sendMail(mail: SendMailOptions): Promise<unknown>
+}
 
 export interface RecurringTodayEntry {
   supplier: string
@@ -171,7 +189,7 @@ async function loadOverdueApsForDigest(now: Date): Promise<OverdueApEntry[]> {
 
 export interface DailyDigestResult {
   sent: boolean
-  /** Skip reason when sent === false (email/SMTP not configured). */
+  /** Skip reason when sent === false: 'already_sent' | 'email_not_configured' | 'smtp_not_configured'. */
   reason?: string
   /** Failure message when sending threw (also logged to ScheduledEmailLog 'failed'). */
   error?: string
@@ -186,8 +204,13 @@ export interface DailyDigestResult {
  * @param args.locationId — optional receipt filter (default: all locations)
  * @param args.overdueAps — pre-loaded entries (cron passes them so the push
  *                         and the digest share a single query)
+ * @param args.transportFactory — mailer resolver (default: SMTP config from the
+ *                         database). A test seam only: without it the send
+ *                         branch needs a live SMTP host and was never executed.
  */
-export async function sendDailyDigest(args: { locationId?: string | null; now?: Date; overdueAps?: OverdueApEntry[] } = {}): Promise<DailyDigestResult> {
+export async function sendDailyDigest(
+  args: { locationId?: string | null; now?: Date; overdueAps?: OverdueApEntry[]; transportFactory?: (locationId: string | null) => Promise<DigestMailer | null> } = {},
+): Promise<DailyDigestResult> {
   const now = args.now ?? new Date()
   const to = startOfDay(now)
   const from = new Date(to.getTime())
@@ -195,9 +218,18 @@ export async function sendDailyDigest(args: { locationId?: string | null; now?: 
   const shiftDate = from
   const reportType = 'DAILY_DIGEST'
   try {
+    // v1.167.0 — isti dan dvakrat ne sme poštati. Cron marker (`already_ran_today`)
+    // se ob napaki NE zapiše, zato istodnevna ročna ponovitev zažge vse korake
+    // znova; edini trajni dokaz dostavljenega digesta je ta vrstica. 'failed'
+    // NE šteje — poskus, ki ni bil dostavljen, sme (mora) biti ponovljen.
+    const alreadySent = await db.scheduledEmailLog.findFirst({
+      where: { reportType, status: 'sent', reportDate: from },
+      select: { id: true },
+    })
+    if (alreadySent) return { sent: false, reason: 'already_sent' }
     const settings = await db.restaurantSettings.findFirst()
     if (!settings?.emailEnabled || !settings.email) return { sent: false, reason: 'email_not_configured' }
-    const transport = await smtpTransportForLocation(args.locationId ?? null)
+    const transport = await (args.transportFactory ?? smtpTransportForLocation)(args.locationId ?? null)
     if (!transport) return { sent: false, reason: 'smtp_not_configured' }
 
     // yesterday's sales window — same aggregation as the shift-close digest
