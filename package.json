@@ -16,7 +16,8 @@
     "postinstall": "node scripts/prisma-postinstall.cjs",
     "db:seed": "bun prisma/seed.ts",
     "local": "bun scripts/local-start.ts",
-    "local:setup": "bun scripts/local-setup.ts"
+    "local:setup": "bun scripts/local-setup.ts",
+    "demo": "bun scripts/demo-start.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
