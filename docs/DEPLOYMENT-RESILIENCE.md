@@ -359,6 +359,27 @@ Neon free plan šteje prenesene podatke; 24/7 odjemalci so glavni vir. Pravila:
 Strežniška validacija naročila ostaja avtoritativna (razpoložljivost/86), zato
 morebitna do 60 s stara kopija menija ne more obiti poslovnih pravil.
 
+### Ponovni zagon dnevnega crona (marker + dedupe digesta, v1.167.0)
+
+`/api/cron/daily` je idempotenten prek markerja `lastRunDate` (`already_ran_today`),
+marker pa se ob napaki **ne** zapiše (v1.161.0) — lažni uspeh v markerju je slabši
+od ponovitve. Posledica je namenoma ta, da istodnevna ročna ponovitev zažene vse
+korake znova. Koraki z lastnim dnevnim stanjem (recurring pravila, LOT/HACCP
+markerji) to preživijo; edini korak s stranskim učinkom, ki ga ni mogoče umakniti,
+je **dnevni digest e-pošta**.
+
+Od v1.167.0 zato `sendDailyDigest` pred pošiljanjem preveri `ScheduledEmailLog`
+za vrstico `reportType = DAILY_DIGEST`, `status = sent` na **zajeti dan** (včerajšnji
+koledarski dan) in vrne `{ sent: false, reason: 'already_sent' }`; cron odgovor
+reason pokaže v `steps.digest`. Neuspešna vrstica (`failed`) **ne** blokira
+ponovitve — poskus, ki ni bil dostavljen, je treba ponoviti.
+
+Omejitve: ključ je dan + vrsta poročila, ne lokacija (`ScheduledEmailLog` nima
+lokacijskega stolpca, digest pa je globalen — cron kliče brez `locationId`), in
+brez edinstvenega indeksa (DDL) dva sočasna klica v istem trenutku teoretično
+oba pošljeta — realni scenarij pa je ponovitev minute ali ure pozneje.
+Dokaz: `tests/v167-digest-dedupe.test.ts` (5 testov, mutacijsko dokazano 6/6).
+
 ## Sandbox rollback resync (Task 46)
 
 Peskovno okolje lahko **vrne git refse na star snapshot**, medtem ko je GitHub
