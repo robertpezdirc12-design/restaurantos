@@ -924,6 +924,21 @@ main[data-screen="login"] button {
 [data-screen="handheld-pos"] > [data-region="handheld-header"] {
   background-image: linear-gradient(110deg, var(--primary), oklch(0.42 0.11 165));
 }
+/* Merjeno v brskalniku (Task 6): `outline` gumb ne deklarira SVOJE barve
+   besedila, zato v emerald glavi podeduje `text-white`, pod seboj pa nosi še
+   `bg-background` — v svetlem načinu Belo na skoraj belem = 1,04:1, napis je
+   neberljiv. Rešitev NE sme posvetliti podlage: prva mera z belo tabelo 16 %
+   je napis dvignila le na 3,98:1 (AA traži ≥ 4,5), zato gumb dobi TEMEN
+   zastor — bel napis nad njim meri ~6,5:1, robovi tablete pa ostanejo svetli,
+   da je gumb v glavi viden. Isti zapis velja za temni način (enotna vezava). */
+[data-screen="handheld-pos"] > [data-region="handheld-header"] .bg-background {
+  border-color: oklch(1 0 0 / 34%);
+  background-color: oklch(0 0 0 / 12%);
+  color: oklch(1 0 0);
+}
+[data-screen="handheld-pos"] > [data-region="handheld-header"] .bg-background:hover {
+  background-color: oklch(0 0 0 / 20%);
+}
 /* PRODAJNI tloris (nov sidrski marker): dvig. `border-color: var(--border)` je
    namenoma IZPUŠČEN (R-10): v svetlem je številčno enak že uporabljenemu
    border-stone-200, v temnem 11 % proti 12 % — trditev nikoli ne more pasti. */

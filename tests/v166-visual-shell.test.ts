@@ -315,6 +315,31 @@ describe('v1.166.0 §E — hero zasloni (samo dejanska sidra)', () => {
     expect(ratio(BELA, 'oklch(0.38 0.1 165)')).toBeGreaterThanOrEqual(4.5)
     expect(ratio(BELA, tokenIn(css(), '\\.dark', 'primary'))).toBeLessThan(4.5)
   })
+  it('handheld glava: outline gumb si izposodi podlago, zato mora SAM deklarirati napis (merjeno 1,04:1)', () => {
+    // `variant="outline"` (components/ui/button.tsx:17) nosi `bg-background` in
+    // nobenega lastnega text-razreda → v emerald glavi podeduje `text-white` in
+    // napis izgine na svetli plošči.
+    const body = ruleBody('[data-screen="handheld-pos"] > [data-region="handheld-header"] .bg-background {\n  border-color:')
+    expect(body).toContain('color: oklch(1 0 0);')
+    expect(body).not.toContain('background-color: var(--background)')
+    // Podlaga sme napiso SAMO TEMNITI. Meritev v brskalniku (Task 6):
+    //  - brez posega      → 1,04:1 (bel napis na skoraj belem)
+    //  - bela tabela 16 % → 3,98:1 (še vedno pod AA)
+    //  - črn zastor 12 %  → 6,54:1 ← izbrano
+    expect(body).not.toMatch(/background-color: oklch\(1 0 0/)
+    const pct = Number(body.match(/background-color: oklch\(0 0 0 \/ (\d+)%\)/)?.[1])
+    expect(Number.isNaN(pct)).toBe(false)
+    // Zastor ostane odtenek glave, ne luknja: 5 % je še komaj viden rob,
+    // nad 25 % bi tableta postala črna in bi izpadla iz emerald znamke.
+    expect(pct).toBeGreaterThanOrEqual(5)
+    expect(pct).toBeLessThanOrEqual(25)
+    // hover ne sme POSVETLITI (enaka napaka v obratni smeri).
+    const hover = ruleBody('[data-screen="handheld-pos"] > [data-region="handheld-header"] .bg-background:hover {')
+    expect(hover).not.toMatch(/oklch\(1 0 0/)
+    const hp = Number(hover.match(/background-color: oklch\(0 0 0 \/ (\d+)%\)/)?.[1])
+    expect(hp).toBeGreaterThanOrEqual(pct)
+    expect(hp).toBeLessThanOrEqual(30)
+  })
   it('PRODAJNI tloris: EN sam sidrski marker, razredi beseda-besed enaki (R-10)', () => {
     expect(d).toContain('data-region="pos-floor-plan"')
     expect(d.match(/data-region="pos-floor-plan"/g)?.length).toBe(1)
