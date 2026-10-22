@@ -29,6 +29,17 @@ kot `String`. Tipski razred, ki je stal padec rezervacijskega opomnika v
 produkciji (v1.129.0), v jobu `tests` torej NE more pasti — tretji job je edini,
 ki gleda pravo shemo. Baza tu ni potrebna: `prisma generate` se ne povezuje.
 
+Od v1.166.0 ima `typecheck-prod` tudi lokalni par: `bun run typecheck:cloud`
+(`scripts/typecheck-cloud.cjs`). Ne zaradi nezaupanja CI-ju, ampak zaradi kvote —
+job teče na self-hosted runnerju (`CI_RUNNER_LABELS`) in je lahko ure v čakanju,
+Vercel pa ob pushu zgradi ne glede na njega. Izdaja v1.166.0 je zaradi tega padla:
+`status: 'completed'` v demo zgodovini je bil pod SQLite klientom zelen (zrcalo
+ima `String`), CI job je čakal na runnerja, Vercel build pa je javil TS2322.
+Skript generira produkcijski klient, požene `tsc --noEmit` in na koncu VEDNO
+vrne SQLite klienta, da `bun test` ne ostane na napačnih tipih (v1.112.0: 29
+lažnih padcev). Isti razred zdaj ujame tudi `tests/seed-enum-validity.test.ts`,
+ki bere produkcijsko shemo in ne klienta.
+
 `check-secrets.sh` od v1.150.0 skenira tudi `.github/`. Pred tem je pregledal
 `src/`, `scripts/`, `mini-services/` in `.gitlab-ci.yml`, workflowe pa ne, zato
 je step "Secrets hygiene" ostal zelen tudi ob razkritem žetonu v `sync.yml`.
