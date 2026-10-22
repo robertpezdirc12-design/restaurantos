@@ -116,3 +116,88 @@ describe('zakaj je unija sploh potrebna (pin obeh shem)', () => {
     expect(reservation![1]).toMatch(/^\s*source\s+String/m)
   })
 })
+
+/*
+ * REGISTRA: v1.166.0 — izdaja je padla šele na Vercelu.
+ *
+ * `src/lib/demo-history.ts` je pisal `status: 'completed'`, SQLite zrcalo ima
+ * `status String` (enumov ne pozna), zato je bil `tsc` lokalno zelen; produkcijski
+ * `TimeEntryStatus` je unija treh členov, zato je `next build` na Vercelu padel.
+ * `postinstall` izbere shemo glede na `DATABASE_URL`
+ * (scripts/prisma-postinstall.cjs), tako da nobena lokalna vrata z SQLite klientom
+ * te napake ne morejo videti — vidijo jo `bun run typecheck:cloud`, CI job
+ * `typecheck-prod` in ta test, ki bere shemo in ne klienta.
+ */
+describe('demo izmene — TimeEntry literali so člani produkcijskih enumov (v1.166.0)', () => {
+  const statusMembers = enumMembers('TimeEntryStatus')
+  const typeMembers = enumMembers('TimeEntryType')
+  const demoSrc = read('src/lib/demo-history.ts')
+  const seedSrc = read('scripts/seed-demo-history.ts')
+
+  /**
+   * Blok predmeta/vmesnika je edini nedvoumen kraj: v demo datotekah `status:`
+   * pomeni Order (`paid`), OrderItem (`served`) IN TimeEntry. Sidro je `clockIn` —
+   * imajo ga samo TimeEntry bloki (`DemoHistoryEntry` vmesnik, `out.push` in
+   * `db.timeEntry.create({ data: … })` literali).
+   */
+  function shiftObjects(raw: string): string[] {
+    // interpolacije `${...}` pokvarijo štetje oklepajev (id v izmenah je template),
+    // zato jih najprej zgladimo v navaden niz
+    const text = raw.replace(/\$\{[^{}]*\}/g, '""')
+    const found: string[] = []
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] !== '{') continue
+      let depth = 0
+      let end = -1
+      for (let j = i; j < text.length; j++) {
+        if (text[j] === '{') depth++
+        else if (text[j] === '}') {
+          depth--
+          if (depth === 0) { end = j; break }
+        }
+      }
+      if (end < 0) continue
+      const body = text.slice(i + 1, end)
+      // Samo NOTRANJI oklepaj: zunanji bi vseboval vse `status:` hkrati in lažno
+      // uvključil Order/OrderItem literale v TimeEntry primerjavo.
+      if (body.includes('{')) continue
+      if (!/\bclockIn\b/.test(body)) continue
+      found.push(text.slice(i, end + 1))
+    }
+    return found
+  }
+
+  const objects = [...shiftObjects(demoSrc), ...shiftObjects(seedSrc)]
+  const statusValues = objects.flatMap((o) => literalsFor(o, 'status'))
+  const typeValues = objects.flatMap((o) => literalsFor(o, 'type'))
+
+  test('TimeEntryStatus in TimeEntryType iz sheme imata znane člane (sidro, ne klient)', () => {
+    expect([...statusMembers].sort()).toEqual(['active', 'approved', 'disputed'])
+    expect([...typeMembers].sort()).toEqual(['holiday', 'overtime', 'regular', 'sick', 'vacation'])
+  })
+
+  test('produkcija tipira status kot enum, SQLite zrcalo kot String', () => {
+    expect(fieldType('TimeEntry', 'status')).toBe('TimeEntryStatus')
+    expect(fieldType('TimeEntry', 'type')).toBe('TimeEntryType')
+    const sqlite = read('prisma/schema.sqlite.prisma')
+    const entry = /^model TimeEntry \{([\s\S]*?)^\}/m.exec(sqlite)
+    expect(entry).not.toBeNull()
+    expect(entry![1]).toMatch(/^\s*status\s+String/m)
+    expect(entry![1]).toMatch(/^\s*type\s+String/m)
+  })
+
+  test('iskalnik res najde izmene (pozitivna kontrola: brez njega test ne primerja ničesar)', () => {
+    expect(objects.length).toBeGreaterThanOrEqual(2)
+    expect(statusValues.length).toBeGreaterThanOrEqual(2)
+    expect(typeValues.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('kontrolni literal, ki ga enum ne pozna, je res zaznan', () => {
+    expect(invalid(['approved', 'completed'], statusMembers)).toEqual(['completed'])
+  })
+
+  test('vsak `status:` in `type:` ob izmeni je član produkcijskega enuma', () => {
+    expect(invalid(statusValues, statusMembers)).toEqual([])
+    expect(invalid(typeValues, typeMembers)).toEqual([])
+  })
+})
