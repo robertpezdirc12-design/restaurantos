@@ -12,6 +12,21 @@ description: >-
 #
 # Sam korak NIKOLI ne vrne napake (job je že rdeč); sicer bi alarm zakril
 # pravi vzrok odpovedi v logu.
+#
+# ── v1.168.0: alarm do zdaj NI nikoli dostopil ──────────────────────────────
+# 6 zaporednih canary odpovedi (16.–22. 10.) je vrnilo `success` z
+# `state=spodletela` in niti ene `[CI alarm]` issue. Tri lastne napake:
+#  1. `API="${{ github.server_url }}/api/v3/..."` — ta pot vrne 404 (izmerjeno);
+#     pravilen REST base je `github.api_url` (= https://api.github.com). Ker
+#     `api()` uporablja `curl -f`, je PADSLO vsak poziv, ne samo eden.
+#  2. `${{ inputs.hint }}` se v shell besedilo presedeke dobesedno, hint pa
+#     ima narekovaje → `line 5: [: too many arguments` (run 39742241206) in
+#     navodilo "najprej preveri" je izginilo iz povzetka in issue.
+#  3. JSON so gradili `python3 -c` pozivi; na Windows runnerjih je python3
+#     stub, ki izpiše napako in vrne 0 → tiho prazen payload.
+# Zato gre VSAKA zunanja vrednost prek `env:` (skript je s tem izvedljiv
+# lokalno, kar dokazuje tests/v168-ci-alarm-delivery.test.ts), REST base je
+# `github.api_url`, JSON pa gradi izključno `node`.
 
 inputs:
   token:
@@ -35,39 +50,55 @@ runs:
   steps:
     - name: 'Povzetek koraka (veden takoj, tudi brez API-ja)'
       shell: bash
+      env:
+        SCOPE: ${{ inputs.scope }}
+        HINT: ${{ inputs.hint }}
+        JOB: ${{ github.job }}
+        SERVER_URL: ${{ github.server_url }}
       run: |
         set -u
         {
-          echo "## :rotating_light: CI alarm — ${{ inputs.scope }}"
+          echo "## :rotating_light: CI alarm — $SCOPE"
           echo ""
-          echo "- **workflow:** \`${{ github.workflow }}\`"
-          echo "- **job:** \`${{ github.job }}\`"
-          echo "- **run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (poskus ${{ github.run_attempt }})"
-          echo "- **branch:** \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`"
-          echo "- **sprožil:** \`${{ github.actor }}\`"
-          if [ -n "${{ inputs.hint }}" ]; then
-            echo "- **najprej preveri:** ${{ inputs.hint }}"
+          echo "- **workflow:** \`$GITHUB_WORKFLOW\`"
+          echo "- **job:** \`$JOB\`"
+          echo "- **run:** [#$GITHUB_RUN_NUMBER]($SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) (poskus $GITHUB_RUN_ATTEMPT)"
+          echo "- **branch:** \`$GITHUB_REF_NAME\` @ \`$GITHUB_SHA\`"
+          echo "- **sprožil:** \`$GITHUB_ACTOR\`"
+          if [ -n "$HINT" ]; then
+            echo "- **najprej preveri:** $HINT"
           fi
           echo ""
           echo "Odgovoren je korak z oznako **Alarm ob napaki CI**; v logu je zgoraj pravi vzrok odpovedi."
         } >> "$GITHUB_STEP_SUMMARY"
-        echo "::error::${{ inputs.scope }} je odpovedal — issue alarm je poskus"
+        echo "::error::$SCOPE je odpovedal — issue alarm je poskus"
 
     - name: 'Odprej ali dopolni issue s tremi vztrajnimi poskusi'
       id: alarm
+      env:
+        SCOPE: ${{ inputs.scope }}
+        HINT: ${{ inputs.hint }}
+        JOB: ${{ github.job }}
+        API_BASE: ${{ github.api_url }}
+        SERVER_URL: ${{ github.server_url }}
+        RUNNER_NAME: ${{ runner.name }}
+        RUNNER_OS: ${{ runner.os }}
+        TOKEN: ${{ inputs.token }}
       shell: bash
       run: |
         set -u
-        API="${{ github.server_url }}/api/v3/repos/${{ github.repository }}"
-        TITLE="[CI alarm] ${{ github.workflow }} — ${{ inputs.scope }}"
-        BODY_FILE=$(mktemp)
-        cat > "$BODY_FILE" <<EOF
-        Job \`${{ github.job }}\` v workflowu **${{ github.workflow }}** je odpovedal.
+        API="${API_BASE}/repos/${GITHUB_REPOSITORY}"
+        TITLE="[CI alarm] $GITHUB_WORKFLOW — $SCOPE"
+        # Body živi v spremenljivki, ne v začasni datoteki: mktemp je dodatna
+        # točka, ki lahko tiho odpove, brez datoteke pa je payload preverljiv
+        # tudi zunaj runnerja (tests/v168-ci-alarm-delivery.test.ts).
+        BODY=$(cat <<EOF
+        Job \`$JOB\` v workflowu **$GITHUB_WORKFLOW** je odpovedal.
 
-        - **run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (poskus ${{ github.run_attempt }})
-        - **branch:** \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`
-        - **sprožil:** \`${{ github.actor }}\` · **runner:** \`${{ runner.name }}\` (${{ runner.os }})
-        $(if [ -n "${{ inputs.hint }}" ]; then echo "- **najprej preveri:** ${{ inputs.hint }}"; fi)
+        - **run:** [#$GITHUB_RUN_NUMBER]($SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) (poskus $GITHUB_RUN_ATTEMPT)
+        - **branch:** \`$GITHUB_REF_NAME\` @ \`$GITHUB_SHA\`
+        - **sprožil:** \`$GITHUB_ACTOR\` · **runner:** \`$RUNNER_NAME\` ($RUNNER_OS)
+        ${HINT:+- **najprej preveri:** $HINT}
 
         Issue namenoma NE vsebuje izsečka loga — vsebuje lahko zneske, davčne
         podatke in kratke odtise skrivnosti (audit okt-2026 #20). Podrobnosti so
@@ -76,22 +107,31 @@ runs:
         Ta issue je dedupliciran: nadaljnje odpovedi istega workflowa se pripnejo
         kot komentar, da alarm ne utone v hrup.
         EOF
+        )
 
+        SLEEP="${API_RETRY_SLEEP:-3}"
         api() { # method endpoint [data_json]
           local method="$1" ep="$2" data="${3:-}" try out
           for try in 1 2 3; do
             if [ -n "$data" ]; then
-              out=$(curl -sS -f -X "$method" "$API$ep" \
-                -H "Authorization: Bearer ${{ inputs.token }}" \
+              # JSON gre na curl v STDIN, ne v argv: MSYS (Git Bash) argv pri
+              # predaji nativnemu curl.exe pretvori v OEM kodno stran, zato
+              # UTF-8 (š, č, —) razpade v '?' — izmerjeno 22. 10. V naslovu in
+              # bodyju alarmne issue bi ostali grbi; bajti prek cevi preživijo
+              # na obeh OS. Poleg tega predolgim body-jem ne more zmanjkati
+              # prostora v ukazni vrstici.
+              out=$(printf '%s' "$data" | curl -sS -f -X "$method" "$API$ep" \
+                -H "Authorization: Bearer $TOKEN" \
                 -H 'Content-Type: application/json' \
-                --data "$data" 2>/dev/null) || out=''
+                --data-binary @- 2>/dev/null) || out=''
             else
               out=$(curl -sS -f -X "$method" "$API$ep" \
-                -H "Authorization: Bearer ${{ inputs.token }}" 2>/dev/null) || out=''
+                -H "Authorization: Bearer $TOKEN" 2>/dev/null) || out=''
             fi
             [ -n "$out" ] && { echo "$out"; return 0; }
-            sleep $((try * 3))
+            sleep $((try * SLEEP))
           done
+          echo "::warning::api $method $ep ni uspel v 3 poskusih" >&2
           return 1
         }
 
@@ -100,20 +140,11 @@ runs:
           || api GET "/labels/ci-alarm" >/dev/null || true
 
         # 2) ze odprt issue s tem naslovom?
-        NUM=$(api GET "/issues?state=open&labels=ci-alarm&per_page=100" | python3 -c '
-        import json,sys
-        want = sys.argv[1].lower()
-        try:
-            for it in json.load(sys.stdin):
-                if (it.get("title") or "").lower() == want:
-                    print(it["number"]); break
-        except Exception:
-            pass
-        ' "$TITLE" || true)
+        NUM=$(api GET "/issues?state=open&labels=ci-alarm&per_page=100" | node -e "let s = ''; process.stdin.on('data', (d) => s += d); process.stdin.on('end', () => { try { const want = (process.argv[1] || '').toLowerCase(); for (const it of JSON.parse(s)) { if ((it.title || '').toLowerCase() === want) { console.log(it.number); break } } } catch (e) {} })" "$TITLE" || true)
 
         if [ -n "$NUM" ]; then
-          BODY=":repeat: nova odpoved istega joba — run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\`${{ github.sha }}\` (${GITHUB_RUN_ATTEMPT:-1}. poskus)"
-          if api POST "/issues/$NUM/comments" "$(python3 -c 'import json,sys; print(json.dumps({"body": sys.argv[1]}))' "$BODY")"; then
+          COMMENT=":repeat: nova odpoved istega joba — run [#$GITHUB_RUN_NUMBER]($SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) \`$GITHUB_SHA\` (${GITHUB_RUN_ATTEMPT:-1}. poskus)"
+          if api POST "/issues/$NUM/comments" "$(node -e "process.stdout.write(JSON.stringify({ body: process.argv[1] }))" "$COMMENT")"; then
             echo "state=dopolnjena" >> "$GITHUB_OUTPUT"
             echo "Obstoječ issue #${NUM} dopolnjen z novo odpovedjo."
             exit 0
@@ -121,10 +152,7 @@ runs:
         fi
 
         # 3) nov issue
-        NEW=$(api POST "/issues" "$(python3 -c '
-        import json,sys
-        print(json.dumps({"title": sys.argv[1], "body": open(sys.argv[2]).read(), "labels": ["ci-alarm"]}))
-        ' "$TITLE" "$BODY_FILE")" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("number",""))' 2>/dev/null || true)
+        NEW=$(api POST "/issues" "$(node -e "process.stdout.write(JSON.stringify({ title: process.argv[1], body: process.argv[2], labels: ['ci-alarm'] }))" "$TITLE" "$BODY")" | node -e "let s = ''; process.stdin.on('data', (d) => s += d); process.stdin.on('end', () => { try { const n = JSON.parse(s).number; if (n !== undefined) console.log(n) } catch (e) {} })" || true)
 
         if [ -z "$NEW" ]; then
           echo "state=spodletela" >> "$GITHUB_OUTPUT"
@@ -136,8 +164,8 @@ runs:
 
         # 4) dodelitev = pravi signal (e-pošta/GitHub obvestilo lastniku).
         #    Ce pade (npr. lastnik ni sodelavec), issue ostane — zato || true.
-        OWNER="${{ github.repository_owner }}"
-        api POST "/issues/$NEW/assignees" "$(python3 -c 'import json,sys; print(json.dumps({"assignees":[sys.argv[1]}]))' "$OWNER")" >/dev/null \
+        OWNER="${GITHUB_REPOSITORY_OWNER:-$GITHUB_ACTOR}"
+        api POST "/issues/$NEW/assignees" "$(node -e "process.stdout.write(JSON.stringify({ assignees: [process.argv[1]] }))" "$OWNER")" >/dev/null \
           || echo "::warning::issue #${NEW} ni bil dodeljen ($OWNER) — alarm je vseeno odprt"
 
     - name: 'Ce API ni dostopen, vsaj izpisati navodilo'
