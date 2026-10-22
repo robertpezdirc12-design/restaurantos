@@ -4,7 +4,7 @@
 |---|---|
 | Verzija dokumenta | 1.1 |
 | Datum | 22. 10. 2026 |
-| Status | R1 izveden (v1.165.0); R2a izveden (v1.169.0); R2b načrtovan |
+| Status | R1 izveden (v1.165.0); R2a izveden (v1.169.0); R2b1 izveden (v1.170.0); R2b2 načrtovan |
 | Lastnik | lastnik izdelka |
 | Povezave | `docs/ARCHITECTURE.md`, `docs/BACKUP-RESTORE.md`, `docs/DEPLOYMENT-RESILIENCE.md` |
 
@@ -93,7 +93,8 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 
 **Izven obsega R1 (po izdajah):**
 
-- HTTPS v lokalnem omrežju in namestitev PWA (R2b);
+- HTTPS v lokalnem omrežju in namestitev PWA (R2b2);
+- omejitev offline vrste glede na dolžino in starost (R2b1, izvedeno v v1.170.0);
 - samodejne varnostne kopije in obnova (R2a, izvedeno v v1.169.0);
 - WAL, `synchronous=FULL` in busy timeout (R2a, izvedeno v v1.169.0);
 - čarovnik prve namestitve v brskalniku (R3);
@@ -148,14 +149,19 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 |---|---|---|---|
 | **R1 — v1.165.0** | Lokalna baza iz enega ukaza | F1–F10, A1–A10 | `bun run local` ustvari bazo in lastnika, aplikacija teče, Vercel nespremenjen |
 | **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
-| **R2b — v1.170.0** | Varen lokalni obrat | HTTPS v LAN (Caddy/mkcert), samodejni zagon ob prijavi, omejitev offline vrste (starost in dolžina) | PWA se namesti na tablico; vrsta se ne podvoji in ne raste neomejeno |
-| **R3 — v1.171.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
-| **R4 — v1.172.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
+| **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
+| **R2b2 — načrtovano (v1.171.0)** | Varen lokalni obrat brez žice | HTTPS v LAN (Caddy/mkcert), samodejni zagon ob prijavi | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika |
+| **R3 — v1.172.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
+| **R4 — v1.173.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
 porabile druge izdaje, cesta tukaj ne obljublja več številk, ki jih ni več.
 Varnost podatkov (R2a) je bila bolj nujna kot HTTPS (R2b), zato je šla prva.
+R2b je razcepljen (R2b1/R2b2), ker HTTPS in samodejni zagon nista bila gotova v
+enem koraku: izdaja, ki bi ju združila z offline vrsto, bi imela tri sprejemna
+merila in nobenega hitro preverljivega. R2b1 (v1.170.0) zato samo omeji offline
+vrsto, R2b2 prevzame HTTPS in samodejni zagon.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
@@ -200,7 +206,7 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 | Obnova pod tekočo aplikacijo | pokvarjen paket namesto rešitve | obnova se zavrne, dokler ima baza rep z vsebino; čist postanek rep počisti (R2a) |
 | SQLite in sočasni pisci | zaklepi/napake | en strežniški proces, WAL in busy timeout (R2a) |
 | Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija pred `db push` |
-| HTTP v LAN | PWA/offline ne deluje | R2b HTTPS; do takrat je lokalni profil preizkusni in interni |
+| HTTP v LAN | PWA/offline ne deluje | R2b2 HTTPS; do takrat je lokalni profil preizkusni in interni |
 | FURS/plačila brez interneta | fiskalni zaključek ne uspe | lokalna baza tega ne reši; dokumentirano |
 | Razlika med Postgres in SQLite shemo | napake ob nadgradnji | generator zrcala + drift gate |
 
@@ -218,12 +224,12 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
 | Odločitev | Predlog | Kdaj |
 |---|---|---|
-| HTTPS v LAN | Caddy z lokalnim CA (brez ročnega zaupanja na vsaki napravi) | R2b |
+| HTTPS v LAN | Caddy z lokalnim CA (brez ročnega zaupanja na vsaki napravi) | R2b2 |
 | Cilj varnostnih kopij | lokalna mapa (R2a naredeno) + USB; oblak neobvezno | R5 |
-| Licenciranje | brez v R1–R2b; odločitev pred komercialno prodajo | R4 |
-| Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2b |
+| Licenciranje | brez v R1–R2b2; odločitev pred komercialno prodajo | R4 |
+| Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2b2 |
 | Paketni namestilnik | samostojen ZIP/EXE z Bun runtime in `.next` | R3 |
-| Meja offline vrste (starost in dolžina) | odloči lastnik; mehanizem je na programu | R2b |
+| Meja offline vrste (starost in dolžina) | ODLOČENO v v1.170.0: 200 živih operacij, 12 h starosti; številki sta na programu, mehanizem in vidnost sta v mrtvi črki | R2b1 |
 
 ## 14. Kaj zavestno ne obljubljamo
 

@@ -1,9 +1,9 @@
-# Runbook — lokalni zagon RestaurantOS (v1.169.0)
+# Runbook — lokalni zagon RestaurantOS (v1.170.0)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
 (Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`. Zahteve in merila sprejema
-so v `docs/PRD-LOKALNA-BAZA.md` (R1 in R2a sta izvedena).
+so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a in R2b1 so izvedena).
 
 ## 1. Kaj potrebujete
 
@@ -76,7 +76,15 @@ podatkov in `git status` ne vidi baze.
 - **Dostop v omrežju:** na izpisanem naslovu `http://<IP>:3000` (npr.
   `http://192.168.1.20:3000`) z računalnika, tablice ali handhelda v istem
   omrežju. Lokalni profil uporablja HTTP; PWA namestitev zahteva HTTPS in je
-  obseg R2b (v1.170.0).
+  obseg R2b2 (v1.171.0).
+- **Offline vrsta (v1.170.0):** ko zveza pade, grejo naročila in spremembe
+  statusov v vrsto v brskalniku naprave (ne v lokalno bazo). Vrsta je omejena:
+  največ **200 čakajočih operacij** in vsaka čaka največ **12 ur**. Polna vrsta
+  nova naročila **zavrne** in to tudi pove — operacija se ne shrani tiho,
+  košarica ostane. Zastarela operacija ne izgine: prestavi se v mrtvo črko, kjer
+  jo osebje vidi (na glavni blagajni klikne rdečo značko v glavi) in se sama
+  odloči, ali jo pošlje znova ali zavrne. Mrtva črka prostora ne zaseda, zato
+  nova naročila lahko prihajajo tudi medtem.
 - **Preverjanje:** odprite `/api/health`. V lokalnem profilu mora vrniti
   `"status":"ok"`, `"mode":"local"`, `"databaseEngine":"sqlite"`, `"schema":"ok"`.
 
@@ -190,16 +198,23 @@ bun run local --build
 | PIN izgubljen | R1 nima samodejnega ponastavljanja. Obnovite `PRVIC-ZAGON.txt` iz kopije ali bazo iz varnostne kopije; čarovnik za ponastavitev je R3. |
 | Obnova zavrne z »še teče« | Aplikacija ni bila ustavljena s `Ctrl+C` (npr. izpad elektrike ali Upravitelj opravil), zato baza ima rep z vsebino. Ustavite jo, enkrat zaženite `bun run local` in ga ustavite s `Ctrl+C`; nato obnovo ponovite. Počistiti repa ročno ne izbrišite — v njem so lahko potrjeni zapisi. |
 | Kopije v `--list` manjkajo | Preverite `RESTAURANTOS_DATA_DIR`; kopije so v `<podatkovna mapa>/backups/`, ne v repozitoriju. |
+| POS javi »lokalna vrsta je polna« | Brez povezave je na napravi nabralo več kot 200 operacij. Rešitev ni brisanje, ampak povezava: zaženite ali počakajte na povezavo, da se vrsta sama pošlje, nato naročilo pošljite znova. Košarica pri tem NI izpraznjena. |
 | FURS ali kartično plačilo ne uspe | Lokalna baza ne odpravi odvisnosti od interneta; preverite povezavo in certifikate (`docs/FURS-CERT-RUNBOOK.md`). |
 
-## 8. Meje te izdaje (v1.169.0 = R1 + R2a)
+## 8. Meje te izdaje (v1.170.0 = R1 + R2a + R2b1)
 
 - Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
   `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
   shemo, `local:backup` in `local:restore` ter ena izvedena vaja obnove.
-- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2b (v1.170.0).
-- Brez avtomatskega zagona ob zagonu sistema in brez starostne ter kapacitetne
-  omejitve offline vrste — R2b (v1.170.0).
+- Izvedeno (R2b1): offline vrsta je omejena na 200 čakajočih operacij in 12 ur
+  starosti, je idempotentna po `clientOperationId`, ob polni vrsti ali kvoti
+  brskalnika zavrne glasno, zastarele operacije pa pridejo v mrtvo črko namesto
+  v tiho brisanje.
+- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2b2 (v1.171.0).
+- Brez avtomatskega zagona ob zagonu sistema — R2b2 (v1.171.0).
+- Offline vrsta živi v brskalniku naprave, ne v lokalni bazi: izbris brskalnega
+  podatkovnega profila ali drug brskalnik je izgubi, ne glede na omejitve te
+  izdaje. Popolna lokalna samostojnost POS-a ni obseg R2.
 - Brez čarovnika prve namestitve v brskalniku — R3.
 - Brez migracij in rollbacka nadgradenj — R3/R4.
 - Kopije so na istem disku kot baza; pred okvaro diska jih ščiti samo izvoz na
