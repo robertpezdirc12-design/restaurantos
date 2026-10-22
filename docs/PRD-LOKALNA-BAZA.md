@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Verzija dokumenta | 1.0 |
-| Datum | 21. 10. 2026 |
-| Status | Odobreno za R1 (v1.165.0) |
+| Verzija dokumenta | 1.1 |
+| Datum | 22. 10. 2026 |
+| Status | R1 izveden (v1.165.0); R2a izveden (v1.169.0); R2b načrtovan |
 | Lastnik | lastnik izdelka |
 | Povezave | `docs/ARCHITECTURE.md`, `docs/BACKUP-RESTORE.md`, `docs/DEPLOYMENT-RESILIENCE.md` |
 
@@ -93,8 +93,9 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 
 **Izven obsega R1 (po izdajah):**
 
-- HTTPS v lokalnem omrežju in namestitev PWA (R2);
-- samodejne varnostne kopije in obnova (R2);
+- HTTPS v lokalnem omrežju in namestitev PWA (R2b);
+- samodejne varnostne kopije in obnova (R2a, izvedeno v v1.169.0);
+- WAL, `synchronous=FULL` in busy timeout (R2a, izvedeno v v1.169.0);
 - čarovnik prve namestitve v brskalniku (R3);
 - migracije in rollback nadgradenj (R3/R4);
 - šifrirana kopija v oblaku, licenciranje, paketni namestilnik (R4/R5);
@@ -146,11 +147,15 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | Izdaja | Naslov | Obseg | Izhodni pogoj |
 |---|---|---|---|
 | **R1 — v1.165.0** | Lokalna baza iz enega ukaza | F1–F10, A1–A10 | `bun run local` ustvari bazo in lastnika, aplikacija teče, Vercel nespremenjen |
-| **R2 — v1.166.0** | Varen lokalni obrat | HTTPS v LAN (Caddy/mkcert), WAL + busy timeout, samodejne dnevne kopije, obnova, integritetni pregled, samodejni zagon ob prijavi | PWA se namesti na tablico; kopija/obnova preizkušena; izpad elektrike ne poškoduje baze |
-| **R3 — v1.167.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
-| **R4 — v1.168.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
+| **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
+| **R2b — v1.170.0** | Varen lokalni obrat | HTTPS v LAN (Caddy/mkcert), samodejni zagon ob prijavi, omejitev offline vrste (starost in dolžina) | PWA se namesti na tablico; vrsta se ne podvoji in ne raste neomejeno |
+| **R3 — v1.171.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
+| **R4 — v1.172.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
+R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
+porabile druge izdaje, cesta tukaj ne obljublja več številk, ki jih ni več.
+Varnost podatkov (R2a) je bila bolj nujna kot HTTPS (R2b), zato je šla prva.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
@@ -159,12 +164,18 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 - **Zagon:** `bun run local`.
 - **Ponovni zagon:** isti ukaz; baza in skrivnosti se ohranijo.
 - **Nadgradnja:** do R3 samo aditivne spremembe; destruktivna sprememba se
-  zavrne. Pred vsakim zagonom se naredi kopija `backups/pre-push-*.db` (R1).
-- **Varnostna kopija:** R2 doda dnevno kopijo in obnovo; do takrat je datoteka
-  `data/restaurantos.db` edini vir in jo je treba ročno kopirati.
-- **Izpad elektrike:** SQLite mora teči v WAL načinu (R2); R1 uporablja privzeti
-  dnevnik, zato je pred R2 lokalni obrat primeren za preizkus, ne za kritično
-  produkcijo brez kopij.
+  zavrne. Pred vsakim posegom v shemo nastane kopija `backups/pre-push-*.db`
+  (R1) in jo setup naredi **pred** `db push`, ne za njim.
+- **Varnostna kopija (R2a, v1.169.0):** ob zagonu in nato na vsakih 6 ur nastane
+  `backups/dnevno-<UTC>.db` — ena na koledarski dan, z integritetnim pregledom.
+  Ročno: `bun run local:backup`. Kopija je ena sama `.db` datoteka, prenosna na USB.
+- **Obnova (R2a, v1.169.0):** `bun run local:restore --list`, nato
+  `bun run local:restore --latest --force`. Stanje, ki ga obnova prepisuje, sama
+  shrani kot `backups/pred-obnovo-*.db`; aplikacija mora biti ustavljena.
+- **Izpad elektrike:** baza teče v WAL načinu s `synchronous=FULL` (R2a), zato
+  izpad pomeni izgubo najvišje nezaključene transakcije, ne pokvarjene datoteke.
+  Pred R2a je lokalni profil uporabljal privzeti dnevnik in je bil primeren za
+  preizkus, ne za kritično produkcijo.
 
 ## 10. Varnost in zasebnost
 
@@ -184,10 +195,12 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 | Tveganje | Vpliv | Ukrep |
 |---|---|---|
 | Vercel ne vidi lokalne baze | zmeda pri pričakovanjih | dva profila, jasna dokumentacija |
-| Disk/računalnik crkne | izguba podatkov | R2 dnevne kopije; do takrat ročna kopija |
-| SQLite in sočasni pisci | zaklepi/napake | en strežniški proces, WAL in busy timeout v R2 |
-| Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija |
-| HTTP v LAN | PWA/offline ne deluje | R2 HTTPS; R1 jasno označen kot preizkus |
+| Disk/računalnik crkne | izguba podatkov | dnevne kopije z integritetnim pregledom (R2a); kopija na istem disku ne zavaruje pred okvaro diska, zato USB (R5 za oblak) |
+| Kopija, narejena s prekopom datoteke | tiho izgubljen zadnji potrjeni zapis | kopija gre čez `VACUUM INTO` (R2a); izmerjeno: navaden prekop čez umazan WAL vrne 2 od 3 vrstic |
+| Obnova pod tekočo aplikacijo | pokvarjen paket namesto rešitve | obnova se zavrne, dokler ima baza rep z vsebino; čist postanek rep počisti (R2a) |
+| SQLite in sočasni pisci | zaklepi/napake | en strežniški proces, WAL in busy timeout (R2a) |
+| Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija pred `db push` |
+| HTTP v LAN | PWA/offline ne deluje | R2b HTTPS; do takrat je lokalni profil preizkusni in interni |
 | FURS/plačila brez interneta | fiskalni zaključek ne uspe | lokalna baza tega ne reši; dokumentirano |
 | Razlika med Postgres in SQLite shemo | napake ob nadgradnji | generator zrcala + drift gate |
 
@@ -205,15 +218,19 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
 | Odločitev | Predlog | Kdaj |
 |---|---|---|
-| HTTPS v LAN | Caddy z lokalnim CA (brez ročnega zaupanja na vsaki napravi) | R2 |
-| Cilj varnostnih kopij | lokalna mapa + USB; oblak neobvezno | R2/R5 |
-| Licenciranje | brez v R1/R2; odločitev pred komercialno prodajo | R4 |
-| Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2 |
+| HTTPS v LAN | Caddy z lokalnim CA (brez ročnega zaupanja na vsaki napravi) | R2b |
+| Cilj varnostnih kopij | lokalna mapa (R2a naredeno) + USB; oblak neobvezno | R5 |
+| Licenciranje | brez v R1–R2b; odločitev pred komercialno prodajo | R4 |
+| Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2b |
 | Paketni namestilnik | samostojen ZIP/EXE z Bun runtime in `.next` | R3 |
+| Meja offline vrste (starost in dolžina) | odloči lastnik; mehanizem je na programu | R2b |
 
 ## 14. Kaj zavestno ne obljubljamo
 
 - da bo Vercel kdaj uporabljal lokalno bazo;
 - da bo lokalni profil deloval brez interneta za FURS ali kartična plačila;
 - da bo SQLite sprejel več strežnikov hkrati;
-- da bo R1 vseboval samodejne kopije, HTTPS ali čarovnik.
+- da bo R1 vseboval samodejne kopije, HTTPS ali čarovnik;
+- da lokalna kopija pomeni varnostno kopijo: en disk, en računalnik, ena
+  požarna (R2a kopije hrani na istem disku kot baza; za drugi medij poskrbi
+  obrat, zunanji storjen sistem je R5).

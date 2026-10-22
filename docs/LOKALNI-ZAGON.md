@@ -1,9 +1,9 @@
-# Runbook — lokalni zagon RestaurantOS (R1, v1.165.0)
+# Runbook — lokalni zagon RestaurantOS (v1.169.0)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
 (Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`. Zahteve in merila sprejema
-so v `docs/PRD-LOKALNA-BAZA.md`.
+so v `docs/PRD-LOKALNA-BAZA.md` (R1 in R2a sta izvedena).
 
 ## 1. Kaj potrebujete
 
@@ -45,10 +45,14 @@ Demo podatki iz `prisma/seed.ts` se **ne** naložijo; demo prijava je izklopljen
 
 Mapo prepiše `RESTAURANTOS_DATA_DIR`. V njej so:
 
-- `data/restaurantos.db` — baza (edini vir podatkov v R1);
+- `data/restaurantos.db` — baza (edini vir podatkov);
+- `data/restaurantos.db-wal` — rep (WAL) z nedavnimi zapisi; ob pravilnem postanku
+  aplikacije ga ni;
 - `config.json` — trajne skrivnosti; **ne** kopirajte v repo in ne delite;
 - `PRVIC-ZAGON.txt` — prve poverilnice;
-- `backups/pre-push-*.db` — kopije pred posodobitvijo sheme (zadnjih 5).
+- `backups/dnevno-*.db` — samodejne dnevne kopije (zadnjih 14);
+- `backups/pre-push-*.db` — kopije pred posegom v shemo (zadnjih 5);
+- `backups/pred-obnovo-*.db` — stanje, ki ga je obnova prepisala (zadnjih 14).
 
 **Dovoljine datotek s skrivnostmi.** Na macOS in Linux ju koda ustvari z `0600` —
 bere ju samo račun, ki jo je ustvaril. Na Windows POSIX `chmod` ne deluje, zato
@@ -64,29 +68,99 @@ podatkov in `git status` ne vidi baze.
 
 - **Zagon:** `bun run local` (isti ukaz kot prvič; baze ne ponastavi).
 - **Postanek:** `Ctrl+C` v terminalu. Launcher ustavi samo svoj strežniški
-  proces, ne drugih procesov v sistemu.
+  proces, ne drugih procesov v sistemu, in ob postanku počisti rep baze. Zato se
+  obnova ne zruši zaradi "še teče", ko aplikacija res ne teče več.
+- **Kopije:** ob zagonu in nato na vsakih 6 ur samodejno nastane dnevna kopija;
+  ročno jo naredite z `bun run local:backup`, seznam pokaže `bun run
+  local:restore --list` (podrobnosti v §5).
 - **Dostop v omrežju:** na izpisanem naslovu `http://<IP>:3000` (npr.
   `http://192.168.1.20:3000`) z računalnika, tablice ali handhelda v istem
-  omrežju. R1 uporablja HTTP; PWA namestitev zahteva HTTPS in je obseg R2.
+  omrežju. Lokalni profil uporablja HTTP; PWA namestitev zahteva HTTPS in je
+  obseg R2b (v1.170.0).
 - **Preverjanje:** odprite `/api/health`. V lokalnem profilu mora vrniti
   `"status":"ok"`, `"mode":"local"`, `"databaseEngine":"sqlite"`, `"schema":"ok"`.
 
-## 5. Varnostne kopije in obnova (R1)
+## 5. Varnostne kopije in obnova (R2a, v1.169.0)
 
-R1 nima samodejnih dnevnih kopij. Pred vsakim zagonom, ki posodobi shemo, nastane
-`backups/pre-push-*.db`, kar ščiti pred neuspešno nadgradnjo — ne pa pred okvaro
-diska.
+Baza teče v WAL načinu (`journal_mode=wal`, `synchronous=FULL`, busy timeout
+5000 ms). Kopije so tri vrste, vse v `backups/`:
 
-**Ročna kopija:** ustavite aplikacijo in kopirajte `data/restaurantos.db` na
-drug medij (USB, omrežna mapa). Kopirajte tudi `config.json`, sicer po obnovi na
-drugem računalniku ne boste mogli preveriti obstoječih PIN-ov.
+| Kopija | Kdaj nastane | Hrani se |
+|---|---|---|
+| `dnevno-<UTC>.db` | ob zagonu in nato na vsakih 6 ur; največ ena na koledarski dan | zadnjih 14 |
+| `pre-push-<UTC>.db` | pred vsakim posegom v shemo | zadnjih 5 |
+| `pred-obnovo-<UTC>.db` | stanje, ki ga obnova ravnokar prepisuje | zadnjih 14 |
 
-**Obnova:**
+Vsaka kopija je pred shranjevanjem preverjena z `PRAGMA integrity_check` in je
+ena sama `.db` datoteka brez `-wal`/`-shm` samic, torej prenosna na USB.
 
-1. ustavite aplikacijo (`Ctrl+C`);
-2. shranite trenutno bazo stran (ne izbrišite je);
-3. kopirajte izbrano kopijo v `data/restaurantos.db`;
-4. zaženite `bun run local`.
+**Zakaj kopija ni prekop datoteke:** izmerjeno 22. 10. 2026 je prekop datoteke
+nad bazo z neprečiščenim WAL vrnil 2 od 3 vrstic — zadnji potrjeni zapis je v
+kopiji manjkal. Kopija zato gre čez `VACUUM INTO`, ki prebere tudi rep.
+
+### Ročna kopija
+
+```bash
+bun run local:backup                        # dnevna kopija
+bun run local:backup --kind pred-pushom     # pred ročnim posegom v shemo
+```
+
+Kopije ležijo na **istem disku kot baza**. Vsaj eno prenesite na USB ali omrežno
+mapo in skupaj s kopijami shranite tudi `config.json` in `PRVIC-ZAGON.txt`: brez
+skrivnosti obnovljena baza na drugem računalniku ne prepozna obstoječih PIN-ov.
+
+### Obnova
+
+```bash
+bun run local:restore --list
+bun run local:restore --latest --force
+bun run local:restore --from backups/dnevno-2026-10-22T17-08-24-494Z.db --force
+```
+
+Vrstni red, ki ga ukaz sam spoštuje:
+
+1. izbrana kopija se preveri; če `integrity_check` ne vrne `ok`, se obnova **ne začne**;
+2. če aplikacija še teče (baza ima rep z vsebino), se obnova **zavrne**;
+3. trenutno stanje se shrani kot `pred-obnovo-*.db`;
+4. kopija se prepise v `data/restaurantos.db` in replica se takoj vklopi nazaj;
+5. zaženite `bun run local` in preverite `/api/health`.
+
+`--latest` pomeni najnovejšo **dnevno** kopijo, ne najmlajše datoteke:
+`pred-obnovo-*` je lahko mlajša in vsebuje ravno tisto stanje, ki ste ga ravnokar
+zavrnili.
+
+### Vaja obnovitve (izvedena 22. 10. 2026)
+
+Vaja je potekala na **pravi** lokalni bazi (135 tabel, 3.682.304 B), ne na
+testni napravi.
+
+1. `bun run local:setup` — baza nastane, izpisana replica je `wal`;
+2. `bun run local:backup`:
+
+   ```text
+   ✔ Kopija dnevno-2026-10-22T17-08-24-494Z.db je naredena in preverjena (integrity_check ok, 899 strani).
+   ```
+
+3. v bazi je bil namenno spremenjen podatek, ki ga kopija ne sme vsebovati
+   (`Location.name` → `POZABLJEN IME PO KOMPIJI`);
+4. `bun run local:restore --latest --force`:
+
+   ```text
+   ✔ Baza je obnovljena iz dnevno-2026-10-22T17-08-24-494Z.db (integrity_check ok, 899 strani).
+   ✔ Stanje pred obnovo je shranjeno kot pred-obnovo-2026-10-22T17-31-49-625Z.db.
+     Baza: C:\Users\admin\AppData\Local\RestaurantOS\data\restaurantos.db (replica: wal)
+   ```
+
+5. preverjeno: obnovljena baza ima spet `Moja restavracija`, `integrity_check`
+   je `ok` in replica je `wal`; varnostna kopija
+   `pred-obnovo-2026-10-22T17-31-49-625Z.db` pa še vedno `POZABLJEN IME PO
+   KOMPIJI` — stanje, ki ga je obnova prepisala, ni izgubljeno.
+
+Ista vaja je pokazala tudi zavrnitev: obnova nad bazo z odprtim repom se je
+ustavila s sporočilom, da aplikacija še teče, in ni prepisala ničesar. Pravilno
+ustavljena aplikacija (`Ctrl+C`) rep počisti sama. Če ste jo ustavili na silo
+(Upravitelj opravil, izpad elektrike), enkrat zaženite `bun run local` in ga
+ustavite s `Ctrl+C`; nato obnovo ponovite.
 
 ## 6. Posodobitev na novo različico
 
@@ -114,14 +188,22 @@ bun run local --build
 | Build ne uspe | Preverite `bun run typecheck` in prostor na disku; nato `bun run local --build`. |
 | `/api/health` vrne `degraded` | Preberite `dbError` v odgovoru in dnevnik terminala; baza je v `data/restaurantos.db`. |
 | PIN izgubljen | R1 nima samodejnega ponastavljanja. Obnovite `PRVIC-ZAGON.txt` iz kopije ali bazo iz varnostne kopije; čarovnik za ponastavitev je R3. |
+| Obnova zavrne z »še teče« | Aplikacija ni bila ustavljena s `Ctrl+C` (npr. izpad elektrike ali Upravitelj opravil), zato baza ima rep z vsebino. Ustavite jo, enkrat zaženite `bun run local` in ga ustavite s `Ctrl+C`; nato obnovo ponovite. Počistiti repa ročno ne izbrišite — v njem so lahko potrjeni zapisi. |
+| Kopije v `--list` manjkajo | Preverite `RESTAURANTOS_DATA_DIR`; kopije so v `<podatkovna mapa>/backups/`, ne v repozitoriju. |
 | FURS ali kartično plačilo ne uspe | Lokalna baza ne odpravi odvisnosti od interneta; preverite povezavo in certifikate (`docs/FURS-CERT-RUNBOOK.md`). |
 
-## 8. Meje izdaje R1
+## 8. Meje te izdaje (v1.169.0 = R1 + R2a)
 
-- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2.
-- Ročne kopije in obnova — R2 doda samodejne dnevne kopije in integritetni pregled.
+- Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
+  `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
+  shemo, `local:backup` in `local:restore` ter ena izvedena vaja obnove.
+- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2b (v1.170.0).
+- Brez avtomatskega zagona ob zagonu sistema in brez starostne ter kapacitetne
+  omejitve offline vrste — R2b (v1.170.0).
 - Brez čarovnika prve namestitve v brskalniku — R3.
 - Brez migracij in rollbacka nadgradenj — R3/R4.
+- Kopije so na istem disku kot baza; pred okvaro diska jih ščiti samo izvoz na
+  USB ali omrežno mapo (§5).
 - SQLite je **en pisec**: ne zaženite dveh kopij aplikacije nad isto bazo.
 
 Podatki so lokalni. Aplikacije ne izpostavljajte neposredno na internet; za
