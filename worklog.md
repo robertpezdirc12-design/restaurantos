@@ -22,7 +22,14 @@ Stage Summary:
 - `DailyDigestResult.reason` ima tretjo vrednost (`already_sent`); `/api/cron/daily` jo prenese v `steps.digest` kot obstoječi razlog — brez spremembe oblike odziva in brez novih stolpcev v shemi (izdaja je brez migracije).
 - Vrata imajo novo zavarovalnico: `typecheck:cloud` ne more več zapustiti delno zamenjanega prisma klienta, zato naslednji `bun test` ne more pasti iz napačnega razloga.
 - Pogoj za prihodnje izdaje: vrata ZAPOREDO (en proces) in z zaustavljenim demo strežnikom okrog `typecheck:cloud` — `prisma generate` na Windows ne more zamenjati DLL-ja, ki ga drži živ proces.
-- AKCIJA ZA LASTNIKA: za to izdajo nič novega; v teku ostanejo štirje podatki iz v1.166.0 (Neon v mirovanju → `/api/health` je `degraded` zaradi baze, ne kode · Buildkite integracija · GitLab žeton zrcala · preklic klepetnega GitHub žetona).
+- AKCIJA ZA LASTNIKA: za to izdajo nič novega; v teku ostanejo štirje podatki iz v1.166.0 (Neon v mirovanju → `/api/health` je `degraded` zaradi baze, ne kode · Buildkite integracija · GitLab žeton zrcala · preklic klepetnega GitHub žetona). Od danes nova odprta točka: CI runner — glej POTRDITEV PO OBJAVI.
+
+POTRDITEV PO OBJAVI (e712e1b):
+- `/api/health` služi `version: 1.167.0`, `commit: e712e1bec7b7b58c27017680723d84f0682c1ada`, `mode: cloud`, `databaseEngine: postgresql`, `latencyMs: 151`. Status je `degraded` zaradi `database: disconnected` (`schema: skipped`, hint "Podatkovnega strežnika ni mogoče doseči") — **to je pogoj baze (Neon v mirovanju), ne defekt te izdaje**; v1.167.0 nima migracije in ne povzema baze.
+- Objavo je zgradila Vercel Git integracija neposredno ob pushu (pot `push → Vercel build → produkcija`, kot jo opisuje `.github/workflows/ci.yml` v vrsticah 2–11). Objave ni sprožil noben GitHub Actions run.
+- `bun scripts/sync-check.ts` → **SYNCED**: local = mirror = prod = `e712e1b`.
+- NOVA UGOTOVITEV (koren vzroka, ki je bil v v1.166.0 zapisan le kot "jobs still queued"): `vars.CI_RUNNER_LABELS = self-hosted`, seznam runnerjev pa ima enega samega: `sandbox-ci-runner-1`, `status: offline`, `busy: false` (labels `self-hosted, Linux, X64, ubuntu-latest`). Run 39774689196 (`neon-smoke`, `tests`, `typecheck-prod`) zato **ostane `queued` brez runnerja** — ne gre za quota ali napako kode. Edini v oblaku dejansko izvedeni preizkus je Vercel build. Dve možnosti za lastnika: (a) zaženi/popravi samostojni runner, ali (b) `CI_RUNNER_LABELS` nastavi na `ubuntu-latest` in počisti `prod-smoke` (ki ima enak `runs-on`). Ne spreminjam sam — to je konfiguracija deljenega okolja.
+- Buildkite (tuja integracija, lastnikova odprta točka) je tudi na tem pushu oba check runa zaključila z `failure` (`…/builds/68` in `…/builds/69` — "Dvosmerna sinhronizacija GitLab <-> GitHub" in "CI — quality gate"). Lokalnih sedem ničel in zelen Vercel build pomenita, da ta integracija ne preverja te kode; odpravi jo ali uredi.
 
 ---
 Task ID: 27-main
