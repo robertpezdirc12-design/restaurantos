@@ -1,14 +1,16 @@
 #!/usr/bin/env bun
 /**
  * v1.165.0 — en ukaz za lokalni RestaurantOS (PRD R1, F6).
+ * v1.169.0 — ob zagonu additionally dnevna varnostna kopija (PRD R2).
  *
- * `bun run local` pripravi bazo (če je še ni), zgradi aplikacijo (če je še ni)
- * in jo zažene na 0.0.0.0, da je dostopna tudi na tablicah v lokalnem omrežju.
- * Ne seje demo podatkov in ne odpira nobene oblačne baze.
+ * `bun run local` pripravi bazo (če je še ni), naredi dnevno kopijo, zgradi
+ * aplikacijo (če je še ni) in jo zažene na 0.0.0.0, da je dostopna tudi na
+ * tablicah v lokalnem omrežju. Ne seje demo podatkov in ne odpira nobene oblačne baze.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { backupsDirFor, backupDatabase, drainWal, listBackups, LOCAL_DAILY_BACKUP_PREFIX } from '../src/lib/local-durability'
 import { lanUrls } from '../src/lib/local-runtime'
 import { runLocalSetup } from '../src/lib/local-setup'
 
@@ -99,7 +101,7 @@ try {
 
 console.log(`\nRestaurantOS — lokalni profil`)
 console.log(`  Podatki: ${setup.dataDir}`)
-console.log(`  Baza:    ${setup.dbPath}`)
+console.log(`  Baza:    ${setup.dbPath} (${setup.journalMode})`)
 if (setup.ownerCreated) {
   console.log(`  Lastnik: ${setup.ownerEmail}`)
   if (setup.pin) console.log(`  PIN:     ${setup.pin}`)
@@ -107,6 +109,32 @@ if (setup.ownerCreated) {
 } else {
   console.log(`  Lastnik: ${setup.ownerEmail} (obstoječi račun)`)
 }
+
+const backupsDir = backupsDirFor(setup.dbPath)
+try {
+  const kopija = await backupDatabase(setup.dbPath, backupsDir)
+  console.log(
+    kopija.created
+      ? `  Kopija:  ${path.basename(kopija.file)} (integritetni pregled ok)`
+      : `  Kopija:  ${path.basename(kopija.file)} je že današnja (integritetni pregled ok)`,
+  )
+} catch (err) {
+  // Obrat mora odpreti tudi, če kopija ni uspela — a brez varnostne kopije ne
+  // sme deliti tedne, zato je opozorilo izpostavljeno in se ob vsakem zagonu ponovi.
+  console.error(`\n⚠ Dnevne kopije NI: ${(err as Error).message}`)
+  console.error('  Podatki so varni, a brez kopije. Preverite prostor na disku in pravice do mape backups.')
+}
+
+// Dolgo stoječ računalnik v obratu ne sme ostati brez današnje kopije, ker je
+// bil zagnan včeraj. Funkcija sama shrani največ eno kopijo na dan (UTC).
+const SEJANJE_KOPIJE_MS = 6 * 60 * 60 * 1000
+const kopijaUra = setInterval(() => {
+  void backupDatabase(setup.dbPath, backupsDir).catch((err) => console.error(`⚠ Dnevna kopija ni uspela: ${(err as Error).message}`))
+}, SEJANJE_KOPIJE_MS)
+// Ura ne sme držati procesa živega — strežnik ga že.
+kopijaUra.unref()
+
+console.log(`  Kopij v ${backupsDir}: ${listBackups(backupsDir, LOCAL_DAILY_BACKUP_PREFIX).length} dnevnih`)
 
 const needsBuild = args.forceBuild || !existsSync(BUILD_ID) || existsSync(STANDALONE_MARKER)
 if (needsBuild) {
@@ -144,6 +172,9 @@ child.on('error', (err) => {
 })
 
 child.on('exit', (code, signal) => {
+  // Čist postanek mora počistiti rep: izmerjeno `-wal` po izhodu procesa ostane
+  // poln, naslednja obnova pa bi zaradi tega javila, da aplikacija še teče.
+  drainWal(setup.dbPath)
   if (signal) process.exit(0)
   process.exit(code ?? 0)
 })

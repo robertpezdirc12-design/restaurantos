@@ -1,19 +1,22 @@
 /**
  * v1.165.0 — prvi lokalni zagon (PRD docs/PRD-LOKALNA-BAZA.md, F3–F5/F8/F9).
+ * v1.169.0 — kopija pred pushom je preverjena, baza pa se pred vsakim zapisom
+ * prestavi v WAL (R2, `local-durability.ts`).
  *
  * Naredi natanko toliko, da lokalna namestitev deluje brez Neon računa:
  *  1. podatkovna mapa + trajne skrivnosti (0600),
  *  2. SQLite odjemalec in shema iz zrcala (brez `--accept-data-loss`),
- *  3. varnostna kopija pred vsakim pushom,
+ *  3. preverjena varnostna kopija pred vsakim posegom v shemo,
  *  4. minimalna baza: ena lokacija, nastavitve in lastnik z naključnim PIN-om.
  *
  * Demo seed (prisma/seed.ts) se NIKOLI ne izvede: vsebuje javne PIN-e 1234/2345,
  * ki v lokalnem omrežju niso sprejemljivi. Break-glass okolje je izpraznjeno.
  */
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { employeePinFields } from './auth'
+import { applyDurability, backupDatabase } from './local-durability'
 import {
   LOCAL_SETUP_MARKER,
   databasePathFor,
@@ -27,7 +30,6 @@ const ROOT = process.cwd()
 const SQLITE_SCHEMA = path.join(ROOT, 'prisma', 'schema.sqlite.prisma')
 const PRISMA_CLI = path.join(ROOT, 'node_modules', 'prisma', 'build', 'index.js')
 const CLIENT_SCHEMA = path.join(ROOT, 'node_modules', '.prisma', 'client', 'schema.prisma')
-const MAX_BACKUPS = 5
 
 export const DEFAULT_OWNER_EMAIL = 'lastnik@restaurantos.local'
 export const DEFAULT_RESTAURANT_NAME = 'Moja restavracija'
@@ -48,6 +50,8 @@ export interface LocalSetupResult {
   existingEmployees: number
   secretsCreated: boolean
   backupCreated?: string
+  /** Stanje replica po nastavitvi pragmov — lokalni profil mora biti `wal`. */
+  journalMode: string
   /** Vrnjen samo, kadar je PIN generiran (nikoli ne odmevaj uporabnikovega). */
   pin?: string
 }
@@ -95,21 +99,6 @@ function ensureSqliteClient(env: NodeJS.ProcessEnv, allowGenerate: boolean): voi
   }
 }
 
-function backupDatabase(dbPath: string, backupsDir: string): string | undefined {
-  if (!existsSync(dbPath)) return undefined
-  mkdirSync(backupsDir, { recursive: true, mode: 0o700 })
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const target = path.join(backupsDir, `pre-push-${stamp}.db`)
-  copyFileSync(dbPath, target)
-  const backups = readdirSync(backupsDir)
-    .filter((f) => /^pre-push-.*\.db$/.test(f))
-    .sort()
-  for (const old of backups.slice(0, Math.max(0, backups.length - MAX_BACKUPS))) {
-    unlinkSync(path.join(backupsDir, old))
-  }
-  return target
-}
-
 function firstRunCredentials(input: {
   dataDir: string
   dbPath: string
@@ -154,7 +143,14 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<Lo
 
   ensureSqliteClient(env, options.allowGenerate !== false)
 
-  const backupCreated = backupDatabase(dbPath, path.join(dataDir, 'backups'))
+  // Kopija in WAL morata biti vzpostavljena PRED `db push`: poseg v shemo je
+  // edini korak, ki ga v tej izdaji ne moremo razveljaviti.
+  const backupsDir = path.join(dataDir, 'backups')
+  const backupCreated = existsSync(dbPath)
+    ? (await backupDatabase(dbPath, backupsDir, { kind: 'pred-pushom' })).file
+    : undefined
+  const journalMode = applyDurability(dbPath).journalMode
+
   prismaCommand(['db', 'push', '--schema', SQLITE_SCHEMA, '--skip-generate'], env)
 
   const { PrismaClient } = await import('@prisma/client')
@@ -226,6 +222,7 @@ export async function runLocalSetup(options: LocalSetupOptions = {}): Promise<Lo
       ownerEmail: ownerEmailResult,
       existingEmployees,
       secretsCreated,
+      journalMode,
       ...(backupCreated ? { backupCreated } : {}),
       ...(ownerCreated && generated && pin ? { pin } : {}),
     }

@@ -18,6 +18,8 @@
     "db:seed": "bun prisma/seed.ts",
     "local": "bun scripts/local-start.ts",
     "local:setup": "bun scripts/local-setup.ts",
+    "local:backup": "bun scripts/local-backup.ts",
+    "local:restore": "bun scripts/local-restore.ts",
     "demo": "bun scripts/demo-start.ts"
   },
   "dependencies": {
