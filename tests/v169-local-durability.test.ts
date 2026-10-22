@@ -718,7 +718,13 @@ describe('v1.169.0 — statične invariante', () => {
     const prd = read('docs/PRD-LOKALNA-BAZA.md')
     expect(prd).not.toMatch(/v1\.16[678]\.0\*\*\s*\|\s*(Varen lokalni obrat|Namestitev v 10 minutah)/)
     expect(prd).toMatch(/R2a — v1\.169\.0\*\* \| Vzdržljiva lokalna baza/)
-    expect(prd).toMatch(/R2b — v1\.170\.0\*\* \| Varen lokalni obrat/)
+    // v1.170.0 (R2b1) razcepi R2b: izdaja samo omeji offline vrsto, HTTPS in
+    // samodejni zagon ostaneta R2b2. Številke morajo držati — R3 ne sme več
+    // obljubljati v1.171.0, ker je ta zasedel R2b2.
+    expect(prd).toMatch(/R2b1 — v1\.170\.0\*\* \| Omejena offline vrsta/)
+    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.171\.0\)\*\* \| Varen lokalni obrat brez žice/)
+    expect(prd).toMatch(/R3 — v1\.172\.0/)
+    expect(prd).not.toMatch(/R3 — v1\.17[01]\.0/)
   })
 
   it('runbook lokalnega zagona opisuje kopijo, obnovo in izvedeno vajo obnove', async () => {
