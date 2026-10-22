@@ -25,29 +25,38 @@ function run(command, label) {
 }
 
 let exitCode = 0
+let cloudReady = false
 try {
   run(`${runner} prisma generate --schema prisma/schema.prisma`, 'produkcijski klient')
+  cloudReady = true
 } catch (e) {
   console.error('[typecheck-cloud] `prisma generate` proti Postgres shemi ni uspel:', e.message)
-  process.exit(2)
+  exitCode = 2
 }
 
-try {
-  run(`${runner} tsc --noEmit`, 'tsc proti Postgres klientu')
-} catch (e) {
-  exitCode = typeof e.status === 'number' ? e.status : 1
-  console.error(`[typecheck-cloud] RDEČE — produkcijski tipi se ne ujemata (koda ${exitCode}).`)
-  console.error('[typecheck-cloud] Popravi kodo, ne sheme (pravilo izpada v1.129.0).')
-} finally {
+if (cloudReady) {
   try {
-    run(`${runner} prisma generate --schema prisma/schema.sqlite.prisma`, 'vrni SQLite klient')
+    run(`${runner} tsc --noEmit`, 'tsc proti Postgres klientu')
   } catch (e) {
-    console.error('[typecheck-cloud] OPOZORILO: SQLite klienta ni bilo mogoče obnoviti:', e.message)
-    console.error('[typecheck-cloud] Ročno: bun run db:generate')
-    // Zelena vrata z razbitim klientom so laž: brez SQLite klienta naslednji
-    // `bun test` pade iz napačnega razloga. Koda se ne sme povrniti na 0.
-    if (exitCode === 0) exitCode = 3
+    exitCode = typeof e.status === 'number' ? e.status : 1
+    console.error(`[typecheck-cloud] RDEČE — produkcijski tipi se ne ujemata (koda ${exitCode}).`)
+    console.error('[typecheck-cloud] Popravi kodo, ne sheme (pravilo izpada v1.129.0).')
   }
+}
+
+// Obnova je VEDNO obvezna — tudi ko je prvi generate padel sredi kopiranja
+// (EPERM na query_engine dll, ker ga drži zagnan dev server). Delno zamenjan
+// klient ostane Postgres in naslednji `bun test` zruši z "URL must start with
+// postgresql://" — v1.167.0: 255 lažnih padcev, ker je process.exit(2) v catch
+// bloku preskočil to vejo.
+try {
+  run(`${runner} prisma generate --schema prisma/schema.sqlite.prisma`, 'vrni SQLite klient')
+} catch (e) {
+  console.error('[typecheck-cloud] OPOZORILO: SQLite klienta ni bilo mogoče obnoviti:', e.message)
+  console.error('[typecheck-cloud] Ročno: bun run db:generate')
+  // Zelena vrata z razbitim klientom so laž: brez SQLite klienta naslednji
+  // `bun test` pade iz napačnega razloga. Koda se ne sme povrniti na 0.
+  if (exitCode === 0) exitCode = 3
 }
 
 process.exit(exitCode)
