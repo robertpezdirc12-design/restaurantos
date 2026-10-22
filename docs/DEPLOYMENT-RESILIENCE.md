@@ -380,6 +380,72 @@ brez edinstvenega indeksa (DDL) dva sočasna klica v istem trenutku teoretično
 oba pošljeta — realni scenarij pa je ponovitev minute ali ure pozneje.
 Dokaz: `tests/v167-digest-dedupe.test.ts` (5 testov, mutacijsko dokazano 6/6).
 
+### Dead-man alarm je moral dostopiti prejemnika (v1.168.0)
+
+Alarmna plast (`.github/actions/ci-alarm`, osem klicev: `ci.yml` ×3, `ci-canary`,
+`neon-backup`, `prod-smoke`, `sync`, `vercel-ops`) je bila vgrajena kot odgovor na
+pet dni tiho izpadlega backupa (13.–18. 10.). **Do v1.168.0 ni nikoli dostopila.**
+Canary (№24) je pravilno javil 6 zaporednih izpadov CI-ja (16.–22. 10.), vsi
+klici alarmnega koraka so vrnili `success`, `gh issue list --state all`
+pa nima **niti ene** `[CI alarm]` vrstice. Alarm, ki se ne oglasi, je slabši od
+brez-alarma: sam korak dostave je bil videzno zelen.
+
+Štiri lastne napake, vse izmerjene:
+
+1. **Pokvarjen REST base.** `API="${{ github.server_url }}/api/v3/repos/…"` vrne
+   404 (pravilen base je `github.api_url` → `https://api.github.com`; isti base
+   že uspešno uporablja `scripts/ci-canary-check.mjs`). Ker `api()` uporablja
+   `curl -f`, je padel *vsak* poziv, ne samo prvi, in korak je tiho šel na
+   `state=spodletela`.
+2. **`${{ }}` vpoki sredi shell besedila.** `inputs.hint` se v besedilo vpiše
+   dobesedno, hint pa ima narekovaje → `line 5: [: too many arguments`
+   (run 39742241206) in ključno navodilo „najprej preveri“ je izginilo iz
+   povzetka in issue.
+3. **`python3 -c` kot JSON gradnik.** Na Windows runnerjih (in na tej razvojni
+   škatli) je `python3` stub, ki izpiše napako in **vrne 0** → tiho prazen
+   payload. Edini upoštevani gradnik je zdaj `node`.
+4. **`curl` argv in kodna stran.** MSYS (Git Bash) pri predaji argv nativnemu
+   `curl.exe` preklopi na OEM kodno stran, zato UTF-8 (š, č, ž, —) razpade v
+   `?` — izmerjeno 22. 10. na lokalnem stubu: `curl -d "$P"` → `"?ED ? ?iv"`,
+   `printf '%s' "$P" | curl --data-binary @-` → `"ČED — živ"`. `node` argv je
+   varen, `curl` argv ni. Ker sta naslov in body alarmne issue slovenska, telo
+   zdaj potuje prek stdin.
+
+**Popravek:** vsaka zunanja vrednost gre prek `env:` (`SCOPE, HINT, JOB, API_BASE,
+SERVER_URL, RUNNER_NAME, RUNNER_OS, TOKEN`), payloadi jih berejo iz `argv`/`stdin`;
+JSON gradi `node`; curl dobi telo prek **stdin** (`--data-binary @-`, glej
+napako 4). Spanje med poskusi je zdaj konfigurabilno
+(`API_RETRY_SLEEP`, privzeto 3 → vedenje na runnerju nespremenjeno), korak pa
+ob treh padcih istega endpointa izpiše `::warning::api <metoda> <pot> ni uspel`,
+da je vzrok v logu, ne samo posledica.
+
+**Namensko ohranjeno:** korak nikoli ne vrne napake (`exit 0` +
+`state=spodletela`), da ne zakrije pravega vzroka odpovedi; nadaljnje odpovedi
+istega joba se deduplicirajo v komentar; dodelitev lastniku ostaja edini signal,
+ki pride do človeka brez Actions zaslona; body namenoma nima izsečka loga (№20).
+
+Zakaj to do zdaj ni bilo odkrito: `audit1516` A2 je pinil *obliko* koraka
+(`state=…`, `$GITHUB_STEP_SUMMARY`, `/assignees`), nikoli pa HTTP basea ali
+izvedbe. Test je zdaj **vedenostni** — iz `action.yml` izvlečen `run:` blok se
+zažene kot pravi skript proti lokalnemu HTTP stubu in preveri, kaj se zgodi (8
+mutacij, vseh 8 ujetih: `tests/v168-ci-alarm-delivery.test.ts`).
+
+**Kar kod popraviti ne more (lastnik, Settings):** izbrisati spremenljivko
+`CI_RUNNER_LABELS` (neveljaven label `ubuntu-latest` na offline runnerju
+`sandbox-ci-runner-1` usmerja run-e vanj; `|| 'ubuntu-latest'` fallback v
+workflowih že obstaja in ga test C namensko varuje, zato diff za ta del ni
+potreben) ter odstraniti tisti label s runnerja. Odprto ostaja merjenje canary
+cronu: izraz je `17 * * * *` (vsako uro ob 17. minuti), dejanski
+zagoni pa so 20.–22. 10. prišli ob 14:21, 19:20, 23:13, 01:41, 07:45, 13:53,
+18:43, 22:25, 01:35, 07:41, 13:52 — **nobeden ne pade na 17. minuto, sledijo pa jim
+3–6-urni presledki**, `createdAt` pa je enak `startedAt`. Run torej ni čakal v
+vrsti za runnerja — zakasnil je že sam `schedule` dogodek. To je lastnost
+GitHubovega razporedilnika (best-effort; ob vrhu zakasni ali sprožitev izpusti),
+ne naša koda. Posledica: realna zazava mrtvega CI-ja je 3–6 h namesto 1 h, kar je
+sprejeto: štiri do osem preverjanj na dan je več kot nič. Če hoče lastnik urno
+zazavo, je zanesljivejša pot zunanji poklicatelj (`workflow_dispatch` prek GitHub
+API-ja iz lastnega cron-a), ne `schedule:`.
+
 ## Sandbox rollback resync (Task 46)
 
 Peskovno okolje lahko **vrne git refse na star snapshot**, medtem ko je GitHub
