@@ -1,4 +1,30 @@
 ---
+Task ID: v1.167.0-dedupe-digesta
+Agent: glavni agent (Qoder)
+Task: Zadna odprta ugotovitev revizije — dnevni digest se je ob ponovitvi crona istega dne poslal ZNOVA. Najdba je bila v izdaji v1.161.0 zapisana kot "kandidat za naslednjo izdajo"; tukaj je izvedena (TDD + mutacijski dokaz), zraven nje pa defekt, ki so ga odkrila lastna izdajna vrata.
+
+Work Log:
+- KAJ: `sendDailyDigest` zdaj PREDEN pogleda SMTP nastavitve preveri `ScheduledEmailLog` in vrne `{ sent: false, reason: 'already_sent' }`, če za zajeti dan že obstaja vrstica s statusom `sent`. Ključ: `reportType='DAILY_DIGEST'` + `status='sent'` + `reportDate=zajeti dan` (`from`, ne `to`).
+- ZAKAJ TO: marker `/api/cron/daily` (`already_ran_today`) se ob napaki NAMERNO ne zapiše (v1.161.0 — lažni uspeh v markerju je slabši od ponovitve). Posledica: istodnevna ročna ponovitev zažge VSE korake. Vsi ostali so idempotentni (recurring pravila, AP push, LOT/HACCP markerji); digest je edini z zunanjim, nepovratnim učinkom — e-pošte ni mogoče umakniti.
+- `status='failed'` NE blokira: poskus, ki ni bil dostavljen, sme in mora biti ponovljen (mutacija M2 to čuva).
+- ZAKAJ JE NAPAKA ŽIVELA: veja pošiljanja NIKOLI ni bila izvedena v testu — `sendDailyDigest` je bil pokrit samo prek gradnikov besedila, ker transport potrebuje SMTP nastavitve v bazi. `tests/v167-digest-dedupe.test.ts` (5 testov) je prvi, ki vanjo zaide.
+- RDEČO STANJE PONOVLJIVO: mutacija M1 (varovalka odstranjena = prvotno stanje kode) → padla STA dva testa ("drugi klic istega dne", "dedupe se preveri prvi"). To je dokumentiran rdeč, ne trditev.
+- TESTNI ŠIV namesto mocka: `mock.module` je bil zavrnjen z MERJENJEM (poskus `Temp/ros-recover/bunmock/`: mock, nameščen v eni testni datoteki, uhane v NASLEDNJE datoteke istega `bun test` procesa → onesnažil bi 3153-testni suite). Zato je `transportFactory` DI parameter; produkcija uporabi privzeti `smtpTransportForLocation`.
+- DEFEKT, KI SO GA NAŠLA VRATA (sedišče v `scripts/typecheck-cloud.cjs`, napisanem v v1.166.0): prvi poskus vrat je bil RDEČ — `cloud=2`, `test=1` (1391 pass / **255 fail**, "Ran 1646 tests" od 3153). Veriga: zagnan demo dev strežnik je držal `node_modules/.prisma/client/query_engine-windows.dll.node` → `prisma generate` (Postgres profil) je padel z `EPERM: operation not permitted, rename …dll.node.tmp24652 -> …dll.node` → `process.exit(2)` v catch bloku je PRESKOKIL obnovo SQLite klienta → drevo je ostalo DELNO zamenjano (Postgres tipi) → vsaka testna datoteka, ki zgradi klient, je padla z "URL must start with the protocol `postgresql://`". Nobeden od teh 255 padcev ni imel zveze z dedupejem: šlo je za napačen profil, ne za vedenje.
+- POPRAVEK: `process.exit(2)` v catch bloku je nadomeščen z `exitCode = 2`, obnova SQLite klienta pa je zdaj navaden zaključni korak, ki se izvede VEDNO — tudi ko prvi `generate` pade sredi kopiranja. Pravilo ("zelena vrata z razbitim klientom so laž") je bilo v komentarju zapisano že v v1.166.0; šele zdaj je dejansko dosegljivo, ker mu izjema ne more več prekiniti poteka.
+- Zakaj je to sploh videl: cloud vrata so bila dodana v v1.166.0 prav zato, ker lokalna vrata niso videla produkcijskega TS2322. Isti korak je zdaj sam odkril svoj defekt — vrata delujejo v obe smeri. Obnova je prej živela v `finally` bloku in je bila izvedena samo na veji, kjer `generate` ni padel — veja odpovedi je bila neizkušena, dokler je ni preizkusil prvi pravi padec.
+- MERA (uradnih sedem vrat, ZAPOREDO, en proces naenkrat, na končnem drevesu): `tsc --noEmit` 0 · `eslint .` 0 · `git diff --check` 0 · drift 0 (135/135 modelov) · secrets 0 · `bun test --timeout 20000` 0 (**3153 pass / 0 fail**, 161 datotek, 567,47 s) · `bun run typecheck:cloud` 0. Števec `expect()` klicev ni stabilen med poskusi istega drevesa (114681 / 114712), zato ga ne štejem za mero — mera je 0 fail od 3153.
+- MUTACIJSKI DOKAZ **6/6** (po vsaki mutaciji sha256-preverjena obnova in ponovljen baseline): M1 odstranjena varovalka → 2 padca · M2 `failed` tudi blokira (preširok ključ) → 1 · M3 napačen dan (`to` namesto `from`) → 2 · M4 varovalka ZA preizkusom nastav (vrstni red) → 1 · M5 šiv prezrt (vedno pravi SMTP) → 5 · M6 dan izpuščen iz ključa → 1.
+- OMEJITVE (zapisane, ne zakrite): (1) ključ nima `locationId` — `ScheduledEmailLog` stolpca nima in digest je itak globalen (`restaurantSettings.findFirst()`); (2) brez unikatnega indeksa na `(reportType, reportDate)` dva SOČASNA klica lahko oba pošljeta, ker "preveri-then-pošlji" ni zaklenjeno. Za enkraten cron in ročne ponovitve to ne nastopi; če se pojavi sočasnost, je pravi popravek unikaten indeks, ne dodatna koda.
+
+Stage Summary:
+- Poslovno pravilo: **en zajeti dan = ena e-pošta**. Ročna ponovitev crona istega dne je zdaj varna za VSE korake, ne samo za tiste z internim markerjem.
+- `DailyDigestResult.reason` ima tretjo vrednost (`already_sent`); `/api/cron/daily` jo prenese v `steps.digest` kot obstoječi razlog — brez spremembe oblike odziva in brez novih stolpcev v shemi (izdaja je brez migracije).
+- Vrata imajo novo zavarovalnico: `typecheck:cloud` ne more več zapustiti delno zamenjanega prisma klienta, zato naslednji `bun test` ne more pasti iz napačnega razloga.
+- Pogoj za prihodnje izdaje: vrata ZAPOREDO (en proces) in z zaustavljenim demo strežnikom okrog `typecheck:cloud` — `prisma generate` na Windows ne more zamenjati DLL-ja, ki ga drži živ proces.
+- AKCIJA ZA LASTNIKA: za to izdajo nič novega; v teku ostanejo štirje podatki iz v1.166.0 (Neon v mirovanju → `/api/health` je `degraded` zaradi baze, ne kode · Buildkite integracija · GitLab žeton zrcala · preklic klepetnega GitHub žetona).
+
+---
 Task ID: 27-main
 Agent: main (Z.ai Code)
 Task: NOVI GitLab račun (markec-group1) — prenos celotnega repa, uskladitev z GitHubom, vklop samodejnega push mirrorja GitLab→GitHub
