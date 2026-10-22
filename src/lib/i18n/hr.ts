@@ -2025,6 +2025,10 @@ export const hr: Record<string, string> = {
   // Offline red (alerti)
   'net.offlineOrderQueued': 'Bez povezave — narudžba je spremljena lokalno i automatski će se sinkronizirati.',
   'net.offlineStatusQueued': 'Bez povezave — promjena statusa je u redu čekanja za sinkronizaciju.',
+  // v1.170.0: red je ograničen (200 aktivnih operacija, 12 h starosti) — odbijanje MORA
+  // biti glasno, operacija nije u redu i košarica se ne smije isprazniti.
+  'net.queueFull': 'Bez povezave i lokalni red čekanja je pun — narudžba NI spremljena. Pričekaj povezavu da se red automatski pošalje, pa pokušaj ponovno.',
+  'net.queuePartial': 'Djelomično: neki statusi nisu ušli u lokalni red (pun). Provjeri račune kad se veza vrati.',
   // Kuhinja (dopune)
   'kitchen.start': 'Započni',
   'kitchen.queueEmpty': 'Red u kuhinji je prazan. 🎉',

@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
-import { enqueueOp, flushQueue, isNetworkError, newOperationId } from '@/lib/offline-queue'
+import { flushQueue, isNetworkError, newOperationId, tryEnqueueOp } from '@/lib/offline-queue'
 import { menuRefreshDue } from '@/lib/poll-plan'
 import { tableStatusLabelKey } from '@/lib/table-status'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
@@ -154,7 +154,8 @@ function TablicaInner() {
       setCart({}); setOpenTable(null); await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '', locationId: openTable.locationId || undefined }, clientOperationId)
+        const rezultat = tryEnqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '', locationId: openTable.locationId || undefined }, clientOperationId)
+        if (!rezultat.ok) { setNotice(t('net.queueFull')); return }
         setCart({}); setOpenTable(null); setNotice(t('tlb.queued'))
       } else setNotice((err as Error).message)
     } finally { setSending(false) }
@@ -172,7 +173,8 @@ function TablicaInner() {
       setOpenTable(null)
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('order.addItems', { orderId: openOrder.id, addItems }, clientOperationId)
+        const rezultat = tryEnqueueOp('order.addItems', { orderId: openOrder.id, addItems }, clientOperationId)
+        if (!rezultat.ok) { setNotice(t('net.queueFull')); return }
         setCart({}); setOpenTable(null); setNotice(t('tlb.queuedAdd'))
       } else setNotice((err as Error).message)
     } finally { setSending(false) }

@@ -2029,6 +2029,10 @@ export const sl: Record<string, string> = {
   // Offline vrsta (alerti)
   'net.offlineOrderQueued': 'Brez povezave — naročilo je shranjeno lokalno in se bo samodejno sinhroniziralo.',
   'net.offlineStatusQueued': 'Brez povezave — sprememba statusa je v vrsti za sinhronizacijo.',
+  // v1.170.0: vrsta je omejena (200 živih operacij, 12 h starosti) — zavrnitev MORA
+  // biti glasna, ker operacije ob njej NI v vrsti in se mora košarica izprazniti.
+  'net.queueFull': 'Brez povezave in lokalna vrsta je polna — naročilo NI shranjeno. Počakaj na povezavo, da se vrsta samodejno pošlje, nato poskusi znova.',
+  'net.queuePartial': 'Delno: nekaterih sprememb statusa niso šle v lokalno vrsto (polna). Preveri listke, ko se povezava vrne.',
   // Kuhinja (dopolnitve)
   'kitchen.start': 'Začni',
   'kitchen.queueEmpty': 'Kuhinjska vrsta je prazna. 🎉',

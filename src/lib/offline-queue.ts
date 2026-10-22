@@ -31,6 +31,83 @@ const QUEUE_KEY = 'ro_offline_queue'
 const DEVICE_KEY = 'ro_device_id'
 const MAX_ATTEMPTS = 10
 
+/**
+ * v1.170.0 (R2b) — vrsta se ne sme podvojiti in ne rasti neomejeno.
+ *
+ * Zakaj stožec, ne samodejno čiščenje: `setQueue` zapiše CELoten seznam, zato
+ * en sam prevelik zapis vrže `QuotaExceededError` SRED pisanja — dotlej je
+ * vrsta izgledala oddana (košarica se izprazni, prikaže se obvestilo o čakanju),
+ * v brskalniku pa ni ničesar. Pri POS-u je napačen pritisk cenejši od izgubljenega
+ * naročila, zato je edina varna reakcija na polno vrsto ZAVRNITEV + jasno
+ * sporočilo, ne tiha odstranitev.
+ *
+ * Številki: 200 živih operacij je približno ena izmena na tablici (naročila +
+ * kuhinjski statusi, ~200 B na operacijo ≈ 40 kB, daleč pod 5 MB kvoto). Starost
+ * 12 h je daljša od vsake same izmene: dlje kot operacija čaka, bolj verjetno je,
+ * da je miza že obrnjena in jo mora osebje pregledati, ne pa da jo pošiljamo v
+ * nedogled.
+ */
+export const MAX_QUEUE_OPS = 200
+export const MAX_QUEUE_AGE_MS = 12 * 60 * 60 * 1000
+
+/** Zavrnitev vpisa: vrsta je polna ali brskalnik nima več prostora. */
+export class QueueFullError extends Error {
+  readonly code = 'queue_full'
+
+  constructor(razlog: 'zapolnjena' | 'kvota') {
+    super(
+      razlog === 'kvota'
+        ? 'Brskalnik nima več prostora za offline vrsto. Pošlji čakajoče operacije ali počisti zastarele, nato poskusi znova.'
+        : `Offline vrsta je polna (največ ${MAX_QUEUE_OPS} operacij). Pošlji čakajoče operacije, nato poskusi znova.`,
+    )
+    this.name = 'QueueFullError'
+  }
+}
+
+/** Prepoznavanje po `code`, ne po razredu: klasična identiteta razpada čez chunke. */
+export function isQueueFullError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'queue_full'
+}
+
+const isLive = (op: QueuedOp): boolean => op.status !== 'dead'
+
+/** Brez zanesljive ure operacije ne moremo soditi kot mlado — gre na pregled. */
+const isExpired = (op: QueuedOp, now: Date): boolean => {
+  const ustvarjena = Date.parse(op.createdAt)
+  if (!Number.isFinite(ustvarjena)) return true
+  return now.getTime() - ustvarjena > MAX_QUEUE_AGE_MS
+}
+
+/** Operacije, ki zasedejo stožec: žive in še znotraj starostne meje. */
+const countsAgainstCap = (ops: QueuedOp[], now: Date): number =>
+  ops.filter((op) => isLive(op) && !isExpired(op, now)).length
+
+/** Koliko novih operacij vrsta še sprejme — nikoli negativno. */
+export function queueHeadroom(now = new Date()): number {
+  return Math.max(0, MAX_QUEUE_OPS - countsAgainstCap(getQueue(), now))
+}
+
+/**
+ * Zastarele žive operacije pridejo v dead-letter, NE iz brskalnika: tam jih
+ * osebje vidi in lahko ponovno vklopi ali zavrne, prehod pa se poroča na
+ * /api/sync/drop, da ostane sled v reviziji. Idempotentno — drug klic ne
+ * najdi ničesar za preseliti.
+ */
+export function sweepExpired(now = new Date()): QueuedOp[] {
+  const ops = getQueue()
+  const prestavljene: QueuedOp[] = []
+  for (const op of ops) {
+    if (isLive(op) && isExpired(op, now)) {
+      op.status = 'dead'
+      op.lastError = `čaka več kot ${Math.round(MAX_QUEUE_AGE_MS / 3_600_000)} h`
+      prestavljene.push(op)
+    }
+  }
+  if (prestavljene.length > 0) setQueue(ops)
+  for (const op of prestavljene) reportDeadOp(op)
+  return prestavljene
+}
+
 const listeners = new Set<(ops: QueuedOp[]) => void>()
 
 export function newOperationId(): string {
@@ -76,15 +153,51 @@ export function subscribeQueue(fn: (ops: QueuedOp[]) => void): () => void {
 }
 
 export function enqueueOp(kind: QueuedOpKind, payload: Record<string, unknown>, clientOperationId?: string): QueuedOp {
+  const ops = getQueue()
+  // Idempotenca: isti clientOperationId je ponovni pritisk na isto operacijo
+  // (npr. retry po omrežni napaki), ne drugo naročilo.
+  if (clientOperationId) {
+    const obstojeca = ops.find((o) => o.clientOperationId === clientOperationId)
+    if (obstojeca) return obstojeca
+  }
+  const now = new Date()
+  if (countsAgainstCap(ops, now) >= MAX_QUEUE_OPS) throw new QueueFullError('zapolnjena')
   const op: QueuedOp = {
     clientOperationId: clientOperationId || newOperationId(),
     kind,
     payload,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
     attempts: 0,
   }
-  setQueue([...getQueue(), op])
+  const naslednja = [...ops, op]
+  // Zapis je edini trenutek, kjer vrsta res obstaja: kvota vrže PREJ, kot da bi
+  // klicalec kaj trdil o oddanem naročilu.
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(naslednja))
+  } catch {
+    throw new QueueFullError('kvota')
+  }
+  for (const l of listeners) l(naslednja)
   return op
+}
+
+export type TryEnqueueResult =
+  | { ok: true; op: QueuedOp }
+  | { ok: false; reason: 'queue_full' }
+
+/**
+ * Različica za uporabniški tok: zavrnitev je rezultat, ne izjema. Klic na POS
+ * mora vedeti, ali je operacija res v vrsti, preden sprejme nadaljnje korake
+ * (izprazni košarico, pokaže "čaka na pošiljanje") — izjema, ki jo ujame širok
+ * `catch`, je tisto, kar je v1.169.0 pustilo naročilo izgubljenim.
+ */
+export function tryEnqueueOp(kind: QueuedOpKind, payload: Record<string, unknown>, clientOperationId?: string): TryEnqueueResult {
+  try {
+    return { ok: true, op: enqueueOp(kind, payload, clientOperationId) }
+  } catch (err) {
+    if (isQueueFullError(err)) return { ok: false, reason: 'queue_full' }
+    throw err
+  }
 }
 
 export function removeOp(clientOperationId: string) {
@@ -128,6 +241,9 @@ export function resetDeadOp(clientOperationId: string): boolean {
   if (!op) return false
   op.attempts = 0
   op.status = 'queued'
+  // Izrecen poskus osebja šteje od zdaj: brez osvežitve ure bi jo starostni
+  // poseg takoj vrnil v dead-letter in gumb ne bi naredil ničesar.
+  op.createdAt = new Date().toISOString()
   delete op.lastError
   setQueue(ops)
   return true
@@ -174,6 +290,9 @@ export interface FlushResult {
 
 /** Pošlji vse čakajoče operacije na /api/sync; vrni povzetek. Dead operacije se NE pošiljajo (Issue #3 §A). */
 export async function flushQueue(): Promise<FlushResult> {
+  // Starost se pregleda ob vsakem poskusu pošiljanja: operacija, ki je čakala
+  // dlje od izmene, spada na pregled osebja, ne v ponovitve v nedogled.
+  sweepExpired()
   const ops = getQueue()
   if (ops.length === 0) return { flushed: 0, failed: 0, remaining: 0, dead: 0 }
   const token = localStorage.getItem('ro_token')

@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
-import { enqueueOp, flushQueue, isNetworkError, newOperationId, subscribeQueue } from '@/lib/offline-queue'
+import { flushQueue, isNetworkError, newOperationId, subscribeQueue, tryEnqueueOp } from '@/lib/offline-queue'
 import { menuRefreshDue } from '@/lib/poll-plan'
 import { processTerminalPayment } from '@/lib/devices/terminal'
 import { tableStatusLabelKey } from '@/lib/table-status'
@@ -247,7 +247,8 @@ function HandheldInner() {
       await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('order.create', { tableId: selTable.id, items: itemsPayload, guests, note: '', locationId: selTable.locationId || undefined }, clientOperationId)
+        const rezultat = tryEnqueueOp('order.create', { tableId: selTable.id, items: itemsPayload, guests, note: '', locationId: selTable.locationId || undefined }, clientOperationId)
+        if (!rezultat.ok) { setNotice(t('net.queueFull')); return }
         setCart({}); setNotes({}); setAllergenNotes({}); setNoteOpen(null); setView('tables'); setSelTableId(null)
         setNotice(t('tlb.queued'))
       } else setNotice((err as Error).message)
@@ -269,7 +270,8 @@ function HandheldInner() {
       await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('order.addItems', { orderId: openOrder.id, addItems }, clientOperationId)
+        const rezultat = tryEnqueueOp('order.addItems', { orderId: openOrder.id, addItems }, clientOperationId)
+        if (!rezultat.ok) { setNotice(t('net.queueFull')); return }
         setCart({}); setNotes({}); setNoteOpen(null); setView('tables'); setSelTableId(null)
         setNotice(t('tlb.queuedAdd'))
       } else setNotice((err as Error).message)

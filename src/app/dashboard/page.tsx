@@ -76,7 +76,7 @@ import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { downloadCSV } from '@/lib/client'
 import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
 import {
-  enqueueOp, flushQueue, getQueue, getDeviceId, isNetworkError, newOperationId, subscribeQueue,
+  flushQueue, getQueue, getDeviceId, isNetworkError, newOperationId, subscribeQueue, tryEnqueueOp,
   clearDeadOps, resetDeadOp,
   type QueuedOp,
 } from '@/lib/offline-queue'
@@ -912,18 +912,23 @@ function DashboardInner() {
   async function createOrder() {
     if (!newOrderTable) return
     setSending(true)
+    // v1.170.0: `items` in `clientOperationId` sta MORATA biti vidna v obeh vejeh —
+    // offline veja pošlje enake postavke pod istim id-jem, da strežnik ob replayu
+    // ne ustvari dvojnega naročila.
+    const items = Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
+    if (items.length === 0) return
+    // idempotencija: isti clientOperationId ob replayu ne ustvari dvojnega naročila
+    const clientOperationId = newOperationId()
     try {
-      const items = Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
-      if (items.length === 0) return
-      // idempotencija: isti clientOperationId ob replayu ne ustvari dvojnega naročila
-      const clientOperationId = newOperationId()
       // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
       await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2, clientOperationId, locationId: newOrderTable.locationId || undefined }) })
       setCart({}); setNewOrderTable(null); await load()
     } catch (err) {
       if (isNetworkError(err)) {
         // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
-        enqueueOp('order.create', { tableId: newOrderTable.id, items: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), guests: 2, note: '', locationId: newOrderTable.locationId || undefined })
+        // v1.170.0: zavrnitev (polna vrsta / kvota) pomeni, da naročilo NI shranjeno
+        const rezultat = tryEnqueueOp('order.create', { tableId: newOrderTable.id, items, guests: 2, note: '', locationId: newOrderTable.locationId || undefined }, clientOperationId)
+        if (!rezultat.ok) { toast({ title: t('net.queueFull'), variant: 'destructive' }); return }
         setCart({}); setNewOrderTable(null)
         toast({ title: t('net.offlineOrderQueued') })
       } else {
@@ -938,7 +943,8 @@ function DashboardInner() {
       await load()
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOp('kitchen.status', { itemId, status, ...(delayReason ? { delayReason } : {}) })
+        const rezultat = tryEnqueueOp('kitchen.status', { itemId, status, ...(delayReason ? { delayReason } : {}) })
+        if (!rezultat.ok) { toast({ title: t('net.queueFull'), variant: 'destructive' }); return }
         toast({ title: t('net.offlineStatusQueued') })
       } else {
         toast({ title: (err as Error).message, variant: 'destructive' })
@@ -964,8 +970,16 @@ function DashboardInner() {
       await load()
     } catch (err) {
       if (isNetworkError(err)) {
-        for (const it of targets) enqueueOp('kitchen.status', { itemId: it.id, status: 'READY' })
-        toast({ title: t('net.offlineStatusQueued') })
+        // v1.170.0: serija se lahko odbije DELNO (vrsta se zapolni sredi zanke).
+        // Če o tem molčimo, kuhar vidi "v vrsti za sinhronizacijo" in misli, da je
+        // cel listek oddan — tiste postavke pa v vrsti NI.
+        let odbite = 0
+        for (const it of targets) {
+          const rezultat = tryEnqueueOp('kitchen.status', { itemId: it.id, status: 'READY' })
+          if (!rezultat.ok) odbite += 1
+        }
+        if (odbite > 0) toast({ title: t('net.queuePartial'), variant: 'destructive' })
+        else toast({ title: t('net.offlineStatusQueued') })
       } else {
         toast({ title: (err as Error).message, variant: 'destructive' })
       }
