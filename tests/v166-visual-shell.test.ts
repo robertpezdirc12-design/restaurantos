@@ -356,3 +356,33 @@ describe('v1.166.0 §E — hero zasloni (samo dejanska sidra)', () => {
     expect(d).toContain("'border-l-emerald-600', 'border-l-amber-500', 'border-l-orange-600', 'border-l-rose-500',")
   })
 })
+
+describe('v1.166.0 §F — invariante (nikoli ne posei)', () => {
+  const d = src('app/dashboard/page.tsx')
+  const s = src('app/globals.css')
+  it('--radius ostane 10px (issue #74 V-1)', () => { expect(s).toContain('--radius: 10px') })
+  it('tabular-nums ostane globalno (issue #74 V-2)', () => {
+    // Podniz kjerkoli v CSS NE zadošča: deklaracija živi še na dveh lokalnih
+    // sidrih, zato je izbris globalnega `html` bloka test sprva ESPOLTEDLO
+    // (mutacijski dokaz §F). Pinned na blok, ki dejansko pokriva 280+ vozlišč.
+    expect(s).toContain('html {\n  font-variant-numeric: tabular-nums;\n}')
+  })
+  it('varovalka :not([class*="border-"]) ostane (v1.131.0)', () => {
+    // Cel SEZNAM selektorjev, ne podniz: izbris enega člena skupine bi bil s
+    // podnizom neviden (ista lekcija kot pri globalnem tabular-nums).
+    expect(s).toContain(
+      '[data-slot="card"]:not([class*="border-"]),\n' +
+      '.rounded-xl.border:not([class*="border-"]),\n' +
+      '.rounded-lg.border:not([class*="border-"]) {\n' +
+      '  border-color: oklch(0.90 0.012 155 / 88%);\n}',
+    )
+  })
+  it('reduced-motion blok ostane', () => { expect(s).toContain('@media (prefers-reduced-motion: reduce) {') })
+  it('0 DDL: SCHEMA_MIGRATIONS ostane 30', () => { expect(SCHEMA_MIGRATIONS.length).toBe(30) })
+  it('lupina ne sme izgubiti navigacijskih sidr', () => {
+    const vse = d + src('components/dashboard-nav.tsx')
+    for (const r of ['dashboard-header', 'dashboard-sidebar', 'dashboard-mobile-nav']) {
+      expect(vse).toContain(`data-region="${r}"`)
+    }
+  })
+})
