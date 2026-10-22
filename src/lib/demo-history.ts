@@ -84,7 +84,9 @@ export interface DemoHistoryEntry {
   payRate: number
   totalPay: number
   type: 'regular'
-  status: 'completed'
+  // 'approved', ne 'completed': TimeEntryStatus v produkcijski shemi pozna samo
+  // active|approved|disputed. SQLite zrcalo ima String, zato lokalni tsc ne opozori.
+  status: 'approved'
 }
 
 /** 32-bit FNV-1a — deterministično seme iz identifikatorjev (brez Math.random). */
@@ -242,7 +244,7 @@ function entriesForWindow(input: DemoHistoryInput, days: number): DemoHistoryEnt
         payRate,
         totalPay: c2((totalMinutes / 60) * payRate),
         type: 'regular',
-        status: 'completed',
+        status: 'approved',
       })
     }
   }
