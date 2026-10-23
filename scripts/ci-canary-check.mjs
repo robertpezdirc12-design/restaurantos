@@ -8,12 +8,19 @@
  *   (a) job nikoli ne dobi runnerja (prazna hosted kvota — dokazano pri №15,
  *       kjer je zrcalo mirilo 31 verzij),
  *   (b) workflow datoteka je pokvarjena ali onemogočena, zato run ne nastane,
- *   (c) run ostane `queued`/`in_progress` za vedno.
- * V vseh treh primerih je pipeline ne-rdeč in ne-zelen — preprosto nedosegljiv.
+ *   (c) run ostane `queued`/`in_progress` za vedno,
+ *   (d) run se konča kot `cancelled` ali `startup_failure` — tak run sam sebe ne
+ *       more alarmirati, ker se ob preklicu njegovi koraki z `if: failure()` ne
+ *       izvedejo. Izmerjeno 22.–23. 10. (v1.171.0): trije zaporedni `gitlab-sync`
+ *       runi (#42, #43, #44) so končali `cancelled`, canary pa jih je tiho
+ *       proglašal za »pokrite z lastnim alarmom« — in je vrnil 0.
+ * V vseh štirih primerih je pipeline ne-rdeč in ne-zelen — preprosto nedosegljiv.
  *
- * Kanarija torej ne preverja vsebine gradnje, ampak samo ENO dejstvo: zadnji
- * commit na veji ima OBSTOJEČ in ZAKLJUČEN run. Če ga nima ali se ni končal
- * v pragu, vrne izhod 1 in s tem sproži `./.github/actions/ci-alarm`.
+ * Kanarija torej ne preverja vsebine gradnje, ampak eno samo dejstvo PER
+ * WORKFLOW: za vsak push run na zadnjem commitu velja, da je zaključen z
+ * `success` ali z `failure` (slednji ima svoj alarm) — vse ostalo je izpad.
+ * Če ga ni ali pa je `cancelled`/`startup_failure`, vrne izhod 1 in s tem sproži
+ * `./.github/actions/ci-alarm`.
  *
  * Zaključen `failure` run NAMERNO ostane tih: njegov lastni alarm korak je
  * takrat gotovo tekel, podvajanje pa bi signal samo utopilo v hrup.
@@ -104,6 +111,8 @@ if (mine.length === 0) {
 }
 
 const byCreated = (a, b) => (Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a)
+/** Pravi API odgovor ima `run_number`; `number` je samo v starejših fixturah. */
+const runNo = (r) => r.run_number ?? r.number
 const open = mine.filter((r) => r.status !== 'completed')
 
 if (open.length > 0) {
@@ -111,17 +120,50 @@ if (open.length > 0) {
   const ageMin = Math.floor((NOW_MS - Date.parse(oldest.created_at)) / 60000)
   if (ageMin > STALL_MIN) {
     alarm(
-      `run #${oldest.number} (status: ${oldest.status}) čaka ali teče že ${ageMin} min ` +
+      `run #${runNo(oldest)} (status: ${oldest.status}) čaka ali teče že ${ageMin} min ` +
         `— najverjetneje ni dobil runnerja (prazna hosted kvota ali nedosegljiv self-hosted)`,
     )
   }
-  say(`OK: run #${oldest.number} je še v teku (${ageMin} min, prag ${STALL_MIN} min)`)
+  say(`OK: run #${runNo(oldest)} je še v teku (${ageMin} min, prag ${STALL_MIN} min)`)
   process.exit(0)
 }
 
-const newest = mine.reduce(byCreated, mine[0])
-if (newest.conclusion !== 'success') {
-  say(`OK (tih): zadnji run #${newest.number} je zaključen z ${newest.conclusion} — njegov lastni alarm ga že pokriva, canary ne sme podvajati`)
+/* Odločitev je PER WORKFLOW, ne po enem samem najnovejšem runu.
+ * Razlog, izmerjen 22.–23. 10.: na tipu je bil zelen `ci.yml`, `sync.yml` pa je
+ * vsakič končal `cancelled`, ker ga je v `concurrency` skupini držal zablokiran
+ * `queued` job. En `cancelled` run ne more alarmirati sam sebe — njegovi koraki
+ * z `if: failure()` se na preklicanem runu ne izvedejo nikoli — zato sme biti
+ * tih samo zaključen run, ki je dejansko tekel: `success` ali `failure`. */
+const SELF_ALARMING = new Set(['success', 'failure'])
+
+const newestPerWorkflow = new Map()
+for (const r of mine) {
+  const key = r.name || String(r.workflow_id ?? 'neimenovan')
+  const prev = newestPerWorkflow.get(key)
+  if (!prev || Date.parse(r.created_at) > Date.parse(prev.created_at)) {
+    newestPerWorkflow.set(key, r)
+  }
+}
+
+const unable = [...newestPerWorkflow.values()].filter((r) => !SELF_ALARMING.has(r.conclusion))
+if (unable.length > 0) {
+  const w = unable.reduce((a, b) => (Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a))
+  alarm(
+    `run #${runNo(w)} (workflow: ${w.name || 'neimenovan'}) je zaključen z '${w.conclusion}' — tak run ` +
+      `ne izvede svojih 'if: failure()' korakov, zato njegov lastni alarm nikoli ne zaživi. ` +
+      `Najverjetnejši vzrok je concurrency skupina, ki jo drži job v 'queued' stanju ` +
+      `(cancel-in-progress: false); diagnostic: gh api 'repos/<repo>/actions/runs?status=queued' in nato ` +
+      `preveri jobs posameznega runa.`,
+  )
+}
+
+const failed = [...newestPerWorkflow.values()].filter((r) => r.conclusion === 'failure')
+if (failed.length > 0) {
+  const f = failed.reduce((a, b) => (Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a))
+  say(`OK (tih): run #${runNo(f)} (workflow: ${f.name || 'neimenovan'}) je zaključen z failure — njegov lastni alarm ga že pokriva, canary ne sme podvajati`)
   process.exit(0)
 }
-say(`OK: zadnji commit na veji ${BRANCH} ima zaključen uspešen run #${newest.number}`)
+say(
+  `OK: zadnji commit na veji ${BRANCH} ima zaključen uspešen run za vsak od ${newestPerWorkflow.size} workflowov na tipu: ` +
+    [...newestPerWorkflow.values()].map((r) => `#${runNo(r)} (${r.name || 'neimenovan'})`).join(', '),
+)

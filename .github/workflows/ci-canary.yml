@@ -6,9 +6,18 @@ name: CI canary (dead-man za run-e, ki se nikoli ne začnejo)
 # in torej nima niti alarma. To NI hipotetičen scenarij: №15 je prav tako miroval
 # (zrcalo GitLab je bilo 31 verzij zadaj in pet dni nihče ni opazil).
 #
-# Canary zato ne preverja vsebine gradnje, ampak eno samo dejstvo: zadnji commit
-# na `main` ima OBSTOJEČ in ZAKLJUČEN push run. Meritev in razlaga sta v
-# scripts/ci-canary-check.mjs.
+# Canary zato ne preverja vsebine gradnje, ampak eno samo dejstvo PER WORKFLOW:
+# zadnji commit na `main` ima za vsak push run zaključen izid `success` ali
+# `failure`. Meritev in razlaga sta v scripts/ci-canary-check.mjs.
+#
+# Šesta luknja, zaprta v v1.172.0: `cancelled` run. Izmerjeno 22.–23. 10. je
+# `sync.yml` tri zaporedna runa (#42, #43, #44) končal s `cancelled`, ker je
+# `concurrency` skupino `gitlab-sync` (cancel-in-progress: false) držal en sam
+# `queued` job. Prejšnja različica canary-ja je rekla »ta run ima svoj alarm« in
+# vrnila 0 — ampak koraki z `if: failure()` se na preklicanem runu ne izvedejo
+# NIKOLI, zato takega izpada ni mogel javiti nihče drug. Zrcalo je zato zastalo
+# sedem izdaj, dokler izpada ni odkrila mera, ki je zahtevala preklic enega
+# samega runa.
 
 # IZJEMA-CI-CANARY — edina datoteka v `.github/workflows/`, ki SME imeti hosted runnerja, in
 # test C v tests/audit2324-log-noise.test.ts to pinira v obe smeri:
@@ -56,4 +65,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           scope: 'canary: main nima zaključenega CI runa'
-          hint: 'Najprej preveri (1) ali so self-hosted runnerji živi (Settings → Actions → Runners), (2) ali hosted kvota ni izčrpana (iz №15: isti znak je bil "no runner could be assigned"), (3) ali je .github/workflows/ci.yml veljaven YAML. Če CI res ne teče, noben drug alarm v tem repozitoriju ne more sprožiti sam sebe.'
+          hint: 'Najprej preveri (1) ali so self-hosted runnerji živi (Settings → Actions → Runners), (2) ali hosted kvota ni izčrpana (iz №15: isti znak je bil "no runner could be assigned"), (3) ali je .github/workflows/ci.yml veljaven YAML, (4) ali je zadnji run katerega workflowa zaključen z cancelled ali startup_failure — tak run ne more alarmirati sam sebe; vzrok je skoraj vedno concurrency skupina, ki jo drži zablokiran queued job (cancel-in-progress: false), diagnostic: gh api "repos/<repo>/actions/runs?status=queued" in nato gh api "repos/<repo>/actions/runs/<id>/jobs". Če CI res ne teče, noben drug alarm v tem repozitoriju ne more sprožiti sam sebe.'
