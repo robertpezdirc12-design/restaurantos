@@ -611,6 +611,70 @@ API-ju izdal obe odločitvi: `OK: run #186 je še v teku (1 min, prag 20 min)` m
 gradnjo in `OK (tih): run #186 … je zaključen z failure` po njej. Naslednji
 načrtovani run bo prvi, ki to odločitev izvede v produkciji.
 
+### Alarmno besedilo je bilo zapisano brez šumnikov (v1.174.0)
+
+Sedem lukenj je opisovalo, **kdaj** alarm molči. Ta izdaja zapira drug razred
+napake: alarm, ki spregovori, a ga lastnik ne more prebrati. `hint` joba `tests`
+v `.github/workflows/ci.yml:245` je bil zapisan transliterirano — »Ce je padel
+tsc, je v produkciji ze verjetno deployano isto stanje« — in je bil **edini**
+tak niz med 16 `scope`/`hint` vrednostmi v 6 workflow datotekah. Alarmni tekst je
+edini del CI-ja, ki ga lastnik prebere brez odpiranja zaslona Actions, zato mora
+biti zapisan do konca.
+
+**Vzrok ni bil transport, ampak izvor niza.** Transportna težava je bila
+odpravljena v v1.168.0: MSYS je argumente poslal po `argv` v domorodni
+`curl.exe`, ta jih je predal v kodični strani, in je namesto šumnikov izdal `?`;
+rešitev je bil prenos po stdinu z `--data-binary @-`
+(`.github/actions/ci-alarm/action.yml:123–126`). Dokaz, da tokrat transport ni
+kriv, je v **telesu samega issue-a #79**, kamor oba zapisa potujeta z enim samim
+curl klicem:
+
+| zapis v telesu #79 | kdo ga sestavi | kako pride do prejemnika |
+|---|---|---|
+| »sprožil«, »izsečka« | `action.yml` (generično besedilo) | **s šumniki**, nepoškodovano |
+| »Ce je padel tsc, je v produkciji ze verjetno deployano isto stanje« | `hint` iz `ci.yml:245` | **brez šumnikov**, dobesedno kot v viru |
+
+En transport, dva izida. Zvestost prenosa je sicer pinned tudi v testih —
+`payload.title` se v `tests/v168-ci-alarm-delivery.test.ts` primerja z nizom, ki v
+resnici vsebuje `č` (iz »zaključenega«), zato bi transliteracija med potjo takoj
+padla. Kar nihče ni preverjal, je bila **vsebina datoteke**.
+
+Varovalka: `tests/v174-alarm-text-fidelity.test.ts` (7 testov / 33 expect-ov).
+Gre za statično pogodbo nad YAML-om in ne za vedenjski test, ker transliteriran
+niz ne more pokvariti obnašanja — njegova edina posledica je berljivost. Tri
+odločitve, ki niso bile samoumevne:
+
+| odločitev | razlog, izmerjen pred pisanjem |
+|---|---|
+| bralec preverja samega sebe | test zahteva natanko 16 nizov iz natanko 6 datotek, vsaj 6 `hint`-ov in dolžino vsake vrednosti > 10 — sicer bi ga pokvarjen izvleček (regex, ki ne najde več vrstic) utišal, varovalka pa bi ostala zelena |
+| dve tabeli, ne ena | en sam seznam korenov lažno javi: `\bce\w*\b` ujame besedo »celoten«, `\bnic\w*\b` pa veljaven rodilnik »nice«. Tabeli sta ločeni (cele besede / koreni), lažne prijave pa so pinned kot lasten test |
+| vsebina ostane podpisana | hint mora še vedno vsebovati ukaz »padel tsc … deployment« in omenjati obe predponi `a56-`/`i4-` — v v1.168.0 je operativni ukaz že enkrat tiho izginil iz telesa |
+
+Mutacijski ledger: **5/5 pojmljenih** (M1 izpraznjeni tabeli, M2 `ce` premaknjen
+med korene → lažna prijava na »celoten«, M3 pokvarjen bralec YAML-a → 0 nizov,
+M4 ASCII hint vrnjen v `ci.yml`, M5 hint izgubi predponi). Vsaka mutacija je
+morala pokazati natanko pričakovana imena padlih testov in nič več, obnovitev
+datotek pa je preverjena s sha256 in kontrolnim tekom.
+
+**Issue #79 je zaprt po izmerjeni verigi, ne po predpostavki.** Stanje `tests`
+joba na vseh šestih runih, ki jih je issue pokrival:
+
+| run | commit | `tests` job | izmera |
+|---|---|---|---|
+| #182 | `d61dd9b` | failure | **3211 pass / 13 fail** — 8× rate limit, 2× `reconcilePaidStripeSessions`, 1× podatkovna mapa, 2× WAL |
+| #183 | `dc2c886` | failure | **3231 pass / 1 fail** — dirka `PATCH/DELETE … nikoli 'cancelled' z fiskalnim računom` |
+| #184 | `030ad25` | **success** | prvi zeleni `tests` |
+| #185–#187 | `03c5f5a`, `0634e89`, `b66875b` | **success** | še trije zaporedni zeleni `tests` jobi na gostitelju |
+
+Vseh štirinajst padcev spada med napake, ki so jih že zaprli objavljeni commiti:
+trinajst pokrijeta `b201b35` (FIX: omejevalnik fail-closed, gostiteljeva pot,
+checkout pred lokalno akcijo) in `ceef7fd` (TEST: determinizem suite-a),
+četrtenega pa `480ce07` (TEST: dirka ne sodi več po hitrosti gostitelja). Zato
+issue ni samo dobil dokaznega komentarja, ampak je bil tudi zaprt: dedupe pri
+`ci-alarm` išče samo po `state=open`
+(`.github/actions/ci-alarm/action.yml:143`), tako da naslednji enak izpad odpre
+svež issue z novo mero namesto komentarja na staro.
+
 ### Determinizem suite-a in tiho izklopljene kontrole (v1.171.0)
 
 **Kaj je CI takoj pokazal (prvi živi run po presklopu, `39905677431` na `d61dd9b`,
