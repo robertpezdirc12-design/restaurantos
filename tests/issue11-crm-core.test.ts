@@ -735,6 +735,6 @@ describe('H — Vsebina: [TEST] prefix, noga odjave, subject', () => {
   })
 
   it('verzija aplikacije je dvignjena na 1.141.0', () => {
-    expect(APP_VERSION).toBe('1.171.0')
+    expect(APP_VERSION).toBe('1.172.0')
   })
 })

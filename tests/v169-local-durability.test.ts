@@ -751,15 +751,16 @@ describe('v1.169.0 — statične invariante', () => {
     expect(prd).toMatch(/R2a — v1\.169\.0\*\* \| Vzdržljiva lokalna baza/)
     // v1.170.0 (R2b1) razcepi R2b: izdaja samo omeji offline vrsto, HTTPS in
     // samodejni zagon ostaneta R2b2. v1.171.0 je nato pojedla izdaja za
-    // determinizem CI-ja (13 padcev v runu 39905677431), zato se celotna
-    // nepoddana repa ceste premakne za eno številko — otherwise PRD obljublja
-    // izdajo, ki je nikoli ne bo.
+    // determinizem CI-ja (13 padcev v runu 39905677431), v1.172.0 pa izdaja za
+    // šesto luknjo alarmne plasti (canary je tiho požiral `cancelled` rune).
+    // Vsaka taka pojedena številka premakne celotno nepoddano repo ceste za eno
+    // naprej — otherwise PRD obljublja izdajo, ki je nikoli ne bo.
     expect(prd).toMatch(/R2b1 — v1\.170\.0\*\* \| Omejena offline vrsta/)
-    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.172\.0\)\*\* \| Varen lokalni obrat brez žice/)
-    expect(prd).toMatch(/R3 — v1\.173\.0/)
-    expect(prd).toMatch(/R4 — v1\.174\.0/)
-    expect(prd).not.toMatch(/R2b2 — načrtovano \(v1\.17[01]\.0\)/)
-    expect(prd).not.toMatch(/R3 — v1\.17[0-2]\.0/)
+    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.173\.0\)\*\* \| Varen lokalni obrat brez žice/)
+    expect(prd).toMatch(/R3 — v1\.174\.0/)
+    expect(prd).toMatch(/R4 — v1\.175\.0/)
+    expect(prd).not.toMatch(/R2b2 — načrtovano \(v1\.17[012]\.0\)/)
+    expect(prd).not.toMatch(/R3 — v1\.17[0-3]\.0/)
   })
 
   it('runbook lokalnega zagona opisuje kopijo, obnovo in izvedeno vajo obnove', async () => {

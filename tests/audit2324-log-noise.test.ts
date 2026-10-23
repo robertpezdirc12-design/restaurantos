@@ -195,6 +195,25 @@ describe('C. №24 — canary obstaja in je vezan na dejanski signal', () => {
     expect(block).toMatch(/timeout-minutes:\s*([1-9]|1[0-2])\b/)
   })
 
+  /* v1.172.0 — dva pogoja, ki sta bila izmerjena, ne domnevna:
+   * (a) hint mora našteti razred, ki ga `if: failure()` ne more zajeti, ker je
+   *     to edino besedilo, ki ga osebnost na drugi strani sploh dobi (issue);
+   * (b) `scope` je NASLOV issue-a, `ci-alarm` pa deduplicira po točnem
+   *     naslovu (action.yml:143). Spremenjen scope = nov issue, stari (#77)
+   *     pa ostane odprt in vedno tišji. */
+  test('canary hint imenuje `cancelled` razred, scope pa ostane stabilen naslov', () => {
+    const text = readFileSync(join(ROOT, '.github/workflows', CANARY_WF), 'utf8')
+    // pripomoček je v SAMEM hintu, ki ga odda `ci-alarm` — ne nekje v datoteki,
+    // sicer bi komentar zadostoval in test ne bi branil ničesar
+    const hint = text.split(/\r?\n/).find((l) => l.trim().startsWith('hint:')) ?? ''
+    expect(hint.length).toBeGreaterThan(0)
+    expect(hint).toMatch(/cancelled/)
+    expect(hint).toMatch(/startup_failure/)
+    expect(hint).toMatch(/queued/)
+    const scope = text.match(/scope:\s*'([^']+)'/)?.[1]
+    expect(scope).toBe('canary: main nima zaključenega CI runa')
+  })
+
   test('canary pokliče dejanski skript in ga ne ponotranji v YAML', () => {
     const text = readFileSync(join(ROOT, '.github/workflows', CANARY_WF), 'utf8')
     const script = stepScript(text, 'Preveri zakasnitev CI-ja na main')
@@ -282,6 +301,89 @@ describe('D. №24 — canary skript odloči pravilno', () => {
     const r = runCanary(fixtures('failed', { sha: HEAD }, { workflow_runs: [failed] }))
     expect(r.code).toBe(0)
     expect(r.out).toMatch(/podvajati/)
+  })
+
+  /* Izmerjen incident 22.–23. 10. (v1.171.0): `gitlab-sync` je dva dni držal en
+   * sam `queued` job, vsak sync run na tipu pa je končal `cancelled` (runa #42,
+   * #43, #44 brez enega samega rdečega koraka). `sync.yml` ima alarm korak z
+   * `if: failure()` (vrstica 192), preklican run pa takšnih korakov ne izvede
+   * NIKOLI — zato tiho predpogojem »njegov lastni alarm ga že pokriva« ne
+   * sme več biti. Od tod napaka: canary je na teh tipih vrnil 0. */
+  const SYNC_NAME = 'Dvosmerna sinhronizacija GitLab <-> GitHub'
+  const CI_NAME = 'CI — quality gate (neon-smoke + tests)'
+
+  test('rdeč: zaključen `cancelled` run na tipu ne sme ostati tih', () => {
+    const cancelled = { ...okRun, name: SYNC_NAME, conclusion: 'cancelled', created_at: iso(30) }
+    const r = runCanary(fixtures('cancelled-tip', { sha: HEAD }, { workflow_runs: [cancelled] }))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/cancelled/)
+    expect(r.out).toMatch(/if: failure/)
+  })
+
+  test('rdeč: `startup_failure` na tipu je isti razred — alarm korak se ni mogel izvesti', () => {
+    const sf = { ...okRun, name: CI_NAME, conclusion: 'startup_failure', created_at: iso(28) }
+    const r = runCanary(fixtures('startup-failure', { sha: HEAD }, { workflow_runs: [sf] }))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/startup_failure/)
+  })
+
+  test('rdeč: uspeh enega workflowa ne pokrije preklicanega drugega na istem tipu', () => {
+    const ciOk = { ...okRun, name: CI_NAME, created_at: iso(150) }
+    const syncDead = { ...okRun, name: SYNC_NAME, conclusion: 'cancelled', created_at: iso(100) }
+    const r = runCanary(fixtures('mixed', { sha: HEAD }, { workflow_runs: [ciOk, syncDead] }))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/Dvosmerna/)
+  })
+
+  test('zelen: preklican run, ki mu je na istem workflowu sledil uspeh, ni izpad', () => {
+    const older = { ...okRun, name: SYNC_NAME, conclusion: 'cancelled', created_at: iso(120) }
+    const newer = { ...okRun, name: SYNC_NAME, conclusion: 'success', created_at: iso(60) }
+    const r = runCanary(fixtures('recovered', { sha: HEAD }, { workflow_runs: [older, newer] }))
+    expect(r.code).toBe(0)
+  })
+
+  test('zelen: failure enega in uspeh drugega workflowa na tipu ostaneta tiha', () => {
+    const ciDead = { ...okRun, name: CI_NAME, conclusion: 'failure', created_at: iso(150) }
+    const syncOk = { ...okRun, name: SYNC_NAME, conclusion: 'success', created_at: iso(100) }
+    const r = runCanary(fixtures('failure-and-success', { sha: HEAD }, { workflow_runs: [ciDead, syncOk] }))
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/podvajati/)
+  })
+
+  /* Dejanska oblika izmera 22.–23. 10.: `ci.yml` na tipu zelene gradnje, zadnji
+   * sync run na istem tipu pa `cancelled` in je STAREJŠI od CI-jevega. Odločitev
+   * mora biti po workflowu, ne po »najnovejšem runu na tipu«. */
+  test('rdeč: starejši preklican sync run na tipu zelenega CI-ja je izpad', () => {
+    const ciOk = { ...okRun, name: CI_NAME, created_at: iso(60) }
+    const syncDead = { ...okRun, name: SYNC_NAME, conclusion: 'cancelled', created_at: iso(120) }
+    const r = runCanary(fixtures('stale-cancelled', { sha: HEAD }, { workflow_runs: [ciOk, syncDead] }))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/Dvosmerna/)
+    expect(r.out).toMatch(/queued/)
+  })
+
+  /* Pravi `/actions/runs` odgovor ima polje `run_number`, ne `number` (izmerjeno
+   * 23. 10. na pravem odzivu API-ja, 1.516.726 B). Alarm, ki ne zna poimenovati
+   * runa, je alarm, ki ga nihče ne more slediti. */
+  test('alarm in OK sporočilo uporabljata pravi polji API-ja: run_number in name', () => {
+    const realShape = {
+      head_sha: HEAD,
+      status: 'completed',
+      conclusion: 'cancelled',
+      created_at: iso(30),
+      run_number: 44,
+      name: SYNC_NAME,
+    }
+    const r = runCanary(fixtures('real-shape', { sha: HEAD }, { workflow_runs: [realShape] }))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/#44/)
+    expect(r.out).not.toMatch(/undefined/)
+
+    const okReal = { ...realShape, conclusion: 'success', run_number: 48 }
+    const g = runCanary(fixtures('real-shape-ok', { sha: HEAD }, { workflow_runs: [okReal] }))
+    expect(g.code).toBe(0)
+    expect(g.out).toMatch(/#48/)
+    expect(g.out).not.toMatch(/undefined/)
   })
 
   test('izpad API-ja je napaka, ne tiho zelena odločitev', () => {
