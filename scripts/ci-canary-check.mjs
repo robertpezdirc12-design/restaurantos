@@ -90,8 +90,16 @@ async function getJson(endpoint, fixtureEnv, label) {
 }
 
 const commits = await getJson(`/repos/${REPO}/commits?sha=${encodeURIComponent(BRANCH)}&per_page=1`, 'CANARY_COMMITS_FILE', 'commits')
-const head = commits && commits.sha
-if (!head) alarm(`zadnjega commita na veji ${BRANCH} ni bilo mogoče določiti (prazen odgovor)`)
+/* Glava veje JE SEZNAM, ne posamezen zapis: `/commits?sha=…` vrne `[{ sha, … }]`.
+ * Izmerjeno 23. 10. (`gh api … --jq 'type'` → `array`); neobstoječa veja vrne
+ * HTTP 404, ne praznega seznama. Neposredno `commits.sha` je bila sedma luknja:
+ * na seznamu je vedno `undefined`, zato je canary na vsakem načrtovanem runu
+ * javil »prazen odgovor« — odgovor pa prazen nikoli ni bil. */
+const head = Array.isArray(commits) ? commits[0]?.sha : undefined
+if (!head) {
+  const oblika = Array.isArray(commits) ? `seznam z ${commits.length} elementov` : `odgovor tipa ${typeof commits} namesto seznam-a`
+  alarm(`zadnjega commita na veji ${BRANCH} ni bilo mogoče določiti: /commits je vrnil ${oblika}`)
+}
 
 const runs = await getJson(
   `/repos/${REPO}/actions/runs?branch=${encodeURIComponent(BRANCH)}&event=push&per_page=30`,

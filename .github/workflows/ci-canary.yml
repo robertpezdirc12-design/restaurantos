@@ -18,6 +18,14 @@ name: CI canary (dead-man za run-e, ki se nikoli ne začnejo)
 # NIKOLI, zato takega izpada ni mogel javiti nihče drug. Zrcalo je zato zastalo
 # sedem izdaj, dokler izpada ni odkrila mera, ki je zahtevala preklic enega
 # samega runa.
+#
+# Sedma luknja, zaprta v v1.173.0: canary je bil sicer rdeč, a je vedno javljal
+# NAPAČEN razlog. `/commits?sha=main` vrne **seznam** (`gh api … --jq 'type'` →
+# `array`), skript pa je bral `commits.sha`, kar je na seznamu vedno `undefined`.
+# Izmerjeno 23. 10.: vseh 16 zasledovanih načrtovanih runov je odpovedalo z
+# »prazen odgovor«, čeprav `main` nikoli ni bil prazen — odločitev iz v1.172.0 se
+# v produkciji torej ni izvedla NIKOLI, issue #77 pa je zbiral komentarje z
+# trditvijo, ki ne drži.
 
 # IZJEMA-CI-CANARY — edina datoteka v `.github/workflows/`, ki SME imeti hosted runnerja, in
 # test C v tests/audit2324-log-noise.test.ts to pinira v obe smeri:
