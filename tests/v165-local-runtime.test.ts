@@ -82,6 +82,24 @@ describe('v1.165.0 — podatkovna mapa zunaj repozitorija', () => {
     ).toBe(override)
   })
 
+  /**
+   * CI run 39905677431 (tests, Linux runner): `Expected: "/tmp/ros-data-dir-89YCzY",
+   * Received: "\tmp\ros-data-dir-89YCzY"`. Prej je bil override predelan po
+   * MODELIRANI platformi (`path.win32.resolve` na Linux gostitelju), lokalno na
+   * Windows pa je isti test moral uspevati — zato napaka ni bila vidna.
+   *
+   * Invarianta: eksplicitna nastavitev uporabnika je AUTHORITATIVNA. Gostitelj jo
+   * naredi absolutno, modelirana platforma (ki služi samo za izbiro PRIVZETE poti)
+   * je ne sme preinterpretirati. Test je deterministen na obeh gostiteljih:
+   * na Windows razveljavi `linux`/`darwin` veja, na Linux `win32` veja.
+   */
+  it('override ne sme biti predelan po modelirani platformi — velja sintaksa gostitelja', () => {
+    const abs = tempDir('ros-data-dir-')
+    for (const platform of ['win32', 'linux', 'darwin'] as const) {
+      expect(resolveDataDir({ platform, env: { RESTAURANTOS_DATA_DIR: abs } })).toBe(abs)
+    }
+  })
+
   it('baza je v data/restaurantos.db, ne v korenu podatkovne mape', () => {
     expect(databasePathFor('C:\\ros', 'win32')).toBe('C:\\ros\\data\\restaurantos.db')
     expect(databasePathFor('/var/ros', 'linux')).toBe('/var/ros/data/restaurantos.db')

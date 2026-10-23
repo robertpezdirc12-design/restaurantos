@@ -3,7 +3,7 @@
  * Čist in-memory modul — brez DB/omrežja. __resetRateLimitForTests zagotavlja
  * determinističnost med testi (state je procesni, bun test pogan datoteke v istem procesu).
  */
-import { beforeEach, afterEach, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   rateLimitShared,
   rateLimitSharedAsync,
@@ -95,12 +95,38 @@ describe('rateLimitSharedAsync — memory default (issue #10 P2-1)', () => {
 
 describe('rateLimitSharedAsync — Upstash store (issue #10 P2-1)', () => {
   const realFetch = globalThis.fetch
+  const ORIG_ENV = {
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  }
 
-  afterEach(() => { globalThis.fetch = realFetch; __resetStoreForTests(); __resetRateLimitForTests() })
+  // v1.171.0 — LIMITERJEVA NASTAVITEV MORA VEN. Prejšnja različica je samo
+  // vrnila `fetch`, env pa je pustila nastavljen: `activeStore` je modulski
+  // keš, zato je vsaka kasnejša testna datotela v istem procesu dobila
+  // Upstash store in je omejevanje odvisilo od tega, kdo ima zaden `fetch`.
+  afterEach(() => {
+    globalThis.fetch = realFetch
+    if (ORIG_ENV.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL
+    else process.env.UPSTASH_REDIS_REST_URL = ORIG_ENV.url
+    if (ORIG_ENV.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN
+    else process.env.UPSTASH_REDIS_REST_TOKEN = ORIG_ENV.token
+    __resetStoreForTests()
+    __resetRateLimitForTests()
+  })
+  afterAll(() => {
+    globalThis.fetch = realFetch
+    if (ORIG_ENV.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL
+    else process.env.UPSTASH_REDIS_REST_URL = ORIG_ENV.url
+    if (ORIG_ENV.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN
+    else process.env.UPSTASH_REDIS_REST_TOKEN = ORIG_ENV.token
+    __resetStoreForTests()
+    __resetRateLimitForTests()
+  })
 
   function withUpstashEnv(fn: (url: string) => Promise<Response>): void {
     process.env.UPSTASH_REDIS_REST_URL = 'https://test-rest.upstash.io'
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token'
+    __resetStoreForTests()
     globalThis.fetch = ((input: string | URL | Request) => {
       const url = String(input)
       return fn(url)
@@ -140,5 +166,34 @@ describe('rateLimitSharedAsync — Upstash store (issue #10 P2-1)', () => {
     expect(r1.allowed).toBe(true)
     const r2 = await rateLimitSharedAsync(k, 1, 60_000)
     expect(r2.allowed).toBe(false)
+  })
+
+  /**
+   * v1.171.0 — odpoved CI-ja (run 39905677431, 8 × „Expected: 429, Received: 200").
+   *
+   * `tests/rate-limit.test.ts` je uhajal UPSTASH env, `tests/v170-offline-queue-limits.test.ts`
+   * pa `globalThis.fetch` s stubom, ki vrača `{ results: [] }` BREZ polja `result`.
+   * Kombinacija: `upstashCommand` dobi HTTP 200 → `data.result == null` → `Number(null)`
+   * je 0 → `0 <= limit` → DOVOLJENO. Limiter je torej tiho prenehal omejevati vsako
+   * javno rutje v procesu, omrežne napake pa ni bilo (stub nikoli ne vrže) — zato
+   * lokalno zelen, CI rdeč.
+   *
+   * Pogodba: neuskladen odgovor (manjkajoč/Ne-številsen `result`) je NAPAKA zaloga,
+   * ne «nič zadetkov». Limiter mora pasti na memory store, kjer se štetje nadaljuje.
+   */
+  test('Upstash 200 brez polja result → NEJE tiho dovoljeno: padec na memory store', async () => {
+    withUpstashEnv(async () => new Response(JSON.stringify({ results: [] }), { status: 200 }))
+    const k = 'bad:posresult'
+    expect((await rateLimitSharedAsync(k, 1, 60_000)).allowed).toBe(true)
+    expect((await rateLimitSharedAsync(k, 1, 60_000)).allowed).toBe(false)
+    expect((await rateLimitSharedAsync(k, 1, 60_000)).allowed).toBe(false)
+  })
+
+  test('Upstash 200 z ne-številsen result → enako: padec na memory store, NE slepo zavračanje', async () => {
+    withUpstashEnv(async () => new Response(JSON.stringify({ result: 'OK' }), { status: 200 }))
+    const k = 'bad:numbers'
+    // prvi klic mora biti DOVOLJEN (memory fallback začne novo vedro), ne zavrnjen
+    expect((await rateLimitSharedAsync(k, 1, 60_000)).allowed).toBe(true)
+    expect((await rateLimitSharedAsync(k, 1, 60_000)).allowed).toBe(false)
   })
 })

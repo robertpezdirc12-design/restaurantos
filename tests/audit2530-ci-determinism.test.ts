@@ -1,5 +1,5 @@
 import { describe, test, expect, afterAll } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { isUpstashUsable, rateLimitSharedAsync, __resetStoreForTests, upstashEndpoint } from '../src/lib/rate-limit'
 
@@ -327,5 +327,52 @@ describe('E — №29 dirka in №30 onesnaženje (statično)', () => {
     // edini `fetch(` v modulu sme biti znotraj upstashCommand
     const fetchLines = src.split('\n').filter((l) => /^\s*(const res = await )?fetch\(/.test(l))
     expect(fetchLines.length).toBe(1)
+  })
+})
+
+/**
+ * v1.171.0 — F: tri najdbe, ki jih je razkril šele dejanski GitHub CI run
+ * 39905677431 (prvi pravi tek po izbrisu `CI_RUNNER_LABELS`): 13 rdečih testov in
+ * neon-smoke padec, lokalno zelen. Vsaka od treh najdb je ANTIPATTERN, ki ga
+ * je bilo mogoče videti samo z več datotek v enem procesu ali z dejanskim izidom
+ * infra koraka.
+ */
+describe('F — v1.171.0 antipatterni, ki jih vidi šele skupni proces ali infra izid', () => {
+  test('nobena testna datoteka NE uporablja mock.module (strupi modulski register za cel proces)', () => {
+    // Bunjev `mock.module` zamenja zapis v registru CELOTEN proces. `mock.restore()`
+    // in ročna vrnitev pravega izvoza pominita samo IME izvoza — notranjost
+    // zamenjanega modula (npr. njegov lasten `db`) ostane ponovno vezana in
+    // tiho drugačna. Merjeno: v161 je zamenjal `@/lib/paylink/reconcile`, v157
+    // (42. v CI vrstnem redu) je klical PRavo funkcijo, a je njen `findMany`
+    // vrnil 0 vrstic ob 7 ujemajočih se povezavah.
+    const files = readdirSync(join(process.cwd(), 'tests'), { recursive: true })
+      .filter((f) => typeof f === 'string' && f.endsWith('.test.ts'))
+      .map((f) => String(f))
+    expect(files.length).toBeGreaterThan(100)
+    // ta datoteka sama vsebuje iskalni niz (v trditvi spodaj), zato je izvzeta
+    const uporabili = files
+      .filter((f) => f !== 'audit2530-ci-determinism.test.ts')
+      .filter((f) => read(join('tests', f)).includes('mock.module('))
+    expect(uporabili).toEqual([])
+  })
+
+  test('Upstash INCR odgovor je PREVERJEN: nevrednost ne sme biti tiho enaka 0 zadetkom', () => {
+    const src = read('src/lib/rate-limit.ts')
+    // `Number(null) === 0` in `0 <= limit` → NEOMEJENO število dovoljenih zahtev.
+    expect(src).toMatch(/if \(raw === null \|\| !Number\.isInteger\(count\) \|\| count < 1\)/)
+    expect(src).toMatch(/neuskladen Upstash INCR odgovor/)
+    // prepoved: številčna pretvorba odgovora brez vmesne preje
+    expect(src).not.toMatch(/const count = Number\(await upstashCommand/)
+  })
+
+  test('ci.yml: Neon BR_ID gre v GITHUB_ENV PREJ od kateregakoli naslednjega API klica', () => {
+    const yml = read('.github/workflows/ci.yml')
+    const izvoz = yml.indexOf('echo "BR_ID=$BR_ID" >> "$GITHUB_ENV"')
+    const endpoint = yml.indexOf('POST "/projects/$NEON_PROJECT_ID/endpoints"')
+    expect(izvoz).toBeGreaterThan(-1)
+    expect(endpoint).toBeGreaterThan(-1)
+    expect(izvoz).toBeLessThan(endpoint)
+    // korak za brisanje mora teči tudi ob padcu predhodnih korakov
+    expect(yml).toMatch(/name: Delete ephemeral branch\n\s+if: always\(\)/)
   })
 })

@@ -21,7 +21,7 @@
  *    zato ne more služiti zadrževanju. Mehanizem je `VACUUM INTO`.
  */
 import { describe, it, expect, afterAll } from 'bun:test'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -116,22 +116,53 @@ function openWithDirtyWal(dbPath: string, code: string): DatabaseSync {
 }
 
 /**
- * Resničen postanek: otrok odpre bazo, zapiše in umre. Izmerjeno 2026-10-22
- * (Windows, bun 1.4.3) `-wal` tako umre NEPOZIDAN (12392 B) in ga navaden
- * odpri-zapri naknadni proces ne počisti. To je stanje, v katerem operator
- * pripravlja obnovo — aplikacije ni več, rep pa je poln.
+ * Resničen postanek, GOSTITELJSKO NEODVISEN: otrok odpre bazo, zapiše in OSTANE
+ * živ; starš ga UBODE (`kill` → SIGKILL na Unix, TerminateProcess na Windows).
+ *
+ * Prejšnja različica je klicala `db.close()` in je zanačala na to, da zaprtje
+ * PUSTI rep poln. To ni lastnost SQLite-a ampak izvedbe: izmerjeno 2026-10-22 na
+ * Windows/bun 1.4.3 je `-wal` umre nepozidan (12392 B), na Linux runnerju (CI run
+ * 39905677431) pa ga je clean close počistil in `stat` je javil ENOENT — lokalno
+ * zelen, v CI rdeč. Izbris `-wal` je edino posledica POZDRAVLJENEGA zapora zadnje
+ * povezave, zato je tisto, kar prepreči zapor, jedro stanja: ubit proces ne more
+ * počistiti ničesar, na nobenem gostitelju.
  */
-function writeFromExitedProcess(dbPath: string, code: string): void {
+async function writeFromExitedProcess(dbPath: string, code: string): Promise<void> {
   const src = [
     "const { DatabaseSync } = require('node:sqlite')",
     `const db = new DatabaseSync(${JSON.stringify(dbPath)})`,
     "db.exec('PRAGMA journal_mode=wal')",
+    "db.exec('PRAGMA wal_autocheckpoint=0')",
     "db.exec('CREATE TABLE IF NOT EXISTS order_row(id INTEGER PRIMARY KEY, code TEXT)')",
     `db.prepare('INSERT INTO order_row(code) VALUES (?)').run(${JSON.stringify(code)})`,
-    'db.close()',
+    "process.stdout.write('PRIPRAVLJEN\\n')",
+    'setInterval(() => {}, 1000)',
   ].join('\n')
-  const run = spawnSync(process.execPath, ['-e', src], { encoding: 'utf8' })
-  if (run.status !== 0) throw new Error(`[test] otrok ni zapisal: ${run.stderr.slice(0, 120)}`)
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', src], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let settled = false
+    const umri = (): void => {
+      settled = true
+      clearTimeout(timer)
+      child.once('close', () => resolve())
+      child.kill()
+    }
+    const timer = setTimeout(() => {
+      if (settled) return
+      child.kill()
+      reject(new Error('[test] otrok se ni javil (PRIPRAVLJEN) v 20 s'))
+    }, 20_000)
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (settled || !chunk.toString().includes('PRIPRAVLJEN')) return
+      umri()
+    })
+    child.once('error', (e: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(e)
+    })
+  })
 }
 
 function countRows(dbPath: string): number | string {
@@ -232,7 +263,7 @@ describe('v1.169.0 — lokalna baza teče v WAL načinu', () => {
   it('NEGATIVNA KONTROLA: po izhodu procesa rep ostane poln, stražar torej laže', async () => {
     const dbPath = join(tempDir(), 'restaurantos.db')
     closeHandle(seedDb(dbPath))
-    writeFromExitedProcess(dbPath, 'po-izhodu')
+    await writeFromExitedProcess(dbPath, 'po-izhodu')
 
     expect(statSync(`${dbPath}-wal`).size).toBeGreaterThan(0)
     expect(isDatabaseInUse(dbPath)).toBe(true)
@@ -242,7 +273,7 @@ describe('v1.169.0 — lokalna baza teče v WAL načinu', () => {
   it('applyDurability počisti osirotele rep, da obnova ne zavrne zaradi lažne rabe', async () => {
     const dbPath = join(tempDir(), 'restaurantos.db')
     closeHandle(seedDb(dbPath))
-    writeFromExitedProcess(dbPath, 'po-izhodu')
+    await writeFromExitedProcess(dbPath, 'po-izhodu')
     expect(isDatabaseInUse(dbPath)).toBe(true)
 
     applyDurability(dbPath)
@@ -257,7 +288,7 @@ describe('v1.169.0 — lokalna baza teče v WAL načinu', () => {
   it('drainWal počisti rep in ohrani oba potrjena zapisa', async () => {
     const dbPath = join(tempDir(), 'restaurantos.db')
     closeHandle(seedDb(dbPath))
-    writeFromExitedProcess(dbPath, 'po-izhodu')
+    await writeFromExitedProcess(dbPath, 'po-izhodu')
 
     drainWal(dbPath)
 
@@ -660,7 +691,7 @@ describe('v1.169.0 — CLI za kopijo in obnovo', () => {
     uspel(zazeni('scripts/local-restore.ts', '--data-dir', dir, '--latest', '--force', '--json'))
   })
 
-  it('local:restore --latest izbere dnevno kopijo, ne mlajše varnostne', () => {
+  it('local:restore --latest izbere dnevno kopijo, ne mlajše varnostne', async () => {
     const dir = tempDir('ros-v169-cli-')
     mkdirSync(join(dir, 'data'), { recursive: true })
     const dbPath = join(dir, 'data', 'restaurantos.db')
@@ -668,7 +699,7 @@ describe('v1.169.0 — CLI za kopijo in obnovo', () => {
     closeHandle(seedDb(dbPath, ['kopicirana']))
     uspel(zazeni('scripts/local-backup.ts', '--data-dir', dir, '--json'))
 
-    writeFromExitedProcess(dbPath, 'nova-post-kopiji')
+    await writeFromExitedProcess(dbPath, 'nova-post-kopiji')
     drainWal(dbPath)
     // Starejša vsebina, mlajše ime: tako izgleda varnostna kopija, nastala pri
     // obnovi po napaki. `--latest` je recovery point, ne najmlajša datoteka.
@@ -719,12 +750,16 @@ describe('v1.169.0 — statične invariante', () => {
     expect(prd).not.toMatch(/v1\.16[678]\.0\*\*\s*\|\s*(Varen lokalni obrat|Namestitev v 10 minutah)/)
     expect(prd).toMatch(/R2a — v1\.169\.0\*\* \| Vzdržljiva lokalna baza/)
     // v1.170.0 (R2b1) razcepi R2b: izdaja samo omeji offline vrsto, HTTPS in
-    // samodejni zagon ostaneta R2b2. Številke morajo držati — R3 ne sme več
-    // obljubljati v1.171.0, ker je ta zasedel R2b2.
+    // samodejni zagon ostaneta R2b2. v1.171.0 je nato pojedla izdaja za
+    // determinizem CI-ja (13 padcev v runu 39905677431), zato se celotna
+    // nepoddana repa ceste premakne za eno številko — otherwise PRD obljublja
+    // izdajo, ki je nikoli ne bo.
     expect(prd).toMatch(/R2b1 — v1\.170\.0\*\* \| Omejena offline vrsta/)
-    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.171\.0\)\*\* \| Varen lokalni obrat brez žice/)
-    expect(prd).toMatch(/R3 — v1\.172\.0/)
-    expect(prd).not.toMatch(/R3 — v1\.17[01]\.0/)
+    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.172\.0\)\*\* \| Varen lokalni obrat brez žice/)
+    expect(prd).toMatch(/R3 — v1\.173\.0/)
+    expect(prd).toMatch(/R4 — v1\.174\.0/)
+    expect(prd).not.toMatch(/R2b2 — načrtovano \(v1\.17[01]\.0\)/)
+    expect(prd).not.toMatch(/R3 — v1\.17[0-2]\.0/)
   })
 
   it('runbook lokalnega zagona opisuje kopijo, obnovo in izvedeno vajo obnove', async () => {

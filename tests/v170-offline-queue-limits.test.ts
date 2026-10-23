@@ -13,7 +13,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterAll } from 'bun:test'
 
 const QUEUE_KEY = 'ro_offline_queue'
 
@@ -52,6 +52,38 @@ function namestiDOM(): void {
 
 namestiDOM()
 const q = await import('../src/lib/offline-queue')
+
+/**
+ * v1.171.0 — DOM se MORA vrniti. Stub `fetch` zgoraj vrne `{ results: [] }` (brez
+ * polja `result`) in je bil doslej najdaljši živi v procesu: vsaka kasnejša
+ * datotela, ki meri pravi omrežni promet, je namesto napake dobila HTTP 200 z
+ * neujemanjočim telesom.
+ *
+ * Skupaj z drugim uhajanjem — `tests/rate-limit.test.ts` je RESTAURANTOS-ovo
+ * okolje pustil nastavljeno (`UPSTASH_REDIS_REST_URL=https://test-rest.upstash.io`
+ * + token, `{ url, token }` sta absolutna http(s), torej UPORABNA po №28) — je
+ * to dalo točno verigo osmih „Expected: 429, Received: 200" odpovedi v CI-ju (run
+ * 39905677431): limiter izbere upstashStore → INCR gre na stub → 200 brez
+ * `result` → `Number(null) === 0` → `0 <= limit` → NIKOLI 429. Dokaz (merjeno, ne
+ * sklepano): HEAD-različici obeh datotek + `auth-demo-login.test.ts` v tem vrstnem
+ * redu, in ob reverzu popravka `src/lib/rate-limit.ts` pade točno tisti test
+ * (`rate limit: 11. klic z istim IP v minuti → 429`) z isto differentrico.
+ */
+const IZVIRNI = {
+  fetch: Object.getOwnPropertyDescriptor(globalThis, 'fetch'),
+  localStorage: Object.getOwnPropertyDescriptor(globalThis, 'localStorage'),
+  window: Object.getOwnPropertyDescriptor(globalThis, 'window'),
+}
+
+function povrniDOM(): void {
+  for (const kljuc of ['fetch', 'localStorage', 'window'] as const) {
+    const d = IZVIRNI[kljuc]
+    if (d) Object.defineProperty(globalThis, kljuc, d)
+    else Reflect.deleteProperty(globalThis, kljuc)
+  }
+}
+
+afterAll(povrniDOM)
 
 const URA = 60 * 60 * 1000
 const USTANI = (star: number) => new Date(Date.now() - star).toISOString()
