@@ -646,7 +646,7 @@ odločitve, ki niso bile samoumevne:
 
 | odločitev | razlog, izmerjen pred pisanjem |
 |---|---|
-| bralec preverja samega sebe | test zahteva natanko 16 nizov iz natanko 6 datotek, vsaj 6 `hint`-ov in dolžino vsake vrednosti > 10 — sicer bi ga pokvarjen izvleček (regex, ki ne najde več vrstic) utišal, varovalka pa bi ostala zelena |
+| bralec preverja samega sebe | test zahteva vsaj 16 nizov iz natanko 6 določenih datotek, vsaj 6 `hint`-ov in dolžino vsake vrednosti > 10 — sicer bi ga pokvarjen izvleček (regex, ki ne najde več vrstic) utišal, varovalka pa bi ostala zelena |
 | dve tabeli, ne ena | en sam seznam korenov lažno javi: `\bce\w*\b` ujame besedo »celoten«, `\bnic\w*\b` pa veljaven rodilnik »nice«. Tabeli sta ločeni (cele besede / koreni), lažne prijave pa so pinned kot lasten test |
 | vsebina ostane podpisana | hint mora še vedno vsebovati ukaz »padel tsc … deployment« in omenjati obe predponi `a56-`/`i4-` — v v1.168.0 je operativni ukaz že enkrat tiho izginil iz telesa |
 
@@ -665,15 +665,24 @@ joba na vseh šestih runih, ki jih je issue pokrival:
 | #183 | `dc2c886` | failure | **3231 pass / 1 fail** — dirka `PATCH/DELETE … nikoli 'cancelled' z fiskalnim računom` |
 | #184 | `030ad25` | **success** | prvi zeleni `tests` |
 | #185–#187 | `03c5f5a`, `0634e89`, `b66875b` | **success** | še trije zaporedni zeleni `tests` jobi na gostitelju |
+| #188 | `6b5e929` (v1.174.0) | **success** | **3249 pass / 0 fail / 166 datotek** — peti zaporedni zeleni `tests`, število se ujema z lokalnim tekom na milimeter |
 
 Vseh štirinajst padcev spada med napake, ki so jih že zaprli objavljeni commiti:
 trinajst pokrijeta `b201b35` (FIX: omejevalnik fail-closed, gostiteljeva pot,
 checkout pred lokalno akcijo) in `ceef7fd` (TEST: determinizem suite-a),
-četrtenega pa `480ce07` (TEST: dirka ne sodi več po hitrosti gostitelja). Zato
+štirinajstega pa `480ce07` (TEST: dirka ne sodi več po hitrosti gostitelja). Zato
 issue ni samo dobil dokaznega komentarja, ampak je bil tudi zaprt: dedupe pri
 `ci-alarm` išče samo po `state=open`
 (`.github/actions/ci-alarm/action.yml:143`), tako da naslednji enak izpad odpre
 svež issue z novo mero namesto komentarja na staro.
+
+Čeprav je bil popravek objavljen, njegov **dostavni** del še ni izmerjen: popravljen
+`hint` gre po žici šele, ko `tests` job rdeče padne, zelen run pa ga ne pošlje. Kar
+je bilo na živem sistemu vseeno izmerjenega: `gh api` nad `ci.yml` na commitu
+`6b5e929` vrne stavek s pravimi šumniki. Med preverjanjem objave je padel še en
+podatek, ki ga ni bilo treba iskati: isti run je zaradi rdečega `neon-smoke`-a
+(zunanja Neon kvota, #78) na issue #78 dodal dedupe komentar, torej alarmna plast
+takoj za zaprtjem #79 še vedno deluje.
 
 ### Determinizem suite-a in tiho izklopljene kontrole (v1.171.0)
 
