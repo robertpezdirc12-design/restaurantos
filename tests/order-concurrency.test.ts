@@ -234,8 +234,8 @@ describe('B — KDS rollup ne odpre zaključenega naročila', () => {
 
 async function raceSweep(kind: 'PATCH' | 'DELETE') {
   const tok = tokenFor(managerId, 'm', 'MANAGER', locId)
-  let rejections = 0
   let lockTimeouts = 0
+  let checked = 0
   for (const delay of [0, 1, 2, 3, 5, 8, 12, 20, 30, 45]) {
     const tbl = await seedTable({ status: 'occupied' })
     const order = await seedOrder('sent', 'unpaid', tbl.id)
@@ -265,11 +265,14 @@ async function raceSweep(kind: 'PATCH' | 'DELETE') {
     // VARNOSTNA INVARIANTA (finančna): nikoli preklicano naročilo z fiskaliziranim
     // računom — plačilo, ki je commitnilo PRED zapisom, mora preklic zavrniti.
     expect(row?.status === 'cancelled' && receipts > 0).toBe(false)
+    checked++
     // plačilo, ki je commitnilo, vedno zmaga → naročilo ostane 'paid'
     if (paidFirst) expect(row?.status).toBe('paid')
 
     if (res.status === 409) {
-      rejections++
+      // Edini upravičen razlog za zavrnitev je že commitnjeno plačilo; 409 brez
+      // njega pomeni, da preklic zavrne nekdo drug (npr. pokvarjen guard).
+      expect(paidFirst, `409 brez commitnjenega plačila (delay ${delay} ms)`).toBe(true)
       // Zavrnjen preklic NE SME pustiti stranskih učinkov (prej: povezave
       // superseded, miza 'cleaning' in revizijski zapis preklica, ki se ni zgodil).
       expect((await db.payLink.findUnique({ where: { id: link.id } }))?.status).toBe('open')
@@ -278,19 +281,23 @@ async function raceSweep(kind: 'PATCH' | 'DELETE') {
       expect(await db.eventLog.count({ where: { entityId: order.id, type: 'OrderCancelled' } })).toBe(0)
     }
   }
-  return { rejections, lockTimeouts }
+  return { lockTimeouts, checked }
 }
 
 describe('C — sočasno plačilo med preklicem (dirka čez zamike)', () => {
-  /* №29 — dve ZGODOVINSKI trditvi sta bili vezani na prepletanje v realnem času:
-   * `rejections > 0` in varnostna invarianta sta odvisni od tega, kdo pobedi
-   * dirko. Na GitLabovem deljenem stroju (pipeline #57, sha f9371d0) je
-   * `commitPayment` dobil P1008 po 5174 ms in je test pustilo rdeče brez
-   * dokazanega prekrška. Isti dokaz zdaj obstaja DVEKRAT:
+  /* №29 — trditve, vezane na prepletanje v realnem času, so razpolovljene. Na
+   * GitLabovem deljenem stroju (pipeline #57, sha f9371d0) je `commitPayment`
+   * dobil P1008 po 5174 ms in je test pustilo rdeče brez dokazanega prekrška;
+   * izdaja v1.171.0 je odstranila še drugo takšno trditev. `rejections > 0` je
+   * zahtevala, da plačilo na hitrejšem gostitelju v eni od desetih zamikanih dirk
+   * pride pred zapisom preklica — na GitHub runnerju je padla (run 39935225480),
+   * čeprav finančna invarianta ni bila kršena niti enkrat.
+   * Dokaz je zdaj DVEKRAT in brez časovne odvisnosti:
    *   (1) deterministična primera, kjer vrstni red določimo z zaporedjem
    *       `await`-ov — tu je časovanje nepomembno in trditev velja vedno;
-   *   (2) fuzz zanka z zamiki, ki ohranja invarianto za vsak dokončan poskus in
-   *       zakasnitve zaklepa ŠTEJE (ne požre). */
+   *   (2) fuzz zanka z zamiki, ki preverja finančno invarianto za vsak dokončan
+   *       poskus, zakasnitve zaklepa ŠTEJE (ne požre) in s `checked +
+   *       lockTimeouts === 20` prepove tiho preskočen poskus. */
   test('deterministično A: plačilo commitnjeno PRED preklicem → preklic je 409 in brez sledi', async () => {
     for (const kind of ['PATCH', 'DELETE'] as const) {
       const tbl = await seedTable({ status: 'occupied' })
@@ -322,9 +329,19 @@ describe('C — sočasno plačilo med preklicem (dirka čez zamike)', () => {
   test("PATCH/DELETE dirka: nikoli 'cancelled' z fiskalnim računom", async () => {
     const patch = await raceSweep('PATCH')
     const del = await raceSweep('DELETE')
-    expect(patch.rejections + del.rejections).toBeGreaterThan(0)
+    // Kdo zmaga dirko, odloča hitrost stroja — zato test ne sme trditi, KDO je
+    // zmagal, ampak samo, kaj mora veljati ne glede na to.
+    // Prejšnja oblika `rejections > 0` je bila odvisna od gostitelja: na hosted
+    // runnerju je preklic zmagal v vseh dvajsetih zamikih, finančna invarianta
+    // ni bila kršena niti enkrat, test je vseeno padel na „Expected: > 0,
+    // Received: 0" (run 39935225480, tests job, 23. 10. 09:55:04 UTC). Isti
+    // podpis sem izmeril lokalno z začasnim posegom, ki preklic počaka PRED
+    // `commitPayment`: vseh dvajset invariant je zelenih, trditev pa nič.
+    // Prepletanje „plačilo pred preklicem → 409 in brez sledi" je sicer dokazano,
+    // a deterministično — v primeru A zgoraj, za PATCH in DELETE.
+    expect(patch.checked + patch.lockTimeouts + del.checked + del.lockTimeouts, 'dirka se mora končati v vseh 20 zamikih — tiho preskočen poskus je rdeč').toBe(20)
     // Izposoda zaklepa sme obstajati, ne sme pa postati tiha: dovoljena je ENA
-    // na skupno dirko, sicer je test spet odvisen od hitrosti stroznika.
+    // na skupno dirko, sicer je test spet odvisen od hitrosti gostitelja.
     expect(patch.lockTimeouts + del.lockTimeouts, 'P1008 zakasnitev — preveč počasnih zaklepov').toBeLessThanOrEqual(1)
   }, 60_000)
 })

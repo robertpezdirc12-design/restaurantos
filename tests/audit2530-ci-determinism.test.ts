@@ -299,9 +299,18 @@ describe('E — №29 dirka in №30 onesnaženje (statično)', () => {
     expect(t).toMatch(/deterministično B[\s\S]*?receipt\.count[\s\S]*?\)\.toBe\(0\)/)
   })
 
-  test('nedoločena dirka še vedno zahteva vsaj eno zavrnitev (ne more biti tiho prazna)', () => {
+  test('nedoločena dirka ne more biti tiho prazna in ne sme soditi po hitrosti gostitelja', () => {
     const t = read('tests/order-concurrency.test.ts')
-    expect(t).toMatch(/patch\.rejections \+ del\.rejections\)\.toBeGreaterThan\(0\)/)
+    // Računovodstvo poskusov: vseh 20 zamikov mora biti bodisi preverjenih
+    // bodisi prištetih k P1008 — tiho preskočen poskus mora biti rdeč.
+    expect(t).toMatch(/checked\+\+/)
+    expect(t).toMatch(/patch\.checked \+ patch\.lockTimeouts \+ del\.checked \+ del\.lockTimeouts,[^)]*\)\s*\.toBe\(20\)/s)
+    // Prepovedana oblika: trditev, kdo zmaga dirko, je odvisna od stroja. Na
+    // GitHub runnerju je padla, čeprav finančna invarianta ni bila kršena
+    // niti enkrat (run 39935225480, tests job, 23. 10. 09:55:04 UTC).
+    expect(t).not.toMatch(/rejections\)\.toBeGreaterThan\(0\)/)
+    // Zavrnitev mora biti upravičena: 409 brez commitnjenega plačila je napaka.
+    expect(t).toMatch(/expect\(paidFirst, `409 brez commitnjenega plačila/)
   })
 
   test('issue38 bootstrap: lastnih vrst je točno 5, tuje se preštejejo in IMENUJEJO', () => {
