@@ -754,15 +754,16 @@ describe('v1.169.0 — statične invariante', () => {
     // determinizem CI-ja (13 padcev v runu 39905677431), v1.172.0 pa izdaja za
     // šesto luknjo alarmne plasti (canary je tiho požiral `cancelled` rune),
     // v1.173.0 pa še izdaja za sedmo luknjo (canary je na `/commits` bral
-    // `.sha` seznama in zato vedno javljal napačen razlog).
-    // Vsaka taka pojedena številka premakne celotno nepoddano repo ceste za eno
+    // `.sha` seznama in zato vedno javljal napačen razlog), v1.174.0 pa izdaja
+    // za besedilo alarma (hint joba `tests` je bil zapisan brez šumnikov).
+    // Vsaka taka pojedena številka premakne celoten nepoddan rep ceste za eno
     // naprej — sicer PRD obljublja izdajo, ki je nikoli ne bo.
     expect(prd).toMatch(/R2b1 — v1\.170\.0\*\* \| Omejena offline vrsta/)
-    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.174\.0\)\*\* \| Varen lokalni obrat brez žice/)
-    expect(prd).toMatch(/R3 — v1\.175\.0/)
-    expect(prd).toMatch(/R4 — v1\.176\.0/)
-    expect(prd).not.toMatch(/R2b2 — načrtovano \(v1\.17[0123]\.0\)/)
-    expect(prd).not.toMatch(/R3 — v1\.17[0-4]\.0/)
+    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.175\.0\)\*\* \| Varen lokalni obrat brez žice/)
+    expect(prd).toMatch(/R3 — v1\.176\.0/)
+    expect(prd).toMatch(/R4 — v1\.177\.0/)
+    expect(prd).not.toMatch(/R2b2 — načrtovano \(v1\.17[0-4]\.0\)/)
+    expect(prd).not.toMatch(/R3 — v1\.17[0-5]\.0/)
   })
 
   it('runbook lokalnega zagona opisuje kopijo, obnovo in izvedeno vajo obnove', async () => {
