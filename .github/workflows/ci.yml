@@ -242,7 +242,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           scope: 'tests (tsc + lint + celoten suite na SQLite)'
-          hint: 'Ta job je objektivna varovalka pred Vercel deployom. Ce je padel tsc, je v produkciji ze verjetno deployano isto stanje (gl. #18) — preveri deployment. Ce je padel samo test, preveri, ali gre za fiksature (`a56-`, `i4-` predponi) ali res napako.'
+          hint: 'Ta job je objektivna varovalka pred Vercel deployom. Če je padel tsc, je v produkciji najverjetneje že deployano isto stanje (gl. #18) — preveri deployment. Če je padel samo test, preveri, ali gre za fiksature (predponi `a56-`, `i4-`) ali res za napako.'
 
   # DRUGI SISTEM kot `tests`: tsc proti PRODUKCIJSKEMU (Postgres) klientu.
   # Zakaj ločen job: `tests` ima file: DATABASE_URL, zato postinstall generira
