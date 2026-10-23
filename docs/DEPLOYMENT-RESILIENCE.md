@@ -470,10 +470,71 @@ dokončal v 27 s. Koment ob `ci.yml:28` je trdil nasprotno (kvota izčrpana do
 1. 11. 2026) — bil je zastarel. Opomba: komentar je zapisan kot mehanizem, ki
 ostane v veljavi (če kvota res zmanjka, se spremenljivka vrne z
 `gh api -X PUT …/actions/variables -f name=CI_RUNNER_LABELS -f value=self-hosted`).
-Odstraniti je treba še neveljaven label `ubuntu-latest` s runnerja
-`sandbox-ci-runner-1` — medtem ko je runner offline, label nič ne usmerja (hosted
-jobi se kljub njemu izvajajo), zato ni nujen; za odstranitev je potrebna
-re-registracija runnerja.
+
+~~Odstraniti je treba še neveljaven label `ubuntu-latest` s runnerja
+`sandbox-ci-runner-1`~~ — **OVRGNJENO IN ZAPRTO 2026-10-23, ista mera je našla
+pravi vzrok.** Label na uhovaljenem runnerju hosted jobov ne krade: sync runi so
+bili `jobs: []` zaradi ENEGA samega runa `39855929868`, ki je od 22. 10. 21:16Z
+naprej stal v `queued` z `labels: ["self-hosted"]` (ustvarjen, ko je
+`CI_RUNNER_LABELS` še živel) in je zaradi `cancel-in-progress: false` držal
+celo `gitlab-sync` skupino. Preklic runa je zadostoval; od 12:42Z naprej so vsi
+synci zeleni (25 s, 12 s, 10 s) in GitLab zrcalo spet hoda korak za korakom.
+Brisanje labela ali runnerja torej ni bilo potrebno — odločitev lastnika
+(»Zaenkrat ne«) je bila pravilna in je zdaj tudi izmerjena.
+
+### Šesta luknja alarmne plasti: `cancelled` run ne more alarmirati sam sebe (v1.172.0)
+
+Zgoraj štiri luknje so bile v akciji, peta v klicatelju. Šesta je bila **v
+predpogoju canary-ja**: `scripts/ci-canary-check.mjs` je ob zaključenem runu, ki
+ni `success`, rekel »ta run ima svoj alarm, canary ne sme podvajati« in vrnil 0.
+Predpogoj drži za `failure` (job se je izvedel, `if: failure()` je tekel), ne
+drži pa za `cancelled` in `startup_failure` — na preklicanem runu se koraki z
+`if: failure()` **ne izvedejo nikoli**, zato takega izpada v repozitoriju ni
+mogel javiti nihče.
+
+Izmerjeno 22.–23. 10.: trije zaporedni `gitlab-sync` runi ob tipih `7ff89ef` in
+`06a4c02` (#42, #43, #44) so končali `cancelled`, canary pa je vsakič vrnil 0.
+Isti nabor podatkov danes odloči drugače. Na **pravem** API odzivu (1.516.726 B,
+`/actions/runs?branch=main&event=push`, 100 runov) je bila odločitev izmerjena z
+enakim vhodom na obeh različicah skripta:
+
+| tip na veji | različica | izhod | izpis |
+|---|---|---|---|
+| `7ff89ef` (sync #44 `cancelled`) | pred popravkom | **0** | `OK (tih): zadnji run #undefined … canary ne sme podvajati` |
+| `7ff89ef` (sync #44 `cancelled`) | po popravku | **1** | `ALARM: run #44 (workflow: Dvosmerna sinhronizacija GitLab <-> GitHub) je zaključen z 'cancelled'` |
+| `c085689` (zdrav tip) | pred popravkom | 0 | `OK: … run #undefined` |
+| `c085689` (zdrav tip) | po popravku | **0** | `OK: … za vsak od 1 workflowov na tipu: #48 (Dvosmerna sinhronizacija …)` |
+
+Zakaj to ni preklop na stalno rdeče: na zdravem tipu novi skript vrne 0, alarmira
+pa samo ob zaključku, ki svojih korakov ne more izvesti.
+
+Zdravilo je odločanje **po workflowu**: za vsak push run na tipu se pogleda njegov
+najnovejši zaključen izid; dopustna sta samo `success` in `failure` (množica
+`SELF_ALARMING`), vse ostalo je izpad, v sporočilu pa je ukaz za diagnozo
+`gh api 'repos/<repo>/actions/runs?status=queued'`. Stranski učinek, ki ga je
+razkrila ista mera: pravi API imenuje polje `run_number`, lokalne fixture pa
+`number` — brez testa na **pravi** obliki bi alarm izpisal `#undefined` in
+klicatelj ne bi vedel, kateri run naj išče. Pokrito z dodatnim testom, ki
+uporablja pravo obliko in trdi na `#44` ter prepoveduje `undefined`.
+
+Suite: 19 canary testov (5 statičnih pogodb + 14 odločitev) v datoteki z 25
+testi, mutacijski ledger **7/7 ujetih**: M1 `cancelled` dopolni množico
+`SELF_ALARMING` → 4 padci; M2 vsi workflowi v eno skupino → 2; M3 najstarejši
+namesto najnovejšega runa → 1; M4 `failure` postane glasen → 2; M5 samo
+`number` → 1; M6 spremenjen `scope` → 1; M7 iz hinta izpuščena beseda
+`cancelled` → 1. Po zadnji mutaciji sta obe datoteki vrnjeni, njuna vsota
+`sha256` pa je primerjana z izvirnikom (`0f073c2819b3` / `bf61e8c11762`).
+
+**Ledger je bil v prvem poskusu lažen, in sicer v svojem lastnem harnessu:**
+poganjalski skript je mutacije zajel z `execFileSync`, bun pa rezultate piše na
+**stderr** — pri izhodu 0 `execFileSync` vrne samo stdout, driver torej ni videl
+ničesar in je vsako mutacijo razglasil za `fail=0`. Brez kontrolnega koraka
+(brez mutacije, z zahtevo, da se številka `pass` sploh razčleni) bi to izgledalo
+kot 7/7 preživetih mutacij, torej kot napačno pričevanje o tem, da testi nič ne
+merijo. Zdaj `spawnSync` pobere oba toka in neznan izhod **vrže**, namesto da bi
+ga tolmačil kot zelenega. Pin na stabilen `scope` ni okras: `ci-alarm`
+deduplicira po točnem naslovu issue-a (`action.yml:143`), spremenjen naslov pa
+pomeni nov issue, ob njem pa bi #77 ostal večno odprt.
 
 ### Determinizem suite-a in tiho izklopljene kontrole (v1.171.0)
 
