@@ -108,6 +108,19 @@ jobs:
           BR_ID=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches" "{\"branch\":{\"name\":\"$BR_NAME\",\"parent_id\":\"$NEON_PARENT_BRANCH_ID\"}}" 'import json,sys; print(json.load(sys.stdin)["branch"]["id"])')
           echo "branch: $BR_ID"; sleep 3
 
+          # v1.171.0 — BR_ID MORA v GITHUB_ENV takoj, ne šele ob koncu koraka.
+          # Korak je `bash -e`: če katerikoli naslednji neon_req pade (run
+          # 39905677431: POST /endpoints → „quota exceeded" v petih poskusih),
+          # se korak ustavi in prvotni `echo ... >> $GITHUB_ENV` nikoli ne
+          # teče. Brisanje v `if: always()` torej vidi prazen BR_ID in branch
+          # OSTANE ZA ŽIVET — dva takšna runa (18. in 23. 10.) sta pustila po
+          # en branch. Kopičenje branchov KVOTE NE POVZROČA: project ima 4 od
+          # dovoljenih 10 branchov (`branches_limit`), oba ušla brancha pa
+          # nimata nobenega endpointa. `quota exceeded` je porabniška kvota
+          # načrta free_v3. Ta popravek zato odstrani LE puščanje; kvote ne
+          # reši in neon-smoke ostane rdeč, dokler je načrt nad njo.
+          echo "BR_ID=$BR_ID" >> "$GITHUB_ENV"
+
           EP_HOST=$(neon_req POST "/projects/$NEON_PROJECT_ID/endpoints" "{\"endpoint\":{\"branch_id\":\"$BR_ID\",\"type\":\"read_write\"}}" 'import json,sys; print(json.load(sys.stdin)["endpoint"]["host"])')
           EP_ID=$(neon_req GET "/projects/$NEON_PROJECT_ID/branches/$BR_ID/endpoints" '' 'import json,sys; print(json.load(sys.stdin)["endpoints"][0]["id"])')
           echo "endpoint: $EP_ID $EP_HOST"
@@ -124,7 +137,6 @@ jobs:
           DB_OK=$(neon_req POST "/projects/$NEON_PROJECT_ID/branches/$BR_ID/databases" '{"database":{"name":"ci_smoke","owner_name":"ci_smoke"}}' 'import json,sys; print(json.load(sys.stdin).get("database",{}).get("name",""))')
           echo "database: $DB_OK"
 
-          echo "BR_ID=$BR_ID" >> "$GITHUB_ENV"
           echo "EP_ID=$EP_ID" >> "$GITHUB_ENV"
           echo "EP_HOST=$EP_HOST" >> "$GITHUB_ENV"
           echo "SMOKE_ROLE_PW=$ROLE_PW" >> "$GITHUB_ENV"

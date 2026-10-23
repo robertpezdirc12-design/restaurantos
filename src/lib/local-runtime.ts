@@ -33,7 +33,11 @@ export function resolveDataDir({
 }: DataDirOptions = {}): string {
   const override = env.RESTAURANTOS_DATA_DIR?.trim()
   if (override) {
-    return platform === 'win32' ? path.win32.resolve(override) : path.posix.resolve(override)
+    // EKSPlicitna nastavitev je authoritative: naredi jo absolutno v sintaksi
+    // GOSTITELJA. `platform` tu ne sme poseči — `path.win32.resolve('/tmp/x')` na
+    // Linuxu vrne `\tmp\x` (CI run 39905677431), lokalno na Windows pa isti test
+    // uspe, zato napaka ostane skrita. Modelirana platforma izbira samo PRIVZETO pot.
+    return path.resolve(override)
   }
   if (platform === 'win32') {
     const base = env.LOCALAPPDATA || path.win32.join(home, 'AppData', 'Local')

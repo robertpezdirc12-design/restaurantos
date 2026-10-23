@@ -125,12 +125,22 @@ async function upstashCommand(args: string[]): Promise<string | null> {
 /**
  * Upstash store: atomarni INCR + PEXPIRE ob prvem zadetku (fiksno okno).
  * Napaka → NE tiho; kličoča koda pade nazaj na memory store (glej rateLimitSharedAsync).
+ *
+ * Neuskladen odgovor (HTTP 200 brez polja `result` ali z nevrednostjo) je NAPAKA
+ * ZALOGA, ne «nič zadetkov»: `Number(null)` je 0, `0 <= limit` pa tiho dovoli
+ * NEOMEJENO število zahtev — omejevalnik preneha delovati, ne da bi karkoli
+ * javil (CI run 39905677431: 8 × „Expected: 429, Received: 200"). Zato je
+ * odgovor preverjen, nedoločen pa vržen → memory padec z ohranjenim štetjem.
  */
 export const upstashStore: RateLimitStore = {
   name: 'upstash',
   async hit(key, limit, windowMs) {
     const redisKey = `rl:${key}`
-    const count = Number(await upstashCommand(['INCR', redisKey]))
+    const raw = await upstashCommand(['INCR', redisKey])
+    const count = Number(raw)
+    if (raw === null || !Number.isInteger(count) || count < 1) {
+      throw new Error(`neuskladen Upstash INCR odgovor: ${JSON.stringify(raw)}`)
+    }
     if (count === 1) await upstashCommand(['PEXPIRE', redisKey, String(Math.ceil(windowMs))])
     let resetAt = Date.now() + windowMs
     const pttl = await upstashCommand(['PTTL', redisKey])

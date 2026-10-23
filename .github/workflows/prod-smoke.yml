@@ -34,6 +34,13 @@ jobs:
       NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
       PROD_DB: restaurantos
     steps:
+      # v1.171.0 — isti pogoj kot v neon-backup.yml: alarmna koraka ni mogoče
+      # naložiti brez checkouta, ker `uses: ./.github/actions/ci-alarm` živi v
+      # delovnem prostoru. Njun razred napake je skupen, zato sta popravljena
+      # hkrati; dokaz za backup stran je run 39920450748. Pin:
+      # tests/v171-alarm-checkout.test.ts
+      - uses: actions/checkout@v5
+
       - name: PostgreSQL 17 client BREZ root (portable .deb izpis)
         run: |
           set -e

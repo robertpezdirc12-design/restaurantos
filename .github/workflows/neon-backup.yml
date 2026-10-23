@@ -41,6 +41,14 @@ jobs:
       NEON_PROD_BRANCH_ID: br-little-waterfall-anolkwr6
       BACKUP_DB: restaurantos
     steps:
+      # v1.171.0 — BREZ tega koraka alarm ne more nikoli dostopiti. Zadnji
+      # korak (`uses: ./.github/actions/ci-alarm`) je lokalna composite akcija,
+      # ki se naloži iz delovnega prostora; brez checkouta datoteke na runnerju
+      # ni. Izmerjeno na runu 39920450748 (23. 10. 08:03:05): `##[error]Can't
+      # find 'action.yml' ... Did you forget to run actions/checkout` — job je
+      # odpovedal, issue pa ni bila odprta. Pin: tests/v171-alarm-checkout.test.ts
+      - uses: actions/checkout@v5
+
       - name: PostgreSQL 17 client BREZ root (portable .deb izpis)
         run: |
           set -e
