@@ -590,6 +590,27 @@ odločitvenih (D). Mutacijski ledger te izdaje: **4/4 ujetih** — M1 neposredno
 sporočilo brez `commits.length` → 1 padec; M4 `if (!head)` izklopljen → 1 padec.
 Kontrolni korak brez mutacije je moral pokazati 27/0, sicer ledger nima veljave.
 
+**Pokritost canary-ja je bila napačno dokumentirana, in jo je popravila ista
+mera.** Cron pravi `17 * * * *`, vodni komentar workflowa pa »en kratek run na
+uro (~24 min/mesec)«. Vseh 16 runov, ki jih je ta workflow kdaj dobil (prvi
+20. 10. 14:21:31Z, zadnji 23. 10. 13:32:50Z), ima razmike med **2,47 h in
+6,19 h**, povprečje **4,75 h** — torej okoli 6 preverjanj na dan. Iz tega je
+sledila še ena napačna domneva: ob 14:17 runa ni bilo, kar je bilo videti kot
+izpad planerja, je pa povsem v skladu z merjenim razmikom. Komentar je zdaj
+prepisan na številke; **zakaj** GitHub dobavlja redkeje, kot cron obljublja,
+izmera ne pove in trditve o tem ne pišem. Praktična posledica je realnejša meja
+detekcije: alarmni layer opozori na zablokiran run šele po največ ~6 h, ne po
+eni uri.
+
+**Objava te izdaje je bila preverjena na živem sistemu** (`0634e89`): `/api/health`
+služi 1.173.0, `sync-check` je SYNCED na vseh treh pikah, GitLab zrcalo je
+napredovalo za tri commite, `tests` job v CI-ju je prvič po v1.171.0 zelen na
+release commitu, `neon-smoke` pa je rdeč z istim izmerjenim zunanjim vzrokom
+(`quota exceeded` petkrat zapored na `POST /endpoints`). Canary je na živem
+API-ju izdal obe odločitvi: `OK: run #186 je še v teku (1 min, prag 20 min)` med
+gradnjo in `OK (tih): run #186 … je zaključen z failure` po njej. Naslednji
+načrtovani run bo prvi, ki to odločitev izvede v produkciji.
+
 ### Determinizem suite-a in tiho izklopljene kontrole (v1.171.0)
 
 **Kaj je CI takoj pokazal (prvi živi run po presklopu, `39905677431` na `d61dd9b`,
