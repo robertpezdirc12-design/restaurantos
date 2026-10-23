@@ -1,4 +1,4 @@
-# Runbook — lokalni zagon RestaurantOS (v1.170.0)
+# Runbook — lokalni zagon RestaurantOS (v1.171.0)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
@@ -43,7 +43,12 @@ Demo podatki iz `prisma/seed.ts` se **ne** naložijo; demo prijava je izklopljen
 | macOS | `~/Library/Application Support/RestaurantOS` |
 | Linux | `$XDG_DATA_HOME/restaurantos` (sicer `~/.local/share/restaurantos`) |
 
-Mapo prepiše `RESTAURANTOS_DATA_DIR`. V njej so:
+Mapo prepiše `RESTAURANTOS_DATA_DIR`. Vrednost se bere v sintaksi gostitelja,
+na katerem proces teče — v1.171.0 je popravil prav to: eksplicitna pot je bila
+absolutizirana z `path.win32.resolve` **modelirane** platforme, ki jo je posredoval
+klicatelj, nastavitev gostitelja pa ne sme iti skozi simulacijo gostitelja. Pin
+je host-invarianten (`tests/v165-local-runtime.test.ts` isto trditev preveri na
+win32, linux in darwin). V nastavljeni mapi so:
 
 - `data/restaurantos.db` — baza (edini vir podatkov);
 - `data/restaurantos.db-wal` — rep (WAL) z nedavnimi zapisi; ob pravilnem postanku
@@ -76,7 +81,7 @@ podatkov in `git status` ne vidi baze.
 - **Dostop v omrežju:** na izpisanem naslovu `http://<IP>:3000` (npr.
   `http://192.168.1.20:3000`) z računalnika, tablice ali handhelda v istem
   omrežju. Lokalni profil uporablja HTTP; PWA namestitev zahteva HTTPS in je
-  obseg R2b2 (v1.171.0).
+  obseg R2b2 (v1.172.0).
 - **Offline vrsta (v1.170.0):** ko zveza pade, grejo naročila in spremembe
   statusov v vrsto v brskalniku naprave (ne v lokalno bazo). Vrsta je omejena:
   največ **200 čakajočih operacij** in vsaka čaka največ **12 ur**. Polna vrsta
@@ -201,7 +206,7 @@ bun run local --build
 | POS javi »lokalna vrsta je polna« | Brez povezave je na napravi nabralo več kot 200 operacij. Rešitev ni brisanje, ampak povezava: zaženite ali počakajte na povezavo, da se vrsta sama pošlje, nato naročilo pošljite znova. Košarica pri tem NI izpraznjena. |
 | FURS ali kartično plačilo ne uspe | Lokalna baza ne odpravi odvisnosti od interneta; preverite povezavo in certifikate (`docs/FURS-CERT-RUNBOOK.md`). |
 
-## 8. Meje te izdaje (v1.170.0 = R1 + R2a + R2b1)
+## 8. Meje te izdaje (v1.171.0 = R1 + R2a + R2b1)
 
 - Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
   `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
@@ -210,8 +215,8 @@ bun run local --build
   starosti, je idempotentna po `clientOperationId`, ob polni vrsti ali kvoti
   brskalnika zavrne glasno, zastarele operacije pa pridejo v mrtvo črko namesto
   v tiho brisanje.
-- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2b2 (v1.171.0).
-- Brez avtomatskega zagona ob zagonu sistema — R2b2 (v1.171.0).
+- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2b2 (v1.172.0).
+- Brez avtomatskega zagona ob zagonu sistema — R2b2 (v1.172.0).
 - Offline vrsta živi v brskalniku naprave, ne v lokalni bazi: izbris brskalnega
   podatkovnega profila ali drug brskalnik je izgubi, ne glede na omejitve te
   izdaje. Popolna lokalna samostojnost POS-a ni obseg R2.

@@ -187,13 +187,34 @@ samo `src/`), zdaj pokriva `tests/seed-enum-validity.test.ts`.
 
 ### Alarm ob izpadu (`.github/actions/ci-alarm`)
 
-Vsak job vseh petih workflowov ima zadnji korak `if: failure()` → lokalno
+Vsak job vseh šestih workflowov ima zadnji korak `if: failure()` → lokalno
 akcijo `ci-alarm`, ki odpre ali dopolni GitHub issue z oznako `ci-alarm` in ga
 dodeli lastniku repozitorija. Ker v repo secrets ni nobenega kanala za sporočila
 (Slack, e-pošta, webhook), je issue edino mesto, ki opozorilo pokaže tudi zunaj
 Actions — rdeč pipeline, ki ga ne najde nihče, je enak modremu (najdba #16).
 Issue namenoma NE vsebuje izsečka loga, ker lahko log nosi zneske, davčne
 podatke in kratke odtise skrivnosti.
+
+Od v1.171.0 ima ta korak pogoj, brez katerega je navidezno prisoten alarm
+neuporaben: `uses: ./.github/actions/ci-alarm` se naloži iz delovnega prostora,
+zato ga lahko pokliče samo job, ki ima `actions/checkout`. `neon-backup.yml` in
+`prod-smoke.yml` ga do takrat nista imela — alarmni korak je v njiju stal, a na
+runnerju se nikoli ni mogel izvesti. Izmerjeno na runu 39920450748 (23. 10. 2026
+ob 08:03:05 UTC): za pravim vzrokom (`POST /roles` → „quota exceeded") je
+sledilo `##[error]Can't find 'action.yml' ... Did you forget to run
+actions/checkout before running your local action?`. To pojasni tišino okrog
+backupa: zadnji uspešen je bil 18. 10., nato né issue, né komentar, né povzetek
+koraka. Zato korak v obeh workflowih ni več zadnji, ampak prvi (`checkout@v5`,
+isti kot `ci.yml`; `ci-canary` je še vedno na `v4` in zaradi tega v logu
+izpisuje opozorilo o ukinjenem Node 20). Strukturo pinira
+`tests/v171-alarm-checkout.test.ts`, ki zahteva checkout pred alarmom v vsakem
+workflowu, ki akcijo kliče, in alarm v vsakem workflowu s `schedule:` — oba
+pina sta mutacijsko dokazana, pri čemer je moral prvi brati strukturo brez
+komentarjev, ker je besedilo pojasnila vsebovalo isti niz in je pin po lastnem
+popravku ostal rdeč. Korak je sicer v ta dva joba vnesel `f3f08c8` (v1.150.0,
+revizija #16 »alarm javi«) in z njim takrat NI bil dodan checkout:
+`git log -S actions/checkout -- .github/workflows/neon-backup.yml` je prazen,
+torej korak v tem jobu nikoli ni bil naložljiv.
 
 Pri `sync.yml` je bilo stanje do v1.150.0 še hujše: pogoja `if: failure()` ni
 bilo in napake ni bilo. Koraki so uspeh potrdili ne glede na izid (`|| true`,
@@ -424,17 +445,143 @@ da je vzrok v logu, ne samo posledica.
 istega joba se deduplicirajo v komentar; dodelitev lastniku ostaja edini signal,
 ki pride do človeka brez Actions zaslona; body namenoma nima izsečka loga (№20).
 
+**Peta luknja, druge vrste — našel jo je šele v1.171.0.** Zgornje štiri so bile
+napake *v* akciji; ta je bila napaka *klicevca*. Dva od osmih klicev
+(`neon-backup.yml`, `prod-smoke.yml`) v jobu nimata `actions/checkout`, lokalna
+composite akcija pa se naloži iz delovnega prostora, zato korak na runnerju ne
+more obstajati: `##[error]Can't find 'action.yml'` (run 39920450748, 23. 10.).
+Takratni test dostave je bil lokalni — `node` pokliče isto logiko z izmišljenim
+`GITHUB_*` okoljem — in lokalno datoteke akcije vedno obstajajo, zato luknje ni
+mogel videti. Pokriva jo statični pin, ki v vsaki `.github/workflows/*.yml`
+preveri par (checkout, alarm) — glej *Alarm ob izpadu* in
+*Kaj je triažing razkril zunaj suite-a*.
+
 Zakaj to do zdaj ni bilo odkrito: `audit1516` A2 je pinil *obliko* koraka
 (`state=…`, `$GITHUB_STEP_SUMMARY`, `/assignees`), nikoli pa HTTP basea ali
 izvedbe. Test je zdaj **vedenostni** — iz `action.yml` izvlečen `run:` blok se
 zažene kot pravi skript proti lokalnemu HTTP stubu in preveri, kaj se zgodi (8
 mutacij, vseh 8 ujetih: `tests/v168-ci-alarm-delivery.test.ts`).
 
-**Kar kod popraviti ne more (lastnik, Settings):** izbrisati spremenljivko
-`CI_RUNNER_LABELS` (neveljaven label `ubuntu-latest` na offline runnerju
-`sandbox-ci-runner-1` usmerja run-e vanj; `|| 'ubuntu-latest'` fallback v
-workflowih že obstaja in ga test C namensko varuje, zato diff za ta del ni
-potreben) ter odstraniti tisti label s runnerja. Odprto ostaja merjenje canary
+**Kar kod popraviti ne more (lastnik, Settings):** ~~izbrisati spremenljivko
+`CI_RUNNER_LABELS`~~ — **IZVEDENO 2026-10-23**: spremenljivka je izbrisana, ker je
+meritev pokazala, da hosted pool NI izčrpan: canary job (ki ima hardkodiran
+`ubuntu-latest`) je ob 01:35 tekel na `runner_name: GitHub Actions 1000002687` in
+dokončal v 27 s. Koment ob `ci.yml:28` je trdil nasprotno (kvota izčrpana do
+1. 11. 2026) — bil je zastarel. Opomba: komentar je zapisan kot mehanizem, ki
+ostane v veljavi (če kvota res zmanjka, se spremenljivka vrne z
+`gh api -X PUT …/actions/variables -f name=CI_RUNNER_LABELS -f value=self-hosted`).
+Odstraniti je treba še neveljaven label `ubuntu-latest` s runnerja
+`sandbox-ci-runner-1` — medtem ko je runner offline, label nič ne usmerja (hosted
+jobi se kljub njemu izvajajo), zato ni nujen; za odstranitev je potrebna
+re-registracija runnerja.
+
+### Determinizem suite-a in tiho izklopljene kontrole (v1.171.0)
+
+**Kaj je CI takoj pokazal (prvi živi run po presklopu, `39905677431` na `d61dd9b`,
+2026-10-23):** `typecheck-prod` SUCCESS, `tests` **13 padcev / 3211 zelenih** (od
+3224, enako število kot lokalno), `neon-smoke` FAILURE. Noben razred ni regresija
+kode iz `v1.170.0`: lokalno jih je prekrival vrstni red, ki ga `bun test` sam
+izbere — vsi vzroki so bili vidni šele ob dejanskem izidu.
+
+1. **8 × rate limit** (`Expected: 429, Received: 200`) — **uhajanje globalnega
+   stanja + fail-open v produkciji**, ne „manjkajoči env" (to sem najprej
+   zapisal in je bilo napačno):
+   - `tests/rate-limit.test.ts` je nastavil `UPSTASH_REDIS_REST_URL/TOKEN` in ju
+     nikoli počistil. `getStore()` rezultat kešira v modulski `activeStore`, zato
+     je vsaka kasnejša datotela v istem procesu dobila Upstash store — neodvisno
+     od tega, kaj je sama nastavila.
+   - `tests/v170-offline-queue-limits.test.ts` je z `Object.defineProperty`
+     zamenjal `globalThis.fetch` s stubom `{ ok: true, status: 200, json: () =>
+     ({ results: [] }) }` in ga ni vrnil. Stub je bil najdaljši živi v procesu.
+   - Posledica verige: Upstash REST vrne 200 brez polja `result` →
+     `upstashCommand` vrne `null` → `Number(null) === 0` → `0 <= limit` →
+     omejevalnik je **tiho izklopljen** in vsaka zahteva dobi 200 namesto 429.
+   Popravljeno na obeh koncih. Testi počistijo svoje (`ORIG_ENV` +
+   `__resetStoreForTests()` v `afterEach`/`afterAll`; `IZVIRNI` deskriptorji +
+   `afterAll(povrniDOM)`). Produkcija **vrže napako**, če INCR odgovor ni celo
+   število ≥ 1 (`src/lib/rate-limit.ts`): fail-open na varnostni kontroli ni
+   izbira med dvema varnostnima metodama, je izbira brez kontrole.
+2. **3 × odvisno od gostitelja, ne „od okolja"**:
+   - `RESTAURANTOS_DATA_DIR` (`v165`): implementacija je eksplicitno pot
+     absolutizirala z `platform` (`path.win32.resolve`), ki jo je posredoval test
+     kot simulator. Na Windowsu se je to ujelo z gostiteljem, na Linuxu ne.
+     Eksplicitna nastavitev gostitelja ne sme biti prevedena skozi modelirano
+     platformo: zdaj je `path.resolve` (sintaksa gostitelja), `platform` pa velja
+     samo za izpeljano privzeto pot. To je **produkcijski popravek**, ne
+     popravek testa — lokalni profil mora živeti tam, kjer je nastavljen.
+   - 2 × WAL (`v169`): trditev „po izhodu procesa rep ostane poln" je pravilna,
+     dokaz napačen. Rep preživi samo **naglo** smrt procesa; ob čistem zaprtju
+     SQLite checkpointa in `-wal` pobriše, zato je Linux dobil `ENOENT`. Test
+     zdaj piše v podprocesu (`spawn`, nato ubit z `kill()`), kar pusti neprebran
+     rep na obeh gostiteljih; kontrola `applyDurability počisti osirotele rep`
+     nato briše resnično obstoječ rep in ne predpostavlja, zakaj je nastal.
+3. **2 × Stripe reconcile** (`summary.settled` 0 namesto ≥ 1) — krivec ni
+   vrstni red ali stanje sveže baze, ampak **`mock.module` v
+   `tests/v161-cron-marker.test.ts`**. Bun z njim zastrupi modulski registry
+   v celem procesu: vrnitev identitete izvoza ne vrne notranjih vezi mockanega
+   modula, zato je njegova `db` vez ostala druga (prazna) instanca. Kasnejši
+   `v157` je klical pravo funkcijo ob drugi vezi in dobil 0 vrstic.
+   `mock.module` je **odstranjen iz suite-a**; pogoj, ki ga je mock lažno
+   prikazoval, se zdaj sproži prek prave produkcjske poti (payLink s
+   nedosegljivo sejo + `STRIPE_SECRET_KEY`), uporaba `mock.module` pa je
+   prepovedana s statičnim pinom v celotnem suite-u (`audit2530` F).
+4. **neon-smoke**: `POST /projects/…/endpoints` → `{"message":"quota exceeded"}`
+   v petih poskusih. Branch je bil ustvarjen (`br-damp-sun-andbkw4b`), a ker
+   korak teče z `bash -e` in `BR_ID` pride v `$GITHUB_ENV` šele na njegovem
+   koncu, se je ustavil pred izpisom → cleanup (`if: always()`) je dobil prazen
+   ID in **branch je ušel**. `BR_ID` je zdaj zapisan takoj za ustvarjanjem
+   brancha, pred endpoint klicem (pin v `audit2530` F).
+   **Kvota NI posledica kopičenja branchov** — tisto trditev sem imel tukaj
+   zapisano in je napačna: `describe_project` 23. 10. kaže 4 od
+   `branches_limit: 10` branchov, oba ušla CI brancha (`ci-smoke-7378994`,
+   `ci-smoke-d61dd9b`) pa nimata **nobenega** endpointa. `quota exceeded` je
+   kvota porabe načrta `free_v3`; popravek workflowa odstrani samo
+   puščanje, kvote ne reši, zato neon-smoke ostane rdeč, dokler kvota drži.
+   Oba ušla brancha sta še vedno v projektu — njuno brisanje je uničujoče zunanje
+   dejanje in čaka na izrecno dovoljenje lastnika.
+
+**Kaj je triažing razkril zunaj suite-a (osmi poseg te izdaje):** isti
+`quota exceeded` kot neon-smoke je 23. 10. ubil tudi `Neon backup (pg_dump
+production)` (run 39920450748). Niz, izmerjen po `created_at`/`updated_at`
+posameznega runa: zadnji z validacijo skloden backup je 39110190199 (18. 10.
+08:06 UTC), nato 19./20./21./22. 10. **cancelled**, 23. 10. **failure**.
+Odpovedi sta dva različna razloga, in samo enega lahko reši koda:
+1. **19.–22. 10. job sploh ni dobil runnerja.** Cron je `30 2 * * *`, vsi štirje
+   runi pa so nastali ob 07:51–08:00 UTC, imeli `created_at == run_started_at`,
+   `total_count: 1` brez katerekoli `workflow_job` in so bili prekinjeni točno
+   24 h pozneje (08:00:51/53/54 + dan). To je podpis reda, ki čaka na
+   `CI_RUNNER_LABELS`, usmerjene na mrtve self-hosted runnerje. Tak run
+   `if: failure()` ne more doseči — edina plast, ki to vidi, je canary dead-man
+   (najdba №24), in je: issue #77 s komentarji za rdeče 13./14./15. canary run.
+2. **23. 10. je runner prišel, kvota pa ne.** Tu bi moral `if: failure()` odpreti
+   issue, a se lokalna akcija ni mogla naložiti, ker job nima
+   `actions/checkout` — `##[error]Can't find 'action.yml'`. Posledica: **prodaja
+   pet dni nima sveže kopije in izdaja tega ni vedela**, ker je bil alarmni
+   korak v backup workflowu videzno nameščen, a neizvedljiv.
+
+Mehanizem je popravljen (checkout kot prvi korak, piniran z
+`tests/v171-alarm-checkout.test.ts`); kvote porabe, zakasnelega razporedilnika in
+mrtvih runnerjev koda ne reši.
+
+**Zavestno NE storeno v tej izdaji (odločitev ni moja):**
+1. **Zastaranje reconcile okna.** Nič ne zapre poteklih `open` payLinkov (v kodi
+   obstajata samo `superseded` in `revoked` zapis), zato vrsta za
+   `reconcilePaidStripeSessions` monotono raste. `take: 20` po `createdAt ASC`
+   vedno pobere **najstarejše** vrstice: plačana povezava, ki je nastala za 20
+   umrlimi, ostane neprebrana. Popravek bi bil paginacija (→ več Stripe klicev
+   na run, kar na Vercel Hobby funkciji pade čez ~10 s budget) ali poslovno
+   pravilo o zaprtju poteklih povezav — pravila ne določam sam.
+2. **Brez timeouta na Stripe klicu.** `stripeSessionStatus()` nima
+   `AbortSignal.timeout()`, paylinks korak pa Stripe seje bere zaporedoma. En
+   obeseni odgovor pomeni, da cron job prestopi budget in se zaključi kot
+   odpoved.
+
+**Alarmna plast je potrdila delovanje drugič in tretjič v naravi:** run
+`39905677431` je odprl issue **#78** (`neon-smoke`, 19 s po zadnji odpovedi
+koraka) in **#79** (`tests`, 58 s) — prvi dokazani dostavi je bil canary
+issue #77 (22. 10.).
+
+Odprto ostaja merjenje canary
 cronu: izraz je `17 * * * *` (vsako uro ob 17. minuti), dejanski
 zagoni pa so 20.–22. 10. prišli ob 14:21, 19:20, 23:13, 01:41, 07:45, 13:53,
 18:43, 22:25, 01:35, 07:41, 13:52 — **nobeden ne pade na 17. minuto, sledijo pa jim

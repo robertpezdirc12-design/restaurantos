@@ -150,9 +150,9 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R1 — v1.165.0** | Lokalna baza iz enega ukaza | F1–F10, A1–A10 | `bun run local` ustvari bazo in lastnika, aplikacija teče, Vercel nespremenjen |
 | **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
 | **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
-| **R2b2 — načrtovano (v1.171.0)** | Varen lokalni obrat brez žice | HTTPS v LAN (Caddy/mkcert), samodejni zagon ob prijavi | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika |
-| **R3 — v1.172.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
-| **R4 — v1.173.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
+| **R2b2 — načrtovano (v1.172.0)** | Varen lokalni obrat brez žice | HTTPS v LAN (Caddy/mkcert), samodejni zagon ob prijavi | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika |
+| **R3 — v1.173.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
+| **R4 — v1.174.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
@@ -162,6 +162,9 @@ R2b je razcepljen (R2b1/R2b2), ker HTTPS in samodejni zagon nista bila gotova v
 enem koraku: izdaja, ki bi ju združila z offline vrsto, bi imela tri sprejemna
 merila in nobenega hitro preverljivega. R2b1 (v1.170.0) zato samo omeji offline
 vrsto, R2b2 prevzame HTTPS in samodejni zagon.
+v1.171.0 je nato pojedla izdaja za determinizem CI-ja (prvi živi hosted run
+`39905677431` je pokazal 13 padcev, ki jih lokalno ni bilo), zato se celotna
+nepoddana repa ceste pomakne za eno številko.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
