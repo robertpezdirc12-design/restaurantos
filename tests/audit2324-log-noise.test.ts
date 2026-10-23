@@ -241,10 +241,17 @@ describe('D. №24 — canary skript odloči pravilno', () => {
   const CLOCK = Date.parse('2026-10-20T12:00:00Z')
   const iso = (agoMin: number) => new Date(CLOCK - agoMin * 60_000).toISOString()
 
+  /* Izmerjeno 23. 10. (issue #77, run 39962111054): `/commits?sha=main&per_page=1`
+   * vrne **seznam** (`gh api … --jq 'type'` → `array`), ne posameznega predmeta.
+   * Stari helper je pisal `{ sha }`, torej obliko, je si je zamislil avtor testa in
+   * je je API nikoli ne vrne — zato je 14 odločitvenih testov spodaj mirno zelenih,
+   * medtem ko je canary na produkciji vedno javljal napačen razlog. Zdaj helper
+   * normalizira **na pravo obliko**: karkoli ni seznam, postane seznam z enim
+   * elementom, kot ga vrne goltalnik. */
   function fixtures(name: string, commits: unknown, runs: unknown) {
     const cf = join(d, `${name}-commits.json`)
     const rf = join(d, `${name}-runs.json`)
-    writeFileSync(cf, JSON.stringify(commits))
+    writeFileSync(cf, JSON.stringify(Array.isArray(commits) ? commits : [commits]))
     writeFileSync(rf, JSON.stringify(runs))
     return {
       CANARY_COMMITS_FILE: cf,
@@ -384,6 +391,29 @@ describe('D. №24 — canary skript odloči pravilno', () => {
     expect(g.code).toBe(0)
     expect(g.out).toMatch(/#48/)
     expect(g.out).not.toMatch(/undefined/)
+  })
+
+  /* SEDMA LUKNJA (izmerjeno 23. 10.): vseh 16 zasledovanih načrtovanih runov
+   * canary-ja je odpovedalo z `ALARM: zadnjega commita na veji main ni bilo
+   * mogoče določiti (prazen odgovor)`, čeprav je bil `main` poln zaključenih
+   * runov. Odgovor `/commits` namreč NI prazen — je seznam z enim elementom,
+   * katerega `.sha` skript ni znal prebrati. Odločitev, ki jo je prinesla
+   * v1.172.0, se v produkciji nikoli ni izvedla. */
+  test('rdeč: prazen seznam commitov javi dejansko obliko odgovora, ne „prazen odgovor"', () => {
+    const r = runCanary(fixtures('empty-list', [], { workflow_runs: [okRun] }))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/0 elementov/)
+    expect(r.out).not.toMatch(/prazen odgovor/)
+  })
+
+  /* Statična pogodba, da se ta razred napake ne more vrniti tiho: glava veje
+   * SME biti razrešjena samo prek seznama. Odstranitev tega pogoja bi
+   * vrstila produkcijo nazaj na »vedno lažen razlog«, lokalni suite pa bi bil
+   * spet zelen, ker bi helper pisal pravo obliko. */
+  test('skript glavo veje razreši skozi seznam in ne z neposrednim .sha', () => {
+    const js = readFileSync(join(ROOT, CANARY_SCRIPT), 'utf8')
+    expect(js).toMatch(/Array\.isArray\(commits\)/)
+    expect(js).not.toMatch(/const head = commits && commits\.sha/)
   })
 
   test('izpad API-ja je napaka, ne tiho zelena odločitev', () => {
