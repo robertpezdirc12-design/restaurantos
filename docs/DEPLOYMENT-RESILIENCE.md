@@ -536,6 +536,60 @@ ga tolmačil kot zelenega. Pin na stabilen `scope` ni okras: `ci-alarm`
 deduplicira po točnem naslovu issue-a (`action.yml:143`), spremenjen naslov pa
 pomeni nov issue, ob njem pa bi #77 ostal večno odprt.
 
+**Meja tega dokaza:** meritev je zajela samo `/actions/runs`. `/commits` je v
+fixture-ih ostal izmišljen, zato odločitveni del v1.172.0 na produkciji nikoli ni
+bil izveden — to je razkrila šele mera spodaj (sedma luknja, v1.173.0).
+
+### Sedma luknja: canary je javljal, a vedno napačen razlog (v1.173.0)
+
+Šesta luknja je bila zaprta, nihče pa ni vprašal, ali se popravek v produkciji
+sploh izvede. Odgovor je bil ne: canary je odpovedal na **vsakem** od 16
+zasledovanih načrtovanih runov (20. 10. do 23. 10.), vedno z istim izpisom
+`ALARM: zadnjega commita na veji main ni bilo mogoče določiti (prazen odgovor)`.
+Vzrok ni bil izpad CI-ja, ampak **oblika odgovora**: `/commits?sha=main` vrne
+seznam, skript pa je bral `commits.sha` — na seznamu je to vedno `undefined`,
+zato je canary umrl na prvi odločitveni vrstici in do odločitve iz v1.172.0 ni
+prišel nikoli. Issue #77 je v tišini nabiral komentarje s trditvijo, ki ne drži:
+`main` je zaključene rune imel.
+
+Dokaz o obliki, ne predpostavka:
+
+| meritev | izid |
+|---|---|
+| `gh api "…/commits?sha=main&per_page=1" --jq 'type'` | `array` |
+| `gh api "…/commits?sha=main&per_page=1" --jq '.sha'` | `expected an object but got: array` |
+| `gh api "…/commits?sha=neobstojeca-veja-2026&per_page=1"` | HTTP 404, body `{"message":"Not Found","status":"404"}` |
+| zadnji dva runa (20. 10., oba 4 s) | `log not found` — odpovedi nisem mogel klasificirati, zato ju ne navajam |
+
+Zdravilo je dvodelno in namerno brez uganke: glava veje se razreše prek
+`Array.isArray(commits) ? commits[0]?.sha : undefined`, sporočilo o odpovedi pa
+opisuje **dejansko** videno obliko (`/commits je vrnil seznam z 0 elementov` ali
+`odgovor tipa object namesto seznam-a`) namesto doslej vedno izmišljenega
+»prazen odgovor«. Ker neobstoječa veja vrne 404 in ne praznega seznama, je
+prazen seznam v resnici sprememba oblike odgovora, ne izbrisan branch — to
+razliko mora videti vsak, ki bo alarm bral pozneje, ne samo avtor popravka.
+
+A/B na **živem** API-ju (23. 10., isti žeton, neposredno brez proxy-ja):
+
+| različica | izhod | izpis |
+|---|---|---|
+| pred popravkom | **1** | `ALARM: … (prazen odgovor)` |
+| po popravku | **0** | `OK: zadnji commit na veji main ima zaključen uspešen run za vsak od 1 workflowov na tipu: #50 (Dvosmerna sinhronizacija GitLab <-> GitHub)` |
+
+Zakaj prejšnje dokazovanje ni ujelo: 14 odločitvenih testov je v `/commits`
+pisalo `{ sha }` — obliko, ki jo je predpostavil avtor testov. Trditev »dokazano
+na pravem API odzivu« je v v1.172.0 veljala samo za `/actions/runs` (1.516.726 B,
+pobrano z `gh api`), ne za `/commits`; meja dokaza je bila zapisana šele tukaj,
+namesto da bi jo pokrila zelena barva. Helper zdaj piše **pravo** obliko
+(karkoli ni seznam, postane seznam z enim elementom), zato je bil popravek
+najprej viden kot **15 padcev** (12 pass / 15 fail), šele nato zelen.
+
+Suite: 27 testov v datoteki, od tega canary 5 statičnih pogodb (C) + 16
+odločitvenih (D). Mutacijski ledger te izdaje: **4/4 ujetih** — M1 neposredno
+`commits.sha` → 13 padcev; M2 helper vrne izmišljeno obliko → 13 padcev; M3
+sporočilo brez `commits.length` → 1 padec; M4 `if (!head)` izklopljen → 1 padec.
+Kontrolni korak brez mutacije je moral pokazati 27/0, sicer ledger nima veljave.
+
 ### Determinizem suite-a in tiho izklopljene kontrole (v1.171.0)
 
 **Kaj je CI takoj pokazal (prvi živi run po presklopu, `39905677431` na `d61dd9b`,
