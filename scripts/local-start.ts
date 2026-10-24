@@ -2,17 +2,25 @@
 /**
  * v1.165.0 — en ukaz za lokalni RestaurantOS (PRD R1, F6).
  * v1.169.0 — ob zagonu additionally dnevna varnostna kopija (PRD R2).
+ * v1.175.0 — R2b2: `--https` vžene TLS front pred Nextom, da je obrat dosegljiv
+ *            brez žice in z zaklenjeno sejo (pogoj za namestitev PWA na tablico).
  *
  * `bun run local` pripravi bazo (če je še ni), naredi dnevno kopijo, zgradi
  * aplikacijo (če je še ni) in jo zažene na 0.0.0.0, da je dostopna tudi na
  * tablicah v lokalnem omrežju. Ne seje demo podatkov in ne odpira nobene oblačne baze.
+ *
+ * Z `--https` je javni vnos SAMO front: Next se priveže na 127.0.0.1, sicer bi
+ * v LAN ostal goli HTTP tik ob obljudenem HTTPS naslovu.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { backupsDirFor, backupDatabase, drainWal, listBackups, LOCAL_DAILY_BACKUP_PREFIX } from '../src/lib/local-durability'
-import { lanUrls } from '../src/lib/local-runtime'
+import { lanUrls, servingPlan } from '../src/lib/local-runtime'
 import { runLocalSetup } from '../src/lib/local-setup'
+import { ensureLocalTls, identityFromNetwork } from '../src/lib/local-tls'
+import { startLocalHttpsFront, type HttpsFrontHandle } from '../src/lib/local-https-front'
 
 const ROOT = process.cwd()
 const NEXT_BIN = path.join(ROOT, 'node_modules', 'next', 'dist', 'bin', 'next')
@@ -22,6 +30,8 @@ const STANDALONE_MARKER = path.join(ROOT, '.next', 'standalone', 'server.js')
 const USAGE = `Uporaba: bun run local [možnosti]
 
   --port <številka>        Vrata (privzeto 3000 ali PORT iz okolja)
+  --https                  HTTPS front v LAN + zankin Next (za namestitev PWA)
+  --https-port <številka>  Vrata frontal (privzeto 3443)
   --data-dir <pot>         Podatkovna mapa (privzeto %LOCALAPPDATA%\\RestaurantOS)
   --owner-email <e-pošta>  Prijavni e-poštni naslov lastnika (prvi zagon)
   --owner-pin <PIN>        PIN lastnika (prvi zagon; sicer naključen)
@@ -32,6 +42,8 @@ const USAGE = `Uporaba: bun run local [možnosti]
 
 interface Args {
   port: number
+  https: boolean
+  httpsPort?: string
   dataDir?: string
   ownerEmail?: string
   ownerPin?: string
@@ -42,7 +54,7 @@ interface Args {
 
 function parse(argv: string[]): Args {
   const rawPort = process.env.PORT || '3000'
-  const args: Args = { port: Number(rawPort), forceBuild: false, help: false }
+  const args: Args = { port: Number(rawPort), https: false, forceBuild: false, help: false }
   const value = (i: number, flag: string): string => {
     const v = argv[i + 1]
     if (!v || v.startsWith('--')) throw new Error(`[local] Možnost ${flag} zahteva vrednost.`)
@@ -51,8 +63,10 @@ function parse(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--build') args.forceBuild = true
+    else if (a === '--https') args.https = true
     else if (a === '-h' || a === '--help') args.help = true
     else if (a === '--port') args.port = Number(value(i++, a))
+    else if (a === '--https-port') args.httpsPort = value(i++, a)
     else if (a === '--data-dir') args.dataDir = value(i++, a)
     else if (a === '--owner-email') args.ownerEmail = value(i++, a)
     else if (a === '--owner-pin') args.ownerPin = value(i++, a)
@@ -79,6 +93,17 @@ if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
   console.error('[local] Vrata morajo biti celo število med 1 in 65535.')
   process.exit(2)
 }
+
+let httpsPort: number | undefined
+if (args.httpsPort !== undefined) {
+  httpsPort = Number(args.httpsPort)
+  if (!Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65535) {
+    console.error('[local] --https-port mora biti celo število med 1 in 65535.')
+    process.exit(2)
+  }
+}
+
+const nacrt = servingPlan({ port: args.port, https: args.https, httpsPort })
 
 if (!existsSync(NEXT_BIN)) {
   console.error('[local] Manjka Next.js. Najprej zaženite: bun install')
@@ -146,14 +171,47 @@ if (needsBuild) {
   }
 }
 
+let front: HttpsFrontHandle | null = null
+if (nacrt.frontPort > 0) {
+  const identiteta = identityFromNetwork({ hostname: os.hostname(), interfaces: os.networkInterfaces() })
+  const tls = ensureLocalTls({ dataDir: setup.dataDir, identity: identiteta, nowMs: Date.now() })
+  if (!tls.ok) {
+    console.error(`\n✖ HTTPS certifikata ni bilo mogoče pripraviti (${tls.step ?? '?'}): ${tls.message}`)
+    console.error('  Obrat lahko zaženete brez TLS: izpustite --https.')
+    process.exit(1)
+  }
+  try {
+    front = await startLocalHttpsFront({
+      keyPem: readFileSync(tls.paths.leafKey, 'utf8'),
+      certPem: readFileSync(tls.paths.leafCert, 'utf8'),
+      targetPort: nacrt.nextPort,
+      httpsPort: nacrt.frontPort,
+    })
+  } catch (err) {
+    console.error(`\n✖ HTTPS front na vratih ${nacrt.frontPort} se ni mogel zagnati: ${(err as Error).message}`)
+    console.error('  Vrata so morda zasedena — izberite druga z --https-port <številka>.')
+    process.exit(1)
+  }
+  console.log(`  TLS:       ${tls.message}`)
+  console.log(`  CA za zaupanje: ${tls.paths.caCert}`)
+}
+
 console.log('\nRestaurantOS teče:')
-console.log(`  ta računalnik: http://localhost:${args.port}`)
-for (const url of lanUrls(args.port)) console.log(`  v omrežju:     ${url}`)
+if (front) {
+  console.log(`  ta računalnik: ${nacrt.scheme}://localhost:${front.port}`)
+  for (const url of lanUrls(front.port, undefined, nacrt.scheme)) console.log(`  v omrežju:     ${url}`)
+  console.log(`  (Next sam je zaprt na ${nacrt.nextHost}:${nacrt.nextPort} — do njega vodi samo front)`)
+} else {
+  console.log(`  ta računalnik: http://localhost:${args.port}`)
+  for (const url of lanUrls(args.port)) console.log(`  v omrežju:     ${url}`)
+}
 console.log('\n  Ustavi s Ctrl+C. Demo podatki niso naloženi.\n')
 
-const child = spawn(process.execPath, [NEXT_BIN, 'start', '-p', String(args.port), '-H', '0.0.0.0'], {
+const child = spawn(process.execPath, [NEXT_BIN, 'start', '-p', String(nacrt.nextPort), '-H', nacrt.nextHost], {
   cwd: ROOT,
-  env: process.env,
+  // Next bere in -H in HOSTNAME; oba morata sovpati, sicer bi HOSTNAME 0.0.0.0 iz
+  // localEnv() odprl goli HTTP tik ob frontu.
+  env: { ...process.env, HOSTNAME: nacrt.nextHost },
   stdio: 'inherit',
 })
 
@@ -162,6 +220,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     if (stopping) return
     stopping = true
+    void front?.close()
     child.kill(signal)
   })
 }
@@ -172,6 +231,9 @@ child.on('error', (err) => {
 })
 
 child.on('exit', (code, signal) => {
+  // Front mora zapreti skupaj z virom: sicer bi brskalniku ostala živa TLS seja
+  // na praznih vratih in tablica ne bi vedela, da obrat ni več dosegljiv.
+  void front?.close()
   // Čist postanek mora počistiti rep: izmerjeno `-wal` po izhodu procesa ostane
   // poln, naslednja obnova pa bi zaradi tega javila, da aplikacija še teče.
   drainWal(setup.dbPath)

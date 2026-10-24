@@ -177,18 +177,53 @@ export interface NetworkInterfaceLike {
   internal: boolean
 }
 
-export function lanUrls(
-  port: number,
-  interfaces: Record<string, NetworkInterfaceLike[] | undefined> = os.networkInterfaces(),
-): string[] {
-  const urls: string[] = []
+export function lanIpv4(interfaces: Record<string, NetworkInterfaceLike[] | undefined> = os.networkInterfaces()): string[] {
+  const naslovi: string[] = []
   for (const list of Object.values(interfaces)) {
     for (const iface of list || []) {
       if (iface.internal) continue
       if (iface.family !== 'IPv4' && iface.family !== 4) continue
-      const url = `http://${iface.address}:${port}`
-      if (!urls.includes(url)) urls.push(url)
+      if (!naslovi.includes(iface.address)) naslovi.push(iface.address)
     }
   }
-  return urls
+  return naslovi
+}
+
+export function lanUrls(
+  port: number,
+  interfaces: Record<string, NetworkInterfaceLike[] | undefined> = os.networkInterfaces(),
+  scheme: 'http' | 'https' = 'http',
+): string[] {
+  return lanIpv4(interfaces).map((ip) => `${scheme}://${ip}:${port}`)
+}
+
+/** Rezervirana vrata lokalne frontal: 3443 je vneto HTTP, a ni dodeljen nobeni storitvi. */
+export const LOCAL_HTTPS_PORT = 3443
+
+export interface LocalServingOptions {
+  port: number
+  https: boolean
+  httpsPort?: number
+}
+
+export interface LocalServingPlan {
+  nextHost: string
+  nextPort: number
+  /** 0 pomeni, da front ne teče in Next sam ponuja javni vnos. */
+  frontPort: number
+  scheme: 'http' | 'https'
+  publicPort: number
+}
+
+/**
+ * Kdo posluša kje. Ko je HTTPS vklopljen, sme Next brati samo zanko: `next
+ * start -H` je edini gumb za vezavo, zato bi 0.0.0.0 pomenil goli HTTP tik ob
+ * obljudenem HTTPS naslovu. Front je takrat edini javni vnos.
+ */
+export function servingPlan(o: LocalServingOptions): LocalServingPlan {
+  if (!o.https) {
+    return { nextHost: '0.0.0.0', nextPort: o.port, frontPort: 0, scheme: 'http', publicPort: o.port }
+  }
+  const frontPort = o.httpsPort ?? LOCAL_HTTPS_PORT
+  return { nextHost: '127.0.0.1', nextPort: o.port, frontPort, scheme: 'https', publicPort: frontPort }
 }
