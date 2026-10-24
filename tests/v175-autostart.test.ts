@@ -16,6 +16,7 @@
  *    davno konča — lastnik mora najprej videti, kaj bo napisano.
  */
 import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import {
   AUTOSTART_MARKER,
   AUTOSTART_TASK,
@@ -403,5 +404,84 @@ describe('E. izpis, ki mu lastnik verjame', () => {
     expect(res.message).toContain(`/XML "${plan.artifactPath}"`)
     const u = applyUninstall({ plan, dryRun: true, run: () => USPEH() })
     expect(u.message).toContain(`/TN "${AUTOSTART_TASK}"`)
+  })
+
+  it('E4: Access is denied pri schtasks pove, da je treba povišano lupino, in ponovi ukaz', () => {
+    // Merjeno 24. 10. na tej napravi: `bun run local:autostart --install` vrne
+    // izstop 1 in «ERROR: Access is denied.», ker koren mapa Načrtovalnika opravil
+    // zahteva skrbnika. Isti Access is denied je padel tudi na povsem navideznem
+    // opravilu (`schtasks /Create /TN ROSprobe /TR ... /SC ONLOGON`), torej je to
+    // lastnost sistema in ne najinega XML-ja. Brez namiga lastnik gleda okvaro,
+    // ki je ni v datoteki, in ne ve, kateri ukaz naj požene z drugimi pravicami.
+    const plan = buildAutostartPlan(OSNOVNO)
+    const sistem = lazniSistem()
+    const res = applyAutostart({
+      plan,
+      ...sistem.opts,
+      dryRun: false,
+      run: () => ({ status: 1, stdout: '', stderr: 'ERROR: Access is denied.\n' }),
+    })
+    expect(res.ok).toBe(false)
+    expect(res.message).toContain('Access is denied.')
+    expect(res.message).toMatch(/skrbniš|povišano/)
+    expect(res.message).toContain(`/TN "${AUTOSTART_TASK}"`)
+    expect(res.message).toContain(`/XML "${plan.artifactPath}"`)
+    expect(res.artifactWritten).toBe(true)
+    // Izmerjeno v pravem izvodu: «ERROR: Access is denied..» — podvojena pika.
+    // Lastnik brala sporočilo kot okvaro izpisa, ne kot okvaro sistema.
+    expect(res.message).not.toMatch(/\.\.\s/)
+  })
+
+  it('E5: drugačen poraz schtasks ne laže o pravicah', () => {
+    // `schtasks /Create` pade tudi na neveljavnem XML-u ali poškodovani registraciji.
+    // K takim napakam je skrbniški nasvet ne samo neuporaben ampak škodljiv: lastnik
+    // bi predelal ukaz, ki je pravilen, in iskal vzrok tam, kjer ga ni.
+    const plan = buildAutostartPlan(OSNOVNO)
+    const sistem = lazniSistem()
+    const res = applyAutostart({
+      plan,
+      ...sistem.opts,
+      dryRun: false,
+      run: () => ({ status: 1, stdout: '', stderr: 'ERROR: The task XML contains a value which is incorrectly formatted.\n' }),
+    })
+    expect(res.ok).toBe(false)
+    expect(res.message).toContain('incorrectly formatted')
+    expect(res.message).not.toMatch(/skrbniš|povišano/)
+    expect(res.message).not.toMatch(/\.\.\s/)
+  })
+
+  it('E6: «Access denied» na Linuxu ne dobi Windows namiga za UAC', () => {
+    // `systemctl --user` zahteva nujno ne skrbnika, zato bi beseda o povišani lupini
+    // tu napotila lastnik na pot, ki problema ne reši. Namig sme slediti samo
+    // `schtasks`, ne samemu zapisu napake.
+    const plan = buildAutostartPlan(LINUX)
+    const sistem = lazniSistem()
+    const res = applyAutostart({
+      plan,
+      ...sistem.opts,
+      dryRun: false,
+      run: () => ({ status: 1, stdout: '', stderr: 'Access is denied.\n' }),
+    })
+    expect(res.ok).toBe(false)
+    expect(res.message).not.toMatch(/skrbniš|povišano/)
+  })
+})
+
+describe('F. runbook', () => {
+  const doc = readFileSync('docs/LOKALNI-ZAGON.md', 'utf8')
+
+  it('F1: runbook pove, da Windows registracija rabi povišano lupino', () => {
+    // Merjeno 24. 10. 2026 na tej napravi: artefakt je zapisan, `/Create` pa vrne
+    // «ERROR: Access is denied.» in izstop 1 — enak izstop kot poskus s tujim
+    // opravilom, torej je zahteva sistemska. Runbook, ki tega ne pove, pošlje
+    // lastnika iskat napake v XML-u, ki ga ni.
+    expect(doc).toMatch(/Access is denied/)
+    expect(doc).toMatch(/povi[šs]ana lupina|skrbni[šs]ka lupina/)
+  })
+
+  it('F2: runbook ne trdi več, da --install nikoli ni bil pognan', () => {
+    // Stavka o tem, kaj je bilo izvedeno, se mora premakniti skupaj z izvedbo.
+    // Stara trditev bi bila laž in bi hkrati skrila dejanski blok — pravice.
+    expect(doc).not.toMatch(/--install` še ni bil pognan/)
   })
 })

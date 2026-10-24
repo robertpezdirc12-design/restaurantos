@@ -333,3 +333,51 @@ function handshake(port: number, ca: string, servername: string): Promise<{ auth
     })
   })
 }
+
+describe('E. zaupanje na tablici, kot ga runbook sme obljubljati', () => {
+  const doc = readFileSync('docs/LOKALNI-ZAGON.md', 'utf8')
+  const odstavek = (zacetek: string) => {
+    const i = doc.indexOf(zacetek)
+    if (i < 0) return ''
+    const konec = doc.indexOf('\n- **', i + zacetek.length)
+    return doc.slice(i, konec < 0 ? doc.length : konec)
+  }
+
+  it('E1: Android odsek ne sme trditi, da uporabniški CA da zaupanje brskalnika', () => {
+    // Prebrano na Androidovi dokumentaciji in v Chromiumovem sledenju: Android
+    // hrani uporabnikove koreninske certifikate v LOČENI shrambi, sistemski
+    // omrežni sklad (okna od 7 naprej) in Chrome ju ne sprašujeta; zaupanje
+    // lastnemu CA zato zahteva sistemski/MDM vnos ali izrecno izjemo v lastni
+    // aplikaciji. Runbook je do zdaj pisal samo pot prenosa datoteke v nastavitve,
+    // kar je korak, ki zaupanja NE da — tablica na Androidu bi po njem ostala na
+    // opozorilu, acceptance pogoj R2b2 pa bi bil izrecno lažen.
+    const a = odstavek('- **Android:**')
+    expect(a.length).toBeGreaterThan(0)
+    expect(a).toMatch(/ne da zaupanja|ne zaupa/)
+    expect(a).toMatch(/iOS|JAVNO VELJAVEN/i)
+    expect(a).toMatch(/systemski|MDM/)
+  })
+
+  it('E2: Windows odsek pozna uporabniško shrambo, ki ne rabi skrbnika', () => {
+    // Merjeno 24. 10. na tej napravi: `certutil -addstore -user Root` vrne
+    // «CertUtil: -addstore command completed successfully» brez povišanja, nato
+    // `curl https://192.168.2.105:3443/` BREZ --cacert vrne `http=200
+    // verify=0`, brskalnik pa stran odpere brez vmesnika. Stara besedila so
+    // navajala samo strojno shrambo (`-addstore Root`), ki skrbnika zahteva, zato
+    // je lastnik moral izbrati pot, ki je ni mogel dokončati sam.
+    const w = odstavek('- **Windows (Edge ali Chrome):**')
+    expect(w).toMatch(/-addstore -user Root|shrambo current user/)
+    expect(w).toMatch(/brez skrbnika|ne rabi skrbnika|uporabnišk/)
+  })
+
+  it('E3: runbook loči med odčitkom curla in brskalnikom', () => {
+    // Merjeno: Windows `curl` (SChannel) na lastnem CA brez razveljavitvenega
+    // seznama pade na `the revocation status is unknown`, dokler ne doda
+    // `--ssl-no-revoke`; brskalnik istega certifikata sprejme brez kakršnekoli
+    // zastavice. Če tega razlika dokument ne pove, lastnik vidi 60 in išče okvaro
+    // fronte, ki je ni — ali huje: doda flag v ukaz, ki ga brskalnik ne pozna.
+    expect(doc).toMatch(/--ssl-no-revoke/)
+    expect(doc).toMatch(/revocation status is unknown/)
+    expect(doc).toMatch(/brskalnik[^\n]*brez|brez[^\n]*zastavice/i)
+  })
+})
