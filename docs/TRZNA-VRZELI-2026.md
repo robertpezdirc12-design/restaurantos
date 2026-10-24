@@ -157,6 +157,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 | **NIS2** | Essen. subjekti (digitalna infrastruktura); restavracije večinoma IZVEN | SaaS lasten | Higiena: obveščanje o incidentih (EventLog že) |
 | **GDPR** | PII gostov/zaposlenih | Loyalty PII že obdelan (Task 32-b), audit | Redni pregled (obstoječe) |
 | **FURS SI / FINA HR** | Fiskalizacija | FURS ✓ (test), FINA 2.0 pripr. na cert | Certifikat = uporabniški korak (FURS-CERT-RUNBOOK) |
+| **ZDPSI (izvedba EAA, dir. (EU) 2019/882)** | Zakon o dostopnosti do proizvodov in storitev za invalide velja od 28. 6. 2025 in zajema **storitve e-trgovine**; nadzira Tržni inšpektorat RS, globe 250–10.000 €. Za RestavrantOS sta to QR meni in javna plačilna/rezervacijska povezava. Tehnični referenci sta EN 301 549 in WCAG 2.1 AA — v virih, ki sem jih prebral, njune povezave na ZDPSI nisem našel citirane **[nepreverjeno v uradnem besedilu]**; ali zakon zajame tudi naročilni terminal (kiosk), odvisno od razlage, ne od kode | `lang` dokumenta zdaj sledi jeziku, ki ga gost dejansko vidi (v1.176.0, WCAG 3.1.1/3.1.2 — prej je bil `lang="sl"` trdo zapisan); gostovi jezikovni preklopniki so pravi `<button>`-i ≥ 44 px (commit `74dcfd5`, takratna produkcija v1.45.0) | **Celoten WCAG pregled gostovih strani še ni izmerjen.** Že izmerjena drobna pomanjkljivost: na `/kiosk` sta dva gumba za količino brez imena za bralni zaslon in brez izrecno določene ciljne velikosti (`src/app/kiosk/page.tsx:449-450`, Minus/Plus brez `aria-label`) |
 
 ## 6. PRIporočen VRSTNI RED
 
