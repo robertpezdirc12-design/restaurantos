@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Verzija dokumenta | 1.1 |
-| Datum | 22. 10. 2026 |
-| Status | R1 izveden (v1.165.0); R2a izveden (v1.169.0); R2b1 izveden (v1.170.0); R2b2 načrtovan |
+| Verzija dokumenta | 1.2 |
+| Datum | 24. 10. 2026 |
+| Status | R1 izveden (v1.165.0); R2a izveden (v1.169.0); R2b1 izveden (v1.170.0); R2b2 izveden (v1.175.0); izhodni pogoj na tablici še ni preizkušen |
 | Lastnik | lastnik izdelka |
 | Povezave | `docs/ARCHITECTURE.md`, `docs/BACKUP-RESTORE.md`, `docs/DEPLOYMENT-RESILIENCE.md` |
 
@@ -43,18 +43,19 @@ Pravila:
 - Lokalni profil **ne odpravi** potrebe po internetu za FURS fiskalizacijo in
   kartična plačila. Odpravi odvisnost od **oblačne baze**.
 - PWA namestitev in offline delovanje na telefonih zahtevata varen kontekst
-  (HTTPS). V R1 je lokalno omrežje na HTTP; to je zavestna omejitev in obseg R2.
+  (HTTPS). V R1 je lokalno omrežje na HTTP; to je bila zavestna omejitev in
+  obseg R2b2, kjer je HTTPS narejen (v1.175.0).
 
 ```
 LOKALNI PROFIL                          OBLAČNI PROFIL
 ┌──────────────────────────┐            ┌──────────────────────────┐
 │  brskalnik / PWA         │            │  brskalnik               │
-│  (LAN, HTTP v R1)        │            │  (HTTPS)                 │
+│  (LAN, HTTPS od v1.175)  │            │  (HTTPS)                 │
 └────────────┬─────────────┘            └────────────┬─────────────┘
              │                                       │
 ┌────────────▼─────────────┐            ┌────────────▼─────────────┐
 │  Next.js na računalniku  │            │  Vercel (serverless)     │
-│  v obratu                │            │                          │
+│  v obratu + TLS fronta   │            │                          │
 └────────────┬─────────────┘            └────────────┬─────────────┘
              │                                       │
 ┌────────────▼─────────────┐            ┌────────────▼─────────────┐
@@ -93,7 +94,9 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 
 **Izven obsega R1 (po izdajah):**
 
-- HTTPS v lokalnem omrežju in namestitev PWA (R2b2);
+- HTTPS v lokalnem omrežju in zagon ob prijavi (R2b2, izvedeno v v1.175.0);
+  namestitev PWA na tablici je predmet sprejemnega preizkusa, ki še ni bil
+  opravljen;
 - omejitev offline vrste glede na dolžino in starost (R2b1, izvedeno v v1.170.0);
 - samodejne varnostne kopije in obnova (R2a, izvedeno v v1.169.0);
 - WAL, `synchronous=FULL` in busy timeout (R2a, izvedeno v v1.169.0);
@@ -150,7 +153,7 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R1 — v1.165.0** | Lokalna baza iz enega ukaza | F1–F10, A1–A10 | `bun run local` ustvari bazo in lastnika, aplikacija teče, Vercel nespremenjen |
 | **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
 | **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
-| **R2b2 — načrtovano (v1.175.0)** | Varen lokalni obrat brez žice | HTTPS v LAN (Caddy/mkcert), samodejni zagon ob prijavi | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika |
+| **R2b2 — v1.175.0** | Varen lokalni obrat brez žice | HTTPS fronta v Node-u s lastnim CA (OpenSSL iz Git for Windows), Next zaprt na 127.0.0.1, v omrežje vodi samo fronta; zagon ob prijavi: generator opravil (Windows XML / launchd / systemd) in `local:autostart` s suhim tekom kot privzetim | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika — **preizkus še ni opravljen** |
 | **R3 — v1.176.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
 | **R4 — v1.177.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
@@ -192,6 +195,15 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   izpad pomeni izgubo najvišje nezaključene transakcije, ne pokvarjene datoteke.
   Pred R2a je lokalni profil uporabljal privzeti dnevnik in je bil primeren za
   preizkus, ne za kritično produkcijo.
+- **HTTPS v omrežju (R2b2, v1.175.0):** `bun run local --https`. Lastni CA in
+  list nastaneta s OpenSSLom v `<podatkovna mapa>/tls/`, javni vnos pa je fronta
+  na 3443 (`--https-port` jo premakne); Next sam ostane zaprt na `127.0.0.1`.
+  Zaupanje CA-ju je na vsaki napravi ročni korak — brez njega brskalnik prikaže
+  opozorilo in PWA-ja ni mogoče namestiti. Postopek je v `LOKALNI-ZAGON.md` §6.
+- **Zagon ob prijavi (R2b2, v1.175.0):** `bun run local:autostart` brez možnosti
+  samo pokaže artefakt in ukaze; `--install` zapiše in izvede, `--uninstall`
+  razveljavi, artefakt pa namenoma ostane na disku. Registracija opravila na
+  pravem računalniku še ni bila izvedena (zahteva privolitev lastnika).
 
 ## 10. Varnost in zasebnost
 
@@ -201,7 +213,9 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   izklopljena (`DEMO_LOGIN_ENABLED=0`).
 - `BOOTSTRAP_ADMIN_*` se v lokalnem okolju izpraznita; break-glass ostane
   oblačna funkcija.
-- Aplikacija je v R1 vezana na `0.0.0.0`, zato je dostopna vsem v istem omrežju.
+- Aplikacija je brez `--https` vezana na `0.0.0.0` in je dostopna vsem v istem
+  omrežju na golu HTTP. Z `--https` (v1.175.0) Next veže samo `127.0.0.1`, v
+  omrežje pa odpira samo TLS fronta — goli HTTP v LAN tako ni več dosegljiv.
   Priporočilo: ločeno omrežje za goste in osebje, požarna pregrada, močni PIN-i.
 - `/api/health` ne razkrije poti do baze, uporabniškega imena ali gesla.
 - Podatki so lokalni; varnostna kopija je odgovornost obrata do R2.
@@ -216,7 +230,7 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 | Obnova pod tekočo aplikacijo | pokvarjen paket namesto rešitve | obnova se zavrne, dokler ima baza rep z vsebino; čist postanek rep počisti (R2a) |
 | SQLite in sočasni pisci | zaklepi/napake | en strežniški proces, WAL in busy timeout (R2a) |
 | Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija pred `db push` |
-| HTTP v LAN | PWA/offline ne deluje | R2b2 HTTPS; do takrat je lokalni profil preizkusni in interni |
+| HTTP v LAN | PWA/offline ne deluje | HTTPS fronta z lastnim CA (R2b2, v1.175.0); dokler operater ne zaupa CA-ju, brskalnik na tablici prikaže opozorilo in PWA-ja ni mogoče namestiti |
 | FURS/plačila brez interneta | fiskalni zaključek ne uspe | lokalna baza tega ne reši; dokumentirano |
 | Razlika med Postgres in SQLite shemo | napake ob nadgradnji | generator zrcala + drift gate |
 
@@ -234,7 +248,7 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
 | Odločitev | Predlog | Kdaj |
 |---|---|---|
-| HTTPS v LAN | Caddy z lokalnim CA (brez ročnega zaupanja na vsaki napravi) | R2b2 |
+| HTTPS v LAN | ODLOČENO v v1.175.0: fronta v Node-u s lastnim CA, ki ga sestavi OpenSSL (že del Git for Windows). Caddy in mkcert ostaneta tuji binarni odvisnosti; izmerjeno 24. 10. 2026 na razvini napravi nista. **Del prvotnega predloga ni izpolnjen:** zaupanje CA-ju je na vsaki napravi ročni korak, samodejne poti brez njega v tej izdaji ni | R2b2 |
 | Cilj varnostnih kopij | lokalna mapa (R2a naredeno) + USB; oblak neobvezno | R5 |
 | Licenciranje | brez v R1–R2b2; odločitev pred komercialno prodajo | R4 |
 | Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2b2 |

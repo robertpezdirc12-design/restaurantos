@@ -1,14 +1,20 @@
-# Runbook — lokalni zagon RestaurantOS (v1.171.0)
+# Runbook — lokalni zagon RestaurantOS (v1.175.0)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
 (Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`. Zahteve in merila sprejema
-so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a in R2b1 so izvedena).
+so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a, R2b1 in R2b2 so izvedena; izhodni
+pogoj R2b2 na tablici še ni preizkušen).
 
 ## 1. Kaj potrebujete
 
 - Računalnik, ki bo stal v obratu (Windows 10/11 prvi; Linux/macOS podprta pot).
 - [Bun](https://bun.sh) 1.3 ali novejši.
+- OpenSSL samo, če želite `--https` (izdaja lastnega CA-ja). Klic je preprosto
+  `openssl`, torej mora biti na poti — na Windows ga dobiš z Git for Windows
+  (izmerjeno 24. 10. 2026: `C:\Program Files\Git\ucrt64\bin\openssl.exe`, najdejo
+  ga tudi cmd in PowerShell), na Linuxu je običajno nameščen, na macOS ga prinese
+  Homebrew. Če ga ni, `--https` javi napako in ne tiho odneha.
 - Internet samo za prvo namestitev (`bun install`) in za FURS/kartična plačila.
   Za delo z bazo internet **ni** potreben.
 
@@ -57,7 +63,12 @@ win32, linux in darwin). V nastavljeni mapi so:
 - `PRVIC-ZAGON.txt` — prve poverilnice;
 - `backups/dnevno-*.db` — samodejne dnevne kopije (zadnjih 14);
 - `backups/pre-push-*.db` — kopije pred posegom v shemo (zadnjih 5);
-- `backups/pred-obnovo-*.db` — stanje, ki ga je obnova prepisala (zadnjih 14).
+- `backups/pred-obnovo-*.db` — stanje, ki ga je obnova prepisala (zadnjih 14);
+- `tls/` — lastni CA in list za `--https` (§6.1); `ca-key.pem` je zasebni ključ
+  CA-ja in ne gre nikamor, tudi ne v varnostno kopijo;
+- `autostart\RestaurantOS Local.xml` — artefakt zagona ob prijavi, in sicer samo
+  na Windows; na macOS je artefakt v `~/Library/LaunchAgents/`, na Linux v
+  `~/.config/systemd/user/` (§6.2).
 
 **Dovoljine datotek s skrivnostmi.** Na macOS in Linux ju koda ustvari z `0600` —
 bere ju samo račun, ki jo je ustvaril. Na Windows POSIX `chmod` ne deluje, zato
@@ -78,10 +89,9 @@ podatkov in `git status` ne vidi baze.
 - **Kopije:** ob zagonu in nato na vsakih 6 ur samodejno nastane dnevna kopija;
   ročno jo naredite z `bun run local:backup`, seznam pokaže `bun run
   local:restore --list` (podrobnosti v §5).
-- **Dostop v omrežju:** na izpisanem naslovu `http://<IP>:3000` (npr.
-  `http://192.168.1.20:3000`) z računalnika, tablice ali handhelda v istem
-  omrežju. Lokalni profil uporablja HTTP; PWA namestitev zahteva HTTPS in je
-  obseg R2b2 (v1.172.0).
+- **Dostop v omrežju:** brez `--https` na izpisanem naslovu `http://<IP>:3000`
+  (npr. `http://192.168.1.20:3000`). Z `bun run local --https` je naslov
+  `https://<IP>:3443` in je edina pot do namestitve PWA-ja — podrobnosti v §6.
 - **Offline vrsta (v1.170.0):** ko zveza pade, grejo naročila in spremembe
   statusov v vrsto v brskalniku naprave (ne v lokalno bazo). Vrsta je omejena:
   največ **200 čakajočih operacij** in vsaka čaka največ **12 ur**. Polna vrsta
@@ -175,7 +185,80 @@ ustavljena aplikacija (`Ctrl+C`) rep počisti sama. Če ste jo ustavili na silo
 (Upravitelj opravil, izpad elektrike), enkrat zaženite `bun run local` in ga
 ustavite s `Ctrl+C`; nato obnovo ponovite.
 
-## 6. Posodobitev na novo različico
+## 6. HTTPS v omrežju in zagon ob prijavi (R2b2, v1.175.0)
+
+### 6.1 HTTPS fronta
+
+`bun run local --https` naredi tri stvari, ki jih brez te zastavice ni:
+
+1. **Lastni CA in list** nastaneta v `<podatkovna mapa>/tls/` (`ca-key.pem`,
+   `ca-cert.pem`, `leaf-key.pem`, `leaf-cert.pem`). Oboje naredi OpenSSL, ki je
+   že del Git for Windows; če ga na računalniku ni, zagon javi napako in ne tiho
+   odneha. CA traja 825 dni, list 398 dni in se obnovi, ko mu ostane manj kot 14
+   dni.
+2. **Next se zapre na zanko** (`127.0.0.1:3000`), zato v omrežju ni več golega
+   HTTP-ja tik ob obljudenem HTTPS.
+3. **TLS fronta posluša na `0.0.0.0:3443`** (`--https-port` jo premakne) in je
+   edini javni vnos. Prenese telo in glave, razen hop-by-hop, in zadrži tudi
+   nadgradnjo povezave (WebSocket).
+
+Zagon izpiše `https://<LAN IP>:3443`. List ima v SAN `localhost`,
+`restaurantos.local`, ime računalnika in vse IPv4 naslove vmesnikov (tablica
+naslov tipka, ne `localhost`; IPv6 OpenSSL zavrne). Ko se IP spremeni, ker je
+DHCP podelil drugega, naslednji zagon izda **samo list**, CA ostane.
+
+**Zaupanje CA-ju je ročni korak, ki ga ta izdaja ne naredi namesto vas.** Brez
+njega brskalnik prikaže opozorilo in PWA-ja ni mogoče namestiti. Odvisno je od
+operacijskega sistema naprave in z te naprave ni bilo izvedeno:
+
+- **Windows (Edge ali Chrome):** iz skrbniške lupine
+  `certutil -addstore -f Root "<podatkovna mapa>\tls\ca-cert.pem"`,
+  odstrani `certutil -delstore Root "RestaurantOS Local CA"`.
+- **Android:** Nastavitve → Varnost → *Namesti certifikat* → *CA certifikat*,
+  datoteka `ca-cert.pem` mora biti najprej prenesena na napravo.
+- **iOS:** `ca-cert.pem` pošljite na napravo, Nastavitve → Splošno → VPN in
+  upravljanje naprav → namestite profil, nato Nastavitve → Splošno → O tej
+  napravi → *Nastavitve zaupanja certifikatom* → celotno zaupanje.
+
+`ca-key.pem` je zasebni ključ CA-ja: z njim je mogoče izdati poljuben veljaven
+certifikat za to omrežje, zato ne gre nikamor — ne v kopijo, ne v support
+bundle, ne v repozitorij.
+
+### 6.2 Zagon ob prijavi
+
+`bun run local:autostart` brez možnosti **je suhi tek**: pokaže artefakt in
+ukaze, ne zapiše ničesar in ne zažene nobenega procesa. Privzet je prav suhi
+tek, ker je to ukaz, ki spremeni sistem.
+
+| Ukaz | Kaj stori |
+|---|---|
+| `bun run local:autostart` | Pokaže artefakt in ukaze. Nič se ne zapiše, nič se ne požene. |
+| `bun run local:autostart --install` | Zapiše artefakt in izvede registracijo. |
+| `bun run local:autostart --uninstall` | Razveljavi zagon ob prijavi; artefakt namenoma ostane na disku. |
+| `bun run local:autostart --data-dir <pot>` | Podatkovna mapa na drugi poti. |
+
+Artefakt in registracijski ukazi so po sistemu različni:
+
+| Sistem | Artefakt | Registracija |
+|---|---|---|
+| Windows | `<podatkovna mapa>\autostart\RestaurantOS Local.xml` (UTF-16) | `schtasks /Create /TN "RestaurantOS Local" /XML <pot> /F` |
+| macOS | `~/Library/LaunchAgents/com.restaurantos.local.plist` | `launchctl bootstrap gui/<uid> <pot>`, nato `launchctl kickstart -k` |
+| Linux | `~/.config/systemd/user/restaurantos-local.service` | `systemctl --user daemon-reload`, nato `systemctl --user enable` |
+
+Artefakt vsebuje pot do Buna, ukaz `scripts/local-start.ts --https --data-dir
+<pot>` in delovni imenik repozitorija. Na Windows ima še 30-sekundno zamudo po
+prijavi, tri poskuse po napaki in ničelni časovni limit (`PT0S`), da ga davčno
+obračanje ne more ustaviti. `--uninstall` artefakta ne zbriše, ker je vhod za
+`/Create` in edini zapis o tem, kaj je bilo sploh registrirano.
+
+**`--install` na pravem računalniku še ni bil pognan** — o registraciji opravila
+in zaupanju CA-ju odloča lastnik. Kar je preizkušeno: suhi tek ne zapiše
+ničesar in ne požene nobenega ukaza (izmerjeno z enakim seznamom datotek pred in
+po), izpisan ukaz pa je mogoče prilepiti v lupino brez dopolnjevanja. Obstoj
+opravila se na Windows sodi po izstopni kodi `schtasks /Query`, nikoli po
+besedilu napake, ker je besedilo lahko preveden.
+
+## 7. Posodobitev na novo različico
 
 ```bash
 git pull
@@ -191,7 +274,7 @@ bun run local --build
 - `bun run local --build` prisili ponovno gradnjo; brez zastavice se build
   izvede le, če manjka.
 
-## 7. Odpravljanje težav
+## 8. Odpravljanje težav
 
 | Simptom | Vzrok in ukrep |
 |---|---|
@@ -205,8 +288,14 @@ bun run local --build
 | Kopije v `--list` manjkajo | Preverite `RESTAURANTOS_DATA_DIR`; kopije so v `<podatkovna mapa>/backups/`, ne v repozitoriju. |
 | POS javi »lokalna vrsta je polna« | Brez povezave je na napravi nabralo več kot 200 operacij. Rešitev ni brisanje, ampak povezava: zaženite ali počakajte na povezavo, da se vrsta sama pošlje, nato naročilo pošljite znova. Košarica pri tem NI izpraznjena. |
 | FURS ali kartično plačilo ne uspe | Lokalna baza ne odpravi odvisnosti od interneta; preverite povezavo in certifikate (`docs/FURS-CERT-RUNBOOK.md`). |
+| `--https` javi, da OpenSSLa ni | Fronta sama ne zna izdati certifikata. Namestite Git for Windows (vsebuje `openssl.exe`) ali zaženite brez `--https`; ne kopirajte certifikata z drugega računalnika, CA na tej napravi ne bo imel ključa. |
+| `--https` javi 502 »Aplikacijski strežnik na strani 3000 ni dosegljiv« | Fronta je zagnana, Next pa ne. Vrata 3000 so zasedena ali je proces padel — preverite terminal; fronta zaradi tega ne umre, zato lahko samo počaka. |
+| Brskalnik na tablici pokaže »ni varen« | CA-ju še ni zaupano (§6.1). Opozorila ne obhodite s klikom naprej — zaupanje enkrat vzpostavite, sicer namestitev PWA-ja ni mogoča. |
+| Tablica ne more odpreti `https://<IP>:3443`, računalnik pa ja | `--https` Next zapre na `127.0.0.1`, zato je edina pot fronta. Preverite, da tablica in računalnik sta v istem omrežju in da Windows požarni pregradi dovozi vhodna vrata 3443 za javno omrežje. |
+| Po prijavi aplikacija ne teče | Zagon ob prijavi še registriran ni (§6.2) ali pa je bil `--install` pognan z drugimi potmi. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
+| Računalnik ima nov IP in HTTPS ne dela več | List je bil izdan za stare naslove. Naslednji `bun run local --https` ga izda znova; če naprava še vedno obupa, na njej pokličite `https://<nov IP>:3443`, ne `restaurantos.local`. |
 
-## 8. Meje te izdaje (v1.171.0 = R1 + R2a + R2b1)
+## 9. Meje te izdaje (v1.175.0 = R1 + R2a + R2b1 + R2b2)
 
 - Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
   `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
@@ -215,8 +304,20 @@ bun run local --build
   starosti, je idempotentna po `clientOperationId`, ob polni vrsti ali kvoti
   brskalnika zavrne glasno, zastarele operacije pa pridejo v mrtvo črko namesto
   v tiho brisanje.
-- HTTP v lokalnem omrežju (brez HTTPS in namestitve PWA) — R2b2 (v1.172.0).
-- Brez avtomatskega zagona ob zagonu sistema — R2b2 (v1.172.0).
+- Izvedeno (R2b2): HTTPS fronta pred Nextom s lastnim CA (OpenSSL), Next zaprt
+  na `127.0.0.1`, list z LAN IPv4 v SAN in samodejno ponovno izdajo ob driftu,
+  generator artefaktov za zagon ob prijavi na treh sistemih in `local:autostart`
+  s suhim tekom kot privzetim.
+- **Izhodni pogoj R2b2 še ni preizkušen:** PWA na tablici ni bil nameščen in
+  ponovni zagon računalnika ni bil preverjen, ker `--install` in zaupanje CA-ju
+  na pravi napravi še nista bila izvedena. Oboje je v §6 in zahteva privolitev
+  lastnika.
+- Zaupanje CA-ju ostane ročni korak na vsaki napravi; samodejne poti brez njega
+  ta izdaja nima. Preden je CA zaupan, je lokalni profil še vedno interni poskus.
+- `launchctl` in `systemctl` ukazi so povzeti po njunih CLI površinah in
+  preizkušeni samo v suhem teku; `schtasks /Create` prav tako. Izvajalec ustavi
+  ob prvem padlem ukazu in javi korak, zato napačna predpostavka pomeni glasno
+  napako in ne pol-nameščenega sistema.
 - Offline vrsta živi v brskalniku naprave, ne v lokalni bazi: izbris brskalnega
   podatkovnega profila ali drug brskalnik je izgubi, ne glede na omejitve te
   izdaje. Popolna lokalna samostojnost POS-a ni obseg R2.
