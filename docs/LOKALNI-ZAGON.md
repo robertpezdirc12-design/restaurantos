@@ -211,17 +211,46 @@ DHCP podelil drugega, naslednji zagon izda **samo nov list**, CA ostane.
 
 **Zaupanje CA-ju je ročni korak, ki ga ta izdaja ne naredi namesto vas.** Brez
 njega brskalnik prikaže opozorilo in PWA-ja ni mogoče namestiti. Pot do zaupanja
-je odvisna od operacijskega sistema naprave; z te razvojne naprave korak ni bil
-izveden, ker poseže v sistem, o njem pa odloča lastnik:
+je odvisna od operacijskega sistema naprave. Na razvojni napravi je bil korak
+24. 10. 2026 izveden v **uporabniški** shrambi in izmerjen (odsek za Windows
+spodaj); na tablici še ni, ker o njem odloča lastnik naprave.
 
-- **Windows (Edge ali Chrome):** iz skrbniške lupine
-  `certutil -addstore -f Root "<podatkovna mapa>\tls\ca-cert.pem"`; za
+- **Windows (Edge ali Chrome):** za trenutni račun zadostuje uporabniška shramba
+  in ta pot **ne rabi skrbnika**:
+  `certutil -addstore -user Root "<podatkovna mapa>\tls\ca-cert.pem"`; za
+  odstranitev `certutil -delstore -user Root "RestaurantOS Local CA"`. Izmerjeno
+  24. 10. na tej napravi: dodajanje vrne `-addstore command completed
+  successfully`, nato `curl https://192.168.2.105:3443/` **brez** `--cacert`
+  vrne `http=200 verify=0` in brskalnik stran odpere brez vmesnika. Strojna
+  shramba velja za vse račune na napravi, a zahteva skrbniško lupino:
+  `certutil -addstore -f Root "<podatkovna mapa>\tls\ca-cert.pem"`, za
   odstranitev `certutil -delstore Root "RestaurantOS Local CA"`.
-- **Android:** Nastavitve → Varnost → *Namesti certifikat* → *CA certifikat*,
-  datoteka `ca-cert.pem` mora biti najprej prenesena na napravo.
+- **Android:** Nastavitve → Varnost → *Namesti certifikat* → *CA certifikat* je
+  prenos datoteke na napravo, **ne pa zaupanje brskalnika**. Android hrani
+  uporabnikove koreninske certifikate v ločeni shrambi, sistemski omrežni sklad
+  in Chrome pa ji ne zaupata, zato tablica po tem koraku še vedno obtiči na
+  opozorilu in PWA-ja ni mogoče namestiti. Na Androidu zaupanje lastnemu CA-ju
+  data samo še dve poti: vnos v **sistemsko** shrambo (skrbniški ali MDM poseg,
+  na nekaterih napravah celo korenjenje) ali izjemo, ki jo prizna lastna
+  aplikacija z `network_security_config`. Obrat lastne aplikacije ne gradi, zato
+  je za Android-tablico edina praktična pot **javno veljaven certifikat** (npr.
+  `--https` s DNS-01 overjenim listom), ki prenosa CA-ja na napravo ne zahteva.
+  Meja na tej napravi ni bila izmerjena: Android naprave v obratu še ni, zapis
+  zato temelji na uradnih dokumentih Androida in Chromiumovem sledenju.
 - **iOS:** `ca-cert.pem` pošljite na napravo, Nastavitve → Splošno → VPN in
   upravljanje naprav → namestite profil, nato Nastavitve → Splošno → O tej
-  napravi → *Nastavitve zaupanja certifikatom* → celotno zaupanje.
+  napravi → *Nastavitve zaupanja certifikatom* → celotno zaupanje. Brez
+  celotnega zaupanja zadnji korak ne naredi ničesar.
+
+**Rokovanje s potrjevanjem veljavnosti, ločeno po orodjih.** Lastni CA nima
+seznama razveljavitev: razveljavitvena točka in AIA sta na CA-ju in na listu
+odsotna (izmerjeno z `openssl x509 -in … -text | grep -ci`, na obeh 0). Windows
+`curl` (SChannel) zato po uspehnem TLS rokovanju javi
+`curl: (60) schannel: the revocation status is unknown` in pade, dokler mu ne
+dodate `--ssl-no-revoke`. To je lastnost orodja v lupini, ne fronte: brskalnik
+isti certifikat sprejme brez kakršnekoli zastavice, zato tablica tega ukaza ne
+potrebuje. Katerikoli odčitek `http=000` pri ročnem preizkusu najprej poiščite
+pri pomanjkljivem ukazu, ne pri fronti.
 
 `ca-key.pem` je zasebni ključ CA-ja: z njim je mogoče izdati poljuben veljaven
 certifikat za to omrežje, zato ne gre nikamor — ne v dnevno varnostno kopijo in
@@ -255,12 +284,19 @@ limita (`PT0S`), da ga usodnik ne prekine sredi dolgega teka. `--uninstall`
 artefakta ne zbriše, ker je vhod za
 `/Create` in edini zapis o tem, kaj je bilo sploh registrirano.
 
-**`--install` še ni bil pognan** — registracija opravila poseže v sistem, o njej
-in o zaupanju CA-ju odloča lastnik. Kar je preizkušeno: suhi tek ne zapiše
-ničesar in ne požene nobenega ukaza (izmerjeno z enakim seznamom datotek pred in
-po), izpisan ukaz pa je mogoče prilepiti v lupino brez dopolnjevanja. Obstoj
-opravila se na Windowsu presoji po izstopni kodi `schtasks /Query`, nikoli po
-besedilu napake, ker je lahko prevedeno.
+**`--install` je bil 24. 10. 2026 pognan na razvojni napravi in je tam padel na
+pravicah:** artefakt je zapisan (`<podatkovna mapa>\autostart\RestaurantOS
+Local.xml`), `schtasks /Create` pa vrne `ERROR: Access is denied.` in izstop 1.
+Isti `Access is denied.` je vrnil tudi poskus s povsem tujim opravilom
+(`/TN ROSprobe /TR cmd.exe /SC ONLOGON`), zato vzrok ni najin XML, ampak to, da
+v korensko mapo Načrtovalnika opravil sme pisati samo povišana lupina. Klic zato
+javi točno to in ponovi ukaz; registracija na tej napravi še ni dokončana, ker
+dvig pravic zahteva lastnikov klik na UAC in nobenega ponovnega zagona
+računalnika še ni bilo. Kar je preizkušeno: suhi tek ne zapiše ničesar in ne
+požene nobenega ukaza (izmerjeno z enakim seznamom datotek pred in po), artefakt
+ostane na disku tudi po padli registraciji, obstoj opravila pa se na Windowsu
+presoji po izstopni kodi `schtasks /Query`, nikoli po besedilu napake, ker je
+lahko prevedeno.
 
 ## 7. Posodobitev na novo različico
 
@@ -295,8 +331,8 @@ bun run local --build
 | `--https` javi, da OpenSSLa ni | Fronta sama ne zna izdati certifikata. Namestite Git for Windows (vsebuje `openssl.exe`) ali zaženite brez `--https`; ne kopirajte certifikata z drugega računalnika, CA na tej napravi ne bo imel ključa. |
 | `--https` javi 502 »Aplikacijski strežnik na strani 3000 ni dosegljiv« | Fronta je zagnana, Next pa ne. Vrata 3000 so zasedena ali je proces padel — preverite terminal; fronta zaradi tega ne umre, zato lahko samo počaka. |
 | Brskalnik na tablici pokaže »ni varen« | CA-ju še ni zaupano (§6.1). Opozorila ne obhodite s klikom naprej — zaupanje enkrat vzpostavite, sicer namestitev PWA-ja ni mogoča. |
-| Tablica ne more odpreti `https://<IP>:3443`, računalnik pa ja | `--https` Next zapre na `127.0.0.1`, zato je edina pot fronta. Preverite, da tablica in računalnik sta v istem omrežju in da Windows požarna pregrada dovoli vhodna vrata 3443 za javno omrežje. |
-| Po prijavi aplikacija ne teče | Zagon ob prijavi še ni registriran (§6.2) ali pa je bil `--install` pognan z drugimi potmi. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
+| Tablica ne more odpreti `https://<IP>:3443`, računalnik pa ja | `--https` Next zapre na `127.0.0.1`, zato je edina pot fronta. Preverite, da tablica in računalnik sta v istem omrežju. Vrat 3443 ni treba odpirati ročno: na tej napravi ima `bun.exe` že samodejno ustvarjeni pravili `In`/`Allow` na **zasebnem** profilu in `In`/`Block` na **javne** (izmerjeno z `netsh advfirewall firewall show rule name=all` in `Get-NetConnectionProfile`). Če je omrežje označeno kot javno ali če promet gre čez VPN (npr. CloudflareWARP), fronta pade na blok — takrat omrežje označite kot zasebno ali dodajte pravilo za 3443. |
+| Po prijavi aplikacija ne teče | Zagon ob prijavi še ni registriran (§6.2), ali pa ga je `schtasks /Create` zavrnil zaradi pravic — koren Načrtovalnika opravil sme pisati samo povišana lupina. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
 | Računalnik ima nov IP in HTTPS ne dela več | List je bil izdan za stare naslove. Naslednji `bun run local --https` ga izda znova; če naprava še vedno obupa, na njej pokličite `https://<nov IP>:3443`, ne `restaurantos.local`. |
 
 ## 9. Meje te izdaje (v1.175.0 = R1 + R2a + R2b1 + R2b2)
@@ -312,10 +348,12 @@ bun run local --build
   na `127.0.0.1`, list z LAN IPv4 v SAN in samodejno ponovno izdajo ob driftu,
   generator artefaktov za zagon ob prijavi na treh sistemih in `local:autostart`
   s suhim tekom kot privzetim.
-- **Izhodni pogoj R2b2 še ni preizkušen:** PWA na tablici ni bil nameščen in
-  ponovni zagon računalnika ni bil preverjen, ker `--install` in zaupanje CA-ju
-  na pravi napravi še nista bila izvedena. Oboje je v §6 in zahteva privolitev
-  lastnika.
+- **Izhodni pogoj R2b2 na tablici še ni preizkušen:** PWA na tablici ni bil
+  nameščen in ponovni zagon računalnika ni bil preverjen. Na razvojni napravi je
+  zaupanje CA-ju izvedeno v uporabniški shrambi in izmerjeno (§6.1), `--install`
+  pa je padel na pravicah in čaka povišano lupino (§6.2). Obeh posegov na tablici
+  ni bilo mogoče opraviti brez lastnikovih rok, Android pa ima dodatno mejo:
+  uporabniški CA v brskalniku zaupanja ne da (§6.1).
 - Zaupanje CA-ju ostane ročni korak na vsaki napravi; samodejne poti brez njega
   ta izdaja nima. Preden je CA zaupan, je lokalni profil še vedno interni poskus.
 - `launchctl` in `systemctl` ukazi so povzeti po njihovih uradnih CLI oblikah in

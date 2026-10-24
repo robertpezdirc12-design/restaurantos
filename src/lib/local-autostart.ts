@@ -351,6 +351,21 @@ export function autostartInput(o: AutostartEnvironment): AutostartInput {
   }
 }
 
+/**
+ * `schtasks /Create` v korenski mapi Načrtovalnika opravil sme pisati samo
+ * povišana lupina. Merjeno 24. 10. na tej napravi: `--install` vrne izstop 1 in
+ * «ERROR: Access is denied.», enak izstop pa je vrnil tudi poskus s povsem tujim
+ * opravilom (`/TN ROSprobe /TR cmd.exe /SC ONLOGON`) — torej je to lastnost
+ * sistema in ne napaka v najinem XML-u, ki bi ga bilo treba predelati.
+ * Namig je zato vezan samo na `schtasks` in samo na besedilo o dostopu: k
+ * katerikoli drugi napaki bi skrbniški nasvet naredil resno sporočilo lažne.
+ */
+function namigOPravicah(ukaz: string, izpis: string): string {
+  if (ukaz !== 'schtasks') return ''
+  if (!/access is denied|0x80070005/i.test(izpis)) return ''
+  return ' To je Windows omejitev, ne napaka v artefaktu: v korensko mapo Načrtovalnika opravil sme pisati samo skrbniška lupina. Zaženi ukaz zgoraj še enkrat iz lupine «Zaženi kot skrbnik»; datoteka že čaka na spodnji poti, predelati ni treba ničesar.'
+}
+
 export function applyAutostart(o: ApplyAutostartOptions): ApplyAutostartResult {
   const dryRun = o.dryRun ?? true
   const path = o.plan.artifactPath
@@ -379,12 +394,14 @@ export function applyAutostart(o: ApplyAutostartOptions): ApplyAutostartResult {
     const r = o.run(argv)
     if (r.status !== 0) {
       const izpis = r.stderr.trim() || r.stdout.trim() || 'brez izpisa'
+      const namig = namigOPravicah(argv[0], izpis)
+      const pika = /\.\s*$/.test(izpis) ? '' : '.'
       return {
         ok: false,
         dryRun: false,
         artifactWritten: zapisan,
         step: argv[0],
-        message: `Ukaz "${izvedljivUkaz(argv)}" je padel (izstop ${r.status}): ${izpis}. Artefakt ostane na ${path}; razveljavitev: ${razveljavi}`,
+        message: `Ukaz "${izvedljivUkaz(argv)}" je padel (izstop ${r.status}): ${izpis}${pika}${namig} Artefakt ostane na ${path}; razveljavitev: ${razveljavi}`,
       }
     }
   }
