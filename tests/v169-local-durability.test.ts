@@ -759,11 +759,25 @@ describe('v1.169.0 — statične invariante', () => {
     // Vsaka taka pojedena številka premakne celoten nepoddan rep ceste za eno
     // naprej — sicer PRD obljublja izdajo, ki je nikoli ne bo.
     expect(prd).toMatch(/R2b1 — v1\.170\.0\*\* \| Omejena offline vrsta/)
-    expect(prd).toMatch(/R2b2 — načrtovano \(v1\.175\.0\)\*\* \| Varen lokalni obrat brez žice/)
+    // R2b2 je v1.175.0 izvedla, zato v cesti ne sme več pisati "načrtovano" —
+    // sicer bi jo bilo mogoče šteti med nepoddan rep in premakniti R3/R4.
+    expect(prd).toMatch(/R2b2 — v1\.175\.0\*\* \| Varen lokalni obrat brez žice/)
+    expect(prd).not.toMatch(/R2b2 — načrtovano/)
     expect(prd).toMatch(/R3 — v1\.176\.0/)
     expect(prd).toMatch(/R4 — v1\.177\.0/)
-    expect(prd).not.toMatch(/R2b2 — načrtovano \(v1\.17[0-4]\.0\)/)
+    expect(prd).not.toMatch(/R2b2 — v1\.17[0-4]\.0/)
     expect(prd).not.toMatch(/R3 — v1\.17[0-5]\.0/)
+  })
+
+  it('runbook lokalnega zagona opisuje HTTPS fronto in zagon ob prijavi (R2b2)', async () => {
+    const doc = read('docs/LOKALNI-ZAGON.md')
+    expect(doc).toMatch(/bun run local --https/)
+    expect(doc).toMatch(/bun run local:autostart/)
+    expect(doc).toMatch(/127\.0\.0\.1/)
+    expect(doc).toMatch(/ca-cert\.pem/)
+    // Izhodni pogoj R2b2 mora biti zapisan kot NEpreizkušen — dokumentacija, ki
+    // bi trdila nameščeno PWA tablico, bi lagala bolj kot prazna vrsta.
+    expect(doc).toMatch(/še ni preizkušen/)
   })
 
   it('runbook lokalnega zagona opisuje kopijo, obnovo in izvedeno vajo obnove', async () => {
