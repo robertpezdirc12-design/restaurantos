@@ -58,6 +58,40 @@ export function isLocale(value: unknown): value is Locale {
   return value === 'sl' || value === 'hr' || value === 'en'
 }
 
+/**
+ * BCP-47 oznaka za `<html lang>`. EN ostaja goli `en` — različice gostove
+ * angleščine ne poznamo, izmisljena regionalna oznaka (`en-US`) bi bralnemu
+ * zaslonu napačno nastavila izgovarjavo.
+ */
+export const LOCALE_HTML_LANG: Record<Locale, string> = { sl: 'sl-SI', hr: 'hr-HR', en: 'en' }
+
+/** Varianta, ki nikoli ne vrne `undefined`: neznana vrednost → privzeta lokacija. */
+export function htmlLangTag(locale: unknown): string {
+  return isLocale(locale) ? LOCALE_HTML_LANG[locale] : LOCALE_HTML_LANG[DEFAULT_LOCALE]
+}
+
+/** Koren, ki ga potrebuje aplikator — strukturno usklajen z `Document`. */
+export type LangRoot = { documentElement: { lang: string } }
+
+/**
+ * Zapiši dejanski jezik vsebine v `documentElement.lang` (WCAG 3.1.1/3.1.2; v
+ * Sloveniji od 28. 6. 2025 zavezuje ZDPSI za storitve e-trgovine).
+ *
+ * `root` je podmetljiv prav zato, da se obnašanje dokazuje brez jsdom-a, in ker
+ * ga strežniški izris nima: takrat ne naredi ničesar in ne vrže.
+ * Enak zapis se preskoči, da ponovna renderitev ne piše v DOM.
+ */
+export function applyDocumentLang(
+  locale: Locale,
+  root: LangRoot | null | undefined = typeof document === 'undefined' ? null : document,
+): string | null {
+  if (!root) return null
+  const tag = htmlLangTag(locale)
+  if (root.documentElement.lang === tag) return tag
+  root.documentElement.lang = tag
+  return tag
+}
+
 /** Prevod ključa. Manjkajoč ključ (hr/en) → SL fallback → še vedno manjka → vrne ključ (vidljivost, test ga zazna). EN je delne — dashboard ključi se v EN izrišejo iz SL slovarja. */
 export function t(locale: Locale, key: string, vars?: Record<string, string | number>): string {
   const dict = DICTS[locale] ?? DICTS[DEFAULT_LOCALE]

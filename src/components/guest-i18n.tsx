@@ -24,6 +24,7 @@ import { createContext, useCallback, useContext, useMemo, useState, useSyncExter
 import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
+  applyDocumentLang,
   isLocale,
   normalizeLocale,
   t as coreT,
@@ -40,11 +41,18 @@ function loadStoredLocale(): void {
   initialized = true
   try {
     const saved = localStorage.getItem(LOCALE_STORAGE_KEY)
-    if (isLocale(saved)) { currentLocale = saved; return }
-    // prvi obisk: jezik brskalnika (sl/hr/en) — hrvaški gost dobi HR, angleški
-    // turist EN (P1-5), privzeto sl
-    currentLocale = normalizeLocale(navigator.language)
+    if (isLocale(saved)) {
+      currentLocale = saved
+    } else {
+      // prvi obisk: jezik brskalnika (sl/hr/en) — hrvaški gost dobi HR, angleški
+      // turist EN (P1-5), privzeto sl
+      currentLocale = normalizeLocale(navigator.language)
+    }
   } catch { /* zasebni način/shramba onemogočena — ostane 'sl' */ }
+  // WCAG 3.1.1/3.1.2 (v1.176.0): jezik dokumenta mora slediti dejansko izpisani
+  // vsebini — sicer bralni zaslon angleški ali hrvaški meni bere po slovenskih
+  // pravilih izgovarjave.
+  applyDocumentLang(currentLocale)
 }
 
 function subscribe(cb: () => void): () => void {
@@ -68,6 +76,7 @@ export function setGuestLocale(l: Locale): void {
   if (l === currentLocale) return
   currentLocale = l
   try { localStorage.setItem(LOCALE_STORAGE_KEY, l) } catch { /* ignoriraj */ }
+  applyDocumentLang(l)
   listeners.forEach((cb) => cb())
 }
 

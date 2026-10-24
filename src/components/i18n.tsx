@@ -15,22 +15,35 @@
  */
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
-import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, isLocale, normalizeLocale, t as coreT, type Locale } from '@/lib/i18n'
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, applyDocumentLang, isLocale, normalizeLocale, t as coreT, type Locale } from '@/lib/i18n'
 
 // ── Mikro-store okoli localStorage (isti vzorec kot offline queue) ──
 let currentLocale: Locale = DEFAULT_LOCALE
 let initialized = false
 const listeners = new Set<() => void>()
 
+/**
+ * Jezik, ki ga dashboard DEJANSKO izriše. EN (P1-5) je z osebja namenno izvzet
+ * (preklopnik ima samo SL | HR), zato locale 'en' prevede iz SL slovarja — in
+ * dokument sme trditi samo tisto, kar je na zaslonu (WCAG 3.1.1).
+ */
+export function staffUiLocale(l: Locale): Locale {
+  return l === 'en' ? 'sl' : l
+}
+
 function loadStoredLocale(): void {
   if (initialized) return
   initialized = true
   try {
     const saved = localStorage.getItem(LOCALE_STORAGE_KEY)
-    if (isLocale(saved)) { currentLocale = saved; return }
-    // prvi obisk: jezik brskalnika (sl/hr), privzeto sl
-    currentLocale = normalizeLocale(navigator.language)
+    if (isLocale(saved)) {
+      currentLocale = saved
+    } else {
+      // prvi obisk: jezik brskalnika (sl/hr), privzeto sl
+      currentLocale = normalizeLocale(navigator.language)
+    }
   } catch { /* zasebni način/shramba onemogočena — ostane 'sl' */ }
+  applyDocumentLang(staffUiLocale(currentLocale))
 }
 
 function subscribe(cb: () => void): () => void {
@@ -53,6 +66,7 @@ export function setStoredLocale(l: Locale): void {
   if (l === currentLocale) return
   currentLocale = l
   try { localStorage.setItem(LOCALE_STORAGE_KEY, l) } catch { /* ignoriraj */ }
+  applyDocumentLang(staffUiLocale(l))
   listeners.forEach((cb) => cb())
 }
 
