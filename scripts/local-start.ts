@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * v1.165.0 — en ukaz za lokalni RestaurantOS (PRD R1, F6).
- * v1.169.0 — ob zagonu additionally dnevna varnostna kopija (PRD R2).
+ * v1.169.0 — ob zagonu še dnevna varnostna kopija (PRD R2).
  * v1.175.0 — R2b2: `--https` vžene TLS front pred Nextom, da je obrat dosegljiv
  *            brez žice in z zaklenjeno sejo (pogoj za namestitev PWA na tablico).
  *
@@ -10,7 +10,7 @@
  * tablicah v lokalnem omrežju. Ne seje demo podatkov in ne odpira nobene oblačne baze.
  *
  * Z `--https` je javni vnos SAMO front: Next se priveže na 127.0.0.1, sicer bi
- * v LAN ostal goli HTTP tik ob obljudenem HTTPS naslovu.
+ * v LAN ostal goli HTTP tik ob obljubljenem HTTPS naslovu.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -30,8 +30,8 @@ const STANDALONE_MARKER = path.join(ROOT, '.next', 'standalone', 'server.js')
 const USAGE = `Uporaba: bun run local [možnosti]
 
   --port <številka>        Vrata (privzeto 3000 ali PORT iz okolja)
-  --https                  HTTPS front v LAN + zankin Next (za namestitev PWA)
-  --https-port <številka>  Vrata frontal (privzeto 3443)
+  --https                  HTTPS fronta v LAN, Next samo na zanki (za namestitev PWA)
+  --https-port <številka>  Vrata fronte (privzeto 3443)
   --data-dir <pot>         Podatkovna mapa (privzeto %LOCALAPPDATA%\\RestaurantOS)
   --owner-email <e-pošta>  Prijavni e-poštni naslov lastnika (prvi zagon)
   --owner-pin <PIN>        PIN lastnika (prvi zagon; sicer naključen)
@@ -209,8 +209,8 @@ console.log('\n  Ustavi s Ctrl+C. Demo podatki niso naloženi.\n')
 
 const child = spawn(process.execPath, [NEXT_BIN, 'start', '-p', String(nacrt.nextPort), '-H', nacrt.nextHost], {
   cwd: ROOT,
-  // Next bere in -H in HOSTNAME; oba morata sovpati, sicer bi HOSTNAME 0.0.0.0 iz
-  // localEnv() odprl goli HTTP tik ob frontu.
+  // Next bere in -H in HOSTNAME; oba morata biti usklajena, sicer bi HOSTNAME 0.0.0.0 iz
+  // localEnv() odprl goli HTTP tik ob fronti.
   env: { ...process.env, HOSTNAME: nacrt.nextHost },
   stdio: 'inherit',
 })

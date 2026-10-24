@@ -7,8 +7,9 @@
  * `--install` zapiše artefakt in ga registrira, `--uninstall` registracijo
  * razveljavi; tujega artefakta nobena pot ne prepiše.
  *
- * Ukazi grejejo skozi `spawnSync` z argv nizom brez lupine — pot do repozitorija
- * je uporabniška in z njo lahko polna presledkov, `cmd /c` bi to pokvaril.
+ * Ukazi se izvajajo prek `spawnSync` z argv nizom brez lupine — pot do
+ * repozitorija jo navede uporabnik in je lahko polna presledkov, `cmd /c` bi to
+ * pokvaril.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -70,15 +71,15 @@ const plan = buildAutostartPlan(
     root: ROOT,
     bunPath: process.execPath,
     uid: typeof process.getuid === 'function' ? process.getuid() : undefined,
-    // Avtozagonski ukaz mora nositi ISTO podatkovno mapo, absolutno: relativna pot
-    // bi se ob prijavi razrešila drugače kot med namestitvijo.
+    // Ukaz samodejnega zagona mora nositi ISTO podatkovno mapo, absolutno: relativna
+    // pot bi se ob prijavi razrešila drugače kot med namestitvijo.
     extraArgs: ['--data-dir', dataDir],
   }),
 )
 
 if (args.uninstall) {
   // `--uninstall` je izrecna zahteva, zato tu ni suhega teka; privzeti suhi tek je
-  // v veji brez možnosti, kjer se pokaže oboje.
+  // v veji brez zastavic, kjer se pokaže oboje.
   const res = applyUninstall({ plan, dryRun: false, run: izvedi })
   console.log(res.message)
   process.exit(res.ok ? 0 : 1)

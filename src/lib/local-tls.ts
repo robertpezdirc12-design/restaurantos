@@ -4,19 +4,23 @@
  * Zakaj sploh CA: Chrome in Edge dovolita namestitev PWA-ja samo čez HTTPS,
  * tablica v lokalnem omrežju pa nima javno veljavnega imena. Lasten korenski
  * certifikat, ki ga operater enkrat zaupa, je edina pot brez javne DNS dome
- * (merjeno 24. 10. 2026: `caddy` in `mkcert` na razvini napravi nista, njuna
+ * (merjeno 24. 10. 2026: `caddy` in `mkcert` na razvojni napravi nista, njuna
  * namestitev pa je tuja binarna odvisnost).
  *
  * Zakaj OpenSSL in ne node-forge: `node-forge` 1.4.0 zna sestaviti DER, a
- * izmerjena veriga Node-u ni bila sprejeta (`unable to verify the first
- * certificate`) v nobeni od preizkušenih kombinacij — critical/necritical
+ * Node verige, ki jo ta sestavi, ne sprejme v nobeni od preizkušenih kombinacij
+ * (`unable to verify the first certificate`) — critical/necritical
  * basicConstraints, s `pathLength` in brez njega, s ročno izračunanim
  * subjectKeyIdentifier. Namesto da bi pravilnost X.509 kodiranja reševali sami,
  * jo prepustimo OpenSSLu, ki je že del Git for Windows in ga lokalni profil
  * potrebuje tako ali tako.
  *
- * Vsa pota živijo v podatkovni mapi zunaj repozitorija (isti dogovor kot
- * `local-runtime.ts`), tipke so 0600, certifikati 0644.
+ * Vse poti živijo v podatkovni mapi zunaj repozitorija (isti dogovor kot
+ * `local-runtime.ts`). Mapa `tls/` nastane z `0700`, kar na POSIX sistemih
+ * pomeni dostop samo lastniku; na Windowsu `mode` ne velja, tam o dostopu
+ * odloča NTFS ACL starševske mape. Edina datoteka, ki jo ta koda piše sama, je
+ * `leaf.ext` z `0644`. Obeh tipk (`ca-key.pem`, `leaf-key.pem`) Node ne piše —
+ * ustvari jih OpenSSL z `-keyout`, zato njiju ta `mode` ne zadeva.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'

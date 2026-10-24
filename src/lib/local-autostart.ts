@@ -1,31 +1,31 @@
 /**
  * v1.175.0 — R2b2: samodejni zagon lokalnega profila ob prijavi.
  *
- * Modul samo GENERIRA sistemov artefakt in zaporedje ukazov; ukaze zažene šele
- * klicavec z `dryRun: false`. Zagon ob prijavi je edina R2b2 sprememba, ki
- * ostane v sistemu, ko proces davno konča, zato je suhi tek privzet in tujega
- * artefekta nikoli ne prepišemo.
+ * Modul samo GENERIRA artefakt operacijskega sistema in zaporedje ukazov; ukaze
+ * zažene šele klicatelj z `dryRun: false`. Zagon ob prijavi je edina R2b2
+ * sprememba, ki ostane v sistemu, ko proces davno konča, zato je suhi tek
+ * privzet in tujega artefekta nikoli ne prepišemo.
  *
  * Omejitve, ki jih testi ne morejo dokazati (zapisane, ne zamaskirane):
- *  - Windows XML je sestavljen po imenovanih elementih, ki jih je izmerjeno
- *    izpisal `schtasks /Query /XML` na tej napravi (vključeno stanje = `Enabled`,
- *    `InteractiveToken` v principalu, `PT0S` za brez omejitve). Vrstni red
- *    elementov v `Settings` izvozi ne sledijo enotnem vrstnem redu, zato ga ne
- *    trdimo kot zahtevo; `schtasks /Create` na pravem računalniku še ni bil
+ *  - Windows XML je sestavljen iz imenovanih elementov, kot jih je na tej
+ *    napravi izpisal `schtasks /Query /XML` (merjeno: vključeno stanje =
+ *    `Enabled`, `InteractiveToken` v principalu, `PT0S` za brez omejitve).
+ *    Vrstnega reda elementov v `Settings` izvoz ne spoštuje, zato ga ne trdimo
+ *    kot zahtevo; `schtasks /Create` na pravem računalniku še ni bil
  *    pognan — to stori prvi `--install`;
- *  - `launchctl` in `systemctl` sta povzeta po njunih CLI površinah; izvajalec
- *    ustavi ob prvem padlem ukazu in javi korak, zato napačna predpostavka
- *    pomeni glasno napako in ne pol-nameščenega sistema.
+ *  - `launchctl` in `systemctl` sta povzeta po njihovih uradnih CLI oblikah;
+ *    izvajalec ustavi ob prvem padlem ukazu in javi korak, zato napačna
+ *    predpostavka pomeni glasno napako in ne delno nameščenega sistema.
  */
 import nodePath from 'node:path'
 
 export type PodprtiSistem = 'win32' | 'darwin' | 'linux'
 
 /**
- * Kodiranju artefakta se ne izbere lepo — izbere se po tem, kar sistemov uvozni
- * program dejansko prebere. `schtasks /Create /XML` na tej napravi sprejme izvoz,
- * ki ga je dal `/Query /XML`, to je UTF-16 LE z BOM-om; plist in systemd unit
- * pa sta UTF-8.
+ * Kodiranje artefakta se ne izbere lepo — izbere se po tem, kar uvozni program
+ * operacijskega sistema dejansko prebere. `schtasks /Create /XML` na tej napravi
+ * sprejme izvoz, ki ga je dal `/Query /XML`; to je UTF-16 LE z BOM-om. Plist in
+ * systemd unit sta UTF-8.
  */
 export type ArtifactEncoding = 'utf16le' | 'utf8'
 
@@ -131,9 +131,10 @@ function windowsXml(i: AutostartInput): string {
     '    </IdleSettings>',
     '  </Settings>',
     '  <Triggers>',
-    // Vsa tri merjena avtozagonska opravila imajo v LogonTrigger element Delay;
-    // brez otrok na tej napravi ni nobenega izvoza, zato ga ne tvegam. Izpust
-    // pomeni "vklopljen" (Enabled v triggerju noben izvoz ne nosi).
+    // Vsa tri na tej napravi izmerjena samodejna opravila imajo v LogonTrigger
+    // element Delay; izvoza brez otrok na tej napravi ni, zato oblike brez njega
+    // ne tvegamo. Noben izvoz v triggerju ne nosi Enabled — izpust pomeni
+    // "vklopljen".
     '    <LogonTrigger>',
     '      <Delay>PT30S</Delay>',
     '    </LogonTrigger>',
@@ -206,7 +207,7 @@ export function buildAutostartPlan(i: AutostartInput): AutostartPlan {
   const uid = i.uid ?? 0
   if (i.platform === 'win32') {
     // Ločila izbere pot gostitelja: lastnik kopira pot iz suhega teka, mešanica
-    // `\` in `/` pa je na Windowsu sicer veljavna, a videti kot pokvarjena.
+    // `\` in `/` pa je na Windowsu sicer veljavna, a izgleda kot pokvarjena.
     const artifactPath = nodePath.win32.join(i.dataDir, 'autostart', `${AUTOSTART_TASK}.xml`)
     return {
       platform: 'win32',
@@ -262,7 +263,7 @@ export function jeNasArtefakt(vsebina: string): boolean {
   return vsebina.includes(AUTOSTART_MARKER)
 }
 
-/** BOM vedno zapisemo, kadar encoding ga zahteva — `decodeArtifact` se nanj zanaša. */
+/** BOM vedno zapišemo, kadar ga kodiranje zahteva — `decodeArtifact` se nanj zanaša. */
 export function encodeArtifact(content: string, encoding: ArtifactEncoding): Buffer {
   const telo = Buffer.from(content, encoding)
   return encoding === 'utf16le' ? Buffer.concat([Buffer.from([0xff, 0xfe]), telo]) : telo
@@ -270,8 +271,8 @@ export function encodeArtifact(content: string, encoding: ArtifactEncoding): Buf
 
 /**
  * Beri tako, kot je bilo zapisano: UTF-16 LE prepozna po BOM-u, vse ostalo je
- * UTF-8. UTF-16 BE z BOM-om `fe ff` tu NI obravnan — Node ga ne zna dekodirati,
- * zato se prebere kot nesmisel, `jeNasArtefakt` vrne napačno in `--install`
+ * UTF-8. UTF-16 BE z BOM-om `fe ff` tu NI podprt — Node ga ne zna dekodirati,
+ * zato se prebere kot nesmisel, `jeNasArtefakt` vrne false in `--install`
  * datoteke ne prepiše. Napaka torej gre v varno smer.
  */
 export function decodeArtifact(raw: Buffer): string {
@@ -326,13 +327,13 @@ export interface AutostartEnvironment {
   root: string
   bunPath: string
   uid?: number
-  /** Dodatne možnosti, ki jih mora avtozagonski ukaz nositi (npr. --data-dir). */
+  /** Dodatne zastavice, ki jih mora ukaz samodejnega zagona nositi (npr. --data-dir). */
   extraArgs?: string[]
 }
 
 /**
  * Kaj samodejni zagon dejansko požene. `--https` je tu z razlogom: brez njega bi
- * se ob ponovnem zagonu računalnika priklical goli HTTP in acceptance pogoj
+ * se ob ponovnem zagonu računalnika zagnal goli HTTP in acceptance pogoj
  * «PWA ostane dostopna po ponovnem zagonu» ne bi držal.
  */
 export function autostartInput(o: AutostartEnvironment): AutostartInput {

@@ -11,7 +11,7 @@ pogoj R2b2 na tablici še ni preizkušen).
 - Računalnik, ki bo stal v obratu (Windows 10/11 prvi; Linux/macOS podprta pot).
 - [Bun](https://bun.sh) 1.3 ali novejši.
 - OpenSSL samo, če želite `--https` (izdaja lastnega CA-ja). Klic je preprosto
-  `openssl`, torej mora biti na poti — na Windows ga dobiš z Git for Windows
+  `openssl`, torej mora biti na `PATH` — na Windows ga dobiš z Git for Windows
   (izmerjeno 24. 10. 2026: `C:\Program Files\Git\ucrt64\bin\openssl.exe`, najdejo
   ga tudi cmd in PowerShell), na Linuxu je običajno nameščen, na macOS ga prinese
   Homebrew. Če ga ni, `--https` javi napako in ne tiho odneha.
@@ -194,26 +194,29 @@ ustavite s `Ctrl+C`; nato obnovo ponovite.
 1. **Lastni CA in list** nastaneta v `<podatkovna mapa>/tls/` (`ca-key.pem`,
    `ca-cert.pem`, `leaf-key.pem`, `leaf-cert.pem`). Oboje naredi OpenSSL, ki je
    že del Git for Windows; če ga na računalniku ni, zagon javi napako in ne tiho
-   odneha. CA traja 825 dni, list 398 dni in se obnovi, ko mu ostane manj kot 14
+   odneha. CA velja 825 dni, list 398 dni in se obnovi, ko mu ostane manj kot 14
    dni.
 2. **Next se zapre na zanko** (`127.0.0.1:3000`), zato v omrežju ni več golega
-   HTTP-ja tik ob obljudenem HTTPS.
+   HTTP-ja tik ob obljubljenem HTTPS.
 3. **TLS fronta posluša na `0.0.0.0:3443`** (`--https-port` jo premakne) in je
-   edini javni vnos. Prenese telo in glave, razen hop-by-hop, in zadrži tudi
-   nadgradnjo povezave (WebSocket).
+   edini javni vnos. Prenese telo in glave, razen hop-by-hop, in prenese tudi
+   nadgradnjo povezave (WebSocket). Odziva `101` fronta ne preverja — če
+   nadgradnja spodrsne, je to v brskalniku videti kot prekinjena povezava, ne
+   kot napaka v slovenščini.
 
 Zagon izpiše `https://<LAN IP>:3443`. List ima v SAN `localhost`,
-`restaurantos.local`, ime računalnika in vse IPv4 naslove vmesnikov (tablica
-naslov tipka, ne `localhost`; IPv6 OpenSSL zavrne). Ko se IP spremeni, ker je
-DHCP podelil drugega, naslednji zagon izda **samo list**, CA ostane.
+`restaurantos.local`, ime računalnika in vse IPv4 naslove vmesnikov (tablica ne
+tipka `localhost`, ampak naslov; IPv6 OpenSSL zavrne). Ko se IP spremeni, ker je
+DHCP podelil drugega, naslednji zagon izda **samo nov list**, CA ostane.
 
 **Zaupanje CA-ju je ročni korak, ki ga ta izdaja ne naredi namesto vas.** Brez
-njega brskalnik prikaže opozorilo in PWA-ja ni mogoče namestiti. Odvisno je od
-operacijskega sistema naprave in z te naprave ni bilo izvedeno:
+njega brskalnik prikaže opozorilo in PWA-ja ni mogoče namestiti. Pot do zaupanja
+je odvisna od operacijskega sistema naprave; z te razvojne naprave korak ni bil
+izveden, ker poseže v sistem, o njem pa odloča lastnik:
 
 - **Windows (Edge ali Chrome):** iz skrbniške lupine
-  `certutil -addstore -f Root "<podatkovna mapa>\tls\ca-cert.pem"`,
-  odstrani `certutil -delstore Root "RestaurantOS Local CA"`.
+  `certutil -addstore -f Root "<podatkovna mapa>\tls\ca-cert.pem"`; za
+  odstranitev `certutil -delstore Root "RestaurantOS Local CA"`.
 - **Android:** Nastavitve → Varnost → *Namesti certifikat* → *CA certifikat*,
   datoteka `ca-cert.pem` mora biti najprej prenesena na napravo.
 - **iOS:** `ca-cert.pem` pošljite na napravo, Nastavitve → Splošno → VPN in
@@ -221,8 +224,8 @@ operacijskega sistema naprave in z te naprave ni bilo izvedeno:
   napravi → *Nastavitve zaupanja certifikatom* → celotno zaupanje.
 
 `ca-key.pem` je zasebni ključ CA-ja: z njim je mogoče izdati poljuben veljaven
-certifikat za to omrežje, zato ne gre nikamor — ne v kopijo, ne v support
-bundle, ne v repozitorij.
+certifikat za to omrežje, zato ne gre nikamor — ne v dnevno varnostno kopijo in
+ne v repozitorij.
 
 ### 6.2 Zagon ob prijavi
 
@@ -247,16 +250,17 @@ Artefakt in registracijski ukazi so po sistemu različni:
 
 Artefakt vsebuje pot do Buna, ukaz `scripts/local-start.ts --https --data-dir
 <pot>` in delovni imenik repozitorija. Na Windows ima še 30-sekundno zamudo po
-prijavi, tri poskuse po napaki in ničelni časovni limit (`PT0S`), da ga davčno
-obračanje ne more ustaviti. `--uninstall` artefakta ne zbriše, ker je vhod za
+prijavi, tri ponovne zagone ob napaki (presledoma ena minuta) in brez časovnega
+limita (`PT0S`), da ga usodnik ne prekine sredi dolgega teka. `--uninstall`
+artefakta ne zbriše, ker je vhod za
 `/Create` in edini zapis o tem, kaj je bilo sploh registrirano.
 
-**`--install` na pravem računalniku še ni bil pognan** — o registraciji opravila
-in zaupanju CA-ju odloča lastnik. Kar je preizkušeno: suhi tek ne zapiše
+**`--install` še ni bil pognan** — registracija opravila poseže v sistem, o njej
+in o zaupanju CA-ju odloča lastnik. Kar je preizkušeno: suhi tek ne zapiše
 ničesar in ne požene nobenega ukaza (izmerjeno z enakim seznamom datotek pred in
 po), izpisan ukaz pa je mogoče prilepiti v lupino brez dopolnjevanja. Obstoj
-opravila se na Windows sodi po izstopni kodi `schtasks /Query`, nikoli po
-besedilu napake, ker je besedilo lahko preveden.
+opravila se na Windowsu presoji po izstopni kodi `schtasks /Query`, nikoli po
+besedilu napake, ker je lahko prevedeno.
 
 ## 7. Posodobitev na novo različico
 
@@ -291,8 +295,8 @@ bun run local --build
 | `--https` javi, da OpenSSLa ni | Fronta sama ne zna izdati certifikata. Namestite Git for Windows (vsebuje `openssl.exe`) ali zaženite brez `--https`; ne kopirajte certifikata z drugega računalnika, CA na tej napravi ne bo imel ključa. |
 | `--https` javi 502 »Aplikacijski strežnik na strani 3000 ni dosegljiv« | Fronta je zagnana, Next pa ne. Vrata 3000 so zasedena ali je proces padel — preverite terminal; fronta zaradi tega ne umre, zato lahko samo počaka. |
 | Brskalnik na tablici pokaže »ni varen« | CA-ju še ni zaupano (§6.1). Opozorila ne obhodite s klikom naprej — zaupanje enkrat vzpostavite, sicer namestitev PWA-ja ni mogoča. |
-| Tablica ne more odpreti `https://<IP>:3443`, računalnik pa ja | `--https` Next zapre na `127.0.0.1`, zato je edina pot fronta. Preverite, da tablica in računalnik sta v istem omrežju in da Windows požarni pregradi dovozi vhodna vrata 3443 za javno omrežje. |
-| Po prijavi aplikacija ne teče | Zagon ob prijavi še registriran ni (§6.2) ali pa je bil `--install` pognan z drugimi potmi. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
+| Tablica ne more odpreti `https://<IP>:3443`, računalnik pa ja | `--https` Next zapre na `127.0.0.1`, zato je edina pot fronta. Preverite, da tablica in računalnik sta v istem omrežju in da Windows požarna pregrada dovoli vhodna vrata 3443 za javno omrežje. |
+| Po prijavi aplikacija ne teče | Zagon ob prijavi še ni registriran (§6.2) ali pa je bil `--install` pognan z drugimi potmi. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
 | Računalnik ima nov IP in HTTPS ne dela več | List je bil izdan za stare naslove. Naslednji `bun run local --https` ga izda znova; če naprava še vedno obupa, na njej pokličite `https://<nov IP>:3443`, ne `restaurantos.local`. |
 
 ## 9. Meje te izdaje (v1.175.0 = R1 + R2a + R2b1 + R2b2)
@@ -314,10 +318,10 @@ bun run local --build
   lastnika.
 - Zaupanje CA-ju ostane ročni korak na vsaki napravi; samodejne poti brez njega
   ta izdaja nima. Preden je CA zaupan, je lokalni profil še vedno interni poskus.
-- `launchctl` in `systemctl` ukazi so povzeti po njunih CLI površinah in
+- `launchctl` in `systemctl` ukazi so povzeti po njihovih uradnih CLI oblikah in
   preizkušeni samo v suhem teku; `schtasks /Create` prav tako. Izvajalec ustavi
   ob prvem padlem ukazu in javi korak, zato napačna predpostavka pomeni glasno
-  napako in ne pol-nameščenega sistema.
+  napako in ne delno nameščenega sistema.
 - Offline vrsta živi v brskalniku naprave, ne v lokalni bazi: izbris brskalnega
   podatkovnega profila ali drug brskalnik je izgubi, ne glede na omejitve te
   izdaje. Popolna lokalna samostojnost POS-a ni obseg R2.

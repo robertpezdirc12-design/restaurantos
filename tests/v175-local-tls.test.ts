@@ -317,7 +317,7 @@ function handshake(port: number, ca: string, servername: string): Promise<{ auth
   return new Promise((resolve) => {
     const c = tls.connect({ port, host: '127.0.0.1', ca: [ca], servername }, () => {
       // Izmerjeno 24. 10. 2026 pod Bun 1.4.3: ob uspehu je `authorizationError` === null (Node ima undefined),
-      // SAN je pod ključem `subjectaltname` z malo tiskanimimi črkami (Node: `subjectAltName`).
+      // SAN je pod ključem `subjectaltname` z malimi tiskanimi črkami (Node: `subjectAltName`).
       const peer = c.getPeerCertificate() as Record<string, string | undefined>
       resolve({
         authorized: c.authorized,

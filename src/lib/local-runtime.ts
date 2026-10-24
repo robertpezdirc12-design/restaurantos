@@ -197,7 +197,7 @@ export function lanUrls(
   return lanIpv4(interfaces).map((ip) => `${scheme}://${ip}:${port}`)
 }
 
-/** Rezervirana vrata lokalne frontal: 3443 je vneto HTTP, a ni dodeljen nobeni storitvi. */
+/** Rezervirana vrata lokalne fronte pri `--https`; `--https-port` jih premakne. */
 export const LOCAL_HTTPS_PORT = 3443
 
 export interface LocalServingOptions {
@@ -217,8 +217,8 @@ export interface LocalServingPlan {
 
 /**
  * Kdo posluša kje. Ko je HTTPS vklopljen, sme Next brati samo zanko: `next
- * start -H` je edini gumb za vezavo, zato bi 0.0.0.0 pomenil goli HTTP tik ob
- * obljudenem HTTPS naslovu. Front je takrat edini javni vnos.
+ * start -H` je edina nastavitev vezave, zato bi 0.0.0.0 pomenil goli HTTP tik ob
+ * obljubljenem HTTPS naslovu. Fronta je takrat edini javni vnos.
  */
 export function servingPlan(o: LocalServingOptions): LocalServingPlan {
   if (!o.https) {

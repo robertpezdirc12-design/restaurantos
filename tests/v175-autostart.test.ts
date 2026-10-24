@@ -81,10 +81,10 @@ describe('A. nacrt', () => {
     expect(p.artifactContent).toContain(AUTOSTART_MARKER)
     expect(p.installArgv[0]).toEqual(['schtasks', '/Create', '/TN', AUTOSTART_TASK, '/XML', p.artifactPath, '/F'])
     expect(p.uninstallArgv[0]).toEqual(['schtasks', '/Delete', '/TN', AUTOSTART_TASK, '/F'])
-    // Merjeno s `schtasks /Query /XML` na treh dejansko nameščenih avtozagonskih
+    // Merjeno s `schtasks /Query /XML` na treh dejansko nameščenih samodejnih
     // opravilih (OneDrive Startup, Opera GX Autoupdate, Hermes_Gateway): vsako
     // ima v principalu InteractiveToken — brez njega proces ne bi dobil
-    // uporabnikove seje in brskalnik na tablici ne bi dosegel frontskega vrat.
+    // uporabnikove seje in brskalnik na tablici ne bi dosegel vrat fronte.
     expect(p.artifactContent).toContain('<LogonType>InteractiveToken</LogonType>')
   })
 

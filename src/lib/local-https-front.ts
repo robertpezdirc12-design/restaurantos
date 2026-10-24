@@ -3,12 +3,12 @@
  *
  * Front je namenoma tanek: TLS prekine na njem, vse ostalo gre surovo naprej.
  * Posreduje glave (razen hop-by-hop), telo in tok brez bufferiranja. Zahteve za
- * nadgradnjo (WebSocket, HMR) se ne preoblikujejo: izhodna glava se zapiše v
+ * nadgradnjo (WebSocket, HMR) se ne preoblikujejo: zahtevna glava se zapiše v
  * goli TCP soket in naprej grejo samo še bajti, ker brskalnikova odzivna
  * glava 101 v nekaterih izvajalcih ne razkrije glav.
  * Ob nedosegljivem viru front javi 502 in proces ostane živ — sicer bi ena
- * sama zapora pomenila črn zaslon, ki ga zagon ob prijavi (drugi del R2b2) ne
- * more več odpreti.
+ * sama zaprta povezava pomenila črn zaslon, ki ga zagon ob prijavi (drugi del
+ * R2b2) ne more več odpreti.
  */
 import { type IncomingMessage, type ServerResponse, request as httpRequest } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
@@ -105,7 +105,7 @@ function posredujUpgrade(
   // zapre brskalnikovo povezavo (izmerjeno na obeh izvajalcih, brez ročnih
   // `end`/`close` handlerjev). Error handlerja pa morata biti: Node 24 brez
   // poslušalca na `vir` javi nelovljen izjemo `read ECONNRESET` (izmerjeno z
-  // sondo, kjer je sofuničeni soket poslal RST), Bun pa ob istem razmeru dogodek
+  // sondo, kjer je soket na drugi strani poslal RST), Bun pa ob istem razmeru dogodek
   // `error` kar požre — zato ga testna vrsta ne more dokazati.
   vir.on('error', () => tok.destroy())
   tok.on('error', () => vir.destroy())

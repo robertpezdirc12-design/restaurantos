@@ -2,11 +2,12 @@
  * Issue #11 §3 — event-driven temelj (faza 1): EventLog + publish + dispatch + retry.
  *
  * Zasnova:
- *  - `publishEvent(type, …)` ZAPISE dogodek (status pending) in NE MECE napak —
- *    objava dogodka nikoli ne sme porušiti poslovnega toka (§18 /增量 navodila #11).
- *  - handler registri: `registerHandler(type, fn)` — faza 1 brez stranskih default
- *    handlerjev (prijavljajo jih naslednji inkrementi); machinerija (dispatch,
- *    retry, statusi) je tu in testirana.
+ *  - `publishEvent(type, …)` ZAPISE dogodek (status pending) in NE MEČE napak —
+ *    objava dogodka nikoli ne sme porušiti poslovnega toka (§18 / inkrementalna
+ *    navodila #11).
+ *  - handler registri: `registerHandler(type, fn)` — faza 1 brez stranskih
+ *    privzetih handlerjev (prijavljajo jih naslednji inkrementi); mehanizem
+ *    (dispatch, retry, statusi) je tu in testirana.
  *  - `dispatchPending(limit)`: prevzame pending + failed (attempts < MAX_ATTEMPTS),
  *    požene vse handlerje tipa, nastavi status processed/failed (+ attempts, error).
  *  - dispatch se lahko pokliče iz POST /api/events/dispatch (ops) ali health skripte.

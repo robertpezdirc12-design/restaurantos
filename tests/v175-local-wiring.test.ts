@@ -1,17 +1,17 @@
 /**
- * v1.175.0 — R2b2: sejanje HTTPS frontal in samodejnega zagona v lokalni profil.
+ * v1.175.0 — R2b2: vpenjanje HTTPS fronte in samodejnega zagona v lokalni profil.
  *
  * Tu so samo ČISTE odločitve, ki ju `scripts/local-start.ts` in
- * `scripts/local-autostart.ts` nato izvedeta. Skripta sama imata stranske učinke
- * (vžig vrat, pisanje po disku), zato jima test ne more zaupati — zaupa lahko
+ * `scripts/local-autostart.ts` nato izvedeta. Obe skripte imata stranske učinke
+ * (vžig vrat, pisanje po disku), zato jima test ne more zaupati — zaupati lahko
  * samo funkcijam, ki so dokumentirane tu in testirane spodaj.
  *
  * Odločitve, zapisane tu, ker jih je mogoče obrniti brez testa:
  *  - ko je HTTPS vklopljen, Next posluša SAMO na 127.0.0.1: sicer v LAN ostane
- *    goli HTTP tik ob obljudenem HTTPS in naslov, ki se mu obeta zaklenjena
- *    seja, ni nobena garancija;
- *  - javna shema je https in javna vrata so frontalna — izpis za tablico mora
- *    vsebovati naslov, ki mu bo dejansko lahko sledila;
+ *    goli HTTP tik ob obljubljenem HTTPS, naslov, ki obljublja zaklenjeno sejo,
+ *    pa zanj ni nobena garancija;
+ *  - javna shema je https in javna vrata so vrata fronte — izpis za tablico
+ *    mora vsebovati naslov, ki mu bo dejansko lahko sledila;
  *  - certifikat mora imeti LAN IPv4 v SAN, ker tablica ne tipka `localhost`.
  */
 import { describe, expect, it } from 'bun:test'
