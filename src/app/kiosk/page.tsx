@@ -112,13 +112,19 @@ function KioskInner() {
     }
   }, [menu])
 
+  // stabilni setri iz useGuestApiError (useCallback [] — identiteta se ne spreminja);
+  // pageErr SAM objekt ni stabilen → ne sme biti v deps, ker resetAll takrat dobi
+  // novo identiteto ob vsakem renderju in effect, ki ima resetAll v deps, tedaj
+  // counter 90 s mirovanja ponovno postavi
+  const { clear: clearPageErr } = pageErr
+
   const resetAll = useCallback(() => {
     setCart([])
     setDetail(null)
     setDone(null)
-    pageErr.clear()
+    clearPageErr()
     setRetryHint(false)
-  }, [pageErr])
+  }, [clearPageErr])
 
   const lockNow = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)

@@ -96,19 +96,23 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
   const [tipCustom, setTipCustom] = useState('')
   const [verifying, setVerifying] = useState(false)
 
+  // stabilni setri iz useGuestApiError (useCallback [] — identiteta se ne spreminja);
+  // pageErr SAM objekt ni stabilen → ne sme biti v deps (sicer neskončna zanka fetch)
+  const { set: setPageErr, setKey: setPageErrKey, clear: clearPageErr } = pageErr
+
   const load = useCallback(async () => {
-    pageErr.clear()
+    clearPageErr()
     try {
       const res = await fetch(`/api/public/pay/${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { pageErr.set(data?.error, 'pay.notFound'); setState(null); return }
+      if (!res.ok) { setPageErr(data?.error, 'pay.notFound'); setState(null); return }
       setState(data as PayState)
     } catch {
-      pageErr.setKey('guest.error.unreachableRetry')
+      setPageErrKey('guest.error.unreachableRetry')
     } finally {
       setLoading(false)
     }
-  }, [token, pageErr])
+  }, [token, clearPageErr, setPageErr, setPageErrKey])
 
   // Začetno nalaganje + Stripe vrnitev (?s=<sessionId>): najprej stanje, nato potrditev
   useEffect(() => {

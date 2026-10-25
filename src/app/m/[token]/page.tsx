@@ -92,20 +92,24 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     }
   }
 
+  // stabilni setri iz useGuestApiError (useCallback [] — identiteta se ne spreminja);
+  // pageErr SAM objekt ni stabilen → ne sme biti v deps (sicer neskončna zanka fetch)
+  const { set: setPageErr, setKey: setPageErrKey, clear: clearPageErr } = pageErr
+
   const loadMenu = useCallback(async () => {
-    pageErr.clear()
+    clearPageErr()
     try {
       const res = await fetch(`/api/public/menu?qr=${encodeURIComponent(token)}`, { cache: 'no-store' })
       const data = await res.json()
-      if (!res.ok) { pageErr.set(data?.error, 'guest.menu.unavailable'); return }
+      if (!res.ok) { setPageErr(data?.error, 'guest.menu.unavailable'); return }
       setMenu(data)
       setActiveCat(data.categories?.[0]?.id || '')
     } catch {
-      pageErr.setKey('guest.error.unreachableRetry')
+      setPageErrKey('guest.error.unreachableRetry')
     } finally {
       setLoading(false)
     }
-  }, [token, pageErr])
+  }, [token, clearPageErr, setPageErr, setPageErrKey])
 
   useEffect(() => {
     loadMenu()
