@@ -2256,6 +2256,8 @@ export const hr: Record<string, string> = {
   'guest.common.vat': 'PDV',
   'guest.common.nameOptional': 'Ime (neobavezno)',
   'guest.common.noSurcharge': 'bez doplate',
+  'guest.common.qtyLess': 'Manje komada',
+  'guest.common.qtyMore': 'Više komada',
   // Napake / povezava
   'guest.error.unreachable': 'Veza nije dostupna.',
   'guest.error.unreachableRetry': 'Veza nije dostupna. Provjerite internet i pokušajte ponovno.',
@@ -2283,10 +2285,12 @@ export const hr: Record<string, string> = {
   'guest.kiosk.notActivated': 'Kiosk nije aktiviran.',
   'guest.kiosk.autoRetry': 'Pokušavam ponovno …',
   'guest.kiosk.activationFailed': 'Aktivacija nije uspjela.',
+  'guest.kiosk.tokenLabel': 'Kod za upis ili token uređaja',
   'guest.kiosk.tokenHint': 'Unesite kod za upis (8 znamenki) ili valjan token uređaja (rodev_…).',
   // Kiosk — glavni tok
   'guest.kiosk.subtitle': 'Samoposlužni kiosk — odaberite artikle i pošaljite narudžbu',
-  'guest.kiosk.lockTitle': 'Zaključaj/poništi kiosk (zahtijeva dugi pritisak)',
+  'guest.kiosk.lockTitle': 'Zaključaj/poništi kiosk (dvostruki dodir)',
+  'guest.kiosk.lockConfirm': 'Dodirnite još jednom za zaključavanje',
   'guest.kiosk.yourNumber': 'Tvoj broj narudžbe:',
   'guest.kiosk.autoReset': 'Kiosk se automatski resetira …',
   'guest.kiosk.cartEmpty': 'Košarica je prazna — dodirnite artikl za početak.',

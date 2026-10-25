@@ -333,7 +333,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         <div className="max-w-sm w-full rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <WifiOff className="h-10 w-10 mx-auto text-stone-400" />
           <h1 className="mt-3 font-semibold text-stone-900">{pageErr.text}</h1>
-          <Button className="mt-4 w-full" onClick={loadMenu}><RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}</Button>
+          <Button className="mt-4 min-h-11 w-full" onClick={loadMenu}><RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}</Button>
         </div>
       </div>
     )
@@ -360,13 +360,13 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
 
       {done && (
         <div className="max-w-lg mx-auto px-4 pt-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
+          <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-4">
             <div className="flex items-center gap-2 text-green-800">
               <CheckCircle2 className="h-5 w-5" />
               <span className="font-semibold">{t('guest.menu.orderDone', { n: done.orderNumber })}</span>
             </div>
             <p className="text-sm text-green-700 mt-1">Status: <b>{statusLabel(done.status)}</b> · {t('guest.common.amount')}: <b>{fmt(done.total)}</b> {t('guest.common.payAtCashier')}</p>
-            <Button variant="outline" size="sm" className="mt-2" onClick={() => setDone(null)}>{t('guest.menu.newOrder')}</Button>
+            <Button variant="outline" size="sm" className="mt-2 min-h-11" onClick={() => setDone(null)}>{t('guest.menu.newOrder')}</Button>
           </div>
         </div>
       )}
@@ -374,7 +374,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
       {/* Mnenje gosta (P1 audit točka 6) — prikazan tudi po oddanem naročilu */}
       <div className="max-w-lg mx-auto px-4 pt-4">
         {fbDone ? (
-          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 flex items-center gap-2 text-green-800 text-sm font-medium">
+          <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-4 flex items-center gap-2 text-green-800 text-sm font-medium">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             {t('guest.feedback.thanks')}
           </div>
@@ -382,13 +382,13 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
           <div className="rounded-2xl border border-stone-200 bg-white p-4">
             {!fbOpen ? (
               /* i69 vizualni QA: cilj na dotik je bil le 20px — py-2.5 ga približa 40px (className-only) */
-              <button type="button" className="w-full flex items-center justify-between py-2.5 text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
+              <button type="button" className="w-full flex items-center justify-between min-h-11 py-2.5 text-sm font-semibold text-stone-800" onClick={() => setFbOpen(true)}>
                 <span>{t('guest.feedback.cta')}</span>
                 <Star className="h-4 w-4 text-amber-500" />
               </button>
             ) : (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-stone-800">{t('guest.feedback.title')}</p>
+              <div role="group" aria-labelledby="fb-title" className="space-y-3">
+                <p id="fb-title" className="text-sm font-semibold text-stone-800">{t('guest.feedback.title')}</p>
                 {([
                   [t('guest.feedback.overall'), fbOverall, setFbOverall],
                   [t('guest.feedback.food'), fbFood, setFbFood],
@@ -397,9 +397,9 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 ] as const).map(([label, val, set]) => (
                   <div key={label} className="flex items-center justify-between gap-3">
                     <span className="text-sm text-stone-600">{label}</span>
-                    <span className="flex gap-1">
+                    <span role="group" aria-label={label} className="flex gap-1">
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <button key={n} type="button" aria-label={t('guest.feedback.starAria', { label, n })} onClick={() => set(n)} className="p-0.5">
+                        <button key={n} type="button" aria-label={t('guest.feedback.starAria', { label, n })} aria-pressed={n <= val} onClick={() => set(n)} className="min-h-11 min-w-11 p-0.5">
                           <Star className={`h-5 w-5 ${n <= val ? 'fill-amber-400 text-amber-400' : 'text-stone-300'}`} />
                         </button>
                       ))}
@@ -407,6 +407,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   </div>
                 ))}
                 <textarea
+                  aria-label={t('guest.feedback.commentPlaceholder')}
                   value={fbComment}
                   onChange={(e) => setFbComment(e.target.value)}
                   placeholder={t('guest.feedback.commentPlaceholder')}
@@ -414,11 +415,11 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   rows={3}
                   className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
                 />
-                <Input value={fbName} onChange={(e) => setFbName(e.target.value)} placeholder={t('guest.common.nameOptional')} maxLength={80} />
-                {fbErr.error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{fbErr.text}</div>}
+                <Input aria-label={t('guest.common.nameOptional')} value={fbName} onChange={(e) => setFbName(e.target.value)} placeholder={t('guest.common.nameOptional')} maxLength={80} className="min-h-11" />
+                {fbErr.error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{fbErr.text}</div>}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { setFbOpen(false); fbErr.clear() }}>{t('guest.common.close')}</Button>
-                  <Button className="flex-1" onClick={submitFeedback} disabled={fbOverall < 1 || fbSending}>
+                  <Button variant="outline" className="min-h-11 flex-1" onClick={() => { setFbOpen(false); fbErr.clear() }}>{t('guest.common.close')}</Button>
+                  <Button className="min-h-11 flex-1" onClick={submitFeedback} disabled={fbOverall < 1 || fbSending}>
                     {fbSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     {fbSending ? t('guest.common.sending') : t('guest.feedback.submit')}
                   </Button>
@@ -431,7 +432,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
 
       {pageErr.error && menu && (
         <div className="max-w-lg mx-auto px-4 pt-4">
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>
         </div>
       )}
 
@@ -441,7 +442,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
             <button
               key={c.id}
               onClick={() => setActiveCat(c.id)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${activeCat === c.id ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-700'}`}
+              className={`shrink-0 inline-flex min-h-11 items-center rounded-full px-4 text-sm font-medium transition-colors ${activeCat === c.id ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-700'}`}
             >
               {c.name}
             </button>
@@ -454,8 +455,8 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
             Selected chip = HIDE items containing that allergen (client-side exclusion). */}
         {allergenFilterOn && allergenChips.length > 0 && (
           <section aria-label={t('guest.menu.allergenFilter')} className="rounded-2xl bg-white border border-stone-200 p-3">
-            <p className="text-xs font-semibold text-stone-500 mb-2">{t('guest.menu.allergenFilter')}</p>
-            <div className="flex flex-wrap gap-2">
+            <p id="allergen-filter-caption" className="text-xs font-semibold text-stone-500 mb-2">{t('guest.menu.allergenFilter')}</p>
+            <div role="group" aria-labelledby="allergen-filter-caption" className="flex flex-wrap gap-2">
               {allergenChips.map((label) => {
                 const on = selAllergens.includes(label)
                 return (
@@ -476,7 +477,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 </button>
               )}
             </div>
-            <p className="mt-2 text-xs text-stone-400">{t('guest.menu.allergenFilterHint')}</p>
+            <p className="mt-2 text-xs text-stone-600">{t('guest.menu.allergenFilterHint')}</p>
           </section>
         )}
         {visibleItems.map((it) => (
@@ -503,7 +504,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 {it.description && <p className="text-sm text-stone-500 line-clamp-2 mt-0.5">{it.description}</p>}
                 {/* Issue #7: kanonične kode (enoten SL/HR prikaz) + status — nikoli lažno "brez alergenov" */}
                 {itemCodes(it).length > 0 && (
-                  <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergens', { allergens: itemCodes(it).map(gLbl).join(', ') })}</p>
+                  <p className="text-xs text-stone-600 mt-1">{t('guest.menu.allergens', { allergens: itemCodes(it).map(gLbl).join(', ') })}</p>
                 )}
                 {(it.allergenCrossContact ?? []).length > 0 && (
                   <p className="text-xs text-amber-700 mt-0.5">{t('guest.menu.allergenMayContain', { allergens: (it.allergenCrossContact ?? []).map(gLbl).join(', ') })}</p>
@@ -512,21 +513,21 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   <p className="text-xs text-stone-500 mt-0.5">⚠ {it.allergenStatus === 'review_required' ? t('guest.menu.allergenReview') : t('guest.menu.allergenConfirmNeeded')}</p>
                 )}
                 {itemCodes(it).length === 0 && it.allergenStatus === 'confirmed' && (
-                  <p className="text-xs text-stone-400 mt-1">{t('guest.menu.allergenNoneKnown')}</p>
+                  <p className="text-xs text-stone-600 mt-1">{t('guest.menu.allergenNoneKnown')}</p>
                 )}
-                {!it.isAvailable && <p className="text-xs text-red-500 mt-1 font-medium">{t('guest.common.unavailableNow')}</p>}
+                {!it.isAvailable && <p className="text-xs text-red-600 mt-1 font-medium">{t('guest.common.unavailableNow')}</p>}
               </div>
               <span className="shrink-0 font-bold text-stone-900">{fmt(it.price)}</span>
             </div>
           </button>
         ))}
         {(itemsByCat.get(activeCat) || []).length === 0 && (
-          <p className="text-center text-stone-400 text-sm py-10">{t('guest.menu.emptyCategory')}</p>
+          <p className="text-center text-stone-600 text-sm py-10">{t('guest.menu.emptyCategory')}</p>
         )}
         {allergenFilterOn && selAllergens.length > 0 && (itemsByCat.get(activeCat) || []).length > 0 && visibleItems.length === 0 && (
-          <p className="text-center text-stone-400 text-sm py-10">{t('guest.menu.allergenNoneLeft')}</p>
+          <p className="text-center text-stone-600 text-sm py-10">{t('guest.menu.allergenNoneLeft')}</p>
         )}
-        <p className="text-center text-xs text-stone-400 pt-4">
+        <p className="text-center text-xs text-stone-600 pt-4">
           {t('guest.menu.vatNote')}
         </p>
       </main>
@@ -541,7 +542,10 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                 {t('guest.cart.button')} · {cartCount} {cartCount === 1 ? t('guest.cart.itemOne') : t('guest.cart.itemMany')} · {fmt(subtotal)}
               </Button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="h-[85vh] rounded-t-xl p-0 flex flex-col">
+            {/* `aria-describedby={undefined}`: Radix overlay vedno zapiše ta atribut na
+                id svojega `Description`; brez izrecne napovedi kaže na vozlišče, ki ga
+                ni, in v konzoli javi opozorilo (gate: pravilo "dialog"). */}
+            <SheetContent side="bottom" aria-describedby={undefined} className="h-[85vh] rounded-t-xl p-0 flex flex-col">
               <SheetHeader className="px-4 pt-4 pb-2 border-b border-stone-100">
                 <SheetTitle>{t('guest.cart.title')}</SheetTitle>
               </SheetHeader>
@@ -557,18 +561,18 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                         {l.modifiers.length > 0 && (
                           <p className="text-xs text-stone-500">+ {l.modifiers.map((m) => m.name).join(', ')}</p>
                         )}
-                        {l.note && <p className="text-xs text-stone-400 italic">{l.note}</p>}
+                        {l.note && <p className="text-xs text-stone-600 italic">{l.note}</p>}
                         {l.allergenWarning && <p className="text-xs text-red-700 font-medium">⚠ {l.allergenWarning}</p>}
                       </div>
                       <span className="font-semibold shrink-0">{fmt(lineTotal(l))}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCart((p) => l.qty > 1 ? p.map((x) => x.key === l.key ? { ...x, qty: x.qty - 1 } : x) : p.filter((x) => x.key !== l.key))}>
-                        <Minus className="h-3 w-3" />
+                      <Button type="button" variant="outline" size="icon" className="h-11 w-11" aria-label={t('guest.common.qtyLess')} onClick={() => setCart((p) => l.qty > 1 ? p.map((x) => x.key === l.key ? { ...x, qty: x.qty - 1 } : x) : p.filter((x) => x.key !== l.key))}>
+                        <Minus className="h-4 w-4" />
                       </Button>
-                      <span className="text-sm font-semibold w-6 text-center">{l.qty}</span>
-                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCart((p) => p.map((x) => x.key === l.key ? { ...x, qty: x.qty + 1 } : x))}>
-                        <Plus className="h-3 w-3" />
+                      <span className="text-sm font-semibold w-6 text-center" aria-live="polite">{l.qty}</span>
+                      <Button type="button" variant="outline" size="icon" className="h-11 w-11" aria-label={t('guest.common.qtyMore')} onClick={() => setCart((p) => p.map((x) => x.key === l.key ? { ...x, qty: x.qty + 1 } : x))}>
+                        <Plus className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -579,10 +583,10 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                   <div className="flex justify-between font-bold text-base pt-1 border-t border-stone-200"><span>{t('guest.common.total')}</span><span>{fmt(subtotal)}</span></div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-stone-500">{t('guest.common.nameOptional')}</label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('guest.cart.nameHint')} maxLength={80} />
+                  <label htmlFor="cart-name" className="text-xs font-medium text-stone-500">{t('guest.common.nameOptional')}</label>
+                  <Input id="cart-name" className="min-h-11" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('guest.cart.nameHint')} maxLength={80} />
                 </div>
-                {pageErr.error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>}
+                {pageErr.error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm p-3">{pageErr.text}</div>}
               </div>
               <div className="shrink-0 p-4 border-t border-stone-100">
                 <Button size="lg" className="w-full h-14 rounded-2xl text-base" onClick={submitOrder} disabled={submitting || cart.length === 0}>
@@ -597,7 +601,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
 
       {/* Artikel + opcije */}
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogContent aria-describedby={undefined} className="max-w-md max-h-[85vh] overflow-y-auto">
           {detail && (
             <>
               <DialogHeader>
@@ -627,15 +631,16 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
               </DialogHeader>
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (
-                  <div key={g.id}>
-                    <p className="text-sm font-semibold mb-2">
-                      {g.name} {g.required ? <span className="text-red-500">*</span> : <span className="text-stone-400 font-normal">({t('guest.common.optional')})</span>}
-                    </p>
+                  <fieldset key={g.id} className="min-w-0 border-0 p-0 m-0">
+                    <legend className="text-sm font-semibold mb-2 p-0">
+                      {g.name} {g.required ? <span className="text-red-600">*</span> : <span className="text-stone-600 font-normal">({t('guest.common.optional')})</span>}
+                    </legend>
                     <div className="space-y-2">
                       {g.options.map((o) => (
-                        <label key={o.id} className="flex items-center justify-between rounded-xl border border-stone-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-stone-900">
+                        <label key={o.id} className="flex min-h-11 items-center justify-between rounded-xl border border-stone-200 px-3 py-2.5 cursor-pointer has-[:checked]:border-stone-900">
                           <span className="flex items-center gap-2 text-sm">
                             <Checkbox
+                              aria-label={o.name}
                               checked={(detailMods[g.id] || []).includes(o.id)}
                               onCheckedChange={() => toggleMod(g.id, o.id, g.maxSelect)}
                             />
@@ -645,22 +650,22 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                         </label>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
                 ))}
                 <div>
-                  <label className="text-xs font-medium text-stone-500">{t('guest.common.noteKitchen')}</label>
-                  <Input value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.menu.notePlaceholder')} maxLength={200} />
+                  <label htmlFor="m-detail-note" className="text-xs font-medium text-stone-500">{t('guest.common.noteKitchen')}</label>
+                  <Input id="m-detail-note" className="min-h-11" value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.menu.notePlaceholder')} maxLength={200} />
                 </div>
                 {/* Issue #7: izrecno alergensko opozorilo — preide na postavko naročila (KDS + tisk) */}
                 <div>
-                  <label className="text-xs font-medium text-red-700">⚠ {t('guest.order.allergenWarningLabel')}</label>
-                  <Input value={detailAllergenWarning} onChange={(e) => setDetailAllergenWarning(e.target.value)} placeholder={t('guest.order.allergenWarningPlaceholder')} maxLength={200} className="border-red-200 focus-visible:ring-red-300" />
+                  <label htmlFor="m-detail-allergen" className="text-xs font-medium text-red-700">⚠ {t('guest.order.allergenWarningLabel')}</label>
+                  <Input id="m-detail-allergen" className="min-h-11 border-red-200 focus-visible:ring-red-300" value={detailAllergenWarning} onChange={(e) => setDetailAllergenWarning(e.target.value)} placeholder={t('guest.order.allergenWarningPlaceholder')} maxLength={200} />
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button variant="outline" size="icon" onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-4 w-4" /></Button>
-                  <span className="font-bold text-lg w-8 text-center">{detailQty}</span>
-                  <Button variant="outline" size="icon" onClick={() => setDetailQty((q) => Math.min(30, q + 1))}><Plus className="h-4 w-4" /></Button>
-                  <Button className="flex-1 ml-auto" onClick={addToCart}>
+                  <Button type="button" variant="outline" size="icon" className="h-11 w-11" aria-label={t('guest.common.qtyLess')} onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-4 w-4" /></Button>
+                  <span className="font-bold text-lg w-8 text-center" aria-live="polite">{detailQty}</span>
+                  <Button type="button" variant="outline" size="icon" className="h-11 w-11" aria-label={t('guest.common.qtyMore')} onClick={() => setDetailQty((q) => Math.min(30, q + 1))}><Plus className="h-4 w-4" /></Button>
+                  <Button className="flex-1 ml-auto min-h-11" onClick={addToCart}>
                     {t('guest.common.add')} · {fmt(detailLineTotal())}
                   </Button>
                 </div>

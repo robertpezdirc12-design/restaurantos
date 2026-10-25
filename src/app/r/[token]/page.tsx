@@ -163,7 +163,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
         <div className="max-w-sm w-full rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <WifiOff className="h-10 w-10 mx-auto text-stone-400" />
           <h1 className="mt-3 font-semibold text-stone-900">{pageErr.text}</h1>
-          <Button className="mt-4 w-full" onClick={() => load()}>
+          <Button className="mt-4 min-h-11 w-full" onClick={() => load()}>
             <RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}
           </Button>
         </div>
@@ -178,7 +178,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
     })
     return (
       <Shell t={t} name={state?.restaurant}>
-        <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
+        <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
           <CheckCircle2 className="h-10 w-10 mx-auto text-green-600" />
           <h2 className="mt-2 text-xl font-bold text-green-900">{t('resv.public.doneTitle')}</h2>
           <p className="text-sm text-green-700 mt-1">{t('resv.public.doneNote')}</p>
@@ -240,7 +240,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
       </section>
 
       {/* 3) termin */}
-      <section className="mt-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+      <section role="group" aria-label={t('resv.public.pickTime')} className="mt-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
         <SectionTitle icon={<Clock className="h-4 w-4" />} text={t('resv.public.pickTime')} />
         {s.slots.length === 0 ? (
           <p className="text-sm text-stone-500 py-4 text-center">{t('resv.public.noSlots')}</p>
@@ -268,7 +268,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
             })}
           </div>
         )}
-        <p className="text-xs text-stone-400 mt-2">{t('resv.public.durationNote', { min: s.durationMinutes })}</p>
+        <p className="text-xs text-stone-600 mt-2">{t('resv.public.durationNote', { min: s.durationMinutes })}</p>
       </section>
 
       {/* 4) stik */}

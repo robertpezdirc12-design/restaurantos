@@ -651,7 +651,10 @@ main[data-screen="login"] button {
   box-shadow: 0 2px 12px oklch(0.2 0.03 155 / 3%);
 }
 [data-screen="qr-menu"] [data-region="qr-menu-categories"] button {
-  min-height: 2.5rem;
+  /* 44 px (EN 301 549 5.6). Pravilo je zunaj plasti, zato v kaskadi premaga
+     utility razred `min-h-11` — če se tukaj zniža, gostov cilj tiho odpade na
+     to vrednost. Meri ga gate v tests/v177-guest-a11y.test.ts §C. */
+  min-height: 2.75rem;
 }
 [data-screen="qr-menu"] [data-region="qr-menu-content"] button:focus-visible {
   outline-offset: 3px;

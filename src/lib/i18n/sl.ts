@@ -2261,6 +2261,8 @@ export const sl: Record<string, string> = {
   'guest.common.vat': 'DDV',
   'guest.common.nameOptional': 'Ime (neobvezno)',
   'guest.common.noSurcharge': 'brez doplačila',
+  'guest.common.qtyLess': 'Manj kosov',
+  'guest.common.qtyMore': 'Več kosov',
   // Napake / povezava
   'guest.error.unreachable': 'Povezava ni dosegljiva.',
   'guest.error.unreachableRetry': 'Povezava ni dosegljiva. Preveri internet in poskusi znova.',
@@ -2289,9 +2291,11 @@ export const sl: Record<string, string> = {
   'guest.kiosk.autoRetry': 'Poskušam znova …',
   'guest.kiosk.activationFailed': 'Aktivacija ni uspela.',
   'guest.kiosk.tokenHint': 'Vnesi vpisno kodo (8 števk) ali veljaven token naprave (rodev_…).',
+  'guest.kiosk.tokenLabel': 'Vpisna koda ali token naprave',
   // Kiosk — glavni tok
   'guest.kiosk.subtitle': 'Samopostrežni kiosk — izberi artikle in oddaj naročilo',
-  'guest.kiosk.lockTitle': 'Zakleni/ponastavi kiosk (zahteva dolg pritisk)',
+  'guest.kiosk.lockTitle': 'Zakleni/ponastavi kiosk (pritisni dvakrat)',
+  'guest.kiosk.lockConfirm': 'Pritisni še enkrat za zaklep',
   'guest.kiosk.yourNumber': 'Tvoja številka naročila:',
   'guest.kiosk.autoReset': 'Kiosk se samodejno ponastavi …',
   'guest.kiosk.cartEmpty': 'Košarica je prazna — tapni artikel za začetek.',

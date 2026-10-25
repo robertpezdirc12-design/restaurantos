@@ -202,7 +202,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
         <div className="max-w-sm w-full rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           <WifiOff className="h-10 w-10 mx-auto text-stone-400" />
           <h1 className="mt-3 font-semibold text-stone-900">{pageErr.text}</h1>
-          <Button className="mt-4 w-full" onClick={load}>
+          <Button className="mt-4 min-h-11 w-full" onClick={load}>
             <RefreshCw className="mr-2 h-4 w-4" />{t('guest.common.retry')}
           </Button>
         </div>
@@ -218,7 +218,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
     if (!s.receipt && (s.receiptPending || (s.split && s.split.count > 1))) {
       return (
         <Shell t={t} name={s.location?.name}>
-          <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
+          <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
             <CheckCircle2 className="h-10 w-10 mx-auto text-green-600" />
             <h2 className="mt-2 text-xl font-bold text-green-900">{t('pay.sharePaid')}</h2>
             <dl className="mt-4 space-y-1.5 text-sm text-stone-700 bg-white rounded-xl border border-green-100 p-4 text-left">
@@ -234,7 +234,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
     }
     return (
       <Shell t={t} name={s.location?.name}>
-        <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
+        <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
           <PartyPopper className="h-10 w-10 mx-auto text-green-600" />
           <h2 className="mt-2 text-xl font-bold text-green-900">{t('pay.paid')}</h2>
           <p className="text-sm text-green-700 mt-1">{t('pay.thanks')}</p>
@@ -318,7 +318,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       {/* Napitnina */}
       <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <p className="text-sm font-semibold text-stone-900">{t('pay.tip')}</p>
-        <div className="mt-3 grid grid-cols-4 gap-2">
+        <div role="group" aria-label={t('pay.tip')} className="mt-3 grid grid-cols-4 gap-2">
           {presets.map((p) => (
             <button
               key={p}
@@ -337,7 +337,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
             value={tipCustom}
             onChange={(e) => setTipCustom(e.target.value)}
             placeholder={t('pay.tipCustom')}
-            className="flex-1"
+            className="min-h-11 flex-1"
             aria-label={t('pay.tipCustom')}
           />
           <span className="text-sm text-stone-500">{fmt(Math.round(tip * 100) / 100)}</span>
@@ -377,7 +377,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
             <><CreditCard className="mr-2 h-5 w-5" />{isSplit ? t('pay.payShare') : t('pay.pay')} · {fmt(payTotal)}</>
           )}
         </Button>
-        <p className="mt-2 text-center text-xs text-stone-400">{t('pay.footer')}</p>
+        <p className="mt-2 text-center text-xs text-stone-600">{t('pay.footer')}</p>
       </div>
     </Shell>
   )

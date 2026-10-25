@@ -41,6 +41,8 @@ export const en: Record<string, string> = {
   'guest.common.vat': 'VAT',
   'guest.common.nameOptional': 'Name (optional)',
   'guest.common.noSurcharge': 'no extra charge',
+  'guest.common.qtyLess': 'Fewer pieces',
+  'guest.common.qtyMore': 'More pieces',
 
   // ‖ Napake (omrežje/oddaja) ‖
   'guest.error.unreachable': 'Connection unavailable.',
@@ -72,8 +74,10 @@ export const en: Record<string, string> = {
   'guest.kiosk.autoRetry': 'Retrying …',
   'guest.kiosk.activationFailed': 'Activation failed.',
   'guest.kiosk.tokenHint': 'Enter the 8-digit entry code or a valid device token (rodev_…).',
+  'guest.kiosk.tokenLabel': 'Entry code or device token',
   'guest.kiosk.subtitle': 'Self-service kiosk — pick items and place your order',
-  'guest.kiosk.lockTitle': 'Lock/reset kiosk (long press required)',
+  'guest.kiosk.lockTitle': 'Lock/reset kiosk (press twice)',
+  'guest.kiosk.lockConfirm': 'Press again to lock',
   'guest.kiosk.yourNumber': 'Your order number:',
   'guest.kiosk.autoReset': 'Kiosk is resetting automatically …',
   'guest.kiosk.cartEmpty': 'Your cart is empty — tap an item to start.',

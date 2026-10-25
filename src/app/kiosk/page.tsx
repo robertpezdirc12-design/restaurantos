@@ -18,6 +18,7 @@ import { Loader2, Plus, Minus, Monitor, CheckCircle2, Lock } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
 import { ALLERGEN_CODES, allergenLabel, labelToAllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import { parseAllergens } from '@/lib/allergens'
+import { LOCK_ARM_WINDOW_MS, initialLockState, isArmedExpired, tapLock, type LockState } from '@/lib/kiosk-lock'
 
 interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -61,6 +62,7 @@ function KioskInner() {
   const [detailMods, setDetailMods] = useState<Record<string, string[]>>({})
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState<{ orderNumber: number; total: number } | null>(null)
+  const [lockState, setLockState] = useState<LockState>(initialLockState)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryAttempts = useRef(0)
@@ -117,6 +119,28 @@ function KioskInner() {
     pageErr.clear()
     setRetryHint(false)
   }, [pageErr])
+
+  const lockNow = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY)
+    resetAll()
+    setToken('')
+  }, [resetAll])
+
+  // Zaklep z dvema klikoma (WCAG 2.1.1): `onDoubleClick` za tipkovnico ne obstaja.
+  const onLockTap = () => {
+    const { next, lock } = tapLock(lockState, Date.now())
+    setLockState(next)
+    if (lock) lockNow()
+  }
+
+  // Pripravljena faza zastari sama — sicer bi gumb ostal pripravljen, ko gost
+  // med tem odide od zaslona in se kasneje vrne k njemu.
+  useEffect(() => {
+    if (lockState.phase !== 'armed' || lockState.armedAt === null) return
+    if (isArmedExpired(lockState, Date.now())) { setLockState(initialLockState); return }
+    const id = setTimeout(() => setLockState(initialLockState), lockState.armedAt + LOCK_ARM_WINDOW_MS - Date.now())
+    return () => clearTimeout(id)
+  }, [lockState])
 
   // Samodejni reset — timeout ne sme pustiti prejšnjega gosta v toku
   useEffect(() => {
@@ -316,8 +340,9 @@ function KioskInner() {
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
             placeholder={t('guest.kiosk.tokenPlaceholder')}
+            aria-label={t('guest.kiosk.tokenLabel')}
           />
-          {pageErr.error && <p className="mt-3 text-sm text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
+          {pageErr.error && <p role="alert" className="mt-3 text-sm text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
           <Button className="w-full mt-4 h-12 text-base" onClick={activate} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
             {t('guest.kiosk.activate')}
@@ -341,23 +366,26 @@ function KioskInner() {
         <div className="flex items-center gap-2 shrink-0">
           <GuestLanguageToggle variant="dark" />
           <button
-            title={t('guest.kiosk.lockTitle')}
-            className="text-stone-600 hover:text-stone-400"
-            onDoubleClick={() => { localStorage.removeItem(TOKEN_KEY); resetAll(); setToken('') }}
+            type="button"
+            aria-label={lockState.phase === 'armed' ? t('guest.kiosk.lockConfirm') : t('guest.kiosk.lockTitle')}
+            aria-pressed={lockState.phase === 'armed'}
+            onClick={onLockTap}
+            className={`h-11 inline-flex items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors ${lockState.phase === 'armed' ? 'bg-amber-500 text-stone-900' : 'text-stone-400 hover:text-stone-100'}`}
           >
-            <Lock className="h-5 w-5" />
+            <Lock className="h-5 w-5 shrink-0" />
+            {lockState.phase === 'armed' && <span>{t('guest.kiosk.lockConfirm')}</span>}
           </button>
         </div>
       </header>
 
       {done && (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <div role="status" className="flex-1 flex flex-col items-center justify-center p-8 text-center">
           <CheckCircle2 className="h-24 w-24 text-green-500" />
           <h2 className="mt-6 text-4xl font-bold">{t('guest.common.thanks')}</h2>
           <p className="mt-2 text-2xl text-stone-300">{t('guest.kiosk.yourNumber')}</p>
           <p className="mt-4 text-7xl font-extrabold tracking-tight text-white">#{done.orderNumber}</p>
           <p className="mt-4 text-xl text-stone-400">{t('guest.common.amount')}: <b className="text-white">{fmt(done.total)}</b> {t('guest.common.payAtCashier')}</p>
-          <p className="mt-8 text-sm text-stone-500">{t('guest.kiosk.autoReset')}</p>
+          <p className="mt-8 text-sm text-stone-300">{t('guest.kiosk.autoReset')}</p>
         </div>
       )}
 
@@ -368,7 +396,7 @@ function KioskInner() {
               <button
                 key={c.id}
                 onClick={() => setActiveCat(c.id)}
-                className={`shrink-0 rounded-full px-5 py-2.5 text-lg font-medium ${activeCat === c.id ? 'bg-white text-stone-900' : 'bg-stone-800 text-stone-300'}`}
+                className={`shrink-0 min-h-12 inline-flex items-center rounded-full px-5 py-2.5 text-lg font-medium ${activeCat === c.id ? 'bg-white text-stone-900' : 'bg-stone-800 text-stone-300'}`}
               >
                 {c.name}
               </button>
@@ -414,8 +442,8 @@ function KioskInner() {
           {!done && upsellSuggestions.length > 0 && (
             <div className="border-t border-stone-800 px-6 py-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="max-w-6xl mx-auto">
-                <p className="text-sm font-semibold uppercase tracking-wide text-stone-500 mb-2">{t('guest.kiosk.upsellTitle')}</p>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar">
+                <p id="kiosk-upsell-title" className="text-sm font-semibold uppercase tracking-wide text-stone-400 mb-2">{t('guest.kiosk.upsellTitle')}</p>
+                <div role="group" aria-labelledby="kiosk-upsell-title" className="flex gap-3 overflow-x-auto no-scrollbar">
                   {upsellSuggestions.map((it) => (
                     <button
                       key={it.id}
@@ -441,12 +469,12 @@ function KioskInner() {
           <footer className="border-t border-stone-800 p-4">
             <div className="max-w-6xl mx-auto flex items-center gap-4">
               <div className="flex-1 min-h-[56px] flex items-center gap-3 overflow-x-auto no-scrollbar">
-                {cart.length === 0 && <span className="text-stone-500">{t('guest.kiosk.cartEmpty')}</span>}
+                {cart.length === 0 && <span className="text-stone-400">{t('guest.kiosk.cartEmpty')}</span>}
                 {cart.map((l) => (
                   <div key={l.key} className="shrink-0 rounded-xl bg-stone-800 border border-stone-700 px-3 py-2 flex items-center gap-2">
                     <span className="font-medium">{l.qty}× {l.item.name}</span>
-                    <button onClick={() => setCart((p) => l.qty > 1 ? p.map((x) => x.key === l.key ? { ...x, qty: x.qty - 1 } : x) : p.filter((x) => x.key !== l.key))} className="text-stone-500 hover:text-white"><Minus className="h-4 w-4" /></button>
-                    <button onClick={() => setCart((p) => p.map((x) => x.key === l.key ? { ...x, qty: x.qty + 1 } : x))} className="text-stone-500 hover:text-white"><Plus className="h-4 w-4" /></button>
+                    <button type="button" aria-label={t('guest.common.qtyLess')} onClick={() => setCart((p) => l.qty > 1 ? p.map((x) => x.key === l.key ? { ...x, qty: x.qty - 1 } : x) : p.filter((x) => x.key !== l.key))} className="h-11 w-11 inline-flex items-center justify-center rounded-xl text-stone-300 hover:text-white hover:bg-stone-700"><Minus className="h-5 w-5" /></button>
+                    <button type="button" aria-label={t('guest.common.qtyMore')} onClick={() => setCart((p) => p.map((x) => x.key === l.key ? { ...x, qty: x.qty + 1 } : x))} className="h-11 w-11 inline-flex items-center justify-center rounded-xl text-stone-300 hover:text-white hover:bg-stone-700"><Plus className="h-5 w-5" /></button>
                     <span className="font-bold ml-1">{fmt(lineTotal(l))}</span>
                   </div>
                 ))}
@@ -456,13 +484,16 @@ function KioskInner() {
                 {t('guest.kiosk.submit')} · {fmt(total)}
               </Button>
             </div>
-            {pageErr.error && <p className="max-w-6xl mx-auto mt-2 text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
+            {pageErr.error && <p role="alert" className="max-w-6xl mx-auto mt-2 text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
           </footer>
         </>
       )}
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-lg bg-stone-800 border-stone-700 text-stone-100 max-h-[85vh] overflow-y-auto">
+        {/* `aria-describedby={undefined}`: brez izrecne napovedi Radix zapiše atribut na
+            id svojega `Description`, ki ga ni — bralni zaslon kliče opis, ki ne obstaja
+            (gate: pravilo "dialog", enako kot v `/m`). */}
+        <DialogContent aria-describedby={undefined} className="max-w-lg bg-stone-800 border-stone-700 text-stone-100 max-h-[85vh] overflow-y-auto">
           {detail && (
             <>
               {/* OPS-9 val 3: allergens in the kiosk item detail (same format as the QR menu) */}
@@ -490,29 +521,29 @@ function KioskInner() {
               </DialogHeader>
               <div className="space-y-4">
                 {detail.modifierGroups.map((g) => (
-                  <div key={g.id}>
-                    <p className="font-semibold mb-2">{g.name} {g.required ? <span className="text-red-400">*</span> : <span className="text-stone-400 font-normal text-sm">({t('guest.common.optional')})</span>}</p>
+                  <fieldset key={g.id} className="min-w-0 border-0 p-0 m-0">
+                    <legend className="font-semibold mb-2">{g.name} {g.required ? <span className="text-red-400">*</span> : <span className="text-stone-400 font-normal text-sm">({t('guest.common.optional')})</span>}</legend>
                     <div className="grid grid-cols-2 gap-2">
                       {g.options.map((o) => (
-                        <label key={o.id} className="flex items-center justify-between rounded-xl border border-stone-600 px-3 py-2.5 cursor-pointer has-[:checked]:border-white">
+                        <label key={o.id} className="flex min-h-11 items-center justify-between rounded-xl border border-stone-600 px-3 py-2.5 cursor-pointer has-[:checked]:border-white">
                           <span className="flex items-center gap-2">
-                            <Checkbox checked={(detailMods[g.id] || []).includes(o.id)} onCheckedChange={() => toggleMod(g.id, o.id, g.maxSelect)} />
+                            <Checkbox aria-label={o.name} checked={(detailMods[g.id] || []).includes(o.id)} onCheckedChange={() => toggleMod(g.id, o.id, g.maxSelect)} />
                             {o.name}
                           </span>
                           <span className="text-stone-400">{o.price > 0 ? `+${fmt(o.price)}` : ''}</span>
                         </label>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
                 ))}
                 <div>
-                  <p className="text-sm font-medium text-stone-400 mb-1">{t('guest.common.note')}</p>
-                  <Input className="bg-stone-900 border-stone-600 text-stone-100" value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.kiosk.notePlaceholder')} maxLength={200} />
+                  <label htmlFor="kiosk-detail-note" className="block text-sm font-medium text-stone-400 mb-1">{t('guest.common.note')}</label>
+                  <Input id="kiosk-detail-note" className="min-h-11 bg-stone-900 border-stone-600 text-stone-100" value={detailNote} onChange={(e) => setDetailNote(e.target.value)} placeholder={t('guest.kiosk.notePlaceholder')} maxLength={200} />
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button variant="outline" size="icon" className="h-12 w-12" onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-5 w-5" /></Button>
-                  <span className="text-2xl font-bold w-10 text-center">{detailQty}</span>
-                  <Button variant="outline" size="icon" className="h-12 w-12" onClick={() => setDetailQty((q) => Math.min(30, q + 1))}><Plus className="h-5 w-5" /></Button>
+                  <Button type="button" variant="outline" size="icon" aria-label={t('guest.common.qtyLess')} className="h-12 w-12" onClick={() => setDetailQty((q) => Math.max(1, q - 1))}><Minus className="h-5 w-5" /></Button>
+                  <span className="text-2xl font-bold w-10 text-center" aria-live="polite">{detailQty}</span>
+                  <Button type="button" variant="outline" size="icon" aria-label={t('guest.common.qtyMore')} className="h-12 w-12" onClick={() => setDetailQty((q) => Math.min(30, q + 1))}><Plus className="h-5 w-5" /></Button>
                   <Button
                     className="flex-1 ml-auto h-12 text-lg"
                     onClick={addToCart}
