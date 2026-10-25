@@ -758,7 +758,8 @@ describe('v1.169.0 — statične invariante', () => {
     // za besedilo alarma (hint joba `tests` je bil zapisan brez šumnikov),
     // v1.176.0 pa izdaja za jezik dokumenta na gostovih zaslonih (ZDPSI
     // zavezuje od 28. 6. 2025 in zajema storitve e-trgovine; `layout.tsx` je
-    // imel trdo zapisan `lang="sl"`).
+    // imel trdo zapisan `lang="sl"`), v1.177.0 pa izdaja za celovit WCAG
+    // pregled gostovih strani.
     // Vsaka taka pojedena številka premakne celoten nepoddan rep ceste za eno
     // naprej — sicer PRD obljublja izdajo, ki je nikoli ne bo.
     expect(prd).toMatch(/R2b1 — v1\.170\.0\*\* \| Omejena offline vrsta/)
@@ -766,13 +767,15 @@ describe('v1.169.0 — statične invariante', () => {
     // sicer bi jo bilo mogoče šteti med nepoddan rep in premakniti R3/R4.
     expect(prd).toMatch(/R2b2 — v1\.175\.0\*\* \| Varen lokalni obrat brez žice/)
     expect(prd).not.toMatch(/R2b2 — načrtovano/)
-    expect(prd).toMatch(/R3 — v1\.177\.0/)
-    expect(prd).toMatch(/R4 — v1\.178\.0/)
+    expect(prd).toMatch(/R3 — v1\.178\.0/)
+    expect(prd).toMatch(/R4 — v1\.179\.0/)
     expect(prd).not.toMatch(/R2b2 — v1\.17[0-4]\.0/)
-    expect(prd).not.toMatch(/R3 — v1\.17[0-6]\.0/)
+    expect(prd).not.toMatch(/R3 — v1\.17[0-7]\.0/)
+    expect(prd).not.toMatch(/R4 — v1\.17[0-8]\.0/)
     // Premik repa mora biti v PRD-ju tudi utemeljen, ne samo narejen: brez te
     // vrstice bi bil naslednji bralec prepričan, da je številka izmišljena.
     expect(prd).toMatch(/v1\.176\.0 je pojedla izdaja za jezik dokumenta/)
+    expect(prd).toMatch(/v1\.177\.0 je pojedla izdaja za celovit WCAG pregled/)
   })
 
   it('runbook lokalnega zagona opisuje HTTPS fronto in zagon ob prijavi (R2b2)', async () => {
