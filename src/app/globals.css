@@ -155,12 +155,17 @@
 .dark .bg-white\/70 { background-color: oklch(0.235 0.004 95 / 70%); }
 .dark .hover\:bg-white:hover { background-color: oklch(0.30 0.004 95); }
 
-/* besedila — obratna lestvica */
-.dark .text-stone-300 { color: oklch(0.52 0.004 95); }
-.dark .text-stone-400 { color: oklch(0.60 0.004 95); }
-.dark .text-stone-500 { color: oklch(0.70 0.004 95); }
-.dark .text-stone-600 { color: oklch(0.78 0.004 95); }
+/* besedila — obratna lestvica. Najnižji stopnici sta bili premalo svetli: na
+   temni podlagi (/kiosk stone-800/900, kartica bg-white → 0.235) je
+   text-stone-400 merilo 3,6–3,9:1 (WCAG 1.4.4 zahteva 4,5). Lestvica je zdaj
+   povzdignjena tako, da ima vsak prekinjen odtenek ≥ 4,6:1 na najtemnejši
+   podlagi, ki jo rute uporabljajo — in še vedno ostane mono-tono obrnjena. */
+.dark .text-stone-300 { color: oklch(0.66 0.006 90); }
+.dark .text-stone-400 { color: oklch(0.70 0.008 88); }
+.dark .text-stone-500 { color: oklch(0.74 0.008 88); }
+.dark .text-stone-600 { color: oklch(0.78 0.006 90); }
 .dark .text-stone-700 { color: oklch(0.87 0.004 95); }
+.dark .text-stone-800 { color: oklch(0.93 0.003 95); }
 
 /* pastelne ploskve — emerald (uspeh) */
 .dark .bg-emerald-50,
@@ -194,6 +199,31 @@
 .dark .text-red-700,
 .dark .text-red-800 { color: oklch(0.76 0.14 22); }
 .dark .border-red-100 { border-color: oklch(0.40 0.07 22); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   VLOGSKO LOČENI PREPISI (v1.179.0)
+
+   Zgornji žetonski blok (--color-stone-100 … --color-stone-900) zamenja
+   BARVO ŽETONA. Tailwind pa iz istega žetona napravi obe vlogi: `bg-stone-900`
+   JE površina in `text-stone-900` JE besedilo. Pod .dark je zato vsaka temna
+   površina (shell /kiosk, temni pasov na /m in /pay) postala bela — s
+   white/skoraj-belim besedilom na njej, izmerjeno 1,09:1. Enako obrnjeno:
+   text-stone-100 (skoraj belo besedilo na temni kartici) je postalo temno,
+   1,22:1. Žetona se ne dirata — vsaka vloga dobi svojo pravilo, tako da
+   površina ostane površina, besedilo pa besedilo.
+   ────────────────────────────────────────────────────────────────────────── */
+.dark .bg-stone-900 { background-color: oklch(0.216 0.006 56.043); }   /* = svetli stone-900: temna površina ostane temna */
+.dark .text-stone-100 { color: oklch(0.97 0.001 106.424); }            /* = svetli stone-100: skoraj belo besedilo ostane skoraj belo */
+
+/* zelena (uspeh) je bila preslikana samo kot emerald. /r in /pay uporabljata
+   green-50/100 in green-600…900, ki ostaneta svetli ploskvi s potemnjenim
+   besedilom (izmerjeno 2,55:1) — bloka morata biti enaka. */
+.dark .bg-green-50,
+.dark .bg-green-100 { background-color: oklch(0.32 0.045 155); }
+.dark .text-green-600,
+.dark .text-green-700,
+.dark .text-green-800,
+.dark .text-green-900 { color: oklch(0.80 0.12 160); }
 
 
 /* RestaurantOS visual polish — 2026-10

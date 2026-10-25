@@ -376,7 +376,7 @@ function KioskInner() {
             aria-label={lockState.phase === 'armed' ? t('guest.kiosk.lockConfirm') : t('guest.kiosk.lockTitle')}
             aria-pressed={lockState.phase === 'armed'}
             onClick={onLockTap}
-            className={`h-11 inline-flex items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors ${lockState.phase === 'armed' ? 'bg-amber-500 text-stone-900' : 'text-stone-400 hover:text-stone-100'}`}
+            className={`h-11 inline-flex items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors ${lockState.phase === 'armed' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-stone-100'}`}
           >
             <Lock className="h-5 w-5 shrink-0" />
             {lockState.phase === 'armed' && <span>{t('guest.kiosk.lockConfirm')}</span>}
