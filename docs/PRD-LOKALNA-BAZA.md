@@ -154,8 +154,8 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
 | **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
 | **R2b2 — v1.175.0** | Varen lokalni obrat brez žice | HTTPS fronta v Node-u s lastnim CA (OpenSSL iz Git for Windows), Next zaprt na 127.0.0.1, v omrežje vodi samo fronta; zagon ob prijavi: generator opravil (Windows XML / launchd / systemd) in `local:autostart` s suhim tekom kot privzetim | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika — **preizkus še ni opravljen** |
-| **R3 — v1.178.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
-| **R4 — v1.179.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
+| **R3 — v1.179.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
+| **R4 — v1.180.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
@@ -188,6 +188,17 @@ gostov cilj znižal na 40 px), zaporna gumba v skupnih komponentah (dialog in sh
 16 × 16 px) in trije overlayi, ki so na `role="dialog"` pisali `aria-describedby`
 na vozlišče, ki ga ni. Zato ima vsaka svoj preizkus: `cascade`, pin nad skupnima
 komponentama in pravilo `dialog`. Rep se premakne: R3 → v1.178.0, R4 → v1.179.0.
+v1.178.0 je pojedla izdaja za zanko ponovnega nalaganja gostovih strani. WCAG
+pregled jo je že pokazal kot stranski učinek, a ji ni sledil: gostova stran `/m`
+si je ob stalno odprtem zavihku sama sebe sprašala po meniju (izmerjeno 190
+zahtevkov `/api/public/menu` v 8 s), javna ruta pa je po nekaj sekundah
+odgovarjala samo še s `429`, zato je gostu ostal zaslon »Nalagam meni …« brez
+enega samega gumba. Vzrok ni logika ampak identiteta: `useGuestApiError()` vrne
+ob vsakem renderju nov objekt; kjer je šel ta objekt v niz odvisnosti, se je
+callback regeneriral in effect za njim se je pognal znova. Na `/kiosk` isti
+vzorec zanke ni povzročal (tam je `loadMenu` navadna funkcija), je pa ob vsakem
+renderju ponovno postavljal 90-sekundni timer mirovanja, ki naj sicer počisti tok
+prejšnjega gosta. Rep se premakne: R3 → v1.179.0, R4 → v1.180.0.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
