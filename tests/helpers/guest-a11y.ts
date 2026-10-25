@@ -494,14 +494,109 @@ function palette(): Map<string, number> {
   return out
 }
 
-/** Razmerje med dvema razrednima barvnima žetonoma (`stone-400`, `white`). */
-export function contrastRatio(fg: string, bg: string): number | null {
-  const p = palette()
-  const f = p.get(fg)
-  const b = p.get(bg)
-  if (f === undefined || b === undefined) return null
+/**
+ * `oklch()` je zapisan v dveh oblikah: `theme.css` uporablja
+ * `oklch(70.9% 0.01 56.259)`, `.dark` sloj v `globals.css` pa `oklch(0.28 0.004 95)`.
+ * Vrednost Z ALFО (`… / 12%`) je nedoločljiva — relativne svetlosti ni mogoče
+ * sestaviti brez podlage, ki je gate ne pozna, zato vrnemo null in klicno mesto
+ * ne sme tiho prevzeti svetle vrednosti.
+ */
+function cssColorToLuminance(value: string): number | null {
+  const v = value.trim()
+  const ok = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(\s*\/\s*[\d.]+%?\s*)?\)$/.exec(v)
+  if (ok) {
+    if (ok[5]) return null
+    return oklchToLuminance(Number(ok[1]) / (ok[2] ? 100 : 1), Number(ok[3]), Number(ok[4]))
+  }
+  if (/^rgba?\(/.test(v)) return null
+  return hexToLuminance(v)
+}
+
+export interface DarkLayer {
+  tokens: Map<string, number | null>
+  classes: Map<string, number | null>
+}
+
+/**
+ * Prebere SAMO `.dark` sloj: žetonske bloke (`.dark { --color-… }`) in navadna
+ * razredna pravila (`.dark .text-stone-600 { color: … }`). Vse ostalo je zavarno
+ * in ne sme priti noter: `:root` vrednosti, variantni razredi (`hover\:`),
+ * psevdorazredi (`:hover`), atributni in elementni selectorji
+ * (`.dark body`, `.dark [data-screen=…]`).
+ */
+export function parseDarkLayer(src: string): DarkLayer {
+  const tokens = new Map<string, number | null>()
+  const classes = new Map<string, number | null>()
+  // Komentarji morajo stran: besedilo med `}` in `{` je selector, komentar
+  // ("… pod .dark …", "kartice") bi ga naredil za nedoločljivega.
+  const css = src.replace(/\/\*[\s\S]*?\*\//g, '')
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = m[1].trim()
+    const body = m[2]
+    if (!selector.includes('.dark')) continue
+    if (selector === '.dark') {
+      for (const d of body.matchAll(/--color-([a-z0-9-]+)\s*:\s*([^;]+);/g)) {
+        tokens.set(d[1], cssColorToLuminance(d[2]))
+      }
+      continue
+    }
+    for (const part of selector.split(',')) {
+      const single = /^\.dark\s+\.((?:\\.|[A-Za-z0-9_-])+)$/.exec(part.trim())
+      if (!single) continue
+      const cls = single[1].replace(/\\/g, '')
+      if (cls.includes(':')) continue
+      const prop = cls.startsWith('text-') ? 'color' : cls.startsWith('bg-') ? 'background-color' : null
+      if (!prop) continue
+      const decl = new RegExp(`(?:^|[;\\s])${prop}\\s*:\\s*([^;]+)`).exec(body)
+      if (decl) classes.set(cls, cssColorToLuminance(decl[1].trim()))
+    }
+  }
+  return { tokens, classes }
+}
+
+let darkCache: DarkLayer | null = null
+
+/** Temna paleta, prebrana iz istega sloja, ki ga v production dobi `.dark` HTML. */
+export function darkPalette(): DarkLayer {
+  if (darkCache) return darkCache
+  darkCache = parseDarkLayer(readFileSync(GUEST_STYLESHEET, 'utf8'))
+  return darkCache
+}
+
+/**
+ * Svetlost žetona v danem načinu. `undefined` = žetona ni (ne moremo šteti);
+ * `null` = je, a ga ni mogoče določiti (alfa). V temnem načinu ima razredni
+ * prepis prednost pred žetonskim, žetonski pred svetlo privzetijo — tako to
+ * počnejo CSS specificity.
+ */
+function luminanceIn(mode: 'light' | 'dark', kind: 'text' | 'bg', token: string): number | null | undefined {
+  if (mode === 'light') return palette().get(token)
+  const d = darkPalette()
+  const cls = `${kind}-${token}`
+  if (d.classes.has(cls)) return d.classes.get(cls) ?? undefined
+  if (d.tokens.has(token)) return d.tokens.get(token) ?? undefined
+  return palette().get(token)
+}
+
+function ratioOf(f: number | null | undefined, b: number | null | undefined): number | null {
+  if (f === undefined || b === undefined || f === null || b === null) return null
   const [hi, lo] = f > b ? [f, b] : [b, f]
   return (hi + 0.05) / (lo + 0.05)
+}
+
+export interface ContrastModes { light: number | null; dark: number | null }
+
+/** Razmerje v OBAH paletah. `null` = ta način presoje ne more izračunati. */
+export function contrastBoth(fg: string, bg: string): ContrastModes {
+  return {
+    light: ratioOf(luminanceIn('light', 'text', fg), luminanceIn('light', 'bg', bg)),
+    dark: ratioOf(luminanceIn('dark', 'text', fg), luminanceIn('dark', 'bg', bg)),
+  }
+}
+
+/** Razmerje med dvema razrednima barvnima žetonoma (`stone-400`, `white`). */
+export function contrastRatio(fg: string, bg: string): number | null {
+  return ratioOf(palette().get(fg), palette().get(bg))
 }
 
 const TEXT_PX: Record<string, number> = { xs: 12, sm: 14, base: 16, lg: 18, xl: 20, '2xl': 24, '3xl': 30, '4xl': 36, '5xl': 48 }
@@ -569,6 +664,12 @@ function hasOwnText(node: ts.JsxElement): boolean {
  * 1.4.3: besedilo, ki ga element izriše neposredno. Barva, velikost in
  * debelina se podedujejo po starših, kot v CSS — velja NAJBLIŽJI zapis. Če
  * katere koli strani enačbe ni mogoče določiti, se ne javi ničesar.
+ *
+ * Od v1.179.0 se odloča po OBAH paletah: gostove rute tečejo pod `.dark`,
+ * kadar ima obiskovalec temne nastavitve, zato element pade, če pade v
+ * KTEREMKOLI načinu. Javi se ENA kršitev na element in sporočilo imenuje
+ * način (`svetlo` / `temno`) — sicer število kršitev ne ustreza številu
+ * elementov in pregled izgubi merilo.
  */
 function checkContrast(sf: ts.SourceFile, ctx: Ctx, node: ts.JsxElement | ts.JsxSelfClosingElement, ancestors: Anc[]): void {
   const open = ts.isJsxElement(node) ? node.openingElement : node
@@ -582,20 +683,24 @@ function checkContrast(sf: ts.SourceFile, ctx: Ctx, node: ts.JsxElement | ts.Jsx
   const fg = nearestColor(chain, 'text')
   const bg = nearestColor(chain, 'bg')
   if (!fg || !bg) return
-  const ratio = contrastRatio(fg, bg)
-  if (ratio === null) return
   const size = firstToken(chain, /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl)$/)
   const weight = firstToken(chain, WEIGHT_TOKENS)
   const px = size ? TEXT_PX[size[1]] : 16
   const bold = weight ? BOLD_WEIGHTS.has(weight[1]) : false
   const need = isLargeText(px, bold) ? 3 : 4.5
-  if (ratio >= need) return
+  const both = contrastBoth(fg, bg)
+  const odp: string[] = []
+  for (const m of ['light', 'dark'] as const) {
+    const r = both[m]
+    if (r !== null && r < need) odp.push(`${m === 'light' ? 'svetlo' : 'temno'} ${r.toFixed(2)}:1`)
+  }
+  if (odp.length === 0) return
   ctx.out.push({
     rule: 'contrast',
     wcag: '1.4.3 (AA)',
     file: ctx.file,
     line: lineOf(sf, open),
-    message: `text-${fg} na bg-${bg}: razmerje ${ratio.toFixed(2)}:1 pod ${need}:1 (${px} px${bold ? ', krepko' : ''}). Uporabi temnejši odtenek (stone-600 / red-600).`,
+    message: `text-${fg} na bg-${bg}: ${odp.join(', ')} pod ${need}:1 (${px} px${bold ? ', krepko' : ''}). Popravi odtenek ali njegov .dark prepis v globals.css.`,
   })
 }
 
