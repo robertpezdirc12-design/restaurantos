@@ -154,8 +154,8 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
 | **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
 | **R2b2 — v1.175.0** | Varen lokalni obrat brez žice | HTTPS fronta v Node-u s lastnim CA (OpenSSL iz Git for Windows), Next zaprt na 127.0.0.1, v omrežje vodi samo fronta; zagon ob prijavi: generator opravil (Windows XML / launchd / systemd) in `local:autostart` s suhim tekom kot privzetim | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika — **preizkus še ni opravljen** |
-| **R3 — v1.179.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
-| **R4 — v1.180.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
+| **R3 — v1.180.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
+| **R4 — v1.181.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
@@ -199,6 +199,23 @@ callback regeneriral in effect za njim se je pognal znova. Na `/kiosk` isti
 vzorec zanke ni povzročal (tam je `loadMenu` navadna funkcija), je pa ob vsakem
 renderju ponovno postavljal 90-sekundni timer mirovanja, ki naj sicer počisti tok
 prejšnjega gosta. Rep se premakne: R3 → v1.179.0, R4 → v1.180.0.
+v1.179.0 je pojedla izdaja za kontrast, izmerjen v obeh paletah. WCAG vrata iz
+v1.177.0 so pravilo 1.4.3 računala iz svetle palete (`node_modules/tailwindcss/theme.css`),
+gostove rute pa se na temno nastavljeni napravi izrišejo pod slojem `.dark` v
+`src/app/globals.css` — vrata torej merijo paleto, ki je gost nikoli ne vidi. Ko je
+helper dobil drugo modo, je na nepopravljenem drevesu javil **48 kršitev, in vse
+so padle samo v temnem načinu** (po rutah: `/m` 4, `/kiosk` 35, `/pay` 6, `/r` 3;
+8 različnih parov besedilo–podlaga). Vzrok ni bil napačen odtenek, ampak vloga:
+Tailwind naredi `bg-X` in `text-X` iz ISTEGA žetona, zato prepis
+žetona pod `.dark` obrne obe vlogi hkrati — `bg-stone-900 text-white` je pod
+`.dark` postal skoraj bela ploskev z belim besedilom (izmerjeno **1,09:1** v živo).
+Popravek je zato na vlogsko ločenih razrednih pravilih, ne na žetonih. Živa
+meritev v brskalniku pod `.dark` (barvi sta razrešeni s canvasom, ker brskalnik
+vrne `lab()/oklab()`): `/m` je padel **3 od 27** izrisanih parov, najslabši 1,09:1
+→ **0 od 27**, najslabši 6,35:1;
+`/kiosk` **9 od 22**, najslabši 2,75:1 → **0 od 22**, najslabši 4,87:1. Gate in
+brskalnik se strinjeta do 0,02 (4,89 proti 4,87; 5,62 proti 5,62; 6,33 proti 6,35;
+13,38 proti 13,37; 17,49 proti 17,49). Rep se premakne: R3 → v1.180.0, R4 → v1.181.0.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
