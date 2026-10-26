@@ -793,6 +793,13 @@ describe('v1.169.0 — statične invariante', () => {
     // Razlog za razcep R4 mora stati v PRD-ju, ne samo v vrsti ceste.
     expect(prd).toMatch(/v1\.181\.0 je izdala R4, ne celotnega R4/)
     expect(prd).toMatch(/R4b \(številke nima\)/)
+    // R5 je razcepljen enako kot R4: izdano je samo tisto, kar je bilo na tej
+    // napravi tudi preizkušeno. Prevoz v oblak številke nima, ker produkcijske
+    // baze ni in samodejne pošiljke nihče ni pregledal — enaka merilo kot pri R4b.
+    expect(prd).toMatch(/R5a — v1\.182\.0\*\* \| Kopija, ki preživi izgubljen disk/)
+    expect(prd).toMatch(/R5b — številka ni določena/)
+    expect(prd).not.toMatch(/R5 — načrtovano/)
+    expect(prd).toMatch(/v1\.182\.0 je izdala R5, ne celotnega R5/)
   })
 
   it('runbook lokalnega zagona opisuje HTTPS fronto in zagon ob prijavi (R2b2)', async () => {
@@ -812,5 +819,21 @@ describe('v1.169.0 — statične invariante', () => {
     expect(doc).toMatch(/local:restore/)
     expect(doc).toMatch(/integrity_check/)
     expect(doc).toMatch(/Vaja obnovitve/)
+  })
+
+  it('runbook opisuje šifrirano kopijo izven diska in obnovo na drugi napravi (R5a)', async () => {
+    const doc = read('docs/LOKALNI-ZAGON.md')
+    expect(doc).toMatch(/bun run local:offsite/)
+    expect(doc).toMatch(/--passphrase-file/)
+    expect(doc).toMatch(/RESTAURANTOS_OFFSITE_PASSPHRASE/)
+    expect(doc).toMatch(/local:restore --bundle/)
+    expect(doc).toMatch(/\.rosbak/)
+    // Dokler bralec ne ve, da kopija na istem disku ne zavaruje pred okvaro
+    // diska, odnese medij, ki je brez vrednosti — zato ta pin ni okras.
+    expect(doc).toMatch(/isti disk/)
+    // Živa meritev (ne samo test) mora stati v dokumentu, sicer je runbook
+    // navodilo, ki ga je pisec samo zamislil.
+    expect(doc).toMatch(/899/)
+    expect(doc).toMatch(/3 682 591/)
   })
 })
