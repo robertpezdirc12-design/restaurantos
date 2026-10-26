@@ -102,7 +102,7 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 - WAL, `synchronous=FULL` in busy timeout (R2a, izvedeno v v1.169.0);
 - čarovnik prve namestitve v brskalniku (R3);
 - migracije in rollback nadgradenj (R3/R4);
-- šifrirana kopija v oblaku, licenciranje, paketni namestilnik (R4/R5);
+- šifrirana kopija v oblaku, licenciranje, paketni namestilnik (R4b/R5b);
 - sinhronizacija med več strežniki (ni cilj; SQLite je en pisec).
 
 ## 5. Uporabniške zgodbe
@@ -157,7 +157,8 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R3 — v1.180.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), natisljive poverilnice, identiteta v stolpcih `Location`; **nerobjeno:** neobvezni demo podatki, lokalne migracije sheme | nova namestitev brez terminala (`65/65` §A–§H); nadgradnja ohrani podatke (H2/H3) |
 | **R4a — v1.181.0** | Podpora, ki ne izroči skrivnosti | lokalni dnevnik napak v datoteko (dnevna rota, 1 MiB, 7 dni), `bun run local:support` (podporni paket: manifest, stanje, kopije, dnevnik, okolje, README — brez `config.json`, `PRVIC-ZAGON.txt`, `tls/` in baze), samodejno maskiranje in zavrnitev paketa, če maskiranje spodleti | paket na živi namestitvi ne nosi nobene znane skrivnosti; trditev drži samo mutacijski dokaz (19/19) in meritev iz `%LOCALAPPDATA%` |
 | **R4b — številka ni določena** | Posodobitve in rollback | preverjanje novih različic, podpisani paket, rollback nadgradnje | pogojuje ga lokalni migracijski pogon (`prisma migrate deploy`), ki ga še ni — rollback brez njega ne more obstajati |
-| **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
+| **R5a — v1.182.0** | Kopija, ki preživi izgubljen disk | šifriran kontejner `ros-offsite-1` (scrypt `N=2^15`, AES-256-GCM) na medij, ki ga lastnik odnese sam (USB, zunanji disk, omrežna mapa); `bun run local:offsite`, obnova `local:restore --bundle`, zadrževanje 8 kontejnerjev, zavrnitev istega diska brez `--allow-same-volume`, geslo samo iz okolja ali datoteke | kontejner je obnovljen na napravi, ki baze v obratu nikoli ni imela — izmerjeno na živi namestitvi: 899 strani, 3 682 591 B, C:→D: (različna `dev`), 3,6 s do zapisanega kontejnerja in 0,9 s do obnovljene baze |
+| **R5b — številka ni določena** | Prevoz v oblak in licence | samodejna pošiljka kontejnerja, licenčni ključ, večobratni nadzor | pogojujeta produkcijsko bazo, ki je danes ni (Neon je na kvoti); samodejna pošiljka je nov izhod podatkov, ki ga nihče ni preizkusil |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
 porabile druge izdaje, cesta tukaj ne obljublja več številk, ki jih ni več.
@@ -261,7 +262,15 @@ danes ni mogoče preizkusiti. Cesta zato dobi **R4a (izdano na v1.181.0)** in
 **R4b (številke nima)**: rollback je odvisen od lokalnega migracijskega pogona
 (`prisma migrate deploy`), ki ga še vedno ni — ista zadeva, ki jo je R3 že pustila
 v §12 kot zavešno. Ker se R4 ni premaknil, se rep ceste tudi tokrat ne premakne:
-R5 ostane neobvezno.
+naslednja na vrsti je R5.
+v1.182.0 je izdala R5, ne celotnega R5. Merilo je isto kot pri R4: izdano je samo
+tisto, kar je bilo na tej napravi tudi preizkušeno. **R5a (v1.182.0)** je kopija na
+mediju, ki ga lastnik odnese sam — šifrirana, ker medij zapusti obrat, in obnovljena
+na napravi, ki baze v obratu nikoli ni imela. **R5b (številke nima)** ostanek je
+prevoz v oblak, licenčni ključ in večobratni nadzor: produkcijska baza danes ne
+obstaja (Neon je na kvoti), samodejna pošiljka pa bi bila nov izhod podatkov, ki ga
+nihče ni pregledal — isti razlog, zaradi katerega R4b nima rollbacka. Ker R5a ne
+posega v obveznosti prejšnjih vrstic, se rep ceste ne premakne niti tokrat.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
@@ -308,6 +317,19 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   bralno neposredno iz datoteke, ne prek `GET /api/health`. Napake jih aplikacija
   sama piše v `logs/errors-*.log` (dnevna rota, 1 MiB na datoteko, 7 dni), ker od
   v1.175.0 stdout ob prijavi nima bralca.
+- **Oddaljena kopija (R5a, v1.182.0):** `bun run local:offsite --to <pot>` zapiše
+  ŠIFRIRAN kontejner `dalec-<UTC>.rosbak` na medij, ki ga lastnik odnese sam (USB,
+  zunanji disk, omrežna mapa), in ga pred razglasitvijo preveri TRIKRAT: odsek čez
+  `VACUUM INTO`, `integrity_check` nad jasnim odsekom, nato branje kontejnerja S
+  DISKA, dešifriranje in primerjava žiga SHA-256. Geslo pride iz
+  `RESTAURANTOS_OFFSITE_PASSPHRASE` ali iz datoteke (`--passphrase-file`), nikoli iz
+  `argv`, ker seznam procesov ga izda vsakemu `Get-CimInstance`. Če je ciljna mapa
+  na istem disku kot baza, ukaz zavrne; `--allow-same-volume` je izrecna privolitev
+  in jo izpis tudi razkrije. Obnova na drugi napravi je `bun run local:restore
+  --bundle <rosbak> --passphrase-file <geslo> [--force]` — isti preizkušeni korak
+  kot R2a, ki najprej preveri kopijo in stanje, ki ga bo prepisala. `bun run local`
+  kopije na tujem mediju NE dela sam: samodejna pošiljka, ki je nihče ne preverja,
+  ni varnostna kopija ampak nov izhod podatkov.
 
 ## 10. Varnost in zasebnost
 
@@ -330,16 +352,39 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   razlike med kodami razbrati, ali je namestitev že prevzeta. Lastnik ostane
   edini administrator, PIN ostane v `PRVIC-ZAGON.txt` (0600), odgovor brskalnika
   pa ga povzame samo takrat, ko ga je izbral lastnik sam (§D2).
-- Podatki so lokalni; varnostna kopija je odgovornost obrata do R2.
+- Podatki so lokalni; varnostna kopija je odgovornost obrata. Od R2a naprej jo
+  naredi sam vsak zagon, od R5a naprej jo lastnik sam odnese na tujem mediju.
+- **Kontejner R5a sme obstajati samo šifriran** (`aes-256-gcm`, ključ iz
+  `scrypt` `N=2^15, r=8, p=1`). Ker medij zapusti obrat, je to edini razred
+  kopij, ki sme biti izročena svetu — karkoli ni šifrirano, na tuj medij ne sme
+  biti zapisano. Glava nosi format, parametre KDF, sol, IV, žig in številke
+  strani; NE nosi poti do baze, imen tabel, vsebine gesla ali kakršnegakoli
+  podatka iz baze.
+- **Moč kopije je moč gesla.** Izmerjeno 26. 10. 2026 na tej napravi (pet
+  zaporednih izpeljav pri N=2^15): 89–139 ms, povprečje 102 ms, torej ~10 poskusov
+  na sekundo na eni sledi. Geslo, podobno PIN-u, na ključku,
+  ki pade v tuje roke, NI varno; dolžina 12 znakov je najmanjša dovolena, ne
+  priporočena. Izgubljeno geslo pomeni, da kopije ni mogoče obnoviti — backdoorja
+  ni in ga ne sme biti.
+- **Omejitve veljajo PRED derivacijo ključa.** Tuji kontejner ne sme narekati
+  gigabajtov pomnilnika: `N` je omejen na razpon 2^14–2^17, `maxmem` se RAČUNA
+  (2× potrebe) in je omejen navzgor na 268 MiB, glava sme biti največ 8 KiB.
+  Izmerjeno: privzeti BoringSSL `maxmem` (32 MiB) je na meji pri `N=2^15` in v
+  enem procesu uspe, v drugem pade — zato ga koda izrecno nastavlja.
 
 ## 11. Tveganja
 
 | Tveganje | Vpliv | Ukrep |
 |---|---|---|
 | Vercel ne vidi lokalne baze | zmeda pri pričakovanjih | dva profila, jasna dokumentacija |
-| Disk/računalnik crkne | izguba podatkov | dnevne kopije z integritetnim pregledom (R2a); kopija na istem disku ne zavaruje pred okvaro diska, zato USB (R5 za oblak) |
+| Disk/računalnik crkne | izguba podatkov | dnevne kopije z integritetnim pregledom (R2a); ker kopija na istem disku ne zavaruje pred okvaro diska, jo je od v1.182.0 mogoče odnesti na šifriranem kontejnerju (R5a); prevoz v oblak ostaja R5b |
 | Kopija, narejena s prekopom datoteke | tiho izgubljen zadnji potrjeni zapis | kopija gre čez `VACUUM INTO` (R2a); izmerjeno: navaden prekop čez umazan WAL vrne 2 od 3 vrstic |
 | Obnova pod tekočo aplikacijo | pokvarjen paket namesto rešitve | obnova se zavrne, dokler ima baza rep z vsebino; čist postanek rep počisti (R2a) |
+| Geslo za kontejner je izgubljeno | kopije ni mogoče odpreti, nikoli | dokumentirano kot lastnikova obveznost; obnovitve brez gesla ni in je ne sme biti (R5a) |
+| Geslo bi bilo v `argv` | razkrijeta ga seznam procesov in zgodovina lupine | geslo samo iz okolja ali datoteke; izpis, glava in ime datoteke ga ne ponovijo (R5a) |
+| Kopija bi tiho pristala na istem disku | lažen občutek varnosti | zavrnitev, dokler lastnik ne potrdi z `--allow-same-volume`; izpis nato razkrije, da kopija NI oddaljena (R5a) |
+| Tuji kontejner narekuje parametre KDF | enormna poraba pomnilnika ob branju | meje `N`, `r`, `p` in dolžina glave se preverijo PRED derivacijo ključa (R5a) |
+| Jasen odsek obstaja kratek čas med šifriranjem | trenutek, ko so podatki na disku nešifrirani | odsek nastane samo na ciljnem mediju in se pobriše tudi ob odpovedi sredi poti; dokazano s seznamom datotek PO poskusu (R5a, D4b in E7) |
 | SQLite in sočasni pisci | zaklepi/napake | en strežniški proces, WAL in busy timeout (R2a) |
 | Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija pred `db push` |
 | HTTP v LAN | PWA/offline ne deluje | HTTPS fronta z lastnim CA (R2b2, v1.175.0); dokler operater ne zaupa CA-ju, brskalnik na tablici prikaže opozorilo in PWA-ja ni mogoče namestiti |
@@ -361,7 +406,7 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 | Odločitev | Predlog | Kdaj |
 |---|---|---|
 | HTTPS v LAN | ODLOČENO v v1.175.0: fronta v Node-u s lastnim CA, ki ga sestavi OpenSSL (že del Git for Windows). Caddy in mkcert ostaneta tuji binarni odvisnosti; izmerjeno 24. 10. 2026 na razvini napravi nista. **Del prvotnega predloga ni izpolnjen:** zaupanje CA-ju je na vsaki napravi ročni korak, samodejne poti brez njega v tej izdaji ni | R2b2 |
-| Cilj varnostnih kopij | lokalna mapa (R2a naredeno) + USB; oblak neobvezno | R5 |
+| Cilj varnostnih kopij | lokalna mapa (R2a, naredeno) + šifriran kontejner na tujem mediju (R5a, od v1.182.0); oblak R5b | R5a naredeno, R5b brez številke |
 | Licenciranje | brez v R1–R2b2; odločitev pred komercialno prodajo | R4 |
 | Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2b2 |
 | Paketni namestilnik | samostojen ZIP/EXE z Bun runtime in `.next` | R3 |
@@ -374,5 +419,16 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 - da bo SQLite sprejel več strežnikov hkrati;
 - da bo R1 vseboval samodejne kopije, HTTPS ali čarovnik;
 - da lokalna kopija pomeni varnostno kopijo: en disk, en računalnik, ena
-  požarna (R2a kopije hrani na istem disku kot baza; za drugi medij poskrbi
-  obrat, zunanji storjen sistem je R5).
+  požarna (R2a kopije hrani na istem disku kot baza; zato od v1.182.0 obstaja
+  R5a — šifriran kontejner na mediju, ki ga lastnik odnese sam. Obnova takšne
+  kopije na drugi napravi je izmerjena, samodejnega prevoza v oblak ni in
+  ostaja R5b brez številke);
+- da bo oddaljena kopija nastala sama: `bun run local` naredi dnevno kopijo na
+  istem disku, kopija izven diska je ročna odločitev z ukazom in z geslom, ker
+  samodejna pošiljka, je je nihče ne preverja, ni varnostna kopija;
+- da bi kontejner obnovili brez gesla: drvnika, izvoza ključa ali podpore za
+  pozabljeno geslo ni in ne sme biti, ker bi bil tak vrat vedno odprt tudi
+  napadalcu, ne samo lastniku;
+- da kopija sama po sebi varuje pred krajo: medij je šifriran, a geslo,
+  napisano na papirček in prilepljen na ključek, ni varnostni ukrep ampak nova
+  ranljivost.

@@ -1,10 +1,10 @@
-# Runbook — lokalni zagon RestaurantOS (v1.180.1)
+# Runbook — lokalni zagon RestaurantOS (v1.182.0)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
 (Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`. Zahteve in merila sprejema
-so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a, R2b1, R2b2 in R3 so izvedena; izhodni
-pogoj R2b2 na tablici še ni preizkušen).
+so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a, R2b1, R2b2, R3, R4a in R5a so izvedena;
+izhodni pogoj R2b2 na tablici še ni preizkušen).
 
 ## 1. Kaj potrebujete
 
@@ -102,6 +102,9 @@ win32, linux in darwin). V nastavljeni mapi so:
 - `backups/dnevno-*.db` — samodejne dnevne kopije (zadnjih 14);
 - `backups/pre-push-*.db` — kopije pred posegom v shemo (zadnjih 5);
 - `backups/pred-obnovo-*.db` — stanje, ki ga je obnova prepisala (zadnjih 14);
+- šifriranih kontejnerjev `dalec-*.rosbak` (R5a, §5) v tej mapi **ni**: ukaz jih
+  zapiše samo na zunanji medij, na sistemu disku pa ne ostane niti nešifriran
+  odsek;
 - `logs/errors-<UTC-dan>.log` — dnevnik napak lokalnega profila (R4a, v1.181.0).
   Vanj piše sama aplikacija, en zapis na dogodek; hrani se 7 dni, največ 3 datoteke
   na dan in 1 MiB na datoteko. Ni ga, če napake ni bilo;
@@ -146,10 +149,11 @@ podatkov in `git status` ne vidi baze.
 - **Preverjanje:** odprite `/api/health`. V lokalnem profilu mora vrniti
   `"status":"ok"`, `"mode":"local"`, `"databaseEngine":"sqlite"`, `"schema":"ok"`.
 
-## 5. Varnostne kopije in obnova (R2a, v1.169.0)
+## 5. Varnostne kopije in obnova (R2a v1.169.0, R5a v1.182.0)
 
 Baza teče v WAL načinu (`journal_mode=wal`, `synchronous=FULL`, busy timeout
-5000 ms). Kopije so tri vrste, vse v `backups/`:
+5000 ms). Kopije v `backups/` so tri vrste; četrta je šifriran kontejner zunaj
+diska in ga v teh mapah ni (§5, R5a):
 
 | Kopija | Kdaj nastane | Hrani se |
 |---|---|---|
@@ -227,6 +231,130 @@ ustavila s sporočilom, da aplikacija še teče, in ni prepisala ničesar. Pravi
 ustavljena aplikacija (`Ctrl+C`) rep počisti sama. Če ste jo ustavili na silo
 (Upravitelj opravil, izpad elektrike), enkrat zaženite `bun run local` in ga
 ustavite s `Ctrl+C`; nato obnovo ponovite.
+
+### Kopija, ki preživi izgubljen disk (R5a, v1.182.0)
+
+Vse tri kopije zgoraj ležijo v `backups/`, torej na **istem disku kot baza**. Pred
+okvaro diska ne zavarujejo ničesar: baza in njene kopije grejo z njim. `bun run
+local:offsite` naredi korak, ki to vrzel zapre — eno samo datoteko na zunanjem
+mediju (USB, zunanji disk, omrežna mapa), šifrirano tako, da je brez gesla ne more
+prebrati tisti, ki ključek najde.
+
+```bash
+bun run local:offsite --to D:\kopije --passphrase-file C:\Users\robert\ros-geslo.txt
+```
+
+Gesla ukaz ne vpraša v ukazni vrsti in nima privzetega. Dva vira sta:
+
+- `--passphrase-file <pot>` — datoteka z eno samo vrstico, ali
+- okolje `RESTAURANTOS_OFFSITE_PASSPHRASE`.
+
+Razlog ni okras: `Get-CimInstance Win32_Process` izpiše argumente vsakega tekočega
+procesa, zato bi bilo geslo, napisano v ukazu, vidno vsakomur na napravi. Datoteka
+z geslom naj bo berljiva samo lastniku — na macOS in Linux `chmod 600`, na Windows
+POSIX dovoljenja ne pomenijo ničesar, tam je dostop razviden iz NTFS ACL-jev
+(`icacls <pot>`, primer §3). Geslo hranite **ločeno od medija s kopijo**: ključek
+brez gesla je nerazumljiv, geslo brez ključka brezvreden.
+
+Kaj ukaz stori in v kakšnem vrstnem redu:
+
+1. iz baze iztisne odsek z `VACUUM INTO` — ta prebere tudi `-wal` rep, kamor navaden
+   prekop datoteke ne seže (izmerjeno v §5);
+2. odsek preveri z `PRAGMA integrity_check`;
+3. odsek zašifrira (`aes-256-gcm`; ključ iz gesla s `scrypt`, N=32768, r=8, p=1) in
+   zapiše kontejner `dalec-<UTC-žig>.rosbak`;
+4. **kontejner prebere nazaj z medija, ga dešifrira in primerja SHA-256 z odsekom**;
+   kar ni bilo zapisano tako, da se vrne, se ne more pohvaliti z ✔;
+5. nešifriran odsek pobriše — na mediju ostane samo šifriran kontejner, na disku
+   obrata pa ničesar.
+
+Na mediju se zadrži največ 8 kontejnerjev; starejše ukaz pobriše sam in samo
+svoje — datotek, ki jih ni naredil ta ukaz, se ne dotakne. Mejo lahko dvignete z
+`--max <število>`, geslo pa mora imeti vsaj 12 znakov.
+
+Izpis, izmerjen 26. 10. 2026 na živi namestitvi (3,2 s od ukaza do zapisanega
+kontejnerja, vključno z zagonom izvajalca):
+
+```text
+✔ Šifrirana kopija dalec-2026-10-26T20-20-16-933Z.rosbak je naredena, preverjena in brana nazaj (integrity_check ok, 899 strani, 3682591 B).
+  Vir: C:\Users\admin\AppData\Local\RestaurantOS\data\restaurantos.db
+  Medij: D:\v182-doc
+  Kontejnerjev na mediju je zadržanih največ 8, pobrisanih 0.
+
+Kopijo odnesi z naprave. Obnova na drugi napravi: bun run local:restore --bundle <pot.rosbak>
+```
+
+#### Obnova na drugi napravi
+
+Na novem računalniku obrat namestite kot v §2 (`bun install`), nato:
+
+```bash
+bun run local:restore --bundle D:\kopije\dalec-2026-10-26T20-20-16-933Z.rosbak --passphrase-file C:\Users\robert\ros-geslo.txt
+```
+
+Kontejner se dešifrira v pomnilniku in zapiše začasno datoteko `*.odkodirana.tmp`;
+naprej velja enak vrstni red kot pri obnovi iz `backups/` (§5): najprej pregled
+kopije, nato shranjevanje trenutnega stanja kot `pred-obnovo-*.db` (če baza že
+obstaja — tedaj je potreben `--force`), nato prepis in takojšen vklop WAL-replice.
+Začasna datoteka je pobrisana tudi, če korak vmes pade. Izmerjeno 26. 10. 2026 v
+prazno ciljno mapo:
+
+```text
+✔ Baza je obnovljena iz šifriranega kontejnerja dalec-2026-10-26T20-20-16-933Z.rosbak (integrity_check ok, 899 strani).
+  Baza: C:\Users\admin\AppData\Local\Temp\v182-doc-obnova\data\restaurantos.db (replica: wal)
+
+Geslo hrani ločeno od ključka: brez njega je kontejner nerazumljiv.
+Zaženite `bun run local` in preverite /api/health, da je schema ok.
+```
+
+#### Zavrnitve, ki jih morate videti
+
+Kopija na istem volunu kot baza je brez vrednosti, zato jo ukaz zavrne, dokler je
+ne potrdite izrecno z `--allow-same-volume`; ciljne mape pri zavrnitvi niti ne
+ustvari. Izmerjeno 26. 10. 2026:
+
+```text
+✖ [local] Ciljna mapa C:\Users\admin\AppData\Local\Temp\v182-doc-isti-disk je na volumnu 3059246764 — to je isti disk kot baza. Kopija na istem disku ne zavaruje pred okvaro diska; če jo vseeno želiš, potrdi z --allow-same-volume. Podatki niso bili spremenjeni.
+```
+
+Enako velja za napačno geslo — izstopna koda 1, baza nedotaknjena, dešifrirane
+datoteke ni:
+
+```text
+✖ [local] Geslo ne ustreza ali je kontejner poškodovan: žig (GCM tag) se ne ujema. Baza ni bila spremenjena in dešifrirane datoteke ni bilo zapisane.
+```
+
+#### Vaja R5a (izvedena 26. 10. 2026)
+
+Vaja je potekla na **pravi** lokalni bazi in na dveh volunih te naprave, ne na
+testni napravi:
+
+1. `bun run local:offsite --to D:\v182-doc --passphrase-file <datoteka>` —
+   kontejner `3 682 591 B`, `899 strani`, `integrity_check ok`;
+2. `fs.statSync().dev` je bil na viru `3059246764` (C:) in na cilju `947176493`
+   (D:) — različna medija, zato izpis ne more trditi `offsite` na podlagi črke
+   pogona;
+3. glava kontejnerja, brana naravnost z datoteke in brez gesla: `ros-offsite-1`,
+   `aes-256-gcm`, `scrypt N=32768 r=8 p=1`, `pageCount 899`, `cipherBytes
+   3 682 304`; teleso se je po dolžini ujemalo z glavo;
+4. obnova v prazno mapo: obnovljena baza ima **135 tabel**, `integrity_check ok`,
+   `journal_mode wal` in enako strukturo kot živa baza, `Location` z imenom
+   `Moja restavracija`;
+5. napačno geslo → izstop 1, zgornje sporočilo, ciljna mapa ni nastala;
+6. cilj na C: → izstop 1, zgornje sporočilo o istem disku, mapa ni nastala.
+
+**Kopija ne nadomesti rednega dela:** kontejner naredite vsaj enkrat na dan in ga
+odnesite iz obrata (ali pišite na omrežno mapo, ki je ne gosti isti disk). Če ste
+edini hranilec ključka in ga nosite v žepu, ga lahko izgubite skupaj z geslom; če
+ga hrani obrat, izguba diska pomeni izgubo podatkov.
+
+**Kaj ta kopija ne more:** izgubljeno geslo ni obnovljivo. Ključ se izvede iz
+gesla in nikjer ni shranjen, zato kontejnerja brez njega ne odklene noben ukaz in
+ga ne more odkleniti niti podpora. Izpeljava ključa je izmerjena 26. 10. 2026 na
+razvojni napravi: pet zaporednih izpeljav je stalo 89–139 ms (povprečje 102 ms),
+kar je približno 10 preizkusov na sekundo na eni sledi — moč kopije je zato res moč
+gesla, ne moč šifre. Krajša gesla so računljivo ranljiva, zato vzemite naključen
+niz treh besed ali več in ga vpišite na varno mesto, ne v mapo s kopijo.
 
 ## 6. HTTPS v omrežju in zagon ob prijavi (R2b2, v1.175.0)
 
@@ -386,6 +514,8 @@ bun run local --build
 | Po prijavi aplikacija ne teče | Zagon ob prijavi še ni registriran (§6.2), ali pa ga je `schtasks /Create` zavrnil zaradi pravic — koren Načrtovalnika opravil sme pisati samo povišana lupina. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
 | Računalnik ima nov IP in HTTPS ne dela več | List je bil izdan za stare naslove. Naslednji `bun run local --https` ga izda znova; če naprava še vedno obupa, na njej pokličite `https://<nov IP>:3443`, ne `restaurantos.local`. |
 | Napaka se je zgodila, konzole pa ni bilo odprte | Od v1.181.0 aplikacija piše v `logs/errors-<UTC-dan>.log` (§3). Pred to izdajo je šla napaka samo v izpis, ta pa od v1.175.0 ob prijavi nima bralca. |
+| `local:offsite` zavrne z »to je isti disk kot baza« | Ciljna mapa leži na istem volunu, zato kopija pred okvaro diska ne zavaruje ničesar. Izberite mapo na USB-ju ali zunanjem disku; `--allow-same-volume` je izrecna privolitev za preizkus potu in jo izpis tudi razkrije (§5). |
+| Obnova iz kontejnerja javi »žig (GCM tag) se ne ujema« | Geslo ne ustreza ali je `.rosbak` poškodovan (npr. nedokončan prekop na ključek). Poskusite z drugim virom gesla in preverite velikost datoteke; baza na cilju ni bila spremenjena in dešifrirane datoteke ni (§5). |
 | Podpora prosi za stanje obrata | Zaženite `bun run local:support` (§8.1) in pošljite nastalo mapo. Baze, `config.json`, `PRVIC-ZAGON.txt` in `tls/` ne kopirajte in ne pošiljajte. |
 
 ### 8.1 Podporni paket (`bun run local:support`, R4a, v1.181.0)
@@ -431,7 +561,7 @@ Za napredno uporabo: `--data-dir <pot>` opiše drugo podatkovno mapo, `--json` p
 izpiše strojno berljiv povzetek. Preden mapo pošljete, zadnji pregled naredi
 človek — `dnevnik.log` je edina datoteka, ki jo je napisal vaš obrat.
 
-## 9. Meje te izdaje (v1.181.0 = R1 + R2a + R2b1 + R2b2 + R3 + R4a)
+## 9. Meje te izdaje (v1.182.0 = R1 + R2a + R2b1 + R2b2 + R3 + R4a + R5a)
 
 - Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
   `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
@@ -451,6 +581,19 @@ izpiše strojno berljiv povzetek. Preden mapo pošljete, zadnji pregled naredi
 - Izvedeno (R4a): napake lokalnega profila pišejo v `logs/errors-*.log` in
   `bun run local:support` sestavi podporni paket brez skrivnosti (§8.1). Paket je
   bil izmerjen na živi namestitvi; maskiranje je dokazano s pozitivno kontrolo.
+- Izvedeno (R5a): `bun run local:offsite` naredi šifriran kontejner `.rosbak` na
+  zunanji napravi in `local:restore --bundle` iz njega obnovi bazo na drugi
+  napravi (§5). Vaja je bila izvedena na živi bazi (899 strani, 3 682 591 B,
+  C:→D:); zavrnitve — isti disk, napačno geslo, prekratko geslo — so izmerjene,
+  vsaka od njih pa ima tudi test.
+- **Ne izvedeno (R5b):** samodejna pošiljka kopije v oblak, licenčni profil in
+  več lokacij. Številke nima, ker produkcijska baza na tej napravi ni bila
+  dosegljiva in samodejnega prenosa podatkov nihče ni pregledal; izrecno
+  obvestilo lastnika je predpogoj, ne stranski učinek zagona
+  (`docs/PRD-LOKALNA-BAZA.md` §9 in §12).
+- Aplikacija kopije izven diska **ne dela sama**: `bun run local` naredi samo
+  dnevno kopijo v `backups/` (§5). Samodejna pošiljka, ki je nihče ne preverja,
+  ni varnostna kopija ampak nov izhod podatkov.
 - **Ne izvedeno (R3, zavešno):** neobvezni demo podatki v čarovniku (odločitev
   lastnika, kaj sme priti v proizvodno bazo), lokalni migracijski pogon
   (`prisma migrate deploy` in rollback) ter paketni namestilnik ZIP/EXE. Vse tri

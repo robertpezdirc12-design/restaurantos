@@ -1,4 +1,73 @@
 ---
+Task ID: v1.182.0-kopija-ki-prezivi-izgubljen-disk
+Agent: glavni agent (Qoder)
+Task: PRD R5 („Kopija izven naprave"), razdeljen na R5a in R5b. Razdelitev ni birokratska: **R5a je kopija, ki jo naredi in povrati človek z ukazne vrste**, R5b pa je kopija, ki **odide sama**. Slednjega ne izdam, ker manjka odločitev, ne koda: da kopija odide brez človeka, mora geslo živeti nekje, kjer ga lahko prebere neobslužena naloga — torej v `config.json`, v istem profilu, za katerega je v1.181.0 z dokazi pokazal, da **sme ostati doma** in da ga podporni paket zavrne. To je vprašanje upravljanja ključev in ne vprašanje uravnika, zato se mora o njem odločiti lastnik; R5b ima zato v PRD svojo vrstico in svojo prihodnjo številko izdaje. Kar pa danes stane denar, je okno izgube podatkov: obrat, ki vse piše samo na disk v napravi, ob izpadlem disku **nima česa povrniti**, čeprav ima vse kontejnerje. Zato je R5a izdan prvi in z enakim merilom kot prejšnje izdaje: ne „ukaz obstaja", ampak **kopija, ki je dokazano obnovljiva na prazni napravi, dokazano šifrirana, ki dokazano ne nastane na istem disku in je je ne more odkleniti kdo, ki pozna pot do datoteke, a ne pozna gesla**.
+
+Work Log:
+- KAJ (**14 spremenjenih** datotek (trinajst plus ta dnevnik) **+ 3 nove**, **+323/−31** po `git diff --numstat` brez novih datotek in brez tega dnevnika; nič DDL, nič migracij, nič novih i18n ključev, nič novih HTTP rut):
+  1. `src/lib/offsite-backup.ts` (NOVO, **544 vrstic**) — format `ros-offsite-1`: prva vrstica je JSON glava, ostalo je šifrirano telo. Konstante 54–68 (`aes-256-gcm`, scrypt `N=32768, r=8, p=1`, sol 16 / IV 12 / žig 16 B, `LOCAL_OFFSITE_MIN_PASSPHRASE=12`, `LOCAL_MAX_OFFSITE_BUNDLES=8`, predpona `dalec-`, pripona `.rosbak`). Ograje pred tujo glavo: `OFFSITE_KDF_MIN_N=16384`, `OFFSITE_KDF_MAX_N=131072`, `OFFSITE_KDF_MEM_CEILING=268435456`, `OFFSITE_HEADER_MAX_BYTES=8192`; `maxmemFor` (229) in `validateHeaderKdf` (237) **omejita šele pred derivacijo**, sicer tuji kontejner nareka gigabajte pomnilnika. `deviceOf` (153) + `sameVolume` (162) + `nearestDevice` (174) prek `fs.statSync().dev`; `zahtevajGeslo` (213) z dolžinsko varovalko v vrstici 216; `deriveKey` (259); `preveriGlavo` (278); `inspectBundle` (313); `pruneOffsiteBundles` (333); `createOffsiteBundle` (348, varovalka istega diska v vrstici 366, `snapshotInto` v vrstici 385); `izbrišiZačasne` (454); `jeGcmNapaka` (472) — samo žig GCM se prevaja v „napačno geslo"; `restoreFromBundle` (519); `offsiteWarning` (540).
+  2. `scripts/local-offsite.ts` (NOVO, **143 vrstic**) — `bun run local:offsite --to <mapa> [--passphrase-env | --passphrase-file <pot>] [--max <n>] [--allow-same-volume] [--json]`; neznana možnost ⇒ izhod **2**, napaka ⇒ izhod **1** in `✖ …`, uspeh ⇒ `✔ …` in izhod 0.
+  3. `scripts/local-restore.ts` (**+75/−8**, skupaj 198 vrstic) — nova pot `--bundle <pot.rosbak>` in `--passphrase-file`; uspešni izpis loči šifrirano obnovo od navadne kopije.
+  4. `src/lib/local-durability.ts` (**+12/−2**) — `restoreDatabase` je usklajen s kontejnerjem po vrsti: preveri kopijo → zavrne obstoječo bazo brez `--force` → zavrne umazan `-wal` → `snapshotInto` pred obnovo → staging kopija + preverba + preimenovanje → `removeSidecars` → `applyDurability`.
+  5. `package.json` (**+1/−0**) — ukaz `local:offsite`.
+  6. `src/lib/version.ts:17` = `'1.182.0'` in **šest testnih pinov** (vsak +1/−1): billing:380, issue10-labor-coverage:1325, issue11-crm-core:738, issue4-einvoices:1023, issue70-state-consistency:481, issue9-channel-sync:497.
+  7. `tests/v182-offsite-backup.test.ts` (NOVO, **852 vrstic, 39 testov / 179 `expect()`-ov**, sedem nizov: §A 4 glava in format, §B 5 prepoznavanje volumna, §C 6 geslo sme živeti samo v pomnilniku, §D 7 kopija je res kopija, §E 8 obnova, §F 8 živi CLI, §G 1 pini dokumentov).
+  8. `tests/v169-local-durability.test.ts` (**+23/−0**) — štirje PRD pini za razdelitev R5 plus **pin runbooka R5a**, da dokumentacija ne more tiho ostati brez vaje. Zdaj **40 pass / 0 fail / 156 expectov**.
+  9. `docs/LOKALNI-ZAGON.md` (**+149/−6**) — nova podpoglavja v §5: „Kopija, ki preživi izgubljen disk", „Obnova na drugi napravi", „Zavrnitve, ki jih morate videti", „Vaja R5a (izvedena 26. 10. 2026)"; nov odmulek v §3 (šifriranih kontejnerjev `dalec-*.rosbak` v podatkovni mapi ni); dve novi vrstici v §8; §9 je preimenovan v `v1.182.0 = R1 + R2a + R2b1 + R2b2 + R3 + R4a + R5a` s tremi novimi točkami. Naslov in uvod dokumenta sta pomaknjena na v1.182.0.
+  10. `docs/PRD-LOKALNA-BAZA.md` (**+64/−8**) — R5 razdeljen na R5a (izdano) in R5b (brez številke), §9/§10/§11/§12/§14 usklajeni.
+
+- RDEČ → ZELENO (po redu, kot je bilo izmerjeno): prvi zagon nove testne datoteke je dal **31 pass / 8 fail / 152 expectov v 54,06 s** — in teh osem padcev je bilo točno osem varovalk, ki takrat še niso obstajale (isti disk, dolžina gesla, KDF omejitve pred derivacijo, prevod GCM napake, čiščenje jasne kopije, zadrževanje samo lastnih predpon, izhodne kode CLI, pini dokumentov). Po izvajalcu: **39 pass / 0 fail / 179 expectov v 50,20 s**.
+
+- MUTACIJSKI DOKAZ (vsaka mutacija je bila vsiljena v `src/lib/offsite-backup.ts`, suite je tekel enkrat, nato je bila datoteka obnovljena iz snapshota s potrditvijo „enako izvirniku: true"; izvirnik 22 790 B):
+
+  | # | Mutacija (vrstica) | Padlo | Rezultat |
+  |---|---|---|---|
+  | M1 | `jeGcmNapaka` ⇒ `return true` (472) | **E8** | 38 pass / 1 fail / 172 expectov (55,85 s) |
+  | M2 | varovalka istega diska ⇒ `if (false) {` (366) | **B4 + F4** | 37 pass / 2 fail / 165 (57,19 s) |
+  | M3 | dolžinska varovalka gesla ⇒ `if (false && …)` (216) | **C1** | 38 pass / 1 fail / 177 (52,22 s) |
+  | M4 | `snapshotInto` ⇒ `writeFileSync(jasna, readFileSync(dbPath))` (385) | **D2** (4807,60 ms) | 38 pass / 1 fail / 179 (49,23 s) |
+
+  **4/4 UJETO.** M4 je najpomembnejša: navaden prekop datoteke je od zunaj neločljiv od `VACUUM INTO`, razen če kopija nastane ob **namerno umazanem repu** — pomožna funkcija `seedDbWithDirtyWal` (146) nastavi `wal_autocheckpoint=0`, D2 pa zahteva, da tretja vrstica živi samo v `-wal` in mora biti v kontejnerju. Če bi kdo namesto `VACUUM INTO` uporabil prekop, pade točno ta test in ne katerikoli drug.
+
+- ŽIVA MERITEV (26. 10. 2026, obrat z realno bazo, ciljni medij = **drugi volumen `D:`**, `st_dev` 947176493 proti `C:` 3059246764):
+  - `bun run local:offsite --to D:\v182-doc --passphrase-file …` ⇒ izhod **0** v **3224 ms**: „✔ Šifrirana kopija dalec-2026-10-26T20-20-16-933Z.rosbak je naredena, preverjena in brana nazaj (integrity_check ok, 899 strani, 3682591 B)." in „Kontejnerjev na mediju je zadržanih največ 8, pobrisanih 0."
+  - Glava, prebrana neposredno z datoteke: format `ros-offsite-1`, `aes-256-gcm`, scrypt `N=32768 r=8 p=1`, `pageCount` 899, `cipherBytes` 3 682 304, `appVersion` 1.182.0; **dolžina telesa je enaka `cipherBytes`**, torej telo res vsebuje samo šifriran snapshot — glava vanj ne teče in se k njemu ne more tiho nič dodati.
+  - `bun run local:restore --bundle … --to <prazna mapa>` ⇒ izhod **0** v **5539 ms**: „✔ Baza je obnovljena iz šifriranega kontejnerja … (integrity_check ok, 899 strani)" in „(replica: wal)". Obnovljena in živa baza sta **obe 135 tabel**, `integrity_check` ok, `journal_mode = wal`, `Location` vrstica 1 = „Moja restavracija".
+  - Napačno geslo (dejansko prebrana datoteka z napačno vsebino) ⇒ izhod **1** s sporočilom o žigu GCM in **imenik obnovi sploh ni nastal**; isti disk kot baza ⇒ izhod **1**, imenik prav tako ni nastal.
+  - **Strošek izpeljave ključa je bil danes izmerjen drugače, kot je pisalo v dokumentih:** pet zaporednih klicev `deriveKey` (N=32768) je stalo **138,7 / 98,3 / 90,9 / 88,7 / 94,3 ms, povprečje 102,2 ms**, torej **~9,8 preizkusov na sekundo na eni sledi**. Prejšnji popis ~50 ms / ~20 preizkusov je bil napačen na štirih mestih v treh datotekah in je povsod popravljen. To ni kozmetika: napačna številka bi lastniku pustila misliti, da je dvajsetznakovno geslo varnejše, kot je.
+
+- LASTNE NAPAKE (popravljene in zapisane, da se ne ponovijo):
+  1. Prvi osnutek R5a bloka je bil napisan **brez šumnikov** („sifrirano", „vprasa", „razlicna", „stevalo", „zavesca"), vseboval je **poljski `ł`** v „ujemał o", češko-poljski „ale" in napačno trditev o času napada. Blok je bil zato v celoti prepisan, nato pa preverjen z iskanjem besed brez šumnikov.
+  2. V pomoči CLI je ostal poškodovan niz „NE v geslo víla". Pred izpustom sem z iskanjem po `tests/` preveril, da ga noben test ne pinuje, šele nato sem ga popravil; F1 je po popravku še vedno zelen.
+  3. „ist disk" ⇒ „isti disk".
+  4. Trditev o hitrosti izpeljave je bila v dokumentih zapisana iz spomina in je bila **napačna**; popravila jo je šele meritev na tej napravi. Lekcija je ista kot prejšnje izdaje: številka gre v dokument samo, če je bila izmerjena v tem posegu.
+
+- ZAVESTNO NE STORENO / NEZAJETO:
+  - **R5b ni izdan**: aplikacija kopije **ne dela sama**. Edini klicatelj celotnega modula je CLI (`scripts/local-offsite.ts`); tudi `offsiteWarning` ima samo ta klic, in sicer v vrstici 125. Ni uravnika, ni omrežnega izhoda, nikjer shranjenega gesla.
+  - **Vaja je bila narejena na drugem volumnu in ne na fizičnem USB ključku.** Varovalka primerja `st_dev`, torej **volumen in ne fizičnega diska**: drugi razdelek istega fizičnega diska ima drug `st_dev` in ga varovalka ne bi ustavila. Posledica je v runbooku zapisana kot zahteva po izmenljivem mediju in ne kot dokaz, da varovalka prepozna izpad diska.
+  - **Zavračanje obnove nad umazanim `-wal` je zajeto v testih in ne v živem izpisu vaje**: čisto zaprt `db.close()` checkpointira in pobriše `-wal`, zato ga na tej napravi v živo ni bilo mogoče pokazati.
+  - **Geslo, ki gre narobe, ni obnovljivo** — po zasnovi, brez backdoorja; to je v dokumentu napisano in ne zamolčano.
+
+- AKCIJA ZA LASTNIKA:
+  1. **Naredi vajo na resničnem ključku** (`bun run local:offsite --to <kljucek>` in nato obnova na drugi napravi), preden na kopijo računaš. To je edini korak, ki ga z moje strani ni mogoče dokazati.
+  2. **Geslo shrani ločeno od kontejnerja** in ne v isto mapo. Najmanj 12 znakov je najmanjša dovoljena dolžina in ne priporočilo: izmerjeno je ~10 preizkusov na sekundo, zato vzemite naključni niz treh ali več besed. Izgubljeno geslo pomeni izgubljeno kopijo.
+  3. Po potegu kode **`bun run local --build`** (pogoj R4a) in naredi kopijo pred naslednjim večjim posegom v shemo.
+  4. **Odloči o R5b**: kje sme živeti geslo, če naj kopija odide sama. Brez te odločitve te izdaje ne naredim.
+  5. Izdaja je **samo na veji** `feat/wcag-gostove-strani-v1.177.0`; brez združitve v `main` in brez PR — po tvojih stalnih navodilih.
+  6. **Neon produkcija še vedno nima baze** (kvota): prijavni zaslon se izpiše, `/api/auth/locations` pa vrne 503. To ni posledica te izdaje in je odprto iz prejšnjih.
+  7. Odprto iz v1.175.0 in v1.181.0: izhodni preizkus PWA in samodejnega zagona na tablici ter prvi poizkus `bun run local:support` z resničnim paketom za podporo.
+
+- VRATA (zaporedno, lastna baza `db/ci1.182.0.db`, 26. 10. 2026; pred G7 je bilo preverjeno, da noben proces ne drži Prisma DLL in da vrati 3000/3443 ne poslušata):
+  - G1 `prisma db push --schema prisma/schema.sqlite.prisma` ⇒ **0** (43 927 ms; klient generiran v 2,37 s)
+  - G2 `tsc --noEmit` ⇒ **0** (63 322 ms)
+  - G3 `eslint .` ⇒ **0** (122 535 ms)
+  - G4 `git update-index --really-refresh` ⇒ **1 (pričakovano, drevo je umazano)**; `git diff --check` ⇒ **0** (brez napak v presledkih); status **16 poti** (13 spremenjenih + 3 nove, s tem dnevnikom 17)
+  - G5 `check-schema-drift.cjs` ⇒ **0** (`schema.prisma` 135 modelov, `schema.sqlite.prisma` 135, brez drifta; 185 ms) — isto število kot pri živem preštevanju tabel obnovljene baze
+  - G6 `check-secrets.sh` ⇒ **0** (brez najdb; 2 749 ms)
+  - G7 `typecheck:cloud` ⇒ **0** (60 448 ms; najprej produkcijski, nato spet sqlite klient)
+  - G8 `bun test --timeout 90000` ⇒ **0** — **3664 pass / 0 fail / 116 234 `expect()`-ov po 179 datotekah v 603,09 s** (merjeno 604 043 ms)
+
+---
 Task ID: v1.181.0-podpora-ki-ne-izroci-skrivnosti
 Agent: glavni agent (Qoder)
 Task: PRD R4 („Posodobitve in podpora") — začetek z delom, kjer je cena napake najvišja, ne z delom, ki je najglasnejši. Utemeljitev razdelitve R4: preostali trije deli ceste (preverjanje novih različic, podpisani paket, rollback) v najslabšem primeru **ne naredijo nič**; paket, ki ga lastnik pošlje podpori, pa v najslabšem primeru **izroči APP_SECRET, PIN lastnika in zasebni ključ fronte**. Merilo izdaje torej ni „podporni ukazi obstajajo" ampak **paket, ki (a) ne more vsebovati znane skrivnosti, ker ga zadnji pregled zavrne in mapo izbriše, (b) ne prebere datotek, ki smejo ostati doma, kar je izmerjeno po INJICIRANEM bralecu in ne po izpisu, in (c) dejansko pojasni napako — kar zahteva, da napaka kam ostane, odkar aplikacijo zaganja opravilo ob prijavi in `console.error` nima bralca.**
