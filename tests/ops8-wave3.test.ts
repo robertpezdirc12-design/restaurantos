@@ -206,7 +206,7 @@ describe('OPS-8 val 3 — shift-close daily summary e-mail text', () => {
 
   it('subject carries the shift date marker', () => {
     const { subject } = shiftSummaryEmailText(data)
-    expect(subject).toContain('RestavrantOS — dnevni povzetek')
+    expect(subject).toContain('RestaurantOS — dnevni povzetek')
     expect(subject).toContain('izmena')
   })
 

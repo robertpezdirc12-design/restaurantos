@@ -176,11 +176,11 @@ describe('ops11/3: digest overdue-AP section (Zapadle obveznosti)', () => {
     expect(body).toContain('2. AP-202506-000002 · Pekarna Kranj — 2 dneva zamude · 42.50 EUR')
     expect(body).toContain('3. AP-202506-000003 · Meta d.o.o. — 5 dni zamude · 1234.56 EUR')
     // footer still last
-    expect(body.trimEnd().endsWith('— Samodejno sporočilo RestavrantOS')).toBe(true)
+    expect(body.trimEnd().endsWith('— Samodejno sporočilo RestaurantOS')).toBe(true)
   })
   test('dailyDigestEmailText: "dan" subject + Dan window label, same sections', () => {
     const d = dailyDigestEmailText(baseDigest())
-    expect(d.subject).toContain('RestavrantOS — dnevni povzetek (dan')
+    expect(d.subject).toContain('RestaurantOS — dnevni povzetek (dan')
     expect(d.body).toContain('Dan: 14. 06. 2025, 08:00')
     expect(d.body).not.toContain('Izmena:')
     const withAp = dailyDigestEmailText({

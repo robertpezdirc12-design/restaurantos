@@ -151,7 +151,7 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
       ['Aktiviraj še eno napravo', 'login.deviceAnother'],
       ['Prijava ni uspela.', 'login.failed'],
       ['Povezava s strežnikom ni uspela.', 'login.connection'],
-      ['RestavrantOS · FURS simulacija · EUR', 'login.footer'],
+      ['RestaurantOS · EUR', 'login.footer'],
     ],
     '../src/app/dashboard/page.tsx': [
       ['Vse lokacije', 'header.allLocations'],

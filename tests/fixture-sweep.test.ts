@@ -94,7 +94,7 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     if (before === 0) {
       console.log('[sweep58] CI sveža baza brez realnih lokacij — invarianta trivialno resnična, polna preverba preskočena')
     } else {
-      expect(before).toBeGreaterThan(0) // dev seed: "RestavrantOS Ljubljana"
+      expect(before).toBeGreaterThan(0) // dev seed: "RestaurantOS Ljubljana"
     }
     const res = await sweepTestFixtures(db, TEST_PREFIXES)
     // v celotnem suitskem teku sme sweep pobrati ostanke crashanih tekov drugih
