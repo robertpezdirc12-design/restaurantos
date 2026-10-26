@@ -9,8 +9,13 @@
  * Meritve, ki so rodile te teste (Prisma 6.19.2 + bun 1.4.3, Windows):
  *  - sveža baza, odprta samo čez Prizmin pogon: `journal_mode = delete`, torej
  *    WAL se SAM ne vklopi;
- *  - `synchronous = 2` (FULL) in `busy_timeout = 5000` sta privzeta vrednost
- *    pogona, ne naša — zato ju test pinline, da ju nadgradnja tiho ne spremeni;
+ *  - `synchronous = 2` (FULL) je privzeta vrednost pogona, `busy_timeout = 5000`
+ *    pa NI (popravek 2026-10-26, izmerjeno v tests/v181-support-bundle.test.ts):
+ *    oboje sta pragama VEZ NA POVEZAVO in ju na sveži povezavi najdeva vrednosti
+ *    2 oziroma 0. Ta datoteka ju je brala šele takoj po tem, ko ju je ISTA
+ *    povezava nastavila (`openDurabilityDatabase` → `applyPragmas`), zato je
+ *    5000 videla kot privzeto. Spodnji test dokazuje, da NASTAVITEV UČINKUJE,
+ *    ne to, katera vrednost je privzeta.
  *  - URL parametri (`?busy_timeout=`) Prizmin SQLite pogon PREZRE: vedno vrne
  *    5000, torej pragmov ne nastavljamo čez `DATABASE_URL`;
  *  - `copyFileSync` nad bazo z neprečiščenim WAL vrne 2 od 3 vrstic: zadnji
@@ -232,7 +237,7 @@ describe('v1.169.0 — lokalna baza teče v WAL načinu', () => {
     expect(readDurabilityState(reopened).journalMode).toBe('wal')
   })
 
-  it('busy_timeout in synchronous sta izmerjena vrednost pogona, ne izmišljena', async () => {
+  it('aplikacija ob odprtju sama nastavi busy_timeout in synchronous (pogon ju ne da)', async () => {
     expect(LOCAL_BUSY_TIMEOUT_MS).toBe(5000)
     const dbPath = join(tempDir(), 'restaurantos.db')
     const db = openDurabilityDatabase(dbPath)
@@ -771,16 +776,23 @@ describe('v1.169.0 — statične invariante', () => {
     expect(prd).toMatch(/R2b2 — v1\.175\.0\*\* \| Varen lokalni obrat brez žice/)
     expect(prd).not.toMatch(/R2b2 — načrtovano/)
     expect(prd).toMatch(/R3 — v1\.180\.0/)
-    expect(prd).toMatch(/R4 — v1\.181\.0/)
+    // v1.181.0 je izdala samo R4a. Razcep je zapisan v vrstici, ne v komentarju,
+    // ker R4b nima številke: rollback je odvisen od lokalnega migracijskega pogona,
+    // ki ga še ni. Stara enotna vrstica bi obljubljala rollback, ki ga ni.
+    expect(prd).toMatch(/R4a — v1\.181\.0\*\* \| Podpora, ki ne izroči skrivnosti/)
+    expect(prd).toMatch(/R4b — številka ni določena/)
     expect(prd).not.toMatch(/R2b2 — v1\.17[0-4]\.0/)
     expect(prd).not.toMatch(/R3 — v1\.17\d\.0/)
-    expect(prd).not.toMatch(/R4 — v1\.1(?:7\d|80)\.0/)
+    expect(prd).not.toMatch(/R4[ab]? — v1\.1(?:7\d|80)\.0/)
     // Premik repa mora biti v PRD-ju tudi utemeljen, ne samo narejen: brez te
     // vrstice bi bil naslednji bralec prepričan, da je številka izmišljena.
     expect(prd).toMatch(/v1\.176\.0 je pojedla izdaja za jezik dokumenta/)
     expect(prd).toMatch(/v1\.177\.0 je pojedla izdaja za celovit WCAG pregled/)
     expect(prd).toMatch(/v1\.178\.0 je pojedla izdaja za zanko ponovnega nalaganja/)
     expect(prd).toMatch(/v1\.179\.0 je pojedla izdaja za kontrast, izmerjen v obeh paletah/)
+    // Razlog za razcep R4 mora stati v PRD-ju, ne samo v vrsti ceste.
+    expect(prd).toMatch(/v1\.181\.0 je izdala R4, ne celotnega R4/)
+    expect(prd).toMatch(/R4b \(številke nima\)/)
   })
 
   it('runbook lokalnega zagona opisuje HTTPS fronto in zagon ob prijavi (R2b2)', async () => {

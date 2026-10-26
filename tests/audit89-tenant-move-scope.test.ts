@@ -286,11 +286,30 @@ describe('C — /api/auth/locations: javni seznam z omejitvijo in brez predpomni
   })
 
   it('C4 javna pot ne sme vrniti skrivnosti ali številk zaposlenih (pin, davčna, FURS) v nobeni vrsti', async () => {
+    // Merjeno 2026-10-26: stari sken je bil `JSON.stringify(body).toLowerCase()`
+    // proti osmim nizom. Dve posledici. (1) Lažen padec — id drugega suite-a
+    // (`pih-loc2-mvpinxv9`, pripona je base36 uradni znak) je vseboval `pin` in
+    // je test rušil naključno, odvisno samo od ure zidanja. (2) Trije mrtvi
+    // nizovi — `fursCertPassword`, `taxId`, `businessId` so velike začetnice,
+    // osnova pa je lowercasirana, zato jih primerjava nikoli ne more najti.
+    // Zdaj se skenira OBLIKA (ključi vsakega predmeta) in prosto besedilo
+    // (`name`), neprozorni id-ji pa so iz ven, ker nosilci skrivnosti niso.
+    const nizovi = ['furscertpassword', 'taxid', 'businessid', 'pin', 'address', 'phone', 'email', 'employee']
+    const sken = (seznam: Record<string, unknown>[]) =>
+      seznam.map((l) => [...Object.keys(l), String(l.name ?? '')].join(' ')).join('\n').toLowerCase()
+
     const res = await locationsGET(getReq(ip('4')))
-    const raw = JSON.stringify(await (res as unknown as Response).json())
-    for (const leak of ['fursCertPassword', 'taxId', 'businessId', 'pin', 'address', 'phone', 'email', 'employee']) {
-      expect(raw.toLowerCase()).not.toContain(leak)
-    }
+    const body = (await res.json()) as { locations?: Record<string, unknown>[] }
+    const seznam = body.locations ?? []
+    expect(seznam.length).toBeGreaterThan(0)
+    for (const l of seznam) expect(Object.keys(l).sort()).toEqual(['id', 'name'])
+    for (const niz of nizovi) expect(sken(seznam)).not.toContain(niz)
+
+    // Pozitivna kontrola: sken morata zadeti prava uhajanja, naključen id pa ne
+    // sme več odločati o rezultatu.
+    expect(sken([{ id: 'x', name: 'gastro', pin: '0000' }])).toContain('pin')
+    expect(sken([{ id: 'x', name: 'gastro', taxId: '12345678' }])).toContain('taxid')
+    expect(sken([{ id: 'mvpinxv9', name: 'gastro' }])).not.toContain('pin')
   })
 
   it('C5 31. klic z istega IP v minuti → 429 z Retry-After, drugi IP pa ima mir (test zadnji)', async () => {
