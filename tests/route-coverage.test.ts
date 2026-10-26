@@ -54,6 +54,11 @@ const GUARDS = [
 const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   { methods: ['GET'], path: '/api/health', why: 'liveness probe — brez podatkov' },
   { methods: ['GET'], path: '/api/setup/status', why: 'status namestitve (bootstrap) — brez skrivnosti' },
+  // v1.180.0 R3: prevzem prve namestitve. Javna JE PO NAMENU (poklic je iz brskalnika
+  // na stroju, kjer še ni uporabnika — seja torej ne more obstajati). Varovalka ni
+  // seja ampak petpogojna ograja (`setup-claim.ts`): lokalni profil + dokaz fronte +
+  // naslov v zanki + limit 5/min/IP + prazna baza. Brez fronte (HTTPS) je zavrnjena.
+  { methods: ['POST'], path: '/api/setup/claim', why: 'prevzem prve namestitve — samo lokalni profil, samo prek HTTPS fronte (x-local-front), samo zanko, 5/min/IP in samo dokler je baza prazna' },
   { methods: ['POST'], path: '/api/auth/login', why: 'prijava — rate-limit 10/min po IP' },
   { methods: ['GET', 'POST'], path: '/api/auth/demo-login', why: 'demo prijava — env DEMO_LOGIN_EMAIL pin + rate-limit 10/min po IP; GET vrne samo stanje vrat (brez imen/računov), zapre se z DEMO_LOGIN_ENABLED=0 ali DEMO_LOGIN_EXPIRES_AT (audit #7)' },
   { methods: ['GET'], path: '/api/auth/locations', why: 'izbira lokacije pred prijavo — samo imena aktivnih lokacij, rate-limit 30/min po IP + no-store (audit #9)' },
