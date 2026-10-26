@@ -20,6 +20,7 @@
     "local:setup": "bun scripts/local-setup.ts",
     "local:backup": "bun scripts/local-backup.ts",
     "local:restore": "bun scripts/local-restore.ts",
+    "local:offsite": "bun scripts/local-offsite.ts",
     "local:autostart": "bun scripts/local-autostart.ts",
     "local:support": "bun scripts/local-support.ts",
     "demo": "bun scripts/demo-start.ts"

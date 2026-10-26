@@ -127,8 +127,12 @@ function withDatabase<T>(file: string, fn: (db: DatabaseSync) => T): T {
  * potrjeni zapis; vedno zapiše ENO samo datoteko brez `-wal`/`-shm` samic.
  * Izvora ne odpiramo s pragmi — kopija ne sme spreminjati baze. Če ciljna pot
  * že obstaja, SQLite odkaže, tako da kopija nikoli ne prepise kopije.
+ *
+ * Izvoženo (v1.182.0): oddaljena kopija `offsite-backup.ts` potrebuje ISTE
+ * polovične-odseke-nejče pravilnosti; če bi imela svoj `VACUUM INTO`, bi
+ * odcepitev pomenila, da napaka v enem od dveh mehanizmov preživi teste.
  */
-function snapshotInto(sourcePath: string, targetPath: string): void {
+export function snapshotInto(sourcePath: string, targetPath: string): void {
   if (existsSync(targetPath)) {
     throw new Error(`ciljna kopija ${path.basename(targetPath)} že obstaja`)
   }
@@ -311,8 +315,14 @@ export function drainWal(dbPath: string): void {
  * Obnova VEDNO najprej preveri kopijo in stanje, ki ga bo prepisala. Vrstni red
  * ni poljuben: pregled kopije mora biti pred vsako spremembo baze, sicer
  * pokvarjena kopija pobriše zadnjo veljavno stanje.
+ *
+ * Sinhrono (v1.182.0): v telesu nikoli ni bilo `await`, zato je bil `async`
+ * lažen. R5a ga potrebuje resnega sinhronega: `restoreFromBundle` preda začasno
+ * datoteko, ki jo pobriše v `finally` — ob `Promise` rezultatu bi `finally`
+ * tekel, preden bi preverjanje sploh dobilo njene vrednosti. Klici z `await`
+ * delujejo naprej, ker `await` nad navadno vrednostjo ni napaka.
  */
-export async function restoreDatabase({ backupPath, dbPath, now = new Date(), force = false }: RestoreOptions): Promise<RestoreResult> {
+export function restoreDatabase({ backupPath, dbPath, now = new Date(), force = false }: RestoreOptions): RestoreResult {
   const backupsDir = backupsDirFor(dbPath)
   if (!existsSync(backupPath)) {
     throw new Error(`[local] Kopije ${backupPath} ni. Obnova se ni začela in baza ni bila spremenjena.`)
