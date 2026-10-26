@@ -1,4 +1,4 @@
-# Runbook — lokalni zagon RestaurantOS (v1.180.0)
+# Runbook — lokalni zagon RestaurantOS (v1.180.1)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
@@ -350,7 +350,12 @@ bun run local --build
   na migracijo iz R3 — **ne** uporabljajte `bun run db:push`, ker ta razvojni
   ukaz vsebuje `--accept-data-loss`.
 - `bun run local --build` prisili ponovno gradnjo; brez zastavice se build
-  izvede le, če manjka.
+  izvede le, če `.next/BUILD_ID` **manjka**. To je past pri nadgradnji: če je map
+  `.next` že obstajal, launcher postreže **stari grad** in brskalnik pokaže staro
+  različico, čeprav je vir na disku nov. Izmerjeno 26. 10. 2026: `/dashboard` je po
+  popravljenem viru izpirisal naslov pretekle izdaje, `BUILD_ID` je bil star 5 ur.
+  Pravilo: **vsaka nadgradnja kode = `--build`**. Po dvomu preverite `GET /api/health`
+  (`version`) in primerjajte z `src/lib/version.ts`.
 
 ## 8. Odpravljanje težav
 

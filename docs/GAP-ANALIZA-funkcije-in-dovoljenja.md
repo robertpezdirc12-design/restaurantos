@@ -10,7 +10,7 @@ GIS Prestige (POS Elektroncek, SI). Inventar lastnega sistema iz kode (repo @ 7c
 
 ---
 
-## 1. KAJ RESTAVRANTOS ŽE IMA (inventar iz kode @ v1.66.0)
+## 1. KAJ RESTAURANTOS ŽE IMA (inventar iz kode @ v1.66.0)
 
 ### UI rute (5)
 | Ruta | Funkcija |

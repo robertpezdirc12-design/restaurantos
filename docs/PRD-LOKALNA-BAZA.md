@@ -238,6 +238,21 @@ lastnovo odločitev, kaj sme biti v proizvodnem obratu), lokalni migracijski pog
 `migrate deploy` (R4 ga potrebuje za rollback), paketni namestilnik ZIP/EXE in
 nadgradnja obstoječih baz po `prisma migrate` — vse štiri ostajajo v §12 kot
 neopravljeno.
+v1.180.1 je posredovala izdaja za **ime izdelka**, ki na rep ceste ne spada. Drevo
+je imelo dva črkovna zapisa hkrati: kanoničnega 162 pojavitev in razcepljenega 50
+pojavitev v 25 datotekah. Odločitev ni okus: `common.app` v obeh slovarjih je edini
+vir, ki ime nosi kot spremenljivko, zato je izbrani kanonični zapis in je preostanek
+pripet nanj — popravljeno je 36 pojavitev v 22 datotekah (naslov strani, noge in
+zadevi dnevne pošte, privzeto ime na računu in v opomnikih, naslov push obvestila,
+service worker, oznaka v konzoli, semeni, zrcalna shema in njen generator). Nov gate
+`tests/v1801-brand-name.test.ts` ima štiri dele: §A skenira 770 besedilnih datotek in
+zahteva nič zadetkov, §B pripne posamezen niz (ne samo „ime nekje obstaja"), §C
+zavešno pusti 14 preostalih pojavitev v TREH DATUMIRANIH dokumentih — njihov zapis je
+meritev izdaje, ki jo je tisto ime takrat dejansko imela, §D je pozitivna kontrola:
+isti bralnik MORA najti teh 14 zadetkov, sicer §A ne trdi ničesar. Zato gate sam sebe
+ne more ubiti: v svojih kontrolnih nizih je stari zapis sestavljen iz treh fragmentov.
+Kanoničnih pojavitev je zdaj 197. **Rep se ne premakne** — patch izdaja; R4 ostaja
+v1.181.0.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
