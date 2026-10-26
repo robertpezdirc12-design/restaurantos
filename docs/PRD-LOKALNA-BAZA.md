@@ -155,7 +155,8 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
 | **R2b2 — v1.175.0** | Varen lokalni obrat brez žice | HTTPS fronta v Node-u s lastnim CA (OpenSSL iz Git for Windows), Next zaprt na 127.0.0.1, v omrežje vodi samo fronta; zagon ob prijavi: generator opravil (Windows XML / launchd / systemd) in `local:autostart` s suhim tekom kot privzetim | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika — **preizkus še ni opravljen** |
 | **R3 — v1.180.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), natisljive poverilnice, identiteta v stolpcih `Location`; **nerobjeno:** neobvezni demo podatki, lokalne migracije sheme | nova namestitev brez terminala (`65/65` §A–§H); nadgradnja ohrani podatke (H2/H3) |
-| **R4 — v1.181.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
+| **R4a — v1.181.0** | Podpora, ki ne izroči skrivnosti | lokalni dnevnik napak v datoteko (dnevna rota, 1 MiB, 7 dni), `bun run local:support` (podporni paket: manifest, stanje, kopije, dnevnik, okolje, README — brez `config.json`, `PRVIC-ZAGON.txt`, `tls/` in baze), samodejno maskiranje in zavrnitev paketa, če maskiranje spodleti | paket na živi namestitvi ne nosi nobene znane skrivnosti; trditev drži samo mutacijski dokaz (19/19) in meritev iz `%LOCALAPPDATA%` |
+| **R4b — številka ni določena** | Posodobitve in rollback | preverjanje novih različic, podpisani paket, rollback nadgradnje | pogojuje ga lokalni migracijski pogon (`prisma migrate deploy`), ki ga še ni — rollback brez njega ne more obstajati |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
@@ -253,6 +254,14 @@ isti bralnik MORA najti teh 14 zadetkov, sicer §A ne trdi ničesar. Zato gate s
 ne more ubiti: v svojih kontrolnih nizih je stari zapis sestavljen iz treh fragmentov.
 Kanoničnih pojavitev je zdaj 197. **Rep se ne premakne** — patch izdaja; R4 ostaja
 v1.181.0.
+v1.181.0 je izdala R4, ne celotnega R4. Razcep ni urejanje seznama, ampak merilo:
+dnevnik napak in podporni paket sta dela, kjer napaka lahko tiho izroči skrivnosti
+navzven, preverjanje posodobitev, podpisani paket in rollback pa so dela, ki jih
+danes ni mogoče preizkusiti. Cesta zato dobi **R4a (izdano na v1.181.0)** in
+**R4b (številke nima)**: rollback je odvisen od lokalnega migracijskega pogona
+(`prisma migrate deploy`), ki ga še vedno ni — ista zadeva, ki jo je R3 že pustila
+v §12 kot zavešno. Ker se R4 ni premaknil, se rep ceste tudi tokrat ne premakne:
+R5 ostane neobvezno.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
@@ -283,13 +292,22 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   razveljavi, artefakt pa namenoma ostane na disku. Registracija opravila na
   pravem računalniku še ni bila izvedena (zahteva privolitev lastnika).
 - **Prva namestitev brez terminala (R3, v1.180.0):** `bun run local --https` na
-  PRAZNI podatkovni mapi ustali bazo (push + WAL + kopija), ne ustvari pa obrata;
+  PRAZNI podatkovni mapi pripravi bazo (push + WAL + kopija), ne ustvari pa obrata;
   zagon izpiše `čarovnik: https://localhost:<vrata>/setup`. Tam lastnik vpiše ime
   obrata, davčno številko, e-pošto in PIN, po oddaji pa zaslon izpiše sled
   poverilnic in ima gumb **Natisni**. Isto storitev terminalu pusti
   `--restaurant-name`/`--owner-pin`/`--tax-id`/`--business-id`: kadar je katera
   koli podana, velja star potek. Povezava do čarovnika se na prijavnem zaslonu
   pokaže samo, dokler je baza prazna in profil lokalni.
+- **Podpora (R4a, v1.181.0):** `bun run local:support` sestavi paket šestih
+  datotek v `<podatkovna mapa>/support/<UTC>`. Paket sme iti na pošto: `config.json`,
+  `PRVIC-ZAGON.txt`, `tls/` in `data/restaurantos.db` vanj ne smejo, ukaz jih ne
+  prebere, znane skrivnosti in domače poti pa so maskirane, posegi pa šteti v
+  manifestu. Če zadnji pregled najde znano skrivnost, ukaz mapo izbriše in konča
+  z izhodno kodo 1. Paket se sestavi tudi, ko aplikacija NE teče — bazo odpre
+  bralno neposredno iz datoteke, ne prek `GET /api/health`. Napake jih aplikacija
+  sama piše v `logs/errors-*.log` (dnevna rota, 1 MiB na datoteko, 7 dni), ker od
+  v1.175.0 stdout ob prijavi nima bralca.
 
 ## 10. Varnost in zasebnost
 

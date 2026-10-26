@@ -102,6 +102,11 @@ win32, linux in darwin). V nastavljeni mapi so:
 - `backups/dnevno-*.db` — samodejne dnevne kopije (zadnjih 14);
 - `backups/pre-push-*.db` — kopije pred posegom v shemo (zadnjih 5);
 - `backups/pred-obnovo-*.db` — stanje, ki ga je obnova prepisala (zadnjih 14);
+- `logs/errors-<UTC-dan>.log` — dnevnik napak lokalnega profila (R4a, v1.181.0).
+  Vanj piše sama aplikacija, en zapis na dogodek; hrani se 7 dni, največ 3 datoteke
+  na dan in 1 MiB na datoteko. Ni ga, če napake ni bilo;
+- `support/<casovni-zig>/` — zadnji sestavljen podporni paket (§8.1). Nahaja
+  se zunaj baze in se ne briše sam;
 - `tls/` — lastni CA in list za `--https` (§6.1); `ca-key.pem` je zasebni ključ
   CA-ja in ne gre nikamor, tudi ne v varnostno kopijo;
 - `autostart\RestaurantOS Local.xml` — artefakt zagona ob prijavi, in sicer samo
@@ -347,15 +352,18 @@ bun run local --build
 - Pred posodobitvijo sheme setup naredi kopijo v `backups/`.
 - Če bi sprememba zahtevala izgubo podatkov, Prisma ukaz **zavrne**; aplikacija
   se ne zažene in baza ostane nespremenjena. Tedaj obnovite kopijo ali počakajte
-  na migracijo iz R3 — **ne** uporabljajte `bun run db:push`, ker ta razvojni
-  ukaz vsebuje `--accept-data-loss`.
+  na lokalni migracijski pogon (R4b) — **ne** uporabljajte `bun run db:push`, ker
+  ta razvojni ukaz vsebuje `--accept-data-loss`.
 - `bun run local --build` prisili ponovno gradnjo; brez zastavice se build
-  izvede le, če `.next/BUILD_ID` **manjka**. To je past pri nadgradnji: če je map
-  `.next` že obstajal, launcher postreže **stari grad** in brskalnik pokaže staro
+  izvede le, če `.next/BUILD_ID` **manjka**. To je past pri nadgradnji: če je mapa
+  `.next` že obstajala, launcher postreže **stari grad** in brskalnik pokaže staro
   različico, čeprav je vir na disku nov. Izmerjeno 26. 10. 2026: `/dashboard` je po
-  popravljenem viru izpirisal naslov pretekle izdaje, `BUILD_ID` je bil star 5 ur.
-  Pravilo: **vsaka nadgradnja kode = `--build`**. Po dvomu preverite `GET /api/health`
+  popravljenem viru izrisal naslov pretekle izdaje, `BUILD_ID` je bil star 5 ur.
+  Pravilo: **vsaka nadgradnja kode = `--build`**. Ob dvomu preverite `GET /api/health`
   (`version`) in primerjajte z `src/lib/version.ts`.
+- Aplikacija sama ne preverja, ali je nova različica izšla, in nadgradnje ne zna
+  razveljaviti (R4b, `docs/PRD-LOKALNA-BAZA.md` §8). Če posodobitev spodleti,
+  naredite `bun run local:support` (§8.1) in pošljite paket; bazo obnovite po §5.
 
 ## 8. Odpravljanje težav
 
@@ -377,8 +385,53 @@ bun run local --build
 | Tablica ne more odpreti `https://<IP>:3443`, računalnik pa ja | `--https` Next zapre na `127.0.0.1`, zato je edina pot fronta. Preverite, da tablica in računalnik sta v istem omrežju. Vrat 3443 ni treba odpirati ročno: na tej napravi ima `bun.exe` že samodejno ustvarjeni pravili `In`/`Allow` na **zasebnem** profilu in `In`/`Block` na **javne** (izmerjeno z `netsh advfirewall firewall show rule name=all` in `Get-NetConnectionProfile`). Če je omrežje označeno kot javno ali če promet gre čez VPN (npr. CloudflareWARP), fronta pade na blok — takrat omrežje označite kot zasebno ali dodajte pravilo za 3443. |
 | Po prijavi aplikacija ne teče | Zagon ob prijavi še ni registriran (§6.2), ali pa ga je `schtasks /Create` zavrnil zaradi pravic — koren Načrtovalnika opravil sme pisati samo povišana lupina. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
 | Računalnik ima nov IP in HTTPS ne dela več | List je bil izdan za stare naslove. Naslednji `bun run local --https` ga izda znova; če naprava še vedno obupa, na njej pokličite `https://<nov IP>:3443`, ne `restaurantos.local`. |
+| Napaka se je zgodila, konzole pa ni bilo odprte | Od v1.181.0 aplikacija piše v `logs/errors-<UTC-dan>.log` (§3). Pred to izdajo je šla napaka samo v izpis, ta pa od v1.175.0 ob prijavi nima bralca. |
+| Podpora prosi za stanje obrata | Zaženite `bun run local:support` (§8.1) in pošljite nastalo mapo. Baze, `config.json`, `PRVIC-ZAGON.txt` in `tls/` ne kopirajte in ne pošiljajte. |
 
-## 9. Meje te izdaje (v1.180.0 = R1 + R2a + R2b1 + R2b2 + R3)
+### 8.1 Podporni paket (`bun run local:support`, R4a, v1.181.0)
+
+Ko obrat javi težavo, lastnik pa takrat ni imel odprte konzole, ni treba kopirati
+baze. Ukaz
+
+    bun run local:support
+
+sestavi mapo `<podatkovna mapa>/support/<casovni-zig>/` s šestimi datotekami
+in jo takoj sam pregleda.
+
+| Datoteka | Kaj pove |
+|---|---|
+| `README.txt` | kaj je v paketu in kaj namenoma ni; |
+| `manifest.json` | različica, commit, način (`local`), pogon (`sqlite`), število maskiranj in seznam opozoril; |
+| `okolje.json` | platforma, izdaja sistema, arhitektura, izvajalni pogon (bun ali Node), podatek o prostem prostoru na disku; pot do podatkovne mapi je z okrajšavo `~`; |
+| `stanje.json` | rezultat sondy (ali baza odpira, ali je shema usklajena), `journal_mode` in število vrstic po tabelah — samo števila, nikoli vsebina; |
+| `kopije.json` | ime, velikost in starost kopij; |
+| `dnevnik.log` | zadnjih 400 vrstic dnevnika napak iz `logs/errors-*.log`, kronološko (najnovejše zadaj); |
+
+**V paketu ni** `config.json`, `PRVIC-ZAGON.txt`, `tls/` in
+`data/restaurantos.db`; ukaz jih ne prebere. Kar pač prebere, tudi pregleda: znane
+skrivnosti, domače poti in oblike poverilnic (`Bearer …`, `https://up:geslo@…`,
+`?token=…`, `sk_live_…`) so nadomeščene z `[RAZMAZKANO]` oziroma `~`, število
+posegov pa je zapisano v manifestu.
+
+Če zadnji pregled v paketu najde znano skrivnost, ukaz **mapo izbriše** in
+konča z izhodno kodo 1. Paket torej ne more iti na pošto v stanju, ki ga ukaz sam
+zavrne.
+
+Ukaz deluje tudi, ko aplikacija ne teče: stanje bere neposredno iz
+`data/restaurantos.db` in datoteko odpre samo za branje, ne prek `GET /api/health`.
+Ravno takrat, ko aplikacija ne odgovarja, je podpora najbolj potrebna.
+
+**Kaj paket namenoma ne ve:** `busy_timeout` in `synchronous` veljata samo za
+povezavo, na sveži povezavi pa se vrneta `0` oziroma `2`, ne glede na to, kako ju
+je nastavila aplikacija (izmerjeno 26. 10. 2026). Paket zato meri samo
+`journal_mode`, ki je trajno zapisan v glavi datoteke, za obe pragmi pa navaja
+vrednosti, ki ju aplikacija nastavlja ob zagonu.
+
+Za napredno uporabo: `--data-dir <pot>` opiše drugo podatkovno mapo, `--json` pa
+izpiše strojno berljiv povzetek. Preden mapo pošljete, zadnji pregled naredi
+človek — `dnevnik.log` je edina datoteka, ki jo je napisal vaš obrat.
+
+## 9. Meje te izdaje (v1.181.0 = R1 + R2a + R2b1 + R2b2 + R3 + R4a)
 
 - Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
   `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
@@ -395,10 +448,13 @@ bun run local --build
   PIN-om; `POST /api/setup/claim` za njim; natisljiva sled poverilnic; davčna in
   matična številka v stolpcih `Location`; z `--https` brez zastavic terminal bazo
   pripravi, identiteto pa prepusti brskalniku.
+- Izvedeno (R4a): napake lokalnega profila pišejo v `logs/errors-*.log` in
+  `bun run local:support` sestavi podporni paket brez skrivnosti (§8.1). Paket je
+  bil izmerjen na živi namestitvi; maskiranje je dokazano s pozitivno kontrolo.
 - **Ne izvedeno (R3, zavešno):** neobvezni demo podatki v čarovniku (odločitev
   lastnika, kaj sme priti v proizvodno bazo), lokalni migracijski pogon
   (`prisma migrate deploy` in rollback) ter paketni namestilnik ZIP/EXE. Vse tri
-  nosi R4 (`docs/PRD-LOKALNA-BAZA.md` §8 in §12).
+  nosi R4b (`docs/PRD-LOKALNA-BAZA.md` §8 in §12).
 - **Izhodni pogoj R2b2 na tablici še ni preizkušen:** PWA na tablici ni bil
   nameščen in ponovni zagon računalnika ni bil preverjen. Na razvojni napravi je
   zaupanje CA-ju izvedeno v uporabniški shrambi in izmerjeno (§6.1), `--install`
@@ -412,10 +468,11 @@ bun run local --build
   ob prvem padlem ukazu in javi korak, zato napačna predpostavka pomeni glasno
   napako in ne delno nameščenega sistema.
 - Offline vrsta živi v brskalniku naprave, ne v lokalni bazi: izbris brskalnega
-  podatkovnega profila ali drug brskalnik je izgubi, ne glede na omejitve te
+  podatkovnega profila ali drug brskalnik jo izgubi, ne glede na omejitve te
   izdaje. Popolna lokalna samostojnost POS-a ni obseg R2.
-- Brez čarovnika prve namestitve v brskalniku — R3.
-- Brez migracij in rollbacka nadgradenj — R3/R4.
+- Brez preverjanja novih različic, podpisanega namestitvenega paketa in rollbacka
+  nadgradenj — to nosi R4b.
+- Brez oddaljene (omrežne) kopije — to nosi R5.
 - Kopije so na istem disku kot baza; pred okvaro diska jih ščiti samo izvoz na
   USB ali omrežno mapo (§5).
 - SQLite je **en pisec**: ne zaženite dveh kopij aplikacije nad isto bazo.
