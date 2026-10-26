@@ -4,6 +4,9 @@
  * v1.169.0 — ob zagonu še dnevna varnostna kopija (PRD R2).
  * v1.175.0 — R2b2: `--https` vžene TLS front pred Nextom, da je obrat dosegljiv
  *            brez žice in z zaklenjeno sejo (pogoj za namestitev PWA na tablico).
+ * v1.180.0 — R3: fronta dobi HMAC dokaz (`frontProof`), brez njega brskalnik ne
+ *            more prevzeti namestitve; podatkovna mapa se izroči Nextu v okolju,
+ *            sicer bi prevzem ustvaril obrat v privzeti mapi namesto v `--data-dir`.
  *
  * `bun run local` pripravi bazo (če je še ni), naredi dnevno kopijo, zgradi
  * aplikacijo (če je še ni) in jo zažene na 0.0.0.0, da je dostopna tudi na
@@ -19,6 +22,7 @@ import path from 'node:path'
 import { backupsDirFor, backupDatabase, drainWal, listBackups, LOCAL_DAILY_BACKUP_PREFIX } from '../src/lib/local-durability'
 import { lanUrls, servingPlan } from '../src/lib/local-runtime'
 import { runLocalSetup } from '../src/lib/local-setup'
+import { localFrontProof, provisionFromTerminal, validTaxIdByLength } from '../src/lib/setup-claim'
 import { ensureLocalTls, identityFromNetwork } from '../src/lib/local-tls'
 import { startLocalHttpsFront, type HttpsFrontHandle } from '../src/lib/local-https-front'
 
@@ -36,6 +40,8 @@ const USAGE = `Uporaba: bun run local [možnosti]
   --owner-email <e-pošta>  Prijavni e-poštni naslov lastnika (prvi zagon)
   --owner-pin <PIN>        PIN lastnika (prvi zagon; sicer naključen)
   --restaurant-name <ime>  Ime obrata (prvi zagon)
+  --tax-id <številka>      Davčna številka obrata (SI 8 števk / HR OIB 11)
+  --business-id <številka> Matična številka obrata
   --build                  Prisili ponovno gradnjo
   -h, --help               Ta pomoč
 `
@@ -48,6 +54,8 @@ interface Args {
   ownerEmail?: string
   ownerPin?: string
   restaurantName?: string
+  taxId?: string
+  businessId?: string
   forceBuild: boolean
   help: boolean
 }
@@ -71,7 +79,12 @@ function parse(argv: string[]): Args {
     else if (a === '--owner-email') args.ownerEmail = value(i++, a)
     else if (a === '--owner-pin') args.ownerPin = value(i++, a)
     else if (a === '--restaurant-name') args.restaurantName = value(i++, a)
+    else if (a === '--tax-id') args.taxId = value(i++, a)
+    else if (a === '--business-id') args.businessId = value(i++, a)
     else throw new Error(`[local] Neznana možnost: ${a}\n\n${USAGE}`)
+  }
+  if (args.taxId && !validTaxIdByLength(args.taxId)) {
+    throw new Error(`[local] Neveljavna davčna številka (taxId): ${args.taxId}. SI mora imeti 8 števk in pravilno kontrolno števko, HR OIB 11 števk.`)
   }
   return args
 }
@@ -112,12 +125,24 @@ if (!existsSync(NEXT_BIN)) {
 
 let setup: Awaited<ReturnType<typeof runLocalSetup>>
 try {
+  // Kdo določi identiteto obrata: `--https` pomeni, da je odprt brskalnik in da
+  // LASTNIK vidi čarovnika. Če terminal ni povedal imena ali PIN-a, jih torej ne
+  // izmišljamo — sicer bi bila baza takoj zasedena in prevzem bi vrnil 409.
+  const identitetaPodana =
+    args.restaurantName !== undefined ||
+    args.ownerEmail !== undefined ||
+    args.ownerPin !== undefined ||
+    args.taxId !== undefined ||
+    args.businessId !== undefined
   setup = await runLocalSetup({
     dataDir: args.dataDir,
     ownerEmail: args.ownerEmail,
     ownerPin: args.ownerPin,
     restaurantName: args.restaurantName,
+    taxId: args.taxId,
+    businessId: args.businessId,
     allowGenerate: true,
+    provisionOwner: provisionFromTerminal({ https: args.https === true, identityGiven: identitetaPodana }),
   })
 } catch (err) {
   console.error(`\n✖ ${err instanceof Error ? err.message : String(err)}\n`)
@@ -127,12 +152,20 @@ try {
 console.log(`\nRestaurantOS — lokalni profil`)
 console.log(`  Podatki: ${setup.dataDir}`)
 console.log(`  Baza:    ${setup.dbPath} (${setup.journalMode})`)
-if (setup.ownerCreated) {
+if (setup.setupPending) {
+  console.log('  Obrat:   še ni ustanovljen — ime, davčna številka in PIN lastnika se vpišejo v brskalniku')
+} else if (setup.ownerCreated) {
   console.log(`  Lastnik: ${setup.ownerEmail}`)
   if (setup.pin) console.log(`  PIN:     ${setup.pin}`)
   console.log(`  Poverilnice so v ${path.join(setup.dataDir, 'PRVIC-ZAGON.txt')}`)
 } else {
   console.log(`  Lastnik: ${setup.ownerEmail} (obstoječi račun)`)
+}
+// Brez fronte čarovnik ne more delovati (prevzem zavrne dokaz, §A4), zato mora
+// launcher povedati, kaj manjka — sicer bi obrat ostal prazen in tiho.
+if (setup.setupPending && args.https !== true) {
+  console.log('  ⚠ Ustavitev: brez `--https` čarovnik /setup ne more prevzeti namestitve.')
+  console.log('    Zaženi `bun run local --https` ALI dodaj --restaurant-name in --owner-pin.')
 }
 
 const backupsDir = backupsDirFor(setup.dbPath)
@@ -186,6 +219,9 @@ if (nacrt.frontPort > 0) {
       certPem: readFileSync(tls.paths.leafCert, 'utf8'),
       targetPort: nacrt.nextPort,
       httpsPort: nacrt.frontPort,
+      // Dokaz se računa iz ISTEGA vira kot pričakovanje rute (`APP_SECRET`, ki ga
+      // `runLocalSetup` že zapiše v okolje); brez njega prevzem namestitve javi 403.
+      frontProof: localFrontProof(process.env.APP_SECRET ?? ''),
     })
   } catch (err) {
     console.error(`\n✖ HTTPS front na vratih ${nacrt.frontPort} se ni mogel zagnati: ${(err as Error).message}`)
@@ -200,6 +236,7 @@ console.log('\nRestaurantOS teče:')
 if (front) {
   console.log(`  ta računalnik: ${nacrt.scheme}://localhost:${front.port}`)
   for (const url of lanUrls(front.port, undefined, nacrt.scheme)) console.log(`  v omrežju:     ${url}`)
+  console.log(`  čarovnik:      ${nacrt.scheme}://localhost:${front.port}/setup (samo ta računalnik)`)
   console.log(`  (Next sam je zaprt na ${nacrt.nextHost}:${nacrt.nextPort} — do njega vodi samo front)`)
 } else {
   console.log(`  ta računalnik: http://localhost:${args.port}`)

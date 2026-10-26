@@ -57,6 +57,10 @@ function LoginPageInner() {
   // obeta nečesa, kar je zaprto. Privzeto ODPRT: če stanja ni mogoče prebrati
   // (izpad omrežja), se vedenje ne sme razlikovati od dosedanjega.
   const [demoOpen, setDemoOpen] = useState(true)
+  // v1.180.0 (R3): povezava do čarovnika za prvo namestitev. Poganja jo SAMO
+  // stanje z `/api/setup/status` in samo na lokalnem profilu: na oblaku čarovnik
+  // ne more delovati (brez HTTPS fronte), zato se Lastnik ne more zmoti.
+  const [setupOpen, setSetupOpen] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('ro_token')
@@ -74,6 +78,10 @@ function LoginPageInner() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d && typeof d.enabled === 'boolean') setDemoOpen(d.enabled) })
       .catch(() => setDemoOpen(true))
+    fetch('/api/setup/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setSetupOpen(!!d && d.isInitialized === false && d.mode === 'local'))
+      .catch(() => setSetupOpen(false))
   }, [router])
 
   async function claimDevice() {
@@ -403,6 +411,14 @@ function LoginPageInner() {
                   </>
                 )}
               </form>
+              {setupOpen && (
+                <a
+                  href="/setup"
+                  className="mt-3 flex min-h-11 items-center justify-center rounded-md border border-dashed border-emerald-300 px-3 text-sm text-emerald-800 hover:bg-emerald-50"
+                >
+                  {t('login.setupLink')}
+                </a>
+              )}
             </CardContent>
           </Card>
 

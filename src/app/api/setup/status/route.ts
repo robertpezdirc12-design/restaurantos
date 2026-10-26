@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { rateLimitBool } from '@/lib/rate-limit'
+import { runtimeMode } from '@/lib/runtime-info'
 
 /**
  * Status inicializacije (setup wizard) — JAVNA ruta po namenu (preveri, ali je
@@ -8,6 +9,10 @@ import { rateLimitBool } from '@/lib/rate-limit'
  * — prej je vsak klic neavtentikirano pognal 3 DB COUNT poizvedbe (info disclosure
  * + trivialen DoS vektor na javni luknji). Odgovor ne razkriva številk (counts: null
  * ostaja) — samo binarne zastavice.
+ *
+ * v1.180.0 — `mode` pove PROFIL (lokalna datoteka ali oblak), ne števila lokacij:
+ * čarovnik mora vedeti, ali je prevzem namestitve na tej poti sploh dovoljen.
+ * Stari 'single'/'multi' ni imel bralca (izmerjeno: nihče ga ne bere).
  */
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
@@ -21,7 +26,7 @@ export async function GET(req: NextRequest) {
   ])
   return NextResponse.json({
     isInitialized: employees > 0,
-    mode: locations > 1 ? 'multi' : 'single',
+    mode: runtimeMode(),
     hasEmployees: employees > 0,
     hasLocations: locations > 0,
     hasSettings: settings > 0,

@@ -46,6 +46,9 @@ export const sl: Record<string, string> = {
   'login.demoBtn': 'Vstop brez gesla (demo)',
   'login.demoHint': 'Demo vstop — vodstveni račun; vsak vstop se zapiše v dnevnik.',
   'login.demoFailed': 'Demo vstop ni uspel.',
+  // v1.180.0 R3: povezava do čarovnika za prvo namestitev — prikazana je samo,
+  // dokler je baza prazna in aplikacija teče v lokalnem profilu; sicer je skrita.
+  'login.setupLink': 'Prva namestitev — ustvari obrat brez terminala',
   // v1.94.0 — MFA druga stopnja + obvezni vpis (issue #12/#31)
   'login.mfaRequired': 'Zahtevana je druga stopnja prijave (MFA koda).',
   'login.mfaCodeLabel': 'Koda iz aplikacije (MFA)',
