@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         email: r.customerEmail,
         phone: r.customerPhone,
         guestName: r.customerName,
-        restaurantName: loc?.name || 'RestavrantOS',
+        restaurantName: loc?.name || 'RestaurantOS',
         when: r.dateTime,
         partySize: r.partySize,
         note: r.notes,

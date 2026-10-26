@@ -135,7 +135,7 @@ export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null, loca
 </head>
 <body>
   <div class="rc">
-    <h1>${esc(d.businessName || 'RestavrantOS')}</h1>
+    <h1>${esc(d.businessName || 'RestaurantOS')}</h1>
     ${d.businessAddress ? `<p class="c small">${esc(d.businessAddress)}</p>` : ''}
     <p class="c small">${taxLine}</p>
     <p class="c small">${esc(tr('receipt.premises'))} ${esc(d.premisesId || d.businessId || 'BLG-001')} · ${esc(tr('receipt.register'))} ${esc(d.registerId || 'BLG-001')}</p>

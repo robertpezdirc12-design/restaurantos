@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const user = await requireAuth(req)
   if (isResponse(user)) return user
   void pushNotify(
-    { title: 'RestavrantOS — test', body: `Push obvestila delujejo (${user.name}).`, url: '/dashboard', tag: 'test' },
+    { title: 'RestaurantOS — test', body: `Push obvestila delujejo (${user.name}).`, url: '/dashboard', tag: 'test' },
     { employeeIds: [user.sub] },
   )
   return ok({ sent: true })

@@ -1,5 +1,5 @@
 /**
- * RestavrantOS — OBSEŽEN DEMO SEED (za testiranje)
+ * RestaurantOS — OBSEŽEN DEMO SEED (za testiranje)
  * Zaženi na SVEŽI bazi:
  *   DATABASE_URL=file:... bunx prisma db push --schema prisma/schema.sqlite.prisma --accept-data-loss
  *   DATABASE_URL=file:... bun prisma/seed-demo.ts

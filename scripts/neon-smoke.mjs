@@ -1,4 +1,4 @@
-// RestavrantOS — Neon ephemeral-branch smoke test (CI)
+// RestaurantOS — Neon ephemeral-branch smoke test (CI)
 // Verifies on REAL Postgres (Neon): full prisma DDL applies, FK-chain CRUD,
 // enum roundtrip, numeric roundtrip, FK enforcement. Ephemeral branch +
 // throwaway role + dedicated database are deleted with the branch afterwards.

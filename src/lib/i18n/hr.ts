@@ -217,7 +217,7 @@ export const hr: Record<string, string> = {
 
   // ── Pregled ──
   'dash.viewLabel': 'Pogled: {name}',
-  'dash.h1': 'Kontrolna ploča — RestavrantOS',
+  'dash.h1': 'Kontrolna ploča — RestaurantOS',
   'a11y.skipToContent': 'Preskoči na sadržaj',
   'dash.locationFallback': 'Lokacija',
   'dash.activeOrders': 'Aktivne narudžbe',

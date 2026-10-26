@@ -17,14 +17,14 @@ self.addEventListener('fetch', (e) => {
 
 // OPS-7: push obvestila (nova naročila → kuhinja/bar, pripravljeno → natakar)
 self.addEventListener('push', (e) => {
-  let data = { title: 'RestavrantOS', body: '' }
+  let data = { title: 'RestaurantOS', body: '' }
   try {
     if (e.data) data = { ...data, ...e.data.json() }
   } catch (err) {
     if (e.data) data.body = e.data.text().slice(0, 140)
   }
   e.waitUntil(
-    self.registration.showNotification(data.title || 'RestavrantOS', {
+    self.registration.showNotification(data.title || 'RestaurantOS', {
       body: data.body || '',
       tag: data.tag || undefined,
       data: { url: data.url || '/dashboard' },

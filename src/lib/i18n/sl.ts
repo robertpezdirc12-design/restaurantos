@@ -220,7 +220,7 @@ export const sl: Record<string, string> = {
 
   // ── Pregled ──
   'dash.viewLabel': 'Pogled: {name}',
-  'dash.h1': 'Nadzorna plošča — RestavrantOS',
+  'dash.h1': 'Nadzorna plošča — RestaurantOS',
   'a11y.skipToContent': 'Preskoči na vsebino',
   'dash.locationFallback': 'Lokacija',
   'dash.activeOrders': 'Aktivna naročila',

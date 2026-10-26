@@ -1,5 +1,5 @@
 /**
- * RestavrantOS seed — produkcijska shema (prisma/schema.sqlite.prisma lokalno /
+ * RestaurantOS seed — produkcijska shema (prisma/schema.sqlite.prisma lokalno /
  * prisma/schema.prisma produkcija). Zaženi: bun prisma/seed.ts
  */
 import { PrismaClient } from '@prisma/client'
@@ -26,7 +26,7 @@ async function main() {
   const location = await db.location.create({
     data: {
       id: locationId,
-      name: 'RestavrantOS Ljubljana',
+      name: 'RestaurantOS Ljubljana',
       code: 'LJU-01',
       type: 'restaurant',
       address: 'Slovenska cesta 1',
@@ -169,7 +169,7 @@ async function main() {
   await db.restaurantSettings.create({
     data: {
       id: nid('settings-default'),
-      name: 'RestavrantOS',
+      name: 'RestaurantOS',
       address: 'Slovenska cesta 1',
       city: 'Ljubljana',
       postCode: '1000',

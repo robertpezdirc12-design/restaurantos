@@ -1,4 +1,4 @@
-// RestavrantOS — LOKALNA SQLite zrcalna shema (AVTOMATSKO generirana)
+// RestaurantOS — LOKALNA SQLite zrcalna shema (AVTOMATSKO generirana)
 // Iz prisma/schema.prisma (produkcijska Neon Postgres shema, 110 modelov).
 // Ponovno generiraj: python3 scripts/build-sqlite-mirror.py
 // Razlike od produkcije: Json -> String (SQLite ne podpira Json), enumi -> String.

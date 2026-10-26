@@ -147,8 +147,8 @@ function summaryBodyLines(d: ShiftSummaryData): string[] {
 
 /** Pure text builder (unit-tested) — shift-close digest. */
 export function shiftSummaryEmailText(d: ShiftSummaryData): { subject: string; body: string } {
-  const subject = `RestavrantOS — dnevni povzetek (izmena ${fmtWindow(d.shiftDate)})`
-  const body = [...summaryBodyLines(d), '', '— Samodejno sporočilo RestavrantOS'].join('\n')
+  const subject = `RestaurantOS — dnevni povzetek (izmena ${fmtWindow(d.shiftDate)})`
+  const body = [...summaryBodyLines(d), '', '— Samodejno sporočilo RestaurantOS'].join('\n')
   return { subject, body }
 }
 
@@ -157,8 +157,8 @@ export function shiftSummaryEmailText(d: ShiftSummaryData): { subject: string; b
  * different subject/window label: it covers a calendar DAY, not a shift).
  */
 export function dailyDigestEmailText(d: ShiftSummaryData): { subject: string; body: string } {
-  const subject = `RestavrantOS — dnevni povzetek (dan ${fmtWindow(d.shiftDate)})`
-  const body = [...summaryBodyLines({ ...d, windowLabel: d.windowLabel || 'Dan' }), '', '— Samodejno sporočilo RestavrantOS'].join('\n')
+  const subject = `RestaurantOS — dnevni povzetek (dan ${fmtWindow(d.shiftDate)})`
+  const body = [...summaryBodyLines({ ...d, windowLabel: d.windowLabel || 'Dan' }), '', '— Samodejno sporočilo RestaurantOS'].join('\n')
   return { subject, body }
 }
 
@@ -315,7 +315,7 @@ export async function sendDailyDigest(
           id: nid(),
           reportType,
           recipient: '(neznano)',
-          subject: `RestavrantOS — dnevni povzetek (dan ${localDateKey(from)})`,
+          subject: `RestaurantOS — dnevni povzetek (dan ${localDateKey(from)})`,
           body: '',
           status: 'failed',
           errorMessage: error,
@@ -395,7 +395,7 @@ export async function sendShiftDailySummary(d: ShiftSummaryData): Promise<void> 
           id: nid(),
           reportType: 'SHIFT_DAILY_SUMMARY',
           recipient: '(neznano)',
-          subject: `RestavrantOS — dnevni povzetek (izmena ${d.shiftId})`,
+          subject: `RestaurantOS — dnevni povzetek (izmena ${d.shiftId})`,
           body: '',
           status: 'failed',
           errorMessage: (e as Error).message.slice(0, 250),

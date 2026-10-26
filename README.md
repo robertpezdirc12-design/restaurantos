@@ -1,4 +1,4 @@
-# RestavrantOS
+# RestaurantOS
 
 > Celovit restavrični sistem: **POS · kiosk · QR gost · dostava · fiskalizacija (FURS SI / FINA HR)** — dvojezično (SL/HR), večlokacijsko, več-najemniško.
 

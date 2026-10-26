@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       email: reservation.customerEmail,
       phone: reservation.customerPhone,
       guestName: reservation.customerName,
-      restaurantName: location?.name || 'RestavrantOS',
+      restaurantName: location?.name || 'RestaurantOS',
       when: reservation.dateTime,
       partySize: reservation.partySize,
       note: reservation.notes,

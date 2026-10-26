@@ -26,7 +26,7 @@ export default function Error({
 }) {
   useEffect(() => {
     // Dejstvo o napaki v konzolo (opazljivo v dev + Vercel runtime logi)
-    console.error('[RestavrantOS] Neujeta napaka:', error)
+    console.error('[RestaurantOS] Neujeta napaka:', error)
   }, [error])
 
   return (
