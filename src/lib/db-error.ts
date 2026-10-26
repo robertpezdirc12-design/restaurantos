@@ -20,6 +20,9 @@
  * P2xxx (runtime/schema) kode ter tekstovne vzorce za env napake.
  */
 
+import { appendErrorLog } from './local-log'
+import { resolveDataDir } from './local-runtime'
+
 export type DbErrorCategory =
   | 'env_missing' // DATABASE_URL (ali APP_SECRET) ni nastavljen v okolju
   | 'invalid_url' // povezovalni niz je neveljaven (P1013 in podobno)
@@ -131,12 +134,30 @@ export function dbErrorHint(category: DbErrorCategory): string {
  * STREŽNIŠKI log (Vercel runtime logi): izpiše obseg, Prisma kodo, sporočilo
  * in stack. Prisma sporočila ne izpisujejo gesla (samo host/bazo) — logi so
  * interno vidni le ekipi, javni API pa NE vrača teh podrobnosti.
+ *
+ * v1.181.0: lokalni profil piše ISTE napake V DATOTEKO (`logs/errors-<dan>.log`),
+ * ker od kar aplikacijo zaganja opravilo ob prijavi (v1.175.0) `console.error`
+ * nima bralca. V oblaku se ne piše na disk — produkcijski disk ni naš za
+ * hrambo, in pisati podatkovne datoteke iz funkcije je nova napadalna ploskev.
  */
-export function logDbError(scope: string, err: unknown): void {
+export function logDbError(scope: string, err: unknown, at: Date = new Date()): void {
   const e = err as { code?: unknown; message?: unknown; stack?: unknown }
   const code = e?.code ? ` code=${e.code}` : ''
   console.error(`[db-error] ${scope}${code}: ${e?.message ?? String(err)}`)
   if (typeof e?.stack === 'string' && e.stack) {
     console.error(e.stack)
+  }
+  if (process.env.RESTAURANTOS_LOCAL === '1') {
+    appendErrorLog(
+      resolveDataDir(),
+      {
+        scope,
+        message: String(e?.message ?? err),
+        code: e?.code ? String(e.code) : undefined,
+        stack: typeof e?.stack === 'string' ? e.stack : undefined,
+        at,
+      },
+      at,
+    )
   }
 }
