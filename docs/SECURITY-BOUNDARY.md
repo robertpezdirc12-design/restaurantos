@@ -38,6 +38,8 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 | `/api/public/orders/status` | samo statusi vidni gostu (mapiranje) |
 | `/api/delivery/webhook/[provider]` | HMAC `sha256=` (timingSafeEqual); brez secret → 503 fail-closed; idempotencija `platform:orderId`; rate limit 30/min |
 | `/api/devices/enroll` | enkratna koda; claim → device token + lokacijska vezava; replay claim → 404 |
+| `/api/setup/status` | samo binarne zastavice in profil (`isInitialized`/`mode`/`has*`, `counts: null`, `databaseUrl` je `configured`/`missing`); rate limit 30/min po IP (v1.82.1, audit — prej je vsak klic neavtentikirano pognal tri DB COUNT poizvedbe) |
+| `/api/setup/claim` | **POST prevzem prve namestitve (v1.180.0, R3). Javna je PO NAMENU:** klic prihaja iz brskalnika na stroju, kjer uporabnik še ne obstaja — seja torej ne more obstajati, zato je varovalka petpogojna ograja (`setup-claim.ts`): lokalni profil + `x-local-front` dokaz fronte (HMAC iz `APP_SECRET`, `timingSafeEqual`) + klientov naslov v zanki + limit 5/min/IP + baza brez zaposlenih. Brez HTTPS fronte je pot vedno zavrnjena; glavo `x-forwarded-for` fronta prepiše iz lastnega soketa, zato tuja trditev o IP-ju do aplikacije ne potuje naprej. Notranjost ne uhaja (500 je generičen). Na oblaku ograja zavrne, zato se čarovnik na javni namestitvi ne more pojaviti. |
 
 ## MFA (issue #12 §3, v1.35.0 — utrjeno v1.94.0, issue #31–#36)
 

@@ -1,9 +1,9 @@
-# Runbook — lokalni zagon RestaurantOS (v1.175.0)
+# Runbook — lokalni zagon RestaurantOS (v1.180.0)
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
 (Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`. Zahteve in merila sprejema
-so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a, R2b1 in R2b2 so izvedena; izhodni
+so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a, R2b1, R2b2 in R3 so izvedena; izhodni
 pogoj R2b2 na tablici še ni preizkušen).
 
 ## 1. Kaj potrebujete
@@ -24,19 +24,57 @@ pogoj R2b2 na tablici še ni preizkušen).
 git clone <repo> restaurantos
 cd restaurantos
 bun install
-bun run local
+bun run local --https
 ```
 
 Prvi zagon:
 
 1. ustvari podatkovno mapo in trajne skrivnosti (`config.json`; dovoljenja §3);
-2. pripravi SQLite shemo iz `prisma/schema.sqlite.prisma`;
-3. ustvari lokacijo, nastavitve in **enega lastnika** z naključnim 6-mestnim PIN-om;
+2. pripravi SQLite shemo iz `prisma/schema.sqlite.prisma` in ji nastavi WAL;
+3. naredi dnevno kopijo (še pred vsakim posegom v shemo, §5);
 4. zgradi aplikacijo (prvi build traja nekaj minut);
-5. zažene strežnik na `0.0.0.0:3000` in izpiše lokalni ter omrežne naslove.
+5. zažene TLS fronto in Next, ki je zaprt samo na `127.0.0.1` (§6);
+6. **izpiše naslov čarovnika** — obrat še ni ustanovljen.
+
+### 2.1 Čarovnik: ime, davčna številka in PIN v brskalniku (R3, v1.180.0)
+
+Z `--https` in brez identifikacijskih zastavic terminal namenoma ne ustvari
+ničesar. Odprite naslov, ki ga je izpisal zagon:
+
+```
+čarovnik:      https://localhost:3443/setup (samo ta računalnik)
+```
+
+Vpišite **ime obrata**, **davčno številko** (SI 8 števk s kontrolno, HR OIB 11
+števk; lahko tudi prazno), **e-pošto lastnika** in **PIN** (4–8 števk) ter
+potrdite. Zaslon izpiše sled poverilnic in gumb **Natisni**; natisnite jo ali
+shranite, preden zaprete zavihek. Od tega trenutka naprej je čarovnik zaprt
+(prevzem zahteva prazno bazo), prijava pa je na `https://localhost:3443`.
+
+Čarovnik deluje samo, kadar je zagnan `--https`: dokaz, da zahteva res prihaja iz
+lokalne fronte, računa fronta, ne brskalnik. Brez njega ruta odgovori `403` in
+zaslon to tudi pove. Na oblačnem profilu čarovnika ni (tam se ime in davčna
+številka vpišeta v nastavitvah po prijavi).
+
+### 2.2 Terminal: enako brez brskalnika
+
+`bun run local` brez `--https` nastavi obrat kar ob zagonu; zastavice so
+neobvezne:
+
+```bash
+bun run local --restaurant-name "Gostilna Zeleni Hrib" --owner-pin 481516 \
+              --tax-id 12345678 --business-id SI-ZN-1234
+```
+
+Kadar je vsaj ena od zastavic `--restaurant-name`, `--owner-email`, `--owner-pin`,
+`--tax-id` ali `--business-id` podana, velja ta pot tudi z `--https`. PIN se sicer
+ustvari naključno. Enake zastavice sprejme `bun run local:setup`, ki pa tudi sam
+pusti bazo prazno, če dodate `--wait-for-browser`.
 
 Poverilnice so v `<podatkovna mapa>/PRVIC-ZAGON.txt`. Datoteka vsebuje PIN v
-čistini — shranite jo varno in izbrišite, ko si PIN zapomnite.
+čistini — shranite jo varno in izbrišite, ko si PIN zapomnite. Čarovnik te
+datoteke ne prepiše, izpiše pa njeno vsebino (brez PIN-a, če ga niste izbrali v
+terminalu).
 
 Demo podatki iz `prisma/seed.ts` se **ne** naložijo; demo prijava je izklopljena
 (`DEMO_LOGIN_ENABLED=0`).
@@ -335,7 +373,7 @@ bun run local --build
 | Po prijavi aplikacija ne teče | Zagon ob prijavi še ni registriran (§6.2), ali pa ga je `schtasks /Create` zavrnil zaradi pravic — koren Načrtovalnika opravil sme pisati samo povišana lupina. `bun run local:autostart` brez možnosti pokaže, kaj bi se zgodilo; `schtasks /Query /TN "RestaurantOS Local"` pokaže, ali je opravilo registrirano. |
 | Računalnik ima nov IP in HTTPS ne dela več | List je bil izdan za stare naslove. Naslednji `bun run local --https` ga izda znova; če naprava še vedno obupa, na njej pokličite `https://<nov IP>:3443`, ne `restaurantos.local`. |
 
-## 9. Meje te izdaje (v1.175.0 = R1 + R2a + R2b1 + R2b2)
+## 9. Meje te izdaje (v1.180.0 = R1 + R2a + R2b1 + R2b2 + R3)
 
 - Izvedeno: WAL + `synchronous=FULL` + busy timeout, samodejne dnevne kopije z
   `integrity_check`, zadrževanje zadnjih 14 dnevnih kopij, kopija pred posegom v
@@ -348,6 +386,14 @@ bun run local --build
   na `127.0.0.1`, list z LAN IPv4 v SAN in samodejno ponovno izdajo ob driftu,
   generator artefaktov za zagon ob prijavi na treh sistemih in `local:autostart`
   s suhim tekom kot privzetim.
+- Izvedeno (R3): čarovnik `/setup` z imenom obrata, davčno številko, e-pošto in
+  PIN-om; `POST /api/setup/claim` za njim; natisljiva sled poverilnic; davčna in
+  matična številka v stolpcih `Location`; z `--https` brez zastavic terminal bazo
+  pripravi, identiteto pa prepusti brskalniku.
+- **Ne izvedeno (R3, zavešno):** neobvezni demo podatki v čarovniku (odločitev
+  lastnika, kaj sme priti v proizvodno bazo), lokalni migracijski pogon
+  (`prisma migrate deploy` in rollback) ter paketni namestilnik ZIP/EXE. Vse tri
+  nosi R4 (`docs/PRD-LOKALNA-BAZA.md` §8 in §12).
 - **Izhodni pogoj R2b2 na tablici še ni preizkušen:** PWA na tablici ni bil
   nameščen in ponovni zagon računalnika ni bil preverjen. Na razvojni napravi je
   zaupanje CA-ju izvedeno v uporabniški shrambi in izmerjeno (§6.1), `--install`

@@ -154,7 +154,7 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R2a — v1.169.0** | Vzdržljiva lokalna baza | WAL + `synchronous=FULL` + busy timeout, dnevna kopija čez `VACUUM INTO` (ne prekop datoteke), integritetni pregled kopije, zadrževanje 14 dni, `local:backup`, `local:restore`, čist postanek počisti rep | kopija vsebuje zadnji potrjeni zapis, obnova je **izvedena** na pravi bazi in zapisana v `LOKALNI-ZAGON.md` §5 |
 | **R2b1 — v1.170.0** | Omejena offline vrsta | stožec 200 živih operacij, starost 12 h preide v mrtvo črko, idempotenca po `clientOperationId`, zavrnitev zaradi kvote brskalnika, zavrnitev je rezultat in ne izjema | vrsta se ne podvoji in ne raste neomejeno; ob zavrnitvi se košarica NE izprazni in osebje to tudi vidi |
 | **R2b2 — v1.175.0** | Varen lokalni obrat brez žice | HTTPS fronta v Node-u s lastnim CA (OpenSSL iz Git for Windows), Next zaprt na 127.0.0.1, v omrežje vodi samo fronta; zagon ob prijavi: generator opravil (Windows XML / launchd / systemd) in `local:autostart` s suhim tekom kot privzetim | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika — **preizkus še ni opravljen** |
-| **R3 — v1.180.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), neobvezni demo podatki, natisljive poverilnice, migracije lokalne sheme | nova namestitev brez terminala; nadgradnja ohrani podatke |
+| **R3 — v1.180.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), natisljive poverilnice, identiteta v stolpcih `Location`; **nerobjeno:** neobvezni demo podatki, lokalne migracije sheme | nova namestitev brez terminala (`65/65` §A–§H); nadgradnja ohrani podatke (H2/H3) |
 | **R4 — v1.181.0** | Posodobitve in podpora | preverjanje posodobitev, podpisani paket, rollback, support bundle brez skrivnosti, dnevnik napak | nadgradnja in rollback preizkušena na kopiji |
 | **R5 — neobvezno** | Oddaljena varnostna kopija in licence | šifrirana kopija v oblak, licenčni ključ, večobratni nadzor | kopija obnovljiva brez strežnika v obratu |
 
@@ -216,6 +216,28 @@ vrne `lab()/oklab()`): `/m` je padel **3 od 27** izrisanih parov, najslabši 1,0
 `/kiosk` **9 od 22**, najslabši 2,75:1 → **0 od 22**, najslabši 4,87:1. Gate in
 brskalnik se strinjeta do 0,02 (4,89 proti 4,87; 5,62 proti 5,62; 6,33 proti 6,35;
 13,38 proti 13,37; 17,49 proti 17,49). Rep se premakne: R3 → v1.180.0, R4 → v1.181.0.
+**R3 je oddana (v1.180.0).** Čarovnik `/setup` zbere ime obrata, davčno številko,
+e-pošto lastnika in PIN; oddaja gre na `POST /api/setup/claim`, ki je javna PO
+NAMENU (brez uporabnika še ne more biti seje) in jo drži petpogojna ograja:
+lokalni profil + dokaz fronte (HMAC iz `APP_SECRET`, ki ga postavi samo fronta) +
+naslov klienta v zanki + limit 5/min/IP + prazna baza. Edini pošten vir naslova je
+soket fronte, zato `glaveZaVir` prepiše `x-forwarded-for` in ga ne sprejme od
+klienta; fronta pa glavo `x-local-front` nastavi SAMO, kadar ji jo je launcher
+dal — brez `--https` torej prevzem ne obstaja. Poverilnice so natisljive (ista
+`credentialsSheet` kot `PRVIC-ZAGON.txt`, a PIN se v brskalnik nikoli ne izroči,
+če ga je izbral lastnik). Identiteta (davčna in matična številka) gre v STOLPCA
+`Location` in se ob naslednjem zagonu samo dopolni, nikoli ne prepiše.
+Merilo „brez terminala" je do te izdaje lagalo: launcher je vedno ustvaril
+lastnika, s tem pa je bazo zasedel, prevzem pa zahteva prazno — čarovnik je bil
+torej nedosegljiv ravno tistemu, za katerega je namenjen. Od zdaj `--https` brez
+identifikacijskih zastavic pomeni „identiteto določi brskalnik"
+(`provisionFromTerminal`, preizkus §I), baza pa je kljub temu pripravljena
+(push + WAL + kopija), da prvi prevzem piše v isto skledo.
+**Nerobjeno v R3 (zavešno, ne pozabljeno):** neobvezni demo podatki (zahtevajo
+lastnovo odločitev, kaj sme biti v proizvodnem obratu), lokalni migracijski pogon
+`migrate deploy` (R4 ga potrebuje za rollback), paketni namestilnik ZIP/EXE in
+nadgradnja obstoječih baz po `prisma migrate` — vse štiri ostajajo v §12 kot
+neopravljeno.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
@@ -245,6 +267,14 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   samo pokaže artefakt in ukaze; `--install` zapiše in izvede, `--uninstall`
   razveljavi, artefakt pa namenoma ostane na disku. Registracija opravila na
   pravem računalniku še ni bila izvedena (zahteva privolitev lastnika).
+- **Prva namestitev brez terminala (R3, v1.180.0):** `bun run local --https` na
+  PRAZNI podatkovni mapi ustali bazo (push + WAL + kopija), ne ustvari pa obrata;
+  zagon izpiše `čarovnik: https://localhost:<vrata>/setup`. Tam lastnik vpiše ime
+  obrata, davčno številko, e-pošto in PIN, po oddaji pa zaslon izpiše sled
+  poverilnic in ima gumb **Natisni**. Isto storitev terminalu pusti
+  `--restaurant-name`/`--owner-pin`/`--tax-id`/`--business-id`: kadar je katera
+  koli podana, velja star potek. Povezava do čarovnika se na prijavnem zaslonu
+  pokaže samo, dokler je baza prazna in profil lokalni.
 
 ## 10. Varnost in zasebnost
 
@@ -259,6 +289,14 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
   omrežje pa odpira samo TLS fronta — goli HTTP v LAN tako ni več dosegljiv.
   Priporočilo: ločeno omrežje za goste in osebje, požarna pregrada, močni PIN-i.
 - `/api/health` ne razkrije poti do baze, uporabniškega imena ali gesla.
+- **`POST /api/setup/claim` (R3) je javna luknja z namenom** in je zato vpisana v
+  register javnih endpointov (`tests/route-coverage.test.ts`), ne pozabljena:
+  kliče jo stroj, ki še nima uporabnika — seja torej ne more obstajati. Namesto
+  prijave jo drži pet pogojev (lokalni profil, dokaz fronte, zanka, 5/min/IP,
+  prazna baza); zaporedje je taki, da tuji klient ne more izzvati poizvedbe ne iz
+  razlike med kodami razbrati, ali je namestitev že prevzeta. Lastnik ostane
+  edini administrator, PIN ostane v `PRVIC-ZAGON.txt` (0600), odgovor brskalnika
+  pa ga povzame samo takrat, ko ga je izbral lastnik sam (§D2).
 - Podatki so lokalni; varnostna kopija je odgovornost obrata do R2.
 
 ## 11. Tveganja
