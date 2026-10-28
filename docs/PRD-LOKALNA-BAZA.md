@@ -101,7 +101,9 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 - samodejne varnostne kopije in obnova (R2a, izvedeno v v1.169.0);
 - WAL, `synchronous=FULL` in busy timeout (R2a, izvedeno v v1.169.0);
 - čarovnik prve namestitve v brskalniku (R3);
-- migracije in rollback nadgradenj (R3/R4);
+- rollback nadgradenj (R4b); lokalni migracijski pogon, ki je bil del te vrzeli,
+  je izdan v v1.183.0 (R6) in sme samo dodajati — kar shema vzame nazaj, ta pogon
+  samo javi, ne more pa storiti;
 - šifrirana kopija v oblaku, licenciranje, paketni namestilnik (R4b/R5b);
 - sinhronizacija med več strežniki (ni cilj; SQLite je en pisec).
 
@@ -156,9 +158,10 @@ lokalno, aplikacija pa je dostopna z računalnika in naprav v lokalnem omrežju.
 | **R2b2 — v1.175.0** | Varen lokalni obrat brez žice | HTTPS fronta v Node-u s lastnim CA (OpenSSL iz Git for Windows), Next zaprt na 127.0.0.1, v omrežje vodi samo fronta; zagon ob prijavi: generator opravil (Windows XML / launchd / systemd) in `local:autostart` s suhim tekom kot privzetim | PWA se namesti na tablico in ostane dostopna po ponovnem zagonu računalnika — **preizkus še ni opravljen** |
 | **R3 — v1.180.0** | Namestitev v 10 minutah | čarovnik `/setup` (ime obrata, davčna številka, lastnik, PIN), natisljive poverilnice, identiteta v stolpcih `Location`; **nerobjeno:** neobvezni demo podatki, lokalne migracije sheme | nova namestitev brez terminala (`65/65` §A–§H); nadgradnja ohrani podatke (H2/H3) |
 | **R4a — v1.181.0** | Podpora, ki ne izroči skrivnosti | lokalni dnevnik napak v datoteko (dnevna rota, 1 MiB, 7 dni), `bun run local:support` (podporni paket: manifest, stanje, kopije, dnevnik, okolje, README — brez `config.json`, `PRVIC-ZAGON.txt`, `tls/` in baze), samodejno maskiranje in zavrnitev paketa, če maskiranje spodleti | paket na živi namestitvi ne nosi nobene znane skrivnosti; trditev drži samo mutacijski dokaz (19/19) in meritev iz `%LOCALAPPDATA%` |
-| **R4b — številka ni določena** | Posodobitve in rollback | preverjanje novih različic, podpisani paket, rollback nadgradnje | pogojuje ga lokalni migracijski pogon (`prisma migrate deploy`), ki ga še ni — rollback brez njega ne more obstajati |
+| **R4b — številka ni določena** | Posodobitve in rollback | preverjanje novih različic, podpisani paket, rollback nadgradnje | prvotni pogoj te vrstice (lokalni migracijski pogon) je izpolnjen v v1.183.0, a rollbacka aditivni pogon ne more narediti: stolpca, ki ga shema vzame nazaj, ne more ne odstraniti ne vrniti. Ostajata dva dela, ki ju danes ni mogoče preizkusiti: preverjanje novih različic in podpisani paket |
 | **R5a — v1.182.0** | Kopija, ki preživi izgubljen disk | šifriran kontejner `ros-offsite-1` (scrypt `N=2^15`, AES-256-GCM) na medij, ki ga lastnik odnese sam (USB, zunanji disk, omrežna mapa); `bun run local:offsite`, obnova `local:restore --bundle`, zadrževanje 8 kontejnerjev, zavrnitev istega diska brez `--allow-same-volume`, geslo samo iz okolja ali datoteke | kontejner je obnovljen na napravi, ki baze v obratu nikoli ni imela — izmerjeno na živi namestitvi: 899 strani, 3 682 591 B, C:→D: (različna `dev`), 3,6 s do zapisanega kontejnerja in 0,9 s do obnovljene baze |
 | **R5b — številka ni določena** | Prevoz v oblak in licence | samodejna pošiljka kontejnerja, licenčni ključ, večobratni nadzor | pogojujeta produkcijsko bazo, ki je danes ni (Neon je na kvoti); samodejna pošiljka je nov izhod podatkov, ki ga nihče ni preizkusil |
+| **R6 — v1.183.0** | Lokalni migracijski pogon, ki samo dodaja | `bun run local:migrate`: suhi tek je privzet, `--apply` izvede; primerjava po SQLite **afiniteti** in ne po črki, kanonični DDL je `prisma migrate diff --from-empty` nad SQLite zrcalom; dovoljene so samo aditivne stavke (manjkajoč stolpec, manjkajoča tabela, manjkajoč indeks); vse ostalo (spremenjen tip, NOT NULL brez privzetka, tuj ključ na živo tabelo, odvečen stolpec) je zavrnitev z razlogom in ne izjema; pred prvim zapisom preverjena kopija `pred-migracijo-`, celoten batch v eni transakciji, pred `COMMIT` še `PRAGMA foreign_key_check`; manjkajoča baza **ni** izmišljen načrt — ukaz manjkajočo bazo zavrne pred načrtovanjem (izhod 1), `--db <pot>` pa pove datoteko neposredno in preseže `--data-dir`; DDL brez nobene tabele **ni vir definicij**, zato pogon ne more trditi, da je baza usklajena | izmerjeno 27. 10. 2026: živa baza obrata (kopija 3 682 304 B, 135 tabel, `journal_mode=wal`) vrne `0 dodatkov · 0 zavrnitev · 0 odvečnih stolpcev` — torej noben lažen razkorak; na akumulirani testni bazi `ci1.182.0.db` (4 042 752 B) Prisma sama zahteva 2 796 B, v katerih sta dva `DROP TABLE`, pogon pa ne izda nobenega stavka za brisanje, javi pa eno samo pojasnjeno zavrnitev (`PayLink.orderId` → tuj ključ, ki ga SQLite na živo tabelo ne more dodati); zapis na kopiji prave baze 3 804 ms, `Employee` 1 → 1 vrstica, `integrity_check` ok, rep ostane `wal`, odvečni stolpec je še vedno na mestu; sabotaža zadnjega stavka → `no such table: main.NiTeTabele`, nobena stavka ni bila aplicirana, datoteka pa bajt za bajtom enaka; CLI nad manjkajočo potjo izstopi **1** v ~380 ms brez izpisa načrta (pred popravkom: „dodatki: 706" in izstop **0**), `--db` nad mini zrcalom vrne en sam stavek `ALTER TABLE … ADD COLUMN` v 4 152 ms; mutacije samega CLI-ja (prevera manjkajoče baze izpade, `--db` je zavrnjen, izstopna koda postane 0) ⇒ 3/3 ujeto |
 
 R2 je razcepljen, ker ga je vmes pojedlo drugo delo: v1.166.0–v1.168.0 so
 porabile druge izdaje, cesta tukaj ne obljublja več številk, ki jih ni več.
@@ -238,8 +241,9 @@ identifikacijskih zastavic pomeni „identiteto določi brskalnik"
 **Nerobjeno v R3 (zavešno, ne pozabljeno):** neobvezni demo podatki (zahtevajo
 lastnovo odločitev, kaj sme biti v proizvodnem obratu), lokalni migracijski pogon
 `migrate deploy` (R4 ga potrebuje za rollback), paketni namestilnik ZIP/EXE in
-nadgradnja obstoječih baz po `prisma migrate` — vse štiri ostajajo v §12 kot
-neopravljeno.
+nadgradnja obstoječih baz po `prisma migrate` — vse štiri ostajajo v §8 kot
+vrstice brez opravljene izdaje. Od teh štirih je pogon prišel pozneje, kot
+samostojna izdaja v1.183.0 (R6 spodaj), in ne v obliki `migrate deploy`.
 v1.180.1 je posredovala izdaja za **ime izdelka**, ki na rep ceste ne spada. Drevo
 je imelo dva črkovna zapisa hkrati: kanoničnega 162 pojavitev in razcepljenega 50
 pojavitev v 25 datotekah. Odločitev ni okus: `common.app` v obeh slovarjih je edini
@@ -260,8 +264,8 @@ dnevnik napak in podporni paket sta dela, kjer napaka lahko tiho izroči skrivno
 navzven, preverjanje posodobitev, podpisani paket in rollback pa so dela, ki jih
 danes ni mogoče preizkusiti. Cesta zato dobi **R4a (izdano na v1.181.0)** in
 **R4b (številke nima)**: rollback je odvisen od lokalnega migracijskega pogona
-(`prisma migrate deploy`), ki ga še vedno ni — ista zadeva, ki jo je R3 že pustila
-v §12 kot zavešno. Ker se R4 ni premaknil, se rep ceste tudi tokrat ne premakne:
+(`prisma migrate deploy`), ki ga takrat še ni — ista zadeva, ki jo je R3 že pustila
+v §8 kot zavešno. Ker se R4 ni premaknil, se rep ceste tudi tokrat ne premakne:
 naslednja na vrsti je R5.
 v1.182.0 je izdala R5, ne celotnega R5. Merilo je isto kot pri R4: izdano je samo
 tisto, kar je bilo na tej napravi tudi preizkušeno. **R5a (v1.182.0)** je kopija na
@@ -271,6 +275,44 @@ prevoz v oblak, licenčni ključ in večobratni nadzor: produkcijska baza danes 
 obstaja (Neon je na kvoti), samodejna pošiljka pa bi bila nov izhod podatkov, ki ga
 nihče ni pregledal — isti razlog, zaradi katerega R4b nima rollbacka. Ker R5a ne
 posega v obveznosti prejšnjih vrstic, se rep ceste ne premakne niti tokrat.
+v1.183.0 je izdala R6, lokalni migracijski pogon. Zanj je bila predpisana
+osnova, ki ne more delovati: `prisma migrate deploy` bere journal že uporabljenih
+migracij, lokalna baza pa takega nima, ker nastane z `db push` in ne z `migrate` —
+izmerjeno 27. 10. 2026: v vsaki od obeh baz je 135 tabel in nobena se ne imenuje
+`_prisma_migrations`. Odstopiti od predpisane
+osnove ni bližnjica, ampak edina izvedljiva pot.
+Kaj pogon v resnici preverja, se vidi iz dveh meritev na istih datotekah.
+`prisma migrate diff --from-empty` nad SQLite zrcalom da kanonični DDL (167 915 B,
+135 `CREATE TABLE`, 571 `CREATE INDEX`, 0 `ALTER TABLE`, 0 `DROP`, 2,78 s) in ta DDL
+je edini vir definicij. Na kopiji žive baze obrata (3 682 304 B, 135 tabel,
+`journal_mode=wal`) je načrt prazen: `0 dodatkov · 0 zavrnitev · 0 odvečnih
+stolpcev` — najpomembnejša od meritev, ker bi vsak lažen razkorak pomenil poseg v
+bazi, ki je že usklajena. Nasprotni primer je akumulirana `ci1.182.0.db`
+(4 042 752 B): Prisma sama zahteva 2 796 B, in ti bajti vsebujejo dva `DROP TABLE`
+(PayLink in PrintJob, vsak v preobleki `CREATE TABLE "new_*"` → `DROP` → `RENAME`),
+dve `CREATE TABLE`, dva `ALTER TABLE RENAME` in štiri `PRAGMA` vrste okrog njiju.
+Pogon na isti datoteki ne izda nobenega stavka za brisanje, javi pa eno samo
+zavrnitev z razlogom: `PayLink.orderId` mora dobiti tuj ključ v `Order`, SQLite pa
+ga na živo tabelo ne more dodati brez preoblikovanja. Preostanka te razlike
+pogon upravičeno ne vidi, ker primerja po SQLite afiniteti in ne po črki:
+`TIMESTAMP(3)` v bazi in `DATETIME` v zrcalu sta oba NUMERIC, `DECIMAL(65,30)` in
+`DECIMAL` tudi, `CONSTRAINT "PrintJob_pkey" PRIMARY KEY` in `PRIMARY KEY` pa
+se razlikujeta samo po imenu ograde.
+Zapisni del je preizkušen na kopiji prave baze, ne na bazi obrata: ena sama
+transakcija, `Employee` 1 → 1 vrstica, `integrity_check` ok, `journal_mode` ostane
+`wal`, odvečni stolpec na koncu tabele ostane v bazi, ker ga pogon ne sme izbrisati,
+celoten poseg 3 804 ms. Sabotaža — zadnji stavek je kazal na tabelo, ki ne obstaja —
+je pokazala lastnost vse ali nič: `no such table: main.NiTeTabele`, 0 apliciranih
+stavkov in datoteka bajt za bajtom enaka tisti pred poskusom. Zadnja meritev velja
+izhodni kodi: baza, kjer pogon najde samo zavrnitev, z `--apply` ne zapiše ničesar
+in vrne 1, baza po usklajenem posegu pa vrne 0. Zavrnitev je od te izdaje naprej
+rezultat in ne blokada celotnega batcha: aditivni stavki, ki so varni, pridejo v
+bazo, razlika, ki je pogon ne sme storiti, pa ostane javljena — meritev na
+`ci1.182.0.db` je pokazala zakaj: brez te ločnice bi ukaz na nabrani bazi vedno
+ostal brez učinka, namesto da je orodje, ki ga je mogoče uporabiti.
+Tokrat se rep ceste premakne: R6 je zadnja vrstica z izdano številko. Za njo
+ostajata R4b in R5b, in nobene od njiju ne more izdati program sam: R4b rabi
+preverjanje novih različic in podpisani paket, R5b rabi produkcijo, ki je danes ni.
 R1 je namenoma ozek: ne uvaja HTTPS, kopij ali čarovnika. To so ločene izdaje
 z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 
@@ -281,6 +323,18 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 - **Nadgradnja:** do R3 samo aditivne spremembe; destruktivna sprememba se
   zavrne. Pred vsakim posegom v shemo nastane kopija `backups/pre-push-*.db`
   (R1) in jo setup naredi **pred** `db push`, ne za njim.
+- **Uskladitev sheme (R6, v1.183.0):** `bun run local:migrate` pokaže načrt,
+  `--apply` ga tudi izvede — suhi tek je privzet in se baze ne dotakne, niti
+  kopije ne. Pogon sme samo dodajati (manjkajoč stolpec, manjkajoča tabela,
+  manjkajoč indeks); kar zahteva preoblikovanje tabele ali brisanje, javi kot
+  zavrnitev z razlogom in tega ne stori. Pred prvim zapisom nastane preverjena
+  kopija `backups/pred-migracijo-<UTC>.db` (hrani jih 5), celoten batch teče v eni
+  transakciji, pred `COMMIT` pa še `PRAGMA foreign_key_check`. Aplikacija mora biti
+  med posegom ustavljena: baza z neprečiščenim repom poseg zavrne, ker bi kopija,
+  narejena pod tekočim piscem, lahko izgubila zadnji potrjeni zapis (R2a je
+  izmerila, da navaden prekop čez umazan WAL vrne 2 od 3 vrstic). Izhodna koda je 0 samo takrat, ko ni
+  razlike, ki je pogon ne sme storiti — drugače 1, da se uskladitev ne more tiho
+  končati kot uspeh.
 - **Varnostna kopija (R2a, v1.169.0):** ob zagonu in nato na vsakih 6 ur nastane
   `backups/dnevno-<UTC>.db` — ena na koledarski dan, z integritetnim pregledom.
   Ročno: `bun run local:backup`. Kopija je ena sama `.db` datoteka, prenosna na USB.
@@ -386,7 +440,8 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 | Tuji kontejner narekuje parametre KDF | enormna poraba pomnilnika ob branju | meje `N`, `r`, `p` in dolžina glave se preverijo PRED derivacijo ključa (R5a) |
 | Jasen odsek obstaja kratek čas med šifriranjem | trenutek, ko so podatki na disku nešifrirani | odsek nastane samo na ciljnem mediju in se pobriše tudi ob odpovedi sredi poti; dokazano s seznamom datotek PO poskusu (R5a, D4b in E7) |
 | SQLite in sočasni pisci | zaklepi/napake | en strežniški proces, WAL in busy timeout (R2a) |
-| Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija pred `db push` |
+| Destruktivna sprememba sheme | izguba podatkov | brez `--accept-data-loss`, zavrnitev + kopija pred `db push`; lokalni pogon (R6, v1.183.0) pa takega stavka ne zna narediti sploh — tip stavke je omejen na tri aditivne vrste (`dodaj-stolpec`, `ustvari-tabelo`, `ustvari-indeks`), razliko nad njimi samo javi |
+| Nadgradnja z aditivnim pogonom, ki bi blokirala cel batch | nabrana baza, kjer ukaz vedno ostane brez učinka | zavrnitev je rezultat in ne blokada: varni dodatki pridejo v bazo, nevaren poseg ostane javljen z izhodno kodo 1 (R6, izmerjeno na `ci1.182.0.db`) |
 | HTTP v LAN | PWA/offline ne deluje | HTTPS fronta z lastnim CA (R2b2, v1.175.0); dokler operater ne zaupa CA-ju, brskalnik na tablici prikaže opozorilo in PWA-ja ni mogoče namestiti |
 | FURS/plačila brez interneta | fiskalni zaključek ne uspe | lokalna baza tega ne reši; dokumentirano |
 | Razlika med Postgres in SQLite shemo | napake ob nadgradnji | generator zrcala + drift gate |
@@ -411,6 +466,8 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 | Ciljni OS | Windows 10/11 prvi, Linux/macOS podprta pot | R1/R2b2 |
 | Paketni namestilnik | samostojen ZIP/EXE z Bun runtime in `.next` | R3 |
 | Meja offline vrste (starost in dolžina) | ODLOČENO v v1.170.0: 200 živih operacij, 12 h starosti; številki sta na programu, mehanizem in vidnost sta v mrtvi črki | R2b1 |
+| Lokalni migracijski pogon | ODLOČENO v v1.183.0: cesta je predpisala `prisma migrate deploy`, ta pa zahteva journal migracij, ki ga lokalna baza nima (`db push` ga ne piše) — izdani pogon primerja zrcalo in bazo po SQLite afiniteti ter samo dodaja | R6, naredeno |
+| Rollback nadgradnje | ODLOČENO delno v v1.183.0: aditivni pogon nasprotne migracije ne more narediti, zato je povratna pot obnova preverjene kopije (`local:restore`), ne nasprotni stavek. Odprta ostajata preverjanje novih različic in podpisani paket | R4b |
 
 ## 14. Kaj zavestno ne obljubljamo
 
@@ -432,3 +489,8 @@ z lastnimi merili, da prva izdaja ne postane nepreverljiva.
 - da kopija sama po sebi varuje pred krajo: medij je šifriran, a geslo,
   napisano na papirček in prilepljen na ključek, ni varnostni ukrep ampak nova
   ranljivost.
+- da bo lokalni migracijski pogon (R6, v1.183.0) kdaj kaj spremenil ali vzel
+  nazaj: sme izdati samo tri aditivne vrste stavka, vse ostalo javi kot
+  zavrnitev. Nadgradnja, ki zahteva preoblikovanje tabele, zato potrebuje ročno
+  selitev v razvojni veji; v obratu je edina povratna pot obnova kopije, ne
+  nasprotni stavek.

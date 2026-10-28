@@ -474,14 +474,47 @@ lahko prevedeno.
 ```bash
 git pull
 bun install
+bun run local:migrate        # suhi tek: pokaže načrt, baze se ne dotakne
+bun run local:migrate --apply # šele potem izvede
 bun run local --build
 ```
 
 - Pred posodobitvijo sheme setup naredi kopijo v `backups/`.
-- Če bi sprememba zahtevala izgubo podatkov, Prisma ukaz **zavrne**; aplikacija
-  se ne zažene in baza ostane nespremenjena. Tedaj obnovite kopijo ali počakajte
-  na lokalni migracijski pogon (R4b) — **ne** uporabljajte `bun run db:push`, ker
-  ta razvojni ukaz vsebuje `--accept-data-loss`.
+- `bun run local:migrate` (v1.183.0) razliko med zrcalno shemo
+  `prisma/schema.sqlite.prisma` in bazo razčleni **po stolpcih**. Brez
+  `--apply` je suhi tek: natisne načrt in ne zapiše ničesar, niti kopije. Z
+  `--apply` najprej nastane preverjena kopija `pred-migracijo-*` (integrity_check
+  ok), nato pa celoten batch v **eni** transakciji s pregledoma
+  `foreign_key_check` in `integrity_check` pred `COMMIT`; ob odpovedi v sredini
+  je baza rollbackana, izmerjeno 27. 10. 2026.
+- Pogon sme **samo dodajati**: manjkajoč stolpec, manjkajočo tabelo, manjkajoč
+  indeks. Kar zahteva preoblikovanje tabele — sprememba tipa, zatesnitev NULL,
+  nov primarni ali tuj ključ, stolpec `NOT NULL` brez privzete vrednosti —
+  zavrne z razlago po stolpcih in **ne zapiše ničesar**. Zadnjega primera ne
+  sme storiti, čeprav SQLite na prazni tabeli tak DDL sprejme: pokvari se šele
+  ob prvem vnosu (`NOT NULL constraint failed`), kar je hujši izid kot zavrnjen
+  ukaz (izmerjeno 27. 10. 2026). Odvečnega stolpca ne izbriše nikoli — samo
+  javi ga. Za poseg, ki ga pogon zavrne, mora skrbeti razvojna veja z ročno
+  napisano selitvijo.
+- Če baza **manjka**, ukaz to pove in ničesar ne načrtuje — izstopna koda je 1 in
+  na zaslonu ni nobenega seznama. Seznam, izmišljen iz ničesar, je bil do
+  27. 10. 2026 past: `planMigration` nad manjkajočo datoteko ne more vedeti, da je
+  pot napačna, ker je prazno stanje zanj enako prazni bazi, zato je `--data-dir` na
+  napačno mapo izpisal „Načrt — dodatki: 706" in izhodno kodo **0**. Sedaj ukaz
+  najprej preveri, da datoteka obstaja. Nove baze ta ukaz ne ustvari; prvo
+  namestitev naredi `bun run local`.
+- Če pogon **vira definicij ne dobi**, ne sodi ničesar. Izpis orodja
+  `prisma migrate diff`, ki ne vsebuje nobene tabele (prazen izpis ali obvestilo druge
+  različice orodja, ki izide z izhodno kodo 0), je 27. 10. 2026 vrnil „Načrt —
+  dodatki: 0 · zavrnitve: 0 · odvečni stolpci: 0" in izhod **0**, kar bi lastniku
+  reklo, da je baza usklajena, čeprav primerjave sploh ni bilo. Sedaj tak pogon
+  zavrne z besedami „iz kanoničnega DDL-ja ni bilo razčlenjene nobene tabele".
+- `--db <pot>` pove datoteko baze neposredno in preseže `--data-dir` (ta pričakuje
+  **profilno mapo** in sama doda `data/restaurantos.db`). Za vsakdanji obrat ga ne
+  rabite; za vzdrževanje na nabrani ali razvojni bazi je to edini pošten način, da
+  ukaz ne išče baze v profilu.
+- **ne** uporabljajte `bun run db:push`, ker ta razvojni ukaz vsebuje
+  `--accept-data-loss` in za živo obrat ni namenjen.
 - `bun run local --build` prisili ponovno gradnjo; brez zastavice se build
   izvede le, če `.next/BUILD_ID` **manjka**. To je past pri nadgradnji: če je mapa
   `.next` že obstajala, launcher postreže **stari grad** in brskalnik pokaže staro
