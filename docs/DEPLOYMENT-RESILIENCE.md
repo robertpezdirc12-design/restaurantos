@@ -40,6 +40,24 @@ vrne SQLite klienta, da `bun test` ne ostane na napačnih tipih (v1.112.0: 29
 lažnih padcev). Isti razred zdaj ujame tudi `tests/seed-enum-validity.test.ts`,
 ki bere produkcijsko shemo in ne klienta.
 
+Od v1.184.0 ta skript orodij ne išče več prek pognalnika. Prej ju je zagnal z
+`bunx` ali `npx` glede na `npm_config_user_agent`: pod `bun run typecheck:cloud`
+je agent nastavljen in vrata delujejo, pri `node scripts/typecheck-cloud.cjs` pa
+ni — takrat `npx` posegne v svoj predpomnik `_npx`, kjer pod imenom `tsc` stoji
+paket, ki ni TypeScript, izpiše „This is not the tsc command you are looking
+for" in se ustavi z izhodno kodo 1. Vrata so torej lahko razglasila „produkcijski tipi se ne
+ujemajo", ne da bi kadarkoli pogledala tipe. Danes `require.resolve` razreši
+`node_modules/typescript/bin/tsc` in `node_modules/prisma/build/index.js` glede
+na koren projekta, `spawnSync` pa oba požene z `process.execPath`; izpis je
+enak, naj skript teče pod bunom ali golem nodeom.
+
+Izstopne kode so del pogodbe, da jih obrat loči brez branja izpisa: 0 tipi so
+usklajeni, 1 `tsc` je rdeč, 2 produkcijski klient ni nastal, 3 SQLite klienta
+ni bilo mogoče vrniti, 4 orodje ni nameščeno (edini popravek je `bun install`),
+64 neznana možnost. `--probe` razreši obe orodji in ne generira ničesar, zato je
+v testih varen; celotnega teka testi ne poganjajo čez prava orodja, ker
+`prisma generate` sredi niza zamenja Prisma klient.
+
 `check-secrets.sh` od v1.150.0 skenira tudi `.github/`. Pred tem je pregledal
 `src/`, `scripts/`, `mini-services/` in `.gitlab-ci.yml`, workflowe pa ne, zato
 je step "Secrets hygiene" ostal zelen tudi ob razkritem žetonu v `sync.yml`.
