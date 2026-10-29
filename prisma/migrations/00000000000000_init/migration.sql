@@ -2718,6 +2718,7 @@ CREATE TABLE "WaitlistEntry" (
     "status" TEXT NOT NULL DEFAULT 'waiting',
     "checkedInAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "notifiedAt" TIMESTAMP(3),
+    "notifyStatus" TEXT NOT NULL DEFAULT '',
     "seatedAt" TIMESTAMP(3),
     "leftAt" TIMESTAMP(3),
     "tableId" TEXT,

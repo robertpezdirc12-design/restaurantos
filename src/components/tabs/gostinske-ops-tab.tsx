@@ -765,6 +765,7 @@ interface WaitlistEntryT {
   status: string
   checkedInAt: string
   notifiedAt: string | null
+  notifyStatus: string | null
   seatedAt: string | null
   leftAt: string | null
   tableId: string | null
@@ -798,6 +799,14 @@ const wlStatusBadge = (status: string, tx: (key: string) => string): { label: st
   seated: { label: tx('wl.stSeated'), cls: 'border-green-300 bg-green-50 text-green-800' },
   left: { label: tx('wl.stLeft'), cls: 'border-stone-300 bg-stone-50 text-stone-600' },
 }[status] ?? { label: status, cls: 'border-stone-300 bg-stone-50 text-stone-700' })
+
+/** v1.188.0 (P2-14): sporočilo izida SMS poskusa (tzv. tihi uspeh — uporabno le, ko kaj ni v redu). */
+const smsOutcomeMsg = (notifyStatus: string, tx: (key: string) => string): string => ({
+  sent: tx('wl.smsSent'),
+  failed: tx('wl.smsFailed'),
+  no_phone: tx('wl.smsNoPhone'),
+  sms_unconfigured: tx('wl.smsUnconfigured'),
+}[notifyStatus] ?? '')
 
 /** Issue #1 (triage ⑤): čakalna lista — prijava → obvestilo → usaditev (zaklene mizo) / odhod + statistika. */
 
@@ -882,16 +891,40 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
     }
   }
 
+  async function resendSms(w: WaitlistEntryT) {
+    setBusy(true)
+    setErr('')
+    setOkMsg('')
+    try {
+      const d = await api<{ entry: { id: string; status: string }; notifyStatus: string }>('/api/waitlist', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: w.id, resend: true }),
+      })
+      const sms = smsOutcomeMsg(d.notifyStatus, t)
+      setOkMsg(sms || t('wl.okNotified', { name: w.guestName }))
+      await load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function transition(w: WaitlistEntryT, status: string, tableId?: string) {
     setBusy(true)
     setErr('')
     setOkMsg('')
     try {
-      const d = await api<{ entry: { id: string; status: string; actualWaitMinutes?: number | null } }>('/api/waitlist', {
+      const d = await api<{ entry: { id: string; status: string; actualWaitMinutes?: number | null }; notifyStatus?: string }>('/api/waitlist', {
         method: 'PATCH',
         body: JSON.stringify({ id: w.id, status, tableId: tableId || undefined }),
       })
-      if (status === 'notified') setOkMsg(t('wl.okNotified', { name: w.guestName }))
+      if (status === 'notified') {
+        // v1.188.0 (P2-14): izid SMS poskusa — uspeh je tih (glavno sporočilo že
+        // pravi obveščen), napaka/brez številke/brez nastavitve pa vidi gostinec.
+        const sms = d.notifyStatus ? smsOutcomeMsg(d.notifyStatus, t) : ''
+        setOkMsg(t('wl.okNotified', { name: w.guestName }) + (sms ? ` ${sms}` : ''))
+      }
       else if (status === 'seated') setOkMsg(t('wl.okSeated', { name: w.guestName, wait: d.entry.actualWaitMinutes !== null && d.entry.actualWaitMinutes !== undefined ? t('wl.okSeatedWait', { dur: wlDur(d.entry.actualWaitMinutes) }) : '' }))
       else setOkMsg(t('wl.okLeft', { name: w.guestName }))
       setSeatFor(null)
@@ -1029,13 +1062,23 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
                           {wlDur(mins)}
                           <span className="block text-xs text-stone-400">{t('wl.forecast')} {w.quotedWaitMinutes > 0 ? `≈ ${w.quotedWaitMinutes} min` : '—'}</span>
                         </td>
-                        <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
+                        <td className="px-3 py-2">
+                          <Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
+                          {w.status === 'notified' && w.notifyStatus && w.notifyStatus !== 'sent' && (
+                            <span className="block text-xs text-stone-500 mt-0.5">{smsOutcomeMsg(w.notifyStatus, t)}</span>
+                          )}
+                        </td>
                         {canManage && (
                           <td className="px-3 py-2">
                             <div className="flex flex-wrap justify-end gap-1.5">
                               {w.status === 'waiting' && (
                                 <Button variant="outline" size="sm" disabled={busy} onClick={() => void transition(w, 'notified')} title={t('wl.notifyTitle')}>
                                   <Bell className="w-3.5 h-3.5" /> {t('wl.notifyBtn')}
+                                </Button>
+                              )}
+                              {w.status === 'notified' && w.notifyStatus === 'failed' && (
+                                <Button variant="outline" size="sm" disabled={busy} onClick={() => void resendSms(w)} title={t('wl.smsResend')}>
+                                  <Bell className="w-3.5 h-3.5" /> {t('wl.smsResend')}
                                 </Button>
                               )}
                               <Button size="sm" disabled={busy} onClick={() => { setSeatFor(w); setSeatTableId('') }} title={t('wl.seatTitle')}>
@@ -1119,6 +1162,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
               <div className="space-y-1">
                 <Label htmlFor="wl-phone">{t('wl.phoneOptional')}</Label>
                 <Input id="wl-phone" value={form.guestPhone} onChange={(e) => setForm({ ...form, guestPhone: e.target.value })} placeholder="041 234 567" />
+                <p className="text-xs text-stone-400">{t('wl.smsHint')}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

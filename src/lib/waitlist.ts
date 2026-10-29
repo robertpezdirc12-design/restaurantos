@@ -212,3 +212,53 @@ export function waitlistStats(rows: WaitlistStatsRow[]): WaitlistStats {
   if (s.seated > 0) s.avgActualWait = Math.round(sum / s.seated)
   return s
 }
+
+/* ─────────────────────────── SMS opomnik (v1.188.0, P2-14) ───────────────────────────
+ *
+ * Prehod waiting → notified POSKUŠA poslati SMS »vaša miza je prosta« na
+ * guestPhone. Pogoji in fail-soft semantika:
+ *  - brez (veljavne) številke → 'no_phone' (ni poskusa);
+ *  - brez SMS konfiguracije lokacije → 'sms_unconfigured' (ni poskusa);
+ *  - pošiljanje spodleti → 'failed' — prehod na 'notified' VEDNO uspe (usaditev
+ *    gosta je primarno dejanje, SMS je le pomočnik; napaka SMTP/SMS ponudnika
+ *    NE sme blokirati gostinca);
+ *  - uspeh → 'sent'.
+ * GDPR: številka je pridobljena IZKLJUČNO za ta namen ob prijavi na čakalno
+ * vrsto — sporočilo je izvedba zahtevane storitve (enkratno obvestilo o mizi),
+ * NE tržna komunikacija; v revizijo zapisujemo SAMO status, nikoli številko
+ * ali vsebino sporočila. */
+
+export const WAITLIST_NOTIFY_STATUSES = ['', 'sent', 'no_phone', 'sms_unconfigured', 'failed'] as const
+export type WaitlistNotifyStatus = (typeof WAITLIST_NOTIFY_STATUSES)[number]
+
+/**
+ * Ali je številka uporabna za SMS? (digits ≥ 6 — ista prag pragov kot
+ * sendSms v src/lib/reminders.ts; presledki/ločila so dovoljeni vnos.)
+ */
+export function canSmsWaitlist(phone: string): boolean {
+  const digits = String(phone ?? '').replace(/\D/g, '')
+  return digits.length >= 6
+}
+
+/**
+ * Besedilo SMS obvestila. Lokacija določa jezik (sl privzeto; hr za HR
+ * postaje — isto pravilo kot localeForLocation v crm.ts). Ime gosta je
+ * vključeno, če obstaja; številka mize SAMO, če je že dodeljena (pri prehodu
+ * notified mize še ni — funkcija je pripravljena tudi za ponovno pošiljanje
+ * po usaditvi).
+ */
+export function waitlistSmsText(
+  input: { guestName?: string | null; tableNumber?: number | null },
+  locale: 'sl' | 'hr' = 'sl',
+): string {
+  const name = String(input?.guestName ?? '').trim()
+  const table = Math.max(0, Math.floor(Number(input?.tableNumber) || 0))
+  if (locale === 'hr') {
+    const who = name ? ` ${name}` : ''
+    const where = table > 0 ? ` (stol ${table})` : ''
+    return `Poštovani,${who}! Vaš stol je slobodan${where}. Dobrodošli!`
+  }
+  const whoSl = name ? ` ${name}` : ''
+  const whereSl = table > 0 ? ` (miza ${table})` : ''
+  return `Pozdravljeni,${whoSl}! Vaša miza je prosta${whereSl}. Lepo vabljeni!`
+}

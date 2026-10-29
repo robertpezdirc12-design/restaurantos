@@ -3386,6 +3386,7 @@ model WaitlistEntry {
   status            String       @default("waiting")
   checkedInAt       DateTime     @default(now())
   notifiedAt        DateTime?
+  notifyStatus      String       @default("")
   seatedAt          DateTime?
   leftAt            DateTime?
   tableId           String?

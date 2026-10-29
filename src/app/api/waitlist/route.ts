@@ -11,7 +11,9 @@ import {
   isTerminalWaitlistStatus,
   validateEntryInput,
   waitlistStats,
+  type WaitlistNotifyStatus,
 } from '@/lib/waitlist'
+import { attemptWaitlistSms } from '@/lib/waitlist-run'
 import { writeAudit } from '@/lib/audit-chain'
 
 /**
@@ -52,6 +54,7 @@ export async function GET(req: NextRequest) {
     status: r.status,
     checkedInAt: r.checkedInAt,
     notifiedAt: r.notifiedAt,
+    notifyStatus: r.notifyStatus,
     seatedAt: r.seatedAt,
     leftAt: r.leftAt,
     tableId: r.tableId,
@@ -181,6 +184,19 @@ export async function PATCH(req: NextRequest) {
     return ok({ released: true, tableId: table.id, tableNumber: table.number })
   }
 
+  // ── Ponovni poskus SMS (v1.188.0) — samo za obveščenega gosta ──
+  // Utegljivost: host popravi telefonsko številko (urejanje spodaj) in znova
+  // pošlje, če je bil prejšnji poskus failed. Idempotentno po dejanju: vsak
+  // klik je NOV poskus (zanemarljiva cena, uporabnikova izrecna odločitev).
+  if (!to && body?.resend === true) {
+    if (rec.status !== 'notified') return fail('Ponovni SMS je mogoč samo za obveščenega gosta.', 409)
+    const notifyStatus = await attemptWaitlistSms({ entryId: id, locationId: rec.locationId, phone: rec.guestPhone, guestName: rec.guestName })
+    await writeAudit(db, { userId: user.sub, action: 'WAITLIST_SMS_RESEND', entityType: 'WaitlistEntry', entityId: id, details: jstr({
+          guestName: rec.guestName, notifyStatus,
+        }), locationId: rec.locationId })
+    return ok({ entry: { id, status: rec.status, notifyStatus }, notifyStatus })
+  }
+
   // ── Urejanje aktivnega vnosa (brez prehoda) ──
   if (!to) {
     if (isTerminalWaitlistStatus(rec.status)) return fail(`Vnos je že zaključen (${rec.status}) — urejanje ni mogoče.`, 409)
@@ -242,10 +258,18 @@ export async function PATCH(req: NextRequest) {
     })
     if (!updated) return fail('Miza je bila vmes zasedena — osveži in poskusi znova.', 409)
 
+    // v1.188.0 (P2-14): SMS poskus SAMO ob prehodu v notified — fail-soft,
+    // rezultat v reviziji in odgovoru (UI pokaže izid takoj).
+    let notifyStatus: WaitlistNotifyStatus | null = null
+    if (to === 'notified') {
+      notifyStatus = await attemptWaitlistSms({ entryId: id, locationId: rec.locationId, phone: rec.guestPhone, guestName: rec.guestName })
+    }
+
     const auditAction = to === 'seated' ? 'WAITLIST_SEAT' : to === 'left' ? 'WAITLIST_LEFT' : 'WAITLIST_NOTIFY'
     await writeAudit(db, { userId: user.sub, action: auditAction, entityType: 'WaitlistEntry', entityId: id, details: jstr({
           guestName: rec.guestName, partySize: rec.partySize, status: to,
           tableId: data.tableId ?? null, actualWaitMinutes: data.actualWaitMinutes ?? null,
+          ...(notifyStatus ? { notifyStatus } : {}),
         }), locationId: rec.locationId })
     if (to === 'seated') {
       await publishEvent('ReservationSeated', {
@@ -256,7 +280,7 @@ export async function PATCH(req: NextRequest) {
         locationId: rec.locationId,
       }).catch(() => undefined)
     }
-    return ok({ entry: { id: updated.id, status: updated.status, seatedAt: updated.seatedAt, actualWaitMinutes: updated.actualWaitMinutes, tableId: updated.tableId } })
+    return ok({ entry: { id: updated.id, status: updated.status, seatedAt: updated.seatedAt, actualWaitMinutes: updated.actualWaitMinutes, tableId: updated.tableId, notifyStatus: updated.notifyStatus }, ...(notifyStatus ? { notifyStatus } : {}) })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return fail(`Prehod ni uspel: ${msg}`, 500)
