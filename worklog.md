@@ -5933,3 +5933,28 @@ Stage Summary:
 - Suite je spet zaupanja vreden: trije razredi lažno rdečih testov (unikatni default, env tekma, fs laž) so odpravljeni na način, ki na zdravih okoljih ne spremeni NIČ — CI in Windows tečeta kot prej.
 - Tržna vrzel P1-6 je zaprta v enem kliku: natakar v plačilnem dialogu izbere »Na 2 gostov« in vsak gost dobi svoj izstavek (pošteno po znesku), svoje plačilo in svoj račun — brez ročnega oklepjanja postavk.
 - AKCIJA ZA LASTNIKA: (1) rotiraj GitHub žeton `ghp_p0uy…` in GitLab žeton `glpat-Gj--…`, izpostavljena v klepetu (stalna točka vsake seje); (2) peskovniška opomba: bun mora biti ≥ 1.4.x (node:sqlite), sicer 34 testov lažno pade; (3) preveri Vercel/Neon po pushu (sync-check, health version 1.185.0).
+
+---
+
+Task ID: v1.191.0-de-it-jeziki-za-goste
+Agent: glavni agent (Z.ai Code)
+Task: Nadaljevanje razvojnega vala po lastnikovem ukazu (»nadaljuj«, delo BREZ AI modelov — samo deterministične skripte). Seja je potekala v svežem recikliranem peskovniku (repozitorij kloniran prek lastnikovega žetona; žeton uporabljen samo v pomnilniku, iz .git/config pobrisan). Izberite najvišje prioritizirano izvedljivo vrzel iz docs/TRZNA-VRZELI-2026.md §6: P2-9b izključena (brez AI), P2-11 blokirana (lastniška odločitev), #16–#18 mreža/partnerji, payroll pravno občutljiv → izbrana P3 #21 (DE/IT jeziki za goste) kot čisti koda val po dokazanem vzorcu P1-5 (EN).
+
+Work Log:
+- OKOLJE: peskovnik z bun 1.3.14 (brez node:sqlite) → nadgrajen bun 1.4.4 (34 testov sicer lažno pade); peskovniški globalni DATABASE_URL (tuja baza) → preload iz 9630aa9 pravilno pripel na repo bazo; db/dev.db ustvarjena z izrecnim `DATABASE_URL=file:<repo>/db/dev.db bun run db:push`.
+- BASELINE: celoten suite zelen PRED spremembami — 3900 pass / 3 skip / 0 fail (189 datotek, 97,8 s), tsc --noEmit 0 napak. Točno stanje v1.190.0.
+- IZDAJA v1.191.0 — DE/IT ZA GOSTE (P3-21):
+  * Novi delna slovarja src/lib/i18n/de.ts + it.ts — 261 ključev vsak, enak obseg kot EN (vseh 5 predpon gostovskih površin: guest./pay./resv.public./lbl.public./web.store.; 7 gostovskih strani: /m, /kiosk, /display, /pay, /r, /label, /s).
+  * Register: DE državna oblika (Sie — konvencija gostinstva v nemško govorečem prostoru), IT neformalna (tu — naraven ton, skladen s SL/HR).
+  * index.ts: Locale 'de'|'it', LOCALES/DICTS, normalizeLocale ('de-AT'→'de', 'it-IT'→'it'), isLocale, LOCALE_HTML_LANG gole oznake 'de'/'it' (isti razlog kot 'en'), posplošeni guestDictGaps(dict) + deGuestGaps()/itGuestGaps() (enGuestGaps ohranjen kot javni API).
+  * guest-i18n.tsx: GuestLanguageToggle zdaj 5 jezikov (SL|HR|EN|DE|IT, 5 × ≥44px, aria-pressed) — vseh 7 gostovskih strani dobi DE/IT brez posegov vanje.
+  * i18n.tsx: staffUiLocale preslika 'de'/'it' → 'sl' (dashboard ostaja SL/HR; dokument trdi samo izrisano — WCAG 3.1.1, isti vzorec kot 'en').
+  * SL/HR/EN slovarji: dodana guest.lang.de/it imena (Nemščina/Italijanščina, Njemački/Talijanski, German/Italian).
+- TESTI: tests/i18n-guest.test.ts — nov opisnik P3-21 (pokritost de/it = [], enak set kot EN >255, brez praznih, resnično prevedeno z dokumentiranimi izjemami DE 'Telefon'/'Termin' — izposojenke, zlati prevodi Sie/tu, interpolacija, normalizacija, isLocale/htmlLangTag, 5×5 imena jezikov, fallback veriga); preslikava javnih API napak razširjena na VSEH pet slovarjev (42 znanih nizov); preklopnik pin na 5 jezikov. tests/i18n.test.ts: LOCALES pin ['sl','hr','en','de','it'], normalizeLocale/isLocale de/it veljavna, 'fr' kot prototip neznanega (prej je 'de-DE' lažno padal na 'sl'). tests/v176-document-lang.test.ts: LOCALE_HTML_LANG.de='de'/it='it' + staffUiLocale('de'/'it')→'sl'. Verzija 1.190.0→1.191.0 (src/lib/version.ts + 6 pin testov: issue10, billing, issue70, issue4, issue11-crm-core, issue9).
+- DOKUMENTACIJA: docs/TRZNA-VRZELI-2026.md — matrika »Večjezičnost za goste« ~ → ✓ (SL/HR polni + EN/DE/IT gostovski), §4 #21 ZAPRTO z dokazi, §6 točka 6 + §7 posodobitev v1.191.0.
+- VERIFIKACIJA (peskovnik, bun 1.4.4): tsc --noEmit 0, eslint 0, celoten suite zelen (glej Stage Summary).
+
+Stage Summary:
+- Matrika tržnih vrzeli: gostovske površine v PETIH jezikih — zadnja čisto kodna vrzel, ki ne potrebuje lastniške odločitve ali partnerja, zaprta v enem valu brez AI.
+- Nov vzorec posplošen: guestDictGaps() pomeni, da lahko naslednji jezik (npr. DE→AT fraze ali nadaljnji P3) prileti kot čista data datoteka + ena vrstica v index.ts + razširitev testnega opisnika.
+- AKCIJA ZA LASTNIKA: (1) prekliči GitHub žeton, izpostavljen v klepetu (stalna točka vsake seje); (2) P2-11 (e-pot/PEPPOL) in Fiskalizacija 2.0 cert še vedno čakata tvojo odločitev — koda je pripravljena; (3) po pushu preveri Vercel/Neon (health version 1.191.0).

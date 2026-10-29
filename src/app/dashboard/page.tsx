@@ -2002,7 +2002,7 @@ function DashboardInner() {
   const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
   // Issue #7 (P1, v1.104.0): alergenski dialog (meni tab → potrditev/popravek profila)
   const [allergenDlg, setAllergenDlg] = useState<{ id: string; name: string } | null>(null)
-  const allergenLocale: AllergenLocale = locale === 'hr' ? 'hr' : 'sl'
+  const allergenLocale: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : locale === 'de' ? 'de' : locale === 'it' ? 'it' : 'sl'
   const allergenLbl = (code: string) =>
     (ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, allergenLocale) : code
   const [saleCart, setSaleCart] = useState<Record<string, number>>({})

@@ -2251,6 +2251,8 @@ export const sl: Record<string, string> = {
   'guest.lang.sl': 'Slovenščina',
   'guest.lang.hr': 'Hrvaščina',
   'guest.lang.en': 'Angle\u0161\u010dina',
+  'guest.lang.de': 'Nem\u0161\u010dina',
+  'guest.lang.it': 'Italijan\u0161\u010dina',
   // Skupno (obe gostujoči strani)
   'guest.common.thanks': 'Hvala!',
   'guest.common.amount': 'Znesek',

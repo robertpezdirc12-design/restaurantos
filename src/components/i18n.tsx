@@ -24,11 +24,12 @@ const listeners = new Set<() => void>()
 
 /**
  * Jezik, ki ga dashboard DEJANSKO izriše. EN (P1-5) je z osebja namenno izvzet
- * (preklopnik ima samo SL | HR), zato locale 'en' prevede iz SL slovarja — in
- * dokument sme trditi samo tisto, kar je na zaslonu (WCAG 3.1.1).
+ * (preklopnik ima samo SL | HR), P3-21 (v1.191.0) tudi DE in IT (delna
+ * gostovska slovarja), zato se locale 'en'/'de'/'it' prevede iz SL slovarja —
+ * in dokument sme trditi samo tisto, kar je na zaslonu (WCAG 3.1.1).
  */
 export function staffUiLocale(l: Locale): Locale {
-  return l === 'en' ? 'sl' : l
+  return l === 'en' || l === 'de' || l === 'it' ? 'sl' : l
 }
 
 function loadStoredLocale(): void {

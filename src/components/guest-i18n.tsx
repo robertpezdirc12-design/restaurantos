@@ -1,14 +1,16 @@
 'use client'
 
 /**
- * Trojezičnost SL/HR/EN za GOSTUJOČE strani (audit §65/§193 — 33-b; P1-5 EN).
+ * Petjezičnost SL/HR/EN/DE/IT za GOSTUJOČE strani (audit §65/§193 — 33-b; P1-5 EN;
+ * P3-21 DE/IT v1.191.0).
  *
  * Kiosk (/kiosk) in QR meni (/m/<token>) NE hodita skozi dashboard (in njegov
  * I18nProvider), zato imata lahkoten samostojen provider — brez odvisnosti od
  * prijave/auth, a z ISTO infrastrukturo:
  *  - isti centralni slovar prek `t()` (src/lib/i18n/index.ts) — manjkajoč ključ
- *    v HR/EN → SL vrednost (EN je DELNI slovar samo za guest./pay. — dashboard
- *    ključi se v EN izrišejo iz SL); manjka povsod → ključ + console.warn v dev;
+ *    v HR/EN/DE/IT → SL vrednost (EN/DE/IT so DELNI slovarji samo za gostovske
+ *    predpone — dashboard ključi se izrišejo iz SL); manjka povsod → ključ +
+ *    console.warn v dev;
  *  - isti localStorage ključ (LOCALE_STORAGE_KEY = 'restaurantos.locale') —
  *    izbira jezika je povezana z glavno aplikacijo (gost in osebje si delita
  *    nastavitev na isti napravi; kiosk terminal si jo zapomni med ponovitvami);
@@ -44,8 +46,8 @@ function loadStoredLocale(): void {
     if (isLocale(saved)) {
       currentLocale = saved
     } else {
-      // prvi obisk: jezik brskalnika (sl/hr/en) — hrvaški gost dobi HR, angleški
-      // turist EN (P1-5), privzeto sl
+      // prvi obisk: jezik brskalnika (sl/hr/en/de/it) — hrvaški gost dobi HR,
+      // angleški turist EN (P1-5), nemški/italijanski turist DE/IT (P3-21), privzeto sl
       currentLocale = normalizeLocale(navigator.language)
     }
   } catch { /* zasebni način/shramba onemogočena — ostane 'sl' */ }
@@ -84,7 +86,7 @@ export function setGuestLocale(l: Locale): void {
 function translate(locale: Locale, key: string, vars?: Record<string, string | number>): string {
   const out = coreT(locale, key, vars)
   if (process.env.NODE_ENV !== 'production' && out === key) {
-    console.warn(`[guest-i18n] Manjkajoči i18n ključ: "${key}" (ni v SL/HR/EN slovarjih)`)
+    console.warn(`[guest-i18n] Manjkajoči i18n ključ: "${key}" (ni v SL/HR/EN/DE/IT slovarjih)`)
   }
   return out
 }
@@ -121,12 +123,14 @@ export function useGuestT(): GuestI18nValue {
   )
 }
 
-// ── SL | HR | EN preklopnik (prenosljiv med kiosk, QR in plačilno stranjo) ──
+// ── SL | HR | EN | DE | IT preklopnik (prenosljiv med gostovskimi stranmi) ──
 
 /**
- * Diskreten pill "SL | HR | EN" — fiksiran zgornji desni kot po izbiri strani
+ * Diskreten pill "SL | HR | EN | DE | IT" — fiksiran zgornji desni kot po izbiri strani
  * (kiosk: v glavi poleg zaklepa / na aktivaciji fiksiran; QR in /pay: v lepljivi
  * glavi). EN (P1-5): turistični trg SI/HR — angleški gost vidi lastni jezik.
+ * DE/IT (P3-21, v1.191.0): nemško in italijansko govoreči gostje — največji
+ * turistični skupini v SI za EN.
  * - `variant="dark"` za kiosk (temna ozadja), `"light"` za QR stran (svetla ozadja)
  * - aria-pressed + aria-label + tipkovnica dostopno (pravi <button> elementi)
  * - dotik: vsak gumb ≥ 44 px (h-[44px] min-w-[44px])
@@ -153,7 +157,7 @@ export function GuestLanguageToggle({
       role="group"
       aria-label={t('guest.lang.aria')}
     >
-      {(['sl', 'hr', 'en'] as Locale[]).map((l) => (
+      {(['sl', 'hr', 'en', 'de', 'it'] as Locale[]).map((l) => (
         <button
           key={l}
           type="button"

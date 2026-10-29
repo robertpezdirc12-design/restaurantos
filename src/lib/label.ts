@@ -254,7 +254,7 @@ export interface LabelPrintData {
   needsReview: boolean
   preparedByName: string
   allergenCodes: AllergenCode[]
-  locale: 'sl' | 'hr' | 'en'
+  locale: 'sl' | 'hr' | 'en' | 'de' | 'it'
 }
 
 /**

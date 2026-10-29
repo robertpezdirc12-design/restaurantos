@@ -18,16 +18,18 @@
 import { sl } from './sl'
 import { hr } from './hr'
 import { en } from './en'
+import { de } from './de'
+import { it } from './it'
 
-export type Locale = 'sl' | 'hr' | 'en'
+export type Locale = 'sl' | 'hr' | 'en' | 'de' | 'it'
 
-export const LOCALES: Locale[] = ['sl', 'hr', 'en']
+export const LOCALES: Locale[] = ['sl', 'hr', 'en', 'de', 'it']
 export const DEFAULT_LOCALE: Locale = 'sl'
 
 /** localStorage ključ — jezik preživi ponovno odprtje aplikacije (triage zahteva). */
 export const LOCALE_STORAGE_KEY = 'restaurantos.locale'
 
-const DICTS: Record<Locale, Record<string, string>> = { sl, hr, en }
+const DICTS: Record<Locale, Record<string, string>> = { sl, hr, en, de, it }
 
 /**
  * EN je NAMERNO DELNI slovar (P1-5): pokriva SAMO gostujoče površine
@@ -36,13 +38,20 @@ const DICTS: Record<Locale, Record<string, string>> = { sl, hr, en }
  * Dashboard/osebje ostaja SL/HR; manjkajoč ključ v EN → t() vrne SL vrednost
  * (fallback en → sl, isti varovalni vzorec kot manjkajoč HR ključ).
  * Pokritost teh dveh predpon uveljavlja tests/i18n-guest.test.ts.
+ *
+ * P3-21 (v1.191.0): enako delna sta tudi DE ('de.ts') in IT ('it.ts') —
+ * isti predponski seznam, isti varovalni vzorec, isti testni pokrov.
+ * Ime konstante ostane EN_GUEST_PREFIXES (javni API, uvažajo testi) —
+ * semantično je to seznam predpon gostovskih površin za VSE delne jezike.
  */
 export const EN_GUEST_PREFIXES = ['guest.', 'pay.', 'resv.public.', 'lbl.public.', 'web.store.'] as const
 
 /**
- * 'sl-SI' | 'sl' | 'hr-HR' | 'hr' | 'en' | 'en-US' | nepoznano → normaliziran Locale
- * (fallback sl). EN je gostovski jezik (P1-5): angleški brskalnik → javne strani
- * se takoj izrišejo v EN; dashboard t() samodejno pade na SL vsebino.
+ * 'sl-SI' | 'sl' | 'hr-HR' | 'hr' | 'en' | 'en-US' | 'de' | 'de-DE' | 'de-AT'
+ * | 'it' | 'it-IT' | nepoznano → normaliziran Locale (fallback sl).
+ * EN je gostovski jezik (P1-5); DE/IT sta gostovska jezika (P3-21, v1.191.0):
+ * nemški/italijanski brskalnik → javne strani se takoj izrišejo v DE/IT;
+ * dashboard t() samodejno pade na SL vsebino (staffUiLocale).
  */
 export function normalizeLocale(value: unknown): Locale {
   if (typeof value !== 'string') return DEFAULT_LOCALE
@@ -50,20 +59,23 @@ export function normalizeLocale(value: unknown): Locale {
   if (v === 'hr' || v.startsWith('hr-')) return 'hr'
   if (v === 'sl' || v.startsWith('sl-')) return 'sl'
   if (v === 'en' || v.startsWith('en-')) return 'en'
+  if (v === 'de' || v.startsWith('de-')) return 'de'
+  if (v === 'it' || v.startsWith('it-')) return 'it'
   return DEFAULT_LOCALE
 }
 
 /** Preveri, ali je vrednost veljaven Locale (za varno branje iz shrambe). */
 export function isLocale(value: unknown): value is Locale {
-  return value === 'sl' || value === 'hr' || value === 'en'
+  return value === 'sl' || value === 'hr' || value === 'en' || value === 'de' || value === 'it'
 }
 
 /**
- * BCP-47 oznaka za `<html lang>`. EN ostaja goli `en` — različice gostove
- * angleščine ne poznamo, izmisljena regionalna oznaka (`en-US`) bi bralnemu
- * zaslonu napačno nastavila izgovarjavo.
+ * BCP-47 oznaka za `<html lang>`. EN/DE/IT ostanejo gole oznake — različice
+ * gostovske angleščine/nemščine/italijanščine ne poznamo, izmisljena regionalna
+ * oznaka (`en-US`, `de-AT`, `it-IT`) bi bralnemu zaslonu napačno nastavila
+ * izgovarjavo (enakega gosta lahko nastavi `de-DE` ali `de-AT`).
  */
-export const LOCALE_HTML_LANG: Record<Locale, string> = { sl: 'sl-SI', hr: 'hr-HR', en: 'en' }
+export const LOCALE_HTML_LANG: Record<Locale, string> = { sl: 'sl-SI', hr: 'hr-HR', en: 'en', de: 'de', it: 'it' }
 
 /** Varianta, ki nikoli ne vrne `undefined`: neznana vrednost → privzeta lokacija. */
 export function htmlLangTag(locale: unknown): string {
@@ -116,15 +128,28 @@ export function dictionaryGaps(): { missingInHr: string[]; missingInSl: string[]
 }
 
 /**
- * Pokritost delnega EN slovarja (P1-5): KLJUČI predpon EN_GUEST_PREFIXES iz SL,
- * ki manjkajo v EN. Prazno = polna pokritost gostovskih površin v angleščini.
- * (Zrcelni test: tests/i18n-guest.test.ts zahteva [].)
+ * Pokritost delnih gostovskih slovarjev (P1-5 EN, P3-21 DE/IT): KLJUČI predpon
+ * EN_GUEST_PREFIXES iz SL, ki manjkajo v danem slovarju. Prazno = polna
+ * pokritost gostovskih površin v tem jeziku.
+ * (Zrcelni test: tests/i18n-guest.test.ts zahteva [] za en/de/it.)
  */
-export function enGuestGaps(): string[] {
-  const enKeys = new Set(Object.keys(en))
+export function guestDictGaps(dict: Record<string, string>): string[] {
+  const keys = new Set(Object.keys(dict))
   return Object.keys(sl)
-    .filter((k) => EN_GUEST_PREFIXES.some((p) => k.startsWith(p)) && !enKeys.has(k))
+    .filter((k) => EN_GUEST_PREFIXES.some((p) => k.startsWith(p)) && !keys.has(k))
     .sort()
+}
+
+export function enGuestGaps(): string[] {
+  return guestDictGaps(en)
+}
+
+export function deGuestGaps(): string[] {
+  return guestDictGaps(de)
+}
+
+export function itGuestGaps(): string[] {
+  return guestDictGaps(it)
 }
 
 /** Prazne vrednosti v slovarjih so napaka (prevod brez vsebine = mešanica jezikov). */

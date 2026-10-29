@@ -96,7 +96,7 @@ Legenda: ✓ ima · ~ delno · ✗ manjka · — ni relevantno za ta trg
 | Benchmarks (anonim.) | ✓ | — | — | — | — | ✗ |
 | Multi-lokacija/tenant | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (Org→Brand→Property) |
 | Hotel PMS | ✓ | — | — | — | — | ✗ |
-| **Večjezičnost za goste** | ✓ | ✓ | ✓ | ✓ | ~ (EN) | **~ (SL/HR samo)** |
+| **Večjezičnost za goste** | ✓ | ✓ | ✓ | ✓ | ~ (EN) | **✓ (SL/HR polni + EN/DE/IT gostovski — v1.191.0)** |
 | Audit veriga (hash) | — | — | — | — | — | **✓ (blockchain)** |
 
 **Bitke, ki jih RestaurantOS ŽE ZMAGUJE:** fiskalizacija SI+HR (svetovni vodilni je nimajo),
@@ -146,7 +146,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 | 18 | Bolt Food webhook (regionalni agregator) | poleg Glovo/Wolt |
 | 19 | Payroll (ali integracija lokalnega) | Toast/Lightspeed imajo |
 | 20 | Seat-level management (raven sedeža) | Square; sedeži trenutno samo števec |
-| 21 | DE/IT jeziki za goste | po EN |
+| 21 | ~~DE/IT jeziki za goste~~ — ✅ **ZAPRTO (v1.191.0, P3-21)**: delna slovarja `src/lib/i18n/de.ts` + `it.ts` po dokazanem vzorcu P1-5 (EN) — enak obseg (vseh 5 predpon gostovskih površin: guest./pay./resv.public./lbl.public./web.store., 261 ključev vsak), enak varovalni vzorec (manjkajoč dashboard ključ → SL vrednost; `staffUiLocale` preslika 'de'/'it' → 'sl' — dokument trdi samo to, kar je na zaslonu, WCAG 3.1.1); preklopnik `GuestLanguageToggle` zdaj SL \| HR \| EN \| DE \| IT (5 × ≥44px, aria-pressed), samodejna izbira po brskalniku (`normalizeLocale('de-AT') → 'de'`, `('it-IT') → 'it'`), `<html lang>` gole oznake `de`/`it` (isti razlog kot `en` — brez izmisljenih regionalnih oznak); register: DE državna oblika (Sie — konvencija gostinstva v DACH), IT neformalna (tu — naraven ton SL/HR); dokumentirane izjeme identičnosti s SL: DE `resv.public.phone`/`web.store.phone` ('Telefon') in `resv.public.when` ('Termin') — izposojenke, ki v nemščini pomenijo natanko isto; centralna uveljavljava `deGuestGaps()`/`itGuestGaps()` (index.ts) + vrata v tests/i18n-guest.test.ts (pokritost, enak set kot EN, brez praznih, resnično prevedeno, zlati prevodi, interpolacija, normalizacija, pet imen jezikov v vseh petih slovarjih) | Zaprto (v1.191.0) |
 
 ## 5. REGULATIVA 2026 — pripravljenost
 
@@ -166,7 +166,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 3. ~~Pay link (P0-2)~~ — ✅ **izvedeno v v1.85.0** (ponudnik: Stripe Checkout prek env/Integration; simulator privzet — gl. §4).
 4. ~~EN jezik gostu (P1-5)~~ — ✓ **izvedeno v v1.86.0** (delni EN slovar + 3-jezikovni preklopnik + prevod API napak; gl. §4). ~~Ostaja: split po gostih (P1-6) — hiter dobiček.~~ — ✓ **izvedeno v v1.185.0** (gl. §4 #6).
 5. ~~Labor forecast + AI (P1-4, P2-9)~~ — ✓ **izvedeno v v1.186.0** (P1-4: deterministična napoved dela — povprečje istega dne tedna, uteži ur, potreba po urah iz ciljnega labor-% in tehtane urne postavke, vrzeli vs. načrt; P2-9a: AI vpogledi — mrtvi artikli, restock, vrhovi, labor anomalije + prvi zapis v AIConversation; ostaja P2-9b: LLM naracija — gl. §4).
-6. ~~Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).~~ — kampanje + rojstnodnevni kupon (P2-10) zaprto v v1.126.0 + v1.187.0; waitlist SMS (P2-14) zaprto v v1.188.0; knjigovodski portal (P2-13) zaprto v v1.189.0; P2-12 (widget) in P2-15 (approval tok) sta bili že zaprti (v1.110.0/v1.107.0 — preverjeno v kodi, vrstica je bila zastarela); P2-11 je koda končana, transport čaka lastnikovo izbiro ponudnika; **P1 #8 (lastni spletni portal za naročila) ZAPRTO v v1.190.0** — zadnja odprta P1 vrzel. Naslednji vrstni red: **P2-9b (LLM naracija nad strukturiranimi vpogledi — po lastnikovem navodilu trenutno izključeno, dela brez AI)** > preostanek (P3: payroll #19, seat-level #20, DE/IT #21; #16–#18 odvisni od mreže/partnerjev).
+6. ~~Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).~~ — kampanje + rojstnodnevni kupon (P2-10) zaprto v v1.126.0 + v1.187.0; waitlist SMS (P2-14) zaprto v v1.188.0; knjigovodski portal (P2-13) zaprto v v1.189.0; P2-12 (widget) in P2-15 (approval tok) sta bili že zaprti (v1.110.0/v1.107.0 — preverjeno v kodi, vrstica je bila zastarela); P2-11 je koda končana, transport čaka lastnikovo izbiro ponudnika; **P1 #8 (lastni spletni portal za naročila) ZAPRTO v v1.190.0** — zadnja odprta P1 vrzel; **P3 #21 (DE/IT jeziki za goste) ZAPRTO v v1.191.0** — največji turistični jeziki v SI za EN, čisti koda val brez AI in brez lastniških odločitev. Naslednji vrstni red: **P2-9b (LLM naracija nad strukturiranimi vpogledi — po lastnikovem navodilu trenutno izključeno, dela brez AI)** > preostanek (P3: payroll #19, seat-level #20; #16–#18 odvisni od mreže/partnerjev).
 
 ## 7. Sklep
 
@@ -178,3 +178,5 @@ z napitnino, plačilo skozi kanonični FURS zaključek, Stripe Checkout ali simu
 19-testni pokrov). Preostale vrzeli so P1+ (split po gostih, labor forecast, spletni portal); EN jezik za goste je ZAPRT v v1.86.0 (turistični trg).
 
 **Posodobitev oktober 2026 (v1.190.0):** B2B e-račun IZVOZ je koda zaključena (generator UBL 2.1/eSLOG 2.0 + življenjski cikel + rute + UI, v1.125.0–v1.149.0) — produkcija čaka IZKLJUČNO lastnikovo izbiro ponudnika e-poti/PEPPOL; waitlist SMS opomnik je zaprt (v1.188.0); knjigovodski portal je zaprt (v1.189.0 — read-only agregacija promet/DDV/GL/e-računi/stroški za vlogo accounting); **lastni spletni portal za naročila je zaprt (v1.190.0 — /s/<token>: javna trgovina s prevzemom/dostavo, naročilo skozi kanonično jedro z virom `web`, urnik lokacije kot vrata, HMAC sledenje statusa; zadnja odprta P1 vrzel)**; ostaja P2-9b (LLM naracija — izključena medtem, ko lastnik dela brez AI) in lastniške odločitve (transport e-poti, Fiskalizacija 2.0 cert).
+
+**Posodobitev v1.191.0:** **P3 #21 — DE/IT jeziki za goste ZAPRTO**: gostovske površine (QR meni, kiosk, display, /pay, /r, /label, /s) so zdaj v PETIH jezikih — SL/HR polna + EN (P1-5) + DE/IT (P3-21) delna po enakem varovalnem vzorcu (manjkajoč dashboard ključ → SL; staffUiLocale preslika 'de'/'it' → 'sl'); matrika »Večjezičnost za goste« ~ → ✓. Odprte ostajajo samo P3 #19 (payroll), #20 (seat-level), mrežno/partnersko odvisne (#16–#18) ter lastniške odločitve (P2-11 transport, Fiskalizacija 2.0 cert) in P2-9b (izključena brez AI).

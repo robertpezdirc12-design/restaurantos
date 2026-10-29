@@ -21,6 +21,8 @@ export const en: Record<string, string> = {
   'guest.lang.sl': 'Slovenian',
   'guest.lang.hr': 'Croatian',
   'guest.lang.en': 'English',
+  'guest.lang.de': 'German',
+  'guest.lang.it': 'Italian',
 
   // ‖ Skupno (vse gostovske strani) ‖
   'guest.common.thanks': 'Thank you!',

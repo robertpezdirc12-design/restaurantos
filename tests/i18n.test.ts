@@ -58,9 +58,9 @@ describe('i18n — slovarji', () => {
 })
 
 describe('i18n — t() in normalizacija', () => {
-  test('privzeti jezik je sl, na voljo sl/hr + gostovski en (P1-5)', () => {
+  test('privzeti jezik sl; sl/hr polna + gostovski delni en/de/it (P1-5, P3-21)', () => {
     expect(DEFAULT_LOCALE).toBe('sl')
-    expect(LOCALES).toEqual(['sl', 'hr', 'en'])
+    expect(LOCALES).toEqual(['sl', 'hr', 'en', 'de', 'it'])
   })
 
   test('t(sl) vrne natanko prvotna besedila (§18)', () => {
@@ -98,7 +98,7 @@ describe('i18n — t() in normalizacija', () => {
     expect(t('en', 'guest.menu.selfOrder')).toBe('Self-service ordering')
   })
 
-  test('normalizeLocale: sl-SI/sl/hr-HR/hr/en/en-US/nepoznano', () => {
+  test('normalizeLocale: sl-SI/sl/hr-HR/hr/en/en-US/de-DE/it-IT/nepoznano', () => {
     expect(normalizeLocale('sl-SI')).toBe('sl')
     expect(normalizeLocale('sl')).toBe('sl')
     expect(normalizeLocale('hr-HR')).toBe('hr')
@@ -106,7 +106,10 @@ describe('i18n — t() in normalizacija', () => {
     expect(normalizeLocale('en')).toBe('en') // P1-5: gostovski EN
     expect(normalizeLocale('en-US')).toBe('en') // angleški turist (brskalnik)
     expect(normalizeLocale('EN-gb')).toBe('en')
-    expect(normalizeLocale('de-DE')).toBe('sl')
+    expect(normalizeLocale('de-DE')).toBe('de') // P3-21: nemški turist
+    expect(normalizeLocale('de-AT')).toBe('de') // P3-21: avstrijski gost
+    expect(normalizeLocale('it-IT')).toBe('it') // P3-21: italijanski turist
+    expect(normalizeLocale('fr-FR')).toBe('sl') // nepoznan jezik → privzeti
     expect(normalizeLocale(undefined)).toBe('sl')
     expect(normalizeLocale(42)).toBe('sl')
   })
@@ -114,7 +117,9 @@ describe('i18n — t() in normalizacija', () => {
   test('isLocale varno za branje iz shrambe', () => {
     expect(isLocale('hr')).toBe(true)
     expect(isLocale('en')).toBe(true) // P1-5: EN je veljaven Locale
-    expect(isLocale('de')).toBe(false)
+    expect(isLocale('de')).toBe(true) // P3-21: DE je veljaven Locale
+    expect(isLocale('it')).toBe(true) // P3-21: IT je veljaven Locale
+    expect(isLocale('fr')).toBe(false) // nepoznan jezik ostane neveljaven
     expect(isLocale(null)).toBe(false)
   })
 })

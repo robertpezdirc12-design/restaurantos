@@ -175,7 +175,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   // Issue #7: čipi so zdaj KANONIČNE KODE (enoten SL/HR prikaz prek kataloga);
   // legacy prosto besedilo se preslika (nepreslikljive oznake NE sodelujejo v
   // filtriranju — prikazne ostanejo pod besedilom artikla).
-  const gLoc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : 'sl'
+  const gLoc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : locale === 'de' ? 'de' : locale === 'it' ? 'it' : 'sl'
   const gLbl = (code: string) => ((ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, gLoc) : code)
   const itemCodes = (it: MenuItem): string[] => {
     const set = new Set<string>(it.allergenCodes || [])

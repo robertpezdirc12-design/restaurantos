@@ -494,7 +494,7 @@ describe('C. channel-sync — register/ključavnica/sinhronizacija', () => {
 
 describe('D. Registri — verzija / sweep predpona / 0 DDL', () => {
   it('APP_VERSION je 1.137.0', () => {
-    expect(APP_VERSION).toBe('1.190.0')
+    expect(APP_VERSION).toBe('1.191.0')
   })
 
   it("TEST_PREFIXES vsebuje 'i9-'", () => {

@@ -512,7 +512,7 @@ function KioskInner() {
                     const code = labelToAllergenCode(raw)
                     if (code) set.add(code)
                   }
-                  const kLoc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : 'sl'
+                  const kLoc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : locale === 'de' ? 'de' : locale === 'it' ? 'it' : 'sl'
                   const kLbl = (code: string) => ((ALLERGEN_CODES as readonly string[]).includes(code) ? allergenLabel(code, kLoc) : code)
                   return (
                     <div className="space-y-0.5">

@@ -30,7 +30,7 @@ export type AllergenCode =
   | 'lupin'
   | 'molluscs'
 
-export type AllergenLocale = 'sl' | 'hr' | 'en'
+export type AllergenLocale = 'sl' | 'hr' | 'en' | 'de' | 'it'
 
 /** Kanonični vrstni red = Priloga II Uredbe 1169/2011 (razvrstitev po zaporedju). */
 export const ALLERGEN_CODES: readonly AllergenCode[] = [
@@ -56,7 +56,7 @@ export function isAllergenCode(code: unknown): code is AllergenCode {
   return typeof code === 'string' && CODE_SET.has(code)
 }
 
-/** Lokalizirane oznake (SL/HR/EN) — enoten prikaz po vseh površinah (meni, QR, kiosk, KDS). */
+/** Lokalizirane oznake (SL/HR/EN + DE/IT P3-21 v1.191.0) — enoten prikaz po vseh površinah (meni, QR, kiosk, KDS). */
 export const ALLERGEN_LABELS: Record<AllergenLocale, Record<AllergenCode, string>> = {
   sl: {
     gluten: 'Gluten (pšenica, rž, ječmen, oves)',
@@ -105,6 +105,40 @@ export const ALLERGEN_LABELS: Record<AllergenLocale, Record<AllergenCode, string
     sulphites: 'Sulphites (sulphur dioxide)',
     lupin: 'Lupin',
     molluscs: 'Molluscs',
+  },
+  // P3-21 (v1.191.0): uradni izrazi iz Priloge II Uredbe (EU) 1169/2011 —
+  // nemška in italijanska različica predpisa (deterministični EU termini)
+  de: {
+    gluten: 'Gluten (Weizen, Roggen, Gerste, Hafer)',
+    crustaceans: 'Krebstiere',
+    eggs: 'Eier',
+    fish: 'Fisch',
+    peanuts: 'Erdnüsse',
+    soybeans: 'Sojabohnen',
+    milk: 'Milch',
+    nuts: 'Schalenfrüchte',
+    celery: 'Sellerie',
+    mustard: 'Senf',
+    sesame: 'Sesamsamen',
+    sulphites: 'Sulphite (Schwefeldioxid)',
+    lupin: 'Lupinen',
+    molluscs: 'Weichtiere',
+  },
+  it: {
+    gluten: 'Glutine (frumento, segale, orzo, avena)',
+    crustaceans: 'Crostacei',
+    eggs: 'Uova',
+    fish: 'Pesce',
+    peanuts: 'Arachidi',
+    soybeans: 'Soia',
+    milk: 'Latte',
+    nuts: 'Frutta a guscio',
+    celery: 'Sedano',
+    mustard: 'Senape',
+    sesame: 'Semi di sesamo',
+    sulphites: 'Solfiti (anidride solforosa)',
+    lupin: 'Lupini',
+    molluscs: 'Molluschi',
   },
 }
 

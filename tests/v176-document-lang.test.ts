@@ -41,6 +41,10 @@ describe('v1.176.0 §A — applyDocumentLang dejansko zapiše jezik', () => {
     expect(LOCALE_HTML_LANG.sl).toBe('sl-SI')
     expect(LOCALE_HTML_LANG.hr).toBe('hr-HR')
     expect(LOCALE_HTML_LANG.en).toBe('en')
+    // P3-21 (v1.191.0): DE/IT gole oznake — isti razlog kot EN (regionalna
+    // oznaka bi bralnemu zaslonu napačno nastavila izgovarjavo)
+    expect(LOCALE_HTML_LANG.de).toBe('de')
+    expect(LOCALE_HTML_LANG.it).toBe('it')
   })
   it('zapiše hr-HR v documentElement.lang (ne "hr")', () => {
     const root = fakeRoot('sl-SI')
@@ -83,6 +87,10 @@ describe('v1.176.0 §A — applyDocumentLang dejansko zapiše jezik', () => {
     expect(root.documentElement.lang).toBe('sl-SI')
     expect(staffUiLocale('hr')).toBe('hr')
     expect(staffUiLocale('sl')).toBe('sl')
+    // P3-21 (v1.191.0): DE/IT so gostovska jezika — osebje vidi SL vsebino,
+    // dokument sme trditi samo to (isti varovalni vzorec kot 'en')
+    expect(staffUiLocale('de')).toBe('sl')
+    expect(staffUiLocale('it')).toBe('sl')
     // gostove strani EN dejansko izrisujejo (guest.*/pay.* slovar) → sme ostati 'en'
     applyDocumentLang('en', root)
     expect(root.documentElement.lang).toBe('en')

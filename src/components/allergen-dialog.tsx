@@ -78,7 +78,7 @@ export function AllergenDialog({
   onChanged?: () => void
 }) {
   const { t, locale } = useI18n()
-  const aloc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : 'sl'
+  const aloc: AllergenLocale = locale === 'hr' ? 'hr' : locale === 'en' ? 'en' : locale === 'de' ? 'de' : locale === 'it' ? 'it' : 'sl'
   const [profile, setProfile] = useState<AllergenProfileT | null>(null)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)

@@ -14,10 +14,12 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { t, enGuestGaps } from '../src/lib/i18n'
+import { t, enGuestGaps, deGuestGaps, itGuestGaps, normalizeLocale, isLocale, htmlLangTag } from '../src/lib/i18n'
 import { sl } from '../src/lib/i18n/sl'
 import { hr } from '../src/lib/i18n/hr'
 import { en } from '../src/lib/i18n/en'
+import { de } from '../src/lib/i18n/de'
+import { it } from '../src/lib/i18n/it'
 import { guestStatusKey, guestApiErrorKey, guestApiErrorText } from '../src/components/guest-i18n'
 
 const GUEST_PREFIX = 'guest.'
@@ -251,7 +253,7 @@ describe('i18n gostov — regresija hardcodiranih besedil (kiosk + QR stran)', (
     expect(src).toContain('role="group"')
     expect(src).toContain('min-w-[44px]')
     expect(src).toContain('LOCALE_STORAGE_KEY') // isti ključ localStorage kot dashboard
-    expect(src).toContain("['sl', 'hr', 'en']") // P1-5: trije jeziki za gosta
+    expect(src).toContain("['sl', 'hr', 'en', 'de', 'it']") // P1-5 + P3-21: pet jezikov za gosta
   })
 })
 
@@ -311,6 +313,127 @@ describe('i18n gostov — angleščina (P1-5, TRZNA-VRZELI §4)', () => {
     expect(t('en', 'guest.lang.en')).toBe('English')
     expect(sl['guest.lang.en']).toBe('Angleščina') // dodan tudi v SL/HR slovarja
     expect(hr['guest.lang.en']).toBe('Engleski')
+  })
+})
+
+
+// ─── P3-21: NEMŠČINA + ITALIJANŠČINA ZA GOSTE (delna slovarja, v1.191.0) ───
+
+describe('i18n gostov — DE/IT (P3-21, TRZNA-VRZELI §4 #21)', () => {
+  // DE: zakonito identične vrednosti s SL — izposojenke, ki v nemščini pomenijo
+  // natanko isto ('Telefon', 'Termin'; EN primerjava: guest.display.title)
+  const DE_SHARED_WITH_SL = new Set(['resv.public.phone', 'web.store.phone', 'resv.public.when'])
+
+  // Ključi predpon gostovskih površin v SL (isti seznam kot v EN testu + lbl/web)
+  function guestSurfaceKeys(dict: Record<string, string>): string[] {
+    return Object.keys(dict)
+      .filter((k) => k.startsWith('guest.') || k.startsWith('pay.') || k.startsWith('resv.public.') || k.startsWith('lbl.public.') || k.startsWith('web.store.'))
+      .sort()
+  }
+
+  test('pokritost: 100 % gostovskih predpon iz SL obstaja v DE in IT (centralna uveljavljava)', () => {
+    expect(deGuestGaps()).toEqual([])
+    expect(itGuestGaps()).toEqual([])
+  })
+
+  test('enak set gostovskih ključev kot EN (noben DE/IT-only ali SL-only ključ)', () => {
+    const enKeys = guestSurfaceKeys(en)
+    expect(guestSurfaceKeys(de)).toEqual(enKeys)
+    expect(guestSurfaceKeys(it)).toEqual(enKeys)
+    expect(enKeys.length).toBeGreaterThan(255) // korenitost: vseh 7 gostovskih strani
+  })
+
+  test('DE/IT vrednosti niso prazne (prevod brez vsebine = mešanica jezikov)', () => {
+    for (const [name, dict] of [['de', de], ['it', it]] as const) {
+      for (const [k, v] of Object.entries(dict)) {
+        if (!v || v.trim() === '') throw new Error(`${name.toUpperCase()} slovar ima prazno vrednost: "${k}"`)
+      }
+    }
+  })
+
+  test('DE/IT vrednosti so resnično prevedene (niso SL besedila, razen dokumentiranih)', () => {
+    for (const [name, dict, shared] of [['de', de, DE_SHARED_WITH_SL], ['it', it, new Set<string>()]] as const) {
+      for (const k of Object.keys(dict)) {
+        if (shared.has(k)) continue
+        if (dict[k] === sl[k]) throw new Error(`${name.toUpperCase()} vrednost identična SL (neprevedeno): "${k}"`)
+      }
+    }
+  })
+
+  test('zlati prevodi — QR meni / plačilo / statusi / kiosk (DE, uradna oblika Sie)', () => {
+    expect(t('de', 'pay.title')).toBe('Rechnung bezahlen')
+    expect(t('de', 'pay.totalDue')).toBe('Zu zahlen')
+    expect(t('de', 'guest.status.preparing')).toBe('In Zubereitung')
+    expect(t('de', 'guest.cart.submit')).toBe('Bestellung abschicken')
+    expect(t('de', 'guest.display.enjoy')).toBe('Guten Appetit!')
+    expect(t('de', 'guest.kiosk.yourNumber')).toBe('Ihre Bestellnummer:')
+    expect(t('de', 'guest.common.vat')).toBe('MwSt.')
+  })
+
+  test('zlati prevodi — QR meni / plačilo / statusi / kiosk (IT, neformalni tu)', () => {
+    expect(t('it', 'pay.title')).toBe('Pagamento del conto')
+    expect(t('it', 'pay.totalDue')).toBe('Da pagare')
+    expect(t('it', 'guest.status.preparing')).toBe('In preparazione')
+    expect(t('it', 'guest.cart.submit')).toBe('Invia l\'ordine')
+    expect(t('it', 'guest.display.enjoy')).toBe('Buon appetito!')
+    expect(t('it', 'guest.kiosk.yourNumber')).toBe('Il tuo numero d\'ordine:')
+    expect(t('it', 'guest.common.vat')).toBe('IVA')
+  })
+
+  test('interpolacija spremenljivk deluje v DE/IT', () => {
+    expect(t('de', 'guest.menu.tableSelfOrder', { n: 5 })).toBe('Tisch 5 · Selbstbedienung')
+    expect(t('de', 'guest.display.orderNo', { n: 12 })).toBe('Bestellung #12')
+    expect(t('de', 'guest.feedback.starAria', { label: 'Essen', n: 4 })).toBe('Essen: 4 von 5')
+    expect(t('it', 'guest.menu.tableSelfOrder', { n: 5 })).toBe('Tavolo 5 · ordinazione self-service')
+    expect(t('it', 'guest.display.orderNo', { n: 12 })).toBe('Ordine #12')
+    expect(t('it', 'guest.feedback.starAria', { label: 'Cibo', n: 4 })).toBe('Cibo: 4 su 5')
+  })
+
+  test('normalizacija jezika brskalnika: de-DE/de-AT → de, it-IT → it (P3-21)', () => {
+    expect(normalizeLocale('de')).toBe('de')
+    expect(normalizeLocale('de-DE')).toBe('de')
+    expect(normalizeLocale('de-AT')).toBe('de')
+    expect(normalizeLocale('de-CH')).toBe('de')
+    expect(normalizeLocale('DE')).toBe('de')
+    expect(normalizeLocale('it')).toBe('it')
+    expect(normalizeLocale('it-IT')).toBe('it')
+    expect(normalizeLocale('IT')).toBe('it')
+    // obstoječe vedenje nespremenjeno
+    expect(normalizeLocale('en-US')).toBe('en')
+    expect(normalizeLocale('hr-HR')).toBe('hr')
+    expect(normalizeLocale('sl-SI')).toBe('sl')
+    expect(normalizeLocale('fr-FR')).toBe('sl') // nepoznan → privzeti
+  })
+
+  test('isLocale + htmlLangTag: DE/IT veljavna lokacija, gola BCP-47 oznaka', () => {
+    expect(isLocale('de')).toBe(true)
+    expect(isLocale('it')).toBe(true)
+    expect(isLocale('fr')).toBe(false)
+    expect(htmlLangTag('de')).toBe('de')
+    expect(htmlLangTag('it')).toBe('it')
+    expect(htmlLangTag('neznano')).toBe('sl-SI')
+  })
+
+  test('jezikovni ključi preklopnika: vsi PETI jeziki imajo imena v vseh petih slovarjih', () => {
+    for (const l of ['sl', 'hr', 'en', 'de', 'it'] as const) {
+      for (const key of ['guest.lang.aria', 'guest.lang.sl', 'guest.lang.hr', 'guest.lang.en', 'guest.lang.de', 'guest.lang.it']) {
+        expect(t(l, key)).toBeTruthy()
+        expect(t(l, key)).not.toBe(key) // nikoli surov ključ
+      }
+    }
+    expect(t('de', 'guest.lang.de')).toBe('Deutsch')
+    expect(t('it', 'guest.lang.it')).toBe('Italiano')
+    expect(t('sl', 'guest.lang.de')).toBe('Nemščina')
+    expect(t('hr', 'guest.lang.de')).toBe('Njemački')
+    expect(t('en', 'guest.lang.de')).toBe('German')
+    expect(t('sl', 'guest.lang.it')).toBe('Italijanščina')
+  })
+
+  test('fallback veriga: dashboard ključ v DE/IT vrne SL (delna pokritost je varna)', () => {
+    expect(t('de', 'common.save')).toBe(sl['common.save'])
+    expect(t('it', 'common.save')).toBe(sl['common.save'])
+    expect(t('de', 'tabs.overview')).toBe(sl['tabs.overview'] ?? t('sl', 'tabs.overview'))
+    expect(t('it', 'tabs.overview')).toBe(sl['tabs.overview'] ?? t('sl', 'tabs.overview'))
   })
 })
 
@@ -375,12 +498,14 @@ describe('i18n gostov — javne API napake prevedene (P1-5)', () => {
     expect(KNOWN.length).toBeGreaterThanOrEqual(31)
   })
 
-  test('preslikovani ključi resnično obstajajo v VSEH treh slovarjih (SL/HR/EN)', () => {
+  test('preslikovani ključi resnično obstajajo v VSEH petih slovarjih (SL/HR/EN/DE/IT)', () => {
     for (const msg of KNOWN) {
       const key = guestApiErrorKey(msg)!
       expect(sl[key]).toBeTruthy()
       expect(hr[key]).toBeTruthy()
       expect(en[key]).toBeTruthy()
+      expect(de[key]).toBeTruthy() // P3-21
+      expect(it[key]).toBeTruthy() // P3-21
     }
   })
 
