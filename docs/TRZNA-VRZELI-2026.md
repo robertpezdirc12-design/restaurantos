@@ -121,7 +121,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 | 4 | **Labor forecast** — iz zgodovine prodaje priporočeno število ur/izm. (imamo actuals + prodaja po urah) | Srednji |
 | 5 | **EN jezik za goste** | ✓ ZAPRTO | P1-5 v1.86.0 — delni EN slovar (guest./pay. 140 ključev), GuestLanguageToggle SL/HR/EN, samodejna izbira po brskalniku, javne API napake preslikane v i18n (31 nizov) |
 | 5 | **EN jezik za goste** | ✓ **ZAPRTO (P1-5, v1.86.0)** — delni EN slovar (140 ključev 'guest.*'+'pay.*': QR meni, kiosk, display, /pay), GuestLanguageToggle SL/HR/EN (44px), samodejna izbira po jeziku brskalnika (en→EN, hr→HR), dashboard varovalka (locale 'en' → SL vsebina + SL poudarjen), javne API SL napake (31 fail-nizov) preslikane v i18n prek guestApiErrorKey/Text (vzorec guestStatusKey), "Miza N" → Table/Stol N; fallback veriga en→SL (delna pokritost varna) | Majhen–srednji → izvedeno |
-| 6 | **Split po gostih** (poleg izstavkov) — »2 gosta na računu« posebni zahtevek | Majhen |
+| 6 | **Split po gostih** (poleg izstavkov) — »2 gosta na računu« posebni zahtevek — ✅ **ZAPRTO (v1.185.0)**: `POST /api/orders/[id]/checks/guests` (`{guestCount: N}`, 2–10) porazdeli ne-voided postavke na N pravih izstavkov (LPT po znesku: najdražja postavka v trenutno najlažje vedro — ne po številu), atomsko v transakciji, z revizijo ORDER_CHECK_GUEST_SPLIT; ponoven klic medtem, ko nič ni plačano, PREBALANSIRA (prejšnji dodatni izstavki se izbrišejo); varovalke kot split po izstavkih (samo odprto naročilo, brez plačanih izstavkov, brez plačil na izstavkih, N ≤ število postavk); UI: v plačilnem dialogu (upravljanje izstavkov) gumbi »Na 2/3/4/5 gostov«; i18n SL/HR; tests/v185-split-guests.test.ts 12 testov (pravice, validacija, konservativnost, LPT pravičnost, rebalans, voided) | Majhen → izvedeno |
 | 7 | **Integrirana kartična plačila z vinjetami za napitnino na terminalu** (SumUp/Stripe Terminal/Bankart — lokalni SI/HR ponudniki) | Velik (partner) |
 | 8 | **Lastni spletni portal za prevzem** (spletna stran + plačilo → direktno v POS) | Srednji–velik |
 
@@ -164,7 +164,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 1. ~~86-toggle (P0-3)~~ — ✅ **izvedeno v v1.83.0** (86-plošča + nadomestki + waiter-UI + testni pokrov; gl. §4).
 2. ~~Handheld tok (P0-1)~~ — ✅ **izvedeno v v1.84.0** (/handheld — enoročni tok mize→naroči→fire→plačaj pri mizi z velikimi CTA v coni palca, 86 artikli sivo, offline vrsta; tests/handheld-flow.test.ts 12 testov; gl. §4.1).
 3. ~~Pay link (P0-2)~~ — ✅ **izvedeno v v1.85.0** (ponudnik: Stripe Checkout prek env/Integration; simulator privzet — gl. §4).
-4. ~~EN jezik gostu (P1-5)~~ — ✓ **izvedeno v v1.86.0** (delni EN slovar + 3-jezikovni preklopnik + prevod API napak; gl. §4). Ostaja: split po gostih (P1-6) — hiter dobiček.
+4. ~~EN jezik gostu (P1-5)~~ — ✓ **izvedeno v v1.86.0** (delni EN slovar + 3-jezikovni preklopnik + prevod API napak; gl. §4). ~~Ostaja: split po gostih (P1-6) — hiter dobiček.~~ — ✓ **izvedeno v v1.185.0** (gl. §4 #6).
 5. **Labor forecast + AI** (P1-4, P2-9) — podatki že zbrani (prodaja po urah, labor cost).
 6. Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).
 
