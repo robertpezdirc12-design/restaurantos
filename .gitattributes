@@ -1,0 +1,8 @@
+# Normalizacija koncev vrstic: v repozitoriju vedno LF.
+#
+# Zakaj obstaja: `core.autocrlf=true` (privzetek Git for Windows) je ob
+# checkout-u pretvoril datoteke v CRLF, testi pa berejo izvorne datoteke z
+# `split('\n')` in primerjajo prvo vrstico — CRLF je zato povalil sto lažnih
+# padcev (izmerjeno 28. 10. 2026: 296 → 19). Pravilo spodaj poskrbi, da je
+# delovno drevo na vseh platformah identično, ne glede na lokalni config.
+* text=auto eol=lf

@@ -81,12 +81,16 @@ runs:
         JOB: ${{ github.job }}
         API_BASE: ${{ github.api_url }}
         SERVER_URL: ${{ github.server_url }}
-        RUNNER_NAME: ${{ runner.name }}
-        RUNNER_OS: ${{ runner.os }}
         TOKEN: ${{ inputs.token }}
       shell: bash
       run: |
         set -u
+        # Buildkite pri uvozu GHA recepta zavrne izraza `runner.name`/`runner.os`
+        # ("Unsupported runtime expression"). GitHub ta podatka že sama izpostavi
+        # kot `RUNNER_NAME`/`RUNNER_OS`, zato ju beremo iz okolja; privzetek krije
+        # vsak drugi runner (npr. GitLab), kjer teh spremenljivk ni.
+        RUNNER_NAME="${RUNNER_NAME:-GitHub Actions}"
+        RUNNER_OS="${RUNNER_OS:-unknown}"
         API="${API_BASE}/repos/${GITHUB_REPOSITORY}"
         TITLE="[CI alarm] $GITHUB_WORKFLOW — $SCOPE"
         # Body živi v spremenljivki, ne v začasni datoteki: mktemp je dodatna
