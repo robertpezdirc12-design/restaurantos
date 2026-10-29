@@ -42,7 +42,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Loader2, RefreshCw, Plus, ChevronDown, ArrowLeft, Lock, RotateCcw, FileDown, FileJson,
-  AlertTriangle, Coins, Trash2, Users,
+  AlertTriangle, Coins, Trash2, Users, Moon,
 } from 'lucide-react'
 
 /* ─────────────────────────── TIPI (API pogodba 3-a) ─────────────────────────── */
@@ -136,6 +136,8 @@ interface PayrollDetailT {
   period: PayrollPeriodT
   totals: PayrollTotalsT
   employees: EmployeeAggT[]
+  /** P3 #19 (v1.192.0) — doplačilne osnove (minute; odstotek potrdi biro) */
+  surchargeBases: { perEmployeeJob: SurchargeBasisRowT[]; overtime: OvertimeBasisRowT[] }
   exceptions: PayrollExceptionT[]
   exceptionsSummary: Record<string, number>
   tipPools: TipPoolT[]
@@ -145,6 +147,26 @@ interface PayrollDetailT {
 
 /** GET /api/employees → mapEmployee oblika. */
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean }
+
+/** Doplačilna osnova po zaposlenem+delu (noč/nedelja/praznik, pred odmorom). */
+interface SurchargeBasisRowT {
+  employeeId: string
+  employeeName: string
+  jobId: string | null
+  jobName: string
+  approvedMinutes: number
+  nightMinutes: number
+  sundayMinutes: number
+  holidayMinutes: number
+}
+
+/** Osnova nadur po zaposlenem (dnevni presežek neto minut nad pragom). */
+interface OvertimeBasisRowT {
+  employeeId: string
+  employeeName: string
+  overtimeBasisMinutes: number
+  daysOverThreshold: number
+}
 
 /** GET /api/jobs → jobContexts oblika. */
 interface JobT { id: string; title: string; active: boolean }
@@ -532,6 +554,7 @@ export function PayrollTab({ locations, canManage }: { locations: { id: string; 
                 </div>
 
                 <EmployeeTable rows={detail.employees} />
+                <SurchargeTable bases={detail.surchargeBases} />
                 <ExceptionsTable rows={detail.exceptions} />
                 <TipsTable pools={detail.tipPools} />
                 <ExportsTable rows={detail.exports} />
@@ -818,6 +841,61 @@ function EmployeeTable({ rows }: { rows: EmployeeAggT[] }) {
             </tbody>
           </table>
           <p className="p-2 text-xs text-stone-400 border-t border-stone-100">{t('payr.varianceNote')} · {t('payr.approvedOnlyNote')}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Doplačilne osnove (P3 #19, v1.192.0) — noč/nedelja/praznik po zaposlenem in
+ * delovnem mestu (pred odmorom) + nadure po zaposlenem (dnevni presežek nad
+ * pragom). READ-ONLY prikaz — odstotke doplačil potrdi biro (noga izvoza).
+ */
+function SurchargeTable({ bases }: { bases: { perEmployeeJob: SurchargeBasisRowT[]; overtime: OvertimeBasisRowT[] } }) {
+  const { t } = useI18n()
+  const rows = bases.perEmployeeJob.filter((b) => b.nightMinutes > 0 || b.sundayMinutes > 0 || b.holidayMinutes > 0)
+  const hasAny = rows.length > 0 || bases.overtime.some((o) => o.overtimeBasisMinutes > 0)
+  // nadure = PO ZAPOSLENEM — prikaži v PRVI vrstici zaposlenega (druge vrstice
+  // istega zaposlenega drugega dela nosijo '—')
+  const otShown = new Set<string>()
+  return (
+    <div>
+      <p className="mb-1.5 text-sm font-semibold flex items-center gap-1.5"><Moon className="w-4 h-4" /> {t('payr.surch.title')}</p>
+      {!hasAny ? (
+        <p className="text-sm text-stone-500">{t('payr.surch.empty')}</p>
+      ) : (
+        <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
+              <tr>
+                <th className="p-2">{t('shifts.csvEmployee')}</th>
+                <th className="p-2">{t('payr.colJob')}</th>
+                <th className="p-2 text-right">{t('payr.surch.night')}</th>
+                <th className="p-2 text-right">{t('payr.surch.sunday')}</th>
+                <th className="p-2 text-right">{t('payr.surch.holiday')}</th>
+                <th className="p-2 text-right">{t('payr.surch.overtime')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((b) => {
+                const firstOfEmp = !otShown.has(b.employeeId)
+                if (firstOfEmp) otShown.add(b.employeeId)
+                const ot = bases.overtime.find((o) => o.employeeId === b.employeeId)
+                return (
+                  <tr key={`${b.employeeId}-${b.jobId ?? 'none'}`} className="border-t border-stone-100">
+                    <td className="p-2 font-medium">{b.employeeName}</td>
+                    <td className="p-2 text-stone-600">{b.jobName || '—'}</td>
+                    <td className={`p-2 text-right whitespace-nowrap ${b.nightMinutes > 0 ? 'text-violet-700' : 'text-stone-400'}`}>{b.nightMinutes > 0 ? fmtMin(b.nightMinutes) : '—'}</td>
+                    <td className={`p-2 text-right whitespace-nowrap ${b.sundayMinutes > 0 ? 'text-amber-700' : 'text-stone-400'}`}>{b.sundayMinutes > 0 ? fmtMin(b.sundayMinutes) : '—'}</td>
+                    <td className={`p-2 text-right whitespace-nowrap ${b.holidayMinutes > 0 ? 'text-rose-700' : 'text-stone-400'}`}>{b.holidayMinutes > 0 ? fmtMin(b.holidayMinutes) : '—'}</td>
+                    <td className="p-2 text-right whitespace-nowrap text-stone-600">{firstOfEmp && ot && ot.overtimeBasisMinutes > 0 ? `${fmtMin(ot.overtimeBasisMinutes)} · ${ot.daysOverThreshold} ${t('payr.surch.days')}` : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="p-2 text-xs text-stone-400 border-t border-stone-100">{t('payr.surch.note')}</p>
         </div>
       )}
     </div>

@@ -6,6 +6,8 @@ import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { payrollTablesReady } from '@/lib/payroll-schema'
+import { holidaysInRange } from '@/lib/payroll-holidays'
+import { surchargeBasisRows } from '@/lib/payroll-surcharges'
 import {
   aggregateByEmployeeJob,
   buildPayrollCsv,
@@ -207,10 +209,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return fail('Izvoz je možen samo iz zaključenega obdobja.', 409)
   }
 
+  // ── P3 #19 (v1.192.0): doplačilne osnove — prazniki po DRŽAVI lokacije
+  // (Location.country; brez lokacije → prazen seznam — nedelja/noč ostane,
+  // prazniška kategorija prazna, NE izmišljujemo si države)
+  const locCountry = period.locationId
+    ? (await db.location.findUnique({ where: { id: period.locationId }, select: { country: true } }))?.country ?? ''
+    : ''
+
   // ── vsebina (ISTE vrstice kot detail/zaklep) + digesti ──
   const data = await loadPeriodData(period)
   const totals = totalsOfRows(data.rows, data.tips, data.pools)
   const dto = periodDto(period)
+  const surchargeBases = surchargeBasisRows(data.rows, period.timezone, holidaysInRange(dto.startISO, dto.endISO, locCountry))
   const payload = {
     period: {
       id: period.id,
@@ -225,6 +235,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     rows: data.rows,
     tips: data.tips,
     totals,
+    surchargeBases,
   }
   const digest = rowDigestOf(data.rows, data.tips)
   const contentHash = createHash('sha256').update(canonicalExportJson(payload), 'utf8').digest('hex')
@@ -296,6 +307,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       employees: aggregateByEmployeeJob(data.rows),
       tips: data.tips,
       totals,
+      surchargeBases,
       exceptionsSummary: exceptionsSummary(findPayrollExceptions(data.entries, data.shifts, data.employeeJobs, period.timezone)),
       export: {
         id: exportId,

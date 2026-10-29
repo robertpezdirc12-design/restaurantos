@@ -52,7 +52,7 @@
  *  F. export: draft → 409; CSV (text/csv, attachment obracun-…-vN-iM.csv, BOM,
  *      ';', CRLF, stabilni entryId-ji, ime z vejico + šumniki QUOTED, EUR z
  *      vejico, SKUPAJ vrstica); napitnine pending izvožene a NE v plačani vsoti;
- *      JSON (schemaVersion payroll-export/1, rows s statusom, seq); ponovni
+ *      JSON (schemaVersion payroll-export/2, rows s statusom, seq); ponovni
  *      izvoz identične vsebine → identicalToPrevious true + changedEntries 0 +
  *      seq +1; po spremembi + ponovnem zaključku → changedEntries > 0;
  *      PayrollExport vrstica z rowDigest BREZ PII; audit PAYROLL_EXPORTED brez
@@ -529,6 +529,8 @@ describe('A. payroll.ts čisti motor', () => {
       rows: [mkRow('i22-e1', 450, 6375, 'approved'), mkRow('i22-e2', 120, 0, 'active')],
       tips: [tip],
       totals: { entryCount: 2, approvedCount: 1, netMinutesApproved: 450, grossPayCents: 6375, cashTipsCents: 3000, cardTipsCents: 2000, tipsPendingCents: 3000, tipsPaidCents: 2000 },
+      // v1.192.0 (P3 #19): doplačilne osnove — prazen set (osnovna shema /2 vhod)
+      surchargeBases: { perEmployeeJob: [], overtime: [] },
       exportMeta: { seq: 1, generatedISO: '2026-10-16T10:00:00.000Z', contentHash8: 'abcd1234', changedEntries: 0, identicalToPrevious: false },
     })
     expect(csv.startsWith('\uFEFF')).toBe(true)
@@ -540,7 +542,7 @@ describe('A. payroll.ts čisti motor', () => {
     expect(csv.includes('KontrolniHash;abcd1234')).toBe(true)
     expect(csv.includes('OpombaZaklepa;"Test; opomba"')).toBe(true) // ';' sproži narekovaje
     expect(csv.includes('Napitnine pending se ne stejejo kot izplacane.')).toBe(true)
-    expect(csv.includes('RestaurantOS ne izracunava zakonskih dodatkov')).toBe(true)
+    expect(csv.includes('RestaurantOS ne izracunava odstotkov doplacil')).toBe(true)
     expect(csv.includes(`;${NAME1};`)).toBe(true) // ime gre skozi (vejica ni ločilo)
     expect(csv.includes('63,75')).toBe(true) // EUR z decimalno vejico
   })
@@ -1005,9 +1007,9 @@ describe('F. izvoz obračuna (CSV/JSON + digesti + PII)', () => {
     // EUR z decimalno vejico + vsota (po E4: 8 potrjenih, 2520 min, enak bruto)
     expect(csv.includes('63,75')).toBe(true)
     expect(csv.includes('SKUPAJ;Vnosi;9;Potrjeni;8;NetoMin;2520;BrutoEUR;415,75')).toBe(true)
-    expect(csv.includes('Shema;payroll-export/1')).toBe(true)
+    expect(csv.includes('Shema;payroll-export/2')).toBe(true)
     expect(csv.includes('Napitnine pending se ne stejejo kot izplacane.')).toBe(true)
-    expect(csv.includes('RestaurantOS ne izracunava zakonskih dodatkov')).toBe(true)
+    expect(csv.includes('RestaurantOS ne izracunava odstotkov doplacil')).toBe(true)
   })
 
   it('F3. CSV napitnine: pending izvožena s statusom, NE v plačani vsoti; paid štet', async () => {
@@ -1020,11 +1022,11 @@ describe('F. izvoz obračuna (CSV/JSON + digesti + PII)', () => {
     expect(csv1).not.toContain(`${P}pool3`)
   })
 
-  it('F4. JSON: schemaVersion payroll-export/1, rows s statusom, export.seq 2', async () => {
+  it('F4. JSON: schemaVersion payroll-export/2, rows s statusom, export.seq 2', async () => {
     const r = await payrollExportGET(req('GET', `/api/payroll/${p1}/export?format=json`, tokA), params(p1))
     expect(r.status).toBe(200)
     const j = await body(r)
-    expect(j.schemaVersion).toBe('payroll-export/1')
+    expect(j.schemaVersion).toBe('payroll-export/2')
     const rows = j.rows as Array<Record<string, unknown>>
     expect(rows.length).toBe(9)
     expect(rows.every((x) => typeof x.status === 'string')).toBe(true)

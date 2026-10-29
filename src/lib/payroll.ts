@@ -23,6 +23,7 @@
 
 import { num } from '@/lib/map'
 import { payRateToCents } from '@/lib/timeclock'
+import type { SurchargeBases } from './payroll-surcharges'
 
 /* ─────────────────── 1) Časovna cona (DST-varno, Intl) ─────────────────── */
 
@@ -508,7 +509,11 @@ export function plannedMinutesFromShifts(shifts: ShiftInput[], _tz = 'Europe/Lju
 
 /* ─────────────────── 6) Izvozi (CSV / kanonični JSON / digesti) ─────────────────── */
 
-export const EXPORT_SCHEMA_VERSION = 'payroll-export/1'
+// v1.192.0: /2 — aditivna sekcija DOPLACILNE OSNOVE (noč/nedelja/praznik po
+// zaposlenem+delu, nadure po zaposlenem — čisti sloj payroll-surcharges.ts);
+// obstoječe sekcije NESPREMENJENE (noga samo preformulirana — osnove zdaj
+// izvožene, odstotki ostajajo zunanji). P3 #19 docs/TRZNA-VRZELI-2026.md.
+export const EXPORT_SCHEMA_VERSION = 'payroll-export/2'
 
 /** Tip distribucije napitnine v izvoznih gradnikih (PII: samo imena, ne naslovi). */
 export interface TipExportRow {
@@ -582,6 +587,8 @@ export interface PayrollCsvInput {
   rows: PayrollEntryRow[]
   tips: TipExportRow[]
   totals: PayrollTotals
+  /** P3 #19 (v1.192.0) — doplačilne osnove (noč/nedelja/praznik/nadure) */
+  surchargeBases: SurchargeBases
   exportMeta: PayrollExportMeta
 }
 
@@ -590,10 +597,12 @@ export interface PayrollCsvInput {
  * sistemov): '\uFEFF' BOM + '\r\n' + ločilo ';'. Vse vrstice vnosov (status
  * nosi potrditev — samo approved sešteva v SKUPAJ), povzetek po zaposlenem in
  * delovnem mestu (samo approved — plačilna osnova), napitnine (distribucije +
- * bazeni), SKUPAJ + nogo z omejitvami (zunanjí sistem potrdi zakonske dodatke).
+ * bazeni), DOPLAČILNE OSNOVE (v1.192.0 — minute noč/nedelja/praznik po
+ * zaposlenem+delu, nadure po zaposlenem; odstotke potrdi biro), SKUPAJ + nogo
+ * z omejitvami.
  */
 export function buildPayrollCsv(input: PayrollCsvInput): string {
-  const { period, rows, tips, totals, exportMeta } = input
+  const { period, rows, tips, totals, surchargeBases, exportMeta } = input
   const L: string[] = []
 
   // ── 1) glava/meta ──
@@ -682,9 +691,38 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   L.push(`NapitninePlacanoEUR;${eurCsv(totals.tipsPaidCents)}`)
   L.push('')
 
+  // ── 5.5) doplačilne osnove (P3 #19, v1.192.0 — minute; odstotek potrdi biro) ──
+  L.push(`DOPLACILNE OSNOVE (minute - odstotek potrdi zunanji payroll sistem)`)
+  L.push(`Noc/Nedelja/Praznik po zaposlenem in delovnem mestu (pred odmorom)`)
+  L.push(`ZaposleniID;Zaposleni;DeloID;Delo;NocMin;NedeljaMin;PraznikMin;PotrjenoNetoMin`)
+  for (const b of surchargeBases.perEmployeeJob) {
+    L.push(
+      [
+        csvField(b.employeeId),
+        csvField(b.employeeName),
+        csvField(b.jobId),
+        csvField(b.jobName),
+        b.nightMinutes,
+        b.sundayMinutes,
+        b.holidayMinutes,
+        b.approvedMinutes,
+      ].join(';'),
+    )
+  }
+  const totN = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.nightMinutes, 0)
+  const totS = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.sundayMinutes, 0)
+  const totH = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.holidayMinutes, 0)
+  L.push(`SKUPAJ;NocMin;${totN};NedeljaMin;${totS};PraznikMin;${totH}`)
+  L.push(`Nadure po zaposlenem (dnevni presezek NETO minut nad pragom; po dnevu prijave)`)
+  L.push(`ZaposleniID;Zaposleni;NadureMin;DneviNadPragom`)
+  for (const o of surchargeBases.overtime) {
+    L.push([csvField(o.employeeId), csvField(o.employeeName), o.overtimeBasisMinutes, o.daysOverThreshold].join(';'))
+  }
+  L.push('')
+
   // ── 6) noga (meje odgovornosti + kontrolni hash) ──
   L.push(`Napitnine pending se ne stejejo kot izplacane.`)
-  L.push(`RestaurantOS ne izracunava zakonskih dodatkov (nadure, prazniki, regres) - to potrdi zunanji payroll sistem.`)
+  L.push(`RestaurantOS ne izracunava odstotkov doplacil (noc, nedelja, prazniki, nadure) - izvaza samo osnovne minute; odstotek potrdi zunanji payroll sistem.`)
   L.push(`KontrolniHash;${exportMeta.contentHash8}`)
 
   return '\uFEFF' + L.join('\r\n')

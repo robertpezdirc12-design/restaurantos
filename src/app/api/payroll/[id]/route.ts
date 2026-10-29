@@ -4,6 +4,8 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { num } from '@/lib/map'
 import { payrollTablesReady } from '@/lib/payroll-schema'
+import { holidaysInRange } from '@/lib/payroll-holidays'
+import { surchargeBasisRows } from '@/lib/payroll-surcharges'
 import {
   aggregateByEmployeeJob,
   exceptionsSummary,
@@ -199,6 +201,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const planned = plannedMinutesFromShifts(data.shifts, period.timezone)
   const totals = totalsOfRows(data.rows, data.tips, data.pools)
 
+  // P3 #19 (v1.192.0): doplačilne osnove (noč/nedelja/praznik po zaposlenem+delu,
+  // nadure po zaposlenem) — ŽIV pregled za draft in zaklječena obdobja; izvoz
+  // jih nosi od sheme payroll-export/2 (prazniki po državi lokacije)
+  const dtoPre = periodDto(period)
+  const locCountry = period.locationId
+    ? (await db.location.findUnique({ where: { id: period.locationId }, select: { country: true } }))?.country ?? ''
+    : ''
+  const surchargeBases = surchargeBasisRows(data.rows, period.timezone, holidaysInRange(dtoPre.startISO, dtoPre.endISO, locCountry))
+
   const plannedBy = new Map(planned.map((p) => [p.employeeId, p]))
   const employees = aggregates.map((a) => {
     const plannedMinutes = plannedBy.get(a.employeeId)?.plannedMinutes ?? 0
@@ -234,6 +245,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     period: periodDto(period),
     totals,
     employees,
+    surchargeBases,
     exceptions,
     exceptionsSummary: exceptionsSummary(exceptions),
     tips: data.tips,

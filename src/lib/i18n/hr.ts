@@ -3480,6 +3480,14 @@ export const hr: Record<string, string> = {
   'payr.rateInvalid': 'Stopa mora biti između 0 i 10 000 € s najviše 2 decimale.',
   'payr.jobRequired': 'Odaberite radno mjesto u svakom retku.',
   'payr.jobsMax': 'Najviše 8 radnih mjesta po zaposlenom.',
+  'payr.surch.title': 'Osnovice za doplate',
+  'payr.surch.empty': 'Nema potvrđenih osnovica za doplate u ovom razdoblju (noć, nedjelja, praznik, prekovremeno).',
+  'payr.surch.night': 'Noć (min)',
+  'payr.surch.sunday': 'Nedjelja (min)',
+  'payr.surch.holiday': 'Praznik (min)',
+  'payr.surch.overtime': 'Prekovremeno (min)',
+  'payr.surch.days': 'dana iznad praga',
+  'payr.surch.note': 'Osnovice su minute prije pauze (noć 22:00–06:00; nedjelja/praznik po državi lokacije); prekovremeno = dnevni višak neto minuta iznad 8 h. Postotke doplata potvrđuje biro — izvoz (CSV/JSON, shema payroll-export/2) nosi iste osnovice.',
 
   // ─── MEĐULOKACIJSKI PRIJENOSI (issue #8, v1.116.0) — trf.* ───
   'trf.title': 'Međulokacijski prijenosi',

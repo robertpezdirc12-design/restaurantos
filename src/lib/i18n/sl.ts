@@ -3485,6 +3485,14 @@ export const sl: Record<string, string> = {
   'payr.rateInvalid': 'Postavka mora biti med 0 in 10 000 € z največ 2 decimalkama.',
   'payr.jobRequired': 'Izberite delovno mesto v vsaki vrstici.',
   'payr.jobsMax': 'Največ 8 delovnih mest na zaposlenega.',
+  'payr.surch.title': 'Doplačilne osnove',
+  'payr.surch.empty': 'Ni potrjenih osnov za doplačila v tem obdobju (noč, nedelja, praznik, nadure).',
+  'payr.surch.night': 'Noč (min)',
+  'payr.surch.sunday': 'Nedelja (min)',
+  'payr.surch.holiday': 'Praznik (min)',
+  'payr.surch.overtime': 'Nadure (min)',
+  'payr.surch.days': 'dni nad pragom',
+  'payr.surch.note': 'Osnove so minute pred odmorom (noč 22:00–06:00; nedelja/praznik po državi lokacije); nadure = dnevni presežek neto nad 8 h. Odstotke doplačil potrdi biro — izvoz (CSV/JSON, shema payroll-export/2) nosi iste osnove.',
 
   // ─── MEDLOKACIJSKI PRENOSI (issue #8, v1.116.0) — trf.* ───
   'trf.title': 'Medlokacijski prenosi',
