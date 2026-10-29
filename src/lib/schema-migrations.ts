@@ -474,6 +474,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-crm-campaigns',
     probe: async () => tablesAll(['GuestConsent', 'Campaign', 'CampaignSend']),
   },
+  {
+    // P1 #8 (v1.190.0): lastni spletni portal za naročila — NOVA tabela
+    // WebOrderPortal (ena vrstica na lokacijo: skrivnostni token javne
+    // povezave /s/<token>, vklop, načina prevzema/dostave, dostavna
+    // pristojbina, minimalni znesek, ocena priprave, HMAC skrivnost
+    // javnega sledenja statusa). locationId je skalar brez FK (EventLog
+    // vzorec). Dokler DDL ni apliciran, javne rute portala odgovarjajo
+    // 404 — POS/QR/kiosk tok se ne dotakne.
+    id: 'web-portal',
+    descKey: 'mig.webPortal.desc',
+    endpoint: '/api/admin/migrate-web-portal',
+    probe: async () => (await tableExists('WebOrderPortal')),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

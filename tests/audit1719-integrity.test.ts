@@ -72,7 +72,7 @@ afterAll(() => {
 
 describe('№17 — baseline migracija je popolna projekcija sheme', () => {
   test('baseline pokrije VSE modele in enume produkcijske sheme', () => {
-    expect(prodModels).toHaveLength(136)
+    expect(prodModels).toHaveLength(137)
     expect(prodEnums).toHaveLength(20)
     expect(migrationTables).toHaveLength(prodModels.length)
     expect(new Set(migrationTables).size).toBe(prodModels.length)

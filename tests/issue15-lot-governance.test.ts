@@ -27,7 +27,7 @@
  *     tuja lokacija → 403;
  *  G. LOT ALERT (cron pure): prvi opomnik, brez ponovitve istega dne, re-arm
  *     ob premiku alertDate v prihodnost;
- *  H. REGISTER: SCHEMA_MIGRATIONS vsebuje lot-governance (18 vnosov) +
+ *  H. REGISTER: SCHEMA_MIGRATIONS vsebuje lot-governance (31 vnosov: register zrasel do v1.190.0) +
  *     i18n SL/HR opis; DDL ruta idempotentna (sqlite že ima stolpce →
  *     alreadyApplied) + manager (ni centralna vloga) → 403.
  *
@@ -630,11 +630,11 @@ describe('G. lot alert — čista pravila', () => {
 /* ═══════════ H. register + DDL ═══════════ */
 
 describe('H. register + DDL idempotentnost', () => {
-  it('SCHEMA_MIGRATIONS vsebuje lot-governance (18 vnosov) + i18n SL/HR opis', () => {
+  it('SCHEMA_MIGRATIONS vsebuje lot-governance (31 vnosov: register zrasel do v1.190.0) + i18n SL/HR opis', () => {
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'lot-governance')
     expect(m).toBeTruthy()
     expect(m!.endpoint).toBe('/api/admin/migrate-lot-governance')
-    expect(SCHEMA_MIGRATIONS.length).toBe(30) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(SCHEMA_MIGRATIONS.length).toBe(31) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     expect(slDict['mig.lotGovernance.desc']).toBeTruthy()
     expect(hrDict['mig.lotGovernance.desc']).toBeTruthy()
   })

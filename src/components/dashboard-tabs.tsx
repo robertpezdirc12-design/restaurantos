@@ -38,6 +38,7 @@ export type { LoyaltyT, FeedbackT } from './tabs/gostje-tab'
 export { JobsCard, SettingsEditor, DevicesCard, MfaCard } from './tabs/nastavitve-tab'
 export type { JobT, SettingsT, DeviceT } from './tabs/nastavitve-tab'
 export { ReservationWidgetCard } from './tabs/reservation-widget-card'
+export { WebPortalCard } from './tabs/web-portal-card'
 /* Issue #21 (v1.111.0) — klic vodje iz POS-a: plošča vodje + nastavitve */
 export { ManagerCallsCard } from './tabs/manager-calls-card'
 export { ManagerCallSettingsCard } from './tabs/manager-call-settings-card'

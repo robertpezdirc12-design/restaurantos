@@ -2554,6 +2554,35 @@ model ReservationWidget {
   @@index([enabled])
 }
 
+// P1 #8 (v1.190.0) — LASTNI SPLETNI PORTAL ZA NAROČILA (/s/<token>): ena
+// konfiguracija na lokacijo. Token JE skrivnost (32 hex, rotacija = revokacija
+// stare povezave — isti vzorec kot ReservationWidget.token / Table.qrToken /
+// PayLink.token). pickupEnabled/deliveryEnabled določata načina prevzema;
+// deliveryFee/minOrder sta denarni politiki lokacije (EUR), prepMinutes pa
+// poštena ocena priprave, ki jo gost vidi IZPREDD (nikoli obljub "takoj").
+// trackSecret = skrivnost HMAC-a javnega sledenja statusa (brez dodatnih
+// stolpcev na Order; rotacija tokena je NE SPREMENI — gostovo sledenje
+// tekočega naročila preživi rotacijo povezave). locationId je SKALAR brez FK
+// (ReservationWidget/EventLog vzorec — DDL prek admin rute ne nosi FK driftov).
+model WebOrderPortal {
+  id              String   @id
+  locationId      String   @unique
+  token           String   @unique
+  enabled         Boolean  @default(false)
+  pickupEnabled   Boolean  @default(true)
+  deliveryEnabled Boolean  @default(false)
+  deliveryFee     Decimal  @default(0) @db.Decimal(12, 2)
+  minOrder        Decimal  @default(0) @db.Decimal(12, 2)
+  prepMinutes     Int      @default(20)
+  note            String   @default("")
+  trackSecret     String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([token])
+  @@index([enabled])
+}
+
 // Issue #21 (P1/P2, v1.111.0) — klic vodje iz POS-a. NOVA tabela ManagerCall:
 // zaposleni zahteva pomoč vodje (tip + kontekst mize/naročila), življenjski
 // cikel OPEN → ESCALATED (krogi, max 3) / ACKNOWLEDGED → IN_PROGRESS →

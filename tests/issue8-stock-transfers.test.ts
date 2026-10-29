@@ -1316,7 +1316,7 @@ describe('G. DDL register + drift + i18n', () => {
     expect(m!.endpoint).toBe('/api/admin/migrate-stock-transfers')
     expect(m!.descKey).toBe('mig.stockTransfers.desc')
     expect(typeof m!.probe).toBe('function')
-    // vrstna številka #28 (števce pokriva migrations-console — tu samo pozicija)
+    // pozicija: stock-transfers ostaja pred einvoice-outbox (števec pokriva migrations-console; register zdaj 31 z web-portal @ v1.190.0)
     expect(SCHEMA_MIGRATIONS.indexOf(m!)).toBe(27) // 0-based → 28. vnos
   })
 

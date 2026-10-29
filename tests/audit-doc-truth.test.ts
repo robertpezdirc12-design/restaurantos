@@ -45,7 +45,7 @@ const baselineTables = count(migration, /^CREATE TABLE "\w+"/gm)
 
 describe('§2 — shema in infrastruktura', () => {
   test('dual-schema števci v dokumentu ustrezajo obema shemama', () => {
-    expect(prodModels).toBe(136)
+    expect(prodModels).toBe(137)
     expect(prodEnums).toBe(20)
     expect(sqliteModels).toBe(prodModels)
     const s2 = section('## 2.', '## 3.')

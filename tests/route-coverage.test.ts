@@ -78,6 +78,11 @@ const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   { methods: ['GET'], path: '/api/public/orders/status', why: 'javno sledenje naročila — žeton' },
   { methods: ['GET', 'POST'], path: '/api/public/pay/[token]', why: 'plačilni link — paylink žeton' },
   { methods: ['GET', 'POST'], path: '/api/public/reservations', why: 'rezervacijski widget — javni obrazec, rate-limit' },
+  // P1 #8 (v1.190.0): spletni portal za naročila — token JE skrivnost (32 hex,
+  // rotacija), lokacija/cene/politika se rešijo strežniško, rate-limit na obeh
+  // rutah; sledenje statusa zaščiti HMAC trackKey (brez njega 404).
+  { methods: ['GET', 'POST'], path: '/api/public/web-portal', why: 'spletni portal za naročila — žeton portala (skrivnost), rate-limit 60/10 na min, cene iz DB' },
+  { methods: ['GET'], path: '/api/public/web-portal/status', why: 'javno sledenje spletnega naročila — žeton + HMAC trackKey (brez skrivnosti 404)' },
 ]
 
 // ── rekurziven sprehod po src/app/api — zbiranje vseh route.ts ──

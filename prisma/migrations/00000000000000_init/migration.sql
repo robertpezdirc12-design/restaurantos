@@ -2026,6 +2026,25 @@ CREATE TABLE "ReservationWidget" (
 );
 
 -- CreateTable
+CREATE TABLE "WebOrderPortal" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT false,
+    "pickupEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "deliveryEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "deliveryFee" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "minOrder" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "prepMinutes" INTEGER NOT NULL DEFAULT 20,
+    "note" TEXT NOT NULL DEFAULT '',
+    "trackSecret" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "WebOrderPortal_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "ManagerCall" (
     "id" TEXT NOT NULL,
     "locationId" TEXT NOT NULL,
@@ -4168,6 +4187,18 @@ CREATE INDEX "ReservationWidget_token_idx" ON "ReservationWidget"("token");
 
 -- CreateIndex
 CREATE INDEX "ReservationWidget_enabled_idx" ON "ReservationWidget"("enabled");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "WebOrderPortal_locationId_key" ON "WebOrderPortal"("locationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "WebOrderPortal_token_key" ON "WebOrderPortal"("token");
+
+-- CreateIndex
+CREATE INDEX "WebOrderPortal_token_idx" ON "WebOrderPortal"("token");
+
+-- CreateIndex
+CREATE INDEX "WebOrderPortal_enabled_idx" ON "WebOrderPortal"("enabled");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ManagerCall_idempotencyKey_key" ON "ManagerCall"("idempotencyKey");

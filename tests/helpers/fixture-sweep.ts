@@ -40,6 +40,7 @@ export const TEST_PREFIXES = [
   'v187cp-', // kuponi P2-10b (v1.187.0)
   'v188wl-', // waitlist SMS P2-14 (v1.188.0)
   'v189ap-', // knjigovodski portal P2-13 (v1.189.0)
+  'v190wp-', // spletni portal za naročila P1 #8 (v1.190.0)
   'rp1-', // race-fixes-p1
   'rfix-', // race-fixes
   'rbac-p2-', // rbac-p2
@@ -283,6 +284,9 @@ const LOCATION_CHILD_SWEEP = [
   // predpona živi v locationId (skalar, NE SetNull) → prehod po locationId
   // počisti vrstico pred brisanjem lokacije (drugače bi ostala sirota).
   'reservationWidget',
+  // v1.190.0 (P1 #8): spletni portal — vrstico ustvari PUT z nid() id-jem BREZ
+  // testne predpone (locationId nosi predpono) → lokacijski prehod.
+  'webOrderPortal',
   // v1.111.0 (issue #21): klic vodje — nid() id brez predpone (MC…),
   // predpona živi v locationId (skalar brez FK) → lokacijski prehod počisti
   // vrstice pred brisanjem lokacije (drugače bi ostale sirote).

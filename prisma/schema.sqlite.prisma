@@ -2524,6 +2524,31 @@ model ReservationWidget {
   @@index([enabled])
 }
 
+// P1 #8 (v1.190.0) — lastni spletni portal za naročila (/s/<token>): ena
+// konfiguracija na lokacijo. Token JE skrivnost (32 hex, rotacija = revokacija
+// stare povezave — isti vzorec kot ReservationWidget.token / Table.qrToken /
+// PayLink.token). trackSecret = skrivnost HMAC-a javnega sledenja statusa
+// (rotacija tokena je NE SPREMENI). locationId je SKALAR brez FK
+// (ReservationWidget/EventLog vzorec).
+model WebOrderPortal {
+  id              String   @id
+  locationId      String   @unique
+  token           String   @unique
+  enabled         Boolean  @default(false)
+  pickupEnabled   Boolean  @default(true)
+  deliveryEnabled Boolean  @default(false)
+  deliveryFee     Decimal  @default(0)
+  minOrder        Decimal  @default(0)
+  prepMinutes     Int      @default(20)
+  note            String   @default("")
+  trackSecret     String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([token])
+  @@index([enabled])
+}
+
 // Issue #21 (P1/P2, v1.111.0) — klic vodje iz POS-a. Ogledalo glavne sheme
 // (skalarne vezave brez FK; tipi/statusi so String — enako na obeh shemah).
 model ManagerCall {

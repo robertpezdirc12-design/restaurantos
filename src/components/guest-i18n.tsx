@@ -251,6 +251,18 @@ const GUEST_API_ERROR_KEY_MAP: Record<string, string> = {
   'Nič ni več za plačilo prek te povezave.': 'pay.errorRetry',
   // Issue #3 §B (P2): Stripe verify fail-closed 502 — gost vidi pošteno sporočilo
   'Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.': 'pay.errorVerifyUnavailable',
+  // P1 #8 (v1.190.0): spletni portal za naročila (/s/<token>, /api/public/web-portal)
+  'Spletna povezava ni veljavna ali je portal izklopljen.': 'web.store.linkInvalid',
+  'Neznan način prevzema (pickup ali delivery).': 'web.store.orderFailed',
+  'Prevzem osebno trenutno ni na voljo.': 'web.store.pickupOff',
+  'Dostava trenutno ni na voljo.': 'web.store.deliveryOff',
+  'Restavracija je trenutno zaprta — spletna naročila sprejemamo med odprtim.': 'web.store.closedNow',
+  'Košarica je pod minimalnim zneskom spletnega naročila.': 'web.store.minOrder',
+  'Manjka ime za prevzem.': 'web.store.nameRequired',
+  'Manjka telefonska številka.': 'web.store.phoneRequired',
+  'Manjka naslov za dostavo.': 'web.store.addressRequired',
+  'Manjkajo parametri token, n in k.': 'web.store.trackInvalid',
+  'Naročilo s temi podatki ni najdeno.': 'web.store.trackInvalid',
 }
 
 /** Znan SL niz iz javnega API-ja → i18n ključ; neznan → null (surovi prikaz). */

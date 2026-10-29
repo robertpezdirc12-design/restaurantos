@@ -78,6 +78,13 @@ export interface CreateOrderInput {
   delivery?: CreateOrderDeliveryInput | null
   /** Issue #3: izvor naročila (pos | qr | kiosk) */
   orderSource?: string
+  /** P1 #8 (v1.190.0): kontakt gosta za spletna naročila (prevzem/dostava) —
+   * ADITIVNO (neomejeno, privzeto '' = nespremenjeno vedenje obstoječih virov).
+   * Za dostavo gre kontakt V ENU Danebi v DeliveryInfo; za prevzem (TAKEAWAY)
+   * ni DeliveryInfo, zato kontakt nosita Order.customerName/customerPhone —
+   * osebje lahko pokliče gosta, ko je naročilo pripravljeno. */
+  customerName?: string
+  customerPhone?: string
 }
 
 export interface CreateOrderResult {
@@ -307,6 +314,9 @@ export async function createOrderCore(
             deliveryInfoId,
             // Issue #3: izvor naročila (pos | qr | kiosk)
             orderSource: input.orderSource || 'pos',
+            // P1 #8 (v1.190.0): kontakt gosta (spletni prevzem/dostava) — '' je privzeto
+            customerName: (input.customerName || '').slice(0, 80),
+            customerPhone: (input.customerPhone || '').slice(0, 30),
             OrderItem: {
               create: itemRows.map((r) => {
                 const { mods, ...itemData } = r

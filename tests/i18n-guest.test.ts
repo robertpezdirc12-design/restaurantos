@@ -353,6 +353,18 @@ describe('i18n gostov — javne API napake prevedene (P1-5)', () => {
     'Napitnina je izven dovoljenega obsega (0 do zneska računa).',
     // Issue #3 §B (P2): Stripe verify fail-closed 502
     'Preverjanje plačila trenutno ni dosegljivo. Poskusite znova.',
+    // P1 #8 (v1.190.0): spletni portal za naročila (/api/public/web-portal)
+    'Spletna povezava ni veljavna ali je portal izklopljen.',
+    'Neznan način prevzema (pickup ali delivery).',
+    'Prevzem osebno trenutno ni na voljo.',
+    'Dostava trenutno ni na voljo.',
+    'Restavracija je trenutno zaprta — spletna naročila sprejemamo med odprtim.',
+    'Košarica je pod minimalnim zneskom spletnega naročila.',
+    'Manjka ime za prevzem.',
+    'Manjka telefonska številka.',
+    'Manjka naslov za dostavo.',
+    'Manjkajo parametri token, n in k.',
+    'Naročilo s temi podatki ni najdeno.',
   ]
 
   test('vsak znan SL niz javnega API-ja ima preslikavo v i18n ključ', () => {

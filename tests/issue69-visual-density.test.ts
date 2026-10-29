@@ -20,7 +20,7 @@
  *     prefers-reduced-motion varovalka ostaja.
  *  E. i18n: novi ključi menu.jumpAria / menu.catCount / settings.* obstajajo v
  *     OBEH slovarjih (SL + HR) — brez prevajalske logike.
- *  F. 0 DDL: SCHEMA_MIGRATIONS.length nespremenjen (28) + migrations/ ima samo
+ *  F. 0 DDL: SCHEMA_MIGRATIONS.length le raste z DDL vali (31 @ v1.190.0) + migrations/ ima samo
  *     init migracijo; datotečna množica sprememb = izključno izris (CSS/Tailwind/
  *     dekorativni DOM/data-*).
  *
@@ -324,8 +324,8 @@ describe('§E i18n — novi ključi #69 obstajajo v OBEH slovarjih', () => {
 // ═══ §F — 0 DDL + registri ═══
 
 describe('§F 0 DDL — vizualna sprememba brez sheme', () => {
-  it('SCHEMA_MIGRATIONS.length (29 — dvignil #4 val; #69 val sam 0 DDL)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(30) // v1.125.0: +einvoice-outbox (#4) — #69 val dodal 0
+  it('SCHEMA_MIGRATIONS.length (31 — dvignil #4 val in web-portal v1.190.0; #69 val sam 0 DDL)', () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(31) // v1.125.0: +einvoice-outbox (#4) — #69 val dodal 0
   })
 
   it('prisma/migrations ima samo init migracijo (ni novih SQL datotek)', () => {

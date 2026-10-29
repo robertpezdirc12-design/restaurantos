@@ -712,12 +712,12 @@ describe('H. javni meni: kanonične kode + status + opcije', () => {
 /* ─────────────── I. register + DDL idempotenca ─────────────── */
 
 describe('I. register + DDL', () => {
-  it('SCHEMA_MIGRATIONS vsebuje allergen-truth (18 vnosov z lot-governance) + endpoint na disku', () => {
+  it('SCHEMA_MIGRATIONS vsebuje allergen-truth (31 vnosov z lot-governance) + endpoint na disku', () => {
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'allergen-truth')
     expect(m).not.toBeUndefined()
     expect(m!.endpoint).toBe('/api/admin/migrate-allergen-truth')
     expect(m!.descKey).toBe('mig.allergenTruth.desc')
-    expect(SCHEMA_MIGRATIONS.length).toBe(30) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(SCHEMA_MIGRATIONS.length).toBe(31) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     expect(slDict['mig.allergenTruth.desc']).toBeTruthy()
     expect(hrDict['mig.allergenTruth.desc']).toBeTruthy()
   })
