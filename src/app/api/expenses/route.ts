@@ -6,6 +6,7 @@ import { assertOrgScope } from '@/lib/tenant'
 import { num, nid, r2, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
+import { expensePeriodRange } from '@/lib/accounting-portal'
 import { getApAttachmentIndex, getApAttachments } from '@/lib/ap-attachments'
 import { pushEvent, apNewPushPayload } from '@/lib/push'
 
@@ -26,6 +27,11 @@ import { pushEvent, apNewPushPayload } from '@/lib/push'
  * N5 (revizija §4): GET je finančni seznam (dobaviteljski računi) — UI prikazuje
  * zavihek Stroški samo z 'reports.sales' (TAB_PERM.stroski), zato backend uveljavlja
  * isto kanonično dovoljenje (prej: requireAuth — natakar je prek API-ja videl finance).
+ *
+ * P2-13 (v1.189.0) — opcijsko obdobje: ?from=YYYY-MM-DD&to=YYYY-MM-DD (oba ali
+ * noben) filtrira po invoiceDate in vrne periodTotal/periodPaid/periodCount
+ * nad celotno periodo (ne samo zadnji 100) — vir za knjigovodski portal
+ * (read-only, brez DDL, brez nove rute).
  */
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'reports.sales')
@@ -67,9 +73,20 @@ export async function GET(req: NextRequest) {
     return ok({ attachmentsIndex: scopedIndex })
   }
 
+  // P2-13 (v1.189.0) — knjigovodski portal: opcijsko obdobje (from/to, YYYY-MM-DD)
+  // po invoiceDate. BREZ parametrov je odgovor NESPREMENJEN (zadnji 100 zapisov);
+  // z obdobjem se agregat (periodTotal/periodCount) računa nad CELO periodo,
+  // ne samo nad oknom 100. ISTA konvencija datumov kot /api/einvoices GET.
+  const qFrom = url.searchParams.get('from')?.trim() || ''
+  const qTo = url.searchParams.get('to')?.trim() || ''
+  if (!qFrom !== !qTo) return fail('Obdobje zahteva OBA parametra: from in to (YYYY-MM-DD).', 400)
+  const period = qFrom && qTo ? expensePeriodRange(qFrom, qTo) : null
+  if (qFrom && qTo && !period) return fail('Neveljaven datum (pričakovano YYYY-MM-DD).', 400)
+  const apScope = await locationScope(user)
+
   const rows = await db.accountsPayable.findMany({
     // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
-    where: await locationScope(user),
+    where: { ...apScope, ...(period ? { invoiceDate: period } : {}) },
     orderBy: { invoiceDate: 'desc' },
     take: 100,
     include: {
@@ -77,6 +94,14 @@ export async function GET(req: NextRequest) {
       AccountsPayableLine: { select: { varianceStatus: true, purchaseOrderItemId: true } },
     },
   })
+  // P2-13: agregat nad celotno periodo (brez take: 100) — števec + vsota zneskov.
+  const periodAgg = period
+    ? await db.accountsPayable.aggregate({
+        where: { ...apScope, invoiceDate: period },
+        _count: { _all: true },
+        _sum: { totalAmount: true, paidAmount: true },
+      })
+    : null
   // Issue #18: reference PO (poNumber) za vrstice s povezavo
   const poIds = [...new Set(rows.map((r) => r.purchaseOrderId).filter((x): x is string => !!x))]
   const poNumberById = new Map<string, string>()
@@ -124,6 +149,13 @@ export async function GET(req: NextRequest) {
           categories: Array.from(new Set(rows.map((r) => catById.get(r.id) ?? '').filter(Boolean))).sort(
             (a, b) => a.localeCompare(b, 'sl'),
           ),
+        }
+      : {}),
+    ...(period && periodAgg
+      ? {
+          periodTotal: num(periodAgg._sum.totalAmount),
+          periodPaid: num(periodAgg._sum.paidAmount),
+          periodCount: periodAgg._count._all,
         }
       : {}),
   })

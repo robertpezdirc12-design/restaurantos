@@ -25,6 +25,8 @@ export type { OpeningHoursRowT, DiscountRowT, TimeEntryT, TimeclockEmployeeT } f
 export { IntegracijeTab } from './tabs/integracje-tab'
 export { DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab } from './tabs/backoffice-tab'
 export type { DeliveryInfoT, DeliveryOrderT, DeliveryZoneT, PlatformIntegrationT } from './tabs/backoffice-tab'
+/* P2-13 (v1.189.0) — knjigovodski portal (read-only agregacija, nova datoteka) */
+export { AccountingPortalCard } from './tabs/accounting-portal-card'
 export { InventoryTab } from './tabs/zaloga-tab'
 export type { InventoryT, SupplierT, RecipeT, RecipeLineT } from './tabs/zaloga-tab'
 export { ShiftsTab, ExpensesTab } from './tabs/finance-tab'
