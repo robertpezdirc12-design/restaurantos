@@ -866,11 +866,14 @@ bun scripts/sync-check.ts --fix        # fetch origin + reset --hard origin/main
 
 - **GitHub = AVTORITATIVA** (`robertpezdirc12-design/restaurantos`) — Vercel Git
   integration builda produkcijo iz GitHub main (push → deploy ~30 s; Task 43).
-- **GitLab = mirror** (`robertpezdirc8/restaurantos`, projekt ID 87573786) —
+- **GitLab = mirror** (`robert.pezdirc12/restaurantos`, projekt ID 87314868) —
   zrcalo istih SHA-jev; push po vsakem GitHub pushu (403 anti-abuse → retry po
-  ~30 s). Pot markec-group1/markec-project je ZGODOVINSKA: zrcalo je bilo
-  preseljeno na račun robertpezdirc8 (worklog v1.107.0), `git remote -v` in
-  `git ls-remote` oba potrjujeta novo pot. Zakasnitev zrcala NI več domneva:
+  ~30 s). Pot markec-group1/markec-project je ZGODOVINSKA. Prejšnja navedba
+  (`robertpezdirc8/restaurantos`, projekt ID 87573786, worklog v1.107.0) je
+  ZASTARELA: s trenutnim žetonom ta pot vrne 404 (ni dosegljiva), zato zrcalo
+  ni več tam; dejansko pot potrjujeta `mini-services/sync-service/index.ts:21`
+  (`pid: 87314868`) in tajnica `GITLAB_PROJECT_PATH` v `sync.yml`. Zakasnitev
+  zrcala NI več domneva:
   zadnji korak `sync.yml` primerja `refs/heads/main` na obeh straneh in ob
   razliki javi napako s številom zaostankov (najdba #15 — mirror je neopazeno
   miril 31 verzij).
