@@ -416,6 +416,12 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   //    MORATA pasti PRED fazo 1 — sicer menuItem deleteMany pade, ker OrderItem
   //    še obstaja (napaka je bila vidna v vsakem teku, ki ustvari naročilo prek
   //    API-ja, npr. paylink testi). Faza 3 bi sicer uspela, a šum ostane.
+  //    v1.189.0: še Receipt (orderId OBAVEZEN, onUpdate: Restrict, onDelete
+  //    privzeto Restrict — EDINI ne-kaskadni otrok Order; Check/OrderItem/
+  //    KotDocument/PayLink/StationTask so Cascade in jih SQLite pobere sam).
+  //    API-račun (nid() id, predpona živi v locationId) sicer blokira fazo 1
+  //    (delete order) s P2003, ki se razreši šele v fazah 2/3 — šum v
+  //    prisma:error in SweepResult.errors (dokaz: issue19 G1 fiskalni storno).
   try {
     const testOrders = await db.order.findMany({
       where: {
@@ -425,6 +431,7 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     })
     if (testOrders.length > 0) {
       await dele('orderItem', { orderId: { in: testOrders.map((o) => o.id) } })
+      await dele('receipt', { orderId: { in: testOrders.map((o) => o.id) } })
       const checks = await db.check.findMany({
         where: { orderId: { in: testOrders.map((o) => o.id) } },
         select: { id: true },

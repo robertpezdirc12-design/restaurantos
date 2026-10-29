@@ -79,6 +79,40 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
     expect(await db.deliveryZone.count({ where: { id: autoChildId } })).toBe(0)
   })
 
+  test('faza 0b: API-račun (nid() id) na testnem naročilu NE povzroča P2003 šuma (Receipt.orderId Restrict)', async () => {
+    // Natančno vzorec issue19 G1 (fiskalni storno): naročilo z id-predpono +
+    // račun, ustvarjen prek API-ja — nid() id BREZ predpone (predpona živi v
+    // locationId). Receipt.orderId je OBAVEZEN FK z onUpdate: Restrict (onDelete
+    // privzeto Restrict, ker je relacija obvezna) — edini NE-kaskadni otrok
+    // Order (Check/OrderItem/KotDocument/PayLink/StationTask so Cascade).
+    // BREZ faze 0b prehod 1 (delete order) vrže P2003, ki se sicer samoceljivo
+    // razreši v fazah 2/3, a ostane kot šum v prisma:error in SweepResult.errors.
+    const locId = `${P}loc2-${RUN}`
+    await db.location.create({ data: { id: locId, name: `${P}Lokacija 2`, code: `SW58B-${RUN.toUpperCase()}` } })
+    const order = await db.order.create({
+      data: { id: `${P}ord2-${RUN}`, orderNumber: 987655, locationId: locId, tableId: null, status: 'open', paymentStatus: 'unpaid', subtotal: 0, tax: 0, total: 0 },
+    })
+    const receiptId = `${RUN}-auto-${Math.random().toString(36).slice(2, 8)}`
+    await db.receipt.create({
+      data: {
+        id: receiptId, // nid() stil — namenoma BREZ testne predpone
+        receiptNumber: `R58B-${RUN}`,
+        orderId: order.id,
+        businessName: `${P}Podjetje`, businessAddress: `${P}Naslov`, businessId: '12345678', taxId: 'SI12345678',
+        subtotal: 0, totalVat: 0, total: 0, paymentMethod: 'cash',
+        locationId: locId,
+      },
+    })
+
+    const res: SweepResult = await sweepTestFixtures(db, [P])
+
+    // LUKNJA (prej): errors je vseboval 'order: Foreign key constraint violated…'
+    expect(res.errors).toEqual([])
+    expect(await db.receipt.count({ where: { id: receiptId } })).toBe(0)
+    expect(await db.order.count({ where: { id: order.id } })).toBe(0)
+    expect(res.remainingLocations).toBe(0)
+  })
+
   // 60 s proračun (privzeto 5 s): test izvede DVA polna pregleda čez ~190 izjav.
   // Z ZDRUŽENIMI predponami (OR-seznam čez TEST_PREFIXES) je to merjeno 6,4 s na
   // hladnem Windows hostu z logom poizvedb (2026-10-19); proračun ostane velik,

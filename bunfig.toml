@@ -1,0 +1,12 @@
+# Bun konfiguracija — samo testni razdelek je v rabi.
+#
+# PRELOAD (tests/preload-env.ts): določi DATABASE_URL za `bun test`, ker
+# procesno okolje vedno preglasi `.env` (dokazano: peskovniški globalni
+# `DATABASE_URL=file:/home/z/my-project/db/custom.db` je povzročil lažno
+# rdeče skupine testov — predpona živi v drugem projektu, shema manjka).
+# Pravila in razlogi: dokumentacija na vrhu tests/preload-env.ts.
+# Vpliv na CI: NIČ — CI (`ci.yml` tests job, `.gitlab-ci.yml` quality-gate)
+# nastavi lasten `file:./db/ci-*.db` ZNOTRAJ repozitorija, ki pravilo 3
+# pusti nedotaknjenega.
+[test]
+preload = ["./tests/preload-env.ts"]
