@@ -46,6 +46,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       lineTotal: r2(num(it.price) * it.quantity),
       checkId: chk?.id ?? null,
       checkNumber: chk?.checkNumber ?? null,
+      // P3 #20 (v1.193.0): sedež postavke (1..10 ali null) — UI za dodelitev sedežev
+      // in pregled po sedežih; vir resnice ostaja PUT /api/orders/[id]/seats
+      seat: it.seat ?? null,
     }
   })
   return ok({

@@ -822,7 +822,7 @@ describe('H. register + DDL + drift', () => {
     expect(isPrepLabelsStatement('DELETE FROM "PrepLabel"')).toBe(false)
   })
 
-  it('H5. register dolžina = 31 (v1.125.0: +einvoice-outbox #4)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(31) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24)
+  it('H5. register dolžina = 32 (v1.193.0: +order-item-seats #20)', () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(32) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24)
   })
 })

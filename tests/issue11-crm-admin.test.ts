@@ -122,8 +122,8 @@ async function seedGuest(opts: { suffix: string; email: string; phone?: string; 
 /* ═══════════════════ A — DDL + REGISTER + KONZOLA ═══════════════════ */
 
 describe('A — DDL korak, register #30→31, i18n', () => {
-  it('register: crm-campaigns je 30. vnos (register zdaj 31: +web-portal #8 v1.190.0) (3 nove tabele v probi)', async () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(31)
+  it('register: crm-campaigns obstaja (register zdaj 32: +order-item-seats #20 v1.193.0) (3 nove tabele v probi)', async () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(32) // v1.193.0: +order-item-seats (sedeži #20)
     const entry = SCHEMA_MIGRATIONS.find((m) => m.id === 'crm-campaigns')
     expect(entry).toBeTruthy()
     expect(entry!.endpoint).toBe('/api/admin/migrate-crm-campaigns')

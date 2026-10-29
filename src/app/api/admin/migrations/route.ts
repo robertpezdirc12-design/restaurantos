@@ -34,6 +34,7 @@ import { POST as stockTransfersPOST } from '../migrate-stock-transfers/route'
 import { POST as einvoiceOutboxPOST } from '../migrate-einvoice-outbox/route'
 import { POST as crmCampaignsPOST } from '../migrate-crm-campaigns/route'
 import { POST as webPortalPOST } from '../migrate-web-portal/route'
+import { POST as orderItemSeatsPOST } from '../migrate-order-item-seats/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -81,6 +82,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'einvoice-outbox': einvoiceOutboxPOST,
   'crm-campaigns': crmCampaignsPOST,
   'web-portal': webPortalPOST,
+  'order-item-seats': orderItemSeatsPOST,
 }
 
 interface ConsoleResult {

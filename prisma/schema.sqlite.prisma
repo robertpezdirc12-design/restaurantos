@@ -1942,7 +1942,9 @@ model OrderItem {
   checkId           String?
   menuItemId        String
   quantity          Int                 @default(1)
-  price             Decimal             
+  // P3 #20 (v1.193.0) — seat-level management (glej schema.prisma)
+  seat              Int?
+  price             Decimal 
   vatRate           Decimal             @default(22.00) 
   vatAmount         Decimal             @default(0) 
   notes             String              @default("")

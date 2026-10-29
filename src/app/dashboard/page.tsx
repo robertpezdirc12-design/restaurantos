@@ -155,7 +155,7 @@ interface LoyaltyAccT { id: string; customerName: string; customerPhone: string;
 interface PayPart { type: 'cash' | 'card' | 'mobile' | 'giftcard'; amount: number }
 /** OPS-7 (v1.68.0) — coursing (tečaji jedi) + split po izstavkih (Check) */
 interface CourseT { id: string; courseNumber: number; name: string; status: string; firedAt?: string | null }
-interface ChecksT { checks: { id: string; checkNumber: number; paymentStatus: string; payments: number }[]; items: { id: string; name: string; quantity: number; lineTotal: number; checkId: string | null; checkNumber: number | null }[]; checkCount: number }
+interface ChecksT { checks: { id: string; checkNumber: number; paymentStatus: string; payments: number }[]; items: { id: string; name: string; quantity: number; lineTotal: number; checkId: string | null; checkNumber: number | null; seat: number | null }[]; checkCount: number }
 /** Issue #1 triage ③: izbrana darilna kartica (POS plačilo) */
 interface GiftCardSelT { id: string; cardNumber: string; ownerName: string; balance: number; effectiveStatus: string }
 
@@ -1188,6 +1188,51 @@ function DashboardInner() {
     try {
       await api(`/api/orders/${payingOrder.id}/checks/guests`, { method: 'POST', body: JSON.stringify({ guestCount }) })
       toast({ title: t('payment.splitGuestsDone', { n: guestCount }) })
+      setSplitSel({})
+      const d = await refreshChecks(payingOrder.id)
+      setSplitOpen(d.checkCount > 1)
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
+  }
+
+  /** P3 #20 (v1.193.0) sedeži: označene postavke dodeli sedežu (null = počisti).
+   *  POLNI nadomestni načrt: neoznačene postavke obdržijo svoj trenutni sedež
+   *  (odjemalec pošlje celotno razporeditev — idempotentno, strežnik je vir resnice). */
+  async function assignSeats(seat: number | null) {
+    if (!payingOrder || !checksData || sending) return
+    const target = Object.entries(splitSel).filter(([, v]) => v).map(([k]) => k)
+    if (target.length === 0) return
+    setSending(true)
+    try {
+      const bySeat = new Map<number, string[]>()
+      for (const it of checksData.items) {
+        const s = target.includes(it.id) ? seat : it.seat
+        if (s === null) continue
+        const arr = bySeat.get(s) ?? []
+        arr.push(it.id)
+        bySeat.set(s, arr)
+      }
+      await api(`/api/orders/${payingOrder.id}/seats`, {
+        method: 'PUT',
+        body: JSON.stringify({ assignments: [...bySeat.entries()].map(([s, ids]) => ({ seat: s, itemIds: ids })) }),
+      })
+      toast({ title: t('payment.seatsDone') })
+      setSplitSel({})
+      await refreshChecks(payingOrder.id)
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
+  }
+
+  /** P3 #20 (v1.193.0): razdeli izstavke po sedežih — vsak zaseden sedež dobi svoj
+   *  izstavek, postavke brez sedeža ostanejo na baznem izstavku #1 (rebalans). */
+  async function splitBySeats() {
+    if (!payingOrder || sending) return
+    setSending(true)
+    try {
+      await api(`/api/orders/${payingOrder.id}/checks/seats`, { method: 'POST' })
+      toast({ title: t('payment.seatsSplitDone') })
       setSplitSel({})
       const d = await refreshChecks(payingOrder.id)
       setSplitOpen(d.checkCount > 1)
@@ -4927,6 +4972,7 @@ function DashboardInner() {
                               <label key={it.id} className="flex items-center gap-2 rounded-lg border border-stone-100 px-2 py-1.5 cursor-pointer hover:bg-stone-50">
                                 <Checkbox checked={!!splitSel[it.id]} onCheckedChange={(v) => setSplitSel((s) => ({ ...s, [it.id]: v === true }))} aria-label={it.name} />
                                 <span className="text-xs flex-1 truncate">{it.quantity}× {it.name}</span>
+                                {it.seat !== null && <span className="text-xs font-medium text-stone-500">{t('payment.seatShort', { n: it.seat })}</span>}
                                 <span className="text-xs text-stone-400">{t('payment.checkShort', { n: it.checkNumber ?? 1 })}</span>
                                 <span className="text-xs">{fmtEUR(it.lineTotal)}</span>
                               </label>
@@ -4949,6 +4995,53 @@ function DashboardInner() {
                                 </Button>
                               ))}
                             </div>
+                          </div>
+                          {/* P3 #20 (v1.193.0): sedeži — oznaka izvora postavke (kdo je naročil)
+                              + split izstavkov po sedežih; dopolnjuje goste (LPT) in ročni split */}
+                          <div className="rounded-lg border border-stone-100 bg-stone-50 p-2 space-y-1.5">
+                            <p className="text-xs font-semibold text-stone-600">{t('payment.seatsTitle')}</p>
+                            <p className="text-xs text-stone-500">{t('payment.seatsHint')}</p>
+                            {(() => {
+                              const seatTotals = new Map<number, number>()
+                              let noneTotal = 0
+                              let noneCount = 0
+                              for (const it of checksData.items) {
+                                if (it.seat === null) { noneTotal += it.lineTotal; noneCount += 1 }
+                                else seatTotals.set(it.seat, (seatTotals.get(it.seat) ?? 0) + it.lineTotal)
+                              }
+                              const seatCount = seatTotals.size
+                              const clearable = Object.entries(splitSel).some(([k, v]) => v && (checksData.items.find((it) => it.id === k)?.seat ?? null) !== null)
+                              return (
+                                <>
+                                  {(seatCount > 0 || noneCount > 0) && (
+                                    <div className="flex flex-wrap gap-1.5 text-xs">
+                                      {[...seatTotals.entries()].sort((a, b) => a[0] - b[0]).map(([s, sum]) => (
+                                        <span key={s} className="rounded-md border border-stone-200 bg-white px-1.5 py-0.5">{t('payment.seatsOverview', { n: s, sum: fmtEUR(sum) })}</span>
+                                      ))}
+                                      {noneCount > 0 && (
+                                        <span className="rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-stone-500">{t('payment.seatsOverviewNone', { sum: fmtEUR(noneTotal) })}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {[1, 2, 3, 4, 5].map((n) => (
+                                      <Button key={n} size="sm" variant="outline" className="min-h-10 flex-1 text-xs" disabled={sending || !Object.values(splitSel).some(Boolean)}
+                                        onClick={() => void assignSeats(n)}>
+                                        {t('payment.seatsAssign', { n })}
+                                      </Button>
+                                    ))}
+                                    <Button size="sm" variant="outline" className="min-h-10 text-xs" disabled={sending || !clearable}
+                                      onClick={() => void assignSeats(null)}>
+                                      {t('payment.seatsClear')}
+                                    </Button>
+                                  </div>
+                                  <Button size="sm" className="h-10 w-full text-xs bg-emerald-700 hover:bg-emerald-800" disabled={sending || seatCount < 2}
+                                    onClick={() => void splitBySeats()}>
+                                    {t('payment.seatsSplitBtn')}
+                                  </Button>
+                                </>
+                              )
+                            })()}
                           </div>
                         </>
                       )}

@@ -487,6 +487,16 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-web-portal',
     probe: async () => (await tableExists('WebOrderPortal')),
   },
+  {
+    // P3 #20 (v1.193.0): seat-level management — aditivni stolpec OrderItem."seat"
+    // (ničen; sedež = oznaka izvora postavke, ortogonalna izstavkom). Dokler DDL
+    // ni apliciran, sedežne rute odgovarjajo 503 z opozorilom — plačilni tok ostane
+    // nespremenjen (isti politiki kot web-portal: 404 brez tabele).
+    id: 'order-item-seats',
+    descKey: 'mig.orderItemSeats.desc',
+    endpoint: '/api/admin/migrate-order-item-seats',
+    probe: () => columnExists('OrderItem', 'seat'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

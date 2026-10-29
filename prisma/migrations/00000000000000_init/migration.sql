@@ -1572,6 +1572,7 @@ CREATE TABLE "OrderItem" (
     "checkId" TEXT,
     "menuItemId" TEXT NOT NULL,
     "quantity" INTEGER NOT NULL DEFAULT 1,
+    "seat" INTEGER,
     "price" DECIMAL(12,2) NOT NULL,
     "vatRate" DECIMAL(5,2) NOT NULL DEFAULT 22.00,
     "vatAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,

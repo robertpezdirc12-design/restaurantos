@@ -378,7 +378,7 @@ describe('v1.166.0 §F — invariante (nikoli ne posei)', () => {
     )
   })
   it('reduced-motion blok ostane', () => { expect(s).toContain('@media (prefers-reduced-motion: reduce) {') })
-  it('0 DDL: SCHEMA_MIGRATIONS ostane 31', () => { expect(SCHEMA_MIGRATIONS.length).toBe(31) })
+  it('0 DDL: SCHEMA_MIGRATIONS ostane 32', () => { expect(SCHEMA_MIGRATIONS.length).toBe(32) })
   it('lupina ne sme izgubiti navigacijskih sidr', () => {
     const vse = d + src('components/dashboard-nav.tsx')
     for (const r of ['dashboard-header', 'dashboard-sidebar', 'dashboard-mobile-nav']) {
