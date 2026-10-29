@@ -113,3 +113,57 @@ export function expensePeriodRange(from: string, to: string): { gte: Date; lte: 
   if (isNaN(gte.getTime()) || isNaN(lte.getTime())) return null
   return { gte, lte }
 }
+
+/* ───────────────────── N-27-2 (v1.196.0) — kategorije stroškov ───────────────────── */
+
+export interface PortalCategoryInputRow {
+  category: string
+  amount: number
+  paidAmount: number
+}
+
+export interface PortalCategoryBreakdownRow {
+  /** normalizirana kategorija ('' → 'OSTALO' — isti legacy fallback kot vrstica GET /api/expenses) */
+  category: string
+  /** število dokumentov v kategoriji */
+  count: number
+  /** vsota zneskov (2 decimalki) */
+  total: number
+  /** vsota plačanega (2 decimalki) */
+  paid: number
+  /** vsota odprtega (total − paid, 2 decimalki; obstoječa disciplina — brez spodnjega je 0) */
+  outstanding: number
+}
+
+/**
+ * N-27-2 (v1.196.0) — razčlenitev stroškov po kategorijah (pure, brez IO).
+ *
+ * Vir vrstic: GET /api/expenses?from&to (raw enrichment kategorije — Task 67
+ * vzorec; stolpec AccountsPayable.category je runtime-gated, obseg prek
+ * tipizirane poizvedbe). Agregacija je deterministična:
+ *  - prazna/nevidna kategorija se skupi pod 'OSTALO' (isti fallback, ki ga
+ *    GET vrstica že uporablja, ko je probe off — enoten jezik UI);
+ *  - zneski na 2 decimalki (isti r2 kot expenseSummary);
+ *  - sort: total padajoče, izenačeno po imenu (sl locale — ista konvencija
+ *    kot distinct kategorije v GET odgovoru).
+ */
+export function expenseCategoryBreakdown(rows: PortalCategoryInputRow[]): PortalCategoryBreakdownRow[] {
+  const acc = new Map<string, { count: number; total: number; paid: number }>()
+  for (const r of rows) {
+    const key = r.category && String(r.category).trim() ? String(r.category).trim() : 'OSTALO'
+    const a = acc.get(key) ?? { count: 0, total: 0, paid: 0 }
+    a.count += 1
+    a.total += Number(r.amount) || 0
+    a.paid += Number(r.paidAmount) || 0
+    acc.set(key, a)
+  }
+  const out = [...acc.entries()].map(([category, a]) => ({
+    category,
+    count: a.count,
+    total: r2(a.total),
+    paid: r2(a.paid),
+    outstanding: r2(a.total - a.paid),
+  }))
+  out.sort((x, y) => (y.total - x.total) || x.category.localeCompare(y.category, 'sl'))
+  return out
+}

@@ -6,7 +6,7 @@ import { assertOrgScope } from '@/lib/tenant'
 import { num, nid, r2, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { expenseCategoriesAvailable, normalizeExpenseCategory } from '@/lib/expenses-categories'
-import { expensePeriodRange } from '@/lib/accounting-portal'
+import { expensePeriodRange, expenseCategoryBreakdown } from '@/lib/accounting-portal'
 import { getApAttachmentIndex, getApAttachments } from '@/lib/ap-attachments'
 import { pushEvent, apNewPushPayload } from '@/lib/push'
 
@@ -32,6 +32,15 @@ import { pushEvent, apNewPushPayload } from '@/lib/push'
  * noben) filtrira po invoiceDate in vrne periodTotal/periodPaid/periodCount
  * nad celotno periodo (ne samo zadnji 100) — vir za knjigovodski portal
  * (read-only, brez DDL, brez nove rute).
+ *
+ * N-27-2 (v1.196.0) — opcijski filter kategorije: ?category=<niz> (trimiran,
+ * neprazen) zoži seznam in agregate na to kategorijo (stolpec runtime-gated —
+ * kandidatni idji prek raw SQL, obseg VEDNO prek tipizirane poizvedbe —
+ * lokacijski/org scope ostane v Prisma rokah, P0 disciplina). Kategorije
+ * čakajoče DDL → 503 (isti vzorec kot pisanje — eksplicitna zahteva po
+ * funkciji, ki še čaka, ne tiho ignoriranje). Z obdobjem odgovor dodatno
+ * vrne categoryBreakdown nad CELO periodo (neodvisno od ?category —
+ * navigacija v portalu), čisti sloj expenseCategoryBreakdown.
  */
 export async function GET(req: NextRequest) {
   const user = await requirePermission(req, 'reports.sales')
@@ -82,11 +91,30 @@ export async function GET(req: NextRequest) {
   if (!qFrom !== !qTo) return fail('Obdobje zahteva OBA parametra: from in to (YYYY-MM-DD).', 400)
   const period = qFrom && qTo ? expensePeriodRange(qFrom, qTo) : null
   if (qFrom && qTo && !period) return fail('Neveljaven datum (pričakovano YYYY-MM-DD).', 400)
+
+  // N-27-2 (v1.196.0): opcijski filter kategorije — runtime-gated (isti vzorec
+  // kot pisanje: probe false → 503, ne tiho ignoriranje eksplicitne zahteve).
+  const qCat = url.searchParams.get('category')?.trim() ?? ''
+  if (qCat && !(await expenseCategoriesAvailable())) {
+    return fail('Kategorije stroškov čakajo DDL korak (Enterprise → Shema migracije → stroski-kategorije).', 503)
+  }
+  // kandidatni idji prek raw (stolpec ni v tipizirani shemi); obseg + filtri
+  // VEDNO v tipizirani poizvedbi spodaj (id in [] → Prisma vrne prazen niz)
+  const catIds = qCat
+    ? period
+      ? (await db.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "AccountsPayable" WHERE "category" = ${qCat}
+          AND "invoiceDate" >= ${period.gte} AND "invoiceDate" <= ${period.lte}`).map((r) => r.id)
+      : (await db.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "AccountsPayable" WHERE "category" = ${qCat}`).map((r) => r.id)
+    : null
+  const catWhere = catIds ? { id: { in: catIds } } : {}
+
   const apScope = await locationScope(user)
 
   const rows = await db.accountsPayable.findMany({
     // Issue #4 §1: stroški po lokaciji (AccountsPayable.locationId)
-    where: { ...apScope, ...(period ? { invoiceDate: period } : {}) },
+    where: { ...apScope, ...(period ? { invoiceDate: period } : {}), ...catWhere },
     orderBy: { invoiceDate: 'desc' },
     take: 100,
     include: {
@@ -95,9 +123,11 @@ export async function GET(req: NextRequest) {
     },
   })
   // P2-13: agregat nad celotno periodo (brez take: 100) — števec + vsota zneskov.
+  // N-27-2: s filterjem kategorije agregat sledi filtru (portal KPI reflektira
+  // izbrano kategorijo); brez njega ostane celotna perioda (v1.189.0 pini).
   const periodAgg = period
     ? await db.accountsPayable.aggregate({
-        where: { ...apScope, invoiceDate: period },
+        where: { ...apScope, invoiceDate: period, ...catWhere },
         _count: { _all: true },
         _sum: { totalAmount: true, paidAmount: true },
       })
@@ -116,6 +146,27 @@ export async function GET(req: NextRequest) {
     const catRows = await db.$queryRaw<{ id: string; category: string }[]>`
       SELECT "id", "category" FROM "AccountsPayable" WHERE "id" IN (${Prisma.join(rows.map((r) => r.id))})`
     catById = new Map(catRows.map((c) => [c.id, c.category ?? '']))
+  }
+  // N-27-2 (v1.196.0): razčlenitev po kategorijah nad CELO periodo (neodvisno
+  // od ?category — navigacija). Obseg prek tipizirane poizvedbe (Prisma pogoji
+  // = kanon), kategorija/zneski prek raw — potem čisti sloj.
+  let categoryBreakdown: ReturnType<typeof expenseCategoryBreakdown> | null = null
+  if (period && catsEnabled) {
+    const bdRows = await db.$queryRaw<{ id: string; category: string; total: string | number; paid: string | number }[]>`
+      SELECT "id", "category", "totalAmount" AS "total", "paidAmount" AS "paid"
+      FROM "AccountsPayable"
+      WHERE "invoiceDate" >= ${period.gte} AND "invoiceDate" <= ${period.lte}`
+    const scopedIds = new Set(
+      (await db.accountsPayable.findMany({
+        where: { ...apScope, invoiceDate: period },
+        select: { id: true },
+      })).map((r) => r.id),
+    )
+    categoryBreakdown = expenseCategoryBreakdown(
+      bdRows
+        .filter((r) => scopedIds.has(r.id))
+        .map((r) => ({ category: r.category, amount: Number(r.total), paidAmount: Number(r.paid) })),
+    )
   }
   return ok({
     // Task 61: obogateno mapping — status/apNumber/dueDate/paidAmount/supplierName
@@ -158,6 +209,7 @@ export async function GET(req: NextRequest) {
           periodCount: periodAgg._count._all,
         }
       : {}),
+    ...(categoryBreakdown ? { categoryBreakdown } : {}),
   })
 }
 

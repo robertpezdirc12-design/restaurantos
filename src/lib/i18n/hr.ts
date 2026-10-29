@@ -3285,6 +3285,8 @@ export const hr: Record<string, string> = {
   'portal.expTitle': 'Troškovi (primili računi)',
   'portal.expCount': 'Dokumenata',
   'portal.expOutstanding': 'Neplaćano',
+  'portal.expByCat': 'Troškovi po kategorijama',
+  'portal.expFiltered': 'Filtrirano na kategoriju',
   'portal.readonly': 'Samo za čitanje. Izvozi (CSV/JSON/XML) ostaju u kartici ispod.',
   'portal.loadFailed': 'Učitavanje pregleda nije uspjelo.',
 

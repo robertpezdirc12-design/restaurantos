@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, BookOpenCheck, Scale, Send, FileText, TrendingUp } from 'lucide-react'
 import { EINVOICE_STATUSES } from '@/lib/einvoice-lifecycle'
 import { eInvoiceOutboxSummary, glBalanceState } from '@/lib/accounting-portal'
@@ -62,6 +63,8 @@ interface PortalExpT {
   periodTotal?: number
   periodPaid?: number
   periodCount?: number
+  /** N-27-2 (v1.196.0): razčlenitev po kategorijah nad celotno periodo (neodvisno od ?category). */
+  categoryBreakdown?: { category: string; count: number; total: number; paid: number; outstanding: number }[]
 }
 
 const fmtNumSI = (n: number): string => n.toLocaleString('sl-SI', { maximumFractionDigits: 1 })
@@ -72,6 +75,7 @@ export function AccountingPortalCard() {
   const today = new Date().toISOString().slice(0, 10)
   const [from, setFrom] = useState(firstOfMonth)
   const [to, setTo] = useState(today)
+  const [cat, setCat] = useState('all')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [reload, setReload] = useState(0)
@@ -90,7 +94,7 @@ export function AccountingPortalCard() {
           api<PortalXzT>(`/api/reports/export?from=${from}&to=${to}&format=json&section=zz`),
           api<PortalGlT>(`/api/reports/gl?from=${from}&to=${to}`),
           api<PortalEinvT>(`/api/einvoices?from=${from}&to=${to}&limit=100`),
-          api<PortalExpT>(`/api/expenses?from=${from}&to=${to}`),
+          api<PortalExpT>(`/api/expenses?from=${from}&to=${to}${cat !== 'all' ? `&category=${encodeURIComponent(cat)}` : ''}`),
         ])
         if (alive) { setXz(xzD); setGl(glD); setEinv(einvD); setExp(expD) }
       } catch (e) {
@@ -100,7 +104,7 @@ export function AccountingPortalCard() {
       }
     })()
     return () => { alive = false }
-  }, [from, to, reload])
+  }, [from, to, cat, reload])
 
   const outbox = einv ? eInvoiceOutboxSummary(einv.eInvoices) : null
   const balance = gl ? glBalanceState(gl.totals) : null
@@ -239,13 +243,44 @@ export function AccountingPortalCard() {
                 )}
               </div>
 
-              {/* Portal: stroški (prejeti računi) */}
+              {/* Portal: stroški (prejeti računi) + N-27-2 razčlenitev po kategorijah */}
               <div className="rounded-lg border border-stone-200 bg-white p-3 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-stone-400 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5" /> {t('portal.expTitle')}
                 </p>
                 <Row label={t('portal.expCount')} value={expCount !== null ? String(expCount) : '—'} />
                 <Row label={t('portal.expOutstanding')} value={expOutstanding !== null ? fmtEUR(expOutstanding) : '—'} />
+                {(exp?.categoryBreakdown ?? []).length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{t('portal.expByCat')}</p>
+                      <Select value={cat} onValueChange={setCat}>
+                        <SelectTrigger className="h-8 w-40 text-xs" aria-label={t('portal.expByCat')}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('common.all')}</SelectItem>
+                          {(exp?.categoryBreakdown ?? []).map((c) => (
+                            <SelectItem key={c.category} value={c.category}>{c.category}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                      {(exp?.categoryBreakdown ?? []).map((c) => (
+                        <button
+                          key={c.category}
+                          type="button"
+                          onClick={() => setCat(cat === c.category ? 'all' : c.category)}
+                          className={`w-full flex items-center justify-between gap-2 rounded px-2 py-1 text-xs transition-colors ${cat === c.category ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-stone-50 text-stone-700'}`}
+                          aria-pressed={cat === c.category}
+                        >
+                          <span className="font-medium truncate">{c.category}</span>
+                          <span className="whitespace-nowrap">{c.count} × {fmtEUR(c.total)} · {fmtEUR(c.outstanding)}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {cat !== 'all' && <p className="text-xs text-emerald-700">{t('portal.expFiltered')}: {cat}</p>}
+                  </>
+                )}
               </div>
             </div>
 

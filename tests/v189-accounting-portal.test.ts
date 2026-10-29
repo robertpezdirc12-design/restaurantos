@@ -309,13 +309,13 @@ describe('Č4 — ožičenje dashboarda + i18n pariteta', () => {
     expect(landingTab('ACCOUNTING', []).tab).toBe('pregled')
   })
 
-  test('23 portal.* ključev v OBAH slovarjih (SL/HR pariteta)', async () => {
+  test('25 portal.* ključev v OBAH slovarjih (SL/HR pariteta) — v1.196.0: +2 (expByCat/expFiltered, N-27-2)', async () => {
     const { sl } = await import('../src/lib/i18n/sl')
     const { hr } = await import('../src/lib/i18n/hr')
     const slPortal = Object.keys(sl).filter((k) => k.startsWith('portal.'))
     const hrPortal = Object.keys(hr).filter((k) => k.startsWith('portal.'))
-    expect(slPortal.length).toBe(23)
-    expect(hrPortal.length).toBe(23)
+    expect(slPortal.length).toBe(25)
+    expect(hrPortal.length).toBe(25)
     for (const k of slPortal) {
       expect(hr[k]).toBeDefined() // ploski ključi s piko — NE toHaveProperty (gnezdenje)
       expect(String(sl[k]).length).toBeGreaterThan(0)
