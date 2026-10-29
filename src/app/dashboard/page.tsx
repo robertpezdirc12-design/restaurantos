@@ -1176,6 +1176,23 @@ function DashboardInner() {
     } finally { setSending(false) }
   }
 
+  /** P1-6 split po gostih: poštena (LPT po znesku) porazdelitev postavk na N izstavkov.
+   *  Zraven obstoječega ročnega splita po izstavkih — en klik za "2 gosta na računu";
+   *  vsak gost dobi svoj izstavek → svoje plačilo → svoj račun. Ponoven klic prebalansira. */
+  async function splitByGuests(guestCount: number) {
+    if (!payingOrder || sending) return
+    setSending(true)
+    try {
+      await api(`/api/orders/${payingOrder.id}/checks/guests`, { method: 'POST', body: JSON.stringify({ guestCount }) })
+      toast({ title: t('payment.splitGuestsDone', { n: guestCount }) })
+      setSplitSel({})
+      const d = await refreshChecks(payingOrder.id)
+      setSplitOpen(d.checkCount > 1)
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
+  }
+
   /** Issue #1 §6: odpri plačilni dialog — kanonični predogled računa (popusti, zvestoba) prek /api/orders/[id]/bill
    *  OPS-7: checkId → predogled PER IZSTAVEK; openSplit → takoj prikaži upravljanje izstavkov */
   async function openPayment(o: OrderT, checkId?: string, openSplit = false) {
@@ -4870,6 +4887,18 @@ function DashboardInner() {
                               onClick={() => void splitCheck()}>
                               {t('payment.splitSelected', { n: Object.values(splitSel).filter(Boolean).length })}
                             </Button>
+                          </div>
+                          {/* P1-6: split po gostih — en klik, poštena porazdelitev po znesku */}
+                          <div className="rounded-lg border border-stone-100 bg-stone-50 p-2 space-y-1.5">
+                            <p className="text-xs text-stone-500">{t('payment.splitGuestsHint')}</p>
+                            <div className="flex gap-1.5">
+                              {[2, 3, 4, 5].map((n) => (
+                                <Button key={n} size="sm" variant="outline" className="min-h-10 flex-1 text-xs" disabled={sending}
+                                  onClick={() => void splitByGuests(n)}>
+                                  {t('payment.splitGuestsBtn', { n })}
+                                </Button>
+                              ))}
+                            </div>
                           </div>
                         </>
                       )}
