@@ -470,6 +470,8 @@ function DashboardInner() {
   const [bill, setBill] = useState<BillT | null>(null)
   const [manualDiscounts, setManualDiscounts] = useState<DiscountT[]>([])
   const [selDiscountId, setSelDiscountId] = useState('')
+  // P2-10b (v1.187.0): osebni kupon — vnos kode v plačilnem dialogu (apply_discounts)
+  const [couponCode, setCouponCode] = useState('')
   const [loyaltyResults, setLoyaltyResults] = useState<LoyaltyAccT[]>([])
   const [loyaltySel, setLoyaltySel] = useState<LoyaltyAccT | null>(null)
   const [redeemPoints, setRedeemPoints] = useState(0)
@@ -487,6 +489,7 @@ function DashboardInner() {
   const [excPolicy, setExcPolicy] = useState<{ policy: { discountApprovalPct: number; discountApprovalAmountCents: number; voidApprovalAmountCents: number; requireReasonDiscount: boolean }; isManagerial: boolean } | null>(null)
   const [excAction, setExcAction] = useState<
     | { type: 'discount-apply'; discountId: string; switching: boolean }
+    | { type: 'coupon-apply'; couponCode: string; switching: boolean }
     | { type: 'discount-remove' }
     | { type: 'storno'; receipt: ReceiptT }
     | null
@@ -1314,12 +1317,17 @@ function DashboardInner() {
         const body = excBody()
         if (excAction.type === 'discount-apply' && excAction.switching) {
           await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE', body: JSON.stringify(body) })
+        } else if (excAction.type === 'coupon-apply' && excAction.switching) {
+          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE', body: JSON.stringify(body) })
         } else if (excAction.type === 'discount-remove') {
           await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE', body: JSON.stringify(body) })
         }
         if (excAction.type === 'discount-apply') {
           await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ ...body, discountId: excAction.discountId }) })
           setSelDiscountId(excAction.discountId)
+        } else if (excAction.type === 'coupon-apply') {
+          await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ ...body, couponCode: excAction.couponCode }) })
+          setCouponCode('')
         } else {
           setSelDiscountId('none')
         }
@@ -1376,6 +1384,39 @@ function DashboardInner() {
       const msg = String((err as Error).message || '')
       if (/razlog|odobrit/i.test(msg)) {
         setExcAction({ type: 'discount-apply', discountId, switching: false })
+        await openExceptionDialog({ titleKey: 'exc.discountTitle', needsReason: true, needsApprover: false, kindCatalog: 'discount' })
+      } else {
+        toast({ title: msg, variant: 'destructive' })
+      }
+    }
+  }
+
+  /** P2-10b (v1.187.0): odkup osebnega kupona — gre skozi isto discount jedro.
+   *  Pod pragom (privzeto 15 %) brez trenja; nad pragom/politika razloga →
+   *  dialog izjeme z ISTIM razlogom (kot ročni popust). */
+  async function applyCoupon() {
+    if (!payingOrder) return
+    const code = couponCode.trim().toUpperCase()
+    if (!code) return
+    const pol = await ensureExcPolicy()
+    const switching = !!selDiscountId && selDiscountId !== 'none'
+    const needsReason = (pol?.policy.requireReasonDiscount ?? false) || switching
+    if (needsReason) {
+      setExcAction({ type: 'coupon-apply', couponCode: code, switching })
+      await openExceptionDialog({ titleKey: 'exc.discountTitle', needsReason: true, needsApprover: false, kindCatalog: 'discount' })
+      return
+    }
+    try {
+      await api(`/api/orders/${payingOrder.id}/discount`, { method: 'POST', body: JSON.stringify({ couponCode: code }) })
+      setCouponCode('')
+      const b = await api<{ bill: BillT }>(`/api/orders/${payingOrder.id}/bill`)
+      setBill(b.bill)
+      await load()
+      toast({ title: t('cp.applied') })
+    } catch (err) {
+      const msg = String((err as Error).message || '')
+      if (/razlog|odobrit/i.test(msg)) {
+        setExcAction({ type: 'coupon-apply', couponCode: code, switching: false })
         await openExceptionDialog({ titleKey: 'exc.discountTitle', needsReason: true, needsApprover: false, kindCatalog: 'discount' })
       } else {
         toast({ title: msg, variant: 'destructive' })
@@ -4975,6 +5016,26 @@ function DashboardInner() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  )}
+
+                  {/* P2-10b (v1.187.0): osebni kupon (rojstnodnevni/ročni) — koda po e-pošti/iz CRM */}
+                  {hasPerm('apply_discounts') && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs shrink-0" htmlFor="coupon-code">{t('cp.label')}</Label>
+                      <Input
+                        id="coupon-code"
+                        className="h-9 flex-1 font-mono uppercase"
+                        placeholder="BD26-XXXXXXXX"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value)}
+                        aria-label={t('cp.aria')}
+                        maxLength={40}
+                      />
+                      <Button size="sm" className="h-9 bg-emerald-700 hover:bg-emerald-800" disabled={sending || !couponCode.trim()}
+                        onClick={() => void applyCoupon()}>
+                        {t('cp.apply')}
+                      </Button>
                     </div>
                   )}
 

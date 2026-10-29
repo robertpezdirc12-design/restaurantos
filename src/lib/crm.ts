@@ -308,7 +308,12 @@ export interface SendFnArgs {
   subject: string
   text: string
   locationId: string | null
-  unsubscribeUrl: string
+  /** Kampanje: obvezen en klik odjava (issue §3). P2-10b rojstnodnevno
+   * obvestilo: OPCIONALNO — pošiljamo SAMO gostom z veljavnim 'granted'
+   * soglasjem (re-check ob pošiljanju), odjava pa prek CRM (recordConsent
+   * revoke, takoj učinkovito); brez žetona CampaignSend ni List-Unsubscribe
+   * glave, zato se tudi ne laže o en-klik odjavi. */
+  unsubscribeUrl?: string
 }
 
 export interface SendFnResult {
@@ -350,7 +355,8 @@ export const smtpSendFn: CampaignSendFn = async (args) => {
       text: args.text,
       headers: {
         // RFC 6068 List-Unsubscribe: enostavna odjava na nivoju poštnega odjemalca
-        'List-Unsubscribe': `<${args.unsubscribeUrl}>`,
+        // (samo ko obstaja žeton — kampanje; rojstnodnevno obvestilo gre brez)
+        ...(args.unsubscribeUrl ? { 'List-Unsubscribe': `<${args.unsubscribeUrl}>` } : {}),
       },
     })) as { messageId?: string }
     return { ok: true, detail: 'OK', messageId: String(info?.messageId ?? '') }

@@ -981,6 +981,7 @@ model Guest {
   LoyaltyAccount   LoyaltyAccount? @relation(fields: [loyaltyAccountId], references: [id], onUpdate: SetNull)
   GuestVisit       GuestVisit[]
   Order            Order[]
+  Coupons          Coupon[]
 
   @@index([email])
   @@index([firstName])
@@ -1082,6 +1083,40 @@ model GuestConsent {
   @@index([guestId, channel, purpose, createdAt])
   @@index([locationId])
   @@index([status])
+}
+
+/// P2-10b (v1.187.0) — osebni kupon z unikatno kodo. Izdaja: rojstnodnevni cron
+/// (idempotentno po (gost, razlog, leto pojavljanja) — 1 kupon/gost/leto) ali
+/// ročno (settings.manage). Odkup teče SKOZI kanonično popustno jedro
+/// (POST /api/orders/[id]/discount { couponCode }): CAS na statusu prepreči
+/// dvojno odkupitev, zapadlost/gost/lokacija se preverijo ob odkupu, odstranitev
+/// popusta z naročila KUPONA NE VRAČA (računovodsko konzervativno, kot #45 kvota).
+model Coupon {
+  id           String    @id
+  code         String    @unique
+  guestId      String
+  reason       String    @default("birthday") // 'birthday' | 'manual'
+  year         Int?      // leto POJAVLJANJA rojstnega dne (idempotenca; manual = null)
+  percent      Int?      // odstotek (1–100) ALI fiksni znesek (percent = null)
+  fixedAmount  Decimal   @default(0) @db.Decimal(10, 2)
+  status       String    @default("issued") // 'issued' | 'redeemed' | 'void'
+  issuedAt     DateTime  @default(now())
+  expiresAt    DateTime
+  redeemedAt   DateTime?
+  orderId      String?
+  note         String    @default("")
+  notifiedAt   DateTime? // pošiljanje rojstnodnevnega obvestila (best-effort, fail-soft)
+  notifyStatus String    @default("") // 'sent' | 'no_email' | 'no_consent' | 'smtp_unconfigured' | 'failed' | 'send_error'
+  issuedBy     String?
+  locationId   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime @updatedAt
+  Guest        Guest     @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@unique([guestId, reason, year])
+  @@index([guestId])
+  @@index([locationId])
+  @@index([status, expiresAt])
 }
 
 /// Issue #11 (v1.126.0) — kampanja: osnutek → predogled → odobritev →

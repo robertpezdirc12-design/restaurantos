@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Loader2, Users, Megaphone, Copy, Merge, ShieldCheck, Download, Plus, RefreshCw, Send } from 'lucide-react'
+import { CouponsCard } from '@/components/tabs/coupons-card'
 
 /* ── tipi (strežniški odgovori) ── */
 interface SegmentT {
@@ -284,6 +285,9 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
           <p className="mt-2 text-xs text-stone-500">{t('crm.guests.piiNote')}</p>
         </CardContent>
       </Card>
+
+      {/* ── 2b) P2-10b (v1.187.0): kuponi — rojstnodnevni (cron) + ročni ── */}
+      <CouponsCard canManage={canManage} centralLocationId={centralLocationId} />
 
       {/* ── 3) podvojeni profili (ročni pregled) ── */}
       {canManage && pairs.length > 0 && (

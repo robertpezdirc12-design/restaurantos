@@ -942,6 +942,32 @@ CREATE TABLE "GuestConsent" (
 );
 
 -- CreateTable
+-- P2-10b (v1.187.0) — osebni kupon (rojstnodnevni + ročni)
+CREATE TABLE "Coupon" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "guestId" TEXT NOT NULL,
+    "reason" TEXT NOT NULL DEFAULT 'birthday',
+    "year" INTEGER,
+    "percent" INTEGER,
+    "fixedAmount" DECIMAL NOT NULL DEFAULT 0,
+    "status" TEXT NOT NULL DEFAULT 'issued',
+    "issuedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "redeemedAt" TIMESTAMP(3),
+    "orderId" TEXT,
+    "note" TEXT NOT NULL DEFAULT '',
+    "notifiedAt" TIMESTAMP(3),
+    "notifyStatus" TEXT NOT NULL DEFAULT '',
+    "issuedBy" TEXT,
+    "locationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Coupon_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Campaign" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -3457,6 +3483,11 @@ CREATE INDEX "GuestConsent_locationId_idx" ON "GuestConsent"("locationId");
 CREATE INDEX "GuestConsent_status_idx" ON "GuestConsent"("status");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Coupon_code_key" ON "Coupon"("code");
+CREATE UNIQUE INDEX "Coupon_guestId_reason_year_key" ON "Coupon"("guestId", "reason", "year");
+CREATE INDEX "Coupon_guestId_idx" ON "Coupon"("guestId");
+CREATE INDEX "Coupon_locationId_idx" ON "Coupon"("locationId");
+CREATE INDEX "Coupon_status_expiresAt_idx" ON "Coupon"("status", "expiresAt");
 CREATE INDEX "Campaign_locationId_idx" ON "Campaign"("locationId");
 
 -- CreateIndex
@@ -4663,6 +4694,8 @@ ALTER TABLE "AccountsPayableLine" ADD CONSTRAINT "AccountsPayableLine_accountsPa
 ALTER TABLE "AccountsPayableLine" ADD CONSTRAINT "AccountsPayableLine_purchaseOrderItemId_fkey" FOREIGN KEY ("purchaseOrderItemId") REFERENCES "PurchaseOrderItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_guestId_fkey" FOREIGN KEY ("guestId") REFERENCES "Guest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 ALTER TABLE "AccountsReceivable" ADD CONSTRAINT "AccountsReceivable_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE SET NULL ON UPDATE SET NULL;
 
 -- AddForeignKey

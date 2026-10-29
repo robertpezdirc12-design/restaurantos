@@ -10,6 +10,7 @@ import { pushEvent, apOverduePushPayload } from '@/lib/push'
 import { runDailyLotAlerts } from '@/lib/lot-alert'
 import { runDailyHaccpOverdue } from '@/lib/haccp-overdue'
 import { dispatchDueCampaigns } from '@/lib/crm'
+import { issueBirthdayCoupons } from '@/lib/coupons-run'
 import { reconcilePaidStripeSessions } from '@/lib/paylink/reconcile'
 import {
   CRON_DAILY_MARKER,
@@ -40,6 +41,11 @@ import {
  *      neujemajoča seja dobi revizijo PAY_LINK_STRIPE_REVIEW, ne tihe poravnave.
  *      Hobby plan: brez novega urnika — korak teče znotraj obstoječega dnevnega
  *      cron-a (0 5 * * *).
+ *   3g. coupons (P2-10b, v1.187.0) — issueBirthdayCoupons({ actor: 'cron' }):
+ *      gosti s rojstnim dnem v oknu (3 dni pred pojavljanjem, vključno z njim)
+ *      dobijo osebni kupon (privzeto 15 %, velja 30 dni). Idempotentno po
+ *      (gost, 'birthday', leto pojavljanja); obvestilo po e-pošti best-effort
+ *      Z veljavnim soglasjem (fail-soft — izdaja kupona ni odvisna od pošte).
  *
  * Auth: CRON_SECRET set → timing-safe Bearer compare (Vercel cron); NOT set +
  * dev → admin/manager session only (curl-able with the login Bearer token);
@@ -145,6 +151,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     haccpOverdue: { count: number }
     campaigns: { count: number; sent: number }
     paylinks: { scanned: number; settled: number; skipped: number; errors: number }
+    coupons: { issued: number; notified: number; skipped: number; failed: number }
   } = {
     recurring: { created: 0, skipped: 0 },
     digest: { sent: false },
@@ -153,6 +160,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     haccpOverdue: { count: 0 },
     campaigns: { count: 0, sent: 0 },
     paylinks: { scanned: 0, settled: 0, skipped: 0, errors: 0 },
+    coupons: { issued: 0, notified: 0, skipped: 0, failed: 0 },
   }
 
   // 1) recurring purchase-order rules (shared core with the UI route)
@@ -240,6 +248,17 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     if (rec.errors > 0) errors.push(`paylinks: ${rec.errors} napak pri preverjanju sej`)
   } catch (e) {
     errors.push(`paylinks: ${String((e as Error).message || e).slice(0, 200)}`)
+  }
+
+  // 3g) P2-10b (v1.187.0): rojstnodnevni kuponi — izdaja + best-effort obvestilo.
+  //     Idempotentno (@@unique guest+reason+year); fail-soft (napaka gosta ne
+  //     ustavi drugih); brez SMTP se kupon VEDNO izda (notifyStatus poseženo).
+  try {
+    const c = await issueBirthdayCoupons({ actor: 'cron' })
+    steps.coupons = { issued: c.issued, notified: c.notified, skipped: c.skipped, failed: c.failed }
+    if (c.failed > 0) errors.push(`coupons: ${c.failed} neuspelih (prva: ${c.errors[0] ?? 'neznana'})`)
+  } catch (e) {
+    errors.push(`coupons: ${String((e as Error).message || e).slice(0, 200)}`)
   }
 
   // 4) persist the idempotency marker — v1.161.0: SAMO ob uspehu. Če je kateri

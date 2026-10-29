@@ -37,6 +37,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 export const TEST_PREFIXES = [
   'v186lf-', // labor-forecast P1-4 (v1.186.0)
   'v186ai-', // ai-insights P2-9 (v1.186.0)
+  'v187cp-', // kuponi P2-10b (v1.187.0)
   'rp1-', // race-fixes-p1
   'rfix-', // race-fixes
   'rbac-p2-', // rbac-p2

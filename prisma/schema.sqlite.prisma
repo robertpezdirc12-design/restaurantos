@@ -973,6 +973,7 @@ model Guest {
   LoyaltyAccount   LoyaltyAccount? @relation(fields: [loyaltyAccountId], references: [id], onUpdate: SetNull)
   GuestVisit       GuestVisit[]
   Order            Order[]
+  Coupons          Coupon[]
 
   @@index([email])
   @@index([firstName])
@@ -1074,6 +1075,39 @@ model GuestConsent {
   @@index([guestId, channel, purpose, createdAt])
   @@index([locationId])
   @@index([status])
+}
+
+/// P2-10b (v1.187.0) — osebni kupon z unikatno kodo (zrcalna shema:
+/// Decimal brez @db). Izdaja: rojstnodnevni cron (idempotentno po (gost,
+/// razlog, leto pojavljanja)) ali ročno (settings.manage). Odkup SKOZI
+/// kanonično popustno jedro (discount ruta { couponCode }) — CAS na statusu,
+/// izpeljana zapadlost, odstranitev popusta kupon NE vrača (kot #45).
+model Coupon {
+  id           String    @id
+  code         String    @unique
+  guestId      String
+  reason       String    @default("birthday") // 'birthday' | 'manual'
+  year         Int?      // leto POJAVLJANJA rojstnega dne (idempotenca; manual = null)
+  percent      Int?      // odstotek (1–100) ALI fiksni znesek (percent = null)
+  fixedAmount  Decimal   @default(0)
+  status       String    @default("issued") // 'issued' | 'redeemed' | 'void'
+  issuedAt     DateTime  @default(now())
+  expiresAt    DateTime
+  redeemedAt   DateTime?
+  orderId      String?
+  note         String    @default("")
+  notifiedAt   DateTime?
+  notifyStatus String    @default("")
+  issuedBy     String?
+  locationId   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime @updatedAt
+  Guest        Guest     @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@unique([guestId, reason, year])
+  @@index([guestId])
+  @@index([locationId])
+  @@index([status, expiresAt])
 }
 
 /// Issue #11 (v1.126.0) — kampanja: osnutek → predogled → odobritev →

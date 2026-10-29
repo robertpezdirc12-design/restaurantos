@@ -130,7 +130,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 | # | Manjka | Trud |
 |---|---|---|
 | 9 | ~~**AI napovedi/insights**~~ — **DELNO ZAPRTO (v1.186.0)**: deterministični motor (`src/lib/ai-insights.ts`) — mrtvi artikli, predlog restocka, vrhovi obremenitve, labor anomalije; vsak klic zapisan v AIConversation (prvi pisec doslej mrtve tabele, `deterministic-v1`); ruta `/api/reports/ai-insights` + kartica v pregledu. OSTAJA (P2-9b): LLM naracija nad strukturiranimi vpogledi (provider odprt — brez nove odvisnosti v CI) | Srednji–velik → jedro izvedeno |
-| 10 | **Loyalty kampanje + e-mail marketing** (SMTP ŽE v reminders.ts): rojstnodnevni kupon, win-back | Srednji |
+| 10 | ~~**Loyalty kampanje + e-mail marketing**~~ — ✅ **ZAPRTO**: kampanje z življenjskim ciklom + segmenti (all/vip/loyalty/frequent/new/inactive — win-back) so zaprte od v1.126.0 (issue #11: Campaign/CampaignSend/GuestConsent, SMTP+SMS, cron odprema, CRM tab); rojstnodnevni kupon **ZAPRTO (v1.187.0, P2-10b)**: model Coupon (unikatna koda BD{YY}-{8}, idempotenca @@unique(gost, razlog, leto pojavljanja), 29. 2. v ne-prestopnem letu = 28. 2.), dnevni cron korak 'coupons' (okno 3 dni pred praznikom, 15 %, velja 30 dni, obvestilo po e-pošti SAMO z veljavnim soglasjem — fail-soft), odkup SKOZI kanonično popustno jedro (POST /api/orders/[id]/discount { couponCode } — CAS, osebnost gosta, izpeljana zapadlost, brez vračanja ob odstranitvi popusta, kot #45), ročna izdaja/preklic (settings.manage, POST/PATCH /api/coupons), UI: CouponsCard v CRM tab + koda kupona v plačilnem dialogu; tests/v187-coupons.test.ts | Zaprto (v1.187.0) |
 | 11 | **eSlog B2B IZVOZ + Peppol** (ViDA: e-računi po 2030 harmonizirano; AP import že imamo) | Srednji |
 | 12 | **Javni rezervacijski widget** (/r/[token] javni URL + Google Business link) | Majhen–srednji |
 | 13 | **Knjigovodski portal** — read-only dashboard za vlogo accounting (GL/CSV ŽE izvažamo; samo še prikaz) | Majhen |
@@ -166,7 +166,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 3. ~~Pay link (P0-2)~~ — ✅ **izvedeno v v1.85.0** (ponudnik: Stripe Checkout prek env/Integration; simulator privzet — gl. §4).
 4. ~~EN jezik gostu (P1-5)~~ — ✓ **izvedeno v v1.86.0** (delni EN slovar + 3-jezikovni preklopnik + prevod API napak; gl. §4). ~~Ostaja: split po gostih (P1-6) — hiter dobiček.~~ — ✓ **izvedeno v v1.185.0** (gl. §4 #6).
 5. ~~Labor forecast + AI (P1-4, P2-9)~~ — ✓ **izvedeno v v1.186.0** (P1-4: deterministična napoved dela — povprečje istega dne tedna, uteži ur, potreba po urah iz ciljnega labor-% in tehtane urne postavke, vrzeli vs. načrt; P2-9a: AI vpogledi — mrtvi artikli, restock, vrhovi, labor anomalije + prvi zapis v AIConversation; ostaja P2-9b: LLM naracija — gl. §4).
-6. Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).
+6. ~~Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).~~ — kampanje + rojstnodnevni kupon (P2-10) zaprto v v1.126.0 + v1.187.0; naslednji vrstni red: **eSlog B2B izvoz (P2-11)** > javni rezervacijski widget (P2-12) > knjigovodski portal (P2-13).
 
 ## 7. Sklep
 

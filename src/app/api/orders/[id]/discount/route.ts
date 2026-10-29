@@ -6,6 +6,7 @@ import { num, r2, jstr } from '@/lib/map'
 import { discountAmountOf } from '@/lib/billing'
 import { writeAudit } from '@/lib/audit-chain'
 import { exceptionPolicy, percentAboveThreshold, amountAboveThreshold, type ExceptionPolicy } from '@/lib/exception-policy'
+import { couponAmountOf, couponStatusAt, normalizeCouponCode } from '@/lib/coupons'
 import {
   validateExceptionReason,
   resolveExceptionApproval,
@@ -46,6 +47,17 @@ import { ORDER_MUTABLE_PAYMENT, ORDER_MUTABLE_STATUS } from '@/lib/ops'
  *    katalog VoidReason kind=discount|any (aktiven, lokacija dejanja) ali prosto
  *    besedilo 3–200; POSNETEK razloga v audit sledi (preimenovanje kataloga ne
  *    spremeni zgodovine).
+ *
+ * P2-10b (v1.187.0) — TRETJI VIR: { couponCode } (osebni kupon):
+ *  - koda se normalizira (trim + VELIKE), 404 neznana; preveri se izpeljano
+ *    stanje (redeemed/void/expired → 409), osebnost (order.guestId MORA
+ *    ustrezati coupon.guestId) in lokacija;
+ *  - odkup je CAS v ISTI transakciji kot naročilo + audit: natanko ena
+ *    sočasna zahteva odkupi kupon (druga 409 s rollbackom naročila);
+ *  - odstranitev popusta z naročila (DELETE) KUPONA NE VRAČA — računovodsko
+ *    konzervativno, enaka odločitev kot pri kvoti registra (#45);
+ *  - vir 'coupon' se po politiki razloga/odobritve obnaša kot 'register'
+ *    (konfigurirana vrednost pod pragom ni izjema).
  *  - ODOBRITEV: prag politike (excDiscountApprovalPct privzeto 15 — ohranjena
  *    dosedanja disciplina; excDiscountApprovalAmountCents za fiksne zneske,
  *    privzeto izklopljen). Vodstvena izvajalska vloga = odobritev 'role';
@@ -108,13 +120,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let amount = 0
   let discountId: string | null = null
   let quota: { maxUses: number } | null = null
-  /** 'register' (katalog promocij) | 'adhoc' (ročni vnos) — odloča obveznost razloga. */
-  let source: 'register' | 'adhoc' = 'register'
+  /** 'register' (katalog promocij) | 'adhoc' (ročni vnos) | 'coupon' (P2-10b) — odloča obveznost razloga. */
+  let source: 'register' | 'adhoc' | 'coupon' = 'register'
   /** Odločitveni podatki za prag odobritve (vrsta + vhodna vrednost). */
   let thresholdKind: 'percent' | 'fixed' = 'percent'
   let thresholdVal = 0
+  /** P2-10b: kupon za odkup — nastavljen samo pri viru 'coupon'. */
+  let couponClaim: { id: string; code: string } | null = null
 
-  if (body?.discountId) {
+  const rawCouponCode = typeof body?.couponCode === 'string' ? body.couponCode : ''
+  if (rawCouponCode && body?.discountId) {
+    return fail('Izberite kupon ALI popust iz registra — ne obojega.', 400)
+  }
+
+  if (rawCouponCode) {
+    const code = normalizeCouponCode(rawCouponCode)
+    if (!code) return fail('Koda kupona je prazna.', 400)
+    const coupon = await db.coupon.findUnique({ where: { code } })
+    if (!coupon) return fail('Kupon s to kodo ne obstaja.', 404)
+    // izpeljano stanje (issued + pretekel → expired; odločitev ob odkupu, brez cron zapisa)
+    const st = couponStatusAt(coupon, now)
+    if (st === 'redeemed') return fail('Kupon je že odkupljen.', 409)
+    if (st === 'void') return fail('Kupon je preklican.', 409)
+    if (st === 'expired') return fail('Kupon je pretekel.', 409)
+    if (coupon.percent == null && !(num(coupon.fixedAmount) > 0)) return fail('Kupon nima veljavne vrednosti.', 400)
+    // osebni kupon: naročilo MORA imeti ISTEGA gosta
+    if (!order.guestId) return fail('Naročilo nima dodeljenega gosta — osebni kupon ni mogoč.', 400)
+    if (order.guestId !== coupon.guestId) return fail('Kupon ni izdan temu gostu.', 400)
+    if (coupon.locationId && coupon.locationId !== order.locationId) return fail('Kupon ni za to lokacijo.', 400)
+    const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
+    amount = couponAmountOf({ percent: coupon.percent, fixedAmount: num(coupon.fixedAmount) }, subtotal)
+    discountName = `Kupon ${coupon.code}`
+    source = 'coupon'
+    thresholdKind = coupon.percent != null ? 'percent' : 'fixed'
+    thresholdVal = coupon.percent != null ? coupon.percent : num(coupon.fixedAmount)
+    couponClaim = { id: coupon.id, code: coupon.code }
+  } else if (body?.discountId) {
     const d = await db.discount.findUnique({ where: { id: String(body.discountId) } })
     if (!d || !d.isActive) return fail('Popust ne obstaja ali ni aktiven.', 404)
     if (d.locationId !== order.locationId) return fail('Popust ni za to lokacijo.', 400)
@@ -181,6 +222,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const previousDiscount = num(order.discount)
   try {
     const applied = await db.$transaction(async (tx) => {
+      // 1a) kupon (P2-10b): CAS claim — natanko ena sočasna zahteva odkupi;
+      //     neuspeh kasnejših korakov → ROLLBACK (kupon ostane 'issued').
+      if (couponClaim) {
+        const claim = await tx.coupon.updateMany({
+          where: { id: couponClaim.id, status: 'issued' },
+          data: { status: 'redeemed', redeemedAt: now, orderId: id },
+        })
+        if (claim.count === 0) throw new DiscountApplyError(409, 'Kupon je že odkupljen ali preklican — odkup zavrnjen.')
+      }
       // 1) kvota (#45): atomaren CAS claim — currentUses < maxUses, v ISTI
       //    transakciji kot sprememba naročila; neuspeh 2./3. koraka → ROLLBACK kvote
       if (quota) {
@@ -217,6 +267,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           orderNumber: order.orderNumber,
           previousDiscount,
           by: user.name,
+          ...(couponClaim ? { couponId: couponClaim.id, couponCode: couponClaim.code } : {}),
           ...reasonAuditFields(reason ?? { reasonId: null, reasonName: null, reasonText: null, comment: null }),
           ...approvalAuditFields(approval, approvalBasis),
         }),
