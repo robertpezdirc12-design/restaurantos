@@ -9,6 +9,8 @@ import { dayKeyOf } from '@/lib/sales-by-hour'
 import { liveMinutes, totalPayCents } from '@/lib/timeclock'
 import { laborCoverageReport } from '@/lib/labor-coverage'
 import { loadLaborCoverageData, resolveLaborCoverageWindow } from '@/lib/labor-coverage-data'
+import { loadLaborForecastInputs } from '@/lib/labor-forecast-data'
+import { forecastLabor } from '@/lib/labor-forecast'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
 
 type VatRow = { base: number; vat: number }
@@ -422,6 +424,84 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="labor-pokritost_${report.parameters.from}_${report.parameters.to}.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  // P1-4 (v1.186.0): section=labor-forecast — napoved dela (potrebne ure/
+  // priporočeno osebje po urah) + vrzeli vs. načrtovane izmene. ENAK loader
+  // kot /api/reports/labor-forecast (src/lib/labor-forecast-data.ts) — izvoz
+  // uporablja ISTI obračun kot UI. Privzeto: zgodovina 28 dni, horizont 7 dni
+  // (query: historyDays?, horizonDays? — clamp 7..90 / 1..14, vzorec clampDays).
+  if (section === 'labor-forecast') {
+    // Number(null)/Number('') sta 0 — manjkajoč parameter pada na privzetek
+    // (ista Number-null past kot clampHistory v labor-forecast ruti).
+    const histRaw = url.searchParams.get('historyDays')
+    const nHist = histRaw === null || histRaw.trim() === '' ? Number.NaN : Math.round(Number(histRaw))
+    const histDays = Number.isFinite(nHist) ? Math.min(90, Math.max(7, nHist)) : 28
+    const horRaw = url.searchParams.get('horizonDays')
+    const nHor = horRaw === null || horRaw.trim() === '' ? Number.NaN : Math.round(Number(horRaw))
+    const horDays = Number.isFinite(nHor) ? Math.min(14, Math.max(1, nHor)) : 7
+    const input = await loadLaborForecastInputs(user, histDays, horDays)
+    const result = forecastLabor(input.history, input.scheduled, {
+      avgWageCentsPerHour: input.wage.centsPerHour,
+      horizonDays: horDays,
+      anchorDate: dayKeyOf(new Date()), // sidro = DANES (ista logika kot ruta)
+    })
+    const genAt = new Date().toISOString()
+
+    if (format === 'json') {
+      return ok({
+        section: 'labor-forecast',
+        generatedAt: genAt,
+        parameters: { historyDays: histDays, horizonDays: horDays },
+        wage: input.wage,
+        counts: input.counts,
+        ...result,
+        exportMeta: { exportedAt: genAt, historyDays: histDays, horizonDays: horDays },
+      })
+    }
+
+    // CSV — BOM + `;` + CRLF (vzorec labor-pokritost sekcije)
+    const LF: string[] = []
+    LF.push(`LABOR NAPOVED - RestaurantOS`)
+    LF.push(`Zgodovina (dni);${histDays}`)
+    LF.push(`Horizont (dni);${horDays}`)
+    LF.push(`Ustvarjeno;${genAt}`)
+    LF.push(`Tehtana urna postavka (EUR/h);${p2(input.wage.centsPerHour / 100)};vir;${input.wage.source}`)
+    LF.push(`Ciljni Labor %;${result.config.targetLaborPct}`)
+    LF.push(`Naložene vrstice;naročila;${input.counts.orders};vnosi;${input.counts.entries};izmene;${input.counts.shifts}`)
+    LF.push('')
+    LF.push(`NAPOVED DNEV`)
+    LF.push(`Datum;Dan tedna (1=pon);Zaupanje;Napoved neto (EUR);Min (EUR);Maks (EUR);Vzorci;Zaprti dnevi;Potrebne ure;Načrtovane ure`)
+    for (const d of result.days) {
+      LF.push([
+        d.date, d.dow, d.confidence, d.forecastNetCents === null ? '' : p2(d.forecastNetCents / 100),
+        d.minNetCents === null ? '' : p2(d.minNetCents / 100), d.maxNetCents === null ? '' : p2(d.maxNetCents / 100),
+        d.sampleCount, d.closedDays, d.totalRequiredHours ? p2(d.totalRequiredHours) : '0', d.scheduledHours ? p2(d.scheduledHours) : '0',
+      ].join(';'))
+    }
+    LF.push('')
+    LF.push(`ODPRTE URE (priporočilo po urah)`)
+    LF.push(`Datum;Ura;Napoved neto (EUR);Potrebne ure;Priporočeno osebje`)
+    for (const d of result.days) {
+      for (const c of d.openHours) {
+        LF.push([d.date, c.hour, p2(c.forecastNetCents / 100), p2(c.requiredHours), c.recommendedStaff].join(';'))
+      }
+    }
+    LF.push('')
+    LF.push(`VRZELI VS. NAČRT (prag 0,5 h)`)
+    LF.push(`Datum;Ura;Vrsta;Načrt (h);Potreba (h);Odmik (h)`)
+    for (const g of result.gaps) {
+      LF.push([g.date, g.hour, g.kind, p2(g.scheduledHours), p2(g.requiredHours), p2(g.deltaHours)].join(';'))
+    }
+    const csvLF = '\uFEFF' + LF.join('\r\n')
+    return new NextResponse(csvLF, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="labor-napoved_${dayKeyOf(new Date())}.csv"`,
         'Cache-Control': 'no-store',
       },
     })

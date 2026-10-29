@@ -2347,3 +2347,311 @@ export function DisplayPromosCard() {
     </Card>
   )
 }
+
+/* ─────────────── P1-4 (v1.186.0) — NAPOVED DELA (labor forecast) ─────────────── */
+
+/*
+ * Napoved dela: priporočene ure/priporočeno osebje po urah za prihodnjih sedem dni
+ * (povprečje istega dne tedna iz zgodovine neto prodaje) + vrzeli vs. načrtovane
+ * izmene. Isti obračun kot /api/reports/labor-forecast in export sekcija
+ * labor-forecast (skupni loader src/lib/labor-forecast-data.ts). Lazy fetch
+ * (useInViewOnce), ker se izriše v 'pregled' bloku poleg LaborCoverageCard.
+ */
+
+interface LfHourCell {
+  hour: number
+  forecastNetCents: number
+  requiredHours: number
+  recommendedStaff: number
+}
+
+interface LfDay {
+  date: string
+  dow: number
+  confidence: 'low' | 'ok'
+  forecastNetCents: number | null
+  minNetCents: number | null
+  maxNetCents: number | null
+  sampleCount: number
+  closedDays: number
+  openHours: LfHourCell[]
+  totalRequiredHours: number
+  scheduledHours: number
+}
+
+interface LfGap {
+  date: string
+  hour: number
+  kind: 'under' | 'over'
+  scheduledHours: number
+  requiredHours: number
+  deltaHours: number
+}
+
+interface LfResp {
+  generatedAt: string
+  parameters: { historyDays: number; horizonDays: number }
+  wage: { centsPerHour: number; source: 'timeclock' | 'fallback' }
+  days: LfDay[]
+  gaps: LfGap[]
+}
+
+const LF_DOW_KEY = (dow: number): string => `ai.dow.${Math.min(7, Math.max(1, dow))}`
+
+export function LaborForecastCard() {
+  const { t } = useI18n()
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
+  const [data, setData] = useState<LfResp | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+  const [csvBusy, setCsvBusy] = useState(false)
+
+  useEffect(() => {
+    if (!inView) return
+    let alive = true
+    ;(async () => {
+      setBusy(true); setErr('')
+      try {
+        const d = await api<LfResp>('/api/reports/labor-forecast?days=28&horizon=7')
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [inView, reload])
+
+  const csvExport = async () => {
+    setCsvBusy(true)
+    try {
+      const iso = (d: Date) => d.toISOString().slice(0, 10)
+      const to = new Date()
+      const from = new Date(to.getTime() - 28 * 86400000)
+      // sekcija uporablja historyDays/horizonDays (from/to ignorira) — isti
+      // obračun kot UI (vzorec labor-pokritost sekcije)
+      await downloadReportSection('labor-forecast', iso(from), iso(to), `labor-forecast_${iso(to)}.csv`, 'historyDays=28&horizonDays=7')
+    } catch (e) {
+      toast({ title: String((e as Error).message || e), variant: 'destructive' })
+    } finally {
+      setCsvBusy(false)
+    }
+  }
+
+  const days = data?.days ?? []
+  const withForecast = days.filter((d) => d.forecastNetCents !== null)
+  const gaps = data?.gaps ?? []
+  const fmtEur = (cents: number | null) => (cents === null ? '—' : fmtEUR(cents / 100))
+  const fmtH = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(2)} ${t('lf.hoursShort')}`
+
+  return (
+    <Card ref={ref}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5 flex-wrap">
+          <CalendarClock className="w-4 h-4" /> {t('lf.title')}
+          <span className="ml-auto flex items-center gap-2">
+            {withForecast.length > 0 && (
+              <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-xs" disabled={csvBusy} onClick={() => void csvExport()}>
+                {csvBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />} {t('lf.csv')}
+              </Button>
+            )}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">{t('lf.desc')}</p>
+        {err && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">{t('lf.error')} <span className="text-red-500/80">{err}</span></p>
+            <Button size="sm" variant="outline" onClick={() => setReload((r) => r + 1)} className="shrink-0 gap-1"><RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}</Button>
+          </div>
+        )}
+        {busy && (
+          <div className="space-y-2" aria-busy="true">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        )}
+        {!busy && data && withForecast.length === 0 && <p className="text-sm text-stone-500">{t('lf.empty')}</p>}
+        {!busy && withForecast.length > 0 && data && (
+          <>
+            <div className="overflow-x-auto rounded-lg border border-stone-200">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                  <tr>
+                    <th className="px-3 py-2">{t('lf.colDate')}</th>
+                    <th className="px-3 py-2">{t('lf.colForecast')}</th>
+                    <th className="px-3 py-2">{t('lf.colRequired')}</th>
+                    <th className="px-3 py-2">{t('lf.colPlanned')}</th>
+                    <th className="px-3 py-2">{t('lf.colGap')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {withForecast.map((d) => {
+                    const dayGaps = gaps.filter((g) => g.date === d.date)
+                    const under = dayGaps.filter((g) => g.kind === 'under').reduce((a, g) => a + g.deltaHours, 0)
+                    const over = dayGaps.filter((g) => g.kind === 'over').reduce((a, g) => a + g.deltaHours, 0)
+                    return (
+                      <tr key={d.date} className="border-t border-stone-100">
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{d.date}</span>
+                          <span className="ml-1 text-xs text-stone-400">{t(LF_DOW_KEY(d.dow))}</span>
+                          {d.confidence === 'low' && <Badge variant="outline" className="ml-1.5 border-amber-300 text-amber-700 text-[10px]">{t('lf.confidenceLow')}</Badge>}
+                        </td>
+                        <td className="px-3 py-2">{fmtEur(d.forecastNetCents)}</td>
+                        <td className="px-3 py-2">{fmtH(d.totalRequiredHours)}</td>
+                        <td className="px-3 py-2">{fmtH(d.scheduledHours)}</td>
+                        <td className="px-3 py-2">
+                          {under > 0 || over > 0 ? (
+                            <span className="flex flex-wrap gap-1">
+                              {under > 0 && <Badge className="bg-red-100 text-red-800 text-[10px]">−{under.toFixed(2)} {t('lf.gapUnder')}</Badge>}
+                              {over > 0 && <Badge className="bg-amber-100 text-amber-800 text-[10px]">+{over.toFixed(2)} {t('lf.gapOver')}</Badge>}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-stone-400">{t('lf.gapOk')}</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* priporočilo po urah za prvi dan z odprtimi urami */}
+            {withForecast.filter((d) => d.openHours.length > 0).slice(0, 1).map((d) => (
+              <div key={`h-${d.date}`} className="overflow-x-auto rounded-lg border border-stone-200">
+                <table className="w-full min-w-[420px] text-sm">
+                  <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+                    <tr>
+                      <th className="px-3 py-2">{t('lf.colDate')}: {d.date}</th>
+                      <th className="px-3 py-2">{t('lf.colForecast')}</th>
+                      <th className="px-3 py-2">{t('lf.colRequired')}</th>
+                      <th className="px-3 py-2">Ø</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.openHours.map((c) => (
+                      <tr key={c.hour} className="border-t border-stone-100">
+                        <td className="px-3 py-1.5">{String(c.hour).padStart(2, '0')}:00–{String((c.hour + 1) % 24).padStart(2, '0')}:00</td>
+                        <td className="px-3 py-1.5">{fmtEur(c.forecastNetCents)}</td>
+                        <td className="px-3 py-1.5">{fmtH(c.requiredHours)}</td>
+                        <td className="px-3 py-1.5">{c.recommendedStaff}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+            <p className="text-xs text-stone-500">
+              {t('lf.wage')}: {fmtEUR((data.wage.centsPerHour / 100))}/h ({data.wage.source === 'timeclock' ? t('lf.wageTimeclock') : t('lf.wageFallback')})
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────── P2-9 (v1.186.0) — AI VPOGLEDI (deterministični motor) ─────────────── */
+
+/*
+ * AI vpogledi iz živih podatkov: mrtvi artikli, restock, vrhovi obremenitve,
+ * labor anomalije. Strežnik vrača i18nKey + params (LOKALIZACIJA je tukaj —
+ * strežnik ne gradi besedil); vsak klic rute se zapiše v AIConversation
+ * (prvi pisec te tabele — TRZNA-VRZELI-2026.md §P2-9). Brez LLM-ja, brez
+ * omrežnih klicev — deterministično in CI-varno.
+ */
+
+interface AiInsightT {
+  kind: 'deadItem' | 'restock' | 'peak' | 'labor' | 'none'
+  severity: 'info' | 'warning' | 'critical'
+  i18nKey: string
+  params: Record<string, string | number>
+}
+
+interface AiResp {
+  generatedAt: string
+  insights: AiInsightT[]
+  meta: { model: string; responseTimeMs: number }
+}
+
+const AI_SEVERITY_DOT: Record<string, string> = {
+  info: 'bg-stone-400',
+  warning: 'bg-amber-500',
+  critical: 'bg-red-600',
+}
+
+export function AiInsightsCard() {
+  const { t } = useI18n()
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
+  const [data, setData] = useState<AiResp | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    if (!inView) return
+    let alive = true
+    ;(async () => {
+      setBusy(true); setErr('')
+      try {
+        const d = await api<AiResp>('/api/reports/ai-insights?days=28')
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [inView, reload])
+
+  // 'peak' dobi poseben param `when` (lokaliziran dan tedna + ura) — strežnik
+  // ne pozna jezika, zato se sestavlja tukaj (vzorec guestStatusKey obratno).
+  const localized = (i: AiInsightT): Record<string, string | number> => {
+    if (i.kind === 'peak') {
+      const dow = Number(i.params.dow) || 1
+      const hour = Number(i.params.hour) || 0
+      return { ...i.params, when: `${t(`ai.dow.${Math.min(7, Math.max(1, dow))}`)} ${String(hour).padStart(2, '0')}:00` }
+    }
+    return i.params
+  }
+
+  return (
+    <Card ref={ref}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5">
+          <Wand2 className="w-4 h-4" /> {t('ai.title')}
+          <Button size="sm" variant="ghost" className="ml-auto h-7 w-7 p-0" aria-label={t('common.refresh')} onClick={() => setReload((r) => r + 1)} disabled={busy}>
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-stone-500">{t('ai.desc')}</p>
+        {err && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">{t('ai.error')} <span className="text-red-500/80">{err}</span></p>
+            <Button size="sm" variant="outline" onClick={() => setReload((r) => r + 1)} className="shrink-0 gap-1"><RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}</Button>
+          </div>
+        )}
+        {busy && <Skeleton className="h-24 w-full" aria-busy="true" />}
+        {!busy && data && (
+          <ul className="space-y-2">
+            {data.insights.map((i, idx) => (
+              <li key={`${i.kind}-${idx}`} className="flex items-start gap-2 rounded-lg border border-stone-200 p-2.5 text-sm">
+                <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${AI_SEVERITY_DOT[i.severity] ?? 'bg-stone-400'}`} />
+                <span>
+                  <span className="sr-only">{t(i.severity === 'warning' ? 'ai.severity.warning' : 'ai.severity.info')}: </span>
+                  {t(i.i18nKey, localized(i))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

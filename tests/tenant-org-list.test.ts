@@ -203,7 +203,10 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // uporabnikovem obsegu, locationScope) → 71
     // Issue #4 (v1.125.0): +6 rut (einvoices GET/detail/send/retry/xml/issue —
     // B2B e-računi: izdaja iz naročila v obsegu + seznam/dokaz/statusi v obsegu) → 66
-    expect(wired.length).toBe(71)
+    // P2-9 (v1.186.0): reports/ai-insights GET (vpogledi v uporabnikovem obsegu —
+    // locationScope v ruti; reports/labor-forecast je PREDPOTUJUČI: scope nalaga
+    // skupni loader labor-forecast-data, zato šteje naslednja ruta, ne ta) → 72
+    expect(wired.length).toBe(72)
   })
 })
 

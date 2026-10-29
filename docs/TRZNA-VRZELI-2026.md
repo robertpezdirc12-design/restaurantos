@@ -79,7 +79,7 @@ Legenda: ✓ ima · ~ delno · ✗ manjka · — ni relevantno za ta trg
 | Računovodstvo (izvoz) | ✓ (avto) | ✓ | ✓ | — | ✓ | ✓ (GL/CSV/eSlog AP) |
 | X/Z, DDV po stopnjah | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Prodaja po urah + labor strošek | ✓ | ✓ | ✓ | — | ✓ | ✓ |
-| **Labor FORECAST (napoved ur)** | ✓ | ✓ | ✓ | ✗ | ✗ | **✗** |
+| **Labor FORECAST (napoved ur)** | ✓ | ✓ | ✓ | ✗ | ✗ | **✓ (v1.186.0)** |
 | Payroll | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | Urniki izmen | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Timeclock | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -129,7 +129,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 
 | # | Manjka | Trud |
 |---|---|---|
-| 9 | **AI napovedi/insights** (AIConversation model JE v shemi, neuporabljen): napoved obremenitve, predlog naročila zalog, opozorila na mrtve artikle | Srednji–velik |
+| 9 | ~~**AI napovedi/insights**~~ — **DELNO ZAPRTO (v1.186.0)**: deterministični motor (`src/lib/ai-insights.ts`) — mrtvi artikli, predlog restocka, vrhovi obremenitve, labor anomalije; vsak klic zapisan v AIConversation (prvi pisec doslej mrtve tabele, `deterministic-v1`); ruta `/api/reports/ai-insights` + kartica v pregledu. OSTAJA (P2-9b): LLM naracija nad strukturiranimi vpogledi (provider odprt — brez nove odvisnosti v CI) | Srednji–velik → jedro izvedeno |
 | 10 | **Loyalty kampanje + e-mail marketing** (SMTP ŽE v reminders.ts): rojstnodnevni kupon, win-back | Srednji |
 | 11 | **eSlog B2B IZVOZ + Peppol** (ViDA: e-računi po 2030 harmonizirano; AP import že imamo) | Srednji |
 | 12 | **Javni rezervacijski widget** (/r/[token] javni URL + Google Business link) | Majhen–srednji |
@@ -165,7 +165,7 @@ Toast 69 $+/mes + 2 %+15¢ + 1–3 letna pogodba po TechRadar 2026).
 2. ~~Handheld tok (P0-1)~~ — ✅ **izvedeno v v1.84.0** (/handheld — enoročni tok mize→naroči→fire→plačaj pri mizi z velikimi CTA v coni palca, 86 artikli sivo, offline vrsta; tests/handheld-flow.test.ts 12 testov; gl. §4.1).
 3. ~~Pay link (P0-2)~~ — ✅ **izvedeno v v1.85.0** (ponudnik: Stripe Checkout prek env/Integration; simulator privzet — gl. §4).
 4. ~~EN jezik gostu (P1-5)~~ — ✓ **izvedeno v v1.86.0** (delni EN slovar + 3-jezikovni preklopnik + prevod API napak; gl. §4). ~~Ostaja: split po gostih (P1-6) — hiter dobiček.~~ — ✓ **izvedeno v v1.185.0** (gl. §4 #6).
-5. **Labor forecast + AI** (P1-4, P2-9) — podatki že zbrani (prodaja po urah, labor cost).
+5. ~~Labor forecast + AI (P1-4, P2-9)~~ — ✓ **izvedeno v v1.186.0** (P1-4: deterministična napoved dela — povprečje istega dne tedna, uteži ur, potreba po urah iz ciljnega labor-% in tehtane urne postavke, vrzeli vs. načrt; P2-9a: AI vpogledi — mrtvi artikli, restock, vrhovi, labor anomalije + prvi zapis v AIConversation; ostaja P2-9b: LLM naracija — gl. §4).
 6. Nato P2 po poslovnih prioritetah (kampanje > eSlog izvoz > widget > portal).
 
 ## 7. Sklep
