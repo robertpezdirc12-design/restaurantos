@@ -113,7 +113,8 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 ## Payment boundary (issue #12 §4 — preverjeno, NI novega sistema)
 
 - Shema: `Payment.cardType` + `Payment.cardLast4` + `authorizationCode` —
-  **PAN/CVV/track data se NE shranjujejo** nikjer v shemi (116/116 modelov).
+  **PAN/CVV/track data se NE shranjujejo** nikjer v shemi
+  (137/137 modelov, re-verificirano v1.194.0; prvotna trditev 116/116).
 - Terminal: `src/lib/devices/terminal.ts` — POS pošlje znesek, terminal vrne
   kodo odobritve → `Payment.authorizationCode` (sledljivost brez kartice).
 - Idempotencija: `Payment.idempotencyKey` (unique) — dvojni klik/duplikat →
@@ -127,6 +128,58 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
   platforme z osebnimi podatki gosta (ime, telefon, naslov, opombe) se NE
   zapisuje (v1.163.0); javni odgovori ne vsebujejo zaposlenih/PIN (maskiranje
   telefona `maskPhone`).
+
+## PCI DSS v4.0 — SAQ-A pristop (v1.194.0, dokumentacija; gl. TRZNA-VRZELI §5)
+
+**Klasifikacija:** RestaurantOS je povezan ponudnik storitev, ki kartične podatke
+(PAN, track data, CVV/CVC, PIN) **nikoli ne sprejme, ne obdela, ne
+shranjuje in ne prenaša** — vsi plačilni tokovi so povsem outsourcing na
+PCI DSS potrjene ponudnike. To je tehnična drža za samopreverjanje
+**SAQ A** (povsem outsourced e-commerce, v4.0); polnjenje vprašalnika,
+AOC in kvartalni ASV sken so URAVNI postopki lastnika — koda te drže
+ne more zamenjati, dokument pa je njena podlaga.
+
+**Tri poti plačila in kje se kartični podatki pojavijo:**
+
+1. **PayLink `/pay/<token>` (Stripe Checkout, redirect)** — gost vnese
+   kartico NA STRIPE DOMENI (`src/lib/paylink/core.ts`: „kartica se
+   vnese na Stripe domeni — PCI SAQ-A drža“); RestaurantOS ustvari sejo
+   (znesek ZAKLEPAN, v1.98.0), prejme samo status seje in zapiše poravnavo
+   (`settleStripeSession`). Vezava seje na konkretno povezavo: issue #37
+   (SSRF/paylink binding), test `tests/issue30-37-ssrf-paylink-binding.test.ts`.
+2. **Fizični terminal** (`src/lib/devices/terminal.ts`) — POS pošlje
+   ZNESEK, terminal vrne kodo odobritve → `Payment.authorizationCode`.
+   Terminal je v obsegu svojega ponudnika (PCI PTS); RestaurantOS vidi
+   samo ne-kartično kodo. Profili dokazovanja (`src/lib/payments-policy.ts`,
+   issue #49): `verified_provider` (REZERVIRAN za pravo strežniško
+   integracijo — klient ga ne more zahtevati), `manual_attestation`
+   (ročna zabeležba, izklopljiva `PAYMENTS_ALLOW_MANUAL_ATTESTATION=false`),
+   `simulator` (SIM- predpona, SAMO v testnem/fiskalnem simulacijskem
+   okolju — produkcija 402). Test: `tests/issue49-51-64-payments.test.ts`.
+3. **Denarnice** (`WalletPayment`) — `paymentToken`/`tokenType` so
+   ponudniški ŽETONI, ne PAN; `cardBrand` + `cardLast4` so izpeljanke,
+   ki jih vrne ponudnik.
+
+**Shema kot dokaz:** `Payment` nosi `cardType` + `cardLast4` +
+`authorizationCode` (koda odobritve, ne kartica); `WalletPayment` nosi
+`cardBrand` + `cardLast4` + `paymentToken`. PAN/CVV/track data NIKJER v
+shemi (137/137 modelov — besedilno iskanje `pan|cvv|track` naleti samo na
+komentarje politike). **Omejitev obsega:** `GiftCard.cardNumber` je
+interna identifikacija LASTNE darilne kartice (izdana v sistemu, ni
+plačilna kartica) — ni v PCI obsegu; v reviziji je treba to povedati,
+ker ime kolidira z laičnim branjem.
+
+**Posledica za obseg:** ker CHD nikoli ne vstopi v sistem, se Vercel
+namestitev, aplikacija in baza NE štejejo za CHD okolje — segmentacija
+je trivialna (nič za segmentirati), obseg vprašalnika se ustavi pri
+izrecno dokumentiranih vmesnikih (Checkout redirect, terminal koda,
+žeton denarnice). **Meje države:** (a) uvedba lastnega vnosa kartice na
+naši domeni ali strežniška obdelava PAN bi obseg spremenila v SAQ A-EP
+ali D — to se NAREKUJE z zgoraj omenjenimi profili; `verified_provider`
+profil je oblikovan tako, da prava ponudniška integracija prinese SAMO
+rezultat (kodo/status/žeton), ne CHD; (b) sprememba ponudnika plačil
+(izbira e-poti/PEPPOL za B2B, P2-11) ne vpliva na SAQ-A, dokler nova
+e-pot spet ne prenaša CHD skozi sistem.
 
 ## Površina odvisnosti (v1.154.0 — OSV pregled 20. 10. 2026)
 
