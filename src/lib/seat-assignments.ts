@@ -76,6 +76,27 @@ export function parseSeatAssignments(body: unknown): SeatPlanParseResult {
   return { ok: true, assignments }
 }
 
+/**
+ * N-27-1 (v1.195.0) — OPACIONALNI sedež pri naročanju: `addItems[i].seat`
+ * (aktivni sedež tok — natakar izbere sedež, dodane postavke ga nosijo).
+ *  - undefined / null / prazen niz → `{ ok: true, seat: null }` (BREZ sedeža —
+ *    obstoječi klienti brez polja ostanejo nespremenjeni — nič tihe spremembe);
+ *  - celo število v [MIN_SEAT..MAX_SEAT] → sedež;
+ *  - karkoli drugega (0, 11, 1.5, 'abc') → napaka (400 na ruti, ne tihe ignoriranje).
+ */
+export type SeatOptionParseResult =
+  | { ok: true; seat: number | null }
+  | { ok: false; error: string }
+
+export function parseSeatOption(value: unknown): SeatOptionParseResult {
+  if (value === undefined || value === null || value === '') return { ok: true, seat: null }
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < MIN_SEAT || n > MAX_SEAT) {
+    return { ok: false, error: `seat mora biti celo število med ${MIN_SEAT} in ${MAX_SEAT} ali pa izpuščen (brez sedeža).` }
+  }
+  return { ok: true, seat: n }
+}
+
 /* ───────────────────────── pregled po sedežih ───────────────────────── */
 
 export interface SeatOverviewItem {

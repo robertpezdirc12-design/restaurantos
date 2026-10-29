@@ -2466,6 +2466,9 @@ export const hr: Record<string, string> = {
   'payment.seatsOverview': 'Sjedište {n}: {sum}',
   'payment.seatsOverviewNone': 'Bez sjedišta: {sum}',
   'payment.seatShort': 'S{n}',
+  // N-27-1 (v1.195.0) — sjedište pri naručivanju (aktivno sjedište tok)
+  'order.activeSeat': 'Aktivno sjedište',
+  'order.seatNone': 'Bez',
   'mig.orderItemSeats.desc': 'Sjedišta stavki — stupac OrderItem.seat (seat-level, oznaka podrijetla stavke #20)',
   'payment.checkLabel': 'Račun {n}',
   'payment.checkShort': 'R{n}',

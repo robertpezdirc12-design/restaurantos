@@ -25,6 +25,7 @@ import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from 
 import { publishEvent } from '@/lib/events'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import { vatFromGross } from '@/lib/billing'
+import { parseSeatOption } from '@/lib/seat-assignments'
 
 export const orderInclude = {
   OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
@@ -67,6 +68,8 @@ export interface CreateOrderInput {
     note?: string
     /** Issue #7: izrecno alergensko opozorilo (gost prijavi alergijo / osebje) — ≤ 200 */
     allergenWarning?: string
+    /** N-27-1 (v1.195.0): opcionalni sedež pri naročanju (1..10) — null/izpuščeno = brez sedeža; validira parseSeatOption */
+    seat?: unknown
     /** Issue #3: opcije/modifierji — cene se štejejo v linijo, vrste se zapišejo v OrderItemModifier */
     modifiers?: { modifierId: string; name: string; price: number; groupName?: string; modifierGroupId?: string }[]
   }[]
@@ -256,6 +259,9 @@ export async function createOrderCore(
       menuItemName: mi.name,
       status: 'pending' as const,
       notes: i.note || '',
+      // N-27-1 (v1.195.0): opcionalni sedež pri naročanju — aktivni sedež tok.
+      // Validacija PRE transakcije (OrderError → 400; null = brez sedeža).
+      seat: (() => { const s = parseSeatOption(i.seat); if (!s.ok) throw new OrderError(s.error); return s.seat })(),
       modifiersJson: '[]',
       // Issue #7: posnetek (kode/status ob nastanku) + izrecno opozorilo postavke
       allergenSnapshot: allergenSnapshots[itemIdx] || '{}',

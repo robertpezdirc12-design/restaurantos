@@ -480,6 +480,9 @@ function DashboardInner() {
   const [orderSheet, setOrderSheet] = useState<OrderT | null>(null)
   const [sheetCourses, setSheetCourses] = useState<CourseT[]>([])
   const [sheetCart, setSheetCart] = useState<Record<string, number>>({})
+  // N-27-1 (v1.195.0): aktivni sedež v urejevalniku naročila (OPS-7) —
+  // postavke, dodane medtem, ko je sedež aktiven, ga nosijo (null = brez).
+  const [sheetSeat, setSheetSeat] = useState<number | null>(null)
   // Issue #5 (komentar #3): preklic posamezne postavke (orders.void) — dialog + razlog
   const [voidItem, setVoidItem] = useState<OrderItemT | null>(null)
   const [voidReasons, setVoidReasons] = useState<{ id: string; name: string }[]>([])
@@ -1098,7 +1101,10 @@ function DashboardInner() {
   /** OPS-7: pošlji dodatek obstoječemu naročilu (PATCH addItems) */
   async function sendSheetItems() {
     if (!orderSheet) return
-    const items = Object.entries(sheetCart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
+    const items = Object.entries(sheetCart).map(([menuItemId, qty]) => ({
+      menuItemId, qty,
+      ...(sheetSeat != null ? { seat: sheetSeat } : {}), // N-27-1: aktivni sedež
+    }))
     if (items.length === 0) return
     setSending(true)
     try {
@@ -4736,6 +4742,16 @@ function DashboardInner() {
             {/* dodaj artikle (Toast: urejevalnik = naročanje + dodajanje) */}
             <div className="rounded-xl border border-stone-200 p-3">
               <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{t('sheet.addItems')}</p>
+              {/* N-27-1: aktivni sedež (naročanje) — isti obseg sedežev kot plačilni dialog (1–5) */}
+              {Object.values(sheetCart).some((q) => q > 0) && (
+                <div className="flex items-center gap-1.5 flex-wrap mb-2" role="group" aria-label={t('order.activeSeat')}>
+                  <span className="text-xs font-semibold uppercase text-stone-500 mr-1 shrink-0">{t('order.activeSeat')}</span>
+                  <button aria-pressed={sheetSeat == null} onClick={() => setSheetSeat(null)} className={`min-h-11 px-3 rounded-lg text-sm font-bold ${sheetSeat == null ? 'bg-stone-800 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>{t('order.seatNone')}</button>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} aria-pressed={sheetSeat === n} onClick={() => setSheetSeat(n)} className={`min-h-11 px-3 rounded-lg text-sm font-bold ${sheetSeat === n ? 'bg-emerald-700 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>{t('payment.seatShort', { n })}</button>
+                  ))}
+                </div>
+              )}
               <ScrollArea className="max-h-36">
                 <div className="space-y-3 pr-2">
                   {orderDialogMenu.map((g) => (

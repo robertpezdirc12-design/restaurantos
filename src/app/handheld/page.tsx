@@ -80,6 +80,10 @@ function HandheldInner() {
   const [selTableId, setSelTableId] = useState<string | null>(null)
   const [guests, setGuests] = useState(2)
   const [cart, setCart] = useState<Record<string, number>>({})
+  // N-27-1 (v1.195.0): aktivni sedež pri naročanju — postavke, dodane medtem, ko
+  // je sedež aktiven, ga nosijo (Square vzorec: sedež izbereš ŽE pri naročanju,
+  // ne samo v plačilnem dialogu). null = brez sedeža (obstoječe obnašanje).
+  const [activeSeat, setActiveSeat] = useState<number | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
   // Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo na postavki (gost prijavi alergijo)
   const [allergenNotes, setAllergenNotes] = useState<Record<string, string>>({})
@@ -211,6 +215,7 @@ function HandheldInner() {
     if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
     setNotice(''); setCart({}); setNotes({}); setNoteOpen(null); setCat('ALL'); setSearch('')
     setGuests(2); setBill(null); setPaidInfo(null); setTipPct(0); setTipCustom(''); setPayMethod('cash')
+    setActiveSeat(null) // N-27-1: aktivni sedež se resetira pri izbiri mize
     setSelTableId(tb.id)
     setView('order')
   }
@@ -236,6 +241,7 @@ function HandheldInner() {
       menuItemId, qty,
       ...(notes[menuItemId]?.trim() ? { note: notes[menuItemId].trim() } : {}),
       ...(allergenNotes[menuItemId]?.trim() ? { allergenWarning: allergenNotes[menuItemId].trim().slice(0, 200) } : {}),
+      ...(activeSeat != null ? { seat: activeSeat } : {}),
     }))
     setSending(true); setNotice('')
     const clientOperationId = newOperationId()
@@ -261,6 +267,7 @@ function HandheldInner() {
       menuItemId, qty,
       ...(notes[menuItemId]?.trim() ? { note: notes[menuItemId].trim() } : {}),
       ...(allergenNotes[menuItemId]?.trim() ? { allergenWarning: allergenNotes[menuItemId].trim().slice(0, 200) } : {}),
+      ...(activeSeat != null ? { seat: activeSeat } : {}),
     }))
     setSending(true); setNotice('')
     const clientOperationId = newOperationId()
@@ -379,6 +386,7 @@ function HandheldInner() {
   function backToTables() {
     setNotice(''); setBill(null); setPaidInfo(null); setCart({}); setNotes({}); setNoteOpen(null)
     setPlinks(null)
+    setActiveSeat(null) // N-27-1: aktivni sedež se resetira ob vrnitvi na mize
     setSelTableId(null)
     setView('tables')
   }
@@ -536,6 +544,16 @@ function HandheldInner() {
 
           {/* lepljivo dno — cona palca: košarica + gosti + CTA vrstni red POSESTVENO: dodaj → fire → račun */}
           <div className="shrink-0 border-t border-stone-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
+            {/* N-27-1: aktivni sedež (naročanje) — isti obseg sedežev kot plačilni dialog (1–5) */}
+            {cartQty > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label={t('order.activeSeat')}>
+                <span className="text-xs font-semibold uppercase text-stone-500 mr-1 shrink-0">{t('order.activeSeat')}</span>
+                <button aria-pressed={activeSeat == null} onClick={() => setActiveSeat(null)} className={`min-h-11 px-3 rounded-lg text-sm font-bold ${activeSeat == null ? 'bg-stone-800 text-white' : 'bg-stone-100 active:bg-stone-200 text-stone-700'}`}>{t('order.seatNone')}</button>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} aria-pressed={activeSeat === n} onClick={() => setActiveSeat(n)} className={`min-h-11 px-3 rounded-lg text-sm font-bold ${activeSeat === n ? 'bg-emerald-700 text-white' : 'bg-stone-100 active:bg-stone-200 text-stone-700'}`}>{t('payment.seatShort', { n })}</button>
+                ))}
+              </div>
+            )}
             {cartQty > 0 && (
               <div className="max-h-44 overflow-y-auto space-y-2 border-b border-stone-100 pb-2">
                 {Object.entries(cart).map(([id, qty]) => {

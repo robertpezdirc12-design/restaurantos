@@ -2471,6 +2471,9 @@ export const sl: Record<string, string> = {
   'payment.seatsOverview': 'Sedež {n}: {sum}',
   'payment.seatsOverviewNone': 'Brez sedeža: {sum}',
   'payment.seatShort': 'S{n}',
+  // N-27-1 (v1.195.0) — sedež pri naročanju (aktivni sedež tok)
+  'order.activeSeat': 'Aktivni sedež',
+  'order.seatNone': 'Brez',
   'mig.orderItemSeats.desc': 'Sedeži postavk — stolpec OrderItem.seat (seat-level management, oznaka izvora postavke #20)',
   'payment.checkLabel': 'Izstavek {n}',
   'payment.checkShort': 'T{n}',

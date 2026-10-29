@@ -8,6 +8,7 @@ import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals, claimMutableOrder } from '@/lib/ops'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import { vatFromGross } from '@/lib/billing'
+import { parseSeatOption } from '@/lib/seat-assignments'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
 import {
   validateExceptionReason,
@@ -212,9 +213,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const allergenSnapshots = await buildAllergenSnapshots(
       body.addItems.map((i: { menuItemId: string }) => ({ menuItemId: i.menuItemId, chosenModifierIds: [] }))
     ).catch(() => body.addItems.map(() => '{}'))
-    const rows = body.addItems.map((i: { menuItemId: string; qty?: number; note?: string; allergenWarning?: string }, itemIdx: number) => {
+    // N-27-1 (v1.195.0): sedežna validacija PRED gradnjo vrstic — 400 z razlogom
+    // (ne tiho ignoriranje in ne zamenjava z »Artikel ni na voljo«; izrecno pred
+    // transakcijo in izven njenega catch bloka, ki nosi artikel-sporočilo).
+    const seatOptions = (body.addItems as { seat?: unknown }[]).map((i) => parseSeatOption(i.seat))
+    for (const s of seatOptions) {
+      if (!s.ok) return fail(s.error, 400)
+    }
+    const rows = body.addItems.map((i: { menuItemId: string; qty?: number; note?: string; allergenWarning?: string; seat?: unknown }, itemIdx: number) => {
       const mi = menuItems.find((m) => m.id === i.menuItemId)
       if (!mi) throw new Error(`Artikel ni na voljo na tej lokaciji (${i.menuItemId}).`)
+      const seat = seatOptions[itemIdx].ok ? (seatOptions[itemIdx] as { ok: true; seat: number | null }).seat : null
       const qty = Math.max(1, Math.round(Number(i.qty) || 1))
       const price = num(mi.price)
       const vatRate = num(mi.vatRate, 22)
@@ -230,6 +239,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         menuItemName: mi.name,
         status: itemStatusToDB('PENDING'),
         notes: i.note || '',
+        seat,
         allergenSnapshot: allergenSnapshots[itemIdx] || '{}',
         allergenWarning: sanitizeAllergenWarning(i.allergenWarning),
       }

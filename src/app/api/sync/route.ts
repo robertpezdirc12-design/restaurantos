@@ -8,6 +8,7 @@ import type { AuthPayload } from '@/lib/auth'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
 import { createOrderCore, OrderError, claimMutableOrder, ORDER_MUTABLE_STATUS, ORDER_MUTABLE_PAYMENT } from '@/lib/ops'
 import { splitVat, vatFromGross } from '@/lib/billing'
+import { parseSeatOption } from '@/lib/seat-assignments'
 import { tasksForItem, completeTasksForItem } from '@/lib/station-task-service'
 
 /**
@@ -219,7 +220,7 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
     }
     case 'order.addItems': {
       const orderId = String(payload.orderId || '')
-      const addItems = (payload.addItems || payload.items) as { menuItemId: string; qty?: number; note?: string }[] | undefined
+      const addItems = (payload.addItems || payload.items) as { menuItemId: string; qty?: number; note?: string; seat?: unknown }[] | undefined
       if (!orderId || !Array.isArray(addItems) || addItems.length === 0) throw new OrderError('order.addItems: manjka orderId ali addItems.')
       const order = await client.order.findUnique({ where: { id: orderId } })
       if (!order) throw new OrderError('Naročilo ne obstaja več.', 404)
@@ -229,29 +230,39 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
       const menuItems = await client.menuItem.findMany({ where: { id: { in: addItems.map((i) => i.menuItemId) }, isAvailable: true, Category: { Menu: { locationId: order.locationId } } } })
       const rows: {
         id: string; orderId: string; menuItemId: string; quantity: number; price: number; vatRate: number; vatAmount: number;
-        menuItemName: string; status: OrderItemStatus; notes: string
+        menuItemName: string; status: OrderItemStatus; notes: string; seat: number | null
       }[] = addItems.map((i) => {
         const mi = menuItems.find((m) => m.id === i.menuItemId)
         if (!mi) throw new OrderError('Artikel ne obstaja ali ni na voljo na lokaciji naročila.')
+        // N-27-1 (v1.195.0): opcionalni sedež pri naročanju (offline sync pot) —
+        // isti vzorec kot online: validacija PRE transakcije, null = brez sedeža.
+        const seatOpt = parseSeatOption(i.seat)
+        if (!seatOpt.ok) throw new OrderError(`order.addItems: ${seatOpt.error}`, 400)
         const qty = Math.max(1, Math.round(Number(i.qty) || 1))
         const price = Number(mi.price); const vatRate = Number(mi.vatRate) || 22
-        return { id: nid(), orderId, menuItemId: mi.id, quantity: qty, price, vatRate, vatAmount: vatFromGross(price * qty, vatRate), menuItemName: mi.name, status: itemStatusToDB('PENDING') as OrderItemStatus, notes: i.note || '' }
+        return { id: nid(), orderId, menuItemId: mi.id, quantity: qty, price, vatRate, vatAmount: vatFromGross(price * qty, vatRate), menuItemName: mi.name, status: itemStatusToDB('PENDING') as OrderItemStatus, notes: i.note || '', seat: seatOpt.seat }
       })
       // R5 popravek (P0 audit): createMany + recalcTotals + update v ISTI transakciji s CAS
       // gate na plačano naročilo (enako kot PATCH /api/orders/[id]).
       // v1.145.0 (audit #10): BELA LISTA mutabilnih stanj (ista kot online pot v
       // orders/[id]) — prej `paymentStatus: { not: 'paid' }` je spustil postavke v
       // PREKLICANO in STORNIRANO naročilo (mimogredo: offline replay po preklicu).
+      // N-27-1 (v1.195.0) POPRAVEK (odkrit s prvim ok:true sync testom, tests/v195):
+      // truplo je bilo hardkodirano v `db.$transaction`, kljub temu da applyOp prihaja
+      // ŽE ZNOTRAJ interaktivne transakcije iz applyOperation (applyOp(tx, …)). Na
+      // Postgresu je notranja transakcija vzela DRUGO povezavo iz poola in je delovalo —
+      // ampak ATOMIČNO KRHKO (notranji commit + zunanji rollback = postavke brez claima,
+      // točno kar R7 preprečuje); na SQLite je notranja transakcija čakala na zunanjo →
+      // 5 s timeout. Zdaj poizvedbe tečejo na prejetem clientu — atomičnost garantira
+      // klicatelj (zunanja transakcija), claim 'processing' in postavke rollbackajo SKUPAJ.
       try {
-        await db.$transaction(async (tx) => {
-          await tx.orderItem.createMany({ data: rows })
-          const totals = await recalcTotals(orderId, tx)
-          const claim = await tx.order.updateMany({
-            where: { id: orderId, status: { in: [...ORDER_MUTABLE_STATUS] }, paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] } },
-            data: { subtotal: totals.subtotal, tax: totals.tax, total: totals.total },
-          })
-          if (claim.count === 0) throw new OrderError('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
+        await client.orderItem.createMany({ data: rows })
+        const totals = await recalcTotals(orderId, client)
+        const claim = await client.order.updateMany({
+          where: { id: orderId, status: { in: [...ORDER_MUTABLE_STATUS] }, paymentStatus: { in: [...ORDER_MUTABLE_PAYMENT] } },
+          data: { subtotal: totals.subtotal, tax: totals.tax, total: totals.total },
         })
+        if (claim.count === 0) throw new OrderError('Naročilo je zaključeno (plačano, preklicano ali stornirano) — postavk ni mogoče dodati.', 409)
       } catch (e) {
         if (e instanceof OrderError) throw e
         throw new OrderError('Dodajanje postavk ni uspelo (artikel ni na voljo na lokaciji naročila).', 400)
