@@ -149,7 +149,7 @@ beforeAll(async () => {
 
   // dobavitelj (finančni profil)
   await db.supplier.create({
-    data: { id: `${PREFIX}sup-${RUN}`, name: `${PREFIX} Doba`, taxId: 'SI999', iban: 'SI56...', bank: 'NLB', paymentTerms: '30 dni', isActive: true },
+    data: { id: `${PREFIX}sup-${RUN}`, name: `${PREFIX} Doba`, code: `I5-${RUN}`, taxId: 'SI999', iban: 'SI56...', bank: 'NLB', paymentTerms: '30 dni', isActive: true },
   })
 
   // zaloga (cost strip test)

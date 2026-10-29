@@ -166,7 +166,7 @@ beforeAll(async () => {
 
   // dobavitelj + katalog (paket 5 kos × 12 €, DDV 9.5 %, najmanj 2 paketa)
   supX = `${P}supX-${RUN}`
-  await db.supplier.create({ data: { id: supX, name: `${P}Dobavitelj X ${RUN}`, isActive: true } })
+  await db.supplier.create({ data: { id: supX, name: `${P}Dobavitelj X ${RUN}`, code: `I12X${RUN}`, isActive: true } })
 
   itemA = await mkItem(`${P}itemA-${RUN}`, `${P}Kava ${RUN}`, locA, { quantity: 6, reorderPoint: 10, safetyStock: 5, leadTimeDays: 3, costPerUnit: 2.5 })
   itemB = await mkItem(`${P}itemB-${RUN}`, `${P}Sladkor ${RUN}`, locA, { quantity: 2, minQuantity: 8 })

@@ -71,6 +71,30 @@ const REPO = join(import.meta.dir, '..')
 const OFFSITE_CLI = join(REPO, 'scripts', 'local-offsite.ts')
 const RESTORE_CLI = join(REPO, 'scripts', 'local-restore.ts')
 
+/* ── sonda okolja: ali je `st_dev` sploh veljaven identifikator volumna? ──────
+ * Na zdravih datotečnih sistemih (NTFS — izmere v glavi te datoteke — in ext4 na
+ * GitHub Actions runnerjih) je `dev` enak za VSE poti znotraj volumna. Na
+ * overlayfs (nekateri zabojniki/peskovniki) pa novo ustvarjena DATOTEKA pade v
+ * zgornjo plast in nosi DRUG `dev` kot svoja matična MAPA — izmerjeno tukaj:
+ * dir 43, file 44. Tam realno-fs testi (B1, B4, F4) ne morejo ničesar izmeriti:
+ * vsak izid bi bil lastnost peskovnika, ne kode. Sonda to odkrije ENKRAT ob
+ * nalaganju; trije realno-fs testi se ob prevari izpustijo, sonda-test B0 pa
+ * preveri, da sonda laži ne spregleda. Vse ostalo (A, B2/B3, C, D, E, F brez
+ * F4, G, H) teče povsod. */
+function stDevJeVeljavenVolumen(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), 'ros-v182-probe-'))
+  try {
+    const file = join(dir, 'probe.tmp')
+    writeFileSync(file, 'probe')
+    return deviceOf(file) === deviceOf(dir)
+  } catch {
+    return true // okolja ne moremo izmeriti → privzemo zdrav fs, testi tečejo
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+const REAL_FS = stDevJeVeljavenVolumen()
+
 /* ── hišna oprema: prave SQLite datoteke v začasnih mapah, ne mocki ────────── */
 
 const tmpDirs: string[] = []
@@ -253,7 +277,27 @@ describe('v1.182.0 §A — kontejner `ros-offsite-1` ima pisno pogodbo', () => {
 /* ══════════════ B. Dokaz, da kopija ni na istem disku ══════════════ */
 
 describe('v1.182.0 §B — `sameVolume` mora biti viden, ne slep', () => {
-  test('B1 pozitivna kontrola: dve resnični poti na istem disku sta ISTI disk', () => {
+  test('B0 sonda okolja: prevara overlayfs ne sme ostati nezaznana', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ros-v182-b0-'))
+    try {
+      const file = join(dir, 'probe.tmp')
+      writeFileSync(file, 'probe')
+      if (REAL_FS) {
+        expect(deviceOf(file)).toBe(deviceOf(dir))
+        expect(sameVolume(file, dir)).toBe(true)
+      } else {
+        // peskovnik z overlayfs: datoteka in matična mapa imata RAZLIČEN dev —
+        // lastnost okolja, ne kode. Ta veja DOKAŽE, da sonda to vidi, sicer bi
+        // B1/B4/F4 utihnila tudi tam, kjer bi morale peti.
+        expect(deviceOf(file)).not.toBe(deviceOf(dir))
+        expect(sameVolume(file, dir)).toBe(false)
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test.skipIf(!REAL_FS)('B1 pozitivna kontrola: dve resnični poti na istem disku sta ISTI disk', () => {
     // Brez te kontrole bi B4 (zavrnitev istega diska) lahko pisal bralnik, ki
     // nikoli ne vidi razlike — enaka lekcija kot §D v tests/v1801-brand-name.
     const { dir, dbPath } = pripravi('ros-v182-b1-')
@@ -283,7 +327,7 @@ describe('v1.182.0 §B — `sameVolume` mora biti viden, ne slep', () => {
     expect(sameVolume(join(tempDir('ros-v182-b3-'), 'manjka.db'), 'C:\\Windows')).toBeNull()
   })
 
-  test('B4 na disk, ki je isti kot baza, kopija NE sme pristati brez izrecne privolitve', () => {
+  test.skipIf(!REAL_FS)('B4 na disk, ki je isti kot baza, kopija NE sme pristati brez izrecne privolitve', () => {
     const { dir, dbPath, usb } = pripravi('ros-v182-b4-')
     closeHandle(seedDb(dbPath, ['kava']))
     let sporočilo = ''
@@ -754,7 +798,7 @@ describe('v1.182.0 §F — `bun run local:offsite`', () => {
     expect(existsSync(usb)).toBe(false)
   })
 
-  test('F4 isti disk: izhod 1 z razlogom; z --allow-same-volume --json uspe in JAVI resnično stanje', () => {
+  test.skipIf(!REAL_FS)('F4 isti disk: izhod 1 z razlogom; z --allow-same-volume --json uspe in JAVI resnično stanje', () => {
     const { dir, dbPath, usb } = pripravi('ros-v182-f4-')
     closeHandle(seedDb(dbPath, ['kava']))
     const env = { [LOCAL_OFFSITE_PASSPHRASE_ENV]: GESLO }
