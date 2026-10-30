@@ -91,7 +91,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -4420,6 +4420,9 @@ function DashboardInner() {
               {/* Issue #14 (v1.112.0) — KDS named stations config + item routing editor
                   (settings.manage render gate inside the card; menu.manage gates routing) */}
               <PrepStationsCard />
+              {/* OSS-1 (v1.200.0) — vzdrževanje opreme: register naprav + servisni načrti
+                  (settings.manage render gate inside the card; 503 → migrBox do DDL) */}
+              <EquipmentCard />
             </SettingsSection>
             <SettingsSection id="security" title={t('settings.secSecurity')}>
               {/* v1.94.0 (issue #31–#33): samo-oskrbni MFA (TOTP) upravitelj za

@@ -114,7 +114,7 @@ sistem, issue #12 §5: "ne uvajaj kompleksnosti").
 
 - Shema: `Payment.cardType` + `Payment.cardLast4` + `authorizationCode` —
   **PAN/CVV/track data se NE shranjujejo** nikjer v shemi
-  (138/138 modelov, re-verificirano v1.197.0 — +PayrollSurchargeRate; prej 137/137 re-verificirano v1.194.0; prvotna trditev 116/116).
+  (140/140 modelov, re-verificirano v1.200.0 — +Equipment +EquipmentMaintenancePlan; prej 138/138 re-verificirano v1.197.0; prvotna trditev 116/116).
 - Terminal: `src/lib/devices/terminal.ts` — POS pošlje znesek, terminal vrne
   kodo odobritve → `Payment.authorizationCode` (sledljivost brez kartice).
 - Idempotencija: `Payment.idempotencyKey` (unique) — dvojni klik/duplikat →
@@ -163,7 +163,7 @@ ne more zamenjati, dokument pa je njena podlaga.
 **Shema kot dokaz:** `Payment` nosi `cardType` + `cardLast4` +
 `authorizationCode` (koda odobritve, ne kartica); `WalletPayment` nosi
 `cardBrand` + `cardLast4` + `paymentToken`. PAN/CVV/track data NIKJER v
-shemi (138/138 modelov, re-verificirano v1.197.0 — besedilno iskanje `pan|cvv|track` naleti samo na
+shemi (140/140 modelov, re-verificirano v1.200.0 — besedilno iskanje `pan|cvv|track` naleti samo na
 komentarje politike). **Omejitev obsega:** `GiftCard.cardNumber` je
 interna identifikacija LASTNE darilne kartice (izdana v sistemu, ni
 plačilna kartica) — ni v PCI obsegu; v reviziji je treba to povedati,

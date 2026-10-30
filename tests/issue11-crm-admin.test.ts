@@ -123,7 +123,7 @@ async function seedGuest(opts: { suffix: string; email: string; phone?: string; 
 
 describe('A — DDL korak, register #30→31, i18n', () => {
   it('register: crm-campaigns obstaja (register zdaj 32: +order-item-seats #20 v1.193.0) (3 nove tabele v probi)', async () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(33) // // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20)
+    expect(SCHEMA_MIGRATIONS.length).toBe(34) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20)
     const entry = SCHEMA_MIGRATIONS.find((m) => m.id === 'crm-campaigns')
     expect(entry).toBeTruthy()
     expect(entry!.endpoint).toBe('/api/admin/migrate-crm-campaigns')

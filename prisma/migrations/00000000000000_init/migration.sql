@@ -5274,3 +5274,48 @@ ALTER TABLE "Property" ADD CONSTRAINT "Property_brandId_fkey" FOREIGN KEY ("bran
 
 -- AddForeignKey
 ALTER TABLE "Workstation" ADD CONSTRAINT "Workstation_propertyId_fkey" FOREIGN KEY ("propertyId") REFERENCES "Property"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- CreateTable
+CREATE TABLE "Equipment" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "kind" TEXT NOT NULL DEFAULT 'other',
+    "serialNumber" TEXT,
+    "installedAt" TIMESTAMP(3),
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdById" TEXT,
+
+    CONSTRAINT "Equipment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "EquipmentMaintenancePlan" (
+    "id" TEXT NOT NULL,
+    "equipmentId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "intervalDays" INTEGER NOT NULL DEFAULT 90,
+    "lastServicedAt" TIMESTAMP(3),
+    "nextDueAt" TIMESTAMP(3),
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedById" TEXT,
+
+    CONSTRAINT "EquipmentMaintenancePlan_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "Equipment_locationId_idx" ON "Equipment"("locationId");
+
+-- CreateIndex
+CREATE INDEX "Equipment_status_idx" ON "Equipment"("status");
+
+-- CreateIndex
+CREATE INDEX "EquipmentMaintenancePlan_equipmentId_idx" ON "EquipmentMaintenancePlan"("equipmentId");
+
+-- CreateIndex
+CREATE INDEX "EquipmentMaintenancePlan_nextDueAt_idx" ON "EquipmentMaintenancePlan"("nextDueAt");

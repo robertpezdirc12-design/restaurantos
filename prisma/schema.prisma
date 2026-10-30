@@ -3309,6 +3309,47 @@ model PayrollSurchargeRate {
   @@unique([locationId])
 }
 
+// Vzdrževanje opreme (OSS-1, v1.200.0 — docs/GAP-ANALIZA-odprtokodna-konkurenca.md):
+// register naprav (pečice, hladilniki, klima …) po lokaciji + servisni načrti z
+// intervali dni. Overdue zastavice so IZPELJANE ob branju (nextDueAt < danes) —
+// brez cron stanja, brez skritega zgodnjega uvajanja. Skalarne vezave brez FK
+// (PayrollSurchargeRate/WebOrderPortal konvencija); brisanje opreme v
+// transakciji počisti načrte (aplikacijska integriteta). Status je prost niz
+// (GRN/WasteRecord konvencija): active | broken | retired. Do DDL:
+// /api/equipment* → 503 (migrBox v kartici Nastavitve → Operacija).
+model Equipment {
+  id           String    @id @default(cuid())
+  locationId   String
+  name         String
+  kind         String    @default("other")
+  serialNumber String?
+  installedAt  DateTime?
+  status       String    @default("active")
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  createdById  String?
+
+  @@index([locationId])
+  @@index([status])
+}
+
+model EquipmentMaintenancePlan {
+  id             String    @id @default(cuid())
+  equipmentId    String
+  title          String
+  intervalDays   Int       @default(90)
+  lastServicedAt DateTime?
+  nextDueAt      DateTime?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  updatedById    String?
+
+  @@index([equipmentId])
+  @@index([nextDueAt])
+}
+
 // ─── STOCK TRANSFERS (issue #8, v1.116.0) ─────────────────────────────────────
 // Medlokacijski prenos zalog: odpremnica (izvorna lokacija odšteje zalogo +
 // serijo, TRANSFER_OUT) → tranzit (DISPATCHED — cilj NE vidi zaloge) → prevzem

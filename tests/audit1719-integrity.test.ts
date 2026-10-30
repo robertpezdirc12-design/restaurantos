@@ -72,7 +72,7 @@ afterAll(() => {
 
 describe('№17 — baseline migracija je popolna projekcija sheme', () => {
   test('baseline pokrije VSE modele in enume produkcijske sheme', () => {
-    expect(prodModels).toHaveLength(138) // v1.197.0: +PayrollSurchargeRate (N-27-3)
+    expect(prodModels).toHaveLength(140) // v1.200.0: +Equipment +EquipmentMaintenancePlan (OSS-1) // v1.197.0: +PayrollSurchargeRate (N-27-3)
     expect(prodEnums).toHaveLength(20)
     expect(migrationTables).toHaveLength(prodModels.length)
     expect(new Set(migrationTables).size).toBe(prodModels.length)
@@ -120,8 +120,8 @@ describe('№17 — baseline migracija je popolna projekcija sheme', () => {
 
 describe('№17 — drift allowlist in blokatorska pot', () => {
   test('allowlist ima 25 edinstvenih vnosov in vsak navaja admin DDL ruto', () => {
-    expect(KNOWN_DRIFTS).toHaveLength(25) // v1.197.0: +payroll-surcharge-rates (N-27-3)
-    expect(new Set(KNOWN_DRIFTS.map((k) => k.id)).size).toBe(25)
+    expect(KNOWN_DRIFTS).toHaveLength(26) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (N-27-3)
+    expect(new Set(KNOWN_DRIFTS.map((k) => k.id)).size).toBe(26)
     for (const k of KNOWN_DRIFTS) expect(k.reason).toContain('/api/admin/migrate-')
   })
 

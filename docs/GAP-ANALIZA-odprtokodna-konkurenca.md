@@ -98,7 +98,7 @@ konvenciji kot TRZNA-VRZELI-2027. **Brez odobritve se nič od tega ne začne.**
 
 | # | Kandidat | Izvor | Obseg | Razred |
 |---|---|---|---|---|
-| **OSS-1** | **Vzdrževanje opreme** — register naprav (pečice, hladilniki, klima), servisni razporedi, overdue zastavice, povezava s HACCP lokacijami | OrderRestro #16 | modeli + rute + UI kartica + i18n + testi; brez DDL na produkciji (DDL konzola vzorec v1.197.0) | A (čista koda) |
+| **OSS-1** | **Vzdrževanje opreme** — register naprav (pečice, hladilniki, klima), servisni razporedi, overdue zastavice, povezava s HACCP lokacijami | OrderRestro #16 | modeli + rute + UI kartica + i18n + testi; brez DDL na produkciji (DDL konzola vzorec v1.197.0) | A (čista koda) — **IZVEDENO @ v1.200.0**: tabeli Equipment + EquipmentMaintenancePlan, rute /api/equipment*, kartica Nastavitve → Operacija, DDL konzola `equipment-maintenance` čaka klik |
 | **OSS-2** | **Dokumentni modul** — SOP-i, pogodbe, recepture s priponkami; obseg HACCP ostaja ločen | OrderRestro #17 | modeli + nalaganje datotek (lokalen disk/db blob — odločitev ob implementaciji) + UI + i18n | A (mali–srednji) |
 | **OSS-3** | **Čas mize** — elapsed na tlorisu/mizah (koliko časa je gost na mizi) | OrderRestro planned | mali: izračun iz odprtega naročila, prikaz na kartici mize | A (mali) |
 | **OSS-4** | **Hold/draft naročila** — zadrži nedokončano naročilo brez zaključka | OrderRestro planned | srednji: status hold + interakcija z offline vrsto (R2/R7 mora ostati garancija!) + revizija | A (srednji; previdno z R7) |
@@ -140,6 +140,6 @@ koda iz AGPL repozitorijev (licenca).
    Največ vrednosti: njihov javni pošten FEATURE-CHECKLIST žanr (mi ga imamo
    interno v worklogu/dokih — javna izdaja je odločitev lastnika, marketing
    vrednost dokazana pri njih), ter 5–6 konkretnih funkcij iz tabele OSS.
-3. **Kaj nam manjka:** realne vrzeli so **OSS-1 (oprema), OSS-2 (dokumenti),
+3. **Kaj nam manjka:** realne vrzeli so **OSS-2 (dokumenti), (OSS-1 oprema — IZVEDENO @ v1.200.0),
    OSS-7/8 (kampanje/urna poročila — del B/C), OSS-5 (OpenAPI)**; ostalo so
    mali izboljševalci. Vse čaka odobritev lastnika (nova generacija OSS-x).

@@ -1020,10 +1020,10 @@ describe('H. prejeti eSLOG — opozorila (aditivno) + XXE varnost', () => {
 
 describe('I. registri — verzija, DDL register, predpone, i18n, 0 DDL na obstoječih', () => {
   it('APP_VERSION === 1.134.0', () => {
-    expect(APP_VERSION).toBe('1.199.0')
+    expect(APP_VERSION).toBe('1.200.0')
   })
-  it('SCHEMA_MIGRATIONS.length === 33 (+payroll-surcharge-rates N-27-3 v1.197.0)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(33) // // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20)
+  it('SCHEMA_MIGRATIONS.length === 34 (+equipment-maintenance OSS-1 v1.200.0)', () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(34) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'einvoice-outbox')
     expect(m).toBeDefined()
     expect(m!.descKey).toBe('mig.einvoiceOutbox.desc')

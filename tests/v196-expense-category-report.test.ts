@@ -315,7 +315,7 @@ describe('N-27-2 — i18n pariteta + verzija', () => {
     }
   })
 
-  test('verzija 1.199.0', () => {
-    expect(APP_VERSION).toBe('1.199.0')
+  test('verzija 1.200.0', () => {
+    expect(APP_VERSION).toBe('1.200.0')
   })
 })

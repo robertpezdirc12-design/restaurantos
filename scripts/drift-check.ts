@@ -465,6 +465,15 @@ export function isPayrollSurchargeRateStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+/** OSS-1 (v1.200.0): vzdrževanje opreme — NOVI tabeli Equipment +
+ * EquipmentMaintenancePlan (strogo po tabelah — vzorec PrepLabels). */
+export function isEquipmentMaintenanceStatement(stmt: string): boolean {
+  if (/"Equipment"|"EquipmentMaintenancePlan"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  return false
+}
+
 /** Issue #22 (v1.115.0): obračun plač — NOVI tabeli PayrollPeriod + PayrollExport. */
 export function isPayrollPeriodsStatement(stmt: string): boolean {
   if (/"PayrollPeriod"|"PayrollExport"/.test(stmt)) {
@@ -854,6 +863,20 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'zneskov — nič ne izmišljujemo). Ko je DDL apliciran, drift izgine in vnos ' +
       'postane mrtva koda.',
     matches: isPayrollSurchargeRateStatement,
+  },
+  {
+    id: 'equipment-maintenance',
+    reason:
+      'Vzdrževanje opreme (OSS-1, v1.200.0 — docs/GAP-ANALIZA-odprtokodna-konkurenca.md) — ' +
+      'NOVI tabeli Equipment (register naprav po lokaciji: vrsta, serijska, namestitev, ' +
+      'status active/broken/retired) in EquipmentMaintenancePlan (servisni načrt: naslov, ' +
+      'interval dni, zadnji/naslednji servis, pavza). Overdue zastavice so izpeljane ob ' +
+      'brananju (nextDueAt < danes) — brez cron stanja; skalarne vezave brez FK ' +
+      '(PayrollSurchargeRate konvencija): pred aplikacijo na produkcijo je drift ' +
+      'pričakovan — DDL korak: admin ruta /api/admin/migrate-equipment-maintenance ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL /api/equipment* → 503 ' +
+      '(migrBox v kartici). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isEquipmentMaintenanceStatement,
   },
 ]
 

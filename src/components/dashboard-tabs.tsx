@@ -44,6 +44,8 @@ export { ManagerCallsCard } from './tabs/manager-calls-card'
 export { ManagerCallSettingsCard } from './tabs/manager-call-settings-card'
 /* Issue #14 (v1.112.0) — KDS: config kartica pripravljalnih postaj + usmerjanje artiklov */
 export { PrepStationsCard } from './tabs/prep-stations-card'
+/* OSS-1 (v1.200.0) — vzdrževanje opreme: register naprav + servisni načrti */
+export { EquipmentCard } from './tabs/equipment-card'
 /* Issue #24 (v1.114.0) — label shelf-life rules (Settings, inventory.manage) */
 export { LabelRulesCard } from './tabs/label-rules-card'
 export { EnterpriseTab, MigrationsConsoleSection } from './tabs/enterprise-tab'

@@ -208,7 +208,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // skupni loader labor-forecast-data, zato šteje naslednja ruta, ne ta) → 72
     // P2-10b (v1.187.0): coupons GET (kuponi v uporabnikovem obsegu — locationScope
     // v ruti; odkup gre prek orders/[id]/discount, ki ima guardResource že od #4) → 73
-    expect(wired.length).toBe(73)
+    // OSS-1 (v1.200.0): equipment GET (register opreme + servisni načrti —
+    // seznam v uporabnikovem obsegu, locationScope) → 74
+    expect(wired.length).toBe(74)
   })
 })
 

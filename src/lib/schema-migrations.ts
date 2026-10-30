@@ -509,6 +509,20 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-payroll-surcharge-rates',
     probe: () => tableExists('PayrollSurchargeRate'),
   },
+  {
+    // OSS-1 (v1.200.0, docs/GAP-ANALIZA-odprtokodna-konkurenca.md): vzdrževanje
+    // opreme — NOVI tabeli Equipment (register naprav po lokaciji: vrsta,
+    // serijska, namestitev, status active/broken/retired) in
+    // EquipmentMaintenancePlan (servisni načrt: naslov, interval dni, zadnji/
+    // naslednji servis, pavza). Overdue zastavice so IZPELJANE ob branju
+    // (nextDueAt < danes) — brez cron stanja. Skalarne vezave brez FK
+    // (PayrollSurchargeRate konvencija). Do DDL: /api/equipment* → 503
+    // (migrBox v kartici Nastavitve → Operacija).
+    id: 'equipment-maintenance',
+    descKey: 'mig.equipmentMaintenance.desc',
+    endpoint: '/api/admin/migrate-equipment-maintenance',
+    probe: async () => tablesAll(['Equipment', 'EquipmentMaintenancePlan']),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */
