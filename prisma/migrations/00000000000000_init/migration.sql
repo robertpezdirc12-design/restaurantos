@@ -5320,3 +5320,29 @@ CREATE INDEX "EquipmentMaintenancePlan_equipmentId_idx" ON "EquipmentMaintenance
 
 -- CreateIndex
 CREATE INDEX "EquipmentMaintenancePlan_nextDueAt_idx" ON "EquipmentMaintenancePlan"("nextDueAt");
+
+-- CreateTable
+CREATE TABLE "Document" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "category" TEXT NOT NULL DEFAULT 'sop',
+    "description" TEXT,
+    "fileName" TEXT NOT NULL,
+    "mimeType" TEXT NOT NULL,
+    "sizeBytes" INTEGER NOT NULL,
+    "content" BYTEA NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdById" TEXT,
+    "updatedById" TEXT,
+
+    CONSTRAINT "Document_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "Document_locationId_idx" ON "Document"("locationId");
+
+-- CreateIndex
+CREATE INDEX "Document_category_idx" ON "Document"("category");

@@ -3356,6 +3356,37 @@ model EquipmentMaintenancePlan {
   @@index([nextDueAt])
 }
 
+// ─── DOKUMENTI (OSS-2, v1.203.0 — docs/GAP-ANALIZA-odprtokodna-konkurenca.md) ──
+// Splošni dokumenti s priponkami po lokaciji: SOP-i, pogodbe, recepture,
+// navodila (obseg HACCP načrtov ostaja LOČEN — haccp-plans). Vsebina kot BLOB
+// (Prisma Bytes — Postgres bytea / SQLite BLOB): produkcija ima read-only disk,
+// datoteke NIKOLI ne grejo na lokalni disk (ap-attachments budget vzorec).
+// Budget 1 MB raw na dokument (base64 ~1.37 MB). Mime allowlist BREZ SVG/HTML
+// (ni inline izvedbe) — download vedno Content-Disposition: attachment + nosniff.
+// Branje = vsi avtenticirani z lokacijskim obsegom (SOP-i so za operaterje),
+// pisanje = settings.manage. Verzija se poveča ob zamenjavi vsebine.
+// Skalarne vezave brez FK (Equipment konvencija). Do DDL: /api/documents* → 503
+// (migrBox v kartici Nastavitve → Operacija).
+model Document {
+  id          String   @id @default(cuid())
+  locationId  String
+  title       String
+  category    String   @default("sop")
+  description String?
+  fileName    String
+  mimeType    String
+  sizeBytes   Int
+  content     Bytes
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  @@index([locationId])
+  @@index([category])
+}
+
 // ─── STOCK TRANSFERS (issue #8, v1.116.0) ─────────────────────────────────────
 // Medlokacijski prenos zalog: odpremnica (izvorna lokacija odšteje zalogo +
 // serijo, TRANSFER_OUT) → tranzit (DISPATCHED — cilj NE vidi zaloge) → prevzem

@@ -293,14 +293,16 @@ describe('Č2 backend EAN (/api/inventory)', () => {
 /* ═══════════════════ Č3. DDL RUTA + REGISTRI ═══════════════════ */
 
 describe('Č3 DDL ruta migrate-inventory-ean + registri', () => {
-  it('SCHEMA_MIGRATIONS: 35 vnosov, inventory-ean na koncu (endpoint + probe)', async () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(35)
+  it('SCHEMA_MIGRATIONS: 36 vnosov, documents na koncu; inventory-ean ostane (endpoint + probe)', async () => {
+    expect(SCHEMA_MIGRATIONS.length).toBe(36)
     const last = SCHEMA_MIGRATIONS[SCHEMA_MIGRATIONS.length - 1]
-    expect(last.id).toBe('inventory-ean')
-    expect(last.endpoint).toBe('/api/admin/migrate-inventory-ean')
-    expect(last.descKey).toBe('mig.inventoryEan.desc')
+    expect(last.id).toBe('documents') // v1.203.0: +documents (OSS-2) — inventory-ean zdaj predzadnji
+    const ean = SCHEMA_MIGRATIONS.find((x) => x.id === 'inventory-ean')
+    expect(ean).toBeDefined()
+    expect(ean?.endpoint).toBe('/api/admin/migrate-inventory-ean')
+    expect(ean?.descKey).toBe('mig.inventoryEan.desc')
     // probe: stolpec obstaja (db push) → true
-    expect(await last.probe()).toBe(true)
+    expect(await ean?.probe()).toBe(true)
   })
 
   it('migrate POST: 401 brez žetona, 403 manager, 200 admin (skipped + alreadyApplied) + audit', async () => {
@@ -328,9 +330,9 @@ describe('Č3 DDL ruta migrate-inventory-ean + registri', () => {
     expect(isInventoryEanStatement(`CREATE TABLE "InventoryItem" ("ean" TEXT)`)).toBe(false)
   })
 
-  it('drift: classifyDrift uvrsti ADD COLUMN "ean" med KNOWN (inventory-ean); register 27', () => {
-    expect(KNOWN_DRIFTS.length).toBe(27)
-    expect(KNOWN_DRIFTS[KNOWN_DRIFTS.length - 1].id).toBe('inventory-ean')
+  it('drift: classifyDrift uvrsti ADD COLUMN "ean" med KNOWN (inventory-ean); register 28', () => {
+    expect(KNOWN_DRIFTS.length).toBe(28)
+    expect(KNOWN_DRIFTS[KNOWN_DRIFTS.length - 1].id).toBe('documents') // v1.203.0: +documents (OSS-2)
     const c = classifyDrift(`ALTER TABLE "InventoryItem" ADD COLUMN "ean" TEXT NOT NULL DEFAULT '';`)
     expect(c.known.map((k) => k.id)).toEqual(['inventory-ean'])
     expect(c.unexpected.length).toBe(0)
@@ -396,7 +398,7 @@ describe('Č4 registri, UI statika, i18n, verzija', () => {
     expect(src).toContain("it.inventoryItemId && it.inventoryItemId === invId")
   })
 
-  it('verzija: pin 1.202.0', () => {
-    expect(APP_VERSION).toBe('1.202.0')
+  it('verzija: pin 1.203.0', () => {
+    expect(APP_VERSION).toBe('1.203.0')
   })
 })

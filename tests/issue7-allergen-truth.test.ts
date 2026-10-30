@@ -717,7 +717,7 @@ describe('I. register + DDL', () => {
     expect(m).not.toBeUndefined()
     expect(m!.endpoint).toBe('/api/admin/migrate-allergen-truth')
     expect(m!.descKey).toBe('mig.allergenTruth.desc')
-    expect(SCHEMA_MIGRATIONS.length).toBe(35) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(SCHEMA_MIGRATIONS.length).toBe(36) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     expect(slDict['mig.allergenTruth.desc']).toBeTruthy()
     expect(hrDict['mig.allergenTruth.desc']).toBeTruthy()
   })

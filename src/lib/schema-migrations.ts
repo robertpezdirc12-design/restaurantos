@@ -536,6 +536,20 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-inventory-ean',
     probe: () => columnExists('InventoryItem', 'ean'),
   },
+  {
+    // OSS-2 (v1.203.0, docs/GAP-ANALIZA-odprtokodna-konkurenca.md): dokumenti
+    // s priponkami — NOVA tabela Document (SOP-i, pogodbe, recepture, navodila
+    // po lokaciji; vsebina kot bytea — produkcija ima read-only disk, datoteke
+    // NIKOLI ne grejo na lokalni disk; budget 1 MB raw, mime allowlist brez
+    // SVG/HTML, download vedno attachment + nosniff). Čisti sloj
+    // src/lib/documents.ts. Branje = vsi avtenticirani z lokacijskim obsegom,
+    // pisanje = settings.manage. Do DDL: /api/documents* → 503 (migrBox v
+    // kartici Nastavitve → Operacija).
+    id: 'documents',
+    descKey: 'mig.documents.desc',
+    endpoint: '/api/admin/migrate-documents',
+    probe: async () => tablesAll(['Document']),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

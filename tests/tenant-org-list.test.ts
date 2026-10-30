@@ -210,7 +210,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // v ruti; odkup gre prek orders/[id]/discount, ki ima guardResource že od #4) → 73
     // OSS-1 (v1.200.0): equipment GET (register opreme + servisni načrti —
     // seznam v uporabnikovem obsegu, locationScope) → 74
-    expect(wired.length).toBe(74)
+    // OSS-2 (v1.203.0): documents GET (dokumenti s priponkami — seznam v
+    // uporabnikovem obsegu, locationScope) → 75
+    expect(wired.length).toBe(75)
   })
 })
 

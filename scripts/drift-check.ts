@@ -491,6 +491,20 @@ export function isInventoryEanStatement(stmt: string): boolean {
   return clauses.every((c) => /^ADD\s+COLUMN\s+"ean"(\s|\s+TEXT|$)/i.test(c) || /^DROP\s+COLUMN\s+"ean"(\s|$)/i.test(c))
 }
 
+/**
+ * OSS-2 (v1.203.0): dokumenti s priponkami — NOVA tabela Document (SOP-i,
+ * pogodbe, recepture, navodila; vsebina kot bytea — read-only disk na
+ * produkciji, datoteke NIKOLI ne grejo na lokalni disk). Matcher je ime tabeli
+ * vezan ("Document") — samo CREATE TABLE/INDEX (+ALTER zaradi bodočih
+ * aditivnih korakov na isti tabeli); drugi stavki ostanejo unexpected.
+ */
+export function isDocumentsStatement(stmt: string): boolean {
+  if (/"Document"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  return false
+}
+
 /** Issue #22 (v1.115.0): obračun plač — NOVI tabeli PayrollPeriod + PayrollExport. */
 export function isPayrollPeriodsStatement(stmt: string): boolean {
   if (/"PayrollPeriod"|"PayrollExport"/.test(stmt)) {
@@ -907,6 +921,19 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'korak: admin ruta /api/admin/migrate-inventory-ean (konzola Enterprise → Shema ' +
       'migracije → en klik). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isInventoryEanStatement,
+  },
+  {
+    id: 'documents',
+    reason:
+      'Dokumenti s priponkami (OSS-2, v1.203.0 — docs/GAP-ANALIZA-odprtokodna-konkurenca.md) — ' +
+      'NOVA tabela Document (SOP-i, pogodbe, recepture, navodila po lokaciji; vsebina kot ' +
+      'bytea — produkcija ima read-only disk, datoteke NIKOLI ne grejo na lokalni disk; ' +
+      'budget 1 MB raw, mime allowlist brez SVG/HTML, download vedno attachment + nosniff; ' +
+      'čisti sloj src/lib/documents.ts). Branje = vsi avtenticirani z lokacijskim obsegom, ' +
+      'pisanje = settings.manage. Pred aplikacijo na produkcijo je drift pričakovan — DDL ' +
+      'korak: admin ruta /api/admin/migrate-documents (konzola Enterprise → Shema ' +
+      'migracije → en klik). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isDocumentsStatement,
   },
 ]
 
