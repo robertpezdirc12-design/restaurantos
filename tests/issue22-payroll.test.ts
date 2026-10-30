@@ -52,7 +52,7 @@
  *  F. export: draft → 409; CSV (text/csv, attachment obracun-…-vN-iM.csv, BOM,
  *      ';', CRLF, stabilni entryId-ji, ime z vejico + šumniki QUOTED, EUR z
  *      vejico, SKUPAJ vrstica); napitnine pending izvožene a NE v plačani vsoti;
- *      JSON (schemaVersion payroll-export/2, rows s statusom, seq); ponovni
+ *      JSON (schemaVersion payroll-export/3, rows s statusom, seq); ponovni
  *      izvoz identične vsebine → identicalToPrevious true + changedEntries 0 +
  *      seq +1; po spremembi + ponovnem zaključku → changedEntries > 0;
  *      PayrollExport vrstica z rowDigest BREZ PII; audit PAYROLL_EXPORTED brez
@@ -1007,7 +1007,7 @@ describe('F. izvoz obračuna (CSV/JSON + digesti + PII)', () => {
     // EUR z decimalno vejico + vsota (po E4: 8 potrjenih, 2520 min, enak bruto)
     expect(csv.includes('63,75')).toBe(true)
     expect(csv.includes('SKUPAJ;Vnosi;9;Potrjeni;8;NetoMin;2520;BrutoEUR;415,75')).toBe(true)
-    expect(csv.includes('Shema;payroll-export/2')).toBe(true)
+    expect(csv.includes('Shema;payroll-export/3')).toBe(true)
     expect(csv.includes('Napitnine pending se ne stejejo kot izplacane.')).toBe(true)
     expect(csv.includes('RestaurantOS ne izracunava odstotkov doplacil')).toBe(true)
   })
@@ -1022,11 +1022,11 @@ describe('F. izvoz obračuna (CSV/JSON + digesti + PII)', () => {
     expect(csv1).not.toContain(`${P}pool3`)
   })
 
-  it('F4. JSON: schemaVersion payroll-export/2, rows s statusom, export.seq 2', async () => {
+  it('F4. JSON: schemaVersion payroll-export/3, rows s statusom, export.seq 2', async () => {
     const r = await payrollExportGET(req('GET', `/api/payroll/${p1}/export?format=json`, tokA), params(p1))
     expect(r.status).toBe(200)
     const j = await body(r)
-    expect(j.schemaVersion).toBe('payroll-export/2')
+    expect(j.schemaVersion).toBe('payroll-export/3')
     const rows = j.rows as Array<Record<string, unknown>>
     expect(rows.length).toBe(9)
     expect(rows.every((x) => typeof x.status === 'string')).toBe(true)

@@ -497,6 +497,18 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-order-item-seats',
     probe: () => columnExists('OrderItem', 'seat'),
   },
+  {
+    // N-27-3 (v1.197.0): noge doplačil obračuna — NOVA tabela PayrollSurchargeRate
+    // (ena vrstica na lokacijo, NULL = privzete; odstotki noč/nedelja/praznik/
+    // nadure Decimal(5,2) — UPORABNIŠKI vhod po kolektivni pogodbi, zakonitost
+    // potrdi biro; sistem izračuna zneske iz minut obračuna). Skalarna vezava
+    // brez FK (PrepLabel/PayrollPeriod konvencija). Do DDL: /api/payroll/
+    // surcharge-rates → 503; detail/izvoz degradirata (minute brez zneskov).
+    id: 'payroll-surcharge-rates',
+    descKey: 'mig.payrollSurchargeRates.desc',
+    endpoint: '/api/admin/migrate-payroll-surcharge-rates',
+    probe: () => tableExists('PayrollSurchargeRate'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

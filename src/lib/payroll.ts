@@ -24,6 +24,8 @@
 import { num } from '@/lib/map'
 import { payRateToCents } from '@/lib/timeclock'
 import type { SurchargeBases } from './payroll-surcharges'
+import type { SurchargeRates } from './payroll-rates'
+import { pctCsv } from './payroll-rates'
 
 /* ─────────────────── 1) Časovna cona (DST-varno, Intl) ─────────────────── */
 
@@ -513,7 +515,13 @@ export function plannedMinutesFromShifts(shifts: ShiftInput[], _tz = 'Europe/Lju
 // zaposlenem+delu, nadure po zaposlenem — čisti sloj payroll-surcharges.ts);
 // obstoječe sekcije NESPREMENJENE (noga samo preformulirana — osnove zdaj
 // izvožene, odstotki ostajajo zunanji). P3 #19 docs/TRZNA-VRZELI-2026.md.
-export const EXPORT_SCHEMA_VERSION = 'payroll-export/2'
+// v1.197.0: /3 — N-27-3 (docs/TRZNA-VRZELI-2027.md): zneski doplačil OB
+// minutah (NocEur/NedeljaEur/PraznikEur/NadureEur — ko so noge nastavljene;
+// prazne kolone, ko niso) + noga izvoza zapiše uporabljene noge (uporabniški
+// vhod po kolektivni pogodbi; zakonitost potrdi biro). Kolone so VEDNO
+// prisotne (stabilna oblika za birove uvoze), vrednost = '' kadar noge ne
+// obstajajo — izvoz NIKOLI ne trdi 0 € za neizračunan znesek.
+export const EXPORT_SCHEMA_VERSION = 'payroll-export/3'
 
 /** Tip distribucije napitnine v izvoznih gradnikih (PII: samo imena, ne naslovi). */
 export interface TipExportRow {
@@ -589,6 +597,9 @@ export interface PayrollCsvInput {
   totals: PayrollTotals
   /** P3 #19 (v1.192.0) — doplačilne osnove (noč/nedelja/praznik/nadure) */
   surchargeBases: SurchargeBases
+  /** N-27-3 (v1.197.0) — noge doplačil uporabljene pri izračunu zneskov
+   * (null = noge niso nastavljene — Eur kolone prazne); del contentHasha. */
+  surchargeRates?: SurchargeRates | null
   exportMeta: PayrollExportMeta
 }
 
@@ -602,8 +613,17 @@ export interface PayrollCsvInput {
  * z omejitvami.
  */
 export function buildPayrollCsv(input: PayrollCsvInput): string {
-  const { period, rows, tips, totals, surchargeBases, exportMeta } = input
+  const { period, rows, tips, totals, surchargeBases, surchargeRates, exportMeta } = input
   const L: string[] = []
+
+  // N-27-3: zneskovna celica — undefined (noge niso nastavljene) → PRAZNA
+  // kolona (izvoz ne trdi 0 € za neizračunan znesek); sicer EUR z vejico.
+  const eurCell = (cents?: number): string => (cents === undefined ? '' : eurCsv(cents))
+  const ratesOn = surchargeRates != null
+  const sumOf = (pick: (b: (typeof surchargeBases.perEmployeeJob)[number]) => number | undefined): number | undefined => {
+    if (!ratesOn) return undefined
+    return surchargeBases.perEmployeeJob.reduce((a, b) => a + (pick(b) ?? 0), 0)
+  }
 
   // ── 1) glava/meta ──
   L.push(`OBRAČUN PLAČ - RestaurantOS`)
@@ -691,10 +711,12 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   L.push(`NapitninePlacanoEUR;${eurCsv(totals.tipsPaidCents)}`)
   L.push('')
 
-  // ── 5.5) doplačilne osnove (P3 #19, v1.192.0 — minute; odstotek potrdi biro) ──
-  L.push(`DOPLACILNE OSNOVE (minute - odstotek potrdi zunanji payroll sistem)`)
+  // ── 5.5) doplačilne osnove (P3 #19 v1.192.0 minute; N-27-3 v1.197.0 zneski
+  //    ob minutah, ko so noge nastavljene — kolone VEDNO prisotne, vrednost
+  //    prazna kadar noge ne obstajajo) ──
+  L.push(`DOPLACILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)`)
   L.push(`Noc/Nedelja/Praznik po zaposlenem in delovnem mestu (pred odmorom)`)
-  L.push(`ZaposleniID;Zaposleni;DeloID;Delo;NocMin;NedeljaMin;PraznikMin;PotrjenoNetoMin`)
+  L.push(`ZaposleniID;Zaposleni;DeloID;Delo;NocMin;NocEur;NedeljaMin;NedeljaEur;PraznikMin;PraznikEur;PotrjenoNetoMin`)
   for (const b of surchargeBases.perEmployeeJob) {
     L.push(
       [
@@ -703,8 +725,11 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
         csvField(b.jobId),
         csvField(b.jobName),
         b.nightMinutes,
+        eurCell(b.nightAmtCents),
         b.sundayMinutes,
+        eurCell(b.sundayAmtCents),
         b.holidayMinutes,
+        eurCell(b.holidayAmtCents),
         b.approvedMinutes,
       ].join(';'),
     )
@@ -712,17 +737,25 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   const totN = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.nightMinutes, 0)
   const totS = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.sundayMinutes, 0)
   const totH = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.holidayMinutes, 0)
-  L.push(`SKUPAJ;NocMin;${totN};NedeljaMin;${totS};PraznikMin;${totH}`)
+  L.push(
+    `SKUPAJ;NocMin;${totN};NocEur;${eurCell(sumOf((b) => b.nightAmtCents))};NedeljaMin;${totS};NedeljaEur;${eurCell(sumOf((b) => b.sundayAmtCents))};PraznikMin;${totH};PraznikEur;${eurCell(sumOf((b) => b.holidayAmtCents))}`,
+  )
   L.push(`Nadure po zaposlenem (dnevni presezek NETO minut nad pragom; po dnevu prijave)`)
-  L.push(`ZaposleniID;Zaposleni;NadureMin;DneviNadPragom`)
+  L.push(`ZaposleniID;Zaposleni;NadureMin;NadureEur;DneviNadPragom`)
   for (const o of surchargeBases.overtime) {
-    L.push([csvField(o.employeeId), csvField(o.employeeName), o.overtimeBasisMinutes, o.daysOverThreshold].join(';'))
+    L.push([csvField(o.employeeId), csvField(o.employeeName), o.overtimeBasisMinutes, eurCell(o.overtimeAmtCents), o.daysOverThreshold].join(';'))
   }
   L.push('')
 
   // ── 6) noga (meje odgovornosti + kontrolni hash) ──
   L.push(`Napitnine pending se ne stejejo kot izplacane.`)
-  L.push(`RestaurantOS ne izracunava odstotkov doplacil (noc, nedelja, prazniki, nadure) - izvaza samo osnovne minute; odstotek potrdi zunanji payroll sistem.`)
+  if (ratesOn) {
+    L.push(
+      `Noge (uporabniski vhod po kolektivni pogodbi);Noc=${pctCsv(surchargeRates.nightPct)};Nedelja=${pctCsv(surchargeRates.sundayPct)};Praznik=${pctCsv(surchargeRates.holidayPct)};Nadure=${pctCsv(surchargeRates.overtimePct)};Zakonitost nog potrdi zunanji payroll sistem.`,
+    )
+  } else {
+    L.push(`RestaurantOS ne izracunava odstotkov doplacil (noge niso nastavljene) - izvaza samo osnovne minute; odstotek potrdi zunanji payroll sistem.`)
+  }
   L.push(`KontrolniHash;${exportMeta.contentHash8}`)
 
   return '\uFEFF' + L.join('\r\n')

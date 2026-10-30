@@ -458,6 +458,13 @@ export function isPrepLabelsStatement(stmt: string): boolean {
   return false
 }
 
+/** N-27-3 (v1.197.0): noge doplačil obračuna — NOVA tabela PayrollSurchargeRate
+ * (strogo po tabeli — vzorec PayrollPeriod/EInvoiceOutbox). */
+export function isPayrollSurchargeRateStatement(stmt: string): boolean {
+  if (!/"PayrollSurchargeRate"/.test(stmt)) return false
+  return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+}
+
 /** Issue #22 (v1.115.0): obračun plač — NOVI tabeli PayrollPeriod + PayrollExport. */
 export function isPayrollPeriodsStatement(stmt: string): boolean {
   if (/"PayrollPeriod"|"PayrollExport"/.test(stmt)) {
@@ -831,6 +838,22 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'nedokumentiran) stolpec ostane hard fail. Ko main schema prevzame polja, ' +
       'drift izgine in vnos postane mrtva koda (faza B→C, vzorec stroski-kategorije).',
     matches: isRestaurantSettingsPendingMergedStatement,
+  },
+  {
+    id: 'payroll-surcharge-rates',
+    reason:
+      'Noge doplačil obračuna (N-27-3, v1.197.0) — NOVA tabela PayrollSurchargeRate ' +
+      '(ena vrstica na lokacijo; odstotki noč/nedelja/praznik/nadure Decimal(5,2) — ' +
+      'UPORABNIŠKI vhod po kolektivni pogodbi lastnika, zakonitost potrdi biro; ' +
+      'sistem izračuna ZNESKE iz minut obračuna in posnetkov urnih postavk, ' +
+      'izvoz shema payroll-export/3 nosi zneske ob minutah) — skalarne vezave brez ' +
+      'FK (PrepLabel/PayrollPeriod vzorec): pred aplikacijo na produkcijo je drift ' +
+      'pričakovan — DDL korak: admin ruta /api/admin/migrate-payroll-surcharge-rates ' +
+      '(konzola Enterprise → Shema migracije → en klik). Do DDL /api/payroll/' +
+      'surcharge-rates → 503, detail/izvoz degradirata graceful (minute brez ' +
+      'zneskov — nič ne izmišljujemo). Ko je DDL apliciran, drift izgine in vnos ' +
+      'postane mrtva koda.',
+    matches: isPayrollSurchargeRateStatement,
   },
 ]
 

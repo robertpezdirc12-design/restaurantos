@@ -42,7 +42,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Loader2, RefreshCw, Plus, ChevronDown, ArrowLeft, Lock, RotateCcw, FileDown, FileJson,
-  AlertTriangle, Coins, Trash2, Users, Moon,
+  AlertTriangle, Coins, Trash2, Users, Moon, Percent,
 } from 'lucide-react'
 
 /* ─────────────────────────── TIPI (API pogodba 3-a) ─────────────────────────── */
@@ -132,12 +132,24 @@ interface ExportRowT {
   contentHash8: string
 }
 
+/** N-27-3 (v1.197.0): noge doplačil uporabljene pri izračunu zneskov (ali null). */
+interface SurchargeRatesT {
+  locationId: string | null
+  source: 'location' | 'default'
+  nightPct: number
+  sundayPct: number
+  holidayPct: number
+  overtimePct: number
+}
+
 interface PayrollDetailT {
   period: PayrollPeriodT
   totals: PayrollTotalsT
   employees: EmployeeAggT[]
   /** P3 #19 (v1.192.0) — doplačilne osnove (minute; odstotek potrdi biro) */
   surchargeBases: { perEmployeeJob: SurchargeBasisRowT[]; overtime: OvertimeBasisRowT[] }
+  /** N-27-3 (v1.197.0) — noge doplačil (zneski ob minutah, ko nastavljene) */
+  surchargeRates: SurchargeRatesT | null
   exceptions: PayrollExceptionT[]
   exceptionsSummary: Record<string, number>
   tipPools: TipPoolT[]
@@ -158,6 +170,10 @@ interface SurchargeBasisRowT {
   nightMinutes: number
   sundayMinutes: number
   holidayMinutes: number
+  /** N-27-3: zneski v centih — prisotni, kadar so noge nastavljene */
+  nightAmtCents?: number
+  sundayAmtCents?: number
+  holidayAmtCents?: number
 }
 
 /** Osnova nadur po zaposlenem (dnevni presežek neto minut nad pragom). */
@@ -166,6 +182,8 @@ interface OvertimeBasisRowT {
   employeeName: string
   overtimeBasisMinutes: number
   daysOverThreshold: number
+  /** N-27-3: znesek nadur v centih po povprečni urni postavki obdobja */
+  overtimeAmtCents?: number
 }
 
 /** GET /api/jobs → jobContexts oblika. */
@@ -468,6 +486,9 @@ export function PayrollTab({ locations, canManage }: { locations: { id: string; 
       {/* ── Plačne postavke zaposlenih (manage gating — cel zavihek je employees.manage) ── */}
       {canManage && <RatesCard />}
 
+      {/* ── Noge doplačil (N-27-3, v1.197.0 — konfiguracija odstotkov po kolektivni pogodbi) ── */}
+      {canManage && <SurchargeRatesCard locations={locations} />}
+
       {/* ── Seznam / detail ── */}
       {detailId ? (
         <Card>
@@ -554,7 +575,7 @@ export function PayrollTab({ locations, canManage }: { locations: { id: string; 
                 </div>
 
                 <EmployeeTable rows={detail.employees} />
-                <SurchargeTable bases={detail.surchargeBases} />
+                <SurchargeTable bases={detail.surchargeBases} rates={detail.surchargeRates} />
                 <ExceptionsTable rows={detail.exceptions} />
                 <TipsTable pools={detail.tipPools} />
                 <ExportsTable rows={detail.exports} />
@@ -850,15 +871,28 @@ function EmployeeTable({ rows }: { rows: EmployeeAggT[] }) {
 /**
  * Doplačilne osnove (P3 #19, v1.192.0) — noč/nedelja/praznik po zaposlenem in
  * delovnem mestu (pred odmorom) + nadure po zaposlenem (dnevni presežek nad
- * pragom). READ-ONLY prikaz — odstotke doplačil potrdi biro (noga izvoza).
+ * pragom). N-27-3 (v1.197.0): kadar so noge nastavljene (rates), kolona
+ * "Doplačilo (€)" = Σ zneskov kategorij vrstice (+ nadure pri prvi vrstici
+ * zaposlenega — ista pravila prikaza kot minutna kolona nadur); brez nog
+ * opomba o manjkajočih nogah (izvoz nosi samo minute).
  */
-function SurchargeTable({ bases }: { bases: { perEmployeeJob: SurchargeBasisRowT[]; overtime: OvertimeBasisRowT[] } }) {
+function SurchargeTable({
+  bases,
+  rates,
+}: {
+  bases: { perEmployeeJob: SurchargeBasisRowT[]; overtime: OvertimeBasisRowT[] }
+  rates: SurchargeRatesT | null
+}) {
   const { t } = useI18n()
   const rows = bases.perEmployeeJob.filter((b) => b.nightMinutes > 0 || b.sundayMinutes > 0 || b.holidayMinutes > 0)
   const hasAny = rows.length > 0 || bases.overtime.some((o) => o.overtimeBasisMinutes > 0)
   // nadure = PO ZAPOSLENEM — prikaži v PRVI vrstici zaposlenega (druge vrstice
   // istega zaposlenega drugega dela nosijo '—')
   const otShown = new Set<string>()
+  const rowTotalCents = (b: SurchargeBasisRowT): number | null =>
+    rates && b.nightAmtCents !== undefined
+      ? (b.nightAmtCents ?? 0) + (b.sundayAmtCents ?? 0) + (b.holidayAmtCents ?? 0)
+      : null
   return (
     <div>
       <p className="mb-1.5 text-sm font-semibold flex items-center gap-1.5"><Moon className="w-4 h-4" /> {t('payr.surch.title')}</p>
@@ -875,6 +909,7 @@ function SurchargeTable({ bases }: { bases: { perEmployeeJob: SurchargeBasisRowT
                 <th className="p-2 text-right">{t('payr.surch.sunday')}</th>
                 <th className="p-2 text-right">{t('payr.surch.holiday')}</th>
                 <th className="p-2 text-right">{t('payr.surch.overtime')}</th>
+                {rates && <th className="p-2 text-right">{t('payr.rates.amount')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -882,6 +917,8 @@ function SurchargeTable({ bases }: { bases: { perEmployeeJob: SurchargeBasisRowT
                 const firstOfEmp = !otShown.has(b.employeeId)
                 if (firstOfEmp) otShown.add(b.employeeId)
                 const ot = bases.overtime.find((o) => o.employeeId === b.employeeId)
+                const totalC = rowTotalCents(b)
+                const otC = rates ? ot?.overtimeAmtCents : undefined
                 return (
                   <tr key={`${b.employeeId}-${b.jobId ?? 'none'}`} className="border-t border-stone-100">
                     <td className="p-2 font-medium">{b.employeeName}</td>
@@ -890,12 +927,23 @@ function SurchargeTable({ bases }: { bases: { perEmployeeJob: SurchargeBasisRowT
                     <td className={`p-2 text-right whitespace-nowrap ${b.sundayMinutes > 0 ? 'text-amber-700' : 'text-stone-400'}`}>{b.sundayMinutes > 0 ? fmtMin(b.sundayMinutes) : '—'}</td>
                     <td className={`p-2 text-right whitespace-nowrap ${b.holidayMinutes > 0 ? 'text-rose-700' : 'text-stone-400'}`}>{b.holidayMinutes > 0 ? fmtMin(b.holidayMinutes) : '—'}</td>
                     <td className="p-2 text-right whitespace-nowrap text-stone-600">{firstOfEmp && ot && ot.overtimeBasisMinutes > 0 ? `${fmtMin(ot.overtimeBasisMinutes)} · ${ot.daysOverThreshold} ${t('payr.surch.days')}` : '—'}</td>
+                    {rates && (
+                      <td className="p-2 text-right whitespace-nowrap font-medium text-stone-800">
+                        {(() => {
+                          if (totalC === null) return '—'
+                          const sum = totalC + (firstOfEmp ? otC ?? 0 : 0)
+                          return sum > 0 ? fmtEUR(sum / 100) : '—'
+                        })()}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
             </tbody>
           </table>
-          <p className="p-2 text-xs text-stone-400 border-t border-stone-100">{t('payr.surch.note')}</p>
+          <p className="p-2 text-xs text-stone-400 border-t border-stone-100">
+            {t('payr.surch.note')}{rates ? ` ${t('payr.rates.usedHint')}` : ` ${t('payr.rates.notSet')}`}
+          </p>
         </div>
       )}
     </div>
@@ -1031,6 +1079,154 @@ const MAX_RATE_ROWS = 8
  * razpretju). Primarna postavka = radio-semantika (natanko ena — ob prihodu
  * clock-in zajema snapshot primarne postavke).
  */
+/**
+ * N-27-3 (v1.197.0) — kartica NOGE DOPLAČIL (konfiguracija): lastnik vnese
+ * odstotke (noč/nedelja/praznik/nadure) po SVOJI kolektivni pogodbi; sistem
+ * izračuna zneske iz minut obračuna in posnetkov postavk. Noga je uporabniški
+ * vhod — zakonitost potrdi biro (iskrena meja izvoza). Ena konfiguracija na
+ * lokacijo (+ privzete za NULL); do DDL → 503 (migrBox stil).
+ */
+function SurchargeRatesCard({ locations }: { locations: { id: string; name: string }[] }) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  // '' = privzete noge (locationId null) — uglašeno z GET/PUT (prazno → null)
+  const [selLoc, setSelLoc] = useState('')
+  const [rates, setRates] = useState<{ nightPct: string; sundayPct: string; holidayPct: string; overtimePct: string }>({
+    nightPct: '', sundayPct: '', holidayPct: '', overtimePct: '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [blocked, setBlocked] = useState(false)
+
+  const loadRates = useCallback(async (locKey: string) => {
+    setErr('')
+    setBlocked(false)
+    try {
+      const q = locKey ? `?locationId=${encodeURIComponent(locKey)}` : ''
+      const d = await api<{ rates: SurchargeRatesT | null }>(`/api/payroll/surcharge-rates${q}`)
+      setRates({
+        nightPct: d.rates ? String(d.rates.nightPct) : '',
+        sundayPct: d.rates ? String(d.rates.sundayPct) : '',
+        holidayPct: d.rates ? String(d.rates.holidayPct) : '',
+        overtimePct: d.rates ? String(d.rates.overtimePct) : '',
+      })
+    } catch (e) {
+      const msg = String((e as Error).message || e)
+      if (msg.includes('503') || msg.toLowerCase().includes('migrac')) setBlocked(true)
+      setErr(msg)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open) void loadRates(selLoc)
+  }, [open, selLoc, loadRates])
+
+  function pickLoc(v: string) {
+    setSelLoc(v)
+  }
+
+  function upd(key: keyof typeof rates, v: string) {
+    setRates((r) => ({ ...r, [key]: v }))
+  }
+
+  async function saveRates() {
+    // validacija pred PUT (strežnik validira enako — 0–100, ≤ 2 decimali)
+    const out: Record<string, number> = {}
+    for (const [key, label] of [
+      ['nightPct', t('payr.rates.night')],
+      ['sundayPct', t('payr.rates.sunday')],
+      ['holidayPct', t('payr.rates.holiday')],
+      ['overtimePct', t('payr.rates.overtime')],
+    ] as const) {
+      const raw = rates[key].trim().replace(',', '.')
+      const n = Number(raw)
+      if (!Number.isFinite(n) || n < 0 || n > 100 || Math.round(n * 100) !== n * 100) {
+        setErr(`${label}: ${t('payr.rates.invalid')}`)
+        return
+      }
+      out[key] = Math.round(n * 100) / 100
+    }
+    setBusy(true)
+    setErr('')
+    try {
+      await api<{ rates: SurchargeRatesT | null }>('/api/payroll/surcharge-rates', {
+        method: 'PUT',
+        body: JSON.stringify({ locationId: selLoc || null, ...out }),
+      })
+      toast({ title: t('payr.rates.saved') })
+    } catch (e) {
+      setErr(String((e as Error).message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="pb-2 cursor-pointer select-none">
+            <CardTitle className="text-base flex items-center gap-1.5"><Percent className="w-4 h-4" /> {t('payr.rates.title')}</CardTitle>
+            <CardDescription>{t('payr.rates.hint')}</CardDescription>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            {blocked ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm text-amber-800 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 shrink-0" /> {t('payr.rates.migr')}</p>
+                <Button size="sm" variant="outline" onClick={() => void loadRates(selLoc)} className="shrink-0 gap-1"><RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}</Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="surchRatesLoc" className="text-xs text-stone-500">{t('payr.rates.location')}</Label>
+                    <Select value={selLoc || 'default'} onValueChange={pickLoc}>
+                      <SelectTrigger id="surchRatesLoc" size="sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">{t('payr.rates.defaultLoc')}</SelectItem>
+                        {locations.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {([
+                    ['nightPct', t('payr.rates.night')],
+                    ['sundayPct', t('payr.rates.sunday')],
+                    ['holidayPct', t('payr.rates.holiday')],
+                    ['overtimePct', t('payr.rates.overtime')],
+                  ] as const).map(([key, label]) => (
+                    <div key={key} className="space-y-1.5">
+                      <Label htmlFor={`surchRates-${key}`} className="text-xs text-stone-500">{label}</Label>
+                      <Input
+                        id={`surchRates-${key}`}
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={rates[key]}
+                        onChange={(e) => upd(key, e.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {err && <p className="text-sm text-destructive">{err}</p>}
+                <Button size="sm" onClick={() => void saveRates()} disabled={busy} className="gap-1">
+                  {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Percent className="w-3.5 h-3.5" />} {t('payr.rates.save')}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  )
+}
+
 function RatesCard() {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)

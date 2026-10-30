@@ -3268,6 +3268,26 @@ model PayrollExport {
   @@index([periodId])
 }
 
+// Noge doplačil obračuna (N-27-3, v1.197.0 — dokumentacija na glavni shemi):
+// odstotki doplačil (noč/nedelja/praznik/nadure) so UPORABNIŠKI vhod po
+// kolektivni pogodbi lastnika (zakonitost potrdi biro — sistem ne trdi
+// »zakonska«). Ena vrstica na lokacijo (@@unique(locationId); NULL = privzete).
+// Skalarna vezava brez FK (PrepLabel/PayrollPeriod konvencija). Do DDL:
+// /api/payroll/surcharge-rates → 503; detail/izvoz degradirata graceful.
+model PayrollSurchargeRate {
+  id          String   @id @default(cuid())
+  locationId  String?
+  nightPct    Decimal  @default(0)
+  sundayPct   Decimal  @default(0)
+  holidayPct  Decimal  @default(0)
+  overtimePct Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  @@unique([locationId])
+}
+
 // ─── STOCK TRANSFERS (issue #8, v1.116.0) ─────────────────────────────────────
 // Medlokacijski prenos zalog: odpremnica (izvorna lokacija odšteje zalogo +
 // serijo, TRANSFER_OUT) → tranzit (DISPATCHED — cilj NE vidi zaloge) → prevzem

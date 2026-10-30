@@ -34,6 +34,9 @@
  * uvoza payroll.ts — prepreči cikel payroll.ts ↔ payroll-surcharges.ts).
  */
 
+import type { SurchargeRates } from './payroll-rates'
+import { overtimeAmountOf, pctPctOf, surchargeAmountOfRaw } from './payroll-rates'
+
 /* ─────────────────────── 1) Konfiguracija (politika, ne zakon) ─────────────────────── */
 
 export interface SurchargeBasisConfig {
@@ -80,6 +83,11 @@ export interface SurchargeEntryRow {
   /** neto minute (samo APPROVED vrstice se štejejo — ista pravila kot agregacija) */
   netMinutes: number
   status: string
+  /** N-27-3 (v1.197.0): POSNETEK urne postavke vnosa v centih — kadar ga klic
+   * ne poda (starejši vhodi), zneski prispevajo 0 (deterministično). */
+  payRateCents?: number
+  /** N-27-3: posnetek bruto plače vnosa v centih — osnova povprečne postavke nadur. */
+  grossCents?: number
 }
 
 /** Doplačilne osnove po zaposlenem IN delovnem mestu (noč/nedelja/praznik). */
@@ -96,6 +104,12 @@ export interface SurchargeBasisRow {
   sundayMinutes: number
   /** minute na lokalni praznik (pred odmorom) */
   holidayMinutes: number
+  /** N-27-3 (v1.197.0): zneski v centih — prisotni SAMO, kadar klic poda noge
+   * (surchargeRates); ena zaokrožitev na skupino (Math.round) nad celoštevilčno
+   * količino Σ catMin × payRateCents × pctPct. */
+  nightAmtCents?: number
+  sundayAmtCents?: number
+  holidayAmtCents?: number
 }
 
 /** Osnova nadur po zaposlenem (dnevni presežek neto minut nad pragom). */
@@ -106,6 +120,10 @@ export interface OvertimeBasisRow {
   overtimeBasisMinutes: number
   /** število dni, kjer je dnevna vsota presegla prag */
   daysOverThreshold: number
+  /** N-27-3 (v1.197.0): znesek nadur v centih po POVPREČNI urni postavki
+   * obdobja (Σ grossCents × 60 / Σ netMinutes) — prisoten samo kadar klic
+   * poda noge; Σ netMinutes = 0 → 0. */
+  overtimeAmtCents?: number
 }
 
 /** Združene osnove obdobja (en obliko nosita detail ruta, izvoz CSV/JSON). */
@@ -202,16 +220,27 @@ function addDaysISOLocal(dateISO: string): string {
  * + po zaposlenem — nadure. Samo APPROVED vrstice (ista pravila kot
  * aggregateByEmployeeJob — nepotrjeno ostane vidno prek izjem). Sortiranje
  * po imenu zaposlenega in delovnem mestu (enako kot obstoječa agregacija).
+ *
+ * N-27-3 (v1.197.0): kadar klic poda 5. argument `rates` (noge doplačil iz
+ * uporabniške konfiguracije), vrstice dobijo tudi ZNESKE v centih
+ * (nightAmtCents/sundayAmtCents/holidayAmtCents + overtimeAmtCents). Brez
+ * nog se oblika NE spremeni (polja odsotna — stabilnost za stare klice in
+ * hash: noge so del vsebine izvoza, ne njegove strukture).
  */
 export function surchargeBasisRows(
   rows: SurchargeEntryRow[],
   tz: string,
   holidays: Set<string>,
   cfg: SurchargeBasisConfig = DEFAULT_SURCHARGE_CONFIG,
+  rates?: SurchargeRates,
 ): SurchargeBases {
   const c = clampSurchargeConfig(cfg)
   const map = new Map<string, SurchargeBasisRow>()
   const otDays = new Map<string, Map<string, number>>() // employeeId → dan → neto min
+  // N-27-3: RAW centne količine (celoštevilčni produkti minute × centi ×
+  // stotinke odstotka) — zaokrožitev ENA na skupino, na koncu.
+  const amtRaw = new Map<string, { night: number; sunday: number; holiday: number }>()
+  const empTotals = new Map<string, { gross: number; net: number }>()
 
   for (const r of rows) {
     if (r.status !== 'approved') continue
@@ -240,6 +269,27 @@ export function surchargeBasisRows(
     agg.sundayMinutes += cats.sundayMinutes
     agg.holidayMinutes += cats.holidayMinutes
 
+    if (rates) {
+      const cents = Math.max(0, Math.round(r.payRateCents ?? 0))
+      let raw = amtRaw.get(key)
+      if (!raw) {
+        raw = { night: 0, sunday: 0, holiday: 0 }
+        amtRaw.set(key, raw)
+      }
+      if (cents > 0) {
+        const pctN = pctPctOf(rates.nightPct)
+        const pctS = pctPctOf(rates.sundayPct)
+        const pctH = pctPctOf(rates.holidayPct)
+        if (cats.nightMinutes > 0) raw.night += cats.nightMinutes * cents * pctN
+        if (cats.sundayMinutes > 0) raw.sunday += cats.sundayMinutes * cents * pctS
+        if (cats.holidayMinutes > 0) raw.holiday += cats.holidayMinutes * cents * pctH
+      }
+      const emp = empTotals.get(r.employeeId) ?? { gross: 0, net: 0 }
+      emp.gross += Math.max(0, Math.round(r.grossCents ?? 0))
+      emp.net += net
+      empTotals.set(r.employeeId, emp)
+    }
+
     // nadure: po ZAPOSLENEM (ne po delovnem mestu) na lokalnem dnevu prijave
     let days = otDays.get(r.employeeId)
     if (!days) {
@@ -253,6 +303,16 @@ export function surchargeBasisRows(
     (a, b) => a.employeeName.localeCompare(b.employeeName) || a.jobName.localeCompare(b.jobName),
   )
 
+  if (rates) {
+    for (const row of perEmployeeJob) {
+      const key = `${row.employeeId}|${row.jobId ?? ''}`
+      const raw = amtRaw.get(key)
+      row.nightAmtCents = raw ? surchargeAmountOfRaw(raw.night) : 0
+      row.sundayAmtCents = raw ? surchargeAmountOfRaw(raw.sunday) : 0
+      row.holidayAmtCents = raw ? surchargeAmountOfRaw(raw.holiday) : 0
+    }
+  }
+
   const nameOf = new Map<string, string>()
   for (const r of rows) if (r.employeeName) nameOf.set(r.employeeId, r.employeeName)
   const overtime: OvertimeBasisRow[] = []
@@ -265,12 +325,17 @@ export function surchargeBasisRows(
         daysOver += 1
       }
     }
-    overtime.push({
+    const ot: OvertimeBasisRow = {
       employeeId,
       employeeName: nameOf.get(employeeId) || '',
       overtimeBasisMinutes: over,
       daysOverThreshold: daysOver,
-    })
+    }
+    if (rates) {
+      const emp = empTotals.get(employeeId)
+      ot.overtimeAmtCents = emp ? overtimeAmountOf(over, emp.gross, emp.net, rates.overtimePct) : 0
+    }
+    overtime.push(ot)
   }
 
   return { perEmployeeJob, overtime }

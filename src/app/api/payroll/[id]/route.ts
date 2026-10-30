@@ -6,6 +6,7 @@ import { num } from '@/lib/map'
 import { payrollTablesReady } from '@/lib/payroll-schema'
 import { holidaysInRange } from '@/lib/payroll-holidays'
 import { surchargeBasisRows } from '@/lib/payroll-surcharges'
+import { lookupSurchargeRates } from '@/lib/payroll-rates-store'
 import {
   aggregateByEmployeeJob,
   exceptionsSummary,
@@ -203,12 +204,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   // P3 #19 (v1.192.0): doplačilne osnove (noč/nedelja/praznik po zaposlenem+delu,
   // nadure po zaposlenem) — ŽIV pregled za draft in zaklječena obdobja; izvoz
-  // jih nosi od sheme payroll-export/2 (prazniki po državi lokacije)
+  // jih nosi od sheme payroll-export/3 (prazniki po državi lokacije).
+  // N-27-3 (v1.197.0): kadar so noge doplačil nastavljene (lookup: lokacija →
+  // privzete NULL), osnove dobijo ZNESKE (centno aritmetika — čisti sloj);
+  // brez tabel/nog degradira (minute brez zneskov — graceful).
   const dtoPre = periodDto(period)
   const locCountry = period.locationId
     ? (await db.location.findUnique({ where: { id: period.locationId }, select: { country: true } }))?.country ?? ''
     : ''
-  const surchargeBases = surchargeBasisRows(data.rows, period.timezone, holidaysInRange(dtoPre.startISO, dtoPre.endISO, locCountry))
+  const surchargeRates = await lookupSurchargeRates(period.locationId)
+  const surchargeBases = surchargeBasisRows(
+    data.rows,
+    period.timezone,
+    holidaysInRange(dtoPre.startISO, dtoPre.endISO, locCountry),
+    undefined,
+    surchargeRates ?? undefined,
+  )
 
   const plannedBy = new Map(planned.map((p) => [p.employeeId, p]))
   const employees = aggregates.map((a) => {
@@ -246,6 +257,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     totals,
     employees,
     surchargeBases,
+    surchargeRates: surchargeRates
+      ? {
+          locationId: surchargeRates.locationId,
+          source: surchargeRates.source,
+          nightPct: surchargeRates.nightPct,
+          sundayPct: surchargeRates.sundayPct,
+          holidayPct: surchargeRates.holidayPct,
+          overtimePct: surchargeRates.overtimePct,
+        }
+      : null,
     exceptions,
     exceptionsSummary: exceptionsSummary(exceptions),
     tips: data.tips,

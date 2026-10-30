@@ -2629,6 +2629,21 @@ CREATE TABLE "PayrollExport" (
 );
 
 -- CreateTable
+CREATE TABLE "PayrollSurchargeRate" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT,
+    "nightPct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "sundayPct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "holidayPct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "overtimePct" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedById" TEXT,
+
+    CONSTRAINT "PayrollSurchargeRate_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "StockTransfer" (
     "id" TEXT NOT NULL,
     "transferNumber" TEXT NOT NULL,
@@ -4512,6 +4527,7 @@ CREATE INDEX "PayrollExport_periodId_idx" ON "PayrollExport"("periodId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PayrollExport_periodId_seq_key" ON "PayrollExport"("periodId", "seq");
+CREATE UNIQUE INDEX "PayrollSurchargeRate_locationId_key" ON "PayrollSurchargeRate"("locationId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "StockTransfer_transferNumber_key" ON "StockTransfer"("transferNumber");

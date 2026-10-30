@@ -96,9 +96,9 @@ afterAll(async () => {
 
 describe('register shematskih migracij', () => {
   test('15 migracij z unikatnimi id-ji in metapodatki (+paylink v1.85.1, +paylink-split v1.87.0, +paylink-session v1.98.0 #37, +issue38 v1.100.0)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(32) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(SCHEMA_MIGRATIONS.length).toBe(33) // // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     const ids = SCHEMA_MIGRATIONS.map((m) => m.id)
-    expect(new Set(ids).size).toBe(32) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(new Set(ids).size).toBe(33) // // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     for (const m of SCHEMA_MIGRATIONS) {
       expect(m.descKey.startsWith('mig.')).toBe(true)
       expect(m.endpoint.startsWith('/api/admin/migrate-')).toBe(true)
@@ -116,7 +116,7 @@ describe('register shematskih migracij', () => {
 
   test('status na dev SQLite: vse aplicirano (schema je pushana)', async () => {
     const status = await schemaMigrationsStatus()
-    expect(status.length).toBe(32) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(status.length).toBe(33) // // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     expect(status.every((s) => s.applied)).toBe(true)
     expect(status.every((s) => s.error === undefined)).toBe(true)
   })
@@ -141,7 +141,7 @@ describe('migracijska konzola — status in delegacija', () => {
     const r = await consoleGET(req('/api/admin/migrations', owner))
     expect(r.status).toBe(200)
     const j = (await r.json()) as MigResp
-    expect(j.migrations.length).toBe(32) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
+    expect(j.migrations.length).toBe(33) // // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.126.0: +crm-campaigns (#11) // v1.125.0: +einvoice-outbox (#4) // v1.116.0: +stock-transfers (#8) // v1.115.0: +payroll-periods (#22) // v1.114.0: +prep-labels (#24) // v1.111.0: +manager-call (#21)
     expect(j.allApplied).toBe(true)
     expect(j.pending).toBe(0)
     for (const m of j.migrations) {

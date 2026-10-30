@@ -8,6 +8,7 @@ import { writeAudit } from '@/lib/audit-chain'
 import { payrollTablesReady } from '@/lib/payroll-schema'
 import { holidaysInRange } from '@/lib/payroll-holidays'
 import { surchargeBasisRows } from '@/lib/payroll-surcharges'
+import { lookupSurchargeRates } from '@/lib/payroll-rates-store'
 import {
   aggregateByEmployeeJob,
   buildPayrollCsv,
@@ -216,11 +217,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ? (await db.location.findUnique({ where: { id: period.locationId }, select: { country: true } }))?.country ?? ''
     : ''
 
+  // ── N-27-3 (v1.197.0): noge doplačil (lokacija → privzete NULL; brez tabele
+  // null — graceful) — kadar obstajajo, osnove dobijo ZNESKE; noge so del
+  // vsebine izvoza (contentHash: sprememba noge = nov izvoz, identical false)
+  const surchargeRates = await lookupSurchargeRates(period.locationId)
+
   // ── vsebina (ISTE vrstice kot detail/zaklep) + digesti ──
   const data = await loadPeriodData(period)
   const totals = totalsOfRows(data.rows, data.tips, data.pools)
   const dto = periodDto(period)
-  const surchargeBases = surchargeBasisRows(data.rows, period.timezone, holidaysInRange(dto.startISO, dto.endISO, locCountry))
+  const surchargeBases = surchargeBasisRows(
+    data.rows,
+    period.timezone,
+    holidaysInRange(dto.startISO, dto.endISO, locCountry),
+    undefined,
+    surchargeRates ?? undefined,
+  )
   const payload = {
     period: {
       id: period.id,
@@ -236,6 +248,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     tips: data.tips,
     totals,
     surchargeBases,
+    // v hash gre ČISTA vsebina nog (odstotki) — vir/locationId so izpeljani iz
+    // period.locationId (že v payload.period)
+    surchargeRates: surchargeRates
+      ? {
+          nightPct: surchargeRates.nightPct,
+          sundayPct: surchargeRates.sundayPct,
+          holidayPct: surchargeRates.holidayPct,
+          overtimePct: surchargeRates.overtimePct,
+        }
+      : null,
   }
   const digest = rowDigestOf(data.rows, data.tips)
   const contentHash = createHash('sha256').update(canonicalExportJson(payload), 'utf8').digest('hex')
@@ -308,6 +330,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       tips: data.tips,
       totals,
       surchargeBases,
+      surchargeRates: surchargeRates
+        ? {
+            locationId: surchargeRates.locationId,
+            source: surchargeRates.source,
+            nightPct: surchargeRates.nightPct,
+            sundayPct: surchargeRates.sundayPct,
+            holidayPct: surchargeRates.holidayPct,
+            overtimePct: surchargeRates.overtimePct,
+          }
+        : null,
       exceptionsSummary: exceptionsSummary(findPayrollExceptions(data.entries, data.shifts, data.employeeJobs, period.timezone)),
       export: {
         id: exportId,
