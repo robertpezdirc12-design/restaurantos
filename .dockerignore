@@ -1,0 +1,41 @@
+# OSS-13 (v1.207.0) — kontekst gradnje slike (build context = koren repozitorija).
+# Enako načelo kot .gitignore: v sliko gre samo vir, ki ga build potrebuje.
+# deploy/ MORA ostati v kontekstu (ENTRYPOINT dela iz /app/deploy/docker-entrypoint.sh).
+
+node_modules
+.next
+.git
+.gitlab-ci.yml
+.github
+coverage
+db
+docs
+tests
+examples
+mini-services
+download
+upload
+tool-results
+agent-ctx
+skills
+prompt
+*.md
+*.log
+*.db
+*.db-journal
+*.png
+*.pid
+.env
+.env.*
+!.env.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+.claude
+.z-ai-config
+.zscripts
+vercel-project-settings.json
+vercel-env-variables.json
+dev.out.log
+server.log
+next-env.d.ts

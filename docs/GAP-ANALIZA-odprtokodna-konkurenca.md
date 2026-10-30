@@ -43,7 +43,7 @@ POS, purpose-built gostinstvo). Njihov FEATURE-CHECKLIST je izjemno pošten
 | **Čas mize** (elapsed) na tlorisu/mizah | ŽE IMAMO — v1.129.0 (Toast vzorec): zasedena ploščica nosi ⏱ minute od naročila + fazo + št. naročila + goste + znesek (dashboard page, `kdsMinutes(ao.createdAt)`); analiza v1.199.0 tu NISEN najdla (lažna vrzel, popravljeno @ v1.201.0) | ~~OSS-3~~ — ZAVRJEN kot lažna vrzel |
 | **Hold/draft naročila** (zadrži nedokončano) | ~~NI~~ **IZVEDENO v1.204.0** (status hold + resume; CAS garde) | **OSS-4** |
 | **Večregionalni davčni režimi** (GST/US/EU-VAT/Spain IVA, vključno/izključno cene) | NE-VELJA (mi smo SI/HR z DDV + fiskalizacijo — drugačen trg; naše fiskalne meje so globlje) | brez kandidata |
-| **One-click pakiranje** (CasaOS/ZimaOS) + živi demo + case study | DELNO (lokalni autostart/backup skripte; NAS paket NI) | **OSS-13** |
+| **One-click pakiranje** (CasaOS/ZimaOS) + živi demo + case study | **PAKET IZVEDENO @ v1.207.0** (deploy/ Docker + compose + entrypoint + env pogodba nad obstoječim `bun run local` — ista shema/WAL/dnevne kopije; TLS je naloga CasaOS/obratnega posrednika; živi demo + case study ostajata lastniška — marketing) | **OSS-13** |
 | Zvočna potrditev plačila (UPI UX) | DELNO (push obstaja; zvočni signal NI) | **OSS-15** |
 
 **Kje je RestaurantOS boljši (dokazi iz kode, brez trinkarij):**
@@ -110,7 +110,7 @@ konvenciji kot TRZNA-VRZELI-2027. **Brez odobritve se nič od tega ne začne.**
 | **OSS-10** | **Variante artiklov** (velikosti/nivoji) | OrderRestro planned | modifiers delno pokrijejo; potrebo potrditi z uporabo | A (za potrebo vprašaj uporabo) |
 | **OSS-11** | **Teme po znamki** (akcentni barve/logotip per Brand) | TastyIgniter themes | Org→Brand→Property obstaja; oblikovna odločitev | B (oblikovna) |
 | **OSS-12** | **Ekosistem razširitev/tržnica** | TastyIgniter marketplace | zahteva mrežo partnerjev | C (mreža) |
-| **OSS-13** | **One-click pakiranje** (Docker/CasaOS za NAS lastnika) | OrderRestro | distribucija lokalne namestitve | A (mali, po odobritvi ciljne platforme) |
+| **OSS-13** | **One-click pakiranje** (Docker/CasaOS za NAS lastnika) | OrderRestro | distribucija lokalne namestitve | A (mali, po odobritvi ciljne platforme) — **IZVEDENO @ v1.207.0**: paket `deploy/` — **`deploy/Dockerfile`** (oven/bun 1.4, en runtime kot repo; `bun install --ignore-scripts` + ekspliciten sqlite `prisma generate` po poti iz local-setup.ts; ograda `db push` pred buildom; `next build` prek bun — brez node shebangov; RESTAURANTOS_LOCAL=1 = lokalni profil, brez standalone; ne-root `bun`, EXPOSE 3000, HEALTHCHECK /api/health), **`deploy/docker-compose.yml`** (kontekst repo koren, imenovani nosilec `restaurantos-data:/data`, restart unless-stopped, env_file, zunanja vrata prestavljiva), **`deploy/docker-entrypoint.sh`** (preslikava RESTAURANTOS_NAME/OWNER_EMAIL/OWNER_PIN/TAX_ID/BUSINESS_ID → zastavice OBSTOJEČEGA `scripts/local-start.ts` — podatkovna mapa, skrivnosti, shema, WAL, dnevne kopije 1:1 z lokalnim profilom, 0 vzporednih poti), **`deploy/.env.example`** (pogodba identitete) + **.dockerignore** + vodnik **docs/SELFHOST-CASAOS.md** (CasaOS/ZimaOS uvoz, prvi zagon, offsite kopije, posodobitve, meje); kontrakt pineže čisti sloj **`src/lib/selfhost-kit.ts`** (0 uvozov) + pred-let **`scripts/selfhost-check.ts`** (kit datoteke, preslikave okolja, oznaka slike ↔ APP_VERSION, izvršilni bit) + tests/v207-selfhost-kit; TLS NAMERNO zunaj paketa (CasaOS/obratni posrednik — `--https` kontrakt prepoveduje); čarovnika v zabojniku ni (dokaz računa fronta) → prvi prevzem prek okolja; poštena meja: gradnja slike v peskovniku ni izvedljiva (ni Docker daemon) — kontrakt je preverjen deterministično, ukazi so IZMERJENI vzorci iz local-setup/local-start; 0 DDL, 0 novih odvisnosti, 0 novih rut, 0 UI |
 | **OSS-15** | **Zvočna potrditev plačila** (opozorilni ton ob potrjenem plačilu) | OrderRestro UPI UX | mali: zvočni signal na napravi osebja ob push | A (mali) — **IZVEDENO @ v1.201.0**: čist modul `audio-cue.ts` (dva naraščajoča tona E5→E6, WebAudio z injektiranimi odvisnostmi — 0 odvisnosti, 0 AI), nastavitev na napravo `ro_payment_cue`, klic ob potrjenem plačilu + toggle v plačilnem dialogu |
 
 **Zavrnjeni kot vrzeli (poštena pariteta — imamo bolje ali enako):** večregionalni
@@ -150,6 +150,11 @@ koda iz AGPL repozitorijev (licenca).
    so IZVEDENI**;
    OSS-3 čas mize je bila
    LAŽNA VRZEL (že od v1.129.0); OSS-6 MCP ostaja ZUNAJ OBSEGA po lastnikovem
-   pravilu „brez AI modelov, samo skripte" (izrecno potrjeno v1.201.0); ostalo
-   so mali izboljševalci (OSS-10/13). Vse čaka odobritev lastnika (nova
+   pravilu „brez AI modelov, samo skripte" (izrecno potrjeno v1.201.0);
+   **OSS-13 NAS paket IZVEDENO @ v1.207.0** (deploy/ Docker + compose + entrypoint
+   nad obstoječim `bun run local` — ista shema/WAL/dnevne kopije; TLS je naloga
+   CasaOS/obratnega posrednika; živi demo + case study ostajata lastniška —
+   marketing); ostanejo **OSS-10** (variante artiklov — čaka potrditev uporabe),
+   **OSS-11** (B — oblikovna odločitev) in **OSS-12** (C — mreža partnerjev).
+   Vse čaka odobritev lastnika (nova
    generacija OSS-x).

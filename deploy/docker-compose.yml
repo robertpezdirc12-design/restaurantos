@@ -1,0 +1,32 @@
+# OSS-13 (v1.207.0) — compose za samogostiteljstvo (Docker Engine / CasaOS / ZimaOS).
+# Kontrakt: src/lib/selfhost-kit.ts (validateComposeContract); vodnik:
+# docs/SELFHOST-CASAOS.md. Uvoz v CasaOS: Aplikacije → namesti po meri →
+# uvozi docker-compose (izberi to datoteko) — CasaOS pokrije vrata in HTTPS.
+#
+# Oznaka slike MORA ustrezati src/lib/version.ts — preveri
+# `bun scripts/selfhost-check.ts` (prekršek = rdeča, ne tiho).
+
+name: restaurantos
+
+services:
+  restaurantos:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: restaurantos:1.207.0
+    container_name: restaurantos
+    restart: unless-stopped
+    ports:
+      - "${RESTAURANTOS_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      # Lokalni profil (sqlite) tudi v zabojniku — enako kot `bun run local`.
+      - RESTAURANTOS_LOCAL=1
+      - PORT=3000
+    volumes:
+      # Baza + skrivnosti (config.json) + dnevne kopije — vse v enem nosilcu.
+      - restaurantos-data:/data
+
+volumes:
+  restaurantos-data:

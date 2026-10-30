@@ -2,7 +2,9 @@
 
 Ta dokument je operativni vodnik za namestitev, kjer RestaurantOS teče na
 računalniku v obratu in uporablja **lokalno bazo SQLite**. Za oblačni profil
-(Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`. Zahteve in merila sprejema
+(Vercel + Neon) glej `docs/DEPLOYMENT-RESILIENCE.md`; za isto namestitev kot
+**Docker/CasaOS paket na NAS-u** glej `docs/SELFHOST-CASAOS.md` (OSS-13,
+v1.207.0 — zabojnik izvrši isti `bun run local`). Zahteve in merila sprejema
 so v `docs/PRD-LOKALNA-BAZA.md` (R1, R2a, R2b1, R2b2, R3, R4a in R5a so izvedena;
 izhodni pogoj R2b2 na tablici še ni preizkušen).
 
