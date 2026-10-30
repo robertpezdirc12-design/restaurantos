@@ -1410,6 +1410,9 @@ model InventoryItem {
   leadTimeDays         Int?
   reorderPoint         Decimal?               
   safetyStock          Decimal?               
+  // OSS-9 (v1.202.0): EAN / črtna koda dobavitelja (src/lib/ean.ts). Prazno =
+  // artikel brez kode; duplikat check 409 v aplikačnem sloju.
+  ean                     String                 @default("")
   // Issue #7 (P1, v1.104.0) — strukturirani alergeni SESTAVINE (kanonične kode;
   // "lahko vsebuje" = ocena osebja; potrditev kdaj+kdo)
   allergens               String                 @default("[]")

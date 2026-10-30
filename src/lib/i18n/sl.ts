@@ -597,6 +597,12 @@ export const sl: Record<string, string> = {
   'inv.minQty': 'Min. količina',
   'inv.costPerUnit': 'Cena / enoto (€)',
   'inv.saveItem': 'Shrani artikel',
+  'inv.ean': 'EAN / črtna koda',
+  'inv.eanPlaceholder': 'npr. 3838900000016',
+  'inv.eanHint': 'Koda dobavitelja (skeniraj ali vpiši) — prazno = artikel brez kode. Najde se v iskalniku in pri prevzemu.',
+  'inv.eanCheckWarn': 'Opozorilo: oblika GS1 (EAN-13/8/UPC) z napačno kontrolno številko — shranimo lahko, preveri kodo.',
+  'inv.editEan': 'EAN',
+  'inv.editEanTitle': 'EAN / črtna koda — {name}',
   'inv.adjustTitle': 'Prilagodi zalogo — {name}',
   'inv.currentStock': 'Trenutno stanje:',
   'inv.deltaLabel': 'Prejem / sprememba (+/- {unit})',
@@ -1382,6 +1388,10 @@ export const sl: Record<string, string> = {
   'proc.reasonPlaceholder': 'npr. poškodovano',
   'proc.expiry': 'Datum uporabljivosti',
   'proc.submitReceive': 'Posreduj prevzem',
+  'proc.scanLabel': 'Skeniraj EAN',
+  'proc.scanPlaceholder': 'Skeniraj ali vpiši kodo in pritisni Enter',
+  'proc.scanNotFound': 'Koda {code} ni med artikli tega naročila.',
+  'proc.scanFound': 'Zadetek: {name} — količina je v poudarjeni vrstici.',
 
   // ── Faza 2: Darilne kartice/Odpad ──
   'gc.stActive': 'Aktivna',
@@ -3563,6 +3573,7 @@ export const sl: Record<string, string> = {
   'eq.confirmDelete': 'To pobriše napravo in njen servisni načrt. Zgodovina servisov ostane v reviziji.',
   'eq.edited': 'Spremembe shranjene.',
   'mig.equipmentMaintenance.desc': 'Vzdrževanje opreme — tabeli Equipment in EquipmentMaintenancePlan (register naprav + servisni načrti z intervali; zastavice zapadlosti izpeljane ob branju)',
+  'mig.inventoryEan.desc': 'EAN pri nabavi (OSS-9) — aditivni stolpec InventoryItem."ean" (koda dobavitelja; sken pri prevzemu)',
 
   // ─── MEDLOKACIJSKI PRENOSI (issue #8, v1.116.0) — trf.* ───
   'trf.title': 'Medlokacijski prenosi',

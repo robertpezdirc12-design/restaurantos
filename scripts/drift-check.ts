@@ -474,6 +474,23 @@ export function isEquipmentMaintenanceStatement(stmt: string): boolean {
   return false
 }
 
+/**
+ * OSS-9 (v1.202.0): EAN pri nabavi — aditivni stolpec InventoryItem."ean".
+ * Dvosmerno STROG matcher (vzorec isApToleranceStatement/isIssue13Statement):
+ * tabela "InventoryItem" + VSAKA klavzula mora biti točno ADD/DROP COLUMN
+ * "ean" — kombiniran ALTER z drugimi stolpci (alergeni ×4 živijo na isti
+ * tabeli!) ostane unexpected. Prazna privzeta vrednost v ADD klavzuli je
+ * dovoljena (DEFAULT ''). Ko lastnik aplicira DDL (konzola Enterprise →
+ * Shema migracije → EAN) in je shema usklajena, drift izgine (mrtva koda).
+ */
+export function isInventoryEanStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"InventoryItem"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => /^ADD\s+COLUMN\s+"ean"(\s|\s+TEXT|$)/i.test(c) || /^DROP\s+COLUMN\s+"ean"(\s|$)/i.test(c))
+}
+
 /** Issue #22 (v1.115.0): obračun plač — NOVI tabeli PayrollPeriod + PayrollExport. */
 export function isPayrollPeriodsStatement(stmt: string): boolean {
   if (/"PayrollPeriod"|"PayrollExport"/.test(stmt)) {
@@ -877,6 +894,19 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       '(konzola Enterprise → Shema migracije → en klik). Do DDL /api/equipment* → 503 ' +
       '(migrBox v kartici). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isEquipmentMaintenanceStatement,
+  },
+  {
+    id: 'inventory-ean',
+    reason:
+      'EAN pri nabavi (OSS-9, v1.202.0 — docs/GAP-ANALIZA-odprtokodna-konkurenca.md) — ' +
+      'aditivni stolpec InventoryItem."ean" (koda dobavitelja: GS1 EAN-13/8/UPC-A ali ' +
+      'interna alphanumeric koda; čisti sloj src/lib/ean.ts; duplikat check 409 v ' +
+      'aplikačnem sloju). Vpis v zalogi (nov artikel / urejanje EAN), sken pri prevzemu. ' +
+      'Matcher je dvosmerno STROG (ADD/DROP COLUMN "ean") — alergenski stolpci na isti ' +
+      'tabeli se ne ujemajo. Pred aplikacijo na produkcijo je drift pričakovan — DDL ' +
+      'korak: admin ruta /api/admin/migrate-inventory-ean (konzola Enterprise → Shema ' +
+      'migracije → en klik). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isInventoryEanStatement,
   },
 ]
 

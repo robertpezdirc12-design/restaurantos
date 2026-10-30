@@ -6,6 +6,38 @@ import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { parseInventoryField, sanitizeUnit, roundCost2 } from '@/lib/inventory-validate'
+import { normalizeEan, validateEanFormat } from '@/lib/ean'
+
+/**
+ * OSS-9 (v1.202.0): EAN / črtna koda dobavitelja. Skupna validacija za POST/PATCH:
+ * normalizacija (trim/whitespace/uppercase — src/lib/ean.ts) + oblika (3–48,
+ * [0-9A-Z_-]; prazno = artikel brez kode). Duplikat check → 409 (aplikačni sloj;
+ * delni unique indeks bi lomil baseline 1:1 konvencijo). EAN je operativen podatek
+ * (sken pri prevzemu) — NI občutljiv kot cena, GET payload nosi ean ZA VSE vloge.
+ */
+async function resolveEanForWrite(
+  raw: unknown,
+  selfId?: string,
+): Promise<{ ean: string } | { error: string; status: number }> {
+  const ean = normalizeEan(typeof raw === 'string' ? raw : '')
+  if (!ean) return { ean: '' } // prazno = brez kode (dovoljeno)
+  const v = validateEanFormat(ean)
+  if (!v.ok) {
+    const msg =
+      v.error === 'too_short'
+        ? 'Koda je prekratka (najmanj 3 znaki).'
+        : v.error === 'too_long'
+          ? 'Koda je predolga (največ 48 znakov).'
+          : 'Koda vsebuje nedovoljene znake (dovoljene: črke, številke, pomišljaj).'
+    return { error: msg, status: 400 }
+  }
+  const dup = await db.inventoryItem.findFirst({
+    where: { ean, ...(selfId ? { id: { not: selfId } } : {}) },
+    select: { name: true },
+  })
+  if (dup) return { error: `Koda ${ean} je že dodeljena artiklu »${dup.name}«.`, status: 409 }
+  return { ean }
+}
 
 /**
  * Issue #5 (P0 §C): količine so operativne (kuhinja vidi zalogo) — NABAVNA CENA pa
@@ -37,6 +69,8 @@ export async function GET(req: NextRequest) {
       cost: showCost ? num(r.costPerUnit) : 0,
       supplierId: showCost ? r.supplier || null : null,
       locationId: r.locationId,
+      // OSS-9: koda dobavitelja — operativen podatek (sken pri prevzemu), ni cena
+      ean: r.ean || '',
     })),
   })
 }
@@ -89,6 +123,10 @@ export async function POST(req: NextRequest) {
   const minQty = minP.value ?? 0
   const cost = costP.value ?? 0
   const unit = sanitizeUnit(body?.unit)
+  // OSS-9: EAN (prazno = brez kode; 400 oblika / 409 duplikat)
+  const eanRes = await resolveEanForWrite(body?.ean)
+  if ('error' in eanRes) return ok({ error: eanRes.error }, eanRes.status)
+  const ean = eanRes.ean
 
   const openingTxId = qty > 0 ? nid() : null
   const row = await db.$transaction(async (tx) => {
@@ -103,6 +141,7 @@ export async function POST(req: NextRequest) {
         supplier: String(body?.supplierName || '').trim().slice(0, 120),
         category: String(body?.category || 'general').trim().slice(0, 60) || 'general',
         locationId,
+        ean,
       },
     })
     // #58: opening balance — ekspliciten RECEIVE dogodek v ISTI transakciji
@@ -129,7 +168,7 @@ export async function POST(req: NextRequest) {
     // 33-c (audit §6): INVENTORY_CREATE dobi locationId (prej neviden location-scoped uporabnikom)
     await writeAudit(tx, {
       userId: user.sub, action: 'INVENTORY_CREATE', entityType: 'InventoryItem', entityId: created.id,
-      details: jstr({ name, qty, minQuantity: minQty, costPerUnit: cost, unit, openingTx: openingTxId ? 'RECEIVE/začetno stanje' : 'brez začetne količine' }),
+      details: jstr({ name, qty, minQuantity: minQty, costPerUnit: cost, unit, ean, openingTx: openingTxId ? 'RECEIVE/začetno stanje' : 'brez začetne količine' }),
       locationId,
     })
     return created
@@ -172,7 +211,14 @@ export async function PATCH(req: NextRequest) {
   const setQty = setQtyP.value
   const minQty = minQtyP.value
   const cost = costP.value
-  if (delta === null && setQty === null && minQty === null && cost === null) return ok({ error: 'Ni podatkov za posodobitev.' }, 400)
+  // OSS-9: EAN — OPCIJONO polje (undefined = ne spreminjaj; '' = odstrani kodo)
+  let ean: string | undefined
+  if (body?.ean !== undefined) {
+    const eanRes = await resolveEanForWrite(body.ean, id)
+    if ('error' in eanRes) return ok({ error: eanRes.error }, eanRes.status)
+    ean = eanRes.ean
+  }
+  if (delta === null && setQty === null && minQty === null && cost === null && ean === undefined) return ok({ error: 'Ni podatkov za posodobitev.' }, 400)
 
   // R4 popravek (P0 audit): transakcija + atomarne spremembe količine (increment/decrement
   // s pogojem) — brez lost update; StockTransaction + AuditLog v ISTI transakciji,
@@ -209,6 +255,7 @@ export async function PATCH(req: NextRequest) {
     }
     if (minQty !== null) await tx.inventoryItem.updateMany({ where: { id }, data: { minQuantity: minQty } })
     if (cost !== null) await tx.inventoryItem.updateMany({ where: { id }, data: { costPerUnit: cost } })
+    if (ean !== undefined) await tx.inventoryItem.updateMany({ where: { id }, data: { ean } })
 
     // Evidence gibanja zaloge (razvidnost za računovodski izvoz): prejem/odpis/popravek
     if (variance !== 0) {
@@ -230,7 +277,7 @@ export async function PATCH(req: NextRequest) {
       })
     }
 
-    await writeAudit(tx, { userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost }) })
+    await writeAudit(tx, { userId: user.sub, action: 'INVENTORY_ADJUST', entityType: 'InventoryItem', entityId: id, details: jstr({ name: item.name, previousQty: prevQty, newQty, delta, setQty, minQuantity: minQty, costPerUnit: cost, ean: ean ?? undefined }) })
     return { newQty, variance, name: item.name }
   })
 

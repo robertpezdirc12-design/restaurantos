@@ -440,7 +440,7 @@ describe('Č3 DDL ruta migrate-equipment-maintenance', () => {
 
 describe('Č4 registri, i18n in verzija', () => {
   it('SCHEMA_MIGRATIONS: 34. vnos equipment-maintenance (descKey/endpoint/probe)', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(34) // v1.200.0: +equipment-maintenance (OSS-1)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(35) // v1.200.0: +equipment-maintenance (OSS-1)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'equipment-maintenance')
     expect(m).toBeDefined()
     expect(m?.descKey).toBe('mig.equipmentMaintenance.desc')
@@ -449,7 +449,7 @@ describe('Č4 registri, i18n in verzija', () => {
   })
 
   it('drift allowlist: 26 vnosov; CREATE TABLE Equipment/Plan je znan drift', () => {
-    expect(KNOWN_DRIFTS).toHaveLength(26) // v1.200.0: +equipment-maintenance (OSS-1)
+    expect(KNOWN_DRIFTS).toHaveLength(27) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1)
     const cls = classifyDrift(
       'CREATE TABLE "Equipment" ("id" TEXT NOT NULL, "locationId" TEXT NOT NULL, CONSTRAINT "Equipment_pkey" PRIMARY KEY ("id"));\n' +
         'CREATE TABLE "EquipmentMaintenancePlan" ("id" TEXT NOT NULL, "equipmentId" TEXT NOT NULL, CONSTRAINT "EquipmentMaintenancePlan_pkey" PRIMARY KEY ("id"));\n' +
@@ -498,7 +498,7 @@ describe('Č4 registri, i18n in verzija', () => {
     expect(page).toContain('<EquipmentCard />')
   })
 
-  it('verzija 1.201.0', () => {
-    expect(APP_VERSION).toBe('1.201.0')
+  it('verzija 1.202.0', () => {
+    expect(APP_VERSION).toBe('1.202.0')
   })
 })

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, fmtEUR, downloadCSV, getToken, fmtNumSI } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
+import { normalizeEan } from '@/lib/ean'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
@@ -49,7 +50,7 @@ interface NabavaSupplier {
   code?: string | null; city?: string | null; country?: string | null; taxId?: string | null; iban?: string | null; paymentTerms?: string | null
   isActive: boolean; purchaseOrdersCount: number; itemsCount: number
 }
-interface NabavaInvItem { id: string; name: string; unit: string; qty: number; minQty: number; cost: number; locationId?: string | null }
+interface NabavaInvItem { id: string; name: string; unit: string; qty: number; minQty: number; cost: number; locationId?: string | null; ean?: string }
 interface NabavaPoItem { id: string; description: string; quantityOrdered: number; quantityReceived: number; quantityRejected: number; unit: string; unitPrice: number; vatRate: number; totalPrice: number; status: string; inventoryItemId?: string | null }
 interface NabavaPo {
   id: string; poNumber: string; status: string; supplierId: string; supplierName: string
@@ -160,6 +161,11 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
   const [recvBusy, setRecvBusy] = useState(false)
   const [recvErr, setRecvErr] = useState('')
   const [recvDone, setRecvDone] = useState<{ grnNumber: string; warnings: string[] } | null>(null)
+  // OSS-9 (v1.202.0): sken EAN pri prevzemu — skener vpiše kodo + Enter, vrstica
+  // z vezanim inventoryItemId dobi fokus + poudarek (deterministično, brez AI)
+  const [recvScan, setRecvScan] = useState('')
+  const [recvScanErr, setRecvScanErr] = useState('')
+  const [recvScanHit, setRecvScanHit] = useState<string | null>(null)
 
   // — Reorder suggestions (OPS-8 val 2) —
   const [suggGroups, setSuggGroups] = useState<NabavaSuggGroup[]>([])
@@ -443,6 +449,26 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
       lines[it.id] = { accept: remaining > 0 ? String(remaining) : '0', reject: '0', reason: '', expiry: '' }
     }
     setRecvOrder(o); setRecvLines(lines); setRecvDoc(''); setRecvNotes(''); setRecvErr(''); setRecvDone(null)
+    // OSS-9: sken stanje počisti ob vsakem odprtju dialoga
+    setRecvScan(''); setRecvScanErr(''); setRecvScanHit(null)
+  }
+  /* OSS-9: skeniranje EAN pri prevzemu — EAN → InventoryItem → PO vrstica z
+   * vezanim inventoryItemId. Zadetek: fokus na količino + poudarek vrstice.
+   * Nezadetek: jasen opis (koda ni na tem naročilu) — brez ugibanja. */
+  const handleRecvScan = () => {
+    if (!recvOrder) return
+    const code = normalizeEan(recvScan)
+    if (!code) { setRecvScanErr(''); return }
+    const invId = invItems.find((i) => (i.ean || '') === code)?.id
+    const line = invId ? recvOrder.items.find((it) => it.inventoryItemId && it.inventoryItemId === invId) : undefined
+    if (!line) {
+      setRecvScanErr(t('proc.scanNotFound', { code }))
+      setRecvScanHit(null)
+      return
+    }
+    setRecvScanErr(''); setRecvScanHit(line.id); setRecvScan('')
+    const el = document.getElementById(`nb-recv-accept-${line.id}`) as HTMLInputElement | null
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); el.select() }
   }
   const updateRecvLine = (id: string, patch: Partial<NabavaRecvLine>) => {
     setRecvLines((ls) => ({ ...ls, [id]: { ...(ls[id] || { accept: '0', reject: '0', reason: '', expiry: '' }), ...patch } }))
@@ -1417,13 +1443,30 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                   <Input id="nb-recv-notes" value={recvNotes} onChange={(e) => setRecvNotes(e.target.value)} />
                 </div>
               </div>
+              {/* OSS-9: sken EAN pri prevzemu — skener vpiše kodo + Enter; zadetek
+                  dobi fokus na količino + poudarek vrstice (deterministično) */}
+              <div className="space-y-1.5">
+                <Label htmlFor="nb-recv-scan">{t('proc.scanLabel')}</Label>
+                <Input
+                  id="nb-recv-scan"
+                  value={recvScan}
+                  onChange={(e) => setRecvScan(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleRecvScan() } }}
+                  placeholder={t('proc.scanPlaceholder')}
+                  autoComplete="off"
+                  className="font-mono"
+                />
+                {recvScanErr && <p className="text-xs text-red-600">{recvScanErr}</p>}
+                {recvScanHit && !recvScanErr && <p className="text-xs text-emerald-700">{t('proc.scanFound', { name: recvOrder.items.find((it) => it.id === recvScanHit)?.description || '' })}</p>}
+              </div>
               <div className="space-y-2">
                 {recvOrder.items.map((it) => {
                   const l = recvLines[it.id] || { accept: '0', reject: '0', reason: '', expiry: '' }
                   const rejNum = nabavaNum(l.reject)
                   const remaining = Math.max(0, it.quantityOrdered - it.quantityReceived)
+                  const isScanHit = recvScanHit === it.id
                   return (
-                    <div key={it.id} className="rounded-lg border border-stone-200 bg-stone-50 p-2">
+                    <div key={it.id} data-scan-hit={isScanHit ? '1' : undefined} className={`rounded-lg border border-stone-200 bg-stone-50 p-2 ${isScanHit ? 'ring-2 ring-emerald-500 border-emerald-400' : ''}`}>
                       <p className="text-sm font-medium">{it.description}</p>
                       <p className="text-xs text-stone-500 mb-2">
                         {t('proc.orderedColon')} {it.quantityOrdered} {it.unit} · {t('proc.alreadyReceived')} {it.quantityReceived}
@@ -1432,7 +1475,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                       <div className="grid gap-2 sm:grid-cols-4 items-end">
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.accepted')}</Label>
-                          <Input inputMode="decimal" value={l.accept} onChange={(e) => updateRecvLine(it.id, { accept: e.target.value })} />
+                          <Input id={`nb-recv-accept-${it.id}`} inputMode="decimal" value={l.accept} onChange={(e) => updateRecvLine(it.id, { accept: e.target.value })} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.thRejected')}</Label>

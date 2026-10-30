@@ -144,8 +144,9 @@ koda iz AGPL repozitorijev (licenca).
    vrednost dokazana pri njih), ter 5–6 konkretnih funkcij iz tabele OSS.
 3. **Kaj nam manjka:** realne vrzeli so **OSS-2 (dokumenti)** in OSS-7/8
    (kampanje/urna poročila — del B/C); **OSS-1 oprema (v1.200.0), OSS-5 OpenAPI
-   + OSS-15 zvok plačila (v1.201.0) so IZVEDENI**; OSS-3 čas mize je bila
+   + OSS-15 zvok plačila (v1.201.0), OSS-9 EAN pri nabavi (v1.202.0) so IZVEDENI**;
+   OSS-3 čas mize je bila
    LAŽNA VRZEL (že od v1.129.0); OSS-6 MCP ostaja ZUNAJ OBSEGA po lastnikovem
    pravilu „brez AI modelov, samo skripte" (izrecno potrjeno v1.201.0); ostalo
-   so mali izboljševalci (OSS-9/10/13). Vse čaka odobritev lastnika (nova
+   so mali izboljševalci (OSS-10/13). Vse čaka odobritev lastnika (nova
    generacija OSS-x).

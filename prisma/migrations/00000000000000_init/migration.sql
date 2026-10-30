@@ -1221,6 +1221,7 @@ CREATE TABLE "InventoryItem" (
     "leadTimeDays" INTEGER,
     "reorderPoint" DECIMAL(12,3),
     "safetyStock" DECIMAL(12,3),
+    "ean" TEXT NOT NULL DEFAULT '',
     "allergens" TEXT NOT NULL DEFAULT '[]',
     "allergensCrossContact" TEXT NOT NULL DEFAULT '[]',
     "allergensConfirmedAt" TIMESTAMP(3),

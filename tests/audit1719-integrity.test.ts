@@ -120,8 +120,8 @@ describe('№17 — baseline migracija je popolna projekcija sheme', () => {
 
 describe('№17 — drift allowlist in blokatorska pot', () => {
   test('allowlist ima 25 edinstvenih vnosov in vsak navaja admin DDL ruto', () => {
-    expect(KNOWN_DRIFTS).toHaveLength(26) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (N-27-3)
-    expect(new Set(KNOWN_DRIFTS.map((k) => k.id)).size).toBe(26)
+    expect(KNOWN_DRIFTS).toHaveLength(27) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (N-27-3)
+    expect(new Set(KNOWN_DRIFTS.map((k) => k.id)).size).toBe(27)
     for (const k of KNOWN_DRIFTS) expect(k.reason).toContain('/api/admin/migrate-')
   })
 

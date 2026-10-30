@@ -523,6 +523,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-equipment-maintenance',
     probe: async () => tablesAll(['Equipment', 'EquipmentMaintenancePlan']),
   },
+  {
+    // OSS-9 (v1.202.0, docs/GAP-ANALIZA-odprtokodna-konkurenca.md): EAN pri
+    // nabavi — aditivni stolpec InventoryItem."ean" (koda dobavitelja: GS1
+    // EAN-13/8/UPC-A ali interna alphanumeric; čisti sloj src/lib/ean.ts).
+    // Vpis v zalogi (nov artikel / urejanje EAN), sken pri prevzemu (PO
+    // vrstica z vezanim inventoryItemId). Do DDL GET payload ne nosi ean
+    // (stolpec manjka → Prisma napaka), UI polja ostajajo delujoča z
+    // praznimi vrednostmi — prevzem tok nespremenjen.
+    id: 'inventory-ean',
+    descKey: 'mig.inventoryEan.desc',
+    endpoint: '/api/admin/migrate-inventory-ean',
+    probe: () => columnExists('InventoryItem', 'ean'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

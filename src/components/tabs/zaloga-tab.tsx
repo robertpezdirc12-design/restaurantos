@@ -12,12 +12,13 @@ import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, AlertTriangle, Truck, UtensilsCrossed, Plus, ShoppingCart, ArrowLeftRight, Trash2 } from 'lucide-react'
+import { Loader2, PackageSearch, AlertTriangle, Truck, UtensilsCrossed, Plus, ShoppingCart, ArrowLeftRight, Trash2, ScanLine } from 'lucide-react'
 import { BatchesCard, BatchPrepCard } from './ops-cards'
+import { normalizeEan, classifyEan } from '@/lib/ean'
 
 /* ─────────────────────────── ZALOGE ─────────────────────────── */
 
-export interface InventoryT { id: string; name: string; unit: string; qty: number; minQty: number; cost: number; supplierId?: string | null }
+export interface InventoryT { id: string; name: string; unit: string; qty: number; minQty: number; cost: number; supplierId?: string | null; ean?: string }
 export interface SupplierT { id: string; name: string; contact?: string | null; phone?: string | null; email?: string | null; address?: string | null }
 /** OPS-9 val 1: recipe line with BOM maturity — yieldPercent + nested sub-recipe children. */
 export interface RecipeLineT { inventoryItemId: string; name: string; unit: string; qty: number; yieldPercent?: number; parentRecipeItemId?: string | null; children?: RecipeLineT[] }
@@ -48,14 +49,19 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     if (invFilter === 'LOW' && !(i.minQty > 0 && i.qty <= i.minQty)) return false
     if (invFilter === 'OUT' && i.qty > 0) return false
     const q = invSearch.trim().toLowerCase()
-    return !q || i.name.toLowerCase().includes(q)
+    // OSS-9: iskalnik najde artikel tudi po EAN (sken v iskalnik = filter)
+    return !q || i.name.toLowerCase().includes(q) || (i.ean || '').toLowerCase().includes(q)
   })
   const [addItem, setAddItem] = useState(false)
-  const [ni, setNi] = useState({ name: '', unit: 'kg', qty: '', minQty: '', cost: '' })
+  const [ni, setNi] = useState({ name: '', unit: 'kg', qty: '', minQty: '', cost: '', ean: '' })
   const [niBusy, setNiBusy] = useState(false)
   const [adjust, setAdjust] = useState<InventoryT | null>(null)
   const [adj, setAdj] = useState({ delta: '', setQty: '', minQty: '', cost: '' })
   const [adjBusy, setAdjBusy] = useState(false)
+  // OSS-9: urejanje EAN obstoječega artikla (mini dialog → PATCH { id, ean })
+  const [eanEdit, setEanEdit] = useState<InventoryT | null>(null)
+  const [eanVal, setEanVal] = useState('')
+  const [eanBusy, setEanBusy] = useState(false)
   const [stList, setStList] = useState<StRow[]>([])
   const [stOpen, setStOpen] = useState<StFull | null>(null)
   const [stInputs, setStInputs] = useState<Record<string, string>>({})
@@ -172,9 +178,19 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
   async function createItem() {
     setNiBusy(true)
     try {
-      await api('/api/inventory', { method: 'POST', body: JSON.stringify({ name: ni.name, unit: ni.unit, qty: ni.qty, minQty: ni.minQty, cost: ni.cost }) })
-      setAddItem(false); setNi({ name: '', unit: 'kg', qty: '', minQty: '', cost: '' }); await onReload()
+      await api('/api/inventory', { method: 'POST', body: JSON.stringify({ name: ni.name, unit: ni.unit, qty: ni.qty, minQty: ni.minQty, cost: ni.cost, ean: ni.ean }) })
+      setAddItem(false); setNi({ name: '', unit: 'kg', qty: '', minQty: '', cost: '', ean: '' }); await onReload()
     } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setNiBusy(false) }
+  }
+
+  // OSS-9: shranjevanje EAN (PATCH) — prazno = odstrani kodo
+  async function saveEan() {
+    if (!eanEdit) return
+    setEanBusy(true)
+    try {
+      await api('/api/inventory', { method: 'PATCH', body: JSON.stringify({ id: eanEdit.id, ean: eanVal }) })
+      setEanEdit(null); await onReload()
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setEanBusy(false) }
   }
   async function saveAdjust() {
     if (!adjust) return
@@ -278,6 +294,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                     <div className="min-w-0">
                       <p className="font-medium truncate">{i.name}</p>
                       <p className="text-xs text-stone-500">{i.cost > 0 ? `${fmtEUR(i.cost)}/${i.unit}` : i.unit}{isLow && ` · ${t('inv.minShort')} ${fmtNumSI(i.minQty)}`}</p>
+                      {i.ean && <p className="text-[11px] text-stone-400 font-mono truncate">{i.ean}</p>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
@@ -287,9 +304,15 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                         {isLow && !isOut && <Badge className="bg-amber-600 text-white mt-0.5">{t('inv.belowMin')}</Badge>}
                       </div>
                       {canManage && (
-                        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setAdjust(i); setAdj({ delta: '', setQty: String(i.qty), minQty: String(i.minQty), cost: String(i.cost) }) }}>
-                          {t('inv.adjust')}
-                        </Button>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setAdjust(i); setAdj({ delta: '', setQty: String(i.qty), minQty: String(i.minQty), cost: String(i.cost) }) }}>
+                            {t('inv.adjust')}
+                          </Button>
+                          {/* OSS-9: urejanje EAN obstoječega artikla */}
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setEanEdit(i); setEanVal(i.ean || '') }} aria-label={`${t('inv.editEan')}: ${i.name}`}>
+                            <ScanLine className="w-3 h-3 mr-1" aria-hidden /> {t('inv.editEan')}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -544,10 +567,36 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                 <Input id="ni-cost" inputMode="decimal" value={ni.cost} onChange={(e) => setNi({ ...ni, cost: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })} placeholder="0.00" />
               </div>
             </div>
+            {/* OSS-9: EAN / črtna koda dobavitelja — skener vpiše kodo + Enter (tipkovnica) */}
+            <div className="space-y-1.5">
+              <Label htmlFor="ni-ean">{t('inv.ean')}</Label>
+              <Input id="ni-ean" value={ni.ean} onChange={(e) => setNi({ ...ni, ean: normalizeEan(e.target.value) })} placeholder={t('inv.eanPlaceholder')} autoComplete="off" className="font-mono" />
+              {ni.ean && classifyEan(ni.ean).checkValid === false && <p className="text-xs text-amber-600">{t('inv.eanCheckWarn')}</p>}
+              <p className="text-xs text-stone-400">{t('inv.eanHint')}</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddItem(false)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={niBusy || !ni.name} onClick={createItem}>{niBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.saveItem')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* OSS-9: urejanje EAN obstoječega artikla (mini dialog → PATCH { id, ean }) */}
+      <Dialog open={!!eanEdit} onOpenChange={(v) => { if (!v) setEanEdit(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{t('inv.editEanTitle', { name: eanEdit?.name ?? '' })}</DialogTitle></DialogHeader>
+          {eanEdit && (
+            <div className="space-y-1.5">
+              <Label htmlFor="ean-edit">{t('inv.ean')}</Label>
+              <Input id="ean-edit" value={eanVal} onChange={(e) => setEanVal(normalizeEan(e.target.value))} placeholder={t('inv.eanPlaceholder')} autoComplete="off" className="font-mono" />
+              {eanVal && classifyEan(eanVal).checkValid === false && <p className="text-xs text-amber-600">{t('inv.eanCheckWarn')}</p>}
+              <p className="text-xs text-stone-400">{t('inv.eanHint')}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEanEdit(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={eanBusy} onClick={saveEan}>{eanBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.saveItem')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

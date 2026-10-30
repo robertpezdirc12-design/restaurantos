@@ -37,6 +37,7 @@ import { POST as webPortalPOST } from '../migrate-web-portal/route'
 import { POST as orderItemSeatsPOST } from '../migrate-order-item-seats/route'
 import { POST as payrollSurchargeRatesPOST } from '../migrate-payroll-surcharge-rates/route'
 import { POST as equipmentMaintenancePOST } from '../migrate-equipment-maintenance/route'
+import { POST as inventoryEanPOST } from '../migrate-inventory-ean/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -87,6 +88,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'order-item-seats': orderItemSeatsPOST,
   'payroll-surcharge-rates': payrollSurchargeRatesPOST,
   'equipment-maintenance': equipmentMaintenancePOST,
+  'inventory-ean': inventoryEanPOST,
 }
 
 interface ConsoleResult {
