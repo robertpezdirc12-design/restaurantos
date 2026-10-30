@@ -495,7 +495,7 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
     expect(courses).toContain("order.status === 'hold'")
   })
 
-  it('verzija 1.205.0', () => {
-    expect(APP_VERSION).toBe('1.205.0')
+  it('verzija 1.206.0', () => {
+    expect(APP_VERSION).toBe('1.206.0')
   })
 })

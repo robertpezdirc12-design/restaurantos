@@ -30,6 +30,7 @@ import { nid, num } from '@/lib/map'
 import { smtpTransportForLocation } from '@/lib/reminders'
 import { dueTodayRules, parseRecurringConfig } from '@/lib/recurring-po'
 import { daysOverdue, localDateKey, startOfDay } from '@/lib/cron-daily'
+import { hourlyReportSection, type HourlyEmailBucket } from '@/lib/hourly-email'
 import type { SendMailOptions } from 'nodemailer'
 
 /**
@@ -76,6 +77,12 @@ export interface ShiftSummaryData {
   overdueAps?: OverdueApEntry[]
   /** OPS-11 val 3: label for the window header line (default 'Izmena'; cron digest passes 'Dan') */
   windowLabel?: string
+  /**
+   * OSS-8 (v1.206.0): urne vedre prodaje (additive, optional; absent/empty →
+   * NO section — output for pre-existing inputs stays byte-identical).
+   * Cron digest izpelje iz že naloženih Receipt.createdAt — brez nove poizvedbe.
+   */
+  hourlyBuckets?: HourlyEmailBucket[]
 }
 
 const eur = (v: number): string => `${(Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2)} EUR`
@@ -119,6 +126,12 @@ function summaryBodyLines(d: ShiftSummaryData): string[] {
     lines.push('Najbolj prodani artikli:')
     // defensive slice — the caller normally passes at most 3, enforce it here too
     d.topItems.slice(0, 3).forEach((it, i) => lines.push(`  ${i + 1}. ${it.name} — ${it.qty}×`))
+  }
+  // OSS-8 (v1.206.0): urna razčlenitev prodaje — sekcija "Prodaja po urah:" po
+  // topItems, pred naročilnicami (additive; absent/empty → NO section). Čisto
+  // sestavljanje živi v hourly-email.ts (0 uvozov) — tukaj samo glue.
+  if (Array.isArray(d.hourlyBuckets) && d.hourlyBuckets.length > 0) {
+    for (const line of hourlyReportSection(d.hourlyBuckets)) lines.push(line)
   }
   // OPS-10 val 3: "Naročilnice za zagon danes" — recurring PO rules due today (additive)
   if (Array.isArray(d.recurringToday) && d.recurringToday.length > 0) {
@@ -238,12 +251,16 @@ export async function sendDailyDigest(
         ...(args.locationId ? { locationId: args.locationId } : {}),
         createdAt: { gte: from, lt: to },
       },
-      select: { orderId: true, subtotal: true, total: true, totalVat: true, isStorno: true, paymentMethod: true },
+      // OSS-8 (v1.206.0): + createdAt — urna razčlenitev iz ISTE poizvedbe (brez nove)
+      select: { orderId: true, subtotal: true, total: true, totalVat: true, isStorno: true, paymentMethod: true, createdAt: true },
       take: 5000,
     })
     let gross = 0, net = 0, vat = 0, covers = 0
     const payTotals = new Map<string, number>()
     const orderIds = new Set<string>()
+    // OSS-8 (v1.206.0): urne vedre — polnjene v ISTI zanki (storno izključeni z
+    // istim continue; manjkajoč/neveljaven createdAt preskočen — fail-soft)
+    const hourAgg = new Map<number, { sum: number; orders: number }>()
     for (const rc of receipts) {
       if (rc.isStorno) continue
       gross += num(rc.total)
@@ -253,7 +270,17 @@ export async function sendDailyDigest(
       orderIds.add(rc.orderId)
       const m = ['cash', 'card', 'mobile'].includes(rc.paymentMethod) ? rc.paymentMethod : 'other'
       payTotals.set(m, Math.round(((payTotals.get(m) || 0) + num(rc.total)) * 100) / 100)
+      const at = rc.createdAt instanceof Date ? rc.createdAt : null
+      const ph = at ? at.getHours() : -1
+      if (ph >= 0 && ph <= 23) {
+        const cur = hourAgg.get(ph) ?? { sum: 0, orders: 0 }
+        cur.sum += num(rc.total)
+        cur.orders += 1
+        hourAgg.set(ph, cur)
+      }
     }
+    const hourlyBuckets: HourlyEmailBucket[] = [...hourAgg.entries()]
+      .map(([hour, agg]) => ({ hour, revenue: agg.sum, orders: agg.orders }))
     const items = orderIds.size
       ? await db.orderItem.findMany({ where: { orderId: { in: [...orderIds] }, voided: false }, select: { menuItemName: true, quantity: true }, take: 5000 })
       : []
@@ -283,6 +310,7 @@ export async function sendDailyDigest(
       covers,
       payments: [...payTotals.entries()].map(([method, amount]) => ({ method, amount })),
       topItems,
+      hourlyBuckets,
       recurringToday,
       overdueAps,
       windowLabel: 'Dan',
