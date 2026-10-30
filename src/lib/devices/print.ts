@@ -179,7 +179,7 @@ export function buildKitchenTicketLines(order: {
   type?: string
   createdAt?: string
   employeeName?: string | null
-  items: { name: string; qty: number; note?: string | null; station?: string | null; allergenWarning?: string | null; allergenCodes?: string[] }[]
+  items: { name: string; qty: number; note?: string | null; station?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; modifiers?: string[] | null }[]
 }, stationFilter?: 'KITCHEN' | 'BAR'): PrintLine[] {
   const now = new Date()
   const time = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
@@ -195,6 +195,11 @@ export function buildKitchenTicketLines(order: {
   out.push({ text: '--------------------------------' })
   for (const it of items) {
     out.push({ text: `${it.qty}× ${it.name}`, bold: true, size: 'large' })
+    // OSS-10 (v1.209.0): izbrane opcije (velikost/nivo/dodatki) na lastnih vrsticah —
+    // kuhinja vidi »0,5 L« tudi na tiskanem listu (KDS jih že vidi kot detail naloge)
+    for (const mo of it.modifiers ?? []) {
+      if (typeof mo === 'string' && mo.trim()) out.push({ text: `   + ${mo.trim()}` })
+    }
     // Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo + kode iz posnetka —
     // kuhinja/bar ju VIDITA na tiskanem listu (enako kot KDS zaslon)
     if (it.allergenWarning) {

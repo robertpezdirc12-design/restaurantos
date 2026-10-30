@@ -44,6 +44,8 @@ export { ManagerCallsCard } from './tabs/manager-calls-card'
 export { ManagerCallSettingsCard } from './tabs/manager-call-settings-card'
 /* Issue #14 (v1.112.0) — KDS: config kartica pripravljalnih postaj + usmerjanje artiklov */
 export { PrepStationsCard } from './tabs/prep-stations-card'
+/* OSS-10 (v1.209.0) — variante postavk: admin CRUD skupin opcij (velikosti/nivoji) */
+export { MenuModifiersCard } from './tabs/menu-modifiers-card'
 /* OSS-1 (v1.200.0) — vzdrževanje opreme: register naprav + servisni načrti */
 export { EquipmentCard } from './tabs/equipment-card'
 /* OSS-2 (v1.203.0) — dokumenti s priponkami: SOP-i, pogodbe, recepture, navodila */

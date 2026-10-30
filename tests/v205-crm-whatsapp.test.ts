@@ -438,7 +438,7 @@ describe('Č3 registri v1.205.0', () => {
     const sk = Object.keys(sl)
     const hk = Object.keys(hr)
     expect(sk.length).toBe(hk.length)
-    expect(sk.length).toBe(3693)
+    expect(sk.length).toBe(3709)
     for (const k of ['crm.guests.whatsapp', 'crm.new.testPlaceholderPhone']) {
       expect(sk).toContain(k)
       expect(hk).toContain(k)
@@ -451,7 +451,7 @@ describe('Č3 registri v1.205.0', () => {
     expect(hr['crm.consent.gdprNote']).toContain('WhatsApp')
   })
 
-  it('verzija 1.208.0', () => {
-    expect(APP_VERSION).toBe('1.208.0')
+  it('verzija 1.209.0', () => {
+    expect(APP_VERSION).toBe('1.209.0')
   })
 })

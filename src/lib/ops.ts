@@ -28,7 +28,9 @@ import { vatFromGross } from '@/lib/billing'
 import { parseSeatOption } from '@/lib/seat-assignments'
 
 export const orderInclude = {
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
+  // OSS-10 (v1.209.0): izbrane opcije (npr. velikost) pridejo do kuhinjskega lista
+  // — aditivni select, zgodovinske rute ostanejo byte-identične, če opcij ni.
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } } } },
   Table: true,
   Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
   Receipt: { orderBy: { createdAt: 'desc' as const } },

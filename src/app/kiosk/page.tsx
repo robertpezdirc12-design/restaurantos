@@ -19,6 +19,7 @@ import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } f
 import { ALLERGEN_CODES, allergenLabel, labelToAllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import { parseAllergens } from '@/lib/allergens'
 import { LOCK_ARM_WINDOW_MS, initialLockState, tapLock, type LockState } from '@/lib/kiosk-lock'
+import { orderItemDisplayName } from '@/lib/item-variants'
 
 interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -483,7 +484,8 @@ function KioskInner() {
                 {cart.length === 0 && <span className="text-stone-400">{t('guest.kiosk.cartEmpty')}</span>}
                 {cart.map((l) => (
                   <div key={l.key} className="shrink-0 rounded-xl bg-stone-800 border border-stone-700 px-3 py-2 flex items-center gap-2">
-                    <span className="font-medium">{l.qty}× {l.item.name}</span>
+                    {/* OSS-10 (v1.209.0): varianta/velikost v imenu vrstice — »Pizza · 0,5 L« */}
+                    <span className="font-medium">{l.qty}× {orderItemDisplayName(l.item.name, l.modifiers.map((m) => m.name))}</span>
                     <button type="button" aria-label={t('guest.common.qtyLess')} onClick={() => setCart((p) => l.qty > 1 ? p.map((x) => x.key === l.key ? { ...x, qty: x.qty - 1 } : x) : p.filter((x) => x.key !== l.key))} className="h-11 w-11 inline-flex items-center justify-center rounded-xl text-stone-300 hover:text-white hover:bg-stone-700"><Minus className="h-5 w-5" /></button>
                     <button type="button" aria-label={t('guest.common.qtyMore')} onClick={() => setCart((p) => p.map((x) => x.key === l.key ? { ...x, qty: x.qty + 1 } : x))} className="h-11 w-11 inline-flex items-center justify-center rounded-xl text-stone-300 hover:text-white hover:bg-stone-700"><Plus className="h-5 w-5" /></button>
                     <span className="font-bold ml-1">{fmt(lineTotal(l))}</span>

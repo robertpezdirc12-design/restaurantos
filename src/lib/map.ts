@@ -325,6 +325,14 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
     courseId: (it.courseId as string | null | undefined) ?? null,
     // OPS-9 val 3 (v1.76.0): firedAt for the KDS per-item live timer / delay-reason dialog
     firedAt: (it.firedAt as string | null | undefined) ?? null,
+    // OSS-10 (v1.209.0): izbrane opcije (npr. velikost »0,5 L«) — imena OrderItemModifier
+    // vrstic; aditivno: če poizvedba ne vključuje relacije, polje pade ven
+    // (undefined → odgovor byte-identičen prejšnjemu).
+    modifiers: Array.isArray(it.OrderItemModifier)
+      ? (it.OrderItemModifier as unknown[])
+          .map((m) => ((m as { name?: unknown } | null)?.name))
+          .filter((n): n is string => typeof n === 'string' && n.length > 0)
+      : undefined,
   }
 }
 

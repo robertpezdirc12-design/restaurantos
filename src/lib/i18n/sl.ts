@@ -3971,6 +3971,24 @@ export const sl: Record<string, string> = {
 
   // Migracijska konzola (Enterprise → Shema migracije)
   'mig.webPortal.desc': 'Spletni portal za naročila — tabela WebOrderPortal (poveznica /s/<token>, prevzem/dostava, pristojbine, HMAC sledenja) (#8)',
+
+  // OSS-10 (v1.209.0) — Variante artiklov: skupine opcij (velikosti/nivoji)
+  'modifiers.card.title': 'Skupine opcij (variante)',
+  'modifiers.card.desc': 'Velikost/nivo = obvezna skupina z eno izbiro. Gost izbere v kiosku ali QR meniju; kuhinja vidi izbiro na listu.',
+  'modifiers.group.new': 'Nova skupina opcij',
+  'modifiers.group.name': 'Ime skupine',
+  'modifiers.group.template': 'Predloga',
+  'modifiers.template.free': 'Prosta skupina (dodatki)',
+  'modifiers.template.variant': 'Varianta — velikost/nivo (obvezno, en izbor)',
+  'modifiers.group.required': 'Obvezna izbira',
+  'modifiers.group.min': 'Najmanj izbir',
+  'modifiers.group.max': 'Največ izbir (prazno = neomejeno)',
+  'modifiers.option.add': 'Dodaj opcijo',
+  'modifiers.option.name': 'Opcija',
+  'modifiers.option.price': 'Doplačilo (EUR)',
+  'modifiers.items.attach': 'Pripni na artikle',
+  'modifiers.links.count': 'Pripeto artiklov: {n}',
+  'modifiers.variant.badge': 'Varianta',
 }
 
 export type Dictionary = typeof sl

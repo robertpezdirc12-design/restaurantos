@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuthWithPerms, isResponse, ok, fail } from '@/lib/api'
+import { requireAuthWithPerms, requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { writeAudit } from '@/lib/audit-chain'
 import { jstr } from '@/lib/map'
 import { sanitizeAllergenCodeList, parseAllergenCodes } from '@/lib/allergen-catalog'
 import { flagMenuItemsForAllergenReview } from '@/lib/allergen-profile'
+import { VARIANT_NAME_MAX } from '@/lib/item-variants'
 
 /**
  * Issue #7 (P1, v1.104.0) — alergeni OPCIJ MODIFIKATORJA (dodatek spremeni
@@ -97,6 +98,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const stationRouting = prepStationId !== undefined && prepStationId !== (modifier.prepStationId ?? null)
 
+  // OSS-10 (v1.209.0): vsebinska polja opcije — ime/doplačilo/razpoložljivost/vrstni
+  // red (aditivno: brez teh polj se vsebina NE spremeni; alergensko ravnanje zgoraj
+  // ostane nedotaknjeno). Doplačilo = število ali SI niz z vejico, 0..99999.99.
+  const contentData: { name?: string; price?: number; isAvailable?: boolean; sortOrder?: number } = {}
+  if (body?.name !== undefined) {
+    const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : ''
+    if (!name) return fail('Ime opcije je obvezno.', 400)
+    if (name.length > VARIANT_NAME_MAX) return fail(`Ime opcije je predolgo (največ ${VARIANT_NAME_MAX} znakov).`, 400)
+    if (name !== modifier.name) contentData.name = name
+  }
+  if (body?.price !== undefined) {
+    const raw = typeof body.price === 'number' ? body.price : Number(String(body.price).trim().replace(',', '.'))
+    if (!Number.isFinite(raw) || raw < 0 || raw > 99999.99) return fail('Doplačilo mora biti število 0–99999.99.', 400)
+    const price = Math.round(raw * 100) / 100
+    if (price !== Number(modifier.price)) contentData.price = price
+  }
+  if (body?.isAvailable !== undefined) {
+    const isAvailable = body.isAvailable === true
+    if (isAvailable !== modifier.isAvailable) contentData.isAvailable = isAvailable
+  }
+  if (body?.sortOrder !== undefined) {
+    const n = typeof body.sortOrder === 'number' ? body.sortOrder : Number(String(body.sortOrder).trim())
+    if (!Number.isInteger(n) || n < 0 || n > 50) return fail('sortOrder mora biti celo število 0–50.', 400)
+    if (n !== modifier.sortOrder) contentData.sortOrder = n
+  }
+  const updatedFields = Object.keys(contentData)
+
   const oldCodes = parseAllergenCodes(modifier.allergens).codes
   const newJson = jstr(hasAllergens ? parsed.codes : oldCodes)
   const contentChanged = hasAllergens && oldCodes.join('|') !== parsed.codes.join('|')
@@ -108,7 +136,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const affectedMenuItems = [...new Set(links.map((l) => l.menuItemId))]
 
   await db.$transaction(async (tx) => {
-    await tx.modifier.update({ where: { id }, data: { ...(hasAllergens ? { allergens: newJson } : {}), ...(prepStationId !== undefined ? { prepStationId } : {}) } })
+    await tx.modifier.update({ where: { id }, data: { ...(hasAllergens ? { allergens: newJson } : {}), ...(prepStationId !== undefined ? { prepStationId } : {}), ...contentData } })
     if (contentChanged && affectedMenuItems.length > 0) {
       await flagMenuItemsForAllergenReview(tx, affectedMenuItems, 'sprememba alergenov dodatka')
     }
@@ -128,6 +156,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }),
       locationId: modifier.ModifierGroup.locationId || undefined,
     })
+    if (updatedFields.length > 0) {
+      await writeAudit(tx, {
+        userId: user.sub,
+        action: 'MODIFIER_UPDATED',
+        entityType: 'Modifier',
+        entityId: id,
+        details: jstr({
+          modifier: modifier.name,
+          group: modifier.ModifierGroup.name,
+          changed: updatedFields,
+          ...contentData,
+        }),
+        locationId: modifier.ModifierGroup.locationId || undefined,
+      })
+    }
   })
 
   return ok({
@@ -136,5 +179,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     contentChanged,
     flaggedMenuItems: contentChanged ? affectedMenuItems.length : 0,
     ...(prepStationId !== undefined ? { prepStationId } : {}),
+    ...(updatedFields.length > 0 ? { updated: updatedFields } : {}),
   })
+}
+
+/**
+ * OSS-10 (v1.209.0) — brisanje opcije. Zgodovina naročil ostane čista:
+ * OrderItemModifier nima tujega ključa na Modifier (le posnetek name/price/
+ * modifierGroupName), brisanje opcije torej NE posega po naročilih. Skupina mora
+ * biti v dosegu uporabnika (guardResource — lokacija skupine). Audit-chain:
+ * MODIFIER_DELETED.
+ */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await requirePermission(req, 'menu.manage')
+  if (isResponse(user)) return user
+
+  const { id } = await params
+  const modifier = await db.modifier.findUnique({
+    where: { id },
+    include: { ModifierGroup: { select: { id: true, locationId: true, name: true } } },
+  })
+  if (!modifier) return fail('Opcija ne obstaja.', 404)
+
+  const guard = await guardResource(user, modifier.ModifierGroup.locationId)
+  if (guard) return guard
+
+  await db.$transaction(async (tx) => {
+    await tx.modifier.delete({ where: { id } })
+    await writeAudit(tx, {
+      userId: user.sub,
+      action: 'MODIFIER_DELETED',
+      entityType: 'Modifier',
+      entityId: id,
+      details: jstr({ modifier: modifier.name, group: modifier.ModifierGroup.name }),
+      locationId: modifier.ModifierGroup.locationId || undefined,
+    })
+  })
+
+  return ok({ deleted: id })
 }

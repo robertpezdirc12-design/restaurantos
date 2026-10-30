@@ -3966,6 +3966,24 @@ export const hr: Record<string, string> = {
 
   // Migracijska konzola (Enterprise → Shema migracija)
   'mig.webPortal.desc': 'Web portal za naruđbe — tablica WebOrderPortal (poveznica /s/<token>, preuzimanje/dostava, pristojbine, HMAC praćenja) (#8)',
+
+  // OSS-10 (v1.209.0) — Varijante artikla: grupe opcija (veličine/nivoi)
+  'modifiers.card.title': 'Grupe opcija (varijante)',
+  'modifiers.card.desc': 'Veličina/nivo = obavezna grupa s jednim odabirom. Gost bira u kiosku ili QR meniju; kuhinja vidi odabir na listu.',
+  'modifiers.group.new': 'Nova grupa opcija',
+  'modifiers.group.name': 'Naziv grupe',
+  'modifiers.group.template': 'Predložak',
+  'modifiers.template.free': 'Slobodna grupa (dodaci)',
+  'modifiers.template.variant': 'Varijanta — veličina/nivo (obavezno, jedan odabir)',
+  'modifiers.group.required': 'Obavezni odabir',
+  'modifiers.group.min': 'Najmanje odabira',
+  'modifiers.group.max': 'Najviše odabira (prazno = neograničeno)',
+  'modifiers.option.add': 'Dodaj opciju',
+  'modifiers.option.name': 'Opcija',
+  'modifiers.option.price': 'Doplata (EUR)',
+  'modifiers.items.attach': 'Poveži s artiklima',
+  'modifiers.links.count': 'Povezano artikala: {n}',
+  'modifiers.variant.badge': 'Varijanta',
 }
 
 export type DictionaryHr = typeof hr
