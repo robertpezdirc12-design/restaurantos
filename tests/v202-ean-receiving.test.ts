@@ -398,7 +398,7 @@ describe('Č4 registri, UI statika, i18n, verzija', () => {
     expect(src).toContain("it.inventoryItemId && it.inventoryItemId === invId")
   })
 
-  it('verzija: pin 1.204.0', () => {
-    expect(APP_VERSION).toBe('1.204.0')
+  it('verzija: pin 1.205.0', () => {
+    expect(APP_VERSION).toBe('1.205.0')
   })
 })

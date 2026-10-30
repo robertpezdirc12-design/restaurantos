@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
-import { recordConsent, currentConsentMap, crmAudit, CRM_CHANNELS } from '@/lib/crm'
+import { recordConsent, currentConsentMap, crmAudit, CRM_CHANNELS, type CrmChannel } from '@/lib/crm'
 
 /**
  * Issue #11 §1 — zapis soglasja/preklica v append-only sled.
@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   } | null
   if (!body?.guestId) return fail('Manjka guestId.')
   const channel = String(body.channel ?? 'email')
-  if (!CRM_CHANNELS.includes(channel as 'email' | 'sms')) return fail('Neveljaven kanal (email|sms).')
+  // OSS-7 (v1.205.0): tretji kanal whatsapp — isti pravilnik soglasja
+  if (!CRM_CHANNELS.includes(channel as CrmChannel)) return fail('Neveljaven kanal (email|sms|whatsapp).')
   const action = String(body.action ?? '')
   if (action !== 'grant' && action !== 'revoke') return fail('Neveljavna akcija (grant|revoke).')
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   try {
     await recordConsent({
       guestId: guest.id,
-      channel: channel as 'email' | 'sms',
+      channel: channel as CrmChannel,
       status,
       source,
       proof: status === 'granted' ? String(body.proof ?? '').slice(0, 500) : 'Preklic s strani vodstva/gosta.',

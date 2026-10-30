@@ -458,13 +458,16 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
       expect(typeof (hr as Record<string, string>)[k]).toBe('string')
     }
     expect(Object.keys(sl).length).toBe(Object.keys(hr).length)
-    expect(Object.keys(sl).length).toBe(3691)
+    // v1.205.0: +2 ključa (crm.guests.whatsapp, crm.new.testPlaceholderPhone) — 3691 → 3693
+    expect(Object.keys(sl).length).toBe(3693)
   })
 
   it('GAP-ANALIZA: OSS-4 označen kot IZVEDENO', () => {
     const doc = readFileSync('docs/GAP-ANALIZA-odprtokodna-konkurenca.md', 'utf8')
     expect(doc).toContain('IZVEDENO @ v1.204.0')
-    expect(doc).toContain('OSS-4 hold naročila\n   (v1.204.0) so IZVEDENI')
+    // v1.205.0: §3 sklep razširjen z OSS-7 — OSS-4 ostaja v izpeljani listi IZVEDENIH
+    expect(doc).toContain('OSS-4 hold naročila\n   (v1.204.0)')
+    expect(doc).toContain('OSS-7 kampanje — A-del vključno z WhatsApp kanalom (v1.205.0')
   })
 
   it('shema NESPREMENJENA: Order.status ostaja String (0 DDL)', () => {
@@ -492,7 +495,7 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
     expect(courses).toContain("order.status === 'hold'")
   })
 
-  it('verzija 1.204.0', () => {
-    expect(APP_VERSION).toBe('1.204.0')
+  it('verzija 1.205.0', () => {
+    expect(APP_VERSION).toBe('1.205.0')
   })
 })

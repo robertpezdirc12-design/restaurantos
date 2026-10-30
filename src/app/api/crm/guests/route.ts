@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
       lastVisitAt: g.lastVisitAt,
       consentEmail: st?.email ?? null,
       consentSms: st?.sms ?? null,
+      consentWhatsapp: st?.whatsapp ?? null,
     }
   })
   return ok({ guests: rows, total: rows.length })

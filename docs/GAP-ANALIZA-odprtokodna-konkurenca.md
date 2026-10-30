@@ -36,7 +36,7 @@ POS, purpose-built gostinstvo). Njihov FEATURE-CHECKLIST je izjemno pošten
 |---|---|---|
 | Modul **Vzdrževanje opreme** (#16): register opreme, servisni razporedi, overdue zastavice | NI (rg „vzdrževanj/ equipment" — ni modula; HACCP pokriva samo higienske meritve) | **OSS-1** |
 | Modul **Dokumenti** (#17): SOP-i, pogodbe, recepture + priponke (PDF/slike/Office) | DELNO (HACCP načrti + recepture/batch-preparations; splošni dokumenti s priponkami NI) | **OSS-2** |
-| **Kampanje po kanalih** (#14): email (lastni SMTP) / SMS / WhatsApp z opt-out | DELNO (waitlist SMS opomnik v1.188.0 + push OPS11; kampanjni model z opt-out NI) | **OSS-7** |
+| **Kampanje po kanalih** (#14): email (lastni SMTP) / SMS / WhatsApp z opt-out | **SKORAJ POLNO** (kampanjni model + opt-out ŽE od v1.126.0 — Issue #11: Campaign + CampaignSend + GuestConsent + javna enklkova odjava + segmenti; analiza v1.199.0 je tu NISEN najdla obstoječega modula — lažna vrzel 2, popravljeno @ v1.201.0/1.205.0; MANJKAL je samo kanal WhatsApp → dodan v1.205.0, transport Meta Business API = B/C) | **OSS-7** |
 | **Načrtovana poročila po e-pošti** (#13): 18 poročil + urni pošiljanji | DELNO (cron-daily, lot-alert, paylink-reconcile obstajajo; urni poročila na SMTP NI) | **OSS-8** |
 | **Odprta API specifikacija** (#19): REST + Swagger | NI (API + ključi + dnevnik v Integracijah obstajajo; OpenAPI spec NI) | **OSS-5** |
 | **MCP strežnik** (#19): osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno integration keys z izrecnimi dovoljenji | NI (dveh vrst ključev NI; imamo enoten API ključ + dnevnik) | **OSS-6** (razred B — glej spodaj) |
@@ -104,7 +104,7 @@ konvenciji kot TRZNA-VRZELI-2027. **Brez odobritve se nič od tega ne začne.**
 | **OSS-4** | **Hold/draft naročila** — zadrži nedokončano naročilo brez zaključka | OrderRestro planned | srednji: status hold + interakcija z offline vrsto (R2/R7 mora ostati garancija!) + revizija | A (srednji; previdno z R7) — **IZVEDENO @ v1.204.0**: čisti sloj `order-hold.ts` (canHoldOrder: samo open+unpaid+brez poslanih postavk — zadržano NIKOLI na KDS), ruti POST /api/orders/[id]/hold + /resume (CAS + revizija ORDER_HOLD/ORDER_RESUMED + dogodka), fire ruta s CAS-belolistnim firedAt zapisom (dirka hold↔fire = 409 + rollback), garda tečajev; VSE ostale poti fail-closed prek obstoječih belih list (ORDER_MUTABLE_STATUS / ORDER_ACTIVE_DB / ORDER_PAYABLE_STATUS ne poznajo 'hold'): urejanje, plačilo, paylink, premik, združitev, popust, preklic, void, offline sync addItems (operacija propade z 409, po nadaljevanju se ponovi — R7 garancija nedotaknjena); miza z zadržanim ostaja OCCUPIED (Issue #70 izpeljava) s besedilom »Zadržano«, klik ploščice → seznam zadržanih; 0 DDL (status je String) |
 | **OSS-5** | **Odprta API specifikacija** — OpenAPI opis obstoječih javnih/integracijskih rut, statično datoteko + route za prenos | OrderRestro Swagger | statična spec + test na pokritost rut; brez nove odvisnosti | A (mali–srednji) — **IZVEDENO @ v1.201.0**: OpenAPI 3.0.3 opis vseh 14 javnih/integracijskih rut (19 handlerjev), disk↔spec pokritost v OBEH smerah uveljavljena s testi, ruta GET /api/openapi, kartica v Integracijah |
 | **OSS-6** | **MCP strežnik** — osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno od integration ključev | OrderRestro | protokol, NE AI model — a ker obstaja za AI okoliša, **odločitev je lastnikova** glede pravila „brez AI" | **B** — @ v1.201.0 lastnik izrecno potrdil „ne vnašati AI modelov, samo skripte" → **OSTAJA ZUNAJ OBSEGA** |
-| **OSS-7** | **Kampanje po kanalih** z opt-out (email/SMS/WhatsApp) | OrderRestro #14 | kampanjni model + opt-out = A del; transporti (SMTP/SMS/WhatsApp ponudniki) = B/C | A-del + B/C |
+| **OSS-7** | **Kampanje po kanalih** z opt-out (email/SMS/WhatsApp) | OrderRestro #14 | kampanjni model + opt-out = A del; transporti (SMTP/SMS/WhatsApp ponudniki) = B/C | A-del — **IZVEDENO**: kampanjni model + opt-out za email/SMS že od v1.126.0 (Issue #11 — analiza v1.199.0 to ni ulovila); **kanal WhatsApp @ v1.205.0** (CRM_CHANNELS 3, campaignChannel fail-closed preslikava, ConsentState.whatsapp, whatsappSendFn determinističen fail-soft — transport Meta Business API čaka lastnika B/C, 0 DDL); transporti (SMTP obstaja, SMS obstaja, WhatsApp ponudnik) = B/C |
 | **OSS-8** | **Urna poročila po e-pošti** | OrderRestro #13 | cron obstaja (cron-daily); transport = SMTP konfiguracija | B (SMTP = lastnik) |
 | **OSS-9** | **Črtne kode/EAN pri nabavi** — EAN dobavitelja na artiklu, sken pri prevzemu | OrderRestro planned | mali: polje + vnos/sken; skener = tipkovnica (deterministično) | A (mali) |
 | **OSS-10** | **Variante artiklov** (velikosti/nivoji) | OrderRestro planned | modifiers delno pokrijejo; potrebo potrditi z uporabo | A (za potrebo vprašaj uporabo) |
@@ -142,10 +142,12 @@ koda iz AGPL repozitorijev (licenca).
    Največ vrednosti: njihov javni pošten FEATURE-CHECKLIST žanr (mi ga imamo
    interno v worklogu/dokih — javna izdaja je odločitev lastnika, marketing
    vrednost dokazana pri njih), ter 5–6 konkretnih funkcij iz tabele OSS.
-3. **Kaj nam manjka:** realne vrzeli so OSS-7/8 (kampanje/urna poročila — del
-   B/C); **OSS-1 oprema (v1.200.0), OSS-5 OpenAPI + OSS-15 zvok plačila (v1.201.0),
+3. **Kaj nam manjka:** realna vrzel je **OSS-8** (urna poročila — SMTP transport = B lastnik);
+   **OSS-1 oprema (v1.200.0), OSS-5 OpenAPI + OSS-15 zvok plačila (v1.201.0),
    OSS-9 EAN pri nabavi (v1.202.0), OSS-2 dokumenti (v1.203.0), OSS-4 hold naročila
-   (v1.204.0) so IZVEDENI**;
+   (v1.204.0), OSS-7 kampanje — A-del vključno z WhatsApp kanalom (v1.205.0; model +
+   opt-out email/SMS že od v1.126.0 — analiza v1.199.0 to ni ulovila, lažna vrzel 2)
+   so IZVEDENI**;
    OSS-3 čas mize je bila
    LAŽNA VRZEL (že od v1.129.0); OSS-6 MCP ostaja ZUNAJ OBSEGA po lastnikovem
    pravilu „brez AI modelov, samo skripte" (izrecno potrjeno v1.201.0); ostalo

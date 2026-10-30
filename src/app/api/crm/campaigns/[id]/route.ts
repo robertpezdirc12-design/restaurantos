@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { maskPhone } from '@/lib/pii'
-import { maskEmail, campaignPerformance, crmAudit } from '@/lib/crm'
+import { maskEmail, campaignPerformance, crmAudit, campaignChannel } from '@/lib/crm'
 
 /**
  * Issue #11 §3 — detajl kampanje: števci IZ vrstic (sent/failed/skipped/
@@ -52,7 +52,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       channel: s.channel,
       status: s.status,
       attempts: s.attempts,
-      recipientMasked: s.channel === 'sms' ? maskPhone(s.recipient) : maskEmail(s.recipient),
+      // OSS-7 (v1.205.0): whatsapp je telefonski kanal — maska kot SMS
+      recipientMasked: campaignChannel(s.channel) === 'email' ? maskEmail(s.recipient) : maskPhone(s.recipient),
       sentAt: s.sentAt,
       failedAt: s.failedAt,
       unsubscribedAt: s.unsubscribedAt,

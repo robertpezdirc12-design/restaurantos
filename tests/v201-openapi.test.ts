@@ -160,7 +160,7 @@ describe('v1.201.0 OSS-5 — Č5 ruta GET /api/openapi', () => {
 })
 
 describe('v1.201.0 — Č6 verzija', () => {
-  it('APP_VERSION je 1.204.0', () => {
-    expect(APP_VERSION).toBe('1.204.0')
+  it('APP_VERSION je 1.205.0', () => {
+    expect(APP_VERSION).toBe('1.205.0')
   })
 })

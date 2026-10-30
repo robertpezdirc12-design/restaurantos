@@ -30,13 +30,14 @@ import { CouponsCard } from '@/components/tabs/coupons-card'
 
 /* ── tipi (strežniški odgovori) ── */
 interface SegmentT {
-  type: string; total: number; emailEligible: number; smsEligible: number
+  type: string; total: number; emailEligible: number; smsEligible: number; whatsappEligible?: number
   missingContact: number; criterionKey: string; criterionParams: Record<string, number>; periodDays: number
 }
 interface GuestT {
   id: string; name: string; email: string | null; phone: string | null; isVip: boolean
   loyaltyMember: boolean; totalVisits: number; totalSpent: number
   lastVisitAt?: string | null; consentEmail: string | null; consentSms: string | null
+  consentWhatsapp?: string | null
 }
 interface DupPairT {
   canonical: { id: string; name: string; email: string; phone: string; totalVisits: number }
@@ -72,6 +73,14 @@ function statusLabel(t: (k: string) => string, s: string): string {
     cancelled: t('crm.st.cancelled'),
   }
   return map[s] ?? s
+}
+
+/** OSS-7 (v1.205.0) — oznaka kanala (znamke se ne prevajajo); fail-closed privzetek
+ * 'E-mail' (kanal iz baze je String — neznan = email obnašanje, kot campaignChannel). */
+function channelLabel(channel: string): string {
+  if (channel === 'sms') return 'SMS'
+  if (channel === 'whatsapp') return 'WhatsApp'
+  return 'E-mail'
 }
 
 export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boolean; centralLocationId?: string }) {
@@ -272,6 +281,9 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                     <Badge className={g.consentSms === 'granted' ? 'bg-emerald-100 text-emerald-800' : g.consentSms === 'revoked' ? 'bg-red-100 text-red-800' : 'bg-stone-100 text-stone-600'}>
                       {t('crm.guests.sms')}: {g.consentSms === 'granted' ? t('crm.consent.granted') : g.consentSms === 'revoked' ? t('crm.consent.revoked') : t('crm.consent.none')}
                     </Badge>
+                    <Badge className={g.consentWhatsapp === 'granted' ? 'bg-emerald-100 text-emerald-800' : g.consentWhatsapp === 'revoked' ? 'bg-red-100 text-red-800' : 'bg-stone-100 text-stone-600'}>
+                      {t('crm.guests.whatsapp')}: {g.consentWhatsapp === 'granted' ? t('crm.consent.granted') : g.consentWhatsapp === 'revoked' ? t('crm.consent.revoked') : t('crm.consent.none')}
+                    </Badge>
                     {canManage && (
                       <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => { setConsentFor(g); setConsentForm({ channel: 'email', action: 'grant', proof: '' }) }}>
                         {t('crm.guests.consentBtn')}
@@ -352,7 +364,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                   <p className="font-medium truncate flex items-center gap-1.5 flex-wrap">
                     {c.name}
                     <Badge className={STATUS_BADGE[c.status] ?? 'bg-stone-100'}>{statusLabel(t, c.status)}</Badge>
-                    <Badge variant="secondary">{c.channel === 'sms' ? 'SMS' : 'E-mail'}</Badge>
+                    <Badge variant="secondary">{channelLabel(c.channel)}</Badge>
                     <Badge variant="outline">{t(`crm.seg.${c.segmentType}`) === `crm.seg.${c.segmentType}` ? c.segmentType : t(`crm.seg.${c.segmentType}`)}</Badge>
                   </p>
                   <p className="text-xs text-stone-500 break-words">
@@ -374,7 +386,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
 
       {/* ── dialog: soglasje ── */}
       <Dialog open={Boolean(consentFor)} onOpenChange={(v) => !v && setConsentFor(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader><DialogTitle>{t('crm.consent.dialogTitle', { name: consentFor?.name ?? '' })}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
@@ -384,6 +396,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                 <SelectContent>
                   <SelectItem value="email">E-mail</SelectItem>
                   <SelectItem value="sms">SMS</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -419,7 +432,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
 
       {/* ── dialog: nova kampanja ── */}
       <Dialog open={Boolean(newCampaign)} onOpenChange={(v) => !v && setNewCampaign(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
           <DialogHeader><DialogTitle>{t('crm.new.title')}</DialogTitle></DialogHeader>
           {newCampaign && (
             <div className="space-y-3">
@@ -435,6 +448,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                     <SelectContent>
                       <SelectItem value="email">E-mail</SelectItem>
                       <SelectItem value="sms">SMS</SelectItem>
+                      <SelectItem value="whatsapp">WhatsApp</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -470,7 +484,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
               <div>
                 <Label htmlFor="nc-test">{t('crm.new.testRecipient')}</Label>
                 <Input id="nc-test" className="mt-1" value={newCampaign.testRecipient} onChange={(e) => setNewCampaign({ ...newCampaign, testRecipient: e.target.value })}
-                  placeholder={t('crm.new.testPlaceholder')} />
+                  placeholder={newCampaign.channel === 'email' ? t('crm.new.testPlaceholder') : t('crm.new.testPlaceholderPhone')} />
                 <p className="mt-1 text-xs text-stone-500">{t('crm.new.testNote')}</p>
               </div>
               <p className="text-xs text-stone-500">{t('crm.new.footerNote')}</p>
@@ -487,13 +501,13 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
 
       {/* ── dialog: detajl kampanje + življenjski cikel ── */}
       <Dialog open={Boolean(detail)} onOpenChange={(v) => !v && setDetail(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
           <DialogHeader><DialogTitle className="break-words">{detail?.campaign.name}</DialogTitle></DialogHeader>
           {detail && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-1.5">
                 <Badge className={STATUS_BADGE[detail.campaign.status] ?? 'bg-stone-100'}>{statusLabel(t, detail.campaign.status)}</Badge>
-                <Badge variant="secondary">{detail.campaign.channel === 'sms' ? 'SMS' : 'E-mail'}</Badge>
+                <Badge variant="secondary">{channelLabel(detail.campaign.channel)}</Badge>
                 <Badge variant="outline">{t('crm.detail.eligible', { n: detail.performance.sentToProvider + detail.performance.failed + detail.performance.skipped + detail.performance.unsubscribed + detail.performance.queued || detail.campaign.eligibleCount })}</Badge>
                 <Badge className="bg-emerald-100 text-emerald-800">{t('crm.detail.sent', { n: detail.performance.sentToProvider })}</Badge>
                 <Badge className="bg-red-100 text-red-800">{t('crm.detail.failed', { n: detail.performance.failed })}</Badge>

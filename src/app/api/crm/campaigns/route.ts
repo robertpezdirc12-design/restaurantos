@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { nid } from '@/lib/map'
 import { requirePermission, locationScope, isResponse, ok, fail, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
-import { CRM_SEGMENT_TYPES, crmAudit } from '@/lib/crm'
+import { CRM_SEGMENT_TYPES, crmAudit, CRM_CHANNELS, type CrmChannel } from '@/lib/crm'
 
 /**
  * Issue #11 §3 — kampanje: seznam (v obsegu uporabnika) + ustvarjanje
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
   const name = String(body.name ?? '').trim()
   if (name.length < 3) return fail('Ime kampanje je obvezno (min. 3 znaki).')
   const channel = String(body.channel ?? 'email')
-  if (channel !== 'email' && channel !== 'sms') return fail('Kanal mora biti email ali sms.')
+  // OSS-7 (v1.205.0): tretji kanal whatsapp — model + opt-out (transport B/C)
+  if (!CRM_CHANNELS.includes(channel as CrmChannel)) return fail('Kanal mora biti email, sms ali whatsapp.')
   const segmentType = String(body.segmentType ?? 'all')
   if (!CRM_SEGMENT_TYPES.includes(segmentType as 'all')) return fail('Neveljaven segment.')
   const segmentPeriodDays = Math.max(7, Math.min(730, Number(body.segmentPeriodDays) || 90))

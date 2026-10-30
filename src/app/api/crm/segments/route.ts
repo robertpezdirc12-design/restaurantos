@@ -34,12 +34,15 @@ export async function GET(req: NextRequest) {
     const consent = await currentConsentMap(guests.map((g) => g.id))
     let emailEligible = 0
     let smsEligible = 0
+    let whatsappEligible = 0
     let missingContact = 0
     for (const g of guests) {
       const st = consent.get(g.id)
       const email = String(g.email ?? '').trim().toLowerCase()
       const phone = String(g.phone ?? '').replace(/\D/g, '')
       if (st?.email === 'granted' && email.includes('@')) emailEligible++
+      // OSS-7 (v1.205.0): whatsapp = tretji telefonski kanal (isti kontakt, LOČENO soglasje)
+      if (st?.whatsapp === 'granted' && phone.length >= 6) whatsappEligible++
       if (st?.sms === 'granted' && phone.length >= 6) smsEligible++
       if (!email.includes('@') && phone.length < 6) missingContact++
     }
@@ -48,6 +51,7 @@ export async function GET(req: NextRequest) {
       total: guests.length,
       emailEligible,
       smsEligible,
+      whatsappEligible,
       missingContact,
       criterionKey: def.criterionKey,
       criterionParams: { n: FREQUENT_MIN_VISITS, days: periodDays },

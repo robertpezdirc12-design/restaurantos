@@ -41,8 +41,31 @@ import { smtpTransportForLocation, sendSms, smsConfigForLocation } from '@/lib/r
 /** Različica besedila soglasja (issue: "različico besedila") — dvig ob spremembi formulacije. */
 export const CRM_CONSENT_TEXT_VERSION = 'crm-consent-v1'
 
-export const CRM_CHANNELS = ['email', 'sms'] as const
+/** OSS-7 (v1.205.0) — tretji kanal WHATSAPP v kampanjnem modelu + opt-out
+ * (OrderRestro #14). A-del je MODELSKO RAVEN: vrednost teče skozi obstoječe
+ * String polje `channel` (0 DDL), soglasje/odjava/idempotenca delujejo
+ * kanalno neodvisno po istih pravilih. TRANSPORT = B/C (Meta Business API
+ * je lastnikova odločitev) — whatsappSendFn je zato determinističen
+ * fail-soft: kampanja se izvede, vrstice ostanejo IZRECNO neuspešne z
+ * razlogom (dokazano stanje — nič se ne laže o pošiljanju). */
+export const CRM_CHANNELS = ['email', 'sms', 'whatsapp'] as const
 export type CrmChannel = (typeof CRM_CHANNELS)[number]
+
+/** Fail-closed preslikava vrednosti kanala iz baze/UI: 'sms' → 'sms',
+ * 'whatsapp' → 'whatsapp', VSE ostalo → 'email' (privzeti kanal). Zamenja
+ * prejšnje vgrajene ternarje `channel === 'sms' ? 'sms' : 'email'`, ki so
+ * tretjemu kanalu tiho vračali email obnašanje. */
+export function campaignChannel(value: string): CrmChannel {
+  if (value === 'sms') return 'sms'
+  if (value === 'whatsapp') return 'whatsapp'
+  return 'email'
+}
+
+/** Kanali s TELEFONSKIM kontaktom (validacija ≥ 6 števk, normalizacija
+ * normalizePhoneDigits) — email je edini z naslovom. */
+export function isPhoneChannel(channel: CrmChannel): boolean {
+  return channel === 'sms' || channel === 'whatsapp'
+}
 
 export const CRM_SEGMENT_TYPES = ['all', 'vip', 'loyalty', 'frequent', 'new', 'inactive'] as const
 export type SegmentType = (typeof CRM_SEGMENT_TYPES)[number]
@@ -96,6 +119,7 @@ export function newUnsubscribeToken(): string {
 export interface ConsentState {
   email: 'granted' | 'revoked' | null
   sms: 'granted' | 'revoked' | null
+  whatsapp: 'granted' | 'revoked' | null
 }
 
 /** Kanonično stanje = NAJNOVEJŠA vrstica sledi po (guestId, channel, purpose='marketing'). */
@@ -107,9 +131,10 @@ export async function currentConsentMap(guestIds: string[]): Promise<Map<string,
     orderBy: [{ createdAt: 'asc' }, { actedAt: 'asc' }],
   })
   for (const r of rows) {
-    if (r.channel !== 'email' && r.channel !== 'sms') continue
-    const cur = out.get(r.guestId) ?? { email: null, sms: null }
-    cur[r.channel] = r.status === 'granted' ? 'granted' : 'revoked'
+    if (!CRM_CHANNELS.includes(r.channel as CrmChannel)) continue
+    const ch = r.channel as CrmChannel
+    const cur = out.get(r.guestId) ?? { email: null, sms: null, whatsapp: null }
+    cur[ch] = r.status === 'granted' ? 'granted' : 'revoked'
     out.set(r.guestId, cur)
   }
   return out
@@ -240,7 +265,7 @@ export async function computeAudience(campaign: {
   const type = (CRM_SEGMENT_TYPES as readonly string[]).includes(campaign.segmentType)
     ? (campaign.segmentType as SegmentType)
     : 'all'
-  const channel: CrmChannel = campaign.channel === 'sms' ? 'sms' : 'email'
+  const channel = campaignChannel(campaign.channel)
   const where = segmentWhere(type, campaign.segmentPeriodDays, new Date(), {
     locationId: campaign.locationId ?? '__no_location__',
   })
@@ -257,13 +282,13 @@ export async function computeAudience(campaign: {
   for (const g of guests) {
     const st = consent.get(g.id)
     const granted = consentGranted(st, channel)
-    const contact = channel === 'email' ? normalizeEmail(g.email) : normalizePhoneDigits(g.phone)
+    const contact = isPhoneChannel(channel) ? normalizePhoneDigits(g.phone) : normalizeEmail(g.email)
     if (!granted) {
       if (st?.[channel] === 'revoked') out.suppressed++
       continue
     }
     out.consentGranted++
-    if (!contact || (channel === 'email' && !contact.includes('@')) || (channel === 'sms' && contact.length < 6)) {
+    if (!contact || (channel === 'email' && !contact.includes('@')) || (isPhoneChannel(channel) && contact.length < 6)) {
       out.missingContact++
       continue
     }
@@ -271,7 +296,7 @@ export async function computeAudience(campaign: {
       guestId: g.id,
       firstName: g.firstName,
       lastName: g.lastName,
-      recipient: channel === 'email' ? contact : contact,
+      recipient: contact,
     })
   }
   return out
@@ -374,6 +399,17 @@ export const smsSendFn: CampaignSendFn = async (args) => {
   return { ok: res.ok, detail: res.detail }
 }
 
+/** OSS-7 (v1.205.0) — WhatsApp pošiljatelj: TRANSPORT = B/C (Meta Business
+ * API je lastnikova odločitev), zato je privzeti pošiljatelj determinističen
+ * fail-soft: vrstica ostane 'failed' z IZRECNO razlogom — dokazano stanje
+ * (nič se ne laže o pošiljanju, princip 3). Ko lastnik odobri transport,
+ * se ta funkcija razširi po vzorcu smsSendFn (konfiguracija iz Integracij).
+ * 0 omrežja, 0 odvisnosti, 0 AI. */
+export const whatsappSendFn: CampaignSendFn = async (args) => {
+  if (args.channel !== 'whatsapp') return { ok: false, detail: 'Kanal ni whatsapp' }
+  return { ok: false, detail: 'WhatsApp ponudnik ni konfiguriran (transport čaka lastnikovo odobritev — B/C).' }
+}
+
 /* ─────────────────────────── dispatch ─────────────────────────── */
 
 export interface DispatchResult {
@@ -416,8 +452,8 @@ export async function dispatchCampaign(
       status: campaign.status, completed: false, smtpConfigured: false,
     }
   }
-  const channel: CrmChannel = campaign.channel === 'sms' ? 'sms' : 'email'
-  const sendFn = opts.sendFn ?? (channel === 'sms' ? smsSendFn : smtpSendFn)
+  const channel = campaignChannel(campaign.channel)
+  const sendFn = opts.sendFn ?? (channel === 'sms' ? smsSendFn : channel === 'whatsapp' ? whatsappSendFn : smtpSendFn)
   const limit = Math.max(1, Math.min(opts.limit ?? CRM_BATCH_LIMIT, CRM_BATCH_LIMIT))
   const now = opts.now ?? new Date()
   const locale = await localeForLocation(campaign.locationId)
@@ -584,12 +620,16 @@ export async function sendTestEmail(
 ): Promise<SendFnResult> {
   const campaign = await db.campaign.findUnique({ where: { id: campaignId } })
   if (!campaign) throw new Error('Kampanja ne obstaja.')
-  const channel: CrmChannel = campaign.channel === 'sms' ? 'sms' : 'email'
-  const sendFn = opts.sendFn ?? (channel === 'sms' ? smsSendFn : smtpSendFn)
+  const channel = campaignChannel(campaign.channel)
+  const sendFn = opts.sendFn ?? (channel === 'sms' ? smsSendFn : channel === 'whatsapp' ? whatsappSendFn : smtpSendFn)
   const locale = await localeForLocation(campaign.locationId)
-  const clean = normalizeEmail(to)
+  // OSS-7: testni prejemnik je kanalsko vezan — email = naslov, sms/whatsapp = telefon
+  const clean = isPhoneChannel(channel) ? normalizePhoneDigits(to) : normalizeEmail(to)
   if (channel === 'email' && (!clean || !clean.includes('@'))) {
     throw new Error('Neveljaven testni e-poštni naslov.')
+  }
+  if (isPhoneChannel(channel) && clean.length < 6) {
+    throw new Error('Neveljavna testna telefonska številka (najmanj 6 števk).')
   }
   return sendFn({
     campaignId, guestId: 'test-recipient', channel, to: clean,
@@ -618,8 +658,8 @@ export async function unsubscribeByToken(token: string): Promise<UnsubscribeOutc
   if (!/^[a-f0-9]{32}$/.test(clean)) return { kind: 'invalid' }
   const send = await db.campaignSend.findUnique({ where: { unsubscribeToken: clean } })
   if (!send) return { kind: 'invalid' }
-  if (send.unsubscribedAt) return { kind: 'already', channel: send.channel === 'sms' ? 'sms' : 'email' }
-  const channel: CrmChannel = send.channel === 'sms' ? 'sms' : 'email'
+  if (send.unsubscribedAt) return { kind: 'already', channel: campaignChannel(send.channel) }
+  const channel = campaignChannel(send.channel)
   const nUnsub = await db.$transaction(async (tx) => {
     await tx.campaignSend.update({
       where: { id: send.id },
@@ -684,7 +724,10 @@ export async function campaignPerformance(campaignId: string): Promise<CampaignP
   })
   const sent = sends.filter((s) => s.status === 'sent_to_provider' && s.sentAt)
   const guestIds = sent.map((s) => s.guestId).filter(Boolean)
-  const emails = sent.filter((s) => s.channel !== 'sms').map((s) => normalizeEmail(s.recipient)).filter((e) => e.includes('@'))
+  // OSS-7: ponovni nakupi po e-pošti se ujemajo SAMO z email pošiljkami —
+  // sms/whatsapp prejemniki so telefonski (telefona NIKOLI ne pošiljamo v
+  // customerEmail filtra — lažno ujemanje).
+  const emails = sent.filter((s) => s.channel === 'email').map((s) => normalizeEmail(s.recipient)).filter((e) => e.includes('@'))
   let repeatOrders = 0
   if (sent.length > 0) {
     const earliest = sent.reduce((min, s) => Math.min(min, (s.sentAt as Date).getTime()), Number.POSITIVE_INFINITY)
