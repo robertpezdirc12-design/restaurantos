@@ -599,7 +599,7 @@ describe('Č4 registri, i18n in verzija', () => {
     expect(page).toContain('<DocumentsCard />')
   })
 
-  it('verzija 1.203.0', () => {
-    expect(APP_VERSION).toBe('1.203.0')
+  it('verzija 1.204.0', () => {
+    expect(APP_VERSION).toBe('1.204.0')
   })
 })

@@ -67,6 +67,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (order.status === 'paid' || order.status === 'cancelled') {
     return fail('Zaključenemu naročilu ni mogoče dodati tečajev.', 409)
   }
+  // OSS-4 (v1.204.0): zadržano naročilo je parkirano — tečaji (organizacija pred
+  // fire) se na njem ne urejajo, dokler ni nadaljevano.
+  if (order.status === 'hold') {
+    return fail('Zadržanemu naročilu ni mogoče dodati tečajev — najprej ga nadaljujte.', 409)
+  }
   if (order.Course.length >= 8) return fail('Največ 8 tečajev na naročilo.', 400)
 
   const maxNumber = order.Course.reduce((m, c) => Math.max(m, c.courseNumber), 0)

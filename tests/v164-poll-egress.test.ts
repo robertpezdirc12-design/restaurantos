@@ -51,7 +51,9 @@ describe('v1.164.0 — statične invariante klica', () => {
 
   it('dashboard: počasni viri so v hot ciklu ZAKLENJENI z dashboardPollIncludes', () => {
     const src = read('src/app/dashboard/page.tsx')
-    const start = src.indexOf('const [d, t, o, k, m, e, r, rec')
+    // v1.204.0 (OSS-4): destrukturiranje je dobilo `oh` (zadržana naročila —
+    // lahki hot vir, /api/orders?status=hold; NE počasni vir → brez zaklepa)
+    const start = src.indexOf('const [d, t, o, oh, k, m, e, r, rec')
     expect(start).toBeGreaterThan(-1)
     const end = src.indexOf('])', start)
     expect(end).toBeGreaterThan(start)

@@ -68,6 +68,7 @@ import {
   SprayCan,
   Eye,
   CheckCircle2,
+  Pause,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { DashboardSidebar, MobileBottomNav, MobileNavDrawer } from '@/components/dashboard-nav'
@@ -138,7 +139,7 @@ interface ErrLogT { id: string; employeeId?: string | null; action: string; enti
 interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
-interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; posX?: number; posY?: number }
+interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
@@ -176,11 +177,15 @@ const statusColors: Record<string, string> = {
   OPEN: 'bg-amber-700 text-white', SENT: 'bg-orange-700 text-white',
   PREPARED: 'bg-emerald-700 text-white', PAID: 'bg-teal-700 text-white',
   CANCELLED: 'bg-red-700 text-white',
+  /* OSS-4 (v1.204.0): zadržano = nevtralni kamen (parkirano pred kuhinjo — ni ne
+     urgente, ni zaključka; barva ni edini nosilec pomena, ploščica nosi »Zadržano«). */
+  HOLD: 'bg-stone-600 text-white',
   PENDING: 'bg-amber-700 text-white', PREPARING: 'bg-orange-700 text-white', READY: 'bg-emerald-700 text-white',
 }
 const statusLabels: Record<string, string> = {
   FREE: 'Prosta', OCCUPIED: 'Zasedena', RESERVED: 'Rezervirana', DIRTY: 'Za pospravit',
   OPEN: 'Odprto', SENT: 'Poslano v kuhinjo', PREPARED: 'Pripravljeno', PAID: 'Plačano', CANCELLED: 'Preklicano',
+  HOLD: 'Zadržano',
   PENDING: 'V vrsti', PREPARING: 'V pripravi', READY: 'Pripravljeno',
 }
 
@@ -444,6 +449,9 @@ function DashboardInner() {
   const [moveTableId, setMoveTableId] = useState('')
   const [mergeOrder, setMergeOrder] = useState<OrderT | null>(null)
   const [mergeTargetId, setMergeTargetId] = useState('')
+  // OSS-4 (v1.204.0): zadržanje naročila — cilj + neobvezen razlog (dialog)
+  const [holdTarget, setHoldTarget] = useState<OrderT | null>(null)
+  const [holdTargetReason, setHoldTargetReason] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   // OPS-4 v1.67.0: zacetni zavihek iz URL (?tab=) — zaslon sank/kuhinje na svoji napravi
   // FIX (E2E 8-e2e): hydration-safe init — the old lazy initializer read
@@ -582,7 +590,7 @@ function DashboardInner() {
   }
   const [tipEur, setTipEur] = useState('')
   // OPS-7 (v1.70.0): filter stanj v Naročila zavihku
-  const [orderFilter, setOrderFilter] = useState<'ALL' | 'OPEN' | 'SENT' | 'PREPARED'>('ALL')
+  const [orderFilter, setOrderFilter] = useState<'ALL' | 'OPEN' | 'SENT' | 'PREPARED' | 'HOLD'>('ALL')
   // Issue #1 triage ③: darilna kartica pri plačilu — eno plačilo + deli
   const [gcSel, setGcSel] = useState<GiftCardSelT | null>(null)
   const [gcQuery, setGcQuery] = useState('')
@@ -749,10 +757,14 @@ function DashboardInner() {
       const { canManage: manage, perms: curPerms } = gateRef.current
       const hp = (p: string) => manage || curPerms.includes(p)
       const hpAny = (...ps: string[]) => manage || ps.some((x) => curPerms.includes(x))
-      const [d, t, o, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc] = await Promise.all([
+      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc] = await Promise.all([
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
+        // OSS-4 (v1.204.0): zadržana naročila prihajajo iz LOČENega pridobivanja —
+        // privzeti GET /api/orders vrne samo ORDER_ACTIVE_DB ('hold' ni aktiven tok);
+        // pridobivanje ?status=hold je dovoljeno prek obstoječega status-filtra rute.
+        soft(api<{ orders: OrderT[] }>('/api/orders?status=hold')),
         // Issue #5 §C: postaja gre NA STREŽNIK (?station=) — KDS naprava dobi SAMO
         // svojo postajo (kdsStationRef mirror za poll closure). Issue #14: custom
         // station ids are ADDITIVE (server ignores unknown values for the legacy
@@ -786,7 +798,8 @@ function DashboardInner() {
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
-      if (o) setOrders(o.orders)
+      // OSS-4 (v1.204.0): aktivni tok + zadržani (različna stanja — brez prekrivanja)
+      if (o || oh) setOrders([...(o?.orders ?? []), ...(oh?.orders ?? [])])
       if (k) {
         setKitchen(k.queue)
         setStationTargets(k.stationTargets ?? {})
@@ -1720,6 +1733,48 @@ function DashboardInner() {
     } finally { setMmvBusy(false) }
   }
 
+  /* OSS-4 (v1.204.0): zadržanje/nadaljevanje — parkiranje nedokončanega naročila brez
+     zaključka. Strežnik je avtoriteta (canHoldOrder: samo open+unpaid+brez poslanih);
+     UI zrcali pravilo za skrivanje gumba, 409 od garde pa ostane uporabniku viden. */
+  /** UI zrcali strežniško pravilo !firedAt: vsa ne-voided postavka mora biti še PENDING
+      (PREPARING/READY/SERVED v UI preslikavi pomeni pošiljanje na kuhinjo). */
+  const holdableUi = (o: OrderT) => o.items.every((it) => it.voided || it.status === 'PENDING' || it.status === 'CANCELLED')
+
+  /** OSS-4 (v1.204.0): besedilo statusa na ploščici mize — miza z ZADRŽANIM naročilom
+      nosi »Zadržano« (barva ostane zasedena — miza JE zasedena, Issue #70). Enotno na
+      obeh vrsticah ploščice + aria/title, da se parkirano razloči od aktivnega toka. */
+  const tileStatusL = (tb: TableT): string => (tb.heldOrderId && !tb.activeOrder ? stL('HOLD') : stL(tb.status))
+
+  /** Zadrži: odpre dialog z neobveznim razlogom (posnetek gre v revizijo ORDER_HOLD) */
+  function holdOrder(o: OrderT) { setHoldTargetReason(''); setHoldTarget(o) }
+
+  /** Potrditev zadržanja: POST /hold → naročilo izgine iz aktivnega toka, ostane vidno
+      pod filtrom HOLD z gumbom Nadaljuj (edina pot ven iz zadržanega). */
+  async function holdOrderConfirm() {
+    if (!holdTarget) return
+    setMmvBusy(true)
+    try {
+      await api(`/api/orders/${holdTarget.id}/hold`, { method: 'POST', body: JSON.stringify({ reason: holdTargetReason || undefined }) })
+      setHoldTarget(null); setHoldTargetReason('')
+      await load()
+      toast({ title: t('order.holdDone') })
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    } finally { setMmvBusy(false) }
+  }
+
+  /** Nadaljuj: POST /resume (hold → open) — naročilo je spet polno mutabilno. */
+  async function resumeOrder(o: OrderT) {
+    setMmvBusy(true)
+    try {
+      await api(`/api/orders/${o.id}/resume`, { method: 'POST' })
+      await load()
+      toast({ title: t('order.resumeDone') })
+    } catch (err) {
+      toast({ title: t('common.error'), description: (err as Error).message, variant: 'destructive' })
+    } finally { setMmvBusy(false) }
+  }
+
   /** Move: selitev naročila na izbrano prosto mizo (stara miza se sprosti) */
   async function moveOrderToTable() {
     if (!moveOrder || !moveTableId) return
@@ -2349,8 +2404,12 @@ function DashboardInner() {
       setSaleCart({})
       // v1.128.0: uspešno plačilo zapre list košare (odpre se plačilni dialog naročila)
       setSaleCartOpen(false)
-      const fresh = await api<{ orders: OrderT[] }>('/api/orders')
-      setOrders(fresh.orders)
+      // OSS-4 (v1.204.0): sveže pridobivanje vključi tudi zadržane (merge, kot v loadAll)
+      const [fresh, freshHeld] = await Promise.all([
+        api<{ orders: OrderT[] }>('/api/orders'),
+        api<{ orders: OrderT[] }>('/api/orders?status=hold').catch(() => ({ orders: [] as OrderT[] })),
+      ])
+      setOrders([...fresh.orders, ...(freshHeld.orders ?? [])])
       await load()
       const created = fresh.orders.find((x) => x.id === j.order?.id)
       if (created) void openPayment(created)
@@ -2651,12 +2710,15 @@ function DashboardInner() {
                       onClick={() => {
                         if (draggedRef.current) { draggedRef.current = false; return }
                         if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
+                        // OSS-4 (v1.204.0): miza z ZADRŽANIM naročilom → skok na seznam
+                        // zadržanih (urejevalnik se zadržanega ne odpre — urejanje je 409)
+                        if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
                         if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                       }}
                       className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 shadow text-xs font-bold cursor-grab active:cursor-grabbing ${shapeCls} ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                      aria-label={`${tb.name} · ${stL(tb.status)} · ${tb.seats}`}
-                      title={`${tb.name} · ${stL(tb.status)}`}
+                      aria-label={`${tb.name} · ${tileStatusL(tb)} · ${tb.seats}`}
+                      title={`${tb.name} · ${tileStatusL(tb)}`}
                     >
                       <span className="leading-none">{tb.name.replace('Miza ', '')}</span>
                       {tb.activeOrder ? (
@@ -2692,6 +2754,8 @@ function DashboardInner() {
                           onClick={() => {
                             // miza za pospravit → en klik = očisti (issue #1: e2e zaključek)
                             if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
+                            // OSS-4 (v1.204.0): miza z ZADRŽANIM naročilom → seznam zadržanih
+                            if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
                             if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
                           className={`flex h-32 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
@@ -2703,7 +2767,10 @@ function DashboardInner() {
                           <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
                           {/* Issue #71 audit-21: status je BESEDILO, ne samo barva (barvna slepota,\n                              sončna svetloba na tablici) */}
                           {tb.status !== 'FREE' && (
-                            <p className="mt-0.5 text-xs font-bold uppercase tracking-wide opacity-95">{stL(tb.status)}</p>
+                            /* OSS-4 (v1.204.0): enotno besedilo prek tileStatusL — zadržana
+                               miza nosi »Zadržano« namesto »Zasedena«; barva ne laže: je
+                               zasedena barva, ker miza JE zasedena (Issue #70). */
+                            <p className="mt-0.5 text-xs font-bold uppercase tracking-wide opacity-95">{tileStatusL(tb)}</p>
                           )}
                           {/* v1.129.0 (Toast/Square benchmark): zasedena ploščica nosi ČAS (min
                               od naročila) in FAZO naročila (poslano/v pripravi/pripravljeno),
@@ -2738,7 +2805,7 @@ function DashboardInner() {
                                 plosci (grid) in handheld/tablica vedno usklajena.
                                 v1.129.0: oznaka ostaja na kanoničnem statusu (faza naročila
                                 je že vidna v vrstici zneska/časa zgoraj) — Toast order-stage vzorec. */}
-                            {tb.status === 'DIRTY' ? t('tables.clickClean') : stL(tb.status)}
+                            {tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb)}
                           </p>
                         </button>
                         {/* Issue #3: QR meni za to mizo — (span, ker gosta ne sme biti gnezdena v gumbu) */}
@@ -2849,7 +2916,7 @@ function DashboardInner() {
               <CardContent>
                 {/* OPS-7 (v1.70.0): filtri stanj (Lightspeed/Square vzorec — hiter pregled vrste) */}
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  {(['ALL', 'OPEN', 'SENT', 'PREPARED'] as const).map((f) => (
+                  {(['ALL', 'OPEN', 'SENT', 'PREPARED', 'HOLD'] as const).map((f) => (
                     <Button key={f} size="sm" variant={orderFilter === f ? 'default' : 'outline'}
                       className={orderFilter === f ? 'h-7 text-xs bg-emerald-700 hover:bg-emerald-800 text-white' : 'h-7 text-xs'}
                       onClick={() => setOrderFilter(f)}>
@@ -2897,7 +2964,9 @@ function DashboardInner() {
                     })()}
                     <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                       <p className="font-bold">{fmtEUR(o.total)}</p>
-                      {o.status !== 'PAID' && (
+                      {/* OSS-4 (v1.204.0): zadržano naročilo — Uredi/Plačaj skrita (strežnik bi
+                          vseeno 409); namesto njiju gumb Nadaljuj v akcijski vrstici spodaj. */}
+                      {o.status !== 'PAID' && o.status !== 'HOLD' && (
                         <div className="flex gap-1.5">
                           <Button size="sm" variant="outline" className="h-10 gap-1" onClick={() => void openOrderSheet(o)} title={t('orders.edit')}>
                             <Pencil className="w-3.5 h-3.5" /> {t('orders.edit')}
@@ -2908,13 +2977,28 @@ function DashboardInner() {
                         </div>
                       )}
                     </div>
-                    {/* 33-a: fire / move / merge — samo za odprta, neplačana naročila (backend uveljavlja orders.create) */}
-                    {hasPerm('orders.create') && isOrderOpenUi(o) && (
+                    {/* 33-a: fire / move / merge — samo za odprta, neplačana naročila (backend uveljavlja orders.create)
+                        OSS-4 (v1.204.0): zadržano naročilo dobi SAMO Nadaljuj (parkirano — ni fire/move/merge); */}
+                    {hasPerm('orders.create') && isOrderOpenUi(o) && o.status === 'HOLD' && (
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button size="sm" className="h-10 gap-1 bg-emerald-700 hover:bg-emerald-800 text-xs" disabled={mmvBusy}
+                          onClick={() => void resumeOrder(o)} title={t('order.resumeBtn')}>
+                          <Play className="w-3 h-3" /> {t('order.resumeBtn')}
+                        </Button>
+                      </div>
+                    )}
+                    {hasPerm('orders.create') && isOrderOpenUi(o) && o.status !== 'HOLD' && (
                       <div className="flex flex-wrap gap-1.5">
                         {o.items.some((it) => it.status === 'PENDING' && !it.voided) && (
                           <Button size="sm" variant="outline" className="h-10 gap-1 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
                             disabled={mmvBusy} onClick={() => void fireOrder(o)} title={t('mmv.fire')}>
                             <Flame className="w-3 h-3" /> {t('mmv.fire')}
+                          </Button>
+                        )}
+                        {holdableUi(o) && (
+                          <Button size="sm" variant="outline" className="h-10 gap-1 text-xs border-stone-300 text-stone-700 hover:bg-stone-50"
+                            disabled={mmvBusy} onClick={() => holdOrder(o)} title={t('order.holdBtn')}>
+                            <Pause className="w-3 h-3" /> {t('order.holdBtn')}
                           </Button>
                         )}
                         <Button size="sm" variant="outline" className="h-10 gap-1 text-xs" disabled={mmvBusy}
@@ -2985,6 +3069,31 @@ function DashboardInner() {
                 <Button variant="outline" onClick={() => { setMergeOrder(null); setMergeTargetId('') }}>{t('common.cancel')}</Button>
                 <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mmvBusy || !mergeTargetId} onClick={() => void mergeOrderInto()}>
                   {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mmv.mergeConfirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* OSS-4 (v1.204.0): zadržanje naročila — neobvezen razlog (posnetek v reviziji ORDER_HOLD) */}
+          <Dialog open={!!holdTarget} onOpenChange={(op) => { if (!op) { setHoldTarget(null); setHoldTargetReason('') } }}>
+            {/* aria-describedby={undefined} — vzorec v1.202.0/v1.203.0: dialog brez Description
+                sicer sproži radix »Missing Description« warning (čista konsola po vzorcu) */}
+            <DialogContent aria-describedby={undefined} className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5"><Pause className="w-4 h-4" /> {t('order.holdTitle')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p className="text-stone-500">{t('order.holdHint', { name: holdTarget?.table?.name || orderTypeL(holdTarget?.type || '') })}</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hold-reason">{t('order.holdReason')}</Label>
+                  <Input id="hold-reason" value={holdTargetReason} maxLength={200}
+                    onChange={(e) => setHoldTargetReason(e.target.value)} placeholder={t('order.holdReasonPh')} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setHoldTarget(null); setHoldTargetReason('') }}>{t('common.cancel')}</Button>
+                <Button className="bg-stone-600 hover:bg-stone-700" disabled={mmvBusy} onClick={() => void holdOrderConfirm()}>
+                  {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('order.holdConfirm')}
                 </Button>
               </DialogFooter>
             </DialogContent>

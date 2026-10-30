@@ -237,7 +237,10 @@ describe('issue #71 audit-21 — rezervirana miza: lastni akcent + besedilo stat
     expect(d).not.toContain("RESERVED: 'bg-stone-200 text-stone-800 hover:bg-stone-300'")
   })
   test('status mize je BESEDILO na ploščici (ne samo barva)', () => {
-    expect(dash()).toContain('{stL(tb.status)}')
+    // v1.204.0 (OSS-4): statusna besedila tečejo prek tileStatusL (zadržana miza =
+    // »Zadržano«) — namen pina ostaja: status je BESEDILO, ne samo barva
+    expect(dash()).toContain('const tileStatusL = (tb: TableT)')
+    expect(dash()).toContain('{tileStatusL(tb)}')
   })
 })
 

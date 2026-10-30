@@ -211,7 +211,7 @@ describe('v1.201.0 OSS-15 — Č4 UI žice, i18n pariteta, verzija', () => {
     }
   })
 
-  it('verzija je 1.203.0', () => {
-    expect(APP_VERSION).toBe('1.203.0')
+  it('verzija je 1.204.0', () => {
+    expect(APP_VERSION).toBe('1.204.0')
   })
 })

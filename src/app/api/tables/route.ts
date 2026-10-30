@@ -11,12 +11,21 @@ export async function GET(req: NextRequest) {
   if (isResponse(user)) return user
   const tables = await db.table.findMany({
     where: await locationScope(user),
-    include: { Order: { where: { status: { in: ORDER_ACTIVE_DB } }, include: { OrderItem: true } } },
+    // OSS-4 (v1.204.0): include razširjen na 'hold' — zadržano naročilo TUDI zaseda
+    // mizo (Issue #70 kanonična izpeljava: brez tega bi zadržana miza padla v DIRTY).
+    // activeOrder ostane SAMO aktivni tok (urejevalnik/fire tarča); zadržano gre v
+    // ločeno polje heldOrderId (aditivno, 0 DDL).
+    include: { Order: { where: { status: { in: [...ORDER_ACTIVE_DB, 'hold'] } }, include: { OrderItem: true } } },
     orderBy: [{ area: 'asc' }, { number: 'asc' }],
   })
   return ok({ tables: tables.map((t) => {
-    const active = t.Order[0]
-    return mapTable({ ...t, items: active?.OrderItem }, active ? { ...active, items: active.OrderItem } : null)
+    const active = t.Order.find((o) => ORDER_ACTIVE_DB.includes(o.status)) ?? null
+    const held = !active ? (t.Order.find((o) => o.status === 'hold') ?? null) : null
+    return mapTable(
+      { ...t, items: active?.OrderItem },
+      active ? { ...active, items: active.OrderItem } : null,
+      held ? { ...held, items: held.OrderItem } : null,
+    )
   }) })
 }
 

@@ -92,13 +92,18 @@ const TABLE_TO_DB: Record<string, string> = {
 export const tableStatusToUI = (s: string): string => TABLE_TO_UI[s] || 'FREE'
 export const tableStatusToDB = (s: string): string => TABLE_TO_DB[s?.toUpperCase()] || 'available'
 
-/* ─────────────── Naročilo (status: open|sent|prepared|paid|cancelled, freeform String v produkciji) ─────────────── */
+/* ─────────────── Naročilo (status: open|sent|prepared|paid|cancelled|hold, freeform String v produkciji) ─────────────── */
+/* OSS-4 (v1.204.0): 'hold' = zadržano naročilo (pravila v src/lib/order-hold.ts).
+   Preslikava je POTREBNA v OBEH smeri: brez UI vstopa orderStatusToUI fallback
+   'OPEN' lažno prikazuje zadržano kot odprto (gumbi Uredi/Plačaj → 409 od guardov). */
 
 const ORDER_TO_UI: Record<string, string> = {
   open: 'OPEN', sent: 'SENT', prepared: 'PREPARED', paid: 'PAID', cancelled: 'CANCELLED', pending: 'OPEN',
+  hold: 'HOLD',
 }
 const ORDER_TO_DB: Record<string, string> = {
   OPEN: 'open', SENT: 'sent', PREPARED: 'prepared', PAID: 'paid', CANCELLED: 'cancelled',
+  HOLD: 'hold',
 }
 export const orderStatusToUI = (s: string): string => ORDER_TO_UI[s] || 'OPEN'
 export const orderStatusToDB = (s: string): string => ORDER_TO_DB[s?.toUpperCase()] || 'open'
@@ -227,7 +232,7 @@ export function mapEmployee(e: Row) {
   }
 }
 
-export function mapTable(t: Row, activeOrder?: Row | null) {
+export function mapTable(t: Row, activeOrder?: Row | null, heldOrder?: Row | null) {
   return {
     id: t.id as string,
     name: `Miza ${t.number}`,
@@ -248,7 +253,9 @@ export function mapTable(t: Row, activeOrder?: Row | null) {
     // postavi mizo v 'cleaning') → samodejno prikažemo kot DIRTY ("za pospraviti"), NE kot
     // zasedeno. 0 DDL: popravek je čisto v preslikavi, produkcijski podatki ostanejo
     // nedotaknjeni; dashboard/handheld/tablica izrisujejo IZKLJUČNO iz tega statusa.
-    status: activeOrder
+    // OSS-4 (v1.204.0): zadržano naročilo TUDI zaseda mizo (gost lahko pride naziv) —
+    // brez tega bi zadržana miza po Issue #70 izpeljavi padla v DIRTY ("za pospravit").
+    status: (activeOrder || heldOrder)
       ? 'OCCUPIED'
       : t.status === 'occupied'
         ? 'DIRTY'
@@ -263,6 +270,10 @@ export function mapTable(t: Row, activeOrder?: Row | null) {
             ?? 0,
         }
       : null,
+    /** OSS-4 (v1.204.0): id zadržanega naročila na mizi (SAMO kadar ni aktivnega) —
+        ploščica tlorisa ga uporablja za skok na seznam zadržanih; urejevalnik naročila
+        se ZADRŽANEGA ne odpre (urejanje je med zadržanim 409 po zasnovi). */
+    heldOrderId: !activeOrder && heldOrder ? (heldOrder.id as string) : null,
   }
 }
 

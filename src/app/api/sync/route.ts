@@ -175,8 +175,16 @@ async function claimOperation(
     }
   }
   if (existing.status === 'failed') {
+    // POPRAVEK (v1.204.0, OSS-4 — odkril ga je test R7 interakcije z zadržanim
+    // naročilom): prej `where: { ...where, status: 'failed' }` z compound-unique
+    // obliko `deviceId_clientOperationId` — ki je v updateMany NEVELJAVNA (Prisma
+    // validation error → generic 'Operacija ni uspela.'). Ponovni poskus neuspelih
+    // operacij je tako VEDNO padel še pred aplikacijo: neuspela operacija nad
+    // (tedaj) zadržanim naročilom se ni nikoli opomogla, tudi ko je bilo naročilo
+    // nadaljevano. Plošččna enakost je ekvivalentna in je vzorec ostalih updateMany
+    // klicev v tej datoteki (glej opombo pri finalizeOperation).
     const r = await client.deviceSyncOperation.updateMany({
-      where: { ...where, status: 'failed' },
+      where: { deviceId, clientOperationId, status: 'failed' },
       data: { status: 'processing', receivedAt: new Date() },
     })
     return r.count === 1 ? { kind: 'claimed' } : { kind: 'busy' }

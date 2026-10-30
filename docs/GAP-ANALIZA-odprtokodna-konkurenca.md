@@ -41,7 +41,7 @@ POS, purpose-built gostinstvo). Njihov FEATURE-CHECKLIST je izjemno pošten
 | **Odprta API specifikacija** (#19): REST + Swagger | NI (API + ključi + dnevnik v Integracijah obstajajo; OpenAPI spec NI) | **OSS-5** |
 | **MCP strežnik** (#19): osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno integration keys z izrecnimi dovoljenji | NI (dveh vrst ključev NI; imamo enoten API ključ + dnevnik) | **OSS-6** (razred B — glej spodaj) |
 | **Čas mize** (elapsed) na tlorisu/mizah | ŽE IMAMO — v1.129.0 (Toast vzorec): zasedena ploščica nosi ⏱ minute od naročila + fazo + št. naročila + goste + znesek (dashboard page, `kdsMinutes(ao.createdAt)`); analiza v1.199.0 tu NISEN najdla (lažna vrzel, popravljeno @ v1.201.0) | ~~OSS-3~~ — ZAVRJEN kot lažna vrzel |
-| **Hold/draft naročila** (zadrži nedokončano) | NI (statusi brez hold) | **OSS-4** |
+| **Hold/draft naročila** (zadrži nedokončano) | ~~NI~~ **IZVEDENO v1.204.0** (status hold + resume; CAS garde) | **OSS-4** |
 | **Večregionalni davčni režimi** (GST/US/EU-VAT/Spain IVA, vključno/izključno cene) | NE-VELJA (mi smo SI/HR z DDV + fiskalizacijo — drugačen trg; naše fiskalne meje so globlje) | brez kandidata |
 | **One-click pakiranje** (CasaOS/ZimaOS) + živi demo + case study | DELNO (lokalni autostart/backup skripte; NAS paket NI) | **OSS-13** |
 | Zvočna potrditev plačila (UPI UX) | DELNO (push obstaja; zvočni signal NI) | **OSS-15** |
@@ -101,7 +101,7 @@ konvenciji kot TRZNA-VRZELI-2027. **Brez odobritve se nič od tega ne začne.**
 | **OSS-1** | **Vzdrževanje opreme** — register naprav (pečice, hladilniki, klima), servisni razporedi, overdue zastavice, povezava s HACCP lokacijami | OrderRestro #16 | modeli + rute + UI kartica + i18n + testi; brez DDL na produkciji (DDL konzola vzorec v1.197.0) | A (čista koda) — **IZVEDENO @ v1.200.0**: tabeli Equipment + EquipmentMaintenancePlan, rute /api/equipment*, kartica Nastavitve → Operacija, DDL konzola `equipment-maintenance` čaka klik |
 | **OSS-2** | **Dokumentni modul** — SOP-i, pogodbe, recepture s priponkami; obseg HACCP ostaja ločen | OrderRestro #17 | modeli + nalaganje datotek (lokalen disk/db blob — odločitev ob implementaciji) + UI + i18n | A (mali–srednji) — **IZVEDENO @ v1.203.0**: tabela Document (vsebina kot bytea V BAZI — produkcija read-only disk; budget 1 MB raw; mime allowlist brez SVG/HTML; prenos vedno attachment + nosniff), rute /api/documents* (branje = vse vloge z lokacijskim obsegom, pisanje = settings.manage), verzija +1 ob zamenjavi, kartica Nastavitve → Operacija, DDL konzola `documents` čaka klik |
 | **OSS-3** | ~~**Čas mize**~~ — elapsed na tlorisu/mizah (koliko časa je gost na mizi) | OrderRestro planned | mali: izračun iz odprtega naročila, prikaz na kartici mize | **ZAVRJEN @ v1.201.0 — LAŽNA VRZEL**: ploščica mize že nosi ⏱ minute + fazo + št. naročila + goste + znesek (v1.129.0, Toast vzorec — `kdsMinutes(ao.createdAt)`); analiza v1.199.0 tega ni ulovila |
-| **OSS-4** | **Hold/draft naročila** — zadrži nedokončano naročilo brez zaključka | OrderRestro planned | srednji: status hold + interakcija z offline vrsto (R2/R7 mora ostati garancija!) + revizija | A (srednji; previdno z R7) |
+| **OSS-4** | **Hold/draft naročila** — zadrži nedokončano naročilo brez zaključka | OrderRestro planned | srednji: status hold + interakcija z offline vrsto (R2/R7 mora ostati garancija!) + revizija | A (srednji; previdno z R7) — **IZVEDENO @ v1.204.0**: čisti sloj `order-hold.ts` (canHoldOrder: samo open+unpaid+brez poslanih postavk — zadržano NIKOLI na KDS), ruti POST /api/orders/[id]/hold + /resume (CAS + revizija ORDER_HOLD/ORDER_RESUMED + dogodka), fire ruta s CAS-belolistnim firedAt zapisom (dirka hold↔fire = 409 + rollback), garda tečajev; VSE ostale poti fail-closed prek obstoječih belih list (ORDER_MUTABLE_STATUS / ORDER_ACTIVE_DB / ORDER_PAYABLE_STATUS ne poznajo 'hold'): urejanje, plačilo, paylink, premik, združitev, popust, preklic, void, offline sync addItems (operacija propade z 409, po nadaljevanju se ponovi — R7 garancija nedotaknjena); miza z zadržanim ostaja OCCUPIED (Issue #70 izpeljava) s besedilom »Zadržano«, klik ploščice → seznam zadržanih; 0 DDL (status je String) |
 | **OSS-5** | **Odprta API specifikacija** — OpenAPI opis obstoječih javnih/integracijskih rut, statično datoteko + route za prenos | OrderRestro Swagger | statična spec + test na pokritost rut; brez nove odvisnosti | A (mali–srednji) — **IZVEDENO @ v1.201.0**: OpenAPI 3.0.3 opis vseh 14 javnih/integracijskih rut (19 handlerjev), disk↔spec pokritost v OBEH smerah uveljavljena s testi, ruta GET /api/openapi, kartica v Integracijah |
 | **OSS-6** | **MCP strežnik** — osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno od integration ključev | OrderRestro | protokol, NE AI model — a ker obstaja za AI okoliša, **odločitev je lastnikova** glede pravila „brez AI" | **B** — @ v1.201.0 lastnik izrecno potrdil „ne vnašati AI modelov, samo skripte" → **OSTAJA ZUNAJ OBSEGA** |
 | **OSS-7** | **Kampanje po kanalih** z opt-out (email/SMS/WhatsApp) | OrderRestro #14 | kampanjni model + opt-out = A del; transporti (SMTP/SMS/WhatsApp ponudniki) = B/C | A-del + B/C |
@@ -142,10 +142,10 @@ koda iz AGPL repozitorijev (licenca).
    Največ vrednosti: njihov javni pošten FEATURE-CHECKLIST žanr (mi ga imamo
    interno v worklogu/dokih — javna izdaja je odločitev lastnika, marketing
    vrednost dokazana pri njih), ter 5–6 konkretnih funkcij iz tabele OSS.
-3. **Kaj nam manjka:** realne vrzeli so **OSS-2 (dokumenti)** in OSS-7/8
-   (kampanje/urna poročila — del B/C); **OSS-1 oprema (v1.200.0), OSS-5 OpenAPI
-   + OSS-15 zvok plačila (v1.201.0), OSS-9 EAN pri nabavi (v1.202.0),
-   OSS-2 dokumenti (v1.203.0) so IZVEDENI**;
+3. **Kaj nam manjka:** realne vrzeli so OSS-7/8 (kampanje/urna poročila — del
+   B/C); **OSS-1 oprema (v1.200.0), OSS-5 OpenAPI + OSS-15 zvok plačila (v1.201.0),
+   OSS-9 EAN pri nabavi (v1.202.0), OSS-2 dokumenti (v1.203.0), OSS-4 hold naročila
+   (v1.204.0) so IZVEDENI**;
    OSS-3 čas mize je bila
    LAŽNA VRZEL (že od v1.129.0); OSS-6 MCP ostaja ZUNAJ OBSEGA po lastnikovem
    pravilu „brez AI modelov, samo skripte" (izrecno potrjeno v1.201.0); ostalo
