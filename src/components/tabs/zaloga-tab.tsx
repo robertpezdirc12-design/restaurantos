@@ -535,7 +535,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       {/* Nov artikel zaloge */}
       <Dialog open={addItem} onOpenChange={(v) => !v && setAddItem(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader><DialogTitle>{t('inv.newItemTitle')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -584,7 +584,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       {/* OSS-9: urejanje EAN obstoječega artikla (mini dialog → PATCH { id, ean }) */}
       <Dialog open={!!eanEdit} onOpenChange={(v) => { if (!v) setEanEdit(null) }}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader><DialogTitle>{t('inv.editEanTitle', { name: eanEdit?.name ?? '' })}</DialogTitle></DialogHeader>
           {eanEdit && (
             <div className="space-y-1.5">
@@ -603,7 +603,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       {/* Prilagoditev zaloge */}
       <Dialog open={!!adjust} onOpenChange={(v) => !v && setAdjust(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader><DialogTitle>{t('inv.adjustTitle', { name: adjust?.name ?? '' })}</DialogTitle></DialogHeader>
           {adjust && (
             <div className="space-y-3">
@@ -638,7 +638,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
 
       {/* Nov dobavitelj */}
       <Dialog open={!!supForm} onOpenChange={(v) => !v && setSupForm(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader><DialogTitle>{t('inv.newSupplier')}</DialogTitle></DialogHeader>
           {supForm && (
             <div className="space-y-3">
