@@ -23,7 +23,7 @@
  *     mandatory reason, AlertDialog confirm);
  *  5. every successful action → onDone?.() so the parent card can reload.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { getToken, api } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
@@ -165,22 +165,31 @@ export function LabelDialog({
      row (labelFor → different batch), so the form reset alone is not enough — the
      lazy "recent labels" list kept the PREVIOUS row's scope (batchId filter never
      re-ran because recent !== null) and stayed expanded. Reset the recent list and
-     void sub-dialog on every (re)open keyed by the target id, not just quantity. */
+     void sub-dialog on every (re)open keyed by the target id, not just quantity.
+
+     Implemented as guarded setState during render (React "you might not need
+     an effect" — adjusting state when props change): the seen-key changes on
+     every (open × target × defaultQuantity) transition, reset only while open,
+     exactly like the previous effect (which no-op'ed while closed). */
   const targetKey = source === 'batch' ? batchId ?? '' : preparationId ?? ''
-  useEffect(() => {
-    if (!open) return
-    setQuantity(context.defaultQuantity > 0 ? String(context.defaultQuantity) : '')
-    setManualExpiry('')
-    setNote('')
-    setFormErr('')
-    setBanner(false)
-    setRecentOpen(false)
-    setRecent(null)
-    setActionBusy('')
-    setVoidFor(null)
-    setVoidReason('')
-    setVoidErr('')
-  }, [open, targetKey, context.defaultQuantity])
+  const resetKey = open ? `${targetKey}\u0000${context.defaultQuantity}` : null
+  const [seenResetKey, setSeenResetKey] = useState<string | null>(null)
+  if (seenResetKey !== resetKey) {
+    setSeenResetKey(resetKey)
+    if (open) {
+      setQuantity(context.defaultQuantity > 0 ? String(context.defaultQuantity) : '')
+      setManualExpiry('')
+      setNote('')
+      setFormErr('')
+      setBanner(false)
+      setRecentOpen(false)
+      setRecent(null)
+      setActionBusy('')
+      setVoidFor(null)
+      setVoidReason('')
+      setVoidErr('')
+    }
+  }
 
   const loadRecent = useCallback(async () => {
     setRecentLoading(true)

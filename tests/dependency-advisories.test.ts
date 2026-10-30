@@ -19,8 +19,10 @@ import { join } from 'node:path'
  *   sharp 0.35.5  (spodnja meja enaka popravku librsvg),
  *   odstranjeni next-auth / next-intl / uuid,
  *   override js-yaml 4.3.2 (GHSA-2883-xcg3-v3hh in še tri, vse nad 4.3.1),
- *   override eslint-plugin-react-hooks 7.0.1 — 7.1.1 je vklopil React
- *   Compiler pravila in 73 napak lint-a; to je ločen refaktor, ne tiho rdeč gate.
+ *   override eslint-plugin-react-hooks — od v1.154.0 (7.0.1, ker je 7.1.1
+ *   vklopil React Compiler pravila in 73 napak lint-a) do v1.198.0, ko je
+ *   N-27-4 refaktor (96 najdb @ 7.1.1, glej tests/v198-react-hooks-compiler.test.ts)
+ *   opravil in pin dvignil na 7.1.1.
  *
  * Preostale najdbe so sprejete z zapisano utemeljitvijo (test skupina D):
  * braces 3.0.3 (ni popravka), deepmerge-ts 7.1.5 in effect 3.18.4 (exact pin
@@ -49,7 +51,7 @@ const lock = JSON.parse(lockRaw.replace(/,\s*([}\]])/g, '$1')) as {
 const NEXT_FLOOR = '16.3.8'
 const SHARP_FLOOR = '0.35.5'
 const JS_YAML_PIN = '4.3.2'
-const REACT_HOOKS_PIN = '7.0.1'
+const REACT_HOOKS_PIN = '7.1.1'
 const REMOVED = ['next-auth', 'next-intl', 'uuid'] as const
 
 type Deps = Record<string, string>
@@ -124,8 +126,8 @@ describe('v1.154.0 — spodnje meje neposrednih odvisnosti (dep154-a)', () => {
   test('eslint-config-next je pripet NA EKSAKTNO 16.1.3 (brez ^)', () => {
     // Karat je dovolil, da se je ob naslednjem installu pripeljal drug config
     // in s seboj drugačen eslint-plugin-react-hooks → 73 napak lint-a brez
-    // spremembe kode. Dokler React Compiler refaktor ni opravljen, je pin
-    // nameren; ko bo, se ta test spremeni skupaj z njim.
+    // spremembe kode (v1.154.0). React Compiler refaktor je od v1.198.0
+    // opravljen (N-27-4), pin ostane za deterministično orodja.
     expect((pkg.devDependencies as Deps)['eslint-config-next']).toBe('16.1.3')
   })
 
@@ -134,7 +136,7 @@ describe('v1.154.0 — spodnje meje neposrednih odvisnosti (dep154-a)', () => {
     for (const name of REMOVED) expect(d[name]).toBeUndefined()
   })
 
-  test('override-a sta eksaktna: js-yaml 4.3.2 in eslint-plugin-react-hooks 7.0.1', () => {
+  test(`override-a sta eksaktna: js-yaml ${JS_YAML_PIN} in eslint-plugin-react-hooks ${REACT_HOOKS_PIN} (dvignjen z N-27-4 refaktorjem v1.198.0)`, () => {
     const ov = (pkg.overrides ?? {}) as Deps
     expect(ov['js-yaml']).toBe(JS_YAML_PIN)
     expect(ov['eslint-plugin-react-hooks']).toBe(REACT_HOOKS_PIN)

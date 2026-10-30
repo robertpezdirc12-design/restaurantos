@@ -124,14 +124,8 @@ export function CashMovementsCard({ shiftId, isManager }: { shiftId: string; isM
   }, [shiftId])
 
   useEffect(() => {
-    void load()
+    void (async () => { await load() })()
   }, [load])
-
-  // posodobi smer ob izbiri tipa (change_fund obdrži izrecno)
-  useEffect(() => {
-    if (type === 'paid_in') setDirection('in')
-    else if (type !== 'change_fund') setDirection('out')
-  }, [type])
 
   async function submit() {
     const amt = Number(amount.replace(',', '.'))
@@ -292,7 +286,15 @@ export function CashMovementsCard({ shiftId, isManager }: { shiftId: string; isM
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="cmv-type">{t('cmv.typeLabel')}</Label>
-              <Select value={type} onValueChange={setType}>
+              <Select
+                value={type}
+                onValueChange={(v) => {
+                  setType(v)
+                  // posodobi smer ob izbiri tipa (change_fund obdrži izrecno)
+                  if (v === 'paid_in') setDirection('in')
+                  else if (v !== 'change_fund') setDirection('out')
+                }}
+              >
                 <SelectTrigger id="cmv-type">
                   <SelectValue />
                 </SelectTrigger>

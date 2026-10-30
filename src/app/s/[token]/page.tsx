@@ -11,7 +11,7 @@
  * i18n: SL/HR/EN prek GuestI18nProvider (isti slovar + isti localStorage ključ
  * kot ostale gostujoče strani; preklop brez reload-a).
  */
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -79,27 +79,43 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
   const [track, setTrack] = useState<TrackT | null>(null)
   const [trackStatus, setTrackStatus] = useState('')
   const [eta, setEta] = useState<number | null>(null)
-  const [online, setOnline] = useState(true)
+  // online/offline — zunanja vrednost prek useSyncExternalStore (getServerSnapshot = true,
+  // isti prvi izris kot prejšnji useState(true); posodobitve prek online/offline dogodkov)
+  const subscribeOnline = useCallback((cb: () => void) => {
+    window.addEventListener('online', cb)
+    window.addEventListener('offline', cb)
+    return () => { window.removeEventListener('online', cb); window.removeEventListener('offline', cb) }
+  }, [])
+  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
 
   const opIdRef = useRef<string>('')
-  if (!opIdRef.current && typeof window !== 'undefined') {
-    // isti clientOperationId preživi refresh → idempotenten replay (brez dvojnika)
-    opIdRef.current = sessionStorage.getItem(`ro_web_op_${token}`) || ''
-    if (!opIdRef.current) {
-      opIdRef.current = crypto.randomUUID()
-      sessionStorage.setItem(`ro_web_op_${token}`, opIdRef.current)
+  // isti clientOperationId preživi refresh → idempotenten replay (brez dvojnika).
+  // Refa ne beremo med renderom (pravilo refs) — zagotovimo jo ob prvi uporabi
+  // v submitOrder (edini potrošnik; dogodek = klik, torej po mount efektih).
+  const ensureOpId = (): string => {
+    if (!opIdRef.current && typeof window !== 'undefined') {
+      opIdRef.current = sessionStorage.getItem(`ro_web_op_${token}`) || ''
+      if (!opIdRef.current) {
+        opIdRef.current = crypto.randomUUID()
+        sessionStorage.setItem(`ro_web_op_${token}`, opIdRef.current)
+      }
     }
+    return opIdRef.current
   }
 
   // ── ob prvem risanju: obnovi sledenje (preživi osvežitev/zaprtje zavihka) ──
+  // (mikrotaska — ne setState sinhrono v telesu efekta; še vedno pred prvim izrisom
+  // po mountu, torej brez vidnega zamika)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(TRACK_KEY(token))
-      if (raw) {
-        const p = JSON.parse(raw) as TrackT
-        if (p && typeof p.n === 'number' && typeof p.k === 'string') setTrack(p)
-      }
-    } catch { /* pošteno ignoriramo — sledenje je priročnost, ne resnica */ }
+    queueMicrotask(() => {
+      try {
+        const raw = localStorage.getItem(TRACK_KEY(token))
+        if (raw) {
+          const p = JSON.parse(raw) as TrackT
+          if (p && typeof p.n === 'number' && typeof p.k === 'string') setTrack(p)
+        }
+      } catch { /* pošteno ignoriramo — sledenje je priročnost, ne resnica */ }
+    })
   }, [token])
 
   const loadStore = useCallback(async () => {
@@ -119,12 +135,9 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
   }, [token, clearPageErr, setPageErr, setPageErrKey])
 
   useEffect(() => {
-    loadStore()
-    const upd = () => setOnline(navigator.onLine)
-    upd()
-    window.addEventListener('online', upd)
-    window.addEventListener('offline', upd)
-    return () => { window.removeEventListener('online', upd); window.removeEventListener('offline', upd) }
+    // mikrotaska: loadStore sinhrono samo počisti pageErr (setState) — iz telesa
+    // efekta ga izmaknemo iz sinhronne poti (obnašanje: fetch starta enako zgodaj)
+    queueMicrotask(() => { void loadStore() })
   }, [loadStore])
 
   // status polling (15 s — priročnost, ne realnočasovni kanal)
@@ -214,7 +227,7 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
-          clientOperationId: opIdRef.current,
+          clientOperationId: ensureOpId(),
           fulfillment,
           customerName: name.trim(),
           customerPhone: phone.trim(),

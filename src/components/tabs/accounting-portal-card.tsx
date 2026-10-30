@@ -69,6 +69,19 @@ interface PortalExpT {
 
 const fmtNumSI = (n: number): string => n.toLocaleString('sl-SI', { maximumFractionDigits: 1 })
 
+const Kpi = ({ label, value }: { label: string; value: string | null }) => (
+  <Card>
+    <CardHeader className="pb-1"><CardTitle className="text-xs font-medium text-stone-500">{label}</CardTitle></CardHeader>
+    <CardContent className="pb-3"><p className="text-lg font-bold text-stone-900">{value ?? '—'}</p></CardContent>
+  </Card>
+)
+const Row = ({ label, value }: { label: string; value: string }) => (
+  <div className="flex items-center justify-between gap-3">
+    <span className="text-stone-600">{label}</span>
+    <span className="font-semibold text-stone-900">{value}</span>
+  </div>
+)
+
 export function AccountingPortalCard() {
   const { t } = useI18n()
   const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
@@ -112,19 +125,6 @@ export function AccountingPortalCard() {
   const expPaid = exp ? (exp.periodPaid ?? exp.expenses.reduce((s, r) => s + (Number(r.paidAmount) || 0), 0)) : null
   const expCount = exp ? (exp.periodCount ?? exp.expenses.length) : null
   const expOutstanding = expTotal !== null && expPaid !== null ? Math.round((expTotal - expPaid + Number.EPSILON) * 100) / 100 : null
-
-  const Kpi = ({ label, value }: { label: string; value: string | null }) => (
-    <Card>
-      <CardHeader className="pb-1"><CardTitle className="text-xs font-medium text-stone-500">{label}</CardTitle></CardHeader>
-      <CardContent className="pb-3"><p className="text-lg font-bold text-stone-900">{value ?? '—'}</p></CardContent>
-    </Card>
-  )
-  const Row = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-stone-600">{label}</span>
-      <span className="font-semibold text-stone-900">{value}</span>
-    </div>
-  )
 
   return (
     <Card>

@@ -560,6 +560,25 @@ interface XzPreviewT {
   comparison: { prevFrom: string; prevTo: string; prevNetSales: number; prevCovers: number; deltaNetPct: number | null; deltaCoversPct: number | null }
 }
 
+const Row = ({ label, value, sub }: { label: string; value: string; sub?: boolean }) => (
+  <div className={`flex items-center justify-between gap-3 ${sub ? 'pl-3' : ''}`}>
+    <span className={sub ? 'text-xs text-stone-500' : 'text-stone-600'}>{label}</span>
+    <span className={sub ? 'text-xs font-medium text-stone-700' : 'font-semibold text-stone-900'}>{value}</span>
+  </div>
+)
+const DeltaRow = ({ label, pct, t }: { label: string; pct: number | null; t: (key: string, vars?: Record<string, string | number>) => string }) => (
+  <div className="flex items-center justify-between gap-3">
+    <span className="text-stone-600">{label}</span>
+    {pct === null ? (
+      <span className="text-xs text-stone-400">{t('acct.xzNoPrev')}</span>
+    ) : (
+      <span className={`font-semibold ${pct > 0 ? 'text-emerald-600' : pct < 0 ? 'text-rose-600' : 'text-stone-500'}`}>
+        {deltaArrow(pct)} {pct > 0 ? '+' : ''}{pct.toLocaleString('sl-SI')}%
+      </span>
+    )}
+  </div>
+)
+
 export function AccountingExportCard() {
   const { t } = useI18n()
   const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
@@ -622,25 +641,6 @@ export function AccountingExportCard() {
       setXzBusy(false)
     }
   }
-
-  const Row = ({ label, value, sub }: { label: string; value: string; sub?: boolean }) => (
-    <div className={`flex items-center justify-between gap-3 ${sub ? 'pl-3' : ''}`}>
-      <span className={sub ? 'text-xs text-stone-500' : 'text-stone-600'}>{label}</span>
-      <span className={sub ? 'text-xs font-medium text-stone-700' : 'font-semibold text-stone-900'}>{value}</span>
-    </div>
-  )
-  const DeltaRow = ({ label, pct }: { label: string; pct: number | null }) => (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-stone-600">{label}</span>
-      {pct === null ? (
-        <span className="text-xs text-stone-400">{t('acct.xzNoPrev')}</span>
-      ) : (
-        <span className={`font-semibold ${pct > 0 ? 'text-emerald-600' : pct < 0 ? 'text-rose-600' : 'text-stone-500'}`}>
-          {deltaArrow(pct)} {pct > 0 ? '+' : ''}{pct.toLocaleString('sl-SI')}%
-        </span>
-      )}
-    </div>
-  )
 
   return (
     <Card>
@@ -727,9 +727,9 @@ export function AccountingExportCard() {
                   {t('acct.xzCompare')} ({xzPreview.comparison.prevFrom} – {xzPreview.comparison.prevTo})
                 </p>
                 <Row label={t('acct.xzPrevNet')} value={fmtEUR(xzPreview.comparison.prevNetSales)} />
-                <DeltaRow label={t('acct.xzDeltaNet')} pct={xzPreview.comparison.deltaNetPct} />
+                <DeltaRow t={t} label={t('acct.xzDeltaNet')} pct={xzPreview.comparison.deltaNetPct} />
                 <Row label={t('acct.xzPrevCovers')} value={String(xzPreview.comparison.prevCovers)} />
-                <DeltaRow label={t('acct.xzDeltaCovers')} pct={xzPreview.comparison.deltaCoversPct} />
+                <DeltaRow t={t} label={t('acct.xzDeltaCovers')} pct={xzPreview.comparison.deltaCoversPct} />
               </div>
             </div>
           )}

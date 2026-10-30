@@ -18,7 +18,7 @@ import { Loader2, Plus, Minus, Monitor, CheckCircle2, Lock } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
 import { ALLERGEN_CODES, allergenLabel, labelToAllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import { parseAllergens } from '@/lib/allergens'
-import { LOCK_ARM_WINDOW_MS, initialLockState, isArmedExpired, tapLock, type LockState } from '@/lib/kiosk-lock'
+import { LOCK_ARM_WINDOW_MS, initialLockState, tapLock, type LockState } from '@/lib/kiosk-lock'
 
 interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -68,9 +68,13 @@ function KioskInner() {
   const retryAttempts = useRef(0)
 
   useEffect(() => {
-    const t = localStorage.getItem(TOKEN_KEY) || ''
-    setToken(t)
-    if (t) loadMenu(t)
+    // zunanji vir (localStorage) ob zagonu — async continuation namesto
+    // sinhronih setState/klicev v telesu efekta; prvi izris ostane '' (SSR-varno)
+    void (async () => {
+      const t = localStorage.getItem(TOKEN_KEY) || ''
+      setToken(t)
+      if (t) await loadMenu(t)
+    })()
   }, [])
 
   /* Issue #9 (v1.119.0) — osveževanje razpoložljivosti (86) brez ponovnega nalaganja:
@@ -143,7 +147,8 @@ function KioskInner() {
   // med tem odide od zaslona in se kasneje vrne k njemu.
   useEffect(() => {
     if (lockState.phase !== 'armed' || lockState.armedAt === null) return
-    if (isArmedExpired(lockState, Date.now())) { setLockState(initialLockState); return }
+    // že zastarel arm: zakasnitev je ≤ 0 → setTimeout ponastavi takoj
+    // (prej sinhroni setState v efektu — rezultat enak, brez kaskadnega izrisa)
     const id = setTimeout(() => setLockState(initialLockState), lockState.armedAt + LOCK_ARM_WINDOW_MS - Date.now())
     return () => clearTimeout(id)
   }, [lockState])

@@ -87,6 +87,9 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
       const s = data as SlotsState
       setState(s)
       setDateKey(s.date)
+      // party v meje politike (brez ponovnega fetcha; prej ločen effect —
+      // zdaj v nadaljevanju po await, z istim rezultatom ob vsaki spremembi politike)
+      setParty((p) => Math.min(Math.max(p, s.policy.minParty), s.policy.maxParty))
     } catch {
       // omrežna napaka pri PREKLOPU dneva ne uniči že naložene plošče —
       // samo začetna nalagalna napaka postavi state null → error ekran
@@ -103,12 +106,6 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
     bootstrapped.current = true
     void load()
   }, [load])
-
-  // zagon party v meje politike (brez ponovnega fetcha)
-  useEffect(() => {
-    if (!state) return
-    setParty((p) => Math.min(Math.max(p, state.policy.minParty), state.policy.maxParty))
-  }, [state?.policy.minParty, state?.policy.maxParty])
 
   const dayChips = useMemo(() => {
     if (!state) return [] as { key: string; label: string; sub: string }[]

@@ -24,7 +24,7 @@
  * 86 artikli: prikazani sivo/prečrtano z Badge "Razprodano" + onemogočeni (v1.83.0
  * konvencija — strežnik ostaja avtoritativen prek menu.availability).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, getToken, getUser } from '@/lib/client'
 import { flushQueue, isNetworkError, newOperationId, subscribeQueue, tryEnqueueOp } from '@/lib/offline-queue'
@@ -65,6 +65,18 @@ const ITEM_STATUS_BADGE: Record<string, string> = {
 
 const r2v = (v: number) => Math.round(v * 100) / 100
 
+/** navigator.onLine je zunanji vir (useSyncExternalStore): naročnik na dogodka
+ *  'online'/'offline'; getServerSnapshot = true = prejšnje začetno stanje, tako
+ *  da sta izris SSR in prva hidracija nespremenjena. */
+function subscribeOnline(onChange: () => void) {
+  window.addEventListener('online', onChange)
+  window.addEventListener('offline', onChange)
+  return () => {
+    window.removeEventListener('online', onChange)
+    window.removeEventListener('offline', onChange)
+  }
+}
+
 function HandheldInner() {
   const { t } = useI18n()
   const router = useRouter()
@@ -101,7 +113,7 @@ function HandheldInner() {
   const [sending, setSending] = useState(false)
   const [firing, setFiring] = useState(false)
   const [paying, setPaying] = useState(false)
-  const [online, setOnline] = useState(true)
+  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
   const [queueN, setQueueN] = useState(0)
   // P0-2 (v1.85.0): plačilna povezava (QR položnica) iz pogleda RAČUN
   interface PlinkRow { id: string; url: string; qrDataUrl: string; amount: number | null; splitIndex: number; splitCount: number; sms: { sent: boolean; detail: string } | null }
@@ -130,7 +142,6 @@ function HandheldInner() {
   useEffect(() => {
     if (!getToken()) { router.replace('/'); return }
     let alive = true
-    setOnline(navigator.onLine)
     void (async () => {
       try {
         const meRes = await api<{ employee: { name: string; role: string } }>('/api/auth/me')
@@ -153,19 +164,15 @@ function HandheldInner() {
     // bi sicer čakala do naslednje spremembe omrežja.
     void flushQueue().catch(() => null)
     const onOnline = () => {
-      setOnline(true)
       void flushQueue().catch(() => null)
       void load(true).catch(() => null)
     }
-    const onOffline = () => setOnline(false)
     window.addEventListener('online', onOnline)
-    window.addEventListener('offline', onOffline)
     const unsub = subscribeQueue((ops) => setQueueN(ops.length))
     return () => {
       alive = false
       if (pollRef.current) clearInterval(pollRef.current)
       window.removeEventListener('online', onOnline)
-      window.removeEventListener('offline', onOffline)
       unsub()
     }
   }, [router, load])

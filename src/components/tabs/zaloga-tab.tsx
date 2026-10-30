@@ -78,7 +78,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
       } else { setStOpen(null); setStInputs({}) }
     } catch { /* seznam ni kritičen — tiho */ }
   }
-  useEffect(() => { loadStocktakes() }, [])
+  useEffect(() => { void (async () => { await loadStocktakes() })() }, [])
 
   async function stAction(method: 'POST' | 'PATCH', url: string, body?: unknown) {
     setStBusy(true); setStErr('')

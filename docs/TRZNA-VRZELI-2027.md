@@ -52,7 +52,7 @@ mreža), AI vpogledi ~ (LLM izključen).
 | **N-27-1** ✅ **ZAPRTO (v1.195.0)** | **Sedeži pri naročanju** — dodelitev sedeža že ob dodajanju postavke (aktivni sedež tok: natakar izbere sedež, dodane postavke ga nosijo), ne samo v plačilnem dialogu. Stolpec `OrderItem.seat` ŽE OBSTAJA (v1.193.0) → **brez DDL, brez SCHEMA_MIGRATIONS spremembe**; čisti sloj `seat-assignments.ts` + `parseSeatOption`; tokovi `PATCH /api/orders/[id] { addItems }` + `/api/sync` (offline); UI: aktivni sedež čipi v naročilnem toku (handheld, dashboard sheet); plačilni dialog (v1.193.0) že dela s sedeži — podatki so zdaj polni že pred splitom | v1.193.0 worklog MEJE: »sedeži se urejajo samo v plačilnem okviru (orders.pay) — Square jih ima tudi pri naročanju, to ostaja odprta izboljšava, ne vrzel« | backend + 2–3 klienti + i18n + testi | Mali–srednji |
 | **N-27-2** ✅ **ZAPRTO (v1.196.0)** | **Kategorije stroškov** — poročilo po kategorijah + filter v knjigovodskem portalu. Jedro (DDL konzola + probe + raw CRUD + UI Stroškov) je obstajalo od v1.64/1.65 (Task 66/67 — runtime-gated: stolpec AccountsPayable.category je izven main schema do lastnikovega DDL klika, pisanje → 503); val v1.196.0 je dopolnil obseg N-27-2: čisti sloj `expenseCategoryBreakdown` (accounting-portal.ts), GET /api/expenses `?category=` filter (kandidatni idji prek raw, obseg VEDNO tipizirano — P0 disciplina; agregat sledi filtru; probe false → 503) + `categoryBreakdown` nad celotno periodo, UI portal karte (Select + klikovne vrstice razčlenitve) | task 64 (HACCP načrti): »stroški kategorije (nov STOLPEC na AccountsPayable) bi zastrupile ŽIVE produkcijske poizvedbe (P2022 do DDL) … ostajajo za kasneje« — vzorec DDL konzole je od takrat dokazan | DDL + rute + UI + poročilo | Srednji |
 | **N-27-3** ✅ **ZAPRTO (v1.197.0)** | **Payroll konfigurabilne noge doplačil** — uporabnik vnese odstotke (noč/nedelja/praznik/nadure) po SVOJI kolektivni pogodbi; sistem izračuna ZNESKE iz že izvažanih minut (v1.192.0 osnove); izvoz shema payroll-export/3 z zneski ob minutah; izrecna meja ostaje: noga je uporabniški vhod, biro potrdi zakonitost — sistem NIKOLI ne trdi, da je noga »zakonska« | v1.192.0 iskrena meja: »odstotke doplačil potrdi biro (odvisni od kolektivne pogodbe/uredb, ne koda)« — konfiguracija pretvori mejo v uporabniški vhod, ne v trditev | konfiguracija + izračun + izvoz | Srednji |
-| **N-27-4** | **ESLint react-hooks refaktor (73 mest)** — override `eslint-plugin-react-hooks` 7.0.1 → 7.1.1 (React Compiler pravila) po refaktorju 73 najdb | v1.154.0 OSV: »Refaktor 73 mest je ločena izdaja — pravila niso bila tiho izklopljena« | refaktor + override dvig | Srednji (tehnični dolg, ni funkcija) |
+| **N-27-4** ✅ **ZAPRTO (v1.198.0)** | **ESLint react-hooks refaktor (96 mest @ 7.1.1)** — override `eslint-plugin-react-hooks` 7.0.1 → 7.1.1 (React Compiler pravila) po refaktorju vseh najdb: 58× set-state-in-effect, 26× static-components, 12× refs + 6× purity (ob odklenitvi pravila) | v1.154.0 OSV: »Refaktor 73 mest je ločena izdaja — pravila niso bila tiho izklopljena« — ta val je ta ločena izdaja; koda je od takrat zrasla, zato je meritve 96, ne 73 | refaktor + override dvig | Srednji (tehnični dolg, ni funkcija) |
 
 **Posodobitev v1.195.0 — N-27-1 ZAPRTO:** `addItems[i].seat` / `items[i].seat`
 (opcionalni sedež 1..10, izpuščeno = brez — obstoječi klienti nespremenjeni);
@@ -113,6 +113,28 @@ TESTI: tests/v197-payroll-surcharge-rates.test.ts. **Iskrena meja (ostaja):** no
 je uporabniški vhod — biro potrdi zakonitost; Faza C' (produkcija čaka lastnikov
 DDL klik). Naslednja prioriteta: N-27-4.
 
+**Posodobitev v1.198.0 — N-27-4 ZAPRTO (A-sklop 2027 IZČRPAN):** refaktor React
+Compiler najdb in dvig override-a `eslint-plugin-react-hooks` 7.0.1 → 7.1.1.
+Meritev pod 7.1.1 (koda je od v1.154.0 zrasla): **96 najdb v 35 datotekah** —
+58× `set-state-in-effect` (izpeljava med izrisom, `useSyncExternalStore`
+(matchMedia/online), premik v callbacke (async kontinuacija po `await`,
+`queueMicrotask` za hydration-varne restore/predpogled, interval-subscription),
+render-adjust z identiteto vnosa), 26× `static-components` (dvig notranjih
+komponent na nivo modula — Kpi/Row/DeltaRow; zaprte vrednosti postanejo props),
+12× `refs` (branje ref.current med izrisom odstranjeno — opId prek `ensureOpId`
+s sessionStorage v event handlerju). Ob odklenitvi `react-hooks/purity`: 6 najdb
+(5× `Date.now()` med izrisom — hack `+ tick * 0` nadomeščen z `useState(() =>
+Date.now())` inicializatorjem + obstoječi/novi 30 s/1 s tik interval;
+1× `Math.random()` v shadcn sidebar skeleton — `useMemo []` → `useState`
+inicializator, enaka naključnost na montažo). Mrtvi vnos
+`react-compiler/react-compiler: off` (plugin ni registriran) odstranjen;
+`exhaustive-deps: off` ostaja ZAVESTNA meja (klasično pravilo, svoj refaktor).
+Lint skript teče z omejeno kopico (`--max-old-space-size=1536`) — 7.1.1 analiza
+na 4 GB peskovniku sicer OOM; vrata so zdaj ponovljiva tudi na manjših strojih.
+BREZ suppressions, BREZ novih odvisnosti, hydration-varno (prvi izris enak).
+TESTI: tests/v198-react-hooks-compiler.test.ts (10) + pini v
+dependency-advisories (REACT_HOOKS_PIN 7.0.1→7.1.1).
+
 ### B — lastniške odločitve (koda je pripravljena ali ni koda)
 
 | # | Kandidat | Stanje |
@@ -150,10 +172,12 @@ DDL klik). Naslednja prioriteta: N-27-4.
 
 ## 4. Sklep
 
-RestaurantOS @ v1.194.0 je **presegel matriko 2026**: vse vrzeli dokumenta
-zaprite, pariteta z vodilnimi v vseh ne-mrežnih razredih, vodstvo v
-fiskalizaciji SI/HR, HACCP, menu engineeringu, audit verigi, večjezičnosti
-(5 jezikov) in lastništvu kode. Generacija 2027 je generacija **poliranja
-in globine** (sedeži v celotnem toku, analitika stroškov, uporabniške noge
-doplačil) — ne lovljenja matrike. Vsak val ostaja: brez AI, brez novih
+RestaurantOS @ v1.198.0 je **presegel matriko 2026 in izčrpal A-sklop 2027**:
+vse kodne vrzeli obeh dokumentov zaprte, pariteta z vodilnimi v vseh ne-mrežnih
+razredih, vodstvo v fiskalizaciji SI/HR, HACCP, menu engineeringu, audit verigi,
+večjezičnosti (5 jezikov) in lastništvu kode. Generacija 2027 je bila generacija
+**poliranja in globine** (sedeži v celotnem toku N-27-1, analitika stroškov
+N-27-2, uporabniške noge doplačil N-27-3, React Compiler čistost N-27-4) —
+in je v kodi zaključena; ostanejo le B-sklop (lastniške odločitve), C-sklop
+(mreža/partnerji) in D-sklop (izključeno). Vsak val ostaja: brez AI, brez novih
 odvisnosti, brez tihih odpovedi, z revizijo in testi.

@@ -107,7 +107,7 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
   }
 
   useEffect(() => {
-    void load('')
+    void (async () => { await load('') })()
   }, [])
 
   async function submitIssue() {
@@ -522,7 +522,7 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
   }
 
   useEffect(() => {
-    void load()
+    void (async () => { await load() })()
   }, [])
 
   async function submitNew() {
@@ -820,7 +820,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [okMsg, setOkMsg] = useState('')
-  const [tick, setTick] = useState(0) // živo osveževanje minut čakanja
+  const [nowMs, setNowMs] = useState(() => Date.now()) // živo osveževanje minut čakanja
 
   // nova prijava
   const [newOpen, setNewOpen] = useState(false)
@@ -849,8 +849,8 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
   }
 
   useEffect(() => {
-    void load()
-    const iv = setInterval(() => setTick((x) => x + 1), 30_000) // žive minute brez ponovnega nalaganja
+    void (async () => { await load() })()
+    const iv = setInterval(() => setNowMs(Date.now()), 30_000) // žive minute brez ponovnega nalaganja
     return () => clearInterval(iv)
   }, [])
 
@@ -981,7 +981,6 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
     }
   }
 
-  const nowMs = Date.now() + tick * 0 // tick sproži ponovni izris živih minut
   const freeTables = tables.filter((t) => t.status !== 'OCCUPIED')
 
   return (
@@ -1206,7 +1205,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
           <div className="space-y-3">
             {seatFor && (
               <p className="text-sm text-stone-600">
-                {wlParty(seatFor.partySize, t)} {t('wl.waitingSince')} <strong>{wlDur(wlMin(seatFor.checkedInAt, Date.now()))}</strong>
+                {wlParty(seatFor.partySize, t)} {t('wl.waitingSince')} <strong>{wlDur(wlMin(seatFor.checkedInAt, nowMs))}</strong>
                 {seatFor.preferredArea ? t('wl.wantsSuffix', { area: seatFor.preferredArea }) : ''}
               </p>
             )}

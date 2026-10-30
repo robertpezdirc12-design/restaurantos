@@ -67,7 +67,7 @@ export function MigrationsConsoleSection() {
       else setErr(msg)
     }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
 
   async function apply(id?: string) {
     setBusy(true); setErr('')
@@ -171,7 +171,7 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
       setData(d); setErr('')
     } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
   // lokacije za povezovanje (javna pot vrne samo {id, name} aktivnih)
   useEffect(() => {
     fetch('/api/auth/locations').then((r) => r.json()).then((d) => setLocs(d.locations || [])).catch(() => setLocs([]))

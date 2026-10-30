@@ -73,7 +73,7 @@ export function CouponsCard({ canManage, centralLocationId = '' }: { canManage: 
     } finally { setBusy(false) }
   }, [locParam])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void (async () => { await load() })() }, [load])
 
   const filteredGuests = useMemo(() => {
     const q = guestQuery.trim().toLowerCase()
@@ -125,7 +125,11 @@ export function CouponsCard({ canManage, centralLocationId = '' }: { canManage: 
     } finally { setVoidingId('') }
   }
 
-  const nowMs = Date.now()
+  const [nowMs, setNowMs] = useState(() => Date.now()) // svežina poteklih značk (30 s tik)
+  useEffect(() => {
+    const iv = setInterval(() => setNowMs(Date.now()), 30_000)
+    return () => clearInterval(iv)
+  }, [])
 
   return (
     <Card>

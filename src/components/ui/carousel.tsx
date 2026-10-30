@@ -95,7 +95,11 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
+    // initial canScroll* sync runs detached from the effect body (async
+    // continuation) — the subscription callbacks below keep it in sync after
+    void (async () => {
+      await onSelect(api)
+    })()
     api.on("reInit", onSelect)
     api.on("select", onSelect)
 

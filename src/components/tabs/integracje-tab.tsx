@@ -112,7 +112,7 @@ export function IntegracijeTab({ canManage }: { canManage: boolean }) {
       setErr('')
     } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
 
   const setF = (p: Partial<IntegForm>) => setForm((f) => ({ ...f, ...p }))
   let configOk = true

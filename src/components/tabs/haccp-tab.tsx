@@ -215,7 +215,7 @@ function ScheduleBoard({ onChanged, canManage = true }: { onChanged: () => Promi
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void (async () => { await load() })() }, [load])
 
   // ragrupiranje po datumih (lokalni datum termina)
   const byDate = useMemo(() => {
@@ -377,7 +377,13 @@ function PerformDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => { setNumericValue(''); setNote(''); setError('') }, [occurrence])
+  /* reset ob spremembi termina (prej effect — zdaj varovano stanje med
+     renderjem, identiteta occurrence je ključ, enako kot prej [occurrence]) */
+  const [prevOccurrence, setPrevOccurrence] = useState(occurrence)
+  if (prevOccurrence !== occurrence) {
+    setPrevOccurrence(occurrence)
+    setNumericValue(''); setNote(''); setError('')
+  }
 
   const plan = occurrence?.plan
   const isNumber = plan?.rule?.measureKind === 'number'
@@ -496,9 +502,17 @@ function EntryDetailDialog({ entryId, onClose, onChanged }: { entryId: string | 
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => {
-    if (entryId) { setMode('none'); setNote(''); setRecheckValue(''); setError(''); void load(entryId) }
+  /* reset ob spremembi vnosa (prej en effect; reset je varovano stanje med
+     renderjem, load pa ostane v efektu kot async continuation) */
+  const [seenEntryId, setSeenEntryId] = useState<string | null>(null)
+  if (seenEntryId !== entryId) {
+    setSeenEntryId(entryId)
+    if (entryId) { setMode('none'); setNote(''); setRecheckValue(''); setError('') }
     else setData(null)
+  }
+
+  useEffect(() => {
+    if (entryId) void (async () => { await load(entryId) })()
   }, [entryId, load])
 
   const check = data?.check
@@ -741,7 +755,7 @@ function HaccpPlansSection() {
     } catch { /* ostanek prikazuje obstoječe vnose — načrti niso kritični */ }
     finally { setLoading(false) }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
 
   function openCreate() {
     setEditing(null); setName(''); setCategory('TEMPERATURE'); setFrequency('daily')

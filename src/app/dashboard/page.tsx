@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, fmtPctSigned, getUser } from '@/lib/client'
 import { vatFromGross } from '@/lib/billing'
@@ -258,13 +258,13 @@ function KdsCountdownPill({ createdAt, lateMin, staleNode, stale, fontCls, pillC
   ageMin: number
 }) {
   const { t } = useI18n()
-  const [, tick] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now()) // tik vsako sekundo — ura teče tudi med molkom API-ja
   useEffect(() => {
-    const id = setInterval(() => tick((n) => (n + 1) % 1_000_000), 1000)
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
   if (stale) return <>{staleNode}</>
-  const elapsedS = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 1000)
+  const elapsedS = Math.max(0, (nowMs - new Date(createdAt).getTime()) / 1000)
   const rem = lateMin * 60 - elapsedS
   const two = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0')
   const overdue = rem <= 0
@@ -376,7 +376,9 @@ function DashboardInner() {
   // prebere šele po mountu — sicer SSR naredi null, klient ime → hydration mismatch
   // (span z imenom uporabnika v headerju). Varen, ker ta komponenta nima redirecta na !user.
   const [user, setUser] = useState<ReturnType<typeof getUser>>(null)
-  useEffect(() => { setUser(getUser()) }, [])
+  // mikrotaska: setUser iz telesa efekta izmaknjen iz sinhronne poti (isti prvi izris,
+  // zapis še vedno pred prvim izrisom po mountu — hydration-safe vzorec ohranjen)
+  useEffect(() => { queueMicrotask(() => { setUser(getUser()) }) }, [])
   const [stats, setStats] = useState<Stats | null>(null)
   const [tables, setTables] = useState<TableT[]>([])
   const [orders, setOrders] = useState<OrderT[]>([])
@@ -452,15 +454,25 @@ function DashboardInner() {
   // before /me — the anti-flicker goal of P1-A is preserved, only one paint later).
   const [perms, setPerms] = useState<string[]>([])
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('ro_user')
-      const parsed = raw ? JSON.parse(raw) : null
-      if (Array.isArray(parsed?.permissions)) setPerms(parsed.permissions)
-    } catch {
-      /* leave empty — /me refresh in load() is authoritative */
-    }
+    // mikrotaska — obnova iz localStorage brez sinhronnega setState v efektu
+    queueMicrotask(() => {
+      try {
+        const raw = localStorage.getItem('ro_user')
+        const parsed = raw ? JSON.parse(raw) : null
+        if (Array.isArray(parsed?.permissions)) setPerms(parsed.permissions)
+      } catch {
+        /* leave empty — /me refresh in load() is authoritative */
+      }
+    })
   }, [])
-  const [online, setOnline] = useState(true)
+  // online/offline status — zunanja vrednost prek useSyncExternalStore
+  // (getServerSnapshot = true, isti prvi izris kot prejšnji useState(true))
+  const subscribeOnline = useCallback((cb: () => void) => {
+    window.addEventListener('online', cb)
+    window.addEventListener('offline', cb)
+    return () => { window.removeEventListener('online', cb); window.removeEventListener('offline', cb) }
+  }, [])
+  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
   const [queueOps, setQueueOps] = useState<QueuedOp[]>([])
   const [syncing, setSyncing] = useState(false)
   // Issue #3 §A (P0): dead-letter offline operacije — intervencijski pogled (badge → dialog)
@@ -518,17 +530,21 @@ function DashboardInner() {
   // state is now computed after mount (SSV renders 'unsupported').
   const [pushState, setPushState] = useState<'unsupported' | 'default' | 'granted' | 'denied'>('unsupported')
   useEffect(() => {
-    setPushState(
-      !('serviceWorker' in navigator && 'PushManager' in window)
-        ? 'unsupported'
-        : typeof Notification !== 'undefined'
-          ? Notification.permission === 'granted'
-            ? 'granted'
-            : Notification.permission === 'denied'
-              ? 'denied'
-              : 'default'
-          : 'unsupported',
-    )
+    // mikrotaska — odčitek Notification.permission brez sinhronnega setState v efektu
+    // (isti prvi izris 'unsupported', snapshota se ne spremeni med hidracijo)
+    queueMicrotask(() => {
+      setPushState(
+        !('serviceWorker' in navigator && 'PushManager' in window)
+          ? 'unsupported'
+          : typeof Notification !== 'undefined'
+            ? Notification.permission === 'granted'
+              ? 'granted'
+              : Notification.permission === 'denied'
+                ? 'denied'
+                : 'default'
+            : 'unsupported',
+      )
+    })
   }, [])
 
   async function enablePush() {
@@ -640,13 +656,17 @@ function DashboardInner() {
   // Issue #71 audit-27: clamp je ZDAJ GLASEN — uporabnik izve, zakaj je pristal na
   // pregledu, ne da bi mislil, da mu je aplikacija »vzela« zavihek.
   useEffect(() => {
-    if (canManage) return
-    // issue #6 §F: tudi PRAZNA dovoljenja se clampajo (tabHasPerm fail-closed →
-    // privilegiran ?tab= pristane na 'pregled', ne da bi čakal na /me)
-    if (activeTab !== 'pregled' && !tabHasPerm(activeTab, { canManage, perms })) {
-      toast({ title: t('tabs.noPerm') })
-      setActiveTab('pregled')
-    }
+    // mikrotaska — clamp (in toast) brez sinhronnega setState v telesu efekta;
+    // odločitev se oceni z istimi vrednostmi closure-a, še pred naslednjim izrisom
+    queueMicrotask(() => {
+      if (canManage) return
+      // issue #6 §F: tudi PRAZNA dovoljenja se clampajo (tabHasPerm fail-closed →
+      // privilegiran ?tab= pristane na 'pregled', ne da bi čakal na /me)
+      if (activeTab !== 'pregled' && !tabHasPerm(activeTab, { canManage, perms })) {
+        toast({ title: t('tabs.noPerm') })
+        setActiveTab('pregled')
+      }
+    })
   }, [perms, canManage, activeTab, t])
 
   // Issue #5 (P1-A lekcija): pri router.push iz prijave App Router posodobi URL ŠELE
@@ -654,16 +674,20 @@ function DashboardInner() {
   // Ta effect po umirjenju navigacije prebere ?tab= in sinhronizira aktivni zavihek
   // (varnost: clamp effect zgoraj neodvisno preveri dovoljenje — tuji param ne poviša).
   useEffect(() => {
-    const tabParam = new URLSearchParams(window.location.search).get('tab')
-    if (!tabParam || tabParam === activeTab) return
-    // Issue #71 audit-27: ?tab=neobstoječi je prej pustil PRAZNO ploščo brez sporočila —
-    // izmerjeno ?tab=hitra-prodaja (pravi id: prodaja). Zdaj: obvestilo + preusmeritev.
-    if (!TAB_PERM[tabParam]) {
-      toast({ title: t('tabs.unknown') })
-      setActiveTab('pregled')
-      return
-    }
-    setActiveTab(tabParam)
+    // mikrotaska — ?tab= apliciran brez sinhronnega setState v telesu efekta
+    // (isti odčitek URL-ja, še vedno pred naslednjim izrisom)
+    queueMicrotask(() => {
+      const tabParam = new URLSearchParams(window.location.search).get('tab')
+      if (!tabParam || tabParam === activeTab) return
+      // Issue #71 audit-27: ?tab=neobstoječi je prej pustil PRAZNO ploščo brez sporočila —
+      // izmerjeno ?tab=hitra-prodaja (pravi id: prodaja). Zdaj: obvestilo + preusmeritev.
+      if (!TAB_PERM[tabParam]) {
+        toast({ title: t('tabs.unknown') })
+        setActiveTab('pregled')
+        return
+      }
+      setActiveTab(tabParam)
+    })
   }, [])
 
   // Naloga #10: ?tab= se je samo BRALO. Preklop zavihka je URL pustil na
@@ -811,18 +835,26 @@ function DashboardInner() {
   // uporabniki z več lokacijami ostanejo pri "Vse", dokler ne izberejo.
   const locAutoPicked = useRef(false)
   useEffect(() => {
-    if (locAutoPicked.current || viewLoc || locList.length === 0) return
-    locAutoPicked.current = true
-    const own = user?.locationId && locList.some((l) => l.id === user.locationId) ? user.locationId : ''
-    if (own) setViewLoc(own)
-    else if (locList.length === 1) setViewLoc(locList[0].id)
+    // mikrotaska — samodejna izbira lokacije brez sinhronnega setState v telesu efekta
+    // (stražarski ref zapeči enkratnost enako kot prej; odločitev še pred naslednjim izrisom)
+    queueMicrotask(() => {
+      if (locAutoPicked.current || viewLoc || locList.length === 0) return
+      locAutoPicked.current = true
+      const own = user?.locationId && locList.some((l) => l.id === user.locationId) ? user.locationId : ''
+      if (own) setViewLoc(own)
+      else if (locList.length === 1) setViewLoc(locList[0].id)
+    })
   }, [locList, user, viewLoc])
 
   useEffect(() => {
-    void load()
-    setBootstrapLogin(localStorage.getItem('ro_bootstrap') === '1')
-    setPcfg(getPrintConfig())
-    setTermMode(getTerminalConfig().mode)
+    // mikrotaska — začetni load + odčitki konfigov brez sinhronnega setState v telesu
+    // efekta (load sinhrono postavlja refreshing; interval/listenerji ostanejo sinhronni)
+    queueMicrotask(() => {
+      void load()
+      setBootstrapLogin(localStorage.getItem('ro_bootstrap') === '1')
+      setPcfg(getPrintConfig())
+      setTermMode(getTerminalConfig().mode)
+    })
     // Naloga #11: hot poll na 15 s (operativni pregled), en cikel na štiri (60 s)
     // povsežni; v skritem zavihku se poll ustavi (brskalnik ga itak duši).
     let tick = 0
@@ -835,20 +867,12 @@ function DashboardInner() {
     document.addEventListener('visibilitychange', onVis)
     return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
   }, [load])
-  // online/offline status + offline vrsta (issue #1)
+  // offline vrsta (issue #1) — online/offline status je zgoraj prek useSyncExternalStore
   useEffect(() => {
-    setOnline(navigator.onLine)
-    const on = () => setOnline(true)
-    const off = () => setOnline(false)
-    window.addEventListener('online', on)
-    window.addEventListener('offline', off)
     const unsub = subscribeQueue(setQueueOps)
-    setQueueOps(getQueue())
-    return () => {
-      window.removeEventListener('online', on)
-      window.removeEventListener('offline', off)
-      unsub()
-    }
+    // mikrotaska — začetni odčitek vrste brez sinhronnega setState v telesu efekta
+    queueMicrotask(() => { setQueueOps(getQueue()) })
+    return () => { unsub() }
   }, [])
 
   const doSync = useCallback(async () => {
@@ -866,7 +890,8 @@ function DashboardInner() {
 
   // flush ob povratku povezave IN ob zagonu (recovery po refresh/crash)
   useEffect(() => {
-    if (online) void doSync()
+    // mikrotaska — doSync sinhrono zapre setSyncing (setState) iz sinhronne poti efekta
+    if (online) queueMicrotask(() => { void doSync() })
   }, [online, doSync])
 
   // ── Issue #3 §A (P0): dead-letter intervencija ──
@@ -2006,21 +2031,25 @@ function DashboardInner() {
   const [kdsColumns, setKdsColumns] = useState<KdsColumnsT>(6)
   const [kdsView, setKdsView] = useState<'columns' | 'list'>('columns')
   useEffect(() => {
-    try {
-      const rawTh = localStorage.getItem(KDS_AGE_THRESHOLD_LS_KEY)
-      if (rawTh) {
-        const th = normalizeKdsAgeThresholds(JSON.parse(rawTh))
-        setKdsAgeTh(th); setKdsAgeDraft(th)
-      }
-      const fs = localStorage.getItem('ro_kds_font_size')
-      if (fs === 'S' || fs === 'M' || fs === 'L' || fs === 'XL') setKdsFontSize(fs)
-      const dn = localStorage.getItem('ro_kds_density')
-      if (dn === 'compact' || dn === 'normal') setKdsDensity(dn)
-      const cl = Number(localStorage.getItem('ro_kds_columns'))
-      if ((KDS_COLUMN_OPTIONS as readonly number[]).includes(cl)) setKdsColumns(cl as KdsColumnsT)
-      const vw = localStorage.getItem('ro_kds_view')
-      if (vw === 'columns' || vw === 'list') setKdsView(vw)
-    } catch { /* zasebni način — privzete vrednosti ostanejo */ }
+    // mikrotaska — obnova KDS nastavitev iz localStorage brez sinhronnega setState
+    // v telesu efekta (hidracija: SSR izriše privzete, kot prej)
+    queueMicrotask(() => {
+      try {
+        const rawTh = localStorage.getItem(KDS_AGE_THRESHOLD_LS_KEY)
+        if (rawTh) {
+          const th = normalizeKdsAgeThresholds(JSON.parse(rawTh))
+          setKdsAgeTh(th); setKdsAgeDraft(th)
+        }
+        const fs = localStorage.getItem('ro_kds_font_size')
+        if (fs === 'S' || fs === 'M' || fs === 'L' || fs === 'XL') setKdsFontSize(fs)
+        const dn = localStorage.getItem('ro_kds_density')
+        if (dn === 'compact' || dn === 'normal') setKdsDensity(dn)
+        const cl = Number(localStorage.getItem('ro_kds_columns'))
+        if ((KDS_COLUMN_OPTIONS as readonly number[]).includes(cl)) setKdsColumns(cl as KdsColumnsT)
+        const vw = localStorage.getItem('ro_kds_view')
+        if (vw === 'columns' || vw === 'list') setKdsView(vw)
+      } catch { /* zasebni način — privzete vrednosti ostanejo */ }
+    })
   }, [])
   /** V-3: takojšen učinek + persist (ob obnovitvi zaslona se pragovi spomnijo). */
   const kdsSaveAgeThresholds = (th: KdsAgeThresholds) => {
@@ -2062,10 +2091,13 @@ function DashboardInner() {
      hkrati, barvno kodirana kategorija) — persist v localStorage. */
   const [saleView, setSaleView] = useState<'cards' | 'compact'>('cards')
   useEffect(() => {
-    try {
-      const v = localStorage.getItem('ro_sale_view')
-      if (v === 'cards' || v === 'compact') setSaleView(v)
-    } catch { /* zasebni način */ }
+    // mikrotaska — obnova iz localStorage brez sinhronnega setState v telesu efekta
+    queueMicrotask(() => {
+      try {
+        const v = localStorage.getItem('ro_sale_view')
+        if (v === 'cards' || v === 'compact') setSaleView(v)
+      } catch { /* zasebni način */ }
+    })
   }, [])
   const saleViewSet = (v: 'cards' | 'compact') => {
     setSaleView(v)

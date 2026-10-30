@@ -106,7 +106,7 @@ export function ManagerCallButton({
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
-  const [type, setType] = useState<ManagerCallType | null>(null)
+  const [chosenType, setChosenType] = useState<ManagerCallType | null>(null)
   const [allowedTypes, setAllowedTypes] = useState<readonly ManagerCallType[]>(MANAGER_CALL_TYPES)
   const [note, setNote] = useState('')
   const [pending, setPending] = useState(false)
@@ -147,15 +147,17 @@ export function ManagerCallButton({
 
   useEffect(() => {
     if (!open) return
-    void loadMine()
+    void (async () => { await loadMine() })()
     const iv = setInterval(() => { void loadMine() }, 15_000)
     return () => clearInterval(iv)
   }, [open, loadMine])
 
-  /* privzeta izbira = prva dovoljena vrsta (en klik — issue §1) */
-  useEffect(() => {
-    if (!type || !allowedTypes.includes(type)) setType(allowedTypes[0] ?? null)
-  }, [allowedTypes, type])
+  /* privzeta izbira = prva dovoljena vrsta (en klik — issue §1).
+     Izpeljano med renderjem: če izbrana vrsta ni (več) dovoljena, velja prva
+     dovoljena — brez efekta, ki bi sinhrono povrzal state. */
+  const type = chosenType !== null && allowedTypes.includes(chosenType)
+    ? chosenType
+    : (allowedTypes[0] ?? null)
 
   function onOpenChange(v: boolean) {
     setOpen(v)
@@ -289,7 +291,7 @@ export function ManagerCallButton({
                       type="button"
                       role="radio"
                       aria-checked={type === ty}
-                      onClick={() => setType(ty)}
+                      onClick={() => setChosenType(ty)}
                       className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
                         type === ty
                           ? 'border-emerald-700 bg-emerald-50 text-emerald-800'

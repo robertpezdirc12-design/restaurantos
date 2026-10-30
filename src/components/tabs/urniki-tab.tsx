@@ -106,7 +106,7 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [okMsg, setOkMsg] = useState('')
-  const [tick, setTick] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now()) // živ preracun minut
 
   // ročni vnos (manager)
   const [manualOpen, setManualOpen] = useState(false)
@@ -133,8 +133,8 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
   }
 
   useEffect(() => {
-    void load()
-    const iv = setInterval(() => setTick((x) => x + 1), 30_000)
+    void (async () => { await load() })()
+    const iv = setInterval(() => setNowMs(Date.now()), 30_000)
     return () => clearInterval(iv)
   }, [canManage, teamDays])
 
@@ -202,7 +202,6 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
   }
 
   const onBreak = activeEntry?.breakStart !== null && activeEntry?.breakStart !== undefined && activeEntry?.breakEnd === null
-  const nowMs = Date.now() + tick * 0 // tick sproži preracun
   const liveMin = activeEntry ? Math.max(0, Math.round((nowMs - new Date(activeEntry.clockIn).getTime()) / 60000) - activeEntry.breakMinutes) : 0
 
   return (
@@ -474,7 +473,7 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
     } catch { /* status ostaja — napaka v msg */ } finally { setLoading(false) }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
   // status se osveži vsake 60 s (živi odprto/zaprto indikator)
   useEffect(() => {
     const t = setInterval(() => { void load() }, 60_000)
@@ -795,7 +794,7 @@ export function DiscountsTab({ canManage }: { canManage: boolean }) {
       setErr('')
     } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
 
   const setF = (p: Partial<DiscForm>) => setForm((f) => ({ ...f, ...p }))
   const valid = form.name.trim().length > 0 && Number(form.amount.replace(',', '.')) > 0 && (!form.happy || form.fromHour !== form.toHour)

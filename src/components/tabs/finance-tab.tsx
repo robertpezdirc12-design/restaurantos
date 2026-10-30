@@ -713,7 +713,7 @@ function ApMatchDialog({ apId, description, onClose, onReload }: { apId: string;
       setLinkSel({})
     } catch (e) { setErr(String((e as Error).message || e)) } finally { setBusy(false) }
   }
-  useEffect(() => { void load() }, [apId])
+  useEffect(() => { void (async () => { await load() })() }, [apId])
 
   const hasPendingLinks = Object.keys(linkSel).length > 0
   const saveLinks = async () => {

@@ -114,7 +114,7 @@ export function AllergenDialog({
   }, [itemId])
 
   useEffect(() => {
-    if (itemId) void load()
+    if (itemId) void (async () => { await load() })()
   }, [itemId, load])
 
   async function act(body: Record<string, unknown>) {

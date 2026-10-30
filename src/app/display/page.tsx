@@ -68,8 +68,11 @@ function DisplayInner() {
   const preloadedRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    const tok = localStorage.getItem(TOKEN_KEY) || ''
-    setToken(tok)
+    // zunanji vir (localStorage) ob zagonu — async continuation namesto
+    // sinhronega setState v telesu efekta; prvi izris ostane '' (SSR-varno)
+    void (async () => {
+      setToken(localStorage.getItem(TOKEN_KEY) || '')
+    })()
   }, [])
 
   /**
@@ -154,9 +157,15 @@ function DisplayInner() {
 
   // rotation — one timer per active promo's durationSec; clamps the index when the
   // config shrinks. Polling (2 s) does NOT restart the timer (promoKey, not array identity).
+  // clamp ob skrčitvi konfiguracije poteka med renderjem (varovano stanje, prej
+  // sinhroni setState v efektu); ob dolžini 0 se vrtiljak ne izrisuje in se
+  // indeks ne stisne (enako prej — efekt je zgodaj izstopil).
+  if (promoIdx >= promos.length && promos.length > 0) {
+    setPromoIdx(0)
+  }
+
   useEffect(() => {
     if (!showPromoCarousel) return
-    if (promoIdx >= promos.length) { setPromoIdx(0); return }
     const sec = promos[promoIdx]?.durationSec || PROMO_FALLBACK_SEC
     const clamped = Math.min(120, Math.max(5, sec))
     const tm = setTimeout(() => setPromoIdx((i) => (i + 1) % promos.length), clamped * 1000)

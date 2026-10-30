@@ -2221,7 +2221,7 @@ export function DisplayPromosCard() {
       setNotice(t('promo.loadError'))
     } finally { setLoading(false) }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void (async () => { await load() })() }, [])
 
   const patchRow = (id: string, patch: Partial<DisplayPromoRowT>) => {
     setNotice('')

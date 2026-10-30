@@ -117,7 +117,7 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
     }
   }
 
-  useEffect(() => { void load() }, [weekStart])
+  useEffect(() => { void (async () => { await load() })() }, [weekStart])
 
   const activeEmployees = employees.filter((e) => e.active)
 

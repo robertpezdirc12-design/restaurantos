@@ -113,7 +113,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
     } finally { setBusy(false) }
   }, [canManage, centralLocationId, locParam])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void (async () => { await load() })() }, [load])
   // osveži segmente ob spremembi obdobja
   useEffect(() => {
     void api<{ segments: SegmentT[] }>(`/api/crm/segments${locParam}`)

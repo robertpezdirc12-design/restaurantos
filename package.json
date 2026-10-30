@@ -6,7 +6,7 @@
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
-    "lint": "eslint .",
+    "lint": "NODE_OPTIONS=--max-old-space-size=1536 eslint .",
     "test": "bun test --timeout 20000",
     "typecheck": "tsc --noEmit",
     "typecheck:cloud": "node scripts/typecheck-cloud.cjs",
@@ -114,6 +114,6 @@
   },
   "overrides": {
     "js-yaml": "4.3.2",
-    "eslint-plugin-react-hooks": "7.0.1"
+    "eslint-plugin-react-hooks": "7.1.1"
   }
 }

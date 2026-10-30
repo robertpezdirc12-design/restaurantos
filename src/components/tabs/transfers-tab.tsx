@@ -301,7 +301,7 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
   }, [fStatus, fFrom, fTo, qDeb, fDateFrom, fDateTo])
 
   useEffect(() => {
-    void loadList()
+    void (async () => { await loadList() })()
   }, [loadList, reload])
 
   // debounce iskanja (q sproži nov fetch šele 350 ms po utihnjenju tipkovnice)
@@ -326,9 +326,16 @@ export function TransfersTab({ locations, canManage }: { locations: { id: string
     }
   }, [])
 
+  /* detail reset ob zaprtju (prej else-veja efekta — zdaj varovano stanje
+     med renderjem; nalaganje ostane v efektu kot async continuation) */
+  const [seenDetailId, setSeenDetailId] = useState<string | null>(null)
+  if (seenDetailId !== detailId) {
+    setSeenDetailId(detailId)
+    if (!detailId) { setDetail(null); setDetailErr(''); setDetailMigr(false) }
+  }
+
   useEffect(() => {
-    if (detailId) void loadDetail(detailId)
-    else { setDetail(null); setDetailErr(''); setDetailMigr(false) }
+    if (detailId) void (async () => { await loadDetail(detailId) })()
   }, [detailId, loadDetail])
 
   /** Izbor za nov prenos — lenobno ob odprtju dialoga (en API klic na odprtje). */

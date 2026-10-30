@@ -9,7 +9,7 @@
  * localStorage ključ kot glavna aplikacija; preklop brez reload-a). Imena
  * artikelov/kategorij ostanejo podatki iz baze (niso prevajana).
  */
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -57,7 +57,14 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState<{ orderNumber: number; status: string; total: number } | null>(null)
-  const [online, setOnline] = useState(true)
+  // online/offline — zunanja vrednost prek useSyncExternalStore (getServerSnapshot = true,
+  // isti prvi izris kot prejšnji useState(true); posodobitve prek online/offline dogodkov)
+  const subscribeOnline = useCallback((cb: () => void) => {
+    window.addEventListener('online', cb)
+    window.addEventListener('offline', cb)
+    return () => { window.removeEventListener('online', cb); window.removeEventListener('offline', cb) }
+  }, [])
+  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
 
   // OPS-9 val 3 (v1.76.0): allergen filter — selected chips EXCLUDE items containing them
   const [selAllergens, setSelAllergens] = useState<string[]>([])
@@ -81,15 +88,19 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
     return k ? t(k) : raw
   }, [t])
 
-  // Zadnji t v ref-u — loadMenu se NE znova sproži ob preklopu jezika (brez reload-a podatkov)
   const opIdRef = useRef<string>('')
-  if (!opIdRef.current && typeof window !== 'undefined') {
-    // Isti clientOperationId preživi refresh → idempotenten replay (brez dvojnika)
-    opIdRef.current = sessionStorage.getItem(`ro_guest_op_${token}`) || ''
-    if (!opIdRef.current) {
-      opIdRef.current = crypto.randomUUID()
-      sessionStorage.setItem(`ro_guest_op_${token}`, opIdRef.current)
+  // Isti clientOperationId preživi refresh → idempotenten replay (brez dvojnika).
+  // Refa ne beremo med renderom (pravilo refs) — zagotovimo jo ob prvi uporabi
+  // v submitOrder (edini potrošnik; dogodek = klik, torej po mount efektih).
+  const ensureOpId = (): string => {
+    if (!opIdRef.current && typeof window !== 'undefined') {
+      opIdRef.current = sessionStorage.getItem(`ro_guest_op_${token}`) || ''
+      if (!opIdRef.current) {
+        opIdRef.current = crypto.randomUUID()
+        sessionStorage.setItem(`ro_guest_op_${token}`, opIdRef.current)
+      }
     }
+    return opIdRef.current
   }
 
   // stabilni setri iz useGuestApiError (useCallback [] — identiteta se ne spreminja);
@@ -112,12 +123,9 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   }, [token, clearPageErr, setPageErr, setPageErrKey])
 
   useEffect(() => {
-    loadMenu()
-    const upd = () => setOnline(navigator.onLine)
-    upd()
-    window.addEventListener('online', upd)
-    window.addEventListener('offline', upd)
-    return () => { window.removeEventListener('online', upd); window.removeEventListener('offline', upd) }
+    // mikrotaska: loadMenu sinhrono samo počisti pageErr (setState) — iz telesa
+    // efekta ga izmaknemo iz sinhronne poti (obnašanje: fetch starta enako zgodaj)
+    queueMicrotask(() => { void loadMenu() })
   }, [loadMenu])
 
   /* Issue #9 (v1.119.0) — osveževanje razpoložljivosti (86) brez ponovnega nalaganja:
@@ -261,7 +269,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           qrToken: token,
-          clientOperationId: opIdRef.current,
+          clientOperationId: ensureOpId(),
           customerName: name.trim(),
           items: cart.map((l) => ({
             menuItemId: l.item.id,

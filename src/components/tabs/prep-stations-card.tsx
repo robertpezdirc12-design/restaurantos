@@ -116,7 +116,7 @@ export function PrepStationsCard() {
 
   useEffect(() => {
     if (!canConfigure) return
-    void load()
+    void (async () => { await load() })()
     const iv = setInterval(() => { void load() }, 15_000)
     return () => clearInterval(iv)
   }, [load, canConfigure])

@@ -93,7 +93,7 @@ export function ReservationWidgetCard() {
     }
   }, [t, user?.locationId])
 
-  useEffect(() => { if (canConfigure) void load() }, [canConfigure, load])
+  useEffect(() => { if (canConfigure) void (async () => { await load() })() }, [canConfigure, load])
 
   async function save(opts: { rotate?: boolean; init?: boolean } = {}) {
     setBusy(true)

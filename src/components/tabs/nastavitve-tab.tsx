@@ -51,7 +51,7 @@ export function MfaCard() {
       setStatus(s)
     } catch { setStatus(null) }
   }
-  useEffect(() => { loadStatus() }, [])
+  useEffect(() => { void (async () => { await loadStatus() })() }, [])
 
   /* enable/disable vračata NADALJEVALNI žeton (sessionVersion +1 revokacija
      ostalih sej) — shranimo ga takoj, sicer bi trenutna seja umrla. */
@@ -268,7 +268,13 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
   const [form, setForm] = useState<SettingsT | null>(settings)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
-  useEffect(() => { setForm(settings) }, [settings])
+  /* form sledi zadnjim shranjenim nastavitvam (prej effect — zdaj varovano
+     stanje med renderjem, identiteta settings je ključ, enako kot prej) */
+  const [prevSettings, setPrevSettings] = useState<SettingsT | null>(settings)
+  if (prevSettings !== settings) {
+    setPrevSettings(settings)
+    setForm(settings)
+  }
 
   /* ISSUE #73 audit-19 (v1.136.0): tveganje TIHE IZGUBE podatkov — en obrazec s
      več razdelki in enim gumbom Shrani na koncu dolge strani (uporabnik spremeni

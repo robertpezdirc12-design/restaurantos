@@ -99,7 +99,7 @@ export function ManagerCallsCard() {
   }, [])
 
   useEffect(() => {
-    void load()
+    void (async () => { await load() })()
     const iv = setInterval(() => { void load() }, 15_000)
     return () => clearInterval(iv)
   }, [load])

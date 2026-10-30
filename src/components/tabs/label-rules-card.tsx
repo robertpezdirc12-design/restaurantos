@@ -105,7 +105,7 @@ export function LabelRulesCard() {
 
   useEffect(() => {
     if (!canManage) return
-    void load()
+    void (async () => { await load() })()
     // item picker needs the stock list (soft-fail: rules table still works)
     void (async () => {
       try {

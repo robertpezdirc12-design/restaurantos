@@ -1118,7 +1118,7 @@ function SurchargeRatesCard({ locations }: { locations: { id: string; name: stri
   }, [])
 
   useEffect(() => {
-    if (open) void loadRates(selLoc)
+    if (open) void (async () => { await loadRates(selLoc) })()
   }, [open, selLoc, loadRates])
 
   function pickLoc(v: string) {

@@ -116,7 +116,9 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
 
   // Začetno nalaganje + Stripe vrnitev (?s=<sessionId>): najprej stanje, nato potrditev
   useEffect(() => {
-    load()
+    // mikrotaska: load sinhrono samo počisti pageErr (setState) — iz telesa efekta
+    // ga izmaknemo iz sinhronne poti (obnašanje: fetch starta enako zgodaj)
+    queueMicrotask(() => { void load() })
   }, [load])
 
   useEffect(() => {
