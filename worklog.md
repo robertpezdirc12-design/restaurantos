@@ -6142,3 +6142,22 @@ Work Log:
 Stage Summary:
 - 96+6 refaktoriranih mest se izrisujejo: prijava, plošča, globinska povezava na racuni — brez ene konzolne napake. Vrata so zdaj tudi brskalniško dokazana, ne samo lint/tsc/suite.
 - AKCIJA ZA LASTNIKA: (1) svež GitHub žeton za push (v zaostanku: b91cd79 v1.197.0, 001a43d v1.198.0, ta worklog); (2) preklic žetona iz prejšnjih sej (stalna točka); (3) po pushu GitLab/Vercel health = 1.198.0.
+
+---
+
+Task ID: v1.197.0-browser-verify
+Agent: glavni agent (Z.ai Code)
+Task: Doplačilna brskalniška preverba izdaje v1.197.0 (N-27-3, kartica »Noge doplačil«) — edina izdaja od v1.195.0 BREZ lastne WORKLOG preverbe (v1.195/196/198 imajo svoje; v1.197.0 je bila preverjena samo s curl: health + ruta živa fail-closed). Živi dev 3005, health 1.198.0 (repo koda vključno z v1.198.0 refaktorjem). Lastnikovo stalno pravilo: delo BREZ AI modelov — samo deterministične skripte.
+
+Work Log:
+- TOK (dokazano v brskalniku, klik po ref — lekcija v1.198): / (prijava) → »Vstop brez gesla (demo)« → /dashboard?tab=pregled → klik navigacije »Obračun« → zavihek živ. Globinska povezava ?tab=obracun po reloadu izrise pregled — znana okoljska meja ?tab restore (queueMicrotask) iz v1.196/v1.198, zato klik po navigaciji.
+- KARTICA: »Noge doplačil« (Collapsible, canManage) prisotna v a11y drevesu kot clickable generic (CollapsibleTrigger asChild na CardHeader — zato ne gumb, za razliko od »Plačne postavke zaposlenih«) s polnim opisom payr.rates.hint. Razpiranje → FORMULAR, ne migrBox (tabela PayrollSurchargeRate v bazi obstaja, GET 200, rates null → prazna polja): combobox Lokacija = »Privzeto (vse lokacije)« + spinbuttoni Noč/Nedelja/Praznik/Nadure (%) + gumb »Shrani noge«.
+- ZLATA POT (prvi brskalniški dokaz interaktivnosti v1.197.0): izpolnitev 50 / 12.5 / 20 / 25 → »Shrani noge« → PUT /api/payroll/surcharge-rates = 200 (network log) → reload → klik Obračun → razpri kartico → polja prikazujejo shranjene vrednosti 50 / 12.5 / 20 / 25 (GET round-trip, Decimal → String). Vrstica v bazi: locationId null, nightPct 50, sundayPct 12.5, holidayPct 20, overtimePct 25, updatedById dbg-a-mvu2rg43 (demo uporabnik, centralna vloga — PUT privzetih nog dovoljen, fail-closed ostaja za staff/manager).
+- OKOLJSKA LEKCIJA (3. ponovitev lekcije v1.196/v1.197, NOVA varianta — nivo strežniškega procesa): dev strežnik 3005 teče iz repo cwd (/proc/<pid>/cwd → /home/z/RestaurantOS, health 1.198.0), a je bil ob zagonu pogočen s peskovniškim DATABASE_URL=file:/home/z/my-project/db/custom.db — peskovniški global preglasi repo .env TUDI za next-server proces, ne le za bun/prisma CLI. Zapis je pristal v custom.db (dokaz: vrstica v bazi + mtime dev.db ostal 10:05). Pravilo razširjeno: TUDI dev strežnik zagnati z izrecnim DATABASE_URL=file:<repo>/db/dev.db, če preverba hoče repo bazo.
+- FIXTURE HIGIENA (vzorec v197: noge tekoče ustvarjene/izbrisane): testna vrstica izbrisana (raw DELETE — Prisma klient peskovniškega my-project modela ne pozna); COUNT po čiščenju = 0 (tabela v vhodnem stanju, pini v192/issue22 ostajajo veljavni).
+- KONSOLA/NAPAKE: 14 konzolnih vrstic — 0 error/warning (samo HMR/Fast Refresh info); `agent-browser errors` = prazno; posnetek /tmp/verify-v197-card.png (kartica razprta z vsemi vrednostmi, Obračun v aktivni navigaciji).
+- NE PREVERJENO V BRSKALNIKU (pokrito s Č-testi v197): 403 poti (tuja lokacija, staff — Č3), 503 migrBox (tabela obstaja — pot v brskalniku ne dosegljiva brez spuščanja DDL), validacijske napake vnosov (Č1/Č3).
+
+Stage Summary:
+- v1.197.0 je zdaj brskalniško dokazana enakovredno v1.195/196/198: kartica se izrisuje, formular dela, shranjevanje in round-trip prek pravega UI potekata brez ene konzolne napake. Zapora A-sklopa 2027 (v1.195–v1.198) ima zdaj brskalniški dokaz za VSAKO izdajo.
+- AKCIJA ZA LASTNIKA: (1) svež GitHub žeton za push — v zaostanku 3 commiti (b91cd79 v1.197.0, 001a43d v1.198.0, 1121a34 worklog) + ta; (2) preklic žetona iz prejšnjih sej (stalna točka); (3) po pushu GitLab zrcalo/Vercel health = 1.198.0; (4) B-kandidati (P2-11 transport, FINA 2.0 cert, SAQ/AOC/ASV, Neon health, Buildkite, GitLab žeton) čakajo tvoje odločitve.
