@@ -6285,3 +6285,12 @@ Stage Summary:
 - Varnostna oblika: vsebina V BAZI (read-only disk produkcije), mime allowlist BREZ SVG/HTML, prenos VEDNO attachment + nosniff + no-store, fileName sanitizacija, budget 1 MB, DTO brez vsebine (seznam lahek), branje = vse vloge z lokacijskim obsegom, pisanje = settings.manage, verzija = +1 izpeljana (brez cron stanja).
 - Status OSS generacije: **OSS-1/2/5/9/15 IZVEDENI** (vse A-male + OSS-2); preostali: OSS-4 hold naročila (A srednji, previdno z R7), OSS-10 variante (A, potreba preveriti z uporabo), OSS-13 pakiranje (A mali, po odobritvi platforme); B/C (kampanje transporti, SMTP, teme, tržnica, MCP) ostajajo lastnikovi.
 - AKCIJA ZA LASTNIKA: (1) **svet žeton za push v1.203.0** (commit je lokalno pripravljen); (2) prekliči žeton po pushu (stalna točka); (3) produkcija: DDL kliki payroll-surcharge-rates + equipment-maintenance + inventory-ean + **documents** ŠE VEDNO čakajo (konzola Enterprise → Shema migracije); (4) Vercel health mora javiti 1.203.0 po pushu.
+
+Task ID: v1.203.0-push
+Agent: glavni agent (Z.ai Code)
+Task: Lastnik posredoval svež žeton v klepetu (»nadaljuj«) → push v1.203.0 (e1d8431) po vzorcu: inline žeton → push → update-ref → config čist → sync-check → Vercel health.
+
+Work Log:
+- PUSH IZVRŠEN: 0647913..e1d8431 main -> main (v1.203.0 OSS-2 dokumenti). Config čist ✓, status `## main...origin/main` breh zaostanka, update-ref sinkroniziral tracking ref.
+- sync-check: local = mirror = e1d8431 ✓; produkcija ob preverbi še 0647913 (v1.202.0) — Vercel build v teku; `db: disconnected` = znan Neon lastniški bloker (B), ni regresija.
+- AKCIJA ZA LASTNIKA: (1) PREKLIČI žeton te seje (stalna točka — izmenjan v klepetu); (2) produkcija: DDL kliki payroll-surcharge-rates + equipment-maintenance + inventory-ean + documents ŠE VEDNO čakajo (konzola Enterprise → Shema migracije); (3) Vercel health mora javiti 1.203.0 po zaključenem buildu; (4) naslednji val: OSS-4 hold/draft naročila (A srednji, previdno z R7) — čaka odobritev.
