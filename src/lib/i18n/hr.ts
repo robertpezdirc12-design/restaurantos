@@ -133,6 +133,9 @@ export const hr: Record<string, string> = {
   'integ.kpiActive': 'Aktivne',
   'integ.kpiConnected': 'Povezane',
   'integ.add': 'Nova veza',
+  'integ.openapi.title': 'Javni API (OpenAPI)',
+  'integ.openapi.desc': 'Otvorena specifikacija 3.0.3 javne površine (QR narudžbe, kioski, pay veze, rezervacije, povratne informacije, opt-out, Stripe, web portal, sinkronizacija) — za integratore.',
+  'integ.openapi.btn': 'Otvori spec (JSON)',
   'integ.editTitle': 'Uredi vezu',
   'integ.empty': 'Nema veza. Dodajte prvu vezu (npr. dostava, računovodstvo).',
   'integ.name': 'Naziv',
@@ -2238,6 +2241,8 @@ export const hr: Record<string, string> = {
   'payment.gcChooseFirst': 'Najprije potražite i odaberite poklon karticu.',
   'payment.terminalNotApproved': 'Plaćanje na terminalu nije odobreno.',
   'payment.pushPaid': 'Plaćanje uspješno — hvala!',
+  'payment.cueOn': 'Zvučna potvrda plaćanja je uključena (klik za isključenje)',
+  'payment.cueOff': 'Zvučna potvrda plaćanja je isključena (klik za uključenje)',
   'oh.notePlaceholder': 'npr. Praznik rada, zatvoreno zbog događaja',
 
   // ==== 33-b: gostujoče strani (kiosk /kiosk + QR meni /m/<token>) — pariteta s sl.ts ====

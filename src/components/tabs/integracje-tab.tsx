@@ -21,7 +21,7 @@ import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download, FileCode2 } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 import { heatClass } from '@/lib/sales-by-hour'
 import { durationLabel } from '@/lib/timeclock'
@@ -183,6 +183,20 @@ export function IntegracijeTab({ canManage }: { canManage: boolean }) {
           <Button className="gap-1 bg-emerald-700 hover:bg-emerald-800" onClick={openCreate}><Plus className="h-4 w-4" /> {t('integ.add')}</Button>
         </div>
       )}
+
+      {/* OSS-5 (v1.201.0): odprta API specifikacija — javna površina dokumentirana kot
+          OpenAPI 3.0.3 (GET /api/openapi); pokritost disk↔spec uveljavlja tests/v201. */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base"><FileCode2 className="h-4 w-4 text-stone-500" aria-hidden /> {t('integ.openapi.title')}</CardTitle>
+          <CardDescription>{t('integ.openapi.desc')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => window.open('/api/openapi', '_blank', 'noopener')}>
+            <Download className="h-3.5 w-3.5" /> {t('integ.openapi.btn')}
+          </Button>
+        </CardContent>
+      </Card>
       {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
 
       {loading ? (

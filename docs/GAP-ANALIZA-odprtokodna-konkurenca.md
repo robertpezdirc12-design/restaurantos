@@ -40,7 +40,7 @@ POS, purpose-built gostinstvo). Njihov FEATURE-CHECKLIST je izjemno pošten
 | **Načrtovana poročila po e-pošti** (#13): 18 poročil + urni pošiljanji | DELNO (cron-daily, lot-alert, paylink-reconcile obstajajo; urni poročila na SMTP NI) | **OSS-8** |
 | **Odprta API specifikacija** (#19): REST + Swagger | NI (API + ključi + dnevnik v Integracijah obstajajo; OpenAPI spec NI) | **OSS-5** |
 | **MCP strežnik** (#19): osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno integration keys z izrecnimi dovoljenji | NI (dveh vrst ključev NI; imamo enoten API ključ + dnevnik) | **OSS-6** (razred B — glej spodaj) |
-| **Čas mize** (elapsed) na tlorisu/mizah | NI najdeno (KDS ima čase; mize ne) | **OSS-3** |
+| **Čas mize** (elapsed) na tlorisu/mizah | ŽE IMAMO — v1.129.0 (Toast vzorec): zasedena ploščica nosi ⏱ minute od naročila + fazo + št. naročila + goste + znesek (dashboard page, `kdsMinutes(ao.createdAt)`); analiza v1.199.0 tu NISEN najdla (lažna vrzel, popravljeno @ v1.201.0) | ~~OSS-3~~ — ZAVRJEN kot lažna vrzel |
 | **Hold/draft naročila** (zadrži nedokončano) | NI (statusi brez hold) | **OSS-4** |
 | **Večregionalni davčni režimi** (GST/US/EU-VAT/Spain IVA, vključno/izključno cene) | NE-VELJA (mi smo SI/HR z DDV + fiskalizacijo — drugačen trg; naše fiskalne meje so globlje) | brez kandidata |
 | **One-click pakiranje** (CasaOS/ZimaOS) + živi demo + case study | DELNO (lokalni autostart/backup skripte; NAS paket NI) | **OSS-13** |
@@ -100,10 +100,10 @@ konvenciji kot TRZNA-VRZELI-2027. **Brez odobritve se nič od tega ne začne.**
 |---|---|---|---|---|
 | **OSS-1** | **Vzdrževanje opreme** — register naprav (pečice, hladilniki, klima), servisni razporedi, overdue zastavice, povezava s HACCP lokacijami | OrderRestro #16 | modeli + rute + UI kartica + i18n + testi; brez DDL na produkciji (DDL konzola vzorec v1.197.0) | A (čista koda) — **IZVEDENO @ v1.200.0**: tabeli Equipment + EquipmentMaintenancePlan, rute /api/equipment*, kartica Nastavitve → Operacija, DDL konzola `equipment-maintenance` čaka klik |
 | **OSS-2** | **Dokumentni modul** — SOP-i, pogodbe, recepture s priponkami; obseg HACCP ostaja ločen | OrderRestro #17 | modeli + nalaganje datotek (lokalen disk/db blob — odločitev ob implementaciji) + UI + i18n | A (mali–srednji) |
-| **OSS-3** | **Čas mize** — elapsed na tlorisu/mizah (koliko časa je gost na mizi) | OrderRestro planned | mali: izračun iz odprtega naročila, prikaz na kartici mize | A (mali) |
+| **OSS-3** | ~~**Čas mize**~~ — elapsed na tlorisu/mizah (koliko časa je gost na mizi) | OrderRestro planned | mali: izračun iz odprtega naročila, prikaz na kartici mize | **ZAVRJEN @ v1.201.0 — LAŽNA VRZEL**: ploščica mize že nosi ⏱ minute + fazo + št. naročila + goste + znesek (v1.129.0, Toast vzorec — `kdsMinutes(ao.createdAt)`); analiza v1.199.0 tega ni ulovila |
 | **OSS-4** | **Hold/draft naročila** — zadrži nedokončano naročilo brez zaključka | OrderRestro planned | srednji: status hold + interakcija z offline vrsto (R2/R7 mora ostati garancija!) + revizija | A (srednji; previdno z R7) |
-| **OSS-5** | **Odprta API specifikacija** — OpenAPI opis obstoječih javnih/integracijskih rut, statično datoteko + route za prenos | OrderRestro Swagger | statična spec + test na pokritost rut; brez nove odvisnosti | A (mali–srednji) |
-| **OSS-6** | **MCP strežnik** — osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno od integration ključev | OrderRestro | protokol, NE AI model — a ker obstaja za AI okoliša, **odločitev je lastnikova** glede pravila „brez AI" | **B** (lastnik odloči) |
+| **OSS-5** | **Odprta API specifikacija** — OpenAPI opis obstoječih javnih/integracijskih rut, statično datoteko + route za prenos | OrderRestro Swagger | statična spec + test na pokritost rut; brez nove odvisnosti | A (mali–srednji) — **IZVEDENO @ v1.201.0**: OpenAPI 3.0.3 opis vseh 14 javnih/integracijskih rut (19 handlerjev), disk↔spec pokritost v OBEH smerah uveljavljena s testi, ruta GET /api/openapi, kartica v Integracijah |
+| **OSS-6** | **MCP strežnik** — osebni API ključi (identiteta uporabnika) za AI odjemalce, ločeno od integration ključev | OrderRestro | protokol, NE AI model — a ker obstaja za AI okoliša, **odločitev je lastnikova** glede pravila „brez AI" | **B** — @ v1.201.0 lastnik izrecno potrdil „ne vnašati AI modelov, samo skripte" → **OSTAJA ZUNAJ OBSEGA** |
 | **OSS-7** | **Kampanje po kanalih** z opt-out (email/SMS/WhatsApp) | OrderRestro #14 | kampanjni model + opt-out = A del; transporti (SMTP/SMS/WhatsApp ponudniki) = B/C | A-del + B/C |
 | **OSS-8** | **Urna poročila po e-pošti** | OrderRestro #13 | cron obstaja (cron-daily); transport = SMTP konfiguracija | B (SMTP = lastnik) |
 | **OSS-9** | **Črtne kode/EAN pri nabavi** — EAN dobavitelja na artiklu, sken pri prevzemu | OrderRestro planned | mali: polje + vnos/sken; skener = tipkovnica (deterministično) | A (mali) |
@@ -111,7 +111,7 @@ konvenciji kot TRZNA-VRZELI-2027. **Brez odobritve se nič od tega ne začne.**
 | **OSS-11** | **Teme po znamki** (akcentni barve/logotip per Brand) | TastyIgniter themes | Org→Brand→Property obstaja; oblikovna odločitev | B (oblikovna) |
 | **OSS-12** | **Ekosistem razširitev/tržnica** | TastyIgniter marketplace | zahteva mrežo partnerjev | C (mreža) |
 | **OSS-13** | **One-click pakiranje** (Docker/CasaOS za NAS lastnika) | OrderRestro | distribucija lokalne namestitve | A (mali, po odobritvi ciljne platforme) |
-| **OSS-15** | **Zvočna potrditev plačila** (opozorilni ton ob potrjenem plačilu) | OrderRestro UPI UX | mali: zvočni signal na napravi osebja ob push | A (mali) |
+| **OSS-15** | **Zvočna potrditev plačila** (opozorilni ton ob potrjenem plačilu) | OrderRestro UPI UX | mali: zvočni signal na napravi osebja ob push | A (mali) — **IZVEDENO @ v1.201.0**: čist modul `audio-cue.ts` (dva naraščajoča tona E5→E6, WebAudio z injektiranimi odvisnostmi — 0 odvisnosti, 0 AI), nastavitev na napravo `ro_payment_cue`, klic ob potrjenem plačilu + toggle v plačilnem dialogu |
 
 **Zavrnjeni kot vrzeli (poštena pariteta — imamo bolje ali enako):** večregionalni
 davčni režimi (drugačen trg — mi imamo FURS/Fiskalizacija 2.0 + eSlog), split
@@ -119,7 +119,9 @@ plačila po gostih (oni: display-only), kuponi (oni: planned), pravi offline
 (oni: izrecno ne načrtujejo CRDT offline), fiskalizacija, e-računi, HACCP,
 barcode na POS s strani nodedr-pos (mi pošteno nimamo — zato OSS-9 pri nabavi,
 kjer je SI uporaba realna: EAN dobaviteljev), recovery kode MFA (že imamo),
-backup/restore (že imamo), multi-station KDS (že imamo, v1.112.0).
+backup/restore (že imamo), multi-station KDS (že imamo, v1.112.0),
+**čas mize / elapsed (že imamo od v1.129.0 — lažna vrzel vala v1.199.0,
+popravljeno v1.201.0)**.
 
 **Izven obsega (pravila):** XLSX izvozi (zahtevajo novo odvisnost — v nasprotju
 z „brez novih odvisnosti"; CSV + window.print→PDF pokrivata potrebo pošteno);
@@ -140,6 +142,10 @@ koda iz AGPL repozitorijev (licenca).
    Največ vrednosti: njihov javni pošten FEATURE-CHECKLIST žanr (mi ga imamo
    interno v worklogu/dokih — javna izdaja je odločitev lastnika, marketing
    vrednost dokazana pri njih), ter 5–6 konkretnih funkcij iz tabele OSS.
-3. **Kaj nam manjka:** realne vrzeli so **OSS-2 (dokumenti), (OSS-1 oprema — IZVEDENO @ v1.200.0),
-   OSS-7/8 (kampanje/urna poročila — del B/C), OSS-5 (OpenAPI)**; ostalo so
-   mali izboljševalci. Vse čaka odobritev lastnika (nova generacija OSS-x).
+3. **Kaj nam manjka:** realne vrzeli so **OSS-2 (dokumenti)** in OSS-7/8
+   (kampanje/urna poročila — del B/C); **OSS-1 oprema (v1.200.0), OSS-5 OpenAPI
+   + OSS-15 zvok plačila (v1.201.0) so IZVEDENI**; OSS-3 čas mize je bila
+   LAŽNA VRZEL (že od v1.129.0); OSS-6 MCP ostaja ZUNAJ OBSEGA po lastnikovem
+   pravilu „brez AI modelov, samo skripte" (izrecno potrjeno v1.201.0); ostalo
+   so mali izboljševalci (OSS-9/10/13). Vse čaka odobritev lastnika (nova
+   generacija OSS-x).

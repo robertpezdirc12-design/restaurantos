@@ -109,7 +109,8 @@ import { ModuleIntro } from '@/components/module-intro'
    in handheld — čista preslikava v lib, brez per-artikel slik v bazi) */
 import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
 import { stationViewKey } from '@/lib/kds-station-routing'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset } from 'lucide-react'
+import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -420,6 +421,20 @@ function DashboardInner() {
   const [sending, setSending] = useState(false)
   const [payingOrder, setPayingOrder] = useState<OrderT | null>(null)
   const [invoice, setInvoice] = useState<{ eor: string; invoiceNumber: string; id?: string } | null>(null)
+  /* OSS-15 (v1.201.0): zvočna potrditev plačila — nastavitev NA NAPRAVO
+     (localStorage ro_payment_cue; vzorec kdsSound). Privzeto vklopljeno;
+     hydration v mount mikrotaski spodaj (SSR izriše privzeto — brez razpada). */
+  const [payCue, setPayCue] = useState(true)
+  useEffect(() => {
+    // mikrotaska — odčitek konfiga naprave brez sinhronnega setState v telesu efekta
+    queueMicrotask(() => { setPayCue(getPaymentCueEnabled()) })
+  }, [])
+  /** OSS-15: flip + persist na napravi (takojšen učinek za naslednje plačilo). */
+  const togglePayCue = () => {
+    const next = !payCue
+    setPayCue(next)
+    setPaymentCueEnabled(next)
+  }
   /** Natisljivi račun (FURS) — busy indikator za gumb za tiskanje (common.print) */
   const [printing, setPrinting] = useState(false)
   const [stornoing, setStornoing] = useState<string | null>(null)
@@ -1619,6 +1634,10 @@ function DashboardInner() {
       if (d.loyalty) setLoyaltySummary(d.loyalty)
       // Issue #3: CFD pokaže "Hvala" z zneskom in številko naročila
       void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: bill.totalDue, message: t('payment.pushPaid') })
+      // OSS-15 (v1.201.0): zvočna potrditev plačila na napravi osebja — natakar
+      // sliši "di-dii" brez gledanja v zaslon; lib sama preveri nastavitev naprave
+      // in je NIKOLI kritična (napake pogoltne — plačilni tok je nad zvokom).
+      playPaymentCue()
       await load()
     } catch (err) {
       toast({ title: (err as Error).message, variant: 'destructive' })
@@ -4991,7 +5010,19 @@ function DashboardInner() {
       {/* ── Plačilo + FURS (issue #1 §6: kanonični račun, popusti, zvestoba, deljeno plačilo; §7: večji gumbi) ── */}
       <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-lg">
-          <DialogHeader><DialogTitle className="text-lg">{t('payment.title', { name: payingOrder?.table?.name || '' })}{payCheckNum ? ` — ${t('payment.checkLabel', { n: payCheckNum })}` : ''}</DialogTitle></DialogHeader>
+          <DialogHeader className="flex flex-row items-center justify-between gap-2">
+            <DialogTitle className="text-lg">{t('payment.title', { name: payingOrder?.table?.name || '' })}{payCheckNum ? ` — ${t('payment.checkLabel', { n: payCheckNum })}` : ''}</DialogTitle>
+            {/* OSS-15 (v1.201.0): zvočna potrditev plačila — izklop TOČNO tam, kjer se plačuje (Issue #71 vzorec: dejanja blizu konteksta) */}
+            <button
+              type="button"
+              onClick={togglePayCue}
+              aria-label={payCue ? t('payment.cueOn') : t('payment.cueOff')}
+              title={payCue ? t('payment.cueOn') : t('payment.cueOff')}
+              className="shrink-0 rounded-md p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition"
+            >
+              {payCue ? <Volume2 className="w-4 h-4" aria-hidden /> : <VolumeX className="w-4 h-4" aria-hidden />}
+            </button>
+          </DialogHeader>
           {!bill && payingOrder && (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
           )}

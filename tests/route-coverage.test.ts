@@ -53,6 +53,10 @@ const GUARDS = [
  */
 const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   { methods: ['GET'], path: '/api/health', why: 'liveness probe — brez podatkov' },
+  // OSS-5 (v1.201.0): odprta API specifikacija — javna po NAMENU (metapodatki javne
+  // površine: le IMENA parametrov, nikoli vrednosti žetonov; tests/v201-openapi
+  // uveljavlja brez-skrivnosti + pokritost disk↔spec v obeh smerah).
+  { methods: ['GET'], path: '/api/openapi', why: 'OpenAPI 3.0.3 spec javne površine — brez skrivnosti (OSS-5 v1.201.0)' },
   { methods: ['GET'], path: '/api/setup/status', why: 'status namestitve (bootstrap) — brez skrivnosti' },
   // v1.180.0 R3: prevzem prve namestitve. Javna JE PO NAMENU (poklic je iz brskalnika
   // na stroju, kjer še ni uporabnika — seja torej ne more obstajati). Varovalka ni
