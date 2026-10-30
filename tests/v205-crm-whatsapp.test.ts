@@ -451,7 +451,7 @@ describe('Č3 registri v1.205.0', () => {
     expect(hr['crm.consent.gdprNote']).toContain('WhatsApp')
   })
 
-  it('verzija 1.207.0', () => {
-    expect(APP_VERSION).toBe('1.207.0')
+  it('verzija 1.208.0', () => {
+    expect(APP_VERSION).toBe('1.208.0')
   })
 })

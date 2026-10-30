@@ -9,6 +9,8 @@
 #  - TLS NI del slike: na NAS-u ga pokrije CasaOS/ZimaOS ali obratni posrednik.
 #  - podatki: /data (nosilec) — baza, skrivnosti (config.json), dnevne kopije.
 #  - kontrakt preverja `bun scripts/selfhost-check.ts` in tests/v207-selfhost-kit.
+#  - v1.208.0: recept IZMERJEN v čistem klonu (vse plasti); vrh gradnje ~3,7 GB RAM;
+#    Railway gradi to sliko prek korenskega railway.json (builder DOCKERFILE).
 
 FROM oven/bun:1.4 AS base
 

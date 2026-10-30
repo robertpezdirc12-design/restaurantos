@@ -135,11 +135,42 @@ garancij kot na lastnikovem računalniku). Oznaka slike v
 - Slika vsebuje razvojne odvisnosti (prisma CLI za db push ob zagonu) —
   preprostost in zvestoba lokalnemu profilu sta pred minimalizmom velikosti.
 
-## 9. Preverjeno stanje kontrakta (peskovnik)
+## 9. Preverjeno stanje kontrakta
 
-Gradnja slike v peskovniku NI izvedljiva (ni Docker daemon). Skladenje paketa
-je zato deterministično preverjeno na ravni kontrakta: `bun scripts/selfhost-check.ts`
+Gradnja slike v peskovniku (4 GB RAM) je na meji OOM — **recept pa je od v1.208.0
+IZMERJEN v čistem klonu**: vse plasti Dockerfile izvedene dejansko (`bun install`
+847 paketov → ekspliciten `prisma generate` → `db push` 138 tabel → `next build`
+pod bun, 173 statičnih strani z tipiziranjem). Skladenje paketa je poleg tega
+deterministično preverjeno na ravni kontrakta: `bun scripts/selfhost-check.ts`
 (zeleno) + `tests/v207-selfhost-kit.test.ts` (čisti validatorji, kit na disku,
 registri). Ukazi v receptu so IZMERJENI vzorci iz repozitorija: `bun install`,
 `bun node_modules/prisma/build/index.js …` in `bun node_modules/next/dist/bin/next …`
 (isti klici kot `src/lib/local-setup.ts` in `scripts/local-start.ts`).
+
+**Izmerjena meja gradnje: vrh ~3,7 GB RAM.** Na hostih z manj prostega pomnilnika
+(4 GB skupaj + drugi procesi) je type-check faza v OOM — gradite na hostu z ≥ 4 GB
+prostega ali uporabite Railway (§10).
+
+## 10. Railway (oblak — dokazni build in gostovanje brez NAS-a)
+
+Repozitorij ima **`railway.json`** (deterministična pogodba): Railway gradi
+z **DOCKERFILE builderjem prek `deploy/Dockerfile`** — ista slika kot za NAS,
+nič vzporednih receptov — in preverja zdravje na **`/api/health`** (dvostopenjska
+sonda: povezava + shema).
+
+- **Uvoz**: Railway → New Service → GitHub repo `restaurantos` (veja `main`) —
+  `railway.json` v korenu sam usmeri build na `deploy/Dockerfile` (nič klikov
+  v nastavitvah builda).
+- **Identiteta** (§3 velja tudi tukaj): service → Variables →
+  `RESTAURANTOS_NAME`, `RESTAURANTOS_OWNER_EMAIL`, `RESTAURANTOS_OWNER_PIN`
+  (ostali dve opcijski). Brez TLS fronte čarovnika ni — prvi prevzem gre prek
+  okolja, enako kot na NAS-u.
+- **Podatki**: priklopite Railway Volume na **`/data`** (baza + skrivnosti +
+  dnevne kopije v enem nosilcu, §5). Brez nosilca je baza začasna (izguba ob
+  redeployu — primerno samo za poskusni zagon).
+- **Vrata**: Railway zazna `EXPOSE 3000` iz Dockerfile (target port 3000) —
+  nič nastavitve networkinga ni obvezna.
+- **Meje**: TLS pokrije Railway proxy; deljeni rate-limit/opcijski servisi
+  (§8) vnašate kot Variables. Za gradnjo iz CLI (`railway up`) ali branje
+  dnevnikov potrebuje lastnik `RAILWAY_TOKEN` (Account → Tokens) — brez njega
+  je nadzor prek spletnega vmesnika Railway.
