@@ -52,7 +52,7 @@
  * preveriti, ni zapis ampak tvegana izguba).
  */
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { compareAppVersions, parseAppVersion } from './update-check'
@@ -569,7 +569,20 @@ function walkDir(root: string, relDir: string, out: UpdatePkgInput[]): void {
   for (const ime of imena.sort()) {
     const rel = relDir ? `${relDir}/${ime}` : ime
     const polna = path.join(root, rel)
-    const st = statSync(polna)
+    // lstat, NE stat: statSync SLEDI simbolnim povezavam, zato bi povezava na
+    // datoteko IZVEN drevesa (izmerjeno v1.217.0: public/img/skrivnost.txt →
+    // zunanja vsebina je pristala v podpisanem paketu) tiho vključila tuje
+    // bajte, zlomljena povezava pa bi sesula gradnjo s surovim ENOENT. Odkar
+    // v1.217.1: povezave se PRESKOČIJO (komentar ne laže več) — vir paketa je
+    // SAMO prave datoteke in mape znotraj korena.
+    let st: ReturnType<typeof lstatSync>
+    try {
+      st = lstatSync(polna)
+    } catch (err) {
+      const razlog = err instanceof Error ? err.message : String(err)
+      throw new Error(`[local] Nad ${polna} ni bilo mogoče brskati (${razlog}); paketa ni bilo mogoče zgraditi.`)
+    }
+    if (st.isSymbolicLink()) continue
     if (st.isDirectory()) {
       walkDir(root, rel, out)
     } else if (st.isFile()) {
@@ -578,8 +591,6 @@ function walkDir(root: string, relDir: string, out: UpdatePkgInput[]): void {
       if (jePrepovedanaPripona(ime)) continue
       out.push({ path: rel, bytes: readFileSync(polna) })
     }
-    // Simbolne povezave se PRESKOČIMO: statSync jih sledi, a izrecna odločitev
-    // je, da vir paketa ne sme nositi ničesar, kar se med branjem lahko premakne.
   }
 }
 
@@ -587,12 +598,32 @@ function walkDir(root: string, relDir: string, out: UpdatePkgInput[]): void {
  * Zbere vir paketa iz korena repozitorija: ogledalo Dockerfile COPY seznama
  * + celoten deploy/. Vrne datoteke s POŠEVNICAMI naprej, sortirane.
  */
+/** Prava datoteka (NE povezava — isto varovalo kot walkDir, za korenske vnose). */
+function jePravaDatoteka(p: string): boolean {
+  try {
+    return lstatSync(p).isFile()
+  } catch {
+    return false
+  }
+}
+
+/** Prava mapa (NE povezava). */
+function jePravaMapa(p: string): boolean {
+  try {
+    return lstatSync(p).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 export function collectUpdateSource(root: string): UpdatePkgInput[] {
   const out: UpdatePkgInput[] = []
   const manjkajo: string[] = []
   for (const f of UPDATE_PKG_ROOT_FILES) {
     const polna = path.join(root, f)
-    if (!existsSync(polna)) {
+    // lstat tudi tu: korenska datoteka, ki je povezava, NI vir (enako
+    // varovalo kot walkDir — sicer bi zadnja vrata zbiranja bila široka).
+    if (!jePravaDatoteka(polna)) {
       manjkajo.push(f)
       continue
     }
@@ -600,7 +631,7 @@ export function collectUpdateSource(root: string): UpdatePkgInput[] {
     out.push({ path: f, bytes: readFileSync(polna) })
   }
   for (const d of UPDATE_PKG_ROOT_DIRS) {
-    if (!existsSync(path.join(root, d))) manjkajo.push(`${d}/`)
+    if (!jePravaMapa(path.join(root, d))) manjkajo.push(`${d}/`)
   }
   if (manjkajo.length > 0) {
     throw new Error(

@@ -29,7 +29,7 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -372,6 +372,45 @@ describe('v217 Č4 — zbiranje vira (ogledalo Dockerfile COPY + deploy/)', () =
     expect(poti.filter((p) => p.endsWith('.db') || p.endsWith('.db-wal'))).toEqual([])
     expect(poti).toEqual([...poti].sort())
   })
+
+  test('SIMBOLNE POVEZAVE (hotfix v1.217.1): povezava IZVEN drevesa NE pride v paket — zunanja vsebina ne more pristati v podpisani datoteki', () => {
+    const zunanja = join(TMP, 'zunanja-skrivnost.txt')
+    writeFileSync(zunanja, 'SECRETTOKEN123')
+    const vir = join(TMP, 'vir-sym')
+    for (const m of ['prisma', 'public/img', 'src/lib', 'scripts', 'deploy']) mkdirSync(join(vir, m), { recursive: true })
+    for (const f of ['package.json', 'bun.lock', 'next.config.ts', 'tsconfig.json', 'components.json', 'postcss.config.mjs', 'tailwind.config.ts']) {
+      writeFileSync(join(vir, f), 'x')
+    }
+    writeFileSync(join(vir, 'src/lib/version.ts'), 'x')
+    symlinkSync(zunanja, join(vir, 'public', 'img', 'skrivnost.txt')) // povezava NAVZVEN
+    symlinkSync(join(TMP, 'ne-obstaja-nikoli'), join(vir, 'public', 'img', 'zlomljena.txt')) // ZLOMLJENA
+
+    // v1.217.0 je tu sledila povezavi (zunanja vsebina bi pristala v paketu) in
+    // padla na zlomljeni z surovim ENOENT — izmerjeno pred popravkom.
+    const zbrano = collectUpdateSource(vir)
+    const poti = zbrano.map((f) => f.path)
+    expect(poti).not.toContain('public/img/skrivnost.txt')
+    expect(poti).not.toContain('public/img/zlomljena.txt')
+    // vsebina zunanjega cilja ne sme biti v NOVEM bajtu paketa:
+    expect(zbrano.some((f) => f.bytes.toString().includes('SECRETTOKEN'))).toBe(false)
+    // gradnja nad takim virom uspe in je paket PREVERJiv (povezave so tiho izven)
+    const zgrajen = buildUpdatePackage({ files: zbrano, version: '1.0.0', privateKey: lastnik.keyObject, now: fiksniNow })
+    expect(verifyUpdatePackage(zgrajen.buffer, lastnik.publicKey).header.fileCount).toBe(zbrano.length)
+  })
+
+  test('SIMBOLNA POVEZAVA na korenski datoteki (package.json → zunanji cilj): zbiranje jo zavrne kot »manjka« (ne sledi)', () => {
+    const zunanja = join(TMP, 'korenska-zunanja.txt')
+    writeFileSync(zunanja, 'TUJA VSEBINA')
+    const vir = join(TMP, 'vir-root-sym')
+    for (const m of ['prisma', 'public', 'src/lib', 'scripts', 'deploy']) mkdirSync(join(vir, m), { recursive: true })
+    for (const f of ['bun.lock', 'next.config.ts', 'tsconfig.json', 'components.json', 'postcss.config.mjs', 'tailwind.config.ts']) {
+      writeFileSync(join(vir, f), 'x')
+    }
+    writeFileSync(join(vir, 'src/lib/version.ts'), 'x')
+    symlinkSync(zunanja, join(vir, 'package.json')) // korenska datoteka JE povezava
+
+    expect(() => collectUpdateSource(vir)).toThrow('manjka package.json')
+  })
 })
 
 // ── Č5: apply — zamenjava kode ────────────────────────────────────────────────
@@ -541,10 +580,10 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
     }
   })
 
-  test('verzija je dvignjena na 1.217.0 (version.ts + compose oznaka + selfhost-check vir)', () => {
-    expect(APP_VERSION).toBe('1.217.0')
-    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.217\.0'/)
-    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.217.0')
+  test('verzija je dvignjena na 1.217.1 (version.ts + compose oznaka + selfhost-check vir)', () => {
+    expect(APP_VERSION).toBe('1.217.1')
+    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.217\.1'/)
+    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.217.1')
   })
 
   test('DOKUMENTI: LOKALNI-ZAGON §7 pozna paketno pot; PRD R4b vrstica nosi dokaz', () => {
@@ -555,11 +594,13 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
     const prd = readFileSync(join(ROOT, 'docs/PRD-LOKALNA-BAZA.md'), 'utf8')
     expect(prd).toContain('v1.217.0')
     expect(prd).toContain('local:package-apply')
+    // hotfix v1.217.1: utrjevanje zbirnika (simbolne povezave) je del R4b dokaza
+    expect(prd).toContain('v1.217.1')
   })
 
-  test('worklog vnos na vrhu (Task ID: v1.217.0)', () => {
+  test('worklog vnos na vrhu (Task ID: v1.217.1)', () => {
     const wl = readFileSync(join(ROOT, 'worklog.md'), 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.217.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.217.1')
   })
 
   test('meje paketa so izmerjene in zapisane (623 datotek / ~10,2 MB osnova @ v1.217.0)', () => {

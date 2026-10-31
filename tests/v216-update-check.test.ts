@@ -64,6 +64,17 @@ const read = (p: string): string => readFileSync(join(ROOT, p), 'utf8')
 
 /* ── pripomočki vedenjskih testov (0 omrežja) ─────────────────────────────── */
 
+/**
+ * NOVEJŠA različica, izpeljana iz APP_VERSION (lekcija v1.217.1: hardkodirani
+ * relativni stub '1.218.0' je tiho prenehal biti novejši ob dvigu — test, ki
+ * preverja POŠTENOST preverjanja posodobitev, ne sme pasti ravno na svojem
+ * lastnem nepoštenem fiksni stanju).
+ */
+const NOVEJSA_OD_CURRENT = (() => {
+  const [maj, min] = APP_VERSION.split('.').map(Number)
+  return `${maj}.${min + 1}.0`
+})()
+
 /** Stub odgovor ssrfSafeJson (uspeh). */
 const okJson = (json: unknown, durationMs = 12): SsrfJsonResponse =>
   ({ ok: true, status: 200, json, durationMs })
@@ -124,6 +135,12 @@ describe('v1.216.0 — Č1: parseAppVersion (striktna trojka)', () => {
     expect(parseAppVersion(null)).toBeNull()
     expect(parseAppVersion(undefined)).toBeNull()
     expect(parseAppVersion({ v: '1.216.0' })).toBeNull()
+  })
+
+  it('NOVEJSA_OD_CURRENT je dokazano novejša od APP_VERSION (varovala lekcije v1.217.1)', () => {
+    expect(parseAppVersion(NOVEJSA_OD_CURRENT)).not.toBeNull()
+    expect(isNewerVersion(NOVEJSA_OD_CURRENT, APP_VERSION)).toBe(true)
+    expect(NOVEJSA_OD_CURRENT).not.toBe(APP_VERSION)
   })
 
   it('APP_VERSION samega vala je berljiva (register — ne lokalen niz)', () => {
@@ -215,10 +232,10 @@ describe('v1.216.0 — Č1: resolveUpdateCheckUrl (env → vir, pošteno poroči
 
 describe('v1.216.0 — Č1: getUpdateCheckResult vedenje (fail-soft + poštenost)', () => {
   it('odgovor z NOVEJŠO različico → updateAvailable true + latest', async () => {
-    const { fetch, calls } = countingFetch([okJson({ version: '1.218.0', status: 'ok' })])
+    const { fetch, calls } = countingFetch([okJson({ version: NOVEJSA_OD_CURRENT, status: 'ok' })])
     const r = await getUpdateCheckResult({ fetchJson: fetch, now: T0 })
     expect(r.updateAvailable).toBe(true)
-    expect(r.latest).toBe('1.218.0')
+    expect(r.latest).toBe(NOVEJSA_OD_CURRENT)
     expect(r.current).toBe(APP_VERSION)
     expect(r.reason).toBe('')
     expect(r.source).toBe('default')
@@ -293,7 +310,7 @@ describe('v1.216.0 — Č1: getUpdateCheckResult vedenje (fail-soft + poštenost
   it('predpomnilnica: uspeh 1 h (drugi klic brez omrežja), odpoved 60 s', async () => {
     // uspeh: klic ob T0, ponovna zahteva znotraj TTL → NI drugega klica
     let n = 0
-    const fetchOk: FetchLatestJson = () => { n++; return Promise.resolve(okJson({ version: '1.218.0' })) }
+    const fetchOk: FetchLatestJson = () => { n++; return Promise.resolve(okJson({ version: NOVEJSA_OD_CURRENT })) }
     await getUpdateCheckResult({ fetchJson: fetchOk, now: T0 })
     const cached = await getUpdateCheckResult({ fetchJson: fetchOk, now: T0 + UPDATE_CHECK_TTL_MS - 1 })
     expect(n).toBe(1)
@@ -463,9 +480,9 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 /* ── Č3 — registri ─────────────────────────────────────────────────────────── */
 
 describe('v1.216.0 — Č3: registri', () => {
-  it('verzija 1.217.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.217.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.217\.0'/)
+  it('verzija 1.217.1 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.217.1')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.217\.1'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
