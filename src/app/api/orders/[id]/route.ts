@@ -7,6 +7,12 @@ import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals, claimMutableOrder } from '@/lib/ops'
 import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
+// v1.211.0 (hotfix CI typecheck-prod): pod Postgres shemo je OrderItem.status ENUM
+// (OrderItemStatus), pod SQLite pa String — v1.210.0 je uvedel tipiziran
+// addItemsBody (prej rows implicitno any prek body.addItems) in latentno
+// nesorazmerje je prišlo na plan. Vzorec: sync/route.ts:253 (istega razreda,
+// zelen od v1.112.0). Uvoz mora biti type-only — pogoji baze se ne uvažajo.
+import type { OrderItemStatus } from '@/lib/prisma-types'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import { vatFromGross } from '@/lib/billing'
 import { parseSeatOption } from '@/lib/seat-assignments'
@@ -304,7 +310,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         vatRate,
         vatAmount: vatFromGross(line, vatRate),
         menuItemName: mi.name,
-        status: itemStatusToDB('PENDING'),
+        status: itemStatusToDB('PENDING') as OrderItemStatus,
         notes: i.note || '',
         seat,
         allergenSnapshot: allergenSnapshots[itemIdx] || '{}',

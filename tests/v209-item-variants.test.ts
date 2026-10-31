@@ -157,9 +157,9 @@ describe('v1.209.0 — OSS-10 Č2: admin CRUD + ožičenje', () => {
 /* ── Č3 — registri ───────────────────────────────────────────────────────── */
 
 describe('v1.209.0 — OSS-10 Č3: registri', () => {
-  test('verzija 1.210.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.210.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.210\.0'/)
+  test('verzija 1.211.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.211.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.211\.0'/)
   })
 
   test('0 DDL — varianta je IZPELJANA, ne shranjena (shema nespremenjena)', () => {

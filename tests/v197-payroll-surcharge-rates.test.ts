@@ -629,7 +629,7 @@ describe('Č4 UI statika + registri', () => {
     expect(EXPORT_SCHEMA_VERSION).toBe('payroll-export/3')
   })
 
-  it('verzija 1.210.0', () => {
-    expect(APP_VERSION).toBe('1.210.0')
+  it('verzija 1.211.0', () => {
+    expect(APP_VERSION).toBe('1.211.0')
   })
 })
