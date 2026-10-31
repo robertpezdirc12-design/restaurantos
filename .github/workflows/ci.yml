@@ -189,6 +189,16 @@ jobs:
           scope: 'neon-smoke (shema na resničnem Postgresu)'
           hint: 'Nepričakan drift pomeni, da produkcija ne ustreza datamodelu — push na main je bloiran, dokler ga ne razrešiš. Infra napaka (Neon API, endpoint ne aktivira) ni koda; preveri NEON_API_KEY_B64 in quota.'
 
+      # v1.215.0: življenjski cikel alarmov — ob USPEHU joba se odprti alarm
+      # s tem scopom samodejno zapre z dokazom (zelen run). Brez tega je bil
+      # zastarel alarm (job zelen, issue odprt) trajna laž (B-5).
+      - name: Zapri alarm ob uspehu
+        if: success()
+        uses: ./.github/actions/ci-alarm-close
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'neon-smoke (shema na resničnem Postgresu)'
+
   # Hosted quality gate: tsc + lint + celoten test suite na sveži SQLite
   # bazi (testi so samozadostni — potrjeno lokalno na prazni bazi). Nadomešča
   # GitLab CI quality-gate (GitLab compute minutes izčrpane — gl. worklog Task 35).
@@ -244,6 +254,16 @@ jobs:
           scope: 'tests (tsc + lint + celoten suite na SQLite)'
           hint: 'Ta job je objektivna varovalka pred Vercel deployom. Če je padel tsc, je v produkciji najverjetneje že deployano isto stanje (gl. #18) — preveri deployment. Če je padel samo test, preveri, ali gre za fiksature (predponi `a56-`, `i4-`) ali res za napako.'
 
+      # v1.215.0: življenjski cikel alarmov — ob USPEHU joba se odprti alarm
+      # s tem scopom samodejno zapre z dokazom (zelen run). Brez tega je bil
+      # zastarel alarm (job zelen, issue odprt) trajna laž (B-5).
+      - name: Zapri alarm ob uspehu
+        if: success()
+        uses: ./.github/actions/ci-alarm-close
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'tests (tsc + lint + celoten suite na SQLite)'
+
   # DRUGI SISTEM kot `tests`: tsc proti PRODUKCIJSKEMU (Postgres) klientu.
   # Zakaj ločen job: `tests` ima file: DATABASE_URL, zato postinstall generira
   # SQLite klient, ta pa enumeratov NE pozna (`Reservation.status` je tam String)
@@ -281,6 +301,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           scope: 'typecheck-prod (tsc proti Postgres klientu)'
           hint: 'Ta mreža gleda enume in Json polja produkcijske sheme. Napaka tu ob zelenem jobu `tests` je točno razred, ki je stal padec rezervacijskega opomnika (v1.129.0). Popravi kodo, ne sheme.'
+
+      # v1.215.0: življenjski cikel alarmov — ob USPEHU joba se odprti alarm
+      # s tem scopom samodejno zapre z dokazom (zelen run). Brez tega je bil
+      # zastarel alarm (job zelen, issue odprt) trajna laž (B-5).
+      - name: Zapri alarm ob uspehu
+        if: success()
+        uses: ./.github/actions/ci-alarm-close
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'typecheck-prod (tsc proti Postgres klientu)'
 
   # (deploy job odstranjen v Task 43 — Vercel Git integration deploya samodejno;
   # vzporeden CLI deploy bi povzročil dva builda na push in race za produkcijo.)

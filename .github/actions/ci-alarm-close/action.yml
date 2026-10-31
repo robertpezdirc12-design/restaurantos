@@ -1,0 +1,118 @@
+name: 'Zapri CI alarm ob uspehu'
+description: >-
+  Druga polovica življenjskega cikla alarmov (v1.215.0, B-5): ob USPEHU joba
+  zapre odprti `[CI alarm]` issue, ki pripada ISTEMU workflowu in scopu, s
+  komentarjem-dokazom (zelen run). Brez tega je bil alarm enosmeren — issue,
+  odprt ob odpovedi, je ostal odprt tudi po tem, ko je job osedel zelen
+  (izmerjeno 31. 10. 2026: #86 typecheck-prod zelen od v1.211.0, #82 tests in
+  #85 sync zeleni — vsi trije odprti), zato je bil seznam alarmov trajna laž
+  in pravi alarmi (Neon B-4) so se v njem izgubili.
+
+# Ista disciplina kot .github/actions/ci-alarm (v1.168.0 lekcije):
+#  - VSAKA zunanja vrednost gre prek `env:` (skript je izvedljiv lokalno —
+#    tests/v215-ci-alarm-close.test.ts ga izvleče in izvede proti stubu);
+#  - REST base je `github.api_url` (github.server_url/api/v3 vrača 404);
+#  - JSON gradi izključno `node` (python3 je na Windowsih stub);
+#  - 3 vztrajni poskusi s konfigurabilnim spanjem (API_RETRY_SLEEP).
+#
+# Zakaj korak NIKOLI ne vrne napake: job je ZELEN — rdečica iz tega koraka bi
+# pokvarila edino, kar job sporoča. Neuspeh zaprtja je `state=spodletela` +
+# ::warning::, naslednji zeleni run poskusi znova (idempotentno).
+#
+# Iskanje: ISTA vrata kot odpiralec (`state=open&labels=ci-alarm&per_page=100`,
+# primerjava naslova case-insensitive) — kar odpiralec najde, najde tudi
+# zapiralec; če odpiralec vidi >100 issuejev, jih vidi oba (simetrija).
+
+inputs:
+  token:
+    description: 'GITHUB_TOKEN (zahteva permissions: issues: write)'
+    required: true
+  scope:
+    description: 'Kaj job počne — ISTEMA vrednost kot v alarmnem koraku (naslov issue je sestavljen iz nje)'
+    required: true
+
+outputs:
+  alarm:
+    description: 'zaprta | ni-bilo | spodletela'
+    value: ${{ steps.close.outputs.state }}
+
+runs:
+  using: composite
+  steps:
+    - name: 'Zapri odprti alarm s tem naslovom (dokaz: ta zeleni run)'
+      id: close
+      env:
+        SCOPE: ${{ inputs.scope }}
+        API_BASE: ${{ github.api_url }}
+        SERVER_URL: ${{ github.server_url }}
+        TOKEN: ${{ inputs.token }}
+      shell: bash
+      run: |
+        set -u
+        API="${API_BASE}/repos/${GITHUB_REPOSITORY}"
+        TITLE="[CI alarm] $GITHUB_WORKFLOW — $SCOPE"
+
+        SLEEP="${API_RETRY_SLEEP:-3}"
+        api() { # method endpoint [data_json]
+          local method="$1" ep="$2" data="${3:-}" try out
+          for try in 1 2 3; do
+            if [ -n "$data" ]; then
+              # JSON gre na curl v STDIN, ne v argv (MSYS OEM pretvorba uniči
+              # UTF-8 — izmerjeno 22. 10. v v1.168.0; enaka disciplina tukaj).
+              out=$(printf '%s' "$data" | curl -sS -f -X "$method" "$API$ep" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H 'Content-Type: application/json' \
+                --data-binary @- 2>/dev/null) || out=''
+            else
+              out=$(curl -sS -f -X "$method" "$API$ep" \
+                -H "Authorization: Bearer $TOKEN" 2>/dev/null) || out=''
+            fi
+            [ -n "$out" ] && { echo "$out"; return 0; }
+            sleep $((try * SLEEP))
+          done
+          echo "::warning::api $method $ep ni uspel v 3 poskusih" >&2
+          return 1
+        }
+
+        # 1) odprta issue s tem naslovom? (ista vrata kot odpiralec — dedup po naslovu)
+        #    PRAZEN odgovor ≠ prazen seznam: uspešen GET brez zadetkov vrne `[]`
+        #    (ne-prazen niz); povsem prazna vrednost pomeni, da so padli vsi
+        #    trije poskusi — ali je kaj za zapreti je NEZNANO in to ni "ni-bilo"
+        #    (ista poštenost kot state=spodletela pri odpiralcu).
+        ISSUES=$(api GET "/issues?state=open&labels=ci-alarm&per_page=100")
+        if [ -z "$ISSUES" ]; then
+          echo "state=spodletela" >> "$GITHUB_OUTPUT"
+          echo "::warning::seznama odprtih alarmov ni bilo mogoče prebrati (API) — ali je kaj za zapreti je NEZNANO; naslednji zeleni run poskusi znovo"
+          exit 0
+        fi
+        NUM=$(printf '%s' "$ISSUES" | node -e "let s = ''; process.stdin.on('data', (d) => s += d); process.stdin.on('end', () => { try { const want = (process.argv[1] || '').toLowerCase(); for (const it of JSON.parse(s)) { if ((it.title || '').toLowerCase() === want) { console.log(it.number); break } } } catch (e) {} })" "$TITLE" || true)
+
+        if [ -z "$NUM" ]; then
+          echo "state=ni-bilo" >> "$GITHUB_OUTPUT"
+          echo "Ni odprtega alarmnega issue za '${TITLE}' — nič za zapreti."
+          exit 0
+        fi
+
+        # 2) komentar z dokazom (brez izsečka loga — audit #20 disciplina)
+        COMMENT=":white_check_mark: Job je zdaj ZELEN — run [#$GITHUB_RUN_NUMBER]($SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) \`$GITHUB_SHA\` (${GITHUB_RUN_ATTEMPT:-1}. poskus). Alarm zaprt samodejno (življenjski cikel, v1.215.0)."
+        if ! api POST "/issues/$NUM/comments" "$(node -e "process.stdout.write(JSON.stringify({ body: process.argv[1] }))" "$COMMENT")"; then
+          echo "state=spodletela" >> "$GITHUB_OUTPUT"
+          echo "::warning::komentar na issue #${NUM} ni uspel — alarm ostaja odprt, naslednji zeleni run poskusi znova"
+          exit 0
+        fi
+
+        # 3) zapri (idempotentno — če je kdo že zaprl, PATCH vrne 200)
+        if api PATCH "/issues/$NUM" '{"state":"closed"}' >/dev/null; then
+          echo "state=zaprta" >> "$GITHUB_OUTPUT"
+          echo "Issue #${NUM} zaprt: ${TITLE}"
+          {
+            echo "## :white_check_mark: CI alarm zaprt — $SCOPE"
+            echo ""
+            echo "- **issue:** #${NUM}"
+            echo "- **dokaz:** run [#$GITHUB_RUN_NUMBER]($SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) \`$GITHUB_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "state=spodletela" >> "$GITHUB_OUTPUT"
+          echo "::warning::issue #${NUM} ni bil zaprt (API) — preveri ročno; komentar z dokazom je že na issueju"
+        fi
+        exit 0

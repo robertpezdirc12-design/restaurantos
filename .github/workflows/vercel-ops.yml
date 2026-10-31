@@ -85,3 +85,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           scope: 'Vercel OPS (diag ali rezervni CLI deploy)'
           hint: 'Preveri način, ki je bil izbran (diag ali deploy). Če je deploy padel, produkcija ni posodobljena: Vercel dashboard → Deployments → zadnji READY → Promote (rollback), nato šele razlog odpovedi (VERCEL_TOKEN_B64, VERCEL_ORG_ID/PROJECT_ID). V deploy načinu je bil pred tem korakom namenoma izbrisan .git — to je pričakovano, ne napaka.'
+
+      # v1.215.0: življenjski cikel alarmov — ob USPEHU joba se odprti alarm
+      # s tem scopom samodejno zapre z dokazom (zelen run). Brez tega je bil
+      # zastarel alarm (job zelen, issue odprt) trajna laž (B-5).
+      - name: Zapri alarm ob uspehu
+        if: success()
+        uses: ./.github/actions/ci-alarm-close
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'Vercel OPS (diag ali rezervni CLI deploy)'

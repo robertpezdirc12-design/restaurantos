@@ -90,7 +90,7 @@ describe('Č1 — validateComposeContract', () => {
       '    build:',
       '      context: ..',
       '      dockerfile: deploy/Dockerfile',
-      '    image: restaurantos:1.214.0',
+      '    image: restaurantos:1.215.0',
       '    restart: unless-stopped',
       '    ports:',
       '      - "3000:3000"',
@@ -116,7 +116,7 @@ describe('Č1 — validateComposeContract', () => {
       'services:',
       '  restaurantos:',
       '    build: {}',
-      '    image: restaurantos:1.214.0',
+      '    image: restaurantos:1.215.0',
       '    privileged: true',
       '    ports: []',
       '    restart: unless-stopped',
@@ -230,7 +230,7 @@ describe('Č2 — kit na disku', () => {
 
 describe('Č3 — registri v1.207.0', () => {
   test('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.214.0')
+    expect(APP_VERSION).toBe('1.215.0')
   })
 
   test('oznaka slike v compose sledi APP_VERSION (enkratna resnica)', () => {

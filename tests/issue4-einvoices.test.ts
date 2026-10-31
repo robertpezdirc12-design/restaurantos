@@ -1020,7 +1020,7 @@ describe('H. prejeti eSLOG — opozorila (aditivno) + XXE varnost', () => {
 
 describe('I. registri — verzija, DDL register, predpone, i18n, 0 DDL na obstoječih', () => {
   it('APP_VERSION === 1.134.0', () => {
-    expect(APP_VERSION).toBe('1.214.0')
+    expect(APP_VERSION).toBe('1.215.0')
   })
   it('SCHEMA_MIGRATIONS.length === 34 (+equipment-maintenance OSS-1 v1.200.0)', () => {
     expect(SCHEMA_MIGRATIONS.length).toBe(36) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20)

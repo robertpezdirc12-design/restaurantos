@@ -78,3 +78,13 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           scope: 'canary: main nima zaključenega CI runa'
           hint: 'Najprej preveri (1) ali so self-hosted runnerji živi (Settings → Actions → Runners), (2) ali hosted kvota ni izčrpana (iz №15: isti znak je bil "no runner could be assigned"), (3) ali je .github/workflows/ci.yml veljaven YAML, (4) ali je zadnji run katerega workflowa zaključen z cancelled ali startup_failure — tak run ne more alarmirati sam sebe; vzrok je skoraj vedno concurrency skupina, ki jo drži zablokiran queued job (cancel-in-progress: false), diagnostic: gh api "repos/<repo>/actions/runs?status=queued" in nato gh api "repos/<repo>/actions/runs/<id>/jobs". Če CI res ne teče, noben drug alarm v tem repozitoriju ne more sprožiti sam sebe.'
+
+      # v1.215.0: življenjski cikel alarmov — ob USPEHU joba se odprti alarm
+      # s tem scopom samodejno zapre z dokazom (zelen run). Brez tega je bil
+      # zastarel alarm (job zelen, issue odprt) trajna laž (B-5).
+      - name: Zapri alarm ob uspehu
+        if: success()
+        uses: ./.github/actions/ci-alarm-close
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          scope: 'canary: main nima zaključenega CI runa'

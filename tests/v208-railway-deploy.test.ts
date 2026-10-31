@@ -104,8 +104,8 @@ describe('Č2 — disk: recept in dokumentacija', () => {
 
 describe('Č3 — registri v1.208.0', () => {
   test('verzija 1.212.0 (toBe + ubežen regex na enkratni resnici)', () => {
-    expect(APP_VERSION).toBe('1.214.0')
-    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.214\.0'/)
+    expect(APP_VERSION).toBe('1.215.0')
+    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.215\.0'/)
   })
 
   test('GAP OSS-13: poštena meja zamenjana z izmerjenim dokazom + Railway potjo', () => {
