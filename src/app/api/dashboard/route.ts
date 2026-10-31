@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuthWithPerms, isCentralRole, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { num, ORDER_ACTIVE_DB } from '@/lib/map'
 import { assertOrgScope } from '@/lib/tenant'
+import { aggregateSalesByVariant } from '@/lib/item-variants'
 
 /**
  * Issue #5 (P0 §C + komentar #6): trije popravki —
@@ -77,12 +78,20 @@ export async function GET(req: NextRequest) {
           _count: true,
         })
       : Promise.resolve({ _sum: { total: null as number | null }, _count: 0 }),
-    db.orderItem.groupBy({
-      by: ['menuItemName'],
+    // v1.212.0 (OSS-10 C-del): top-liste SE ZDAJ RAZCEPLJAJO po varianti —
+    // SQL groupBy po menuItemName je »0,5 L« in »0,33 L« stal v eno vrstico.
+    // Enako okno/pogoje kot prej; agregacija (razcep + merge + vrstni red)
+    // v čistem sloju item-variants.aggregateSalesByVariant, top 5 zreže UI sloj.
+    db.orderItem.findMany({
       where: { Order: { createdAt: { gte: new Date(Date.now() - 7 * 86400_000) }, status: { not: 'cancelled' }, ...counterScope } },
-      _sum: { quantity: true },
-      orderBy: { _sum: { quantity: 'desc' } },
-      take: 5,
+      select: {
+        menuItemName: true,
+        quantity: true,
+        OrderItemModifier: {
+          select: { name: true, ModifierGroup: { select: { required: true, maxSelect: true } } },
+        },
+      },
+      take: 50000,
     }),
     // v1.129.0 (Toast/Square benchmark): včerajšnji promet — Δ% na KPI kartici prometa
     showFinancial
@@ -106,7 +115,15 @@ export async function GET(req: NextRequest) {
       paidToday: { count: paidToday._count, total: showFinancial && paidToday._sum.total ? num(paidToday._sum.total) : 0 },
       financialPerm: showFinancial,
     },
-    topItems: topItemsRaw.map((t) => ({ name: t.menuItemName, qty: t._sum.quantity || 0 })),
+    topItems: aggregateSalesByVariant(topItemsRaw.map((r) => ({
+      name: r.menuItemName,
+      qty: r.quantity,
+      modifiers: r.OrderItemModifier.map((m) => ({
+        name: m.name,
+        groupRequired: m.ModifierGroup?.required,
+        groupMaxSelect: m.ModifierGroup?.maxSelect,
+      })),
+    }))).slice(0, 5),
     // preklopnik (pogledi): odgovor jasno pove, na katero lokacijo se nanaša
     locationScope: selectedLocation ?? null,
     locationName: selectedLocation

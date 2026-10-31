@@ -5,6 +5,7 @@ import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendShiftDailySummary } from '@/lib/daily-email'
+import { aggregateSalesByVariant } from '@/lib/item-variants'
 import {
   cashMovementsAvailable,
   cashPolicy,
@@ -519,15 +520,30 @@ export async function POST(req: NextRequest) {
             const m = ['cash', 'card', 'mobile'].includes(rc.paymentMethod) ? rc.paymentMethod : 'other'
             payTotals.set(m, r2((payTotals.get(m) || 0) + num(rc.total)))
           }
+          // v1.212.0 (OSS-10 C-del): top 3 v povzetku izmene SE ZDAJ RAZCEPLJAJO
+          // po varianti (isti kontrakt kot dnevni digest in dashboard topItems).
           const items = orderIds.size
-            ? await db.orderItem.findMany({ where: { orderId: { in: [...orderIds] }, voided: false }, select: { menuItemName: true, quantity: true }, take: 5000 })
+            ? await db.orderItem.findMany({
+                where: { orderId: { in: [...orderIds] }, voided: false },
+                select: {
+                  menuItemName: true,
+                  quantity: true,
+                  OrderItemModifier: {
+                    select: { name: true, ModifierGroup: { select: { required: true, maxSelect: true } } },
+                  },
+                },
+                take: 5000,
+              })
             : []
-          const qtyByName = new Map<string, number>()
-          for (const it of items) {
-            const name = it.menuItemName || '(artikel)'
-            qtyByName.set(name, (qtyByName.get(name) || 0) + (it.quantity || 0))
-          }
-          const topItems = [...qtyByName.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, qty]) => ({ name, qty }))
+          const topItems = aggregateSalesByVariant(items.map((it) => ({
+            name: it.menuItemName,
+            qty: it.quantity,
+            modifiers: it.OrderItemModifier.map((m) => ({
+              name: m.name,
+              groupRequired: m.ModifierGroup?.required,
+              groupMaxSelect: m.ModifierGroup?.maxSelect,
+            })),
+          }))).slice(0, 3)
           await sendShiftDailySummary({
             shiftId: result.shift.id,
             shiftDate: result.shift.openedAt,

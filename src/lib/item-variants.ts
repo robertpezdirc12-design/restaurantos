@@ -20,10 +20,12 @@
  * POST naročila). Vse ostane 0 uvozov in brez stranskih učinkov — UI prikaže,
  * strežnik pa ostane avtoritativna resnica (cene in validacija iz DB).
  *
- * Poštena meja (dokumentirana v GAP analizi, OSS-10 vrstica): poročila
- * grupirajo po osnovnem imenu artikla (razcep po varianti ostaja naslednji
- * val), OrderItem.modifiersJson ostaja '[]' (posnetek živi v OrderItemModifier
- * vrsticah).
+ * Poštena meja (dokumentirana v GAP analizi, OSS-10 vrstica): OrderItem.
+ * modifiersJson ostaja '[]' (posnetek živi v OrderItemModifier vrsticah).
+ * C-del (v1.212.0): količinske top-liste poročil SE ZDAJ razcepljajo po
+ * varianti (`aggregateSalesByVariant`); cenovno/costna poročila (menu-
+ * engineering, food-cost, restock) ostajajo na osnovnem artiklu — cena na
+ * varianto ne obstaja (receptura je vezana na artikel).
  */
 
 /** Oblika skupine opcij, ki jo sloj potrebuje za razred (podmnožina ModifierGroup). */
@@ -185,4 +187,76 @@ export function posVariantItemsPayload(
     qty: l.qty,
     modifiers: l.modifierIds.map((id) => ({ modifierId: id })),
   }))
+}
+
+/* ── OSS-10 C-del (v1.212.0): razcep poročil po varianti ── */
+
+/**
+ * Ena opcija poročilne postavke, kakor pride iz baze (OrderItemModifier z
+ * pohitrenimi podatki pripadajoče skupine). Polja so `unknown` — čisti sloj
+ * ne zaupa obliki in sam odloči, kaj je uporabno (fail-soft).
+ */
+export interface ReportModifierRow {
+  name: unknown
+  groupRequired: unknown
+  groupMaxSelect: unknown
+}
+
+/** Vrstica poročila: ime postavke (posnetek) + količina + opcije s skupinskimi podatki. */
+export interface ReportItemRow {
+  name?: unknown
+  qty?: unknown
+  modifiers?: readonly ReportModifierRow[] | null
+}
+
+/**
+ * Imena opcij, ki so VARIANTE (obvezna skupina z natanko 1 izbiro — ISTI
+ * razred kot `isVariantGroup`). LE te razcepijo poročilno vrstico: velikost
+ * se ZAMENJUJE, zato je »0,5 L« druga prodajna enota kot »0,33 L«. Prosti
+ * dodatki (»brez čebule«) razcepa NE naredijo — poročilo šteje enote artikla
+ * po velikostih, ne kombinacij dodatkov (dodatki bi razbijli top-liste na
+ * desetine šumnih vrstic z isto po-tehnično vsebino).
+ * Fail-soft: izbrisana/neznana skupina (null) ali prazno ime → opcija ven
+ * (vrstica ostane pri osnovnem imenu — nič se ne ugiba).
+ */
+export function variantOptionNamesOf(
+  mods: readonly ReportModifierRow[] | null | undefined,
+): string[] {
+  if (!Array.isArray(mods)) return []
+  const out: string[] = []
+  for (const m of mods) {
+    if (!m) continue
+    if (m.groupRequired !== true || m.groupMaxSelect !== 1) continue
+    if (typeof m.name !== 'string') continue
+    const name = m.name.trim()
+    if (name.length > 0) out.push(name)
+  }
+  return out
+}
+
+/**
+ * Agregacija prodaje z RAZCEPOM po varianti: prikazno ime vrstice pride iz
+ * `orderItemDisplayName` (osnovno ime + variantne opcije, »Pizza · 0,5 L«),
+ * enako prikazno ime = ista vrstica (količine se seštejejo). Brez variantnih
+ * opcij se vrstica vede TOČNO kot prej (samo osnovno ime) — poročila brez
+ * variant v podatkih so byte-identična prejšnjemu obnašanju.
+ * Izhod je razvrščen deterministično: qty padajoče, pri izenačenju ime po
+ * kodnih točkah naraščajoče (localeCompare je odvisen od okolja — tukaj ne).
+ * Fail-soft: null/undefined vrstice se preskočijo; qty, ki ni končno število,
+ * šteje kot 0; manjkajoče ime = 'Artikel' (isti padalc kot mapOrderItem).
+ */
+export function aggregateSalesByVariant(
+  rows: readonly ReportItemRow[] | null | undefined,
+): { name: string; qty: number }[] {
+  if (!Array.isArray(rows)) return []
+  const byName = new Map<string, number>()
+  for (const r of rows) {
+    if (!r) continue
+    const qty = typeof r.qty === 'number' && Number.isFinite(r.qty) ? r.qty : Number(r.qty) || 0
+    const name = orderItemDisplayName(r.name, variantOptionNamesOf(r.modifiers))
+    byName.set(name, (byName.get(name) || 0) + qty)
+  }
+  return [...byName.entries()]
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => b.qty - a.qty || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }

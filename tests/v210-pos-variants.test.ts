@@ -401,9 +401,9 @@ describe('v1.210.0 — OSS-10 B-del Č2b: disk kontrakt (ožičenje)', () => {
 /* ═══════════════════ Č3. REGISTRI ═══════════════════ */
 
 describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
-  it('verzija 1.211.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.211.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.211\.0'/)
+  it('verzija 1.212.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.212.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.212\.0'/)
   })
 
   it('GAP OSS-10 B-del: IZVEDENO @ v1.210.0 z dokazi + nova meja', () => {
@@ -412,8 +412,9 @@ describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
     expect(doc).toContain('requiredVariantGroupsForItem')
     expect(doc).toContain('posVariantItemsPayload')
     expect(doc).toContain('OrderItemModifier v isti transakciji')
-    // poštena preostala meja
-    expect(doc).toContain('razcep po varianti = naslednji')
+    // poštena preostala meja — razcep poročil je od v1.212.0 IZVEDEN (C-del),
+    // ostanejo costne meje (menu-engineering/food-cost/restock na osnovnem artiklu)
+    expect(doc).toContain('C-DEL IZVEDENO @ v1.212.0')
     expect(doc).toContain('i18n 3709 → 3712')
   })
 
