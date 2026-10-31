@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { ok, fail } from '@/lib/api'
 import { r2 } from '@/lib/map'
 import { rateLimitPublic, clientIp } from '@/lib/guest'
+import { brandThemeForLocation } from '@/lib/brand-themes-server'
 import {
   isPayLinkTokenShape,
   resolvePayProvider,
@@ -131,6 +132,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   // profilu — stran ob nedovoljenem ponudniku skrije CTA (strežnik vseeno
   // zavrne POST; klient ni vir odločitve).
   const simulatorAllowed = provider.kind === 'simulator' ? payLinkSimulationAllowed(location?.fursEnvironment) : false
+  // OSS-11 (v1.213.0): `theme` ADDITIVE — absent = odgovor byte-identičen.
+  const theme = await brandThemeForLocation(order.locationId)
   const split =
     link.splitCount > 1 || link.amount != null
       ? {
@@ -157,6 +160,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     },
     tipPresets: TIP_PRESETS,
     split,
+    ...(theme ? { theme } : {}),
   })
 }
 

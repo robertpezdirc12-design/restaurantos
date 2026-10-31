@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
 import { db } from '@/lib/db'
+import { brandThemeForLocation } from '@/lib/brand-themes-server'
 import {
   createOrderCore,
   OrderError,
@@ -60,6 +61,8 @@ export async function GET(req: NextRequest) {
   const policy = portalPolicyOf(portal)
   const state = await openStateNow(portal.locationId, resolved.timezone)
   const menu = await loadPublicMenu(portal.locationId)
+  // OSS-11 (v1.213.0): `theme` ADDITIVE — absent = odgovor byte-identičen.
+  const theme = await brandThemeForLocation(portal.locationId)
   return ok({
     restaurant: restaurantName,
     note: policy.note,
@@ -71,6 +74,7 @@ export async function GET(req: NextRequest) {
     minOrder: policy.minOrder,
     etaMinutes: policy.prepMinutes,
     ...menu,
+    ...(theme ? { theme } : {}),
   })
 }
 

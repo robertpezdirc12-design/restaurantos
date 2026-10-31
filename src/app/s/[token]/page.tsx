@@ -22,6 +22,8 @@ import { Label } from '@/components/ui/label'
 import { Loader2, ShoppingCart, Plus, Minus, WifiOff, RefreshCw, CheckCircle2, Clock, Store, Bike } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, useGuestApiError } from '@/components/guest-i18n'
 import { vatFromGross } from '@/lib/billing'
+import type { BrandThemeView } from '@/lib/brand-themes'
+import { BrandLogo } from '@/components/brand-logo'
 
 interface ModifierOption { id: string; name: string; price: number }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -38,6 +40,7 @@ interface StorePayload {
   etaMinutes: number
   categories: { id: string; name: string }[]
   items: MenuItem[]
+  theme?: BrandThemeView
 }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; allergenWarning: string; modifiers: ModifierOption[] }
 interface TrackT { n: number; k: string }
@@ -57,6 +60,10 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const { t } = useGuestT()
   const [store, setStore] = useState<StorePayload | null>(null)
+  // OSS-11 (v1.213.0): tema znamke (aditivno — brez teme = izgled nespremenjen).
+  const theme = store?.theme ?? null
+  const acc = theme ? { backgroundColor: theme.accent, color: theme.textOn } : undefined
+  const accBorder = theme ? { borderColor: theme.accent } : undefined
   const pageErr = useGuestApiError()
   const { set: setPageErr, setKey: setPageErrKey, clear: clearPageErr } = pageErr // stabilni setri — NE v deps s samim objektom (vzorec /m)
   const [loading, setLoading] = useState(true)
@@ -288,13 +295,16 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
 
   return (
     <div data-screen="web-store" className="min-h-screen bg-stone-50 pb-28">
-      <header data-region="web-store-header" className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
+      <header data-region="web-store-header" className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3" style={accBorder}>
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex items-center gap-2">
+            {theme?.logoUrl && <BrandLogo src={theme.logoUrl} />}
+            <div className="min-w-0">
             <h1 className="font-bold text-stone-900 leading-tight truncate">{store?.restaurant}</h1>
             <p className="text-xs text-stone-500">
               {closedNow ? t('web.store.closedBadge') : t('web.store.subtitle', { n: etaShown ?? 20 })}
             </p>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {!online && (
@@ -341,6 +351,7 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
               onClick={() => setActiveCat(c.id)}
               aria-pressed={activeCat === c.id}
               className={`shrink-0 rounded-full px-4 min-h-11 flex items-center text-sm font-medium transition-colors ${activeCat === c.id ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-700'}`}
+              style={activeCat === c.id ? acc : undefined}
             >
               {c.name}
             </button>
@@ -365,7 +376,7 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
                 <span className="block text-sm font-medium text-stone-700 mt-1">{fmt(it.price)}</span>
               </span>
               {it.isAvailable ? (
-                <span className="shrink-0 rounded-full bg-stone-900 text-white p-2" aria-hidden="true"><Plus className="h-4 w-4" /></span>
+                <span className="shrink-0 rounded-full bg-stone-900 text-white p-2" aria-hidden="true" style={acc}><Plus className="h-4 w-4" /></span>
               ) : (
                 <Badge variant="secondary" className="shrink-0">{t('web.store.soldOut')}</Badge>
               )}
@@ -380,7 +391,7 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
           <div className="max-w-lg mx-auto">
             <Sheet open={cartOpen} onOpenChange={setCartOpen}>
               <SheetTrigger asChild>
-                <Button size="lg" className="w-full min-h-12 rounded-full shadow-lg" aria-label={t('web.store.cartOpenAria', { n: cartCount })}>
+                <Button size="lg" className="w-full min-h-12 rounded-full shadow-lg" style={acc} aria-label={t('web.store.cartOpenAria', { n: cartCount })}>
                   <ShoppingCart className="mr-2 h-5 w-5" />
                   {t('web.store.cartButton', { n: cartCount, s: fmt(subtotal) })}
                 </Button>
@@ -419,10 +430,10 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
                 <div className="px-4 pb-4 space-y-3 border-t border-stone-200 pt-3" data-region="web-store-checkout">
                   {(store?.pickupEnabled && store?.deliveryEnabled) && (
                     <div role="radiogroup" aria-label={t('web.store.fulfillmentAria')} className="grid grid-cols-2 gap-2">
-                      <button type="button" role="radio" aria-checked={fulfillment === 'pickup'} onClick={() => setFulfillment('pickup')} className={`rounded-xl border min-h-11 flex items-center justify-center gap-1.5 text-sm font-medium ${fulfillment === 'pickup' ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`}>
+                      <button type="button" role="radio" aria-checked={fulfillment === 'pickup'} onClick={() => setFulfillment('pickup')} className={`rounded-xl border min-h-11 flex items-center justify-center gap-1.5 text-sm font-medium ${fulfillment === 'pickup' ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`} style={fulfillment === 'pickup' ? acc : undefined}>
                         <Store className="h-4 w-4" /> {t('web.store.pickup')}
                       </button>
-                      <button type="button" role="radio" aria-checked={fulfillment === 'delivery'} onClick={() => setFulfillment('delivery')} className={`rounded-xl border min-h-11 flex items-center justify-center gap-1.5 text-sm font-medium ${fulfillment === 'delivery' ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`}>
+                      <button type="button" role="radio" aria-checked={fulfillment === 'delivery'} onClick={() => setFulfillment('delivery')} className={`rounded-xl border min-h-11 flex items-center justify-center gap-1.5 text-sm font-medium ${fulfillment === 'delivery' ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`} style={fulfillment === 'delivery' ? acc : undefined}>
                         <Bike className="h-4 w-4" /> {t('web.store.delivery')}
                       </button>
                     </div>
@@ -475,6 +486,7 @@ function WebStoreInner({ params }: { params: Promise<{ token: string }> }) {
                   <Button
                     size="lg"
                     className="w-full min-h-12"
+                    style={acc}
                     disabled={submitting || closedNow || belowMin || !name.trim() || !phone.trim() || (fulfillment === 'delivery' && !address.trim())}
                     onClick={submitOrder}
                   >

@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, Plus, CheckCircle2, Building2, Link2, Database } from 'lucide-react'
+import { Loader2, Plus, CheckCircle2, Building2, Link2, Database, Palette, X } from 'lucide-react'
+import { parseAccentColor, textOnAccent } from '@/lib/brand-themes'
 
 /* ─────────────────────────── ENTERPRISE (org/brand/property drevo) ─────────────────────────── */
 
@@ -145,6 +146,150 @@ export function MigrationsConsoleSection() {
                   )}
                 </div>
               ))}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * OSS-11 (v1.213.0) — Teme po znamki (A-del): akcentna barva + logotip per Brand.
+ * Konfiguracija = UPORABNIŠKI vhod (vzorec N-27-3): lastnik izbere barvo/URL,
+ * sistem ju deterministično validira (SAMO hex, SAMO https — brand-themes.ts) in
+ * uporabi na gostovskih površinah. Brez nastavljene teme = izgled nespremenjen.
+ * Shranjevanje: PUT /api/brand-themes (celoten config, settings.manage, revizija).
+ */
+interface ThemeDraft { accent: string; logoUrl: string }
+export function BrandThemesSection({ orgs, canWriteOrg }: { orgs: EntOrgRow[]; canWriteOrg: (orgId: string) => boolean }) {
+  const { t } = useI18n()
+  const [cfg, setCfg] = useState<Record<string, ThemeDraft> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [hidden, setHidden] = useState(false)
+
+  const brands = orgs.flatMap((o) => o.brands.map((b) => ({ ...b, orgId: o.id })))
+
+  async function load() {
+    try {
+      const d = await api<{ config: Record<string, { accent?: string; logoUrl?: string }> }>('/api/brand-themes')
+      const draft: Record<string, ThemeDraft> = {}
+      for (const b of brands) {
+        const e = d.config?.[b.id]
+        draft[b.id] = { accent: e?.accent ?? '', logoUrl: e?.logoUrl ?? '' }
+      }
+      setCfg(draft); setHidden(false)
+    } catch (e) {
+      // 403 (brez organizacijske verige) → tiho skrij; infra napaka → prikaži
+      const msg = (e as Error).message
+      if (msg.includes('Dostop zavrnjen') || msg.includes('unauthorized') || msg.includes('organizacijsko drevo')) setHidden(true)
+      else toast({ title: msg, variant: 'destructive' })
+    }
+  }
+  // naloži ENKRAT na montažo (async IIFE vzorec — react-hooks/set-state-in-effect)
+  useEffect(() => { void (async () => { await load() })() }, [])
+
+  const setD = (brandId: string, p: Partial<ThemeDraft>) => setCfg((c) => (c ? { ...c, [brandId]: { ...c[brandId], ...p } } : c))
+
+  async function save() {
+    if (!cfg) return
+    setBusy(true)
+    try {
+      const config: Record<string, { accent: string; logoUrl?: string }> = {}
+      for (const b of brands) {
+        const d = cfg[b.id]
+        const accent = (d?.accent || '').trim().toLowerCase()
+        if (!accent) continue // prazen vnos = brez teme (ključ izpuščen)
+        const logo = (d?.logoUrl || '').trim()
+        config[b.id] = logo ? { accent, logoUrl: logo } : { accent }
+      }
+      await api('/api/brand-themes', { method: 'PUT', body: JSON.stringify({ config }) })
+      toast({ title: t('ent.themeSaved') })
+      await load()
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally { setBusy(false) }
+  }
+
+  if (hidden) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><Palette className="h-4 w-4" /> {t('ent.themeTitle')}</CardTitle>
+        <CardDescription>{t('ent.themeDesc')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {cfg === null ? (
+          <div className="flex items-center gap-2 text-sm text-stone-500 py-2"><Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}</div>
+        ) : brands.length === 0 ? (
+          <p className="text-sm text-stone-500">{t('ent.themeNoBrands')}</p>
+        ) : (
+          <>
+            {brands.map((b) => {
+              const d = cfg[b.id] ?? { accent: '', logoUrl: '' }
+              const validAccent = parseAccentColor(d.accent)
+              const textOn = validAccent ? textOnAccent(validAccent) : '#000000'
+              const writable = canWriteOrg(b.orgId)
+              return (
+                <div key={b.id} className="rounded-lg border border-stone-200 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-6 w-6 rounded-md border border-stone-300 shrink-0 inline-flex items-center justify-center text-[10px] font-bold"
+                      style={validAccent ? { backgroundColor: validAccent, color: textOn } : undefined}
+                      aria-hidden="true"
+                    >
+                      {validAccent ? 'A' : ''}
+                    </span>
+                    <p className="font-semibold text-sm">{b.name}</p>
+                    {!b.isActive && <Badge variant="secondary">{t('ent.inactive')}</Badge>}
+                    {d.accent.trim() === '' && <Badge variant="outline" className="text-stone-500">{t('ent.themeNone')}</Badge>}
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="color"
+                        value={validAccent ?? '#1c1917'}
+                        onChange={(e) => writable && setD(b.id, { accent: e.target.value })}
+                        disabled={!writable}
+                        className="h-11 w-14 p-1 cursor-pointer"
+                        aria-label={`${t('ent.themeAccent')} — ${b.name}`}
+                      />
+                      <Input
+                        value={d.accent}
+                        onChange={(e) => writable && setD(b.id, { accent: e.target.value })}
+                        disabled={!writable}
+                        placeholder="#1c1917"
+                        maxLength={7}
+                        className="font-mono text-sm"
+                        aria-label={`${t('ent.themeAccent')} (hex) — ${b.name}`}
+                      />
+                    </div>
+                    <Input
+                      value={d.logoUrl}
+                      onChange={(e) => writable && setD(b.id, { logoUrl: e.target.value })}
+                      disabled={!writable}
+                      placeholder="https://…"
+                      maxLength={500}
+                      className="text-sm"
+                      aria-label={`${t('ent.themeLogo')} — ${b.name}`}
+                    />
+                  </div>
+                  {d.accent.trim() !== '' && !validAccent && (
+                    <p className="text-xs text-amber-700">{t('ent.themeBadHex')}</p>
+                  )}
+                  {writable && d.accent.trim() !== '' && (
+                    <Button size="sm" variant="outline" className="gap-1" disabled={busy} onClick={() => setD(b.id, { accent: '', logoUrl: '' })}>
+                      <X className="h-3.5 w-3.5" /> {t('ent.themeRemove')}
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+            <div className="flex justify-end">
+              <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={() => void save()}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+              </Button>
             </div>
           </>
         )}
@@ -399,6 +544,7 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
         </DialogContent>
       </Dialog>
 
+      <BrandThemesSection orgs={orgs} canWriteOrg={canWriteOrg} />
       <MigrationsConsoleSection />
     </div>
   )

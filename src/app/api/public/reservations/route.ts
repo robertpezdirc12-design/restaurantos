@@ -8,6 +8,7 @@ import { pushEvent } from '@/lib/push'
 import { sendBookingConfirmation } from '@/lib/reminders'
 import { resolveWidgetToken, widgetPolicyOf, openingRowsFor, specialsFor, activeReservationsFor, tableSeatsFor, publicSlotsForDate, dayBoundsUtc, lockReservationCapacity } from '@/lib/reservation-widget'
 import { publicSlotsPayload, validateSlot, type DayHoursInput } from '@/lib/reservation-slots'
+import { brandThemeForLocation } from '@/lib/brand-themes-server'
 import { zonedDateParts, localDateKey } from '@/lib/haccp-ops'
 import { isValidDateKey, parseHHMM } from '@/lib/openinghours'
 
@@ -55,7 +56,10 @@ export async function GET(req: NextRequest) {
   const date = dateParam || localDateKey(zonedDateParts(now, resolved.timezone))
 
   const result = await publicSlotsForDate(resolved.widget, resolved.restaurantName, resolved.timezone, date, now)
-  return ok(publicSlotsPayload(resolved.restaurantName, result, widgetPolicyOf(resolved.widget)))
+  // OSS-11 (v1.213.0): `theme` ADDITIVE — absent = odgovor byte-identičen.
+  const theme = await brandThemeForLocation(resolved.widget.locationId)
+  const payload = publicSlotsPayload(resolved.restaurantName, result, widgetPolicyOf(resolved.widget))
+  return ok(theme ? { ...payload, theme } : payload)
 }
 
 export async function POST(req: NextRequest) {

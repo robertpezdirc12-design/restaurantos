@@ -21,11 +21,13 @@ import { GuestI18nProvider, useGuestT, GuestLanguageToggle, guestStatusKey, useG
 import { parseAllergens, allergenUnion, filterByAllergens } from '@/lib/allergens'
 import { vatFromGross } from '@/lib/billing'
 import { ALLERGEN_CODES, ALLERGEN_LABELS, allergenLabel, labelToAllergenCode, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
+import type { BrandThemeView } from '@/lib/brand-themes'
+import { BrandLogo } from '@/components/brand-logo'
 
 interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
 interface MenuItem { id: string; name: string; description: string; price: number; vatRate: number; isAvailable: boolean; allergens: string; categoryId: string; modifierGroups: ModifierGroup[]; image?: string; allergenCodes?: string[]; allergenCrossContact?: string[]; allergenStatus?: string }
-interface MenuPayload { restaurant: string; tableNumber: number | null; categories: { id: string; name: string }[]; items: MenuItem[]; allergenFilterEnabled?: boolean }
+interface MenuPayload { restaurant: string; tableNumber: number | null; categories: { id: string; name: string }[]; items: MenuItem[]; allergenFilterEnabled?: boolean; theme?: BrandThemeView }
 interface CartLine { key: string; item: MenuItem; qty: number; note: string; allergenWarning: string; modifiers: ModifierOption[] }
 
 const fmt = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
@@ -42,6 +44,10 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const { t, locale } = useGuestT()
   const [menu, setMenu] = useState<MenuPayload | null>(null)
+  // OSS-11 (v1.213.0): tema znamke (aditivno — brez teme = izgled nespremenjen).
+  const theme = menu?.theme ?? null
+  const acc = theme ? { backgroundColor: theme.accent, color: theme.textOn } : undefined
+  const accBorder = theme ? { borderColor: theme.accent } : undefined
   const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const [loading, setLoading] = useState(true)
   const [offline, setOffline] = useState(false)
@@ -353,13 +359,16 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
 
   return (
     <div data-screen="qr-menu" className="min-h-screen bg-stone-50 pb-28">
-      <header data-region="qr-menu-header" className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
+      <header data-region="qr-menu-header" className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3" style={accBorder}>
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex items-center gap-2">
+            {theme?.logoUrl && <BrandLogo src={theme.logoUrl} />}
+            <div className="min-w-0">
             <h1 className="font-bold text-stone-900 leading-tight truncate">{menu?.restaurant}</h1>
             <p className="text-xs text-stone-500">
               {menu?.tableNumber != null ? t('guest.menu.tableSelfOrder', { n: menu.tableNumber }) : t('guest.menu.selfOrder')}
             </p>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {!online && (
@@ -455,6 +464,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
               key={c.id}
               onClick={() => setActiveCat(c.id)}
               className={`shrink-0 inline-flex min-h-11 items-center rounded-full px-4 text-sm font-medium transition-colors ${activeCat === c.id ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-700'}`}
+              style={activeCat === c.id ? acc : undefined}
             >
               {c.name}
             </button>
@@ -478,6 +488,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
                     aria-pressed={on}
                     onClick={() => toggleAllergen(label)}
                     className={`min-h-11 rounded-full border px-3.5 text-sm font-medium transition-colors ${on ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'}`}
+                    style={on ? acc : undefined}
                   >
                     {gLbl(label)}
                   </button>
@@ -549,7 +560,7 @@ function GuestMenuInner({ params }: { params: Promise<{ token: string }> }) {
         <div className="max-w-lg mx-auto">
           <Sheet open={cartOpen} onOpenChange={setCartOpen}>
             <SheetTrigger asChild>
-              <Button size="lg" className="w-full h-14 rounded-2xl text-base shadow-lg" disabled={cartCount === 0}>
+              <Button size="lg" className="w-full h-14 rounded-2xl text-base shadow-lg" style={acc} disabled={cartCount === 0}>
                 <ShoppingCart className="mr-2 h-5 w-5" />
                 {t('guest.cart.button')} · {cartCount} {cartCount === 1 ? t('guest.cart.itemOne') : t('guest.cart.itemMany')} · {fmt(subtotal)}
               </Button>

@@ -20,6 +20,8 @@ import { ALLERGEN_CODES, allergenLabel, labelToAllergenCode, type AllergenLocale
 import { parseAllergens } from '@/lib/allergens'
 import { LOCK_ARM_WINDOW_MS, initialLockState, tapLock, type LockState } from '@/lib/kiosk-lock'
 import { orderItemDisplayName } from '@/lib/item-variants'
+import type { BrandThemeView } from '@/lib/brand-themes'
+import { BrandLogo } from '@/components/brand-logo'
 
 interface ModifierOption { id: string; name: string; price: number; allergenCodes?: string[] }
 interface ModifierGroup { id: string; name: string; required: boolean; minSelect: number; maxSelect: number | null; options: ModifierOption[] }
@@ -51,7 +53,11 @@ function KioskInner() {
   const { t, locale } = useGuestT()
   const [token, setToken] = useState('')
   const [tokenInput, setTokenInput] = useState('')
-  const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[]; upsells?: UpsellMap } | null>(null)
+  const [menu, setMenu] = useState<{ restaurant: string; categories: { id: string; name: string }[]; items: MenuItem[]; upsells?: UpsellMap; theme?: BrandThemeView } | null>(null)
+  // OSS-11 (v1.213.0): tema znamke (aditivno — brez teme = izgled nespremenjen).
+  const theme = menu?.theme ?? null
+  const acc = theme ? { backgroundColor: theme.accent, color: theme.textOn } : undefined
+  const accBorder = theme ? { borderColor: theme.accent } : undefined
   const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const [retryHint, setRetryHint] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -370,10 +376,13 @@ function KioskInner() {
 
   return (
     <div data-screen="kiosk-pos" className="min-h-screen bg-stone-900 text-stone-100 flex flex-col">
-      <header data-region="kiosk-header" className="px-6 py-4 border-b border-stone-800 flex items-center justify-between gap-3">
-        <div className="min-w-0">
+      <header data-region="kiosk-header" className="px-6 py-4 border-b border-stone-800 flex items-center justify-between gap-3" style={accBorder}>
+        <div className="min-w-0 flex items-center gap-3">
+          {theme?.logoUrl && <BrandLogo src={theme.logoUrl} />}
+          <div className="min-w-0">
           <h1 className="text-2xl font-bold truncate">{menu?.restaurant}</h1>
           <p className="text-sm text-stone-400">{t('guest.kiosk.subtitle')}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <GuestLanguageToggle variant="dark" />
@@ -409,6 +418,7 @@ function KioskInner() {
                 key={c.id}
                 onClick={() => setActiveCat(c.id)}
                 className={`shrink-0 min-h-12 inline-flex items-center rounded-full px-5 py-2.5 text-lg font-medium ${activeCat === c.id ? 'bg-white text-stone-900' : 'bg-stone-800 text-stone-300'}`}
+                style={activeCat === c.id ? acc : undefined}
               >
                 {c.name}
               </button>
@@ -492,7 +502,7 @@ function KioskInner() {
                   </div>
                 ))}
               </div>
-              <Button size="lg" className="h-16 px-10 text-xl rounded-2xl" onClick={submit} disabled={submitting || cart.length === 0}>
+              <Button size="lg" className="h-16 px-10 text-xl rounded-2xl" style={acc} onClick={submit} disabled={submitting || cart.length === 0}>
                 {submitting ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : null}
                 {t('guest.kiosk.submit')} · {fmt(total)}
               </Button>

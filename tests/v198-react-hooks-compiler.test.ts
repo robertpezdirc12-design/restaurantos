@@ -100,7 +100,7 @@ describe('v1.198.0 — React Compiler pravila odklenjena (rh198-c)', () => {
 describe('v1.198.0 — verzija in dokumentacija (rh198-d)', () => {
   test('verzija 1.212.0', () => {
     const version = readText('src/lib/version.ts')
-    expect(version).toMatch(/APP_VERSION = '1\.212\.0'/)
+    expect(version).toMatch(/APP_VERSION = '1\.213\.0'/)
   })
 
   test('TRZNA-VRZELI-2027: N-27-4 je ZAPRTO (v1.198.0)', () => {

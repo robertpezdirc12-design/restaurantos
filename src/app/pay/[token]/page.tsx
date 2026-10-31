@@ -20,6 +20,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, RefreshCw, CheckCircle2, WifiOff, CreditCard, Ban, Clock, PartyPopper, Smartphone } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
+import type { BrandThemeView } from '@/lib/brand-themes'
+import { BrandLogo } from '@/components/brand-logo'
 
 interface ReceiptInfo {
   receiptNumber: string
@@ -62,6 +64,8 @@ interface PayState {
   approvalCode?: string | null
   receiptPending?: boolean
   split?: SplitInfo
+  /** OSS-11 (v1.213.0): tema znamke — aditivno, absent = izgled nespremenjen. */
+  theme?: BrandThemeView
 }
 
 const fmt = (n: number) => `${(Number.isFinite(n) ? n : 0).toFixed(2).replace('.', ',')} €`
@@ -88,6 +92,10 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const { t } = useGuestT()
   const [state, setState] = useState<PayState | null>(null)
+  // OSS-11 (v1.213.0): tema znamke (aditivno — brez teme = izgled nespremenjen).
+  const theme = state?.theme ?? null
+  const acc = theme ? { backgroundColor: theme.accent, color: theme.textOn } : undefined
+  const accBorder = theme ? { borderColor: theme.accent } : undefined
   const pageErr = useGuestApiError() // issue #2 §C: surov niz → prevod ob izrisu
   const payErr = useGuestApiError()
   const [loading, setLoading] = useState(true)
@@ -223,7 +231,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
     // P1-6: VMESNI delež (račun še ni izdan — čaka ostale goste)
     if (!s.receipt && (s.receiptPending || (s.split && s.split.count > 1))) {
       return (
-        <Shell t={t} name={s.location?.name}>
+        <Shell t={t} name={s.location?.name} theme={theme}>
           <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
             <CheckCircle2 className="h-10 w-10 mx-auto text-green-600" />
             <h2 className="mt-2 text-xl font-bold text-green-900">{t('pay.sharePaid')}</h2>
@@ -239,7 +247,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       )
     }
     return (
-      <Shell t={t} name={s.location?.name}>
+      <Shell t={t} name={s.location?.name} theme={theme}>
         <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
           <PartyPopper className="h-10 w-10 mx-auto text-green-600" />
           <h2 className="mt-2 text-xl font-bold text-green-900">{t('pay.paid')}</h2>
@@ -267,7 +275,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
     const title = s.status === 'revoked' ? t('pay.revoked') : s.status === 'expired' ? t('pay.expired') : t('pay.superseded')
     const note = s.status === 'revoked' ? t('pay.revokedNote') : s.status === 'expired' ? t('pay.expiredNote') : t('pay.supersededNote')
     return (
-      <Shell t={t} name={s.location?.name}>
+      <Shell t={t} name={s.location?.name} theme={theme}>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
           {icon}
           <h2 className="mt-3 font-semibold text-stone-900">{title}</h2>
@@ -281,10 +289,10 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
   const presets = s.tipPresets && s.tipPresets.length ? s.tipPresets : [0, 5, 10, 15]
   const isSplit = !!s.split && (s.split.count > 1 || (s.split.share != null && s.split.share > 0))
   return (
-    <Shell t={t} name={s.location?.name}>
+    <Shell t={t} name={s.location?.name} theme={theme}>
       {/* P1-6: delež gosta (split) — fiksni znesek, napredek niza */}
       {isSplit && (
-        <div className="rounded-2xl border border-stone-900 bg-stone-900 text-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-stone-900 bg-stone-900 text-white p-5 shadow-sm" style={theme ? { backgroundColor: theme.accent, color: theme.textOn, borderColor: theme.accent } : undefined}>
           <div className="flex items-baseline justify-between">
             <p className="text-sm font-semibold opacity-90">{t('pay.share')} {s.split!.count > 1 ? `${s.split!.index}/${s.split!.count}` : ''}</p>
             <p className="text-xs opacity-75">{t('pay.shareOf')} {fmt(totalDue)}</p>
@@ -332,6 +340,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
               aria-pressed={tipPct === p && tipCustom.trim() === ''}
               onClick={() => { setTipPct(p); setTipCustom('') }}
               className={`h-12 rounded-xl border text-sm font-semibold transition ${tipPct === p && tipCustom.trim() === '' ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700 hover:border-stone-400'}`}
+              style={tipPct === p && tipCustom.trim() === '' ? acc : undefined}
             >
               {p === 0 ? t('pay.tipNone') : `${p} %`}
             </button>
@@ -374,6 +383,7 @@ function GuestPayInner({ params }: { params: Promise<{ token: string }> }) {
       <div className="sticky bottom-0 inset-x-0 -mx-4 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-stone-50 via-stone-50 to-transparent">
         <Button
           className="w-full h-14 text-base font-bold"
+          style={acc}
           disabled={paying || splitAmount <= 0 || (s.provider === 'simulator' && s.simulatorAllowed === false)}
           onClick={pay}
         >
@@ -398,14 +408,17 @@ function Row({ label, value, strong, big, mono }: { label: string; value: string
   )
 }
 
-function Shell({ t, name, children }: { t: (k: string) => string; name?: string; children: React.ReactNode }) {
+function Shell({ t, name, theme, children }: { t: (k: string) => string; name?: string; theme?: BrandThemeView | null; children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-stone-50">
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3" style={theme ? { borderColor: theme.accent } : undefined}>
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex items-center gap-2">
+            {theme?.logoUrl && <BrandLogo src={theme.logoUrl} />}
+            <div className="min-w-0">
             <h1 className="font-bold text-stone-900 leading-tight truncate">{name || t('pay.title')}</h1>
             <p className="text-xs text-stone-500">{t('pay.title')}</p>
+            </div>
           </div>
           <GuestLanguageToggle variant="light" />
         </div>

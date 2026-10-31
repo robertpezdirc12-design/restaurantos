@@ -11,6 +11,7 @@ import {
   deviceAlive,
 } from '@/lib/guest'
 import { KIOSK_UPSELL_MARKER, sanitizeUpsellConfig, type UpsellConfig } from '@/lib/upsell'
+import { brandThemeForLocation } from '@/lib/brand-themes-server'
 
 /**
  * OPS-10 val 2: upsell config read + sanitized against the CURRENTLY AVAILABLE
@@ -65,5 +66,8 @@ export async function GET(req: NextRequest) {
   // OPS-10 val 2 (v1.78.0): `upsells` is ADDITIVE — existing keys untouched.
   const availableIds = new Set(menu.items.filter((i) => i.isAvailable).map((i) => i.id))
   const upsells = await loadUpsells(availableIds)
-  return ok({ restaurant, tableNumber, source, ...menu, upsells })
+  // OSS-11 (v1.213.0): `theme` is ADDITIVE — absent, kadar znamka nima nastavljene
+  // teme (odgovor byte-identičen; lokacija brez vezave na znamko = brez teme).
+  const theme = await brandThemeForLocation(locationId)
+  return ok({ restaurant, tableNumber, source, ...menu, upsells, ...(theme ? { theme } : {}) })
 }

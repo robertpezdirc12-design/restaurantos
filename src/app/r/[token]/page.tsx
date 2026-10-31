@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2, RefreshCw, CheckCircle2, WifiOff, CalendarDays, Users, Clock, Minus, Plus } from 'lucide-react'
 import { GuestI18nProvider, useGuestT, GuestLanguageToggle, useGuestApiError } from '@/components/guest-i18n'
+import type { BrandThemeView } from '@/lib/brand-themes'
+import { BrandLogo } from '@/components/brand-logo'
 
 interface SlotInfo {
   time: string
@@ -34,6 +36,8 @@ interface SlotsState {
   durationMinutes: number
   policy: { minParty: number; maxParty: number; maxAdvanceDays: number }
   slots: SlotInfo[]
+  /** OSS-11 (v1.213.0): tema znamke — aditivno, absent = izgled nespremenjen. */
+  theme?: BrandThemeView
 }
 
 interface BookingResult {
@@ -63,6 +67,10 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
   const formErr = useGuestApiError()
   const [loading, setLoading] = useState(true)
   const [state, setState] = useState<SlotsState | null>(null)
+  // OSS-11 (v1.213.0): tema znamke (aditivno — brez teme = izgled nespremenjen).
+  const theme = state?.theme ?? null
+  const acc = theme ? { backgroundColor: theme.accent, color: theme.textOn } : undefined
+  const accBorder = theme ? { borderColor: theme.accent } : undefined
   const [dateKey, setDateKey] = useState<string | null>(null)
   const [party, setParty] = useState(2)
   const [time, setTime] = useState<string | null>(null)
@@ -174,7 +182,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
       weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
     })
     return (
-      <Shell t={t} name={state?.restaurant}>
+      <Shell t={t} name={state?.restaurant} theme={theme}>
         <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
           <CheckCircle2 className="h-10 w-10 mx-auto text-green-600" />
           <h2 className="mt-2 text-xl font-bold text-green-900">{t('resv.public.doneTitle')}</h2>
@@ -197,7 +205,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
   const canSubmit = Boolean(dateKey && time && name.trim().length >= 2 && phone.trim().replace(/[^\d+]/g, '').length >= 5 && !submitting)
 
   return (
-    <Shell t={t} name={s.restaurant}>
+    <Shell t={t} name={s.restaurant} theme={theme}>
       {/* 1) datum */}
       <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
         <SectionTitle icon={<CalendarDays className="h-4 w-4" />} text={t('resv.public.pickDate')} />
@@ -212,6 +220,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
                 aria-checked={active}
                 onClick={() => { setDateKey(d.key); setTime(null); load(d.key) }}
                 className={`shrink-0 min-w-[64px] rounded-xl border px-3 py-2 text-center transition-colors ${active ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700 hover:border-stone-400'}`}
+                style={active ? acc : undefined}
               >
                 <span className="block text-xs font-medium capitalize">{d.label}</span>
                 <span className="block text-sm font-bold">{d.sub}</span>
@@ -258,6 +267,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
                     : okForParty
                       ? 'border-stone-200 bg-white text-stone-800 hover:border-stone-400'
                       : 'border-stone-100 bg-stone-50 text-stone-300 cursor-not-allowed'}`}
+                  style={active ? acc : undefined}
                 >
                   {slot.time}
                 </button>
@@ -299,7 +309,7 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
 
       {/* CTA — cona palca */}
       <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-stone-50 via-stone-50 to-transparent">
-        <Button className="w-full h-14 text-base font-bold" disabled={!canSubmit} onClick={submit}>
+        <Button className="w-full h-14 text-base font-bold" style={acc} disabled={!canSubmit} onClick={submit}>
           {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CalendarDays className="mr-2 h-5 w-5" />}
           {t('resv.public.cta')}
         </Button>
@@ -327,14 +337,17 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   )
 }
 
-function Shell({ t, name, children }: { t: (k: string) => string; name?: string; children: React.ReactNode }) {
+function Shell({ t, name, theme, children }: { t: (k: string) => string; name?: string; theme?: BrandThemeView | null; children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-stone-50">
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3">
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-stone-200 px-4 py-3" style={theme ? { borderColor: theme.accent } : undefined}>
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex items-center gap-2">
+            {theme?.logoUrl && <BrandLogo src={theme.logoUrl} />}
+            <div className="min-w-0">
             <h1 className="font-bold text-stone-900 leading-tight truncate">{name || t('resv.public.title')}</h1>
             <p className="text-xs text-stone-500">{t('resv.public.title')}</p>
+            </div>
           </div>
           <GuestLanguageToggle variant="light" />
         </div>
