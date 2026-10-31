@@ -24,6 +24,10 @@
     "local:offsite": "bun scripts/local-offsite.ts",
     "local:autostart": "bun scripts/local-autostart.ts",
     "local:support": "bun scripts/local-support.ts",
+    "local:keygen": "bun scripts/local-keygen.ts",
+    "local:package": "bun scripts/local-package.ts",
+    "local:package-verify": "bun scripts/local-package-verify.ts",
+    "local:package-apply": "bun scripts/local-package-apply.ts",
     "demo": "bun scripts/demo-start.ts"
   },
   "dependencies": {

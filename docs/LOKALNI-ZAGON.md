@@ -525,8 +525,9 @@ bun run local --build
   Pravilo: **vsaka nadgradnja kode = `--build`**. Ob dvomu preverite `GET /api/health`
   (`version`) in primerjajte z `src/lib/version.ts`.
 - Aplikacija **samo preverja, ali je nova različica izšla** (R4b del 1, v1.216.0),
-  nadgradnje pa NE izvede in jih ne zna razveljaviti (R4b ostanek,
-  `docs/PRD-LOKALNA-BAZA.md` §8). Kartica »O sistemu« (Nastavitve) enkrat na uro
+  nadgradnje pa NE izvede sama — izvede se lahko ročno prek `git pull` (zgoraj)
+  ALI prek **podpisanega paketa** (R4b del 2, v1.217.0; §7.1 spodaj). Kartica »O
+  sistemu« (Nastavitve) enkrat na uro
   primerja lokalno različico z javno različijo oblaka (`GET /api/health` privzetega
   vira) in ob novejši jantarno pokaže »na voljo je nova različica {v}« z receptom
   posodobitve. Vir se nastavi z `UPDATE_CHECK_URL` (nenastavljeno = privzeti
@@ -535,6 +536,50 @@ bun run local --build
   pomeni »posodobljeno«, ampak tiho sivo »ni preverjeno«; obljuba ostaja le, kar je
   izmerjeno. Če posodobitev spodleti, naredite `bun run local:support` (§8.1) in
   pošljite paket; bazo obnovite po §5.
+
+### 7.1 Nadgradnja s podpisanim paketom (brez git poverilnic)
+
+`git pull` zahteva poverilnice do (zasebnega) repozitorija. Kjer jih ni —
+prodajna veja, namestitev pri sorodniku, NAS z lokalnim profilom — je od
+v1.217.0 nadgradnja mogoča iz **podpisanega paketa** `restaurantos-<verzija>.rospkg`
+(prenos je ročen: USB, omrežna mapa — isti medij kot šifrirana kopija R5a;
+oblak ostaja R5b):
+
+```bash
+# ENKRAT na gradbeni napravi (tam, kjer gradiš izdaje):
+bun run local:keygen                  # par Ed25519 v signing-keys/ (NIKOLI v git)
+bun run local:package                 # zbere vir + podpiše + preveri po zapisu
+
+# na vsaki namestitvi:
+#   1) kopiraj signing-keys/signing.pub v <podatkovna mapa>/signing.pub
+#   2) paket .rospkg prinesi na napravo (USB/omrežje)
+bun run local:package-verify  <pot-do-paketa>   # podpis + vse datoteke po sha256
+bun run local:package-apply    <pot-do-paketa>  # zamenja kodo (z varnostno kopijo)
+# nato isti trije ukazi kot pri git pull:
+bun install && bun run local:migrate --apply && bun run local --build
+```
+
+Poštena meja te poti: **ključ je lastnikova odločitev, ne programska.** Brez
+njega (brez `local:keygen`) orodje ne podeljuje ničesar — paketov ni s čim
+podpisati in preveriti. Javni ključ v podatkovni mapi je sidro zaupanja na
+ravni lokalne datoteke: ščiti paket NA POTI (nepošten prenos se zlomi na
+podpisu), ne pa tudi naprave, na kateri `signing.pub` sam leži — kdor zamenja
+to datoteko, zamenja sidro, in to je fizični dostop, ki ga koda ne more
+nadzorovati. Rotacija ključa je nalašč ročna (premakni mapo `signing-keys/`,
+ponovi keygen): namestitve s starim javnim ključem bodo pakete z novim
+zavrgle — pošteno, ne tiho.
+
+Kaj `local:package-apply` počne in česa NE: preveri podpis in manifest
+(brez veljavnega podpisa se disk ne dotakne), zavrne enako/starejšo različico
+brez `--force` (vračanje kode je nalašč dejanje), zavrne nadgradnjo, medtem ko
+aplikacija teče (poln `-wal`), zamenja SAMO datoteke iz paketa (ostale so
+nedotaknjene), pred zamenjavo shrani staro kodo v `.ros-update-backup-*`
+(zadnje 3), po zapisu vsako datoteko na disku ponovno prežge in ob napaki
+sredi poti vse razveljavi (**vse ali nič**). Baze se ne dotakne — njeno
+uskladitev (in kopijo pred njo) opravi `local:migrate --apply`. Rollback kode
+= ponovni `local:package-apply` starejšega paketa z `--force` (ali
+`git checkout`); rollback podatkov = `local:restore` (§5) — ločeni poti, kot
+zapisano v PRD §8.
 
 ## 8. Odpravljanje težav
 

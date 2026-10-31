@@ -87,3 +87,10 @@ vercel-env-variables.json
 .zscripts/*.pid
 upload/
 3007
+
+# v1.217.0 — podpisani paketi (R4b del 2): ZASEBNI ključ nikoli v git;
+# izdelani paketi in varnostne kopije kode so lokalni artefakti.
+/signing-keys/
+/dist-packages/
+*.rospkg
+/.ros-update-backup-*/

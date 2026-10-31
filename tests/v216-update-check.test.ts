@@ -215,10 +215,10 @@ describe('v1.216.0 — Č1: resolveUpdateCheckUrl (env → vir, pošteno poroči
 
 describe('v1.216.0 — Č1: getUpdateCheckResult vedenje (fail-soft + poštenost)', () => {
   it('odgovor z NOVEJŠO različico → updateAvailable true + latest', async () => {
-    const { fetch, calls } = countingFetch([okJson({ version: '1.217.0', status: 'ok' })])
+    const { fetch, calls } = countingFetch([okJson({ version: '1.218.0', status: 'ok' })])
     const r = await getUpdateCheckResult({ fetchJson: fetch, now: T0 })
     expect(r.updateAvailable).toBe(true)
-    expect(r.latest).toBe('1.217.0')
+    expect(r.latest).toBe('1.218.0')
     expect(r.current).toBe(APP_VERSION)
     expect(r.reason).toBe('')
     expect(r.source).toBe('default')
@@ -293,7 +293,7 @@ describe('v1.216.0 — Č1: getUpdateCheckResult vedenje (fail-soft + poštenost
   it('predpomnilnica: uspeh 1 h (drugi klic brez omrežja), odpoved 60 s', async () => {
     // uspeh: klic ob T0, ponovna zahteva znotraj TTL → NI drugega klica
     let n = 0
-    const fetchOk: FetchLatestJson = () => { n++; return Promise.resolve(okJson({ version: '1.217.0' })) }
+    const fetchOk: FetchLatestJson = () => { n++; return Promise.resolve(okJson({ version: '1.218.0' })) }
     await getUpdateCheckResult({ fetchJson: fetchOk, now: T0 })
     const cached = await getUpdateCheckResult({ fetchJson: fetchOk, now: T0 + UPDATE_CHECK_TTL_MS - 1 })
     expect(n).toBe(1)
@@ -463,9 +463,9 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 /* ── Č3 — registri ─────────────────────────────────────────────────────────── */
 
 describe('v1.216.0 — Č3: registri', () => {
-  it('verzija 1.216.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.216.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.216\.0'/)
+  it('verzija 1.217.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.217.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.217\.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
