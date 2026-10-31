@@ -149,6 +149,12 @@ interface WebhookT { id: string; name: string; url: string; events: string[]; is
 interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
 interface AuditT { id: string; timestamp: string; action: string; entityType: string; entityId?: string | null; userId?: string | null; details: Record<string, unknown> }
 
+/** R4b-1 (v1.216.0): odgovor GET /api/update-check — strukturni tip (LOKALEN, ne iz
+ *  strežniškega sloja: uvoz tipa iz update-check-server bi v client bundle vlekel
+ *  node:http/dns graf — isto higiena kot APP_VERSION v1.124.0). reason je string,
+ *  ker klient razlikuje SAMO ''/'off'/'invalid_url' — ostalo je »nedosegljivo«. */
+interface UpdateCheckT { current: string; latest: string | null; updateAvailable: boolean; source: 'default' | 'env' | 'disabled' | 'invalid'; reason: string }
+
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[] }
@@ -451,6 +457,21 @@ function DashboardInner() {
     setPayCue(next)
     setPaymentCueEnabled(next)
   }
+  /* R4b-1 (v1.216.0): preverjanje novih različic — EN klic ob odprtju dashboarda;
+     strežniška predpomnilnica (uspeh 1 h / odpoved 60 s) nosi ceno odhodnega
+     klica. Fail-soft: vrstica se nariše SAMO ob znanim izidu — med nalaganjem
+     in ob napaki kartica ostane brez vrstice (neznano ≠ alarm). */
+  const [updCheck, setUpdCheck] = useState<UpdateCheckT | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const r = await api<UpdateCheckT>('/api/update-check')
+        if (!cancelled) setUpdCheck(r)
+      } catch { /* tiho — vrstica se ne nariše (pošteno) */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
   /** Natisljivi račun (FURS) — busy indikator za gumb za tiskanje (common.print) */
   const [printing, setPrinting] = useState(false)
   const [stornoing, setStornoing] = useState<string | null>(null)
@@ -4918,6 +4939,27 @@ function DashboardInner() {
             <Card><CardHeader><CardTitle className="text-base">{t('sys.title')}</CardTitle></CardHeader>
               <CardContent className="text-sm space-y-1.5 text-stone-600">
                 <p>{t('sys.version', { v: APP_VERSION })}</p>
+                {/* R4b-1 (v1.216.0): vrstica stanja posodobitev — jantarno SAMO ob
+                    dokazano novejši različici; izklopljeno/napačno/nedosegljivo je
+                    tiho sivo (operaterjeva zadeva, ne alarm natakarja). */}
+                {updCheck && updCheck.updateAvailable && (
+                  <>
+                    <p className="font-medium text-amber-700">{t('sys.updAvailable', { v: updCheck.latest ?? '' })}</p>
+                    <p className="text-xs text-amber-700/90">{t('sys.updHint')}</p>
+                  </>
+                )}
+                {updCheck && !updCheck.updateAvailable && updCheck.reason === '' && (
+                  <p>{t('sys.updOk')}</p>
+                )}
+                {updCheck && !updCheck.updateAvailable && updCheck.reason === 'off' && (
+                  <p className="text-stone-400">{t('sys.updDisabled')}</p>
+                )}
+                {updCheck && !updCheck.updateAvailable && updCheck.reason === 'invalid_url' && (
+                  <p className="text-stone-400">{t('sys.updInvalid')}</p>
+                )}
+                {updCheck && !updCheck.updateAvailable && updCheck.reason !== '' && updCheck.reason !== 'off' && updCheck.reason !== 'invalid_url' && (
+                  <p className="text-stone-400">{t('sys.updUnreachable')}</p>
+                )}
                 <p>{t('sys.modules')}</p>
                 <p>{t('sys.db')}</p>
               </CardContent>

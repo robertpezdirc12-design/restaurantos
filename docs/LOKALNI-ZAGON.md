@@ -524,9 +524,17 @@ bun run local --build
   popravljenem viru izrisal naslov pretekle izdaje, `BUILD_ID` je bil star 5 ur.
   Pravilo: **vsaka nadgradnja kode = `--build`**. Ob dvomu preverite `GET /api/health`
   (`version`) in primerjajte z `src/lib/version.ts`.
-- Aplikacija sama ne preverja, ali je nova različica izšla, in nadgradnje ne zna
-  razveljaviti (R4b, `docs/PRD-LOKALNA-BAZA.md` §8). Če posodobitev spodleti,
-  naredite `bun run local:support` (§8.1) in pošljite paket; bazo obnovite po §5.
+- Aplikacija **samo preverja, ali je nova različica izšla** (R4b del 1, v1.216.0),
+  nadgradnje pa NE izvede in jih ne zna razveljaviti (R4b ostanek,
+  `docs/PRD-LOKALNA-BAZA.md` §8). Kartica »O sistemu« (Nastavitve) enkrat na uro
+  primerja lokalno različico z javno različijo oblaka (`GET /api/health` privzetega
+  vira) in ob novejši jantarno pokaže »na voljo je nova različica {v}« z receptom
+  posodobitve. Vir se nastavi z `UPDATE_CHECK_URL` (nenastavljeno = privzeti
+  produkcijski health; prazno = izklopljeno; neveljavno = jasna napaka v isti
+  vrstici) — glej `.env.example`. Preverjanje je fail-soft: vir brez odgovora NE
+  pomeni »posodobljeno«, ampak tiho sivo »ni preverjeno«; obljuba ostaja le, kar je
+  izmerjeno. Če posodobitev spodleti, naredite `bun run local:support` (§8.1) in
+  pošljite paket; bazo obnovite po §5.
 
 ## 8. Odpravljanje težav
 

@@ -2085,6 +2085,13 @@ export const sl: Record<string, string> = {
   'sys.version': 'RestaurantOS — različica {v}',
   'sys.modules': 'Moduli: blagajna, naročila, mize, kuhinja (KDS), meni, izmene, FURS (simulacija), HACCP, zaloge, zvestoba, rezervacije, poročila.',
   'sys.db': 'Baza: Neon PostgreSQL (podedovane env spremenljivke ostajajo na Vercel projektu).',
+  // R4b-1 (v1.216.0): preverjanje novih različic — kartica O sistemu (Nastavitve)
+  'sys.updOk': 'Posodobitve: namestitev je posodobljena.',
+  'sys.updAvailable': 'Posodobitve: na voljo je nova različica {v}.',
+  'sys.updHint': 'Posodobi z: git pull → bun install → bun run local --build → bun run local:migrate (LOKALNI-ZAGON §4).',
+  'sys.updUnreachable': 'Posodobitve: vira ni bilo mogoče doseči — stanje ni preverjeno.',
+  'sys.updDisabled': 'Posodobitve: preverjanje je izklopljeno (UPDATE_CHECK_URL).',
+  'sys.updInvalid': 'Posodobitve: vir je napačno nastavljen (UPDATE_CHECK_URL).',
   // Offline vrsta (alerti)
   'net.offlineOrderQueued': 'Brez povezave — naročilo je shranjeno lokalno in se bo samodejno sinhroniziralo.',
   'net.offlineStatusQueued': 'Brez povezave — sprememba statusa je v vrsti za sinhronizacijo.',

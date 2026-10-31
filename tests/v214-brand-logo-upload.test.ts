@@ -29,8 +29,8 @@
  *  Č2 disk kontrakt: admin rute (POST/DELETE + merge PUT + normalizacija),
  *     javna ruta bajtov (nosniff/ETag/304/ponovno preverjanje), UI kartica,
  *     gostovske površine NEspremenjene (negativno), i18n pariteta, GAP dokaz.
- *  Č3 registri: verzija 1.215.0 (toBe + ubežen regex), oznaka slike ↔
- *     APP_VERSION, AUDIT §8 števec 3731.
+ *  Č3 registri: verzija 1.216.0 (toBe + ubežen regex), oznaka slike ↔
+ *     APP_VERSION, AUDIT §8 števec 3737.
  *
  * 0 fikstur baze — sweep ni potreben (demo podatki nedotaknjeni).
  */
@@ -446,8 +446,8 @@ describe('v1.214.0 — Č2: i18n (SL/HR pariteta ent.logo*)', () => {
   })
 
   it('3721 → 3731 ključev (10 novih v1.214.0 v obeh jezikih)', () => {
-    expect(Object.keys(sl).length).toBe(3731)
-    expect(Object.keys(hr).length).toBe(3731)
+    expect(Object.keys(sl).length).toBe(3737)
+    expect(Object.keys(hr).length).toBe(3737)
   })
 })
 
@@ -477,9 +477,9 @@ describe('v1.214.0 — Č2: dokumentacija + 0 DDL dokaz', () => {
 
 /* ── Č3 — registri (verzija + oznaka slike + AUDIT števec) ──────────────── */
 describe('v1.214.0 — Č3: registri', () => {
-  it('verzija 1.215.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.215.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.215\.0'/)
+  it('verzija 1.216.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.216.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.216\.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {
@@ -489,9 +489,9 @@ describe('v1.214.0 — Č3: registri', () => {
     expect((tag as RegExpMatchArray)[1]).toBe(APP_VERSION)
   })
 
-  it('AUDIT §8: števec 3731 + POSODOBITEV nota', () => {
+  it('AUDIT §8: števec 3737 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3731 ključev SL in 3731 HR')
+    expect(audit).toContain('3737 ključev SL in 3737 HR')
     expect(audit).toContain('**POSODOBITEV (v1.214.0):** dodani ključi `ent.logo*` (10 ključev')
   })
 })

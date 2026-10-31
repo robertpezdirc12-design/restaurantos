@@ -265,32 +265,17 @@ export interface SsrfResponse {
  */
 export async function ssrfSafeRequest(rawUrl: string, init: SsrfRequestInit): Promise<SsrfResponse> {
   const started = Date.now()
-  const v = validateTargetUrl(rawUrl, { allowPrivate: init._testAllowPrivate === true })
-  if (!v.ok) return { status: 0, ok: false, durationMs: 0, errorCategory: 'invalid' }
-  const url = v.url
-  const bareHost = url.hostname.replace(/^\[|\]$/g, '')
-  const isIpLiteral = bareHost.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(bareHost)
-  let pinned: string
-  try {
-    if (isIpLiteral) {
-      pinned = bareHost
-    } else {
-      const all = await resolveValidatedAddresses(url.hostname, { allowPrivate: init._testAllowPrivate === true })
-      pinned = all[0].address
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : ''
-    if (msg === 'dns_blocked_address') {
-      return { status: 0, ok: false, durationMs: Date.now() - started, errorCategory: 'invalid' }
-    }
-    return { status: 0, ok: false, durationMs: Date.now() - started, errorCategory: 'dns' }
+  const pinned = await pinnedTargetFor(rawUrl, init._testAllowPrivate === true)
+  if ('error' in pinned) {
+    return { status: 0, ok: false, durationMs: Date.now() - started, errorCategory: pinned.error }
   }
+  const { url, bareHost, address: pinnedAddress } = pinned
 
   // substitucija: poveži se NA preverjeni IP; Host glava + SNI ohranita izvirno ime
   const hostHeader = url.port ? `${bareHost}:${url.port}` : bareHost
-  const isV6 = pinned.includes(':')
+  const isV6 = pinnedAddress.includes(':')
   const connectUrl = new URL(url.toString())
-  connectUrl.hostname = isV6 ? `[${pinned}]` : pinned
+  connectUrl.hostname = isV6 ? `[${pinnedAddress}]` : pinnedAddress
   const transport = connectUrl.protocol === 'https:' ? https : http
 
   return await new Promise<SsrfResponse>((resolve) => {
@@ -334,6 +319,150 @@ export async function ssrfSafeRequest(rawUrl: string, init: SsrfRequestInit): Pr
       finish({ status: 0, ok: false, durationMs: Date.now() - started, errorCategory: cat })
     })
     if (init.body != null) req.write(init.body)
+    req.end()
+  })
+}
+
+/* ────────────────── varni JSON klic (v1.216.0, R4b-1) ────────────────── */
+
+/**
+ * Skupna koraka 1–2 zgornjega postopka (validacija + DNS pinning), izluščena
+ * v v1.216.0, da ssrfSafeRequest IN ssrfSafeJson delita ENO resnico o izbiri
+ * cilja (dve kopiji pinning logike bi bili drift, ne varnost). Napaka se vrača
+ * kot KATEGORIJA (invalid/dns) — brez surovih sporočil z URL-ji.
+ */
+type PinnedTarget =
+  | { error: 'invalid' | 'dns' }
+  | { url: URL; bareHost: string; address: string }
+
+async function pinnedTargetFor(rawUrl: string, allowPrivate: boolean): Promise<PinnedTarget> {
+  const v = validateTargetUrl(rawUrl, { allowPrivate })
+  if (!v.ok) return { error: 'invalid' }
+  const url = v.url
+  const bareHost = url.hostname.replace(/^\[|\]$/g, '')
+  const isIpLiteral = bareHost.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(bareHost)
+  try {
+    if (isIpLiteral) {
+      // IP literal ni šel skozi validateTargetUrl blokirno gejo → javni (ali
+      // testni allowPrivate); podaj neposredno (nič DNS = nič rebindinga)
+      return { url, bareHost, address: bareHost }
+    }
+    const all = await resolveValidatedAddresses(url.hostname, { allowPrivate })
+    return { url, bareHost, address: all[0].address }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : ''
+    if (msg === 'dns_blocked_address') return { error: 'invalid' }
+    return { error: 'dns' }
+  }
+}
+
+export interface SsrfJsonInit {
+  headers?: Record<string, string>
+  timeoutMs?: number
+  /** Zgornja meja prebranih bajtov telesa (privzeto 16 KiB). */
+  maxBytes?: number
+  /** TEST-ONLY: dovoli zasebne cilje (lokalni testni strežnik; rute NIKOLI ne podajo) */
+  _testAllowPrivate?: boolean
+}
+
+export type SsrfJsonCategory = 'invalid' | 'dns' | 'timeout' | 'refused' | 'tls' | 'network' | 'bad_status' | 'too_large' | 'bad_json'
+
+export type SsrfJsonResponse =
+  | { ok: true; status: number; json: unknown; durationMs: number }
+  | { ok: false; status: number; errorCategory: SsrfJsonCategory; durationMs: number }
+
+/**
+ * Varni JSON GET na cilj — ISTA disciplina kot ssrfSafeRequest (validacija →
+ * DNS pin → povezava na preverjeni IP; Host glava + SNI ohranita izvirno ime;
+ * preusmeritve se NE sledijo), razlika je SAMO telo: prebere do `maxBytes`
+ * bajtov (privzeto 16 KiB) in zahteva veljaven JSON. Namen (v1.216.0, R4b-1):
+ * branje { version } iz health vira preverjanja posodobitev — izbor cilja je
+ * OPERATORSKI (env/privzeti URL), ne uporabniški; za uporabniško nastavljive
+ * testne klice ostaja ssrfSafeRequest, ki telesa NE prebere.
+ *
+ * 3xx je odpoved (bad_status) — health cilj ne preusmerja, slediti ne smemo
+ * (Location bi lahko vodil kam drugam z našimi glavami). Telo čez mejo →
+ * too_large (zavrnjeno CELO, ne porezano — polovica JSON-a bi bila laž).
+ * Telo, ki ni JSON → bad_json.
+ */
+export async function ssrfSafeJson(rawUrl: string, init: SsrfJsonInit = {}): Promise<SsrfJsonResponse> {
+  const started = Date.now()
+  const maxBytes = init.maxBytes ?? 16_384
+  const pinned = await pinnedTargetFor(rawUrl, init._testAllowPrivate === true)
+  if ('error' in pinned) {
+    return { ok: false, status: 0, errorCategory: pinned.error, durationMs: Date.now() - started }
+  }
+  const { url, bareHost, address } = pinned
+
+  const hostHeader = url.port ? `${bareHost}:${url.port}` : bareHost
+  const isV6 = address.includes(':')
+  const connectUrl = new URL(url.toString())
+  connectUrl.hostname = isV6 ? `[${address}]` : address
+  const transport = connectUrl.protocol === 'https:' ? https : http
+
+  return await new Promise<SsrfJsonResponse>((resolve) => {
+    const headers: Record<string, string> = { accept: 'application/json', ...init.headers, host: hostHeader }
+    const req = transport.request(connectUrl, {
+      method: 'GET',
+      headers,
+      ...(connectUrl.protocol === 'https:' ? { servername: bareHost } : {}),
+    })
+    let settled = false
+    const finish = (r: SsrfJsonResponse) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve(r)
+    }
+    const timeout = setTimeout(() => {
+      req.destroy(new Error('timeout'))
+      finish({ ok: false, status: 0, errorCategory: 'timeout', durationMs: Date.now() - started })
+    }, init.timeoutMs ?? 5000)
+    req.on('response', (res) => {
+      const status = res.statusCode || 0
+      if (status < 200 || status >= 300) {
+        // 3xx in 4xx/5xx sta ENAKO odpoved — ne sledimo, ne beremo; Location
+        // NE poročamo (bralcu nima pomena, cilj je določen)
+        res.resume()
+        finish({ ok: false, status, errorCategory: 'bad_status', durationMs: Date.now() - started })
+        return
+      }
+      const chunks: Buffer[] = []
+      let seen = 0
+      let overflow = false
+      res.on('data', (chunk: Buffer) => {
+        seen += chunk.length
+        if (seen > maxBytes) {
+          overflow = true
+          res.destroy()
+          return
+        }
+        chunks.push(chunk)
+      })
+      const done = () => {
+        if (overflow) {
+          finish({ ok: false, status, errorCategory: 'too_large', durationMs: Date.now() - started })
+          return
+        }
+        const body = Buffer.concat(chunks).toString('utf8')
+        try {
+          finish({ ok: true, status, json: JSON.parse(body), durationMs: Date.now() - started })
+        } catch {
+          finish({ ok: false, status, errorCategory: 'bad_json', durationMs: Date.now() - started })
+        }
+      }
+      res.on('end', done)
+      res.on('close', () => { if (!settled) done() })
+    })
+    req.on('error', (err: NodeJS.ErrnoException) => {
+      const code = String(err.code || err.message || '')
+      let cat: SsrfJsonCategory = 'network'
+      if (code === 'timeout' || code === 'ETIMEDOUT') cat = 'timeout'
+      else if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') cat = 'dns'
+      else if (code === 'ECONNREFUSED') cat = 'refused'
+      else if (code.includes('certificate') || code.includes('TLS') || code.includes('ERR_TLS')) cat = 'tls'
+      finish({ ok: false, status: 0, errorCategory: cat, durationMs: Date.now() - started })
+    })
     req.end()
   })
 }
