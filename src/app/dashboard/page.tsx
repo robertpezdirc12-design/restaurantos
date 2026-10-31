@@ -18,6 +18,17 @@ import {
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
 import { tabHasPerm, TAB_PERM } from '@/lib/tab-permissions'
 import { normItemName } from '@/lib/menu-dup'
+// OSS-10 B-del (v1.210.0): izbira variante osebja — čisti sloj košarice variant (0 stranskih učinkov)
+import {
+  addPosVariantLine,
+  changePosVariantLineQty,
+  orderItemDisplayName,
+  posVariantItemsPayload,
+  posVariantLinesTotal,
+  requiredVariantGroupsForItem,
+  type PosVariantGroupView,
+  type PosVariantLine,
+} from '@/lib/item-variants'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -515,6 +526,14 @@ function DashboardInner() {
   const [orderSheet, setOrderSheet] = useState<OrderT | null>(null)
   const [sheetCourses, setSheetCourses] = useState<CourseT[]>([])
   const [sheetCart, setSheetCart] = useState<Record<string, number>>({})
+  // OSS-10 B-del (v1.210.0): izbira variante OSEBJA — skupine opcij (razred `variant`
+  // prihaja s strežnika) + vrstice variant za VSE TRI košarice POS (novo naročilo /
+  // hitra prodaja / urejevalnik naročila) + skupni dialog izbire variante.
+  const [variantGroups, setVariantGroups] = useState<PosVariantGroupView[]>([])
+  const [cartVariants, setCartVariants] = useState<PosVariantLine[]>([])
+  const [saleVariants, setSaleVariants] = useState<PosVariantLine[]>([])
+  const [sheetVariants, setSheetVariants] = useState<PosVariantLine[]>([])
+  const [variantPick, setVariantPick] = useState<{ mode: 'cart' | 'sale' | 'sheet'; item: MenuT; selections: Record<string, string> } | null>(null)
   // N-27-1 (v1.195.0): aktivni sedež v urejevalniku naročila (OPS-7) —
   // postavke, dodane medtem, ko je sedež aktiven, ga nosijo (null = brez).
   const [sheetSeat, setSheetSeat] = useState<number | null>(null)
@@ -757,7 +776,7 @@ function DashboardInner() {
       const { canManage: manage, perms: curPerms } = gateRef.current
       const hp = (p: string) => manage || curPerms.includes(p)
       const hpAny = (...ps: string[]) => manage || ps.some((x) => curPerms.includes(x))
-      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc] = await Promise.all([
+      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc, vg] = await Promise.all([
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
@@ -795,6 +814,9 @@ function DashboardInner() {
         full && hp('reports.sales') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
         full && hp('delivery.manage') ? soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')) : undefined,
         full && hp('settings.manage') ? soft(api<{ locations: LocationRowT[] }>('/api/locations')) : undefined,
+        // OSS-10 B-del (v1.210.0): skupine opcij — vir razreda `variant` za POS
+        // (requireAuth — za vse vloge, kot meni; isti poll vratarj 'menus').
+        dashboardPollIncludes(scope, 'menus') ? soft(api<{ groups: PosVariantGroupView[] }>('/api/modifier-groups')) : undefined,
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
@@ -843,6 +865,9 @@ function DashboardInner() {
       if (au) setAuditLog(au.entries)
       if (dl) { setDeliveryOrders(dl.orders); setDeliveryZones(dl.zones); setDeliveryIntegrations(dl.platformIntegrations) }
       if (lc) setLocList(lc.locations)
+      // OSS-10 B-del (v1.210.0): skupine opcij (fail-soft: padec → [] → UI se obnaša
+      // kot prej, strežnik ostane varovalka z 400 »Skupina … je obvezna«)
+      if (vg) setVariantGroups(vg.groups || [])
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
@@ -974,21 +999,26 @@ function DashboardInner() {
     // v1.170.0: `items` in `clientOperationId` sta MORATA biti vidna v obeh vejeh —
     // offline veja pošlje enake postavke pod istim id-jem, da strežnik ob replayu
     // ne ustvari dvojnega naročila.
-    const items = Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
+    // OSS-10 B-del (v1.210.0): + vrstice variant (modifierji tečejo v istem items
+    // nizu — createOrderCore jih validira in oceni iz DB; offline replay jih nosi).
+    const items = [
+      ...Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })),
+      ...posVariantItemsPayload(cartVariants),
+    ]
     if (items.length === 0) return
     // idempotencija: isti clientOperationId ob replayu ne ustvari dvojnega naročila
     const clientOperationId = newOperationId()
     try {
       // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
       await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2, clientOperationId, locationId: newOrderTable.locationId || undefined }) })
-      setCart({}); setNewOrderTable(null); await load()
+      setCart({}); setCartVariants([]); setNewOrderTable(null); await load()
     } catch (err) {
       if (isNetworkError(err)) {
         // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
         // v1.170.0: zavrnitev (polna vrsta / kvota) pomeni, da naročilo NI shranjeno
         const rezultat = tryEnqueueOp('order.create', { tableId: newOrderTable.id, items, guests: 2, note: '', locationId: newOrderTable.locationId || undefined }, clientOperationId)
         if (!rezultat.ok) { toast({ title: t('net.queueFull'), variant: 'destructive' }); return }
-        setCart({}); setNewOrderTable(null)
+        setCart({}); setCartVariants([]); setNewOrderTable(null)
         toast({ title: t('net.offlineOrderQueued') })
       } else {
         toast({ title: (err as Error).message, variant: 'destructive' })
@@ -1154,16 +1184,19 @@ function DashboardInner() {
   /** OPS-7: pošlji dodatek obstoječemu naročilu (PATCH addItems) */
   async function sendSheetItems() {
     if (!orderSheet) return
-    const items = Object.entries(sheetCart).map(([menuItemId, qty]) => ({
-      menuItemId, qty,
-      ...(sheetSeat != null ? { seat: sheetSeat } : {}), // N-27-1: aktivni sedež
-    }))
+    // OSS-10 B-del (v1.210.0): + vrstice variant z modifierji (backend addItems jih
+    // validira z ISTO logiko kot createOrderCore — cena doplačila teče v vrstico).
+    const seatField = sheetSeat != null ? { seat: sheetSeat } : {} // N-27-1: aktivni sedež
+    const items = [
+      ...Object.entries(sheetCart).map(([menuItemId, qty]) => ({ menuItemId, qty, ...seatField })),
+      ...posVariantItemsPayload(sheetVariants).map((it) => ({ ...it, ...seatField })),
+    ]
     if (items.length === 0) return
     setSending(true)
     try {
       const clientOperationId = newOperationId()
       await api(`/api/orders/${orderSheet.id}`, { method: 'PATCH', body: JSON.stringify({ addItems: items, clientOperationId }) })
-      setSheetCart({})
+      setSheetCart({}); setSheetVariants([])
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
@@ -1995,19 +2028,80 @@ function DashboardInner() {
     } catch (err) { setBootNotice(`${t('common.error')}: ${(err as Error).message}`) } finally { setBootBusy(false) }
   }
 
+  // OSS-10 B-del (v1.210.0): artikel → obvezne skupine VARIANTE (razred `variant`
+  // s strežnika, pripete artikle, ≥1 razpoložljiva opcija) — Map za hitro vprašanje
+  // iz ploščic/vrstic POS.
+  const variantReqMap = useMemo(() => {
+    const map = new Map<string, PosVariantGroupView[]>()
+    for (const g of variantGroups) {
+      // ISTA merila kot requiredVariantGroupsForItem (razred + ≥1 razpoložljiva
+      // opcija); povezava artikel↔skupina se razpne po posameznem id-ju spodaj.
+      if (!g || !g.variant || !Array.isArray(g.linkedMenuItemIds) || !Array.isArray(g.modifiers) || !g.modifiers.some((m) => m?.isAvailable)) continue
+      for (const id of g.linkedMenuItemIds) {
+        const list = map.get(id) || []
+        list.push(g)
+        map.set(id, list)
+      }
+    }
+    return map
+  }, [variantGroups])
+  /** Skupna vstopna točka »dodaj artikel« za vse tri košarice POS: artikel z
+   *  obvezno varianto PRVÉ odpre izbiro (brez izbire bi strežnik vrnil 400),
+   *  prosti artikel gre direktno v košarico (obnašanje nespremenjeno). */
+  function posAddClick(mode: 'cart' | 'sale' | 'sheet', mi: MenuT) {
+    if (!mi.available) return
+    if ((variantReqMap.get(mi.id)?.length ?? 0) > 0) { setVariantPick({ mode, item: mi, selections: {} }); return }
+    if (mode === 'cart') setCart((c) => ({ ...c, [mi.id]: (c[mi.id] || 0) + 1 }))
+    else if (mode === 'sale') setSaleCart((c) => ({ ...c, [mi.id]: (c[mi.id] || 0) + 1 }))
+    else setSheetCart((c) => ({ ...c, [mi.id]: (c[mi.id] || 0) + 1 }))
+  }
+  const variantPickGroups = variantPick ? (variantReqMap.get(variantPick.item.id) || []) : []
+  const variantPickComplete = !!variantPick && variantPickGroups.every((g) => !!variantPick.selections[g.id] && g.modifiers.some((m) => m.id === variantPick.selections[g.id] && m.isAvailable))
+  function confirmVariantPick() {
+    if (!variantPick || !variantPickComplete) return
+    const { mode, item, selections } = variantPick
+    const ids: string[] = []
+    const names: string[] = []
+    let surcharge = 0
+    for (const g of variantPickGroups) {
+      const opt = g.modifiers.find((m) => m.id === selections[g.id])
+      if (opt) { ids.push(opt.id); names.push(opt.name); surcharge += opt.price }
+    }
+    const line = { menuItemId: item.id, modifierIds: ids, optionNames: names, optionPrice: surcharge }
+    if (mode === 'cart') setCartVariants((p) => addPosVariantLine(p, line))
+    else if (mode === 'sale') setSaleVariants((p) => addPosVariantLine(p, line))
+    else setSheetVariants((p) => addPosVariantLine(p, line))
+    setVariantPick(null)
+  }
+
+  // OSS-10 B-del: skupni zneski vključujejo doplačila variant (osnova + opcija × količina)
+  const variantBasePriceOf = (menuItemId: string) => menu.find((m) => m.id === menuItemId)?.price || 0
   const cartTotal = Object.entries(cart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
+    + posVariantLinesTotal(cartVariants, variantBasePriceOf)
   // OPS-7: košarica urejevalnika naročila (NaročiloSheet)
   const sheetCartTotal = Object.entries(sheetCart).reduce((s, [id, qty]) => s + (menu.find((m) => m.id === id)?.price || 0) * qty, 0)
+    + posVariantLinesTotal(sheetVariants, variantBasePriceOf)
+  // OSS-10 B-del: »ima vsebino« = navadne postavke ALI vrstice variant (sedežna vrstica + gumb Pošlji)
+  const sheetHasItems = Object.values(sheetCart).some((q) => q > 0) || sheetVariants.some((l) => l.qty > 0)
 
   // Issue #3: POS → customer display — trenutna transakcija v realnem času (debounce 800 ms)
   useEffect(() => {
     if (!newOrderTable) return
     const t = setTimeout(() => {
-      const lines = Object.entries(cart).map(([id, qty]) => {
-        const m = menu.find((x) => x.id === id)
-        const price = (m?.price || 0) * qty
-        return { name: m?.name || id, qty, price, vatRate: Number(m?.vatRate) || 22 }
-      })
+      // OSS-10 B-del: vrstice variant na zaslonu gosta — sestavljeno ime (»Pizza · 0,5 L«)
+      // + doplačilo v ceni vrstice (isti izračun kot naročilo)
+      const lines = [
+        ...Object.entries(cart).map(([id, qty]) => {
+          const m = menu.find((x) => x.id === id)
+          const price = (m?.price || 0) * qty
+          return { name: m?.name || id, qty, price, vatRate: Number(m?.vatRate) || 22 }
+        }),
+        ...cartVariants.map((l) => {
+          const m = menu.find((x) => x.id === l.menuItemId)
+          const price = ((m?.price || 0) + l.optionPrice) * l.qty
+          return { name: orderItemDisplayName(m?.name || '', l.optionNames), qty: l.qty, price, vatRate: Number(m?.vatRate) || 22 }
+        }),
+      ]
       // Naloga #6: prikazane cene so končne → DDV se izvleče po stopnji posameznega artikla
       const gross = lines.reduce((s, l) => s + l.price, 0)
       const byRate = new Map<number, { rate: number; amount: number }>()
@@ -2030,7 +2124,7 @@ function DashboardInner() {
       })
     }, 800)
     return () => clearTimeout(t)
-  }, [cart, newOrderTable, menu, pushDisplay])
+  }, [cart, cartVariants, newOrderTable, menu, pushDisplay])
 
   const menuByCat = categories
     .map((c) => ({ cat: c, items: menu.filter((m) => m.categoryId === c.id) }))
@@ -2308,8 +2402,10 @@ function DashboardInner() {
     && (saleTokens.length === 0
       || saleTokens.every((tok) => `${mi.name} ${saleCatNameOf(mi)}`.toLowerCase().includes(tok))))
   const saleTotal = Object.entries(saleCart).reduce((s, [id, qty]) => s + (menu.find((x) => x.id === id)?.price ?? 0) * qty, 0)
+    + posVariantLinesTotal(saleVariants, variantBasePriceOf)
   // vizualni benchmark (Toast/Square): skupno število kosov za oznako v glavi košare
-  const saleCartCount = Object.values(saleCart).reduce((s, q) => s + q, 0)
+  // (OSS-10 B-del: + količine vrstic variant)
+  const saleCartCount = Object.values(saleCart).reduce((s, q) => s + q, 0) + saleVariants.reduce((s, l) => s + l.qty, 0)
   // ISSUE #73 audit-15: podvojena prikazna imena ČEZ kategorije (isti niz,
   // različna artikla — »Bolognese« testenina/pica) — v košari morajo biti
   // RAZLOČNA: −1 na napačni vrstici v naglici pomeni izgubljen račun.
@@ -2380,7 +2476,11 @@ function DashboardInner() {
   }
 
   async function submitSale() {
-    const items = Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty }))
+    // OSS-10 B-del (v1.210.0): + vrstice variant (modifierji → createOrderCore validira)
+    const items = [
+      ...Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty })),
+      ...posVariantItemsPayload(saleVariants),
+    ]
     if (items.length === 0) return
     // Naloga #7: lokacija je obvezen parameter CREATE (requireUserLocation). Osebje
     // jo ima v seji; centralna vloga brez sejske lokacije jo mora izbrati v glavi.
@@ -2401,7 +2501,7 @@ function DashboardInner() {
         // JSON.stringify izpušče undefined → za osebje/lokalizirane vloge se nič ne spremeni
         body: JSON.stringify({ items, type: 'TAKEOUT', guests: 1, clientOperationId: newOperationId(), locationId: viewLoc || undefined }),
       })
-      setSaleCart({})
+      setSaleCart({}); setSaleVariants([])
       // v1.128.0: uspešno plačilo zapre list košare (odpre se plačilni dialog naročila)
       setSaleCartOpen(false)
       // OSS-4 (v1.204.0): sveže pridobivanje vključi tudi zadržane (merge, kot v loadAll)
@@ -2713,7 +2813,7 @@ function DashboardInner() {
                         // OSS-4 (v1.204.0): miza z ZADRŽANIM naročilom → skok na seznam
                         // zadržanih (urejevalnik se zadržanega ne odpre — urejanje je 409)
                         if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
-                        if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
+                        if (!tb.activeOrder) { setCart({}); setCartVariants([]); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                       }}
                       className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 shadow text-xs font-bold cursor-grab active:cursor-grabbing ${shapeCls} ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
@@ -2756,7 +2856,7 @@ function DashboardInner() {
                             if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
                             // OSS-4 (v1.204.0): miza z ZADRŽANIM naročilom → seznam zadržanih
                             if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
-                            if (!tb.activeOrder) { setCart({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
+                            if (!tb.activeOrder) { setCart({}); setCartVariants([]); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
                           className={`flex h-32 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
                         >
@@ -3177,11 +3277,12 @@ function DashboardInner() {
                 {saleView === 'compact' ? (
                 <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
                   {saleItems.map((mi) => {
-                    const inCart = saleCart[mi.id] || 0
+                    // OSS-10 B-del: značka na ploščici šteje TUDI vrstice variant tega artikla
+                    const inCart = (saleCart[mi.id] || 0) + saleVariants.filter((l) => l.menuItemId === mi.id).reduce((s, l) => s + l.qty, 0)
                     const catKey = mi.categoryId || (categories.find((c) => c.name === saleCatNameOf(mi))?.id ?? mi.name)
                     const catOverline = saleMixed ? saleCatNameOf(mi) : ''
                     return (
-                      <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
+                      <button key={mi.id} disabled={!mi.available} onClick={() => posAddClick('sale', mi)}
                         aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
                         className={`relative flex h-20 flex-col items-start justify-between border-l-4 px-2.5 py-2 text-left transition ${
                           mi.available
@@ -3209,7 +3310,8 @@ function DashboardInner() {
                 ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
                   {saleItems.map((mi) => {
-                    const inCart = saleCart[mi.id] || 0
+                    // OSS-10 B-del: značka na ploščici šteje TUDI vrstice variant tega artikla
+                    const inCart = (saleCart[mi.id] || 0) + saleVariants.filter((l) => l.menuItemId === mi.id).reduce((s, l) => s + l.qty, 0)
                     /* ISSUE #74 V-7 (blocker): FOTOGRAFIJA na ploščici artikla — prej
                        imgCount=0 v celem POS (bele kartice z imenom in ceno); slika 4:3
                        iz kategorije artikla (categoryImageForCategory), lazy loading. */
@@ -3220,7 +3322,7 @@ function DashboardInner() {
                     // pogledu — znotraj izbrane kategorije je kontekst že v čipu)
                     const catOverline = saleMixed ? saleCatNameOf(mi) : ''
                     return (
-                      <button key={mi.id} disabled={!mi.available} onClick={() => setSaleCart((pr) => ({ ...pr, [mi.id]: (pr[mi.id] || 0) + 1 }))}
+                      <button key={mi.id} disabled={!mi.available} onClick={() => posAddClick('sale', mi)}
                         aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
                         className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition ${mi.available
                           ? inCart > 0
@@ -3276,7 +3378,7 @@ function DashboardInner() {
                         {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
                       </span>
                       {saleCartCount > 0 && (
-                        <Button size="sm" variant="ghost" className="h-10 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => setSaleCart({})} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                        <Button size="sm" variant="ghost" className="h-10 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => { setSaleCart({}); setSaleVariants([]) }} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -3290,18 +3392,37 @@ function DashboardInner() {
                         <p className="text-xs text-stone-400">{t('sale.cartEmptyHint')}</p>
                       </div>
                     ) : (
-                      Object.entries(saleCart).map(([id, qty]) => {
-                        const mi = menu.find((x) => x.id === id)
-                        if (!mi) return null
-                        return (
-                          <div key={id} className="flex items-center gap-1.5 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5 text-sm">
-                            <SaleCartLineName mi={mi} qty={qty} />
-                            <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
-                            <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
-                            <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
-                          </div>
-                        )
-                      })
+                      [
+                        ...Object.entries(saleCart).map(([id, qty]) => {
+                          const mi = menu.find((x) => x.id === id)
+                          if (!mi) return null
+                          return (
+                            <div key={id} className="flex items-center gap-1.5 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5 text-sm">
+                              <SaleCartLineName mi={mi} qty={qty} />
+                              <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                              <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                              <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
+                            </div>
+                          )
+                        }),
+                        // OSS-10 B-del (v1.210.0): vrstice variant — sestavljeno ime + doplačilo,
+                        // ločeno −/+ (ista izbira = ista vrstica, +1 je ista izbira)
+                        ...saleVariants.map((l) => {
+                          const mi = menu.find((x) => x.id === l.menuItemId)
+                          if (!mi) return null
+                          return (
+                            <div key={l.key} className="flex items-center gap-1.5 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 py-1.5 text-sm">
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="min-w-0 truncate font-medium leading-tight">{l.qty}× {orderItemDisplayName(mi.name, l.optionNames)}</span>
+                                {l.optionPrice > 0 ? <span className="min-w-0 truncate text-xs leading-tight text-stone-400">{t('orders.variantSurcharge')}: +{fmtEUR(l.optionPrice)}</span> : null}
+                              </span>
+                              <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleVariants((pr) => changePosVariantLineQty(pr, l.key, -1))}>−</Button>
+                              <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleVariants((pr) => addPosVariantLine(pr, l))}>+</Button>
+                              <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR((mi.price + l.optionPrice) * l.qty)}</span>
+                            </div>
+                          )
+                        }),
+                      ]
                     )}
                   </CardContent>
                   <div className="space-y-2 border-t border-stone-200 p-4">
@@ -3362,7 +3483,7 @@ function DashboardInner() {
                           {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
                         </span>
                         {saleCartCount > 0 && (
-                          <Button size="sm" variant="ghost" className="h-9 w-9 shrink-0 p-0 text-stone-500 hover:text-red-700" onClick={() => setSaleCart({})} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                          <Button size="sm" variant="ghost" className="h-9 w-9 shrink-0 p-0 text-stone-500 hover:text-red-700" onClick={() => { setSaleCart({}); setSaleVariants([]) }} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
@@ -3378,18 +3499,36 @@ function DashboardInner() {
                         <p className="text-xs text-stone-400">{t('sale.cartEmptyHint')}</p>
                       </div>
                     ) : (
-                      Object.entries(saleCart).map(([id, qty]) => {
-                        const mi = menu.find((x) => x.id === id)
-                        if (!mi) return null
-                        return (
-                          <div key={id} className="flex items-center gap-2 rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-2.5 text-sm">
-                            <SaleCartLineName mi={mi} qty={qty} />
-                            <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
-                            <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
-                            <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
-                          </div>
-                        )
-                      })
+                      [
+                        ...Object.entries(saleCart).map(([id, qty]) => {
+                          const mi = menu.find((x) => x.id === id)
+                          if (!mi) return null
+                          return (
+                            <div key={id} className="flex items-center gap-2 rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-2.5 text-sm">
+                              <SaleCartLineName mi={mi} qty={qty} />
+                              <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
+                              <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                              <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
+                            </div>
+                          )
+                        }),
+                        // OSS-10 B-del (v1.210.0): vrstice variant (mobilni list košare)
+                        ...saleVariants.map((l) => {
+                          const mi = menu.find((x) => x.id === l.menuItemId)
+                          if (!mi) return null
+                          return (
+                            <div key={l.key} className="flex items-center gap-2 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-2.5 text-sm">
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="min-w-0 truncate font-medium leading-tight">{l.qty}× {orderItemDisplayName(mi.name, l.optionNames)}</span>
+                                {l.optionPrice > 0 ? <span className="min-w-0 truncate text-xs leading-tight text-stone-400">{t('orders.variantSurcharge')}: +{fmtEUR(l.optionPrice)}</span> : null}
+                              </span>
+                              <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleVariants((pr) => changePosVariantLineQty(pr, l.key, -1))}>−</Button>
+                              <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleVariants((pr) => addPosVariantLine(pr, l))}>+</Button>
+                              <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR((mi.price + l.optionPrice) * l.qty)}</span>
+                            </div>
+                          )
+                        }),
+                      ]
                     )}
                   </div>
                   <DrawerFooter className="gap-2 border-t border-stone-200 pt-3">
@@ -4810,20 +4949,39 @@ function DashboardInner() {
                       /* P0-3 (v1.83.0): razprodani artikli so VIDNI (sivi, 86, nadomestki) namesto
                          naročljivih do strežniške zavrnitve; Minus ostaja aktiven (izdelek je lahko
                          že v košarici izpred 86). Nadomestki = ista kategorija (g.items). */
-                      <div key={m.id} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${m.available ? 'border-stone-200' : 'border-stone-200 bg-stone-100 opacity-70'}`}>
-                        <div className="min-w-0">
-                          <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}</p>
-                          {!m.available && (
-                            <p className="text-xs text-stone-500 truncate">
-                              {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
-                            </p>
-                          )}
+                      /* OSS-10 B-del (v1.210.0): artikel z obvezno varianto odpre izbiro
+                         (Plus bi sicer dobil 400 »Skupina … je obvezna«); izbrane vrstice
+                         so VIDNE pod artikel vrstico (ločeno −/+ — v naglici ni ugibanja). */
+                      <div key={m.id} className="space-y-1">
+                        <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${m.available ? 'border-stone-200' : 'border-stone-200 bg-stone-100 opacity-70'}`}>
+                          <div className="min-w-0">
+                            <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}{(variantReqMap.get(m.id)?.length ?? 0) > 0 && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">{variantReqMap.get(m.id)![0].name}</span>}</p>
+                            {!m.available && (
+                              <p className="text-xs text-stone-500 truncate">
+                                {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
+                            <span className="w-6 text-center text-sm font-semibold">{cart[m.id] || 0}</span>
+                            <Button size="icon" variant="outline" className="h-7 w-7" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => posAddClick('cart', m)} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
-                          <span className="w-6 text-center text-sm font-semibold">{cart[m.id] || 0}</span>
-                          <Button size="icon" variant="outline" className="h-7 w-7" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => setCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
-                        </div>
+                        {cartVariants.filter((l) => l.menuItemId === m.id).map((l) => (
+                          <div key={l.key} className="ml-6 flex items-center justify-between gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2.5 py-1.5">
+                            <div className="min-w-0">
+                              <p className="text-sm truncate font-medium">{orderItemDisplayName(m.name, l.optionNames)}</p>
+                              {l.optionPrice > 0 && <p className="text-xs text-stone-500">{t('orders.variantSurcharge')}: +{fmtEUR(l.optionPrice)}</p>}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setCartVariants((p) => changePosVariantLineQty(p, l.key, -1))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
+                              <span className="w-6 text-center text-sm font-semibold">{l.qty}</span>
+                              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setCartVariants((p) => addPosVariantLine(p, l))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                              <span className="w-16 text-right text-sm font-semibold tabular-nums">{fmtEUR((m.price + l.optionPrice) * l.qty)}</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -4841,8 +4999,44 @@ function DashboardInner() {
         </DialogContent>
       </Dialog>
 
+      {/* ── OSS-10 B-del (v1.210.0): IZBIRA VARIANTE (osebje) — skupni dialog za vse tri
+          košarice POS (novo naročilo / hitra prodaja / urejevalnik). Obvezne skupine
+          morajo dobiti izbiro PRED vnosom (sicer strežnik vrne 400); potrditev je
+          omogočena šele, ko ima vsaka skupina izbrano razpoložljivo opcijo. ── */}
+      <Dialog open={!!variantPick} onOpenChange={(v) => !v && setVariantPick(null)}>
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{t('orders.variantTitle')} — {variantPick?.item.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {variantPickGroups.map((g) => (
+              <div key={g.id}>
+                <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{g.name}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {g.modifiers.filter((m) => m.isAvailable).map((m) => {
+                    const sel = variantPick?.selections[g.id] === m.id
+                    return (
+                      <button key={m.id} type="button" aria-pressed={sel} onClick={() => setVariantPick((p) => (p ? { ...p, selections: { ...p.selections, [g.id]: m.id } } : p))}
+                        className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition ${sel ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800' : 'border-stone-300 bg-white text-stone-800 hover:bg-stone-50'}`}>
+                        {m.name}{m.price > 0 ? ` · +${fmtEUR(m.price)}` : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="items-center gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setVariantPick(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500" disabled={!variantPickComplete} onClick={confirmVariantPick}>
+              {t('orders.variantAdd')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── OPS-7 (v1.68.0): UREJEVALNIK NAROČILA (Toast vzorec) — klik na zasedeno mizo ── */}
-      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}) } }}>
+      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}); setSheetVariants([]) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="text-lg">
@@ -4865,7 +5059,8 @@ function DashboardInner() {
                 <div className="space-y-1 pr-1">
                   {orderSheet?.items.filter((it) => !it.voided).map((it) => (
                     <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2 py-1.5">
-                      <span className="min-w-0 truncate">{it.qty}× {it.name}</span>
+                      {/* OSS-10 B-del: izbrane opcije (»0,5 L«) ob imenu — vidijo se tudi po osvežitvi */}
+                      <span className="min-w-0 truncate">{it.qty}× {it.name}{it.modifiers?.length ? ` · ${it.modifiers.join(', ')}` : ''}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
                         <Badge variant="outline" className="text-xs px-1.5 py-0">{it.status}</Badge>
                         {hasPerm('orders.void') && orderSheet.paymentStatus !== 'paid' && (
@@ -4911,7 +5106,7 @@ function DashboardInner() {
             <div className="rounded-xl border border-stone-200 p-3">
               <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{t('sheet.addItems')}</p>
               {/* N-27-1: aktivni sedež (naročanje) — isti obseg sedežev kot plačilni dialog (1–5) */}
-              {Object.values(sheetCart).some((q) => q > 0) && (
+              {sheetHasItems && (
                 <div className="flex items-center gap-1.5 flex-wrap mb-2" role="group" aria-label={t('order.activeSeat')}>
                   <span className="text-xs font-semibold uppercase text-stone-500 mr-1 shrink-0">{t('order.activeSeat')}</span>
                   <button aria-pressed={sheetSeat == null} onClick={() => setSheetSeat(null)} className={`min-h-11 px-3 rounded-lg text-sm font-bold ${sheetSeat == null ? 'bg-stone-800 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>{t('order.seatNone')}</button>
@@ -4929,20 +5124,34 @@ function DashboardInner() {
                         {g.items.map((m) => (
                           /* P0-3 (v1.83.0): prej tiho skrito (filter available) — natakar ni vedel,
                              DA artikel obstaja in je razprodan; zdaj sivi + 86 + nadomestki. */
-                          <div key={m.id} className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${m.available ? 'border-stone-100' : 'border-stone-100 bg-stone-100 opacity-70'}`}>
-                            <div className="min-w-0">
-                              <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}</p>
-                              {!m.available && (
-                                <p className="text-xs text-stone-500 truncate">
-                                  {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
-                                </p>
-                              )}
+                          /* OSS-10 B-del (v1.210.0): varianta = Plus odpre izbiro; vrstice pod artikel vrstico. */
+                          <div key={m.id} className="space-y-1">
+                            <div className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${m.available ? 'border-stone-100' : 'border-stone-100 bg-stone-100 opacity-70'}`}>
+                              <div className="min-w-0">
+                                <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}</p>
+                                {!m.available && (
+                                  <p className="text-xs text-stone-500 truncate">
+                                    {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
+                                <span className="w-5 text-center text-sm font-semibold">{sheetCart[m.id] || 0}</span>
+                                <Button size="icon" variant="outline" className="h-6 w-6" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => posAddClick('sheet', m)} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
-                              <span className="w-5 text-center text-sm font-semibold">{sheetCart[m.id] || 0}</span>
-                              <Button size="icon" variant="outline" className="h-6 w-6" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => setSheetCart((c) => ({ ...c, [m.id]: (c[m.id] || 0) + 1 }))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
-                            </div>
+                            {sheetVariants.filter((l) => l.menuItemId === m.id).map((l) => (
+                              <div key={l.key} className="ml-5 flex items-center justify-between gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 py-1">
+                                <p className="min-w-0 truncate text-sm font-medium">{orderItemDisplayName(m.name, l.optionNames)}</p>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetVariants((p) => changePosVariantLineQty(p, l.key, -1))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
+                                  <span className="w-5 text-center text-sm font-semibold">{l.qty}</span>
+                                  <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetVariants((p) => addPosVariantLine(p, l))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                                  <span className="w-14 text-right text-sm font-semibold tabular-nums">{fmtEUR((m.price + l.optionPrice) * l.qty)}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
@@ -4954,7 +5163,7 @@ function DashboardInner() {
           </div>
           <DialogFooter className="items-center gap-2 sm:gap-0 flex-wrap">
             <span className="mr-auto font-bold">{t('orders.total', { amount: fmtEUR(sheetCartTotal) })}</span>
-            {Object.values(sheetCart).some((q) => q > 0) && (
+            {sheetHasItems && (
               <Button className="bg-emerald-700 hover:bg-emerald-800 h-9" disabled={sending} onClick={() => void sendSheetItems()}>
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('sheet.sendItems')}
               </Button>

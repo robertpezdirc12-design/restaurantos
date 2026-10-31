@@ -470,6 +470,10 @@ export const sl: Record<string, string> = {
   'orders.total': 'Skupaj: {amount}',
   'orders.submit': 'Oddaj naročilo',
   'orders.noMenuItems': 'Za lokacijo te mize ni razpoložljivih artiklov na meniju.',
+  // OSS-10 B-del (v1.210.0): izbira variante osebja (POS)
+  'orders.variantTitle': 'Izberi varianto',
+  'orders.variantAdd': 'Dodaj v naročilo',
+  'orders.variantSurcharge': 'Doplačilo',
   'orders.less': 'Manj',
   'orders.more': 'Več',
 

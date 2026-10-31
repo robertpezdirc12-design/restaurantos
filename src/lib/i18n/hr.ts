@@ -466,6 +466,10 @@ export const hr: Record<string, string> = {
   'orders.total': 'Ukupno: {amount}',
   'orders.submit': 'Podnesi narudžbu',
   'orders.noMenuItems': 'Za lokaciju ovog stola nema dostupnih artikala na jelovniku.',
+  // OSS-10 B-del (v1.210.0): izbira variante osebja (POS)
+  'orders.variantTitle': 'Odaberi varijantu',
+  'orders.variantAdd': 'Dodaj u narudžbu',
+  'orders.variantSurcharge': 'Doplata',
   'orders.less': 'Manje',
   'orders.more': 'Više',
 

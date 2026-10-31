@@ -6,6 +6,7 @@ import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/li
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals, claimMutableOrder } from '@/lib/ops'
+import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import { vatFromGross } from '@/lib/billing'
 import { parseSeatOption } from '@/lib/seat-assignments'
@@ -21,7 +22,11 @@ import {
 import type { Prisma } from '@prisma/client'
 
 const orderInclude = {
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } },
+  // OSS-10 B-del (v1.210.0): + OrderItemModifier (imena izbranih opcij) — aditivno:
+  // mapOrderItem brez relacije polje izpusti (undefined), z relacijo nosi imena —
+  // isti vzorec kot ops.ts orderInclude od v1.209.0 (list urejevalnika pokaže
+  // velikost/dodatek tudi po osvežitvi naročila).
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } } } },
   Table: true,
   Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
   Receipt: { orderBy: { createdAt: 'desc' as const } },
@@ -39,6 +44,10 @@ function normalize(o: Record<string, unknown>) {
 /* Issue #5: recalcTotals prestavljen v src/lib/ops.ts (recalcOrderTotals) — skupni
    vir za PATCH in preklic posamezne postavke (/api/orders/[id]/void). */
 const recalcTotals = recalcOrderTotals
+
+/** OSS-10 B-del (v1.210.0): zavrnitev opcij (v map() ni mogoče return fail) —
+ *  nosi natanko sporočilo validacije (»Skupina … je obvezna …«) → 400. */
+class ModifierValidationError extends Error {}
 
 /*
  * ── STATE MACHINE NAROČILA (issue #47 + #48 — ena dokumentirana matrika) ─────────
@@ -208,32 +217,90 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         Category: { Menu: { locationId: order.locationId } },
       },
     })
+    /* OSS-10 B-del (v1.210.0): addItems zdaj podpira opcije/variante — ISTA
+       validacija kot createOrderCore (relacija artikel→skupina→modifier,
+       required/minSelect/maxSelect, cene IZ DB — client cena se ignorira).
+       Obvezna skupina brez izbire → 400 z natanko razlago (vzorec sedežne
+       validacije zgoraj: PRED transakcijo, z razumljivim sporočilom). */
+    const addItemsBody = body.addItems as {
+      menuItemId: string
+      qty?: number
+      note?: string
+      allergenWarning?: string
+      seat?: unknown
+      modifiers?: { modifierId?: unknown }[]
+    }[]
+    const chosenOf = (i: { modifiers?: { modifierId?: unknown }[] }): string[] =>
+      (i.modifiers || []).map((m) => String(m?.modifierId || '')).filter(Boolean)
+    const modIds = [...new Set(addItemsBody.flatMap((i) => chosenOf(i)))].filter(Boolean)
+    const modCtx = await loadModifierContext(addItemsBody.map((i) => i.menuItemId), modIds)
+    let resolvedByIdx: ResolvedModifierOut[][]
+    try {
+      resolvedByIdx = addItemsBody.map((i) => {
+        const v = validateItemModifiers({
+          allowedGroupIds: modCtx.allowedByItem.get(i.menuItemId) || [],
+          groupById: modCtx.groupById,
+          modById: modCtx.modById,
+          chosenIds: chosenOf(i),
+        })
+        if (!v.ok) throw new ModifierValidationError(v.error || 'Opcije niso veljavne.')
+        return v.resolved
+      })
+    } catch (e) {
+      if (e instanceof ModifierValidationError) return fail(e.message, 400)
+      throw e
+    }
     // Issue #7 (P1, v1.104.0): posnetek alergenskih informacij za dodane postavke
-    // (brez modifikatorjev — ta pot jih ne podpira; kode jedi ob dodajanju).
+    // (kode jedi ∪ kode IZBRANIH opcij — OSS-10 B-del: izbira opcij je tok).
     const allergenSnapshots = await buildAllergenSnapshots(
-      body.addItems.map((i: { menuItemId: string }) => ({ menuItemId: i.menuItemId, chosenModifierIds: [] }))
-    ).catch(() => body.addItems.map(() => '{}'))
+      addItemsBody.map((i) => ({ menuItemId: i.menuItemId, chosenModifierIds: chosenOf(i) }))
+    ).catch(() => addItemsBody.map(() => '{}'))
     // N-27-1 (v1.195.0): sedežna validacija PRED gradnjo vrstic — 400 z razlogom
     // (ne tiho ignoriranje in ne zamenjava z »Artikel ni na voljo«; izrecno pred
     // transakcijo in izven njenega catch bloka, ki nosi artikel-sporočilo).
-    const seatOptions = (body.addItems as { seat?: unknown }[]).map((i) => parseSeatOption(i.seat))
+    const seatOptions = (addItemsBody as { seat?: unknown }[]).map((i) => parseSeatOption(i.seat))
     for (const s of seatOptions) {
       if (!s.ok) return fail(s.error, 400)
     }
-    const rows = body.addItems.map((i: { menuItemId: string; qty?: number; note?: string; allergenWarning?: string; seat?: unknown }, itemIdx: number) => {
+    const modRowsAll: {
+      id: string
+      orderItemId: string
+      name: string
+      price: number
+      modifierGroupId: string | null
+      modifierGroupName: string
+      sortOrder: number
+    }[] = []
+    const rows = addItemsBody.map((i, itemIdx: number) => {
       const mi = menuItems.find((m) => m.id === i.menuItemId)
       if (!mi) throw new Error(`Artikel ni na voljo na tej lokaciji (${i.menuItemId}).`)
       const seat = seatOptions[itemIdx].ok ? (seatOptions[itemIdx] as { ok: true; seat: number | null }).seat : null
       const qty = Math.max(1, Math.round(Number(i.qty) || 1))
       const price = num(mi.price)
       const vatRate = num(mi.vatRate, 22)
-      const line = price * qty
-      return {
+      // OSS-10 B-del: opcije se zlijejo v ceno vrstice (isti izračun kot
+      // createOrderCore) — recalcTotals bere OrderItem.price, doplačilo teče
+      // samodejno; vrstice OrderItemModifier z stabilnimi id-ji (retry-varno,
+      // isti vzorec kot vrstice artiklov).
+      const rowId = nid()
+      const mods = (resolvedByIdx[itemIdx] || []).map((m, idx) => ({
         id: nid(),
+        orderItemId: rowId,
+        name: m.name.slice(0, 120),
+        price: Math.max(0, m.price),
+        modifierGroupId: m.modifierGroupId || null,
+        modifierGroupName: String(m.groupName || '').slice(0, 120),
+        sortOrder: idx,
+      }))
+      const modsTotal = mods.reduce((s, m) => s + m.price, 0)
+      const line = (price + modsTotal) * qty
+      if (mods.length) modRowsAll.push(...mods)
+      return {
+        id: rowId,
         orderId: id,
         menuItemId: mi.id,
         quantity: qty,
-        price,
+        price: price + modsTotal,
         vatRate,
         vatAmount: vatFromGross(line, vatRate),
         menuItemName: mi.name,
@@ -269,6 +336,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             })
             if (!cur) throw new Error('ORDER_NOT_MUTABLE')
             await tx.orderItem.createMany({ data: rows })
+            // OSS-10 B-del: vrstice opcij v ISTI transakciji (rollback jih izniči
+            // skupaj z artikli); stabilni id-ji preživijo retry brez podvajanja.
+            if (modRowsAll.length) await tx.orderItemModifier.createMany({ data: modRowsAll })
             const totals = await recalcTotals(id, tx)
             // #39: totalWithTip ohranja invarianto ≡ total + tip (tip je za
             // neplačana naročila 0; plačilni tok ga nastavi ob zaključku)

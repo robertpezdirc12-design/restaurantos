@@ -498,7 +498,7 @@ describe('Č4 registri, i18n in verzija', () => {
     expect(page).toContain('<EquipmentCard />')
   })
 
-  it('verzija 1.209.0', () => {
-    expect(APP_VERSION).toBe('1.209.0')
+  it('verzija 1.210.0', () => {
+    expect(APP_VERSION).toBe('1.210.0')
   })
 })

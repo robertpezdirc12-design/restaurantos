@@ -227,7 +227,7 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
 
       {/* dialog: ustvari / uredi skupino */}
       <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editId ? `${t('common.edit')} — ${gName}` : t('modifiers.group.new')}</DialogTitle>
           </DialogHeader>
@@ -274,7 +274,7 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
 
       {/* dialog: pripni/odpni artikle */}
       <Dialog open={attGroup !== null} onOpenChange={(o) => { if (!o) setAttGroup(null) }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('modifiers.items.attach')} — {attGroup?.name}</DialogTitle>
           </DialogHeader>

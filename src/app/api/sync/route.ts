@@ -219,7 +219,9 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
     case 'order.create': {
       const { order } = await createOrderCore({
         employeeId: user.sub, locationId: user.loc,
-        items: payload.items as { menuItemId: string; qty?: number; note?: string }[],
+        // OSS-10 B-del (v1.210.0): items lahko nosijo modifiers (izbira variante
+        // osebja) — validacija/cene ostanejo v createOrderCore iz DB.
+        items: payload.items as { menuItemId: string; qty?: number; note?: string; modifiers?: { modifierId: string }[] }[],
         tableId: (payload.tableId as string) || null, type: (payload.type as string) || 'DINE_IN',
         note: payload.note as string | undefined, guests: payload.guests as number | undefined,
         clientOperationId: (op.clientOperationId as string) || null,

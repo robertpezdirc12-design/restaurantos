@@ -72,8 +72,13 @@ export interface CreateOrderInput {
     allergenWarning?: string
     /** N-27-1 (v1.195.0): opcionalni sedež pri naročanju (1..10) — null/izpuščeno = brez sedeža; validira parseSeatOption */
     seat?: unknown
-    /** Issue #3: opcije/modifierji — cene se štejejo v linijo, vrste se zapišejo v OrderItemModifier */
-    modifiers?: { modifierId: string; name: string; price: number; groupName?: string; modifierGroupId?: string }[]
+    /**
+     * Issue #3: opcije/modifierji — cene se štejejo v linijo, vrste se zapišejo v
+     * OrderItemModifier. OSS-10 B-del (v1.210.0): sprejme MINIMALNO obliko
+     * `{ modifierId }` (POS/sync — cene+imena VEDNO iz DB, client polja se
+     * ignorirajo) in polno resolvano obliko (gostovski tok resolveGuestItems).
+     */
+    modifiers?: { modifierId: string; name?: string; price?: number; groupName?: string; modifierGroupId?: string }[]
   }[]
   tableId?: string | null
   type?: string

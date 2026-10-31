@@ -157,9 +157,9 @@ describe('v1.209.0 — OSS-10 Č2: admin CRUD + ožičenje', () => {
 /* ── Č3 — registri ───────────────────────────────────────────────────────── */
 
 describe('v1.209.0 — OSS-10 Č3: registri', () => {
-  test('verzija 1.209.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.209.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.209\.0'/)
+  test('verzija 1.210.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.210.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.210\.0'/)
   })
 
   test('0 DDL — varianta je IZPELJANA, ne shranjena (shema nespremenjena)', () => {
@@ -178,12 +178,14 @@ describe('v1.209.0 — OSS-10 Č3: registri', () => {
     expect(doc).toContain('isVariantGroup')
     expect(doc).toContain('orderItemDisplayName')
     expect(doc).toContain('0 DDL')
-    expect(doc).toContain('POS dashboard še brez izbire opcij')
+    // v1.210.0 (B-del): vrzel »POS dashboard še brez izbire opcij« je ZAPRTA —
+    // pin s sledenjem nameni (prej: dokumentiral mejo; zdaj: dokumentiral zaprtje)
+    expect(doc).toContain('B-DEL IZVEDENO @ v1.210.0')
   })
 
-  test('i18n pariteta: 3693 → 3709 ključev v OBIH jezikih', () => {
-    expect(Object.keys(sl).length).toBe(3709)
-    expect(Object.keys(hr).length).toBe(3709)
+  test('i18n pariteta: 3709 → 3712 ključev v OBIH jezikih', () => {
+    expect(Object.keys(sl).length).toBe(3712)
+    expect(Object.keys(hr).length).toBe(3712)
   })
 
   test('oznaka slike ↔ APP_VERSION (selfhost kontrakt ostane pinežen)', () => {

@@ -116,12 +116,20 @@ export function validateItemModifiers(input: ModifierValidationInput): ModifierV
 
 /** DB kontekst za validacijo: povezave artikel→skupina, pravila skupin, razpoložljivi modifierji. */
 export async function loadModifierContext(menuItemIds: string[], chosenModifierIds: string[]) {
-  const [links, chosen] = await Promise.all([
-    menuItemIds.length
-      ? (await import('@/lib/db')).db.menuItemModifierGroup.findMany({
-          where: { menuItemId: { in: menuItemIds } },
-        })
-      : Promise.resolve([] as { menuItemId: string; modifierGroupId: string }[]),
+  // REAL BUG FIX (v1.210.0): prej je `groupById` dobil pravila SAMO iz IZBRANIH
+  // opcij — obvezna skupina z NIČ izbirami se je tiho preskočila (required/
+  // minSelect preverba je `if (!g) continue` na manjkajočem pravilu). Posledica:
+  // POST /api/orders (in gostovska + sync pot — isti kontekst) je sprejel artikel
+  // z obvezno varianto BREZ izbire → napačna cena, kuhinja brez velikosti. Zdaj
+  // se pravila naložijo za VSE pripete skupine artiklov (izvor resnice: povezave
+  // artikel↔skupina) — uveljavljanje je enako z 0 in z N izbirami.
+  const links = menuItemIds.length
+    ? await (await import('@/lib/db')).db.menuItemModifierGroup.findMany({
+        where: { menuItemId: { in: menuItemIds } },
+      })
+    : ([] as { menuItemId: string; modifierGroupId: string }[])
+  const linkedGroupIds = [...new Set(links.map((l) => l.modifierGroupId))]
+  const [chosen, linkedGroups] = await Promise.all([
     chosenModifierIds.length
       ? (await import('@/lib/db')).db.modifier.findMany({
           where: { id: { in: chosenModifierIds } },
@@ -137,6 +145,9 @@ export async function loadModifierContext(menuItemIds: string[], chosenModifierI
             ModifierGroup: { id: string; name: string; required: boolean; minSelect: number; maxSelect: number } | null
           }[]
         ),
+    linkedGroupIds.length
+      ? (await import('@/lib/db')).db.modifierGroup.findMany({ where: { id: { in: linkedGroupIds } } })
+      : Promise.resolve([] as { id: string; name: string; required: boolean; minSelect: number; maxSelect: number }[]),
   ])
 
   const allowedByItem = new Map<string, string[]>()
@@ -147,6 +158,19 @@ export async function loadModifierContext(menuItemIds: string[], chosenModifierI
   }
   const groupIds = new Set(links.map((l) => l.modifierGroupId))
   const groupById = new Map<string, ModifierGroupRule>()
+  // pravila VSEH pripetih skupin (obvezna skupina z 0 izbirami MORA zatreti)
+  for (const g of linkedGroups) {
+    if (!groupById.has(g.id)) {
+      groupById.set(g.id, {
+        id: g.id,
+        name: g.name,
+        required: !!g.required,
+        minSelect: Number(g.minSelect) || 0,
+        maxSelect: Number(g.maxSelect) || 0,
+      })
+    }
+  }
+  // izbrane opcije nosijo grupna pravila prek relacije (podatkovno enak vir)
   for (const m of chosen) {
     const g = m.ModifierGroup
     if (g && groupIds.has(g.id) && !groupById.has(g.id)) {
