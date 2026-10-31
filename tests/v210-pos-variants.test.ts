@@ -402,8 +402,8 @@ describe('v1.210.0 — OSS-10 B-del Č2b: disk kontrakt (ožičenje)', () => {
 
 describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
   it('verzija 1.212.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.217.1')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.217\.1'/)
+    expect(APP_VERSION).toBe('1.218.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.218\.0'/)
   })
 
   it('GAP OSS-10 B-del: IZVEDENO @ v1.210.0 z dokazi + nova meja', () => {
@@ -418,9 +418,9 @@ describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
     expect(doc).toContain('i18n 3709 → 3712')
   })
 
-  it('AUDIT §8: števec 3737 + POSODOBITEV nota', () => {
+  it('AUDIT §8: števec 3738 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3737 ključev SL in 3737 HR')
+    expect(audit).toContain('3738 ključev SL in 3738 HR')
     expect(audit).toContain('POSODOBITEV (v1.210.0)')
   })
 
@@ -433,8 +433,8 @@ describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
   })
 
   it('i18n pariteta: 3709 → 3712 ključev v OBIH jezikih', () => {
-    expect(Object.keys(sl).length).toBe(3737)
-    expect(Object.keys(hr).length).toBe(3737)
+    expect(Object.keys(sl).length).toBe(3738)
+    expect(Object.keys(hr).length).toBe(3738)
   })
 
   it('oznaka slike ↔ APP_VERSION (selfhost kontrakt ostane pinežen)', () => {

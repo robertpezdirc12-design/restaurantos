@@ -580,10 +580,10 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
     }
   })
 
-  test('verzija je dvignjena na 1.217.1 (version.ts + compose oznaka + selfhost-check vir)', () => {
-    expect(APP_VERSION).toBe('1.217.1')
-    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.217\.1'/)
-    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.217.1')
+  test('verzija je dvignjena na 1.218.0 (version.ts + compose oznaka + selfhost-check vir)', () => {
+    expect(APP_VERSION).toBe('1.218.0')
+    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.218\.0'/)
+    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.218.0')
   })
 
   test('DOKUMENTI: LOKALNI-ZAGON §7 pozna paketno pot; PRD R4b vrstica nosi dokaz', () => {
@@ -595,12 +595,12 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
     expect(prd).toContain('v1.217.0')
     expect(prd).toContain('local:package-apply')
     // hotfix v1.217.1: utrjevanje zbirnika (simbolne povezave) je del R4b dokaza
-    expect(prd).toContain('v1.217.1')
+    expect(prd).toContain('v1.218.0')
   })
 
-  test('worklog vnos na vrhu (Task ID: v1.217.1)', () => {
+  test('worklog vnos na vrhu (Task ID: v1.218.0)', () => {
     const wl = readFileSync(join(ROOT, 'worklog.md'), 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.217.1')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.218.0')
   })
 
   test('meje paketa so izmerjene in zapisane (623 datotek / ~10,2 MB osnova @ v1.217.0)', () => {

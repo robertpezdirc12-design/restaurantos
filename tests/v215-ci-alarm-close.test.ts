@@ -403,10 +403,10 @@ describe('v1.215.0 — Č2: vsak alarmni job ima SIMETRIČNI close korak', () =>
 describe('v1.215.0 — Č3: registri', () => {
   const read = (p: string) => readFileSync(p, 'utf8')
 
-  test('verzija 1.217.1 (toBe + ubežen regex)', async () => {
+  test('verzija 1.218.0 (toBe + ubežen regex)', async () => {
     const { APP_VERSION } = await import('../src/lib/version')
-    expect(APP_VERSION).toBe('1.217.1')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.217\.1'/)
+    expect(APP_VERSION).toBe('1.218.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.218\.0'/)
   })
 
   test('oznaka slike ↔ APP_VERSION (docker-compose.yml)', async () => {

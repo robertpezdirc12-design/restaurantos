@@ -17,8 +17,15 @@ export default function NotFound() {
         <p className="mt-1 text-sm text-stone-500" lang="hr">
           Stranica ne postoji ili je premještena.
         </p>
+        {/* QA najdba #5 (v1.218.0): dvojezični napis (279 px) se na 375 px
+            stisnil v 261 px gumba (kartica max-w-md − p-8 − p-6) — zadnjih
+            ~18 px je bilo odrezanih. Pod sm: samo primarni jezik, nad sm: oba
+            (namen strani ostaja dvojezičen — SL primarno + HR sekundarno). */}
         <Button asChild className="mt-6 w-full h-12 text-base">
-          <Link href="/">Nazaj na začetek / Natrag na početak</Link>
+          <Link href="/">
+            <span className="sm:hidden">Nazaj na začetek</span>
+            <span className="hidden sm:inline">Nazaj na začetek / Natrag na početak</span>
+          </Link>
         </Button>
       </div>
     </main>

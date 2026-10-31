@@ -492,6 +492,12 @@ function DashboardInner() {
   // param is applied by the dedicated effect below (line ~419), which already
   // handles the router.push-after-render timing; direct loads switch after mount.
   const [activeTab, setActiveTab] = useState('pregled')
+  /* QA najdba #1 (v1.218.0): URL-sync efekt (replaceState spodaj) je ob prvem
+     zagonu SINHRONO izbrisal ?tab= ŠE PRED mikrotasko, ki ga prebere (?tab=
+     efekt zgoraj) → vsak deep-link/refresh je pristal na 'pregled'. Zastavica
+     se dvigne v tisti mikrotaski; do takrat URL-sync NE piše (StrictMode-varen:
+     ref preživi dvojni mount, mikrotaska pa vedno steče po vseh efektih). */
+  const initialTabRead = useRef(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   /* Issue #73 audit-10: predal »Več« mobilne spodnje vrstice (celotno drevo + iskalnik) */
   const [navMoreOpen, setNavMoreOpen] = useState(false)
@@ -741,12 +747,22 @@ function DashboardInner() {
     // (isti odčitek URL-ja, še vedno pred naslednjim izrisom)
     queueMicrotask(() => {
       const tabParam = new URLSearchParams(window.location.search).get('tab')
+      // QA najdba #1 (v1.218.0): od zdaj naprej sme URL-sync efekt pisati — ?tab=
+      // je POBRAN (tudi kadar ga ni); prej ga je sinhroni replaceState tega efekta
+      // uspel izbrisati ŠE PRED to mikrotasko (deep-link/refresh → 'pregled').
+      initialTabRead.current = true
       if (!tabParam || tabParam === activeTab) return
       // Issue #71 audit-27: ?tab=neobstoječi je prej pustil PRAZNO ploščo brez sporočila —
       // izmerjeno ?tab=hitra-prodaja (pravi id: prodaja). Zdaj: obvestilo + preusmeritev.
       if (!TAB_PERM[tabParam]) {
         toast({ title: t('tabs.unknown') })
         setActiveTab('pregled')
+        // QA najdba #1 (v1.218.0): počisti neveljaven ?tab= iz URL-ja — URL-sync
+        // efekt se ne bo pognal (activeTab se ni spremenil → ni re-renderja),
+        // dvoumen parameter pa ne sme ostati (osvežitev bi spet sprožila toast).
+        const u = new URL(window.location.href)
+        u.searchParams.delete('tab')
+        window.history.replaceState(window.history.state, '', u)
         return
       }
       setActiveTab(tabParam)
@@ -757,7 +773,13 @@ function DashboardInner() {
   // /dashboard, zato osveži, nazaj in deljenje povezave vrnejo na 'pregled'
   // (kuhinja/KDS naprava, ki jo natakar zapusti, izgine). Zapis z
   // replaceState — brez router navigacije, ki bi znova naložila podatke.
+  // FIX QA najdba #1 (v1.218.0): prvi zagon tega efekta je URL posodobil
+  // SINHRONO (activeTab='pregled' → izbris ?tab=), mikrotaska ?tab= efekta
+  // pa se izvede ŠELE PO vseh efektih → parameter je bil že izbrisan.
+  // Zdaj zapis čaka na initialTabRead (mikrotaska zgoraj ga dvigne); nato
+  // deluje kot prej (vsak preklop zavihka osveži ?tab=, 'pregled' ga pobriše).
   useEffect(() => {
+    if (!initialTabRead.current) return // ?tab= še ni pobran — NE piši URL-ja
     const url = new URL(window.location.href)
     if (url.searchParams.get('tab') === activeTab) return
     if (activeTab === 'pregled') url.searchParams.delete('tab')
@@ -5104,7 +5126,12 @@ function DashboardInner() {
                       {/* OSS-10 B-del: izbrane opcije (»0,5 L«) ob imenu — vidijo se tudi po osvežitvi */}
                       <span className="min-w-0 truncate">{it.qty}× {it.name}{it.modifiers?.length ? ` · ${it.modifiers.join(', ')}` : ''}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
-                        <Badge variant="outline" className="text-xs px-1.5 py-0">{it.status}</Badge>
+                        {/* QA najdba #3 (v1.218.0): surovi status (»PREPARING«) →
+                            prevod iz status.* nabora (handheld že uporablja isti
+                            vzorec); neznan enum ostane surov (doc-truth). */}
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">
+                          {['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(it.status) ? t(`status.${it.status}`) : it.status}
+                        </Badge>
                         {hasPerm('orders.void') && orderSheet.paymentStatus !== 'paid' && (
                           <Button size="icon" variant="outline" className="h-6 w-6 text-red-700 hover:bg-red-50 hover:text-red-800" disabled={sending} onClick={() => void openVoidDialog(it)} title={t('sheet.void')} aria-label={t('sheet.void')}>
                             <Ban className="w-3 h-3" />
@@ -5829,7 +5856,13 @@ function DashboardInner() {
       {/* ── Nova rezervacija ── */}
       <Dialog open={!!newRes} onOpenChange={(v) => !v && setNewRes(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{t('resv.new')}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{t('resv.new')}</DialogTitle>
+            {/* QA najdba #4 (v1.218.0): DialogDescription poveže aria-describedby
+                (Radix ga sam pripne) — prej je dialog brez opisa pustil prazno
+                »describedby« (bralniki niso slišali konteksta, konzola pa opozorila). */}
+            <DialogDescription>{t('resv.newDesc')}</DialogDescription>
+          </DialogHeader>
           {newRes && (
             <div className="space-y-3">
               <div className="space-y-1.5">

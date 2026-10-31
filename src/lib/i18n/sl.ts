@@ -1785,6 +1785,7 @@ export const sl: Record<string, string> = {
   // Rezervacije (tab + dialog) — resv.st* = RES_STATUS_KEYS
   'resv.upcoming': 'Prihajajoče rezervacije',
   'resv.new': 'Nova rezervacija',
+  'resv.newDesc': 'Ime gosta in datum sta obvezna; ostala polja so neobvezna.',
   'resv.empty': 'Ni prihajajočih rezervacij — ko gostje potrdijo prihod, se bodo prikazali tukaj. Ustvari prvo rezervacijo z gumbom zgoraj.',
   'resv.stConfirmed': 'Potrjena',
   'resv.stSeated': 'Gost prišel',

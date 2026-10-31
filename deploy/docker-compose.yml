@@ -13,7 +13,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: restaurantos:1.217.1
+    image: restaurantos:1.218.0
     container_name: restaurantos
     restart: unless-stopped
     ports:
