@@ -500,6 +500,6 @@ describe('E — dokumentacija in popravek dnevnika', () => {
   })
 
   it('E5 izdaja je v kodi, ne samo v dokumentu', () => {
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toMatch(/'1.213.0'/)
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toMatch(/'1.214.0'/)
   })
 })

@@ -438,7 +438,7 @@ describe('Č3 registri v1.205.0', () => {
     const sk = Object.keys(sl)
     const hk = Object.keys(hr)
     expect(sk.length).toBe(hk.length)
-    expect(sk.length).toBe(3721)
+    expect(sk.length).toBe(3731)
     for (const k of ['crm.guests.whatsapp', 'crm.new.testPlaceholderPhone']) {
       expect(sk).toContain(k)
       expect(hk).toContain(k)
@@ -452,6 +452,6 @@ describe('Č3 registri v1.205.0', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.213.0')
+    expect(APP_VERSION).toBe('1.214.0')
   })
 })

@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, Plus, CheckCircle2, Building2, Link2, Database, Palette, X } from 'lucide-react'
-import { parseAccentColor, textOnAccent } from '@/lib/brand-themes'
+import { Loader2, Plus, CheckCircle2, Building2, Link2, Database, Palette, X, Upload, Trash2 } from 'lucide-react'
+import { parseAccentColor, textOnAccent, publicLogoPath, LOGO_MIME_ALLOWLIST, MAX_LOGO_BYTES } from '@/lib/brand-themes'
+import { BrandLogo } from '@/components/brand-logo'
 
 /* ─────────────────────────── ENTERPRISE (org/brand/property drevo) ─────────────────────────── */
 
@@ -160,25 +161,35 @@ export function MigrationsConsoleSection() {
  * sistem ju deterministično validira (SAMO hex, SAMO https — brand-themes.ts) in
  * uporabi na gostovskih površinah. Brez nastavljene teme = izgled nespremenjen.
  * Shranjevanje: PUT /api/brand-themes (celoten config, settings.manage, revizija).
+ *
+ * v1.214.0 — B-del: NALAGANJE LOGOTIPA KOT DATOTEKE (PNG/JPEG/WebP/GIF,
+ * ≤ 512 kB): POST/DELETE /api/brand-themes/logo (magic-byte preverjanje na
+ * strežniku; klient je samo hitra povratna zanka — strežnik je avtoriteta).
+ * Naložena datoteka PREMAGA URL; prikazana je SAMO z izbrano akcentno barvo
+ * (tema = barva + logotip kot celota — pošteno zapisano v namigu).
  */
 interface ThemeDraft { accent: string; logoUrl: string }
+interface LogoMeta { mimeType: string; sizeBytes: number }
 export function BrandThemesSection({ orgs, canWriteOrg }: { orgs: EntOrgRow[]; canWriteOrg: (orgId: string) => boolean }) {
   const { t } = useI18n()
   const [cfg, setCfg] = useState<Record<string, ThemeDraft> | null>(null)
+  const [logos, setLogos] = useState<Record<string, LogoMeta>>({})
   const [busy, setBusy] = useState(false)
+  const [logoBusy, setLogoBusy] = useState<string | null>(null)
+  const [logoVer, setLogoVer] = useState(0)
   const [hidden, setHidden] = useState(false)
 
   const brands = orgs.flatMap((o) => o.brands.map((b) => ({ ...b, orgId: o.id })))
 
   async function load() {
     try {
-      const d = await api<{ config: Record<string, { accent?: string; logoUrl?: string }> }>('/api/brand-themes')
+      const d = await api<{ config: Record<string, { accent?: string; logoUrl?: string }>; logos?: Record<string, LogoMeta> }>('/api/brand-themes')
       const draft: Record<string, ThemeDraft> = {}
       for (const b of brands) {
         const e = d.config?.[b.id]
         draft[b.id] = { accent: e?.accent ?? '', logoUrl: e?.logoUrl ?? '' }
       }
-      setCfg(draft); setHidden(false)
+      setCfg(draft); setLogos(d.logos ?? {}); setHidden(false)
     } catch (e) {
       // 403 (brez organizacijske verige) → tiho skrij; infra napaka → prikaži
       const msg = (e as Error).message
@@ -190,6 +201,46 @@ export function BrandThemesSection({ orgs, canWriteOrg }: { orgs: EntOrgRow[]; c
   useEffect(() => { void (async () => { await load() })() }, [])
 
   const setD = (brandId: string, p: Partial<ThemeDraft>) => setCfg((c) => (c ? { ...c, [brandId]: { ...c[brandId], ...p } } : c))
+
+  /** Nalaganje logotipa — klient le predpreveri (hitra zanka), strežnik je avtoriteta. */
+  async function uploadLogo(brandId: string, file: File) {
+    if (!(LOGO_MIME_ALLOWLIST as readonly string[]).includes(file.type)) {
+      toast({ title: t('ent.logoBadType'), variant: 'destructive' }); return
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      toast({ title: t('ent.logoTooLarge'), variant: 'destructive' }); return
+    }
+    setLogoBusy(brandId)
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onerror = () => reject(new Error('read'))
+        reader.onload = () => resolve(String(reader.result ?? ''))
+        reader.readAsDataURL(file)
+      })
+      const d = await api<{ themeActive: boolean }>('/api/brand-themes/logo', {
+        method: 'POST',
+        body: JSON.stringify({ brandId, mimeType: file.type, contentBase64: dataUrl }),
+      })
+      toast({ title: d.themeActive ? t('ent.logoUploaded') : t('ent.logoNeedsAccent') })
+      setLogoVer((v) => v + 1)
+      await load()
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally { setLogoBusy(null) }
+  }
+
+  async function removeLogo(brandId: string) {
+    setLogoBusy(brandId)
+    try {
+      await api(`/api/brand-themes/logo?brandId=${encodeURIComponent(brandId)}`, { method: 'DELETE' })
+      toast({ title: t('ent.logoRemoved') })
+      setLogoVer((v) => v + 1)
+      await load()
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally { setLogoBusy(null) }
+  }
 
   async function save() {
     if (!cfg) return
@@ -275,6 +326,53 @@ export function BrandThemesSection({ orgs, canWriteOrg }: { orgs: EntOrgRow[]; c
                       aria-label={`${t('ent.themeLogo')} — ${b.name}`}
                     />
                   </div>
+                  {/* v1.214.0 — B-del: nalaganje logotipa kot datoteke (premaga URL) */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {logos[b.id] && (
+                      <BrandLogo
+                        src={`${publicLogoPath(b.id)}?v=${logoVer}`}
+                        className="h-8 w-auto max-w-[140px] object-contain shrink-0 rounded border border-stone-200"
+                      />
+                    )}
+                    <label
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-md border border-stone-200 px-3 text-sm font-medium cursor-pointer select-none ${writable ? 'text-stone-700 hover:bg-stone-50' : 'text-stone-400 cursor-not-allowed'}`}
+                    >
+                      <input
+                        type="file"
+                        accept={LOGO_MIME_ALLOWLIST.join(',')}
+                        className="sr-only"
+                        disabled={!writable || logoBusy === b.id}
+                        aria-label={`${t('ent.logoFile')} — ${b.name}`}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          e.target.value = '' // ista datoteka naj bo izberljiva takoj znova
+                          if (f) void uploadLogo(b.id, f)
+                        }}
+                      />
+                      {logoBusy === b.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                      {logos[b.id] ? t('ent.logoReplace') : t('ent.logoUpload')}
+                    </label>
+                    {logos[b.id] && (
+                      <>
+                        <span className="text-xs text-stone-500">
+                          {logos[b.id].mimeType.replace('image/', '').toUpperCase()} · {Math.round(logos[b.id].sizeBytes / 1000)} kB
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 h-9"
+                          disabled={!writable || logoBusy === b.id}
+                          onClick={() => void removeLogo(b.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> {t('ent.logoRemove')}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  {logos[b.id] && d.accent.trim() === '' && (
+                    <p className="text-xs text-amber-700">{t('ent.logoNeedsAccent')}</p>
+                  )}
+                  <p className="text-xs text-stone-400">{t('ent.logoHint')}</p>
                   {d.accent.trim() !== '' && !validAccent && (
                     <p className="text-xs text-amber-700">{t('ent.themeBadHex')}</p>
                   )}

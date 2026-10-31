@@ -27,7 +27,7 @@
  *  Č2 disk kontrakt: admin ruta (obseg + fail-closed + revizija), strežniški
  *     sloj, 4 javne rute, 5 gostovskih strani, BrandLogo, Enterprise kartica,
  *     i18n (SL/HR pariteta ent.theme*), GAP dokaz, negativne trditve meja.
- *  Č3 registri: verzija 1.213.0 (toBe + ubežen regex), oznaka slike ↔ APP_VERSION.
+ *  Č3 registri: verzija 1.214.0 (toBe + ubežen regex), oznaka slike ↔ APP_VERSION.
  *
  * 0 fikstur baze — sweep ni potreben (demo podatki nedotaknjeni).
  */
@@ -227,14 +227,21 @@ describe('v1.213.0 — Č2: admin ruta /api/brand-themes (obseg + fail-closed + 
   it('fail-closed: uporabnik brez organizacijske verige NE sme brati niti pisati', () => {
     const src = route()
     expect(src.match(/ni vezan v organizacijsko drevo/g)?.length).toBe(2)
-    expect(src).toContain('isBootstrapAdmin')
-    expect(src).toContain('chainForLocation')
+    // v1.214.0 (konvencija kasnejšega vala): obseg je izluščen v strežniški sloj
+    // (scopedBrandIds — ena resnica za obe ruti /api/brand-themes*); vrata
+    // isBootstrapAdmin/chainForLocation/db.brand.findMany živijo tam
+    expect(src).toContain('scopedBrandIds')
+    const server = read('src/lib/brand-themes-server.ts')
+    expect(server).toContain('isBootstrapAdmin')
+    expect(server).toContain('chainForLocation')
+    expect(server).toContain('db.brand.findMany')
   })
 
   it('sanitizacija proti ŽIVIM brand id-jem obsega (PUT ne zaupa klientu)', () => {
     const src = route()
     expect(src).toContain('sanitizeBrandThemeConfig(body.config, ids)')
-    expect(src).toContain("db.brand.findMany")
+    // v1.214.0: živi brand id-ji prihajajo iz scopedBrandIds (strežniški sloj)
+    expect(read('src/lib/brand-themes-server.ts')).toContain('db.brand.findMany')
   })
 })
 
@@ -327,9 +334,9 @@ describe('v1.213.0 — Č2: i18n (SL/HR pariteta ent.theme*)', () => {
       expect(((hr as Record<string, string>)[k] || '').length).toBeGreaterThan(0)
     }
   })
-  it('3712 → 3721 ključev (9 novih v obeh jezikih)', () => {
-    expect(Object.keys(sl).length).toBe(3721)
-    expect(Object.keys(hr).length).toBe(3721)
+  it('3712 → 3731 ključev (9 v1.213.0 + 10 v1.214.0 v obeh jezikih)', () => {
+    expect(Object.keys(sl).length).toBe(3731)
+    expect(Object.keys(hr).length).toBe(3731)
   })
 })
 
@@ -355,9 +362,9 @@ describe('v1.213.0 — Č2: dokumentacija + poštene meje (negativne trditve)', 
 
 /* ── Č3 — registri (verzija + oznaka slike) ───────────────────────────────── */
 describe('v1.213.0 — Č3: registri', () => {
-  it('verzija 1.213.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.213.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.213\.0'/)
+  it('verzija 1.214.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.214.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.214\.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {

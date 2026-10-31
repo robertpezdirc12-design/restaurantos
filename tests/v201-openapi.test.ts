@@ -98,8 +98,9 @@ describe('v1.201.0 OSS-5 — Č2 pokritost disk → spec (vsaka javna ruta dokum
         checked++
       }
     }
-    // resnična globina: 14 datotek nosi 19 handlerjev (16 javnih + health GET + sync GET/POST)
-    expect(checked).toBe(19)
+    // resnična globina: 14 datotek nosi 20 handlerjev (17 javnih + health GET + sync GET/POST)
+    // v1.214.0: +1 (GET /api/public/brand-logo/{brandId} — logotip znamke, OSS-11 B-del)
+    expect(checked).toBe(20)
   })
 
   it('noče tihega krčenja: spec pokriva vsaj 14 poti', () => {
@@ -161,6 +162,6 @@ describe('v1.201.0 OSS-5 — Č5 ruta GET /api/openapi', () => {
 
 describe('v1.201.0 — Č6 verzija', () => {
   it('APP_VERSION je 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.213.0')
+    expect(APP_VERSION).toBe('1.214.0')
   })
 })

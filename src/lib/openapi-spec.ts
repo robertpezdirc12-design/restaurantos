@@ -7,6 +7,7 @@
  *   /api/health                          GET
  *   /api/public/menu                     GET
  *   /api/public/menu/availability        GET
+ *   /api/public/brand-logo/{brandId}     GET (v1.214.0 — logotip znamke za gostovske površine)
  *   /api/public/orders                   POST
  *   /api/public/orders/status            GET
  *   /api/public/pay/{token}              GET, POST
@@ -39,6 +40,7 @@ const RL = {
   status: '60 requests/min per IP',
   feedback: '5 submissions/min per IP',
   label: '60 requests/min per IP',
+  logo: '60 requests/min per IP',
 } as const
 
 const RATE_429 = {
@@ -70,6 +72,7 @@ export function buildOpenApiSpec(version: string): Record<string, unknown> {
     tags: [
       { name: 'health', description: 'Deployment health probe' },
       { name: 'guest', description: 'QR self-order and kiosk surface' },
+      { name: 'branding', description: 'Brand theme assets (logo bytes served to guest surfaces)' },
       { name: 'paylink', description: 'Online payment links (Stripe)' },
       { name: 'reservations', description: 'Public reservation widget' },
       { name: 'feedback', description: 'Guest feedback (QR)' },
@@ -125,6 +128,34 @@ export function buildOpenApiSpec(version: string): Record<string, unknown> {
           security: [{ QrToken: [] }, { DeviceToken: [] }],
           responses: {
             '200': { description: 'Availability snapshot.', content: { 'application/json': { schema: { type: 'object' } } } },
+            '429': RATE_429,
+          },
+        },
+      },
+      '/api/public/brand-logo/{brandId}': {
+        get: {
+          tags: ['branding'],
+          summary: 'Brand logo bytes (brand theme, OSS-11 v1.214.0)',
+          description:
+            'Serves the uploaded logo of a brand to guest surfaces (QR menu, kiosk, web portal, pay link, ' +
+            'reservations — the path arrives inside the additive `theme.logoUrl` key of those responses). ' +
+            `Bytes are re-verified on every response (magic-byte sniff must match the stored MIME). X-Content-Type-Options: nosniff; ETag/304 supported; Cache-Control public 5 min. Rate limit: ${RL.logo}.`,
+          security: [],
+          parameters: [
+            { name: 'brandId', in: 'path', required: true, schema: { type: 'string' }, description: 'Brand id (opaque — already public via the theme of the page).' },
+          ],
+          responses: {
+            '200': {
+              description: 'Logo bytes (image/png, image/jpeg, image/webp or image/gif).',
+              content: {
+                'image/png': { schema: { type: 'string', format: 'binary' } },
+                'image/jpeg': { schema: { type: 'string', format: 'binary' } },
+                'image/webp': { schema: { type: 'string', format: 'binary' } },
+                'image/gif': { schema: { type: 'string', format: 'binary' } },
+              },
+            },
+            '304': { description: 'Not modified (If-None-Match matched the ETag).' },
+            '404': { description: 'No stored logo for this brand (generic response — guest surface hides the image).' },
             '429': RATE_429,
           },
         },

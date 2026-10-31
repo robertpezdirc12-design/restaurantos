@@ -79,6 +79,12 @@ const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   { methods: ['GET', 'POST'], path: '/api/public/crm/unsubscribe', why: 'javna odjava — žeton v URL (PII brez seje)' },
   { methods: ['POST'], path: '/api/public/feedback', why: 'javni povratni vmesnik (widget) — rate-limit' },
   { methods: ['GET'], path: '/api/public/label-status', why: 'javni status etikete (QR) — žeton' },
+  // OSS-11 B-del (v1.214.0): bajti logotipa znamke za gostovske površine — javna
+  // PO NAMENU (logotip se gostom VSEENO prikaže na strani; pot pride znotraj
+  // theme.logoUrl javnih odgovorov). Bajti gredo skozi upload vrata (allowlist +
+  // magic-byte preverjanje) in se ob vsakem odgovoru PONOVNO preverijo; nosniff;
+  // rate-limit 60/min/IP; neujemanje/404 → gostovska stran sliko tiho skrije.
+  { methods: ['GET'], path: '/api/public/brand-logo/[brandId]', why: 'javni logotip znamke (tema gostovskih površin) — samo preverjeni slikovni bajti, nosniff, rate-limit' },
   { methods: ['GET'], path: '/api/public/orders/status', why: 'javno sledenje naročila — žeton' },
   { methods: ['GET', 'POST'], path: '/api/public/pay/[token]', why: 'plačilni link — paylink žeton' },
   { methods: ['GET', 'POST'], path: '/api/public/reservations', why: 'rezervacijski widget — javni obrazec, rate-limit' },
