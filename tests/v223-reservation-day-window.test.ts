@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { APP_VERSION } from '../src/lib/version'
 
 /**
- * JAVNI QA VAL #5 — POLIRANJE JAVNIH POVRŠIN (v1.226.0).
+ * JAVNI QA VAL #5 — POLIRANJE JAVNIH POVRŠIN (v1.227.0).
  *
  * Val je nastal iz E2E pregleda javnih gostujučih površin na demo profilu
  * (agent-browser, živi dev :3000, SQLite): javni rezervacijski widget /r/<token>
@@ -69,17 +69,17 @@ describe('v223 Č2 · javni površini ostajata pošteni do zaprtja', () => {
 /* ── Č3 · verzija in registri ───────────────────────────────────────────── */
 
 describe('v223 Č3 · verzija + dokumentacija', () => {
-  test('verzija je dvignjena na 1.226.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.226.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.226.0')
+  test('verzija je dvignjena na 1.227.0 (version.ts + compose oznaka)', () => {
+    expect(APP_VERSION).toBe('1.227.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.227.0')
   })
 
-  test('PRD nosi zapis QA-vala v1.226.0 (doc-truth)', () => {
-    expect(read('docs/PRD-LOKALNA-BAZA.md')).toContain('QA-val v1.226.0')
+  test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
+    expect(read('docs/PRD-LOKALNA-BAZA.md')).toContain('QA-val v1.227.0')
   })
 
-  test('worklog vnos na vrhu (Task ID: v1.226.0)', () => {
+  test('worklog vnos na vrhu (Task ID: v1.227.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.226.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.227.0')
   })
 })

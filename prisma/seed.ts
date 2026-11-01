@@ -17,9 +17,19 @@ async function main() {
   console.log('🌱 Seed začetek...')
 
   const locationId = nid('loc-main')
-  const existing = await db.location.findUnique({ where: { id: locationId } })
+  // Idempotenca po OBEH ključih, ki ju spodnji create zapiše: primarnem id IN
+  // unique premisesId. Izmerjeno 1. 11. 2026 (selitev peskovnika): demo baza z
+  // bogatim profilom Gostilna Pri Lipi (prisma/seed-demo.ts — isti premisesId
+  // 'BLG001', drugačen id) je pognala `bun run demo`, seed.ts pa padel s P2002
+  // na premisesId, ker je guard gledal samo id → vsa demo vrata so ostala
+  // zaprta. Preskok po prvem zadetku katerega koli ključa je enaka semantika
+  // kot prej (»baza že sejana«), le zaznano po poštenem, unikatnem ključu.
+  const existing = await db.location.findFirst({
+    where: { OR: [{ id: locationId }, { premisesId: 'BLG001' }] },
+    select: { name: true },
+  })
   if (existing) {
-    console.log('✅ Seed že izveden (lokacija obstaja) — preskok.')
+    console.log(`✅ Seed že izveden (obstaja lokacija „${existing.name}“) — preskok.`)
     return
   }
 

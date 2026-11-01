@@ -34,7 +34,14 @@ describe('harness — testni preload okolja (DATABASE_URL pin)', () => {
   })
 
   test('pravilo 2: tuja absolutna file: pot (peskovniški scaffold) → pripne', () => {
-    const r = resolveTestDatabaseUrl('file:/home/z/my-project/db/custom.db', REPO_ROOT, CWD)
+    // Tuja pot mora biti izven repozitorija NEGLEDE na to, kje repo živi.
+    // Izmerjeno 1. 11. 2026 (selitev peskovnika): repo, preseljen v
+    // /home/z/my-project (dotlej »scaffoldova« pot tega testa), je test
+    // pobarval rdeče — hardcoded pot ni bila več tuja, pin ni sprožil.
+    // Sosednja mapa repozitorija je vedno zunaj njega, zato pravilo ostane
+    // preizkušeno v vseh postavitvah (CI, lastnik, peskovnik).
+    const tujaPot = resolve(REPO_ROOT, '..', 'scaffold-custom', 'custom.db')
+    const r = resolveTestDatabaseUrl(`file:${tujaPot}`, REPO_ROOT, CWD)
     expect(r.pinned).toBe(true)
     expect(r.url).toBe(`file:${resolve(REPO_ROOT, 'db', 'dev.db')}`)
   })

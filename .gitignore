@@ -94,3 +94,6 @@ upload/
 /dist-packages/
 *.rospkg
 /.ros-update-backup-*/
+*.zscripts-log
+download/restaurantos-v*.bundle
+download/PUSH-NAVODILA-v*.md

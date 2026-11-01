@@ -10,7 +10,7 @@ import { POST as loyaltyPOST } from '../src/app/api/loyalty/route'
 import { APP_VERSION } from '../src/lib/version'
 
 /**
- * UPORABNIŠKI QA VAL #6 — DOKUMENTIRANA B-OSTANKA IZ VALA #3 (v1.226.0).
+ * UPORABNIŠKI QA VAL #6 — DOKUMENTIRANA B-OSTANKA IZ VALA #3 (v1.227.0).
  *
  * Val #3 (v1.221.0) je v zalihu »C« dokumentiral dve najdbi kot B-ostanek
  * (lastnikova odločitev takrat). Ta val obe ZAPREVA, ker sta obe čisto
@@ -243,22 +243,22 @@ describe('v224 C2 · loyalty — isti telefon na isti lokaciji = en račun', () 
 /* ── verzija ───────────────────────────────────────────────────────────── */
 
 describe('v224 Č · verzija + dokumentacija', () => {
-  test('verzija je dvignjena na 1.226.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.226.0')
-    expect(read('src/lib/version.ts')).toContain("'1.226.0'")
+  test('verzija je dvignjena na 1.227.0 (version.ts)', () => {
+    expect(APP_VERSION).toBe('1.227.0')
+    expect(read('src/lib/version.ts')).toContain("'1.227.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.226.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.227.0')
   })
 
-  test('PRD nosi zapis QA-vala v1.226.0 (doc-truth)', () => {
-    expect(read('docs/PRD-LOKALNA-BAZA.md')).toContain('QA-val v1.226.0')
+  test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
+    expect(read('docs/PRD-LOKALNA-BAZA.md')).toContain('QA-val v1.227.0')
   })
 
-  test('worklog vnos na vrhu (Task ID: v1.226.0)', () => {
+  test('worklog vnos na vrhu (Task ID: v1.227.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.226.0')
-    expect(wl.indexOf('Task ID: v1.226.0')).toBeLessThan(wl.indexOf('Task ID: v1.224.0'))
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.227.0')
+    expect(wl.indexOf('Task ID: v1.227.0')).toBeLessThan(wl.indexOf('Task ID: v1.224.0'))
   })
 })
