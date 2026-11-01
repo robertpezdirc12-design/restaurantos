@@ -78,7 +78,13 @@ function TablicaInner() {
   }, [])
 
   useEffect(() => {
-    if (!getToken()) { router.replace('/'); return }
+    // QA-val #10 (P2): vrata so od v1.219.0 (issue #90) preverjala SAMO legacy
+    // žeton v localStorage (ro_token) — nove prijave ga ne pišejo več (seja živi
+    // v httpOnly piškotku ro_session), zato je bila tablica za VSE nove seje
+    // nedosegljiva (/* → prijava → avtodetekt → /dashboard zanka). Vrata zdaj
+    // spustijo tudi sejo z ro_user (piškotek overi /api/auth/me; api() ob 401
+    // preusmeri samo) — enaka disciplina kot dashboard, ki vrata sploh nima.
+    if (!getToken() && !getUser()) { router.replace('/'); return }
     let alive = true
     void (async () => {
       try {

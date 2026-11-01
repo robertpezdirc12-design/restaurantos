@@ -6428,7 +6428,8 @@ function DashboardInner() {
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
-        user={user}
+        tabs={DASHBOARD_TABS}
+        ctx={{ canManage, perms }}
         onNavigate={(t) => setActiveTab(t)}
         onRefresh={load}
         onNewOrder={() => { setActiveTab('mize'); document.getElementById('mize')?.scrollIntoView({ behavior: 'smooth' }) }}

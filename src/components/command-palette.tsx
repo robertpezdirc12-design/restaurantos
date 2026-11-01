@@ -1,41 +1,48 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo, type ComponentType } from 'react'
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty,
   CommandGroup, CommandItem, CommandSeparator,
 } from '@/components/ui/command'
 import {
-  LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, CalendarDays,
-  ReceiptText, Users, Settings, RefreshCw, Plus, LogOut, Search, ShieldCheck,
-  PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Star,
+  RefreshCw, Plus, LogOut, Search, ShieldCheck, CircleDot,
 } from 'lucide-react'
-import { isManagerialRole } from '@/lib/permissions'
+import { tabHasPerm, type TabPermContext } from '@/lib/tab-permissions'
+import { useI18n } from '@/components/i18n'
 
 /**
  * COMMAND PALETTE (R268) — kanonska avtorizacija akcij:
  *  - Navigacija: vsi zavihki
  *  - Akcije: odvisne od vloge (ADMIN/MANAGER ↔ WAITER/KITCHEN)
  *  - Občutljive akcije so označene in gredo skozi SENSITIVE ACTION potrditev (R266)
+ *
+ * QA-val #10 (P3): navigacija je zdaj IZPELJANA iz istega vira kot stranski
+ * steber — `tabs` (DASHBOARD_TABS) + `ctx` (tabHasPerm), ne ločen ročen seznam.
+ * Prej je paleta obljubljala »vsi zavihki«, a jih je imela 15/32: Napitnine,
+ * Nabava, Prenosi, Odpad, Popusti, Darilne kartice, Analiza menija, Dostava,
+ * Čakalna lista, Hitra prodaja, Odnosi z gosti, Obračun, Delovni čas, Razpored,
+ * Odprtost, Integracije in Organizacija so bili z Ctrl+K NEDOSEGLJIVI.
+ * Dovoljenja zdaj tečejo skozi tabHasPerm (isti kanon kot sidebar — issue #72
+ * A4 namen ohranjen in okrepšen: NI več podvojene logike vlog v paleti),
+ * oznake pa iz t(`tabs.${id}`) — SL/HR pošteno, enaka imena kot v navigaciji.
  */
-export interface PaletteUser { id: string; name: string; role: string }
-
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
-  user: PaletteUser | null
+  /** isti vir kot DashboardSidebar: DASHBOARD_TABS (id + ikona) */
+  tabs: [string, ComponentType<{ className?: string }> | null][]
+  /** isti konteksto kot DashboardSidebar: { canManage, perms } → tabHasPerm */
+  ctx: TabPermContext
   onNavigate: (tab: string) => void
   onRefresh: () => void
   onNewOrder: () => void
   onLogout: () => void
 }
 
-// issue #72 A4: EN vir resnice za vodstveni pogled (src/lib/permissions).
-// Prej je tu stal ločen seznam — OWNER (in enterprise vloge) so bili izpuščeni,
-// zato LASTNIK ni videl ukazov, ki jih vidi njegov vodja.
-const canManage = (role?: string) => isManagerialRole(role)
+export function CommandPalette({ open, onOpenChange, tabs, ctx, onNavigate, onRefresh, onNewOrder, onLogout }: Props) {
+  const { t } = useI18n()
 
-export function CommandPalette({ open, onOpenChange, user, onNavigate, onRefresh, onNewOrder, onLogout }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -49,67 +56,19 @@ export function CommandPalette({ open, onOpenChange, user, onNavigate, onRefresh
 
   const run = (fn: () => void) => { onOpenChange(false); fn() }
 
+  const visible = useMemo(() => tabs.filter(([v]) => tabHasPerm(v, ctx)), [tabs, ctx])
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput placeholder="Išči ukaz… (navigacija, akcije)" />
       <CommandList>
         <CommandEmpty>Ni zadetkov.</CommandEmpty>
         <CommandGroup heading="Navigacija">
-          <CommandItem onSelect={() => run(() => onNavigate('pregled'))}>
-            <LayoutDashboard className="w-4 h-4" /> Pregled
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('mize'))}>
-            <Utensils className="w-4 h-4" /> Mize
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('narocila'))}>
-            <ClipboardList className="w-4 h-4" /> Naročila
-          </CommandItem>
-          {canManage(user?.role) || user?.role === 'KITCHEN' ? (
-            <CommandItem onSelect={() => run(() => onNavigate('kuhinja'))}>
-              <ChefHat className="w-4 h-4" /> Kuhinja
+          {visible.map(([v, Icon]) => (
+            <CommandItem key={v} value={`${t(`tabs.${v}`)} ${v}`} onSelect={() => run(() => onNavigate(v))}>
+              {Icon ? <Icon className="w-4 h-4" /> : <CircleDot className="w-4 h-4" />} {t(`tabs.${v}`)}
             </CommandItem>
-          ) : null}
-          <CommandItem onSelect={() => run(() => onNavigate('meni'))}>
-            <BookOpen className="w-4 h-4" /> Meni
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('rezervacije'))}>
-            <CalendarDays className="w-4 h-4" /> Rezervacije
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('racuni'))}>
-            <ReceiptText className="w-4 h-4" /> Računi (FURS)
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('zaloge'))}>
-            <PackageSearch className="w-4 h-4" /> Zaloge
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('izmene'))}>
-            <Clock className="w-4 h-4" /> Smene + Z-poročila
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => onNavigate('haccp'))}>
-            <Thermometer className="w-4 h-4" /> HACCP kontrole
-          </CommandItem>
-          {canManage(user?.role) ? (
-            <CommandItem onSelect={() => run(() => onNavigate('stroski'))}>
-              <Wallet className="w-4 h-4" /> Stroški
-            </CommandItem>
-          ) : null}
-          {canManage(user?.role) ? (
-            <CommandItem onSelect={() => run(() => onNavigate('zvestoba'))}>
-              <HeartHandshake className="w-4 h-4" /> Zvestoba
-            </CommandItem>
-          ) : null}
-          <CommandItem onSelect={() => run(() => onNavigate('mnenja'))}>
-            <Star className="w-4 h-4" /> Mnenja gostov
-          </CommandItem>
-          {canManage(user?.role) ? (
-            <CommandItem onSelect={() => run(() => onNavigate('zaposleni'))}>
-              <Users className="w-4 h-4" /> Zaposleni
-            </CommandItem>
-          ) : null}
-          {canManage(user?.role) ? (
-            <CommandItem onSelect={() => run(() => onNavigate('nastavitve'))}>
-              <Settings className="w-4 h-4" /> Nastavitve
-            </CommandItem>
-          ) : null}
+          ))}
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Akcije">

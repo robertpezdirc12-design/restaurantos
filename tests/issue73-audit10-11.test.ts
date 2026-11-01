@@ -245,9 +245,14 @@ describe('audit-11 F — komponente ne izumljajo imen (en vir resnice)', () => {
     }
   })
 
-  test('ukazna paleta uporablja novo ime (Smene + Z-poročila)', () => {
+  test('ukazna paleta uporablja isto ime kot navigacija (QA-val #10: en vir)', () => {
     const palette = read('src/components/command-palette.tsx')
-    expect(palette).toContain('Smene + Z-poročila')
+    // QA-val #10: oznake zavihkov v paleti izhajajo iz t(`tabs.${id}`) — ISTI
+    // slovar kot stranski steber. Prejšnja pin 'Smene + Z-poročila' je bila
+    // ločena (samo-paleta) oznaka; zdaj je eno ime povsod (tabs.izmene =
+    // »Smene«). Hrošča 'Izmene + Z-poročila' še vedno NE sme biti.
+    expect(palette).toContain('t(`tabs.${v}`)')
     expect(palette).not.toContain('Izmene + Z-poročila')
+    expect(palette).not.toContain("'Smene + Z-poročila'")
   })
 })

@@ -140,11 +140,16 @@ describe('issue #72 A1/A2 — efektivni nabor v dialogu zaposlenih', () => {
 })
 
 describe('issue #72 A3/A4 — enoten vzorec presoje', () => {
-  test('A4: ukazna paleta uporablja isManagerialRole iz permissions (OWNER vključen)', () => {
+  test('A4: ukazna paleta uporablja tabHasPerm iz tab-permissions (OWNER vključen, QA-val #10)', () => {
     const cp = read('../src/components/command-palette.tsx')
-    expect(cp).toContain("const canManage = (role?: string) => isManagerialRole(role)")
-    expect(cp).toContain("import { isManagerialRole } from '@/lib/permissions'")
+    // QA-val #10 (P3): paleta NE nosi več svoje logike vlog — navigacijo vidi
+    // SKOZI tabHasPerm (isti kanon kot stranski steber; canManage/centralne
+    // vloge + razrešena dovoljenja rešuje TabPermContext). Namere A4 (en vir
+    // resnice, OWNER/enterprise vključeni) ohranjene in okrepšene.
+    expect(cp).toContain("import { tabHasPerm, type TabPermContext } from '@/lib/tab-permissions'")
+    expect(cp).toContain('tabs.filter(([v]) => tabHasPerm(v, ctx))')
     expect(cp).not.toContain("role === 'ADMIN' || role === 'MANAGER'")
+    expect(cp).not.toContain('isManagerialRole')
   })
 
   test('A4: en vir resnice — exception-approval re-izvaža permissions.ts', () => {

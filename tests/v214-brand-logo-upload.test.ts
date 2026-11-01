@@ -477,9 +477,9 @@ describe('v1.214.0 — Č2: dokumentacija + 0 DDL dokaz', () => {
 
 /* ── Č3 — registri (verzija + oznaka slike + AUDIT števec) ──────────────── */
 describe('v1.214.0 — Č3: registri', () => {
-  it('verzija 1.227.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.227.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.227\.0'/)
+  it('verzija 1.228.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.228.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.228\.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {

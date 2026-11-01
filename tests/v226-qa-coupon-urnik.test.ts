@@ -12,7 +12,7 @@ import { APP_VERSION } from '../src/lib/version'
 
 /**
  * UPORABNIŠKI QA VAL #8 — NEPREKRITE POVRŠINE #2: CRM, ČAKALNA LISTA,
- * ODPIRALNI ČAS, ORGANIZACIJA, QR MENI (v1.227.0).
+ * ODPIRALNI ČAS, ORGANIZACIJA, QR MENI (v1.228.0).
  *
  * Val je nastal iz E2E pregleda površin, ki v valovih #1–#7 niso bile izrecno
  * odprte: Odnosi z gosti (CRM — segmenti, soglasja, združitev, kuponi,
@@ -266,20 +266,20 @@ describe('v226 B · urnik: zapiralni čas 24:00 (polnoč na koncu dneva)', () =>
 /* ═══════════════ Č. VERZIJA + REGISTRI ═══════════════ */
 
 describe('v226 Č · verzija + dokumentacija', () => {
-  test('verzija je dvignjena na 1.227.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.227.0')
-    expect(read('src/lib/version.ts')).toContain("'1.227.0'")
+  test('verzija je dvignjena na 1.228.0 (version.ts)', () => {
+    expect(APP_VERSION).toBe('1.228.0')
+    expect(read('src/lib/version.ts')).toContain("'1.228.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.227.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.228.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
     expect(read('docs/PRD-LOKALNA-BAZA.md')).toContain('QA-val v1.227.0')
   })
 
-  test('worklog vnos na vrhu (Task ID: v1.227.0)', () => {
+  test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
     expect(wl.indexOf('Task ID: v1.227.0')).toBeGreaterThanOrEqual(0)
     expect(wl.indexOf('Task ID: v1.227.0')).toBeLessThan(wl.indexOf('Task ID: v1.225.0'))
