@@ -462,8 +462,8 @@ describe('v219 Č8 · #93 demo oznaka', () => {
 describe('v219 Č9 · verzija + registri', () => {
   it('verzija je dvignjena na 1.219.0 (version.ts + compose oznaka)', async () => {
     const { APP_VERSION } = await import('../src/lib/version')
-    expect(APP_VERSION).toBe('1.219.1')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.219.1')
+    expect(APP_VERSION).toBe('1.220.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.220.0')
   })
 
   it('PRD nosi zapis QA-vala v1.219.0 (doc-truth)', () => {
@@ -477,7 +477,7 @@ describe('v219 Č9 · verzija + registri', () => {
   })
 })
 
-/* ── Č10 · HOTFIX v1.219.1 — zamaskiran DDL (kuponi + čakalna vrsta) ────── */
+/* ── Č10 · HOTFIX v1.220.0 — zamaskiran DDL (kuponi + čakalna vrsta) ────── */
 
 describe('v219 Č10 · coupons-waitlist DDL pot (hotfix)', () => {
   it('ruta je idempotentna na dev SQLite (tabela iz db push zrcala → preskok)', async () => {

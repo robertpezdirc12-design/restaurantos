@@ -147,7 +147,27 @@ console.log(`             (pripeta na ${DEMO_EMAIL}; nadzorni PIN za potrdila je
 console.log(`  Vrata:     odprta do ${gateExpiry} (vsak vstop je zabeležen v revizijski zapis)`)
 console.log(`  Baza:      ${dbPath} — testna dev.db se ne dotika\n`)
 
-const child = spawn(process.execPath, [NEXT_BIN, 'dev', '-p', String(args.port)], { cwd: ROOT, env, stdio: 'inherit' })
+/**
+ * QA-val v1.220.0 (najdba #1, P1): `next dev` pod BUN runtime lomi Turbopack
+ * resolucijo eksternih paketov — vsak /api/*, ki se dotakne @prisma/client,
+ * vrne 500 „Failed to load external module @prisma/client-<hash>“ (izmerjeno:
+ * bun 1.3.14 + Next 16.4.2, tudi po čistem rm -rf .next; pod `node` isti strežnik
+ * takoj deluje). Bun ostane zaganjalnik tega skripta (hitri seed + prisma CLI),
+ * dev strežnik pa zato vedno teče pod node-jem, če je na voljo; sicer izpademo
+ * na process.execPath (bun) z jasnim opozorilom v dnevniku.
+ */
+function devServerRuntime(): string {
+  if (/(^|\/|\\)node(\.exe)?$/i.test(process.execPath)) return process.execPath
+  const probe = spawnSync('node', ['--version'], { encoding: 'utf8', shell: false })
+  if (probe.status === 0 && typeof probe.stdout === 'string' && probe.stdout.trim().startsWith('v')) {
+    console.log('[demo] Dev strežnik teče pod node (bun runtime lomi Turbopack eksterne — QA v1.220.0).')
+    return 'node'
+  }
+  console.warn('[demo] OPOZORILO: node ni bil najden — next dev teče pod bun in lahko vrača 500 na API poteh (Turbopack eksterni).')
+  return process.execPath
+}
+
+const child = spawn(devServerRuntime(), [NEXT_BIN, 'dev', '-p', String(args.port)], { cwd: ROOT, env, stdio: 'inherit' })
 
 let stopping = false
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

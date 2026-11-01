@@ -429,7 +429,7 @@ describe('drift-check: classifyDrift — CELA produkcijska diffa (run 3896440009
 })
 
 
-/* ── HOTFIX v1.219.1: zamaskiran DDL (kuponi + čakalna vrsta) ────────────── */
+/* ── HOTFIX v1.220.0: zamaskiran DDL (kuponi + čakalna vrsta) ────────────── */
 
 const COUPONS_WAITLIST_DIFF = [
   '-- AlterTable',
@@ -450,7 +450,7 @@ const COUPONS_WAITLIST_DIFF = [
   '',
 ].join('\n')
 
-describe('drift-check: isCouponsWaitlistStatement (hotfix v1.219.1)', () => {
+describe('drift-check: isCouponsWaitlistStatement (hotfix v1.220.0)', () => {
   test('vseh 8 stavkov CI runa 41286990715 → znani, 0 blokatorjev', () => {
     const stmts = parseStatements(COUPONS_WAITLIST_DIFF)
     expect(stmts).toHaveLength(8)

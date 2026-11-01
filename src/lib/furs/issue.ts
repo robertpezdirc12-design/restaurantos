@@ -579,22 +579,55 @@ export async function issueFursReceipt(req: NextRequest) {
               paymentMethod,
             },
           })
-        : await tx.check.create({
-        data: {
-          id: nid(),
-          checkNumber: 1,
-          orderId: orderPre.id,
-          subtotal,
-          tax: totalVat,
-          discount: bill.discountTotal,
-          appliedDiscountId: bill.autoDiscounts[0]?.discountId || null,
-          total,
-          tip,
-          totalWithTip: total + tip,
-          paymentStatus: 'paid',
-          paymentMethod,
-        },
-      })
+        : await (async () => {
+        // QA-val v1.220.0 (najdba #5, P1): celotno plačilo naročila, ki ŽE IMA
+        // izstavke (split T1/T2…), je padlo s P2002 na (orderId, checkNumber) —
+        // checkNumber 1 obstaja od delitve, `tx.check.create` pa ga je vseeno
+        // poskušal ustvariti → 500 + toast „Plačila ni bilo mogoče zaključiti“.
+        // Popravek: če izstavek #1 že obstaja, ga celotno plačilo PREVZAME
+        // (zneski celotnega naročila) in VSE izstavke naročila označi plačane —
+        // naročilo je plačano v celoti, deljeni ostanki ne smejo viseti.
+        const existingFirst = await tx.check.findFirst({
+          where: { orderId: orderPre.id, checkNumber: 1 },
+          select: { id: true },
+        })
+        if (existingFirst) {
+          await tx.check.updateMany({
+            where: { orderId: orderPre.id, paymentStatus: { not: 'paid' } },
+            data: { paymentStatus: 'paid', paymentMethod },
+          })
+          return tx.check.update({
+            where: { id: existingFirst.id },
+            data: {
+              subtotal,
+              tax: totalVat,
+              discount: bill.discountTotal,
+              appliedDiscountId: bill.autoDiscounts[0]?.discountId || null,
+              total,
+              tip,
+              totalWithTip: total + tip,
+              paymentStatus: 'paid',
+              paymentMethod,
+            },
+          })
+        }
+        return tx.check.create({
+          data: {
+            id: nid(),
+            checkNumber: 1,
+            orderId: orderPre.id,
+            subtotal,
+            tax: totalVat,
+            discount: bill.discountTotal,
+            appliedDiscountId: bill.autoDiscounts[0]?.discountId || null,
+            total,
+            tip,
+            totalWithTip: total + tip,
+            paymentStatus: 'paid',
+            paymentMethod,
+          },
+        })
+      })()
 
       const created = await tx.receipt.create({
         data: {

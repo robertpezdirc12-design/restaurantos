@@ -1475,7 +1475,10 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                       <div className="grid gap-2 sm:grid-cols-4 items-end">
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.accepted')}</Label>
-                          <Input id={`nb-recv-accept-${it.id}`} inputMode="decimal" value={l.accept} onChange={(e) => updateRecvLine(it.id, { accept: e.target.value })} />
+                          {/* QA-val v1.220.0 (najdba #6, a11y): Label brez htmlFor + Input z id
+                              in BREZ aria-label = nedostopno polje (v219 Č7 varovala je ulovila
+                              novi dialog). Vzorec sosednjega polja (ključ proc.thRejected): aria-label na Input. (LEKCIJA v1.220.0: komentarji ne smejo vsebovati prevodov — i18n varovalka jih ulovi med atributi.) */}
+                          <Input id={`nb-recv-accept-${it.id}`} aria-label={t('proc.accepted')} inputMode="decimal" value={l.accept} onChange={(e) => updateRecvLine(it.id, { accept: e.target.value })} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.thRejected')}</Label>

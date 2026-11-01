@@ -232,7 +232,12 @@ export function mapEmployee(e: Row) {
   }
 }
 
-export function mapTable(t: Row, activeOrder?: Row | null, heldOrder?: Row | null) {
+export interface SeatedGuestInfo {
+  guestName: string
+  party: number
+}
+
+export function mapTable(t: Row, activeOrder?: Row | null, heldOrder?: Row | null, seatedGuest?: SeatedGuestInfo | null) {
   return {
     id: t.id as string,
     name: `Miza ${t.number}`,
@@ -255,11 +260,20 @@ export function mapTable(t: Row, activeOrder?: Row | null, heldOrder?: Row | nul
     // nedotaknjeni; dashboard/handheld/tablica izrisujejo IZKLJUČNO iz tega statusa.
     // OSS-4 (v1.204.0): zadržano naročilo TUDI zaseda mizo (gost lahko pride naziv) —
     // brez tega bi zadržana miza po Issue #70 izpeljavi padla v DIRTY ("za pospravit").
+    // QA-val v1.220.0 (najdba #4, P1): DB 'occupied' BREZ naročila, a Z usajenim
+    // vnosom čakalne liste (usaditev zaklene mizo v isti transakciji, v1.162.0),
+    // prav tako ostane OCCUPIED — s poljem seatedGuest. Pred popravkom je takšna
+    // miza padla v DIRTY: natakar je s klikom „pospravi“ pobrisal zaklenitev in
+    // usajeni gost je na tlorisu izginil (izmerjeno: Miza 5/10 po usaditvi DIRTY).
     status: (activeOrder || heldOrder)
       ? 'OCCUPIED'
       : t.status === 'occupied'
-        ? 'DIRTY'
+        ? (seatedGuest ? 'OCCUPIED' : 'DIRTY')
         : tableStatusToUI(t.status as string),
+    /** QA-val v1.220.0: gost s čakalne liste, ki drži mizo (SAMO kadar status
+        ostaja 'occupied' iz usaditve — brez naročila). Ploščica ga pokaže,
+        klik ploščice pa odpre dialog novega naročila (obstoječa pot !activeOrder). */
+    seatedGuest: (!activeOrder && !heldOrder && t.status === 'occupied' && seatedGuest) ? seatedGuest : null,
     activeOrder: activeOrder
       ? {
           id: activeOrder.id as string,

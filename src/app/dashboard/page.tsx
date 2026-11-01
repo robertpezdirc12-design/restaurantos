@@ -156,7 +156,7 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 interface UpdateCheckT { current: string; latest: string | null; updateAvailable: boolean; source: 'default' | 'env' | 'disabled' | 'invalid'; reason: string }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
-interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number }
+interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[] }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
@@ -1860,6 +1860,9 @@ function DashboardInner() {
       nosi »Zadržano« (barva ostane zasedena — miza JE zasedena, Issue #70). Enotno na
       obeh vrsticah ploščice + aria/title, da se parkirano razloči od aktivnega toka. */
   const tileStatusL = (tb: TableT): string => (tb.heldOrderId && !tb.activeOrder ? stL('HOLD') : stL(tb.status))
+  /* QA-val v1.220.0: gost s čakalne liste na ploščici (SAMO brez naročila —
+     z activeOrder ploščica že kaže naročilo). Handheld/tablica kažeta samo status. */
+  const seatedGuestL = (tb: TableT): string | null => (!tb.activeOrder && tb.seatedGuest ? `${tb.seatedGuest.guestName} · ${tb.seatedGuest.party}` : null)
 
   /** Zadrži: odpre dialog z neobveznim razlogom (posnetek gre v revizijo ORDER_HOLD) */
   function holdOrder(o: OrderT) { setHoldTargetReason(''); setHoldTarget(o) }
@@ -2981,7 +2984,11 @@ function DashboardInner() {
                             /* OSS-4 (v1.204.0): enotno besedilo prek tileStatusL — zadržana
                                miza nosi »Zadržano« namesto »Zasedena«; barva ne laže: je
                                zasedena barva, ker miza JE zasedena (Issue #70). */
-                            <p className="mt-0.5 text-xs font-bold uppercase tracking-wide opacity-95">{tileStatusL(tb)}</p>
+                            <>
+                              <p className="mt-0.5 text-xs font-bold uppercase tracking-wide opacity-95">{tileStatusL(tb)}</p>
+                              {/* QA-val v1.220.0: usajeni gost s čakalne liste — identiteta na ploščici (mreža) */}
+                              {seatedGuestL(tb) && <p className="text-xs normal-case tracking-normal opacity-95">{seatedGuestL(tb)}</p>}
+                            </>
                           )}
                           {/* v1.129.0 (Toast/Square benchmark): zasedena ploščica nosi ČAS (min
                               od naročila) in FAZO naročila (poslano/v pripravi/pripravljeno),
@@ -3017,6 +3024,8 @@ function DashboardInner() {
                                 v1.129.0: oznaka ostaja na kanoničnem statusu (faza naročila
                                 je že vidna v vrstici zneska/časa zgoraj) — Toast order-stage vzorec. */}
                             {tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb)}
+                            {/* QA-val v1.220.0: usajeni gost s čakalne liste — identiteta na ploščici */}
+                            {seatedGuestL(tb) && <span className="block normal-case tracking-normal opacity-95">{seatedGuestL(tb)}</span>}
                           </p>
                         </button>
                         {/* Issue #3: QR meni za to mizo — (span, ker gosta ne sme biti gnezdena v gumbu) */}

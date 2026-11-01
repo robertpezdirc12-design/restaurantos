@@ -18,6 +18,21 @@ export async function GET(req: NextRequest) {
     include: { Order: { where: { status: { in: [...ORDER_ACTIVE_DB, 'hold'] } }, include: { OrderItem: true } } },
     orderBy: [{ area: 'asc' }, { number: 'asc' }],
   })
+  // QA-val v1.220.0 (najdba #4, P1): usajeni vnosi čakalne liste držijo mizo
+  // (PATCH /api/waitlist zaklene status 'occupied' v isti transakciji). Naložimo
+  // jih znotraj istega obsega lokacij, da mapTable razlikuje „zastarelo occupied“
+  // (→ DIRTY po Issue #70) od „occupied iz usaditve“ (→ OCCUPIED + seatedGuest).
+  const seatedEntries = await db.waitlistEntry.findMany({
+    where: { status: 'seated', tableId: { not: null }, ...(await locationScope(user)) },
+    select: { tableId: true, guestName: true, partySize: true },
+    orderBy: { seatedAt: 'desc' },
+  })
+  const seatedByTable = new Map<string, { guestName: string; party: number }>()
+  for (const w of seatedEntries) {
+    if (w.tableId && !seatedByTable.has(w.tableId)) {
+      seatedByTable.set(w.tableId, { guestName: w.guestName, party: w.partySize })
+    }
+  }
   return ok({ tables: tables.map((t) => {
     const active = t.Order.find((o) => ORDER_ACTIVE_DB.includes(o.status)) ?? null
     const held = !active ? (t.Order.find((o) => o.status === 'hold') ?? null) : null
@@ -25,6 +40,7 @@ export async function GET(req: NextRequest) {
       { ...t, items: active?.OrderItem },
       active ? { ...active, items: active.OrderItem } : null,
       held ? { ...held, items: held.OrderItem } : null,
+      seatedByTable.get(t.id) ?? null,
     )
   }) })
 }

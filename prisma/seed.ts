@@ -48,6 +48,27 @@ async function main() {
   })
   console.log('📍 Lokacija:', location.name)
 
+  // QA-val v1.220.0 (najdba #2): urnik obratovanja za demo/dev lokacijo. Brez
+  // njega je rezervacijski widget po novem (pošten status) trajno „zaprt“ —
+  // demo pa mora rezervacije testirati iz prve roke. 7 dni 10:00–22:00 (nedelja
+  // kraje, kosilo+večerja brez odmora) — lastnik ga v zavihku Odprtost lokala
+  // kadarkoli prepiše. Idempotentno po @@unique([locationId, dayOfWeek]).
+  for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+    await db.openingHours.upsert({
+      where: { locationId_dayOfWeek: { locationId, dayOfWeek } },
+      update: {},
+      create: {
+        id: nid(`oh-${dayOfWeek}`),
+        dayOfWeek,
+        openTime: '10:00',
+        closeTime: '22:00',
+        isClosed: false,
+        locationId,
+      },
+    })
+  }
+  console.log('🕒 Urnik: 7 dni 10:00–22:00')
+
   // Issue #5 (komentar #3): katalog razlogov preklica postavke (VoidReason — model
   // je obstajal v shemi, nikoli ni bil sejdan/uporabljen). 4 standardni razlogi.
   const voidReasons = [

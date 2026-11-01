@@ -77,10 +77,15 @@ function toPlainSpecials(rows: SpecialDayRow[]): SpecialDay[] {
 }
 
 function computeStatus(rows: (OpeningRow & { id: string })[], specials: SpecialDay[]) {
-  const src = rows.length > 0
-    ? rows
-    : Array.from({ length: 7 }, (_, dayOfWeek) => ({ id: 'default', dayOfWeek, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false }))
-  const v = validateOpeningHoursRows(src)
+  // QA-val v1.220.0 (najdba #2, P2): PRAZEN urnik se NE LAHKO več izmišljuje
+  // privzetih 08:00–22:00 — status je potem nalagal „Odprto“, medtem ko je
+  // rezervacijski widget za ISTO lokacijo iz istih podatkov izpeljal
+  // „no_hours → zaprto“ (ni terminov). Dve komponenti, isti vir, nasprotna
+  // odgovora. Sedaj: brez vrstic → currentStatus pravi „Zaprto — Danes zaprto“
+  // (faza closed_day), kar se ujema z rezervacijami; urnik, ki ga lastnik
+  // dejansko vpiše, pa takoj velja povsod. (Zasnova `currentStatus` s praznimi
+  // vrsticami že vrača zaprto — povožena je bila samo ta privzeta nadomestitev.)
+  const v = validateOpeningHoursRows(rows)
   return currentStatus(v.ok ? v.rows : [], specials)
 }
 
