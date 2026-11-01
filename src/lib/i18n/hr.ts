@@ -3900,10 +3900,10 @@ export const hr: Record<string, string> = {
   // ── P2-10b (v1.187.0): kuponi (rođendanski + ručni) ──
   'cp.title': 'Kuponi',
   'cp.desc': 'Osobni popusti — rođendanski automatski, ručne izdaješ ovdje.',
-  'cp.label': 'Kupon (kod)',
-  'cp.aria': 'Unos koda kupona',
+  'cp.label': 'Kupon / promo kod',
+  'cp.aria': 'Unos koda kupona ili promo koda',
   'cp.apply': 'Primijeni',
-  'cp.applied': 'Kupon je iskorišten — popust je na računu.',
+  'cp.applied': 'Kod je iskorišten — popust je na računu.',
   'cp.code': 'Kod',
   'cp.guest': 'Gost',
   'cp.value': 'Vrijednost',

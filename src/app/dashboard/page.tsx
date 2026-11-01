@@ -5712,14 +5712,16 @@ function DashboardInner() {
                     </div>
                   )}
 
-                  {/* P2-10b (v1.187.0): osebni kupon (rojstnodnevni/ročni) — koda po e-pošti/iz CRM */}
+                  {/* P2-10b (v1.187.0): osebni kupon (rojstnodnevni/ročni) — koda po e-pošti/iz CRM.
+                      v1.224.0: isto polje sprejme tudi PROMO KODO registra (Discount.promoCode) —
+                      strežnik najprej išče osebni kupon, nato promo kodo lokacije. */}
                   {hasPerm('apply_discounts') && (
                     <div className="flex items-center gap-2">
                       <Label className="text-xs shrink-0" htmlFor="coupon-code">{t('cp.label')}</Label>
                       <Input
                         id="coupon-code"
                         className="h-9 flex-1 font-mono uppercase"
-                        placeholder="BD26-XXXXXXXX"
+                        placeholder="BD26-XXXXXXXX / PROMO10"
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value)}
                         aria-label={t('cp.aria')}

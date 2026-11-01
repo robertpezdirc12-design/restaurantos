@@ -52,6 +52,13 @@ import { ORDER_MUTABLE_PAYMENT, ORDER_MUTABLE_STATUS } from '@/lib/ops'
  *  - koda se normalizira (trim + VELIKE), 404 neznana; preveri se izpeljano
  *    stanje (redeemed/void/expired → 409), osebnost (order.guestId MORA
  *    ustrezati coupon.guestId) in lokacija;
+ *  - v1.224.0: KODA IMA DVA VIRA — če osebnega kupona s to kodo ni, se
+ *    ista koda poišče v registru popustov (Discount.promoCode, ista
+ *    lokacija, aktiven, ročen — 'auto'/Happy Hour izpadel). Promo veja
+ *    deli SEMANTIKO registra: kvota currentUses/maxUses (CAS v isti tx),
+ *    vir 'register' (razlog/odobritev po politiki, ne po izjemi ad-hoc),
+ *    veljavnostno okno. Neznana koda v OBEH virih → 404 z besedilom, ki
+ *    pove OBA vira (prej: zavajujoči »kupon ne obstaja« za promo kodo).
  *  - odkup je CAS v ISTI transakciji kot naročilo + audit: natanko ena
  *    sočasna zahteva odkupi kupon (druga 409 s rollbackom naročila);
  *  - odstranitev popusta z naročila (DELETE) KUPONA NE VRAČA — računovodsko
@@ -135,26 +142,54 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (rawCouponCode) {
     const code = normalizeCouponCode(rawCouponCode)
-    if (!code) return fail('Koda kupona je prazna.', 400)
+    if (!code) return fail('Koda je prazna.', 400)
     const coupon = await db.coupon.findUnique({ where: { code } })
-    if (!coupon) return fail('Kupon s to kodo ne obstaja.', 404)
-    // izpeljano stanje (issued + pretekel → expired; odločitev ob odkupu, brez cron zapisa)
-    const st = couponStatusAt(coupon, now)
-    if (st === 'redeemed') return fail('Kupon je že odkupljen.', 409)
-    if (st === 'void') return fail('Kupon je preklican.', 409)
-    if (st === 'expired') return fail('Kupon je pretekel.', 409)
-    if (coupon.percent == null && !(num(coupon.fixedAmount) > 0)) return fail('Kupon nima veljavne vrednosti.', 400)
-    // osebni kupon: naročilo MORA imeti ISTEGA gosta
-    if (!order.guestId) return fail('Naročilo nima dodeljenega gosta — osebni kupon ni mogoč.', 400)
-    if (order.guestId !== coupon.guestId) return fail('Kupon ni izdan temu gostu.', 400)
-    if (coupon.locationId && coupon.locationId !== order.locationId) return fail('Kupon ni za to lokacijo.', 400)
-    const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
-    amount = couponAmountOf({ percent: coupon.percent, fixedAmount: num(coupon.fixedAmount) }, subtotal)
-    discountName = `Kupon ${coupon.code}`
-    source = 'coupon'
-    thresholdKind = coupon.percent != null ? 'percent' : 'fixed'
-    thresholdVal = coupon.percent != null ? coupon.percent : num(coupon.fixedAmount)
-    couponClaim = { id: coupon.id, code: coupon.code }
+    if (coupon) {
+      // izpeljano stanje (issued + pretekel → expired; odločitev ob odkupu, brez cron zapisa)
+      const st = couponStatusAt(coupon, now)
+      if (st === 'redeemed') return fail('Kupon je že odkupljen.', 409)
+      if (st === 'void') return fail('Kupon je preklican.', 409)
+      if (st === 'expired') return fail('Kupon je pretekel.', 409)
+      if (coupon.percent == null && !(num(coupon.fixedAmount) > 0)) return fail('Kupon nima veljavne vrednosti.', 400)
+      // osebni kupon: naročilo MORA imeti ISTEGA gosta
+      if (!order.guestId) return fail('Naročilo nima dodeljenega gosta — osebni kupon ni mogoč.', 400)
+      if (order.guestId !== coupon.guestId) return fail('Kupon ni izdan temu gostu.', 400)
+      if (coupon.locationId && coupon.locationId !== order.locationId) return fail('Kupon ni za to lokacijo.', 400)
+      const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
+      amount = couponAmountOf({ percent: coupon.percent, fixedAmount: num(coupon.fixedAmount) }, subtotal)
+      discountName = `Kupon ${coupon.code}`
+      source = 'coupon'
+      thresholdKind = coupon.percent != null ? 'percent' : 'fixed'
+      thresholdVal = coupon.percent != null ? coupon.percent : num(coupon.fixedAmount)
+      couponClaim = { id: coupon.id, code: coupon.code }
+    } else {
+      // v1.224.0 (B-ostanek v1.221.0): PROMO KODA REGISTRA v istem polju — prej je
+      // koda iz Popusti → promoCode dobila zavajujoči 404 »kupon ne obstaja«, čeprav
+      // register kodo pozna. Isto POS polje zdaj pokriva OBA vira; vrstni red iskanja
+      // je osebni kupon (bolj specifičen, vezan na gosta) NATO promo koda lokacije.
+      // Primerjava je normalizirana (trim + VELIKE) — register lahko kodo shrani
+      // tudi v malih črkah prek API-ja (UI jo sili v velike). 'auto' (Happy Hour)
+      // se aplicira sam ob plačilu in kode ne sme sprejeti ročno.
+      const candidates = await db.discount.findMany({
+        where: { locationId: order.locationId, isActive: true, promoCode: { not: '' } },
+        select: { id: true, name: true, type: true, amount: true, promoCode: true, triggerType: true, maxUses: true, currentUses: true, validFrom: true, validTo: true },
+      })
+      const promo = candidates.find((d) => (d.promoCode || '').trim().toUpperCase() === code && d.triggerType !== 'auto')
+      if (!promo) {
+        return fail('Neznana koda — na tej lokaciji ni osebnega kupona niti aktivne promo kode s to kodo.', 404)
+      }
+      if (promo.validFrom && promo.validFrom > now) return fail('Promo koda še ni veljavna.', 400)
+      if (promo.validTo && promo.validTo < now) return fail('Promo koda je pretekla.', 400)
+      if (promo.maxUses != null && promo.currentUses >= promo.maxUses) return fail('Promo koda je dosegla omejitev uporabe.', 409)
+      const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
+      amount = discountAmountOf(promo, subtotal)
+      discountName = promo.name
+      discountId = promo.id
+      if (promo.maxUses != null) quota = { maxUses: promo.maxUses }
+      source = 'register'
+      thresholdKind = promo.type === 'percent' || promo.type === 'percentage' ? 'percent' : 'fixed'
+      thresholdVal = num(promo.amount)
+    }
   } else if (body?.discountId) {
     const d = await db.discount.findUnique({ where: { id: String(body.discountId) } })
     if (!d || !d.isActive) return fail('Popust ne obstaja ali ni aktiven.', 404)

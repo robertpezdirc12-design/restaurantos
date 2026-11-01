@@ -3905,10 +3905,10 @@ export const sl: Record<string, string> = {
   // ── P2-10b (v1.187.0): kuponi (rojstnodnevni + ročni) ──
   'cp.title': 'Kuponi',
   'cp.desc': 'Osebni popusti — rojstnodnevni samodejno, ročne izdaš tukaj.',
-  'cp.label': 'Kupon (koda)',
-  'cp.aria': 'Vnos kode kupona',
+  'cp.label': 'Kupon / promo koda',
+  'cp.aria': 'Vnos kode kupona ali promo kode',
   'cp.apply': 'Uporabi',
-  'cp.applied': 'Kupon je odkupljen — popust je na računu.',
+  'cp.applied': 'Koda je uporabljena — popust je na računu.',
   'cp.code': 'Koda',
   'cp.guest': 'Gost',
   'cp.value': 'Vrednost',

@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, isResponse, ok, fail, locationScope, re
 import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { nid, jstr } from '@/lib/map'
 import { maskPhone } from '@/lib/pii'
+import { normalizePhoneDigits } from '@/lib/crm'
 import { writeAudit } from '@/lib/audit-chain'
 
 const TIER_FOR = (points: number): string => (points >= 1000 ? 'platinum' : points >= 500 ? 'gold' : points >= 100 ? 'silver' : 'bronze')
@@ -83,6 +84,29 @@ export async function POST(req: NextRequest) {
   const location = await db.location.findUnique({ where: { id: loc }, select: { id: true, isActive: true } })
   if (!location) return fail('Lokacija ne obstaja.', 404)
   if (!location.isActive) return fail('Lokacija ni aktivna.', 400)
+
+  // v1.224.0 (B-ostanek v1.221.0): DEDUP PO TELEFONU — ustvarjanje drugega računa
+  // zvestobe z isto številko na isti lokaciji je zavrnjeno (409), da točke istega
+  // gosta ne razpadejo na dva računa. Primerjava poteka po normaliziranih števkah
+  // (normalizePhoneDigits — enaka disciplina kot CRM dedup: presledki/vejice/+
+  // odpadejo, vodilna '00' se odstrani); krajše od 6 števk se IGNORIRA (vnos
+  // »123« ni telefon). Prazna številka = brez preverbe (ime samo po sebi ni
+  // identiteta — več gostov z istim imenom je zakonitih). Obseg: SAMO ista
+  // lokacija (večlokalni gost ima lahko račun na vsaki lokaciji — GET je prav
+  // tako lokacijsko obsežen).
+  if (phone) {
+    const digits = normalizePhoneDigits(phone)
+    if (digits.length >= 6) {
+      const existing = await db.loyaltyAccount.findMany({
+        where: { locationId: loc },
+        select: { id: true, customerName: true, customerPhone: true },
+      })
+      const dupe = existing.find((r) => normalizePhoneDigits(r.customerPhone) === digits)
+      if (dupe) {
+        return fail(`Gost s to telefonsko številko že ima račun zvestobe (${dupe.customerName}). Uporabite obstoječi račun.`, 409)
+      }
+    }
+  }
 
   const row = await db.loyaltyAccount.create({
     data: {
