@@ -51,7 +51,7 @@ let gcOB = '' // kartica org B
 let gcNull = '' // LEGACY kartica brez locationId
 let tokMgrA = ''
 let tokWaiter = ''
-let tokAdminA = '' // v1.221.0: ADMIN na nevezani lokaciji (regresija scope)
+let tokAdminA = '' // v1.222.0: ADMIN na nevezani lokaciji (regresija scope)
 let tokMgrOA1 = ''
 let tokAdminOA1 = ''
 let tokAdminOB = ''
@@ -455,13 +455,13 @@ describe('#26 — lookup: tenant obseg, medposlovalnično unovčenje iste org oh
     expect(res.status).toBe(404)
   })
 
-  // ── v1.221.0 (QA-val najdba): ADMIN na nevezani lokaciji ──
+  // ── v1.222.0 (QA-val najdba): ADMIN na nevezani lokaciji ──
   // Prej: isCentralRole veja je padla v 'none' ŠE PRED fallbackom na user.loc —
   // na isti nevezani lokaciji je WAITER našel kartico, ADMIN pa ne (404).
   // Trenutna produkcija/demo imajo lokacije brez propertyId — POS plačilo z
   // darilno kartico je za admina/lastnika preprosto nemočno. Popravek: centralna
   // vloga Z lokacijo dobi 'own' (kot osebje); 'none' ostane za BREZ lokacije.
-  it('v1.221.0: ADMIN na nevezani lokaciji vidi kartico LASTNE lokacije (prej 404 — regresija)', async () => {
+  it('v1.222.0: ADMIN na nevezani lokaciji vidi kartico LASTNE lokacije (prej 404 — regresija)', async () => {
     const res = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.A}`, tokAdminA))
     expect(res.status).toBe(200)
     const j = (await res.json()) as { card: { cardNumber: string; balance: number } }
@@ -471,7 +471,7 @@ describe('#26 — lookup: tenant obseg, medposlovalnično unovčenje iste org oh
     expect(j.card.balance).toBe(Number(inDb?.balance))
   })
 
-  it('v1.221.0: ADMIN na nevezani lokaciji NE vidi kartic drugih lokacij (meja ostaja)', async () => {
+  it('v1.222.0: ADMIN na nevezani lokaciji NE vidi kartic drugih lokacij (meja ostaja)', async () => {
     const res = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.OA1}`, tokAdminA))
     expect(res.status).toBe(404)
     const res2 = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.OB}`, tokAdminA))

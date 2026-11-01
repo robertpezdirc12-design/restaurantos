@@ -11,7 +11,7 @@ import { giftCardScopeFor } from '../src/lib/giftcard-scope'
 import { APP_VERSION } from '../src/lib/version'
 
 /**
- * JAVNI QA VAL #3 — NADALJEVANJE TEMELJITEGA UPORABNIŠKEGA TESTIRANJA (v1.221.0).
+ * JAVNI QA VAL #3 — NADALJEVANJE TEMELJITEGA UPORABNIŠKEGA TESTIRANJA (v1.222.0).
  *
  * Val pokriva module, ki v E2E valovih #1/#2 niso bili testirani KOT UPORABNIK:
  * darilne kartice (izdaja + POS plačilo), popusti (register prek dropdowna),
@@ -163,17 +163,17 @@ describe('v221 B · #B zvestoba — zaslužek točk za novega člana (brez unov�
 /* ── verzija ───────────────────────────────────────────────────────────── */
 
 describe('v221 Č · verzija + dokumentacija', () => {
-  test('verzija je dvignjena na 1.221.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.221.0')
-    expect(read('src/lib/version.ts')).toContain("'1.221.0'")
+  test('verzija je dvignjena na 1.222.0 (version.ts)', () => {
+    expect(APP_VERSION).toBe('1.222.0')
+    expect(read('src/lib/version.ts')).toContain("'1.222.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.221.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.222.0')
   })
 
-  test('worklog vnos na vrhu (Task ID: v1.221.0)', () => {
+  test('worklog vnos na vrhu (Task ID: v1.222.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.indexOf('Task ID: v1.221.0')).toBeLessThan(wl.indexOf('Task ID: v1.220.0'))
+    expect(wl.indexOf('Task ID: v1.222.0')).toBeLessThan(wl.indexOf('Task ID: v1.220.0'))
   })
 })

@@ -138,10 +138,24 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
 
   if (body?.action === 'stop') {
-    const open = await db.cashRegisterShift.findFirst({
+    let open = await db.cashRegisterShift.findFirst({
       where: { employeeId: user.sub, status: 'open' },
       orderBy: { openedAt: 'desc' },
     })
+    // QA-val v1.222.0 (najdba #6): UI zavihek Smene prikaže ODPRTO izmeno lokacije
+    // (katerega koli zaposlenega) z gumbom »Zaključi izmeno (Z)« — toda iskanje je
+    // segalo samo po LASTNI izmeni, zato je vodja/lastnik ob zaključku tuje izmene
+    // dobil 400 »Ni odprte izmene.« Potek dela (odpre natakar/barman, zaključi
+    // vodja ob koncu dneva) je legitimen: če lastne odprte izmene ni, pade na
+    // zadnjo odprto izmeno znotraj lokacijskega obsega uporabnika (isti obseg kot
+    // GET; pravico do zaključka že varuje requirePermission('cash.manage') zgoraj,
+    // avtorja zaključka pa zapiše revizijski sled).
+    if (!open) {
+      open = await db.cashRegisterShift.findFirst({
+        where: { status: 'open', ...(await locationScope(user)) },
+        orderBy: { openedAt: 'desc' },
+      })
+    }
     if (!open) return fail('Ni odprte izmene.')
     // Issue #22 (v1.148.0): končno stanje predala je ZAVEZA štejača, ne poljubna vrednost
     const closing = parseDrawerCash(body.closingCash, 'Končno gotovinsko stanje')

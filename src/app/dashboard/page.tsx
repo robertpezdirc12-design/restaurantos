@@ -807,9 +807,15 @@ function DashboardInner() {
     setRefreshing(true)
     try {
       // sveža dovoljenja (spremembe pravic/uveljavitve delujejo takoj — issue #1)
+      // QA-val v1.222.0 (najdba #4): setPerms je asinhron — gateRef.current se
+      // osveži šele na naslednjem renderju, zato je PRVI load('full') po prijavi
+      // za ne-centralne vloge videl PRAZEN nabor in preskočil vse hp()-gated
+      // vire (finance, zaposlene, dobavitelje …) do 60-sekundnega poll cikla.
+      // Svež nabor iz /api/auth/me zato uporabi TAKOJ v isti iteraciji.
+      let freshPerms: string[] | null = null
       try {
         const me = await api<{ employee: { permissions?: string[] } }>('/api/auth/me')
-        if (me.employee?.permissions) setPerms(me.employee.permissions)
+        if (me.employee?.permissions) { freshPerms = me.employee.permissions; setPerms(me.employee.permissions) }
       } catch { /* ne blokiraj nalaganja */ }
       // posamezne napake ne smejo pobrisati celotnega stanja (stabilnost)
       const soft = async <T,>(p: Promise<T>): Promise<T | undefined> => {
@@ -826,8 +832,12 @@ function DashboardInner() {
       // delivery = delivery.manage; operativni klici (mize/naročila/kuhinja/meni/
       // rezervacije/računi/zaloge/izmene) ostanejo za vse — mehki 403 catch).
       const { canManage: manage, perms: curPerms } = gateRef.current
-      const hp = (p: string) => manage || curPerms.includes(p)
-      const hpAny = (...ps: string[]) => manage || ps.some((x) => curPerms.includes(x))
+      // QA-val v1.222.0 (najdba #4): sveža dovoljenja iz /api/auth/me imajo
+      // prednost pred (zastarelim) gateRef zrcalom — prvi load po prijavi sicer
+      // preskoči finančne/kadrovske vire do naslednjega 60-s cikla.
+      const effPerms = freshPerms ?? curPerms
+      const hp = (p: string) => manage || effPerms.includes(p)
+      const hpAny = (...ps: string[]) => manage || ps.some((x) => effPerms.includes(x))
       const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc, vg] = await Promise.all([
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
@@ -2846,20 +2856,25 @@ function DashboardInner() {
                 </CardContent>
               </Card>
             </div>
-            {/* OPS-10 val 1 (v1.77.0) — analitika: prodaja po urah + labor stroški (lazy fetch ko sta vidna) */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <SalesByHourCard />
-              <LaborCostCard />
-            </div>
+            {/* OPS-10 val 1 (v1.77.0) — analitika: prodaja po urah + labor stroški (lazy fetch ko sta vidna)
+                QA-val v1.222.0 (najdba #2): kartice se izrišejo SAMO vlogam z ustreznimi
+                dovoljenji — prej je natakar na Pregledu videl 5 razbitih panelov z
+                »Ponovno poskusi« (403 poročila, ki jih operativna vloga nikoli ne dobi). */}
+            {(hasPerm('reports.sales') || hasPerm('reports.labour')) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {hasPerm('reports.sales') && <SalesByHourCard />}
+                {hasPerm('reports.labour') && <LaborCostCard />}
+              </div>
+            )}
             {/* Issue #10 (v1.117.0) — Strošek dela in pokritost izmen: načrtovano vs.
                 dejansko + urna matrika + napoved pokritosti (isti 'pregled' blok kot
                 LaborCostCard — backend varuje reports.view; lazy fetch ko je vidna). */}
-            <LaborCoverageCard locations={locStats.map((l) => ({ id: l.id, name: l.name }))} />
+            {hasPerm('reports.labour') && <LaborCoverageCard locations={locStats.map((l) => ({ id: l.id, name: l.name }))} />}
             {/* P1-4 (v1.186.0) — napoved dela (priporočene ure/osebje + vrzeli vs.
                 načrt) in P2-9 — AI vpogledi (deterministični motor + AIConversation
                 log); isti 'pregled' blok, lazy fetch ko je vidno, reports.* pravice. */}
-            <LaborForecastCard />
-            <AiInsightsCard />
+            {hasPerm('reports.labour') && <LaborForecastCard />}
+            {(hasPerm('reports.sales') || hasPerm('reports.labour')) && <AiInsightsCard />}
           </TabsContent>
 
           <TabsContent value="mize" className="space-y-6">
@@ -6090,7 +6105,12 @@ function DashboardInner() {
               <Select value={newEmp.role} onValueChange={(v) => setNewEmp((f) => ({ ...f, role: v }))}>
                 <SelectTrigger aria-label={t('emp.newRole')}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {['WAITER', 'BAR', 'KITCHEN', 'CHEF', 'MANAGER', 'CLEANER', 'WAREHOUSE'].map((r) => (
+                  {/* QA-val v1.222.0 (najdba #1): centralna vloga (OWNER/ADMIN) vidi tudi
+                      privilegirane vloge — backend jih sme ustvariti (assertCentralGrant /
+                      PRIVILEGED_ROLES), toda UI jih prej NI ponudil, zato je bilo dedovanje
+                      lastništva mogoče samo neposredno prek baze. Operativne vloge ostanejo
+                      za vse z employees.manage (vodja: samo operativne — C2 matrica). */}
+                  {(canManage ? ['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTING', 'WAREHOUSE', 'WAITER', 'BAR', 'KITCHEN', 'CHEF', 'CLEANER'] : ['WAITER', 'BAR', 'KITCHEN', 'CHEF', 'MANAGER', 'CLEANER', 'WAREHOUSE']).map((r) => (
                     <SelectItem key={r} value={r}>{roleL(r)}</SelectItem>
                   ))}
                 </SelectContent>
@@ -6123,9 +6143,12 @@ function DashboardInner() {
                       <SelectTrigger aria-label={t('shifts.csvRole')}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {/* ISSUE #72 E4: WAREHOUSE/ACCOUNTING dodani v izbor (bili samo v
-                            DB/izračunu); enterprise vloge ostanejo centralna pridržana pravica */}
-                        {['OWNER', 'ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'CLEANER', 'WAREHOUSE', 'ACCOUNTING'].map((r) => (
-                          <SelectItem key={r} value={r} disabled={(user?.role !== 'OWNER' && r === 'OWNER') || (r !== 'WAITER' && r !== 'BAR' && r !== 'KITCHEN' && r !== 'CLEANER' && !isCentralUIRole(user?.role))}>{roleL(r)}</SelectItem>
+                            DB/izračunu); enterprise vloge ostanejo centralna pridržana pravica.
+                            QA-val v1.222.0 (najdba #1-dopolnitev): CHEF manjkal v izboru —
+                            nov-dialog in POST/OPERATIVE_ROLES ga imajo (vodja sme ustvariti kuharja,
+                            a mu urejanje vloge ni ponujalo izbire). */}
+                        {['OWNER', 'ADMIN', 'MANAGER', 'WAITER', 'BAR', 'KITCHEN', 'CHEF', 'CLEANER', 'WAREHOUSE', 'ACCOUNTING'].map((r) => (
+                          <SelectItem key={r} value={r} disabled={(user?.role !== 'OWNER' && r === 'OWNER') || (r !== 'WAITER' && r !== 'BAR' && r !== 'KITCHEN' && r !== 'CHEF' && r !== 'CLEANER' && !isCentralUIRole(user?.role))}>{roleL(r)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -6175,6 +6198,17 @@ function DashboardInner() {
                       )
                     })}
                   </div>
+                  {/* QA-val v1.222.0 (najdba #7): receipts.storno brez reports.sales je
+                      NEUPORABEN override — gumb za storno živi v zavihku Računi (TAB_PERM:
+                      reports.sales) in GET /api/furs zahteva isto pravico (N5 revizija §4,
+                      namerna izbira). Opozori podeljevalca, preden shrani mrtvi ključ. */}
+                  {empPerms.includes('receipts.storno') && !empEffective.fromRole.includes('reports.sales') && !empPerms.includes('reports.sales') && (
+                    <p className="text-xs rounded-md bg-amber-50 px-2.5 py-1.5 text-amber-800 border border-amber-200">
+                      ⚠ Storno gumb je v zavihku »Računi«, ki zahteva tudi dovoljenje
+                      »Poročila — prodaja, računi, stroški (finance)«. Brez njega imetnik
+                      storno pravice ne vidi računov, ki jih lahko stornira.
+                    </p>
+                  )}
                   <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={empSaving} onClick={() => patchEmployee({ permissionOverrides: empPerms, role: empRole, status: empActive ? 'active' : 'inactive', ...(empLoc ? { locationId: empLoc } : {}) }, t('emp.savedOk'))}>
                     {empSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('emp.saveProfile')}
                   </Button>
