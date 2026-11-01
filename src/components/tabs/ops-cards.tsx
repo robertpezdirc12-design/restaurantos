@@ -1242,7 +1242,7 @@ export function NotificationsCard() {
                       <td className="p-2 font-medium">{t(`notif.event.${ev}`)}</td>
                       <td className="p-2">
                         <Select value={rule.mode} onValueChange={(v) => setMode(ev, v as NotifMode)}>
-                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-8" aria-label={t(`notif.event.${ev}`)}><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="everyone">{t('notif.modeEveryone')}</SelectItem>
                             <SelectItem value="roles">{t('notif.modeRoles')}</SelectItem>
@@ -1930,7 +1930,7 @@ export function BatchPrepCard() {
                   <div className="space-y-1.5">
                     <Label>{t('batch.item')}</Label>
                     <Select value={selItem || BATCH_NONE} onValueChange={(v) => void pickItem(v)}>
-                      <SelectTrigger><SelectValue placeholder={t('batch.itemPick')} /></SelectTrigger>
+                      <SelectTrigger aria-label={t('batch.itemPick')}><SelectValue placeholder={t('batch.itemPick')} /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value={BATCH_NONE}>{t('batch.itemPick')}</SelectItem>
                         {cands.map((c) => (
@@ -2108,7 +2108,7 @@ export function UpsellCard({ menuItems, canManage }: { menuItems: UpsellMenuItem
             {canManage && (
               <div className="flex items-center gap-2">
                 <Select value={pickNew} onValueChange={(v) => { if (v !== UPSELL_NONE) { setEditItem(v); setPicked(config[v] || []) } setPickNew(UPSELL_NONE) }}>
-                  <SelectTrigger className="h-9 max-w-72"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 max-w-72" aria-label={t('upsell.addFor')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={UPSELL_NONE}>{t('upsell.addFor')}</SelectItem>
                     {unconfigured.map((m) => (
@@ -2279,7 +2279,7 @@ export function DisplayPromosCard() {
                     <div className="space-y-2 min-w-0">
                       <div className="space-y-1">
                         <Label className="text-xs text-stone-500">{t('promo.image')}</Label>
-                        <Input
+                        <Input aria-label="https://…"
                           value={ad.imageUrl}
                           onChange={(e) => patchRow(ad.id, { imageUrl: e.target.value })}
                           placeholder="https://…"
@@ -2290,7 +2290,7 @@ export function DisplayPromosCard() {
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('promo.from')}</Label>
-                          <Input
+                          <Input aria-label={t('promo.from')}
                             type="date"
                             value={ad.startDate ?? ''}
                             onChange={(e) => patchRow(ad.id, { startDate: e.target.value || undefined })}
@@ -2299,7 +2299,7 @@ export function DisplayPromosCard() {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('promo.to')}</Label>
-                          <Input
+                          <Input aria-label={t('promo.to')}
                             type="date"
                             value={ad.endDate ?? ''}
                             onChange={(e) => patchRow(ad.id, { endDate: e.target.value || undefined })}
@@ -2311,7 +2311,7 @@ export function DisplayPromosCard() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-stone-500">{t('promo.duration')}</Label>
-                      <Input
+                      <Input aria-label={t('promo.duration')}
                         inputMode="numeric"
                         value={String(ad.durationSec)}
                         onChange={(e) => patchRow(ad.id, { durationSec: Number(e.target.value.replace(/\D/g, '')) || 15 })}

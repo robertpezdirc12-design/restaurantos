@@ -354,11 +354,24 @@ function KioskInner() {
             {t('guest.kiosk.instructions')}
           </p>
           <Input
+            /* Issue #89 (QA hrošč 5/6): id + name + aria-label + inputMode —
+               primarni vnos je 8-mestna ŠTEVILČNA koda (tipkovnica številčnega
+               bloka); polni rodev_ žeton ostaje možen prek prilepljenega vnosa
+               (inputMode je NAMIG, ne validacija — PC/terminal tipkovnice so
+               nespremenjene). */
+            id="kiosk-activation-code"
+            name="activationCode"
             className="bg-stone-900 border-stone-600 text-stone-100 h-12"
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
             placeholder={t('guest.kiosk.tokenPlaceholder')}
             aria-label={t('guest.kiosk.tokenLabel')}
+            inputMode="numeric"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            maxLength={64}
           />
           {pageErr.error && <p role="alert" className="mt-3 text-sm text-red-400">{pageErr.text}{retryHint ? ` ${t('guest.kiosk.autoRetry')}` : ''}</p>}
           <Button className="w-full mt-4 h-12 text-base" onClick={activate} disabled={loading}>

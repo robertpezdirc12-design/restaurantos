@@ -295,8 +295,11 @@ export async function flushQueue(): Promise<FlushResult> {
   sweepExpired()
   const ops = getQueue()
   if (ops.length === 0) return { flushed: 0, failed: 0, remaining: 0, dead: 0 }
+  // Issue #90 (QA): avtentikacija poteka prek httpOnly piškotka (same-origin
+  // fetch ga nosi sam); legacy ro_token (seje pred v1.219.0) se priloži kot
+  // Bearer, če obstaja. PREJ se je flush brez žetona SINHRONO prekinil — z žetonom
+  // SAMO v localStorage bi se offline vrsta z novimi prijavami NIKOLI več izpraznila.
   const token = localStorage.getItem('ro_token')
-  if (!token) return { flushed: 0, failed: 0, remaining: ops.length, dead: ops.filter((o) => o.status === 'dead').length }
   // Issue #3 §A: dead operacije ostanejo v localStorage, na /api/sync gredo SAMO
   // žive (strežniška zavrnitev bi sicer samo povečala attempts brez efekta)
   const sendable = ops.filter((o) => o.status !== 'dead')
@@ -304,7 +307,7 @@ export async function flushQueue(): Promise<FlushResult> {
   if (sendable.length === 0) return { flushed: 0, failed: 0, remaining: 0, dead }
   const res = await fetch('/api/sync', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ deviceId: getDeviceId(), ops: sendable.map((o) => ({ clientOperationId: o.clientOperationId, kind: o.kind, payload: o.payload })) }),
   })
   if (!res.ok) {

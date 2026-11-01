@@ -141,6 +141,8 @@ export const it: Record<string, string> = {
   'guest.display.title': 'Display per il cliente',
   'guest.display.notRegistered': 'Il dispositivo display non è registrato.',
   'guest.display.tokenHint': 'Inserisci un token dispositivo di tipo customer_display (Impostazioni → Dispositivi → aggiungi dispositivo).',
+  'guest.display.tokenLabel': 'Token del dispositivo per lo schermo clienti',
+  'guest.display.pairCodeLabel': 'Codice di abbinamento a 6 cifre dal POS',
   'guest.display.invalidToken': 'Inserisci un token dispositivo valido.',
   'guest.display.showScreen': 'Mostra schermo',
   'guest.display.connectPos': 'Connetti al POS',

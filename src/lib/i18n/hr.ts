@@ -215,6 +215,9 @@ export const hr: Record<string, string> = {
   'header.inactive': '(neaktivna)',
   'header.viewAria': 'Pogled — odabir lokacije',
   'header.online': 'Online',
+  // Issue #93 (QA): vidljiva oznaka demo sesije u zaglavlju dashboarda
+  'header.demoBadge': 'DEMO',
+  'header.demoTitle': 'Demo sesija — testni podaci. Demo pristup se može isključiti s DEMO_LOGIN_ENABLED=0.',
   'header.offline': 'Offline',
   'header.syncing': 'Sinkroniziram…',
   'header.queued': '{n} u redu',
@@ -1782,6 +1785,11 @@ export const hr: Record<string, string> = {
   'resv.upcoming': 'Nadolazeće rezervacije',
   'resv.new': 'Nova rezervacija',
   'resv.newDesc': 'Ime gosta i datum su obavezni; ostala polja su neobavezna.',
+  // Issue #96 (QA P1): izbirnik lokacije za centralne uloge bez dodijeljene lokacije
+  'resv.locationLabel': 'Lokacija rezervacije',
+  'resv.locationPlaceholder': 'Odaberite lokaciju',
+  'resv.locationMissing': 'Odaberite lokaciju rezervacije.',
+  'resv.locationOnly': 'U opsegu je jedna jedina lokacija — koristit će se automatski.',
   'resv.empty': 'Nema nadolazećih rezervacija — kad gosti potvrde dolazak, pojavit će se ovdje. Stvorite prvu rezervaciju gumbom gore.',
   'resv.stConfirmed': 'Potvrđena',
   'resv.stSeated': 'Gost je došao',
@@ -1931,6 +1939,11 @@ export const hr: Record<string, string> = {
   'rcpt.none': 'Nema izdanih računa.',
   'rcpt.orderShort': 'narudžba #{n}',
   'rcpt.unverified': 'nepotvrđeno',
+  // Issue #94 (QA): EOR prikaz kod nefiskaliziranih + oznaka starog broja + prazan popis u razdoblju
+  'rcpt.eorPending': 'EOR nije izdan — čeka fiskalizaciju',
+  'rcpt.eorNone': 'Nije fiskalizirano (bez EOR-a)',
+  'rcpt.legacyBadge': 'stari br.',
+  'rcpt.noneInRange': 'U odabranom razdoblju ({from} – {to}) nema izdanih računa (učitano je zadnjih 100).',
   // Storno računa (P1 revizija, točka 1)
   'rcpt.stornoBtn': 'Storno',
   'rcpt.stornoConfirm': 'Stornirati račun {n} ({a})? Stvara se storno račun s negativnim iznosom, razdužena zaliha se vraća, a narudžba se označava kao storno. Akcija se bilježi u revizijskom slijedu.',
@@ -2416,6 +2429,9 @@ export const hr: Record<string, string> = {
   'guest.display.title': 'Customer display',
   'guest.display.notRegistered': 'Zaslon uređaja nije registriran.',
   'guest.display.tokenHint': 'Unesi token uređaja tipa customer_display (Postavke → Uređaji → dodaj uređaj).',
+  // Issue #89 (QA): pristupačno ime unosnog polja za čitače zaslona
+  'guest.display.tokenLabel': 'Token uređaja za zaslon za goste',
+  'guest.display.pairCodeLabel': '6-znamenkast paritetni kod iz POS-a',
   'guest.display.invalidToken': 'Unesi valjani token uređaja.',
   'guest.display.showScreen': 'Prikaži zaslon',
   'guest.display.connectPos': 'Poveži s POS-om',

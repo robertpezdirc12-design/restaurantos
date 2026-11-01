@@ -1018,7 +1018,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
           <div className="sm:max-w-xs space-y-1.5">
             <Label>{t('proc.statusFilter')}</Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label={t('proc.statusFilter')}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t('proc.allStatuses')}</SelectItem>
                 {Object.entries(NABAVA_STATUS).map(([k, v]) => (
@@ -1157,7 +1157,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
               <div className="space-y-1.5">
                 <Label>{t('proc.supplierLabel')}</Label>
                 <Select value={poSupplierId} onValueChange={setPoSupplierId}>
-                  <SelectTrigger><SelectValue placeholder={suppliers[0]?.name || t('proc.chooseSupplier')} /></SelectTrigger>
+                  <SelectTrigger aria-label={t('proc.supplierLabel')}><SelectValue placeholder={suppliers[0]?.name || t('proc.chooseSupplier')} /></SelectTrigger>
                   <SelectContent className="max-h-64">
                     {suppliers.filter((s) => s.isActive).map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
@@ -1170,7 +1170,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                 <Label>{t('dev.location')}</Label>
                 {locations.length > 0 ? (
                   <Select value={poLocationId} onValueChange={setPoLocationId}>
-                    <SelectTrigger><SelectValue placeholder={t('proc.defaultLocation')} /></SelectTrigger>
+                    <SelectTrigger aria-label={t('proc.defaultLocation')}><SelectValue placeholder={t('proc.defaultLocation')} /></SelectTrigger>
                     <SelectContent>
                       {locations.map((l) => (
                         <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
@@ -1178,7 +1178,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Input disabled value={t('proc.defaultLocation')} />
+                  <Input id="nb-po-location" name="locationId" disabled value={t('proc.defaultLocation')} aria-label={t('dev.location')} />
                 )}
               </div>
               <div className="space-y-1.5">
@@ -1195,7 +1195,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
               <div className="space-y-1.5 grow min-w-48">
                 <Label>{t('proc.addInvItem')}</Label>
                 <Select value="" onValueChange={addPoLineFromInventory}>
-                  <SelectTrigger><SelectValue placeholder={t('proc.itemPlaceholder')} /></SelectTrigger>
+                  <SelectTrigger aria-label={t('proc.itemPlaceholder')}><SelectValue placeholder={t('proc.itemPlaceholder')} /></SelectTrigger>
                   <SelectContent className="max-h-64">
                     {invItems.filter((i) => !poLines.some((l) => l.inventoryItemId === i.id)).map((i) => (
                       <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>
@@ -1220,28 +1220,28 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                         {l.inventoryItemId ? (
                           <p className="text-sm font-medium py-1.5">{l.description}</p>
                         ) : (
-                          <Input value={l.description} onChange={(e) => updatePoLine(idx, { description: e.target.value })} placeholder={t('proc.lineDescPlaceholder')} />
+                          <Input aria-label={t('proc.lineDescPlaceholder')} value={l.description} onChange={(e) => updatePoLine(idx, { description: e.target.value })} placeholder={t('proc.lineDescPlaceholder')} />
                         )}
                       </div>
                       <div className="sm:col-span-2 space-y-1">
                         <Label className="text-xs text-stone-500">{t('proc.qty')}</Label>
-                        <Input inputMode="decimal" value={l.quantity} onChange={(e) => updatePoLine(idx, { quantity: e.target.value })} />
+                        <Input aria-label={t('proc.qty')} inputMode="decimal" value={l.quantity} onChange={(e) => updatePoLine(idx, { quantity: e.target.value })} />
                       </div>
                       <div className="sm:col-span-2 space-y-1">
                         <Label className="text-xs text-stone-500">{t('inv.unit')}</Label>
                         {l.inventoryItemId ? (
                           <p className="text-sm py-1.5 text-stone-600">{l.unit}</p>
                         ) : (
-                          <Input value={l.unit} onChange={(e) => updatePoLine(idx, { unit: e.target.value })} />
+                          <Input aria-label={t('inv.unit')} value={l.unit} onChange={(e) => updatePoLine(idx, { unit: e.target.value })} />
                         )}
                       </div>
                       <div className="sm:col-span-2 space-y-1">
                         <Label className="text-xs text-stone-500">{t('proc.pricePerUnit')}</Label>
-                        <Input inputMode="decimal" value={l.unitPrice} onChange={(e) => updatePoLine(idx, { unitPrice: e.target.value })} />
+                        <Input aria-label={t('proc.pricePerUnit')} inputMode="decimal" value={l.unitPrice} onChange={(e) => updatePoLine(idx, { unitPrice: e.target.value })} />
                       </div>
                       <div className="sm:col-span-1 space-y-1">
                         <Label className="text-xs text-stone-500">{t('proc.vatPercent')}</Label>
-                        <Input inputMode="decimal" value={l.vatRate} onChange={(e) => updatePoLine(idx, { vatRate: e.target.value })} />
+                        <Input aria-label={t('proc.vatPercent')} inputMode="decimal" value={l.vatRate} onChange={(e) => updatePoLine(idx, { vatRate: e.target.value })} />
                       </div>
                       <div className="sm:col-span-1 flex justify-end">
                         <Button size="sm" variant="outline" className="h-9 w-9 p-0 text-red-600" aria-label={t('proc.removeLine')} onClick={() => removePoLine(idx)}>×</Button>
@@ -1479,15 +1479,15 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.thRejected')}</Label>
-                          <Input inputMode="decimal" value={l.reject} onChange={(e) => updateRecvLine(it.id, { reject: e.target.value })} />
+                          <Input aria-label={t('proc.thRejected')} inputMode="decimal" value={l.reject} onChange={(e) => updateRecvLine(it.id, { reject: e.target.value })} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.rejectReason')}{rejNum > 0 ? ' *' : ''}</Label>
-                          <Input value={l.reason} onChange={(e) => updateRecvLine(it.id, { reason: e.target.value })} placeholder={t('proc.reasonPlaceholder')} />
+                          <Input aria-label={t('proc.reasonPlaceholder')} value={l.reason} onChange={(e) => updateRecvLine(it.id, { reason: e.target.value })} placeholder={t('proc.reasonPlaceholder')} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-stone-500">{t('proc.expiry')}</Label>
-                          <Input type="date" value={l.expiry} onChange={(e) => updateRecvLine(it.id, { expiry: e.target.value })} />
+                          <Input aria-label={t('proc.expiry')} type="date" value={l.expiry} onChange={(e) => updateRecvLine(it.id, { expiry: e.target.value })} />
                         </div>
                       </div>
                     </div>

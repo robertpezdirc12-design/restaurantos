@@ -200,7 +200,7 @@ function TablicaInner() {
         <LanguageToggle />
         <button aria-label={t('tlb.handheld')} onClick={() => router.push('/handheld')} className="p-2 rounded-lg hover:bg-emerald-800"><Smartphone className="w-5 h-5" /></button>
         <button aria-label={t('tlb.fullPos')} onClick={() => router.push('/dashboard')} className="p-2 rounded-lg hover:bg-emerald-800"><Monitor className="w-5 h-5" /></button>
-        <button aria-label={t('header.logout')} onClick={() => { localStorage.removeItem('ro_token'); localStorage.removeItem('ro_user'); router.replace('/') }} className="p-2 rounded-lg hover:bg-emerald-800"><LogOut className="w-5 h-5" /></button>
+        <button aria-label={t('header.logout')} onClick={() => { /* Issue #90 (QA): piškotek seje pobriše strežnik (httpOnly). */ void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); localStorage.removeItem('ro_token'); localStorage.removeItem('ro_user'); router.replace('/') }} className="p-2 rounded-lg hover:bg-emerald-800"><LogOut className="w-5 h-5" /></button>
       </header>
 
       {notice && <p className="mx-4 mt-3 text-xs rounded-md px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200">{notice}</p>}
@@ -254,7 +254,7 @@ function TablicaInner() {
             <div className="flex gap-2 items-center">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-stone-400" />
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sale.search')} className="pl-8" />
+                <Input aria-label={t('sale.search')} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sale.search')} className="pl-8" />
               </div>
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">

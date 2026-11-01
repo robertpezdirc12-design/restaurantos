@@ -655,7 +655,7 @@ export function AccountingExportCard() {
           <div className="space-y-1">
             <Label className="text-xs">{t('acc.section')}</Label>
             <Select value={section} onValueChange={(v) => setSection(v as 'summary' | 'dnevnik' | 'ddv' | 'zz')}>
-              <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label={t('acc.section')} className="w-64"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="summary">{t('acc.summary')}</SelectItem>
                 <SelectItem value="dnevnik">{t('acc.dnevnik')}</SelectItem>
@@ -936,12 +936,12 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label>{t('tips.day')}</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input aria-label={t('tips.day')} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>{t('dev.location')}</Label>
               <Select value={locId || undefined} onValueChange={setLocId}>
-                <SelectTrigger><SelectValue placeholder={locations[0]?.name || '—'} /></SelectTrigger>
+                <SelectTrigger aria-label={t('dev.location')}><SelectValue placeholder={locations[0]?.name || '—'} /></SelectTrigger>
                 <SelectContent>
                   {locations.map((l) => (
                     <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
@@ -952,7 +952,7 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
             <div className="space-y-1.5">
               <Label>{t('tips.basis')}</Label>
               <Select value={method} onValueChange={(v) => setMethod(v as 'hours' | 'equal' | 'points')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label={t('tips.basis')}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="hours">{t('tips.basisHours')}</SelectItem>
                   <SelectItem value="equal">{t('tips.basisEqual')}</SelectItem>

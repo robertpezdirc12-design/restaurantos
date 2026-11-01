@@ -854,7 +854,7 @@ function ApMatchDialog({ apId, description, onClose, onReload }: { apId: string;
                 <div className="rounded-lg border border-purple-200 bg-purple-50 p-2.5 space-y-1.5">
                   <p className="text-xs font-medium text-purple-800">{t('apmatch.approveHint')}</p>
                   <div className="flex gap-2">
-                    <Input value={reason} onChange={(e) => setReason(e.target.value.slice(0, 500))} placeholder={t('apmatch.reasonPlaceholder')} maxLength={500} className="bg-white" />
+                    <Input aria-label={t('apmatch.reasonPlaceholder')} value={reason} onChange={(e) => setReason(e.target.value.slice(0, 500))} placeholder={t('apmatch.reasonPlaceholder')} maxLength={500} className="bg-white" />
                     <Button size="sm" className="bg-purple-700 hover:bg-purple-800" disabled={busy || reason.trim().length < 10} onClick={() => void approveException()}>
                       {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('apmatch.approve')}
                     </Button>

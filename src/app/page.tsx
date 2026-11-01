@@ -63,8 +63,12 @@ function LoginPageInner() {
   const [setupOpen, setSetupOpen] = useState(false)
 
   useEffect(() => {
+    // Issue #90 (QA): žeton živi v httpOnly piškotku — v localStorage ostane
+    // samo ro_user (prikazni podatki) + legacy ro_token iz sezon PRED tem dvigom
+    // (prehod: stare seje še delujejo prek Bearerja, nove ne pišejo več žetona).
     const token = localStorage.getItem('ro_token')
-    if (token) {
+    const sessionUser = localStorage.getItem('ro_user')
+    if (token || sessionUser) {
       router.replace('/dashboard')
       return
     }
@@ -117,9 +121,15 @@ function LoginPageInner() {
         setError(data.error || t('login.demoFailed'))
         return
       }
-      localStorage.setItem('ro_token', data.token)
-      localStorage.setItem('ro_user', JSON.stringify(data.employee))
+      // Issue #90 (QA): žetona NE shranjujemo več — seja potuje prek httpOnly
+      // piškotka (Set-Cookie iz strežnika). ro_user nosi samo PRIKAZNE podatke
+      // (dovoljenja dashboard ionakao prinese /api/auth/me; fail-closed do tedaj).
+      // Issue #93 (QA): demo seja je vidno označena (ro_demo → značka v glavi).
+      const { permissions: _demoPerms, ...demoEmployeeForUi } = data.employee ?? {}
+      localStorage.setItem('ro_user', JSON.stringify(demoEmployeeForUi))
+      localStorage.setItem('ro_demo', '1')
       localStorage.removeItem('ro_bootstrap')
+      localStorage.removeItem('ro_token')
       const landing = landingTab(String(data.employee?.role || ''), Array.isArray(data.employee?.permissions) ? data.employee.permissions : [])
       router.push(landing.station ? `/dashboard?tab=${landing.tab}&station=${landing.station}` : `/dashboard?tab=${landing.tab}`)
     } catch {
@@ -151,8 +161,13 @@ function LoginPageInner() {
         }
         return
       }
-      localStorage.setItem('ro_token', data.token)
-      localStorage.setItem('ro_user', JSON.stringify(data.employee))
+      // Issue #90 (QA): žetona NE pišemo v localStorage — httpOnly piškotek je
+      // nastavil strežnik (Set-Cookie). ro_user = prikazni podatki (permissions
+      // odbrisane: dashboard jih prinese sveže iz /api/auth/me, fail-closed start).
+      const { permissions: _omitPerms, ...employeeForUi } = data.employee ?? {}
+      localStorage.setItem('ro_user', JSON.stringify(employeeForUi))
+      localStorage.removeItem('ro_demo')
+      localStorage.removeItem('ro_token')
       // v1.94.0 (#34): bootstrap prijava je VEDNO ločena break-glass identiteta —
       // dashboard svetuje prehod na pravi račun (PIN iz baze + MFA)
       if (data.bootstrap) localStorage.setItem('ro_bootstrap', '1')
@@ -216,11 +231,12 @@ function LoginPageInner() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || t('login.failed')); return }
       setRecovery(data.recoveryCodes || [])
-      // nadaljevalni žeton + identiteta SHRANIMO šele po potrditvi, da je
+      // nadaljevalni žeton (Issue #90: potuje prek httpOnly piškotka — Set-Cookie
+      // je strežnik že poslal) + identiteta SHRANIMO šele po potrditvi, da je
       // uporabnik videl recovery kode (v DB so samo hash — to je EDINA priložnost)
-      if (data.token) {
-        localStorage.setItem('ro_token', data.token)
-        if (enrollEmployee) localStorage.setItem('ro_user', JSON.stringify(enrollEmployee))
+      if (data.token && enrollEmployee) {
+        const { permissions: _omitPerms, ...employeeForUi } = enrollEmployee
+        localStorage.setItem('ro_user', JSON.stringify(employeeForUi))
       }
     } catch {
       setError(t('login.connection'))
@@ -345,6 +361,7 @@ function LoginPageInner() {
                   <Label htmlFor="email">{t('login.email')}</Label>
                   <Input
                     id="email"
+                    name="email"
                     type="email"
                     autoComplete="username"
                     placeholder="ime@restaurantos.app"
@@ -358,9 +375,12 @@ function LoginPageInner() {
                   <Label htmlFor="pin">{t('login.pin')}</Label>
                   <Input
                     id="pin"
+                    name="pin"
                     type="password"
                     inputMode="numeric"
-                    autoComplete="current-password"
+                    pattern="[0-9]*"
+                    maxLength={8}
+                    autoComplete="off"
                     placeholder="••••"
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
@@ -374,8 +394,10 @@ function LoginPageInner() {
                     <Label htmlFor="mfa-code">{t('login.mfaCodeLabel')}</Label>
                     <Input
                       id="mfa-code"
+                      name="mfaCode"
                       inputMode="numeric"
                       autoComplete="one-time-code"
+                      maxLength={6}
                       placeholder="••••••"
                       value={mfaCode}
                       onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}

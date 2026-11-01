@@ -75,7 +75,7 @@ export function HaccpTab({ checks, onReload, canManagePlans = true }: { checks: 
             <div className="space-y-1.5">
               <Label>{t('haccp.typeLabel')}</Label>
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label={t('haccp.typeLabel')}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(HACCP_TYPE_KEYS).map(([v, k]) => <SelectItem key={v} value={v}>{t(k)}</SelectItem>)}
                 </SelectContent>
@@ -96,7 +96,7 @@ export function HaccpTab({ checks, onReload, canManagePlans = true }: { checks: 
             <div className="space-y-1.5">
               <Label>{t('haccp.result')}</Label>
               <Select value={ok ? 'ok' : 'warn'} onValueChange={(v) => setOk(v === 'ok')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label={t('haccp.result')}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ok">{t('haccp.okSelect')}</SelectItem>
                   <SelectItem value="warn">{t('haccp.noteSelect')}</SelectItem>
@@ -650,14 +650,14 @@ function EntryDetailDialog({ entryId, onClose, onChanged }: { entryId: string | 
                       <span className="text-xs">{t('haccp.verify.approval')}</span>
                     </Button>
                   </div>
-                  <Input
+                  <Input aria-label={t('haccp.verify.recheckValue')}
                     inputMode="decimal"
                     className="h-14 text-lg text-center"
                     value={recheckValue}
                     onChange={(e) => setRecheckValue(e.target.value.replace(/[^\d.,-]/g, ''))}
                     placeholder={t('haccp.verify.recheckValue')}
                   />
-                  <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('haccp.verify.notePlaceholder')} />
+                  <Input aria-label={t('haccp.verify.notePlaceholder')} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('haccp.verify.notePlaceholder')} />
                   <p className="text-xs text-stone-400">{t('haccp.verify.hint')}</p>
                 </div>
                 <Button variant="outline" onClick={() => { setMode('none'); setError('') }}>{t('common.cancel')}</Button>
@@ -909,7 +909,7 @@ function HaccpPlansSection() {
               <div className="space-y-1.5">
                 <Label>{t('haccp.typeLabel')}</Label>
                 <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('haccp.typeLabel')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(HACCP_TYPE_KEYS).map(([v, k]) => <SelectItem key={v} value={v}>{t(k)}</SelectItem>)}
                   </SelectContent>
@@ -918,7 +918,7 @@ function HaccpPlansSection() {
               <div className="space-y-1.5">
                 <Label>{t('haccpPlan.frequency')}</Label>
                 <Select value={frequency} onValueChange={setFrequency}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('haccpPlan.frequency')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="daily">{t('haccpPlan.freq.daily')}</SelectItem>
                     <SelectItem value="weekly">{t('haccpPlan.freq.weekly')}</SelectItem>
@@ -953,7 +953,7 @@ function HaccpPlansSection() {
                 <div className="space-y-1.5">
                   <Label>{t('haccpPlan.measureKind')}</Label>
                   <Select value={measureKind} onValueChange={setMeasureKind}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label={t('haccpPlan.measureKind')}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="confirm">{t('haccpPlan.measureConfirm')}</SelectItem>
                       <SelectItem value="number">{t('haccpPlan.measureNumber')}</SelectItem>
@@ -981,7 +981,7 @@ function HaccpPlansSection() {
                     <div className="space-y-1.5">
                       <Label>{t('haccpPlan.direction')}</Label>
                       <Select value={direction} onValueChange={setDirection}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={t('haccpPlan.direction')}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="below">{t('haccpPlan.dir.below')}</SelectItem>
                           <SelectItem value="above">{t('haccpPlan.dir.above')}</SelectItem>
@@ -1032,7 +1032,7 @@ function HaccpPlansSection() {
                   <div className="space-y-1.5">
                     <Label>{t('haccpPlan.weekday')}</Label>
                     <Select value={weekday} onValueChange={setWeekday}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={t('haccpPlan.weekday')}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(WEEKDAY_KEYS).map(([v, k]) => <SelectItem key={v} value={v}>{t(k)}</SelectItem>)}
                       </SelectContent>

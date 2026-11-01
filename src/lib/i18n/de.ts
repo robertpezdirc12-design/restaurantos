@@ -141,6 +141,8 @@ export const de: Record<string, string> = {
   'guest.display.title': 'Kundendisplay',
   'guest.display.notRegistered': 'Display-Gerät ist nicht registriert.',
   'guest.display.tokenHint': 'Geben Sie ein Gerätetoken vom Typ customer_display ein (Einstellungen → Geräte → Gerät hinzufügen).',
+  'guest.display.tokenLabel': 'Gerätetoken für den Gastbildschirm',
+  'guest.display.pairCodeLabel': '6-stelliger Kopplungscode aus dem Kassensystem',
   'guest.display.invalidToken': 'Geben Sie ein gültiges Gerätetoken ein.',
   'guest.display.showScreen': 'Bildschirm anzeigen',
   'guest.display.connectPos': 'Mit POS verbinden',

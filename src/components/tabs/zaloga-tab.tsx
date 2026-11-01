@@ -349,7 +349,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                         <p className="truncate text-sm font-medium">{it.name}</p>
                         <p className="text-xs text-stone-500">{t('st.expected')}: {it.expectedQty} {it.unit}</p>
                       </div>
-                      <Input
+                      <Input aria-label="—"
                         className="h-8 w-24 text-right text-sm"
                         inputMode="decimal"
                         placeholder="—"
@@ -478,7 +478,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               <div className="space-y-1.5">
                 <Label>{t('inv.menuItem')}</Label>
                 <Select value={recForm.menuItemId} onValueChange={(v) => setRecForm({ ...recForm, menuItemId: v })}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder={t('inv.selectItem')} /></SelectTrigger>
+                  <SelectTrigger aria-label={t('inv.selectItem')} className="w-full"><SelectValue placeholder={t('inv.selectItem')} /></SelectTrigger>
                   <SelectContent className="max-h-72">
                     {menuItems.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                   </SelectContent>
@@ -490,12 +490,12 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                   <div key={idx} className="space-y-1">
                     <div className="flex gap-2 items-center">
                       <Select value={line.inventoryItemId} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, inventoryItemId: v } : l) })}>
-                        <SelectTrigger className="flex-1"><SelectValue placeholder={t('inv.ingredient')} /></SelectTrigger>
+                        <SelectTrigger aria-label={t('inv.ingredient')} className="flex-1"><SelectValue placeholder={t('inv.ingredient')} /></SelectTrigger>
                         <SelectContent className="max-h-72">
                           {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>)}
                         </SelectContent>
                       </Select>
-                      <Input type="number" step="0.001" min="0" className="w-20" value={line.qty} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l) })} placeholder="0" />
+                      <Input aria-label="0" type="number" step="0.001" min="0" className="w-20" value={line.qty} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, qty: e.target.value } : l) })} placeholder="0" />
                       {/* OPS-9: yield percent per line (1-100, default 100) */}
                       <div className="relative w-20 shrink-0">
                         <Input type="number" min="1" max="100" step="1" className="w-20 pr-6" aria-label={t('recipe.yield')} value={line.yield} onChange={(e) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, yield: e.target.value } : l) })} placeholder="100" />
@@ -508,7 +508,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                       <div className="flex items-center gap-1.5 pl-1">
                         <span className="text-xs text-stone-400 shrink-0">{t('recipe.parentOf')}</span>
                         <Select value={line.parent || '__none__'} onValueChange={(v) => setRecForm({ ...recForm, lines: recForm.lines.map((l, i) => i === idx ? { ...l, parent: v === '__none__' ? '' : v } : l) })}>
-                          <SelectTrigger className="h-7 flex-1 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-7 flex-1 text-xs" aria-label={t('recipe.parentOf')}><SelectValue /></SelectTrigger>
                           <SelectContent className="max-h-72">
                             <SelectItem value="__none__">{t('recipe.parentNone')}</SelectItem>
                             {recForm.lines.map((l, i) => (i !== idx && l.inventoryItemId && l.inventoryItemId !== line.inventoryItemId) ? (
@@ -546,7 +546,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               <div className="space-y-1.5">
                 <Label htmlFor="ni-unit">{t('inv.unit')}</Label>
                 <Select value={ni.unit} onValueChange={(v) => setNi({ ...ni, unit: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('inv.unit')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {['kg', 'l', 'pcs', 'g', 'ml'].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                   </SelectContent>

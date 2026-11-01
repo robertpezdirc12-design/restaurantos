@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { createToken, employeePinFields, matchesBootstrap, timingSafeEqualStr } from '@/lib/auth'
+import { createToken, employeePinFields, matchesBootstrap, timingSafeEqualStr, setSessionCookie } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { fail } from '@/lib/api'
-import { rateLimitSharedAsync } from '@/lib/rate-limit'
+import { rateLimitSharedAsync, type RateLimitResult } from '@/lib/rate-limit'
 import { resolvePermissions, resolvePermissionsForUIRole } from '@/lib/permissions'
 import { totpVerify, roleRequiresMfa, mfaEnforcementActive, MFA_ENROLLMENT_ONLY_HOURS } from '@/lib/mfa'
 import { claimTotpCounter, consumeRecoveryCodeAtomic, mfaAttemptRateLimited } from '@/lib/mfa-stepup'
@@ -51,18 +51,23 @@ function ipOf(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
 
-async function loginRateLimited(ip: string, email: string): Promise<boolean> {
-  // IP dimenzija — burst 10/min (isti limit kot prej, zdaj store-aware)
-  if (!(await rateLimitSharedAsync(`login:${ip}`, 10, 60_000)).allowed) return true
+async function loginRateLimited(ip: string, email: string): Promise<RateLimitResult | null> {
+  // IP dimenzija — burst 10/min (isti limit kot prej, zdaj store-aware);
+  // Issue #92 (QA): vrača REZULTAT (ne boolean) — klicoč izpiše Retry-After
+  // iz resetAt prve sprožene meje, namesto da bi klient ugibal.
+  const ipRes = await rateLimitSharedAsync(`login:${ip}`, 10, 60_000)
+  if (!ipRes.allowed) return ipRes
   // ACCOUNT dimenzija — burst 10/min + progresivno okno 30/15 min (brez
   // trajnega zaklepa: okence poteče, legitimna prijava se opomore sama)
-  if (!(await rateLimitSharedAsync(`login-acct:${email}`, 10, 60_000)).allowed) return true
-  if (!(await rateLimitSharedAsync(`login-acct15:${email}`, 30, 900_000)).allowed) return true
-  return false
+  const acctBurst = await rateLimitSharedAsync(`login-acct:${email}`, 10, 60_000)
+  if (!acctBurst.allowed) return acctBurst
+  const acct15 = await rateLimitSharedAsync(`login-acct15:${email}`, 30, 900_000)
+  if (!acct15.allowed) return acct15
+  return null
 }
 
 /** #34: break-glass prijava — VEDNO ločena bootstrap identiteta (2 h). */
-async function bootstrapSession(email: string, ip: string, existingAccountId: string | null) {
+async function bootstrapSession(email: string, ip: string, existingAccountId: string | null, req: NextRequest) {
   const token = createToken({ sub: 'bootstrap', name: 'Bootstrap Admin', email, role: 'ADMIN', loc: null }, 2)
   // Jasen dogodek za način prijave brez (uspešnega) PIN-a zaposlenega — brez
   // razkrivanja skrivnosti; LOGIN_FAILED ni končni zapis break-glass poti.
@@ -76,11 +81,15 @@ async function bootstrapSession(email: string, ip: string, existingAccountId: st
       : 'Break-glass prijava z bootstrap poverilnico (brez Employee vrstice) — izdana bootstrap identiteta (2 h).',
     ipAddress: ip,
   }).catch(() => {})
-  return NextResponse.json({
+  const res = NextResponse.json({
     token,
     employee: { id: 'bootstrap', name: 'Bootstrap Admin', email, role: 'ADMIN', locationId: null, permissions: resolvePermissionsForUIRole('ADMIN') },
     bootstrap: true,
   })
+  // Issue #90 (QA): httpOnly piškotek (2 h — TTL žetona); token v telesu ostaja
+  // za prehodne kliente, novi klienti ga ne shranjujejo več.
+  setSessionCookie(res, req, token, 2)
+  return res
 }
 
 export async function POST(req: NextRequest) {
@@ -90,13 +99,24 @@ export async function POST(req: NextRequest) {
   if (!email || !pin) return fail('E-pošta in PIN sta obvezna.', 400)
 
   const ip = ipOf(req)
-  if (await loginRateLimited(ip, email)) {
+  const limited = await loginRateLimited(ip, email)
+  if (limited) {
     // enaka javna napaka za IP/račun vzrok (brez naštevanja) + zaznava v auditu
     await writeAudit(db, {
       userId: 'anonymous', action: 'LOGIN_RATE_LIMITED', entityType: 'Employee', entityId: email,
       details: 'Presežen limit prijavnih poskusov (IP ali račun).', ipAddress: ip,
     }).catch(() => {})
-    return fail('Preveč poskusov prijave. Poskusite znova kasneje.', 429)
+    // Issue #92 (QA): Retry-After glava (RFC 7231 §7.1.3) — klient vidi KDAJ lahko
+    // poskusi znova, namesto da bi 429 tolkel naprej; isti vzorec kot
+    // /api/auth/locations. Meja ostaja pošteno dokumentirana: 6 poskusov v 1 s
+    // NE sproži 10/min IP meje — to je namerno (dela več ljudi za NAT IP-jem).
+    return NextResponse.json(
+      { error: 'Preveč poskusov prijave. Poskusite znova kasneje.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.max(1, Math.ceil((limited.resetAt - Date.now()) / 1000))) },
+      },
+    )
   }
 
   // EKSPlicitni select (v1.94.0 hotfix): findUnique brez select je prebral VSA
@@ -116,7 +136,7 @@ export async function POST(req: NextRequest) {
   // zaposlenega — velja za neobstoječi račun, deaktiviranega IN napačen PIN.
   // Nikoli ne izda seje pod employee.id (MFA se ne more obiti).
   if (matchesBootstrap(email, pin)) {
-    return bootstrapSession(email, ip, employee?.id || null)
+    return bootstrapSession(email, ip, employee?.id || null, req)
   }
 
   if (!employee || employee.status !== 'active') {
@@ -217,7 +237,7 @@ export async function POST(req: NextRequest) {
   // P0 audit (C1): uspešna prijava se beleži (actor + IP)
   await writeAudit(db, { userId: employee.id, action: 'LOGIN_SUCCESS', entityType: 'Employee', entityId: employee.id, details: `Prijava uspešna.`, ipAddress: ip, locationId: employee.locationId }).catch(() => {})
 
-  return NextResponse.json({
+  const loginRes = NextResponse.json({
     token,
     employee: {
       id: employee.id,
@@ -230,4 +250,9 @@ export async function POST(req: NextRequest) {
     // issue #12 §3: privilegiran račun brez MFA → UI nagovori enroll (ne blokira prijave — migracijsko varno)
     mfaMandatory,
   })
+  // Issue #90 (QA): seja potuje tudi kot httpOnly piškotek (12 h = TTL žetona) —
+  // XSS je ne more več prebrati. Token v telesu ostaja (prehod: obstoječe seje,
+  // offline-queue); nov prijavni zaslon ga NE shranjuje več v localStorage.
+  setSessionCookie(loginRes, req, token, 12)
+  return loginRes
 }

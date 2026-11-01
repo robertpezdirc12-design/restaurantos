@@ -240,7 +240,7 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
               <div className="space-y-1">
                 <Label>{t('modifiers.group.template')}</Label>
                 <Select value={gTemplate} onValueChange={(v) => applyTemplate(v as 'free' | 'variant')}>
-                  <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('modifiers.group.template')} className="h-11"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="free">{t('modifiers.template.free')}</SelectItem>
                     <SelectItem value="variant">{t('modifiers.template.variant')}</SelectItem>

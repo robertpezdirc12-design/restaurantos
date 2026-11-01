@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { createToken } from '@/lib/auth'
+import { createToken, setSessionCookie } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { resolvePermissions } from '@/lib/permissions'
 import { rateLimitSharedAsync } from '@/lib/rate-limit'
@@ -127,9 +127,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // isti burst limit kot prijava (10/min po IP) — demo vrata niso za robote
-  if (!(await rateLimitSharedAsync(`demo-login:${ip}`, 10, 60_000)).allowed) {
-    return NextResponse.json({ error: 'Preveč poskusov. Poskusite znova kasneje.' }, { status: 429 })
+  // isti burst limit kot prijava (10/min po IP) — demo vrata niso za robote;
+  // Issue #92 (QA): tudi tu Retry-After glava (isti vzorec kot prijava)
+  const demoLimit = await rateLimitSharedAsync(`demo-login:${ip}`, 10, 60_000)
+  if (!demoLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Preveč poskusov. Poskusite znova kasneje.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.max(1, Math.ceil((demoLimit.resetAt - Date.now()) / 1000))) },
+      },
+    )
   }
 
   const pinned = String(process.env.DEMO_LOGIN_EMAIL || '').trim().toLowerCase()
@@ -213,7 +221,7 @@ export async function POST(req: NextRequest) {
     logDbError('POST /api/auth/demo-login — writeAudit (DEMO_LOGIN zapis)', auditErr)
   })
 
-  return NextResponse.json({
+  const demoRes = NextResponse.json({
     token,
     employee: {
       id: pick.id,
@@ -225,4 +233,8 @@ export async function POST(req: NextRequest) {
     },
     demo: true,
   })
+  // Issue #90 (QA): demo seja prav tako potuje kot httpOnly piškotek (12 h) —
+  // demo prijava je sicer polna seja (zahteva lastnika), transport pa enak.
+  setSessionCookie(demoRes, req, token, 12)
+  return demoRes
 }

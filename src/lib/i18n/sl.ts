@@ -218,6 +218,9 @@ export const sl: Record<string, string> = {
   'header.inactive': '(neaktivna)',
   'header.viewAria': 'Pogled — izbira lokacije',
   'header.online': 'Online',
+  // Issue #93 (QA): vidna oznaka demo seje v glavi dashboarda
+  'header.demoBadge': 'DEMO',
+  'header.demoTitle': 'Demo seja — testni podatki. Demo vstop je lahko izklopljen z DEMO_LOGIN_ENABLED=0.',
   'header.offline': 'Offline',
   'header.syncing': 'Sinhroniziram…',
   'header.queued': '{n} v vrsti',
@@ -1786,6 +1789,11 @@ export const sl: Record<string, string> = {
   'resv.upcoming': 'Prihajajoče rezervacije',
   'resv.new': 'Nova rezervacija',
   'resv.newDesc': 'Ime gosta in datum sta obvezna; ostala polja so neobvezna.',
+  // Issue #96 (QA P1): izbirnik lokacije za centralne vloge brez dodeljene lokacije
+  'resv.locationLabel': 'Lokacija rezervacije',
+  'resv.locationPlaceholder': 'Izberite lokacijo',
+  'resv.locationMissing': 'Izberite lokacijo rezervacije.',
+  'resv.locationOnly': 'V obsegu je ena sama lokacija — uporabljena bo samodejno.',
   'resv.empty': 'Ni prihajajočih rezervacij — ko gostje potrdijo prihod, se bodo prikazali tukaj. Ustvari prvo rezervacijo z gumbom zgoraj.',
   'resv.stConfirmed': 'Potrjena',
   'resv.stSeated': 'Gost prišel',
@@ -1935,6 +1943,11 @@ export const sl: Record<string, string> = {
   'rcpt.none': 'Ni izdanih računov.',
   'rcpt.orderShort': 'naročilo #{n}',
   'rcpt.unverified': 'neoverjeno',
+  // Issue #94 (QA): EOR prikaz pri nefiskaliziranih + oznaka stare številke + prazen seznam v obdobju
+  'rcpt.eorPending': 'EOR ni izdan — čaka na fiskalizacijo',
+  'rcpt.eorNone': 'Ni fiskalizirano (brez EOR)',
+  'rcpt.legacyBadge': 'stara št.',
+  'rcpt.noneInRange': 'V izbranem obdobju ({from} – {to}) ni izdanih računov (naloženih je zadnjih 100).',
   // Storno računa (P1 audit točka 1)
   'rcpt.stornoBtn': 'Storno',
   'rcpt.stornoConfirm': 'Storniram račun {n} ({a})? Ustvari se storno račun z negativnim zneskom, razknjižena zaloga se povrne in naročilo označi kot storno. Akcija se zabeleži v revizijski sledi.',
@@ -2421,6 +2434,9 @@ export const sl: Record<string, string> = {
   'guest.display.title': 'Customer display',
   'guest.display.notRegistered': 'Display naprava ni registrirana.',
   'guest.display.tokenHint': 'Vnesi token naprave tipa customer_display (Nastavitve → Naprave → dodaj napravo).',
+  // Issue #89 (QA): dostopno ime vnosnega polja za bralnike zaslonov
+  'guest.display.tokenLabel': 'Token naprave za zaslon za goste',
+  'guest.display.pairCodeLabel': '6-mestna paritvena koda iz POS-a',
   'guest.display.invalidToken': 'Vnesi veljaven token naprave.',
   'guest.display.showScreen': 'Prikaži zaslon',
   'guest.display.connectPos': 'Poveži z POS',

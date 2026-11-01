@@ -658,6 +658,10 @@ function DashboardInner() {
   const [newEmpErr, setNewEmpErr] = useState('')
   /** Vaja PIN-ov: ali je trenutna seja prijavljena prek začasnega bootstrap dostopa (2 h)? */
   const [bootstrapLogin, setBootstrapLogin] = useState(false)
+  // Issue #93 (QA): demo seja (prijava z gumba »Vstop brez gesla«) je vidno
+  // označena v glavi — meja demo/produkcija mora biti jasna uporabniku,
+  // ne samo v dokumentaciji.
+  const [demoLogin, setDemoLogin] = useState(false)
   /** Vaja PIN-ov: ustvarjanje trajnega profila za bootstrap e-pošto (ce profil se ne obstaja) */
   const [bootName, setBootName] = useState('')
   const [bootPin, setBootPin] = useState('')
@@ -698,9 +702,14 @@ function DashboardInner() {
   const [qrBusy, setQrBusy] = useState(false)
 
   // Rezervacije — nov vnos
-  const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string; tableId: string; source: string; email: string; duration: number; specialRequests: string } | null>(null)
+  const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string; tableId: string; source: string; email: string; duration: number; specialRequests: string; locationId: string } | null>(null)
   // OPS-8 val 3 (v1.73.0): status filter chips for the reservation list
   const [resFilter, setResFilter] = useState<ReservationFilter>('UPCOMING')
+  // Issue #94 (QA): datumski filter zavihka Računi — SKUPEN za knjigovodski
+  // portal in seznam izdanih računov (prej je imela kartica lastna from/to,
+  // seznam spodaj pa je kazal VSE račune ne glede na izbor).
+  const [rcptFrom, setRcptFrom] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })
+  const [rcptTo, setRcptTo] = useState(() => new Date().toISOString().slice(0, 10))
 
   // ISSUE #72 A4/C1: canManage je OD SEDAJ CENTRALNA vloga (OWNER/ADMIN/enterprise).
   // MANAGER ima od v1.133.0 OMEJEN nabor (19 ključev) in zavihke vidi SKOZ SVOJE
@@ -948,6 +957,7 @@ function DashboardInner() {
     queueMicrotask(() => {
       void load()
       setBootstrapLogin(localStorage.getItem('ro_bootstrap') === '1')
+      setDemoLogin(localStorage.getItem('ro_demo') === '1')
       setPcfg(getPrintConfig())
       setTermMode(getTerminalConfig().mode)
     })
@@ -1025,6 +1035,10 @@ function DashboardInner() {
 
   /** Odjava NE SME izgubiti offline vrste in konfiguracije naprave (issue #1) */
   function logout() {
+    // Issue #90 (QA): httpOnly piškotek seje lahko pobriše SAMO strežnik —
+    // fire-and-forget POST /api/auth/logout (idempotenten; tudi brez seje 200).
+    // Lokalno stanje počistimo takoj (nalaganje '/' ne čaka omrežja).
+    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
     const preserve: [string, string | null][] = [
       ['ro_offline_queue', localStorage.getItem('ro_offline_queue')],
       ['ro_device_id', localStorage.getItem('ro_device_id')],
@@ -1472,7 +1486,12 @@ function DashboardInner() {
 
   /** Issue #19: potrdi izjemo (razlog + odobritev) → izvedi naloženo akcijo. */
   async function confirmException() {
-    if (!excAction || !payingOrder) return
+    // Issue #97 (QA P1): fiskalni storno IZ SEZNAMA računov nima payingOrder
+    // (ves kontekst je v excAction.receipt) — prej je ta pogoj tiho obstavil
+    // celoten klik »Potrdi izjemo« (0 omrežnih zahtev, 0 toastov, dialog odprt).
+    // payingOrder ostaja OBVEZEN za popuste/kupone (veja spodaj ga bere).
+    if (!excAction) return
+    if (excAction.type !== 'storno' && !payingOrder) return
     if (excNeedsReason && !excReasonId && excReasonText.trim().length < 3) {
       toast({ title: t('exc.reasonMissing'), variant: 'destructive' })
       return
@@ -1494,6 +1513,9 @@ function DashboardInner() {
       } else {
         // discount-apply / discount-remove — #45: zamenjava je eksplicitna
         // (najprej DELETE z razlogom, nato POST); oba koraka nosita ISTI razlog
+        // Tipovna varovalka: zgornji pogoj (#97) za ne-storno veje ŽE zahteva
+        // payingOrder — ta vrstica samo razcepi tip za nadaljevanje veje.
+        if (!payingOrder) return
         const body = excBody()
         if (excAction.type === 'discount-apply' && excAction.switching) {
           await api(`/api/orders/${payingOrder.id}/discount`, { method: 'DELETE', body: JSON.stringify(body) })
@@ -1786,6 +1808,24 @@ function DashboardInner() {
   /** Ali je ta original že storniran (storno račun je med izdanimi)? — skrije Storno akcijo */
   const isStorned = (id: string) => receipts.some((x) => x.stornoOf === id)
 
+  /** Issue #94 (QA): računi iz obdobja pred novo številčno shemo (R-YYYY-NNNNN)
+   *  se v seznamu označijo — računovodja ne ugiba, zakaj sta v seznamu dva formata.
+   *  (Migracija/preštevilčenje je lastnikova B-odločitev — FURS izdanih številk
+   *  ne dovoljuje preštevilčiti nazaj.) */
+  const legacyInvoiceNumber = (n: string) => /^R-\d{4}-\d+$/.test(n)
+
+  /** Issue #94 (QA): seznam izdanih računov spošuje datumsko obdobje zavihka
+   *  (Od/Do v knjigovodskem portalu zgoraj) — prej je kazal vse račune ne glede
+   *  na izbor. Meja ostaja pošteno zapisana: nalojenih je zadnjih 100 računov
+   *  (/api/furs), starejša obdobja izven tega okvira so prazna. */
+  const receiptsInRange = receipts.filter((r) => {
+    if (!rcptFrom && !rcptTo) return true
+    const d = new Date(r.createdAt)
+    if (rcptFrom && d < new Date(`${rcptFrom}T00:00:00`)) return false
+    if (rcptTo && d > new Date(`${rcptTo}T23:59:59.999`)) return false
+    return true
+  })
+
   /* ── 33-a: fire / move / merge (P2 audit §54/§57) ── */
   /** UI odprto naročilo: status != PAID/CANCELLED in ni plačano (paymentStatus iz mapOrder) */
   const isOrderOpenUi = (o: OrderT) => o.status !== 'PAID' && o.status !== 'CANCELLED' && (o.paymentStatus ?? 'unpaid') !== 'paid'
@@ -1930,16 +1970,40 @@ function DashboardInner() {
     await load()
   }
 
+  /** Issue #96 (QA P1): izbor lokacije nove rezervacije. Centralna vloga brez
+   *  dodeljene lokacije (demo račun, novi upravitelji) prej ni imela KAKO
+   *  poslati locationId — POST je padel s 400 po oddaji. Vir: locStats (glava,
+   *  centralne vloge) z lokalist fallbackom; lokalnim vlogam strežnik lokacijo
+   *  prepiše z user.loc, zato izbirnika sploh ne potrebujejo. */
+  const resvLocationChoices: { id: string; name: string }[] = locStats.length > 0
+    ? locStats.map((l) => ({ id: l.id, name: l.name }))
+    : locList.map((l) => ({ id: l.id, name: l.name }))
+  const resvNeedsLocation = isCentralUIRole(user?.role) && !user?.locationId
+  const resvLocationMissing = resvNeedsLocation && resvLocationChoices.length > 1
+    && !(newRes?.locationId || viewLoc)
+
   async function createReservation(allowOutsideHours = false) {
     if (!newRes?.guestName || !newRes.reservedAt) return
+    // Issue #96 (QA P1): centralna vloga BREZ dodeljene lokacije MORA izbrati
+    // lokacijo v dialogu — sicer strežnik vrne 400 »Lokacija ni določena« ŠELE
+    // po oddaji. Preverba PRED pošiljanjem (isti pogoj kot strežniški
+    // requireUserLocation za centralne vloge brez user.loc).
+    if (resvLocationMissing) {
+      toast({ title: t('resv.locationMissing'), variant: 'destructive' })
+      return
+    }
     setSending(true)
     try {
       await api('/api/reservations', {
         method: 'POST',
         // OPS-8 val 3 (v1.73.0): + tableId/source/customerEmail/duration/specialRequests
+        // Issue #96: + locationId (samo centralnim vlogam brez lastne lokacije
+        // strežnik sploh pripise telu; lokalnim vlogam ga strežnik prepiše z
+        // user.loc — requireUserLocation ne glede na telo)
         body: JSON.stringify({
           guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests,
           reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours,
+          ...(resvNeedsLocation && (newRes.locationId || viewLoc) ? { locationId: newRes.locationId || viewLoc } : {}),
           ...(newRes.tableId ? { tableId: newRes.tableId } : {}),
           source: newRes.source || 'phone',
           ...(newRes.email ? { customerEmail: newRes.email } : {}),
@@ -2662,6 +2726,10 @@ function DashboardInner() {
             <Button variant="ghost" size="icon" onClick={() => void load()} aria-label={t('common.refresh')}>
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
+            {demoLogin && (
+              /* Issue #93 (QA): jasna oznaka demo seje (testni podatki) v glavi. */
+              <Badge variant="outline" className="hidden sm:inline-flex h-6 bg-amber-50 text-amber-800 border-amber-300" title={t('header.demoTitle')}>{t('header.demoBadge')}</Badge>
+            )}
             <span className="text-sm text-stone-600 hidden sm:block truncate max-w-40">{user?.name}</span>
             <Button variant="ghost" size="icon" onClick={() => setConfirmLogout(true)} aria-label={t('header.logout')}><LogOut className="w-4 h-4" /></Button>
           </div>
@@ -4326,7 +4394,7 @@ function DashboardInner() {
                   <Button size="sm" variant="outline" className="h-11 gap-1" disabled={sending || reminderCandidates.length === 0} onClick={() => setReminderConfirmOpen(true)}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
-                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '' })}>
+                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '', locationId: '' })}>
                     <Plus className="w-3.5 h-3.5" /> {t('resv.new')}
                   </Button>
                 </div>
@@ -4446,13 +4514,15 @@ function DashboardInner() {
 
           <TabsContent value="racuni" className="space-y-4">
             {/* P2-13 (v1.189.0) — knjigovodski portal (read-only agregacija; ACCOUNTING tu pristane) */}
-            <AccountingPortalCard />
+            {/* Issue #94 (QA): from/to sta NADZOROVANA iz zavihka — isto obdobje
+                velja za kartice portala IN seznam izdanih računov + CSV izvoz. */}
+            <AccountingPortalCard from={rcptFrom} to={rcptTo} onFromChange={setRcptFrom} onToChange={setRcptTo} />
             <div className="flex justify-end">
               <Button size="sm" variant="outline" onClick={() => {
                 const d = new Date()
                 downloadCSV(`racuni-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}.csv`, [
                   [t('rcpt.csvNumber'), t('exp.csvDate'), t('wl.thTable'), t('rcpt.csvOrder'), t('rcpt.csvPayMethod'), t('exp.csvAmount'), 'EOR', 'FURS'],
-                  ...receipts.map((r) => [r.invoiceNumber, new Date(r.createdAt).toLocaleString('sl-SI'), r.tableName || '', r.orderNumber ?? '', r.paymentMethod.toUpperCase(), r.total, r.eor, r.fiscalVerified ? 'verified' : r.fiscalStatus]),
+                  ...receiptsInRange.map((r) => [r.invoiceNumber, new Date(r.createdAt).toLocaleString('sl-SI'), r.tableName || '', r.orderNumber ?? '', r.paymentMethod.toUpperCase(), r.total, r.eor, r.fiscalVerified ? 'verified' : r.fiscalStatus]),
                 ])
               }}>
                 {t('rcpt.exportCsv')}
@@ -4462,14 +4532,32 @@ function DashboardInner() {
               <CardHeader className="pb-2"><CardTitle className="text-base">{t('rcpt.title')}</CardTitle></CardHeader>
               <CardContent>
                 {receipts.length === 0 && <p className="text-sm text-stone-500">{t('rcpt.none')}</p>}
+                {/* Issue #94 (QA): seznam upošteva datumsko obdobje zgoraj — prej je
+                    kazal vse račune (do 100 naloženih) ne glede na izbor Od/Do. */}
+                {receipts.length > 0 && receiptsInRange.length === 0 && (
+                  <p className="text-sm text-stone-500 mb-2">{t('rcpt.noneInRange', { from: rcptFrom, to: rcptTo })}</p>
+                )}
                 <ScrollArea className="max-h-[60vh]">
                   <div className="space-y-2">
-                    {receipts.map((r) => (
+                    {receiptsInRange.map((r) => (
                       <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex flex-wrap items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-medium truncate">{r.invoiceNumber}{r.tableName ? ` · ${r.tableName}` : ''}</p>
+                          <p className="font-medium truncate">
+                            {r.invoiceNumber}
+                            {/* Issue #94 (QA): računi iz obdobja pred novo številčno
+                                shemo (R-YYYY-NNNNN) so označeni — računovodja ne
+                                ugiba, zakaj sta v seznamu dva formata. */}
+                            {legacyInvoiceNumber(r.invoiceNumber) && (
+                              <Badge variant="outline" className="ml-1.5 h-5 px-1.5 text-xs bg-stone-50 text-stone-600 border-stone-200">{t('rcpt.legacyBadge')}</Badge>
+                            )}
+                            {r.tableName ? ` · ${r.tableName}` : ''}
+                          </p>
                           <p className="text-xs text-stone-500">{new Date(r.createdAt).toLocaleString('sl-SI')} · {r.paymentMethod.toUpperCase()}{r.orderNumber ? ` · ${t('rcpt.orderShort', { n: r.orderNumber })}` : ''}</p>
-                          <p className="text-xs text-stone-400 font-mono truncate max-w-xs sm:max-w-md">EOR: {r.eor}</p>
+                          {/* Issue #94 (QA): prazen EOR pri nefiskaliziranih računih
+                              ne izriše več golih »EOR: « — pove se stanje fiskalizacije. */}
+                          <p className="text-xs text-stone-400 font-mono truncate max-w-xs sm:max-w-md">
+                            {r.eor ? `EOR: ${r.eor}` : (r.fiscalStatus === 'pending' ? t('rcpt.eorPending') : t('rcpt.eorNone'))}
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-bold">{fmtEUR(r.total)}</p>
@@ -4616,8 +4704,8 @@ function DashboardInner() {
                       <>
                         <p className="text-xs text-amber-700">{t('emp.bootNoProfileA')} <span className="font-medium">{user?.email}</span> {t('emp.bootNoProfileB')}</p>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Input value={bootName} onChange={(e) => setBootName(e.target.value)} placeholder={t('emp.bootNamePlaceholder')} className="max-w-48 h-9 bg-white" />
-                          <Input inputMode="numeric" maxLength={8} value={bootPin} onChange={(e) => setBootPin(e.target.value.replace(/\D/g, ''))} placeholder={t('emp.bootPinPlaceholder')} className="max-w-28 h-9 bg-white" />
+                          <Input aria-label={t('emp.bootNamePlaceholder')} value={bootName} onChange={(e) => setBootName(e.target.value)} placeholder={t('emp.bootNamePlaceholder')} className="max-w-48 h-9 bg-white" />
+                          <Input aria-label={t('emp.bootPinPlaceholder')} inputMode="numeric" maxLength={8} value={bootPin} onChange={(e) => setBootPin(e.target.value.replace(/\D/g, ''))} placeholder={t('emp.bootPinPlaceholder')} className="max-w-28 h-9 bg-white" />
                           <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100 h-9" title={t('emp.randomPinTitle')} onClick={() => setBootPin(String(Math.floor(100000 + Math.random() * 900000)))}>
                             <Dices className="w-4 h-4" />
                           </Button>
@@ -4761,7 +4849,7 @@ function DashboardInner() {
                   <div className="space-y-1.5">
                     <Label>{t('print.target')}</Label>
                     <Select value={pcfg.target} onValueChange={(v) => setPcfg((c) => ({ ...c, target: v as PrintTarget }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={t('print.target')}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="browser">{t('print.targetBrowser')}</SelectItem>
                         <SelectItem value="agent">{t('print.targetAgent')}</SelectItem>
@@ -4771,18 +4859,18 @@ function DashboardInner() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>{t('print.hostLabel')}</Label>
-                    <Input value={pcfg.host} onChange={(e) => setPcfg((c) => ({ ...c, host: e.target.value }))} placeholder={t('print.hostPlaceholder')} />
+                    <Input aria-label={t('print.hostPlaceholder')} value={pcfg.host} onChange={(e) => setPcfg((c) => ({ ...c, host: e.target.value }))} placeholder={t('print.hostPlaceholder')} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>{t('print.portLabel')}</Label>
-                    <Input inputMode="numeric" value={String(pcfg.port)} onChange={(e) => setPcfg((c) => ({ ...c, port: Number(e.target.value.replace(/\D/g, '')) || 9100 }))} />
+                    <Input aria-label={t('print.portLabel')} inputMode="numeric" value={String(pcfg.port)} onChange={(e) => setPcfg((c) => ({ ...c, port: Number(e.target.value.replace(/\D/g, '')) || 9100 }))} />
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label>{t('print.terminal')}</Label>
                     <Select value={termMode} onValueChange={(v) => setTermMode(v as TerminalMode)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={t('print.terminal')}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">{t('print.termNone')}</SelectItem>
                         <SelectItem value="simulator">{t('print.termSim')}</SelectItem>
@@ -5140,7 +5228,7 @@ function DashboardInner() {
                         {hasPerm('orders.create') && it.status === 'PENDING' && (
                           <Select value={it.courseId || 'none'}
                             onValueChange={(v) => void assignCourse(it.id, v)}>
-                            <SelectTrigger className="h-6 w-[104px] text-xs gap-1"><SelectValue placeholder={t('sheet.noCourse')} /></SelectTrigger>
+                            <SelectTrigger aria-label={t('sheet.noCourse')} className="h-6 w-[104px] text-xs gap-1"><SelectValue placeholder={t('sheet.noCourse')} /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">{t('sheet.noCourse')}</SelectItem>
                               {sheetCourses.filter((c) => c.status === 'pending').map((c) => (
@@ -5267,7 +5355,7 @@ function DashboardInner() {
               <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="void-reason-text">{t('void.reasonLabel')}</label>
               {voidReasons.length > 0 ? (
                 <Select value={voidReasonId} onValueChange={setVoidReasonId}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectTrigger aria-label="—" className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     {voidReasons.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
                   </SelectContent>
@@ -5345,7 +5433,7 @@ function DashboardInner() {
               <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="exc-reason-text">{t('exc.reasonLabel')}</label>
               {excReasons.length > 0 ? (
                 <Select value={excReasonId} onValueChange={setExcReasonId}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectTrigger aria-label="—" className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     {excReasons.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
                   </SelectContent>
@@ -5579,7 +5667,7 @@ function DashboardInner() {
                     <div className="flex items-center gap-2">
                       <Label className="text-xs shrink-0">{t('payment.discountLabel')}</Label>
                       <Select value={selDiscountId} onValueChange={(v) => void applyManualDiscount(v)}>
-                        <SelectTrigger className="h-9 flex-1"><SelectValue placeholder={t('payment.noDiscount')} /></SelectTrigger>
+                        <SelectTrigger aria-label={t('payment.noDiscount')} className="h-9 flex-1"><SelectValue placeholder={t('payment.noDiscount')} /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">{t('payment.noDiscount')}</SelectItem>
                           {manualDiscounts.map((d) => (
@@ -5652,7 +5740,7 @@ function DashboardInner() {
                       {loyaltySel && (
                         <div className="flex items-center gap-2">
                           <Label className="text-xs shrink-0">{t('payment.redeem')}</Label>
-                          <Input
+                          <Input aria-label={t('payment.redeem')}
                             type="number"
                             min={0}
                             max={Math.min(loyaltySel.pointsBalance, bill.loyalty.maxRedeemablePoints)}
@@ -5751,7 +5839,7 @@ function DashboardInner() {
                         <Fragment key={i}>
                         <div className="flex items-center gap-2">
                           <Select value={p.type} onValueChange={(v) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, type: v as PayPart['type'] } : x))}>
-                            <SelectTrigger className="h-10 w-32"><SelectValue /></SelectTrigger>
+                            <SelectTrigger aria-label={t('payment.splitParts')} className="h-10 w-32"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="cash">{t('payment.cash')}</SelectItem>
                               <SelectItem value="card">{t('payment.card')}</SelectItem>
@@ -5881,8 +5969,25 @@ function DashboardInner() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="res-time">{t('resv.dateTime')}</Label>
-                <Input id="res-time" type="datetime-local" value={newRes.reservedAt} onChange={(e) => setNewRes({ ...newRes, reservedAt: e.target.value })} />
+                <Input id="res-time" name="reservedAt" type="datetime-local" value={newRes.reservedAt} onChange={(e) => setNewRes({ ...newRes, reservedAt: e.target.value })} />
               </div>
+              {/* Issue #96 (QA P1): centralna vloga brez dodeljene lokacije izbere
+                  lokacijo rezervacije (vzorec iz PO dialoga v nabavi) — prej je
+                  POST padel s 400 šele po oddaji, dialog ni ponujal rešitve. */}
+              {resvNeedsLocation && resvLocationChoices.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="res-location">{t('resv.locationLabel')}</Label>
+                  <Select value={newRes.locationId || viewLoc} onValueChange={(v) => setNewRes({ ...newRes, locationId: v })}>
+                    <SelectTrigger id="res-location" name="locationId" className="w-full"><SelectValue placeholder={t('resv.locationPlaceholder')} /></SelectTrigger>
+                    <SelectContent className="max-h-64 overflow-y-auto">
+                      {resvLocationChoices.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {resvLocationChoices.length === 1 && <p className="text-xs text-stone-400">{t('resv.locationOnly')}</p>}
+                </div>
+              )}
               {/* OPS-8 val 3 (v1.73.0): miza / vir / e-pošta / trajanje / posebne zahteve */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -5932,7 +6037,7 @@ function DashboardInner() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewRes(null)}>{t('common.cancel')}</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || !newRes?.guestName || !newRes?.reservedAt} onClick={() => void createReservation()}>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={sending || !newRes?.guestName || !newRes?.reservedAt || resvLocationMissing} onClick={() => void createReservation()}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('resv.save')}
             </Button>
           </DialogFooter>
@@ -5964,7 +6069,7 @@ function DashboardInner() {
             <div className="space-y-1.5">
               <Label>{t('emp.newRole')}</Label>
               <Select value={newEmp.role} onValueChange={(v) => setNewEmp((f) => ({ ...f, role: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label={t('emp.newRole')}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {['WAITER', 'BAR', 'KITCHEN', 'CHEF', 'MANAGER', 'CLEANER', 'WAREHOUSE'].map((r) => (
                     <SelectItem key={r} value={r}>{roleL(r)}</SelectItem>
@@ -5996,7 +6101,7 @@ function DashboardInner() {
                   <div className="space-y-1.5">
                     <Label>{t('shifts.csvRole')}</Label>
                     <Select value={empRole} onValueChange={(v) => setEmpRole(v)} disabled={user?.role === 'MANAGER' && empRole === 'ADMIN'}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={t('shifts.csvRole')}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {/* ISSUE #72 E4: WAREHOUSE/ACCOUNTING dodani v izbor (bili samo v
                             DB/izračunu); enterprise vloge ostanejo centralna pridržana pravica */}
@@ -6077,7 +6182,7 @@ function DashboardInner() {
                     <p className="text-xs font-medium text-amber-900">{t('emp.pinSelfHint')}</p>
                   )}
                   <div className="flex gap-2">
-                    <Input
+                    <Input aria-label={t('emp.pinPlaceholder')}
                       inputMode="numeric"
                       maxLength={8}
                       value={empPin}
@@ -6119,25 +6224,25 @@ function DashboardInner() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{t('loc.nameLabel')}</Label>
-                <Input value={locForm.name} onChange={(e) => setLocForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('loc.namePlaceholder')} />
+                <Input aria-label={t('loc.namePlaceholder')} value={locForm.name} onChange={(e) => setLocForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('loc.namePlaceholder')} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('loc.codeLabel')}</Label>
-                <Input value={locForm.code} onChange={(e) => setLocForm((f) => ({ ...f, code: e.target.value.toUpperCase().slice(0, 20) }))} placeholder={t('loc.codePlaceholder')} />
+                <Input aria-label={t('loc.codePlaceholder')} value={locForm.code} onChange={(e) => setLocForm((f) => ({ ...f, code: e.target.value.toUpperCase().slice(0, 20) }))} placeholder={t('loc.codePlaceholder')} />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>{t('set.address')}</Label>
-              <Input value={locForm.address} onChange={(e) => setLocForm((f) => ({ ...f, address: e.target.value }))} placeholder={t('loc.addressPlaceholder')} />
+              <Input aria-label={t('loc.addressPlaceholder')} value={locForm.address} onChange={(e) => setLocForm((f) => ({ ...f, address: e.target.value }))} placeholder={t('loc.addressPlaceholder')} />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label>{t('loc.cityLabel')}</Label>
-                <Input value={locForm.city} onChange={(e) => setLocForm((f) => ({ ...f, city: e.target.value }))} />
+                <Input aria-label={t('loc.cityLabel')} value={locForm.city} onChange={(e) => setLocForm((f) => ({ ...f, city: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('loc.postCode')}</Label>
-                <Input value={locForm.postCode} onChange={(e) => setLocForm((f) => ({ ...f, postCode: e.target.value }))} />
+                <Input aria-label={t('loc.postCode')} value={locForm.postCode} onChange={(e) => setLocForm((f) => ({ ...f, postCode: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('loc.country')}</Label>
@@ -6153,21 +6258,21 @@ function DashboardInner() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{t('inv.phone')}</Label>
-                <Input value={locForm.phone} onChange={(e) => setLocForm((f) => ({ ...f, phone: e.target.value }))} placeholder={t('dost.phonePlaceholder')} />
+                <Input aria-label={t('dost.phonePlaceholder')} value={locForm.phone} onChange={(e) => setLocForm((f) => ({ ...f, phone: e.target.value }))} placeholder={t('dost.phonePlaceholder')} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('set.email')}</Label>
-                <Input value={locForm.email} onChange={(e) => setLocForm((f) => ({ ...f, email: e.target.value }))} />
+                <Input aria-label={t('set.email')} value={locForm.email} onChange={(e) => setLocForm((f) => ({ ...f, email: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{t('loc.premisesLabel')}</Label>
-                <Input value={locForm.premisesId} onChange={(e) => setLocForm((f) => ({ ...f, premisesId: e.target.value.toUpperCase().slice(0, 40) }))} placeholder={t('loc.premisesPlaceholder')} />
+                <Input aria-label={t('loc.premisesPlaceholder')} value={locForm.premisesId} onChange={(e) => setLocForm((f) => ({ ...f, premisesId: e.target.value.toUpperCase().slice(0, 40) }))} placeholder={t('loc.premisesPlaceholder')} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('set.currency')}</Label>
-                <Input value={locForm.currency} onChange={(e) => setLocForm((f) => ({ ...f, currency: e.target.value.toUpperCase().slice(0, 3) }))} />
+                <Input aria-label={t('set.currency')} value={locForm.currency} onChange={(e) => setLocForm((f) => ({ ...f, currency: e.target.value.toUpperCase().slice(0, 3) }))} />
               </div>
             </div>
             {locEditing && (

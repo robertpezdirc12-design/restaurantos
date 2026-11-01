@@ -296,7 +296,9 @@ describe('Č3 — komponenta je READ-ONLY (statika)', () => {
 describe('Č4 — ožičenje dashboarda + i18n pariteta', () => {
   test('kartica je renderirana v zavihku racuni (ACCOUNTING tam pristane)', () => {
     const page = readFileSync('src/app/dashboard/page.tsx', 'utf8')
-    expect(page).toContain('<AccountingPortalCard />')
+    // Issue #94 (v1.219.0): kartica je NADZOROVANA iz zavihka — from/to sta
+    // dvignjena iz notranjega stanja, da datumski filter velja za seznam računov.
+    expect(page).toContain('<AccountingPortalCard from={rcptFrom} to={rcptTo} onFromChange={setRcptFrom} onToChange={setRcptTo} />')
     // prvi zavihek po vlogi: accounting + reports.sales → racuni
     expect(page).toContain('value="racuni"')
   })

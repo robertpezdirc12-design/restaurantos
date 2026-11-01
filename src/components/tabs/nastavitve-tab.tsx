@@ -54,21 +54,22 @@ export function MfaCard() {
   useEffect(() => { void (async () => { await loadStatus() })() }, [])
 
   /* enable/disable vračata NADALJEVALNI žeton (sessionVersion +1 revokacija
-     ostalih sej) — shranimo ga takoj, sicer bi trenutna seja umrla. */
+     ostalih sej). Issue #90 (QA): nadaljevalna seja potuje prek httpOnly
+     piškotka (Set-Cookie iz /api/auth/mfa/enable) — žetona ne pišemo več v
+     localStorage. Bearer priložimo SAMO če obstaja legacy žeton (seje pred
+     v1.219.0); sicer se avtentikacija opravi prek piškotka (same-origin). */
   async function mfaFetch(path: string, body: Record<string, unknown>) {
+    const legacyToken = localStorage.getItem('ro_token')
     const res = await fetch(path, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('ro_token') || ''}`,
+        ...(legacyToken ? { Authorization: `Bearer ${legacyToken}` } : {}),
       },
       body: JSON.stringify(body),
     })
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
     if (!res.ok) throw new Error(String(data.error || t('common.error')))
-    if (typeof data.token === 'string' && data.token) {
-      localStorage.setItem('ro_token', data.token)
-    }
     return data
   }
 
@@ -128,16 +129,18 @@ export function MfaCard() {
         {status?.enabled && <p className="text-xs text-stone-500">{t('mfa.enabledHint')}</p>}
 
         {status && !status.enabled && !enroll && !recovery && (
-          <div className="space-y-2">
+          /* Issue #89/95 (QA): PIN vnos je zavit v <form> — Enter pošlje (DOM opozorilo
+             »Password field is not contained in a form« izginie; gumb ostaja). */
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (!(busy || pin.length < 4)) void startEnroll() }}>
             <div className="space-y-1.5">
               <Label htmlFor="mfa-pin">{t('mfa.pinLabel')}</Label>
-              <Input id="mfa-pin" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="w-40 tracking-[0.3em] font-mono" />
+              <Input id="mfa-pin" name="pin" type="password" inputMode="numeric" autoComplete="off" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="w-40 tracking-[0.3em] font-mono" />
               <p className="text-xs text-stone-400">{t('mfa.pinHint')}</p>
             </div>
-            <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || pin.length < 4} onClick={startEnroll}>
+            <Button size="sm" type="submit" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || pin.length < 4} onClick={startEnroll}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mfa.start')}
             </Button>
-          </div>
+          </form>
         )}
 
         {enroll && (
@@ -154,7 +157,7 @@ export function MfaCard() {
             <div className="grid sm:grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="mfa-code">{t('mfa.codeLabel')}</Label>
-                <Input id="mfa-code" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" className="tracking-[0.3em] font-mono" />
+                <Input id="mfa-code" name="mfaCode" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••••" className="tracking-[0.3em] font-mono" />
               </div>
             </div>
             <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || code.length !== 6} onClick={confirmEnable}>
@@ -177,22 +180,23 @@ export function MfaCard() {
         )}
 
         {status?.enabled && (
-          <div className="space-y-2">
+          /* Issue #89/95 (QA): izklop MFA — PIN + koda zavit v <form> (Enter pošlje). */
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (!(busy || pin.length < 4 || code.length < 4)) void confirmDisable() }}>
             <div className="grid sm:grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="mfa-pin-off">{t('mfa.pinLabel')}</Label>
-                <Input id="mfa-pin-off" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="tracking-[0.3em] font-mono" />
+                <Input id="mfa-pin-off" name="pin" type="password" inputMode="numeric" autoComplete="off" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="••••••" className="tracking-[0.3em] font-mono" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="mfa-code-off">{t('mfa.codeLabel')}</Label>
-                <Input id="mfa-code-off" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12))} placeholder="••••••" className="tracking-[0.2em] font-mono" />
+                <Input id="mfa-code-off" name="recoveryCode" autoComplete="off" maxLength={12} value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12))} placeholder="••••••" className="tracking-[0.2em] font-mono" />
                 <p className="text-xs text-stone-400">{t('mfa.disableCodeHint')}</p>
               </div>
             </div>
-            <Button size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" disabled={busy || pin.length < 4 || code.length < 4} onClick={confirmDisable}>
+            <Button size="sm" type="submit" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" disabled={busy || pin.length < 4 || code.length < 4} onClick={confirmDisable}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mfa.disable')}
             </Button>
-          </div>
+          </form>
         )}
 
         {notice && <p className="text-xs text-emerald-700">{notice}</p>}
@@ -397,7 +401,7 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
           <div className="space-y-1.5">
             <Label className="flex items-center gap-1.5"><ShieldAlert className="w-3.5 h-3.5 text-amber-600" /> {t('set.fursEnv')}</Label>
             <Select value={form.fursEnvironment || 'test'} onValueChange={(v) => set('fursEnvironment', v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label={t('set.fursEnv')}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="test">{t('set.envTest')}</SelectItem>
                 <SelectItem value="production">{t('set.envProduction')}</SelectItem>
@@ -511,7 +515,7 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
               <div className="space-y-1.5">
                 <Label>{t('dev.typeLabel')}</Label>
                 <Select value={nf.type} onValueChange={(v) => setNf((f) => ({ ...f, type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('dev.typeLabel')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pos">{t('dev.type.pos')}</SelectItem>
                     <SelectItem value="kds">{t('dev.type.kds')}</SelectItem>
@@ -526,7 +530,7 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
               <div className="space-y-1.5">
                 <Label>{t('dev.location')}</Label>
                 <Select value={nf.locationId} onValueChange={(v) => setNf((f) => ({ ...f, locationId: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('dev.location')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">{t('dev.noLocation')}</SelectItem>
                     {locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
@@ -535,7 +539,7 @@ export function DevicesCard({ devices, locations, onChanged }: { devices: Device
               </div>
               <div className="space-y-1.5">
                 <Label>{t('dev.name')}</Label>
-                <Input value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder={t('dev.namePlaceholder')} />
+                <Input aria-label={t('dev.namePlaceholder')} value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder={t('dev.namePlaceholder')} />
               </div>
             </div>
             <Button size="sm" onClick={createEnrollmentCode} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null} {t('dev.createCode')}</Button>

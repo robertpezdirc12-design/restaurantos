@@ -82,12 +82,27 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   </div>
 )
 
-export function AccountingPortalCard() {
+export function AccountingPortalCard(props?: {
+  /** Issue #94 (QA): nadzorovan datumski filter — zavihek Računi deli obdobje z
+   *  seznamom izdanih računov (prej je kartica imela LASTNA from/to, seznam
+   *  spodaj pa je kazal VSE račune ne glede na izbor). Opcijsko = komponenta
+   *  ostane samostojna tam, kjer je uporabljena brez props (isti privzeti obseg). */
+  from?: string
+  to?: string
+  onFromChange?: (v: string) => void
+  onToChange?: (v: string) => void
+}) {
   const { t } = useI18n()
   const firstOfMonth = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })()
   const today = new Date().toISOString().slice(0, 10)
-  const [from, setFrom] = useState(firstOfMonth)
-  const [to, setTo] = useState(today)
+  const [fromState, setFrom] = useState(firstOfMonth)
+  const [toState, setTo] = useState(today)
+  // Issue #94: kontrolirana obdobja imajo prednost (zavihek Računi); brez props
+  // komponenta upravlja svoje stanje (nespremenjeno obnašanje za ostale uporabe).
+  const from = props?.from ?? fromState
+  const to = props?.to ?? toState
+  const setFromCtrl = (v: string) => { if (props?.onFromChange) props.onFromChange(v); else setFrom(v) }
+  const setToCtrl = (v: string) => { if (props?.onToChange) props.onToChange(v); else setTo(v) }
   const [cat, setCat] = useState('all')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -139,11 +154,11 @@ export function AccountingPortalCard() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label htmlFor="portal-from" className="text-xs">{t('acct.from')}</Label>
-            <Input id="portal-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+            <Input id="portal-from" name="from" type="date" value={from} onChange={(e) => setFromCtrl(e.target.value)} className="w-40" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="portal-to" className="text-xs">{t('acct.to')}</Label>
-            <Input id="portal-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+            <Input id="portal-to" name="to" type="date" value={to} onChange={(e) => setToCtrl(e.target.value)} className="w-40" />
           </div>
           <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white min-h-10 gap-1.5" disabled={busy} onClick={() => setReload((r) => r + 1)}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpenCheck className="w-4 h-4" />} {t('common.refresh')}

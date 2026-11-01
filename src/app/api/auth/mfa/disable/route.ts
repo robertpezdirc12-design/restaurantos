@@ -14,13 +14,13 @@
  *  - TOTP koda pri disable se NE porabi kot prijavni korak (login samo —
  *    dokumentirano; disable je že step-up: PIN + koda).
  */
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { totpVerify } from '@/lib/mfa'
 import { pinStepUpOk, consumeRecoveryCodeAtomic, mfaAttemptRateLimited } from '@/lib/mfa-stepup'
 import { jstr } from '@/lib/map'
-import { createToken } from '@/lib/auth'
+import { createToken, setSessionCookie } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -98,5 +98,8 @@ export async function POST(req: NextRequest) {
     locationId: user.loc,
   }).catch(() => {})
 
-  return ok({ enabled: false, token: continuation }, 200)
+  // Issue #90 (QA): nadaljevalni žeton osveži tudi httpOnly piškotek (sv +1).
+  const disableRes = ok({ enabled: false, token: continuation }, 200)
+  if (disableRes instanceof NextResponse) setSessionCookie(disableRes, req, continuation, 12)
+  return disableRes
 }

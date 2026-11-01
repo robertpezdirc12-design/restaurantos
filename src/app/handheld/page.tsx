@@ -399,6 +399,8 @@ function HandheldInner() {
   }
 
   function logout() {
+    // Issue #90 (QA): piškotek seje pobriše strežnik (httpOnly — JS ne more).
+    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
     localStorage.removeItem('ro_token')
     localStorage.removeItem('ro_user')
     router.replace('/')
@@ -515,7 +517,7 @@ function HandheldInner() {
 
             <div className="relative">
               <Search className="w-4 h-4 absolute left-2.5 top-3 text-stone-400" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sale.search')} className="pl-8 min-h-11" />
+              <Input aria-label={t('sale.search')} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sale.search')} className="pl-8 min-h-11" />
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
               <button onClick={() => setCat('ALL')} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium border min-h-8 ${cat === 'ALL' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white border-stone-200'}`}>{t('sale.allCat')}</button>
@@ -578,7 +580,7 @@ function HandheldInner() {
                       {noteOpen === id && (
                         <div className="space-y-1.5 mt-1.5">
                           <div className="flex items-center gap-2">
-                            <Input
+                            <Input aria-label={t('hh.notePlaceholder')}
                               value={notes[id] ?? ''}
                               onChange={(e) => setNotes((p) => ({ ...p, [id]: e.target.value }))}
                               placeholder={t('hh.notePlaceholder')}
@@ -588,7 +590,7 @@ function HandheldInner() {
                             <button onClick={() => { setNotes((p) => { const nx = { ...p }; delete nx[id]; return nx }); setNoteOpen(null) }} className="text-xs text-stone-500 underline min-h-11 px-1 shrink-0">{t('hh.remove')}</button>
                           </div>
                           {/* Issue #7: izrecno alergensko opozorilo (rdeče) — viden na KDS + tisku */}
-                          <Input
+                          <Input aria-label={t('hh.allergenWarningPlaceholder')}
                             value={allergenNotes[id] ?? ''}
                             onChange={(e) => setAllergenNotes((p) => ({ ...p, [id]: e.target.value }))}
                             placeholder={t('hh.allergenWarningPlaceholder')}
@@ -692,7 +694,7 @@ function HandheldInner() {
                   </button>
                 ))}
                 <div className="relative">
-                  <Input
+                  <Input aria-label={t('hh.customTip')}
                     value={tipCustom}
                     onChange={(e) => { setTipCustom(e.target.value); setTipPct(0) }}
                     placeholder={t('hh.customTip')}

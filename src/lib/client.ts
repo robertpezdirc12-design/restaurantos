@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * Issue #90 (QA): seja od v1.219.0 potuje prek httpOnly piškotka `ro_session`
+ * (Set-Cookie ob prijavi) — isti-origin fetch ga nosi SAM (same-origin
+ * privzeto). Žeton v localStorage (ro_token) ostaja SAMO kot prehod za seje,
+ * prijavljene PRED tem dvigom: če obstaja, ga še priložimo kot Bearer (strežnik
+ * sprejme oba transporta; getAuth preizkusi Bearer najprej, nato piškotek).
+ * Nove prijave ro_token NE zapišejo več — XSS ga ne more prebrati.
+ */
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem('ro_token')

@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * Issue #4 §15 — secret hygiene:
@@ -108,10 +108,67 @@ export function verifyToken(token: string): AuthPayload | null {
   }
 }
 
+/** Issue #90 (QA): ime httpOnly piškotka seje. Vrednost je ENAK žeton kot v
+ *  Bearer glavi (HMAC podpis + exp + sv) — piškotek je le TRANSPORT, ne nova
+ *  vrsta poverilnice: verifyToken + sessionRevoked + MFA politika veljajo
+ *  enako za obe poti. */
+export const SESSION_COOKIE = 'ro_session'
+
 export function getAuth(req: NextRequest): AuthPayload | null {
   const header = req.headers.get('authorization') || ''
-  if (!header.startsWith('Bearer ')) return null
-  return verifyToken(header.slice(7))
+  if (header.startsWith('Bearer ')) {
+    const payload = verifyToken(header.slice(7))
+    if (payload) return payload
+  }
+  // Issue #90 (QA): httpOnly piškotek kot DRUGI transport seje. Bearer ostava
+  // PRVI (kompatibilnost: obstoječe seje v localStorage, MFA enrollment tok,
+  // offline-queue replay). XSS ne more več prebrati žetona IZ piškotka —
+  // localStorage zapis nove prijave preprosto ni več izdan (client.ts).
+  const cookie = req.cookies.get(SESSION_COOKIE)?.value
+  if (cookie) return verifyToken(cookie)
+  return null
+}
+
+/**
+ * Issue #90 (QA): prilepi httpOnly piškotek seje na odgovor prijave.
+ *
+ * Lastnosti (RFC 6265bis):
+ *  - HttpOnly: JS (XSS) ne more prebrati žetona;
+ *  - SameSite=Lax: cross-site POST ne nosi piškotka (CSRF); naše mutacije so
+ *    same-origin JSON (Content-Type, ki ga HTML forma ne more ponarediti) —
+ *    dvojna obramba brez tokenov;
+ *  - Secure: SAMO pod HTTPS (x-forwarded-proto, ki ga na Vercelu nastavi
+ *    platforma in ga klient ne more ponarediti). Lokalni profil brez TLS
+ *    (CasaOS/LAN) dobi piškotek brez Secure — sicer bi ga brskalnik zavrnil
+ *    in prijava na http:// NAS bi tiho padla (poštena meja: TLS daje obratni
+ *    posrednik, dokumentirano v SELFHOST-CASAOS.md);
+ *  - Path=/ + Max-Age = TTL žetona (izdaja in potek se poravnata).
+ */
+export function setSessionCookie(res: NextResponse, req: NextRequest, token: string, hours = 12): void {
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || req.nextUrl.protocol.replace(':', '')
+  res.cookies.set({
+    name: SESSION_COOKIE,
+    value: token,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: proto === 'https',
+    path: '/',
+    maxAge: Math.max(1, Math.round(hours * 3600)),
+  })
+}
+
+/** Issue #90 (QA): odjava — piškotek seje poteče takoj (Max-Age=0). Idempotentno. */
+export function clearSessionCookie(res: NextResponse, req: NextRequest): void {
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || req.nextUrl.protocol.replace(':', '')
+  res.cookies.set({
+    name: SESSION_COOKIE,
+    value: '',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: proto === 'https',
+    path: '/',
+    maxAge: 0,
+  })
 }
 
 /**

@@ -271,7 +271,7 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
               <div className="space-y-1">
                 <Label>{t('urnik.employee')}</Label>
                 <Select value={selEmployee} onValueChange={setSelEmployee}>
-                  <SelectTrigger><SelectValue placeholder={t('urnik.employee')} /></SelectTrigger>
+                  <SelectTrigger aria-label={t('urnik.employee')}><SelectValue placeholder={t('urnik.employee')} /></SelectTrigger>
                   <SelectContent>
                     {activeEmployees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name} — {e.role}</SelectItem>)}
                   </SelectContent>
@@ -281,14 +281,14 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
             {!editShift && (
               <div className="space-y-1">
                 <Label>{t('urnik.date')}</Label>
-                <Input type="date" value={selDate} onChange={(e) => setSelDate(e.target.value)} />
+                <Input aria-label={t('urnik.date')} type="date" value={selDate} onChange={(e) => setSelDate(e.target.value)} />
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label>{t('urnik.shiftType')}</Label>
                 <Select value={selType} onValueChange={setSelType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('urnik.shiftType')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(SHIFT_TYPE_LABELS).map(([k, key]) => <SelectItem key={k} value={k}>{t(key)}</SelectItem>)}
                   </SelectContent>
@@ -296,20 +296,20 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
               </div>
               <div className="space-y-1">
                 <Label>{t('urnik.break')}</Label>
-                <Input type="number" min={0} max={240} value={selBreak} onChange={(e) => setSelBreak(e.target.value)} />
+                <Input aria-label={t('urnik.break')} type="number" min={0} max={240} value={selBreak} onChange={(e) => setSelBreak(e.target.value)} />
               </div>
               <div className="space-y-1">
                 <Label>{t('urnik.from')}</Label>
-                <Input type="time" value={selStart} onChange={(e) => setSelStart(e.target.value)} />
+                <Input aria-label={t('urnik.from')} type="time" value={selStart} onChange={(e) => setSelStart(e.target.value)} />
               </div>
               <div className="space-y-1">
                 <Label>{t('urnik.to')}</Label>
-                <Input type="time" value={selEnd} onChange={(e) => setSelEnd(e.target.value)} />
+                <Input aria-label={t('urnik.to')} type="time" value={selEnd} onChange={(e) => setSelEnd(e.target.value)} />
               </div>
             </div>
             <div className="space-y-1">
               <Label>{t('urnik.notes')}</Label>
-              <Input value={selNotes} onChange={(e) => setSelNotes(e.target.value)} placeholder={t('urnik.notesPh')} />
+              <Input aria-label={t('urnik.notesPh')} value={selNotes} onChange={(e) => setSelNotes(e.target.value)} placeholder={t('urnik.notesPh')} />
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
@@ -335,7 +335,7 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
               <div className="space-y-1">
                 <Label>{t('urnik.employee')}</Label>
                 <Select value={toEmployee} onValueChange={setToEmployee}>
-                  <SelectTrigger><SelectValue placeholder={t('urnik.myself')} /></SelectTrigger>
+                  <SelectTrigger aria-label={t('urnik.myself')}><SelectValue placeholder={t('urnik.myself')} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__self">{t('urnik.myself')}</SelectItem>
                     {activeEmployees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
@@ -346,7 +346,7 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
             <div className="space-y-1">
               <Label>{t('urnik.toType')}</Label>
               <Select value={toType} onValueChange={setToType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label={t('urnik.toType')}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {['vacation', 'sick', 'personal', 'unpaid'].map((k) => <SelectItem key={k} value={k}>{t(`urnik.to.${k}`)}</SelectItem>)}
                 </SelectContent>
@@ -355,16 +355,16 @@ export function StaffScheduleTab({ employees, canManage }: { employees: { id: st
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label>{t('urnik.from')}</Label>
-                <Input type="date" value={toFrom} onChange={(e) => setToFrom(e.target.value)} />
+                <Input aria-label={t('urnik.from')} type="date" value={toFrom} onChange={(e) => setToFrom(e.target.value)} />
               </div>
               <div className="space-y-1">
                 <Label>{t('urnik.to')}</Label>
-                <Input type="date" value={toTo} onChange={(e) => setToTo(e.target.value)} />
+                <Input aria-label={t('urnik.to')} type="date" value={toTo} onChange={(e) => setToTo(e.target.value)} />
               </div>
             </div>
             <div className="space-y-1">
               <Label>{t('urnik.reason')}</Label>
-              <Input value={toReason} onChange={(e) => setToReason(e.target.value)} placeholder={t('urnik.reasonPh')} />
+              <Input aria-label={t('urnik.reasonPh')} value={toReason} onChange={(e) => setToReason(e.target.value)} placeholder={t('urnik.reasonPh')} />
             </div>
           </div>
           <DialogFooter>

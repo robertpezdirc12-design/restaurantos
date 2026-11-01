@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { ReservationStatus, ReservationSource } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
-import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation } from '@/lib/api'
+import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation, isCentralRole } from '@/lib/api'
 import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
 import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
@@ -54,7 +54,20 @@ export async function POST(req: NextRequest) {
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
   if (!body?.guestName || !body?.reservedAt) return ok({ error: 'Ime gosta in čas rezervacije sta obvezna.' }, 400)
-  const locationId = requireUserLocation(user, body?.locationId)
+  let locationId = requireUserLocation(user, body?.locationId)
+  if (isResponse(locationId) && isCentralRole(user) && !user.loc) {
+    // Issue #96 (QA P1): centralna vloga brez lokacije in brez locationId v telesu
+    // — FAIL-CLOSED fallback: natanko ENA aktivna lokacija v obsegu organizacije
+    // je enolična (ni ugibanja); pri več lokacijah 400 ostane (dialog v UI ponudi
+    // izbirnik, API integrator pa mora poslati locationId).
+    const scope = await locationScope(user)
+    const rows = await db.location.findMany({
+      where: { isActive: true, id: scope.locationId ? (typeof scope.locationId === 'string' ? scope.locationId : { in: scope.locationId.in }) : undefined },
+      select: { id: true },
+      take: 2,
+    })
+    if (rows.length === 1) locationId = rows[0].id
+  }
   if (isResponse(locationId)) return locationId
   const orgGuard = await assertOrgScope(user, locationId)
   if (orgGuard) return orgGuard

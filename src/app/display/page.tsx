@@ -209,11 +209,21 @@ function DisplayInner() {
             <h1 className="text-2xl font-bold">{t('guest.display.title')}</h1>
           </div>
           <p className="text-sm text-stone-400 mb-4">{t('guest.display.tokenHint')}</p>
+          {/* Issue #89 (QA hrošč 5): vnos žetona ima id + name + aria-label
+              (prej samo placeholder — bralnik zaslonov ni poznal namena polja). */}
           <Input
+            id="display-device-token"
+            name="deviceToken"
             className="bg-stone-950 border-stone-700 text-stone-100 h-12"
             value={codeInput}
             onChange={(e) => setCodeInput(e.target.value)}
             placeholder="rodev_…"
+            aria-label={t('guest.display.tokenLabel')}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={64}
           />
           <Button
             className="w-full mt-4 h-12 text-base"
@@ -241,12 +251,19 @@ function DisplayInner() {
           <Link2 className="h-10 w-10 mx-auto text-stone-500" />
           <h1 className="text-xl font-bold mt-3">{t('guest.display.connectPos')}</h1>
           <p className="text-sm text-stone-400 mt-2">{t('guest.display.pairHint')}</p>
+          {/* Issue #89 (QA hrošč 5): paritvena koda — id + name + aria-label
+              (inputMode=numeric je bil že; manjkala je dostopnost imena). */}
           <Input
+            id="display-pairing-code"
+            name="pairingCode"
             className="bg-stone-950 border-stone-700 text-stone-100 h-14 text-center text-3xl tracking-[0.4em] mt-4"
             value={codeInput}
             onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
             placeholder="000000"
             inputMode="numeric"
+            aria-label={t('guest.display.pairCodeLabel')}
+            autoComplete="one-time-code"
+            maxLength={6}
           />
           <Button className="w-full mt-4 h-12 text-base" onClick={connect} disabled={connecting}>
             {connecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

@@ -16,13 +16,13 @@
  *  - transakcija: MFA polja + sessionVersion + audit v ENOTI; delna pisava
  *    (DB napaka) pomeni NEUSPEH — brez lažnega 'enabled'.
  */
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, isResponse, ok, fail } from '@/lib/api'
 import { totpVerify, generateRecoveryCodes, recoveryHashesToStore } from '@/lib/mfa'
 import { pinStepUpOk, mfaAttemptRateLimited } from '@/lib/mfa-stepup'
 import { jstr } from '@/lib/map'
-import { createToken } from '@/lib/auth'
+import { createToken, setSessionCookie } from '@/lib/auth'
 import { roleToUI } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -95,5 +95,9 @@ export async function POST(req: NextRequest) {
     locationId: user.loc,
   }).catch(() => {})
 
-  return ok({ enabled: true, recoveryCodes, token: continuation }, 200)
+  // Issue #90 (QA): nadaljevalni žeton prav tako osveži httpOnly piškotek
+  // (sv se je povzpel — STARI piškotek bi bil takoj preklican prek sessionRevoked).
+  const enableRes = ok({ enabled: true, recoveryCodes, token: continuation }, 200)
+  if (enableRes instanceof NextResponse) setSessionCookie(enableRes, req, continuation, 12)
+  return enableRes
 }

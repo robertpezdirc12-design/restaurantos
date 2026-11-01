@@ -194,7 +194,7 @@ export function ReservationWidgetCard() {
             <div className="space-y-2">
               <Label>{t('resv.wid.url')}</Label>
               <div className="flex gap-2">
-                <Input readOnly value={publicUrl || `${window.location.origin}/r/…`} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+                <Input aria-label={t('resv.wid.url')} readOnly value={publicUrl || `${window.location.origin}/r/…`} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
                 <Button type="button" variant="outline" size="icon" onClick={copyUrl} title={t('resv.wid.copy')} aria-label={t('resv.wid.copy')}>
                   <Copy className="h-4 w-4" />
                 </Button>

@@ -64,6 +64,15 @@ const PUBLIC_API_ROUTES: { methods: string[]; path: string; why: string }[] = [
   // naslov v zanki + limit 5/min/IP + prazna baza. Brez fronte (HTTPS) je zavrnjena.
   { methods: ['POST'], path: '/api/setup/claim', why: 'prevzem prve namestitve — samo lokalni profil, samo prek HTTPS fronte (x-local-front), samo zanko, 5/min/IP in samo dokler je baza prazna' },
   { methods: ['POST'], path: '/api/auth/login', why: 'prijava — rate-limit 10/min po IP' },
+  // Issue #90 (v1.219.0): odjava — pobrisanje httpOnly piškotka seje MORA biti
+  // dosegljivo tudi brez seje (idempotentno; brez seje nič ne pobriše in nič
+  // ne izda; uspešna odjava se zapiše v audit, zgubljeni kliči ne — brez
+  // polnjenja dnevnika). SameSite=Lax pokrije cross-site POST (CSRF).
+  { methods: ['POST'], path: '/api/auth/logout', why: 'odjava — brisanje httpOnly piškotka seje (JS ga ne more pobrisati); idempotentno, brez podatkov' },
+  // Issue #91 (v1.219.0): JSON 404 za neznane /api/* poti — javno PO NAMENU:
+  // odgovor je samo {error, path} izpisana dobesedno iz zahteve (nikoli
+  // vsebina); specifične route imajo prednost pred catch-all (Next resolucija).
+  { methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'], path: '/api/[...path]', why: 'JSON 404 za neznane API poti — samo {error, path}, brez podatkov (Issue #91)' },
   { methods: ['GET', 'POST'], path: '/api/auth/demo-login', why: 'demo prijava — env DEMO_LOGIN_EMAIL pin + rate-limit 10/min po IP; GET vrne samo stanje vrat (brez imen/računov), zapre se z DEMO_LOGIN_ENABLED=0 ali DEMO_LOGIN_EXPIRES_AT (audit #7)' },
   { methods: ['GET'], path: '/api/auth/locations', why: 'izbira lokacije pred prijavo — samo imena aktivnih lokacij, rate-limit 30/min po IP + no-store (audit #9)' },
   // Vercel cron: Authorization: Bearer CRON_SECRET (timing-safe, v handle());

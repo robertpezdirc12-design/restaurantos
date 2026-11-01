@@ -301,20 +301,20 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">{t('gc.ownerOptional')}</Label>
-              <Input value={issueForm.ownerName} onChange={(e) => setIssueForm((f) => ({ ...f, ownerName: e.target.value }))} placeholder={t('gc.ownerPlaceholder')} />
+              <Input aria-label={t('gc.ownerPlaceholder')} value={issueForm.ownerName} onChange={(e) => setIssueForm((f) => ({ ...f, ownerName: e.target.value }))} placeholder={t('gc.ownerPlaceholder')} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t('gc.initialBalance')}</Label>
-              <Input type="number" step="0.01" min="0" value={issueForm.initialBalance} onChange={(e) => setIssueForm((f) => ({ ...f, initialBalance: e.target.value }))} placeholder={t('gc.initialBalancePlaceholder')} />
+              <Input aria-label={t('gc.initialBalancePlaceholder')} type="number" step="0.01" min="0" value={issueForm.initialBalance} onChange={(e) => setIssueForm((f) => ({ ...f, initialBalance: e.target.value }))} placeholder={t('gc.initialBalancePlaceholder')} />
               <p className="text-xs text-stone-500">{t('gc.initialBalanceHint')}</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t('gc.validUntilOptional')}</Label>
-              <Input type="date" value={issueForm.expiresAt} onChange={(e) => setIssueForm((f) => ({ ...f, expiresAt: e.target.value }))} />
+              <Input aria-label={t('gc.validUntilOptional')} type="date" value={issueForm.expiresAt} onChange={(e) => setIssueForm((f) => ({ ...f, expiresAt: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t('gc.noteOptional')}</Label>
-              <Input value={issueForm.note} onChange={(e) => setIssueForm((f) => ({ ...f, note: e.target.value }))} placeholder={t('gc.noteIssuePlaceholder')} />
+              <Input aria-label={t('gc.noteIssuePlaceholder')} value={issueForm.note} onChange={(e) => setIssueForm((f) => ({ ...f, note: e.target.value }))} placeholder={t('gc.noteIssuePlaceholder')} />
             </div>
           </div>
           <DialogFooter className="sm:items-center">
@@ -340,12 +340,12 @@ export function DarilneKarticeTab({ canPay, canManage }: { canPay: boolean; canM
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">{t('gc.topupAmount')}</Label>
-                <Input inputMode="decimal" value={topupForm.amount} onChange={(e) => setTopupForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, '') }))} placeholder="10,00" autoFocus />
+                <Input aria-label="10,00" inputMode="decimal" value={topupForm.amount} onChange={(e) => setTopupForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d.,]/g, '') }))} placeholder="10,00" autoFocus />
                 <p className="text-xs text-stone-500">{t('gc.topupMaxHint')}</p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">{t('gc.noteOptional')}</Label>
-                <Input value={topupForm.note} onChange={(e) => setTopupForm((f) => ({ ...f, note: e.target.value }))} placeholder={t('gc.noteTopupPlaceholder')} />
+                <Input aria-label={t('gc.noteTopupPlaceholder')} value={topupForm.note} onChange={(e) => setTopupForm((f) => ({ ...f, note: e.target.value }))} placeholder={t('gc.noteTopupPlaceholder')} />
               </div>
             </div>
           )}
@@ -592,7 +592,7 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="flex-1 flex items-center gap-2 flex-wrap">
           <Select value={days} onValueChange={(v) => { setDays(v); void load(v, reasonFilter) }}>
-            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[130px]" aria-label={t('shifts.csvPeriod')}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="7">{t('waste.days7')}</SelectItem>
               <SelectItem value="30">{t('waste.days30')}</SelectItem>
@@ -601,7 +601,7 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
             </SelectContent>
           </Select>
           <Select value={reasonFilter} onValueChange={(v) => { setReasonFilter(v); void load(days, v) }}>
-            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[220px]" aria-label={t('waste.allReasons')}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="vsi">{t('waste.allReasons')}</SelectItem>
               {WASTE_REASON_OPTIONS.map((r) => <SelectItem key={r.value} value={r.value}>{t(r.label)}</SelectItem>)}
