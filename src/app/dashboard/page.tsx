@@ -5713,7 +5713,7 @@ function DashboardInner() {
                   )}
 
                   {/* P2-10b (v1.187.0): osebni kupon (rojstnodnevni/ročni) — koda po e-pošti/iz CRM.
-                      v1.224.0: isto polje sprejme tudi PROMO KODO registra (Discount.promoCode) —
+                      v1.225.0: isto polje sprejme tudi PROMO KODO registra (Discount.promoCode) —
                       strežnik najprej išče osebni kupon, nato promo kodo lokacije. */}
                   {hasPerm('apply_discounts') && (
                     <div className="flex items-center gap-2">

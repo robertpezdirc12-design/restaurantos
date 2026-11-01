@@ -1015,7 +1015,11 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
                     <tr key={d.id} className="border-t border-stone-100">
                       <td className="p-2 font-medium">{d.employeeName}</td>
                       <td className="p-2 text-stone-600">
-                        {pool.distributionMethod === 'hours' && d.hoursWorked > 0 ? `${d.hoursWorked.toFixed(2)} h` : pool.distributionMethod === 'points' && d.points > 0 ? t('payment.pointsOf', { n: d.points }) : t('tips.equalShort')}
+                        {/* v1.225.0 (QA-val #7): fmtNumSI — sl-SI decimalna VEJICA (»0,08 h«),
+                            prej toFixed(2) pika (»0.08 h«) ob fmtEUR vejici v sosednji celici;
+                            hkrati obramba pred nizom iz Decimal serializacije (Number toleranca —
+                            num() živi v server-only map.ts). */}
+                        {pool.distributionMethod === 'hours' && Number(d.hoursWorked) > 0 ? fmtNumSI(Number(d.hoursWorked), { max: 2, unit: ' h' }) : pool.distributionMethod === 'points' && Number(d.points) > 0 ? t('payment.pointsOf', { n: Number(d.points) }) : t('tips.equalShort')}
                       </td>
                       <td className="p-2 text-right font-semibold">{fmtEUR(d.amount)}</td>
                       <td className="p-2">

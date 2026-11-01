@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, isCentralRole } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
-import { nid, jstr } from '@/lib/map'
+import { nid, jstr, num } from '@/lib/map'
 import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange, type TipMethod } from '@/lib/tips'
 import { writeAudit } from '@/lib/audit-chain'
 
@@ -132,6 +132,26 @@ export async function GET(req: NextRequest) {
     include: { TipDistribution: { orderBy: { createdAt: 'asc' } } },
   })
 
+  // v1.225.0 (QA-val #7, najdba #1): Prisma Decimal se v JSON serializira kot NIZ —
+  // UI je vrstico TipDistribution z `hoursWorked.toFixed(2)` zrušil s TypeError
+  // (niz nima toFixed). Bazen se zdaj preslika v številke (ista disciplina kot
+  // `history` preslikava spodaj): hoursWorked/points/amount in totalTips/cashTips/
+  // cardTips so vedno pravi numberji — UI tip (number) končno drži.
+  const poolNormalized = pool
+    ? {
+        ...pool,
+        totalTips: num(pool.totalTips),
+        cashTips: num(pool.cashTips),
+        cardTips: num(pool.cardTips),
+        TipDistribution: pool.TipDistribution.map((d) => ({
+          ...d,
+          hoursWorked: num(d.hoursWorked),
+          points: num(d.points),
+          amount: num(d.amount),
+        })),
+      }
+    : null
+
   const history = await db.tipPool.findMany({
     where: { locationId },
     orderBy: { date: 'desc' },
@@ -146,7 +166,7 @@ export async function GET(req: NextRequest) {
     fallbackEqual,
     totals: { totalCents, cashCents, nonCashCents, payments: payments.length },
     employees: rows.map((r, i) => ({ ...r, previewCents: previewCents[i] ?? 0 })),
-    pool,
+    pool: poolNormalized,
     history: history.map((p) => ({
       id: p.id,
       date: p.date,
