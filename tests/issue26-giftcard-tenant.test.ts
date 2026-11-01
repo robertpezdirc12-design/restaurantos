@@ -51,6 +51,7 @@ let gcOB = '' // kartica org B
 let gcNull = '' // LEGACY kartica brez locationId
 let tokMgrA = ''
 let tokWaiter = ''
+let tokAdminA = '' // v1.221.0: ADMIN na nevezani lokaciji (regresija scope)
 let tokMgrOA1 = ''
 let tokAdminOA1 = ''
 let tokAdminOB = ''
@@ -191,12 +192,14 @@ beforeAll(async () => {
   // uporabniki
   const mgrA = await seedEmployee('mgrA', 'manager', locA, 1)
   const waiterA = await seedEmployee('waiterA', 'waiter', locA, 2)
+  const adminA = await seedEmployee('adminA', 'admin', locA, 7)
   const mgrOA1 = await seedEmployee('mgrOA1', 'manager', locOA1, 3)
   const adminOA1 = await seedEmployee('adminOA1', 'admin', locOA1, 4)
   const adminOB = await seedEmployee('adminOB', 'admin', locOB, 5)
   const adminNoLoc = await seedEmployee('adminNoLoc', 'admin', null, 6)
   tokMgrA = tok(mgrA, `${P}mgrA`, 'MANAGER', locA)
   tokWaiter = tok(waiterA, `${P}waiterA`, 'WAITER', locA)
+  tokAdminA = tok(adminA, `${P}adminA`, 'ADMIN', locA)
   tokMgrOA1 = tok(mgrOA1, `${P}mgrOA1`, 'MANAGER', locOA1)
   tokAdminOA1 = tok(adminOA1, `${P}adminOA1`, 'ADMIN', locOA1)
   tokAdminOB = tok(adminOB, `${P}adminOB`, 'ADMIN', locOB)
@@ -450,6 +453,29 @@ describe('#26 — lookup: tenant obseg, medposlovalnično unovčenje iste org oh
   it('centralna vloga z NEZNANO org (loc null) → fail-closed: nič ni vidno (vzorec #38)', async () => {
     const res = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.OA1}`, tokAdminNoLoc))
     expect(res.status).toBe(404)
+  })
+
+  // ── v1.221.0 (QA-val najdba): ADMIN na nevezani lokaciji ──
+  // Prej: isCentralRole veja je padla v 'none' ŠE PRED fallbackom na user.loc —
+  // na isti nevezani lokaciji je WAITER našel kartico, ADMIN pa ne (404).
+  // Trenutna produkcija/demo imajo lokacije brez propertyId — POS plačilo z
+  // darilno kartico je za admina/lastnika preprosto nemočno. Popravek: centralna
+  // vloga Z lokacijo dobi 'own' (kot osebje); 'none' ostane za BREZ lokacije.
+  it('v1.221.0: ADMIN na nevezani lokaciji vidi kartico LASTNE lokacije (prej 404 — regresija)', async () => {
+    const res = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.A}`, tokAdminA))
+    expect(res.status).toBe(200)
+    const j = (await res.json()) as { card: { cardNumber: string; balance: number } }
+    expect(j.card.cardNumber).toBe(CARD_NUM.A)
+    // saldo primerjamo z DB (zapisom) — prejšnji topup test kartico A napolni +5
+    const inDb = await db.giftCard.findUnique({ where: { id: gcA }, select: { balance: true } })
+    expect(j.card.balance).toBe(Number(inDb?.balance))
+  })
+
+  it('v1.221.0: ADMIN na nevezani lokaciji NE vidi kartic drugih lokacij (meja ostaja)', async () => {
+    const res = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.OA1}`, tokAdminA))
+    expect(res.status).toBe(404)
+    const res2 = await gcLookupGET(req('GET', `/api/giftcards/lookup?q=${CARD_NUM.OB}`, tokAdminA))
+    expect(res2.status).toBe(404)
   })
 })
 

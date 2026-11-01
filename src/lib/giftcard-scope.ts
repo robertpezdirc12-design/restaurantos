@@ -12,10 +12,16 @@
  *  - bootstrap platformni operater → 'global' (break-glass, kot povsod);
  *  - uporabnik z znano organizacijo (Location → Property → Brand → Org) →
  *    'org' (vse lokacije organizacije — medposlovalnični lookup/unovčenje);
- *  - staff BREZ org dreva (nevezana lokacija — migracijsko varno) → 'own'
- *    (samo lastna lokacija: POS tok ostane uporaben, tuji tenanti nevidni);
- *  - centralna vloga z NEZNANO organizacijo (loc null / nevezana) → 'none'
- *    (fail-closed, isti vzorec kot eventTenantScope #38);
+ *  - uporabnik BREZ org dreva (nevezana lokacija — migracijsko varno), NE glede
+ *    na to ali je vloga centralna ali staff → 'own' (samo lastna lokacija: POS
+ *    tok ostane uporaben, tuji tenanti nevidni). QA-val v1.221.0 (najdba):
+ *    prej je centralna vloga z nevezano lokacijo padla v 'none' — na isti
+ *    lokaciji je natakar našel kartico, ADMIN pa ne (»Kartica s to številko
+ *    ne obstaja.«). TRENUTNA produkcija/demo imajo lokacije BREZ propertyId —
+ *    rezanje centralnih vlog od lastne lokacije je ravno regresija, ki jo
+ *    tenant.ts (»zakaj tako«) izrecno prepoveduje; guardResource isto semantiko.
+ *  - katera koli vloga BREZ lokacije → 'none' (fail-closed — pravi obseg
+ *    ni znan; vključno s centralnimi, vzorec #38);
  *  - legacy kartica brez locationId ni v NOGEM od teh obsegov → nevidna v
  *    lookup-u za vse razen bootstrap (izrecno fail-closed pravilo issue #26).
  */
@@ -42,7 +48,7 @@ export async function giftCardScopeFor(user: AuthPayload): Promise<GiftCardScope
     })
     return rows.length ? { kind: 'org', locationIds: rows.map((r) => r.id) } : { kind: 'none' }
   }
-  if (isCentralRole(user)) return { kind: 'none' }
+  if (isCentralRole(user) && !user.loc) return { kind: 'none' }
   if (user.loc) return { kind: 'own', locationId: user.loc }
   return { kind: 'none' }
 }

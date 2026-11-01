@@ -1738,7 +1738,17 @@ function DashboardInner() {
             : bodyParts.length > 1
               ? { parts: bodyParts }
               : {}),
-          ...(loyaltySel && redeemPoints > 0 ? { loyaltyAccountId: loyaltySel.id, loyaltyPointsUsed: redeemPoints } : {}),
+          /* QA-val v1.221.0 (najdba): loyaltyAccountId se pošlje VEDNO, ko je gost
+             izbran — prej je bil pogojen na redeemPoints > 0, zato NOVI član (0 točk)
+             pri plačilu NI bil poslan strežniku in NI zaslužil prvih točk ( zaslužek
+             zahteva loyaltyAccount glej issue.ts earnedPoints). loyaltyPointsUsed
+             ostaja pogojen — 0 pomeni samo zaslužek, brez unovčenja. */
+          ...(loyaltySel
+            ? {
+                loyaltyAccountId: loyaltySel.id,
+                ...(redeemPoints > 0 ? { loyaltyPointsUsed: redeemPoints } : {}),
+              }
+            : {}),
         }),
       })
       setInvoice(d.invoice)
