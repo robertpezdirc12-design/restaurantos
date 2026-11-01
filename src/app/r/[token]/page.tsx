@@ -72,6 +72,13 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
   const acc = theme ? { backgroundColor: theme.accent, color: theme.textOn } : undefined
   const accBorder = theme ? { borderColor: theme.accent } : undefined
   const [dateKey, setDateKey] = useState<string | null>(null)
+  // QA-5 (v1.223.0): SIDRO okna izbire dni. dayChips se prej računajo iz
+  // state.date = datum ZADNJEGA odgovora → klik na zadnji vidni dan je celotno
+  // okno premaknil naprej (izmerjeno: klik \"Sob. 14. nov.\" je dneve 2.–13. nov.
+  // naredil nedosegljive do osvežitve strani). Okno zdaj sidra na datum iz
+  // nalaganja BREZ datumskega parametra (prvi load + gumb Osveži — slednji
+  // pravilno prerolja sidro čez polnoč); klik dneva sidra NE spreminja.
+  const [baseDate, setBaseDate] = useState<string | null>(null)
   const [party, setParty] = useState(2)
   const [time, setTime] = useState<string | null>(null)
   const [name, setName] = useState('')
@@ -95,6 +102,8 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
       const s = data as SlotsState
       setState(s)
       setDateKey(s.date)
+      // sidro okna samo ob nalaganju brez datumskega parametra (prvi load/refresh)
+      if (!date) setBaseDate(s.date)
       // party v meje politike (brez ponovnega fetcha; prej ločen effect —
       // zdaj v nadaljevanju po await, z istim rezultatom ob vsaki spremembi politike)
       setParty((p) => Math.min(Math.max(p, s.policy.minParty), s.policy.maxParty))
@@ -125,8 +134,8 @@ function GuestReservationInner({ params }: { params: Promise<{ token: string }> 
       const dayLabel = dt.toLocaleDateString(locale === 'hr' ? 'hr-HR' : locale === 'en' ? 'en-GB' : 'sl-SI', { day: 'numeric', month: 'short', timeZone: 'UTC' })
       return { key, label: weekday, sub: dayLabel }
     }
-    return Array.from({ length: days }, (_, i) => fmtDay(addDaysKey(state.date, i)))
-  }, [state, locale])
+    return Array.from({ length: days }, (_, i) => fmtDay(addDaysKey(baseDate ?? state.date, i)))
+  }, [state, locale, baseDate])
 
   const slots = state?.slots ?? []
 
