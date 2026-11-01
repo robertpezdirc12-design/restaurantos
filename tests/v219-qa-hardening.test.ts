@@ -395,6 +395,18 @@ describe('v219 Č7 · #89/#95 a11y vnosov', () => {
     }
   })
 
+  it('hrošč 7: theme-color sledi ročnemu preklopu (ThemeColorMeta v layoutu)', () => {
+    const layout = read('src/app/layout.tsx')
+    expect(layout).toContain('ThemeColorMeta')
+    const comp = read('src/components/theme-color-meta.tsx')
+    expect(comp).toContain("resolvedTheme === 'dark' ? '#1c1917' : '#fafaf9'")
+  })
+
+  it('hrošč 8: manifest ima 192px maskable varianto', () => {
+    const m = read('public/manifest.webmanifest')
+    expect(m).toContain('"/pwa-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"')
+  })
+
   it('nastavitve: PIN polji sta zavit v <form> (DOM opozorilo izgine)', () => {
     const tab = read('src/components/tabs/nastavitve-tab.tsx')
     expect(tab).toContain('<form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (!(busy || pin.length < 4)) void startEnroll() }}>')

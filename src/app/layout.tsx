@@ -3,6 +3,9 @@ import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { PwaRegister } from "@/components/pwa-register";
+// Issue #89 (QA hrošč 7): theme-color sledi ROČNEMU preklopu (next-themes class
+// strategija — prefers-color-scheme meta ne bi odražala uporabnikove izbire).
+import { ThemeColorMeta } from "@/components/theme-color-meta";
 
 export const metadata: Metadata = {
   title: "RestaurantOS — restavracijski POS",
@@ -38,6 +41,7 @@ export default function RootLayout({
           {children}
           <Toaster />
           <PwaRegister />
+          <ThemeColorMeta />
         </ThemeProvider>
       </body>
     </html>

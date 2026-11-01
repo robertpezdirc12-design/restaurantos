@@ -10,7 +10,8 @@ Work Log:
 - POŠTENA MEJA: do lastnikovega DDL klika Kuponi tab v produkciji vrača 500 (P2021) — enako kot vsi pending DDL valovi (cash-movements, haccp-ops …); POS osnovni tok se ne dotakne. DDL je ČISTO ADITIVEN — brez spremembe obstoječih podatkov.
 - DVIG 1.219.0 → 1.219.1 (patch — orodje, 0 spremembe vedenja aplikacije): version.ts + compose + toBe/ubeženi regexi + števci slovarjev 3750 → 3751 + migrations-console števci 36 → 37.
 - TESTI: drift-check.test +3 (vseh 8 stavkov CI runa klasificiranih kot znani; matcher matrika pozitivno/negativno vključno DROP TABLE ne; register z DDL potjo); v219 +3 (ruta idempotentna na dev SQLite; waiter 403; register↔konzola↔allowlist↔i18n povezanost).
-- VERIFIKACIJA: tsc 0 · lint 0 · suita 4295 pass / 33 okoljskih / 4 errors (iste skupine kot osnova).
+- DOPOLNITEV (#89 hrošča 7+8, isti patch): theme-color sedaj sledi ROČNEMU preklopu (nova komponenta ThemeColorMeta v layoutu — svetla #fafaf9 / temna #1c1917; prefers-color-scheme meta ne bi odražala izbire, app uporablja class strategijo); manifest + 192px maskable varianta (enak vzorec kot 512 — datoteka pwa-icon-192.png dobi purpose maskable).
+- VERIFIKACIJA: tsc 0 · lint 0 · suita 4298 pass / 33 okoljskih / 4 errors (iste skupine kot osnova); v219 45/45.
 
 Stage Summary:
 - Zamaskirana DDL vrzel je ZAKLJUČENA po vzorcu valov: odkrita (merjeno, ne ugiban — 8 stavkov CI runa), dokumentirana (KNOWN_DRIFTS z vzrokom B-4), DDL pot zgrajena (admin ruta + konzola + register). CI vrata so spet poštena: znani pending NE blokira, aplikacija DDL pa čaka lastnikov klik v konzoli Enterprise → Shema migracije → coupons-waitlist.
