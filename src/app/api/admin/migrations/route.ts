@@ -39,6 +39,7 @@ import { POST as payrollSurchargeRatesPOST } from '../migrate-payroll-surcharge-
 import { POST as equipmentMaintenancePOST } from '../migrate-equipment-maintenance/route'
 import { POST as inventoryEanPOST } from '../migrate-inventory-ean/route'
 import { POST as documentsPOST } from '../migrate-documents/route'
+import { POST as couponsWaitlistPOST } from '../migrate-coupons-waitlist/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -91,6 +92,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'equipment-maintenance': equipmentMaintenancePOST,
   'inventory-ean': inventoryEanPOST,
   'documents': documentsPOST,
+  'coupons-waitlist': couponsWaitlistPOST,
 }
 
 interface ConsoleResult {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   classifyDrift,
+  isCouponsWaitlistStatement,
   isIssue13Statement,
   isIssue38EventTenantStatement,
   isStroskiKategorijeStatement,
@@ -424,5 +425,53 @@ describe('drift-check: classifyDrift — CELA produkcijska diffa (run 3896440009
     expect(entry!.reason).toContain('/api/admin/migrate-ap-tolerance')
     expect(entry!.reason).toContain('/api/admin/migrate-exception-policy')
     expect(entry!.reason).toContain('/api/admin/migrate-cash-movements')
+  })
+})
+
+
+/* ── HOTFIX v1.219.1: zamaskiran DDL (kuponi + čakalna vrsta) ────────────── */
+
+const COUPONS_WAITLIST_DIFF = [
+  '-- AlterTable',
+  'ALTER TABLE "WaitlistEntry" ADD COLUMN "notifyStatus" TEXT NOT NULL DEFAULT \'\';',
+  '',
+  '-- CreateTable',
+  'CREATE TABLE "Coupon" ( "id" TEXT NOT NULL, "code" TEXT NOT NULL, "guestId" TEXT NOT NULL, "reason" TEXT NOT NULL DEFAULT \'birthday\', "year" INTEGER, "percent" INTEGER, "fixedAmount" DECIMAL(10,2) NOT NULL DEFAULT 0, "status" TEXT NOT NULL DEFAULT \'issued\', "issuedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "expiresAt" TIMESTAMP(3) NOT NULL, "redeemedAt" TIMESTAMP(3), "orderId" TEXT, "note" TEXT NOT NULL DEFAULT \'\', "notifiedAt" TIMESTAMP(3), "notifyStatus" TEXT NOT NULL DEFAULT \'\', "issuedBy" TEXT, "locationId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "Coupon_pkey" PRIMARY KEY ("id") );',
+  '',
+  '-- CreateIndex',
+  'CREATE UNIQUE INDEX "Coupon_code_key" ON "Coupon"("code");',
+  'CREATE INDEX "Coupon_guestId_idx" ON "Coupon"("guestId");',
+  'CREATE INDEX "Coupon_locationId_idx" ON "Coupon"("locationId");',
+  'CREATE INDEX "Coupon_status_expiresAt_idx" ON "Coupon"("status", "expiresAt");',
+  'CREATE UNIQUE INDEX "Coupon_guestId_reason_year_key" ON "Coupon"("guestId", "reason", "year");',
+  '',
+  '-- AddForeignKey',
+  'ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_guestId_fkey" FOREIGN KEY ("guestId") REFERENCES "Guest"("id") ON DELETE CASCADE ON UPDATE CASCADE;',
+  '',
+].join('\n')
+
+describe('drift-check: isCouponsWaitlistStatement (hotfix v1.219.1)', () => {
+  test('vseh 8 stavkov CI runa 41286990715 → znani, 0 blokatorjev', () => {
+    const stmts = parseStatements(COUPONS_WAITLIST_DIFF)
+    expect(stmts).toHaveLength(8)
+    const cls = classifyDrift(COUPONS_WAITLIST_DIFF)
+    expect(cls.unexpected).toHaveLength(0)
+    expect(cls.known.map((k) => k.id)).toContain('coupons-waitlist')
+  })
+
+  test('matcher: Coupon DDL oblike ja, tuje tabele ne', () => {
+    expect(isCouponsWaitlistStatement('CREATE TABLE "Coupon" ( "id" TEXT )')).toBe(true)
+    expect(isCouponsWaitlistStatement('CREATE INDEX "Coupon_guestId_idx" ON "Coupon"("guestId")')).toBe(true)
+    expect(isCouponsWaitlistStatement('ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_guestId_fkey" FOREIGN KEY ("guestId") REFERENCES "Guest"("id")')).toBe(true)
+    expect(isCouponsWaitlistStatement('ALTER TABLE "WaitlistEntry" ADD COLUMN "notifyStatus" TEXT NOT NULL DEFAULT \'\'')).toBe(true)
+    expect(isCouponsWaitlistStatement('DROP TABLE "Coupon"')).toBe(false)
+    expect(isCouponsWaitlistStatement('ALTER TABLE "WaitlistEntry" DROP COLUMN "notifyStatus"')).toBe(false)
+    expect(isCouponsWaitlistStatement('CREATE TABLE "NekaDruga" ( "x" TEXT )')).toBe(false)
+  })
+
+  test('register vsebuje coupons-waitlist z DDL potjo', () => {
+    const entry = KNOWN_DRIFTS.find((k) => k.id === 'coupons-waitlist')
+    expect(entry).toBeDefined()
+    expect(entry!.reason).toContain('/api/admin/migrate-coupons-waitlist')
   })
 })

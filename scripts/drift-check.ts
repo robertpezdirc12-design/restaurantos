@@ -438,6 +438,17 @@ export function isManagerCallStatement(stmt: string): boolean {
   return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
 }
 
+/** HOTFIX v1.219.1: Kuponi P2-10b + WaitlistEntry.notifyStatus (zamaskiran DDL, B-4).
+ *  WaitlistEntry je STROG na ADD COLUMN (DROP istega stolpca = hard fail —
+ *  enako konservativno kot issue-13 mešane klavzule). */
+export function isCouponsWaitlistStatement(stmt: string): boolean {
+  if (/"Coupon"/.test(stmt)) {
+    return /^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i.test(stmt)
+  }
+  if (/^ALTER\s+TABLE\s+"WaitlistEntry"\s+ADD\s+COLUMN\s+"notifyStatus"/i.test(stmt)) return true
+  return false
+}
+
 /** Issue #14 (v1.112.0): KDS poimenovane postaje — NOVI tabeli StationTask +
  * MenuItemStation + STOLPCA Modifier.prepStationId / PrepStation.isExpo
  * (strogo po tabelah/stolpcih — vzorec ManagerCall). */
@@ -934,6 +945,23 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'korak: admin ruta /api/admin/migrate-documents (konzola Enterprise → Shema ' +
       'migracije → en klik). Ko je DDL apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isDocumentsStatement,
+  },
+  {
+    id: 'coupons-waitlist',
+    reason:
+      'HOTFIX v1.219.1 (izmerjeno 1. 11. 2026, CI run 41286990715): Kuponi P2-10b ' +
+      '(v1.187.0 — rojstnodnevni cron + ročna izdaja + POS unovčenje) in opomniki ' +
+      'čakalne vrste (v1.188.0 — WaitlistEntry.notifyStatus za SMS/e-pošto) — DDL ' +
+      'korak je bil ZAMASKIRAN celotno obdobje B-4: neon-smoke je padal na Neon ' +
+      'kvoti ŽE pred drift preverbo, zato vrata teh 8 stavkov (CREATE TABLE Coupon + ' +
+      '5 indeksov + FK + ADD COLUMN notifyStatus) niso nikoli izmerila do resetu ' +
+      'kvote 1. 11. 2026. Produkcija čaka DDL korak: admin ruta ' +
+      '/api/admin/migrate-coupons-waitlist (konzola Enterprise → Shema migracije → ' +
+      'en klik). Do DDL: /api/coupons** vrača 500 (P2021 — Kuponi tab je prazen); ' +
+      'POS osnovni tok se ne dotakne (kuponi so dodatna plast popustov). DDL je čisto ' +
+      'aditiven (nova tabela + indeksi + nov stolpec s praznim privzetkom). Ko je DDL ' +
+      'apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isCouponsWaitlistStatement,
   },
 ]
 

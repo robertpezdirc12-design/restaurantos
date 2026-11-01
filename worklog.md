@@ -1,4 +1,22 @@
 ---
+Task ID: v1.219.1-hotfix-masked-ddl
+Agent: glavni agent (Z.ai Code)
+Task: SAMO-PREGLED po pushu v1.219.0: CI neon-smoke je padel na drift preverbi z 8 NEPRIČAKOVANIMI stavki (run 41286990715 @ dfba184) — moj val je 0 DDL, vzrok je ZAMASKIRANA VRZEL: produkcija nima tabele Coupon (P2-10b, v1.187.0) niti stolpca WaitlistEntry.notifyStatus (v1.188.0); celotno obdobje B-4 (Neon kvota) je neon-smoke padal ŽE pred drift preverbo (endpoint se ni ustvaril), zato vrata teh stavkov nikoli niso izmerila — po resetu kvote 1. 11. so jih prvič. Popravek po precedensu (manager-call/kds-stations/cash-movements): DDL pot + register + allowlist.
+
+Work Log:
+- NOVA admin ruta /api/admin/migrate-coupons-waitlist (čisto aditivno, idempotentno): CREATE TABLE Coupon (zrcali prisma/schema.prisma model P2-10b) + 5 indeksov (2 unikatna: code, guestId+reason+year) + FK na Guest (Postgres; SQLite preskoči — db push zrcalo ga že ima, SQLite ne podpira ADD CONSTRAINT) + ALTER TABLE WaitlistEntry ADD COLUMN notifyStatus TEXT NOT NULL DEFAULT '' (probe pred vsakim stavkom; audit SCHEMA_MIGRATION_COUPONS_WAITLIST; requireCentralRole).
+- REGISTRI: SCHEMA_MIGRATIONS +1 (id coupons-waitlist, probe = tabela Coupon ∧ stolpec notifyStatus; 36 → 37 vnosov); migracijska konzola HANDLERS +1; KNOWN_DRIFTS +1 (isCouponsWaitlistStatement — Coupon DDL oblike + WaitlistEntry.notifyStatus ADD, strogo: DROP ne prestane) — drift vrata spet zelena (znani pending, ne blokator).
+- i18n +1 ključ SL/HR (mig.couponsWaitlist.desc — DDL konzola); števci 3750 → 3751; AUDIT §8 POSODOBITEV (hotfix v1.219.1); PRD R4b vrstica dopolnjena z odkritjem.
+- POŠTENA MEJA: do lastnikovega DDL klika Kuponi tab v produkciji vrača 500 (P2021) — enako kot vsi pending DDL valovi (cash-movements, haccp-ops …); POS osnovni tok se ne dotakne. DDL je ČISTO ADITIVEN — brez spremembe obstoječih podatkov.
+- DVIG 1.219.0 → 1.219.1 (patch — orodje, 0 spremembe vedenja aplikacije): version.ts + compose + toBe/ubeženi regexi + števci slovarjev 3750 → 3751 + migrations-console števci 36 → 37.
+- TESTI: drift-check.test +3 (vseh 8 stavkov CI runa klasificiranih kot znani; matcher matrika pozitivno/negativno vključno DROP TABLE ne; register z DDL potjo); v219 +3 (ruta idempotentna na dev SQLite; waiter 403; register↔konzola↔allowlist↔i18n povezanost).
+- VERIFIKACIJA: tsc 0 · lint 0 · suita 4295 pass / 33 okoljskih / 4 errors (iste skupine kot osnova).
+
+Stage Summary:
+- Zamaskirana DDL vrzel je ZAKLJUČENA po vzorcu valov: odkrita (merjeno, ne ugiban — 8 stavkov CI runa), dokumentirana (KNOWN_DRIFTS z vzrokom B-4), DDL pot zgrajena (admin ruta + konzola + register). CI vrata so spet poštena: znani pending NE blokira, aplikacija DDL pa čaka lastnikov klik v konzoli Enterprise → Shema migracije → coupons-waitlist.
+- AKCIJA: push → CI (neon-smoke mora biti ZELEN z known-drift opozorili) → Vercel health 1.219.1 → komentarji/zaprtje #89–#97 + opomba lastniku o DDL kliku.
+
+---
 Task ID: v1.219.0-qa-val-javni
 Agent: glavni agent (Z.ai Code)
 Task: Lastnik: »napisal sem ti še issue imaš odprte preberi naredi« → odprto 9 NOVIH issuejev (#89–#97) iz globokega javnega QA pregleda produkcije v1.218.0 (Neon kvota se je 1. 11. resetirala — živa instanca spet dosegljiva). Vsi triažirani in rešeni v enem minor valu po disciplini »merjeno, ne ugiban« (0 DDL, 0 odvisnosti, 0 AI): #97 P1 fiskalni storno iz seznama tihi no-op, #96 P1 rezervacija brez lokacije, #90 varnost JWT→httpOnly piškotek, #91 JSON 404, #92 Retry-After, #94 Računi UI, #89+#95 a11y vnosov (94 dejanskih vrzeli, ne 11), #93 demo oznaka (del B: ločena demo baza ostaja lastnikova odločitev).

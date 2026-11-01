@@ -550,6 +550,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-documents',
     probe: async () => tablesAll(['Document']),
   },
+  {
+    // HOTFIX v1.219.1: Kuponi P2-10b (v1.187.0) + opomniki čakalne vrste (v1.188.0)
+    // — DDL korak je bil ZAMASKIRAN celotno obdobje B-4 (neon-smoke je padal na
+    // kvoti PRED drift preverbo; po resetu 1. 11. ga je vrata izmerila kot 8
+    // nepričakovanih stavkov). NOVA tabela Coupon (rojstnodnevni cron + ročna
+    // izdaja + POS unovčenje) + STOLPEC WaitlistEntry.notifyStatus (sledenje
+    // opomnikom). Do DDL: /api/coupons** → 500 (P2021); POS osnovni tok se ne
+    // dotakne. Čisto aditivno (CREATE TABLE + indeksi + ADD COLUMN DEFAULT '').
+    id: 'coupons-waitlist',
+    descKey: 'mig.couponsWaitlist.desc',
+    endpoint: '/api/admin/migrate-coupons-waitlist',
+    probe: async () => (await tableExists('Coupon')) && (await columnExists('WaitlistEntry', 'notifyStatus')),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

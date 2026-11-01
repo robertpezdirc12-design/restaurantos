@@ -10,6 +10,7 @@ import { POST as reservationsPOST } from '../src/app/api/reservations/route'
 import { GET as catchAllGET, POST as catchAllPOST } from '../src/app/api/[...path]/route'
 import { POST as loginPOST } from '../src/app/api/auth/login/route'
 import { POST as logoutPOST } from '../src/app/api/auth/logout/route'
+import { POST as couponsWaitlistPOST } from '../src/app/api/admin/migrate-coupons-waitlist/route'
 
 /**
  * JAVNI QA VAL #89–#97 (v1.219.0) — regresijska varovalka nad popravki.
@@ -449,8 +450,8 @@ describe('v219 Č8 · #93 demo oznaka', () => {
 describe('v219 Č9 · verzija + registri', () => {
   it('verzija je dvignjena na 1.219.0 (version.ts + compose oznaka)', async () => {
     const { APP_VERSION } = await import('../src/lib/version')
-    expect(APP_VERSION).toBe('1.219.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.219.0')
+    expect(APP_VERSION).toBe('1.219.1')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.219.1')
   })
 
   it('PRD nosi zapis QA-vala v1.219.0 (doc-truth)', () => {
@@ -459,7 +460,37 @@ describe('v219 Č9 · verzija + registri', () => {
 
   it('AUDIT §8 števci usklajeni (3750/3750, EN 263)', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3750 ključev SL in 3750 HR')
+    expect(audit).toContain('3751 ključev SL in 3751 HR')
     expect(audit).toContain('263 ključev')
+  })
+})
+
+/* ── Č10 · HOTFIX v1.219.1 — zamaskiran DDL (kuponi + čakalna vrsta) ────── */
+
+describe('v219 Č10 · coupons-waitlist DDL pot (hotfix)', () => {
+  it('ruta je idempotentna na dev SQLite (tabela iz db push zrcala → preskok)', async () => {
+    const res = await couponsWaitlistPOST(authReq('/api/admin/migrate-coupons-waitlist', bearer(adminNoLocId, 'admin', null), {}))
+    expect(res.status).toBe(200)
+    const d = (await res.json()) as { applied?: string[]; skipped?: string[]; alreadyApplied?: boolean }
+    expect(Array.isArray(d.applied)).toBe(true)
+    expect(Array.isArray(d.skipped)).toBe(true)
+  })
+
+  it('waiter (ne-centralna vloga) → 403 (samo centralne)', async () => {
+    const res = await couponsWaitlistPOST(authReq('/api/admin/migrate-coupons-waitlist', bearer(managerLocId, 'manager', loc1), {}))
+    expect([403, 401]).toContain(res.status)
+  })
+
+  it('register + konzola + drift allowlist so povezani (statika)', () => {
+    const reg = read('src/lib/schema-migrations.ts')
+    expect(reg).toContain("id: 'coupons-waitlist'")
+    expect(reg).toContain("descKey: 'mig.couponsWaitlist.desc'")
+    const console_ = read('src/app/api/admin/migrations/route.ts')
+    expect(console_).toContain("'coupons-waitlist': couponsWaitlistPOST")
+    const drift = read('scripts/drift-check.ts')
+    expect(drift).toContain('isCouponsWaitlistStatement')
+    // i18n ključ v obeh jezikih
+    expect(read('src/lib/i18n/sl.ts')).toContain("'mig.couponsWaitlist.desc'")
+    expect(read('src/lib/i18n/hr.ts')).toContain("'mig.couponsWaitlist.desc'")
   })
 })

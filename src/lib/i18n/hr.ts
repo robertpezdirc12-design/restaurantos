@@ -3661,6 +3661,8 @@ export const hr: Record<string, string> = {
   'doc.confirmDelete': 'Ovo trajno briše dokument (uključujući sadržaj). Povijest promjena ostaje u reviziji.',
   'doc.uploading': 'Učitavanje …',
   'mig.documents.desc': 'Dokumenti s priloženim datotekama (OSS-2) — tablica Document (SOP-ovi, ugovori, recepture, upute; sadržaj u bazi — bytea, 1 MB po dokumentu; mime dopušteni popis, preuzimanje uvijek kao prilog)',
+  // HOTFIX v1.219.1: maskirani DDL korak (B-4 ga je skrivala kvota)
+  'mig.couponsWaitlist.desc': 'Kuponi (P2-10b) + podsjetnici čekalice — tablica Coupon (rođendanski cron, ručna izdaja, POS unovčenje) i stupac WaitlistEntry.notifyStatus; čisto aditivno',
 
   // ─── MEĐULOKACIJSKI PRIJENOSI (issue #8, v1.116.0) — trf.* ───
   'trf.title': 'Međulokacijski prijenosi',

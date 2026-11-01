@@ -541,7 +541,7 @@ describe('Č3 DDL ruta migrate-documents', () => {
 
 describe('Č4 registri, i18n in verzija', () => {
   it('SCHEMA_MIGRATIONS: 36. vnos documents (descKey/endpoint/probe)', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(36) // v1.203.0: +documents (OSS-2)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(37) // v1.203.0: +documents (OSS-2)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'documents')
     expect(m).toBeDefined()
     expect(m?.descKey).toBe('mig.documents.desc')
@@ -550,7 +550,7 @@ describe('Č4 registri, i18n in verzija', () => {
   })
 
   it('drift allowlist: 28 vnosov; CREATE TABLE Document + indeksi so znan drift', () => {
-    expect(KNOWN_DRIFTS).toHaveLength(28) // v1.203.0: +documents (OSS-2)
+    expect(KNOWN_DRIFTS).toHaveLength(29) // v1.203.0: +documents (OSS-2)
     const cls = classifyDrift(
       'CREATE TABLE "Document" ("id" TEXT NOT NULL, "locationId" TEXT NOT NULL, "content" BYTEA NOT NULL, CONSTRAINT "Document_pkey" PRIMARY KEY ("id"));\n' +
         'CREATE INDEX "Document_locationId_idx" ON "Document"("locationId");\n' +
@@ -600,6 +600,6 @@ describe('Č4 registri, i18n in verzija', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.219.0')
+    expect(APP_VERSION).toBe('1.219.1')
   })
 })
