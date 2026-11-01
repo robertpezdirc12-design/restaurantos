@@ -379,15 +379,24 @@ describe('v1.187.0 P2-10b — odkup kupona (POST /api/orders/[id]/discount { cou
     expect(Number(fresh!.discount)).toBe(0)
   })
 
-  test('Č6c naročilo brez gosta → 400', async () => {
+  test('Č6c naročilo brez gosta → 200 + samodejno pripetje gosta kupona (v1.226.0)', async () => {
     // svež ročni kupon za g1 (cron-izdani so že porabljeni v prejšnjih primerih)
+    // v1.226.0 (QA-val #8): prej 400 »nima dodeljenega gosta« — a POS ne ponuja
+    // dodeljevanja gosta naročilu, zato so bili osebni kuponi v praksi
+    // NEUNOVČLJIVI (slepa ulica). KODA JE identifikacija (gost jo je predal
+    // osebju): naročilo BREZ gosta dobi gosta KUPONA pripetega v isti
+    // transakciji; naročilo Z DRUGIM gostom ostaja zavrnjeno (Č6d).
     const created = await couponsPOST(req('/api/coupons', adminToken, 'POST', { guestId: g1, percent: 10 }))
     const { coupon } = (await created.json()) as { coupon: { code: string } }
     const o = await seedOrder(null)
     await seedItem(o, 'Kava', 10)
     const res = await discountPOST(req(`/api/orders/${o}/discount`, adminToken, 'POST', { couponCode: coupon.code }), { params: Promise.resolve({ id: o }) })
-    expect(res.status).toBe(400)
-    expect(((await res.json()) as { error: string }).error).toContain('gosta')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { guestLinked?: string }
+    expect(body.guestLinked).toBe(g1)
+    // gost je DEJANSKO pripet na naročilo (transakcijsko, z odkupom)
+    const order = await db.order.findUnique({ where: { id: o }, select: { guestId: true } })
+    expect(order?.guestId).toBe(g1)
   })
 
   test('Č6d tuji gost → 400', async () => {

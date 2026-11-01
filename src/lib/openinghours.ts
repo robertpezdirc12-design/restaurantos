@@ -35,10 +35,19 @@ export const DAY_SHORT_SL = ['Ned', 'Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob'] a
 
 /* ─────────────────────────── časovni pomočniki ─────────────────────────── */
 
-/** "HH:MM" → minute od polnoči (0-1439) ali null, če oblika ni veljavna. */
+/** "HH:MM" → minute od polnoči (0-1439) ali null, če oblika ni veljavna.
+ * v1.226.0 (QA-val #8): TOČNO "24:00" se sprejme kot 1440 (polnoč na KONCU
+ * dneva) — demo seed je zapisal '24:00' za petek/soboto, kar je lasten
+ * validator zavrajal: /r/ widget je vrstico izpustil (petek/sobota BREZ
+ * terminov — no_hours), urejevalnik pa je prazno polje prikazal kot
+ * nenastavljeno in shranjevanje padlo na 400. 1440 je zaključna minuta
+ * overnight okna (npr. 08:00 → 1440 = do polnoči); fmtHHMM(1440) → "00:00"
+ * (normalizacija pri shranjevanju — ista semantika, veljavna oblika). */
 export function parseHHMM(s: string): number | null {
   if (typeof s !== 'string') return null
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim())
+  const t = s.trim()
+  if (t === '24:00') return 1440
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t)
   if (!m) return null
   const h = Number(m[1])
   const min = Number(m[2])
@@ -119,6 +128,9 @@ export function validateOpeningHoursRows(
 
     // overnight: closeMin < openMin → okno čez polnoč (npr. 20:00 → 02:00)
     const closeMin = closeRaw < openMin ? closeRaw + 1440 : closeRaw
+    // v1.226.0: degenerirano okno po overnight prilagoditvi (npr. 24:00 → 00:00
+    // = 1440 → 1440, nič dolžine) — isto pravilo kot enaka surova časa.
+    if (closeMin === openMin) return { ok: false, error: `${DAY_NAMES_SL[dow]}: odpiralni in zapiralni čas ne smeta biti enaka (za 24-urno delo uporabite 00:00 kot zapiralni).` }
 
     let breakStartMin: number | null = null
     let breakEndMin: number | null = null
@@ -170,6 +182,8 @@ export function validateOpeningHoursRowsPartial(rows: unknown): { ok: true; rows
     if (closeRaw === null) return { ok: false, error: `${DAY_NAMES_SL[dow]}: zapiralni čas ni veljaven (pričakovano HH:MM).` }
     if (openMin === closeRaw) return { ok: false, error: `${DAY_NAMES_SL[dow]}: odpiralni in zapiralni čas ne smeta biti enaka.` }
     const closeMin = closeRaw < openMin ? closeRaw + 1440 : closeRaw
+    // v1.226.0: degenerirano okno po overnight prilagoditvi (24:00 → 00:00) — glej zgoraj.
+    if (closeMin === openMin) return { ok: false, error: `${DAY_NAMES_SL[dow]}: odpiralni in zapiralni čas ne smeta biti enaka.` }
     out.push({
       dayOfWeek: dow,
       openTime: fmtHHMM(openMin),

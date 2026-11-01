@@ -948,13 +948,18 @@ async function main() {
   }
 
   // odpiralni čas (pon-ned, 0=nedelja po shemi dayOfWeek)
+  // v1.226.0 (QA-val #8): '24:00' je NEVELJAVNA oblika za lasten validator
+  // (parseHHMM → null → /r/ widget preskoči vrstico = petek/sobota BREZ
+  // terminov; urejevalnik prikaže prazno polje; shranjevanje 400). Polnoč
+  // na koncu dneva se zapiše kot '00:00' — overnight semantika (08:00 → 00:00
+  // = do polnoči, 16 h okno), ista oblika, ki jo zapiše UI.
   const hours = [
     { d: 1, o: '08:00', c: '23:00' }, // ponedeljek
     { d: 2, o: '08:00', c: '23:00' },
     { d: 3, o: '08:00', c: '23:00' },
     { d: 4, o: '08:00', c: '23:00' },
-    { d: 5, o: '08:00', c: '24:00' }, // petek
-    { d: 6, o: '09:00', c: '24:00' }, // sobota
+    { d: 5, o: '08:00', c: '00:00' }, // petek — do polnoči (overnight)
+    { d: 6, o: '09:00', c: '00:00' }, // sobota — do polnoči (overnight)
     { d: 0, o: '09:00', c: '21:00', closed: true }, // nedelja — zaprto (demo)
   ]
   for (const h of hours) {

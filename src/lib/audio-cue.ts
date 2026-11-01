@@ -130,8 +130,14 @@ export function playPaymentCue(opts: PlayPaymentCueOptions = {}): boolean {
   if (!ctx) return false
   try {
     if (ctx.state === 'suspended' && ctx.resume) {
-      // prvi uporabniški klik (prijava) je kontekst že odprl; resume je le varovalka
-      void ctx.resume()
+      // prvi uporabniški klik (prijava) je kontekst že odprl; resume je le varovalka.
+      // v1.226.0 (QA-val #8): .catch — če se kontekst zapre (odjava/odprijavitev
+      // zavihka), medtem ko resume visi, brskalnik sproži unhandledRejection
+      // »AudioContext closed before a pending resume() could complete«
+      // (izmerjeno v dev logu ob zvočni potrditvi plačila) — ton itak ne more
+      // več igrati, tiho pogoltni. Promise.resolve ovojnica: vmesnik dovoljuje
+      // tudi void (testni dvojniki), .catch pa potrebuje Promise.
+      void Promise.resolve(ctx.resume()).catch(() => {})
     }
     const t0 = ctx.currentTime + 0.02
     let lastEnd = 0

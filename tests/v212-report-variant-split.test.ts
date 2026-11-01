@@ -29,7 +29,7 @@
  *     OrderItemModifier + ModifierGroup, agregacija v čistem sloju, top N
  *     zrezano na kraju; stari ročni qtyByName poti ZBRIŠANI) + item-variants
  *     ostaja brez uvozov + GAP dokument nosi C-DEL dokaz in poštene meje.
- *  Č3 registri: verzija 1.225.0 (toBe + ubežen regex), oznaka slike ↔
+ *  Č3 registri: verzija 1.226.0 (toBe + ubežen regex), oznaka slike ↔
  *     APP_VERSION.
  *
  * 0 fikstur baze — sweep ni potreben (demo podatki nedotaknjeni).
@@ -237,9 +237,9 @@ describe('v1.212.0 — Č2: disk kontrakt ožičenja', () => {
 
 /* ── Č3 — registri (verzija + oznaka slike) ───────────────────────────────── */
 describe('v1.212.0 — Č3: registri', () => {
-  it('verzija 1.225.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.225.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.225\.0'/)
+  it('verzija 1.226.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.226.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.226\.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {

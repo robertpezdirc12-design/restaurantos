@@ -52,6 +52,12 @@ import { ORDER_MUTABLE_PAYMENT, ORDER_MUTABLE_STATUS } from '@/lib/ops'
  *  - koda se normalizira (trim + VELIKE), 404 neznana; preveri se izpeljano
  *    stanje (redeemed/void/expired → 409), osebnost (order.guestId MORA
  *    ustrezati coupon.guestId) in lokacija;
+ *  - v1.226.0: naročilo BREZ gosta dobi ob odkupu gosta KUPONA pripetega
+ *    samodejno (KODA JE identifikacija — gost jo je predal osebju; prej je
+ *    veljalo trdo pravilo »brez gosta = 400«, a POS ne ponuja dodeljevanja
+ *    gosta naročilu, zato so bili osebni kuponi v praksi NEUNOVČLJIVI —
+ *    slepa ulica, izmerjeno v QA-valu #8). Naročilo Z gostom ostaja strogo:
+ *    drug gost = zavrnitev.
  *  - v1.224.0: KODA IMA DVA VIRA — če osebnega kupona s to kodo ni, se
  *    ista koda poišče v registru popustov (Discount.promoCode, ista
  *    lokacija, aktiven, ročen — 'auto'/Happy Hour izpadel). Promo veja
@@ -134,6 +140,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let thresholdVal = 0
   /** P2-10b: kupon za odkup — nastavljen samo pri viru 'coupon'. */
   let couponClaim: { id: string; code: string } | null = null
+  /** v1.226.0 (QA-val #8): gost, ki se ob odkupu osebnega kupona pripne
+   * naročilu BREZ gosta (koda = identifikacija) — null, kadar pripetje ni potrebno. */
+  let guestLink: string | null = null
 
   const rawCouponCode = typeof body?.couponCode === 'string' ? body.couponCode : ''
   if (rawCouponCode && body?.discountId) {
@@ -151,9 +160,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (st === 'void') return fail('Kupon je preklican.', 409)
       if (st === 'expired') return fail('Kupon je pretekel.', 409)
       if (coupon.percent == null && !(num(coupon.fixedAmount) > 0)) return fail('Kupon nima veljavne vrednosti.', 400)
-      // osebni kupon: naročilo MORA imeti ISTEGA gosta
-      if (!order.guestId) return fail('Naročilo nima dodeljenega gosta — osebni kupon ni mogoč.', 400)
-      if (order.guestId !== coupon.guestId) return fail('Kupon ni izdan temu gostu.', 400)
+      // osebni kupon: naročilo MORA imeti ISTEGA gosta. v1.226.0 (QA-val #8):
+      // naročilo BREZ gosta dobi gosta KUPONA samodejno pripetega v isti
+      // transakciji kot odkup — POS namreč ne ponuja dodeljevanja gosta
+      // naročilu, zato je bil »brez gosta = 400« v praksi vedno 400 (kuponov
+      // ni bilo mogoče unovčiti). KODA JE identifikacija (gost jo je predal
+      // osebju — enaka varnostna masa kot fizični vavčer); naročilo Z gostom
+      // ostaja strogo: drug gost = zavrnitev. Pripetje preživi CAS na
+      // plačljivem stanju (plačano/stornirano naročilo se ne spreminja).
+      if (order.guestId && order.guestId !== coupon.guestId) return fail('Kupon ni izdan temu gostu.', 400)
+      guestLink = !order.guestId ? coupon.guestId : null
       if (coupon.locationId && coupon.locationId !== order.locationId) return fail('Kupon ni za to lokacijo.', 400)
       const subtotal = r2(order.OrderItem.reduce((s, it) => s + num(it.price) * it.quantity, 0))
       amount = couponAmountOf({ percent: coupon.percent, fixedAmount: num(coupon.fixedAmount) }, subtotal)
@@ -283,7 +299,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       //    ročni popust se je zato lahko pripel naročilu, ki ga v toku ni več.
       const upd = await tx.order.updateMany({
         where: { id, status: { in: [...ORDER_MUTABLE_STATUS] }, paymentStatus: { in: [...PAYABLE] }, discount: previousDiscount },
-        data: { discount: amount },
+        // v1.226.0: guestLink — ob odkupu osebnega kupona se gost kupona pripne
+        // naročilu BREZ gosta (identifikacija po kodi); ISTI transakciji kot
+        // odkup + popust (neuspeh kasnejših korakov → ROLLBACK pripetja).
+        data: { discount: amount, ...(guestLink ? { guestId: guestLink } : {}) },
       })
       if (upd.count === 0) {
         throw new DiscountApplyError(409, 'Naročilo ni več v plačljivem stanju ali že ima popust — sprememba zavrnjena.')
@@ -301,6 +320,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           amount,
           orderNumber: order.orderNumber,
           previousDiscount,
+          // v1.226.0: pripetje gosta kupona (transparentnost — kdo in kateri gost)
+          guestLinked: guestLink ?? undefined,
           by: user.name,
           ...(couponClaim ? { couponId: couponClaim.id, couponCode: couponClaim.code } : {}),
           ...reasonAuditFields(reason ?? { reasonId: null, reasonName: null, reasonText: null, comment: null }),
@@ -310,7 +331,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
       return amount
     })
-    return ok({ discount: applied, discountId, name: discountName })
+    return ok({ discount: applied, discountId, name: discountName, guestLinked: guestLink ?? undefined })
   } catch (e) {
     if (e instanceof DiscountApplyError) return fail(e.message, e.status)
     throw e

@@ -26,7 +26,12 @@ describe('parseHHMM / fmtHHMM', () => {
     expect(parseHHMM('23:59')).toBe(1439)
   })
   test('zavrne neveljavne oblike', () => {
-    expect(parseHHMM('24:00')).toBeNull()
+    // v1.226.0 (QA-val #8): '24:00' ni več zavrnjeno — sprejme se kot 1440
+    // (polnoč na koncu dneva, legacy demo seed vrednost; normalizira se v
+    // '00:00' ob shranjevanju). Ostale neveljavne oblike ostajajo zavrnjene.
+    expect(parseHHMM('24:00')).toBe(1440)
+    expect(parseHHMM('24:01')).toBeNull()
+    expect(parseHHMM('25:00')).toBeNull()
     expect(parseHHMM('8:60')).toBeNull()
     expect(parseHHMM('ab:cd')).toBeNull()
     expect(parseHHMM('')).toBeNull()

@@ -468,7 +468,12 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
       const d = await api<OpeningHoursDataT>('/api/opening-hours')
       setData(d)
       const rows = d.rows.length === 7 ? d.rows : DEFAULT_WEEK
-      setEdit(rows.map((r) => ({ ...r, id: r.id || `new-${r.dayOfWeek}` })))
+      // v1.226.0 (QA-val #8): legacy '24:00' (demo seed) se v <input type=time>
+      // ne MORE prikazati (veljavno 00:00–23:59) — polje je izgledalo PRAZNO,
+      // uporabnik pa ni vedel, zakaj shranjevanje pada na »ni veljavno«.
+      // Normalizacija na prikazovalno obliko: '24:00' → '00:00' (overnight —
+      // ista semantika; shranjevanje pošlje veljavno obliko nazaj).
+      setEdit(rows.map((r) => ({ ...r, id: r.id || `new-${r.dayOfWeek}`, closeTime: r.closeTime === '24:00' ? '00:00' : r.closeTime, openTime: r.openTime === '24:00' ? '00:00' : r.openTime })))
       setShowBreak(Array.from({ length: 7 }, (_, i) => Boolean(rows[i]?.breakStart && rows[i]?.breakEnd)))
     } catch { /* status ostaja — napaka v msg */ } finally { setLoading(false) }
   }
