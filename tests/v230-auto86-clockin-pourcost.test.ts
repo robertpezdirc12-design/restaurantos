@@ -467,10 +467,10 @@ describe('v1.230.0 E — žičenje v plačilni tok in prilive', () => {
 /* ─────────────── Ž — verzija + registri (doc-truth) ─────────────── */
 
 describe('v1.230.0 Ž — verzija + registri', () => {
-  test('Ž1: verzija je dvignjena na 1.233.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.233.0')
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.233.0'")
-    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.233.0')
+  test('Ž1: verzija je dvignjena na 1.234.0 (version.ts + compose oznaka)', () => {
+    expect(APP_VERSION).toBe('1.234.0')
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.234.0'")
+    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.234.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi v1.230.0 val (C-seznam zaprt)', () => {
@@ -489,7 +489,7 @@ describe('v1.230.0 Ž — verzija + registri', () => {
     const prd = readFileSync('docs/PRD-LOKALNA-BAZA.md', 'utf8')
     expect(prd).toContain('BENCHMARK-VAL v1.230.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.233.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.234.0')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.229.0'))
   })
 

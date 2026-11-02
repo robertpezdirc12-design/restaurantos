@@ -1,13 +1,16 @@
 /**
- * ISSUE #74 (v1.135.0) — V-3 KDS pet razredov starosti + V-7 preslikava slik kategorij.
+ * ISSUE #74 (v1.135.0) — V-3 KDS pet razredov starosti.
+ * V-7 (preslikava slik kategorij) je bila v v1.234.0 ODSTRANJENA po lastnikovi
+ * odločitvi: vse ploščice ene kategorije so kazale isto sliko, ki ni odražala
+ * artikla (produkcija: 16 ploščic »Glavne jedi« = ista klobasa). Square/Toast
+ * načelo: fotografija je per-artikel podatek ali je ni — nikoli ugibanje iz
+ * kategorije. Ploščice so zdaj besedilne z barvnim robom kategorije.
  *
  * Pure units, NO db fixtures — pokriva:
  *  - src/lib/kds-delays.ts (V-3): kdsAgeClass pet stopenj (fresh/ok/warn/urgent/late),
  *    normalizeKdsAgeThresholds (fail-closed + monotonost), kdsLateThreshold
  *    (nastavitev ali postajni cilj — kar je višje), pill/border CSS razredi
- *    (stranski rob ZA celovitim — tw-merge lekcija iz v1.131.0);
- *  - src/lib/category-images.ts (V-7): categoryImageForCategory preslikava
- *    (vrstni red specifične→splošne, delni zadetki, fallback default).
+ *    (stranski rob ZA celovitim — tw-merge lekcija iz v1.131.0).
  */
 import { describe, expect, test } from 'bun:test'
 import {
@@ -19,11 +22,6 @@ import {
   kdsAgeBorderCls,
   type KdsAgeThresholds,
 } from '../src/lib/kds-delays'
-import {
-  CATEGORY_IMAGE_RULES,
-  CATEGORY_IMAGE_DEFAULT,
-  categoryImageForCategory,
-} from '../src/lib/category-images'
 
 /* ─────────── V-3: pet razredov starosti ─────────── */
 
@@ -115,36 +113,26 @@ describe('issue74 V-3: CSS razredi — vrstni red tw-merge (celovit PRED stransk
   })
 })
 
-/* ─────────── V-7: preslikava slik kategorij ─────────── */
+/* ─────────── v1.234.0: slike kategorij ODSTRANJENE ─────────── */
 
-describe('issue74 V-7: categoryImageForCategory', () => {
-  test('specifične pred splošnimi (kava pred pijačami)', () => {
-    expect(categoryImageForCategory('Kava in espresso')).toBe('/img/cat/coffee.jpg')
-    expect(categoryImageForCategory('Brezalkoholne pijače')).toBe('/img/cat/soft-drinks.jpg')
+describe('v1.234.0 — POS ploščice brez fotografij (Square/Toast načelo)', () => {
+  test('src/lib/category-images.ts NE obstaja več (preslikava kategorija→slika zbrisana)', async () => {
+    const { existsSync } = await import('node:fs')
+    expect(existsSync('src/lib/category-images.ts')).toBe(false)
+    expect(existsSync('public/img/cat')).toBe(false)
   })
-  test('delni zadetki po vrstnem redu pravil', () => {
-    expect(categoryImageForCategory('Lokalna vina')).toBe('/img/cat/wine.jpg')
-    expect(categoryImageForCategory('Penine')).toBe('/img/cat/wine.jpg')
-    expect(categoryImageForCategory('Tople juhe')).toBe('/img/cat/soup-salad.jpg')
-    expect(categoryImageForCategory('Glavne jedi')).toBe('/img/cat/main.jpg')
-    expect(categoryImageForCategory('Sladice')).toBe('/img/cat/desserts.jpg')
-    expect(categoryImageForCategory('Predjedi in prigrizki')).toBe('/img/cat/starters.jpg')
-  })
-  test('hrvaška imena (diakritiki) zadenejo ista pravila', () => {
-    expect(categoryImageForCategory('Bezalkoholna pića')).toBe('/img/cat/soft-drinks.jpg')
-    expect(categoryImageForCategory('Glavna jela')).toBe('/img/cat/main.jpg')
-  })
-  test('brez zadetka → default (nikoli prazna pot)', () => {
-    expect(categoryImageForCategory('Sushi')).toBe(CATEGORY_IMAGE_DEFAULT)
-    expect(categoryImageForCategory('')).toBe(CATEGORY_IMAGE_DEFAULT)
-    expect(categoryImageForCategory(null)).toBe(CATEGORY_IMAGE_DEFAULT)
-    expect(categoryImageForCategory(undefined)).toBe(CATEGORY_IMAGE_DEFAULT)
-  })
-  test('vsa pravila kažejo na obstoječe datoteke v public/img/cat', () => {
-    expect(CATEGORY_IMAGE_RULES.length).toBeGreaterThanOrEqual(9)
-    for (const rule of CATEGORY_IMAGE_RULES) {
-      expect(rule.img).toMatch(/^\/img\/cat\/[a-z-]+\.jpg$/)
-      expect(rule.keys.length).toBeGreaterThan(0)
-    }
+  test('dashboard in handheld NE vsebujeta <img> na ploščicah artiklov', async () => {
+    const { readFileSync } = await import('node:fs')
+    const dash = readFileSync('src/app/dashboard/page.tsx', 'utf8')
+    const hh = readFileSync('src/app/handheld/page.tsx', 'utf8')
+    // nobena ploščica artikla ne sme več nositi <img> (fotografija = per-artikel
+    // podatek; dokler ni v bazi, je ploščica besedilna z barvnim robom)
+    expect(dash).not.toContain('categoryImageForCategory')
+    expect(hh).not.toContain('categoryImageForCategory')
+    expect(dash).not.toContain('/img/cat/')
+    expect(hh).not.toContain('/img/cat/')
+    // obe ploščici ohranjata barvni rob kategorije (orientacija brez laži)
+    expect(dash).toContain('saleCatBorderCls(catKey)')
+    expect(hh).toContain('saleCatBorderCls(mi.categoryId || mi.name)')
   })
 })

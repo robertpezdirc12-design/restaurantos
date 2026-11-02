@@ -199,10 +199,10 @@ describe('v1.229 E — prenos naročila na natakarja (Lightspeed transfer user)'
 })
 
 describe('v1.229 Ž — verzija + dokument (doc-truth)', () => {
-  test('Ž1: verzija je dvignjena na 1.233.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.233.0')
-    expect(read('src/lib/version.ts')).toContain("'1.233.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.233.0')
+  test('Ž1: verzija je dvignjena na 1.234.0 (version.ts + compose oznaka)', () => {
+    expect(APP_VERSION).toBe('1.234.0')
+    expect(read('src/lib/version.ts')).toContain("'1.234.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.234.0')
   })
 
   test('Ž2: primerjalni dokument obstaja in pokriva VSEH 5 vmesnikov', () => {

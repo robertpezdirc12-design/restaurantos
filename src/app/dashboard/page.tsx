@@ -117,9 +117,9 @@ import { KdsStationBoard, KDS_TASK_STATUS, type KdsStationT, type KdsTaskT, type
 import { KdsTapCard } from '@/components/kds-tap-card'
 /* ISSUE #73 audit-33 (v1.139.0) — one-time module intro (KDS jargon + gestures). */
 import { ModuleIntro } from '@/components/module-intro'
-/* ISSUE #74 V-7: fotografije kategorij na POS ploščicah (skupni vir za dashboard
-   in handheld — čista preslikava v lib, brez per-artikel slik v bazi) */
-import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
+/* v1.234.0: fotografije kategorij na POS ploščicah ODSTRANJENE (lastnikova
+   odločitev po produkciji — vse ploščice so prikazovale isto sliko, ki ni
+   odražala artikla; Square/Toast: fotografija je per-artikel podatek). */
 import { stationViewKey } from '@/lib/kds-station-routing'
 /* v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«): skupine postavk listka
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
@@ -3747,9 +3747,10 @@ function DashboardInner() {
                 {/* v1.229.0: Enter v iskalnem polju = EAN čitalnik (scanner pošlje Enter);
                     besedne poizvedbe se ne sprožijo (regex samo številke). */}
                 <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saleEanSubmit() } }} placeholder={t('sale.search')} className="h-11 w-full sm:w-56" aria-label={t('sale.search')} />
-                {/* v1.141.0 (Toast gostota): preklop KARTICE ↔ KOMPAKTNO — foto kartice
-                    (lepota, 1–2 na ekran) ali gost tekstovni grid (12–20 ploščic hkrati,
-                    barvno kodirane kategorije, mišični spomin). Persist v localStorage. */}
+                {/* v1.141.0 (Toast gostota): preklop KARTICE ↔ KOMPAKTNO — velike
+                    besedilne ploščice (1–4 na vrstico) ali gost tekstovni grid
+                    (12–20 ploščic hkrati, barvno kodirane kategorije, mišični
+                    spomin). Persist v localStorage. v1.234.0: brez fotografij. */}
                 <div className="ml-auto inline-flex shrink-0 rounded-lg border border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-950 p-0.5" role="group" aria-label={t('sale.viewMode')}>
                   <button
                     type="button"
@@ -3799,9 +3800,12 @@ function DashboardInner() {
                   </Button>
                 ))}
               </div>
-                {/* v1.141.0 (Toast gostota) — DVA načina mreže: KARTICE (foto, za
-                    učenje/lepoto) ali KOMPAKTNO (12–20 ploščic na ekran, barvni rob
-                    kategorije, tekst za mišični spomin — Toast/Oracle »tiered grid«). */}
+                {/* v1.141.0 (Toast gostota) — DVA načina mreže: KARTICE (velike
+                    ploščice, ime + cena + barvni rob) ali KOMPAKTNO (12–20 ploščic
+                    na ekran). v1.234.0: fotografije kategorij ODSTRANJENE — vse
+                    ploščice so besedilne (Square/Toast: fotografija je per-artikel
+                    podatek, nikoli ugibanje iz kategorije — zavajujoča slika je
+                    hujša od nje). */}
                 {saleView === 'compact' ? (
                 <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
                   {saleItems.map((mi) => {
@@ -3851,12 +3855,15 @@ function DashboardInner() {
                   {saleItems.map((mi) => {
                     // OSS-10 B-del: značka na ploščici šteje TUDI vrstice variant tega artikla
                     const inCart = (saleCart[mi.id] || 0) + saleVariants.filter((l) => l.menuItemId === mi.id).reduce((s, l) => s + l.qty, 0)
-                    /* ISSUE #74 V-7 (blocker): FOTOGRAFIJA na ploščici artikla — prej
-                       imgCount=0 v celem POS (bele kartice z imenom in ceno); slika 4:3
-                       iz kategorije artikla (categoryImageForCategory), lazy loading. */
-                    const img = mi.categoryId
-                      ? categoryImageForCategory(categories.find((c) => c.id === mi.categoryId)?.name)
-                      : CATEGORY_IMAGE_DEFAULT
+                    /* v1.234.0 (lastnikova odločitev): FOTOGRAFIJA ODSTRANJENA s ploščice.
+                       Produkcija je pokazala, da preslikava KATEGORIJA → slika da VSEM
+                       artiklom kategorije isto sliko (16 ploščic »Glavne jedi« = ista
+                       klobasa) — zavajujoča slika je hujša od brez nje (Square/Toast:
+                       slika je per-artikel podatek ali je ni). Namesto nje: BARVNI LEVI
+                       ROB kategorije (enak hash kot kompaktni grid) — hitra orientacija
+                       brez laži. Vsa obstoječa logika (86, Happy Hour, priljubljene,
+                       variante) ostaja nedotaknjena. */
+                    const catKey = mi.categoryId || (categories.find((c) => c.name === saleCatNameOf(mi))?.id ?? mi.name)
                     // ISSUE #73 audit-15: overline »jed« = kategorija (samo v mešanem
                     // pogledu — znotraj izbrane kategorije je kontekst že v čipu)
                     const catOverline = saleMixed ? saleCatNameOf(mi) : ''
@@ -3870,37 +3877,29 @@ function DashboardInner() {
                       <button disabled={!mi.available} onClick={() => posAddClick('sale', mi)}
                         aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${hh ? ` · ${t('sale.hhAria', { price: fmtEUR(hh.price) })}` : ''}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
                         title={hh ? hh.name : undefined}
-                        className={`group relative flex w-full flex-col overflow-hidden rounded-xl border text-left transition ${mi.available
-                          ? inCart > 0
-                            ? 'border-emerald-600 bg-white hover:border-emerald-600 hover:shadow-md'
-                            : 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md'
-                          : 'cursor-not-allowed border-red-200 bg-red-50/70'}`}>
-                        <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden bg-stone-100" aria-hidden="true">
-                          <img src={img} alt="" loading="lazy" draggable={false}
-                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.04] group-active:scale-[0.97]" />
-                          {inCart > 0 && (
-                            <span key={inCart} aria-hidden="true" className="absolute right-1.5 top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-700 px-1.5 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
-                              {inCart}×
-                            </span>
-                          )}
-                          {/* Issue #71 audit-16: 86 iz KDS-a je viden NA PLOŠČICI (rdeči trak),
-                              ne tiho mrk — natakar NE proda artikla, ki ga je kuhinja že umaknila */}
-                          {!mi.available && (
-                            <>
-                              <span className="absolute inset-0 bg-stone-100/60" />
-                              <span className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
-                            </>
-                          )}
-                        </span>
-                        <span className="flex min-h-16 flex-1 flex-col p-2.5">
+                        className={`group relative flex min-h-24 w-full flex-col justify-between border-l-4 px-3 py-2.5 text-left transition ${mi.available
+                          ? `${saleCatBorderCls(catKey)} border-y-stone-200 border-r-stone-200 dark:border-y-stone-700 dark:border-r-stone-700 bg-white dark:bg-stone-800 shadow-sm hover:bg-stone-50 dark:hover:bg-stone-700 hover:shadow active:scale-[0.98] ${inCart > 0 ? 'ring-2 ring-emerald-600' : ''}`
+                          : 'cursor-not-allowed border-l-red-400 border-y-red-200 border-r-red-200 dark:border-l-red-500 dark:border-y-red-900 dark:border-r-red-900 bg-red-50/70 dark:bg-red-950/40'}`}>
+                        {inCart > 0 && (
+                          <span key={inCart} aria-hidden="true" className="absolute left-1.5 top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-700 px-1.5 text-xs font-bold tabular-nums text-white shadow-sm animate-in zoom-in-75 duration-150">
+                            {inCart}×
+                          </span>
+                        )}
+                        {/* Issue #71 audit-16: 86 iz KDS-a je viden NA PLOŠČICI (rdeči trak),
+                            ne tiho mrk — natakar NE proda artikla, ki ga je kuhinja že umaknila */}
+                        {!mi.available && (
+                          <span className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
+                        )}
+                        <span className="flex min-h-14 flex-1 flex-col">
                           {/* ISSUE #73 audit-15: ploščica »jed · različica · velikost« —
                               overline (kategorija/jed) loči isto ime dveh različnih jedi
                               (»Bolognese« testenina/pica) in da starša golim imenom
-                              prilagodb (»Z gobami« → »Testenine, njoki · Z gobami«). */}
+                              prilagodb (»Z gobami« → »Testenine, njoki · Z gobami«).
+                              pr-12: ime ne teče pod ★ zvezdico (zgornji desni kot). */}
                           {catOverline && (
                             <span className="mb-0.5 truncate text-[10px] font-semibold uppercase leading-tight tracking-wider text-stone-400" aria-hidden="true">{catOverline}</span>
                           )}
-                          <p className="min-w-0 text-sm font-semibold leading-tight line-clamp-2">{mi.name}</p>
+                          <p className={`min-w-0 self-stretch pr-12 text-sm font-semibold leading-tight line-clamp-2 break-words ${mi.available ? 'text-stone-900 dark:text-stone-100' : 'text-red-700/60 dark:text-red-400/70 line-through'}`}>{mi.name}</p>
                           {hh ? (
                             <span className="mt-auto flex items-baseline justify-end gap-1 pt-1">
                               <Zap className="w-3.5 h-3.5 self-center text-amber-500" aria-hidden />
@@ -3908,19 +3907,19 @@ function DashboardInner() {
                               <span className={`text-xs font-medium tabular-nums line-through ${mi.available ? 'text-stone-400' : 'text-red-700/70'}`}>{fmtEUR(mi.price)}</span>
                             </span>
                           ) : (
-                            <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
+                            <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900 dark:text-stone-100' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
                           )}
                         </span>
                       </button>
-                      {/* v1.229.0: ★ zvezdica (SESTRINSKI gumb — veljaven HTML) v levem
-                          zgornjem kotu fotografije; 44-pikselna cona (h-11 w-11) za dotik. */}
+                      {/* v1.229.0: ★ zvezdica (SESTRINSKI gumb — veljaven HTML) v zgornjem
+                          desnem kotu ploščice; 44-pikselna cona (h-11 w-11) za dotik. */}
                       <button
                         type="button"
                         aria-pressed={fav}
                         aria-label={fav ? `${t('sale.favRemove')} — ${mi.name}` : `${t('sale.favAdd')} — ${mi.name}`}
                         title={fav ? t('sale.favRemove') : t('sale.favAdd')}
                         onClick={() => saleFavToggle(mi.id)}
-                        className="absolute left-1.5 top-1.5 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/80 text-stone-400 shadow-sm backdrop-blur transition hover:text-amber-500 active:scale-95"
+                        className="absolute right-1 top-1 z-20 flex h-11 w-11 items-center justify-center rounded-full text-stone-300 transition hover:text-amber-500 active:scale-95 dark:text-stone-600 dark:hover:text-amber-400"
                       >
                         <Star className={`w-4 h-4 ${fav ? 'fill-amber-400 text-amber-500' : ''}`} aria-hidden />
                       </button>

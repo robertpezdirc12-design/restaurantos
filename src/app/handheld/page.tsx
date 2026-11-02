@@ -31,7 +31,6 @@ import { flushQueue, isNetworkError, newOperationId, subscribeQueue, tryEnqueueO
 import { menuRefreshDue } from '@/lib/poll-plan'
 import { processTerminalPayment } from '@/lib/devices/terminal'
 import { tableStatusLabelKey } from '@/lib/table-status'
-import { categoryImageForCategory } from '@/lib/category-images'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { ManagerCallButton } from '@/components/manager-call-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -64,6 +63,22 @@ const ITEM_STATUS_BADGE: Record<string, string> = {
 }
 
 const r2v = (v: number) => Math.round(v * 100) / 100
+
+/* v1.234.0 (Toast/Square): barvni LEVI ROB kategorije na ploščici artikla —
+   ista 8-barvna paleta in deterministični hash kot kompaktni grid POS v
+   dashboardu (barva = kategorija, nikoli fotografija). Fotografije kategorij
+   so ODSTRANJENE: vse ploščice ene kategorije so kazale isto sliko, ki ni
+   odražala artikla — zavajujoča slika je hujša od brez nje (lastnikova
+   odločitev po produkciji). */
+const SALE_CAT_BORDER = [
+  'border-l-emerald-600', 'border-l-amber-500', 'border-l-orange-600', 'border-l-rose-500',
+  'border-l-violet-500', 'border-l-teal-600', 'border-l-lime-600', 'border-l-yellow-500',
+] as const
+const saleCatBorderCls = (key: string): string => {
+  let h = 0
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) % 9973
+  return SALE_CAT_BORDER[h % SALE_CAT_BORDER.length]
+}
 
 /** navigator.onLine je zunanji vir (useSyncExternalStore): naročnik na dogodka
  *  'online'/'offline'; getServerSnapshot = true = prejšnje začetno stanje, tako
@@ -533,24 +548,21 @@ function HandheldInner() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               {items.map((mi) => (
-                /* ISSUE #74 V-7: FOTOGRAFIJA na ploščici (enak vzorec kot hitra prodaja
-                   v dashboardu) — prej bele kartice; slika 4:3 iz kategorije artikla. */
+                /* v1.234.0: besedilna ploščica z barvnim levim robom kategorije
+                   (enak vzorec kot hitra prodaja v dashboardu) — brez fotografije. */
                 <button
                   key={mi.id}
                   disabled={!mi.available}
                   onClick={() => inc(mi.id)}
-                  className={`group overflow-hidden rounded-xl border text-left min-h-16 transition ${mi.available ? 'bg-white active:border-emerald-600 active:shadow' : 'border-stone-200 bg-stone-100'}`}
+                  className={`flex min-h-20 flex-col justify-between rounded-xl border border-l-4 px-3 py-2 text-left transition ${mi.available
+                    ? `${saleCatBorderCls(mi.categoryId || mi.name)} border-y-stone-200 border-r-stone-200 bg-white active:scale-[0.98] active:shadow`
+                    : 'cursor-not-allowed border-l-red-400 border-y-red-200 border-r-red-200 bg-stone-100'}`}
                 >
-                  <span className="relative block aspect-[4/3] w-full overflow-hidden bg-stone-100" aria-hidden="true">
-                    <img src={categoryImageForCategory(categories.find((c) => c.id === mi.categoryId)?.name)} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover" />
-                  </span>
-                  <span className="block p-2.5 pb-2">
-                    <p className={`text-sm font-medium leading-tight ${mi.available ? '' : 'line-through text-stone-400'}`}>{mi.name}</p>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className={`text-xs ${mi.available ? 'text-stone-500' : 'text-stone-400'}`}>{fmtEUR(mi.price)}</p>
-                      {!mi.available && <Badge className="bg-stone-500 text-xs leading-none">{t('hh.soldOut')}</Badge>}
-                    </div>
-                  </span>
+                  <p className={`min-w-0 self-stretch text-sm font-semibold leading-tight line-clamp-2 break-words ${mi.available ? 'text-stone-900' : 'line-through text-stone-400'}`}>{mi.name}</p>
+                  <div className="mt-1 flex items-center justify-between">
+                    <p className={`text-xs font-medium tabular-nums ${mi.available ? 'text-stone-500' : 'text-stone-400'}`}>{fmtEUR(mi.price)}</p>
+                    {!mi.available && <Badge className="bg-stone-500 text-xs leading-none">{t('hh.soldOut')}</Badge>}
+                  </div>
                 </button>
               ))}
             </div>

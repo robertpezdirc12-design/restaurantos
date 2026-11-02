@@ -228,7 +228,11 @@ describe('issue #71 audit-16/32 — hitra prodaja: privzeta kategorija + 86 na p
   })
   test('razprodan artikel: rdeča ploščica + 86 trak + razlog v aria', () => {
     const d = dash()
-    expect(d).toContain('border-red-200 bg-red-50/70')
+    // v1.234.0: kartice in kompaktna mreža imata ENOTEN rdeč vzorec razprodanega
+    // artikla — barvni levi rob border-l-red-400 + rdeča podlaga bg-red-50/70
+    // (prej kartica: goli border-red-200 brez levega akcenta).
+    expect(d).toContain('border-l-red-400')
+    expect(d).toContain('bg-red-50/70')
     expect(d).toContain('uppercase tracking-wider text-red-800 shadow-sm">86</span>')
     expect(d).toContain("t('sale.soldOut')")
   })

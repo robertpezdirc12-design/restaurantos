@@ -130,13 +130,13 @@ describe('v227 B · harness-env-pin pravilo 2 je neodvisno od lokacije repo', ()
 /* ═══════════════ Č · VERZIJA + REGISTRI ═══════════════ */
 
 describe('v227 Č · verzija + dokumentacija', () => {
-  test('verzija je dvignjena na 1.233.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.233.0')
-    expect(read('src/lib/version.ts')).toContain("'1.233.0'")
+  test('verzija je dvignjena na 1.234.0 (version.ts)', () => {
+    expect(APP_VERSION).toBe('1.234.0')
+    expect(read('src/lib/version.ts')).toContain("'1.234.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.233.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.234.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {

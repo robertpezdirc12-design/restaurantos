@@ -179,7 +179,7 @@ describe('v217 Č2 — vrata poti in gradnje', () => {
   test('guardPkgPath spusti veljavno relativno pot (tudi znotraj deploy/)', () => {
     expect(guardPkgPath('src/lib/version.ts')).toBe('src/lib/version.ts')
     expect(guardPkgPath('deploy/.env.example')).toBe('deploy/.env.example')
-    expect(guardPkgPath('public/img/cat/soup-salad.jpg')).toBe('public/img/cat/soup-salad.jpg')
+    expect(guardPkgPath('public/pwa-icon-192.png')).toBe('public/pwa-icon-192.png')
   })
 
   test('guardPkgPath zavrne: skok ven, absolutna, poševnica nazaj, prazno, . in .. segmente, kontrolne znake, predolgo', () => {
@@ -580,10 +580,10 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
     }
   })
 
-  test('verzija je dvignjena na 1.233.0 (version.ts + compose oznaka + selfhost-check vir)', () => {
-    expect(APP_VERSION).toBe('1.233.0')
-    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.233\.0'/)
-    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.233.0')
+  test('verzija je dvignjena na 1.234.0 (version.ts + compose oznaka + selfhost-check vir)', () => {
+    expect(APP_VERSION).toBe('1.234.0')
+    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.234\.0'/)
+    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.234.0')
   })
 
   test('DOKUMENTI: LOKALNI-ZAGON §7 pozna paketno pot; PRD R4b vrstica nosi dokaz', () => {
@@ -600,7 +600,7 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = readFileSync(join(ROOT, 'worklog.md'), 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.233.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.234.0')
   })
 
   test('meje paketa so izmerjene in zapisane (623 datotek / ~10,2 MB osnova @ v1.217.0)', () => {
