@@ -14,6 +14,8 @@ ZAKLJUČEK VERIFIKACIJE (lokalno, pred pushom): CELA SUITA 4562 pass / 33 fail /
 
 AKCIJA: bun test (cela suita po vnosu workloga) → tsc → lint → push GitHub main → CI → Vercel produkcija → health 1.236.0 → e2e produkcija (flash + preklicane vrstice).
 
+ZAKLJUČEK VERIFIKACIJE (produkcija): push 400b5bb..79477db ✅; CI quality gate #41518883279 (tests + typecheck-prod + neon-smoke) ZELEN — success ✅; GitLab zrcalo #41518883425 sinhronizirano — success ✅; Vercel samodejni deploy → produkcija https://restaurantos-theta.vercel.app/api/health → ok · **1.236.0** · commit 79477db · postgresql connected · schema ok ✅. E2E (agent-browser, produkcija, demo seja): KDS zavihek se izriše (klik Kuhinja), LIVE oznaka »V živo« (SSE povezan v produkciji), Start Queue pasiven trak prisoten, 3 listki v odseku Zastarelo (demo zgodovina), voidedRows 0 (iskreno — ni nedavnih preklicov na produkciji), 0 konzolnih napak · 0 page errors ✅.
+
 Task ID: v1.235.0-polish-empty-states-dialog-maxh
 Agent: glavni agent (Z.ai Code)
 Task: Lastnik: »odlicno nadaljuj raziskuj poliraj« — po v1.234.0 (polna funkcionalna pariteta vseh petih vmesnikov, 0 odprtih issuejev) naslednji krog: RAZISKOVA (nov 2026) + POLIRANJE. Raziskava: Square skupnost avgust 2026 »Major Flow Flaws« (4 pritožbe natakarja v baru z velikim obsegom nad vodilnim izdelkom) + Toast junij 2026 product updates + VLM pregled petih vmesnikov (POS/Mize/KDS/Zaloge/Handheld) z DOM preverbo trditev. ZAČETNO STANJE: GitHub main = 7999379 (v1.234.0, CI #41474441526 ZELEN), Vercel produkcija v1.234.0 READY (243 ms), 0 odprtih issuejev.
