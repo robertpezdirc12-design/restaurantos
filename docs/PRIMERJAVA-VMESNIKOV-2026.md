@@ -386,3 +386,104 @@ KDS (»kuhinja čista«) sta vzorec že imeli; Mize in Naročila GA NISVA:
 iz vseh stanj, količine v dosegu palca, modifikatorji brez drsenja, premik
 postavk med izstavki. V tem valu smo zaprli še lastno zagato istega razreda
 (drsenje dialogov) in dve zadnji prazni stanji osnovnih pogledov.
+
+---
+
+## 13. Raziskava december 2026 — POLISH val 2 v1.236.0 (KDS: Flash Changes + preklicane postavke)
+
+Tretji polish vir: **Toast KDS platform guide + skupnost (avgust/oktober 2026)**
+in **Lightspeed K-Series »What's new« (marec–maj 2026)**. Dve točki sta bili
+pravi vrzeli istega razreda kot §12 (detajl, ki ga kuharja moti vsak dan):
+
+### A) Toast KDS »Flash Changes« — utrip ob NOVEM ali SPREMENJENEM listku
+
+**Kako ima Toast:** platform guide zapisuje dve ločeni signalizaciji:
+(1) »A flash animation to indicate a ticket is new or was changed« — ob steni
+10 listkov kuhar takoj vidi, KATERI listek je pravkar priletel oz. se je
+spremenil (drugi krog pijač na isti mizi); (2) »sound alerts for new tickets,
+ready orders, item changes, and voided items« — vsak dogodek ima svoj zvok.
+Oktober 2026 so dodali še »recently fulfilled tickets stop flashing« — utrip
+je časovno omejen, ne utripa večno. Skupnost (avgust 2026) potrdjuje, da je
+nastavitev vikend-volumnu kritična.
+
+**Kako ima RestaurantOS (v1.236.0):** prej smo imeli SAMO zvok ob porastu
+števca čakajočih postavk — brez vizualnega signala in brez ločevanja
+dogodkov. Nova implementacija:
+
+- **Diferencialni pogon** (`src/app/dashboard/page.tsx`, učinek nad
+  `viewKitchen`): posnetek id-jev listkov + postavk + preklicov v refu;
+  ob vsakem SSE pretoku (`/api/kitchen/stream`, v1.232) ali 15 s polling
+  primerjamo IDENTITETO (id-ji), ne števcev → `newTickets` / `newItems` /
+  `newVoids`. Prvi odčitek in preklop postaje sta IZHODIŠČE (brez lažnega
+  utripanja).
+- **Nov listek** — utripajoči oranžni obroč okrog kartice (prazen prekrivni
+  `span` z `ring-4 ring-orange-400/80 animate-pulse`,
+  `data-region="kds-flash-ring"` — vsebina listka NE utripa, ostane berljiva)
+  + značka **NOVO** v glavi (`kds-flash-new`).
+- **Dodane postavke na obstoječem listku** — značka **+n** v glavi
+  (`kds.newItems`, `{n}` interpolacija) + vsaka nova vrstica dobi oranžni rob
+  in ozadje (`border-orange-400 bg-orange-50 ring-2`) + utripajoči čip
+  `+ NOVO` ob imenu (`kds-item-new`) — kuhar vidi KAJ je novega, ne samo
+  da se je »nekaj« spremenilo.
+- **Zvočni toni** (`kdsBeep(freq, ms, delay)`, WebAudio): nov listek 880 Hz
+  (obstoječi znak), sprememba 660 Hz dvojni, preklic 392 Hz trojni — en
+  dogodek = en ton (prednost preklic > nov > sprememba).
+- **Zatritev** po 10,5 s (`setTimeout` počisti vse tri mape) — Toast oktober
+  2026 vzorec »stop flashing«.
+- Poimenovane postaje (task board, Issue #14) ostajajo na števcu nalog —
+  ničelna regresija.
+
+### B) Preklicane postavke OSTANEJO vidne (Toast: prečrtane + alarm)
+
+**Kako ima Toast:** voided item ne izgine s KDS — ostane na listku PREČRTAN
+in sproži zvok, da kuhinja, ki je morda že strt delo, ve, da naj USTANE.
+Brez tega se postavka izgubi tiho in kuhar pripravi obrok, ki ga nihče ne
+čaka (odpad hrane + zamuda naslednjih listkov).
+
+**Kako ima RestaurantOS (v1.236.0):** prej je strežniški filter
+`voided: false` v `GET /api/kitchen` (`src/app/api/kitchen/route.ts`)
+preklicano postavko TIHO izločil — kuhinja ni vedela nič. Nova implementacija:
+
+- **API** (`src/app/api/kitchen/route.ts`): druga poizvedba poizveduje
+  nedavno preklicane postavke (`voided: true`, status še vedno AKTIVEN,
+  `updatedAt >= zdaj − 30 min` — okno `KDS_VOID_WINDOW_MS`, take 200) z
+  razlogom iz kataloga (`VoidReason` → `voidReasonName`). Odgovor nosi
+  ADITIVNO polje `voidedItems` na vsakem listku vrste (`queueWithVoids`) —
+  odjemalci, ki ga ne poznajo, ga mirno ignorirajo. Postajni filter (KDS
+  naprava BAR) obdrži listek tudi, ko so vse postavne preklicane
+  (`o.items.length > 0 || o.voidedItems.length > 0`).
+- **Klient** (`src/app/dashboard/page.tsx`, `renderKdsTicket`): oddelek
+  `data-region="kds-ticket-voided"` (role=status — informacija, ne alarm;
+  rdeči pas ostaja rezerviran za alergene) na dnu listka: prečrtana vrstica
+  (`line-through`) + ikona Ban + značka PREKLICANO + razlog (če je iz
+  kataloga); NOV preklic utripa rdeče 10 s (`kdsFlash.voids`) + 392 Hz
+  trojni ton. Postavni filter BAR ne kaže kuhinjskih preklicov.
+- **Vrsta obdrži listek z SAMO preklicanimi postavkami** (`kdsQueue`
+  filter razširjen na `voidedItems`) — »vse preklicano« je vidno, ne izgine.
+- Izločene iz VSEH štetij (All Day, ETA, pragovi zamude, bump) — čista
+  informacija, nič regresije.
+
+### C) Druge točke raziskave december 2026 (ocena)
+
+- **Lightspeed marec 2026 — digitalni checklisti odpiranja/zapiranja**
+  (opening/closing duties): NOVA zavestna izključitev / načrt — HACCP dnevne
+  kontrole (`/api/haccp`) pokrivajo živilsko-varnostni del; poln modul
+  checklistov (predloge + dnevni vnosi + potrditve) je ločena investicija
+  (potrebna shema oz. konfiguracijsko shranjevanje) — odločitev lastnika.
+- **Toast januar 2026 — Optimized Drive-Thru Mode** (preskoči nepotrebne
+  vpive, predogled listkov): ZDA QSR praksa; naš TAKEOUT tok je že 1-dotik
+  (grid → košara → TAKEOUT → plačilo) — vrzel ni.
+- **Toast januar 2026 — Centralized Notification Log**: imamo — zvonček
+  push obvestil (v1.70) + dnevnik napak v Nadzoru.
+- **Square 2026 — real-time statusni indikatorji tlorisa** (»servers and
+  managers can track dining room flow at a glance«): imamo — statusne barve
+  miz (prosta/zasedena/umazana) + overlay rezervacij (v1.232) + števci v
+  glavi zavihka Mize.
+- **Lightspeed maj 2026 — automatic table assignments**: imamo (v1.231).
+
+**Sklep §13:** dve zadnji KDS vrzeli polish razreda sta zaprti — utrip ob
+spremembi (Toast »Flash Changes«) in viden preklic (prečrtana vrstica z
+razlogom). Kuhinja zdaj za vsak dogodek dobi PRAVI signal: kaj je novo,
+kaj je dodano, kaj je preklicano — po zvoku LOČLJIVO, po videzu v 10 s
+zaglavljenem. Preostanek raziskave so zavestne izključitve/načrti
+(checklisti = odločitev lastnika).

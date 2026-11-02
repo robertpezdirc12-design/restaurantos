@@ -462,8 +462,8 @@ describe('v219 Č8 · #93 demo oznaka', () => {
 describe('v219 Č9 · verzija + registri', () => {
   it('verzija je dvignjena na 1.219.0 (version.ts + compose oznaka)', async () => {
     const { APP_VERSION } = await import('../src/lib/version')
-    expect(APP_VERSION).toBe('1.235.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.235.0')
+    expect(APP_VERSION).toBe('1.236.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.236.0')
   })
 
   it('PRD nosi zapis QA-vala v1.219.0 (doc-truth)', () => {
@@ -472,7 +472,7 @@ describe('v219 Č9 · verzija + registri', () => {
 
   it('AUDIT §8 števci usklajeni (3750/3750, EN 263)', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3853 ključev SL in 3853 HR')
+    expect(audit).toContain('3857 ključev SL in 3857 HR')
     expect(audit).toContain('263 ključev')
   })
 })

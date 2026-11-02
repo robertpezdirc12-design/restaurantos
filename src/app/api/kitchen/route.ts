@@ -26,6 +26,11 @@ type KitchenOrder = Prisma.OrderGetPayload<{
   }
 }>
 
+/** v1.236.0 (PRIMERJAVA §13, Toast KDS): okno vidnosti PREKlicANIH postavk na KDS —
+ * preklic, starejši od 30 min, izgine (kuhinja je sporočilo zagotovo videla;
+ * SSE podpis se dvigne ob vsakem preklicu, saj void posodobi OrderItem.updatedAt). */
+const KDS_VOID_WINDOW_MS = 30 * 60 * 1000
+
 /**
  * Issue #5 (P0 §C + komentar #2): prej requireAuth — KDS vrsta je bila vidna vsakemu
  * prijavljenemu (vključno s čistilko). Zdaj kitchen.update (kuhinja/šank/vodstvo;
@@ -87,13 +92,46 @@ export async function GET(req: NextRequest) {
       firedAt: c.firedAt ?? null,
     })),
   }))
+  // v1.236.0 (PRIMERJAVA §13, Toast KDS — preklicane postavke OSTANEJO vidne prečrtano):
+  // prej se je postavka, preklicana PO pošiljanju v kuhinjo, na KDS TIHO izgubila —
+  // kuhar je lahko že strt delo (Toast: voided item ostane na listku prečrtan + alarm).
+  // Okno 30 min (KDS_VOID_WINDOW_MS); samo postavke, ki so bile ob preklicu ŠE AKTIVNE
+  // (status v ITEM_ACTIVE — dokončane/izločene ne zanimajo kuhinje več). ADITIVNO polje
+  // `voidedItems` na vsakem listku: vrsta seč naprave, ki ga ne pozna, ga mirno ignorira.
+  const voidedSince = new Date(Date.now() - KDS_VOID_WINDOW_MS)
+  const voidedRows = await db.orderItem.findMany({
+    where: {
+      voided: true,
+      status: { in: ITEM_ACTIVE_PRISMA },
+      updatedAt: { gte: voidedSince },
+      Order: { ...scope, status: { in: ORDER_ACTIVE_DB } },
+    },
+    include: {
+      MenuItem: { include: { PrepStation: true } },
+      VoidReason: { select: { name: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 200,
+  })
+  const voidedByOrder = new Map<string, unknown[]>()
+  for (const v of voidedRows) {
+    const list = voidedByOrder.get(v.orderId) ?? []
+    list.push({
+      ...mapOrderItem({ ...v, menuItem: v.MenuItem ? { prepStation: v.MenuItem.PrepStation } : undefined }),
+      voidReasonName: v.VoidReason?.name ?? null,
+    })
+    voidedByOrder.set(v.orderId, list)
+  }
+  const queueWithVoids = orders.map((o, i) => ({ ...mapped[i], voidedItems: voidedByOrder.get(o.id) ?? [] }))
   // strežniški station filter (issue #5 §C: postaja na strežniku): KDS vrsta naprave
   // dobi SAMO svojo postajo; brez parametra ostane celotna vrsta (kuhinjski tab ALL)
+  // (voidedItems ostanejo na listku NEODVISNO od postajnega filtra — preklic je
+  // informacija za CELo kuhinjo, ne samo za postajo artikla)
   const queue = stationFilter
-    ? mapped
+    ? queueWithVoids
         .map((o) => ({ ...o, items: o.items.filter((it) => (it.station || 'KITCHEN') === stationFilter) }))
-        .filter((o) => o.items.length > 0)
-    : mapped
+        .filter((o) => o.items.length > 0 || o.voidedItems.length > 0)
+    : queueWithVoids
   // OPS-11 val 1 (v1.80.0): per-station delay targets — PrepStation.avgPrepTime mapped onto
   // the two KDS buckets (stationOf), first active station per bucket wins (mirrors the
   // /api/kitchen/stats reading pattern). ADDITIVE response key — the queue shape is untouched;

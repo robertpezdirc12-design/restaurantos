@@ -2366,6 +2366,11 @@ export const hr: Record<string, string> = {
   'kds.etaTitle': 'Predviđena priprema prema cilju najzahtjevnije stanice ({m} min).',
   'kds.live': 'Uživo',
   'kds.liveTitle': 'Trenutni prijenos — promjene se prikažu u nekoliko sekundi (redovno osvježavanje ostaje sigurnosna mreža).',
+  // v1.236.0 (PRIMERJAVA §13, Toast KDS »Flash Changes« + otkazane stavke)
+  'kds.newTicket': 'Novo',
+  'kds.newItems': '+{n} novo',
+  'kds.voidedTitle': 'Otkazano — ne pripremaj više',
+  'kds.voidedItem': 'Otkazano',
   'tables.resvNext': 'Sljedeća rezervacija',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',

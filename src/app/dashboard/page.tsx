@@ -160,8 +160,8 @@ interface UpdateCheckT { current: string; latest: string | null; updateAvailable
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[] }
-interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[] }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null }
+interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[]; voidedItems?: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
@@ -2500,7 +2500,6 @@ function DashboardInner() {
   const [expandedOrderItems, setExpandedOrderItems] = useState<Record<string, boolean>>({})
   // Issue #71 audit-18: potrditveno okno za množične opomnike (neponovljivo dejanje)
   const [reminderConfirmOpen, setReminderConfirmOpen] = useState(false)
-  const kdsPrevPendingRef = useRef(0)
   // OPS-9 val 3 (v1.76.0): delay-reason dialog — opens when a LATE item (>10 min) is bumped
   const [delayAsk, setDelayAsk] = useState<{ itemId: string; name: string; min: number } | null>(null)
   // Issue #7 (P1, v1.104.0): alergenski dialog (meni tab → potrditev/popravek profila)
@@ -2665,32 +2664,89 @@ function DashboardInner() {
   // not silently empty the queue (it renders the task board instead)
   const kdsLegacyBucket: 'ALL' | 'KITCHEN' | 'BAR' = kdsStation === 'KITCHEN' || kdsStation === 'BAR' ? kdsStation : 'ALL'
 
-  // OPS-4: zvok ob novem cakajocem artiklu na izbrani postaji (WebAudio, brez sredstev)
-  // Issue #14: a custom station view counts NEW PENDING tasks of that station
-  // (kdsTasks) instead of legacy queue items — the semantics stay the same.
+  // OPS-4 + v1.236.0 (PRIMERJAVA §13, Toast KDS »Flash Changes«): zvok + UTRIP ne samo
+  // ob NOVEM listku, temveč tudi ob SPREMEMBI obstoječega (dodatek postavk — Toast:
+  // »flash animation to indicate a ticket is new or was changed« + zvok ob spremembi
+  // postavk). Diferencialni pogon: SSE pretok / 15 s polling prinese celo vrsto —
+  // primerjamo IDENTITETO (id-ji listkov + postavk) s prejšnjim posnetkom:
+  //   nov listek   → 880 Hz enojni pisk (obstoječe obnašanje) + amber obroč + NOVO
+  //   dodane vrstice na obstoječem listku → 660 Hz dvojni pisk + utrip vrstice + +n
+  //   PREKLIC postavke (voidedItems, Toast: voided item ostane prečrtan + alarm)
+  //     → 392 Hz trojni pisk + prečrtana vrstica na listku
+  // Prvi posnetek in preklop postaje = novo izhodišče (brez lažnega utripanja).
+  const kdsPrevPendingRef = useRef(0)
+  const kdsSeenRef = useRef<{ tickets: Set<string>; items: Set<string>; voids: Set<string>; station: string | null; primed: boolean }>({ tickets: new Set(), items: new Set(), voids: new Set(), station: null, primed: false })
+  const [kdsFlash, setKdsFlash] = useState<{ tickets: Record<string, number>; items: Record<string, number>; voids: Record<string, number> }>({ tickets: {}, items: {}, voids: {} })
+  const kdsFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const kdsBeep = (freq: number, ms: number, delayMs = 0) => {
+    try {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!Ctx) return
+      const ctx = new Ctx()
+      const osc = ctx.createOscillator(); const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.frequency.value = freq; gain.gain.value = 0.08
+      const at = ctx.currentTime + delayMs / 1000
+      osc.start(at)
+      setTimeout(() => { try { osc.stop(); void ctx.close() } catch { /* nic kriticnega */ } }, delayMs + ms)
+    } catch { /* zvok ni kriticen */ }
+  }
   useEffect(() => {
-    const pending = kdsCustomView
-      ? kdsTasks
-          .filter((task) => task.stationId === kdsStation && task.status === 'pending')
-          .reduce((s, task) => s + task.quantity, 0)
-      : viewKitchen
-          .flatMap((o) => o.items.filter((it) => !it.voided && it.status === 'PENDING' && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
-          .reduce((s, it) => s + it.qty, 0)
-    if (pending > kdsPrevPendingRef.current && kdsSound) {
-      try {
-        const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-        if (Ctx) {
-          const ctx = new Ctx()
-          const osc = ctx.createOscillator(); const gain = ctx.createGain()
-          osc.connect(gain); gain.connect(ctx.destination)
-          osc.frequency.value = 880; gain.gain.value = 0.08
-          osc.start()
-          setTimeout(() => { try { osc.stop(); void ctx.close() } catch { /* nic kriticnega */ } }, 180)
-        }
-      } catch { /* zvok ni kriticen */ }
+    const seen = kdsSeenRef.current
+    if (kdsCustomView) {
+      // Issue #14: poimenovana postaja — njen pogled je ODLOŽIŠČE nalog, ne vrsta
+      // listkov; zvok ostaja na števcu čakajočih nalog (obstoječa semantika).
+      const pending = kdsTasks
+        .filter((task) => task.stationId === kdsStation && task.status === 'pending')
+        .reduce((s, task) => s + task.quantity, 0)
+      if (pending > kdsPrevPendingRef.current && kdsSound) kdsBeep(880, 180)
+      kdsPrevPendingRef.current = pending
+      return
     }
-    kdsPrevPendingRef.current = pending
-  }, [viewKitchen, kdsStation, kdsSound, kdsTasks, kdsCustomView])
+    // viden posnetek v izbranem vedru (ISTI filter kot izris vrste)
+    const vis = viewKitchen.map((o) => ({
+      id: o.id,
+      items: o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)),
+      voids: (o.voidedItems ?? []).filter((it) => kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket),
+    }))
+    if (!seen.primed || seen.station !== kdsStation) {
+      // izhodišče: prvi odčitek ali preklop postaje ne utripa ničesar
+      seen.tickets = new Set(vis.map((o) => o.id))
+      seen.items = new Set(vis.flatMap((o) => o.items.map((it) => it.id)))
+      seen.voids = new Set(vis.flatMap((o) => o.voids.map((it) => it.id)))
+      seen.station = kdsStation
+      seen.primed = true
+      return
+    }
+    const newTickets = vis.filter((o) => !seen.tickets.has(o.id))
+    const newItems = vis.flatMap((o) => o.items.filter((it) => !seen.items.has(it.id)).map((it) => ({ orderId: o.id, item: it })))
+    const newVoids = vis.flatMap((o) => o.voids.filter((it) => !seen.voids.has(it.id)))
+    seen.tickets = new Set(vis.map((o) => o.id))
+    seen.items = new Set(vis.flatMap((o) => o.items.map((it) => it.id)))
+    seen.voids = new Set(vis.flatMap((o) => o.voids.map((it) => it.id)))
+    if (newTickets.length === 0 && newItems.length === 0 && newVoids.length === 0) return
+    const now = Date.now()
+    setKdsFlash((prev) => ({
+      tickets: { ...prev.tickets, ...Object.fromEntries(newTickets.map((o) => [o.id, now])) },
+      items: { ...prev.items, ...Object.fromEntries(newItems.map((x) => [x.item.id, now])) },
+      voids: { ...prev.voids, ...Object.fromEntries(newVoids.map((it) => [it.id, now])) },
+    }))
+    if (kdsFlashTimerRef.current) clearTimeout(kdsFlashTimerRef.current)
+    kdsFlashTimerRef.current = setTimeout(() => setKdsFlash({ tickets: {}, items: {}, voids: {} }), 10_500)
+    if (kdsSound) {
+      if (newVoids.length > 0) {
+        // preklic: nizki trojni ton — kuhinja mora PRESTHITI pripravo
+        kdsBeep(392, 140); kdsBeep(392, 140, 200); kdsBeep(392, 140, 400)
+      } else if (newTickets.length > 0) {
+        kdsBeep(880, 180)
+      } else {
+        kdsBeep(660, 110); kdsBeep(660, 110, 170)
+      }
+    }
+  }, [viewKitchen, kdsStation, kdsSound, kdsTasks, kdsCustomView, kdsLegacyBucket])
+  // časovnik utripa se počisti ob odhodu z zavihka (tudi ločeno od efekta —
+  // effect se poganja ob vsaki spremembi vrste, timer pa živi samostojno)
+  useEffect(() => () => { if (kdsFlashTimerRef.current) clearTimeout(kdsFlashTimerRef.current) }, [])
 
   // OPS-4: 86 (razprodano) iz KDS — ozek endpoint menu.availability (ločen od Meni urejanja = menu.manage)
   const kdsToggleAvailable = async (mi: MenuT) => {
@@ -4387,8 +4443,12 @@ function DashboardInner() {
                 privzeto ZLOŽEN s števcem). Kuhar vidi, kaj je ZDAJ na vrsti; ostanki
                 prejšnjih izmen/demo ostanejo dosegljivi za revizijo, a IZVEN aktivne vrste. */}
             {!kdsCustomView && (() => {
+              /* v1.236.0: listek ostane v vrsti tudi, ko so VSE postavke preklicane
+                 (voidedItems) — kuhinja mora VIDETI »vse preklicano« (Toast), ne da
+                 bi listek tiho izginil sredi priprave. */
               const kdsQueue = viewKitchen
-                .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+                .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
+                  || (o.voidedItems ?? []).some((it) => kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 .slice()
                 .sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))
               const kdsActive = kdsQueue.filter((o) => !isStaleKdsTicket(kdsMinutes(o.createdAt)))
@@ -4405,6 +4465,13 @@ function DashboardInner() {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
                 const stale = isStaleKdsTicket(ageMin)
+                /* v1.236.0 (PRIMERJAVA §13, Toast KDS »Flash Changes«): UTRIP ob novem
+                   oz. spremenjenem listku — kuhar pri steni 10 listkov vidi, KATERI se
+                   je pravkar spremenil. Preklicane postavke (voidedItems, Toast: ostanejo
+                   prečrtane + alarm) — izločene iz vseh štetij, čisto informacija. */
+                const flashTicket = !!kdsFlash.tickets[o.id]
+                const flashItems = items.filter((it) => kdsFlash.items[it.id])
+                const voidedHere = (o.voidedItems ?? []).filter((it) => kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)
                 /* ISSUE #74 V-3: starostni razred listka (5 stopenj) — en vir za LEVI ROB
                    (kdsAgeBorderCls) in PILL (kdsAgePillCls); oranžni utrip = urgent. */
                 const ageCls = kdsAgeCls(ageMin)
@@ -4429,8 +4496,15 @@ function DashboardInner() {
                        VRSTNI RED razredov je KLJUČEN: cn() (tailwind-merge)
                        odstrani stransko-specifičen border-l-{color}, če celovit
                        border-{color} pride ZA njim — najprej nevtralen border, nato leva. */
-                    className={`${kdsDensityCls.card} border-l-4 ${stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : kdsAgeBorderCls(ageCls)}`}
+                    className={`relative ${kdsDensityCls.card} border-l-4 ${stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : kdsAgeBorderCls(ageCls)}`}
                   >
+                    {/* v1.236.0 (Toast KDS »Flash Changes«): NOV listek — utripajoči
+                        oranžni OBROČ. Čist prekrivni prazen span (pointer-events-none):
+                        utripa SAMO obroč, vsebina listka ostane berljiva (animate-pulse
+                        na Card bi zatemnjeval tudi besedilo). */}
+                    {flashTicket && (
+                      <span data-region="kds-flash-ring" aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl ring-4 ring-orange-400/80 animate-pulse" />
+                    )}
                     <CardHeader data-region="kds-ticket-header" className="gap-2 px-4 pt-0 pb-0 sm:px-6">
                       <CardTitle className="text-base flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                         {/* ISSUE #74 V-8: nazivna vrstica sledi velikosti pisave (S=13 → XL=22 px) */}
@@ -4440,6 +4514,19 @@ function DashboardInner() {
                         <span className="inline-flex shrink-0 items-center rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-xs font-semibold text-stone-600">{orderTypeL(o.type)}</span>
                         {o.employee?.name && <span className="text-xs font-normal text-stone-400 min-w-0 shrink truncate" title={o.employee.name}>· {o.employee.name}</span>}
                         <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })} · {t('kds.guestsShort', { n: o.guests })}</span>
+                        {/* v1.236.0 (Toast KDS »Flash Changes«): značka NOVO (nov listek)
+                            oz. +n (dodane postavke na obstoječem) — 10 s po utripu izgine
+                            (»recently fulfilled tickets stop flashing« — Toast okt 2026). */}
+                        {flashTicket && (
+                          <span data-region="kds-flash-new" className="inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-300 bg-orange-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-orange-800 animate-pulse">
+                            <Zap className="w-3 h-3" aria-hidden /> {t('kds.newTicket')}
+                          </span>
+                        )}
+                        {!flashTicket && flashItems.length > 0 && (
+                          <span data-region="kds-flash-items" className="inline-flex shrink-0 items-center gap-1 rounded-full border border-orange-300 bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800">
+                            <Zap className="w-3 h-3" aria-hidden /> {t('kds.newItems', { n: flashItems.length })}
+                          </span>
+                        )}
                         {/* PRIMARNI STATUS — v1.129.0 (Toast/Square): NEVTRALEN obrobec (stone)
                             — RDEČA je rezervirana IZKLJUČNO za zamudo (starost listka),
                             polnjena barva statusa se je kuharjem zlivala z alarmno barvo. */}
@@ -4570,6 +4657,7 @@ function DashboardInner() {
                         /* E2E lekcija: NEDEJAVNA vrstica (READY s Servirano gumbom,
                            postajni tok) je navaden div — aria-disabled ovojnica bi
                            bralcem zaslonov javila gumb Servirano kot onemogočen. */
+                        const itFlash = !!kdsFlash.items[it.id]
                         const itRow = (rowBody: ReactNode) => itInteractive ? (
                           <KdsTapCard
                             key={it.id}
@@ -4584,12 +4672,12 @@ function DashboardInner() {
                               toast({ description: t(mi.available ? 'kds.86Done' : 'kds.86Back', { name: it.name }) })
                             } : undefined}
                             longPressHint={can86 ? t('kds.tapHint') : undefined}
-                            className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1.5 min-w-0 hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 active:bg-stone-50"
+                            className={`rounded-lg border bg-white px-3 py-1.5 space-y-1.5 min-w-0 hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 active:bg-stone-50 ${itFlash ? 'border-orange-400 bg-orange-50 ring-2 ring-orange-300/60' : 'border-stone-200'}`}
                           >
                             {rowBody}
                           </KdsTapCard>
                         ) : (
-                          <div key={it.id} data-region="kds-ticket-item" className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 space-y-1.5 min-w-0">
+                          <div key={it.id} data-region="kds-ticket-item" className={`rounded-lg border bg-white px-3 py-1.5 space-y-1.5 min-w-0 ${itFlash ? 'border-orange-400 bg-orange-50 ring-2 ring-orange-300/60' : 'border-stone-200'}`}>
                             {rowBody}
                           </div>
                         )
@@ -4597,7 +4685,13 @@ function DashboardInner() {
                           <>
                             {/* A: količina + ime (levo) / starost postavke (desno) — hitro skeniranje */}
                             <div className="flex items-baseline justify-between gap-2 min-w-0">
-                              <p className="text-sm sm:text-base font-semibold truncate min-w-0">{it.qty}× {it.name}</p>
+                              <p className="text-sm sm:text-base font-semibold truncate min-w-0">
+                                {it.qty}× {it.name}
+                                {/* v1.236.0: pravkar DODANA postavka — utripajoči čip NOVO
+                                    (Toast: kuhar vidi, KAJ je novega na listku, ne le da se
+                                    je »nekaj« spremenilo) */}
+                                {itFlash && <span data-region="kds-item-new" className="ml-1.5 inline-flex items-center gap-0.5 rounded-full border border-orange-300 bg-orange-100 px-1.5 py-0.5 text-[11px] font-bold uppercase text-orange-800 animate-pulse align-middle">+ {t('kds.newTicket')}</span>}
+                              </p>
                               {/* OPS-9 val 3: per-item live timer (firedAt → order clock); OPS-11 val 1: red escalation per station (target → max(10, ceil(target×1.25))) */}
                               {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne "13.496′") */}
                               <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
@@ -4657,6 +4751,24 @@ function DashboardInner() {
                           })}
                         </Fragment>
                       ))}
+                      {/* v1.236.0 (PRIMERJAVA §13, Toast KDS): PREKLICANE postavke — prej so
+                          se TIHO izgubile s KDS (kuhar je lahko že strt delo). Toast: voided
+                          item ostane na listku PREČRTAN + alarm; pri nas tudi rdeč pas + razlog
+                          (VoidReason), 30-min okno (strežnik), nato čisto izginejo. Izločene
+                          iz vseh štetij (All Day, ESA, pragovi) — čista informacija. */}
+                      {voidedHere.length > 0 && (
+                        <div data-region="kds-ticket-voided" className="rounded-lg border border-red-300 bg-red-50/70 px-3 py-2 space-y-1" role="status">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-red-700">{t('kds.voidedTitle')}</p>
+                          {voidedHere.map((v) => (
+                            <div key={v.id} data-region="kds-ticket-voided-row" className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 rounded-md border px-2 py-1 ${kdsFlash.voids[v.id] ? 'border-red-400 bg-red-100/80 animate-pulse' : 'border-red-200 bg-white/60'}`}>
+                              <Ban className="w-3.5 h-3.5 text-red-600 shrink-0" aria-hidden />
+                              <p className="text-sm font-semibold text-stone-500 line-through truncate min-w-0">{v.qty}× {v.name}</p>
+                              <span className="text-xs font-bold uppercase text-red-700 shrink-0">{t('kds.voidedItem')}</span>
+                              {v.voidReasonName && <span className="text-xs text-red-600 shrink-0 truncate max-w-48" title={v.voidReasonName}>· {v.voidReasonName}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {/* v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — en velik
                           celoširinski gumb (kitchenski dotik, Toast: dvoklik/fulfill listka).
                           Prikazan samo, če so vse odprte postavke LEGACY (brez postajnih

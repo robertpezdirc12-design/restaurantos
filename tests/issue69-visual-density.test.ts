@@ -89,7 +89,10 @@ describe('§A KDS gostota — struktura listka (data-region markerji)', () => {
   it('postavke: ime/qty levo + starost desno (osnova za hitro skeniranje)', () => {
     const d = dash()
     expect(d).toContain('flex items-baseline justify-between gap-2 min-w-0')
-    expect(d).toMatch(/<p className="text-sm sm:text-base font-semibold truncate min-w-0">\{it.qty\}× \{it.name\}<\/p>/)
+    // v1.236.0 (Toast KDS »Flash Changes«): <p> je postal večvrstičen — za imenom
+    // živi utripajoči čip + NOVO ob pravkar dodani postavki (kds-item-new);
+    // osnovna trditev (qty× ime levo, truncate) ostaja nespremenjena.
+    expect(d).toMatch(/<p className="text-sm sm:text-base font-semibold truncate min-w-0">\s*\{it\.qty\}× \{it\.name\}/)
   })
 
   it('postavke: ALERGENI kot vidni jantorni čipi (ločena vrstica, ≥ 12 px besedilo)', () => {
