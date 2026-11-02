@@ -3,6 +3,12 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, locationScope } from '@/lib/api'
 import { ORDER_ACTIVE_DB, ITEM_ACTIVE_DB } from '@/lib/map'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
+import type { OrderItemStatus } from '@/lib/prisma-types'
+
+/* CI typecheck-prod (Postgres klient): Enum filtri zahtevajo TIP enuma, ne string[]
+   (SQLite klient lokalno sprejme oboje — isti cast kot glavna kuhinjska ruta). */
+const ORDER_ACTIVE_PRISMA = ORDER_ACTIVE_DB as ('open' | 'sent' | 'prepared')[]
+const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
 /**
  * v1.232.0 (PRIMERJAVA-VMESNIKOV-2026 §3 »Push (ne polling)«, Toast/Square KDS
@@ -44,10 +50,10 @@ const TICK_MS = 3_000
 const MAX_LIFETIME_MS = 55_000
 
 async function kitchenSignature(scope: { locationId?: string | { in: string[] } }): Promise<string> {
-  const itemScope = { Order: { ...scope, status: { in: ORDER_ACTIVE_DB } }, status: { in: ITEM_ACTIVE_DB } }
+  const itemScope = { Order: { ...scope, status: { in: ORDER_ACTIVE_PRISMA } }, status: { in: ITEM_ACTIVE_PRISMA } }
   const [lastOrder, lastItem, lastTask] = await Promise.all([
     db.order.findFirst({
-      where: { ...scope, status: { in: ORDER_ACTIVE_DB } },
+      where: { ...scope, status: { in: ORDER_ACTIVE_PRISMA } },
       select: { updatedAt: true },
       orderBy: { updatedAt: 'desc' },
     }),

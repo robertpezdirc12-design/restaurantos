@@ -129,11 +129,13 @@ describe('v1.232.0 C — KDS SSE pretok (ruta + klient + LIVE)', () => {
     expect(streamRoute).toContain("'X-Accel-Buffering': 'no'")
   })
 
-  test('C2: podpis = MAX(updatedAt) aktivnih naročil + postavk + postajnih nalog (ISTI aktivni statusi kot vrsta)', () => {
-    expect(streamRoute).toContain('status: { in: ORDER_ACTIVE_DB }')
-    expect(streamRoute).toContain('status: { in: ITEM_ACTIVE_DB }')
+  test('C2: podpis = MAX(updatedAt) aktivnih naročil + postavk + postajnih nalog (ISTI aktivni statusi kot vrsta; Postgres enum cast kot v glavni ruti)', () => {
+    expect(streamRoute).toContain("const ORDER_ACTIVE_PRISMA = ORDER_ACTIVE_DB as ('open' | 'sent' | 'prepared')[]")
+    expect(streamRoute).toContain('const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]')
+    expect(streamRoute).toContain('status: { in: ORDER_ACTIVE_PRISMA }')
+    expect(streamRoute).toContain('status: { in: ITEM_ACTIVE_PRISMA }')
     expect(streamRoute).toContain("['waiting', 'pending', 'preparing', 'ready']")
-    expect(streamRoute).toContain('orderBy: { updatedAt: \'desc\' }')
+    expect(streamRoute).toContain("orderBy: { updatedAt: 'desc' }")
   })
 
   test('C3: življenjska doba toka je omejena (serverless varnost) + retry hint', () => {
