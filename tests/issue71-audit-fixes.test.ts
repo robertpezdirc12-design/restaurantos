@@ -83,7 +83,12 @@ describe('issue #71 audit-18 — potrditveno okno pred pošiljanjem opomnikov', 
   })
   test('kandidati zrcalijo strežniško logiko (confirmed + 24 h + brez opomnika)', () => {
     const d = dash()
-    expect(d).toContain("r.reminderSent || r.status !== 'confirmed'")
+    /* ZAVESTNA SPREMEMBA PINA (v1.232.0 P3): primerjava je na UI obliki statusa
+       ('CONFIRMED' — mapReservation preslika DB 'confirmed' v velike črke);
+       prejšnji pin maločrkovne DB vrednosti je opisoval hrošča (števec kandidatov
+       v potrditvenem dialogu je bil vedno 0). Strežniška logika ostaja
+       status='confirmed' v DB — mirror primerja ISTO semantiko na klientu. */
+    expect(d).toContain("r.reminderSent || r.status !== 'CONFIRMED'")
     expect(d).toContain('24 * 3600 * 1000')
   })
 })

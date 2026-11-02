@@ -84,7 +84,7 @@ Benchmark: **Toast KDS** (All Day view, produktivnost), **Square KDS** ($20–30
 | Postaje (kuhinja/bar + imenovane) | ✅ | ✅ | ✅ | ✅ | PrepStation CRUD + EXPO (Issue #14) |
 | EXPO razpredelnica nalog | ✅ | ⚠️ | ⚠️ | ✅ | task board + blocker 409 |
 | Alergeni — RDEČ pas | ✅ | ✅ | ✅ | ✅ | Issue #71 audit-14, hierarhija resnosti |
-| Tečaji (coursing) na listku | ✅ | ✅ | ✅ | ⚠️ | badge na listku; kuhinja vidi tečaj, ne skuPa po tečajih (C-seznam) |
+| Tečaji (coursing) na listku | ✅ | ✅ | ✅ | ✅ | badge + GRUPIRANJE postavk po tečajih z glavo skupine (v1.232 — Toast »course grouping«) |
 | 86 dolgi pritisk + nadomestki | ✅ | ⚠️ | ⚠️ | ✅ | P0-3 plošča + nadomestki |
 | Bump celega listka | ✅ | ✅ | ✅ | ✅ | + SERVED bump |
 | Razlog zamude ob poznem READY | ✅ | ⚠️ | ⚠️ | ✅ | katalog razlogov (Lightspeed vzorec) |
@@ -93,13 +93,14 @@ Benchmark: **Toast KDS** (All Day view, produktivnost), **Square KDS** ($20–30
 | Fullscreen | ✅ | ✅ | ✅ | ✅ | |
 | Tisk listkov (kuhinja/bar) | ✅ | ✅ | ✅ | ✅ | brskalnik + ESC/POS agent |
 | Zastareli listki (>8 h) | – | – | – | ✅ | ločen skrčen oddelek (Issue #70/71) |
-| Obetalni ETA natakarju | ⚠️ | ⚠️ | ⚠️ | ⚠️ | povprečni cilji časa obstajajo; obljuba ETA gostu ne (C-seznam) |
+| Obetalni ETA natakarju | ⚠️ | ⚠️ | ⚠️ | ✅ | ETA čip na glavi listka: ura naročila + cilj najzahtevnejše postaje (v1.232 — Lightspeed »Prep ETA«) |
 | Večjezični KDS | ✅ | ⚠️ | ⚠️ | ⚠️ | SL/HR celoten; EN samo gostje (zavestna odločitev) |
-| Push (ne polling) | ✅ | ✅ | ✅ | ⚠️ | 15 s polling + Web Push ob novih; SSE/WS na C-seznamu |
+| Push (ne polling) | ✅ | ✅ | ✅ | ✅ | SSE pretok /api/kitchen/stream (~3–5 s, podpis MAX(updatedAt)) + 15 s polling kot VEDNO prisoten fallback (v1.232) |
 | Produktivnost postaje | ✅ | – | ⚠️ | ✅ | KDS statistika (cilji, propustnost) |
 
 **Presoja:** KDS je bil predmet treh benchmark valov (v1.67, v1.129, v1.135) in ima parity
-ali prednost na 14/18 točk; vrzeli so izboljšave drugega reda (ETA, jezik, push transport).
+ali prednost na 17/18 točk (val v1.232.0 zapre tečaj-grupiranje, ETA in SSE push);
+preostala vrzel je EN jezik osebja (zavestna odločitev — SL/HR tržišče).
 
 ---
 
@@ -128,13 +129,14 @@ Benchmark: **Toast** (klik na mizo → urejevalnik), **TouchBistro** (najboljši
 | Opomniki (SMS/e-mail) | ✅ | – | ✅ | ✅ | posamično + množično, badge poslano |
 | Čakalna lista (walk-in) | ⚠️ | – | ⚠️ | ✅ | prijava → obvesti → usadi z zaklepom mize |
 | Samodejna dodelitev mize rezervaciji | ✅ | – | ✅ | **v1.231** | najmanjša prosta miza po številu oseb, brez prekrivanja aktivnih rezervacij (1 klik v dialogu) |
-| Rezervacije na tlorisu | ⚠️ | – | ⚠️ | ❌ | C-seznam — overlay prihodnjih rezervacij na plan |
+| Rezervacije na tlorisu | ⚠️ | – | ⚠️ | **v1.232** | overlay prihodnjih rezervacij: vrstica na ploščici, 🕒 na obliki v tlorisu |
 | Naročila gostov po QR (self-order) | ✅ | – | ⚠️ | ✅ | /m/<token> + kiosk + lastni portal /s |
 | Sledenje stanja naročila za gosta | ⚠️ | – | ⚠️ | ✅ | 30 s polling po oddaji |
 
 **Presoja:** front-of-house tok je najmočnejša mila sistema (tri PWA površine + QR + kiosk);
-**urejevalnik miz** in **prenos na natakarja** sta zadnji dve Lightspeed/Toast funkciji, ki
-manjkata — obe sta v valu v1.229.0. Samodejna dodelitev mize je dodana v v1.231.0; overlay rezervacij na tlorisu ostaja C-seznam.
+**urejevalnik miz** in **prenos na natakarja** sta zaprta v v1.229.0, samodejna dodelitev
+mize v v1.231.0, overlay rezervacij na tlorisu pa v v1.232.0 — restavracija 21/22
+(preostala točka je urejevalnik con kot samostojen objekt — trenutno cona nastavi z mizo).
 
 ---
 
@@ -181,8 +183,8 @@ s čitalnikom pa v v1.231.0 — edina preostala vrzel je OCR (zavestna 0-AI odlo
 |---|---|---|
 | Prodaja (POS) | 16/19 | EAN ⌨, ★, ⚡ → vse tri v v1.229.0 |
 | Šank | pokrit | ⚡ + EAN (ista obdelava); tabi = B-seznam |
-| Kuhinja (KDS) | 14/18 | ETA, tečaj-grupiranje, SSE push, EN jezik — vse C-seznam |
-| Restavracija | 20/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign → v1.231.0; overlay → C |
+| Kuhinja (KDS) | 17/18 | tečaj-grupiranje + ETA + SSE → v1.232.0; EN jezik = zavestna odločitev |
+| Restavracija | 21/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign → v1.231.0; overlay → v1.232.0 |
 | Zaloge | 22/22 | OCR je edina zavestna izključitev (0-AI) |
 
 **Zaključek:** po treh letih benchmark valov (v1.67–v1.228) ima sistem parity ali prednost
@@ -190,9 +192,11 @@ na ~87 primerjanih funkcijah; v1.229.0 zapre 5 zadnjih A-vrzeli (EAN, ★, ⚡, 
 prenos natakarja), vse 0-DDL. v1.230.0 zapre še 3 točke C-seznama (samodejni 86 ob
 izpraznitvi, nizka zaloga ob prijavi, pour-cost karta). v1.231.0 doda inventuro s
 čitalnikom (zaloge 22/22 — funkcionalno poln parity, OCR ostaja zavestna 0-AI
-izključitev) in samodejno dodelitev mize rezervaciji (restavracija 20/22). Preostanek
-so odločitve lastnika (tabi, terminal, PEPPOL) ter C-seznam drugega reda (SSE, overlay
-rezervacij na tlorisu, KDS ETA/tečaj-grupiranje/EN).
+izključitev) in samodejno dodelitev mize rezervaciji (restavracija 20/22). v1.232.0
+zadene zadnje tri funkcionalne vrzeli KDS (grupiranje po tečajih, ETA obljuba, SSE
+pretok s polling fallbackom — kuhinja 17/18) in overlay rezervacij na tlorisu
+(restavracija 21/22). Preostanek so odločitve lastnika (tabi, terminal, PEPPOL, EN
+jezik osebja) ter urejevalnik con kot samostojen objekt.
 
 ---
 
@@ -243,3 +247,35 @@ rezervacij na tlorisu, KDS ETA/tečaj-grupiranje/EN).
    razlika 20 €) in nesmisel (»1.2.3« → NaN → tiho 0) nista več tiho sprejeta. Poskus
    minusa pokaže opozorilo ob polju; pred oddajo vrednost validira klient (toast + ne
    pošlje) in strežnik (parseDrawerCash, nespremenjeno).
+
+## 10. Val v1.232.0 — rezervacije na tlorisu + KDS tečaji/ETA/SSE (zadnji funkcionalni C-seznam)
+
+1. **Rezervacije na tlorisu (§4 → 21/22)** — Toast/TouchBistro »reservations on floor
+   plan«: naslednja prihajajoča POTRJENA rezervacija po mizi (status CONFIRMED, termin ≥
+   zdaj, najzgodnejša). Ploščica mreže nosi vrstico »🕒 19:30 · 4× Ime«, zasedena miza
+   (fiksna višina h-32) kompakt znak v nogi; oblika mize v tlorisu 🕒 + uro, ime gosta
+   v tooltipu/aria. Čista klient agregacija (reservations.tableId obstaja od OPS-8) —
+   0 novih backend poti; vlogam brez reservations.manage overlay iskreno izostane.
+2. **KDS grupiranje po tečajih (§3)** — Toast/Square »course grouping«: postavke
+   istega tečaja pod eno glavo (številka + ime + 🔥 če poslano); breztečajne postavke
+   naprej v obstoječem vrstnem redu; listek brez tečajev = ENA skupina brez glave =
+   identičen flat seznam (ničelna regresija). Nova čista knjižnica src/lib/kds-courses.ts
+   (groupKdsItemsByCourse — sirota courseId dobe pošteno glavo, ne izgine); GET
+   /api/kitchen vrača ADITIVNO polje courses (sort po številki; 0 DDL — Course tabela
+   obstaja od OPS-7).
+3. **KDS ETA obljuba (§3)** — Lightspeed »Prep ETA«: čip »Predvideno HH:MM« v glavi
+   listka = ura naročila + cilj najzahtevnejše postaje (kdsTargetOf — ISTI vir kot prag
+   zamude). Brez cilja postaje ETA iskreno izostane; zamujena obljuba postane rdeča.
+4. **KDS SSE pretok (§3 »Push (ne polling)«)** — GET /api/kitchen/stream
+   (text/event-stream, prag kitchen.update, lokacijski obseg): podpis =
+   MAX(updatedAt) aktivnih naročil + postavk + postajnih nalog, tik 3 s; dogodek
+   changed → klient takoj load('hot') (dušenje 2,5 s). Tok se po 55 s sam zapre
+   (serverless varnost) in EventSource sam poveže nazaj (retry 5 s); polling 15 s
+   ostaja VEDNO prisoten fallback. LIVE oznaka v glavi KDS samo ob živi povezavi.
+   Povezava se odpre samo na zavihku kuhinja in samo vlogam, ki zavihek vidijo
+   (tabHasPerm — brez 403 kroga).
+5. **P2 popravek (NaročiloSheet)** — Select tečaja je pošiljal courseNumber kot
+   courseId (404 »Tečaj ne obstaja«; deloval je samo »nov tečaj«); vrednost opcije je
+   zdaj ID. **P3 popravek** — mirror množičnega opomnika je primerjal maločrkovni DB
+   status, klient pa nosi UI obliko → števec kandidatov v potrditvenem dialogu je bil
+   vedno 0.

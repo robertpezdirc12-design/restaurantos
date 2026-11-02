@@ -121,6 +121,9 @@ import { ModuleIntro } from '@/components/module-intro'
    in handheld — čista preslikava v lib, brez per-artikel slik v bazi) */
 import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
 import { stationViewKey } from '@/lib/kds-station-routing'
+/* v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«): skupine postavk listka
+   po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
+import { groupKdsItemsByCourse } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
 import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2 } from 'lucide-react'
 
@@ -158,7 +161,7 @@ interface UpdateCheckT { current: string; latest: string | null; updateAvailable
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[] }
-interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
+interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
@@ -983,6 +986,43 @@ function DashboardInner() {
     document.addEventListener('visibilitychange', onVis)
     return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
   }, [load])
+  /* v1.232.0 (PRIMERJAVA §3 »Push (ne polling)«, Toast/Square KDS realtime): SSE
+     PRETOK ZA KUHINJO — na zavihku kuhinja odpre EventSource na /api/kitchen/stream;
+     dogodek `changed` (nov listek/prehod postavke/postajna naloga — podpis iz
+     MAX(updatedAt)) TAKOJU sproži load('hot'). Svežina ~3–5 s namesto do 15 s.
+     DISCIPLINA (iskrenost + vzdržljivost):
+      - odpre se SAMO na zavihku kuhinja in SAMO vlogam, ki zavihek vidijo
+        (tabHasPerm — sicer bi EventSource v krogu ponavljal 403);
+      - ODVISNOST efekta je IZPELJANI BOOLEAN kdsSseOpen (ne array perms!) — setPerms
+        v load() ustvari NOVO referenco arraya na vsakem pollu, kar bi efektu
+        razstrelilo identiteto odvisnosti in povzročilo neprekinjen close/open krog
+        (E2E najdba: povezava se je obnavljala vsakih ~1,6 s — changed → load →
+        setPerms → re-run efekta → nova povezava → changed …);
+      - polling 15 s ostaja NEPREKINJENO kot fallback (padec SSE/proxy/stari
+        brskalnik → nič se ne spremeni; strežnik tok po 55 s zapre sam in se
+        EventSource poveže nazaj — retry hint 5 s);
+      - dvojni sprožitelj je dušen (≥ 2,5 s med reloadi — sprememba v hitrem
+        zaporedju sproži ENO osvežitev, ne kotovada);
+      - LIVE oznaka (kdsLive) se prikaže SAMO po dogodku hello/povezavi — ob
+        napaki izklopi (ne laže, da je pretok živ). */
+  const kdsSseOpen = activeTab === 'kuhinja' && tabHasPerm('kuhinja', { canManage, perms })
+  const [kdsLive, setKdsLive] = useState(false)
+  useEffect(() => {
+    if (!kdsSseOpen) return
+    let lastTrig = 0
+    const es = (() => { try { return new EventSource('/api/kitchen/stream') } catch { return null } })()
+    if (!es) return
+    es.onopen = () => setKdsLive(true)
+    es.addEventListener('hello', () => setKdsLive(true))
+    es.addEventListener('changed', () => {
+      const now = Date.now()
+      if (now - lastTrig < 2500) return
+      lastTrig = now
+      void load('hot')
+    })
+    es.onerror = () => setKdsLive(false)
+    return () => { es.close(); setKdsLive(false) }
+  }, [kdsSseOpen, load])
   // offline vrsta (issue #1) — online/offline status je zgoraj prek useSyncExternalStore
   useEffect(() => {
     const unsub = subscribeQueue(setQueueOps)
@@ -2351,12 +2391,36 @@ function DashboardInner() {
   // (status=confirmed, začetek v naslednjih 24 h, reminderSent=false), da potrditveno
   // okno pokaže TOČNO število, ki ga bo strežnik poslal. (Rezervacije API že vrača
   // obseg lokacije uporabnika — brez dodatnega filterByLocation.)
+  // v1.232.0 P3 popravek: primerjava je zdaj na UI obliki statusa ('CONFIRMED' —
+  // mapReservation preslika DB 'confirmed' v velike črke); prej je mirror gledal
+  // maločrkovno DB vrednost, ki je klient NIKOLI ni videl → števec v potrditvenem
+  // dialogu je bil vedno 0 (strežnik je ob kliku vseeno poslal pravilno).
   const reminderCandidates = reservations.filter((r) => {
-    if (r.reminderSent || r.status !== 'confirmed') return false
+    if (r.reminderSent || r.status !== 'CONFIRMED') return false
     const start = new Date(r.reservedAt).getTime()
     const now = Date.now()
     return start >= now && start <= now + 24 * 3600 * 1000
   })
+  /* v1.232.0 (PRIMERJAVA §4, Toast/TouchBistro »reservations on floor plan«) —
+     OVERLAY REZERVACIJ NA TLORISU: naslednja PRIHODNJA potrdjena rezervacija po
+     mizi (ura · gostje · ime). Čista klient agregacija že naloženih podatkov
+     (reservations imajo tableId od OPS-8) — 0 novih backend poti. Vlogam brez
+     reservations.manage seznama rezervacij API ne vrne (soft 403) → overlay
+     iskreno izostane. Zasedena miza s prihajajočo rezervacijo je prav tako
+     pomemben signal (miza se mora obrniti do ure) — overlay kažemo na VSEH
+     mizah, ne samo prostih. */
+  const nextResvByTable = useMemo(() => {
+    const now = Date.now()
+    const m = new Map<string, ReservationT>()
+    for (const r of reservations) {
+      if (r.status !== 'CONFIRMED' || !r.tableId) continue
+      const at = new Date(r.reservedAt).getTime()
+      if (!Number.isFinite(at) || at < now) continue
+      const cur = m.get(r.tableId)
+      if (!cur || at < new Date(cur.reservedAt).getTime()) m.set(r.tableId, r)
+    }
+    return m
+  }, [reservations])
   // OPS-4 v1.67.0 — KDS: stanje postaje/zvoka + hitra prodaja (sank)
   // Issue #14 (v1.112.0): kdsStation accepts CUSTOM station ids too — 'ALL' plus
   // the two legacy buckets plus any id of a configured named station. The URL
@@ -3175,8 +3239,8 @@ function DashboardInner() {
                       }}
                       className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 shadow text-xs font-bold cursor-grab active:cursor-grabbing ${shapeCls} ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                      aria-label={`${tb.name} · ${tileStatusL(tb)} · ${tb.seats}`}
-                      title={`${tb.name} · ${tileStatusL(tb)}`}
+                      aria-label={`${tb.name} · ${tileStatusL(tb)} · ${tb.seats}${nextResvByTable.get(tb.id) ? ` · ${t('tables.resvNext')} ${new Date(nextResvByTable.get(tb.id)!.reservedAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}` : ''}`}
+                      title={`${tb.name} · ${tileStatusL(tb)}${nextResvByTable.get(tb.id) ? ` · ${t('tables.resvNext')}: ${new Date(nextResvByTable.get(tb.id)!.reservedAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })} (${nextResvByTable.get(tb.id)!.guests}× ${nextResvByTable.get(tb.id)!.guestName})` : ''}`}
                     >
                       <span className="leading-none">{tb.name.replace('Miza ', '')}</span>
                       {tb.activeOrder ? (
@@ -3187,6 +3251,14 @@ function DashboardInner() {
                           {Array.from({ length: Math.min(tb.seats, 8) }).map((_, i) => (
                             <span key={i} className="size-1 rounded-full bg-current opacity-70" />
                           ))}
+                        </span>
+                      )}
+                      {/* v1.232.0: ura prihajajoče rezervacije na obliki mize (tooltip
+                          nosi ime gosta/število) — prosti prostor na tlorisu za ta
+                          signal je minimalen, zato samo 🕒 + ura. */}
+                      {nextResvByTable.get(tb.id) && (
+                        <span data-region="plan-resv" className="text-[9px] font-extrabold leading-none tabular-nums">
+                          🕒 {new Date(nextResvByTable.get(tb.id)!.reservedAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
                     </button>
@@ -3234,6 +3306,25 @@ function DashboardInner() {
                               {seatedGuestL(tb) && <p className="text-xs normal-case tracking-normal opacity-95">{seatedGuestL(tb)}</p>}
                             </>
                           )}
+                          {/* v1.232.0 (PRIMERJAVA §4, Toast/TouchBistro »reservations on
+                              floor plan«): NASLEDNJA REZERVACIJA na ploščici — prosta miza
+                              z rezervacijo je informativna (ne zasedaj!), zasedena pa
+                              opozarja na obrat do ure. Celotna vrstica samo brez naročila
+                              (fiksna višina h-32 — polna ploščica dobi kompakt znak v nogi). */}
+                          {(() => {
+                            const rv = nextResvByTable.get(tb.id)
+                            if (!rv || tb.activeOrder) return null
+                            const rvTime = new Date(rv.reservedAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
+                            return (
+                              <p
+                                data-region="tile-resv"
+                                className="mt-0.5 text-xs font-semibold opacity-95 truncate"
+                                title={`${t('tables.resvNext')}: ${rvTime} · ${rv.guests}× ${rv.guestName}`}
+                              >
+                                🕒 {rvTime} · {rv.guests}× {rv.guestName}
+                              </p>
+                            )
+                          })()}
                           {/* v1.129.0 (Toast/Square benchmark): zasedena ploščica nosi ČAS (min
                               od naročila) in FAZO naročila (poslano/v pripravi/pripravljeno),
                               ne samo znesek — natakar naletu vidi, katera miza čaka hrano.
@@ -3270,6 +3361,19 @@ function DashboardInner() {
                             {tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb)}
                             {/* QA-val v1.220.0: usajeni gost s čakalne liste — identiteta na ploščici */}
                             {seatedGuestL(tb) && <span className="block normal-case tracking-normal opacity-95">{seatedGuestL(tb)}</span>}
+                            {/* v1.232.0: zasedena miza s prihajajočo rezervacijo — kompakt znak
+                                🕒 ura v nogi (miza se mora obrniti do te ure; podrobnosti v
+                                tooltipu — polna vrstica ne gre več v fiksno višino h-32). */}
+                            {tb.activeOrder && (() => {
+                              const rv = nextResvByTable.get(tb.id)
+                              if (!rv) return null
+                              const rvTime = new Date(rv.reservedAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
+                              return (
+                                <span data-region="tile-resv-compact" className="block font-semibold" title={`${t('tables.resvNext')}: ${rvTime} · ${rv.guests}× ${rv.guestName}`}>
+                                  🕒 {rvTime} · {rv.guests}× {rv.guestName}
+                                </span>
+                              )
+                            })()}
                           </p>
                         </button>
                         {/* Issue #3: QR meni za to mizo — (span, ker gosta ne sme biti gnezdena v gumbu) */}
@@ -3992,6 +4096,17 @@ function DashboardInner() {
                 </Button>
               ))}
               <span className="flex-1" />
+              {/* v1.232.0: LIVE oznaka — SSE pretok je povezan (spremembe v ~3–5 s;
+                  polling 15 s ostaja kot fallback, oznaka ne laže ob padcu). */}
+              {kdsLive && (
+                <span data-region="kds-live" className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800" title={t('kds.liveTitle')}>
+                  <span className="relative flex size-2" aria-hidden>
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                    <span className="relative inline-flex size-2 rounded-full bg-emerald-600" />
+                  </span>
+                  {t('kds.live')}
+                </span>
+              )}
               <label className="flex items-center gap-1.5 text-xs text-stone-600 cursor-pointer">
                 <Switch checked={kdsSound} onCheckedChange={setKdsSound} aria-label={t('kds.sound')} />
                 <Volume2 className="w-3.5 h-3.5" /> {t('kds.sound')}
@@ -4254,6 +4369,33 @@ function DashboardInner() {
                           pillCls={kdsAgePillCls(ageCls)}
                           ageMin={ageMin}
                         />
+                        {/* v1.232.0 (PRIMERJAVA §3, Lightspeed KDS »Prep ETA«): OBETANA URA
+                            PRIPRAVE listka — natakarju povedljiv ODGOVOR (»miza 12 bo
+                            pripravljena ob 19:42«) namesto odbrojevanja. ETA = ura
+                            naročila + cilj NAJZAHTVNEJŠE postaje na listku (isti vir kot
+                            prag zamude — enoten vir resnice); brez cilja postaje ga
+                            iskreno NE pokažemo (ne izmišljujemo si obljub). Ob preteku
+                            ETA postane rdeč — obljuba je prekinjena, naknadna zelena
+                            izdaja bi lagala. */}
+                        {(() => {
+                          const tt = Math.max(0, ...items.map((it) => kdsTargetOf(it) ?? 0))
+                          if (tt <= 0 || stale) return null
+                          const etaMs = new Date(o.createdAt).getTime() + tt * 60000
+                          const etaOver = Date.now() > etaMs
+                          const etaTime = new Date(etaMs).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
+                          return (
+                            <span
+                              data-region="kds-ticket-eta"
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold tabular-nums shrink-0 ${
+                                etaOver ? 'border-red-300 bg-red-50 text-red-800' : 'border-stone-300 bg-stone-50 text-stone-600'
+                              }`}
+                              title={t('kds.etaTitle', { m: tt })}
+                            >
+                              <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                              {t('kds.eta')} {etaTime}
+                            </span>
+                          )
+                        })()}
                         {/* v1.141.0: kompaktni listki — tiskanje IKONSKO (naslov v tooltipu),
                             v normalni gostoti pa besedilno kot prej */}
                         <span className="ml-auto flex gap-1.5 shrink-0">
@@ -4297,7 +4439,19 @@ function DashboardInner() {
                           </p>
                         </div>
                       )}
-                      {items.map((it) => {
+                      {/* v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«):
+                          postavke istega tečaja pod ENO glavo (coursing — kuhar vidi,
+                          kaj gre SKUPAJ na mizo). Brez tečajev na listku = ena skupina
+                          brez glave = ISTITA flat seznam kot prej (ničelna regresija). */}
+                      {groupKdsItemsByCourse(items, o.courses ?? []).map((g) => (
+                        <Fragment key={g.courseId ?? 'no-course'}>
+                          {g.courseId && (
+                            <p data-region="kds-course-group" className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-stone-600">
+                              <Flame className={`w-3.5 h-3.5 shrink-0 ${g.fired ? 'text-orange-600' : 'text-stone-400'}`} aria-hidden />
+                              {g.courseNumber}. {g.label}{g.fired ? ' 🔥' : ''}
+                            </p>
+                          )}
+                          {g.items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
                         const itAge = kdsItemAge(it, o)
                         // Issue #14: tasked items are managed by the station flow — the legacy
@@ -4398,7 +4552,9 @@ function DashboardInner() {
                             </div>
                           </>
                         )
-                      })}
+                          })}
+                        </Fragment>
+                      ))}
                       {/* v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — en velik
                           celoširinski gumb (kitchenski dotik, Toast: dvoklik/fulfill listka).
                           Prikazan samo, če so vse odprte postavke LEGACY (brez postajnih
@@ -5625,7 +5781,13 @@ function DashboardInner() {
                             <SelectContent>
                               <SelectItem value="none">{t('sheet.noCourse')}</SelectItem>
                               {sheetCourses.filter((c) => c.status === 'pending').map((c) => (
-                                <SelectItem key={c.id} value={String(c.courseNumber)}>{c.courseNumber}. {c.name}</SelectItem>
+                                /* v1.232.0 P2 popravek: vrednost opcije je ID tečaja
+                                   (ne courseNumber) — Select value={it.courseId} je
+                                   tekal v prazno (prikaz placeholderja dodeljene
+                                   postavke), izbira obstoječega tečaja pa je poslala
+                                   courseNumber kot courseId → 404 »Tečaj ne obstaja«;
+                                   deloval je SAMO »nov tečaj«. */
+                                <SelectItem key={c.id} value={c.id}>{c.courseNumber}. {c.name}</SelectItem>
                               ))}
                               <SelectItem value="__new">{t('sheet.newCourse')}</SelectItem>
                             </SelectContent>

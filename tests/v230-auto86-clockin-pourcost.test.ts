@@ -467,10 +467,10 @@ describe('v1.230.0 E — žičenje v plačilni tok in prilive', () => {
 /* ─────────────── Ž — verzija + registri (doc-truth) ─────────────── */
 
 describe('v1.230.0 Ž — verzija + registri', () => {
-  test('Ž1: verzija je dvignjena na 1.231.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.231.0')
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.231.0'")
-    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.231.0')
+  test('Ž1: verzija je dvignjena na 1.232.0 (version.ts + compose oznaka)', () => {
+    expect(APP_VERSION).toBe('1.232.0')
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.232.0'")
+    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.232.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi v1.230.0 val (C-seznam zaprt)', () => {
@@ -489,20 +489,20 @@ describe('v1.230.0 Ž — verzija + registri', () => {
     const prd = readFileSync('docs/PRD-LOKALNA-BAZA.md', 'utf8')
     expect(prd).toContain('BENCHMARK-VAL v1.230.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.231.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.232.0')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.229.0'))
   })
 
-  test('Ž4: i18n števci + novi ključi SL/HR (3813/3813)', () => {
-    expect(Object.keys(sl).length).toBe(3813)
-    expect(Object.keys(hr).length).toBe(3813)
+  test('Ž4: i18n števci + novi ključi SL/HR (3818/3818)', () => {
+    expect(Object.keys(sl).length).toBe(3818)
+    expect(Object.keys(hr).length).toBe(3818)
     for (const k of ['tc.lowStockTitle', 'tc.lowStockOut', 'tc.lowStockMore', 'inv.auto86Title', 'inv.auto86Desc', 'inv.auto86On', 'inv.auto86Off', 'inv.auto86Mode', 'inv.auto86ModeDirect', 'inv.auto86ModeRecipe', 'inv.auto86RecipeHint', 'inv.auto86Saved']) {
       expect(typeof (sl as Record<string, string>)[k]).toBe('string')
       expect(typeof (hr as Record<string, string>)[k]).toBe('string')
     }
     // RESTAURANTOS-AUDIT števec usklajen
     const audit = readFileSync('docs/RESTAURANTOS-AUDIT.md', 'utf8')
-    expect(audit).toContain('3813 ključev SL in 3813 HR')
+    expect(audit).toContain('3818 ključev SL in 3818 HR')
     expect(audit).toContain('POSODOBITEV (v1.230.0')
   })
 })

@@ -22,6 +22,7 @@ type KitchenOrder = Prisma.OrderGetPayload<{
     Table: true
     Employee_Order_employeeIdToEmployee: { select: { name: true } }
     OrderItem: { include: { MenuItem: { include: { PrepStation: true } } } }
+    Course: true
   }
 }>
 
@@ -63,6 +64,11 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'asc' },
         include: { MenuItem: { include: { PrepStation: true } } },
       },
+      // v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«): tečaji naročila —
+      // ADITIVNO polje `courses` na vsakem listku vrste (id/courseNumber/name/status/
+      // firedAt); klient ga uporabi za glave skupin postavk (lib/kds-courses). 
+      // 0 vpliva na obstoječe potrošnike — polje je na voljo, ne obvezno.
+      Course: true,
     },
     orderBy: { createdAt: 'asc' },
   }) as unknown as KitchenOrder[]
@@ -72,6 +78,14 @@ export async function GET(req: NextRequest) {
     items: o.OrderItem.map((it) =>
       mapOrderItem({ ...it, menuItem: it.MenuItem ? { prepStation: it.MenuItem.PrepStation } : undefined })
     ),
+    // v1.232.0: tečaji za grupiranje postavk listka (additivno; sort po številki tečaja)
+    courses: [...o.Course].sort((a, b) => a.courseNumber - b.courseNumber).map((c) => ({
+      id: c.id,
+      courseNumber: c.courseNumber,
+      name: c.name,
+      status: c.status,
+      firedAt: c.firedAt ?? null,
+    })),
   }))
   // strežniški station filter (issue #5 §C: postaja na strežniku): KDS vrsta naprave
   // dobi SAMO svojo postajo; brez parametra ostane celotna vrsta (kuhinjski tab ALL)

@@ -2357,6 +2357,12 @@ export const sl: Record<string, string> = {
   // v1.141.0 (KDS benchmark): odbrojevalni časovnik
   'kds.remaining': 'še',
   'kds.overdue': 'Zamuda',
+  // v1.232.0 (PRIMERJAVA §3): ETA obljuba + LIVE SSE oznaka; (§4) rezervacija na mizi
+  'kds.eta': 'Predvideno',
+  'kds.etaTitle': 'Predvidena priprava po cilju najzahtevnejše postaje ({m} min).',
+  'kds.live': 'V živo',
+  'kds.liveTitle': 'Sprotni pretok — spremembe se pokažejo v nekaj sekundah (redni osveževanji ostajata varnostna mreža).',
+  'tables.resvNext': 'Naslednja rezervacija',
   // Plačilni dialog (dopolnitve)
   'payment.gcMinChars': 'Vpišite vsaj zadnjih 6 znakov številke kartice.',
   'payment.partGcRequired': 'Del {n}: izberite darilno kartico.',

@@ -2352,6 +2352,12 @@ export const hr: Record<string, string> = {
   // v1.141.0 (KDS benchmark): odbrojevalni sat
   'kds.remaining': 'još',
   'kds.overdue': 'Kašnjenje',
+  // v1.232.0 (PRIMERJAVA §3): ETA obećanje + LIVE SSE oznaka; (§4) rezervacija na stolu
+  'kds.eta': 'Predviđeno',
+  'kds.etaTitle': 'Predviđena priprema prema cilju najzahtjevnije stanice ({m} min).',
+  'kds.live': 'Uživo',
+  'kds.liveTitle': 'Trenutni prijenos — promjene se prikažu u nekoliko sekundi (redovno osvježavanje ostaje sigurnosna mreža).',
+  'tables.resvNext': 'Sljedeća rezervacija',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',
   'payment.partGcRequired': 'Dio {n}: odaberite poklon karticu.',

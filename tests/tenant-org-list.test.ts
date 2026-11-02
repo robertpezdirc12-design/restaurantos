@@ -212,7 +212,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // seznam v uporabnikovem obsegu, locationScope) → 74
     // OSS-2 (v1.203.0): documents GET (dokumenti s priponkami — seznam v
     // uporabnikovem obsegu, locationScope) → 75
-    expect(wired.length).toBe(75)
+    // v1.232.0 (PRIMERJAVA §3): kitchen/stream GET (SSE pretok svežine KDS —
+    // podpis kuhinje v uporabnikovem obsegu, await locationScope) → 76
+    expect(wired.length).toBe(76)
   })
 })
 
