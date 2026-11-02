@@ -120,7 +120,7 @@ Benchmark: **Toast** (klik na mizo → urejevalnik), **TouchBistro** (najboljši
 | Združevanje (merge) | ✅ | ⚠️ | ✅ | ✅ | |
 | Zadrži/nadaljuj (hold) z razlogom | ⚠️ | ⚠️ | ⚠️ | ✅ | auditirano (QA-val #10) |
 | **Urejevalnik miz (CRUD) v UI** | ✅ | ✅ | ✅ | ❌ → **v1.229** | API obstaja (POST/PATCH/DELETE + audit), UI ne — mize se ureja samo s sejanjem |
-| Urejevalnik con v UI | ⚠️ | ✅ | ⚠️ | ❌ → **v1.229** | cona se nastavi z mizo (prosto besedilo) |
+| Urejevalnik con v UI | ⚠️ | ✅ | ⚠️ | **v1.233** | cona ostane prostost besedila na mizi (0 DDL); urejevalnik upravlja cone kot CELOTO: preimenuj/združi vse mize cone v eni operaciji (updateMany + revizija ZONE_RENAME) |
 | **Prenos naročila na drugega natakarja** | ⚠️ | ⚠️ | ✅ | ❌ → **v1.229** | Lightspeed »transfer user« — izmena/delovnik |
 | Preimenuj naročilo | – | – | ✅ | ✅ | customerName edit |
 | QR meni na mizo | ⚠️ | ⚠️ | ⚠️ | ✅ | toggle naročanja + rotacija žetona |
@@ -135,8 +135,9 @@ Benchmark: **Toast** (klik na mizo → urejevalnik), **TouchBistro** (najboljši
 
 **Presoja:** front-of-house tok je najmočnejša mila sistema (tri PWA površine + QR + kiosk);
 **urejevalnik miz** in **prenos na natakarja** sta zaprta v v1.229.0, samodejna dodelitev
-mize v v1.231.0, overlay rezervacij na tlorisu pa v v1.232.0 — restavracija 21/22
-(preostala točka je urejevalnik con kot samostojen objekt — trenutno cona nastavi z mizo).
+mize v v1.231.0, overlay rezervacij na tlorisu pa v v1.232.0 — urejevalnik con kot
+samostojen objekt (preimenuj/združi vse mize cone naenkrat) je dodan v v1.233.0 —
+restavracija **22/22 (polna pariteta)**.
 
 ---
 
@@ -184,7 +185,7 @@ s čitalnikom pa v v1.231.0 — edina preostala vrzel je OCR (zavestna 0-AI odlo
 | Prodaja (POS) | 16/19 | EAN ⌨, ★, ⚡ → vse tri v v1.229.0 |
 | Šank | pokrit | ⚡ + EAN (ista obdelava); tabi = B-seznam |
 | Kuhinja (KDS) | 17/18 | tečaj-grupiranje + ETA + SSE → v1.232.0; EN jezik = zavestna odločitev |
-| Restavracija | 21/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign → v1.231.0; overlay → v1.232.0 |
+| Restavracija | 22/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign → v1.231.0; overlay → v1.232.0; urejevalnik con → v1.233.0 |
 | Zaloge | 22/22 | OCR je edina zavestna izključitev (0-AI) |
 
 **Zaključek:** po treh letih benchmark valov (v1.67–v1.228) ima sistem parity ali prednost
@@ -279,3 +280,58 @@ jezik osebja) ter urejevalnik con kot samostojen objekt.
    zdaj ID. **P3 popravek** — mirror množičnega opomnika je primerjal maločrkovni DB
    status, klient pa nosi UI obliko → števec kandidatov v potrditvenem dialogu je bil
    vedno 0.
+
+---
+
+## 11. Sveža raziskava (oktober 2026) + Val v1.233.0 — BENCHMARK VAL 5
+
+Po zaprtju prvotnega C-seznama (v1.229–v1.232) je sledila NOVA spletna raziskava
+(oktober 2026: Toast julij 2026, Square april 2026, Lightspeed november 2025 + april
+2026, TouchBistro, 2026 buyer guide-i). Ugotovitev: dokument je bil točen do v1.232.0;
+novo odkrite točke so razdeljene v »že imamo« (raziskovalec jih ni poznal) in tri
+DEJANSKE nove funkcije, zaprte v tem valu.
+
+**Že imamo (raziskava jih ni poznala — potrebne dopolnitve dokumenta):**
+- Integracije dostave (Wolt + Glovo: webhook, samodejni sprejem, cone) — 2026 buyer
+  criterion »delivery marketplace« ✔ ( obstaja od prej, vmesnik Dostava).
+- Scan-to-pay na računu (gost plača po telefonu: /pay/<token> + Stripe) — Square
+  marec 2025 ✔ (obstaja).
+- Dnevni povzetek prodaje po e-pošti (sendDailyDigest v cron/daily) — Square
+  november 2025 ✔ (obstaja).
+
+**Nove točke tega vala (v1.233.0):**
+
+1. **UREJEVALNIK CON (§4 → 22/22)** — Toast/TouchBistro upravljajo cone kot
+   samostojen objekt. Nova ruta POST /api/tables/zones (menu.manage,
+   requireUserLocation + assertOrgScope, updateMany vseh miz cone, revizija
+   ZONE_RENAME s { from, to, count }); dialog v Mize: vrstica po coni (ime, število
+   miz, seznam), PREIMENUJ (prosto besedilo) in ZDRUŽI (izbira ciljne cone) — obe
+   dejanji sta isti operaciji na strežniku. 0 DDL (cona ostane besedilo na mizi).
+2. **UČINKOVITOST NATAKARJEV (Lightspeed november 2025 »staff performance
+   insights« / Toast »server scorecards«)** — nova čista knjižnica
+   src/lib/staff-performance.ts (agregacija plačanih naročil po employeeId: število
+   naročil, prihodek, povprečno naročilo, napitnine, delež; naročila brez natakarja
+   ostanejo v lastni iskreni vrstici) + GET /api/reports/staff-performance
+   (reports.sales, clamp 1–90 dni, lokacijski obseg kot sales-by-hour) +
+   StaffPerformanceCard v Analitiki (obdobje 7/30/90, delež-pas, skupna vrstica).
+3. **KDS VRSTA — Toast julij 2026 »Start Queue«** — pasivni predogled naročil, katerih
+   postavke (v izbrani vedi) so ŠE VSE PENDING (brez požiga): trak nad aktivnimi
+   listki s čipi (miza/tip, količina, starost po istem viru barvnih razredov).
+   Iskreno izostane, ko je vrsta prazna; listki ostanejo v glavni vrsti (ničelna
+   regresija). 0 novih backend poti (viewKitchen že nosi vse).
+
+**Zavestne izključitve novega C-seznama (načrt v1.234+ po odločitvi lastnika):**
+- Časovni meniji (Square april 2026: zajtrk/kosila samodejno po okviru) — pot
+- Zibanje miz/rezervacij (Lightspeed april 2026 »table pacing«) — manjša
+- Google Reviews po obisku (Lightspeed november 2025) — marketinška povezava
+- Avtomatsko razporejanje obremenitve po postajah (Toast julij 2026) — hevristika
+  AI-lika; usmerjanje po postajah + EXPO + vrsta že pokrivajo operativno potrebo
+- Offline KDS (Toast »whole operation offline«) — KDS ima SSE + 15 s polling
+  fallback; polni offline pomnilnik listkov je ločena investicija
+- SSE potisk menijev na POS (Lightspeed »faster menu updates«) — POS ima 15 s
+  operativni polling
+
+**Sklep:** v1.233.0 zapre zadnjo vrzel prvotnega dokumenta (restavracija 22/22 —
+VSEH pet vmesnikov ima polno funkcionalno pariteto) in tri najmočnejše točke
+novejših objav konkurence (urejevalnik con, učinkovitost osebja, Start Queue);
+preostanek novega C-seznama so zavestne odločitve/načrti, ne vrzeli.

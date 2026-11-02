@@ -16,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ReferenceLine, Legend,
 } from 'recharts'
-import { Loader2, RefreshCw, TrendingUp, CheckCircle2, Timer, Database, ChevronDown, Scale, Download, AlertTriangle } from 'lucide-react'
+import { Loader2, RefreshCw, TrendingUp, CheckCircle2, Timer, Database, ChevronDown, Scale, Download, AlertTriangle, Users } from 'lucide-react'
 
 /* ─────────────── OPS-8 v1.71.0 — MENU ENGINEERING (Kasavana-Smith) ─────────────── */
 
@@ -1186,6 +1186,132 @@ export function PourCostCard() {
               </table>
             </div>
             <p className="text-xs text-stone-400">{t('pc.note')}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────── v1.233.0 — UČINKOVITOST NATAKARJEV (staff performance) ───────────────
+   PRIMERJAVA-VMESNIKOV-2026 §11 (sveža raziskava oktober 2026): Lightspeed
+   november 2025 »staff performance insights« / Toast »server scorecards« —
+   vodilni POS-i imajo ploščad prodaje po natakarju; vir: PLAČANA naročila
+   (GET /api/reports/staff-performance, čista agregacija lib/staff-performance). */
+
+interface SpRow {
+  employeeId: string | null
+  name: string
+  orders: number
+  revenue: number
+  avgTicket: number
+  tips: number
+  share: number
+}
+interface SpResp {
+  periodDays: number
+  since: string
+  generatedAt: string
+  rows: SpRow[]
+  totals: { orders: number; revenue: number; tips: number; avgTicket: number }
+}
+
+export function StaffPerformanceCard() {
+  const { t } = useI18n()
+  const [days, setDays] = useState<'7' | '30' | '90'>('7')
+  const [data, setData] = useState<SpResp | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setBusy(true)
+      setErr('')
+      try {
+        const d = await api<SpResp>(`/api/reports/staff-performance?days=${days}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [days, reload])
+
+  const maxRev = Math.max(1, ...(data?.rows ?? []).map((r) => r.revenue))
+
+  return (
+    <Card data-region="staff-performance-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><Users className="w-4 h-4" /> {t('sp.title')}</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-stone-500">{t('sp.desc')}</p>
+          <div className="flex items-center gap-2">
+            <Select value={days} onValueChange={(v) => setDays(v as '7' | '30' | '90')}>
+              <SelectTrigger className="h-8 w-28" aria-label={t('me.period')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">{t('sp.days7')}</SelectItem>
+                <SelectItem value="30">{t('me.days30')}</SelectItem>
+                <SelectItem value="90">{t('me.days90')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)}>
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
+        {!err && (data?.rows.length ?? 0) === 0 && !busy && <p className="text-sm text-stone-500">{t('sp.empty')}</p>}
+
+        {(data?.rows.length ?? 0) > 0 && data && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-stone-500">
+                    <th className="py-2 pr-2 font-medium">{t('sp.waiter')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('sp.orders')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('sp.revenue')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('sp.avgTicket')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('sp.tips')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('sp.share')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((r) => (
+                    <tr key={r.employeeId ?? 'none'} data-region="sp-row" className="border-b border-stone-100 last:border-0">
+                      <td className="py-2 pr-2 font-medium">{r.name || t('sp.unassigned')}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{r.orders}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">
+                        <span className="flex items-center justify-end gap-2">
+                          <span className="hidden sm:block h-1.5 w-16 rounded-full bg-stone-100 overflow-hidden" aria-hidden>
+                            <span className="block h-full rounded-full bg-emerald-600" style={{ width: `${Math.round((r.revenue / maxRev) * 100)}%` }} />
+                          </span>
+                          {fmtEUR(r.revenue)}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{fmtEUR(r.avgTicket)}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{r.tips > 0 ? fmtEUR(r.tips) : '—'}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{(r.share * 100).toFixed(0)} %</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-stone-200 font-semibold">
+                    <td className="py-2 pr-2">{t('sp.total')}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{data.totals.orders}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{fmtEUR(data.totals.revenue)}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{fmtEUR(data.totals.avgTicket)}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{data.totals.tips > 0 ? fmtEUR(data.totals.tips) : '—'}</td>
+                    <td className="py-2 pr-2 text-right">100 %</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-stone-400">{t('sp.desc')}</p>
           </>
         )}
       </CardContent>

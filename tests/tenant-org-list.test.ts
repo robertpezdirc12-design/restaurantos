@@ -214,7 +214,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // uporabnikovem obsegu, locationScope) → 75
     // v1.232.0 (PRIMERJAVA §3): kitchen/stream GET (SSE pretok svežine KDS —
     // podpis kuhinje v uporabnikovem obsegu, await locationScope) → 76
-    expect(wired.length).toBe(76)
+    // v1.233.0 (PRIMERJAVA §11): reports/staff-performance GET (učinkovitost
+    // natakarjev — plačana naročila v uporabnikovem obsegu) → 77
+    expect(wired.length).toBe(77)
   })
 })
 

@@ -230,39 +230,42 @@ describe('v1.232.0 E — P2 popravek Selecta tečaja (NaročiloSheet)', () => {
 })
 
 describe('v1.232.0 Ž — verzija + dokumenti + registri', () => {
-  test('Ž1: verzija je dvignjena na 1.232.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.232.0')
-    expect(read('src/lib/version.ts')).toContain("'1.232.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.232.0')
+  test('Ž1: verzija je dvignjena na 1.233.0 (version.ts + compose oznaka)', () => {
+    expect(APP_VERSION).toBe('1.233.0')
+    expect(read('src/lib/version.ts')).toContain("'1.233.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.233.0')
   })
 
-  test('Ž2: dokument PRIMERJAVA nosi val v1.232.0 (KDS 17/18, restavracija 21/22)', () => {
-    expect(doc).toContain('Val v1.232.0')
+  test('Ž2: dokument PRIMERJAVA nosi val v1.233.0 (KDS 17/18, restavracija 22/22)', () => {
+    expect(doc).toContain('Val v1.233.0')
     expect(doc).toContain('| Kuhinja (KDS) | 17/18 |')
-    expect(doc).toContain('| Restavracija | 21/22 |')
+    /* ZAVESTNA SPREMEMBA PINA (v1.233.0): dokument je ŽIV sledilnik — seštevek
+       restavracije je 21/22 → 22/22 z valom v1.233.0 (urejevalnik con, §11);
+       zgodovina vala v1.232 (§10) ostaja nedotaknjena. */
+    expect(doc).toContain('| Restavracija | 22/22 |')
     expect(doc).toContain('**v1.232**')
   })
 
-  test('Ž3: PRD §8 R4b nosi BENCHMARK-VAL v1.232.0 vrstico (doc-truth)', () => {
-    expect(prd).toContain('BENCHMARK-VAL v1.232.0')
+  test('Ž3: PRD §8 R4b nosi BENCHMARK-VAL v1.233.0 vrstico (doc-truth)', () => {
+    expect(prd).toContain('BENCHMARK-VAL v1.233.0')
     expect(prd).toContain('REZERVACIJE NA TLORISU')
     expect(prd).toContain('KDS SSE')
   })
 
-  test('Ž4: worklog vrh nosi Task ID v1.232.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.232.0')
-    expect(wl.indexOf('Task ID: v1.232.0')).toBeLessThan(wl.indexOf('Task ID: v1.231.0'))
+  test('Ž4: worklog vrh nosi Task ID v1.233.0 nad prejšnjim valom', () => {
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.233.0')
+    expect(wl.indexOf('Task ID: v1.233.0')).toBeLessThan(wl.indexOf('Task ID: v1.231.0'))
   })
 
-  test('Ž5: i18n števci + novi ključi SL/HR (3818/3818, +5)', () => {
-    expect(Object.keys(sl).length).toBe(3818)
-    expect(Object.keys(hr).length).toBe(3818)
+  test('Ž5: i18n števci + novi ključi SL/HR (3846/3846, +5)', () => {
+    expect(Object.keys(sl).length).toBe(3846)
+    expect(Object.keys(hr).length).toBe(3846)
     for (const k of ['kds.eta', 'kds.etaTitle', 'kds.live', 'kds.liveTitle', 'tables.resvNext']) {
       expect(typeof (sl as Record<string, string>)[k]).toBe('string')
       expect(typeof (hr as Record<string, string>)[k]).toBe('string')
     }
     // RESTAURANTOS-AUDIT števec usklajen
-    expect(auditDoc).toContain('3818 ključev SL in 3818 HR')
-    expect(auditDoc).toContain('POSODOBITEV (v1.232.0')
+    expect(auditDoc).toContain('3846 ključev SL in 3846 HR')
+    expect(auditDoc).toContain('POSODOBITEV (v1.233.0')
   })
 })

@@ -83,7 +83,7 @@ describe('issue #71 audit-18 — potrditveno okno pred pošiljanjem opomnikov', 
   })
   test('kandidati zrcalijo strežniško logiko (confirmed + 24 h + brez opomnika)', () => {
     const d = dash()
-    /* ZAVESTNA SPREMEMBA PINA (v1.232.0 P3): primerjava je na UI obliki statusa
+    /* ZAVESTNA SPREMEMBA PINA (v1.233.0 P3): primerjava je na UI obliki statusa
        ('CONFIRMED' — mapReservation preslika DB 'confirmed' v velike črke);
        prejšnji pin maločrkovne DB vrednosti je opisoval hrošča (števec kandidatov
        v potrditvenem dialogu je bil vedno 0). Strežniška logika ostaja

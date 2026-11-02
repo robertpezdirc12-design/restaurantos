@@ -103,7 +103,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -2840,6 +2840,47 @@ function DashboardInner() {
       setTeRows(scoped.map((tb) => ({ id: tb.id, number: String(tb.number ?? (tb.name.replace(/\D+/g, '') || '')), seats: String(tb.seats || 1), zone: tb.zone || '' })))
     } catch { /* ostanejo stare vrstice */ }
   }
+  /* v1.233.0 (PRIMERJAVA-VMESNIKOV-2026 §4 — ZADNJA vrzel restavracije 21/22 → 22/22):
+     UREDJEVALNIK CON kot samostojen objekt (Toast/TouchBistro praksa — vodilni
+     upravljajo cone kot celoto, ne miza-po-mizi). Cona ostaja prostost besedila
+     na mizi (0 DDL); POVEDEK je nov: preimenuj/združi VSE mize cone v eni
+     operaciji (POST /api/tables/zones — updateMany + revizija ZONE_RENAME). */
+  const [zonesEditOpen, setZonesEditOpen] = useState(false)
+  const [zeRename, setZeRename] = useState<Record<string, string>>({})
+  const [zeMerge, setZeMerge] = useState<Record<string, string>>({})
+  const [zeBusy, setZeBusy] = useState(false)
+  const zeOpen = () => { setZeRename({}); setZeMerge({}); setZonesEditOpen(true) }
+  /** Cone poglede (viewTables — isti obseg kot teOpen): { ime, mize, sedežev },
+      padajoče po številu miz. Prazna cona ('') je POŠTENA vrstica — preimenovanje
+      v resnici razdeli mize brez cone. */
+  const zeZones = () => {
+    const m = new Map<string, { zone: string; count: number; seats: number; tables: string[] }>()
+    for (const tb of viewTables) {
+      const z = tb.zone || ''
+      const agg = m.get(z) ?? { zone: z, count: 0, seats: 0, tables: [] }
+      agg.count += 1
+      agg.seats += tb.seats || 0
+      agg.tables.push(tb.name)
+      m.set(z, agg)
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count || a.zone.localeCompare(b.zone))
+  }
+  /** Ena operacija nad vsemi mizami cone (preimenuj ALI združi — za DB ista
+      sprememba area). Lokacijska disciplina enaka teAdd: locationId iz pogleda. */
+  const zeApply = async (from: string, to: string) => {
+    const target = to.trim()
+    if (!target) { toast({ title: t('zones.newName'), variant: 'destructive' }); return }
+    if (target === from) { toast({ title: t('zones.sameName'), variant: 'destructive' }); return }
+    if (!viewLoc) { toast({ title: t('sale.noLocation'), variant: 'destructive' }); return }
+    setZeBusy(true)
+    try {
+      const d = await api<{ updated: number }>('/api/tables/zones', { method: 'POST', body: JSON.stringify({ from, to: target, locationId: viewLoc }) })
+      await load()
+      setZeRename((p) => { const q = { ...p }; delete q[from]; return q })
+      setZeMerge((p) => { const q = { ...p }; delete q[from]; return q })
+      toast({ title: t('zones.updated', { from, to: target, n: String(d.updated) }) })
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setZeBusy(false) }
+  }
   const [planPos, setPlanPos] = useState<Record<string, { x: number; y: number }>>({})
   const dragIdRef = useRef<string | null>(null)
   const draggedRef = useRef(false)
@@ -3141,6 +3182,11 @@ function DashboardInner() {
                 {hasPerm('reports.labour') && <LaborCostCard />}
               </div>
             )}
+            {/* v1.233.0 (PRIMERJAVA §11; Lightspeed nov 2025 »staff performance
+                insights« / Toast »server scorecards«): prodaja po natakarju —
+                naročila, prihodek, povprečje, napitnine, delež; lazy fetch,
+                ista pravica kot ostala prodajna poročila (reports.sales). */}
+            {hasPerm('reports.sales') && <StaffPerformanceCard />}
             {/* Issue #10 (v1.117.0) — Strošek dela in pokritost izmen: načrtovano vs.
                 dejansko + urna matrika + napoved pokritosti (isti 'pregled' blok kot
                 LaborCostCard — backend varuje reports.view; lazy fetch ko je vidna). */}
@@ -3164,6 +3210,13 @@ function DashboardInner() {
               {hasPerm('menu.manage') && (
                 <Button size="sm" variant="outline" className="gap-1" onClick={teOpen} title={t('tables.editHint')}>
                   <Settings2 className="w-3.5 h-3.5" aria-hidden /> {t('tables.edit')}
+                </Button>
+              )}
+              {/* v1.233.0 (PRIMERJAVA §4): UREDI CONE — cone kot samostojen objekt
+                  (Toast/TouchBistro); ista pravica kot urejevalnik miz (menu.manage). */}
+              {hasPerm('menu.manage') && (
+                <Button size="sm" variant="outline" className="gap-1" onClick={zeOpen} title={t('zones.editHint')} data-region="zones-edit-btn">
+                  <LayoutGrid className="w-3.5 h-3.5" aria-hidden /> {t('zones.edit')}
                 </Button>
               )}
               {/* Issue #21 (v1.111.0) — klic vodje (osebje vseh vlog) */}
@@ -4299,6 +4352,14 @@ function DashboardInner() {
                 .sort((a, b) => Number(isStaleKdsTicket(kdsMinutes(a.createdAt))) - Number(isStaleKdsTicket(kdsMinutes(b.createdAt))))
               const kdsActive = kdsQueue.filter((o) => !isStaleKdsTicket(kdsMinutes(o.createdAt)))
               const kdsStale = kdsQueue.filter((o) => isStaleKdsTicket(kdsMinutes(o.createdAt)))
+              /* v1.233.0 (PRIMERJAVA §11; Toast julij 2026 »Start Queue«): VRSTA —
+                 naročila, katerih postavke (v tej vedi) so ŠE VSE PENDING (brez
+                 požiga) — kuhinja vidi prihajajočo obremenitev, preden natakar
+                 pošlje. Listki ostanejo v glavni vrsti (ničelna regresija). */
+              const kdsIncoming = kdsQueue.filter((o) => {
+                const its = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
+                return its.length > 0 && its.every((it) => it.status === 'PENDING')
+              })
               const renderKdsTicket = (o: (typeof viewKitchen)[number]) => {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
@@ -4582,6 +4643,24 @@ function DashboardInner() {
               }
               return (
                 <>
+                  {/* v1.233.0: VRSTA (Start queue) — pasivni predogled, iskreno
+                      izostane, ko je prazna; starostni razred po istem viru kot
+                      listki (kdsAgeCls + kdsAgePillCls). */}
+                  {kdsIncoming.length > 0 && (
+                    <div data-region="kds-start-queue" role="group" aria-label={t('kds.queueTitle')} title={t('kds.queueHint')}
+                      className="flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-amber-800 shrink-0">{t('kds.queueTitle')} · {kdsIncoming.length}</span>
+                      {kdsIncoming.map((o) => {
+                        const qItems = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
+                        const qAge = kdsMinutes(o.createdAt)
+                        return (
+                          <span key={o.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${kdsAgePillCls(kdsAgeCls(qAge))}`}>
+                            {o.table?.name || orderTypeL(o.type)} · {qItems.reduce((s, it) => s + (it.qty || 0), 0)}× · {qAge} min
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
                   {kdsActive.length > 0 && (
                     <p data-region="kds-section-active" className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-stone-500 px-1">
                       {t('kds.activeShift')}
@@ -5711,6 +5790,66 @@ function DashboardInner() {
                 <Plus className="w-3.5 h-3.5" aria-hidden /> {t('tables.addRow')}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* v1.233.0 (PRIMERJAVA §4): UREDJEVALNIK CON — cone kot samostojen objekt.
+          Vrstica po coni: ime + število miz + seznam; PREIMENUJ (prosto besedilo)
+          in ZDRUŽI (izbira obstoječe ciljne cone) — obe sta ISTA operacija na
+          strežniku (updateMany area + revizija ZONE_RENAME), razliko naredi UI. */}
+      <Dialog open={zonesEditOpen} onOpenChange={(v) => { if (!v) setZonesEditOpen(false) }}>
+        <DialogContent aria-describedby={undefined} className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg">{t('zones.editTitle')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-stone-500">{t('zones.editDesc')}</p>
+          <div className="space-y-3 text-sm">
+            <ScrollArea className="max-h-72">
+              <div className="space-y-2 pr-2">
+                {zeZones().map((z) => {
+                  const others = zeZones().filter((x) => x.zone !== z.zone)
+                  return (
+                    <div key={z.zone || '(prazna)'} data-region="zone-row" className="rounded-lg border border-stone-200 px-2.5 py-2 space-y-1.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold truncate min-w-0">{z.zone || '—'}</span>
+                        <Badge variant="outline" className="shrink-0">{t('zones.tablesCount', { n: String(z.count) })}</Badge>
+                        <span className="ml-auto text-xs text-stone-400 truncate max-w-[45%]" title={z.tables.join(', ')}>{t('zones.tablesList', { list: z.tables.join(', ') })}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <label className="sr-only" htmlFor={`ze-r-${z.zone || 'empty'}`}>{t('zones.newName')}</label>
+                        <Input id={`ze-r-${z.zone || 'empty'}`} placeholder={t('zones.newName')} value={zeRename[z.zone] ?? ''} disabled={zeBusy}
+                          onChange={(e) => setZeRename((p) => ({ ...p, [z.zone]: e.target.value }))}
+                          className="h-10 min-w-0 flex-1" />
+                        <Button size="sm" variant="outline" className="h-10 shrink-0 gap-1 bg-emerald-700 text-white hover:bg-emerald-800" disabled={zeBusy || !(zeRename[z.zone] ?? '').trim()}
+                          onClick={() => void zeApply(z.zone, zeRename[z.zone] ?? z.zone)}>
+                          <Check className="w-3.5 h-3.5" aria-hidden /> {t('zones.renameBtn')}
+                        </Button>
+                        {others.length > 0 && (
+                          <>
+                            <label className="sr-only" htmlFor={`ze-m-${z.zone || 'empty'}`}>{t('zones.mergeInto')}</label>
+                            <Select value={zeMerge[z.zone] ?? ''} onValueChange={(v) => setZeMerge((p) => ({ ...p, [z.zone]: v }))} disabled={zeBusy}>
+                              <SelectTrigger id={`ze-m-${z.zone || 'empty'}`} className="h-10 w-36 text-xs" aria-label={t('zones.mergeInto')}>
+                                <SelectValue placeholder={t('zones.pickTarget')} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {others.map((x) => (
+                                  <SelectItem key={x.zone} value={x.zone}>{x.zone || '—'}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button size="sm" variant="outline" className="h-10 shrink-0" disabled={zeBusy || !zeMerge[z.zone]}
+                              onClick={() => zeMerge[z.zone] && void zeApply(z.zone, zeMerge[z.zone])}>
+                              {t('zones.mergeBtn')}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                {zeZones().length === 0 && <p className="text-sm text-stone-500">{t('zones.empty')}</p>}
+              </div>
+            </ScrollArea>
           </div>
         </DialogContent>
       </Dialog>
