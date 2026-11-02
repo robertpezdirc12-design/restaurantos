@@ -177,7 +177,9 @@ describe('issue73 audit-15 B: vnos — prikazno ime je v kategoriji edinstveno',
 
 describe('issue73 audit-15 C: dashboard — ploščica »jed · različica · velikost«', () => {
   it('mešani pogled (Vse kategorije ALI iskanje) sproži overline', () => {
-    expect(dash).toContain('const saleMixed = saleCat === \'ALL\' || saleSearch.trim() !== \'\'')
+    // v1.229.0 (PRIMERJAVA-VMESNIKOV-2026): ★ Priljubljeno je TUDI mešani pogled
+    // (ploščice iz več kategorij) — pin zavestno posodobljen z ~FAVS vejo.
+    expect(dash).toContain('const saleMixed = saleCat === \'ALL\' || saleCat === \'FAVS\' || saleSearch.trim() !== \'\'')
     expect(dash).toContain('const catOverline = saleMixed ? saleCatNameOf(mi) : \'\'')
   })
 

@@ -266,13 +266,13 @@ describe('v226 B · urnik: zapiralni čas 24:00 (polnoč na koncu dneva)', () =>
 /* ═══════════════ Č. VERZIJA + REGISTRI ═══════════════ */
 
 describe('v226 Č · verzija + dokumentacija', () => {
-  test('verzija je dvignjena na 1.228.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.228.0')
-    expect(read('src/lib/version.ts')).toContain("'1.228.0'")
+  test('verzija je dvignjena na 1.229.0 (version.ts)', () => {
+    expect(APP_VERSION).toBe('1.229.0')
+    expect(read('src/lib/version.ts')).toContain("'1.229.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.228.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.229.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {

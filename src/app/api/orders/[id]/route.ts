@@ -129,6 +129,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // pravice (vsak prijavljeni, tudi čistilka, je lahko spreminjal tudi na plačanih)
     const gate = await requirePermission(req, 'orders.create')
     if (isResponse(gate)) return gate
+  } else if (body?.employeeId !== undefined) {
+    // v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4): PRENOS NAROČILA NA DRUGEGA ZAPOSLEGA
+    // (Lightspeed »transfer user«) — izmena prevzame naročilo soslužabnika. VSEBINA
+    // naročila se ne spreminja → orders.create (ista masa kot note/customerName),
+    // ne employees.manage (imenovanje osebja NI dotaknjeno).
+    const gate = await requirePermission(req, 'orders.create')
+    if (isResponse(gate)) return gate
   }
 
   const order = await db.order.findUnique({ where: { id }, include: { OrderItem: true } })
@@ -136,8 +143,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Issue #4 §1: location gate na VSAKO spremembo (prej: PATCH brez body akcije je bil prazen gate)
   const locGuard = await guardResource(user, order.locationId)
   if (locGuard) return locGuard
-  const recognized = Array.isArray(body?.addItems) || body?.status !== undefined || body?.note !== undefined || body?.customerName !== undefined
-  if (!recognized) return fail('Ni prepoznane akcije (addItems | status | note | customerName).', 400)
+  const recognized = Array.isArray(body?.addItems) || body?.status !== undefined || body?.note !== undefined || body?.customerName !== undefined || body?.employeeId !== undefined
+  if (!recognized) return fail('Ni prepoznane akcije (addItems | status | note | customerName | employeeId).', 400)
 
   // v1.145.0 (audit #10): dokaz o izjemi za preklic se izračuna tukaj (pred
   // zapisom), ZAPIŠE pa se šele ob uspelem CAS claimu — glej konec funkcije.
@@ -206,6 +213,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (body?.note !== undefined) data.notes = body.note
   if (body?.customerName !== undefined) data.customerName = body.customerName
+
+  // v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4): prenos na zaposlenega (transfer user).
+  // Samo AKTIVNA naročila (open/sent/prepared + unpaid/partial — izmena si med
+  // delom izmenjuje naročila; plačano/stornirano/preklicano je zgodovina in
+  // ostane pri svojem natakarju za poročila napitnin). Zaposleni mora obstajati,
+  // biti aktiven in pripadati lokaciji naročila (preklop lokacije = nov račun).
+  if (body?.employeeId !== undefined) {
+    if (['paid', 'cancelled'].includes(order.status) || !['unpaid', 'partial'].includes(order.paymentStatus)) {
+      return fail('Zaključenega naročila ni mogoče prenesti — ostane pri svojem natakarju.', 409)
+    }
+    const empId = String(body.employeeId || '').trim()
+    if (!empId) return fail('Zaposleni je obvezen.', 400)
+    if (empId === order.employeeId) return fail('Naročilo je že dodeljeno temu zaposlenemu.', 400)
+    const emp = await db.employee.findUnique({ where: { id: empId }, select: { id: true, name: true, status: true, locationId: true } })
+    if (!emp || emp.status !== 'active') return fail('Zaposleni ne obstaja ali ni aktiven.', 404)
+    if (emp.locationId !== order.locationId) return fail('Zaposleni pripada drugi lokaciji.', 403)
+    data.employeeId = empId
+    // revizija: kdo je prenesel, od koga na koga (ime za poročila — idja sta v
+    // entity poljih preko details JSON)
+    await writeAudit(db, {
+      userId: user.sub, action: 'ORDER_TRANSFER', entityType: 'Order', entityId: id,
+      details: jstr({ fromEmployeeId: order.employeeId ?? null, toEmployeeId: empId, toName: emp.name, by: user.name }),
+      locationId: order.locationId,
+    })
+  }
 
   // dodajanje artiklov v odprto naročilo
   if (Array.isArray(body?.addItems) && body.addItems.length > 0) {

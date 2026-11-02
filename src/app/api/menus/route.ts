@@ -54,7 +54,29 @@ export async function GET(req: NextRequest) {
     arr.push(r.stationId)
     stationsByItem.set(r.menuItemId, arr)
   }
+  // v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §1): EAN ČITALNIK → KOŠARA — scanner je
+  // »tipkovnica + Enter«; POS iskalno polje pošlje kodo sem (GET ?ean=). Išče
+  // InventoryItem.ean (OSS-9 čisti sloj) s povezanim meni artiklom (menuItemId),
+  // spoštuje isti lokacijski obseg kot seznam zgoraj. Prazno/krajše od 4 → ne
+  // iščemo (besedne poizvedbe ostanejo iskanje po imenu). eanItem = null = neznana
+  // koda; klient sam odloči o prikazu. Najdba ene vrstice (findFirst) zadošča —
+  // API za pisanje EAN-a že preprečuje duplikate znotraj lokacije (409).
+  let eanItem: ReturnType<typeof mapMenuItem> | null = null
+  const eanParam = req.nextUrl.searchParams.get('ean')
+  if (eanParam && eanParam.trim().length >= 4) {
+    const code = eanParam.trim()
+    const inv = await db.inventoryItem.findFirst({
+      where: { ean: code, menuItemId: { not: null }, ...(locFilter ? { locationId: locFilter } : {}) },
+      select: { menuItemId: true },
+    })
+    if (inv?.menuItemId) {
+      const mi = items.find((m) => m.id === inv.menuItemId)
+      if (mi) eanItem = mapMenuItem({ ...mi, prepStation: mi.PrepStation })
+    }
+  }
   return ok({
+    // v1.229.0: EAN zadetek (ali null = neznana koda) — klient doda v košaro
+    eanItem,
     items: items.map((m) => {
       // Issue #7 (P1, v1.104.0): alergenski povzetek artiklov (status + kode +
       // zastavica) — meni tab prikaže stanje in odpre dialog za potrditev/popravek.

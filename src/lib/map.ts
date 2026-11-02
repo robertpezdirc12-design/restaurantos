@@ -371,7 +371,9 @@ export function mapOrder(o: Row & {
     locationId: (o.locationId as string) ?? null,
     tableId: (o.tableId as string) ?? null,
     table: o.table ? { name: `Miza ${o.table.number}`, zone: (o.table.area as string) || 'Glavna dvorana' } : null,
-    employee: o.employee ? { name: o.employee.name as string } : null,
+    // v1.229.0: id je ADITIVEN (prenos naročila v NaročiloSheetu ga potrebuje za
+    // izbiro trenutnega natakarja) — obstoječi porabniki (name) se ne spremenijo.
+    employee: o.employee ? { id: o.employee.id as string, name: o.employee.name as string } : null,
     createdAt: o.createdAt as string,
     paidAt: o.paidAt as string | null,
     fursEor: (o.receipts as Row[] | undefined)?.[0]?.eor ?? null,

@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, fmtEUR, fmtPctSigned, getUser } from '@/lib/client'
-import { vatFromGross } from '@/lib/billing'
+import { vatFromGross, isHappyActive } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
 import { dashboardPollIncludes } from '@/lib/poll-plan'
@@ -156,9 +156,9 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 interface UpdateCheckT { current: string; latest: string | null; updateAvailable: boolean; source: 'default' | 'env' | 'disabled' | 'invalid'; reason: string }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
-interface TableT { id: string; name: string; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
+interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[] }
-interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
+interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
@@ -169,7 +169,7 @@ interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
 interface BillAutoDisc { discountId: string; name: string; amount: number }
 interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number }; items?: { id: string; name: string; quantity: number; unitPrice: number }[] }
-interface DiscountT { id: string; name: string; type: string; amount: number; triggerType: string; isActive: boolean; happyFromHour?: number | null; happyToHour?: number | null }
+interface DiscountT { id: string; name: string; type: string; amount: number; triggerType: string; isActive: boolean; happyFromHour?: number | null; happyToHour?: number | null; happyDays?: string | null; targetCategoryIds?: string | null; validFrom?: string | null; validTo?: string | null }
 interface LoyaltyAccT { id: string; customerName: string; customerPhone: string; pointsBalance: number; lifetimePoints: number; tier: string }
 interface PayPart { type: 'cash' | 'card' | 'mobile' | 'giftcard'; amount: number }
 /** OPS-7 (v1.68.0) — coursing (tečaji jedi) + split po izstavkih (Check) */
@@ -1277,6 +1277,23 @@ function DashboardInner() {
     setSending(true)
     try {
       await api(`/api/orders/${orderSheet.id}/fire`, { method: 'POST' })
+      await load()
+      void refreshSheetOrder(orderSheet.id)
+    } catch (err) {
+      toast({ title: (err as Error).message, variant: 'destructive' })
+    } finally { setSending(false) }
+  }
+
+  /** v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4): PRENOS NAROČILA NA DRUGEGA ZAPOSLEGA
+   *  (Lightspeed »transfer user«) — izmena si izmenjuje naročila brez vsebinskih
+   *  sprememb. Strežnik: orders.create + samo aktivna naročila + lokacijski gate +
+   *  revizija ORDER_TRANSFER. UI: izbira v glavi NaročiloSheeta. */
+  async function transferOrder(employeeId: string) {
+    if (!orderSheet) return
+    setSending(true)
+    try {
+      const d = await api<{ order: OrderT }>(`/api/orders/${orderSheet.id}`, { method: 'PATCH', body: JSON.stringify({ employeeId }) })
+      toast({ title: t('sheet.transferred', { name: d.order.employee?.name || employeeId }) })
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
@@ -2401,6 +2418,62 @@ function DashboardInner() {
     setSaleView(v)
     try { localStorage.setItem('ro_sale_view', v) } catch { /* brez shramve */ }
   }
+  /* v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §1–2, Toast/Clover benchmark): PRILJUBLJENO ★ —
+     per-naprava persist (ro_sale_favs); zvezdica v pogledu KARTICE (kompaktni grid je
+     premajhen za še en gumb — upravljanje ★ je v karticah, FILTER ★ deluje povsod). */
+  const [saleFavs, setSaleFavs] = useState<string[]>([])
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const v = JSON.parse(localStorage.getItem('ro_sale_favs') || '[]')
+        if (Array.isArray(v)) setSaleFavs(v.filter((x): x is string => typeof x === 'string').slice(0, 60))
+      } catch { /* zasebni način */ }
+    })
+  }, [])
+  const saleFavToggle = (id: string) => {
+    setSaleFavs((pr) => {
+      const nx = pr.includes(id) ? pr.filter((x) => x !== id) : [...pr, id].slice(0, 60)
+      try { localStorage.setItem('ro_sale_favs', JSON.stringify(nx)) } catch { /* brez shramve */ }
+      return nx
+    })
+  }
+  /* v1.229.0: AUTO popusti (Happy Hour) za ⚡ znak na ploščicah
+     vstopu v zavihek prodaja (max 1× na 5 min; plačilni dialog si jih že prinese svojih).
+     KANONIČNI obračun ostaja v billing.ts / computeBill — tukaj je SAMO prikaz. */
+  const [autoDiscounts, setAutoDiscounts] = useState<DiscountT[]>([])
+  const autoDiscAtRef = useRef(0)
+  useEffect(() => {
+    if (activeTab !== 'prodaja') return
+    if (Date.now() - autoDiscAtRef.current < 300_000) return
+    autoDiscAtRef.current = Date.now()
+    void api<{ discounts: DiscountT[] }>('/api/discounts')
+      .then((ds) => setAutoDiscounts((ds.discounts || []).filter((d) => d.triggerType === 'auto' && d.isActive)))
+      .catch(() => undefined)
+  }, [activeTab])
+  // urni tiktak: ⚡ okno se preklopi na polno uro — brez tiktaka bi znak obstal do naslednjega renderja
+  const [hhNow, setHhNow] = useState(() => new Date())
+  useEffect(() => {
+    const iv = setInterval(() => setHhNow(new Date()), 60_000)
+    return () => clearInterval(iv)
+  }, [])
+  /** Aktivni Happy Hour za artikel (ali null): veljavno okno + pokritost kategorije.
+      Prikazna akcijska cena = ista formula kot discountAmountOf na ENOTI (percent % od
+      cene / fiksni znesek) — račun izračuna strežnik kanonično; ta vrednost je vizualni
+      namig »koliko bo na računu«. */
+  const hhOf = (mi: MenuT): { price: number; name: string } | null => {
+    for (const d of autoDiscounts) {
+      if (!isHappyActive(d, hhNow)) continue
+      if (d.validFrom && new Date(d.validFrom) > hhNow) continue
+      if (d.validTo && new Date(d.validTo) < hhNow) continue
+      const cats = (d.targetCategoryIds || '').split(',').map((s) => s.trim()).filter(Boolean)
+      if (cats.length > 0 && (!mi.categoryId || !cats.includes(mi.categoryId))) continue
+      const amt = (d.type === 'percent' || d.type === 'percentage') ? mi.price * (Number(d.amount) / 100) : Number(d.amount)
+      const price = Math.max(0, Math.round((mi.price - amt) * 100) / 100)
+      if (price >= mi.price) continue
+      return { price, name: d.name }
+    }
+    return null
+  }
   // Issue #71 audit-32: privzeta izbira = PRAVA KATEGORIJA (ne »Vse« — 436 ploščic naenkrat
   // redči mrežo in zatika drsenje na tablici). Uporabnikov izbor vedno premaga privzeto.
   const [saleCat, setSaleCat] = useState('ALL')
@@ -2419,6 +2492,32 @@ function DashboardInner() {
     if (bestN > 0) setSaleCat(best.id)
   }, [categories, saleCat, menu])
   const [saleSearch, setSaleSearch] = useState('')
+  /* v1.229.0 (§1, PRIMERJAVA-VMESNIKOV-2026): EAN ČITALNIK — scanner je tipkovnica, ki
+     konča z Enter. Če je vnos ČISTO številski (4–14 znakov), gre po poti iskanja po
+     črtti kodi (GET /api/menus?ean= — InventoryItem.ean → povezani meni artikel OSS-9);
+     zadetek = dodaj v košaro + počisti polje, nezadetek = opozorilo. Besedne poizvedbe
+     (vsebujejo črke) se NE sprožijo — iskanje po imenu ostane nespremenjeno. */
+  const saleEanSubmittingRef = useRef(false)
+  const saleEanSubmit = async (): Promise<void> => {
+    const code = saleSearch.trim()
+    if (!/^\d{4,14}$/.test(code)) return
+    if (saleEanSubmittingRef.current) return
+    saleEanSubmittingRef.current = true
+    try {
+      const d = await api<{ eanItem: MenuT | null }>(`/api/menus?ean=${encodeURIComponent(code)}`)
+      if (d.eanItem) {
+        posAddClick('sale', d.eanItem)
+        setSaleSearch('')
+        toast({ title: t('sale.eanAdded', { name: d.eanItem.name }) })
+      } else {
+        toast({ title: t('sale.eanUnknown'), variant: 'destructive' })
+      }
+    } catch {
+      /* omrežje — tiho: iskanje po imenu še vedno deluje */
+    } finally {
+      saleEanSubmittingRef.current = false
+    }
+  }
   const [saleSending, setSaleSending] = useState(false)
   const [saleErr, setSaleErr] = useState('')
   // v1.128.0 — list košare (bottom sheet) za mobilni tok: artikli gredo V KOŠARICO,
@@ -2519,7 +2618,7 @@ function DashboardInner() {
   // (jed), ime artikla je različica, velikost je del imena (»0,5 l«). Golih imen
   // prilagodb (»Z gobami«) in podvojenih imen z različnima cenama (»Bolognese
   // 10,90/12,50«) v mešanem pogledu ni več mogoče zamenjati.
-  const saleMixed = saleCat === 'ALL' || saleSearch.trim() !== ''
+  const saleMixed = saleCat === 'ALL' || saleCat === 'FAVS' || saleSearch.trim() !== ''
   const saleCatNameOf = (mi: MenuT) => categories.find((c) => c.id === mi.categoryId)?.name ?? ''
   // iskanje po ŽETONIH: vsaka beseda poizvedbe mora biti v (ime + kategorija)
   // (»pizze bolognese«, »testenine gobami«) — nadloga poišče artikel tudi po
@@ -2528,9 +2627,10 @@ function DashboardInner() {
   const saleTokens = saleQ ? saleQ.split(/\s+/).filter(Boolean) : []
   const saleItems = menu.filter((mi) =>
     mi.available
-    && (saleCat === 'ALL' || mi.categoryId === saleCat)
+    && (saleCat === 'ALL' || (saleCat === 'FAVS' ? saleFavs.includes(mi.id) : mi.categoryId === saleCat))
     && (saleTokens.length === 0
       || saleTokens.every((tok) => `${mi.name} ${saleCatNameOf(mi)}`.toLowerCase().includes(tok))))
+  // v1.229.0: prazna ★ kategorija — iskren namig (označi v pogledu kartic), ne prazen zaslon
   const saleTotal = Object.entries(saleCart).reduce((s, [id, qty]) => s + (menu.find((x) => x.id === id)?.price ?? 0) * qty, 0)
     + posVariantLinesTotal(saleVariants, variantBasePriceOf)
   // vizualni benchmark (Toast/Square): skupno število kosov za oznako v glavi košare
@@ -2565,6 +2665,73 @@ function DashboardInner() {
 
   // OPS-4 v1.67.0 — tloris lokala (Mize): pogled + vlečenje miz (posX/posY v %)
   const [tableView, setTableView] = useState<'grid' | 'plan'>('grid')
+  /* v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4, Toast/TouchBistro/Lightspeed benchmark):
+     UREJEVALNIK MIZ — do zdaj je bil edini vir miz seed/API (TABLE_CREATE je obstajal
+     samo v reviziji). Vrstica po mizo: številka + sedeži + cona; dodajanje/brisanje;
+     brisanje blokirano ob aktivnem/zadržanem naročilu (isti pogoj kot tloris klik). */
+  const [tablesEditOpen, setTablesEditOpen] = useState(false)
+  const [teRows, setTeRows] = useState<{ id: string; number: string; seats: string; zone: string }[]>([])
+  const [teNew, setTeNew] = useState({ number: '', seats: '4', zone: '' })
+  const [teBusy, setTeBusy] = useState(false)
+  const teOpen = () => {
+    setTeRows(viewTables.map((tb) => ({ id: tb.id, number: String(tb.number ?? (tb.name.replace(/\D+/g, '') || '')), seats: String(tb.seats || 1), zone: tb.zone || '' })))
+    setTeNew({ number: '', seats: '4', zone: '' })
+    setTablesEditOpen(true)
+  }
+  /** Shrani ENO vrstico (PATCH number/seats/zone — konfiguracija prostora = menu.manage
+      na strežniku). Konflikt številke (409) in druge napake se pokažejo ob vrstici. */
+  const teSave = async (row: { id: string; number: string; seats: string; zone: string }) => {
+    const number = Number(row.number)
+    const seats = Number(row.seats)
+    if (!Number.isInteger(number) || number < 1) { toast({ title: t('tables.number'), description: '≥ 1', variant: 'destructive' }); return }
+    if (!Number.isInteger(seats) || seats < 1 || seats > 30) { toast({ title: t('tables.seatsShort'), description: '1–30', variant: 'destructive' }); return }
+    setTeBusy(true)
+    try {
+      await api(`/api/tables/${row.id}`, { method: 'PATCH', body: JSON.stringify({ number, seats, zone: row.zone.trim() || 'Glavna dvorana' }) })
+      await load()
+      toast({ title: `✓ ${t('tables.saveRow')}` })
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setTeBusy(false) }
+  }
+  /** Izbriši mizo (potrjitev + varovalka aktivnega naročila v UI; ostalo strežnik). */
+  const teDelete = async (row: { id: string; number: string; seats: string; zone: string }) => {
+    const tb = viewTables.find((x) => x.id === row.id)
+    if (tb && (tb.activeOrder || tb.heldOrderId)) { toast({ title: t('tables.deleteBlocked'), variant: 'destructive' }); return }
+    if (!window.confirm(t('tables.deleteConfirm', { name: `Miza ${row.number}` }))) return
+    setTeBusy(true)
+    try {
+      await api(`/api/tables/${row.id}`, { method: 'DELETE' })
+      setTeRows((pr) => pr.filter((r) => r.id !== row.id))
+      await load()
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setTeBusy(false) }
+  }
+  /** Dodaj novo mizo (POST — enaka vrata kot seed: number, seats, zone +
+   *  locationId IZ POGLEDA: centralna vloga brez dodeljene lokacije ga MORA poslati
+   *  (requireUserLocation sicer poštenno zavrne — enaka disciplina kot prodaja). */
+  const teAdd = async () => {
+    const number = Number(teNew.number)
+    const seats = Number(teNew.seats)
+    if (!Number.isInteger(number) || number < 1) { toast({ title: t('tables.number'), description: '≥ 1', variant: 'destructive' }); return }
+    if (!Number.isInteger(seats) || seats < 1 || seats > 30) { toast({ title: t('tables.seatsShort'), description: '1–30', variant: 'destructive' }); return }
+    if (!viewLoc) { toast({ title: t('sale.noLocation'), variant: 'destructive' }); return }
+    setTeBusy(true)
+    try {
+      await api('/api/tables', { method: 'POST', body: JSON.stringify({ number, seats, zone: teNew.zone.trim() || 'Glavna dvorana', locationId: viewLoc }) })
+      setTeNew({ number: '', seats: '4', zone: teNew.zone })
+      await load()
+      await teRefreshRows()
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setTeBusy(false) }
+  }
+  /** Osveži vrstice dialoga po spremembi (svež GET — ne odvisen od stale closure-a
+      dashboard stanja, ki se posodobi šele naslednji render). Centralna vloga brez
+      filtra vidi vse lokacije organizacije — vrstice omejimo na POGLED lokacije
+      (isti obseg kot teOpen: viewTables). */
+  const teRefreshRows = async () => {
+    try {
+      const d = await api<{ tables: TableT[] }>('/api/tables')
+      const scoped = viewLoc ? d.tables.filter((tb) => tb.locationId === viewLoc) : d.tables
+      setTeRows(scoped.map((tb) => ({ id: tb.id, number: String(tb.number ?? (tb.name.replace(/\D+/g, '') || '')), seats: String(tb.seats || 1), zone: tb.zone || '' })))
+    } catch { /* ostanejo stare vrstice */ }
+  }
   const [planPos, setPlanPos] = useState<Record<string, { x: number; y: number }>>({})
   const dragIdRef = useRef<string | null>(null)
   const draggedRef = useRef(false)
@@ -2883,6 +3050,14 @@ function DashboardInner() {
               <Button size="sm" variant={tableView === 'grid' ? 'default' : 'outline'} className={tableView === 'grid' ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setTableView('grid')}>{t('tables.gridView')}</Button>
               <Button size="sm" variant={tableView === 'plan' ? 'default' : 'outline'} className={tableView === 'plan' ? 'bg-emerald-700 hover:bg-emerald-800' : ''} onClick={() => setTableView('plan')}>{t('tables.planView')}</Button>
               {tableView === 'plan' && <span className="text-xs text-stone-500">{t('tables.planHint')}</span>}
+              {/* v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4): UREDI MIZE — Toast/TouchBistro
+                  imajo urejevalnik miz v UI; naš API (POST/PATCH/DELETE + revizija) je
+                  obstajal, UI pa ne. Viden samo vlogam z menu.manage (strežnik enako). */}
+              {hasPerm('menu.manage') && (
+                <Button size="sm" variant="outline" className="gap-1" onClick={teOpen} title={t('tables.editHint')}>
+                  <Settings2 className="w-3.5 h-3.5" aria-hidden /> {t('tables.edit')}
+                </Button>
+              )}
               {/* Issue #21 (v1.111.0) — klic vodje (osebje vseh vlog) */}
               <ManagerCallButton size="sm" className="ml-auto" />
             </div>
@@ -3368,7 +3543,9 @@ function DashboardInner() {
                 vrstica kategorij (flex-nowrap + overflow-x-auto) — mreža pri y≈140. */}
             <div className="min-w-0 space-y-3 pb-20 md:order-2 md:pb-0">
               <div className="flex items-center gap-2">
-                <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder={t('sale.search')} className="h-11 w-full sm:w-56" aria-label={t('sale.search')} />
+                {/* v1.229.0: Enter v iskalnem polju = EAN čitalnik (scanner pošlje Enter);
+                    besedne poizvedbe se ne sprožijo (regex samo številke). */}
+                <Input value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saleEanSubmit() } }} placeholder={t('sale.search')} className="h-11 w-full sm:w-56" aria-label={t('sale.search')} />
                 {/* v1.141.0 (Toast gostota): preklop KARTICE ↔ KOMPAKTNO — foto kartice
                     (lepota, 1–2 na ekran) ali gost tekstovni grid (12–20 ploščic hkrati,
                     barvno kodirane kategorije, mišični spomin). Persist v localStorage. */}
@@ -3407,6 +3584,11 @@ function DashboardInner() {
                 className="flex items-center gap-1.5 overflow-x-auto flex-nowrap -mx-1 px-1 pb-1 [scrollbar-width:thin]"
                 role="group" aria-label={t('sale.allCat')} tabIndex={0}
               >
+                {/* v1.229.0 (Toast benchmark): ★ PRILJUBLJENO — vodi tudi ko je prazno (iskren
+                    namig namesto skrite funkcije); filter deluje v OBEH pogledih mreže. */}
+                <Button size="sm" variant={saleCat === 'FAVS' ? 'default' : 'outline'} className={`h-11 shrink-0 rounded-full whitespace-nowrap gap-1 ${saleCat === 'FAVS' ? 'bg-amber-500 hover:bg-amber-600' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat('FAVS') }} title={t('sale.favs')}>
+                  <Star className="w-3.5 h-3.5" aria-hidden /> {t('sale.favs')}
+                </Button>
                 <Button size="sm" variant={saleCat === 'ALL' ? 'default' : 'outline'} className={`h-11 shrink-0 rounded-full whitespace-nowrap ${saleCat === 'ALL' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}`} onClick={() => { saleCatTouched.current = true; setSaleCat('ALL') }}>
                   {t('sale.allCat')}
                 </Button>
@@ -3426,9 +3608,12 @@ function DashboardInner() {
                     const inCart = (saleCart[mi.id] || 0) + saleVariants.filter((l) => l.menuItemId === mi.id).reduce((s, l) => s + l.qty, 0)
                     const catKey = mi.categoryId || (categories.find((c) => c.name === saleCatNameOf(mi))?.id ?? mi.name)
                     const catOverline = saleMixed ? saleCatNameOf(mi) : ''
+                    // v1.229.0: ⚡ Happy Hour — akcijska cena na ploščici med aktivnim oknom
+                    const hh = hhOf(mi)
                     return (
                       <button key={mi.id} disabled={!mi.available} onClick={() => posAddClick('sale', mi)}
-                        aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
+                        aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${hh ? ` · ${t('sale.hhAria', { price: fmtEUR(hh.price) })}` : ''}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
+                        title={hh ? hh.name : undefined}
                         className={`relative flex h-20 flex-col items-start justify-between border-l-4 px-2.5 py-2 text-left transition ${
                           mi.available
                             ? `${saleCatBorderCls(catKey)} border-y-stone-200 border-r-stone-200 dark:border-y-stone-700 dark:border-r-stone-700 bg-white dark:bg-stone-800 shadow-sm hover:bg-stone-50 dark:hover:bg-stone-700 hover:shadow active:scale-[0.98] ${inCart > 0 ? 'ring-2 ring-emerald-600' : ''}`
@@ -3446,7 +3631,15 @@ function DashboardInner() {
                         <p className={`min-w-0 self-stretch pr-6 text-[13px] font-semibold leading-tight line-clamp-2 break-words ${mi.available ? 'text-stone-900' : 'text-red-700/60 dark:text-red-400/70 line-through'}`}>{mi.name}</p>
                         <span className="flex w-full items-baseline justify-between gap-1">
                           {catOverline && <span className="truncate text-[10px] font-medium uppercase tracking-wide text-stone-400" aria-hidden>{catOverline}</span>}
-                          <span className={`ml-auto shrink-0 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 dark:text-red-400'}`}>{fmtEUR(mi.price)}</span>
+                          {hh ? (
+                            <span className="ml-auto flex shrink-0 items-baseline gap-1">
+                              <Zap className="w-3 h-3 self-center text-amber-500" aria-hidden />
+                              <span className="text-sm font-extrabold tabular-nums text-amber-700 dark:text-amber-400">{fmtEUR(hh.price)}</span>
+                              <span className={`text-[11px] font-medium tabular-nums line-through ${mi.available ? 'text-stone-400' : 'text-red-700/70 dark:text-red-400'}`}>{fmtEUR(mi.price)}</span>
+                            </span>
+                          ) : (
+                            <span className={`ml-auto shrink-0 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 dark:text-red-400'}`}>{fmtEUR(mi.price)}</span>
+                          )}
                         </span>
                       </button>
                     )
@@ -3466,10 +3659,17 @@ function DashboardInner() {
                     // ISSUE #73 audit-15: overline »jed« = kategorija (samo v mešanem
                     // pogledu — znotraj izbrane kategorije je kontekst že v čipu)
                     const catOverline = saleMixed ? saleCatNameOf(mi) : ''
+                    // v1.229.0: ⚡ Happy Hour (akcijska cena) + ★ zvezdica (samo kartice —
+                    // ovoj je RELATIVE div, zvezdica je SESTRINSKI gumb zunaj ploščice:
+                    // gumb v gumbu je neveljaven HTML)
+                    const hh = hhOf(mi)
+                    const fav = saleFavs.includes(mi.id)
                     return (
-                      <button key={mi.id} disabled={!mi.available} onClick={() => posAddClick('sale', mi)}
-                        aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
-                        className={`group relative flex flex-col overflow-hidden rounded-xl border text-left transition ${mi.available
+                      <div key={mi.id} className="relative">
+                      <button disabled={!mi.available} onClick={() => posAddClick('sale', mi)}
+                        aria-label={`${catOverline ? `${catOverline} · ` : ''}${mi.name} ${fmtEUR(mi.price)}${hh ? ` · ${t('sale.hhAria', { price: fmtEUR(hh.price) })}` : ''}${inCart > 0 ? ` · ${inCart}× ${t('sale.inCart')}` : ''}${!mi.available ? ` · ${t('sale.soldOut')}` : ''}`}
+                        title={hh ? hh.name : undefined}
+                        className={`group relative flex w-full flex-col overflow-hidden rounded-xl border text-left transition ${mi.available
                           ? inCart > 0
                             ? 'border-emerald-600 bg-white hover:border-emerald-600 hover:shadow-md'
                             : 'border-stone-200 bg-white hover:border-emerald-600 hover:shadow-md'
@@ -3500,14 +3700,37 @@ function DashboardInner() {
                             <span className="mb-0.5 truncate text-[10px] font-semibold uppercase leading-tight tracking-wider text-stone-400" aria-hidden="true">{catOverline}</span>
                           )}
                           <p className="min-w-0 text-sm font-semibold leading-tight line-clamp-2">{mi.name}</p>
-                          <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
+                          {hh ? (
+                            <span className="mt-auto flex items-baseline justify-end gap-1 pt-1">
+                              <Zap className="w-3.5 h-3.5 self-center text-amber-500" aria-hidden />
+                              <span className="text-sm font-extrabold tabular-nums text-amber-700 dark:text-amber-400">{fmtEUR(hh.price)}</span>
+                              <span className={`text-xs font-medium tabular-nums line-through ${mi.available ? 'text-stone-400' : 'text-red-700/70'}`}>{fmtEUR(mi.price)}</span>
+                            </span>
+                          ) : (
+                            <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
+                          )}
                         </span>
                       </button>
+                      {/* v1.229.0: ★ zvezdica (SESTRINSKI gumb — veljaven HTML) v levem
+                          zgornjem kotu fotografije; 44-pikselna cona (h-11 w-11) za dotik. */}
+                      <button
+                        type="button"
+                        aria-pressed={fav}
+                        aria-label={fav ? `${t('sale.favRemove')} — ${mi.name}` : `${t('sale.favAdd')} — ${mi.name}`}
+                        title={fav ? t('sale.favRemove') : t('sale.favAdd')}
+                        onClick={() => saleFavToggle(mi.id)}
+                        className="absolute left-1.5 top-1.5 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/80 text-stone-400 shadow-sm backdrop-blur transition hover:text-amber-500 active:scale-95"
+                      >
+                        <Star className={`w-4 h-4 ${fav ? 'fill-amber-400 text-amber-500' : ''}`} aria-hidden />
+                      </button>
+                      </div>
                     )
                   })}
                 </div>
                 )}
-                {saleItems.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
+                {saleItems.length === 0 && (
+                  <p className="text-sm text-stone-500">{saleCat === 'FAVS' && saleSearch.trim() === '' ? t('sale.favsEmpty') : t('sale.empty')}</p>
+                )}
               </div>
 
               {/* KOŠARA — Toast »left rail« (v1.141.0): trajna košara LEVO (md:order-1)
@@ -5222,6 +5445,73 @@ function DashboardInner() {
       </Dialog>
 
       {/* ── OPS-7 (v1.68.0): UREJEVALNIK NAROČILA (Toast vzorec) — klik na zasedeno mizo ── */}
+      {/* v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4): UREJEVALNIK MIZ — Toast/TouchBistro
+          Lightspeed vsi imajo urejanje miz v UI; API (POST/PATCH/DELETE + revizija) je
+          obstajal od P2 audit N1, UI pa ne. Vrstica po mizo (številka/sedeži/cona),
+          dodajanje, brisanje z varovalko aktivnega naročila. Cona = prosto besedilo
+          z datalist obstoječih con (nova cona se ustvari z vpisom). */}
+      <Dialog open={tablesEditOpen} onOpenChange={(v) => { if (!v) setTablesEditOpen(false) }}>
+        <DialogContent aria-describedby={undefined} className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg">{t('tables.editTitle')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-stone-500">{t('tables.editHint')}</p>
+          <div className="space-y-3 text-sm">
+            <ScrollArea className="max-h-72">
+              <div className="space-y-1.5 pr-2">
+                {teRows.map((row) => {
+                  const tb = viewTables.find((x) => x.id === row.id)
+                  const blocked = !!(tb && (tb.activeOrder || tb.heldOrderId))
+                  return (
+                    <div key={row.id} className="flex items-center gap-1.5 rounded-lg border border-stone-200 px-2 py-1.5">
+                      <label className="sr-only" htmlFor={`te-n-${row.id}`}>{t('tables.number')}</label>
+                      <Input id={`te-n-${row.id}`} inputMode="numeric" value={row.number} disabled={teBusy}
+                        onChange={(e) => setTeRows((pr) => pr.map((r) => (r.id === row.id ? { ...r, number: e.target.value } : r)))}
+                        className="h-10 w-16 tabular-nums" aria-label={t('tables.number')} />
+                      <label className="sr-only" htmlFor={`te-s-${row.id}`}>{t('tables.seatsShort')}</label>
+                      <Input id={`te-s-${row.id}`} inputMode="numeric" value={row.seats} disabled={teBusy}
+                        onChange={(e) => setTeRows((pr) => pr.map((r) => (r.id === row.id ? { ...r, seats: e.target.value } : r)))}
+                        className="h-10 w-16 tabular-nums" aria-label={t('tables.seatsShort')} />
+                      <label className="sr-only" htmlFor={`te-z-${row.id}`}>{t('tables.zoneShort')}</label>
+                      <Input id={`te-z-${row.id}`} list="te-zones" value={row.zone} disabled={teBusy}
+                        onChange={(e) => setTeRows((pr) => pr.map((r) => (r.id === row.id ? { ...r, zone: e.target.value } : r)))}
+                        className="h-10 min-w-0 flex-1" aria-label={t('tables.zoneShort')} />
+                      <datalist id="te-zones">
+                        {[...new Set(viewTables.map((x) => x.zone).filter(Boolean))].map((z) => (
+                          <option key={z} value={z} />
+                        ))}
+                      </datalist>
+                      <Button size="sm" variant="outline" className="h-10 shrink-0 bg-emerald-700 text-white hover:bg-emerald-800" disabled={teBusy} onClick={() => void teSave(row)} aria-label={t('tables.saveRow')} title={t('tables.saveRow')}>
+                        <Check className="w-3.5 h-3.5" aria-hidden />
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-10 shrink-0 text-red-700 hover:bg-red-50" disabled={teBusy || blocked}
+                        onClick={() => void teDelete(row)} aria-label={t('tables.deleteRow')} title={blocked ? t('tables.deleteBlocked') : t('tables.deleteRow')}>
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                      </Button>
+                    </div>
+                  )
+                })}
+                {teRows.length === 0 && <p className="text-sm text-stone-500">{t('sale.empty')}</p>}
+              </div>
+            </ScrollArea>
+            {/* nova miza — vrstica za dodajanje */}
+            <div className="flex items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-2 py-2">
+              <label className="sr-only" htmlFor="te-new-n">{t('tables.number')}</label>
+              <Input id="te-new-n" inputMode="numeric" placeholder={t('tables.number')} value={teNew.number} disabled={teBusy}
+                onChange={(e) => setTeNew({ ...teNew, number: e.target.value })} className="h-10 w-16 tabular-nums" />
+              <label className="sr-only" htmlFor="te-new-s">{t('tables.seatsShort')}</label>
+              <Input id="te-new-s" inputMode="numeric" placeholder="4" value={teNew.seats} disabled={teBusy}
+                onChange={(e) => setTeNew({ ...teNew, seats: e.target.value })} className="h-10 w-16 tabular-nums" />
+              <label className="sr-only" htmlFor="te-new-z">{t('tables.zoneShort')}</label>
+              <Input id="te-new-z" list="te-zones" placeholder={t('tables.zoneShort')} value={teNew.zone} disabled={teBusy}
+                onChange={(e) => setTeNew({ ...teNew, zone: e.target.value })} className="h-10 min-w-0 flex-1" />
+              <Button size="sm" className="h-10 shrink-0 gap-1 bg-emerald-700 hover:bg-emerald-800" disabled={teBusy} onClick={() => void teAdd()}>
+                <Plus className="w-3.5 h-3.5" aria-hidden /> {t('tables.addRow')}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}); setSheetVariants([]) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-xl">
           <DialogHeader>
@@ -5229,6 +5519,29 @@ function DashboardInner() {
               {t('sheet.title', { n: String(orderSheet?.orderNumber ?? ''), name: orderSheet?.table?.name || orderSheet?.type || '' })}
             </DialogTitle>
           </DialogHeader>
+          {/* v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §4): PRENOS NA NATAKARJA (Lightspeed
+              »transfer user«) — trenutni natakar v vedno vidni izbiri; aktivna naročila
+              samo (plačana zgodovina ostane pri svojem natakarju za poročila napitnin). */}
+          {orderSheet && ['unpaid', 'partial'].includes(orderSheet.paymentStatus || 'unpaid') && hasPerm('orders.create') && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="flex min-w-0 items-center gap-1.5 text-stone-500">
+                <UserCog className="w-3.5 h-3.5 shrink-0" aria-hidden /> {t('sheet.waiterLabel')}:
+              </span>
+              <Select value={orderSheet.employee?.id || 'none'} onValueChange={(v) => { if (v !== 'none' && v !== orderSheet.employee?.id) void transferOrder(v) }}>
+                <SelectTrigger className="h-9 min-w-0 flex-1 text-xs" aria-label={t('sheet.transferWaiter')}>
+                  <SelectValue placeholder={t('sheet.transferWaiter')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* aktivni zaposleni LOKACIJE naročila (strežniško pravilo je
+                      strogo: employee.locationId === order.locationId — brezlokacijski
+                      zaposleni bi v izbiri obljubili prenos, ki strežnik zavrne) */}
+                  {employees.filter((e) => e.active && (e.id === orderSheet.employee?.id || (!orderSheet.locationId || e.locationId === orderSheet.locationId))).map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-3 text-sm">
             {/* postavke + tečaji */}
             <div className="rounded-xl border border-stone-200 p-3 space-y-1.5">
