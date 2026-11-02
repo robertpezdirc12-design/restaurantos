@@ -414,10 +414,19 @@ export const sl: Record<string, string> = {
   'tables.qrOrdering': 'QR naročanje',
   'tables.qrNew': 'Nov QR (revokiraj stare povezave)',
   'tables.qrHint': 'Gost skenira kodo → javni meni → samopostrežno naročilo. Naročilo pride v KDS po istem toku kot POS.',
+  // v1.235.0 (raziskava nov 2026 — Toast onboarding vzorec): iskreno prazno stanje Mize
+  'tables.emptyTitle': 'Ta lokacija še nima miz.',
+  'tables.emptyHint': 'Mize doda vodstvo z gumbom Uredi mize — potem naročanja pri mizah, QR meni in rezervacije delujejo v celoti.',
+  'tables.emptyAdd': 'Dodaj prvo mizo',
+  'tables.emptyNoPerm': 'Mize doda vodstvo (Uredi mize).',
+  'tables.planEmpty': 'Preklopi na Mreža in dodaj prvo mizo.',
 
   // ── Naročila ──
   'orders.allActive': 'Vsa aktivna naročila',
   'orders.none': 'Ni aktivnih naročil.',
+  // v1.235.0: iskreno prazno stanje seznama naročil (vsi / specifičen filter)
+  'orders.emptyAll': 'Ni aktivnih naročil. Ko gostje naročijo (mize, hitra prodaja, QR, kiosk), se prikažejo tukaj.',
+  'orders.emptyFilter': 'Ni naročil s stanjem {status}. Preklopi filter ali počakaj na nova naročila.',
   'orders.payFurs': 'Plačaj',
   'orders.persons': 'osebi',
   'orders.newTitle': 'Novo naročilo',

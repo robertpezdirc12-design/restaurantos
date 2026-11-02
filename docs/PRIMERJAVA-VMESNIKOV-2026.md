@@ -335,3 +335,54 @@ DEJANSKE nove funkcije, zaprte v tem valu.
 VSEH pet vmesnikov ima polno funkcionalno pariteto) in tri najmočnejše točke
 novejših objav konkurence (urejevalnik con, učinkovitost osebja, Start Queue);
 preostanek novega C-seznama so zavestne odločitve/načrti, ne vrzeli.
+
+---
+
+## 12. Raziskava november 2026 — POLISH val v1.235.0 (zagate vodilnih + prazna stanja)
+
+Ko so funkcionalne vrzeli zaprte (vsi ≥ 87 točk), je naslednja fronta POLISH —
+detajli, ki jih uporabniki opazijo šele, ko jih ni. Dva vira:
+
+**A) Square skupnost, avgust 2026 — »Major Flow Flaws« (natakar v baru z velikim
+obsegom):** štiri konkretne pritožbe nad VODEČIM izdelkom, vsaka preverjena pri nas:
+
+| Pritožba nad Square | Kako ima to RestaurantOS |
+|---|---|
+| (1) Zaslon plačila brez izhoda — »THERE IS NO WAY TO BACK OUT!« (napaka tipa/rezultat spremembe misli = reset aplikacije) | Dialog plačila je standardni Radix Dialog: X (44 px) + Escape + »Zapri« v stopalu delujeta na VSAKEM koraku; po izdaji računa ostane »Natisni« + »Zapri« — nikoli zagata |
+| (2) Količinski gumb na sredini ZGORAJ — izven dosega palca | Količine so ob EACH vrstici košare (−/+ 40×40 px), plačilni gumb fiksno SPODAJ (desktop sticky / mobilno fiksna vrstica) — vzorec Toast |
+| (3) Modifikatorji kot ena dolga drsna stran — obvezne izpade, brez avto-nadaljevanja | Dialog variant pokaže VSE skupine naenkrat (čipi, ne spustni seznami), potrditev omogočena ŠELE ko ima vsaka obvezna skupina izbiro — ni strani za izgubiti |
+| (4) Premik posamezne postavke med izstavki nemogoč — samo cela kartica | Razdeli račun → potrditvena polja PO POSTAVKAH → izbrane postavke postanejo nov izstavek (Checks, v1.68); + po gostih/po sedežih |
+
+**NAŠA lastna najdba istega razreda (popravljena v tem valu):** plačilni dialog
+z odprtim razdelilnikom je bil izmeren 1019 px na zaslonu 720 px — DialogContent
+NI imel ne max-višine ne drsenja, stopalo z glavnim gumbom je bilo 299 px POD
+zaslonom (ista zagata kot Square #1, le iz drugega vzroka). Popravek:
+`max-h-[calc(100dvh-2rem)] overflow-y-auto` na Dialog + AlertDialog (globalno,
+vse diagrame).
+
+**B) Iskrena prazna stanja (Toast onboarding vzorec):** Rezervacije (V-24) in
+KDS (»kuhinja čista«) sta vzorec že imeli; Mize in Naročila GA NISVA:
+
+- **Mize** — lokacija z 0 mizami je prej pokazala gol prazen prostor (mreža) oz.
+  prazno platno (tloris). Zdaj: ikona + »Ta lokacija še nima miz.« + namig +
+  CTA »Dodaj prvo mizo« (odpre urejevalnik miz; menu.manage) — brez pravice
+  pošteno pove, kdo mize ureja. Tloris nosi isto sporočilo z usmeritvijo na
+  mrežni pogled (brez CTA — platno ima vlečne geste).
+- **Naročila** — filter brez zadetkov (zastarel filter ali mirna lokacija) je
+  prej pustil gol prostor. Zdaj: ikona + kontekstno sporočilo — pri VSA
+  pove, od kod naročila prihajajo; pri specifičnem filtru pove KATERO stanje
+  je prazno in ponudi preklop filtra.
+
+**Toast junij 2026 — nove točke, ocenjene pri nas:**
+- »Scheduled Menu Stock Updates« (razporedi 86/obnovitev po urniku — dnevna
+  ponudba pripravljena ob odprtju): NOVA zavestna izključitev — sorodna
+  časovnim menijem (§11), odločitev lastnika; operativno potrebo pokrijeta
+  samodejni 86 ob izpraznitvi (v1.230) + nizka zaloga ob prijavi (v1.230).
+- Urejanje naročil tržnic (MPF) neposredno na POS: imamo — NaročiloSheet
+  ureja vsako naročilo vključno z dostavnimi (Wolt/Glovo).
+- Webhook dostop (sep 2025): imamo — Wolt + Glovo webhook + samodejni sprejem.
+
+**Sklep §12:** vodilni izdelki zalogijo na detajlih, ki jih mi nismo — izhodi
+iz vseh stanj, količine v dosegu palca, modifikatorji brez drsenja, premik
+postavk med izstavki. V tem valu smo zaprli še lastno zagato istega razreda
+(drsenje dialogov) in dve zadnji prazni stanji osnovnih pogledov.

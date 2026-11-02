@@ -411,10 +411,19 @@ export const hr: Record<string, string> = {
   'tables.qrOrdering': 'QR naručivanje',
   'tables.qrNew': 'Novi QR (opozovi stare poveznice)',
   'tables.qrHint': 'Gost skenira kodu → javni meni → samoposlužna narudžba. Narudžba stiže u KDS istim tijekom kao s POS-a.',
+  // v1.235.0 (raziskava nov 2026 — Toast onboarding vzorec): iskreno prazno stanje Mize
+  'tables.emptyTitle': 'Ova lokacija još nema stolova.',
+  'tables.emptyHint': 'Stolove dodaje vodstvo gumbom Uredi stolove — tada narudžbe za stolovima, QR meni i rezervacije rade u potpunosti.',
+  'tables.emptyAdd': 'Dodaj prvi stol',
+  'tables.emptyNoPerm': 'Stolove dodaje vodstvo (Uredi stolove).',
+  'tables.planEmpty': 'Prebaci na Mreža i dodaj prvi stol.',
 
   // ── Narudžbe ──
   'orders.allActive': 'Sve aktivne narudžbe',
   'orders.none': 'Nema aktivnih narudžbi.',
+  // v1.235.0: iskreno prazno stanje popisa narudžbi (svi / specifičan filter)
+  'orders.emptyAll': 'Nema aktivnih narudžbi. Kad gosti naruče (stolovi, brza prodaja, QR, kiosk), prikazat će se ovdje.',
+  'orders.emptyFilter': 'Nema narudžbi sa statusom {status}. Prebaci filter ili pričekaj nove narudžbe.',
   'orders.payFurs': 'Plati',
   'orders.persons': 'osobe',
   'orders.newTitle': 'Nova narudžba',

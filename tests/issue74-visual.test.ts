@@ -1,6 +1,6 @@
 /**
  * ISSUE #74 (v1.135.0) — V-3 KDS pet razredov starosti.
- * V-7 (preslikava slik kategorij) je bila v v1.234.0 ODSTRANJENA po lastnikovi
+ * V-7 (preslikava slik kategorij) je bila v v1.235.0 ODSTRANJENA po lastnikovi
  * odločitvi: vse ploščice ene kategorije so kazale isto sliko, ki ni odražala
  * artikla (produkcija: 16 ploščic »Glavne jedi« = ista klobasa). Square/Toast
  * načelo: fotografija je per-artikel podatek ali je ni — nikoli ugibanje iz
@@ -113,9 +113,9 @@ describe('issue74 V-3: CSS razredi — vrstni red tw-merge (celovit PRED stransk
   })
 })
 
-/* ─────────── v1.234.0: slike kategorij ODSTRANJENE ─────────── */
+/* ─────────── v1.235.0: slike kategorij ODSTRANJENE ─────────── */
 
-describe('v1.234.0 — POS ploščice brez fotografij (Square/Toast načelo)', () => {
+describe('v1.235.0 — POS ploščice brez fotografij (Square/Toast načelo)', () => {
   test('src/lib/category-images.ts NE obstaja več (preslikava kategorija→slika zbrisana)', async () => {
     const { existsSync } = await import('node:fs')
     expect(existsSync('src/lib/category-images.ts')).toBe(false)

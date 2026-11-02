@@ -3264,6 +3264,16 @@ function DashboardInner() {
                     </div>
                   )
                 })}
+                {/* v1.235.0: prazno stanje tlorisa — isto sporočilo kot mrežni pogled,
+                    a brez CTA (platno ima vlečne geste; gumb bi motil). Besedilo
+                    usmeri v mrežni pogled, kjer je dodajanje miz. */}
+                {viewTables.length === 0 && (
+                  <div data-region="plan-empty" role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center">
+                    <Utensils className="h-8 w-8 text-stone-300" aria-hidden />
+                    <p className="text-sm font-bold text-stone-700">{t('tables.emptyTitle')}</p>
+                    <p className="max-w-xs text-xs text-stone-500">{t('tables.planEmpty')}</p>
+                  </div>
+                )}
                 {viewTables.map((tb) => {
                   const pos = planPosOf(tb)
                   /* v1.141.0: oblika ∝ sedežem/podatku — 1 sedež = barski STOL
@@ -3317,6 +3327,24 @@ function DashboardInner() {
                     </button>
                   )
                 })}
+              </div>
+            )}
+            {/* v1.235.0 (raziskava nov 2026 — Toast onboarding vzorec): PRAZNO STANJE
+                mrežnega pogleda. Lokacija brez miz je prej pokazala GOL prazen
+                prostor pod legendo (0 con = 0 odsekov) — uporabnik ni vedel, kaj storiti.
+                Iskren vzorec je že obstajal (Rezervacije V-24, KDS »kuhinja čista«);
+                Mize ga niso nikoli dobile. CTA odpre urejevalnik miz (isti teOpen),
+                brez pravice pa pošteno pove, kdo mize ureja. */}
+            {viewTables.length === 0 && (
+              <div data-region="tables-empty" role="status" className="flex min-h-48 flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-stone-300 bg-stone-50/60 p-6 text-center">
+                <Utensils className="h-10 w-10 text-stone-300" aria-hidden />
+                <p className="text-base font-bold text-stone-800">{t('tables.emptyTitle')}</p>
+                <p className="max-w-md text-sm text-stone-500">{hasPerm('menu.manage') ? t('tables.emptyHint') : t('tables.emptyNoPerm')}</p>
+                {hasPerm('menu.manage') && (
+                  <Button size="sm" className="mt-1 min-h-11 gap-1 bg-emerald-700 hover:bg-emerald-800" onClick={teOpen}>
+                    <Plus className="w-3.5 h-3.5" aria-hidden /> {t('tables.emptyAdd')}
+                  </Button>
+                )}
               </div>
             )}
             {zones.map((zone) => {
@@ -3545,6 +3573,20 @@ function DashboardInner() {
                     </Button>
                   ))}
                 </div>
+                {/* v1.235.0 (raziskava nov 2026): PRAZNO STANJE seznama naročil.
+                    Filtri so prisotni od OPS-7, a pogled brez zadetkov (zastarel filter
+                    ali mirna lokacija) je prej pustil GOL prostor — uporabnik ni vedel,
+                    ali je napaka ali res ni nič. Vzorec Rezervacij V-24: ikona + pošteno
+                    kontekstno sporočilo; pri specifičnem filtru pove KATERI filter je prazen
+                    (Square avg 2026 pritožba #1: uporabnik ne sme ostati v zagoni). */}
+                {viewOrders.filter((o) => orderFilter === 'ALL' || o.status === orderFilter).length === 0 && (
+                  <div data-region="orders-empty" role="status" className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50/60 p-6 text-center">
+                    <ReceiptText className="h-10 w-10 text-stone-300" aria-hidden />
+                    <p className="max-w-md text-sm text-stone-500">
+                      {orderFilter === 'ALL' ? t('orders.emptyAll') : t('orders.emptyFilter', { status: stL(orderFilter) })}
+                    </p>
+                  </div>
+                )}
                 <div className="grid gap-3 md:grid-cols-2">
                 {viewOrders.filter((o) => orderFilter === 'ALL' || o.status === orderFilter).map((o) => (
                   <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-4 space-y-2">
