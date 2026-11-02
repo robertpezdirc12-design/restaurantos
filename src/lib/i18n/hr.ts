@@ -638,6 +638,14 @@ export const hr: Record<string, string> = {
   'st.status.CANCELLED': 'Otkazan',
   'st.empty': 'Nema popisa.',
   'st.recounts': 'Ponavljanja',
+  // v1.231.0 — inventura sa čitačem (PRIMERJAVA-VMESNIKOV-2026 §5)
+  'st.scanLabel': 'Skeniraj kodu ili traži…',
+  'st.scanHint': 'Svaki sken koda (EAN) broji +1; upisana riječ filtrira popis za ručno brojanje.',
+  'st.scanCounted': '✓ {name}: {n}',
+  'st.scanNotInTake': 'Artikl »{name}« nije u ovom popisu (popis je otvoren prije njegovog dodavanja).',
+  'st.scanNoHit': 'Nema rezultata za »{q}« — pogrešan kod ili ime?',
+  'st.filterClear': 'Očisti',
+  'st.filterActive': 'Filtar: »{q}«',
   'inv.recipeTitle': 'Receptura artikla',
   'inv.menuItem': 'Artikl menija *',
   'inv.selectItem': 'Odaberi artikl',
@@ -713,6 +721,9 @@ export const hr: Record<string, string> = {
   'shifts.noOpenShift': 'Nema otvorene smjene',
   'shifts.closingCashLabel': 'Blagajna pri zatvaranju (€)',
   'shifts.openingCashLabel': 'Početno stanje blagajne (€)',
+  // v1.231.0 — QA-val #10 P4: unos blagajne ne smije tiho primiti minusa/besmislice
+  'shifts.cashNegative': 'Gotovina u ladici ne može biti negativna — provjeri unos.',
+  'shifts.cashInvalid': 'Unesi valjani broj (npr. 125.50).',
   'shifts.stopShift': 'Zaključi smjenu (Z)',
   'shifts.startShift': 'Započni smjenu',
   'shifts.recent': 'Zadnje smjene (Z-izvješća)',
@@ -3425,6 +3436,12 @@ export const hr: Record<string, string> = {
   // ── OPS-8 val 3 (v1.73.0) — rezervacije: stol/vrijeme/e-pošta/trajanje/zahtjevi + filtri ──
   'resv.table': 'Stol',
   'resv.tableNone': 'Bez stola',
+  // v1.231.0 — automatska dodjela stola (OpenTable/Toast uzorak)
+  'resv.autoAssign': 'Dodijeli',
+  'resv.autoAssignHint': 'Automatski dodijeli najmanji slobodni stol koji odgovara broju osoba i ne preklapa se s drugim rezervacijama.',
+  'resv.autoAssignNeedTime': 'Prvo unesi datum i vrijeme rezervacije.',
+  'resv.autoAssignNone': 'Nema slobodnog stola za {n} osoba u tom terminu.',
+  'resv.autoAssignOk': 'Dodijeljen stol: {table} ({seats} sjedala)',
   'resv.source': 'Izvor',
   'resv.sourcePhone': 'Telefon',
   'resv.sourceWalkIn': 'Gost bez rezervacije',

@@ -122,7 +122,7 @@ import { ModuleIntro } from '@/components/module-intro'
 import { CATEGORY_IMAGE_DEFAULT, categoryImageForCategory } from '@/lib/category-images'
 import { stationViewKey } from '@/lib/kds-station-routing'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2 } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -163,7 +163,7 @@ interface MenuT { id: string; name: string; price: number; station: string; avai
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 /** OPS-8 val 3 (v1.73.0): + email/duration/specialRequests/source (additive API fields) */
-interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean; email?: string | null; duration?: number | null; specialRequests?: string | null; source?: string | null }
+interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean; email?: string | null; duration?: number | null; specialRequests?: string | null; source?: string | null; tableId?: string | null; locationId?: string | null }
 interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null; isStorno?: boolean; stornoOf?: string | null }
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
@@ -2026,6 +2026,45 @@ function DashboardInner() {
   const resvNeedsLocation = isCentralUIRole(user?.role) && !user?.locationId
   const resvLocationMissing = resvNeedsLocation && resvLocationChoices.length > 1
     && !(newRes?.locationId || viewLoc)
+
+  /* v1.231.0 — SAMODEJNA DODELITEV MIZE (OpenTable/Toast vzorec; PRIMERJAVA-
+     VMESNIKOV-2026 §4 C-seznam): izberi NAJMANJŠO prosto mizo, ki ustreza
+     številu oseb, brez prekrivanja z drugo AKTIVNO rezervacijo (CONFIRMED/
+     SEATED/COMPLETED zavirajo; CANCELLED/NO_SHOW ne). Časovno okno = datum +
+     trajanje rezervacije. Klient ima vse podatke že naložene (mize + rezervacije
+     z tableId/duration iz /api/reservations) — čista posodobitev obrazca, brez
+     novih backend poti. Strežnik ob oddaji še vedno varuje unikat
+     (@@unique [tableId, dateTime]) — to je pomoč pri izbiri, ne obveza. */
+  function autoAssignTable() {
+    if (!newRes) return
+    if (!newRes.reservedAt) { toast({ title: t('resv.autoAssignNeedTime'), variant: 'destructive' }); return }
+    const start = new Date(newRes.reservedAt).getTime()
+    if (!Number.isFinite(start)) { toast({ title: t('resv.autoAssignNeedTime'), variant: 'destructive' }); return }
+    const durMs = (newRes.duration || 120) * 60_000
+    const end = start + durMs
+    const dialogLoc = newRes.locationId || viewLoc
+    const busyTables = new Set(
+      reservations
+        .filter((r) => r.tableId && r.status !== 'CANCELLED' && r.status !== 'NO_SHOW')
+        .filter((r) => {
+          const s = new Date(r.reservedAt).getTime()
+          const e = s + ((r.duration ?? 120) * 60_000)
+          return s < end && start < e // prekrivanje oken [s,e) ∩ [start,end)
+        })
+        .map((r) => r.tableId as string),
+    )
+    const candidates = viewTables
+      .filter((tb) => tb.seats >= newRes.guests)
+      .filter((tb) => !dialogLoc || !tb.locationId || tb.locationId === dialogLoc)
+      .filter((tb) => !busyTables.has(tb.id))
+      .sort((a, b) => a.seats - b.seats || a.name.localeCompare(b.name, 'sl'))
+    if (candidates.length === 0) {
+      toast({ title: t('resv.autoAssignNone', { n: newRes.guests }), variant: 'destructive' })
+      return
+    }
+    setNewRes({ ...newRes, tableId: candidates[0].id })
+    toast({ title: t('resv.autoAssignOk', { table: candidates[0].name, seats: candidates[0].seats }) })
+  }
 
   async function createReservation(allowOutsideHours = false) {
     if (!newRes?.guestName || !newRes.reservedAt) return
@@ -6348,15 +6387,30 @@ function DashboardInner() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="res-table">{t('resv.table')}</Label>
-                  <Select value={newRes.tableId || 'NONE'} onValueChange={(v) => setNewRes({ ...newRes, tableId: v === 'NONE' ? '' : v })}>
-                    <SelectTrigger id="res-table" className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent className="max-h-64 overflow-y-auto">
-                      <SelectItem value="NONE">{t('resv.tableNone')}</SelectItem>
-                      {viewTables.map((tb) => (
-                        <SelectItem key={tb.id} value={tb.id}>{tb.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-1.5">
+                    <Select value={newRes.tableId || 'NONE'} onValueChange={(v) => setNewRes({ ...newRes, tableId: v === 'NONE' ? '' : v })}>
+                      <SelectTrigger id="res-table" className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent className="max-h-64 overflow-y-auto">
+                        <SelectItem value="NONE">{t('resv.tableNone')}</SelectItem>
+                        {viewTables.map((tb) => (
+                          <SelectItem key={tb.id} value={tb.id}>{tb.name} · {t('tables.seats', { n: tb.seats })}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {/* v1.231.0 — samodejna dodelitev (manjša miza, ki ustreza
+                        številu oseb, brez prekrivanja rezervacij) ob danem času */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 shrink-0 text-xs"
+                      data-region="resv-auto-assign"
+                      onClick={autoAssignTable}
+                      title={t('resv.autoAssignHint')}
+                    >
+                      <Wand2 className="h-3.5 w-3.5" aria-hidden="true" /> {t('resv.autoAssign')}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="res-source">{t('resv.source')}</Label>

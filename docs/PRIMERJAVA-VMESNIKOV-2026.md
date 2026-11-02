@@ -127,14 +127,14 @@ Benchmark: **Toast** (klik na mizo → urejevalnik), **TouchBistro** (najboljši
 | Rezervacije: termini po kapaciteti | ✅ | – | ✅ | ✅ | strežnik izračuna proste kapacitete |
 | Opomniki (SMS/e-mail) | ✅ | – | ✅ | ✅ | posamično + množično, badge poslano |
 | Čakalna lista (walk-in) | ⚠️ | – | ⚠️ | ✅ | prijava → obvesti → usadi z zaklepom mize |
-| Samodejna dodelitev mize rezervaciji | ✅ | – | ✅ | ❌ | C-seznam — danes ročna izbira mize v dialogu |
+| Samodejna dodelitev mize rezervaciji | ✅ | – | ✅ | **v1.231** | najmanjša prosta miza po številu oseb, brez prekrivanja aktivnih rezervacij (1 klik v dialogu) |
 | Rezervacije na tlorisu | ⚠️ | – | ⚠️ | ❌ | C-seznam — overlay prihodnjih rezervacij na plan |
 | Naročila gostov po QR (self-order) | ✅ | – | ⚠️ | ✅ | /m/<token> + kiosk + lastni portal /s |
 | Sledenje stanja naročila za gosta | ⚠️ | – | ⚠️ | ✅ | 30 s polling po oddaji |
 
 **Presoja:** front-of-house tok je najmočnejša mila sistema (tri PWA površine + QR + kiosk);
 **urejevalnik miz** in **prenos na natakarja** sta zadnji dve Lightspeed/Toast funkciji, ki
-manjkata — obe sta v valu v1.229.0. Samodejna dodelitev in overlay rezervacij sta C-seznam.
+manjkata — obe sta v valu v1.229.0. Samodejna dodelitev mize je dodana v v1.231.0; overlay rezervacij na tlorisu ostaja C-seznam.
 
 ---
 
@@ -150,7 +150,7 @@ Benchmark: **MarketMan** ($63–167/mes; centraliziran purchasing, invoice skeni
 | Serije (loti) + FEFO | ⚠️ | ⚠️ | ⚠️ | ✅ | hold/release/recall/trace + javni /label |
 | Rok trajanja + oznake | ✅ | ⚠️ | ⚠️ | ✅ | label rules + tisk etiket |
 | Inventura s preštevanjem | ✅ | ✅ | ✅ | ✅ | DRAFT → ŠTETJE → PREDAJA → POTRDITEV + varianca |
-| **Inventura s čitalnikom** | ⚠️ | – | ✅ | ❌ | C-seznam — ročno vnašanje štetja |
+| **Inventura s čitalnikom** | ⚠️ | – | ✅ | **v1.231** | EAN zadetek šteje +1 (scanner = tipkovnica + Enter); beseda = filter seznama; emerald poudarek zadnje štete vrstice |
 | Recepti (decoupage) + cena porcije | ✅ | ✅ | ✅ | ✅ | ugnezdeni podrecepti, donos % |
 | Razknjižba ob prodaji | ✅ | ✅ | ✅ | ✅ | v isti transakciji kot FURS izdaja |
 | Teoretična proti dejanski food cost | ✅ | ✅ | ⚠️ | ✅ | FoodCostVarianceCard |
@@ -170,8 +170,8 @@ Benchmark: **MarketMan** ($63–167/mes; centraliziran purchasing, invoice skeni
 | Zaloga vidna natakarju v POS | ⚠️ | – | ⚠️ | ⚠️ | 86 vidno; količine zaloge v POS niso (namenoma — dostop skladiščniku) |
 
 **Presoja:** zaloga/prekurmentski modul prekaša MarketMan na evropskih specifikah (eSLOG,
-FURS, serije, DURS); samodejni 86 in seznam ob prijavi sta dodana v v1.230.0 — odprti
-ostaneta OCR (zavestna 0-AI odločitev) in inventura z ročnim čitalnikom.
+FURS, serije, DURS); samodejni 86 in seznam ob prijavi sta dodana v v1.230.0, inventura
+s čitalnikom pa v v1.231.0 — edina preostala vrzel je OCR (zavestna 0-AI odločitev).
 
 ---
 
@@ -182,15 +182,17 @@ ostaneta OCR (zavestna 0-AI odločitev) in inventura z ročnim čitalnikom.
 | Prodaja (POS) | 16/19 | EAN ⌨, ★, ⚡ → vse tri v v1.229.0 |
 | Šank | pokrit | ⚡ + EAN (ista obdelava); tabi = B-seznam |
 | Kuhinja (KDS) | 14/18 | ETA, tečaj-grupiranje, SSE push, EN jezik — vse C-seznam |
-| Restavracija | 19/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign + overlay → C |
-| Zaloge | 21/22 | OCR (0-AI) in inventura s čitalnikom sta edini odprti vrzeli |
+| Restavracija | 20/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign → v1.231.0; overlay → C |
+| Zaloge | 22/22 | OCR je edina zavestna izključitev (0-AI) |
 
 **Zaključek:** po treh letih benchmark valov (v1.67–v1.228) ima sistem parity ali prednost
 na ~87 primerjanih funkcijah; v1.229.0 zapre 5 zadnjih A-vrzeli (EAN, ★, ⚡, Uredi mize,
 prenos natakarja), vse 0-DDL. v1.230.0 zapre še 3 točke C-seznama (samodejni 86 ob
-izpraznitvi, nizka zaloga ob prijavi, pour-cost karta) — zaloge so zdaj 21/22. Preostanek
-so tri kategorije: odločitve lastnika (tabi, terminal, PEPPOL), C-seznam drugega reda
-(auto-assign, SSE, inventura s čitalnikom) in zavestne izključitve (AI/OCR).
+izpraznitvi, nizka zaloga ob prijavi, pour-cost karta). v1.231.0 doda inventuro s
+čitalnikom (zaloge 22/22 — funkcionalno poln parity, OCR ostaja zavestna 0-AI
+izključitev) in samodejno dodelitev mize rezervaciji (restavracija 20/22). Preostanek
+so odločitve lastnika (tabi, terminal, PEPPOL) ter C-seznam drugega reda (SSE, overlay
+rezervacij na tlorisu, KDS ETA/tečaj-grupiranje/EN).
 
 ---
 
@@ -219,3 +221,25 @@ so tri kategorije: odločitve lastnika (tabi, terminal, PEPPOL), C-seznam drugeg
 3. **Taksacija pijače (pour cost)** — PourCostCard v Inženiringu: KPI pour cost % pijač,
    pasovi benchmarka (do 20 % / 20–28 % / nad 28 %), tabela vseh kategorij — čista
    frontend agregacija /api/menu-engineering.
+
+## 9. Val v1.231.0 — inventura s čitalnikom + samodejna dodelitev mize + P4 popravek
+
+1. **Inventura s čitalnikom (§5 → 22/22)** — Toast Inventory »count by scan«: skener =
+   tipkovnica (koda + Enter). Točen EAN zadetek (normalizeEan obeh strani) šteje +1 na
+   vrstici popisa (vsak sken = ena enota; utežni artikli ostanejo ročni), toast potrdi
+   »✓ ime: n«, vrstica dobi 1,6 s emerald poudarek; artikel zunaj snapshot-a (dodan po
+   odprtju popisa) → jasno opozorilo. Vse ostalo (prosta beseda) = filter seznama za
+   ročno štetje — iskanje artikla med 200+ vrsticami. Samo v DRAFT (po oddaji zaklenjeno).
+   0 novih backend poti — StItemRow.inventoryItemId je bil že v API odgovoru, klient ga
+   je le deklariral.
+2. **Samodejna dodelitev mize rezervaciji (§4 → 20/22)** — OpenTable/Toast vzorec: gumb
+   »Dodeli« v rezervacijskem dialogu izbere NAJMANJŠO mizo, ki ustreza številu oseb in
+   se ne prekriva z aktivno rezervacijo (CONFIRMED/SEATED/COMPLETED zavirajo,
+   CANCELLED/NO_SHOW ne; okno = datum + trajanje). Klient ima vse podatke že naložene
+   (mize + rezervacije z tableId/duration) — 0 novih backend poti; unikat
+   @@unique([tableId, dateTime]) na strežniku ostaja varnost. Mize v izbirniku zdaj
+   kažejo tudi število sedežev.
+3. **P4 popravek (QA-val #10)** — vnos »Blagajna ob zaključku«: minus (−10 → tiho 10,
+   razlika 20 €) in nesmisel (»1.2.3« → NaN → tiho 0) nista več tiho sprejeta. Poskus
+   minusa pokaže opozorilo ob polju; pred oddajo vrednost validira klient (toast + ne
+   pošlje) in strežnik (parseDrawerCash, nespremenjeno).

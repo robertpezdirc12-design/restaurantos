@@ -30,7 +30,7 @@ type StRow = {
   recountCount: number; createdAt: string; approvedByName: string | null
 }
 type StItemRow = {
-  id: string; name: string; unit: string; expectedQty: number
+  id: string; inventoryItemId: string; name: string; unit: string; expectedQty: number
   countedQty: number | null; varianceQty: number | null
   varianceValue: number | null; note: string
 }
@@ -142,6 +142,41 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
   const [stNote, setStNote] = useState('')
   const [stBusy, setStBusy] = useState(false)
   const [stErr, setStErr] = useState('')
+  /* v1.231.0 — inventura s čitalnikom (Square Inventory »count by scan«,
+     docs/PRIMERJAVA-VMESNIKOV-2026.md §5 zadnja odprta vrzel). Skener =
+     tipkovnica (keyboard wedge): vpiše kodo + Enter. Točna EAN zadetka
+     (normalizeEan obeh strani) šteje +1 na vrstici popisa; vse ostalo
+     (prosta beseda) postane filter seznama — iskanje artikla med štetjem. */
+  const [stScan, setStScan] = useState('')
+  const [stFilter, setStFilter] = useState('')
+  const [stFlash, setStFlash] = useState('')
+
+  function handleStScanEnter() {
+    const raw = stScan.trim()
+    if (!raw || !stOpen) return
+    const norm = normalizeEan(raw)
+    const hit = norm !== '' ? items.find((it) => (it.ean || '').toUpperCase() === norm) : undefined
+    if (hit) {
+      const line = stOpen.items.find((l) => l.inventoryItemId === hit.id)
+      if (!line) {
+        toast({ title: t('st.scanNotInTake', { name: hit.name }), variant: 'destructive' })
+        setStScan('')
+        return
+      }
+      const cur = stInputs[line.id] ?? ''
+      const curNum = cur === '' ? 0 : Number(cur.replace(',', '.'))
+      const next = Number.isFinite(curNum) ? String(curNum + 1) : '1'
+      setStInputs((prev) => ({ ...prev, [line.id]: next }))
+      setStFlash(line.id)
+      window.setTimeout(() => setStFlash((f) => (f === line.id ? '' : f)), 1600)
+      toast({ title: t('st.scanCounted', { name: hit.name, n: next }) })
+      setStScan('')
+      setStFilter('')
+    } else {
+      setStFilter(raw)
+      setStScan('')
+    }
+  }
 
   async function loadStocktakes() {
     try {
@@ -418,10 +453,37 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                 <span className="text-xs text-stone-500">{stOpen.counted}/{stOpen.total} · {t('st.counted')}</span>
                 {stOpen.recountCount > 0 && <Badge variant="outline" className="text-xs">{t('st.recounts')}: {stOpen.recountCount}</Badge>}
               </div>
+              {/* v1.231.0 — inventura s čitalnikom: skener = tipkovnica (koda + Enter).
+                  Aktiven samo v DRAFT (po oddaji je štetje zaklenjeno). EAN zadetek
+                  šteje +1; prosta beseda filtrira vrstice za ročno štetje. */}
+              {stOpen.status === 'DRAFT' && (
+                <div className="space-y-1" data-region="st-scan">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                      <Input
+                        aria-label={t('st.scanLabel')}
+                        className="h-9 pl-8"
+                        placeholder={t('st.scanLabel')}
+                        value={stScan}
+                        disabled={!canManage || stBusy}
+                        onChange={(e) => setStScan(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleStScanEnter() } }}
+                      />
+                    </div>
+                    {(stFilter || stScan) && (
+                      <Button size="sm" variant="outline" className="h-9 shrink-0 text-xs" onClick={() => { setStFilter(''); setStScan('') }}>{t('st.filterClear')}</Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-stone-500">{stFilter ? t('st.filterActive', { q: stFilter }) : t('st.scanHint')}</p>
+                </div>
+              )}
               <ScrollArea className="max-h-56">
                 <div className="space-y-1.5">
-                  {stOpen.items.map((it) => (
-                    <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 p-2">
+                  {stOpen.items
+                    .filter((it) => { const q = stFilter.trim().toLowerCase(); return !q || it.name.toLowerCase().includes(q) })
+                    .map((it) => (
+                    <div key={it.id} className={`flex items-center justify-between gap-2 rounded-lg border border-stone-200 p-2 transition-shadow ${stFlash === it.id ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{it.name}</p>
                         <p className="text-xs text-stone-500">{t('st.expected')}: {it.expectedQty} {it.unit}</p>
@@ -436,6 +498,9 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                       />
                     </div>
                   ))}
+                  {stOpen.items.length > 0 && stOpen.items.filter((it) => { const q = stFilter.trim().toLowerCase(); return !q || it.name.toLowerCase().includes(q) }).length === 0 && (
+                    <p className="py-3 text-center text-sm text-stone-500" data-region="st-scan-nohit">{t('st.scanNoHit', { q: stFilter })}</p>
+                  )}
                 </div>
               </ScrollArea>
               {canManage && (

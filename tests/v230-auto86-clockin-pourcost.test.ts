@@ -467,10 +467,10 @@ describe('v1.230.0 E — žičenje v plačilni tok in prilive', () => {
 /* ─────────────── Ž — verzija + registri (doc-truth) ─────────────── */
 
 describe('v1.230.0 Ž — verzija + registri', () => {
-  test('Ž1: verzija je dvignjena na 1.230.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.230.0')
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.230.0'")
-    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.230.0')
+  test('Ž1: verzija je dvignjena na 1.231.0 (version.ts + compose oznaka)', () => {
+    expect(APP_VERSION).toBe('1.231.0')
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.231.0'")
+    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.231.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi v1.230.0 val (C-seznam zaprt)', () => {
@@ -479,27 +479,30 @@ describe('v1.230.0 Ž — verzija + registri', () => {
     expect(doc).toContain('Samodejni 86 ob izpraznitvi zaloge')
     expect(doc).toContain('Nizka zaloga ob prijavi')
     expect(doc).toContain('Taksacija pijače')
-    expect(doc).toContain('21/22')
+    // zavestna sprememba pina (v1.231.0): dokument je ŽIV sledilnik — v1.230 je
+    // zaloge dvignil na 21/22, v1.231 (inventura s čitalnikom) pa na 22/22;
+    // števec sledi najnovejši resnici dokumenta, zgodovina vala ostaja zgoraj.
+    expect(doc).toContain('22/22')
   })
 
   test('Ž3: PRD §8 R4b vrstica + worklog vrh (doc-truth)', () => {
     const prd = readFileSync('docs/PRD-LOKALNA-BAZA.md', 'utf8')
     expect(prd).toContain('BENCHMARK-VAL v1.230.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.230.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.231.0')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.229.0'))
   })
 
-  test('Ž4: i18n števci + novi ključi SL/HR (3799/3799)', () => {
-    expect(Object.keys(sl).length).toBe(3799)
-    expect(Object.keys(hr).length).toBe(3799)
+  test('Ž4: i18n števci + novi ključi SL/HR (3813/3813)', () => {
+    expect(Object.keys(sl).length).toBe(3813)
+    expect(Object.keys(hr).length).toBe(3813)
     for (const k of ['tc.lowStockTitle', 'tc.lowStockOut', 'tc.lowStockMore', 'inv.auto86Title', 'inv.auto86Desc', 'inv.auto86On', 'inv.auto86Off', 'inv.auto86Mode', 'inv.auto86ModeDirect', 'inv.auto86ModeRecipe', 'inv.auto86RecipeHint', 'inv.auto86Saved']) {
       expect(typeof (sl as Record<string, string>)[k]).toBe('string')
       expect(typeof (hr as Record<string, string>)[k]).toBe('string')
     }
     // RESTAURANTOS-AUDIT števec usklajen
     const audit = readFileSync('docs/RESTAURANTOS-AUDIT.md', 'utf8')
-    expect(audit).toContain('3799 ključev SL in 3799 HR')
+    expect(audit).toContain('3813 ključev SL in 3813 HR')
     expect(audit).toContain('POSODOBITEV (v1.230.0')
   })
 })

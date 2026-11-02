@@ -25,6 +25,21 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
   const { t } = useI18n()
   const [cash, setCash] = useState('')
   const [busy, setBusy] = useState(false)
+  /* v1.231.0 — QA-val #10 P4 popravek: negativen vnos (−10) se je TIHO sprejel
+     kot pozitiven (10, razlika 20 €) ker je onChange po tiho odstranil minus;
+     »1.2.3« je prek Number() || 0 tiho postal 0. Zdaj: vnos očistimo kot prej,
+     a poskus minusa pokaže OPAZOVALO ob polju, pred oddajo pa vrednost
+     validiramo (NaN/negativno → toast + NE pošljemo — strežnik sicer odbije,
+     a klient naj ne pošilja pokvarjenih števil, ki bi se izgubila v || 0). */
+  const [cashWarn, setCashWarn] = useState('')
+  function parseCashInput(s: string): { ok: boolean; n: number; err?: string } {
+    const v = s.trim()
+    if (v === '') return { ok: true, n: 0 }
+    const n = Number(v)
+    if (!Number.isFinite(n)) return { ok: false, n: 0, err: t('shifts.cashInvalid') }
+    if (n < 0) return { ok: false, n: 0, err: t('shifts.cashNegative') }
+    return { ok: true, n }
+  }
   const openShift = shifts.find((s) => s.status === 'open')
   // Issue #16: razlog variance + odobritev (nad pragom politike; dialog)
   const [varianceReason, setVarianceReason] = useState('')
@@ -41,22 +56,27 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
 
   async function startShift() {
     setBusy(true)
-    try { await api('/api/shifts', { method: 'POST', body: JSON.stringify({ openingCash: Number(cash) || 0 }) }); setCash(''); await onReload() }
+    const p = parseCashInput(cash)
+    if (!p.ok) { setBusy(false); toast({ title: p.err, variant: 'destructive' }); return }
+    try { await api('/api/shifts', { method: 'POST', body: JSON.stringify({ openingCash: p.n }) }); setCash(''); setCashWarn(''); await onReload() }
     catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
   }
   async function stopShift() {
+    const p = parseCashInput(cash)
+    if (!p.ok) { toast({ title: p.err, variant: 'destructive' }); return }
     setBusy(true)
     try {
       const d = await api<{ zReport: { totalSales: number; cash: number; card: number; totalTax: number; receipts: number; totalStorno: number; cashDifference: number; movementSummary?: { paidIn: number; paidOut: number; safeDrop: number; guestRefund: number; net: number; count: number } | null } | null }>('/api/shifts', {
         method: 'POST',
         body: JSON.stringify({
           action: 'stop',
-          closingCash: Number(cash) || 0,
+          closingCash: p.n,
           ...(varianceReason.trim() ? { varianceReason: varianceReason.trim() } : {}),
           ...(!isManagerial && approverEmail.trim() && approverPin.trim() ? { approverEmail: approverEmail.trim(), approverPin: approverPin.trim() } : {}),
         }),
       })
       setCash('')
+      setCashWarn('')
       setVarianceReason(''); setApproverEmail(''); setApproverPin(''); setAskVariance(false)
       if (d.zReport) setZRep(d.zReport)
       await onReload()
@@ -154,7 +174,18 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
           <CardContent className="flex flex-wrap items-end gap-2">
             <div className="space-y-1.5">
               <Label htmlFor="cash">{openShift ? t('shifts.closingCashLabel') : t('shifts.openingCashLabel')}</Label>
-              <Input id="cash" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.'))} placeholder="0.00" className="w-44" />
+              <Input id="cash" inputMode="decimal" value={cash} onChange={(e) => {
+                const raw = e.target.value
+                // MINUS NAMENOMA ostane v polju (poštena povratna informacija —
+                // prej se je tiho odstranil: −10 je postal 10, razlika 20 €);
+                // čistimo vse ostale znake razen števk/pike/vejice/minusa.
+                // Opozorilo vztraja, DOKLER je minus v polju; oddaja je blokirana
+                // (parseCashInput spodaj + strežniški parseDrawerCash).
+                const cleaned = raw.replace(/[^-\d.,]/g, '').replace(',', '.')
+                setCashWarn(cleaned.includes('-') ? t('shifts.cashNegative') : '')
+                setCash(cleaned)
+              }} placeholder="0.00" className="w-44" />
+              {cashWarn && <p data-region="cash-warn" className="text-xs text-amber-700">{cashWarn}</p>}
             </div>
             {openShift ? (
               <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy} onClick={stopShift}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('shifts.stopShift')}</Button>

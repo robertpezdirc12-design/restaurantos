@@ -642,6 +642,14 @@ export const sl: Record<string, string> = {
   'st.status.CANCELLED': 'Preklican',
   'st.empty': 'Ni popisov.',
   'st.recounts': 'Ponovitve',
+  // v1.231.0 — inventura s čitalnikom (PRIMERJAVA-VMESNIKOV-2026 §5)
+  'st.scanLabel': 'Skeniraj kodo ali išči…',
+  'st.scanHint': 'Vsak sken kode (EAN) šteje +1; vnesena beseda filtrira seznam za ročno štetje.',
+  'st.scanCounted': '✓ {name}: {n}',
+  'st.scanNotInTake': 'Artikla »{name}« ni v tem popisu (popis je bil odprt pred njegovim dodajanjem).',
+  'st.scanNoHit': 'Ni zadetkov za »{q}« — napačna koda ali ime?',
+  'st.filterClear': 'Počisti',
+  'st.filterActive': 'Filter: »{q}«',
   'inv.recipeTitle': 'Receptura artikla',
   'inv.menuItem': 'Artikel menija *',
   'inv.selectItem': 'Izberi artikel',
@@ -717,6 +725,9 @@ export const sl: Record<string, string> = {
   'shifts.noOpenShift': 'Ni odprte izmene',
   'shifts.closingCashLabel': 'Blagajna ob zaključku (€)',
   'shifts.openingCashLabel': 'Začetno stanje blagajne (€)',
+  // v1.231.0 — QA-val #10 P4: vnos blagajne ne sme tiho sprejeti minusa/nesmisla
+  'shifts.cashNegative': 'Gotovina v predalu ne more biti negativna — preveri vnos.',
+  'shifts.cashInvalid': 'Vnesi veljavno število (npr. 125.50).',
   'shifts.stopShift': 'Zaključi izmeno (Z)',
   'shifts.startShift': 'Začni izmeno',
   'shifts.recent': 'Zadnje izmene (Z-poročila)',
@@ -3430,6 +3441,12 @@ export const sl: Record<string, string> = {
   // ── OPS-8 val 3 (v1.73.0) — rezervacije: miza/vir/e-pošta/trajanje/zahteve + filtri ──
   'resv.table': 'Miza',
   'resv.tableNone': 'Brez mize',
+  // v1.231.0 — samodejna dodelitev mize (OpenTable/Toast vzorec)
+  'resv.autoAssign': 'Dodeli',
+  'resv.autoAssignHint': 'Samodejno dodeli najmanjšo prosto mizo, ki ustreza številu oseb in se ne prekriva z drugimi rezervacijami.',
+  'resv.autoAssignNeedTime': 'Najprej vnesi datum in uro rezervacije.',
+  'resv.autoAssignNone': 'Ni proste mize za {n} oseb v tem terminu.',
+  'resv.autoAssignOk': 'Dodeljena miza: {table} ({seats} sedežev)',
   'resv.source': 'Vir',
   'resv.sourcePhone': 'Telefon',
   'resv.sourceWalkIn': 'Nenajavljen gost',
