@@ -55,7 +55,7 @@ export { LabelRulesCard } from './tabs/label-rules-card'
 export { EnterpriseTab, MigrationsConsoleSection } from './tabs/enterprise-tab'
 export { StaffScheduleTab } from './tabs/urnik-izmen-tab'
 export type { StaffShiftRowT, TimeOffRowT } from './tabs/urnik-izmen-tab'
-export { MenuEngineeringTab, KdsStatsSection, FoodCostVarianceCard } from './tabs/analitika-tab'
+export { MenuEngineeringTab, KdsStatsSection, FoodCostVarianceCard, PourCostCard } from './tabs/analitika-tab'
 export { ExceptionsReportCard } from './tabs/exceptions-card'
 /* Issue #22 (v1.115.0) — obračun plač: obdobja + zaklep + izvozi + plačne postavke */
 export { PayrollTab } from './tabs/payroll-tab'

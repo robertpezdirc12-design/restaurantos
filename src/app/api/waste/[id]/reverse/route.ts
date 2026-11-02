@@ -6,6 +6,7 @@ import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { WASTE_REVERSAL_TX_TYPE, WASTE_REVERSAL_CLAIM_FAILED, canReverseWaste, wasteReversalReason } from '@/lib/waste'
 import { writeAudit } from '@/lib/audit-chain'
+import { restoreAuto86ForInventory } from '@/lib/auto-86'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
@@ -120,6 +121,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // Issue #38: verifikovana lokacija (artikel zaloge oziroma zapis odpada)
     locationId: item?.locationId ?? rec.locationId ?? null,
   }).catch(() => undefined)
+
+  // v1.230.0 — samodejni 86: povračilo odpada obnovi avtomatsko razprodane
+  // artikle (fire-and-forget po commitu)
+  if (qty > 0) void restoreAuto86ForInventory([rec.inventoryItemId], user.sub)
 
   const fresh = await db.wasteRecord.findUnique({ where: { id: rec.id }, select: { reversedAt: true, reversalStockTransactionId: true } })
   return ok({ record: { id: rec.id, reversedAt: fresh?.reversedAt, reversalStockTransactionId: fresh?.reversalStockTransactionId ?? reversalStockTransactionId }, newQty })

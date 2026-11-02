@@ -21,6 +21,7 @@ import { pushEvent } from '@/lib/push'
 import { applyApMatchEvaluation } from '@/lib/ap-match'
 import { nextSequence } from '@/lib/sequences'
 import { applyReceiveToStock } from '@/lib/procurement-stock'
+import { restoreAuto86ForInventory } from '@/lib/auto-86'
 
 /**
  * Issue #1 (triage ②) — prevzem blaga (GRN) z avtomatskim vplivom na zalogo.
@@ -531,6 +532,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     url: '/dashboard?tab=nabava',
     tag: `po-received-${id}`,
   }, { roles: ['warehouse', 'manager'], locationId })
+
+  // v1.230.0 — samodejni 86: priliv zaloge obnovi avtomatsko razprodane artikle
+  // (fire-and-forget po commitu; napaka ne podre prevzema)
+  const auto86RestoreIds = v.lines
+    .filter((l) => l.input.quantityAccepted > 0 && itemById.get(l.input.purchaseOrderItemId)?.inventoryItemId)
+    .map((l) => itemById.get(l.input.purchaseOrderItemId)!.inventoryItemId!)
+  if (auto86RestoreIds.length > 0) void restoreAuto86ForInventory(auto86RestoreIds, user.sub)
 
   return ok(
     {

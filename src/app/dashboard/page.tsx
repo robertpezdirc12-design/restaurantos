@@ -103,7 +103,7 @@ import { filterReservations, type ReservationFilter } from '@/lib/reservation-fi
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -1748,7 +1748,7 @@ function DashboardInner() {
           bodyParts.push({ type: 'cash', amount: due })
         }
       }
-      const d = await api<{ invoice: { eor: string; invoiceNumber: string; id?: string }; loyalty: { redeemedPoints: number; earnedPoints: number } | null }>('/api/furs', {
+      const d = await api<{ invoice: { eor: string; invoiceNumber: string; id?: string }; loyalty: { redeemedPoints: number; earnedPoints: number } | null; auto86?: { name: string; inventoryItem: string }[] }>('/api/furs', {
         method: 'POST',
         body: JSON.stringify({
           orderId: payingOrder.id,
@@ -1780,6 +1780,11 @@ function DashboardInner() {
       })
       setInvoice(d.invoice)
       if (d.loyalty) setLoyaltySummary(d.loyalty)
+      // v1.230.0 — samodejni 86: če je plačilo spraznilo zalogo, natakar to VE takoj
+      // (ploscica 86 pride z naslednjo osvežitvijo menija; toast je neposredna povratna informacija)
+      if (d.auto86 && d.auto86.length > 0) {
+        toast({ title: t('sale.auto86Toast'), description: d.auto86.map((a) => a.name).join(', ') })
+      }
       // Issue #3: CFD pokaže "Hvala" z zneskom in številko naročila
       void pushDisplay({ state: 'paid', orderNumber: payingOrder.orderNumber, total: bill.totalDue, message: t('payment.pushPaid') })
       // OSS-15 (v1.201.0): zvočna potrditev plačila na napravi osebja — natakar
@@ -4853,6 +4858,8 @@ function DashboardInner() {
             <MenuEngineeringTab />
             {/* Issue #17 (v1.106.0) — food-cost varianca (dejanska proti teoretični porabi) */}
             <FoodCostVarianceCard />
+            {/* v1.230.0 — taksacija pijače (pour cost, šank) — Clover/Toast benchmark */}
+            <PourCostCard />
           </TabsContent>
 
           <TabsContent value="zaloge">

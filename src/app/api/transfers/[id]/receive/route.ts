@@ -9,6 +9,7 @@ import { writeAudit } from '@/lib/audit-chain'
 import { weightedAvgCostCents } from '@/lib/procurement'
 import { transferTablesReady } from '@/lib/transfer-schema'
 import { TransferError, TRF_TX_IN, computeReceiveOutcome, transferDto, transferLineDto, r3, type TrfRow } from '@/lib/stock-transfer'
+import { restoreAuto86ForInventory } from '@/lib/auto-86'
 
 /**
  * Issue #8 (P2, v1.116.0) — PREVZEM medlokacijskega prenosa.
@@ -347,6 +348,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       },
       locationId: transfer.toLocationId,
     }).catch(() => undefined)
+
+    // v1.230.0 — samodejni 86: priliv prenosa obnovi avtomatsko razprodane
+    // artikle na CILJNI lokaciji (fire-and-forget po commitu)
+    const auto86RestoreIds = updated.items
+      .filter((l) => num(l.receivedQty) > 0 && l.targetItemId)
+      .map((l) => l.targetItemId!)
+    if (auto86RestoreIds.length > 0) void restoreAuto86ForInventory(auto86RestoreIds, user.sub)
 
     // push: vodstvo/skladišče IZVORNE lokacije (odpošiljatelj ve, da je konec)
     void pushEvent(

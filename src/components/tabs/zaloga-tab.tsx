@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Loader2, PackageSearch, AlertTriangle, Truck, UtensilsCrossed, Plus, ShoppingCart, ArrowLeftRight, Trash2, ScanLine } from 'lucide-react'
+import { Loader2, PackageSearch, AlertTriangle, Truck, UtensilsCrossed, Plus, ShoppingCart, ArrowLeftRight, Trash2, ScanLine, Zap } from 'lucide-react'
 import { BatchesCard, BatchPrepCard } from './ops-cards'
 import { normalizeEan, classifyEan } from '@/lib/ean'
 
@@ -35,6 +35,80 @@ type StItemRow = {
   varianceValue: number | null; note: string
 }
 type StFull = StRow & { items: StItemRow[] }
+
+/**
+ * v1.230.0 — Samodejni 86 ob izpraznitvi zaloge: konfiguracijska kartica
+ * (Toast Inventory standard; docs/PRIMERJAVA-VMESNIKOV-2026.md §5).
+ * GET /api/auto86 ob odprtju zavihka; sprememba takoj PUT (toast povratna
+ * informacija). Kartica se izriše samo, ko konfiguracija uspešno pride
+ * (403 brez inventory.manage → null → brez kartice, brez napake).
+ */
+export function Auto86Card() {
+  const { t } = useI18n()
+  const [cfg, setCfg] = useState<{ enabled: boolean; mode: 'direct' | 'recipe' } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const d = await api<{ config: { enabled: boolean; mode: 'direct' | 'recipe' } }>('/api/auto86')
+        if (alive) setCfg(d.config)
+      } catch { /* brez pravic / napaka mreže — kartice ni */ }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  async function save(next: { enabled: boolean; mode: 'direct' | 'recipe' }) {
+    if (!cfg || busy) return
+    setBusy(true)
+    try {
+      const d = await api<{ config: { enabled: boolean; mode: 'direct' | 'recipe' } }>('/api/auto86', { method: 'PUT', body: JSON.stringify(next) })
+      setCfg(d.config)
+      toast({ title: t('inv.auto86Saved') })
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally { setBusy(false) }
+  }
+
+  if (!cfg) return null
+
+  return (
+    <Card data-region="auto86-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><Zap className="w-4 h-4" aria-hidden="true" /> {t('inv.auto86Title')}</CardTitle>
+        <p className="text-xs text-stone-500">{t('inv.auto86Desc')}</p>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant={cfg.enabled ? 'default' : 'outline'}
+          className={cfg.enabled ? 'bg-emerald-700 hover:bg-emerald-800' : ''}
+          disabled={busy}
+          aria-pressed={cfg.enabled}
+          onClick={() => void save({ ...cfg, enabled: !cfg.enabled })}
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {cfg.enabled ? t('inv.auto86On') : t('inv.auto86Off')}
+        </Button>
+        <Select
+          value={cfg.mode}
+          onValueChange={(v) => (v === 'direct' || v === 'recipe') && void save({ ...cfg, mode: v })}
+          disabled={busy}
+        >
+          <SelectTrigger className="h-9 w-full sm:w-72" aria-label={t('inv.auto86Mode')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="direct">{t('inv.auto86ModeDirect')}</SelectItem>
+            <SelectItem value="recipe">{t('inv.auto86ModeRecipe')}</SelectItem>
+          </SelectContent>
+        </Select>
+        {cfg.mode === 'recipe' && <p className="text-xs text-amber-700 w-full sm:w-auto">{t('inv.auto86RecipeHint')}</p>}
+      </CardContent>
+    </Card>
+  )
+}
 
 export function InventoryTab({ items, suppliers, recipes, menuItems = [], canManage, onReload, onNavigate }: { items: InventoryT[]; suppliers: SupplierT[]; recipes: RecipeT[]; menuItems?: { id: string; name: string }[]; canManage: boolean; onReload: () => Promise<void>; onNavigate?: (tab: string) => void }) {
   const { t } = useI18n()
@@ -256,6 +330,9 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
         <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {t('inv.belowMin')}</CardTitle></CardHeader><CardContent><p className={`text-2xl font-bold ${low.length > 0 ? 'text-amber-600' : ''}`}>{low.length}</p></CardContent></Card>
         <Card className="col-span-2 lg:col-span-1"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('inv.stockValue')}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{fmtEUR(totalValue)}</p></CardContent></Card>
       </div>
+
+      {/* v1.230.0 — samodejni 86 ob izpraznitvi zaloge (Toast Inventory standard) */}
+      {canManage && <Auto86Card />}
 
       {/* OPS-8 val 2 — batches / expiry (FEFO, lazy-load on expand) */}
       <BatchesCard canManage={canManage} />

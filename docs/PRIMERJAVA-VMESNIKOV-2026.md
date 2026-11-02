@@ -62,7 +62,7 @@ Benchmark: **Clover** (happy hour, pre-auth tabi), **Toast Bar**, tavern-POS pra
 | Deljenje taba po osebi/postavki/znesku | ✅ | ⚠️ | delimo NAROČILO (izstavki + postavke), ne tab |
 | Izmene blagajne (X/Z poročilo) | ✅ | ✅ | open/close + movements + Z dialog |
 | Napitnine — skupni bazen (tip pool) | ✅ | ✅ | porazdelitev po urah/točkah + izplačila (CAS) |
-| Taksacija pijače (pour cost) | ⚠️ | ⚠️ | Analiza menija (inženiring) pokriva food cost; poseben pour-cost poročilo za bar manjka (C-seznam) |
+| Taksacija pijače (pour cost) | ⚠️ | ⚠️ | Analiza menija (inženiring) pokriva food cost; **pour-cost karta dodana v v1.230.0** (Inženiring → Taksacija pijače; KPI + pasovi benchmarka nad istim virom) |
 | Zvočna potrditev plačila | – | ✅ | audio cue |
 | Offline prodaja | ✅ | ✅ | vrsta s dedupe |
 
@@ -162,15 +162,16 @@ Benchmark: **MarketMan** ($63–167/mes; centraliziran purchasing, invoice skeni
 | **Predlogi naročanja (par/potrosnja)** | ✅ | – | ⚠️ | ✅ | dnevna poraba, lead time, varnostna zaloga, kritičen datum, 1-klik |
 | Uvoz eSLOG računov | – | – | – | ✅ | SI/HHR specifika (3-way match, tolerance, AP) |
 | **OCR skeniranje računov** | ✅ | ✅ | – | ❌ | zavestno NE (0 AI politika; ročni vnos + eSLOG uvoz pokrijeta) |
-| **Samodejni 86 ob izpraznitvi zaloge** | ⚠️ | – | ✅ | ❌ | C-seznam — danes 86 ročno (KDS plošča / Meni) |
+| **Samodejni 86 ob izpraznitvi zaloge** | ⚠️ | – | ✅ | **v1.230** | Toast »86 when items run out« — v ISTI transakciji kot račun; direct (privzeto) + recipe (opt-in) način; samodejna obnovitev ob prilivu (GRN/prejem/popis/storno/odpad/prenos) |
 | Prenosi med lokacijami | ✅ | – | ⚠️ | ✅ | odprema/prevzem + push obeh strani |
 | Odpad z razlogom + povratnica | ✅ | ⚠️ | ⚠️ | ✅ | lot-zaveden |
 | Nizka zaloga — opozorila | ✅ | ✅ | ✅ | ✅ | LOW_STOCK push + KPI |
-| **Nizka zaloga ob prijavi (clock-in)** | ✅ | – | ✅ | ❌ | Toast december 2025: oseba vidi razprodano/nič ob prihodu — C-seznam |
+| **Nizka zaloga ob prijavi (clock-in)** | ✅ | – | ✅ | **v1.230** | Toast december 2025: oseba vidi razprodano/nič ob prihodu — banner v Delovnem času (strežniški kanonični prag) |
 | Zaloga vidna natakarju v POS | ⚠️ | – | ⚠️ | ⚠️ | 86 vidno; količine zaloge v POS niso (namenoma — dostop skladiščniku) |
 
 **Presoja:** zaloga/prekurmentski modul prekaša MarketMan na evropskih specifikah (eSLOG,
-FURS, serije, DURS); manjkata OCR (zavestna 0-AI odločitev) in samodejni 86 (C-seznam).
+FURS, serije, DURS); samodejni 86 in seznam ob prijavi sta dodana v v1.230.0 — odprti
+ostaneta OCR (zavestna 0-AI odločitev) in inventura z ročnim čitalnikom.
 
 ---
 
@@ -182,13 +183,14 @@ FURS, serije, DURS); manjkata OCR (zavestna 0-AI odločitev) in samodejni 86 (C-
 | Šank | pokrit | ⚡ + EAN (ista obdelava); tabi = B-seznam |
 | Kuhinja (KDS) | 14/18 | ETA, tečaj-grupiranje, SSE push, EN jezik — vse C-seznam |
 | Restavracija | 19/22 | Uredi mize + prenos natakarja → v1.229.0; auto-assign + overlay → C |
-| Zaloge | 19/22 | OCR (0-AI), auto-86, clock-in seznam — C-seznam |
+| Zaloge | 21/22 | OCR (0-AI) in inventura s čitalnikom sta edini odprti vrzeli |
 
 **Zaključek:** po treh letih benchmark valov (v1.67–v1.228) ima sistem parity ali prednost
 na ~87 primerjanih funkcijah; v1.229.0 zapre 5 zadnjih A-vrzeli (EAN, ★, ⚡, Uredi mize,
-prenos natakarja), vse 0-DDL. Preostanek so tri kategorije: odločitve lastnika (tabi,
-terminal, PEPPOL), C-seznam drugega reda (auto-assign, SSE, auto-86, clock-in seznam) in
-zavestne izključitve (AI/OCR).
+prenos natakarja), vse 0-DDL. v1.230.0 zapre še 3 točke C-seznama (samodejni 86 ob
+izpraznitvi, nizka zaloga ob prijavi, pour-cost karta) — zaloge so zdaj 21/22. Preostanek
+so tri kategorije: odločitve lastnika (tabi, terminal, PEPPOL), C-seznam drugega reda
+(auto-assign, SSE, inventura s čitalnikom) in zavestne izključitve (AI/OCR).
 
 ---
 
@@ -205,3 +207,15 @@ zavestne izključitve (AI/OCR).
    brisanje blokirano ob aktivnem naročilu.
 5. **Naročila: prenos na natakarja** — PATCH employeeId (orders.create + aktivno
    naročilo + lokacijski gate + audit ORDER_TRANSFER), izbira v NaročiloSheetu.
+
+## 8. Val v1.230.0 — zaprte točke s C-seznama
+
+1. **Samodejni 86 ob izpraznitvi zaloge** — `src/lib/auto-86.ts`; razknjižba, ki sprazni
+   zalogo, v isti transakciji kot račun označi odvisne artikle razprodane (direct privzeto /
+   recipe opt-in); samodejna obnovitev ob prilivu na vseh 6 poteh (GRN, prejem, popis,
+   storno, reverzija odpada, prenos); reviziji MENU_ITEM_AUTO_86 / MENU_ITEM_AUTO_RESTORE.
+2. **Nizka zaloga ob prijavi (clock-in)** — Toast dec 2025: banner v Delovnem času s
+   seznamom razprodanih/nizkih artiklov lokacije (strežniški kanonični prag).
+3. **Taksacija pijače (pour cost)** — PourCostCard v Inženiringu: KPI pour cost % pijač,
+   pasovi benchmarka (do 20 % / 20–28 % / nad 28 %), tabela vseh kategorij — čista
+   frontend agregacija /api/menu-engineering.

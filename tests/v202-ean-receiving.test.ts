@@ -399,6 +399,6 @@ describe('Č4 registri, UI statika, i18n, verzija', () => {
   })
 
   it('verzija: pin 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.229.0')
+    expect(APP_VERSION).toBe('1.230.0')
   })
 })

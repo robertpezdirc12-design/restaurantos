@@ -62,6 +62,13 @@ export interface TimeEntryT {
 
 export interface TimeclockEmployeeT { id: string; name: string; role: string }
 
+/** v1.230.0 — lowStock povzetek ob clock-in (POST /api/timeclock odgovor). */
+export interface LowStockSummary {
+  count: number
+  outCount: number
+  items: { name: string; qty: number; unit: string; out: boolean }[]
+}
+
 const tcTypeBadge: Record<string, string> = {
   regular: 'bg-stone-100 text-stone-700',
   overtime: 'bg-amber-100 text-amber-800',
@@ -107,6 +114,8 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
   const [err, setErr] = useState('')
   const [okMsg, setOkMsg] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now()) // živ preracun minut
+  // v1.230.0 — Toast dec 2025: ob prijavi pokaži razprodano/nizko zalogo (odgovor clock-in)
+  const [clockInStock, setClockInStock] = useState<LowStockSummary | null>(null)
 
   // ročni vnos (manager)
   const [manualOpen, setManualOpen] = useState(false)
@@ -143,11 +152,16 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
     setErr('')
     setOkMsg('')
     try {
-      const d = await api<{ summary?: { label: string; totalPay: number } }>('/api/timeclock', { method: 'POST', body: JSON.stringify({ action }) })
-      if (action === 'clock-in') setOkMsg(t('tc.okClockIn'))
-      else if (action === 'break-start') setOkMsg(t('tc.okBreakStart'))
-      else if (action === 'break-end') setOkMsg(t('tc.okBreakEnd'))
-      else if (action === 'clock-out' && d.summary) setOkMsg(t('tc.okClockOut', { label: d.summary.label, pay: d.summary.totalPay > 0 ? t('tc.okClockOutPay', { pay: tcPay(d.summary.totalPay) }) : '' }))
+      const d = await api<{ summary?: { label: string; totalPay: number }; lowStock?: LowStockSummary }>('/api/timeclock', { method: 'POST', body: JSON.stringify({ action }) })
+      if (action === 'clock-in') {
+        setOkMsg(t('tc.okClockIn'))
+        setClockInStock(d.lowStock ?? null)
+      } else {
+        setClockInStock(null)
+        if (action === 'break-start') setOkMsg(t('tc.okBreakStart'))
+        else if (action === 'break-end') setOkMsg(t('tc.okBreakEnd'))
+        else if (action === 'clock-out' && d.summary) setOkMsg(t('tc.okClockOut', { label: d.summary.label, pay: d.summary.totalPay > 0 ? t('tc.okClockOutPay', { pay: tcPay(d.summary.totalPay) }) : '' }))
+      }
       await load()
     } catch (e) {
       setErr((e as Error).message)
@@ -208,6 +222,28 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
     <div className="space-y-6">
       {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
       {okMsg && <p className="text-sm text-emerald-700" role="status">{okMsg}</p>}
+
+      {/* v1.230.0 — Toast dec 2025: razprodano/nizka zaloga ob prijavi (informativno, brez cen) */}
+      {clockInStock && clockInStock.count > 0 && (
+        <div data-region="clockin-lowstock" role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+          <p className="font-semibold text-amber-900 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            {t('tc.lowStockTitle', { count: String(clockInStock.count), out: String(clockInStock.outCount) })}
+          </p>
+          {clockInStock.items.length > 0 && (
+            <ul className="mt-2 space-y-1 list-disc list-inside">
+              {clockInStock.items.map((i, idx) => (
+                <li key={idx} className={i.out ? 'text-red-700' : 'text-amber-800'}>
+                  {i.name} — {i.qty} {i.unit}{i.out ? ` · ${t('tc.lowStockOut')}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          {clockInStock.count > clockInStock.items.length && (
+            <p className="mt-1 text-xs text-amber-700">{t('tc.lowStockMore', { n: String(clockInStock.count - clockInStock.items.length) })}</p>
+          )}
+        </div>
+      )}
 
       {/* Moja ura */}
       <Card>

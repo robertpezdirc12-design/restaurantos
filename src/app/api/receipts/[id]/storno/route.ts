@@ -8,6 +8,7 @@ import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { fiscalCerts, stampFiscalCodes, submitFiscalDocument } from '@/lib/furs/submit'
 import { writeAudit } from '@/lib/audit-chain'
+import { restoreAuto86ForInventory } from '@/lib/auto-86'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
 import { allocateReceiptNumber } from '@/lib/furs/receipt-number'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
@@ -348,6 +349,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
       return { created, stockReversalCount, restoredItems }
     })
+
+    // v1.230.0 — samodejni 86: povračilo razknjižbe obnovi avtomatsko razprodane
+    // artikle (fire-and-forget; ročno ugasnjeni ostanejo ugasnjeni)
+    void restoreAuto86ForInventory(
+      result.restoredItems.filter((it) => it.qty > 0).map((it) => it.id),
+      user.sub,
+    )
 
     // Evidenca gibanja zaloge (fire-and-forget, isti vzorec kot reverzija odpada)
     for (const it of result.restoredItems) {

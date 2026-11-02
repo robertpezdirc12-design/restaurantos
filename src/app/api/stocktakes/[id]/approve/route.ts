@@ -5,6 +5,7 @@ import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
+import { restoreAuto86ForInventory } from '@/lib/auto-86'
 
 /**
  * Potrditev popisa: SUBMITTED → APPROVED — inventurni popravek v transakciji.
@@ -42,6 +43,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const lines = await tx.stocktakeItem.findMany({ where: { stocktakeId: id } })
     let adjusted = 0
     let varianceValue = 0
+    const auto86RestoreIds: string[] = []
     for (const line of lines) {
       if (line.countedQuantity == null) continue
       const counted = num(line.countedQuantity)
@@ -75,13 +77,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         await tx.stocktakeItem.update({ where: { id: line.id }, data: { varianceQuantity: varianceQty, varianceValue: value } })
       }
       if (counted !== previousQty) adjusted += 1
+      // v1.230.0 — priliv po popisu (prešteto VEČ kot je bilo) je kandidat za
+      // obnovitev samodejno razprodanih menu artiklov
+      if (counted > previousQty && counted > 0) auto86RestoreIds.push(inv.id)
     }
-    return { adjusted, varianceValue }
+    return { adjusted, varianceValue, auto86RestoreIds }
   })
   if ('error' in result) return result.error
 
   await writeAudit(db, { userId: user.sub, action: 'STOCKTAKE_APPROVE', entityType: 'Stocktake', entityId: id, details: jstr({ by: user.name, adjusted: result.adjusted, varianceValue: result.varianceValue }), locationId: st.locationId })
   await publishEvent('StocktakeApproved', { entityType: 'Stocktake', entityId: id, payload: { locationId: st.locationId, adjusted: result.adjusted, varianceValue: result.varianceValue, by: user.name }, locationId: st.locationId }).catch(() => undefined)
+
+  // v1.230.0 — samodejni 86: priliv po popisu obnovi avtomatsko razprodane (fire-and-forget)
+  if (result.auto86RestoreIds.length > 0) void restoreAuto86ForInventory(result.auto86RestoreIds, user.sub)
 
   return ok({ id, status: 'APPROVED', adjusted: result.adjusted, varianceValue: result.varianceValue })
 }

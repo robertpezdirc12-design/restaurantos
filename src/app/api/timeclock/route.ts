@@ -15,6 +15,7 @@ import {
   validateManualEntry,
 } from '@/lib/timeclock'
 import { writeAudit } from '@/lib/audit-chain'
+import { lowStockThreshold, isBelowLowStock } from '@/lib/low-stock'
 
 /**
  * Delovni čas — clock-in/clock-out (GitLab issue #1, triage ⑥).
@@ -35,6 +36,12 @@ import { writeAudit } from '@/lib/audit-chain'
  * Ure iz zaključenih vnosov so osnova za delitev napitnin po urah
  * (/api/tips dayBasisRows — obstoječa pot, ki doslej ni imela podatkov).
  * §18: noben obstoječ tok ni spremenjen.
+ *
+ * v1.230.0 — Toast december 2025 (»oseba vidi razprodano/nizko ob prihodu«):
+ * ob USPEŠNEM clock-in odgovor vsebuje lowStock povzetek zaloge lokacije
+ * (strežniški kanonični prag reorderPoint ?? minQuantity iz lib/low-stock;
+ * brez cen — samo ime/količina/enota, top 8 po nujnosti + števci). Dodatek je
+ * čisto branje ob prijavi — noben obstoječ tok se ne spremeni.
  */
 
 const DAY_MS = 86400_000
@@ -258,7 +265,36 @@ export async function POST(req: NextRequest) {
     }
     if (!created) return fail('Izmena že teče (sočasno prijavo je prevzela druga zahteva).', 409)
     const entry = await db.timeEntry.findUnique({ where: { id: created.id } })
-    return ok({ entry: mapEntry({ ...entry!, Employee: { name: employee.name } }) }, 201)
+
+    // v1.230.0 — Toast dec 2025: ob prijavi pokaži razprodano/nizko zalogo lokacije
+    // (kanonični strežniški prag; brez cen; fail-soft — napaka branja ne podere prijave)
+    let lowStock: { count: number; outCount: number; items: { name: string; qty: number; unit: string; out: boolean }[] } | null = null
+    try {
+      const locId = user.loc || employee.locationId
+      const invRows = await db.inventoryItem.findMany({
+        where: locId ? { locationId: locId } : {},
+        select: { id: true, name: true, unit: true, quantity: true, minQuantity: true, reorderPoint: true },
+        take: 500,
+      })
+      const flagged = invRows
+        .map((i) => {
+          const qty = Math.round(num(i.quantity) * 1000) / 1000
+          const out = qty <= 0
+          const low = isBelowLowStock(qty, lowStockThreshold(i.reorderPoint, i.minQuantity))
+          return { name: i.name, qty, unit: i.unit, out, low }
+        })
+        .filter((i) => i.out || i.low)
+        .sort((a, b) => (b.out ? 1 : 0) - (a.out ? 1 : 0) || a.qty - b.qty)
+      lowStock = {
+        count: flagged.length,
+        outCount: flagged.filter((i) => i.out).length,
+        items: flagged.slice(0, 8).map(({ name, qty, unit, out }) => ({ name, qty, unit, out })),
+      }
+    } catch {
+      lowStock = null
+    }
+
+    return ok({ entry: mapEntry({ ...entry!, Employee: { name: employee.name } }), ...(lowStock ? { lowStock } : {}) }, 201)
   }
 
   if (!active) return fail('Ni aktivne izmene — najprej se prijavi (clock-in).', 409)

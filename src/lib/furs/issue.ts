@@ -24,6 +24,7 @@ import { OrderError, ORDER_PAYABLE_STATUS, ORDER_MUTABLE_PAYMENT } from '@/lib/o
 import { computeBill, earnPointsFor, splitVat, tierForPoints, vatBreakdownAfterDiscount, BillItem, VatDiscountLine } from '@/lib/billing'
 import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
 import { maybeNotifyLowStock } from '@/lib/low-stock'
+import { applyAuto86ForDeductions, type Auto86Entry } from '@/lib/auto-86'
 import { canRedeem, maskCardNumber } from '@/lib/giftcards'
 import { fiscalAdapterFor } from '@/lib/fiscal'
 import { auditChainFields } from '@/lib/audit-chain'
@@ -805,11 +806,17 @@ export async function issueFursReceipt(req: NextRequest) {
       // OPS-7 split: v check načinu odštejemo SAMO postavke plačanega izstavka.
       const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name, checkScope ? checkScope.itemIds : undefined)
 
+      // v1.230.0 — samodejni 86 ob izpraznitvi zaloge (Toast Inventory standard;
+      // docs/PRIMERJAVA-VMESNIKOV-2026.md §5): če je razknjižba spraznila zalogo,
+      // se odvisni menu artikli (direct povezava / recipe način) v ISTI
+      // transakciji kot račun označijo razprodani — POS takoj pokaže 86 ploščico.
+      const auto86 = await applyAuto86ForDeductions(tx, stock.deducted ? stock.deductions : [], location.id, user.sub)
+
       // Revizijski dnevnik kritične operacije (issue #1: audit)
       const __aId2 = nid(); const __chain2 = await auditChainFields(tx, { action: 'INVOICE_ISSUE', entityType: 'Receipt', entityId: created.id, details: jstr({ receiptNumber, orderId: orderPre.id, total, grossTotal: bill.grossTotal, discountTotal: bill.discountTotal, manualDiscount: bill.manualDiscount, autoDiscounts: bill.autoDiscounts, paymentMethod, parts: parts.map((p) => ({ type: p.type, amount: p.amount, giftCard: p.giftCardId && giftCards.get(p.giftCardId) ? maskCardNumber(giftCards.get(p.giftCardId)!.cardNumber) : undefined, })), loyalty: loyaltyAccount ? { accountId: loyaltyAccount.id, redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null, simulation, terminalApproval: parts.map((p) => p.terminalApproval).filter(Boolean).join(',') || null, // Issue #49: profil dokazovanja kartičnih delov v reviziji (akter = userId
             // vrstice audita; ročna zabeležba NIKOLI ni predstavljena kot preverjena
             // pri ponudniku; PayLink dele izpusti — njihov dokaz je vrstica povezave)
-            attestation: parts.filter((p) => p.attestation).map((p) => ({ type: p.type, profile: p.attestation })), stockDeduction: stock.deducted ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length } : null, }), locationId: location.id, id: __aId2 })
+            attestation: parts.filter((p) => p.attestation).map((p) => ({ type: p.type, profile: p.attestation })), stockDeduction: stock.deducted ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length } : null, auto86: auto86.length > 0 ? { count: auto86.length, items: auto86.map((a) => ({ name: a.name, inventoryItem: a.inventoryItemName, newQty: a.newQty })) } : null, }), locationId: location.id, id: __aId2 })
       await tx.auditLog.create({
         data: { ...__chain2,
           id: __aId2,
@@ -847,12 +854,16 @@ export async function issueFursReceipt(req: NextRequest) {
             stockDeduction: stock.deducted
               ? { lines: stock.lines, totalCost: stock.totalCost, shortfalls: stock.shortfalls.length }
               : null,
+            // v1.230.0: samodejni 86 v reviziji izdaje (isti zapis kot v verigi zgoraj)
+            auto86: auto86.length > 0
+              ? { count: auto86.length, items: auto86.map((a) => ({ name: a.name, inventoryItem: a.inventoryItemName, newQty: a.newQty })) }
+              : null,
           }),
           locationId: location.id,
         },
       })
 
-      return { twin: created, duplicate: false as const, stock }
+      return { twin: created, duplicate: false as const, stock, auto86 }
     })
 
     if (receipt.duplicate) {
@@ -905,6 +916,11 @@ export async function issueFursReceipt(req: NextRequest) {
       total,
       timeZone: location.timezone,
     })
+    // v1.230.0: samodejno razprodani artikli (odsotnost ključa = ni bilo
+    // razprodanega; undefined se pri JSON serializaciji izpusti — isti pogodbi
+    // kot prejšnja razširitvena oblika) — POS pokaže opombo »razprodano«
+    // takoj ob plačilu, preden se meni osveži (60 s cikel)
+    const auto86 = receipt.auto86
     return ok({
       invoice: {
         ...mapReceipt(receipt.twin),
@@ -930,6 +946,9 @@ export async function issueFursReceipt(req: NextRequest) {
       order: { ...orderPre, status: 'PAID', fursEor: receipt.twin.eor },
       bill: { discountTotal: bill.discountTotal, autoDiscounts: bill.autoDiscounts, totalDue: total },
       loyalty: loyaltyAccount ? { redeemedPoints: redeemPoints, redeemedValue: redeemValue, earnedPoints } : null,
+      // v1.230.0: samodejno razprodani artikli — POS pokaže opombo
+      // »razprodano« takoj ob plačilu, preden se meni osveži (60 s cikel)
+      auto86: auto86.length > 0 ? receipt.auto86.map((a) => ({ name: a.name, inventoryItem: a.inventoryItemName })) : undefined,
     }, 201)
   } catch (e) {
     if (e instanceof OrderError) return fail(e.message, e.status)

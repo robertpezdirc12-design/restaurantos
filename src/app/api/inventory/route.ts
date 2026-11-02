@@ -4,6 +4,7 @@ import { requireAuthWithPerms, requirePermission, isResponse, ok, fail, location
 import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
+import { restoreAuto86ForInventory } from '@/lib/auto-86'
 import { writeAudit } from '@/lib/audit-chain'
 import { parseInventoryField, sanitizeUnit, roundCost2 } from '@/lib/inventory-validate'
 import { normalizeEan, validateEanFormat } from '@/lib/ean'
@@ -286,5 +287,10 @@ export async function PATCH(req: NextRequest) {
     // 33-c: locationId v payloadu (lokacijsko vidni dogodki — audit §6)
     await publishEvent('StockChanged', { entityType: 'InventoryItem', entityId: id, payload: { name: result.name, variance: result.variance, newQty: result.newQty, by: user.name, locationId: item.locationId }, locationId: item.locationId }).catch(() => undefined)
   }
+
+  // v1.230.0 — samodejni 86: ročni prejem/popravek navzgor obnovi avtomatsko
+  // razprodane artikle (fire-and-forget po commitu)
+  if (result.variance > 0) void restoreAuto86ForInventory([id], user.sub)
+
   return ok({ item: { id, name: item.name, qty: result.newQty } })
 }

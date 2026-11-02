@@ -1014,3 +1014,181 @@ export function FoodCostVarianceCard() {
     </Card>
   )
 }
+
+/* ─────────────── v1.230.0 — TAKSACIJA PIJAČE (pour cost, šank) ───────────────
+ *
+ * Benchmark Clover/Toast »pour cost« (docs/PRIMERJAVA-VMESNIKOV-2026.md §2):
+ * delež nabavne vrednosti prodane pijače v prihodku pijač. Čista FRONTEND
+ * agregacija obstoječega /api/menu-engineering (isti vir kot inženiring menija
+ * — BOM-aware cena porcije × prodana količina; 0 novih backend poti, isti
+ * perm reports.sales). Pijačne kategorije se prepoznajo po imenu (hevronika
+ * SL/HR: pijač/pivo/vino/žgane/kava/sok/voda/…); KPI velja za njih, tabela
+ * pokaže VSE kategorije z barvnim pasom benchmarka (do 20 % odlično,
+ * 20–28 % v okviru, nad 28 % pozor — gostinska praksa za točene pijače). */
+
+const PC_BEVERAGE_HINTS = [
+  'pijač', 'pijac', 'pivo', 'piv', 'vino', 'vin', 'žgan', 'vodka', 'whisk', 'gin ',
+  'rum ', 'liker', 'šampanj', 'champagn', 'sekt', 'kava', 'kav', 'sok', 'mineraln',
+  'voda', 'radler', 'cocktail', 'koktej', 'aperol', 'prosecc', 'brezalkoholn',
+  'digestiv', 'aperitiv', 'čaj', 'espres',
+]
+
+/** Pure: je kategorija (po imenu) pijačna? (hevronika po imenu, SL/HR praksa) */
+export function isBeverageCategory(name: string): boolean {
+  const n = (name || '').toLowerCase()
+  return PC_BEVERAGE_HINTS.some((h) => n.includes(h))
+}
+
+/** Pure: pas benchmarka pour cost — barva + ključ i18n. */
+export function pourCostBand(pct: number | null): 'good' | 'ok' | 'warn' | 'unknown' {
+  if (pct == null || !Number.isFinite(pct)) return 'unknown'
+  if (pct <= 20) return 'good'
+  if (pct <= 28) return 'ok'
+  return 'warn'
+}
+
+const PC_BAND_STYLE: Record<ReturnType<typeof pourCostBand>, string> = {
+  good: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  ok: 'bg-amber-100 text-amber-800 border-amber-200',
+  warn: 'bg-rose-100 text-rose-800 border-rose-200',
+  unknown: 'bg-stone-100 text-stone-600 border-stone-200',
+}
+
+export function PourCostCard() {
+  const { t } = useI18n()
+  const [days, setDays] = useState<'30' | '60' | '90'>('30')
+  const [data, setData] = useState<MeResp | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setBusy(true)
+      setErr('')
+      try {
+        const d = await api<MeResp>(`/api/menu-engineering?days=${days}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [days, reload])
+
+  // agregacija po kategorijah: prihodek = Σ postavk, COGS = Σ (cena porcije × količina)
+  const byCat = new Map<string, { revenue: number; cogs: number; known: boolean }>()
+  for (const it of data?.items ?? []) {
+    const agg = byCat.get(it.category) ?? { revenue: 0, cogs: 0, known: false }
+    agg.revenue += it.revenue
+    if (it.costKnown) {
+      agg.cogs += it.cost * it.qtySold
+      agg.known = true
+    }
+    byCat.set(it.category, agg)
+  }
+  const rows = [...byCat.entries()]
+    .map(([name, v]) => ({ name, ...v, pct: v.revenue > 0 && v.known ? (v.cogs / v.revenue) * 100 : null }))
+    .sort((a, b) => (b.pct ?? 999) - (a.pct ?? 999))
+
+  const bevRows = rows.filter((r) => isBeverageCategory(r.name))
+  const bevRevenue = bevRows.reduce((s, r) => s + r.revenue, 0)
+  const bevCogs = bevRows.reduce((s, r) => s + r.cogs, 0)
+  const bevPct = bevRevenue > 0 && bevRows.some((r) => r.known) ? (bevCogs / bevRevenue) * 100 : null
+  const bevBand = pourCostBand(bevPct)
+
+  return (
+    <Card data-region="pour-cost-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><Scale className="w-4 h-4" /> {t('pc.title')}</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-stone-500">{t('pc.desc')}</p>
+          <div className="flex items-center gap-2">
+            <Select value={days} onValueChange={(v) => setDays(v as '30' | '60' | '90')}>
+              <SelectTrigger className="h-8 w-28" aria-label={t('me.period')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">{t('me.days30')}</SelectItem>
+                <SelectItem value="60">{t('me.days60')}</SelectItem>
+                <SelectItem value="90">{t('me.days90')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)}>
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
+        {!err && rows.length === 0 && !busy && <p className="text-sm text-stone-500">{t('pc.empty')}</p>}
+
+        {rows.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">{t('pc.kpi')}</p>
+                <p className={`text-2xl font-bold ${bevBand === 'good' ? 'text-emerald-700' : bevBand === 'ok' ? 'text-amber-700' : bevBand === 'warn' ? 'text-rose-700' : ''}`}>
+                  {bevPct == null ? '—' : `${bevPct.toFixed(1)} %`}
+                </p>
+                {bevRows.length === 0 && <p className="text-xs text-stone-400">{t('pc.noBeverage')}</p>}
+              </div>
+              <div className="rounded-lg border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">{t('pc.revenue')}</p>
+                <p className="text-2xl font-bold">{fmtEUR(bevRevenue)}</p>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">{t('pc.cogs')}</p>
+                <p className="text-2xl font-bold">{fmtEUR(bevCogs)}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline" className={PC_BAND_STYLE.good}>{t('pc.bandGood')}</Badge>
+              <Badge variant="outline" className={PC_BAND_STYLE.ok}>{t('pc.bandOk')}</Badge>
+              <Badge variant="outline" className={PC_BAND_STYLE.warn}>{t('pc.bandWarn')}</Badge>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-stone-500">
+                    <th className="py-2 pr-2 font-medium">{t('me.th.category')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('pc.revenue')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">{t('pc.cogs')}</th>
+                    <th className="py-2 pr-2 font-medium text-right">Pour cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const band = pourCostBand(r.pct)
+                    return (
+                      <tr key={r.name} className="border-b border-stone-100 last:border-0">
+                        <td className="py-2 pr-2">
+                          <span className="flex items-center gap-1.5">
+                            {r.name}
+                            {isBeverageCategory(r.name) && <Badge className="bg-sky-100 text-sky-800" variant="outline">{t('pc.beverage')}</Badge>}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-2 text-right tabular-nums">{fmtEUR(r.revenue)}</td>
+                        <td className="py-2 pr-2 text-right tabular-nums">{r.known ? fmtEUR(r.cogs) : '—'}</td>
+                        <td className="py-2 pr-2 text-right">
+                          {r.pct != null
+                            ? <Badge variant="outline" className={PC_BAND_STYLE[band]}>{r.pct.toFixed(1)} %</Badge>
+                            : <span className="text-stone-400">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-stone-400">{t('pc.note')}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

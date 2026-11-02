@@ -603,6 +603,16 @@ export const sl: Record<string, string> = {
   'inv.filterLow': 'Pod minimumom ({n})',
   'inv.filterOut': 'Zmanjkalo ({n})',
   'inv.outBadge': 'Zmanjkalo',
+  // v1.230.0 — samodejni 86 ob izpraznitvi zaloge (Toast Inventory standard)
+  'inv.auto86Title': 'Samodejni 86 ob izpraznitvi zaloge',
+  'inv.auto86Desc': 'Ko razknjižba ob prodaji sprazni zalogo, se povezani menu artikli samodejno označijo razprodani (86); ob prilivu zaloge (prevzem, prejem, popis, storno, povratek odpada, prenos) se samodejno vrnejo v prodajo.',
+  'inv.auto86On': 'Vklopljeno',
+  'inv.auto86Off': 'Izklopljeno',
+  'inv.auto86Mode': 'Način',
+  'inv.auto86ModeDirect': 'Povezani artikli (varno)',
+  'inv.auto86ModeRecipe': 'Po recepturi (vsi potrošniki)',
+  'inv.auto86RecipeHint': 'Receptni način ugasne vsak artikel, ki porablja izpraznjeno sestavino — uporabljajte le z discipliniranimi recepturami.',
+  'inv.auto86Saved': 'Nastavitev samodejnega 86 shranjena.',
   'inv.searchNone': 'Noben artikel ne ustreza iskanju/filteru — počisti iskalnik ali preklopi na »Vsi«.',
   'inv.empty': 'Zaloga je prazna.',
   'inv.minShort': 'min',
@@ -1656,6 +1666,10 @@ export const sl: Record<string, string> = {
   'tc.okBreakEnd': 'Odmor zaključen.',
   'tc.okClockOut': 'Odjava zabeležena — skupaj {label}{pay}.',
   'tc.okClockOutPay': ' ({pay})',
+  // v1.230.0 — Toast dec 2025: razprodano/nizka zaloga ob prijavi (clock-in banner)
+  'tc.lowStockTitle': 'Zaloga ob prijavi: {count} artiklov pod mejo ({out} razprodanih).',
+  'tc.lowStockOut': 'razprodano',
+  'tc.lowStockMore': '… in še {n} drugih',
   'tc.okApproved': 'Vnos potrjen.',
   'tc.okDisputed': 'Vnos označen kot sporen.',
   'tc.errEmployee': 'Izberi zaposlenega.',
@@ -2303,6 +2317,8 @@ export const sl: Record<string, string> = {
   'sale.empty': 'Ni artiklov za hitro prodajo.',
   // Issue #71 audit-16: 86 na ploščici artikla — razlog v rdečem, ne sivi sivi
   'sale.soldOut': 'Razprodano (86)',
+  // v1.230.0 — samodejni 86: toast ob plačilu, ki je spraznilo zalogo
+  'sale.auto86Toast': 'Samodejno razprodano (86) — zaloga je izpraznjena:',
   'sale.cartTitle': 'Košara',
   'sale.cartEmpty': 'Košara je prazna',
   'sale.cartEmptyHint': 'Klikni artikel, da ga dodaš.',
@@ -2705,6 +2721,19 @@ export const sl: Record<string, string> = {
 
   // ── OPS-8 v1.71.0 — Menu inženiring (Kasavana-Smith) ──
   'me.title': 'Analiza menija', // #73 audit-11: usklajeno s tabs.inzeniring (brez izposojenke)
+  // v1.230.0 — taksacija pijače (pour cost, šank; Clover/Toast benchmark)
+  'pc.title': 'Taksacija pijače (pour cost)',
+  'pc.desc': 'Delež nabavne vrednosti prodane pijače v prihodku pijač — vodstvo šanka. Benchmark: do 20 % odlično, 20–28 % v okviru, nad 28 % pozor.',
+  'pc.kpi': 'Pour cost (pijače)',
+  'pc.revenue': 'Prihodek',
+  'pc.cogs': 'Nabavna vrednost',
+  'pc.empty': 'V izbranem obdobju ni (plačane) prodaje.',
+  'pc.noBeverage': 'Med kategorijami nisem prepoznal pijač — poimenujte kategorijo npr. »Pijače«.',
+  'pc.bandGood': 'do 20 %',
+  'pc.bandOk': '20–28 %',
+  'pc.bandWarn': 'nad 28 %',
+  'pc.beverage': 'pijača',
+  'pc.note': 'COGS = cena porcije po recepturi × prodana količina (BOM, donosi); brez recepture oz. povezave artikel ostane brez podatka (—).',
   'me.desc': 'Analiza popularnosti in marže (Kasavana-Smith): zvezdice zaščiti, vprege repricing, uganke promoviraj, pse preskoči ali prenovi.',
   'me.period': 'Obdobje',
   'me.days30': '30 dni',
