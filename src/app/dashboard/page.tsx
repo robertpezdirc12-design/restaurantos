@@ -4658,6 +4658,10 @@ function DashboardInner() {
                            postajni tok) je navaden div — aria-disabled ovojnica bi
                            bralcem zaslonov javila gumb Servirano kot onemogočen. */
                         const itFlash = !!kdsFlash.items[it.id]
+                        /* v1.237.0 (PRIMERJAVA §14, Toast KDS »horizontal modifier display
+                           mode«): izbrane opcije postavke — kuhar vidi TOČNO, kaj
+                           pripraviti (»0,5 L«, »zveča sira«), ne samo ime artikla. */
+                        const itMods = it.modifiers ?? []
                         const itRow = (rowBody: ReactNode) => itInteractive ? (
                           <KdsTapCard
                             key={it.id}
@@ -4696,6 +4700,17 @@ function DashboardInner() {
                               {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne "13.496′") */}
                               <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
                             </div>
+                              {/* v1.237.0 (PRIMERJAVA §14, Toast KDS horizontalni prikaz):
+                                  izbrane opcije v ENI vrstici pod imenom — Toast
+                                  avgust 2026: horizontal mode prihrani vertikalni
+                                  prostor (več listkov na zaslon); prej jih KDS sploh
+                                  ni videl (API jih ni nosil). Prazno = brez vrstice
+                                  (nič regresije gostote). */}
+                              {itMods.length > 0 && (
+                                <p data-region="kds-item-modifiers" className="text-xs sm:text-sm font-semibold text-stone-600 min-w-0 break-words" title={itMods.join(' · ')}>
+                                  <span className="sr-only">{t('kds.itemOptions')}: </span>{itMods.join(' · ')}
+                                </p>
+                              )}
                             {/* B: postaja + potrjeni alergeni (jantorni čipi) + opomba — ločena vrstica.
                                 Issue #71 audit-14: RDEČ pas je ZDAJ samo na vrhu listka (resnične alergije);
                                 per-item opozorilo ostane rdeče, vendar kot pas, ne majhen čip. */}
@@ -4763,6 +4778,9 @@ function DashboardInner() {
                             <div key={v.id} data-region="kds-ticket-voided-row" className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 rounded-md border px-2 py-1 ${kdsFlash.voids[v.id] ? 'border-red-400 bg-red-100/80 animate-pulse' : 'border-red-200 bg-white/60'}`}>
                               <Ban className="w-3.5 h-3.5 text-red-600 shrink-0" aria-hidden />
                               <p className="text-sm font-semibold text-stone-500 line-through truncate min-w-0">{v.qty}× {v.name}</p>
+                              {(v.modifiers ?? []).length > 0 && (
+                                <span data-region="kds-voided-modifiers" className="text-xs text-stone-400 line-through truncate max-w-48 shrink-0" title={(v.modifiers ?? []).join(' · ')}>{(v.modifiers ?? []).join(' · ')}</span>
+                              )}
                               <span className="text-xs font-bold uppercase text-red-700 shrink-0">{t('kds.voidedItem')}</span>
                               {v.voidReasonName && <span className="text-xs text-red-600 shrink-0 truncate max-w-48" title={v.voidReasonName}>· {v.voidReasonName}</span>}
                             </div>

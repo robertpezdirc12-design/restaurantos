@@ -487,3 +487,78 @@ razlogom). Kuhinja zdaj za vsak dogodek dobi PRAVI signal: kaj je novo,
 kaj je dodano, kaj je preklicano — po zvoku LOČLJIVO, po videzu v 10 s
 zaglavljenem. Preostanek raziskave so zavestne izključitve/načrti
 (checklisti = odločitev lastnika).
+
+---
+
+## 14. Raziskava december 2026 / januar 2027 — POLISH val 3 v1.237.0 (KDS: modifikatorji vidni)
+
+Viri: Toast product updates (avgust 2026 »KDS now supports horizontal modifier
+display mode« + oktober 2026 »chimes only for changed tickets in Horizontal
+modifier display mode« + support ›Advanced Modifier Configuration‹ september
+2026), Square KDS vodnik 2026 (»It makes modifiers visible … modifiers like
+›no onions‹ are why kitchens stop guessing«), Square Kiosk oktober 2026
+(21,5-palčni zaslon, večji fonti — AI/glasovno naročanje je izven obsega
+pravila »brez AI«), Lightspeed marec 2026 (»special requests, dietary
+restrictions and other specific notes to the kitchen instantly«).
+
+### A) Izbrane opcije postavke NA KDS LISTKU (Toast »horizontal modifier display mode«)
+
+**Kako ima Toast:** vsaka postavka na listku nosi svoje izbrane opcije
+(velikost pijače, dodatek, »brez čebule«) — v VERTICAL načinu vsaka opcija
+dobi svojo vrstico, v HORIZONTAL načinu (nov avgust 2026) pa vse izbrane
+opcije tečejo v ENI vrstici pod imenom artikla: prihranek vertikalnega
+prostora = več listkov na zaslonu hkrati (oktober 2026 je način pripeljal
+še ločene zvončke za spremenjene listke). Square KDS vodnik imenuje
+vidnost modifikatorjev kot eno od treh temeljnih nalog KDS: naročilo brez
+opcij je naročilo, ki ga kuhinja ugiba. Lightspeed marec 2026 posebne
+zahteve/dietne opombe pošilja na kuhinjo takoj.
+
+**Kako ima RestaurantOS (v1.237.0):** opcije so v bazi obstajale od OSS-10
+(v1.209.0 — `OrderItemModifier` vrstice s posnetkom imena/cene ob nastanku
+naročila; POS izbira variante v `src/app/dashboard/page.tsx` dialog
+`variantPick` → `posVariantItemsPayload` → `createOrderCore` validira cene
+iz DB in zapize vrstice), a jih je `GET /api/kitchen` NOSIL BREZ relacije —
+KDS zaslon in tiskani listki s KDS gumbov so pokazali SAMO ime artikla.
+Popravek:
+
+- **API** (`src/app/api/kitchen/route.ts`): include
+  `OrderItemModifier: { select: { name: true } }` v glavni poizvedbi vrste
+  IN v poizvedbi preklicanih postavk — preslikavo opravi obstoječi
+  `mapOrderItem` (`src/lib/map.ts`, polje `modifiers` je bilo aditivno od
+  v1.209.0; vrsta brez opcij pošlje `[]`). Tudi PREKLICANA postavka nosi
+  svoje opcije — kuhar ve, KATERA velikost/varianta ne gre ve v pripravo.
+- **Klient** (`src/app/dashboard/page.tsx`, `renderKdsTicket`): ena
+  horizontalna vrstica `data-region="kds-item-modifiers"` pod imenom
+  postavke (Toast horizontal mode — `text-xs sm:text-sm font-semibold
+  text-stone-600`, imena ločena s »·«, `break-words` za dolge sezname,
+  `title` s celotnim seznamom; sr-only predpona `kds.itemOptions` za bralce
+  zaslonov). Prazno = brez vrstice — nič regresije gostote (Issue #69).
+  Preklicana vrstica nosi opcije prečrtano (`kds-voided-modifiers`).
+- **Tiskani listki** (`printKitchenTicket` → `buildKitchenTicketLines`,
+  `src/lib/devices/print.ts`): vrstice `+ opcija` so obstajale od v1.209.0,
+  a je vhod `it.modifiers ?? []` s KDS poti vedno padel v prazno — ZDAJ,
+  ko API nosi relacijo, tiskamo prave opcije BREZ spremembe tiskalnega
+  sloja (prosti popravilni učinek include).
+- **SSE svežina** (`src/app/api/kitchen/stream`): brez spremembe — tok
+  nosi le podpis svežine, klient ob `changed` ponovno naloži celo vrsto
+  (opcije pridejo z njo).
+
+### B) Druge točke raziskave (ocena)
+
+- **Square Kiosk oktober 2026** (21,5-palčni zaslon, večji fonti, hitrejše
+  nalaganje menija, »picture-based categories«): naše obroke/kiosk teče na
+  gostujočem `/kiosk` s slikami kategorij od v1.141 — večji zaslon je
+  hardver, ne funkcija; AI/glasovno naročanje je ZAVESTNA izključitev
+  (pravilo projekta »0 AI«).
+- **Lightspeed marec 2026 — posebne zahteve takoj na kuhinjo**: imamo —
+  opomba postavke (`note`, ℹ na KDS + `opomba:` na tiskanem listu) +
+  izrecno alergensko opozorilo (rdeči pas, Issue #7).
+- **Toast oktober 2026 — chimes only for changed tickets**: pokrito z
+  v1.236.0 (diferencialni pogon — zvok SAMO ob novem/spremembi/preklicu,
+  ne ob vsakem loadu).
+
+**Sklep §14:** zadnja tiha vrzela KDS poteče — izbrane opcije postavke so
+zdaj vidne na vseh treh poteh (zaslon vrste, preklicana vrstica, tiskani
+listek), pri čemer so podatki obstajali od v1.209.0 (vrzel je bila čisto
+v include + rendru). Kuhinja ne ugiba več, ali je »Pizza« mala ali velika,
+z ali brez čebule.

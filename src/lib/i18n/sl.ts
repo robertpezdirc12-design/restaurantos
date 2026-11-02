@@ -2376,6 +2376,9 @@ export const sl: Record<string, string> = {
   'kds.newItems': '+{n} novo',
   'kds.voidedTitle': 'Preklicano — ne pripravljaj več',
   'kds.voidedItem': 'Preklicano',
+  // v1.237.0 (PRIMERJAVA §14, Toast KDS »horizontal modifier display mode«):
+  // izbrane opcije postavke (velikost/dodatki) na listku — sr-only predpona
+  'kds.itemOptions': 'Izbrane opcije',
   'tables.resvNext': 'Naslednja rezervacija',
   // Plačilni dialog (dopolnitve)
   'payment.gcMinChars': 'Vpišite vsaj zadnjih 6 znakov številke kartice.',

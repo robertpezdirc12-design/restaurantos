@@ -262,8 +262,8 @@ describe('Č2 — sendDailyDigest z urnim odsekom (transportFactory šiv)', () =
 
 describe('Č3 — registri v1.206.0', () => {
   test('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.236.0')
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toMatch(/APP_VERSION = '1\.236\.0'/)
+    expect(APP_VERSION).toBe('1.237.0')
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toMatch(/APP_VERSION = '1\.237\.0'/)
   })
 
   test('GAP dokument: OSS-8 A-del IZVEDENO @ v1.206.0 + poštena B-meja', () => {
@@ -280,8 +280,8 @@ describe('Č3 — registri v1.206.0', () => {
   })
 
   test('i18n pariteta nespremenjena — e-poštna besedila so SL literali po konvenciji', () => {
-    expect(Object.keys(sl).length).toBe(3857)
-    expect(Object.keys(hr).length).toBe(3857)
+    expect(Object.keys(sl).length).toBe(3858)
+    expect(Object.keys(hr).length).toBe(3858)
   })
 
   test('0 DDL — urni odsek je vrednost, ne model (shema nespremenjena)', () => {

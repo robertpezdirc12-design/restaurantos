@@ -401,9 +401,9 @@ describe('v1.210.0 — OSS-10 B-del Č2b: disk kontrakt (ožičenje)', () => {
 /* ═══════════════════ Č3. REGISTRI ═══════════════════ */
 
 describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
-  it('verzija 1.236.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.236.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.236\.0'/)
+  it('verzija 1.237.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.237.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.237\.0'/)
   })
 
   it('GAP OSS-10 B-del: IZVEDENO @ v1.210.0 z dokazi + nova meja', () => {
@@ -420,7 +420,7 @@ describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
 
   it('AUDIT §8: števec 3738 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3857 ključev SL in 3857 HR')
+    expect(audit).toContain('3858 ključev SL in 3858 HR')
     expect(audit).toContain('POSODOBITEV (v1.210.0)')
   })
 
@@ -433,8 +433,8 @@ describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
   })
 
   it('i18n pariteta: 3709 → 3712 ključev v OBIH jezikih', () => {
-    expect(Object.keys(sl).length).toBe(3857)
-    expect(Object.keys(hr).length).toBe(3857)
+    expect(Object.keys(sl).length).toBe(3858)
+    expect(Object.keys(hr).length).toBe(3858)
   })
 
   it('oznaka slike ↔ APP_VERSION (selfhost kontrakt ostane pinežen)', () => {

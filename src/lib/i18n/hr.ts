@@ -2371,6 +2371,9 @@ export const hr: Record<string, string> = {
   'kds.newItems': '+{n} novo',
   'kds.voidedTitle': 'Otkazano — ne pripremaj više',
   'kds.voidedItem': 'Otkazano',
+  // v1.237.0 (PRIMERJAVA §14, Toast KDS »horizontal modifier display mode«):
+  // odabrane opcije stavke (veličina/dodaci) na listiću — sr-only prefiks
+  'kds.itemOptions': 'Odabrane opcije',
   'tables.resvNext': 'Sljedeća rezervacija',
   // Dijalog plaćanja (dopune)
   'payment.gcMinChars': 'Upišite barem zadnjih 6 znakova broja kartice.',

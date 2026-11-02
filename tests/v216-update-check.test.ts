@@ -432,8 +432,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
       expect(hr[k]).toBeTruthy()
     }
     // števca slovarjev: 3731 → 3737 (6 novih v vsakem)
-    expect(Object.keys(sl).length).toBe(3857)
-    expect(Object.keys(hr).length).toBe(3857)
+    expect(Object.keys(sl).length).toBe(3858)
+    expect(Object.keys(hr).length).toBe(3858)
   })
 
   it('.env.example dokumentira UPDATE_CHECK_URL (privzeto/izklopljeno/napačno)', () => {
@@ -480,9 +480,9 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 /* ── Č3 — registri ─────────────────────────────────────────────────────────── */
 
 describe('v1.216.0 — Č3: registri', () => {
-  it('verzija 1.236.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.236.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.236\.0'/)
+  it('verzija 1.237.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.237.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.237\.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
@@ -492,7 +492,7 @@ describe('v1.216.0 — Č3: registri', () => {
 
   it('AUDIT §8: števec 3738 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3857 ključev SL in 3857 HR')
+    expect(audit).toContain('3858 ključev SL in 3858 HR')
     expect(audit).toContain('**POSODOBITEV (v1.216.0):**')
     expect(audit).toContain('sys.upd*')
   })

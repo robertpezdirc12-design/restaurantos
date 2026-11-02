@@ -140,8 +140,8 @@ describe('v1.236.0 C — klient: preklicane postavke na listku', () => {
 
 describe('v1.236.0 D — i18n (SL + HR pariteta, 3853 → 3857)', () => {
   test('D1: števci', () => {
-    expect(Object.keys(sl).length).toBe(3857)
-    expect(Object.keys(hr).length).toBe(3857)
+    expect(Object.keys(sl).length).toBe(3858)
+    expect(Object.keys(hr).length).toBe(3858)
   })
 
   test('D2: novi ključi KDS (4) obstajajo v obeh jezikih', () => {
@@ -163,8 +163,8 @@ describe('v1.236.0 D — i18n (SL + HR pariteta, 3853 → 3857)', () => {
 })
 
 describe('v1.236.0 Ž — registri (doc-truth + verzija)', () => {
-  test('Ž1: verzija 1.236.0', () => {
-    expect(APP_VERSION).toBe('1.236.0')
+  test('Ž1: verzija', () => {
+    expect(APP_VERSION).toBe('1.237.0')
   })
 
   test('Ž2: PRIMERJAVA §13 (raziskava december 2026 — Flash Changes + preklicane postavke)', () => {
