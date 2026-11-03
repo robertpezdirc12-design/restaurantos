@@ -33,6 +33,7 @@ export const TAB_PERM: Record<string, string | string[]> = {
   delovnicas: TAB_PERM_ALL, // Delovni čas — ura je za VSE zaposlene (samooskrba; ekipni del notri gating employees.manage)
   urnik: TAB_PERM_ALL, // OPS-7: urnik izmen — pogled svojih izmen za vse; urejanje gating timeclock.manage (notri + backend)
   haccp: ['settings.manage', 'haccp.execute'], // OPS-4 v1.67.0 — urejanje načrtov (settings.manage) ALI izvedba kontrol (haccp.execute — kuhinja, čistilka)
+  opravila: TAB_PERM_ALL, // v1.246.0 (PRIMERJAVA §20) — digitalni checklisti: plošča za VSE prijavljene (odpiralni seznam izpolni kdor odpira, isti prag kot delovnica); predloge (PUT templates) gating settings.manage strežniško
   stroski: 'reports.sales',
   zvestoba: 'reports.sales',
   mnenja: 'reservations.manage',

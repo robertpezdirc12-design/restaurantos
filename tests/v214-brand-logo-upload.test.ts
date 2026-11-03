@@ -446,8 +446,8 @@ describe('v1.214.0 — Č2: i18n (SL/HR pariteta ent.logo*)', () => {
   })
 
   it('3721 → 3731 ključev (10 novih v1.214.0 v obeh jezikih)', () => {
-    expect(Object.keys(sl).length).toBe(3889)
-    expect(Object.keys(hr).length).toBe(3889)
+    expect(Object.keys(sl).length).toBe(3936)
+    expect(Object.keys(hr).length).toBe(3936)
   })
 })
 
@@ -478,8 +478,8 @@ describe('v1.214.0 — Č2: dokumentacija + 0 DDL dokaz', () => {
 /* ── Č3 — registri (verzija + oznaka slike + AUDIT števec) ──────────────── */
 describe('v1.214.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.245.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.245\.0'/)
+    expect(APP_VERSION).toBe('1.246.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.246\.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {
@@ -491,7 +491,7 @@ describe('v1.214.0 — Č3: registri', () => {
 
   it('AUDIT §8: števec 3738 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('3889 ključev SL in 3889 HR')
+    expect(audit).toContain('3936 ključev SL in 3936 HR')
     expect(audit).toContain('**POSODOBITEV (v1.214.0):** dodani ključi `ent.logo*` (10 ključev')
   })
 })

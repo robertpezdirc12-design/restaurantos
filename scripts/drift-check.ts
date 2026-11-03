@@ -542,6 +542,25 @@ export function isReservationComboStatement(stmt: string): boolean {
 }
 
 /**
+ * v1.246.0 (PRIMERJAVA §20): OPERATIVNI VAL — nova tabela ChecklistRun
+ * (digitalni checklisti: ena vrstica na pojavitev predloge, itemResults
+ * Json PO POSTAVKI { kind, value, at, byId, byName } — »who completed what«;
+ * stanje open/completed izpelje strežnik iz pokritosti postavk). Matcher je
+ * ime tabeli vezan ("ChecklistRun") — vzorec isDocumentsStatement (OSS-2):
+ * CREATE TABLE/INDEX + ALTER SAMO z ADD COLUMN klavzulami (strogo enosmerno
+ * aditivno — vzorec reservation-combo); DROP TABLE/COLUMN ali karkoli drugega
+ * ostane unexpected. Ko je DDL apliciran, drift izgine.
+ */
+export function isChecklistRunsStatement(stmt: string): boolean {
+  if (!/"ChecklistRun"/.test(stmt)) return false
+  if (/^(CREATE\s+TABLE|CREATE\s+(UNIQUE\s+)?INDEX|CREATE\s+INDEX)\b/i.test(stmt)) return true
+  const m = /^ALTER\s+TABLE\s+"ChecklistRun"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  return clauses.length > 0 && clauses.every((c) => /^ADD\s+COLUMN\s+"/i.test(c))
+}
+
+/**
  * OSS-2 (v1.203.0): dokumenti s priponkami — NOVA tabela Document (SOP-i,
  * pogodbe, recepture, navodila; vsebina kot bytea — read-only disk na
  * produkciji, datoteke NIKOLI ne grejo na lokalni disk). Matcher je ime tabeli
@@ -1036,6 +1055,24 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'prevzela v isti verziji — DROP faza ne obstaja). Ko je DDL apliciran, drift izgine ' +
       'in vnos postane mrtva koda.',
     matches: isReservationComboStatement,
+  },
+  {
+    id: 'checklist-runs',
+    reason:
+      'OPERATIVNI VAL (v1.246.0, PRIMERJAVA-VMESNIKOV-2026 §20) — nova aditivna tabela ' +
+      'ChecklistRun (digitalni checklisti, Lightspeed Tasks marec 2026: ena vrstica na ' +
+      'pojavitev predloge — occurrenceKey `${templateId}|YYYY-MM-DD` z dedup @@unique; ' +
+      'itemResults Json nosi odziv PO POSTAVKI { kind, value, at, byId, byName } — ' +
+      '»who completed what«; stanje open/completed izpelje STREŽNIK iz pokritosti). ' +
+      'Predloge živijo v Integration vrstici ops-checklists-config (0 DDL). NI vroče ' +
+      'poti: rute /api/checklists/** probajo tabelo (haccp-plans vzorec) — dokler DDL ' +
+      'ni apliciran, plošča vrne { checklists: [], ddlPending: true } in pisanja 503; ' +
+      'nobena živa funkcionalnost se ne zlomi. Produkcija čaka DDL korak: admin ruta ' +
+      '/api/admin/migrate-checklist-runs (konzola Enterprise → Shema migracije → ' +
+      'checklist-runs, en klik). Matcher STROGO enosmernen CREATE (main shema je tabelo ' +
+      'prevzela v isti verziji — DROP faza ne obstaja). Ko je DDL apliciran, drift izgine ' +
+      'in vnos postane mrtva koda.',
+    matches: isChecklistRunsStatement,
   },
 ]
 

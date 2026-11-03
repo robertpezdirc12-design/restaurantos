@@ -32,6 +32,7 @@ export type { InventoryT, SupplierT, RecipeT, RecipeLineT } from './tabs/zaloga-
 export { ShiftsTab, ExpensesTab } from './tabs/finance-tab'
 export type { ShiftT, FinancialT, ExpenseT } from './tabs/finance-tab'
 export { HaccpTab } from './tabs/haccp-tab'
+export { OpravilaTab } from './tabs/opravila-tab'
 export type { HaccpT, HaccpPlanT } from './tabs/haccp-tab'
 export { LoyaltyTab, FeedbackTab } from './tabs/gostje-tab'
 export type { LoyaltyT, FeedbackT } from './tabs/gostje-tab'

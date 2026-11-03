@@ -592,6 +592,20 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-reservation-combo',
     probe: async () => columnExists('Reservation', 'comboTableIds'),
   },
+  {
+    // v1.246.0 (PRIMERJAVA §20): OPERATIVNI VAL — nova tabela ChecklistRun
+    // (digitalni checklisti, Lightspeed Tasks marec 2026). Ena vrstica na
+    // pojavitev predloge (occurrenceKey dedup @@unique); itemResults Json
+    // PO POSTAVKI { kind, value, at, byId, byName } — »who completed what«;
+    // stanje open/completed izpelje strežnik iz pokritosti postavk.
+    // Predloge živijo v Integration vrstici ops-checklists-config (0 DDL).
+    // NI vroče poti: /api/checklists/** probajo tabelo (haccp-plans vzorec)
+    // — do DDL plošča vrne { checklists: [], ddlPending: true }, pisanja 503.
+    id: 'checklist-runs',
+    descKey: 'mig.checklistRuns.desc',
+    endpoint: '/api/admin/migrate-checklist-runs',
+    probe: async () => tableExists('ChecklistRun'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

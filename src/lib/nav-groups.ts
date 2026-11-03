@@ -39,7 +39,7 @@ export const NAV_GROUP_OF: Record<string, NavGroupKeyT> = {
   racuni: 'finance', obracun: 'finance', stroski: 'finance', napitnine: 'finance',
   zaloge: 'finance', nabava: 'finance', odpad: 'finance', prenosi: 'finance',
   inzeniring: 'finance', popusti: 'finance',
-  zaposleni: 'staff', izmene: 'staff', delovnicas: 'staff', urnik: 'staff', odpiralnicas: 'staff', haccp: 'staff',
+  zaposleni: 'staff', izmene: 'staff', delovnicas: 'staff', urnik: 'staff', odpiralnicas: 'staff', haccp: 'staff', opravila: 'staff',
   nastavitve: 'system', integracije: 'system', enterprise: 'system',
 }
 
@@ -72,7 +72,7 @@ export const MOBILE_ROLE_TABS: Record<string, string[]> = {
   BAR: ['pregled', 'prodaja', 'mize', 'narocila', 'izmene'],
   WAITER: ['pregled', 'mize', 'narocila', 'rezervacije', 'cakalna'],
   STAFF: ['pregled', 'mize', 'narocila', 'rezervacije', 'cakalna'],
-  CLEANER: ['pregled', 'haccp', 'delovnicas', 'urnik'],
+  CLEANER: ['pregled', 'haccp', 'opravila', 'delovnicas', 'urnik'],
   WAREHOUSE: ['pregled', 'zaloge', 'nabava', 'prenosi', 'odpad'],
   ACCOUNTING: ['pregled', 'racuni', 'stroski', 'obracun', 'napitnine'],
 }

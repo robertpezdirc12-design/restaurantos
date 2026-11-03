@@ -57,8 +57,8 @@ describe('audit-10 A — skupine stranskega stebra (nav-groups)', () => {
     }
   })
 
-  test('skupine pokrivajo VSE 32 zavihke brez ostankov (vsak id natanko enkrat)', () => {
-    expect(new Set(dashboardIds).size).toBe(32)
+  test('skupine pokrivajo VSE 33 zavihke brez ostankov (vsak id natanko enkrat)', () => {
+    expect(new Set(dashboardIds).size).toBe(33) // v1.246.0 (§20): +opravila (digitalni checklisti)
     for (const id of new Set(dashboardIds)) {
       // en id → ena skupina (zemljevid je Record — sama struktura to zagotavlja)
       expect(Object.keys(NAV_GROUP_OF)).toContain(id)

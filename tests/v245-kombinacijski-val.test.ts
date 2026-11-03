@@ -402,7 +402,7 @@ describe('v1.245.0 B · walk-in rezerva (onlineSeatsFor)', () => {
 
 describe('v1.245.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.245.0', () => {
-    expect(APP_VERSION).toBe('1.245.0')
+    expect(APP_VERSION).toBe('1.246.0')
   })
 
   test('Ž2: PRIMERJAVA §19 dokumentira kombinacijski val', () => {
@@ -412,7 +412,7 @@ describe('v1.245.0 Ž · verzija in dokumenti', () => {
     expect(doc).toContain('comboTableIds')
   })
 
-  test('Ž3: i18n — novi ključi v SL in HR (pariteta 3889/3889)', () => {
+  test('Ž3: i18n — novi ključi v SL in HR (pariteta 3936/3936)', () => {
     const keys = [
       'resv.comboTitle', 'resv.comboHint', 'resv.comboAdd', 'resv.comboRemove',
       'resv.comboEmpty', 'resv.comboSeats', 'resv.comboSaved', 'resv.comboAutoOk',
@@ -456,6 +456,6 @@ describe('v1.245.0 Ž · verzija in dokumenti', () => {
 
   test('Ž6: worklog vrhnji vnos nosi Task ID v1.245.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.245.0-kombinacijski-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.246.0-operativni-val')
   })
 })

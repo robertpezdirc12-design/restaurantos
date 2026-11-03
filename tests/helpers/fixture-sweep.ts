@@ -119,6 +119,10 @@ export const TEST_PREFIXES = [
   'v241-', // qr-autofire (v1.241.0 — push + avto-požig gostovega/tabličnega naročila)
   'v242-', // založni val (v1.242.0 — EAN per lokacija, receptura varovalo, serije odpada/inventure, varianca neto gibanja, pokritost)
   'v243-', // povračilna celica (v1.243.0 — storno vrača darilno kartico, točke, kupon; v243e- = živa E2E fikstura)
+  'v244-', // ritem val (v1.244.0 — pacing konfiguracija, pričakovani gosti, KDS zaklep)
+  'v245-', // kombinacijski val (v1.245.0 — kombinacije miz + walk-in rezerva)
+  'v246-', // operativni val (v1.246.0 — digitalni checklisti: predloge + izvedbe)
+  'v225-', // qa-tips-decimal (v1.225.0 — izmerjeno v živi dev bazi 3. 11. 2026: v225-Admin je ukradel demo-vstop)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

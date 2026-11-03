@@ -1274,6 +1274,35 @@ model HaccpPlan {
   @@index([active])
 }
 
+// v1.246.0 (PRIMERJAVA §20) — OPERATIVNI VAL: digitalni checklisti (Lightspeed
+// Tasks marec 2026). Ena vrstica = ena POJAVITEV predloge (occurrenceKey
+// `${templateId}|YYYY-MM-DD`, dedup @@unique). Predloge živijo v Integration
+// vrstici ops-checklists-config (0 DDL); ta tabela nosi IZVEDBE: itemResults
+// PO POSTAVKI { kind, value, at, byId, byName } — »who completed what«.
+// Stanje open/completed izpelje STREŽNIK iz pokritosti postavk (klient ne
+// more prijaviti zaključka). Scalar locationId BREZ FK (HaccpAction/EventLog
+// vzorec — fail-closed nad orphan ključi). Produkcija čaka DDL korak:
+// admin ruta /api/admin/migrate-checklist-runs (idempotentna CREATE TABLE).
+model ChecklistRun {
+  id              String    @id
+  locationId      String
+  templateId      String
+  templateName    String    @default("")
+  occurrenceKey   String    @default("")
+  state           String    @default("open") // open | completed
+  itemResults     String      @default("{}")
+  completedById   String    @default("")
+  completedByName String    @default("")
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([locationId, templateId, occurrenceKey])
+  @@index([locationId])
+  @@index([templateId])
+  @@index([state])
+}
+
 model HappyHourSchedule {
   id             String     @id
   name           String

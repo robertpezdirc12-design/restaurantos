@@ -1380,3 +1380,92 @@ sprosti CELA. Spletna kapaciteta pa spoštuje walk-in rezervo: gostje
 vidijo terminove zmogljivosti, ne fizičnih mest. Naslednji val: digitalni
 checklisti (Lightspeed Tasks marec 2026), saved report views (april 2026)
 ali sveža raziskava.
+
+## 20. Raziskava november 2026 — OPERATIVNI VAL v1.246.0 (digitalni checklisti)
+
+Nadaljevanje §19 (»naslednji val: digitalni checklisti — Lightspeed Tasks
+marec 2026«). Vir: Lightspeed »What's New: March 2026« — »Lightspeed Tasks
+is the in-built digital task management tool. Replace paper lists with
+digital checklists, assign tasks, track progress and see who completed
+what—all in one place«; nastavitev »Repeats: Daily, Weekly, Every two
+weeks, Every four weeks, Monthly, Every three months, Every six months«;
+odzivni tipi »photo, text, count, signature, or temperature«; Toast
+(Opening/Closing Checklist FOH/bar/kitchen — papirna predloga brez
+sledenja). Dve ugotovitvi, izmerjeni v kodi.
+
+### A) Odpiralni seznam = 15 ločenih HACCP načrtov (P1)
+
+**Kako imajo najboljši (Lightspeed, marec 2026):** en CHECKLIST = N
+nalog; osebje odšticka postavko po postavki, sistem si zapiše KDO in
+KDAJ (»track progress and see who completed what«), po zadnji postavki
+je seznam zaključen. Pogostosti: dnevno / tedensko / vsaka 2 tedna /
+vsaka 4 tedna / mesečno / vsaka 3 meseca / vsakih 6 mesecev + startni
+datum (»Select the first day you need the checklist to be completed«).
+
+**Kako je bilo pri nas (v1.245.0, izmerjeno):** HaccpPlan je ENA kontrola
+(ena meritve ali ena potrditev) — `steps: string[]` so le informativno
+besedilo brez odštickanja. Odpiralni seznam s 15 postavkami (luči, POS,
+žepnina, rezervacije …) bi zahteval 15 načrtov, vsakega posebej izvedenega;
+kategorije so živilsko-varnostne (temperature/cleaning/delivery/cooling/
+training) — »zakleni vhodna vrata« vanje ne sodi; pogostosti so samo
+daily/weekly/monthly brez startnega datuma. Papirna alternativa: list ob
+šanku, ki ga nihče ne arhivira.
+
+**Popravek v1.246.0:** trije sloji (vzorec §19):
+1. **Registr predlog** (0 DDL): Integration vrstica `ops-checklists-config`
+   per lokacija — [{ id, name, category (opening/closing/cleaning/
+   maintenance/security/other), repeat (daily/weekly/biweekly/every4weeks/
+   monthly/quarterly/semiannual), weekday, monthDay, anchorDate (prvi dan
+   obveznosti + faza za večtedenske), dueTime, active, items: [{ id, label,
+   response (check|count|text) }] }]. Kartica z urejevalnikom v zavihku
+   Opravila (settings.manage); GET/PUT /api/checklists/templates z
+   validacijo + Issue #96 fallback + revizijo CHECKLIST_TEMPLATES_CONFIG.
+2. **Nosilec izvedb** (1 aditivni DDL po dokumentirani poti mig konzole):
+   nova tabela `ChecklistRun` — ena vrstica na pojavitev (occurrenceKey
+   `${templateId}|YYYY-MM-DD`, @@unique [locationId, templateId,
+   occurrenceKey]); `itemResults` Json nosi PO POSTAVKI { kind, value,
+   at, byId, byName } (Lightspeed »who completed what«); stanje open/
+   completed strežnik izpelje iz pokritosti postavk. Posnetek imena
+   predloge (templateName) — zgodovina preživi preimenovanje/izbris.
+3. **Plošča + motor**: čist lib ops-checklists.ts (0 DB uvozov) — terminski
+   motor nadaljuje haccp-ops vzorec (LokalniDatum po pasu lokacije,
+   DST-varno), razširjen na biweekly/every4weeks (faza = dnevi od
+   anchorDate), quarterly/semiannual (meseci od anchor meseca) in
+   anchorDate (brez terminov pred prvim dnem). Plošča terminov: zapadlo /
+   v teku / zaključeno (+ delna pokritost n/N), dnevi brez izvedbe so
+   vidni kot zapadli (ista poštenost kot HACCP plošča).
+
+**UI:** nov zavihek »Opravila« (skupina Osebje, dostop vsem
+avtenticiranim — odpiralni seznam izpolni kdor odpira, ne samo vodstvo):
+kartice dnevnih seznamov s progresom, odštickanje postavk (check →
+potrditev, count → številka, text → opomba), pod vsako postavko KDO+KDAJ,
+zaključeni seznam nosi ime izvajalca; urejevalnik predlog za vodstvo.
+Pravice: izvedba = prijava (isti prag kot delovnica), predloge =
+settings.manage strežniško.
+
+### B) Odzivni tipi — iskrena meja (P2, zavestno ZUNAJ tega vala)
+
+**Kako imajo najboljši:** Lightspeed odzivni tipi »photo, text, count,
+signature, or temperature« — dokaz z videzom.
+
+**Kako je pri nas:** check/count/text pokrije operativno jedro
+(odštickaj / preštej / zapiši opombo); temperature je HACCP-jev dom
+(meritve s pragi tam ŽE obstajajo — ne podvajamo). Foto podpis bi zahteval
+nalaganje datotek (Documents infra tehta BLOB v bazi) — zavestno čaka
+lastniško odločitev o shrambi medijev, ne tiho. Revizijska sled: vsak
+odziv piše revizijo CHECKLIST_RUN_ITEM (kdo, postavka, vrednost).
+
+DDL: 1 aditivna tabela (ChecklistRun) prek mig konzole — admin ruta
+/api/admin/migrate-checklist-runs + KNOWN_DRIFTS checklist-runs (strogo
+enosmerner CREATE matcher). 0 odvisnosti · 47 novih i18n ključev v vsakem
+slovarju (3889 → 3936; pariteta SL/HR). Testi: tests/v246-operativni-val
+.test.ts (A1–A12 predloge+validacija, B1–B10 terminski motor vseh sedmih
+pogostosti+anchor, C1–C6 plošča stanj, D1–D6 izvedbe+avtomatski zaključek,
+E1–E2 DDL gate, Ž1–Ž6 registri).
+
+**Sklep §20:** papirni odpiralni seznam ob šanku je zamenjan z digitalno
+ploščo — predloga z vsako odštickljivo postavko, termin po pasu lokacije,
+izvajalec+čas na vsaki postavki, zgodovina pojavitev z zapadlimi dnevi.
+HACCP ostane merilni register (pragi, odstopanja, verifikacija), Opravila
+pa so operativni dnevni ritem. Naslednji val: saved report views
+(Lightspeed april 2026) ali sveža raziskava.

@@ -221,7 +221,10 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // await locationScope v resolvePacingLocation) → 78
     // v1.245.0 (PRIMERJAVA §19): tables/combos GET+PUT (kombinacije miz + walk-in
     // rezerva — Issue #96 fallback v resolveCombosLocation) → 79
-    expect(wired.length).toBe(79)
+    // v1.246.0 (PRIMERJAVA §20): checklists/templates GET+PUT + checklists/board
+    // GET+POST (digitalni checklisti — Issue #96 fallback v resolve*Location
+    // obeh rut; plošča je requireAuth, predloge settings.manage) → 81
+    expect(wired.length).toBe(81)
   })
 })
 

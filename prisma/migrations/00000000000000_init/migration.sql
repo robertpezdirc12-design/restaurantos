@@ -466,6 +466,26 @@ CREATE TABLE "Check" (
 );
 
 -- CreateTable
+-- v1.246.0 (PRIMERJAVA §20): digitalni checklisti (Lightspeed Tasks marec 2026) —
+-- ena vrstica na pojavitev predloge; itemResults PO POSTAVKI { kind, value, at, byId, byName }.
+CREATE TABLE "ChecklistRun" (
+    "id" TEXT NOT NULL,
+    "locationId" TEXT NOT NULL,
+    "templateId" TEXT NOT NULL,
+    "templateName" TEXT NOT NULL DEFAULT '',
+    "occurrenceKey" TEXT NOT NULL DEFAULT '',
+    "state" TEXT NOT NULL DEFAULT 'open',
+    "itemResults" JSONB NOT NULL DEFAULT '{}',
+    "completedById" TEXT NOT NULL DEFAULT '',
+    "completedByName" TEXT NOT NULL DEFAULT '',
+    "completedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ChecklistRun_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Counter" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -3236,6 +3256,18 @@ CREATE INDEX "Check_paymentStatus_orderId_idx" ON "Check"("paymentStatus", "orde
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Check_orderId_checkNumber_key" ON "Check"("orderId", "checkNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ChecklistRun_locationId_templateId_occurrenceKey_key" ON "ChecklistRun"("locationId", "templateId", "occurrenceKey");
+
+-- CreateIndex
+CREATE INDEX "ChecklistRun_locationId_idx" ON "ChecklistRun"("locationId");
+
+-- CreateIndex
+CREATE INDEX "ChecklistRun_templateId_idx" ON "ChecklistRun"("templateId");
+
+-- CreateIndex
+CREATE INDEX "ChecklistRun_state_idx" ON "ChecklistRun"("state");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Counter_name_key" ON "Counter"("name");

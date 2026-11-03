@@ -100,8 +100,8 @@ describe('v1.235.0 C — prazno stanje Naročila (kontekstno po filtru)', () => 
 
 describe('v1.235.0 D — i18n (SL + HR pariteta, 3846 → 3853)', () => {
   test('D1: števci', () => {
-    expect(Object.keys(sl).length).toBe(3889)
-    expect(Object.keys(hr).length).toBe(3889)
+    expect(Object.keys(sl).length).toBe(3936)
+    expect(Object.keys(hr).length).toBe(3936)
   })
 
   test('D2: novi ključi Mize (5) obstajajo v obeh jezikih', () => {
@@ -139,17 +139,17 @@ describe('v1.235.0 E — dokumenti (doc-truth)', () => {
 
   test('E3: AUDIT POSODOBITEV v1.235.0 + števca 3853', () => {
     expect(auditDoc).toContain('POSODOBITEV (v1.235.0')
-    expect(auditDoc).toContain('3889 ključev SL in 3889 HR')
+    expect(auditDoc).toContain('3936 ključev SL in 3936 HR')
   })
 })
 
 describe('v1.235.0 Ž — registri', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.245.0')
+    expect(APP_VERSION).toBe('1.246.0')
   })
 
   test('Ž2: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.245.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.246.0')
     expect(wl.indexOf('v1.235.0')).toBeLessThan(wl.indexOf('v1.234.0'))
   })
 })

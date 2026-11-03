@@ -459,7 +459,7 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
     }
     expect(Object.keys(sl).length).toBe(Object.keys(hr).length)
     // v1.205.0: +2 ključa (crm.guests.whatsapp, crm.new.testPlaceholderPhone) — 3691 → 3693
-    expect(Object.keys(sl).length).toBe(3889)
+    expect(Object.keys(sl).length).toBe(3936)
   })
 
   it('GAP-ANALIZA: OSS-4 označen kot IZVEDENO', () => {
@@ -504,6 +504,6 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.245.0')
+    expect(APP_VERSION).toBe('1.246.0')
   })
 })
