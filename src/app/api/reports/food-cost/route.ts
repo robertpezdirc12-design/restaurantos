@@ -93,6 +93,8 @@ export async function GET(req: NextRequest) {
         actualFoodCostValue: null, theoreticalFoodCostValue: null, varianceValue: null,
         actualFoodCostPct: null, theoreticalFoodCostPct: null, variancePctOfTheoretical: null,
         variancePctOfSales: null, wasteValue: null, wasteSharePct: null,
+        // v1.242.0 (§16 I E): pokritost receptur — brez artiklov v obsegu ni prodaje → null
+        recipeCoveragePct: null, coveredSalesValue: null, uncoveredSalesValue: null,
       },
       totals: {
         theoreticalQty: 0, actualUsageQty: 0, varianceQty: 0, receiptsQty: 0, productionQty: 0,
@@ -104,7 +106,7 @@ export async function GET(req: NextRequest) {
       dataQuality: {
         incompleteData: true, reasons: ['no_items_in_scope'], openingBasis: 'ledger', closingBasis: 'ledger',
         hasOpeningStocktake: false, hasClosingStocktake: false, itemsWithUnknownPrice: 0,
-        itemsWithUnitMismatch: 0, soldMenuItemsWithoutRecipe: 0, recipesPossiblyChanged: 0,
+        itemsWithUnitMismatch: 0, soldMenuItemsWithoutRecipe: 0, soldWithoutRecipeRevenue: 0, recipesPossiblyChanged: 0,
         transactionsTruncated: false,
       },
       notes: ['signal_not_proof', 'recipe_basis_current', 'unexplained_ledger_caveat'],
@@ -249,6 +251,8 @@ export async function GET(req: NextRequest) {
     lines.push(['Teoretični food cost EUR', report.kpi.theoreticalFoodCostValue, '%', report.kpi.theoreticalFoodCostPct])
     lines.push(['Varianca EUR', report.kpi.varianceValue, '% nad teoretičnim', report.kpi.variancePctOfTheoretical, '% prodaje', report.kpi.variancePctOfSales])
     lines.push(['Odpisi EUR', report.kpi.wasteValue, 'delež dejanskega', report.kpi.wasteSharePct])
+    // v1.242.0 (§16 I E): pour cost pokritost — delež neto prodaje z znano recepturo
+    lines.push(['Pokritost receptur', report.kpi.recipeCoveragePct, '%', 'pokrito EUR', report.kpi.coveredSalesValue, 'nepokrito EUR', report.kpi.uncoveredSalesValue])
     lines.push(['Nepopolni podatki', report.dataQuality.incompleteData ? 'DA' : 'NE', report.dataQuality.reasons.join(' ')])
     lines.push([])
     lines.push([

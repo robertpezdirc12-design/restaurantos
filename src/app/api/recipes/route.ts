@@ -26,8 +26,8 @@ export async function GET(req: NextRequest) {
     // Issue #5 (P0, komentar #6): org allow-lista (locationScope) namesto centralnega bypassa
     where: { MenuItem: { Category: { Menu: await locationScope(user) } } },
     include: {
-      MenuItem: { select: { id: true, name: true } },
-      InventoryItem: { select: { id: true, name: true, unit: true, costPerUnit: true } },
+      MenuItem: { select: { id: true, name: true, Category: { select: { Menu: { select: { locationId: true } } } } } },
+      InventoryItem: { select: { id: true, name: true, unit: true, costPerUnit: true, locationId: true } },
     },
     take: 500,
   })
@@ -40,6 +40,10 @@ export async function GET(req: NextRequest) {
     yieldPercent: number
     parentRecipeItemId: string | null
     children: Line[]
+    // v1.242.0 (§16 I B): legacy higienska zastavica — vrstica kaže na artikel
+    // zaloge DRUGE lokacije od jedi (podatki, vpisani pred varovalcem). Nova
+    // write pot to zavrne; obstoječe vrstice ostanejo VIDNE (ne izginejo tiho).
+    locationMismatch: boolean
   }
   const byItem = new Map<string, {
     id: string
@@ -61,6 +65,8 @@ export async function GET(req: NextRequest) {
 
   for (const [menuItemId, group] of groups) {
     const first = group[0]
+    // v1.242.0: lokacija jedi za higiensko zastavico vrstic (isti vir kot POST varovalo)
+    const menuLocId = first.MenuItem?.Category?.Menu?.locationId ?? null
     const nodes: RecipeNode[] = group.map((r) => ({
       id: r.id,
       menuItemId: r.menuItemId,
@@ -87,6 +93,8 @@ export async function GET(req: NextRequest) {
       children: group
         .filter((c) => c.parentRecipeItemId === r.id)
         .map(toLine),
+      // v1.242.0: sesljivost lokacije (null = legacy brez lokacije — NI neskladje)
+      locationMismatch: !!(r.InventoryItem?.locationId && r.InventoryItem.locationId !== menuLocId),
     })
     const topLevel = group
       .filter((r) => !r.parentRecipeItemId || !rowById.has(r.parentRecipeItemId))
@@ -192,9 +200,30 @@ export async function POST(req: NextRequest) {
 
   const invItems = await db.inventoryItem.findMany({
     where: { id: { in: [...merged.keys()] } },
-    select: { id: true, name: true, unit: true, costPerUnit: true },
+    select: { id: true, name: true, unit: true, costPerUnit: true, locationId: true },
   })
   if (invItems.length !== merged.size) return ok({ error: 'Ena od sestavin ne obstaja v zalogi.' }, 404)
+
+  // ── v1.242.0 (PRIMERJAVA §16 I B — založni val): LOKACIJSKA VAROVALA RECEPTURE ──
+  // Receptura je vezana na jed (MenuItem → Category → Menu → locationId), njene
+  // sestavine pa so fizična zaloga TE lokacije: razknjižba ob prodaji (deductStock
+  // ForOrderTx) odšteje TOČNO tiste artikelne vrstice, ki jih receptura referencira
+  // — sestavina z druge lokacije bi pomenila, da prodaja v Ljubljani odšteva zalogo
+  // v Mariboru (in strošek jedi računa po tuji ceni). Isti princip velja za org
+  // mejo: tuja organizacija prek te poti ne more priti do referenc na svoje artikle.
+  // Legacy artikli BREZ lokacije (locationId = null) so dovoljeni — zgodovinski
+  // podatki pred obvezno lokacijo (Issue #55); ne nosijo lokacijskega konflikta.
+  const menuLocationId = menuItem.Category?.Menu?.locationId ?? null
+  const foreign = invItems.filter((i) => i.locationId && i.locationId !== menuLocationId)
+  if (foreign.length > 0) {
+    const names = foreign.map((i) => `»${i.name}«`).join(', ')
+    return ok(
+      {
+        error: `Sestavina ${names} pripada zalogi druge lokacije — receptura jedi lahko uporablja samo artikle zaloge iste lokacije kot jed. Prestavi artikel na pravo lokacijo ali izberi lokalnega dvojnika.`,
+      },
+      409,
+    )
+  }
 
   const notes = String(body?.notes || '')
 

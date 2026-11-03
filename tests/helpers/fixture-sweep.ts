@@ -117,6 +117,7 @@ export const TEST_PREFIXES = [
   'v162-', // waitlist-table-release (v1.162.0 — sprostitev mize iz čakalne vrste)
   'v163-', // integration-log-pii (v1.163.0 — dnevnik brez osebnih podatkov gosta)
   'v241-', // qr-autofire (v1.241.0 — push + avto-požig gostovega/tabličnega naročila)
+  'v242-', // založni val (v1.242.0 — EAN per lokacija, receptura varovalo, serije odpada/inventure, varianca neto gibanja, pokritost)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */

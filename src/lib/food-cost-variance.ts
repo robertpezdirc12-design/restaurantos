@@ -216,6 +216,8 @@ export interface FcDataQuality {
   itemsWithUnknownPrice: number
   itemsWithUnitMismatch: number
   soldMenuItemsWithoutRecipe: number
+  /** v1.242.0: vrednost prodaje jedi brez recepture (EUR) — znesek nepokritosti */
+  soldWithoutRecipeRevenue: number
   recipesPossiblyChanged: number
   transactionsTruncated: boolean
 }
@@ -238,6 +240,16 @@ export interface FcReport {
     variancePctOfSales: number | null
     wasteValue: number | null
     wasteSharePct: number | null
+    /** v1.242.0 (§16 I E — založni val): POUR COST POKRITOST — delež neto
+     * prodaje (vrednostno), ki pada na jedi Z recepturo. Teoretični food cost
+     * je zanesljiv natanko toliko, kolikor je pokritost (Toast »recipe
+     * coverage« kartica: pokritost < ~90 % pomeni, da je teoretična poraba
+     * podcenjena — jedi brez recepture ne porabijo nič). null = ni prodaje. */
+    recipeCoveragePct: number | null
+    /** neto prodaja jedi Z recepturo (EUR) */
+    coveredSalesValue: number | null
+    /** neto prodaja jedi BREZ recepture (EUR) */
+    uncoveredSalesValue: number | null
   }
   totals: {
     theoreticalQty: number
@@ -654,6 +666,8 @@ export function buildFoodCostVariance(input: FcInput): FcReport {
   let netSales = 0
   for (const s of input.sold) netSales += s.quantity * s.price - s.discountAmount
   netSales = r2(netSales)
+  // v1.242.0: ali je sploh bilo prodaje (pokritost brez prodaje ni 0 %, ampak neznana)
+  const soldRowsExist = input.sold.length > 0
 
   let theoreticalTotal = 0
   let actualTotal = 0
@@ -744,6 +758,13 @@ export function buildFoodCostVariance(input: FcInput): FcReport {
     variancePctOfSales: pct(varianceValueTotal, netSales),
     wasteValue: wasteValueTotal,
     wasteSharePct: pct(wasteValueTotal, actualValueTotal || 0),
+    // v1.242.0: pokritost receptur (vrednostna) — uncovered je prodaja jedi, ki
+    // jih teoretična poraba NE vidi; covered je komplement. Ni prodaje → null.
+    uncoveredSalesValue: soldRowsExist ? r2(soldWithoutRecipe.reduce((s, r) => s + r.revenue, 0)) : null,
+    coveredSalesValue: soldRowsExist ? r2(netSales - soldWithoutRecipe.reduce((s, r) => s + r.revenue, 0)) : null,
+    recipeCoveragePct: soldRowsExist
+      ? pct(Math.max(0, netSales - soldWithoutRecipe.reduce((s, r) => s + r.revenue, 0)), netSales)
+      : null,
   }
 
   // narativne opombe (izrecne, prevedene v UI iz ključev — tukaj kanonična vsebina)
@@ -777,6 +798,8 @@ export function buildFoodCostVariance(input: FcInput): FcReport {
       itemsWithUnknownPrice,
       itemsWithUnitMismatch,
       soldMenuItemsWithoutRecipe: soldWithoutRecipe.length,
+      // v1.242.0: vrednost nepokrite prodaje (0 EUR = polna pokritost)
+      soldWithoutRecipeRevenue: r2(soldWithoutRecipe.reduce((s, r) => s + r.revenue, 0)),
       recipesPossiblyChanged,
       transactionsTruncated: false, // ruta nastavi, če je take cap dosežen
     },

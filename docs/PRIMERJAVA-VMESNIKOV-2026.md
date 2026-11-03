@@ -1002,3 +1002,82 @@ izražen namen naročnika. Gost pri QR mizi je namen izrazil s pošiljanjem
 košarice; natakar v tablici s pritiskom gumba; samo dashboard/handheld
 natakarja lahko namen še odloži (coursing, hold). En helper, štirje
 klicatelji, ena resnica o firedAt.
+
+### I) ZALOŽNI VAL v1.242.0 — zaloga ima eno resnico (zadnja točka §16 E)
+
+Zadnja nerazvrščena točka raziskave §16 E (P1): EAN unikat per lokacija,
+receptura brez lokacijske varovala, serije pri odpadu/inventuri, varianca
+inventure proti neto gibanjem, pour cost pokritost. Pet vrzeli — vsaka
+primerjana z vodilnimi (Marketman/Toast inventory discipline).
+
+- **A · EAN UNIKAT PER LOKACIJA** (inventory route): duplikat kode
+  dobavitelja se je preverjal GLOBALNO — sestrska lokacija ni smela vpisati
+  kode, ki jo že ima druga lokacija ISTEGA Dobavitelja za ISTI fizični
+  artikel. Zdaj: resolveEanForWrite prejme locationId — duplikat znotraj
+  lokacije artikla (POST: tenant-preverjena lokacija; PATCH: item.locationId;
+  null lokacija = svoj obseg, konsistentno locationScope). Ista koda na dveh
+  lokacijah je dovoljena — skener pri prevzemu vedno pade v kontekst prejema.
+- **B · RECEPTURA LOKACIJSKA VAROVALA** (recipes POST): receptura jedi je
+  vezana na lokacijo (MenuItem → Category → Menu), njene sestavine pa so
+  fizična zaloga TE lokacije — razknjižba ob prodaji (deductStockForOrderTx)
+  odšteje TOČNO referencirane vrstice. Prej je lahko receptura Ljubljanske
+  jedi vsebovala Mariborski artikel: prodaja v Ljubljani je odštevala
+  Mariborsko zalogo, strošek jedi je računal po tuji ceni, tuj org pa je
+  dobil referenco na svoj artikel. Zdaj: tuja lokacija → 409 z imeni
+  sestavin; legacy artikli brez lokacije (null) ostanejo dovoljeni. GET
+  dobi locationMismatch zastavico per vrstica (obstoječe vrstice so vidne,
+  ne izginejo tiho).
+- **C · SERIJE PRI ODPADU** (waste + NOVA lib src/lib/batch-allocate.ts):
+  FEFO razporeditev po serijah je živela SAMO v prodajni poti — odpad je
+  odšteval agregat, serije so ostajale stale: quantityRemaining je kazal
+  fantomsko zalogo, FEFO je rezerviral serije, ki jih fizično ni več,
+  sledljivost lot-a pa je imela luknjo natanko pri odpadu (pokvarjena
+  pošiljka — tam, kjer je HACCP sledljivost najpomembnejša). Zdaj: NOV
+  skupni motor allocateBatchesTx (FEFO ali izrecna serija — cela količina
+  iz ene lot-a ali jasna napaka 404/409; CAS dekrement po seriji z retry,
+  EXHAUSTED flip, pre-DDL degradacija) + writeBatchAllocations (FK-varni
+  vrstni red) + restoreBatchAllocations. Waste POST: neobvezni batchId
+  (odpoklic/karantena zahtevata vedenje, iz katerega lot-a je blago šlo);
+  brez njega FEFO; untracked ostanek IZRECNO v note (vrzel vidna — vzorec
+  Issue #52). Reverzija vrača ISTIM serijam ISTE količine (EXHAUSTED→ACTIVE
+  ko lot spet zaživi; blokirani loti obdržijo status — vračilo ne
+  razveljavlja zadržanja). GET odpada nosi allocations z lot številkami.
+  Prodajna pot NI dotaknjena (bit-za-bit preizkušena).
+- **D · INVENTURA — VARIANCA PROTI NETO GIBANJEM + REBALANCA SERIJ**
+  (stocktakes approve + [id]): (1) prej je bila varianceQuantity = counted −
+  expected, kjer je expected = snapshot ob odprtju — popis, odprt ob 8:00 in
+  odobren ob 14:00, je vsa gibanja med tem (prodaja, prejemi, odpad) štel
+  kot »manjko« števca. Zdaj: pre-pass znotraj TX sešteje neto gibanja od
+  odprtja (PRED zapisom lastnih popravkov); varianceQuantity := counted −
+  (expected + neto gibanja) — NEPOJASNJENA razlika, ne časovna posledica
+  (Marketman/Toast inventory variance semantika). Odgovor nosi per-vrstični
+  dokaz; [id] GET izračuna še varianceVsSnapshotQty (oba števca shranjena).
+  (2) inventurni popravek je nastavil SAMO agregat — serije so ostale
+  stale. Zdaj: manjko se odstrani iz uporabnih lot-ov FEFO (alokacije
+  vezane na STOCKTAKE tx — serijski ledger ne obljublja zaloge, ki je ni);
+  presežek ne ustvarja fantomskih serij; blokirane serije se ne tikajo
+  (hold/release je izrecna odločitev). [id] GET: vrstice nosijo batches
+  (lot, rok, ostanek) — kontekst števca.
+- **E · POUR COST POKRITOST** (food-cost): teoretični food cost je zanesljiv
+  natanko toliko, kolikor receptur dejansko obstaja — poročilo je vedelo
+  ŠTETI jedi brez recepture, ne pa povedati, kolikšen delež PRODAJE je
+  pokrit. Zdaj: kpi.recipeCoveragePct + coveredSalesValue/uncoveredSalesValue
+  (vrednostni delež neto prodaje jedi Z recepturo; Toast »recipe coverage«
+  kartica — pokritost < ~90 % pomeni podcenjen teoretični food cost),
+  dataQuality.soldWithoutRecipeRevenue, CSV vrstica. Ni prodaje → null.
+
+0 DDL (vse v aplikačni plasti + obstoječi ledger StockBatchAllocation), 0
+odvisnosti, 0 novih i18n ključev (3860 — sporočila so strežniška SL).
+Testi: tests/v242-zalozni-val.test.ts (A1–A4 EAN, B1–B4 receptura,
+C1–C6 odpad serije, D1–D6 inventura, E1–E3 pokritost, Ž1–Ž3 registri).
+Industrijska referenca: Marketman/Toast — inventura je trenutek resnice:
+števci štejejo agregat, sistem primerja proti teoretičnemu stanju
+(snapshot + dokumentirana gibanja), razlika je odgovornost upravljavca;
+serije (lot tracking) so vezane na VSAKO gibanje zaloge, ne samo prodajo.
+
+**Sklep §16 I:** zaloga ima dve plasti (agregat za odločanje, serije za
+sledljivost) in eno resnico — vsaka pot, ki odšteje ali vrne količino
+(prodaja, odpad, inventura, reverzija), piše OBE plasti + alokacijski
+ledger. Koda dobavitelja je lokalna, receptura je lokalna, inventurna
+variansa je nepojasnjena razlika — in zanesljivost food-costa je izrecna
+metrika (pokritost), ne skrita predpostavka.

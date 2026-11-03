@@ -15,6 +15,7 @@ import {
   wasteTotalCents,
 } from '@/lib/waste'
 import { writeAudit } from '@/lib/audit-chain'
+import { allocateBatchesTx, writeBatchAllocations, ExplicitBatchError } from '@/lib/batch-allocate'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
@@ -43,6 +44,21 @@ export async function GET(req: NextRequest) {
     include: { InventoryItem: { select: { name: true, unit: true } } },
   })
 
+  // v1.242.0: serijske alokacije odpada (ledger StockBatchAllocation → lot)
+  const txIds = rows.map((r) => r.stockTransactionId).filter((t): t is string => !!t)
+  const allocRows = txIds.length
+    ? await db.stockBatchAllocation.findMany({
+        where: { stockTransactionId: { in: txIds } },
+        select: { stockTransactionId: true, batchId: true, quantity: true, InventoryBatch: { select: { lotNumber: true } } },
+      })
+    : []
+  const allocsByTx = new Map<string, { batchId: string; lotNumber: string; quantity: number }[]>()
+  for (const a of allocRows) {
+    const list = allocsByTx.get(a.stockTransactionId) || []
+    list.push({ batchId: a.batchId, lotNumber: a.InventoryBatch?.lotNumber ?? '', quantity: num(a.quantity) })
+    allocsByTx.set(a.stockTransactionId, list)
+  }
+
   const records = rows.map((r) => ({
     id: r.id,
     inventoryItemId: r.inventoryItemId,
@@ -57,6 +73,8 @@ export async function GET(req: NextRequest) {
     reversedAt: r.reversedAt,
     recordedByUserId: r.recordedByUserId,
     createdAt: r.createdAt,
+    // v1.242.0: iz katerega lot-a (lot-ov) je blago šlo v odpad
+    allocations: r.stockTransactionId ? allocsByTx.get(r.stockTransactionId) ?? [] : [],
   }))
 
   return ok({
@@ -70,6 +88,13 @@ export async function GET(req: NextRequest) {
  * Evidentiranje odpada — odšteje zalogo, zapiše StockTransaction type='WASTE'
  * in WasteRecord (idempotentno prek locationId+idempotencyKey).
  * Odpad nad razpoložljivo zalogo je zavrnjen (409) — razlike popravlja inventura.
+ *
+ * v1.242.0 (§16 I C — založni val): SERIJE. Odpad zdaj razporedi odjem po serijah
+ * (InventoryBatch) — FEFO samodejno (isti vir kot prodajna pot) ali izrecno iz
+ * ene serije (batchId: odpoklic/karantena potrebujejo VEDENJE, iz katerega lot-a
+ * je blago šlo v odpad). Alokacije se zapišejo v StockBatchAllocation (ledger
+ * serij ≡ agregat); brez serij ali ob izpadu CAS-a se količina izrecno zapiše
+ * kot brez-serijska (vrzel VIDNA, ne skrita — vzorec Issue #52).
  */
 export async function POST(req: NextRequest) {
   const user = await requirePermission(req, 'inventory.manage')
@@ -80,6 +105,8 @@ export async function POST(req: NextRequest) {
 
   const itemId = String(body?.itemId || '')
   const idempotencyKey = String(body?.idempotencyKey || '').trim().slice(0, 100)
+  // v1.242.0: izrecna serija (lot) za odpad — neobvezna; prazno = FEFO samodejno
+  const batchId = typeof body?.batchId === 'string' ? body.batchId.trim().slice(0, 64) : ''
   if (!itemId) return fail('Artikel je obvezen.', 400)
   if (!idempotencyKey) return fail('Manjkajoči idempotencyKey (varnost pred dvojnim vnosom).', 400)
 
@@ -128,7 +155,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let created: { recordId: string; stockTransactionId: string; newQty: number } | null = null
+  let created: { recordId: string; stockTransactionId: string; newQty: number; allocations: { batchId: string; lotNumber: string; quantity: number }[]; untracked: number } | null = null
   try {
     created = await db.$transaction(async (tx) => {
       // Race-safe pogojni odštevek: uspe samo, če je zaloga še vedno dovolj velika
@@ -145,6 +172,21 @@ export async function POST(req: NextRequest) {
         await tx.inventoryItem.update({ where: { id: item.id }, data: { quantity: newQty } })
       }
       const prevQty = r3(newQty + qty) // konsistenten par (previous → new) kljub vzporednim odpadom
+
+      // ── v1.242.0: SERIJSKA ALOKACIJA odjema (znotraj ISTE transakcije) ──
+      // FEFO čez uporabne serije ali izrecna serija (celotna količina iz nje).
+      // Alokacijske vrstice pišemo ŠELE PO StockTransaction (FK vrstni red).
+      const allocRes = await allocateBatchesTx(tx, item.id, qty, batchId ? { onlyBatchId: batchId } : undefined)
+
+      const noteParts: string[] = []
+      if (v.value.note) noteParts.push(v.value.note)
+      if (allocRes.allocations.length > 0) {
+        noteParts.push(`Serije: ${r3(allocRes.allocations.reduce((s, a) => s + a.alloc, 0))} ${item.unit} na ${allocRes.allocations.length} lot-ih`)
+      }
+      if (allocRes.untracked > 0) {
+        noteParts.push(`Brez serije: ${allocRes.untracked} ${item.unit} (ni aktivnih serij ali so se izčrpale) — odjem samo iz agregata`)
+      }
+
       const stockTx = await tx.stockTransaction.create({
         data: {
           id: nid(),
@@ -156,11 +198,22 @@ export async function POST(req: NextRequest) {
           costPerUnit: unitCost,
           totalCost: totalCents / 100,
           reason: wasteReasonLabel(v.value.reason),
-          note: v.value.note,
+          note: noteParts.join(' · '),
           employeeId: user.sub,
           employeeName: user.name,
         },
       })
+
+      // FK-varni vrstni red: StockTransaction obstaja → zdaj so alokacije veljavne
+      await writeBatchAllocations(tx, stockTx.id, item.id, allocRes.allocations)
+
+      // lotNumbers za odgovor (zrcalni lookup — znotraj TX so sveži)
+      const allocDetails: { batchId: string; lotNumber: string; quantity: number }[] = []
+      for (const a of allocRes.allocations) {
+        const b = await tx.inventoryBatch.findUnique({ where: { id: a.batchId }, select: { lotNumber: true } })
+        allocDetails.push({ batchId: a.batchId, lotNumber: b?.lotNumber ?? '', quantity: a.alloc })
+      }
+
       const rec = await tx.wasteRecord.create({
         data: {
           id: nid(),
@@ -177,9 +230,14 @@ export async function POST(req: NextRequest) {
           recordedByUserId: user.sub,
         },
       })
-      return { recordId: rec.id, stockTransactionId: stockTx.id, newQty }
+      return { recordId: rec.id, stockTransactionId: stockTx.id, newQty, allocations: allocDetails, untracked: allocRes.untracked }
     })
   } catch (e: unknown) {
+    // v1.242.0: izrecna serija — jasne napake iz alokacijskega motorja (404/409),
+    // transakcija se je že povsem povrnila (rollback agregata + serij)
+    if (e instanceof ExplicitBatchError) {
+      return fail(e.message, e.status as 404 | 409)
+    }
     const msg = e instanceof Error ? e.message : String(e)
     // Sočasni replay z istim (locationId, idempotencyKey) → unique ujame → obravnavaj kot replay
     if (msg.includes('Unique constraint') || (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) {
@@ -197,7 +255,7 @@ export async function POST(req: NextRequest) {
   }
   if (!created) return fail('Zaloga je bila sočasno spremenjena — količina ni več na voljo, osveži in poskusi znova.', 409)
 
-  await writeAudit(db, { userId: user.sub, action: 'WASTE_RECORD', entityType: 'WasteRecord', entityId: created.recordId, details: jstr({ item: item.name, itemId: item.id, quantity: qty, unit: item.unit, reason: v.value.reason, note: v.value.note, totalCost: totalCents / 100, newQty: created.newQty }) })
+  await writeAudit(db, { userId: user.sub, action: 'WASTE_RECORD', entityType: 'WasteRecord', entityId: created.recordId, details: jstr({ item: item.name, itemId: item.id, quantity: qty, unit: item.unit, reason: v.value.reason, note: v.value.note, totalCost: totalCents / 100, newQty: created.newQty, batchAllocations: created.allocations, untracked: created.untracked }) })
   await publishEvent('StockChanged', {
     entityType: 'InventoryItem',
     entityId: item.id,
@@ -209,7 +267,7 @@ export async function POST(req: NextRequest) {
 
   return ok(
     {
-      record: { id: created.recordId, stockTransactionId: created.stockTransactionId, quantity: qty, totalCost: totalCents / 100, newQty: created.newQty },
+      record: { id: created.recordId, stockTransactionId: created.stockTransactionId, quantity: qty, totalCost: totalCents / 100, newQty: created.newQty, allocations: created.allocations, untracked: created.untracked },
       replayed: false,
     },
     201,

@@ -6,6 +6,7 @@ import { nid, num, jstr } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
 import { WASTE_REVERSAL_TX_TYPE, WASTE_REVERSAL_CLAIM_FAILED, canReverseWaste, wasteReversalReason } from '@/lib/waste'
 import { writeAudit } from '@/lib/audit-chain'
+import { restoreBatchAllocations } from '@/lib/batch-allocate'
 import { restoreAuto86ForInventory } from '@/lib/auto-86'
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   let reversalStockTransactionId: string | null = null
   let newQty = 0
+  let restoredBatches = 0
   try {
     const done = await db.$transaction(async (tx) => {
       // ── Issue #59: ATOMIC CLAIM (CAS) — edina avtoriteta enkratnosti ──
@@ -64,6 +66,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         where: { id: rec.inventoryItemId },
         data: { quantity: { increment: qty } },
       })
+
+      // v1.242.0 (§16 I C): povratek tudi na SERIJE — odpad je bil razporejen po
+      // lot-ih (FEFO/izrecno); reverzija vrne ISTIM serijam ISTE količine, da
+      // serijski ledger ostane ≡ agregat. Lot, ki ga je ta odpad izčrpal, spet
+      // zaživi (EXHAUSTED → ACTIVE); blokirani loti (karantena/odpoklic) obdržijo
+      // svoj status — fizično vračilo ne razveljavlja odločitve o zadržanju.
+      // Količina brez serije (untracked odjem) se vrača samo v agregat — simetrično.
+      const batchRestore = rec.stockTransactionId
+        ? await restoreBatchAllocations(tx, rec.stockTransactionId)
+        : { restored: 0, batches: 0 }
+
       const fresh = await tx.inventoryItem.findUnique({ where: { id: rec.inventoryItemId }, select: { quantity: true } })
       // r3 normalizacija: SQLite REAL incrementi nabirajo float drift — shranimo čisto vrednost
       const rawQty = num(fresh?.quantity)
@@ -83,7 +96,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           costPerUnit: num(rec.costPerUnit),
           totalCost: num(rec.totalCost),
           reason: wasteReversalReason(rec.id),
-          note: rec.note,
+          note: batchRestore.batches > 0 ? `${rec.note} · Povratek na serije: ${batchRestore.batches} lot, ${r3(batchRestore.restored)}`.trim() : rec.note,
           employeeId: user.sub,
           employeeName: user.name,
         },
@@ -92,10 +105,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         where: { id: rec.id },
         data: { reversalStockTransactionId: revTx.id },
       })
-      return { revTxId: revTx.id, newQty: after }
+      return { revTxId: revTx.id, newQty: after, restoredBatches: batchRestore.batches, restoredQty: batchRestore.restored }
     })
     reversalStockTransactionId = done.revTxId
     newQty = done.newQty
+    restoredBatches = done.restoredBatches
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     // Issue #59: CAS claim ni uspel — vrstica je bila vmes že povrnjena (sočasna
@@ -112,7 +126,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return fail(`Reverzija ni uspela: ${msg}`, 500)
   }
 
-  await writeAudit(db, { userId: user.sub, action: 'WASTE_REVERSE', entityType: 'WasteRecord', entityId: rec.id, details: jstr({ item: item?.name ?? rec.inventoryItemId, quantity: qty, unit: rec.unit, totalCost: num(rec.totalCost), newQty, reversalStockTransactionId }) })
+  await writeAudit(db, { userId: user.sub, action: 'WASTE_REVERSE', entityType: 'WasteRecord', entityId: rec.id, details: jstr({ item: item?.name ?? rec.inventoryItemId, quantity: qty, unit: rec.unit, totalCost: num(rec.totalCost), newQty, restoredBatches, reversalStockTransactionId }) })
   await publishEvent('StockChanged', {
     entityType: 'InventoryItem',
     entityId: rec.inventoryItemId,
@@ -127,5 +141,5 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (qty > 0) void restoreAuto86ForInventory([rec.inventoryItemId], user.sub)
 
   const fresh = await db.wasteRecord.findUnique({ where: { id: rec.id }, select: { reversedAt: true, reversalStockTransactionId: true } })
-  return ok({ record: { id: rec.id, reversedAt: fresh?.reversedAt, reversalStockTransactionId: fresh?.reversalStockTransactionId ?? reversalStockTransactionId }, newQty })
+  return ok({ record: { id: rec.id, reversedAt: fresh?.reversedAt, reversalStockTransactionId: fresh?.reversalStockTransactionId ?? reversalStockTransactionId, restoredBatches }, newQty })
 }

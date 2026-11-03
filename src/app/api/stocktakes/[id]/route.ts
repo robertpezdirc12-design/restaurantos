@@ -40,7 +40,18 @@ type StItem = {
   countedAt: Date | null; countedByName: string; stockTransactionId: string | null
 }
 
-function mapItem(i: StItem) {
+/** v1.242.0: serijski kontekst vrstice (samo za branje — šteje se AGREGAT,
+ * lot-i so informacija števca: kateri rok, koliko katere serije). */
+interface StItemBatches {
+  id: string
+  lotNumber: string
+  expiryDate: Date | string | null
+  quantityRemaining: number
+  status: string
+}
+
+function mapItem(i: StItem, batchesByItem?: Map<string, StItemBatches[]>) {
+  const countedQty = i.countedQuantity == null ? null : num(i.countedQuantity)
   return {
     id: i.id,
     inventoryItemId: i.inventoryItemId,
@@ -48,23 +59,32 @@ function mapItem(i: StItem) {
     unit: i.unit,
     expectedQty: num(i.expectedQuantity),
     costPerUnit: num(i.costPerUnit),
-    countedQty: i.countedQuantity == null ? null : num(i.countedQuantity),
+    countedQty,
+    // v1.242.0: shranjena variansa je TEORETIČNA (counted − expected − neto
+    // gibanja med štetjem — glej approve); proti-snapshot variansa je iz
+    // shranjenih številcev izračunljiva TUKAJ (oba števca obstaneta za vedno).
     varianceQty: i.varianceQuantity == null ? null : num(i.varianceQuantity),
+    varianceVsSnapshotQty: countedQty == null ? null : Math.round((countedQty - num(i.expectedQuantity)) * 1000) / 1000,
     varianceValue: i.varianceValue == null ? null : num(i.varianceValue),
     note: i.lineNote,
     countedAt: i.countedAt,
     countedBy: i.countedByName || null,
     stockTransactionId: i.stockTransactionId,
+    // v1.242.0: serije artikla (lot, rok, ostanek) — kontekst štetja
+    batches: batchesByItem?.get(i.inventoryItemId) ?? [],
   }
 }
 
-function mapFull(s: {
-  id: string; locationId: string; status: string; note: string
-  createdByName: string; approvedByName: string
-  submittedAt: Date | null; approvedAt: Date | null; cancelledAt: Date | null
-  recountCount: number; createdAt: Date
-  StocktakeItem: StItem[]
-}) {
+function mapFull(
+  s: {
+    id: string; locationId: string; status: string; note: string
+    createdByName: string; approvedByName: string
+    submittedAt: Date | null; approvedAt: Date | null; cancelledAt: Date | null
+    recountCount: number; createdAt: Date
+    StocktakeItem: StItem[]
+  },
+  batchesByItem?: Map<string, StItemBatches[]>,
+) {
   const items = s.StocktakeItem ?? []
   const counted = items.filter((i) => i.countedQuantity != null).length
   const varianceValue = items.reduce((a, i) => a + (i.varianceValue == null ? 0 : num(i.varianceValue)), 0)
@@ -83,7 +103,11 @@ function mapFull(s: {
     counted,
     total: items.length,
     varianceValue,
-    items: items.map(mapItem),
+    // v1.242.0: osnova variance v odgovoru (approve zapiše TEORETIČNO variantso —
+    // proti snapshotu + neto gibanjem; starejši popisi pred valom so proti
+    // snapshotu — razliko med njima pokaže varianceVsSnapshotQty per vrstica)
+    varianceBasis: 'theoretical',
+    items: items.map((i) => mapItem(i, batchesByItem)),
   }
 }
 
@@ -95,7 +119,27 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!st) return fail('Popis ne obstaja.', 404)
   const guard = await guardResource(user, st.locationId)
   if (guard) return guard
-  return ok({ stocktake: mapFull(st) })
+
+  // v1.242.0: serijski kontekst vrstic — ne-izčrpane serije artikelov popisa
+  // (lot, rok, ostanek, status). Šteje se agregat; lot-i so priročnost števca
+  // (FEFO kontekst ob štetju, HACCP sledljivost). En poizvedek, grupirano.
+  const itemIds = [...new Set(st.StocktakeItem.map((i) => i.inventoryItemId))]
+  const batchRows = itemIds.length
+    ? await db.inventoryBatch.findMany({
+        where: { inventoryItemId: { in: itemIds }, status: { not: 'EXHAUSTED' } },
+        select: { id: true, inventoryItemId: true, lotNumber: true, expiryDate: true, quantityRemaining: true, status: true },
+        orderBy: [{ expiryDate: 'asc' }, { receivedAt: 'asc' }],
+        take: 500,
+      })
+    : []
+  const batchesByItem = new Map<string, StItemBatches[]>()
+  for (const b of batchRows) {
+    const list = batchesByItem.get(b.inventoryItemId) || []
+    list.push({ id: b.id, lotNumber: b.lotNumber, expiryDate: b.expiryDate, quantityRemaining: num(b.quantityRemaining), status: b.status })
+    batchesByItem.set(b.inventoryItemId, list)
+  }
+
+  return ok({ stocktake: mapFull(st, batchesByItem) })
 }
 
 /** Shrani vnose (samo DRAFT). countedQuantity == null = počisti vnos vrstice. */

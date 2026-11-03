@@ -15,10 +15,17 @@ import { normalizeEan, validateEanFormat } from '@/lib/ean'
  * [0-9A-Z_-]; prazno = artikel brez kode). Duplikat check → 409 (aplikačni sloj;
  * delni unique indeks bi lomil baseline 1:1 konvencijo). EAN je operativen podatek
  * (sken pri prevzemu) — NI občutljiv kot cena, GET payload nosi ean ZA VSE vloge.
+ *
+ * v1.242.0 (PRIMERJAVA §16 I A — založni val): EAN je unikat PER LOKACIJA, ne
+ * globalno. Ista fizična artikla dobavitelja (isti EAN) na dveh lokacijah je
+ * NORMALNO stanje — prejšnji globalni duplikat je to zavrnil (druga lokacija ni
+ * mogla vpisati kode, ki jo že ima sestrska lokacija). Koda, ki jo bere skener
+ * pri prevzemu, vedno pade v kontekst lokacije prejema.
  */
 async function resolveEanForWrite(
   raw: unknown,
   selfId?: string,
+  locationId?: string | null,
 ): Promise<{ ean: string } | { error: string; status: number }> {
   const ean = normalizeEan(typeof raw === 'string' ? raw : '')
   if (!ean) return { ean: '' } // prazno = brez kode (dovoljeno)
@@ -33,10 +40,21 @@ async function resolveEanForWrite(
     return { error: msg, status: 400 }
   }
   const dup = await db.inventoryItem.findFirst({
-    where: { ean, ...(selfId ? { id: { not: selfId } } : {}) },
+    where: {
+      ean,
+      // v1.242.0: duplikat znotraj iste lokacije (null lokacija = legacy brez
+      // konteksta — obravnavana kot svoj obseg, konzistentno z locationScope)
+      ...(locationId ? { locationId } : { locationId: null }),
+      ...(selfId ? { id: { not: selfId } } : {}),
+    },
     select: { name: true },
   })
-  if (dup) return { error: `Koda ${ean} je že dodeljena artiklu »${dup.name}«.`, status: 409 }
+  if (dup) {
+    return {
+      error: `Koda ${ean} je že dodeljena artiklu »${dup.name}« na tej lokaciji. Na drugi lokaciji je ista koda dovoljena (isti artikel dobavitelja).`,
+      status: 409,
+    }
+  }
   return { ean }
 }
 
@@ -124,8 +142,9 @@ export async function POST(req: NextRequest) {
   const minQty = minP.value ?? 0
   const cost = costP.value ?? 0
   const unit = sanitizeUnit(body?.unit)
-  // OSS-9: EAN (prazno = brez kode; 400 oblika / 409 duplikat)
-  const eanRes = await resolveEanForWrite(body?.ean)
+  // OSS-9: EAN (prazno = brez kode; 400 oblika / 409 duplikat) — v1.242.0:
+  // duplikat PER LOKACIJA (locationId je zgoraj že tenant-preverjen)
+  const eanRes = await resolveEanForWrite(body?.ean, undefined, locationId)
   if ('error' in eanRes) return ok({ error: eanRes.error }, eanRes.status)
   const ean = eanRes.ean
 
@@ -212,10 +231,11 @@ export async function PATCH(req: NextRequest) {
   const setQty = setQtyP.value
   const minQty = minQtyP.value
   const cost = costP.value
-  // OSS-9: EAN — OPCIJONO polje (undefined = ne spreminjaj; '' = odstrani kodo)
+  // OSS-9: EAN — OPCIJONO polje (undefined = ne spreminjaj; '' = odstrani kodo);
+  // v1.242.0: duplikat PER LOKACIJA artikla (item.locationId je že guardan)
   let ean: string | undefined
   if (body?.ean !== undefined) {
-    const eanRes = await resolveEanForWrite(body.ean, id)
+    const eanRes = await resolveEanForWrite(body.ean, id, item.locationId)
     if ('error' in eanRes) return ok({ error: eanRes.error }, eanRes.status)
     ean = eanRes.ean
   }
