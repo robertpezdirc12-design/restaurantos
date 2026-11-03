@@ -8,6 +8,7 @@ Work Log:
 
 Stage Summary:
 - CI vrata ponovno zelena po pushu; tipna disciplina enaka kot v reservations/route.ts (rezervacija status vedno skozi prisma-types unijo).
+- ZAKLJUČNA VERIFIKACIJA (vse živo, 3. 11. 2026): push 7b65cff..cd5219b ✅; CI quality gate #41630519721 **SUCCESS** + GitLab zrcalo + pages build success; Vercel produkcija /api/health → ok · **1.240.0** · cd5219b · postgresql connected · schema ok (31 ms); 0 DDL → brez migracijskega koraka. E2E PRODUKCIJA (demo seja, 0 konzolnih/page napak po ponovnem nalaganju, posnetek /tmp/v240-produkcija.png): E2E Ana Prod 19:00 Miza 9 ustvarjena; E2E Bor Prod 20:00 ISTA miza → **409 TABLE_TIME_CONFLICT »Miza 9 ima v tem času rezervacijo: E2E Ana Prod, 19:00–21:00.«** (ime gosta + termin v živo); SEATED → 200; CANCELLED → 200 + Miza 9 sproščena (FREE). Rezervacijska celica je V ŽIVI PRODUKCIJI.
 Agent: glavni agent (Z.ai Code)
 Task: Nadaljevanje poliranj po B-načrtih §16 E (R4b program kvalitete) — REZERVACIJSKA CELICA v1.240.0. Trije klicatelji (POST rezervacij, usaditev čakalne vrste, tables PATCH) so vsak po svoje odločali, ali je miza "prosta" — in vsak je gledal le del resnice. 0 DDL, 0 odvisnosti, 0 novih i18n ključev (sporočila so strežniška SL).
 
