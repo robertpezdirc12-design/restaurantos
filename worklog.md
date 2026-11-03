@@ -1,3 +1,17 @@
+Task ID: v1.239.0-verifikacija
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija RAČUNSKE CELICE v1.239.0 pred pushom.
+
+Work Log:
+- SUITA: 4627 pass / 34 okoljskih / 4 errors (baza 4610 + 18 novih iz tests/v239-receipt-cell.test.ts, 0 novih okvar; okoljski profil F-serija/v1.165/v1.180/v1.186 dokumentiran, na čistem CI 0); tsc 0 · lint 0.
+- DEV STREŽNIK: restart po db:push (star Prisma client v pomnilniku ni poznal novih stolpcev — Unknown argument checkId na POST /api/furs 500; po restartu vse poti zelene, health 1.239.0, sqlite connected, schema ok).
+- E2E (agent-browser): demo prijava → Hitra prodaja Bograč + Burek → napitnina 1 € → gotovina → račun 2026-11-5-BLG001; DB ŽIV DOKAZ C: Receipt.checkId izstavka + itemsJson s PRAVIMA 2 postavkama (Bograč 14,90 + Burek 4,50), Payment 19,40 + tip 1,00; GET /api/furs/[id] vrača TOČNO posnetek; STORNO prek API: negatedPaymentRows 1, Payment zrcalo -19,40/-1,00 (neto 0), order → storno (B ŽIV); bazen napitnin totalCents 0 (prej 100 — B2 ŽIV); storno ponatisk negirane postavke iz posnetka (C2 ŽIV); 0 konzolnih napak; mobilni 390 px brez preliva; E2E ostanki počiščeni.
+- GITHUB PUSH: BLOKIRAN — žetona iz prejšnje seje (ghp_Bx7r… in starejši) sta PREKLICANA (401 na /user in /repos; lastnik jih je po pushu v1.238.0 umaknil po priporočilu). Commit 68 datotek (+1173/−145) varen LOKALNO na main.
+
+Stage Summary:
+- RAČUNSKA CELICA v1.239.0 je KODNO in E2E ZAKLJUČENA (A vedra Payment vrstic, B storno negacije + bazen neto, C posnetek računa, D void 409 + per-check storno pot) — čaka SAMO na svež GitHub žeton za push → CI → Vercel (DDL aditiven, produkcija potrebuje prisma db push).
+- AKCIJA ZA LASTNIKA: izdaj NOV GitHub personal access token (repo scope) in ga prilepi v klepet — push, CI vrata in Vercel produkcija 1.239.0 sledijo v isti seji.
+
 Task ID: v1.239.0-receipt-cell
 Agent: glavni agent (Z.ai Code)
 Task: Nadaljevanje denarnega vala po B-načrtih §15 I — RAČUNSKA CELICA v1.239.0. Tri vzporedne raziskave (izmene/napitnine, računi/izstavki, rezervacije/mize/QR) so potrdile 4 vrzeli računske celice; implementirane vse + per-check storno pot odprta. 1 aditivna DDL (Receipt.checkId + itemsJson), 0 odvisnosti, 0 AI.
