@@ -238,8 +238,8 @@ describe('v1.212.0 — Č2: disk kontrakt ožičenja', () => {
 /* ── Č3 — registri (verzija + oznaka slike) ───────────────────────────────── */
 describe('v1.212.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.239.1')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.239\.1'/)
+    expect(APP_VERSION).toBe('1.239.2')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.239\.2'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {

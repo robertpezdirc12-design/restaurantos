@@ -1,3 +1,17 @@
+Task ID: v1.239.2-fk-probe-fix (PRD §8 R4b vrstica: DDL pot orodja)
+Agent: glavni agent (Z.ai Code)
+Task: HOTFIX 2 — FK sonda coupons-waitlist je na PG VEDNO preskočila dodajanje omejitve (izmerjeno na produkciji: applied ["Coupon","WaitlistEntry.notifyStatus"] + skipped ["Coupon_guestId_fkey"] ob sveži tabeli brez FK). exists() helper obravnava IZJEMO kot znak manjkajoče entitete — a SELECT … FROM pg_constraint WHERE conname='X' ob manjkajoči omejitvi vrne PRAZNO MNOŽICO brez izjeme → helper vrne true → ALTER TABLE ADD CONSTRAINT se nikoli ni izvedel. Referenčna integriteta Coupon.guestId → Guest (ON DELETE CASCADE) v produkciji manjka; prisma diff zato vedno znova generira ADD CONSTRAINT (klasificiran kot znani coupons-waitlist drift, CI zelen a shema nikoli konvergira).
+
+Work Log:
+- POPRAVEK (src/app/api/admin/migrate-coupons-waitlist/route.ts): FK veja zdaj prebere VRSTICE rezultata (SELECT 1 AS one FROM pg_constraint …; Array.isArray(fkRows) && fkRows.length === 0 → izvedi ADD CONSTRAINT) namesto exception-probe; SQLite pot nespremenjena (preskok — db push zrcalo nosi FK); exists() helper ostaja za TABELE/STOLPCE, kjer je izjema res znak manjka (SELECT … FROM "Tabela" LIMIT 1 meče P2021/P2022/no such column).
+- PRODUKCIJA (v1.239.1, pred tem popravkom): receipt-snapshot DDL APLICIRAN (applied ["Receipt.checkId","Receipt.itemsJson"] — vroča pot računske celice zaprta, izdaja računov zopet varna) + coupons-waitlist DDL APLICIRAN (Coupon + notifyStatus; Kuponi tab odprt) + idempotenca potrjena (drugi klic: skipped oba, alreadyApplied true) + 401 brez žetona; pending 0/38 allApplied true. CI quality gate ZELEN (#41611897509 @ 9760acc); issue #105+#106 samodejno zaprta ob uspehu; GitLab zrcalo sinhrono.
+- DVIG 1.239.1 → 1.239.2 (patch — orodje): version.ts + compose + pini; 0 novih i18n ključev (3860 nespremenjeno).
+- TESTI: v239-1 +3 (D1 vrstična sonda + odstranjen stari vzorec; D2 exists() za tabele/stolpce ostaja; D3 SQLite preskok).
+
+Stage Summary:
+- Po deployu 1.239.2: ponovni klic /api/admin/migrate-coupons-waitlist na produkciji doda manjkajoči FK (idempotentno — vrstična sonda) → shema popolnoma konvergira (drift za coupons-waitlist izgine iz meritev).
+
+
 Task ID: v1.239.1-receipt-snapshot-ddl
 Agent: glavni agent (Z.ai Code)
 Task: HOTFIX — v1.239.0 je dodal 1 aditivno DDL (Receipt.checkId + itemsJson), a ZABIL vpis v KNOWN_DRIFTS allowlist → neon-smoke drift vrata rdeča (CI run 41596980960 @ c0f8b13, 2 nepričakovana stavka), Vercel deploy blokiran. Popravek po precedensu coupons-waitlist (hotfix v1.219.1): admin ruta + register + konzola + allowlist + i18n + verzija. 0 spremembe vedenja, 0 odvisnosti.

@@ -262,8 +262,8 @@ describe('Č2 — sendDailyDigest z urnim odsekom (transportFactory šiv)', () =
 
 describe('Č3 — registri v1.206.0', () => {
   test('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.239.1')
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toMatch(/APP_VERSION = '1\.239\.1'/)
+    expect(APP_VERSION).toBe('1.239.2')
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toMatch(/APP_VERSION = '1\.239\.2'/)
   })
 
   test('GAP dokument: OSS-8 A-del IZVEDENO @ v1.206.0 + poštena B-meja', () => {

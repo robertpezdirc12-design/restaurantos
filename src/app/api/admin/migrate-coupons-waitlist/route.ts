@@ -92,14 +92,26 @@ export async function POST(req: NextRequest) {
     // 3) FK na Guest (Postgres nima ADD CONSTRAINT IF NOT EXISTS — probe posamično;
     //    SQLite ne podpira ADD CONSTRAINT in tabela ionakao pride iz db push zrcala
     //    s FK že vključenim → na SQLite se korak cele preskoči)
+    //    FIX v1.239.2: obstoječi exists() helper obravnava IZJEMO kot znak
+    //    manjkajoče entitete — a `SELECT … FROM pg_constraint WHERE conname = 'X'`
+    //    ob manjkajoči omejitvi vrne PRAZNO MNOŽICO brez izjeme → helper je
+    //    vrnil true → FK se je na PG VEDNO preskočil, čeprav ni obstajal
+    //    (izmerjeno na produkciji: applied ["Coupon","WaitlistEntry.notifyStatus"]
+    //    + skipped ["Coupon_guestId_fkey"] ob sveži tabeli brez FK). Sonda zdaj
+    //    gleda VRSTICE rezultata, ne odsotnost izjeme.
     const isSqlite = String(process.env.DATABASE_URL || '').startsWith('file:')
     if (isSqlite) {
       skipped.push('Coupon_guestId_fkey (sqlite: db push zrcalo)')
-    } else if (!(await exists(`SELECT 1 FROM pg_constraint WHERE conname = 'Coupon_guestId_fkey'`))) {
-      await db.$executeRawUnsafe(`ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_guestId_fkey" FOREIGN KEY ("guestId") REFERENCES "Guest"("id") ON DELETE CASCADE ON UPDATE CASCADE`)
-      applied.push('Coupon_guestId_fkey')
     } else {
-      skipped.push('Coupon_guestId_fkey')
+      const fkRows = (await db.$queryRawUnsafe(
+        `SELECT 1 AS one FROM pg_constraint WHERE conname = 'Coupon_guestId_fkey'`,
+      )) as { one: number }[]
+      if (Array.isArray(fkRows) && fkRows.length === 0) {
+        await db.$executeRawUnsafe(`ALTER TABLE "Coupon" ADD CONSTRAINT "Coupon_guestId_fkey" FOREIGN KEY ("guestId") REFERENCES "Guest"("id") ON DELETE CASCADE ON UPDATE CASCADE`)
+        applied.push('Coupon_guestId_fkey')
+      } else {
+        skipped.push('Coupon_guestId_fkey')
+      }
     }
 
     // 4) STOLPEC WaitlistEntry.notifyStatus (v1.188.0 — sledenje opomnikom)

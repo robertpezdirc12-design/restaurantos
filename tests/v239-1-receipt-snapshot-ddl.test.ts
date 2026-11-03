@@ -160,16 +160,42 @@ describe('v1.239.1 C · povezanost registrov', () => {
   })
 })
 
+/* ── D · HOTFIX v1.239.2 — FK sonda coupons-waitlist (vrstice, ne izjema) ── */
+
+describe('v1.239.2 D · FK sonda migrate-coupons-waitlist', () => {
+  it('D1: sonda gleda VRSTICE pg_constraint, ne odsotnost izjeme', () => {
+    const src = read('src/app/api/admin/migrate-coupons-waitlist/route.ts')
+    // FIX vzorec: eksplicitna preverba dolžine rezultata
+    expect(src).toContain("SELECT 1 AS one FROM pg_constraint WHERE conname = 'Coupon_guestId_fkey'")
+    expect(src).toContain('Array.isArray(fkRows) && fkRows.length === 0')
+    // STARI (napačni) vzorec exists() na pg_constraint je ODSTRANJEN
+    expect(src).not.toContain('exists(`SELECT 1 FROM pg_constraint')
+    // ADD CONSTRAINT stavek ostaja (izvede se, ko vrstic ni)
+    expect(src).toContain('ADD CONSTRAINT "Coupon_guestId_fkey"')
+  })
+
+  it('D2: exists() helper ostane za TABELE/STOLPCE (izjema = manjka) — nespremenjen', () => {
+    const src = read('src/app/api/admin/migrate-coupons-waitlist/route.ts')
+    expect(src).toContain('SELECT 1 FROM "Coupon" LIMIT 1')
+    expect(src).toContain('SELECT "notifyStatus" FROM "WaitlistEntry" LIMIT 1')
+  })
+
+  it('D3: SQLite pot ostaja preskok (db push zrcalo nosi FK)', () => {
+    const src = read('src/app/api/admin/migrate-coupons-waitlist/route.ts')
+    expect(src).toContain("skipped.push('Coupon_guestId_fkey (sqlite: db push zrcalo)')")
+  })
+})
+
 /* ── Ž · verzija + dokumentacija ────────────────────────────────────────── */
 
 describe('v1.239.1 Ž · verzija in dokumenti', () => {
-  it('Ž1: APP_VERSION dvignjena na 1.239.1 (+ compose)', () => {
-    expect(APP_VERSION).toBe('1.239.1')
-    expect(read('src/lib/version.ts')).toContain("'1.239.1'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.239.1')
+  it('Ž1: APP_VERSION dvignjena na 1.239.2 (hotfix veriga: DDL pot + FK sonda)', () => {
+    expect(APP_VERSION).toBe('1.239.2')
+    expect(read('src/lib/version.ts')).toContain("'1.239.2'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.239.2')
   })
 
-  it('Ž2: AUDIT števci usklajeni (3860/3860) + POSODOBITEV v1.239.1', () => {
+  it('Ž2: AUDIT števci usklajeni (3860/3860) + POSODOBITEV v1.239.1 (živi ključ ostane)', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
     expect(audit).toContain('3860 ključev SL in 3860 HR')
     expect(audit).toContain('**POSODOBITEV (hotfix v1.239.1):**')
