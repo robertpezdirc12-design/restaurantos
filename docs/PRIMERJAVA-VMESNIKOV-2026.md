@@ -1299,3 +1299,84 @@ obratom). Četrta plast je varnost produkcije: zaslon, ki ne more
 pomotično izdati jedi. Naslednji val po načrtu: sveža raziskava ali
 P2 ostanki (kombinacije miz za velike družbe — Lightspeed november
 2026; digitalni checklisti — Lightspeed Tasks marec 2026).
+
+## 19. Raziskava november 2026 — KOMBINACIJSKI VAL v1.245.0 (velike družbe + walk-in rezerva)
+
+Nadaljevanje §18 (»naslednji val: kombinacije miz — Lightspeed november
+2026«). Vir: Lightspeed »What's New: November 2026« — »Optimize dining room
+capacity and seat larger groups effortlessly«: »Automatic table combinations
+let you seamlessly welcome larger parties« + »choose specific bookable
+tables to preserve space for walk-ins during busy shifts«. Toast/OpenTable
+imata table joining že leta. Dve ugotovitvi, izmerjeni v kodi.
+
+### A) Družba, večja od največje mize — brez odgovora (P1)
+
+**Kako imajo najboljši:** Lightspeed — pod »Table combinations« se
+definirajo mize, ki se rezervirajo SKUPAJ; gost/osebje dobi enotno
+»Miza 5+6«. Toast — table joining na tlorisu; OpenTable — kombinirane
+mize kot prvorazredni objekt pri dodelitvi.
+
+**Kako je bilo pri nas (v1.244.0, izmerjeno):** največja miza 6 sedežev →
+autoAssignTable za 8 oseb vrne »Ni prostih miz za 8 oseb«; dialog ponudi
+samo enojne mize; telefonski odgovor je bil »nimate mize za 10«. Rezervacija
+je nosila EN tableId (FK) — kombinacije ni bilo KAM zapisati, niti
+varovala, ki bi blokirala več miz hkrati.
+
+**Popravek v1.245.0:** trije sloji:
+1. **Registr** (0 DDL): Integration vrstica `table-combos-config` per
+   lokacija — [{ id, tableIds }] (2–5 miz); kartica v Nastavitvah
+   (ReservationCombosCard, settings.manage); GET/PUT /api/tables/combos z
+   validacijo (ista lokacija, ≤ 20 kombinacij) + revizijo
+   TABLE_COMBOS_CONFIG. Zamujene kombinacije (izbrisana miza) se pri
+   branju tiho izpustijo — self-healing.
+2. **Nosilec** (1 aditivni DDL po dokumentirani poti mig konzole — vzorec
+   receipt-snapshot v1.239.1): `Reservation.comboTableIds`
+   ',id1,id2,' (VSE mize vključno s primarno; prazno = enostavna —
+   obstoječe vrstice nespremenjene). Vroča pot: Prisma bere stolpec pri
+   vsakem branju Reservation → korak apliciramo takoj po deployu.
+3. **Guardi**: findTableReservationConflict dobi
+   `OR [{ tableId }, { comboTableIds contains ',id,' }]` — miza je
+   zasedena tudi kot ČLANICA. assertTableClaimable podeduje (usaditev
+   čakalne vrste + tables PATCH avtomatično spoštujeta kombinacije).
+   POST preveri konflikt PER ČLANICA pod lockReservationCapacity;
+   SEATED zaklene VSE članice; CANCELLED/NO_SHOW/COMPLETED varno sprosti
+   VSE (occupied LE brez aktivnega naročila — ne rušimo tujega gosta).
+
+**UI:** dialog Nova rezervacija ponudi 🔗 kombinacije (vrednost
+'combo:<id>' → tableIds ob oddaji); autoAssignTable teče skozi čisti
+seatCandidatesForParty (družba 8 → Miza 5+6, če je to najmanjše ujemanje);
+kartica rezervacije nosi 🔗 Mize 5+6; tloris overlay prihajajoče
+rezervacije na VSEH članicah.
+
+### B) Spletna kapaciteta = fizična (walk-in brez rezerve) (P2)
+
+**Kako imajo najboljši (Lightspeed, november 2026):** »choose specific
+bookable tables to preserve space for walk-ins during busy shifts« —
+deli fizičnih mest ostanejo izven spletnih rezervacij.
+
+**Kako je bilo pri nas:** publicSlotsForDate je štela VSE mize
+(tableSeatsFor = aggregate celotne lokacije) — gostje na spletu so lahko
+zasedli vsako mizo; ob polni knjigi ni bilo nič za walk-in.
+
+**Popravek:** Integration vrstica `resv-bookable-config`
+{ excludedTableIds } per lokacija (isti vzorec kot pacing/kombinacije —
+0 DDL); onlineSeatsFor = fizični MINUS izključene — plošča terminov IN
+javni POST štejeta samo rezervabilne. Interna telefonska pot NI omejena
+(samo spletna plast — Lightspeed ponuja oba obsega, »online only« je
+varnejši privzetek). Kartica: jantarni checkboxi per miza
+(TABLE_BOOKABLE_CONFIG revizija).
+
+DDL: 1 aditivni stolpec (Reservation.comboTableIds) prek mig konzole —
+admin ruta /api/admin/migrate-reservation-combo + KNOWN_DRIFTS
+reservation-combo (strogo enosmernen ADD matcher). 0 odvisnosti · 12 novih
+i18n ključev v vsakem slovarju (3877 → 3889; pariteta SL/HR). Testi:
+tests/v245-kombinacijski-val.test.ts (A1–A12 kombinacije end-to-end,
+B1–B2 walk-in rezerva, Ž1–Ž6 registri vključno drift matcher).
+
+**Sklep §19:** miza ni več meja družbe — registrirana kombinacija (5+6)
+je rezervabilna kot enota, blokira vse članice v vseh treh varovalih
+(POST, čakalna vrsta, ročna zasedba), se ob prihodu zaklene in ob odhodu
+sprosti CELA. Spletna kapaciteta pa spoštuje walk-in rezervo: gostje
+vidijo terminove zmogljivosti, ne fizičnih mest. Naslednji val: digitalni
+checklisti (Lightspeed Tasks marec 2026), saved report views (april 2026)
+ali sveža raziskava.

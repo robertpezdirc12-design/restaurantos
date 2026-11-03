@@ -4181,6 +4181,19 @@ export const hr: Record<string, string> = {
   // v1.244.0 (§18 C) — tlocrt: konobar + trajanje zauzetosti
   'tables.seatedFor': 'Zauzeto {min} min',
   'tables.waiterAria': 'Konobar: {name}',
+  // v1.245.0 (PRIMERJAVA §19) — kombinacije stolova + rezervabilni stolovi
+  'resv.comboTitle': 'Kombinacije stolova',
+  'resv.comboHint': 'Društva veća od najvećeg pojedinačnog stola: registrirajte skupine stolova koje osoblje rezervira zajedno (npr. Stol 5+6 = 8 sjedala). Rezervacija blokira SVE članove. Lightspeed »table combinations« (studeni 2026).',
+  'resv.comboAdd': 'Dodaj kombinaciju',
+  'resv.comboRemove': 'Ukloni',
+  'resv.comboEmpty': 'Nema registriranih kombinacija — velika društva ostaju bez stola.',
+  'resv.comboSeats': '{n} sjedala ukupno',
+  'resv.comboSaved': 'Postavke stolova spremljene',
+  'resv.comboAutoOk': 'Dodijeljena kombinacija: {table} ({seats} sjedala)',
+  'resv.bookableTitle': 'Stolovi rezervabilni online',
+  'resv.bookableHint': 'Isključeni stolovi se ne računaju u web kapacitet termina — ostaju za walk-in goste. Telefonske rezervacije nisu ograničene.',
+  'resv.bookableAll': 'Svi su stolovi rezervabilni online',
+  'mig.reservationCombo.desc': 'Kombinacije stolova (v1.245.0) — stupac Reservation.comboTableIds (svi stolovi kombinacijske rezervacije); vrući put: primijeni odmah nakon deploya',
 }
 
 export type DictionaryHr = typeof hr

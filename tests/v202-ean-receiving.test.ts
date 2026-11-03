@@ -294,9 +294,9 @@ describe('Č2 backend EAN (/api/inventory)', () => {
 
 describe('Č3 DDL ruta migrate-inventory-ean + registri', () => {
   it('SCHEMA_MIGRATIONS: 36 vnosov, documents na koncu; inventory-ean ostane (endpoint + probe)', async () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(38)
+    expect(SCHEMA_MIGRATIONS.length).toBe(39)
     const last = SCHEMA_MIGRATIONS[SCHEMA_MIGRATIONS.length - 1]
-    expect(last.id).toBe('receipt-snapshot') // v1.239.1: +receipt-snapshot (računska celica DDL) — coupons-waitlist zdaj predzadnji
+    expect(last.id).toBe('reservation-combo') // v1.245.0: +reservation-combo (kombinacije miz DDL) — receipt-snapshot predzadnji // v1.239.1: +receipt-snapshot (računska celica DDL) — coupons-waitlist zdaj predzadnji
     const ean = SCHEMA_MIGRATIONS.find((x) => x.id === 'inventory-ean')
     expect(ean).toBeDefined()
     expect(ean?.endpoint).toBe('/api/admin/migrate-inventory-ean')
@@ -331,8 +331,8 @@ describe('Č3 DDL ruta migrate-inventory-ean + registri', () => {
   })
 
   it('drift: classifyDrift uvrsti ADD COLUMN "ean" med KNOWN (inventory-ean); register 28', () => {
-    expect(KNOWN_DRIFTS.length).toBe(30)
-    expect(KNOWN_DRIFTS[KNOWN_DRIFTS.length - 1].id).toBe('receipt-snapshot') // v1.239.1: +receipt-snapshot (računska celica DDL)
+    expect(KNOWN_DRIFTS.length).toBe(31)
+    expect(KNOWN_DRIFTS[KNOWN_DRIFTS.length - 1].id).toBe('reservation-combo') // v1.245.0: +reservation-combo // v1.239.1: +receipt-snapshot (računska celica DDL)
     const c = classifyDrift(`ALTER TABLE "InventoryItem" ADD COLUMN "ean" TEXT NOT NULL DEFAULT '';`)
     expect(c.known.map((k) => k.id)).toEqual(['inventory-ean'])
     expect(c.unexpected.length).toBe(0)
@@ -399,6 +399,6 @@ describe('Č4 registri, UI statika, i18n, verzija', () => {
   })
 
   it('verzija: pin 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.244.0')
+    expect(APP_VERSION).toBe('1.245.0')
   })
 })

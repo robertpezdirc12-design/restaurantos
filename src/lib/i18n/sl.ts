@@ -4186,6 +4186,19 @@ export const sl: Record<string, string> = {
   // v1.244.0 (§18 C) — tloris: natakar + trajanje zasedenosti
   'tables.seatedFor': 'Zasedeno {min} min',
   'tables.waiterAria': 'Natakar: {name}',
+  // v1.245.0 (PRIMERJAVA §19) — kombinacije miz + rezervabilne mize
+  'resv.comboTitle': 'Kombinacije miz',
+  'resv.comboHint': 'Družbe, večje od največje posamezne mize: registrirajte skupine miz, ki jih osebje rezervira skupaj (npr. Miza 5+6 = 8 sedežev). Rezervacija blokira VSE članice. Lightspeed »table combinations« (november 2026).',
+  'resv.comboAdd': 'Dodaj kombinacijo',
+  'resv.comboRemove': 'Odstrani',
+  'resv.comboEmpty': 'Ni registriranih kombinacij — velike družbe ostanejo brez mize.',
+  'resv.comboSeats': '{n} sedežev skupaj',
+  'resv.comboSaved': 'Nastavitve miz shranjene',
+  'resv.comboAutoOk': 'Dodeljena kombinacija: {table} ({seats} sedežev)',
+  'resv.bookableTitle': 'Mize, rezervabilne online',
+  'resv.bookableHint': 'Izklopljene mize se ne štejejo v spletno kapaciteto terminov — ostanejo za walk-in goste. Telefonske rezervacije niso omejene.',
+  'resv.bookableAll': 'Vse mize so rezervabilne online',
+  'mig.reservationCombo.desc': 'Kombinacije miz (v1.245.0) — stolpec Reservation.comboTableIds (vse mize kombinacijske rezervacije); vroča pot: apliciraj takoj po deployu',
 }
 
 export type Dictionary = typeof sl

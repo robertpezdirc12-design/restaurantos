@@ -18,6 +18,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { nid } from '@/lib/map'
 import { zonedTimeToUtc } from './haccp-ops'
+import { loadBookableExcluded } from './table-combos'
 import {
   WIDGET_POLICY_DEFAULTS,
   slotsForDate,
@@ -174,10 +175,24 @@ export async function lockReservationCapacity(tx: ReservationLockTx, locationId:
   await tx.counter.upsert({ where: { name }, create: { id: nid(), name, value: 1 }, update: { value: { increment: 1 } } })
 }
 
-/** Seštevek sedežev vseh miz lokacije (fizikalna kapaciteta). */
-export async function tableSeatsFor(locationId: string): Promise<number> {
-  const agg = await db.table.aggregate({ where: { locationId }, _sum: { capacity: true } })
+/** Seštevek sedežev miz lokacije (fizikalna kapaciteta).
+ *  v1.245.0 (§19): neobvezni excludeIds — mize v walk-in rezervi ( Lightspeed
+ *  »choose specific bookable tables«) se NE štejejo v SPLETNO kapaciteto
+ *  terminov; interna pot jih še vedno lahko zasede. */
+export async function tableSeatsFor(locationId: string, excludeIds: string[] = []): Promise<number> {
+  const agg = await db.table.aggregate({
+    where: { locationId, ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}) },
+    _sum: { capacity: true },
+  })
   return Math.max(0, Math.floor(agg._sum.capacity ?? 0))
+}
+
+/** Sedeži, ki se štejejo v SPLETNO kapaciteto lokacije (fizikalni MINUS
+ *  walk-in rezerva iz resv-bookable-config). 0 DDL — Integration vrstica. */
+export async function onlineSeatsFor(locationId: string): Promise<{ seats: number; excluded: string[] }> {
+  const excluded = await loadBookableExcluded(db, locationId)
+  const seats = await tableSeatsFor(locationId, excluded)
+  return { seats, excluded }
 }
 
 /** Terminska plošča za javni GET — ena poizvedba vlakna. */
@@ -189,14 +204,14 @@ export async function publicSlotsForDate(
   now: Date,
 ): Promise<SlotsForDateResult> {
   const policy = widgetPolicyOf(widget)
-  const [rows, specials, seats] = await Promise.all([
+  const [rows, specials, online] = await Promise.all([
     openingRowsFor(widget.locationId),
     specialsFor(widget.locationId, dateKey, dateKey),
-    tableSeatsFor(widget.locationId),
+    onlineSeatsFor(widget.locationId),
   ])
   const { start: dayStart, end: dayEnd } = dayBoundsUtc(dateKey, timeZone)
   const reservations = await activeReservationsFor(widget.locationId, dayStart, dayEnd)
-  return slotsForDate(policy, { rows, specials }, dateKey, now, reservations, seats, timeZone)
+  return slotsForDate(policy, { rows, specials }, dateKey, now, reservations, online.seats, timeZone)
 }
 
 /** Get-or-create konfiguracije widgeta za lokacijo (token se izda ob prvem

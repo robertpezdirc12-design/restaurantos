@@ -6,7 +6,7 @@ import { clientIp, rateLimitPublic } from '@/lib/guest'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendBookingConfirmation } from '@/lib/reminders'
-import { resolveWidgetToken, widgetPolicyOf, openingRowsFor, specialsFor, activeReservationsFor, tableSeatsFor, publicSlotsForDate, dayBoundsUtc, lockReservationCapacity } from '@/lib/reservation-widget'
+import { resolveWidgetToken, widgetPolicyOf, openingRowsFor, specialsFor, activeReservationsFor, onlineSeatsFor, publicSlotsForDate, dayBoundsUtc, lockReservationCapacity } from '@/lib/reservation-widget'
 import { publicSlotsPayload, validateSlot, type DayHoursInput } from '@/lib/reservation-slots'
 import { brandThemeForLocation } from '@/lib/brand-themes-server'
 import { zonedDateParts, localDateKey } from '@/lib/haccp-ops'
@@ -96,12 +96,15 @@ export async function POST(req: NextRequest) {
   }
 
   // ── STROGA terminska validacija (isti motor kot plošča) ──
+  // v1.245.0 (§19): sedeži = SPLETNA kapaciteta (fizikalne MINUS walk-in
+  // rezerva iz resv-bookable-config — Lightspeed »preserve space for walk-ins«).
   const now = new Date()
-  const [rows, specials, seats] = await Promise.all([
+  const [rows, specials, online] = await Promise.all([
     openingRowsFor(widget.locationId),
     specialsFor(widget.locationId, date, date),
-    tableSeatsFor(widget.locationId),
+    onlineSeatsFor(widget.locationId),
   ])
+  const seats = online.seats
   // v1.158.0: zasedenost se gleda za CELOTEN izbrani dan, ne za okno
   // [now, now+24h] — prihodnji datumi so sicer videli prazno kapaciteto
   // (prekomerno rezerviranje).

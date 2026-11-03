@@ -580,6 +580,18 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
       ['Receipt', 'itemsJson'],
     ]),
   },
+  {
+    // v1.245.0 (PRIMERJAVA §19): KOMBINACIJSKI VAL — aditivni stolpec
+    // Reservation.comboTableIds (',id1,id2,' vseh miz kombinacijske
+    // rezervacije; prazno = enostavna). VROČA POT: Prisma klient bere
+    // stolpec pri vsakem branju Reservation — do DDL aplikacije na
+    // produkciji PADAJO VSE rezervacijske rute (P2022); korak apliciramo
+    // TAKOJ po deployu (vzorec receipt-snapshot v1.239.1).
+    id: 'reservation-combo',
+    descKey: 'mig.reservationCombo.desc',
+    endpoint: '/api/admin/migrate-reservation-combo',
+    probe: async () => columnExists('Reservation', 'comboTableIds'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

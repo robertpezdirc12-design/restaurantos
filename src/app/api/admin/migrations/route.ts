@@ -41,6 +41,7 @@ import { POST as inventoryEanPOST } from '../migrate-inventory-ean/route'
 import { POST as documentsPOST } from '../migrate-documents/route'
 import { POST as couponsWaitlistPOST } from '../migrate-coupons-waitlist/route'
 import { POST as receiptSnapshotPOST } from '../migrate-receipt-snapshot/route'
+import { POST as reservationComboPOST } from '../migrate-reservation-combo/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -95,6 +96,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'documents': documentsPOST,
   'coupons-waitlist': couponsWaitlistPOST,
   'receipt-snapshot': receiptSnapshotPOST,
+  'reservation-combo': reservationComboPOST,
 }
 
 interface ConsoleResult {

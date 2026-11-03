@@ -2484,6 +2484,8 @@ model Reservation {
   partySize       Int
   duration        Int               @default(120)
   tableId         String?
+  // v1.245.0 (PRIMERJAVA §19) — kombinacije miz (ogledalo PG sheme; TEXT)
+  comboTableIds   String            @default("")
   status          String @default("confirmed")
   notes           String            @default("")
   specialRequests String            @default("")

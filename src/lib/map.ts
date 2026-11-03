@@ -10,7 +10,16 @@ import { randomUUID } from 'crypto'
 /**
  * Issue #7 (P1, v1.104.0): toleranten parse alergenskega posnetka OrderItem
  * (LOKALNA čista funkcija — map.ts NE SME uvažati db verige; vzorec nid).
+ *
+ * v1.245.0 (§19): parseComboTableIdsLocal — isti vzorec za stolpec
+ * Reservation.comboTableIds (',id1,id2,' → ['id1','id2']; prazno → []).
  */
+function parseComboTableIdsLocal(raw: string | null | undefined): string[] {
+  const s = String(raw ?? '').trim()
+  if (!s) return []
+  return s.split(',').map((x) => x.trim()).filter(Boolean)
+}
+
 function parseAllergenSnapshotLocal(raw: string | null | undefined): { codes?: unknown; status?: unknown } {
   if (!raw) return {}
   try {
@@ -404,6 +413,9 @@ export function mapReservation(r: Row) {
     status: reservationStatusToUI(r.status as string),
     note: (r.notes as string) || null,
     tableId: (r.tableId as string) ?? null,
+    // v1.245.0 (§19): kombinacija miz — vse članice (parsed iz ',id1,id2,';
+    // enojna rezervacija → [], klient uporabi tableId)
+    tableIds: parseComboTableIdsLocal(r.comboTableIds as string | null | undefined),
     locationId: (r.locationId as string) ?? null,
     createdAt: r.createdAt as string,
     // OPS-7 (v1.69.0): opomnik rezervacij — badge UI

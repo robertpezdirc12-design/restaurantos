@@ -90,7 +90,14 @@ export async function findTableReservationConflict(
   const durMs = Math.max(15, check.durationMin) * 60_000
   const rows = await client.reservation.findMany({
     where: {
-      tableId: check.tableId,
+      // v1.245.0 (PRIMERJAVA §19): miza je zasedena, če jo drži rezervacija
+      // KOT PRIMARNA (tableId) ali KOT ČLANICA kombinacije (comboTableIds
+      // ',id1,id2,' — contains z ločili preprečuje prefix trke id-jev).
+      // Prazen comboTableIds (obstoječe enojne rezervacije) se ne primerja.
+      OR: [
+        { tableId: check.tableId },
+        { comboTableIds: { contains: `,${check.tableId},` } },
+      ],
       status: { in: [...CLAIM_BLOCKING_STATUSES] },
       dateTime: { gte: new Date(atMs - 24 * 3600_000), lte: new Date(atMs + durMs + 24 * 3600_000) },
       ...(check.excludeReservationId ? { id: { not: check.excludeReservationId } } : {}),

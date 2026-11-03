@@ -101,10 +101,11 @@ import { PERMISSION_LABELS, effectivePermissionSets, FULL_ONLY_PERMISSIONS, perm
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import { coversByWindow } from '@/lib/reservation-pacing'
+import { seatCandidatesForParty } from '@/lib/table-combos'
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -167,7 +168,7 @@ interface MenuT { id: string; name: string; price: number; station: string; avai
 interface CategoryT { id: string; name: string }
 interface EmployeeT { id: string; name: string; email: string; role: string; active: boolean; phone?: string | null; locationId?: string | null; permissionOverrides: string[] }
 /** OPS-8 val 3 (v1.73.0): + email/duration/specialRequests/source (additive API fields) */
-interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean; email?: string | null; duration?: number | null; specialRequests?: string | null; source?: string | null; tableId?: string | null; locationId?: string | null }
+interface ReservationT { id: string; guestName: string; phone?: string | null; guests: number; reservedAt: string; status: string; note?: string | null; reminderSent?: boolean; email?: string | null; duration?: number | null; specialRequests?: string | null; source?: string | null; tableId?: string | null; tableIds?: string[]; locationId?: string | null }
 interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string; fiscalVerified: boolean; fiscalStatus: string; total: number; paymentMethod: string; orderId?: string | null; createdAt: string; tableName?: string | null; orderNumber?: number | null; isStorno?: boolean; stornoOf?: string | null }
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
@@ -423,6 +424,9 @@ function DashboardInner() {
   const [categories, setCategories] = useState<CategoryT[]>([])
   const [employees, setEmployees] = useState<EmployeeT[]>([])
   const [reservations, setReservations] = useState<ReservationT[]>([])
+  // v1.245.0 (§19): registrirane kombinacije miz (dialog + avtododelitev;
+  // /api/tables/combos — isti poll vratar kot rezervacije)
+  const [tableCombos, setTableCombos] = useState<{ id: string; tableIds: string[] }[]>([])
   const [receipts, setReceipts] = useState<ReceiptT[]>([])
   const [inventory, setInventory] = useState<InventoryT[]>([])
   const [shifts, setShifts] = useState<ShiftT[]>([])
@@ -707,6 +711,19 @@ function DashboardInner() {
 
   // Rezervacije — nov vnos
   const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string; tableId: string; source: string; email: string; duration: number; specialRequests: string; locationId: string } | null>(null)
+  /* v1.245.0 (§19): kombinacije osvežimo OB ODPRTJU dialoga Nova rezervacija —
+     nastavitvena kartica jih lahko spremeni med sejo (poll prinese sveže šele
+     čez 15 s); en fetch na odprtje, fail-soft (starejši seznam ostane). */
+  const resvDialogOpen = newRes !== null
+  useEffect(() => {
+    if (!resvDialogOpen) return
+    void (async () => {
+      try {
+        const d = await api<{ combos: { id: string; tableIds: string[] }[] }>(`/api/tables/combos${viewLoc ? `?locationId=${viewLoc}` : ''}`)
+        setTableCombos(d.combos ?? [])
+      } catch { /* fail-soft — uporabi zadnji znani seznam */ }
+    })()
+  }, [resvDialogOpen, viewLoc])
   // OPS-8 val 3 (v1.73.0): status filter chips for the reservation list
   const [resFilter, setResFilter] = useState<ReservationFilter>('UPCOMING')
   // Issue #94 (QA): datumski filter zavihka Računi — SKUPEN za knjigovodski
@@ -842,7 +859,7 @@ function DashboardInner() {
       const effPerms = freshPerms ?? curPerms
       const hp = (p: string) => manage || effPerms.includes(p)
       const hpAny = (...ps: string[]) => manage || ps.some((x) => effPerms.includes(x))
-      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc, vg] = await Promise.all([
+      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc, vg, tc] = await Promise.all([
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
@@ -883,6 +900,11 @@ function DashboardInner() {
         // OSS-10 B-del (v1.210.0): skupine opcij — vir razreda `variant` za POS
         // (requireAuth — za vse vloge, kot meni; isti poll vratarj 'menus').
         dashboardPollIncludes(scope, 'menus') ? soft(api<{ groups: PosVariantGroupView[] }>('/api/modifier-groups')) : undefined,
+        // v1.245.0 (§19): kombinacije miz za velike družbe (dialog + avtododelitev;
+        // isti lastnik kot rezervacije — vratar 'reservations')
+        dashboardPollIncludes(scope, 'reservations') && hp('reservations.manage')
+          ? soft(api<{ combos: { id: string; tableIds: string[] }[]; excludedTableIds: string[] }>(`/api/tables/combos${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`))
+          : undefined,
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
@@ -899,6 +921,8 @@ function DashboardInner() {
       if (m) { setMenu(m.items); setCategories(m.categories) }
       if (e) setEmployees(e.employees)
       if (r) setReservations(r.reservations)
+      // v1.245.0 (§19): kombinacije miz (dialog Nova rezervacija + avtododelitev)
+      if (tc) setTableCombos(tc.combos)
       if (rec) setReceipts(rec.receipts)
       if (inv) setInventory(inv.inventory)
       if (sh) setShifts(sh.shifts)
@@ -2103,7 +2127,11 @@ function DashboardInner() {
      trajanje rezervacije. Klient ima vse podatke že naložene (mize + rezervacije
      z tableId/duration iz /api/reservations) — čista posodobitev obrazca, brez
      novih backend poti. Strežnik ob oddaji še vedno varuje unikat
-     (@@unique [tableId, dateTime]) — to je pomoč pri izbiri, ne obveza. */
+     (@@unique [tableId, dateTime]) — to je pomoč pri izbiri, ne obveza.
+     v1.245.0 (§19): iskanje teče skozi seatCandidatesForParty (skupni čisti
+     helper z lib/testi) — enojne mize + REGISTRIRANE KOMBINACIJE (družba,
+     večja od največje mize → Miza 5+6); zasedene so tudi ČLANICE kombinacijskih
+     rezervacij (r.tableIds). */
   function autoAssignTable() {
     if (!newRes) return
     if (!newRes.reservedAt) { toast({ title: t('resv.autoAssignNeedTime'), variant: 'destructive' }); return }
@@ -2114,25 +2142,27 @@ function DashboardInner() {
     const dialogLoc = newRes.locationId || viewLoc
     const busyTables = new Set(
       reservations
-        .filter((r) => r.tableId && r.status !== 'CANCELLED' && r.status !== 'NO_SHOW')
+        .filter((r) => (r.tableId || (r.tableIds?.length ?? 0) > 0) && r.status !== 'CANCELLED' && r.status !== 'NO_SHOW')
         .filter((r) => {
           const s = new Date(r.reservedAt).getTime()
           const e = s + ((r.duration ?? 120) * 60_000)
           return s < end && start < e // prekrivanje oken [s,e) ∩ [start,end)
         })
-        .map((r) => r.tableId as string),
+        .flatMap((r) => ((r.tableIds?.length ?? 0) >= 2 ? r.tableIds! : (r.tableId ? [r.tableId] : []))),
     )
-    const candidates = viewTables
-      .filter((tb) => tb.seats >= newRes.guests)
-      .filter((tb) => !dialogLoc || !tb.locationId || tb.locationId === dialogLoc)
-      .filter((tb) => !busyTables.has(tb.id))
-      .sort((a, b) => a.seats - b.seats || a.name.localeCompare(b.name, 'sl'))
+    const candidates = seatCandidatesForParty({
+      tables: viewTables, combos: tableCombos, party: newRes.guests,
+      busyTableIds: busyTables, locationId: dialogLoc,
+    })
     if (candidates.length === 0) {
       toast({ title: t('resv.autoAssignNone', { n: newRes.guests }), variant: 'destructive' })
       return
     }
-    setNewRes({ ...newRes, tableId: candidates[0].id })
-    toast({ title: t('resv.autoAssignOk', { table: candidates[0].name, seats: candidates[0].seats }) })
+    const pick = candidates[0]
+    // kombinacija se v obrazcu nosi kot 'combo:<id>' (izbira v Selectu + oddaja)
+    setNewRes({ ...newRes, tableId: pick.comboId ? `combo:${pick.comboId}` : pick.tableIds[0] })
+    if (pick.comboId) toast({ title: t('resv.comboAutoOk', { table: pick.label, seats: pick.seats }) })
+    else toast({ title: t('resv.autoAssignOk', { table: pick.label, seats: pick.seats }) })
   }
 
   async function createReservation(allowOutsideHours = false, forcePacing = false) {
@@ -2157,7 +2187,11 @@ function DashboardInner() {
           guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests,
           reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours, forcePacing,
           ...(resvNeedsLocation && (newRes.locationId || viewLoc) ? { locationId: newRes.locationId || viewLoc } : {}),
-          ...(newRes.tableId ? { tableId: newRes.tableId } : {}),
+          // v1.245.0 (§19): kombinacija mize se v obrazcu nosi kot 'combo:<id>' —
+          // ob oddaji se razplete v tableIds[] (strežnik preveri vsako članico)
+          ...(newRes.tableId?.startsWith('combo:')
+            ? (() => { const c = tableCombos.find((x) => x.id === newRes.tableId!.slice(6)); return c ? { tableIds: c.tableIds } : {} })()
+            : newRes.tableId ? { tableId: newRes.tableId } : {}),
           source: newRes.source || 'phone',
           ...(newRes.email ? { customerEmail: newRes.email } : {}),
           duration: newRes.duration || 120,
@@ -2454,8 +2488,13 @@ function DashboardInner() {
       if (r.status !== 'CONFIRMED' || !r.tableId) continue
       const at = new Date(r.reservedAt).getTime()
       if (!Number.isFinite(at) || at < now) continue
-      const cur = m.get(r.tableId)
-      if (!cur || at < new Date(cur.reservedAt).getTime()) m.set(r.tableId, r)
+      // v1.245.0 (§19): kombinacijska rezervacija obljublja VSE članice —
+      // overlay na vsaki ploščici (miza se mora obrniti do te ure)
+      const ids: string[] = (r.tableIds?.length ?? 0) >= 2 ? r.tableIds! : (r.tableId ? [r.tableId] : [])
+      for (const tid of ids) {
+        const cur = m.get(tid)
+        if (!cur || at < new Date(cur.reservedAt).getTime()) m.set(tid, r)
+      }
     }
     return m
   }, [reservations])
@@ -5308,6 +5347,14 @@ function DashboardInner() {
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                         <Badge variant="outline">{RES_STATUS_KEYS[r.status] ? t(RES_STATUS_KEYS[r.status]) : r.status}</Badge>
+                        {/* v1.245.0 (§19): miza/kombinacija na kartici — ekipa vidi,
+                            KJE sedi družba (kombinacija = vse članice, 🔗). */}
+                        {(() => {
+                          const ids: string[] = (r.tableIds?.length ?? 0) >= 2 ? r.tableIds! : (r.tableId ? [r.tableId] : [])
+                          if (ids.length === 0) return null
+                          const names = ids.map((id) => viewTables.find((x) => x.id === id)?.name.replace('Miza ', '') ?? '?')
+                          return <Badge variant="outline" className="h-5 px-1.5 text-xs bg-stone-50 text-stone-700 border-stone-200">{ids.length >= 2 ? `🔗 Mize ${names.join('+')}` : `🪑 Miza ${names[0]}`}</Badge>
+                        })()}
                         {canRes && (
                           <>
                             {r.reminderSent ? (
@@ -5646,6 +5693,8 @@ function DashboardInner() {
               <ReservationWidgetCard />
               {/* v1.244.0 (PRIMERJAVA §18 A) — ritem prihodov (arrival pacing) */}
               <ReservationPacingCard />
+              {/* v1.245.0 (PRIMERJAVA §19) — kombinacije miz + rezervabilne mize */}
+              <ReservationCombosCard />
               {/* P1 #8 (v1.190.0) — lastni spletni portal za naročila (povezava /s/<token>) */}
               <WebPortalCard />
             </SettingsSection>
@@ -7006,6 +7055,20 @@ function DashboardInner() {
                         {viewTables.map((tb) => (
                           <SelectItem key={tb.id} value={tb.id}>{tb.name} · {t('tables.seats', { n: tb.seats })}</SelectItem>
                         ))}
+                        {/* v1.245.0 (§19): registrirane kombinacije miz za velike
+                            družbe — vrednost 'combo:<id>' se ob oddaji razplete
+                            v tableIds[] (vsota sedežev članic). */}
+                        {tableCombos.map((c) => {
+                          const members = c.tableIds.map((id) => viewTables.find((tb) => tb.id === id)).filter((x): x is TableT => !!x)
+                          if (members.length !== c.tableIds.length) return null
+                          const seats = members.reduce((s, m) => s + m.seats, 0)
+                          const lbl = members.map((m) => m.name.replace('Miza ', '')).join('+')
+                          return (
+                            <SelectItem key={c.id} value={`combo:${c.id}`}>
+                              🔗 Miza {lbl} · {t('resv.comboSeats', { n: seats })}
+                            </SelectItem>
+                          )
+                        })}
                       </SelectContent>
                     </Select>
                     {/* v1.231.0 — samodejna dodelitev (manjša miza, ki ustreza

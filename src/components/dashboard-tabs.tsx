@@ -39,6 +39,7 @@ export { JobsCard, SettingsEditor, DevicesCard, MfaCard } from './tabs/nastavitv
 export type { JobT, SettingsT, DeviceT } from './tabs/nastavitve-tab'
 export { ReservationWidgetCard } from './tabs/reservation-widget-card'
 export { ReservationPacingCard } from './tabs/reservation-pacing-card'
+export { ReservationCombosCard } from './tabs/reservation-combos-card'
 export { WebPortalCard } from './tabs/web-portal-card'
 /* Issue #21 (v1.111.0) — klic vodje iz POS-a: plošča vodje + nastavitve */
 export { ManagerCallsCard } from './tabs/manager-calls-card'

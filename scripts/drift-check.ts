@@ -525,6 +525,23 @@ export function isReceiptSnapshotStatement(stmt: string): boolean {
 }
 
 /**
+ * v1.245.0 (PRIMERJAVA §19): kombinacije miz — aditivni stolpec
+ * Reservation."comboTableIds" (vse mize kombinacijske rezervacije kot
+ * ',id1,id2,'; prazno = enostavna rezervacija). Matcher STROGO enosmernen
+ * ADD (main shema je stolpec prevzela v isti verziji — DROP faza ne
+ * obstaja). Ko je DDL apliciran na produkciji, drift izgine (mrtva koda).
+ */
+export function isReservationComboStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"Reservation"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every(
+    (c) => /^ADD\s+COLUMN\s+"comboTableIds"(\s|$)/i.test(c),
+  )
+}
+
+/**
  * OSS-2 (v1.203.0): dokumenti s priponkami — NOVA tabela Document (SOP-i,
  * pogodbe, recepture, navodila; vsebina kot bytea — read-only disk na
  * produkciji, datoteke NIKOLI ne grejo na lokalni disk). Matcher je ime tabeli
@@ -1001,6 +1018,24 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'shema je stolpce prevzela v isti verziji — DROP faza ne obstaja). Ko je DDL ' +
       'apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isReceiptSnapshotStatement,
+  },
+  {
+    id: 'reservation-combo',
+    reason:
+      'KOMBINACIJSKI VAL (v1.245.0, PRIMERJAVA-VMESNIKOV-2026 §19) — aditivni stolpec ' +
+      'Reservation."comboTableIds" (kombinacije miz za velike družbe: vse mize, ki jih ' +
+      'rezervacija ZASEDA, kot \',id1,id2,\'; prazno = enostavna rezervacija ene mize — ' +
+      'obstoječe vrstice nespremenjene). Strežniški guardi (findTableReservationConflict / ' +
+      'assertTableClaimable) blokirajo VSAKO članico kombinacije prek OR contains. VROČA ' +
+      'POT: POST /api/reservations in PATCH prehodi berejo/pisjejo stolpec na vsaki ' +
+      'rezervaciji z mizo (main shema ga ima od te verzije) — do DDL aplikacije na ' +
+      'produkciji te poti padajo na P2022, zato korak apliciramo TAKOJ po deployu ' +
+      '(vzorec receipt-snapshot v1.239.1). Produkcija čaka DDL korak: admin ruta ' +
+      '/api/admin/migrate-reservation-combo (konzola Enterprise → Shema migracije → ' +
+      'reservation-combo, en klik). Matcher STROGO enosmernen ADD (main shema je stolpec ' +
+      'prevzela v isti verziji — DROP faza ne obstaja). Ko je DDL apliciran, drift izgine ' +
+      'in vnos postane mrtva koda.',
+    matches: isReservationComboStatement,
   },
 ]
 

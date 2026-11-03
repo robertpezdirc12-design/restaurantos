@@ -10,6 +10,7 @@ import { pushEvent } from '@/lib/push'
 import { lockReservationCapacity } from '@/lib/reservation-widget'
 import { findTableReservationConflict, claimConflictMessage, assertTableClaimable } from '@/lib/table-claim'
 import { loadPacingConfig, assertArrivalPacing, type PacingCheck } from '@/lib/reservation-pacing'
+import { comboTableIdsOf, parseComboTableIds } from '@/lib/table-combos'
 
 /** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
@@ -80,6 +81,32 @@ export async function POST(req: NextRequest) {
     if (table.locationId !== locationId) return ok({ error: 'Miza ne pripada lokaciji rezervacije.' }, 400)
   }
 
+  // v1.245.0 (§19) — KOMBINACIJSKA REZERVACIJA: body.tableIds (≥ 2 miz) =
+  // družba, večja od največje posamezne mize (Lightspeed »table combinations«).
+  // tableId ostane PRIMARNA miza (prva iz seznama — kompatibilnost z UI/logs);
+  // comboTableIds nosi VSE članice ',id1,id2,'. Validacija: vse mize obstajajo,
+  // so iz iste lokacije, brez podvajanj, vsota sedežev ≥ oseb (drugače kombinacija
+  // nima smisla). Konflikti se preverijo PER ČLANICA znotraj transakcije spodaj.
+  const comboIds: string[] = Array.isArray(body.tableIds)
+    ? [...new Set((body.tableIds as unknown[]).map((x) => String(x ?? '').trim()).filter(Boolean))]
+    : []
+  if (comboIds.length > 0 && comboIds.length < 2) {
+    return ok({ error: 'Kombinacija potrebuje vsaj dve mizi.' }, 400)
+  }
+  if (comboIds.length > 5) {
+    return ok({ error: 'Kombinacija lahko zajema največ 5 miz.' }, 400)
+  }
+  if (comboIds.length >= 2) {
+    const members = await db.table.findMany({ where: { id: { in: comboIds } }, select: { id: true, locationId: true, capacity: true, number: true } })
+    if (members.length !== comboIds.length) return ok({ error: 'Ena od miz v kombinaciji ne obstaja.' }, 400)
+    const foreign = members.find((m) => m.locationId !== locationId)
+    if (foreign) return ok({ error: `Miza ${foreign.number} ne pripada lokaciji rezervacije.` }, 400)
+    const seats = members.reduce((s, m) => s + (m.capacity || 0), 0)
+    if (seats < (Number(body.guests) || 2)) {
+      return ok({ error: `Kombinacija ima skupaj ${seats} sedežev — premalo za ${Number(body.guests) || 2} oseb.` }, 400)
+    }
+  }
+
   // triage ⑦: rezervacija ne sme pasti v zaprtje — 409 z razlago, izrecen preglasi (allowOutsideHours) je dovoljen
   const when = new Date(body.reservedAt)
   if (!Number.isNaN(when.getTime())) {
@@ -118,14 +145,17 @@ export async function POST(req: NextRequest) {
   try {
     row = await db.$transaction(async (tx) => {
       await lockReservationCapacity(tx, locationId)
-      if (body.tableId && Number.isFinite(when.getTime())) {
+      // mize za preverbo konfliktov: kombinacija (vse članice) ali enojna miza
+      const conflictTargets: string[] = comboIds.length >= 2 ? comboIds : (body.tableId ? [String(body.tableId)] : [])
+      for (const tid of conflictTargets) {
+        if (!Number.isFinite(when.getTime())) break
         const conflict = await findTableReservationConflict(tx, {
-          tableId: String(body.tableId),
+          tableId: tid,
           at: when,
           durationMin: duration,
         })
         if (conflict) {
-          const t = await tx.table.findUnique({ where: { id: String(body.tableId) }, select: { number: true } })
+          const t = await tx.table.findUnique({ where: { id: tid }, select: { number: true } })
           return { conflict: claimConflictMessage(t?.number ?? 0, conflict) }
         }
       }
@@ -146,7 +176,11 @@ export async function POST(req: NextRequest) {
         data: {
           id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
           customerEmail: email,
-          dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2, tableId: body.tableId || null,
+          dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2,
+          tableId: comboIds.length >= 2 ? comboIds[0] : (body.tableId || null),
+          // v1.245.0: kombinacija = ',id1,id2,' VSEH miz (vključno s primarno);
+          // enojna rezervacija = '' (obstoječe vrstice nespremenjene)
+          comboTableIds: comboIds.length >= 2 ? comboTableIdsOf(comboIds) : '',
           duration,
           status: reservationStatusToDB(body.status || 'CONFIRMED') as ReservationStatus,
           source: reservationSourceToDB(body.source || 'PHONE') as ReservationSource,
@@ -242,25 +276,32 @@ export async function PATCH(req: NextRequest) {
   if (toDB === 'seated' && existing.tableId) {
     // okno = preostanek intervala TE rezervacije od zdaj naprej (lastna je
     // izključena; druge dejavne rezervacije na isti mizi so konflikt)
+    // v1.245.0: kombinacija zaklene VSE članice (claim + lock per miza).
     const resvEnd = existing.dateTime.getTime() + Math.max(15, existing.duration || 120) * 60_000
     const remainingMin = Math.max(15, Math.ceil((resvEnd - now.getTime()) / 60_000))
+    const memberIds = [existing.tableId, ...parseComboTableIds(existing.comboTableIds)]
+    const uniqueMembers = [...new Set(memberIds)]
     let seated: { ok: false; error: string } | { ok: true; row: typeof existing }
     try {
       seated = await db.$transaction(async (tx) => {
         await lockReservationCapacity(tx, existing.locationId || '')
-        const claim = await assertTableClaimable(tx, {
-          tableId: existing.tableId as string,
-          expectLocationId: existing.locationId,
-          at: now,
-          durationMin: remainingMin,
-          excludeReservationId: existing.id,
-        })
-        if (!claim.ok) return { ok: false as const, error: claim.message }
-        const lock = await tx.table.updateMany({
-          where: { id: existing.tableId as string, status: { not: 'occupied' } },
-          data: { status: 'occupied' },
-        })
-        if (lock.count === 0) return { ok: false as const, error: 'Miza je bila vmes zasedena — osveži in poskusi znova.' }
+        for (const tid of uniqueMembers) {
+          const claim = await assertTableClaimable(tx, {
+            tableId: tid,
+            expectLocationId: existing.locationId,
+            at: now,
+            durationMin: remainingMin,
+            excludeReservationId: existing.id,
+          })
+          if (!claim.ok) return { ok: false as const, error: claim.message }
+        }
+        for (const tid of uniqueMembers) {
+          const lock = await tx.table.updateMany({
+            where: { id: tid, status: { not: 'occupied' } },
+            data: { status: 'occupied' },
+          })
+          if (lock.count === 0) return { ok: false as const, error: 'Miza je bila vmes zasedena — osveži in poskusi znova.' }
+        }
         return {
           ok: true as const,
           row: await tx.reservation.update({
@@ -273,35 +314,42 @@ export async function PATCH(req: NextRequest) {
       return ok({ error: 'Prehod v usajeno ni uspel — poskusi znova.' }, 500)
     }
     if (!seated.ok) return ok({ error: seated.error, code: 'TABLE_TIME_CONFLICT' }, 409)
-    await writeAudit(db, { userId: user.sub, action: 'RESERVATION_SEATED_TABLE_LOCKED', entityType: 'Reservation', entityId: id, details: jstr({ tableId: existing.tableId, guestName: existing.customerName, at: now.toISOString() }), locationId: existing.locationId }).catch(() => {})
+    await writeAudit(db, { userId: user.sub, action: 'RESERVATION_SEATED_TABLE_LOCKED', entityType: 'Reservation', entityId: id, details: jstr({ tableId: existing.tableId, comboTableIds: existing.comboTableIds, tables: uniqueMembers, guestName: existing.customerName, at: now.toISOString() }), locationId: existing.locationId }).catch(() => {})
     return ok({ reservation: mapReservation(seated.row) })
   }
 
   if ((toDB === 'no_show' || toDB === 'cancelled' || toDB === 'completed') && existing.tableId) {
-    const table = await db.table.findUnique({
-      where: { id: existing.tableId },
-      select: { id: true, number: true, status: true },
-    })
-    if (table && table.status !== 'available') {
-      let released = false
-      if (table.status === 'reserved') {
-        const freed = await db.table.updateMany({ where: { id: table.id, status: 'reserved' }, data: { status: 'available' } })
-        released = freed.count > 0
-      } else if (table.status === 'occupied') {
-        // fizično zasedena: sprosti SAMO brez aktivnega naročila in brez
-        // novejše usaditve čakalne vrste (ne rušimo tujega gosta)
-        const activeOrder = await db.order.findFirst({ where: { tableId: table.id, status: { in: ORDER_ACTIVE_DB } }, select: { id: true } })
-        const newerSeat = await db.waitlistEntry.findFirst({
-          where: { tableId: table.id, status: 'seated', seatedAt: { gt: existing.actualArrival ?? existing.updatedAt } },
-          select: { id: true },
-        })
-        if (!activeOrder && !newerSeat) {
-          const freed = await db.table.updateMany({ where: { id: table.id, status: 'occupied' }, data: { status: 'available' } })
+    // v1.245.0: izpusti VSE mize rezervacije (kombinacija = vse članice;
+    // enojna = primarna — obnašanje nespremenjeno). Ista varovala per miza:
+    // 'reserved' → 'available' vedno; 'occupied' LE brez aktivnega naročila
+    // in brez novejše usaditve čakalne vrste (ne rušimo tujega gosta).
+    const memberIds = [...new Set([existing.tableId, ...parseComboTableIds(existing.comboTableIds)])]
+    for (const tid of memberIds) {
+      const table = await db.table.findUnique({
+        where: { id: tid },
+        select: { id: true, number: true, status: true },
+      })
+      if (table && table.status !== 'available') {
+        let released = false
+        if (table.status === 'reserved') {
+          const freed = await db.table.updateMany({ where: { id: table.id, status: 'reserved' }, data: { status: 'available' } })
           released = freed.count > 0
+        } else if (table.status === 'occupied') {
+          // fizično zasedena: sprosti SAMO brez aktivnega naročila in brez
+          // novejše usaditve čakalne vrste (ne rušimo tujega gosta)
+          const activeOrder = await db.order.findFirst({ where: { tableId: table.id, status: { in: ORDER_ACTIVE_DB } }, select: { id: true } })
+          const newerSeat = await db.waitlistEntry.findFirst({
+            where: { tableId: table.id, status: 'seated', seatedAt: { gt: existing.actualArrival ?? existing.updatedAt } },
+            select: { id: true },
+          })
+          if (!activeOrder && !newerSeat) {
+            const freed = await db.table.updateMany({ where: { id: table.id, status: 'occupied' }, data: { status: 'available' } })
+            released = freed.count > 0
+          }
         }
-      }
-      if (released) {
-        await writeAudit(db, { userId: user.sub, action: 'RESERVATION_TABLE_RELEASED', entityType: 'Reservation', entityId: id, details: jstr({ tableId: table.id, tableNumber: table.number, fromStatus: existing.status, toStatus: toDB }), locationId: existing.locationId }).catch(() => {})
+        if (released) {
+          await writeAudit(db, { userId: user.sub, action: 'RESERVATION_TABLE_RELEASED', entityType: 'Reservation', entityId: id, details: jstr({ tableId: table.id, tableNumber: table.number, fromStatus: existing.status, toStatus: toDB }), locationId: existing.locationId }).catch(() => {})
+        }
       }
     }
   }

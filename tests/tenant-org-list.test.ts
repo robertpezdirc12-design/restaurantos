@@ -219,7 +219,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // v1.244.0 (PRIMERJAVA §18 A): reservations/pacing GET+PUT (ritem prihodov —
     // konfiguracija per lokacija; Issue #96 fallback za centralne vloge prek
     // await locationScope v resolvePacingLocation) → 78
-    expect(wired.length).toBe(78)
+    // v1.245.0 (PRIMERJAVA §19): tables/combos GET+PUT (kombinacije miz + walk-in
+    // rezerva — Issue #96 fallback v resolveCombosLocation) → 79
+    expect(wired.length).toBe(79)
   })
 })
 

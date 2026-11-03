@@ -2517,6 +2517,13 @@ model Reservation {
   partySize       Int
   duration        Int               @default(120)
   tableId         String?
+  // v1.245.0 (PRIMERJAVA §19) — KOMBINACIJSKE REZERVACIJE: vse mize, ki jih
+  // rezervacija ZASEDA (vključno s primarno iz tableId), kot ',id1,id2,'.
+  // Prazno = enostavna rezervacija ene mize (obstoječe vrstice nespremenjene).
+  // Guardi (findTableReservationConflict / assertTableClaimable) blokirajo
+  // VSAKO članico: OR [{ tableId }, { comboTableIds contains ',id,' }].
+  // DDL: admin ruta migrate-reservation-combo (aditivno, TEXT NOT NULL DEFAULT '').
+  comboTableIds   String            @default("")
   status          ReservationStatus @default(confirmed)
   notes           String            @default("")
   specialRequests String            @default("")

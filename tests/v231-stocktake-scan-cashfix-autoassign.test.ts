@@ -73,7 +73,8 @@ describe('v1.231.0 A — inventura s čitalnikom (zaloga-tab)', () => {
 
 describe('v1.231.0 B — samodejna dodelitev mize (dashboard)', () => {
   test('B1: ReservationT nosi tableId/duration/locationId (API jih je pošiljal že prej — mapa v lib/map.ts)', () => {
-    expect(dash).toContain('source?: string | null; tableId?: string | null; locationId?: string | null }')
+    /* v1.245.0 (§19): + tableIds (kombinacijske rezervacije — aditivno). */
+    expect(dash).toContain('source?: string | null; tableId?: string | null; tableIds?: string[]; locationId?: string | null }')
   })
 
   test('B2: autoAssignTable — najmanjša miza po sedežih, brez prekrivanja aktivnih rezervacij', () => {
@@ -83,9 +84,11 @@ describe('v1.231.0 B — samodejna dodelitev mize (dashboard)', () => {
     // okno prekrivanja = datum + trajanje obeh rezervacij
     expect(dash).toContain('const e = s + ((r.duration ?? 120) * 60_000)')
     expect(dash).toContain('return s < end && start < e')
-    // kandidati: sedeži ≥ osebe, najmanjša zmaga
-    expect(dash).toContain('tb.seats >= newRes.guests')
-    expect(dash).toContain('a.seats - b.seats || a.name.localeCompare(b.name')
+    /* v1.245.0 (§19): iskanje kandidatov je preraslo v ČISTI helper
+       seatCandidatesForParty (lib/table-combos) — enojne mize + registrirane
+       kombinacije, sedeži ≥ osebe, najmanjša zmaga; isti vir delijo UI in testi. */
+    expect(dash).toContain('seatCandidatesForParty({')
+    expect(dash).toContain('combos: tableCombos, party: newRes.guests')
   })
 
   test('B3: gumb Dodeli v rezervacijskem dialogu s sidrom + namigom', () => {
@@ -98,7 +101,10 @@ describe('v1.231.0 B — samodejna dodelitev mize (dashboard)', () => {
   test('B4: brez časa rezervacije → jasen toast (ne tihega ugibanja); brez kandidata → pošteno sporočilo', () => {
     expect(dash).toContain("t('resv.autoAssignNeedTime')")
     expect(dash).toContain("t('resv.autoAssignNone', { n: newRes.guests })")
-    expect(dash).toContain("t('resv.autoAssignOk', { table: candidates[0].name, seats: candidates[0].seats })")
+    /* v1.245.0: kandidat je SeatCandidate (label/seats) — enojna miza ali
+       kombinacija (Miza 5+6); toast comboAutoOk za kombinacije. */
+    expect(dash).toContain("t('resv.autoAssignOk', { table: pick.label, seats: pick.seats })")
+    expect(dash).toContain("t('resv.comboAutoOk', { table: pick.label, seats: pick.seats })")
   })
 
   test('B5: mize v izbirniku kažejo število sedežev (podatek za odločitev)', () => {
@@ -149,8 +155,8 @@ describe('v1.231.0 C — P4 popravek vnosa blagajne (finance-tab)', () => {
 
 describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.244.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.244.0')
+    expect(APP_VERSION).toBe('1.245.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.245.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi val v1.231.0 (zaloge 22/22, restavracija 20/22)', () => {
@@ -170,7 +176,7 @@ describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.231.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.244.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.245.0')
     expect(wl.indexOf('Task ID: v1.231.0')).toBeLessThan(wl.indexOf('Task ID: v1.230.0'))
   })
 })
