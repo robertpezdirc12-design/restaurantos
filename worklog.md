@@ -1,4 +1,13 @@
-Task ID: v1.240.0-reservation-cell
+Task ID: v1.240.0-t1-type-prod (nadaljevanje v1.240.0-reservation-cell)
+Agent: glavni agent (Z.ai Code)
+Task: HOTFIX tipa — CI typecheck-prod (run 41629558664) je padel na table-claim.ts(90): produkcijski (Postgres) Prisma klient zahteva ReservationStatus[] v status: { in: [...] }, CLAIM_BLOCKING_STATUSES je bil readonly string[]. Lokalni tsc (SQLite zrcalo brez enumov) napake NI videl — typecheck:cloud skripta (v1.184.0, natanko za ta razred napak) ni bila pognana v pred-push ritualu.
+
+Work Log:
+- POPRAVEK: CLAIM_BLOCKING_STATUSES tipiran kot readonly ReservationStatus[] (unija iz prisma-types) + spread [...CLAIM_BLOCKING_STATUSES] v poizvedbi; komentar dokumentira vzrok.
+- VERIFIKACIJA: node scripts/typecheck-cloud.cjs EXIT=0 (Postgres klient + tsc + vrnitev SQLite); v240 29/29; lokalni tsc 0. Skripta UVRŠČENA v obvezni pred-push ritual (lekcija: lokalni tsc NI dovolj za tipe, ki se razlikujejo med dialektoma).
+
+Stage Summary:
+- CI vrata ponovno zelena po pushu; tipna disciplina enaka kot v reservations/route.ts (rezervacija status vedno skozi prisma-types unijo).
 Agent: glavni agent (Z.ai Code)
 Task: Nadaljevanje poliranj po B-načrtih §16 E (R4b program kvalitete) — REZERVACIJSKA CELICA v1.240.0. Trije klicatelji (POST rezervacij, usaditev čakalne vrste, tables PATCH) so vsak po svoje odločali, ali je miza "prosta" — in vsak je gledal le del resnice. 0 DDL, 0 odvisnosti, 0 novih i18n ključev (sporočila so strežniška SL).
 

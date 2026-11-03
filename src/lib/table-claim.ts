@@ -34,14 +34,18 @@
  */
 
 import type { Prisma } from '@prisma/client'
+import type { ReservationStatus } from './prisma-types'
 import { intervalsOverlap } from './reservation-slots'
 
 /** Standardni obrat mize (min) — okno, ki ga zahteva usaditev / zasedenost. */
 export const CLAIM_WINDOW_MIN = 120
 
 /** Statusi rezervacije, ki ZAVIRAJO claim (usklajeno z UI autoAssignTable:
- *  CONFIRMED/SEATED/COMPLETED zavirajo; CANCELLED/NO_SHOW ne). */
-export const CLAIM_BLOCKING_STATUSES: readonly string[] = ['confirmed', 'seated', 'completed']
+ *  CONFIRMED/SEATED/COMPLETED zavirajo; CANCELLED/NO_SHOW ne). Tip je
+ *  ReservationStatus[] — produkcijski (Postgres) Prisma klient zahteva
+ *  enumski tip v `status: { in: [...] }` (SQLite zrcalo je popustljivejše,
+ *  zato je napako videl šele typecheck-prod v CI, run 41629558664). */
+export const CLAIM_BLOCKING_STATUSES: readonly ReservationStatus[] = ['confirmed', 'seated', 'completed']
 
 /** Dejavna rezervacija na mizi (konflikt za okno zahteve). */
 export interface TableReservationConflict {
@@ -87,7 +91,7 @@ export async function findTableReservationConflict(
   const rows = await client.reservation.findMany({
     where: {
       tableId: check.tableId,
-      status: { in: CLAIM_BLOCKING_STATUSES as string[] },
+      status: { in: [...CLAIM_BLOCKING_STATUSES] },
       dateTime: { gte: new Date(atMs - 24 * 3600_000), lte: new Date(atMs + durMs + 24 * 3600_000) },
       ...(check.excludeReservationId ? { id: { not: check.excludeReservationId } } : {}),
     },
