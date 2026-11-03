@@ -455,8 +455,8 @@ describe('v241 E · POST /api/orders/[id]/fire (refaktor na helper)', () => {
 // ─────────────────────────── Ž · registri ───────────────────────────
 
 describe('v241 Ž · registri in dokumentacija', () => {
-  it('Ž1: APP_VERSION je 1.242.0', () => {
-    expect(APP_VERSION).toBe('1.242.0')
+  it('Ž1: APP_VERSION je 1.243.0', () => {
+    expect(APP_VERSION).toBe('1.243.0')
   })
 
   it('Ž2: 0 DDL — order-fire je čista lib (brez novih modelov)', async () => {

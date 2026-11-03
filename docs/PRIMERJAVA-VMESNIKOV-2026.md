@@ -1081,3 +1081,110 @@ sledljivost) in eno resnico — vsaka pot, ki odšteje ali vrne količino
 ledger. Koda dobavitelja je lokalna, receptura je lokalna, inventurna
 variansa je nepojasnjena razlika — in zanesljivost food-costa je izrecna
 metrika (pokritost), ne skrita predpostavka.
+
+## 17. Raziskava november 2026 — POVRAČILNA CELICA v1.243.0 (instrumenti ob stornu)
+
+Nadaljevanje računske celice (§16). Spomnitveno pravilo v16 B je bilo
+»refund negira VSAK del plačila po izvirnem načinu« — implementacija je
+negirala RAČUNOVODSKI sloj (zrcalne Payment vrstice: bazen napitnin,
+Z-poročilo, izvoz), a denar ob plačilu ni živel SAMO v računovodstvu:
+gost, ki je plačal z darilno kartico, točkami ali kuponom, je ta
+sredstva ODVZEL iz instrumenta — storno pa instrumenta ni vrnil.
+Pet najdb, vse izmerjene v kodi (ne ugibanje):
+
+### A) Darilna kartica ob stornu (P1)
+
+**Kako imajo najboljši (Toast/Square):** refund vrača sredstva na
+IZVIRNI instrument — del plačila z darilno kartico se ob povračilu
+vrne NA KARTICO (ne v gotovino, ne v nič); kartica je družina tenderjev,
+ki nosi svoj saldo.
+
+**Kako ima RestaurantOS (v1.242.0):** unovčenje ob plačilu je odbilo
+saldo kartice (centno-natančni CAS v transakciji izdaje +
+GiftCardTransaction type='redeem', podpisan −), storno pa je negiral
+SAMO Payment vrstico — saldo kartice je ostal odbit za vedno. Gost, ki
+je vrnil blago, je IZGUBIL vrednost na kartici (računovodstvo kaže
+neto 0, instrument pa je laže prazen). Popravek: storno v ISTI
+transakciji povrne saldo (isti centno-natančni CAS vzorec kot odjem —
+ branje svežega salda, enakostni pogoj, zapis) + GiftCardTransaction
+type='refund' (pozitiven predznak po konvenciji gcTxSign — prvi pisec
+tega tipa; ledžer invarianta »vsota podpisanih zneskov = saldo« ostane).
+Izbrisana kartica (FK SetNull na Payment) → fail-open z iskreno opombo
+v reviziji (računovodski sloj je kljub temu pravilen; ročni popravek
+vodstva) — tiho tišina NI možna.
+
+### B) Unovčene točke zvestobe ob stornu (P1)
+
+**Kako imajo najboljši (Toast loyalty):** refund vrača unovčene točke
+na račun gosta — točke so denar gosta, ne prihodek gostilne.
+
+**Kako ima RestaurantOS (v1.242.0):** odjem je znižal pointsBalance
+(CAS `pointsBalance >= redeemPoints`) + zrcalno vrstico
+LoyaltyTransaction type='redeem' (points −), storno točk NI vrnil —
+plačilo s točkami je bilo nepovratno tudi ob popolnem povračilu.
+Popravek: povračilo pointsBalance (atomarni increment) + zrcalna
+vrstica (points +, monetaryValue negirana — vsota para = 0);
+lifetimePoints se NE vrača, ker ga odjem ni dotaknil.
+
+### C) Zaslužene točke ob stornu (P1)
+
+**Kako imajo najboljši (Toast/Square):** točke se zaslužijo za
+PREVZETO blago — refund zaslužek negira (točke za vrnjeno blago so dolg,
+ki se pokrije z naslednjimi obiski; saldo lahko pade pod 0).
+
+**Kako ima RestaurantOS (v1.242.0):** earn ob plačilu je povečal
+pointsBalance + lifetimePoints + tier (tierForPoints), storno zaslužka
+NI negiral — gost je obdržal točke za VRNJENO blago (inflacija točk:
+zloraba »kupi → točke → vrni« je bila dobičkonosna). Popravek: negacija
+vseh treh (balance, lifetime, tier na novem doživetju) + zrcalna
+negativna vrstica earn. Saldo lahko pade NEGATIVNO — unovčenje blokira
+pogoj `pointsBalance >= redeemPoints`, standard praksa. Ročne
+prilagoditve (vrstice brez checkId) niso dotaknjene — negacija ve SAMO
+zaslužek plačila.
+
+### D) Kupon ob stornu (P1)
+
+**Kako imajo najboljši (Toast):** promo koda, porabljena na računu,
+ki je bil refundiran, se vrne gostu (re-issue) — popust, ki ni bil
+izkoriščen, pripada gostu naprej.
+
+**Kako ima RestaurantOS (v1.242.0):** odkup kupona je status
+'redeemed' za vedno (order veže, orderId zapisan) — ob polnem povračilu
+naročila je kupon ostal porabljen, čeprav popusta gost nikoli ni
+izkoristil (blago se je vrnilo). Popravek: ob POLNEM povračilu
+(naročilo nima več ŽIVEGA originalnega računa — brat račun, ki je bil
+že storniran sam, NI živ; in ni odprtih izstavkov) se kupon vrne v
+'issued' (redeemedAt/orderId čiščenje — kupon je prost za naslednje
+naročilo; opomba nosi številko storna). Delni storno (živi bratje /
+odprti izstavki) kupona NE vrača — preostali računi še nosijo vrednost
+popusta. Register/adhoc popust se NE vrača (dokumentirana odločitev
+#45 — kvota je porabila svojo izdajo; kupon je gostova lastnina,
+register je promocija gostilne). Revizija COUPON_REISSUED ločeno od
+RECEIPT_STORNO (pregledna sled po instrumentu).
+
+### E) Sledljivost zrcalnih Payment vrstic (P2)
+
+Zrcalne negacijske vrstice so bile brez identifikacije instrumenta
+(giftCardId / loyaltyAccountId / loyaltyPointsUsed) — vrstica
+»−10 € giftcard« ni povedala, KATERO kartico je povrnila (št. kartice
+se je dalo izpeljati le še iz originala). Popravek: zrcalo nosi
+identifikacijo instrumenta (zneski ostanejo negirani; loyaltyPointsUsed
+je count tega dela plačila, kot na originalu).
+
+0 DDL · 0 odvisnosti · 0 novih i18n ključev (sporočila so strežniška
+slovenščina, ne ključi). Testi: tests/v243-povracilna-celica.test.ts
+(A1–A4 darilna kartica, B1–B2 unovčene točke, C1–C3 zaslužene točke,
+D1–D4 kupon, E1 sledljivost, Ž1–Ž4 registri). Industrijska referenca:
+Toast/Square refunds — »refund returns funds to the original tender«;
+točke in kuponi so pri njih denar gosta z lastnim ledžerjem, ne le
+oznaka na računu.
+
+**Sklep §17:** povračilo ima DVA sloja — računovodstvo (Payment
+vrstice, napitnine, Z-poročilo; to je naredila že §16 B) in VREDNOST
+(sredstva, ki so ob plačilu prešla iz instrumenta gosta na gostilno).
+Vsak instrument, ki je bil ob plačilu OBREMENJEN (kartica, točke,
+kupon), mora biti ob povračilu RAZBREMENJEN — v isti transakciji, z
+zrcalno vrstico v svojem ledžerju in z revizijo. Vrnjeno blago ne
+zasluži točk; porabljen kupon ob povračilu ni porabljen; kartica brez
+povračila je lažno prazna. Instrument, ki ga ni mogoče povrniti
+(izbrisan), pade na iskreno opombo — nikoli na tiho tišino.

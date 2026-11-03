@@ -402,8 +402,8 @@ describe('v1.210.0 — OSS-10 B-del Č2b: disk kontrakt (ožičenje)', () => {
 
 describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.242.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.242\.0'/)
+    expect(APP_VERSION).toBe('1.243.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.243\.0'/)
   })
 
   it('GAP OSS-10 B-del: IZVEDENO @ v1.210.0 z dokazi + nova meja', () => {

@@ -9,6 +9,7 @@ import { fiscalAdapterFor } from '@/lib/fiscal'
 import { fiscalCerts, stampFiscalCodes, submitFiscalDocument } from '@/lib/furs/submit'
 import { writeAudit } from '@/lib/audit-chain'
 import { restoreAuto86ForInventory } from '@/lib/auto-86'
+import { tierForPoints } from '@/lib/billing'
 import { resolveFiscalProfile, FiscalConfigError, type FiscalProfile } from '@/lib/fiscal-profile'
 import { allocateReceiptNumber } from '@/lib/furs/receipt-number'
 import { exceptionPolicy, amountAboveThreshold } from '@/lib/exception-policy'
@@ -120,15 +121,25 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   //    (ostali izstavki so še veljavni — Toast: refund ne razplača celotnega naročila);
   //  - žiga NI (računi izdani pred v1.238.0) → 409 z iskrenim razlogom (ročni
   //    popravek zaloge prek inventure) — tiha korupcija zaloge NI možna.
+  //  - §17 (v1.243.0) IZJEMA: naročilo BREZ odjemov zaloge (meni brez receptur —
+  //    ni VRSTICE type='SALE') tvegana povratka nima KAJ vrnit: zaloga se ne
+  //    razknjiži ob prodaji brez recepture, zato varovala takega naročila NE
+  //    sme blokirati (prej: 409 past tudi za povračilo, ki zaloge sploh ne
+  //    dotakne — izmerjeno v testu D2).
   const siblingReceipts = await db.receipt.count({
     where: { orderId: order.id, isStorno: false, isCopy: false, id: { not: original.id } },
   })
   let scopedMultiCheck = false
   if (siblingReceipts > 0) {
-    const stamped = await db.stockTransaction.count({
-      where: { orderId: order.id, type: 'SALE', supplierDoc: original.receiptNumber },
-    })
-    if (stamped === 0) {
+    const [stamped, saleTotal] = await Promise.all([
+      db.stockTransaction.count({
+        where: { orderId: order.id, type: 'SALE', supplierDoc: original.receiptNumber },
+      }),
+      db.stockTransaction.count({
+        where: { orderId: order.id, type: 'SALE' },
+      }),
+    ])
+    if (saleTotal > 0 && stamped === 0) {
       return fail(
         `Naročilo ima ${siblingReceipts + 1} računov (plačilo po izstavkih) — storno enega računa bi povrnilo zalogo vseh izstavkov. Računi, izdani pred v1.238.0, nimajo povezave odjema→račun: izvedite popravek zaloge ročno (inventura) ali stornirajte od zadnjega računa naprej.`,
         409,
@@ -405,9 +416,43 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
        *    ostane po starem obnašanju — ročni popravek vodstva).
        * Negacijska vrstica = zrcalo originala ( isti checkId, tip, prejemnik),
        * amount/tipAmount negirana, status 'completed' — VSE obstoječe agregacije
-       * (bazen, Z-poročilo, izvoz) se natočijo same (neto 0). */
+       * (bazen, Z-poročilo, izvoz) se natočijo same (neto 0).
+       *
+       * §17 (v1.243.0) POVRAČILNA CELICA — povračilo vrača VREDNOST, ne samo
+       * računovodstvo: negacija Payment vrstice je računovodski sloj; ob plačilu
+       * so se sredstva GIBALA tudi po vrednostnih instrumentih (darilna kartica,
+       * točke zvestobe, kupon) — vsak instrument dobi svoje povračilo V ISTI
+       * transakciji (Toast: refund returns funds to the ORIGINAL tender):
+       *  - A) darilna kartica: CAS povračilo salda (centno-natančno, isti vzorec
+       *    kot unovčenje ob izdaji) + GiftCardTransaction type='refund' (pozitiven
+       *    predznak po konvenciji gcTxSign — issue/topup/refund +, redeem −);
+       *  - B) unovčene točke: pointsBalance nazaj (increment) + zrcalna vrstica
+       *    LoyaltyTransaction (points +, monetaryValue negirana — vsota para = 0);
+       *    lifetimePoints se NE vrača (odjem ga ni dotaknil);
+       *  - C) zaslužene točke: earn ob plačilu je povečal balance + lifetime + tier
+       *    — negacija vseh treh (tierForPoints na novem doživetju) + zrcalna
+       *    negativna vrstica. Saldo lahko pade NEGATIVNO (točke za vrnjeno blago
+       *    so dolg — unovčenje blokira pogoj pointsBalance >= redeemPoints);
+       *  - D) kupon: odkup (status 'redeemed') ob POLNEM povračilu naročila vrne
+       *    kupon v 'issued' (redeemedAt/orderId čiščenje, opomba s številko storna)
+       *    SAMO ko po tem stornu na naročilu ni več ŽIVEGA originalnega računa
+       *    (brat račun, ki je bil že storniran sam, NI živ) in ni odprtih izstavkov
+       *    (partialScopedStorno) — preostali izstavki še nosijo vrednost popusta.
+       *    Register/adhoc popust se NE vrača (dokumentirana odločitev #45);
+       *  - E) sledljivost: zrcalne Payment vrstice nosijo giftCardId /
+       *    loyaltyAccountId / loyaltyPointsUsed (identifikacija instrumenta na
+       *    negativni vrstici — zneski so negirani, števci pa identifikacija).
+       *  Fail-open z iskreno opombo v reviziji: izbrisana kartica/račun zvestobe
+       *    (FK SetNull) pomeni, da instrumenta ni mogoče povrniti — računovodski
+       *    sloj je kljub temu pravilen (neto 0), ročni popravek ostaja vodstvu. */
       let negatedPayments = 0
       let paymentNegationScope: 'check' | 'order' | 'skipped-legacy-multicheck' = 'skipped-legacy-multicheck'
+      // §17: števci povračil vrednostnih instrumentov + iskrene opombe (fail-open)
+      let refundedGiftCards = 0
+      let refundedGiftCardTotal = 0
+      let refundedLoyaltyPoints = 0
+      let negatedEarnedPoints = 0
+      const valueNotes: string[] = []
       const negationCheckIds = original.checkId
         ? [original.checkId]
         : !scopedMultiCheck
@@ -417,7 +462,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         paymentNegationScope = original.checkId ? 'check' : 'order'
         const origPayments = await tx.payment.findMany({
           where: { checkId: { in: negationCheckIds }, amount: { gt: 0 }, status: 'completed' },
-          select: { id: true, checkId: true, amount: true, tipAmount: true, type: true, employeeId: true },
+          select: { id: true, checkId: true, amount: true, tipAmount: true, type: true, employeeId: true, giftCardId: true, loyaltyAccountId: true, loyaltyPointsUsed: true },
         })
         for (const p of origPayments) {
           await tx.payment.create({
@@ -431,9 +476,189 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
               // zrcalo originalnega prejemnika — bazen ostane sidran na osebi,
               // ki je napitnino prejela (negacija odšteje od njenega dneva)
               employeeId: p.employeeId,
+              // §17 E: identifikacija instrumenta na zrcalu (zneski negirani,
+              // števci so identifikacija — loyaltyPointsUsed ostane pozitiven
+              // count točk tega dela plačila, kot na originalu)
+              ...(p.giftCardId ? { giftCardId: p.giftCardId } : {}),
+              ...(p.loyaltyAccountId ? { loyaltyAccountId: p.loyaltyAccountId } : {}),
+              ...(Math.round(num(p.loyaltyPointsUsed)) > 0 ? { loyaltyPointsUsed: Math.round(num(p.loyaltyPointsUsed)) } : {}),
             },
           })
           negatedPayments += 1
+
+          // ── §17 A: darilna kartica — povračilo salda na kartico (ISTI tx) ──
+          if (p.type === 'giftcard') {
+            const fresh = p.giftCardId
+              ? await tx.giftCard.findUnique({ where: { id: p.giftCardId }, select: { balance: true } })
+              : null
+            if (!p.giftCardId || !fresh) {
+              // kartica je bila IZBRISANA (FK SetNull prekine povezavo) — denarja
+              // ni mogoče vrniti na instrument; iskrena opomba (računovodstvo je
+              // kljub temu pravilno — neto 0; ročni popravek vodstva)
+              valueNotes.push('Darilna kartica plačila ne obstaja več — povračilo na kartico ni mogoče (računovodska negacija je izvedena; ročni popravek vodstva).')
+            } else {
+              // centno-natančna aritmetika + enakostni CAS — isti vzorec kot
+              // unovčenje ob izdaji (SQLite REAL drift; sočasnost topup/storno)
+              const currentCents = Math.round(num(fresh.balance) * 100)
+              const refundCents = Math.round(num(p.amount) * 100)
+              const newBalance = (currentCents + refundCents) / 100
+              const cas = await tx.giftCard.updateMany({
+                where: { id: p.giftCardId, balance: fresh.balance },
+                data: { balance: newBalance },
+              })
+              if (cas.count === 0) {
+                throw new OrderError('Darilna kartica je bila sočasno spremenjena — storno poskusite znova.', 409)
+              }
+              await tx.giftCardTransaction.create({
+                data: {
+                  id: nid(),
+                  giftCardId: p.giftCardId,
+                  type: 'refund',
+                  amount: r2(num(p.amount)),
+                  balanceAfter: newBalance,
+                  orderId: order.id,
+                  checkId: p.checkId,
+                  note: `Povračilo ob stornu računa ${receiptNumber}`,
+                },
+              })
+              refundedGiftCards += 1
+              refundedGiftCardTotal = r2(refundedGiftCardTotal + num(p.amount))
+            }
+          }
+
+          // ── §17 B: unovčene točke — nazaj na saldo (ISTI tx) ──
+          if (p.type === 'loyalty' && Math.round(num(p.loyaltyPointsUsed)) > 0) {
+            const acc = p.loyaltyAccountId
+              ? await tx.loyaltyAccount.findUnique({ where: { id: p.loyaltyAccountId }, select: { id: true } })
+              : null
+            if (!p.loyaltyAccountId || !acc) {
+              // račun zvestobe je bil IZBRISAN (FK SetNull) — točk ni mogoče
+              // vrniti gostu; iskrena opomba (ročni popravek vodstva)
+              valueNotes.push('Račun zvestobe plačila ne obstaja več — točk ni bilo mogoče vrniti (ročni popravek vodstva).')
+            } else {
+              const pts = Math.round(num(p.loyaltyPointsUsed))
+              // increment je atomaren (Prisma); lifetime se NE vrača — odjem
+              // (redeem) ga ni dotaknil, zato tudi povračilo ne sme
+              await tx.loyaltyAccount.update({
+                where: { id: p.loyaltyAccountId },
+                data: { pointsBalance: { increment: pts } },
+              })
+              await tx.loyaltyTransaction.create({
+                data: {
+                  id: nid(),
+                  loyaltyAccountId: p.loyaltyAccountId,
+                  // zrcalo originala: points + (original redeem je −),
+                  // monetaryValue negirana — vsota para = 0
+                  type: 'redeem',
+                  points: pts,
+                  reason: `Povračilo unovčenih točk ob stornu računa ${receiptNumber}`,
+                  orderId: order.id,
+                  checkId: p.checkId,
+                  monetaryValue: r2(-num(p.amount)),
+                },
+              })
+              refundedLoyaltyPoints += pts
+            }
+          }
+        }
+
+        // ── §17 C: negacija ZASLUŽENIH točk tega obsega (ISTI tx) ──
+        // earn ob plačilu je povečal balance + lifetime + tier; storno negira
+        // vse tri. Vrstice iščemo po checkId v obsegu negacije (isti obseg kot
+        // plačila) — ročne prilagoditve (brez checkId) niso dotaknjene.
+        const earnRows = await tx.loyaltyTransaction.findMany({
+          where: { type: 'earn', checkId: { in: negationCheckIds }, points: { gt: 0 } },
+          select: { id: true, loyaltyAccountId: true, points: true, checkId: true, monetaryValue: true },
+        })
+        for (const er of earnRows) {
+          const acc = await tx.loyaltyAccount.findUnique({
+            where: { id: er.loyaltyAccountId },
+            select: { lifetimePoints: true },
+          })
+          if (!acc) {
+            valueNotes.push(`Račun zvestobe zaslužka ne obstaja več — zaslužek ${er.points} tk ni bil mogoče negirati (ročni popravek vodstva).`)
+            continue
+          }
+          // saldo lahko pade NEGATIVNO (točke za vrnjeno blago so dolg —
+          // unovčenje blokira pogoj pointsBalance >= redeemPoints)
+          await tx.loyaltyAccount.update({
+            where: { id: er.loyaltyAccountId },
+            data: {
+              pointsBalance: { decrement: er.points },
+              lifetimePoints: { decrement: er.points },
+              tier: tierForPoints(acc.lifetimePoints - er.points),
+            },
+          })
+          await tx.loyaltyTransaction.create({
+            data: {
+              id: nid(),
+              loyaltyAccountId: er.loyaltyAccountId,
+              // zrcalo originala: points − (original earn je +),
+              // monetaryValue negirana — vsota para = 0
+              type: 'earn',
+              points: -er.points,
+              reason: `Negacija zaslužka ob stornu računa ${receiptNumber}`,
+              orderId: order.id,
+              checkId: er.checkId,
+              monetaryValue: r2(-num(er.monetaryValue)),
+            },
+          })
+          negatedEarnedPoints += er.points
+        }
+      }
+
+      // ── §17 D: kupon — ponovna izdaja SAMO ob polnem povračilu naročila ──
+      // Po tem stornu na naročilu ne sme ostati NOBEN živ originalni račun
+      // (bratje, ki so bili že stornirani sami, niso živi) in ne odprtih
+      // izstavkov (partialScopedStorno = odprti izstavki še živijo) — samo takrat
+      // je vrednost popusta dejansko neporabljena in kupon pripada gostu nazaj.
+      const siblingOriginals = await tx.receipt.findMany({
+        where: { orderId: order.id, isStorno: false, isCopy: false, id: { not: original.id } },
+        select: { id: true },
+      })
+      let liveSiblings = siblingOriginals.length
+      if (siblingOriginals.length > 0) {
+        const stornoedSiblings = await tx.receipt.count({
+          where: { stornoOf: { in: siblingOriginals.map((s) => s.id) } },
+        })
+        liveSiblings -= stornoedSiblings
+      }
+      const fullRefund = liveSiblings === 0 && !partialScopedStorno
+      let couponReissued: { id: string; code: string } | null = null
+      if (fullRefund) {
+        // odkupljeni kupon TEGA naročila (discount ruta zavrača drugi popust na
+        // naročilu z že pripetim — orderId je zanesljiv večinski ključ)
+        const coupon = await tx.coupon.findFirst({
+          where: { orderId: order.id, status: 'redeemed' },
+          select: { id: true, code: true, note: true },
+        })
+        if (coupon) {
+          await tx.coupon.update({
+            where: { id: coupon.id },
+            data: {
+              status: 'issued',
+              redeemedAt: null,
+              // orderId počiščen — kupon je prost za naslednje naročilo;
+              // izvor povračila ostaja dokumentiran v opombi + reviziji
+              orderId: null,
+              note: `${coupon.note ? `${coupon.note} · ` : ''}Ponovno izdan ob stornu računa ${original.receiptNumber} (storno ${receiptNumber})`,
+            },
+          })
+          couponReissued = { id: coupon.id, code: coupon.code }
+          await writeAudit(tx, {
+            userId: user.sub,
+            action: 'COUPON_REISSUED',
+            entityType: 'Coupon',
+            entityId: coupon.id,
+            details: jstr({
+              couponCode: coupon.code,
+              orderId: order.id,
+              originalReceiptNumber: original.receiptNumber,
+              stornoReceiptNumber: receiptNumber,
+              by: user.name,
+            }),
+            locationId: original.locationId,
+          })
         }
       }
 
@@ -448,6 +673,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             stockReversalCount,
             // v1.239.0 §16 B: negacija plačilnih vrstic (obseg + števec)
             paymentNegation: { scope: paymentNegationScope, negatedRows: negatedPayments },
+            // §17 (v1.243.0): povračila vrednostnih instrumentov (isto-sferična
+            // dokazljivost kot zaloga/plačila — kaj se je komu vrnilo in zakaj ne)
+            valueRefunds: {
+              giftCards: refundedGiftCards,
+              giftCardTotal: refundedGiftCardTotal,
+              redeemedPoints: refundedLoyaltyPoints,
+              negatedEarnedPoints,
+              couponReissued: couponReissued?.code ?? null,
+              ...(valueNotes.length > 0 ? { notes: valueNotes } : {}),
+            },
             simulation,
             // Issue #53: izrecna oznaka okolja v reviziji storna (enaka disciplina INVOICE_ISSUE)
             fursEnvironment: profile.environment,
@@ -457,7 +692,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             ...approvalAuditFields(stornoApproval, stornoApprovalBasis),
           }), locationId: original.locationId })
 
-      return { created, stockReversalCount, restoredItems, negatedPayments, paymentNegationScope }
+      return {
+        created,
+        stockReversalCount,
+        restoredItems,
+        negatedPayments,
+        paymentNegationScope,
+        refundedGiftCards,
+        refundedGiftCardTotal,
+        refundedLoyaltyPoints,
+        negatedEarnedPoints,
+        couponReissued,
+        valueNotes,
+      }
     })
 
     // v1.230.0 — samodejni 86: povračilo razknjižbe obnovi avtomatsko razprodane
@@ -519,6 +766,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         restoredStockItems: result.stockReversalCount,
         // v1.239.0 §16 B: koliko plačilnih vrstic je bilo negiranih (denar/bazen)
         negatedPaymentRows: result.negatedPayments,
+        // §17 (v1.243.0): povračila vrednostnih instrumentov — darilna kartica,
+        // točke (unovčene povrnjene + zaslužene negirane) in kupon
+        valueRefunds: {
+          giftCards: result.refundedGiftCards,
+          giftCardTotal: result.refundedGiftCardTotal,
+          redeemedPoints: result.refundedLoyaltyPoints,
+          negatedEarnedPoints: result.negatedEarnedPoints,
+          couponReissued: result.couponReissued?.code ?? null,
+          ...(result.valueNotes.length > 0 ? { notes: result.valueNotes } : {}),
+        },
         fiscalVerified: stornoDoc.fiscalVerified,
         fiscalStatus: stornoDoc.fiscalStatus,
         simulation,

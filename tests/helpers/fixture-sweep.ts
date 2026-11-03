@@ -118,6 +118,7 @@ export const TEST_PREFIXES = [
   'v163-', // integration-log-pii (v1.163.0 — dnevnik brez osebnih podatkov gosta)
   'v241-', // qr-autofire (v1.241.0 — push + avto-požig gostovega/tabličnega naročila)
   'v242-', // založni val (v1.242.0 — EAN per lokacija, receptura varovalo, serije odpada/inventure, varianca neto gibanja, pokritost)
+  'v243-', // povračilna celica (v1.243.0 — storno vrača darilno kartico, točke, kupon; v243e- = živa E2E fikstura)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
