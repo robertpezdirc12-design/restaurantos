@@ -846,7 +846,7 @@ describe('F — prava zrcalna shema (141 tabel), ne le vzorec', () => {
   it('F1 kanonični DDL prave sheme je razčlenljiv in ima vseh 141 modelov', () => {
     const sql = canonicalDdlFromSchema('prisma/schema.sqlite.prisma')
     const shema = parseCanonicalDdl(sql)
-    expect(shema.size).toBe(141) // v1.200.0: +Equipment +EquipmentMaintenancePlan (OSS-1) // v1.197.0: +PayrollSurchargeRate (N-27-3)
+    expect(shema.size).toBe(142) // v1.200.0: +Equipment +EquipmentMaintenancePlan (OSS-1) // v1.197.0: +PayrollSurchargeRate (N-27-3)
     expect(shema.get('Location')?.stolpci.map((s) => s.ime)).toContain('taxId')
     expect(shema.get('PayLink')?.tujihKljucov).toEqual([{ stolpci: ['orderId'], naTabelo: 'Order', onDelete: 'CASCADE', onUpdate: 'CASCADE' }])
     expect((sql.match(/DECIMAL\(65,30\)/g) || []).length).toBe(0)
