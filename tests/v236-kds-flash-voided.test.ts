@@ -164,7 +164,7 @@ describe('v1.236.0 D — i18n (SL + HR pariteta, 3853 → 3857)', () => {
 
 describe('v1.236.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.238.0')
+    expect(APP_VERSION).toBe('1.239.0')
   })
 
   test('Ž2: PRIMERJAVA §13 (raziskava december 2026 — Flash Changes + preklicane postavke)', () => {

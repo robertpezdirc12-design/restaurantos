@@ -35,7 +35,11 @@ import {
  *  - 409: storno računa (isStorno=true) — storna ni mogoče še enkrat stornirati.
  *  - 409: kopija računa (isCopy=true) — storno je mogoč SAMO za originalni račun
  *         (kopija je reprint brez lastnega življenja; storno kopije bi podvojil umik).
- *  - 409: naročilo ni 'paid' — samo plačana naročila se stornirajo (R10 vzorec).
+ *  - 409: naročilo ni 'paid' — samo plačana naročila se stornirajo (R10 vzorec);
+ *    IZJEMA (v1.239.0 §16 D): delno plačano naročilo ('partial') z računom, ki
+ *    nosi checkId (per-check izdaja od v1.239.0) — storno posameznega izstavka
+ *    je dovoljen (denar za TA izstavek je pobran; Toast: refund ne razplača
+ *    celotnega naročila). Naročilo ostane 'partial' (odprti izstavki živijo).
  *  - 409: dvojni storno — preverba znotraj transakcije (race varna) + fail-fast zunaj.
  *
  * Issue #19 (v1.107.0): fiskalni storno je finančna izjema → obvezen RAZLOG
@@ -89,8 +93,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const order = await db.order.findUnique({ where: { id: original.orderId } })
   if (!order) return fail('Naročilo ne obstaja.', 404)
-  if (order.paymentStatus !== 'paid') {
-    return fail('Storno je mogoč samo za plačano naročilo.', 409)
+  // v1.239.0 §16 D: per-check storno na 'partial' naročilu — račun mora nositi
+  // checkId (per-check izdaja od v1.239.0) IN ta izstavek mora biti plačan.
+  // Brez checkId (legacy celotno plačilo) storno zahteva 'paid' (celoto).
+  const partialScopedStorno = order.paymentStatus === 'partial' && !!original.checkId
+  if (order.paymentStatus !== 'paid' && !partialScopedStorno) {
+    return fail('Storno je mogoč samo za plačano naročilo oz. posamezen plačan izstavek.', 409)
+  }
+  if (partialScopedStorno) {
+    const scopedCheck = await db.check.findUnique({
+      where: { id: original.checkId as string },
+      select: { paymentStatus: true },
+    })
+    if (scopedCheck?.paymentStatus !== 'paid') {
+      return fail('Izstavek tega računa ni plačan — storno ni mogoč.', 409)
+    }
   }
 
   // ── v1.238.0 §15 (P0): varovala STORNO PO IZSTAVKU na naročilu z VEČ računi ──
@@ -185,12 +202,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // sočasni/dvojni storno izgubi dirko (račun prejšnjega klicalca že obstaja) ──
       // v1.238.0 §15: pri stornu ENEGA izstavka več-računskega naročila naročilo
       // OSTANE 'paid' (ostali izstavki so veljavni) — CAS je samo preverba stanja.
+      // v1.239.0 §16 D: 'partial' + per-check račun → stanje ostane 'partial'
+      // (odprti izstavki živijo naprej; refund ne razplača celotnega naročila).
       // POZOR (izmerjeno): updateMany s PRAZNIM data:{} vrne count 0 tudi ob
       // ujemajoči vrstici — zato nosi no-op poteza eksplicitni updatedAt (isti
       // zapis, ki ga @updatedAt PRIVZETO zapiše ob vsaki posodobitvi).
+      const keepOrderState = scopedMultiCheck || partialScopedStorno
       const cas = await tx.order.updateMany({
-        where: { id: order.id, paymentStatus: 'paid' },
-        data: scopedMultiCheck ? { updatedAt: new Date() } : { paymentStatus: 'storno' },
+        where: { id: order.id, paymentStatus: keepOrderState ? { in: ['paid', 'partial'] } : 'paid' },
+        data: keepOrderState ? { updatedAt: new Date() } : { paymentStatus: 'storno' },
       })
       if (cas.count === 0) {
         const twin = await tx.receipt.findFirst({
@@ -251,6 +271,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           tip,
           totalWithTip,
           paymentMethod: original.paymentMethod,
+          // v1.239.0 §16 C: posnetek + izstavek se PRENESEJO na storno račun —
+          // ponatisk storna prikaže iste postavke kot original (negirane).
+          // Normalizacija: SQLite nosi JSON kot niz, Postgres (Json stolpec) lahko
+          // vrne že razčlenjeno polje — vnos vedno normaliziramo v niz (isti
+          // zapis kot ob izdaji, jstr).
+          checkId: original.checkId,
+          itemsJson: (typeof original.itemsJson === 'string' ? original.itemsJson : jstr(original.itemsJson ?? [])) as string,
           isStorno: true,
           stornoOf: original.id,
           printedAt: now,
@@ -362,6 +389,54 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         restoredItems.push({ id: sale.inventoryItemId, qty: restore })
       }
 
+      /* ── v1.239.0 §16 B: NEGACIJA PLAČILNIH VRSTIC (Payment) ──
+       * Denarna celovitost: Payment vrstice so vir napitninskega bazena
+       * (/api/tips), Z-poročila po vrsticah (§16 A) in izvoza knjigovodstva.
+       * Do zdaj je storno negiral SAMO Receipt — Payment.tipAmount je ostal
+       * pozitiven za vedno (dnevni bazen napitnin je računal preveč), vsota
+       * vrstic na izstavku pa ni več 0 (denar "izgubljen" v bazenu).
+       * Toast/Square: refund negira VSAK del plačila po izvirnem načinu.
+       *
+       * Obseg negacije (fail-closed):
+       *  - original.checkId (per-check račun, v1.239.0+) → SAMO plačila tega izstavka;
+       *  - sicer celotno plačilo (enični račun naročila) → plačila VSEH izstavkov;
+       *  - legacy več-računsko naročilo brez checkId → NEGACIJA IZPUŠČENA (iskreno
+       *    v auditu; okno v1.238.0→v1.239.0, zaloge/fiskal so pravilne, bazen
+       *    ostane po starem obnašanju — ročni popravek vodstva).
+       * Negacijska vrstica = zrcalo originala ( isti checkId, tip, prejemnik),
+       * amount/tipAmount negirana, status 'completed' — VSE obstoječe agregacije
+       * (bazen, Z-poročilo, izvoz) se natočijo same (neto 0). */
+      let negatedPayments = 0
+      let paymentNegationScope: 'check' | 'order' | 'skipped-legacy-multicheck' = 'skipped-legacy-multicheck'
+      const negationCheckIds = original.checkId
+        ? [original.checkId]
+        : !scopedMultiCheck
+          ? (await tx.check.findMany({ where: { orderId: order.id }, select: { id: true } })).map((c) => c.id)
+          : []
+      if (negationCheckIds.length > 0) {
+        paymentNegationScope = original.checkId ? 'check' : 'order'
+        const origPayments = await tx.payment.findMany({
+          where: { checkId: { in: negationCheckIds }, amount: { gt: 0 }, status: 'completed' },
+          select: { id: true, checkId: true, amount: true, tipAmount: true, type: true, employeeId: true },
+        })
+        for (const p of origPayments) {
+          await tx.payment.create({
+            data: {
+              id: nid(),
+              checkId: p.checkId,
+              amount: r2(-num(p.amount)),
+              tipAmount: r2(-num(p.tipAmount)),
+              type: p.type,
+              status: 'completed',
+              // zrcalo originalnega prejemnika — bazen ostane sidran na osebi,
+              // ki je napitnino prejela (negacija odšteje od njenega dneva)
+              employeeId: p.employeeId,
+            },
+          })
+          negatedPayments += 1
+        }
+      }
+
       // ── Revizija znotraj transakcije (isti vzorec kot INVOICE_ISSUE v /api/furs) ──
       await writeAudit(tx, { userId: user.sub, action: 'RECEIPT_STORNO', entityType: 'Receipt', entityId: created.id, details: jstr({
             originalReceiptId: original.id,
@@ -371,6 +446,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             orderId: order.id,
             total,
             stockReversalCount,
+            // v1.239.0 §16 B: negacija plačilnih vrstic (obseg + števec)
+            paymentNegation: { scope: paymentNegationScope, negatedRows: negatedPayments },
             simulation,
             // Issue #53: izrecna oznaka okolja v reviziji storna (enaka disciplina INVOICE_ISSUE)
             fursEnvironment: profile.environment,
@@ -380,7 +457,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             ...approvalAuditFields(stornoApproval, stornoApprovalBasis),
           }), locationId: original.locationId })
 
-      return { created, stockReversalCount, restoredItems }
+      return { created, stockReversalCount, restoredItems, negatedPayments, paymentNegationScope }
     })
 
     // v1.230.0 — samodejni 86: povračilo razknjižbe obnovi avtomatsko razprodane
@@ -440,13 +517,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         originalReceiptNumber: original.receiptNumber,
         stornoReceiptNumber: stornoDoc.receiptNumber,
         restoredStockItems: result.stockReversalCount,
+        // v1.239.0 §16 B: koliko plačilnih vrstic je bilo negiranih (denar/bazen)
+        negatedPaymentRows: result.negatedPayments,
         fiscalVerified: stornoDoc.fiscalVerified,
         fiscalStatus: stornoDoc.fiscalStatus,
         simulation,
         // Issue #53: izrecna oznaka okolja — 'test'/'simulation' se razločita od produkcije
         fursEnvironment: profile.environment,
       },
-      order: { id: order.id, paymentStatus: scopedMultiCheck ? 'paid' : 'storno' },
+      order: { id: order.id, paymentStatus: scopedMultiCheck ? 'paid' : partialScopedStorno ? 'partial' : 'storno' },
     }, 201)
   } catch (e) {
     if (e instanceof OrderError) return fail(e.message, e.status)

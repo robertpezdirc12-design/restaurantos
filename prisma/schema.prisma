@@ -2437,6 +2437,13 @@ model Receipt {
   tip              Decimal      @default(0) @db.Decimal(12, 2)
   totalWithTip     Decimal      @default(0) @db.Decimal(12, 2)
   paymentMethod    String
+  /* v1.239.0 (PRIMERJAVA §16 C): IZSTAVEK + POSNETEK POSTAVK računa. checkId = mehka
+     referenca na Check (kot stornoOf — brez FK, Check ostaja lastnik plačilne entitete);
+     itemsJson = posnetek postavk ob izdaji [{id,name,qty,price,vatRate,vatAmount,amount}]
+     (precedens KotDocument.itemsJson) — ponatisk ne izpelje postavk iz ŽIVEGA naročila
+     (dodajanje/premik/void po izdaji bi spremenili podobo fiskalnega dokumenta). */
+  checkId          String       @default("")
+  itemsJson        Json         @default("[]")
   isCopy           Boolean      @default(false)
   isStorno         Boolean      @default(false)
   stornoOf         String       @default("")

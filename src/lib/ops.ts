@@ -30,7 +30,9 @@ import { parseSeatOption } from '@/lib/seat-assignments'
 export const orderInclude = {
   // OSS-10 (v1.209.0): izbrane opcije (npr. velikost) pridejo do kuhinjskega lista
   // — aditivni select, zgodovinske rute ostanejo byte-identične, če opcij ni.
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } } } },
+  // v1.239.0 §16 D: + Check (paymentStatus) — mapOrderItem aditivno izpostavi
+  // checkPaid (gumb za preklic postavke na plačanem izstavku se skrije).
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } }, Check: { select: { paymentStatus: true, checkNumber: true } } } },
   Table: true,
   Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
   Receipt: { orderBy: { createdAt: 'desc' as const } },

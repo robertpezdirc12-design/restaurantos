@@ -745,3 +745,119 @@ P0 vrzeli, kjer so se lahko (addItems sirota, tip brez terminala, QR dvojna
 bremenitev, merge ujet denar, storno napihnjena zaloga), in postavlja
 strogo disciplino (CAS, strict enum, žig dokumenta) tam, kjer so jo vodilni
 imeli že od nekdaj.
+
+---
+
+## 16. Raziskava januar 2027 — RAČUNSKA CELICA v1.239.0 (izmene/posnetek/void)
+
+Nadaljevanje denarnega vala (§15 I, B-načrti). Tri vzporedne raziskave kode so
+potrdile štiri vrzeli RAČUNSKE celice — vsaka primerjana z vodilnimi izdelki.
+
+### A) Z-poročilo izmene — mešana plačila po VRSTICAH Payment (P1)
+
+**Kako imajo najboljši (Square/Toast):** način plačila je lastnost DELA plačila,
+ne računa. Split tender (4 € gotovina + 7,50 € kartica na enem računu) je
+standard; Z-poročilo in pričakovana gotovina predala štejeta gotovinski del
+kot gotovino. Toastovo Z-poročilo ima stolpce po tenderjih, ne po »vrsti računa«.
+
+**Kako ima RestaurantOS (v1.239.0):** `src/lib/furs/issue.ts` je delom plačila
+(POST /api/furs `parts`) ŽE ustvarjal po vrstico Payment (`tx.payment.create`
+z `type` + `amount`, ~vrstica 703), a je Receipt nosil eno samo izgubno oznako
+`paymentMethod: 'mixed'` (~vrstica 449) — zaključek izmene
+(`src/app/api/shifts/route.ts` ~307–312) je tak račun v celoti metal v »drugo«,
+gotovinski del pa IZPADAL iz `expectedCash = startingCash + cash + netMovements`
+→ namišljena razlika predala ob zaključku (lažni presežek, sproži flow
+razloga/odobritve). Popravek: skupni motor `src/lib/shift-payment-buckets.ts`
+(iste vrstice Payment kot X/Z izvoz `reports/export` section=zz, ki je to delal
+pravilno) zdaj poganja VSA štiri mesta — zaključek izmene (override vedrov v
+transakciji), PRE-TX preview variance (~190), živi pregled premikov
+(`shifts/movements/route.ts` liveCashSales) in dnevni e-mail (~550). Legacy
+storno računi (brez negacijskih vrstic) dobijo ročno korekcijo po obsegu
+(Receipt.checkId sicer vsi izstavki naročila); okna brez vrstic Payment
+padajo na staro logiko po računih (nazaj-kompatibilno).
+
+### B) Storno ne negira napitnine v dnevnom bazenu (P1)
+
+**Kako imajo najboljši (Toast):** refund negira VSAK del plačila po izvirnem
+načinu — dnevni bazen napitnin vidi original in negacijo, neto je 0. Denar,
+vračen gostu, ne more ostati v bazenu za izplačilo.
+
+**Kako ima RestaurantOS (v1.239.0):** storno ruta
+(`src/app/api/receipts/[id]/storno/route.ts`) je negirala SAMO Receipt
+(subtotal/total/tip ~166–178) — Payment vrstice so ostale pozitivne za vedno
+(edini `payment.create` v kodi bila izdaja), bazen napitnin
+(`src/app/api/tips/route.ts` dayPayments, filter `tipAmount > 0`) je po stornu
+računal napitnino, ki je bila vračena. Popravek: storno v ISTI transakciji
+ustvari zrcalne negacijske vrstice (isti checkId/tip/prejemnik, negiran
+amount/tipAmount, status completed — vse obstoječe agregacije se natočijo
+same); filter bazena `tipAmount: { not: 0 }`; obseg negacije po fail-closed
+lestvici: per-check (Receipt.checkId) → celotno plačilo (vsi izstavki
+naročila) → legacy multi-check brez checkId = izpuščeno + iskreno v auditu
+(okno v1.238.0→v1.239.0; zaloge/fiskal pravilni, ročni popravek vodstva).
+Zaprti (hash-verižni) bazeni ostanejo nespremenjeni — remediacija je
+revidiran ročni popravek, ne tiha mutacija.
+
+### C) Natisnjen račun izstavka pokaže VSE postavke naročila (P1)
+
+**Kako imajo najboljši (Toast/Square):** račun je POSNETEK trenutka izdaje —
+ponatisk prikaže točno tisto, kar je gost dobil ob izdaji; kasnejše spremembe
+naročila (dodajanje, premik, preklic) ne spreminjajo podobe izdanega
+fiskalnega dokumenta.
+
+**Kako ima RestaurantOS (v1.239.0):** izdaja po izstavku
+(`src/lib/furs/issue.ts` ~213–239) je pravilno obračunala SAMO postavke
+izstavka (DDV, zneski, zaloga), a Receipt NI shranil, KATERE postavke — branje
+za ponatisk (`src/app/api/furs/[id]/route.ts` ~49) je izpeljalo vrstice iz
+ŽIVEGA naročila (`Order.OrderItem` brez filtra checkId): račun izstavka #1 je
+pri ponatisku pokazal postavke VSEH izstavkov (Σ vrstic > receipt.total),
+dodajanje po delnem plačilu pa bi povečalo seznam. Popravek: nova aditivna
+stoplca `Receipt.checkId` (mehka referenca, precedens `stornoOf`) +
+`Receipt.itemsJson` (posnetek [{id,name,qty,price,vatRate,vatAmount,amount}],
+precedens `KotDocument.itemsJson`) — zapis ob izdaji (~638), prenos na storno
+račun, branje s prednostjo posnetka + nazaj-kompatibilnim padalom na žive
+postavke za legacy račune (itemsJson='[]').
+
+### D) Void postavke na že plačanem izstavku brez vračila (P1)
+
+**Kako imajo najboljši (Toast):** izdani fiskalni račun se spremeni SAMO s
+fiskalnim stornom — preklic postavke na plačenem delu naročila ni ponujen
+(409 z usmeritvijo na storno); refund ne razplača celotnega naročila
+(odprti izstavki živijo naprej).
+
+**Kako ima RestaurantOS (v1.239.0):** varovala preklica
+(`src/app/api/orders/[id]/void/route.ts` ~108) so bila ORDER-level — delno
+plačano naročilo ('partial': izstavek #1 plačan, #2 odprt) je pustilo preklic
+postavke PLAČANEGA izstavka skozi brez vračila (Σ izstavkov > Order.total,
+R1 poroča višje kot je zaračunano interno, zaloga ostane odjeta) — hkrati je
+bil storno za to naročilo 409 (zahteva 'paid'): osebje ujeto v past,
+edina pot je bila korupcija. Popravek: pre-bran + race-safe preverba znotraj
+transakcije (Check.paymentStatus === 'paid' → 409 »uporabite fiskalni
+storno«); per-check storno na 'partial' naročilu ODPRT (račun z checkId +
+izstavek plačan; naročilo ostane 'partial' — Toast semantika); UI gumb
+skrit za checkPaid postavke (mapOrderItem aditivno izpostavi checkId +
+checkPaid; orderInclude nosi relacijo Check).
+
+### E) Druge najdbe raziskave (ocena — naslednji valovi)
+
+- **Rezervacije — strežniški prekrivni pogoj terminov** (P1): @@unique
+  ([tableId, dateTime]) zavrne samo identičen žig; 19:00 (120 min) in 20:00
+  isto mizo gresta skozi. Načrt: intervalsOverlap (že v
+  `src/lib/reservation-slots.ts:124`) v POST /api/reservations z zaklepom.
+- **NO_SHOW/CANCELLED ne sprostita mize + usaditev čakalne vrste lahko
+  povozita rezervirano mizo + PATCH mize brez varovale** (P1): skupni helper
+  `assertTableClaimable` za waitlist-seat, tables PATCH in prehode rezervacij.
+- **QR naročilo gosta brez push + brez požiga** (P1): pristane open/pending —
+  legacy KDS vrsta ga pokaže (~3–15 s), a postajne deske NE (StationTask nastane
+  ob fire) in firedAt ostane null (ETA statistika laže). Načrt: pushEvent
+  ORDER_NEW v public/orders + auto-fire za vire qr/kiosk (izpelja skupni
+  helper iz fire rute); tablica submitCreate enako.
+- **EAN unikat per lokacija, receptura brez lokacijske varovalke, serije pri
+  odpadu/inventuri, varianca inventure proti neto gibanjem, pour cost
+  pokritost** (P1): založni val.
+
+**Sklep §16:** račun je pogodba z gostom IN z davčno upravo — njegova vsebina
+posnetek trenutka izdaje (C), njegovo plačilo deli po vrsticah (A), njegova
+negacija zrcali vse dele (B), njegova neprekljivost pa je pogojena s
+plačilnim stanjem IZSTAVKA, ne naročila (D). Vodilni imajo to disciplino
+vgrajeno; ta val jo prinaša v vseh štirih legah — z eno aditivno DDL
+(checkId + itemsJson) in brez novih odvisnosti.

@@ -335,6 +335,12 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
       : [],
     allergenStatus: typeof allergenSnap.status === 'string' ? allergenSnap.status : null,
     voided: it.voided === true,
+    // v1.239.0 §16 D: izstavek postavke (mehka referenca) + ali je TA izstavek že
+    // plačan (preklic take postavke bi odvzel že pobran denar → UI gumb skrit,
+    // strežnik vrne 409). ADITIVNO: brez relacije Check polji izpadata ven
+    // (undefined) — obstoječi klicalci byte-identični.
+    checkId: (it.checkId as string | null | undefined) ?? null,
+    checkPaid: it.Check ? (it.Check as { paymentStatus?: unknown }).paymentStatus === 'paid' : undefined,
     // OPS-7 coursing (v1.68.0): tečaj postavke (Course) — za urejevalnik naročila
     courseId: (it.courseId as string | null | undefined) ?? null,
     // OPS-9 val 3 (v1.76.0): firedAt for the KDS per-item live timer / delay-reason dialog

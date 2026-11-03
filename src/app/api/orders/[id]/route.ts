@@ -32,7 +32,8 @@ const orderInclude = {
   // mapOrderItem brez relacije polje izpusti (undefined), z relacijo nosi imena —
   // isti vzorec kot ops.ts orderInclude od v1.209.0 (list urejevalnika pokaže
   // velikost/dodatek tudi po osvežitvi naročila).
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } } } },
+  // v1.239.0 §16 D: + Check (paymentStatus) — checkPaid v urejevalniku naročila.
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } }, Check: { select: { paymentStatus: true, checkNumber: true } } } },
   Table: true,
   Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
   Receipt: { orderBy: { createdAt: 'desc' as const } },

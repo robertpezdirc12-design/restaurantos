@@ -6,6 +6,8 @@ import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendShiftDailySummary } from '@/lib/daily-email'
 import { aggregateSalesByVariant } from '@/lib/item-variants'
+/* v1.239.0 §16 A: vedra plačil po vrsticah Payment (Z-poročilo/preview/e-pošta) */
+import { shiftPaymentBuckets } from '@/lib/shift-payment-buckets'
 import {
   cashMovementsAvailable,
   cashPolicy,
@@ -182,13 +184,12 @@ export async function POST(req: NextRequest) {
       })
       const fromPrev =
         lastClosedPrev?.closedAt && lastClosedPrev.closedAt > open.openedAt ? lastClosedPrev.closedAt : open.openedAt
-      const receiptsPrev = await db.receipt.findMany({
-        where: { locationId: open.locationId, createdAt: { gte: fromPrev, lt: new Date() }, paymentMethod: 'cash' },
-        select: { total: true },
-        take: 5000,
-      })
-      let cashPrev = 0
-      for (const rc of receiptsPrev) cashPrev += num(rc.total) // storno neto (negativni)
+      // v1.239.0 §16 A: PREVIEW variance po VRSTICAH Payment (mešana plačila —
+      // gotovinski del ne sme izpasti iz pričakovane gotovine; isti motor kot
+      // zaključek izmene: src/lib/shift-payment-buckets.ts — vključno z nazaj-
+      // kompatibilnim padalom na račune za okna brez vrstic Payment)
+      const bkPrev = await shiftPaymentBuckets(db, { locationId: open.locationId, from: fromPrev, to: new Date() })
+      const cashPrev = bkPrev.cash
       const mvPrev = await db.cashMovement.findMany({
         where: { shiftId: open.id },
         select: { type: true, direction: true, amount: true, status: true, reversalOfId: true },
@@ -322,6 +323,20 @@ export async function POST(req: NextRequest) {
             vatBuckets[key].net += num(v.base)
             vatBuckets[key].vat += num(v.vat)
           }
+        }
+        // ── v1.239.0 §16 A: vedra plačil po VRSTICAH Payment ──
+        // Zanka zgoraj še vedno napolni vedra po oznakah računov (nazaj-kompatibilno
+        // padalo za okna brez vrstic Payment). Ko vrstice OBSTAJAJO, jih PREPIŠEMO z
+        // agregacijo po delih plačila: mešan račun (gotovina + kartica) prispeva v
+        // SVOJA vedra, gotovinski del ostane v pričakovani gotovini predala.
+        // Storno: nove negacijske vrstice (§16 B) se neto same; legacy storno
+        // računi brez negacije dobijo ročno korekcijo (helper).
+        const payBuckets = await shiftPaymentBuckets(tx, { locationId: locId, from, to })
+        if (payBuckets.source === 'payments') {
+          cash = payBuckets.cash
+          card = payBuckets.card
+          mobile = payBuckets.mobile
+          alternate = payBuckets.alternate
         }
         const expectedCashRaw = num(claimed.startingCash) + cash
 
@@ -531,8 +546,22 @@ export async function POST(req: NextRequest) {
             vat += num(rc.totalVat)
             covers += 1
             orderIds.add(rc.orderId)
-            const m = ['cash', 'card', 'mobile'].includes(rc.paymentMethod) ? rc.paymentMethod : 'other'
-            payTotals.set(m, r2((payTotals.get(m) || 0) + num(rc.total)))
+          }
+          // v1.239.0 §16 A: razčlenitev plačil e-poštnega povzetka po VRSTICAH Payment
+          // (mešan račun prispeva v obe vedri; poprej: 'mixed' → »drugo«). isti motor
+          // kot zaključek izmene — src/lib/shift-payment-buckets.ts.
+          const bkMail = await shiftPaymentBuckets(db, { locationId: result.locationId, from: result.windowFrom, to: result.windowTo })
+          if (bkMail.source === 'payments') {
+            payTotals.set('cash', bkMail.cash)
+            payTotals.set('card', bkMail.card)
+            payTotals.set('mobile', bkMail.mobile)
+            payTotals.set('other', bkMail.alternate)
+          } else {
+            for (const rc of winReceipts) {
+              if (rc.isStorno) continue
+              const m = ['cash', 'card', 'mobile'].includes(rc.paymentMethod) ? rc.paymentMethod : 'other'
+              payTotals.set(m, r2((payTotals.get(m) || 0) + num(rc.total)))
+            }
           }
           // v1.212.0 (OSS-10 C-del): top 3 v povzetku izmene SE ZDAJ RAZCEPLJAJO
           // po varianti (isti kontrakt kot dnevni digest in dashboard topItems).

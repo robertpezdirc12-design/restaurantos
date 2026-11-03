@@ -2407,6 +2407,10 @@ model Receipt {
   tip              Decimal      @default(0) 
   totalWithTip     Decimal      @default(0) 
   paymentMethod    String
+  /* v1.239.0 (PRIMERJAVA §16 C): IZSTAVEK + POSNETEK POSTAVK računa (mirror Postgres
+     sheme — SQLite nosi JSON kot String, kot vatBreakdown). */
+  checkId          String       @default("")
+  itemsJson        String       @default("[]")
   isCopy           Boolean      @default(false)
   isStorno         Boolean      @default(false)
   stornoOf         String       @default("")

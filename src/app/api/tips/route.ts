@@ -34,7 +34,10 @@ async function dayPayments(from: Date, to: Date, locationId: string) {
   return db.payment.findMany({
     where: {
       status: 'completed',
-      tipAmount: { gt: 0 },
+      // v1.239.0 §16 B: { not: 0 } namesto { gt: 0 } — storno od v1.239.0 piše
+      // NEGACIJSKO vrstico (tipAmount < 0, zrcalo originala); bazen mora videti
+      // obe, da se neto (poprej je storno pustil pozitivno napitnino za vedno).
+      tipAmount: { not: 0 },
       createdAt: { gte: from, lt: to },
       Check: { Order: { locationId } },
     },

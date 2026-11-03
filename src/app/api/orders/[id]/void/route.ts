@@ -25,6 +25,8 @@ import { resolveExceptionApproval, reasonAuditFields, approvalAuditFields, type 
  *    ALI reason besedilo (3–200 znakov — shranjeno v audit sledi);
  *  - PLAČANO/stornirano naročilo → 409 (fiskalni storno/vračilo je LOČENA
  *    kanonična pot /api/receipts/[id]/storno — izdanih računov ne spreminjamo);
+ *    v1.239.0 §16 D: ENAKA 409 za postavko na PLAČANEM IZSTAVKU delno plačanega
+ *    ('partial') naročila — preklic bi odvzel že pobran denar brez vračila;
  *  - zaloga: razknjižba teče ob FURS izstavitvi SAMO za izstavljene postavke
  *    (deductStockForOrderTx onlyItemIds + billing voided filter) — preklic pred
  *    plačilom pomeni, da se postavka nikoli ne razknjiži (brez popravkov);
@@ -112,6 +114,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!item) return fail('Postavka ne pripada temu naročilu.', 404)
   if (item.voided) return fail('Postavka je že preklicana.', 409)
 
+  // ── v1.239.0 §16 D (P1): postavka na ŽE PLAČANEM izstavku ──
+  // Naročilo je lahko 'partial' (izstavek #1 plačan, #2 odprt) — order-level
+  // varovala zgoraj spustijo preklic SKOZI, tudi za postavko, ki že ima fiskalni
+  // račun: denar je pobran (Payment vrstice + Receipt + odjem zaloge), preklic
+  // pa NE vrača ničesar → Σ izstavkov > Order.total, R1 poroča višje, kot je
+  // zaračunano interno. Toast: refund = fiskalni storno izstavka (ločena pot).
+  // Pre-bran je prijazen odgovor; avtoritativna preverba je ZNOTRAJ transakcije
+  // (rakavec plačila bi med pre-branom in claimom že lahko plačal izstavek).
+  if (item.checkId) {
+    const chk = await db.check.findUnique({
+      where: { id: item.checkId },
+      select: { paymentStatus: true, checkNumber: true },
+    })
+    if (chk?.paymentStatus === 'paid') {
+      return fail(`Postavka je na plačanem izstavku #${chk.checkNumber} — izdani račun se spremeni samo s fiskalnim stornom.`, 409)
+    }
+  }
+
   // katalog razlogov: aktiven + LOKACIJA/org guard (tuji katalog zavrnjen)
   let reason: { id: string; name: string } | null = null
   if (reasonId) {
@@ -158,6 +178,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           data: { voided: true, ...(reason ? { voidReasonId: reason.id } : {}) },
         })
         if (claim.count === 0) throw new VoidConflictError(409, 'Postavka je že preklicana.')
+        // (b2) v1.239.0 §16 D: race-safe preverba plačanega izstavka ZNOTRAJ TX —
+        // sočasno plačilo izstavka (issueFursReceipt) je committalno OD claima;
+        // če je izstavek medtem plačan → 409 (preklic razveljavljen skupaj s TX).
+        if (item.checkId) {
+          const paidNow = await tx.check.count({
+            where: { id: item.checkId, paymentStatus: 'paid' },
+          })
+          if (paidNow > 0) {
+            throw new VoidConflictError(409, 'Postavka je na plačanem izstavku — uporabite fiskalni storno.')
+          }
+        }
         // (c) preračun po claimu, v isti transakciji (obstoječa kanonična formula)
         const next = await recalcOrderTotals(id, tx)
         // (d) optimistic-concurrency zapis: zgolj če se stanje/znosni niso

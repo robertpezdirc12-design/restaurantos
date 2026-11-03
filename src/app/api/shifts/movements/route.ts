@@ -4,6 +4,8 @@ import { requirePermission, isResponse, ok, fail, forbidden, isCentralRole } fro
 import { nid, num, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
+/* v1.239.0 §16 A: vedra plačil po vrsticah Payment (živi pregled gotovine) */
+import { shiftPaymentBuckets } from '@/lib/shift-payment-buckets'
 import {
   CASH_MOVEMENT_TYPES,
   CASH_MOVEMENT_MIN,
@@ -97,16 +99,13 @@ function mapMovement(m: MovementDB): import('@/lib/cash-movements').CashMovement
   }
 }
 
-/** Živa gotovinska prodaja izmene do trenutka (fiskalni računi, storno neto). */
+/** Živa gotovinska prodaja izmene do trenutka.
+ *  v1.239.0 §16 A: po VRSTICAH Payment (mešana plačila: gotovinski del ne sme
+ *  izpasti) — isti motor kot zaključek izmene (src/lib/shift-payment-buckets.ts),
+ *  vključno z nazaj-kompatibilnim padalom na račune za okna brez vrstic. */
 async function liveCashSales(locId: string, openedAt: Date): Promise<number> {
-  const receipts = await db.receipt.findMany({
-    where: { locationId: locId, createdAt: { gte: openedAt }, paymentMethod: 'cash' },
-    select: { total: true },
-    take: 5000,
-  })
-  let cash = 0
-  for (const rc of receipts) cash += num(rc.total) // storno računi so že negativni
-  return Math.round((cash + Number.EPSILON) * 100) / 100
+  const bk = await shiftPaymentBuckets(db, { locationId: locId, from: openedAt, to: new Date() })
+  return bk.cash
 }
 
 export async function GET(req: NextRequest) {

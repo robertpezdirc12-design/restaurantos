@@ -231,9 +231,9 @@ describe('v1.232.0 E — P2 popravek Selecta tečaja (NaročiloSheet)', () => {
 
 describe('v1.232.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.238.0')
-    expect(read('src/lib/version.ts')).toContain("'1.238.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.238.0')
+    expect(APP_VERSION).toBe('1.239.0')
+    expect(read('src/lib/version.ts')).toContain("'1.239.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.239.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi val v1.233.0 (KDS 17/18, restavracija 22/22)', () => {
@@ -253,8 +253,8 @@ describe('v1.232.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.238.0')
-    expect(wl.indexOf('Task ID: v1.238.0')).toBeLessThan(wl.indexOf('Task ID: v1.231.0'))
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.239.0')
+    expect(wl.indexOf('Task ID: v1.239.0')).toBeLessThan(wl.indexOf('Task ID: v1.231.0'))
   })
 
   test('Ž5: i18n števci + novi ključi SL/HR (3846/3846, +5)', () => {

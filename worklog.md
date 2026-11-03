@@ -1,3 +1,19 @@
+Task ID: v1.239.0-receipt-cell
+Agent: glavni agent (Z.ai Code)
+Task: Nadaljevanje denarnega vala po B-načrtih §15 I — RAČUNSKA CELICA v1.239.0. Tri vzporedne raziskave (izmene/napitnine, računi/izstavki, rezervacije/mize/QR) so potrdile 4 vrzeli računske celice; implementirane vse + per-check storno pot odprta. 1 aditivna DDL (Receipt.checkId + itemsJson), 0 odvisnosti, 0 AI.
+
+Work Log:
+- (A) Z-POROČILO PO VRSTICAH Payment: mešan račun (gotovina + kartica) je celoto metal v »drugo«, gotovinski del izpadel iz pričakovane gotovine predala → namišljena razlika ob zaključku izmene. Nov skupni motor src/lib/shift-payment-buckets.ts (isti vir kot X/Z izvoz) na VSEH štirih mestih: zaključek izmene, PRE-TX preview variance, živi pregled premikov (liveCashSales), dnevni e-mail. Legacy storno računi brez negacijskih vrstic dobijo ročno korekcijo po obsegu; okna brez vrstic Payment padejo na staro logiko (nazaj-kompatibilno).
+- (B) STORNO NEGIRA PLAČILA: Payment.tipAmount je po stornu ostal pozitiven za vedno — dnevni bazen napitnin je računal preveč (izplačilo denarja, ki je bil gostu vrnjen). Storno zdaj v isti transakciji ustvari zrcalne negacijske vrstice (isti checkId/tip/prejemnik, negiran amount/tipAmount); filter bazena tipAmount not: 0 (neto 0). Obseg fail-closed: per-check → celotno plačilo → legacy multi-check brez checkId iskreno izpuščeno v auditu (okno v1.238.0→v1.239.0).
+- (C) POSNETEK RAČUNA: ponatisk računa izstavka je izpeljal vrstice iz ŽIVEGA naročila — račun izstavka #1 je pokazal postavke VSEH izstavkov (Σ vrstic > receipt.total). Nova stoplca Receipt.checkId (mehka referenca) + itemsJson (posnetek [{id,name,qty,price,vatRate,vatAmount,amount}], precedens KotDocument.itemsJson): zapis ob izdaji, prenos na storno račun, branje s prednostjo posnetka + padalo na žive postavke za legacy.
+- (D) VOID NA PLAČANEM IZSTAVKU: delno plačano naročilo je pustilo preklic postavke PLAČANEGA izstavka skozi brez vračila (denar pobran, Σ izstavkov > Order.total, R1 poroča višje) — hkrati storno 409 (zahteva 'paid'): past brez izhoda. Zdaj: pre-bran + race-safe preverba v TX (Check.paymentStatus paid → 409 z usmeritvijo na storno); per-check storno na 'partial' naročilu ODPRT (naročilo ostane partial — Toast semantika); UI gumb skrit za checkPaid (mapOrderItem aditivno checkId/checkPaid, orderInclude + Check relacija).
+- TESTI: NOVA tests/v239-receipt-cell.test.ts (18: A1–A5 vedra, B1–B3 storno/bazen/per-check, C1–C4 posnetek, D1–D3 void, Ž1–Ž3 registri) — 18/18 zeleni v prvem teku; PINI: verzija 1.238.0 → 1.239.0 (version.ts + compose + 45 toBe + 15 ubeženih regexov + Task ID); i18n 3859 nespremenjeno (0 novih ključev — sporočila so strežniška).
+- DOKUMENTI: PRIMERJAVA §16 (A–E z industrijskimi referencami + lastnimi potmi, B-načrti E za naslednje vale), PRD §8 R4b, AUDIT POSODOBITEV.
+- ČIŠČENJE: osiroteli ostanki odstranitve kategorij-slik (odločitev lastnika po produkciji) (src/lib/category-images.ts brez uvoznikov, public/img/cat/, src/app/api/route.ts Hello-world init ostanek) — zbrisani pred valom.
+
+Stage Summary:
+- RAČUNSKA CELICA v1.239.0: račun je pogodba z gostom IN davčno — njegova vsebina posnetek trenutka izdaje (C), plačilo deli po vrsticah (A), negacija zrcali vse dele (B), neprekljivost pogojena s plačilnim stanjem IZSTAVKA (D). Naslednji val po §16 E: rezervacije (strežniški overlap, NO_SHOW sprosti mizo, assertTableClaimable), QR push+autofire, založni val.
+
 Task ID: v1.238.0-verifikacija
 Agent: glavni agent (Z.ai Code)
 Task: Zaključna verifikacija DENARNEGA VALA v1.238.0 po pushu 64cb5de.

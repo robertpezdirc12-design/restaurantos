@@ -46,14 +46,37 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // storno si deli orderId z originalom → postavke so POZITIVNE, dokument negativen.
   // Predznak dokumenta je edini vir resnice za rebuild in za izpis vrstic.
   const sign = r.isStorno || num(r.total) < 0 ? -1 : 1
-  const items = (r.Order?.OrderItem ?? []).filter((i) => !i.voided).map((i) => ({
-    name: i.menuItemName || 'Artikel',
-    qty: i.quantity || 1,
-    price: num(i.price) * sign,
-    vatRate: num(i.vatRate, 22),
-    vatAmount: num(i.vatAmount) * sign,
-    amount: num(i.price) * (i.quantity || 1) * sign,
-  }))
+
+  // ── v1.239.0 §16 C: POSNETEK POSTAVK (itemsJson) je primarni vir ──
+  // Račun je bil izdan za TOČNO določene postavke (per-check ali celotno naročilo)
+  // v trenutku izdaje; kasnejše spremembe naročila (addItems/preklic/premik) ne smejo
+  // spremeniti podobe fiskalnega dokumenta. Posnetek nosi pozitivne zneske — predznak
+  // dokumenta (sign, zgoraj) se uporabi enako kot pri izpeljavi iz živih postavk.
+  // Legacy računi (izdani pred v1.239.0, itemsJson='[]') → izpeljava iz živih postavk
+  // naročila (prejšnje obnašanje, nazaj-kompatibilno).
+  let snapshotItems: { name?: unknown; qty?: unknown; price?: unknown; vatRate?: unknown; vatAmount?: unknown; amount?: unknown }[] = []
+  try {
+    const rawItems = typeof r.itemsJson === 'string' ? JSON.parse(r.itemsJson) : (r.itemsJson ?? [])
+    if (Array.isArray(rawItems)) snapshotItems = rawItems as typeof snapshotItems
+  } catch { snapshotItems = [] }
+
+  const items = snapshotItems.length > 0
+    ? snapshotItems.map((it) => ({
+        name: typeof it.name === 'string' && it.name ? it.name : 'Artikel',
+        qty: Number(it.qty) || 1,
+        price: num(it.price) * sign,
+        vatRate: num(it.vatRate, 22),
+        vatAmount: num(it.vatAmount) * sign,
+        amount: num(it.amount) * sign,
+      }))
+    : (r.Order?.OrderItem ?? []).filter((i) => !i.voided).map((i) => ({
+        name: i.menuItemName || 'Artikel',
+        qty: i.quantity || 1,
+        price: num(i.price) * sign,
+        vatRate: num(i.vatRate, 22),
+        vatAmount: num(i.vatAmount) * sign,
+        amount: num(i.price) * (i.quantity || 1) * sign,
+      }))
 
   if (breakdown.length === 0 && items.length > 0) {
     const m = new Map<string, { rate: number; base: number; vat: number }>()

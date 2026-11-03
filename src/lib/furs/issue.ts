@@ -635,11 +635,31 @@ export async function issueFursReceipt(req: NextRequest) {
         })
       })()
 
+      // ── v1.239.0 §16 C: POSNETEK POSTAVK računa ob izdaji ──
+      // Ponatisk/izpis računa NE SME izpeljevati vrstic iz ŽIVEGA naročila:
+      // dodajanje postavk (addItems na 'partial'), premik med izstavki ali preklic
+      // po izdaji bi spremenili podobo ŽE IZDANEGA fiskalnega dokumenta. Toast/Square:
+      // račun je posnetek trenutka izdaje. Shranimo točno obliko, ki jo branje
+      // (/api/furs/[id]) pričakuje — precedens KotDocument.itemsJson. checkId =
+      // izstavek, skozi katerega je plačilo teklo (celotno plačilo z obstoječimi
+      // izstavki → #1, vse postavke; per-check plačilo → samo postavke izstavka).
+      const receiptSnapshotItems = (checkScope ? checkScope.items : billItems).map((it) => ({
+        id: it.id,
+        name: it.name,
+        qty: it.quantity,
+        price: it.unitPrice,
+        vatRate: it.vatRate,
+        vatAmount: it.vatAmount,
+        amount: r2(it.unitPrice * it.quantity),
+      }))
+
       const created = await tx.receipt.create({
         data: {
           id: nid(),
           receiptNumber,
           orderId: orderPre.id,
+          checkId: check.id,
+          itemsJson: jstr(receiptSnapshotItems),
           businessName: location.name,
           businessAddress: location.address || '',
           businessId: location.businessId || '',

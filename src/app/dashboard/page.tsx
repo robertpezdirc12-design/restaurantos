@@ -160,7 +160,7 @@ interface UpdateCheckT { current: string; latest: string | null; updateAvailable
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[]; voidedItems?: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
@@ -6101,7 +6101,11 @@ function DashboardInner() {
                         <Badge variant="outline" className="text-xs px-1.5 py-0">
                           {['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(it.status) ? t(`status.${it.status}`) : it.status}
                         </Badge>
-                        {hasPerm('orders.void') && orderSheet.paymentStatus !== 'paid' && (
+                        {/* v1.239.0 §16 D: postavka na PLAČANEM izstavku (delno plačano
+                            naročilo 'partial') — gumb skrit: preklic bi odvzel že
+                            pobran denar brez vračila (strežnik vrne 409 + usmeritev
+                            na fiskalni storno; UI samo ne ponuja prepovedane poteze). */}
+                        {hasPerm('orders.void') && orderSheet.paymentStatus !== 'paid' && !it.checkPaid && (
                           <Button size="icon" variant="outline" className="h-6 w-6 text-red-700 hover:bg-red-50 hover:text-red-800" disabled={sending} onClick={() => void openVoidDialog(it)} title={t('sheet.void')} aria-label={t('sheet.void')}>
                             <Ban className="w-3 h-3" />
                           </Button>
