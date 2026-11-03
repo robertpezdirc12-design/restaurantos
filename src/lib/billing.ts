@@ -1,4 +1,5 @@
 import { num, r2 } from '@/lib/map'
+import { localParts } from '@/lib/fiscal-time'
 
 /**
  * Issue #1 §6 — kanonični izračun računa (deljeno plačilo, popusti, zvestoba, Happy Hour).
@@ -51,10 +52,18 @@ export interface BillResult {
   }
 }
 
-/** Je Happy Hour aktiven ob podanem času (lokalna ura lokacije)? */
+/** Je Happy Hour aktiven ob podanem času (lokalna ura lokacije)?
+ *
+ * v1.238.0 (raziskava §15, P1): `tz` = časovni pas lokacije (Location.timezone).
+ * PREJ se je okno ovrednotilo po STREŽNIŠKI lokalni uri (getHours) — na Vercelu/
+ * Railway (UTC) se je Happy Hour pozimi dejansko aktiviral 18–20 in poleti 19–21
+ * namesto 17–19, ploščice v POS-u (brskalnikov čas gostilne) pa so kazale ⚡ celo
+ * uro prej. Toast/Square/Lightspeed ovrednotijo promocije VEDNO v coni lokacije.
+ * `tz` neveljaven/manjka → sistemski lokalni čas (nazaj-kompatibilno, lokalni zagon). */
 export function isHappyActive(
   d: { happyDays?: string | null; happyFromHour?: number | null; happyToHour?: number | null },
   now: Date,
+  tz?: string | null,
 ): boolean {
   // brez okna je 'auto' discount aktiven ves čas veljavnosti (validFrom/validTo loči klicatelj)
   const hasWindow = d.happyFromHour != null && d.happyToHour != null
@@ -62,11 +71,22 @@ export function isHappyActive(
   const from = Number(d.happyFromHour)
   const to = Number(d.happyToHour)
   if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return false
+  // ura/dan v coni lokacije (fiscal-time vzorec: neveljavna cona → Ljubljana, ne strežnik).
+  // Dan v tednu iz koledarskega datuma v coni (lokalni datum → getDay je neodvisen od sistemske cone).
+  let h: number
+  let day: number
+  if (tz) {
+    const p = localParts(now, tz)
+    h = p.hour
+    day = new Date(p.year, p.month - 1, p.day).getDay()
+  } else {
+    h = now.getHours()
+    day = now.getDay()
+  }
   if (d.happyDays) {
     const days = d.happyDays.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
-    if (days.length > 0 && !days.includes(now.getDay())) return false
+    if (days.length > 0 && !days.includes(day)) return false
   }
-  const h = now.getHours()
   if (from < to) return h >= from && h < to
   // okno čez polnoč (npr. 22–2)
   return h >= from || h < to
@@ -159,6 +179,8 @@ export interface BillInput {
     targetCategoryIds?: string | null
   }[]
   now: Date
+  /** v1.238.0: cona lokacije za ovrednotenje Happy Hour okna (manjka → strežniški čas) */
+  tz?: string | null
   loyaltyEnabled: boolean
   pointsPerEuro: number
   pointsValue: number
@@ -177,7 +199,7 @@ export function computeBill(input: BillInput): BillResult {
   // avtomatski popusti (Happy Hour): oceni samo AktIVNE ob 'now', izberi najugodnejšega na osnovi
   const autoDiscounts: AutoDiscountLine[] = []
   for (const d of input.autoCandidates) {
-    if (!isHappyActive(d, input.now)) continue
+    if (!isHappyActive(d, input.now, input.tz)) continue
     const base = discountBase(input.items, d.targetCategoryIds || '', grossTotal)
     const amount = discountAmountOf(d, base)
     if (amount > 0) autoDiscounts.push({ discountId: d.id, name: d.name, amount })

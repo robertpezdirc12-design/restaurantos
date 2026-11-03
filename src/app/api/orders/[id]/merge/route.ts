@@ -66,6 +66,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return fail('Naročilo vsebuje postavke, ki so že na računu — združevanje ni mogoče.', 409)
   }
 
+  // ── v1.238.0 §15 (P0): vir z ŽE POBRANIM denarjem ali popustom ne sme iti skozi ──
+  // Plačilne povezave (QR split) poravnajo delež BREZ Checka (PayLink.status='paid',
+  // order.paymentStatus='partial') — stari guard (samo checkId) jih je spustil:
+  // postavke so se prestavile, vir preklican, pobrani denar ujet na njem, cilj pa
+  // nosil POLNO vrednost → gost plača dvakrat. Ročni popust (Order.discount €) prav
+  // tako ostane na preklicanem viru (cilj se preračuna iz postavk po celih cenah).
+  // Toast/Square: transfer če plačila/popustka ne more ohraniti, ga ZAVRNE.
+  if (source.paymentStatus === 'partial') {
+    return fail('Naročilo (vir) ima že pobran delni plačilni delež (plačilna povezava) — denar je vezan nanj. Združevanje ni mogoče; izdajte račun ali stornirajte povezavo.', 409)
+  }
+  const paidLinks = await db.payLink.count({ where: { orderId: id, status: 'paid' } })
+  if (paidLinks > 0) {
+    return fail('Naročilo (vir) ima plačene plačilne povezave — denar je vezan nanj. Združevanje ni mogoče.', 409)
+  }
+  if (num(source.discount) > 0) {
+    return fail('Naročilo (vir) ima ročni popust, ki se ob združevanju izgubi (cilj se preračuna po celih cenah). Odstranite popust pred združevanjem.', 409)
+  }
+
   // v1.145.0 (audit #12): združevanje sedaj ZAPISA oba naročila z CAS claimoma in
   // pogoje (mutabilnost, bremenjene postavke) preveri ZNOTRAJ transakcije. Prej so
   // bili pogoji preverjeni samo ob prihodu, zapis pa je bil brezpogojen. Posledice
@@ -91,6 +109,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // (ponovljeno znotraj tx: med prihodom in transakcijo je lahko nastal Check)
       const billedNow = await tx.orderItem.count({ where: { orderId: id, checkId: { not: null } } })
       if (billedNow > 0) throw new MergeRejected(409, 'Naročilo vsebuje postavke, ki so že na računu — združevanje ni mogoče.')
+
+      // v1.238.0 §15: ponovitev P0 varoval znotraj tx (med prihodom in transakcijo
+      // je lahko poravnana povezava ali nastal popust)
+      if (src.paymentStatus !== 'unpaid') throw new MergeRejected(409, 'Naročilo (vir) ima že pobran plačilni delež — združevanje ni mogoče.')
+      const paidLinksNow = await tx.payLink.count({ where: { orderId: id, status: 'paid' } })
+      if (paidLinksNow > 0) throw new MergeRejected(409, 'Naročilo (vir) ima plačene plačilne povezave — združevanje ni mogoče.')
+      const srcFresh = await tx.order.findUnique({ where: { id }, select: { discount: true } })
+      if (srcFresh && num(srcFresh.discount) > 0) throw new MergeRejected(409, 'Naročilo (vir) ima ročni popust — odstranite ga pred združevanjem.')
 
       // premik aktivnih postavk (pending/fired/preparing/ready/served) iz vira na cilj;
       // cancelled/voided ostanejo pri viru — ne smejo spreminjati totalov cilja

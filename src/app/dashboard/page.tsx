@@ -171,7 +171,7 @@ interface ReceiptT { id: string; invoiceNumber: string; eor: string; zoi: string
 
 // Issue #1 §6: kanonični račun (billing.ts) — popusti, zvestoba, deljeno plačilo
 interface BillAutoDisc { discountId: string; name: string; amount: number }
-interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number }; items?: { id: string; name: string; quantity: number; unitPrice: number }[] }
+interface BillT { subtotal: number; tax: number; grossTotal: number; manualDiscount: number; autoDiscounts: BillAutoDisc[]; discountTotal: number; totalDue: number; loyalty: { enabled: boolean; pointsPerEuro: number; pointsValue: number; maxRedeemablePoints: number }; items?: { id: string; name: string; quantity: number; unitPrice: number }[]; /** v1.238.0 §15: prek plačilnih povezav (QR) že pobrani deleži — odprti balance */ linkPaidTotal?: number }
 interface DiscountT { id: string; name: string; type: string; amount: number; triggerType: string; isActive: boolean; happyFromHour?: number | null; happyToHour?: number | null; happyDays?: string | null; targetCategoryIds?: string | null; validFrom?: string | null; validTo?: string | null }
 interface LoyaltyAccT { id: string; customerName: string; customerPhone: string; pointsBalance: number; lifetimePoints: number; tier: string }
 interface PayPart { type: 'cash' | 'card' | 'mobile' | 'giftcard'; amount: number }
@@ -1742,7 +1742,19 @@ function DashboardInner() {
     try {
       // Issue #1 §6: kanonični zneski iz strežniškega računa — UI nikoli ne odloča o znesku
       const redeemValue = loyaltySel && redeemPoints > 0 ? r2v(redeemPoints * bill.loyalty.pointsValue) : 0
-      const due = r2v(bill.totalDue - redeemValue)
+      // v1.238.0 §15 (P0): ODPRTI BALANCE — prek plačilnih povezav (QR) že pobrani
+      // deleži se odštejejo PRED bremenitvijo terminala. PREJ je POS naročil terminalu
+      // CELOTEN znesk (strežnik bi pri zaključku vzel samo preostanek — gost bi bil
+      // fizično obremenjen dvakrat). Toast/Square: terminal vedno dobi samo open balance.
+      const linkPaid = bill.linkPaidTotal && bill.linkPaidTotal > 0 ? bill.linkPaidTotal : 0
+      const due = r2v(bill.totalDue - redeemValue - linkPaid)
+      // v1.238.0 §15 (P0): napitnina pri kartičnem/mobilnem plačilu gre NA TERMINAL
+      // (due + tip) — enako kot handheld (referenčna implementacija). PREJ je POS
+      // terminalu naročil SAMO due, napitnino pa zapisal v knjige/bazen — osebje bi
+      // dobilo izplačilo denarja, ki nikoli ni bil pobran.
+      const tipNum = Number(tipEur) > 0 ? r2v(Number(tipEur)) : 0
+      // v deljenem načinu napitnino (enkrat) nosi prvi kartični/mobilni del
+      let tipOnTerminal = tipNum
       const bodyParts: { type: string; amount: number; terminal?: { approvalCode: string }; giftCardId?: string }[] = []
       if (parts.length > 0) {
         for (let i = 0; i < parts.length; i++) {
@@ -1761,9 +1773,14 @@ function DashboardInner() {
             bodyParts.push({ type: p.type, amount: r2v(p.amount) })
             continue
           }
-          const term = await processTerminalPayment(p.amount)
+          // v1.238.0 §15: napitnino (enkrat) pripnemo prvemu kartičnemu/mobilnemu delu —
+          // fizična bremenitev = del + tip, strežniku pošljemo SAMO del (tip gre ločeno
+          // v body.tip; vsota delov mora ostati = znesek računa)
+          const chargeAmount = r2v(p.amount + tipOnTerminal)
+          tipOnTerminal = 0
+          const term = await processTerminalPayment(chargeAmount)
           if (!term.approved) {
-            toast({ title: term.error || t('payment.terminalDeclined', { amount: fmtEUR(p.amount) }), variant: 'destructive' })
+            toast({ title: term.error || t('payment.terminalDeclined', { amount: fmtEUR(chargeAmount) }), variant: 'destructive' })
             return
           }
           bodyParts.push({ type: p.type, amount: r2v(p.amount), terminal: { approvalCode: term.approvalCode as string } })
@@ -1778,7 +1795,9 @@ function DashboardInner() {
           }
           bodyParts.push({ type: 'giftcard', amount: due, giftCardId: gcSel.id })
         } else if (payMethod !== 'cash') {
-          const term = await processTerminalPayment(due)
+          // v1.238.0 §15: terminal bremeni due + tip (handheld vzorec); body tip ostane ločen
+          const chargeAmount = r2v(due + tipNum)
+          const term = await processTerminalPayment(chargeAmount)
           if (!term.approved) {
             toast({ title: term.error || t('payment.terminalNotApproved'), variant: 'destructive' })
             return
@@ -3001,7 +3020,10 @@ function DashboardInner() {
         method: 'POST',
         // v1.86.2: centralna vloga brez lokacije → lokacija iz preklopnika pogleda (viewLoc);
         // JSON.stringify izpušče undefined → za osebje/lokalizirane vloge se nič ne spremeni
-        body: JSON.stringify({ items, type: 'TAKEOUT', guests: 1, clientOperationId: newOperationId(), locationId: viewLoc || undefined }),
+        // v1.238.0 §15 (P1): 'TAKEOUT' → 'TAKEAWAY' — preslikava TYPE_TO_DB te vrednosti
+        // NI poznala, zato je vsa hitra prodaja (šank) tiho pristala kot dine-in brez mize
+        // in poročila po kanalih lažala; strežnik zdaj neznane tipe tudi zavre (400).
+        body: JSON.stringify({ items, type: 'TAKEAWAY', guests: 1, clientOperationId: newOperationId(), locationId: viewLoc || undefined }),
       })
       setSaleCart({}); setSaleVariants([])
       // v1.128.0: uspešno plačilo zapre list košare (odpre se plačilni dialog naročila)
@@ -6501,7 +6523,14 @@ function DashboardInner() {
                 {bill.discountTotal > 0 && (
                   <div className="flex justify-between font-medium border-t border-stone-100 pt-1"><span>{t('payment.discountTotal')}</span><span>−{fmtEUR(bill.discountTotal)}</span></div>
                 )}
-                <div className="flex justify-between font-bold text-lg pt-1 border-t border-stone-200"><span>{t('payment.due')}</span><span>{fmtEUR(bill.totalDue)}</span></div>
+                {/* v1.238.0 §15: odprti balance — QR povezave so denar, ki je ŽE v blagajni */}
+                {bill.linkPaidTotal != null && bill.linkPaidTotal > 0 && (
+                  <div className="flex justify-between text-amber-700 border-t border-stone-100 pt-1" data-region="payment-link-paid">
+                    <span>{t('payment.linkPaid')}</span>
+                    <span>−{fmtEUR(bill.linkPaidTotal)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-lg pt-1 border-t border-stone-200"><span>{t('payment.due')}</span><span>{fmtEUR(bill.linkPaidTotal != null && bill.linkPaidTotal > 0 ? Math.max(0, bill.totalDue - bill.linkPaidTotal) : bill.totalDue)}</span></div>
               </div>
 
               {/* Issue #1 (triage ①): napitnina pri plačilu — gre v Payment.tipAmount → dnevni bazen napitnin */}

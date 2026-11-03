@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const location = await db.location.findUnique({
     where: { id: order.locationId },
-    select: { loyaltyEnabled: true, loyaltyPointsPerEuro: true, loyaltyPointsValue: true },
+    select: { loyaltyEnabled: true, loyaltyPointsPerEuro: true, loyaltyPointsValue: true, timezone: true },
   })
   if (!location) return fail('Lokacija naročila ne obstaja.', 404)
 
@@ -69,14 +69,41 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     manualDiscount: num(order.discount),
     autoCandidates,
     now,
+    // v1.238.0 §15: Happy Hour v coni lokacije (ne strežniški UTC)
+    tz: location.timezone,
     loyaltyEnabled: location.loyaltyEnabled,
     pointsPerEuro: location.loyaltyPointsPerEuro,
     pointsValue: num(location.loyaltyPointsValue, 0.01),
   })
 
+  // ── v1.238.0 §15 (P0): odprti balance — prek plačilnih povezav (QR) ŽE pobrani deleži ──
+  // Strežniški zaključek (/api/furs) pobrane deleže upošteva (legacyAmount = total −
+  // redeem − linkPaidTotal), a predogled računa tega NI vrnil — POS je na terminal
+  // naročil bremenitev CELEGA zneska in gosta tiho OBREMENIL DVOJNO (Toast/Square
+  // vzorec: plačilni dialog vedno kaže »open balance«). Povezave pokrivajo CELOTO
+  // naročila (ne izstavke) — v checkId načinu je pravilno 0.
+  const checkIdParam = req.nextUrl.searchParams.get('checkId')
+  const paidLinks = checkIdParam
+    ? []
+    : await db.payLink.findMany({
+        where: { orderId: order.id, status: 'paid', receiptId: null, amount: { not: null } },
+        select: { amount: true },
+      })
+  let linkPaidTotal = 0
+  for (const l of paidLinks) {
+    const la = r2(num(l.amount))
+    if (la <= 0) continue
+    linkPaidTotal = r2(linkPaidTotal + la)
+  }
+  // zvestoba: unovčljive točke se računajo na ODPRTI balance (prej: celota — gost bi
+  // lahko unovčil točke nad že pobranim deležem in zaključek padel na 400)
+  if (linkPaidTotal > 0 && bill.loyalty.enabled) {
+    const ppv = Math.max(0.01, num(location.loyaltyPointsValue, 0.01))
+    bill.loyalty.maxRedeemablePoints = Math.max(0, Math.floor(Math.max(0, bill.totalDue - linkPaidTotal) / ppv))
+  }
+
   // ── OPS-7 (v1.68.0) — predogled PER IZSTAVEK (?checkId=) ──
   // Proporcionalni popust (zadnji neplačani izstavek absorbira ostanek — enako kot /api/furs).
-  const checkIdParam = req.nextUrl.searchParams.get('checkId')
   let checkBill: ReturnType<typeof computeBill> | null = null
   let checkInfo: { id: string; checkNumber: number; paymentStatus: string; isLastUnpaid: boolean } | null = null
   if (checkIdParam) {
@@ -126,5 +153,5 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     checkInfo = { id: target.id, checkNumber: target.checkNumber, paymentStatus: target.paymentStatus, isLastUnpaid: unpaidOthers === 0 }
   }
 
-  return ok({ bill, ...(checkBill && checkInfo ? { checkBill, check: checkInfo } : {}), order: { id: order.id, orderNumber: order.orderNumber, tableId: order.tableId, status: order.status } })
+  return ok({ bill: { ...bill, ...(linkPaidTotal > 0 ? { linkPaidTotal } : {}) }, ...(checkBill && checkInfo ? { checkBill, check: checkInfo } : {}), order: { id: order.id, orderNumber: order.orderNumber, tableId: order.tableId, status: order.status } })
 }

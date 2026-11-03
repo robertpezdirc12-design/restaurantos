@@ -159,6 +159,8 @@ export async function issueFursReceipt(req: NextRequest) {
     manualDiscount: num(orderPre.discount),
     autoCandidates,
     now,
+    // v1.238.0 §15: Happy Hour v coni lokacije (ne strežniški UTC — enako kot predogled)
+    tz: location.timezone,
     loyaltyEnabled: location.loyaltyEnabled,
     pointsPerEuro: location.loyaltyPointsPerEuro,
     pointsValue: num(location.loyaltyPointsValue, 0.01),
@@ -247,6 +249,42 @@ export async function issueFursReceipt(req: NextRequest) {
       ? Math.max(0, num(body.tip))
       : num(orderPre.tip)
 
+  // ── P1-6 (v1.87.0) — DELEŽI, PLAČANI PREK PLAČILNIH POVEZAV (split po gostih) ──
+  // Vmesna plačila deležev (PayLink status='paid', receiptId še null, amount fiksna)
+  // so ŽE POBRAŠEN denar (odobritev terminala je na vrstici povezave) — jedro jih
+  // samodejno prišteje med dele plačila (en vir resnice):
+  //  - zadnji gost splita pokliče s parts: [] → račun pokrijejo SAMO povezave;
+  //  - POS zaključek: KLASIČNA pot (type + brez parts) samodejno plača SAMO
+  //    PREOSTANEK (total − točke − pobrani deleži — Toast-style "plačaj odprti
+  //    balance"); eksplicitni parts morajo vsoto dopolniti do celote;
+  //  - naročila BREZ povezav: 0 vrstic → obnašanje bit-identično prej (0 vpliva).
+  // Napitnine povezav se prištejejo k body tip (račun ima eno napitnino).
+  // POZOR: klasična (N=1) povezava se OZNAČI plačana ŠELE PO tem klicu — ob klicu
+  // je še 'open' → ni vključena (brez dvojnega štetja).
+  // POZOR (produkcija): med migrate-paylink-split DDL stolpci morda še manjkajo —
+  // shemska napaka (P2010/42703) NI plačilna napaka: izdaja/deleži takrat niso
+  // možni (payLinkReady 503) → mirno prazna lista (POS plačila delujejo).
+  const paidLinks = checkScope
+    ? [] // checkScope način: povezave pokrivajo CELOTO naročila — mešanje z izstavki ni smiselno (vsota bi razneslo)
+    : await db.payLink
+        .findMany({
+          where: { orderId: orderPre.id, status: 'paid', receiptId: null, amount: { not: null } },
+          orderBy: [{ splitIndex: 'asc' }, { createdAt: 'asc' }],
+          select: { amount: true, tip: true, approvalCode: true },
+        })
+        .catch((e: unknown) => {
+          if (isMissingSchemaError(e)) return []
+          throw e
+        })
+  let linkPaidTotal = 0
+  for (const l of paidLinks) {
+    const la = r2(num(l.amount))
+    if (la <= 0) continue
+    linkPaidTotal = r2(linkPaidTotal + la)
+  }
+  const linkTipTotal = paidLinks.length ? r2(paidLinks.reduce((s, l) => s + Math.max(0, num(l.tip)), 0)) : 0
+  if (linkTipTotal > 0) tip = r2(tip + linkTipTotal)
+
   // ── Zvestoba: unovčenje točk (validacija PRED transakcijo) ──
   const redeemPoints = Math.max(0, Math.round(Number(body?.loyaltyPointsUsed) || 0))
   const loyaltyAccountId = typeof body?.loyaltyAccountId === 'string' && body.loyaltyAccountId.trim() ? body.loyaltyAccountId.trim() : null
@@ -255,10 +293,12 @@ export async function issueFursReceipt(req: NextRequest) {
   if (redeemPoints > 0 || loyaltyAccountId) {
     if (!loyaltyAccountId) return fail('Unovčenje točk zahteva loyaltyAccountId.', 400)
     if (!location.loyaltyEnabled) return fail('Program zvestobe ni omogočen za to lokacijo.', 400)
-    // OPS-7 split po izstavkih: limit unovčenja se računa na ZNESEK OBSEGA (izstavek ali cel račun)
+    // OPS-7 split po izstavkih: limit unovčenja se računa na ZNESEK OBSEGA (izstavek ali cel račun).
+    // v1.238.0 §15: na celoti se limit računa na ODPRTI balance (total − prek QR že
+    // pobrani deleži) — unovčenje nad odprtim balance bi ob zaključku padlo na 400.
     const maxRedeemable = checkScope
       ? Math.floor(checkScope.total / Math.max(0.01, num(location.loyaltyPointsValue, 0.01)))
-      : bill.loyalty.maxRedeemablePoints
+      : Math.max(0, Math.floor(Math.max(0, bill.totalDue - linkPaidTotal) / Math.max(0.01, num(location.loyaltyPointsValue, 0.01))))
     if (redeemPoints > maxRedeemable) {
       return fail(`Največ ${maxRedeemable} točk je mogoče unovčiti na tem računu.`, 400)
     }
@@ -309,41 +349,6 @@ export async function issueFursReceipt(req: NextRequest) {
     }
     return null
   }
-  // ── P1-6 (v1.87.0) — DELEŽI, PLAČANI PREK PLAČILNIH POVEZAV (split po gostih) ──
-  // Vmesna plačila deležev (PayLink status='paid', receiptId še null, amount fiksna)
-  // so ŽE POBRAŠEN denar (odobritev terminala je na vrstici povezave) — jedro jih
-  // samodejno prišteje med dele plačila (en vir resnice):
-  //  - zadnji gost splita pokliče s parts: [] → račun pokrijejo SAMO povezave;
-  //  - POS zaključek: KLASIČNA pot (type + brez parts) samodejno plača SAMO
-  //    PREOSTANEK (total − točke − pobrani deleži — Toast-style "plačaj odprti
-  //    balance"); eksplicitni parts morajo vsoto dopolniti do celote;
-  //  - naročila BREZ povezav: 0 vrstic → obnašanje bit-identično prej (0 vpliva).
-  // Napitnine povezav se prištejejo k body tip (račun ima eno napitnino).
-  // POZOR: klasična (N=1) povezava se OZNAČI plačana ŠELE PO tem klicu — ob klicu
-  // je še 'open' → ni vključena (brez dvojnega štetja).
-  // POZOR (produkcija): med migrate-paylink-split DDL stolpci morda še manjkajo —
-  // shemska napaka (P2010/42703) NI plačilna napaka: izdaja/deleži takrat niso
-  // možni (payLinkReady 503) → mirno prazna lista (POS plačila delujejo).
-  const paidLinks = checkScope
-    ? [] // checkScope način: povezave pokrivajo CELOTO naročila — mešanje z izstavki ni smiselno (vsota bi razneslo)
-    : await db.payLink
-        .findMany({
-          where: { orderId: orderPre.id, status: 'paid', receiptId: null, amount: { not: null } },
-          orderBy: [{ splitIndex: 'asc' }, { createdAt: 'asc' }],
-          select: { amount: true, tip: true, approvalCode: true },
-        })
-        .catch((e: unknown) => {
-          if (isMissingSchemaError(e)) return []
-          throw e
-        })
-  let linkPaidTotal = 0
-  for (const l of paidLinks) {
-    const la = r2(num(l.amount))
-    if (la <= 0) continue
-    linkPaidTotal = r2(linkPaidTotal + la)
-  }
-  const linkTipTotal = paidLinks.length ? r2(paidLinks.reduce((s, l) => s + Math.max(0, num(l.tip)), 0)) : 0
-  if (linkTipTotal > 0) tip = r2(tip + linkTipTotal)
 
   const parts: PaymentPart[] = []
   // P1-6: Array.isArray tudi za PRAZNO polje — caller (zadnji gost split plačilnih
@@ -804,7 +809,7 @@ export async function issueFursReceipt(req: NextRequest) {
       // Razknjiževanje zalog po recepturah (idempotentno, v ISTI transakciji kot račun
       // — če se račun zavrne, se razknjiževanje tudi; primanjkljaj ne blokira prodaje).
       // OPS-7 split: v check načinu odštejemo SAMO postavke plačanega izstavka.
-      const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name, checkScope ? checkScope.itemIds : undefined)
+      const stock = await deductStockForOrderTx(tx, orderPre.id, user.sub, user.name, checkScope ? checkScope.itemIds : undefined, receiptNumber)
 
       // v1.230.0 — samodejni 86 ob izpraznitvi zaloge (Toast Inventory standard;
       // docs/PRIMERJAVA-VMESNIKOV-2026.md §5): če je razknjižba spraznila zalogo,

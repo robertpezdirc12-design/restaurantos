@@ -505,6 +505,7 @@ export const sl: Record<string, string> = {
   'payment.grossTotal': 'Skupaj',
   'payment.manualDiscount': 'Ročni popust',
   'payment.discountTotal': 'Popust skupaj',
+  'payment.linkPaid': 'Prek QR povezave že pobrano',
   'payment.due': 'ZA PLAČATI',
   'payment.tipLabel': 'Napitnina (EUR):',
   'payment.tipAria': 'Napitnina v EUR',

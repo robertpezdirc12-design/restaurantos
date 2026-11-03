@@ -67,7 +67,12 @@ export async function deductStockForOrderTx(
   employeeId: string | null,
   employeeName: string,
   /** OPS-7 split po izstavkih: odštej SAMO te postavke (Check plačilo); brez = celo naročilo. */
-  onlyItemIds?: string[]
+  onlyItemIds?: string[],
+  /** v1.238.0 §15 (P0): številka računa, ob katerem je odjem izvršen — zapiše se v
+   *  StockTransaction.supplierDoc (referenca dokumenta, isti vzorec kot transferNumber
+   *  pri prenosih). Storno računa ob VEČ računih na naročilu (split izstavki) se lahko
+   *  vrne SAMO po tem žigu — brez njega bi povrnil zalogo VSEH izstavkov (raziskava §15). */
+  receiptStamp?: string,
 ): Promise<StockDeductionResult> {
   const empty: StockDeductionResult = { deducted: false, lines: 0, totalCost: 0, shortfalls: [], deductions: [] }
   const subsetMode = Array.isArray(onlyItemIds) && onlyItemIds.length > 0
@@ -316,6 +321,8 @@ export async function deductStockForOrderTx(
         totalCost: lineCost,
         reason: 'Razknjiževanje po recepturi (izdaja računa)',
         note: noteParts.join('; '),
+        // v1.238.0 §15: povezava odjema → račun (storno po izstavku razloči lastne vrstice)
+        supplierDoc: receiptStamp || '',
         employeeId,
         employeeName,
         orderId,

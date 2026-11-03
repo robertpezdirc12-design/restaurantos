@@ -165,10 +165,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (target === 'cancelled') data.notes = (po.notes ? po.notes + ' | ' : '') + `Preklicano ${new Date().toISOString()} (${user.name || user.sub})`
 
   const updated = await db.$transaction(async (tx) => {
-    const u = await tx.purchaseOrder.update({ where: { id }, data })
+    // v1.238.0 §15 (P1): CAS na statusu — updateMany je vezan na stanje, prebrano
+    // OB PRIHODU. PREJ je bil `update({ where: { id } })` brezpogojen: preklic na
+    // zastarel branem 'approved' je PREPISSAL 'received' (fizična dobava na zalogi,
+    // GRN + AP osnutek obstajajo), approve pa oživil že preklicano naročilo.
+    // Prejemna ruta ima to varovalo od prej (receive: »Ne degradiraj 'received'…«) —
+    // PATCH jo zdaj zrcali (Toast/MarketMan: statusni prehodi dokumentov so vedno CAS).
+    const u = await tx.purchaseOrder.updateMany({ where: { id, status: po.status }, data })
+    if (u.count === 0) {
+      throw new Error(`Naročilo se je medtem spremenilo (zdaj ni več »${po.status}«) — osvežite seznam in poskusite znova.`)
+    }
     await writeAudit(tx, { userId: user.sub, action: action === 'submit' ? 'PO_SUBMIT' : action === 'approve' ? 'PO_APPROVE' : 'PO_CANCEL', entityType: 'PurchaseOrder', entityId: id, details: jstr({ poNumber: po.poNumber, from: po.status, to: target, supplierId: po.supplierId, total: Number(po.totalAmount) }) })
-    return u
+    return tx.purchaseOrder.findUnique({ where: { id }, select: { id: true, poNumber: true, status: true } })
   })
+  if (!updated) return fail('Naročilo ne obstaja več.', 404)
 
   // OPS-8 val 2 (v1.72.0): push to warehouse/management on PO approval (via notification
   // matrix; fire-and-forget)

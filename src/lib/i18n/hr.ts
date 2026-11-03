@@ -501,6 +501,7 @@ export const hr: Record<string, string> = {
   'payment.grossTotal': 'Ukupno',
   'payment.manualDiscount': 'Ručni popust',
   'payment.discountTotal': 'Popust ukupno',
+  'payment.linkPaid': 'Putem QR veze već naplaćeno',
   'payment.due': 'ZA PLAĆATI',
   'payment.tipLabel': 'Napojnica (EUR):',
   'payment.tipAria': 'Napojnica u EUR',

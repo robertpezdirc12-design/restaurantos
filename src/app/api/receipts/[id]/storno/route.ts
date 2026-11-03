@@ -93,6 +93,33 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return fail('Storno je mogoč samo za plačano naročilo.', 409)
   }
 
+  // ── v1.238.0 §15 (P0): varovala STORNO PO IZSTAVKU na naročilu z VEČ računi ──
+  // Split-check naročilo ima en račun na izstavek. Povračilo zaloge po
+  // `orderId + type='SALE'` bi vrnilo odjeme VSEH izstavkov (pijače IN jedi) —
+  // zaloga bi se napihnila za količine, ki so dejansko porabljene in plačane
+  // (veljaven račun ostane). Od v1.238.0 razknjižba nosi žig računa
+  // (StockTransaction.supplierDoc), zato:
+  //  - žig OBSTAJA → storno vrača SAMO odjeme tega računa; naročilo OSTANE 'paid'
+  //    (ostali izstavki so še veljavni — Toast: refund ne razplača celotnega naročila);
+  //  - žiga NI (računi izdani pred v1.238.0) → 409 z iskrenim razlogom (ročni
+  //    popravek zaloge prek inventure) — tiha korupcija zaloge NI možna.
+  const siblingReceipts = await db.receipt.count({
+    where: { orderId: order.id, isStorno: false, isCopy: false, id: { not: original.id } },
+  })
+  let scopedMultiCheck = false
+  if (siblingReceipts > 0) {
+    const stamped = await db.stockTransaction.count({
+      where: { orderId: order.id, type: 'SALE', supplierDoc: original.receiptNumber },
+    })
+    if (stamped === 0) {
+      return fail(
+        `Naročilo ima ${siblingReceipts + 1} računov (plačilo po izstavkih) — storno enega računa bi povrnilo zalogo vseh izstavkov. Računi, izdani pred v1.238.0, nimajo povezave odjema→račun: izvedite popravek zaloge ročno (inventura) ali stornirajte od zadnjega računa naprej.`,
+        409,
+      )
+    }
+    scopedMultiCheck = true
+  }
+
   const location = await db.location.findUnique({ where: { id: original.locationId } })
   if (!location) return fail('Lokacija ne obstaja.', 400)
 
@@ -156,9 +183,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const result = await db.$transaction(async (tx) => {
       // ── CAS zaščita (R10 vzorec): naročilo spremenimo SAMO če je še 'paid' —
       // sočasni/dvojni storno izgubi dirko (račun prejšnjega klicalca že obstaja) ──
+      // v1.238.0 §15: pri stornu ENEGA izstavka več-računskega naročila naročilo
+      // OSTANE 'paid' (ostali izstavki so veljavni) — CAS je samo preverba stanja.
+      // POZOR (izmerjeno): updateMany s PRAZNIM data:{} vrne count 0 tudi ob
+      // ujemajoči vrstici — zato nosi no-op poteza eksplicitni updatedAt (isti
+      // zapis, ki ga @updatedAt PRIVZETO zapiše ob vsaki posodobitvi).
       const cas = await tx.order.updateMany({
         where: { id: order.id, paymentStatus: 'paid' },
-        data: { paymentStatus: 'storno' },
+        data: scopedMultiCheck ? { updatedAt: new Date() } : { paymentStatus: 'storno' },
       })
       if (cas.count === 0) {
         const twin = await tx.receipt.findFirst({
@@ -234,7 +266,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // increment + r3 normalizacija (SQLite REAL drift), previousQty/newQty iz sveže
       // vrednosti PO prirastu (vedno resničen par, tudi ob sočasnosti). ──
       const saleTxs = await tx.stockTransaction.findMany({
-        where: { orderId: order.id, type: 'SALE' },
+        // v1.238.0 §15: pri več računih na naročilu vračamo SAMO odjeme tega računa (žig)
+        where: { orderId: order.id, type: 'SALE', ...(scopedMultiCheck ? { supplierDoc: original.receiptNumber } : {}) },
         select: { id: true, inventoryItemId: true, quantity: true, costPerUnit: true },
         orderBy: { createdAt: 'asc' },
       })
@@ -413,7 +446,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         // Issue #53: izrecna oznaka okolja — 'test'/'simulation' se razločita od produkcije
         fursEnvironment: profile.environment,
       },
-      order: { id: order.id, paymentStatus: 'storno' },
+      order: { id: order.id, paymentStatus: scopedMultiCheck ? 'paid' : 'storno' },
     }, 201)
   } catch (e) {
     if (e instanceof OrderError) return fail(e.message, e.status)

@@ -347,6 +347,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         seat,
         allergenSnapshot: allergenSnapshots[itemIdx] || '{}',
         allergenWarning: sanitizeAllergenWarning(i.allergenWarning),
+        // v1.238.0 §15: izstavek, na katerega postavka pripada (dodelitev v tx zgoraj,
+        // ko naročilo že ima razdeljene izstavke; null = naročilo brez izstavkov)
+        checkId: null as string | null,
       }
     })
     // R5 popravek (P0 audit) + Issue #48: createMany + recalcTotals + update v ISTI
@@ -373,6 +376,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               select: { subtotal: true, tax: true, total: true, tip: true },
             })
             if (!cur) throw new Error('ORDER_NOT_MUTABLE')
+            // ── v1.238.0 §15 (P0): postavke dodane na RAZDELJENO naročilo PRISTANEJO
+            // na prvem neplačanem izstavku (Check). PREJ: vrstice brez checkId →
+            // plačilni dialog jih je prikazal pod izstavkom #1 (GET /checks siroto
+            // prišteje prvimu), jedro plačila (scopeItems po checkId) pa jih je
+            // IZPUSTILO — postrežena hrana, ki je nihče ni zaračunal (raziskava §15).
+            // Toast/Square: dodajanje na razdeljen check vedno pristane na določenem
+            // checku; »check-less« postavka na naročilu z izstavki ne obstaja.
+            if (rows.length > 0) {
+              const openChecks = await tx.check.findMany({
+                where: { orderId: id },
+                orderBy: { checkNumber: 'asc' },
+                select: { id: true, paymentStatus: true },
+              })
+              if (openChecks.length > 0) {
+                const targetCheck = openChecks.find((c) => c.paymentStatus !== 'paid') ?? openChecks[0]
+                for (const r of rows) r.checkId = targetCheck.id
+              }
+            }
             await tx.orderItem.createMany({ data: rows })
             // OSS-10 B-del: vrstice opcij v ISTI transakciji (rollback jih izniči
             // skupaj z artikli); stabilni id-ji preživijo retry brez podvajanja.

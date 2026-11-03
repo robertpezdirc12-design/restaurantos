@@ -46,12 +46,16 @@ export async function GET(req: NextRequest) {
   // inflow over open orders (submitted/approved/partial)
   const openLines = await db.purchaseOrderItem.findMany({
     where: { inventoryItemId: { in: ids }, PurchaseOrder: { status: { in: [...OPEN_PO_STATUSES] } } },
-    select: { inventoryItemId: true, quantityOrdered: true, quantityReceived: true },
+    select: { inventoryItemId: true, quantityOrdered: true, quantityReceived: true, quantityRejected: true },
   })
   const incomingByItem = new Map<string, number>()
   for (const l of openLines) {
     if (!l.inventoryItemId) continue
-    const remaining = Math.max(0, num(l.quantityOrdered) - num(l.quantityReceived))
+    // v1.238.0 §15 (P1): ZAVRHNJENA količina NI incoming — dobavitelj je ne bo pripeljal.
+    // PREJ: remaining = ordered − received je 5 zavrnjenih kosov štel kot prihajajoče
+    // in predlog tiho PODNAROČIL (takoj ko se PO zaključi, bi isto količino spet predlagal).
+    // MarketMan/PO standard: expected = ordered − received − rejected.
+    const remaining = Math.max(0, num(l.quantityOrdered) - num(l.quantityReceived) - num(l.quantityRejected))
     if (remaining <= 0) continue
     incomingByItem.set(l.inventoryItemId, (incomingByItem.get(l.inventoryItemId) || 0) + remaining)
   }

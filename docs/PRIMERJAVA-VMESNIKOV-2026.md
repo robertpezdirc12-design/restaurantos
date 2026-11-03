@@ -562,3 +562,186 @@ zdaj vidne na vseh treh poteh (zaslon vrste, preklicana vrstica, tiskani
 listek), pri čemer so podatki obstajali od v1.209.0 (vrzel je bila čisto
 v include + rendru). Kuhinja ne ugiba več, ali je »Pizza« mala ali velika,
 z ali brez čebule.
+
+## 15. Raziskava januar 2027 — DENARNI VAL v1.238.0 (finančna celovitost POS/plačil/nabave)
+
+Metoda: poglobljen QA pregled LOGIKE (ne videza) vseh petih vmesnikov s tremi
+vzporednimi raziskavami — POS/plačila, zaloge/nabava, restavracija/KDS — z
+iskanjem vrsti resničnih hroščev: race pogoji, izgubljen denar, napačni
+izračuni, tiha preslikava stanj. Izid: 4 najdbe razreda P0 (denar/podatki),
+5 razreda P1 — vse implementirane v tem valu (0 DDL, 0 odvisnosti, 0 AI).
+
+### A) Postavka dodana na razdeljen račun MORA pristati na izstavku (P0)
+
+**Kako imajo najboljši:** Toast in Square — vsaka postavka na naročilu z
+izstavki (checks) ima VEDNO dodeljen izstavek; dodajanje pijače na razdeljen
+račun pristane na izbranem (ali privzetem odprtem) checku. »Check-less«
+postavka na split naročilu pri vodilnih ne obstaja — ker pomeni postreženo
+hrano, ki je nihče ne zaračuna.
+
+**Kako je bilo pri nas (najdba):** `PATCH addItems` (src/app/api/orders/[id]/route.ts)
+je ustvaril vrstice BREZ `checkId` potem, ko je natakar že razdelil račun
+(POST /api/orders/[id]/checks). Posledica v treh korakih: (1) GET /checks je
+siroto POKAZAL pod izstavkom #1 (`it.checkId ? … : checks[0]` — UI laže),
+(2) jedro plačila (src/lib/furs/issue.ts `scopeItems` po `checkId`) jo je
+IZPUSTILO — gost je plačal vse izstavke, pijača pa nikoli ni bila zaračunana
+(niti na računu niti v razknjižbi zaloge `deductStockForOrderTx(onlyItemIds)`).
+
+**Popravek v1.238.0:** znotraj transakcije addItems se preberejo izstavki
+naročila; če obstajajo, NOVE vrstice dobijo `checkId` prvega neplačanega
+izstavka (`openChecks.find(c => c.paymentStatus !== 'paid') ?? openChecks[0]`).
+Naročila brez izstavkov: obnašanje nespremenjeno (`checkId: null`).
+
+### B) Napitnina pri kartičnem plačilu gre NA TERMINAL (P0)
+
+**Kako imajo najboljši:** Toast/Square — tip je vedno del zneska, poslanega
+na terminal (`tendered = amount + tip`); posnet `Payment.tipAmount` mora
+ustrezati fizično pobranemu denarju.
+
+**Kako je bilo pri nas:** dashboard POS je terminalu naročil bremenitev
+SAMO `due` (src/app/dashboard/page.tsx `processTerminalPayment(due)`), tip
+pa poslal ločeno v `body.tip` → račun `totalWithTip = total + tip`,
+`Payment.tipAmount = tip`, dnevni bazen napitnin (api/tips) pa je tisto
+napitnino izplačal osebju — denar, ki ga terminal NIKOLI ni pobral.
+Handheld (src/app/handheld/page.tsx `payTotal = totalDue + tipEur`) je bil
+referenčna implementacija — isti produkt, dve vedenji.
+
+**Popravek v1.238.0:** klasična pot — `processTerminalPayment(r2v(due + tip))`;
+deljena pot — prvi kartični/mobilni del nosi `p.amount + tip` (enkrat;
+`tipOnTerminal` zastavica), strežniku pa se dele pošljejo nespremenjene
+(vsota delov ostane = znesek računa; tip gre ločeno v body.tip).
+
+### C) Odprti balance — QR plačilne povezave v plačilnem dialogu (P0)
+
+**Kako imajo najboljši:** Toast/Square — plačilni dialog VEDNO prikazuje
+»open balance« (skupaj − že pobrano) in terminal dobi samo odprti znesek.
+
+**Kako je bilo pri nas:** strežniški zaključek je QR deleže upošteval
+(src/lib/furs/issue.ts `legacyAmount = total − redeem − linkPaidTotal`), a
+predogled računa (GET /api/orders/[id]/bill) tega NI vrnil — dashboard je
+izračunal `due = bill.totalDue − redeem` in terminal naročil bremenitev
+CELEGA zneska. Gost s 60 € računom, kjer je 30 € že plačal prek QR, je bil
+kartično obremenjen za 60 € (skupaj 90 €) — knjige so bile »v redu«, denar
+pa izginil v poravnavo terminala.
+
+**Popravek v1.238.0:** bill API vrača `linkPaidTotal` (vsota `PayLink
+status='paid', receiptId=null`); dashboard `due = totalDue − redeem −
+linkPaidTotal`; dialog kaže vrstico »Prek QR povezave že pobrano«
+(data-region payment-link-paid, i18n payment.linkPaid SL/HR); limit unovčenja
+zvestobe se prav tako računa na odprtem balanci (bill + issue.ts — prej bi
+unovčenje nad odprtim balance padlo na 400 ob zaključku).
+
+### D) Happy Hour okno v časovnem pasu lokacije (P1)
+
+**Kako imajo najboljši:** Toast/Square/Lightspeed — promocije se ovrednotijo
+v coni lokacije restavracije, ne strežnika.
+
+**Kako je bilo pri nas:** `isHappyActive` je uporabil `now.getHours()` — na
+Vercelu/Railway (UTC) se je HH 17–19 pozimi dejansko aktiviral 18–20 in
+poleti 19–21 lokalno; ploščice v POS (brskalnikov čas gostilne) so kazale ⚡
+uro prej kot račun. Fiskalno-številčenje je imelo pravi pripomoček
+(`src/lib/fiscal-time.ts localParts`) že od v1.143.0 — HH ga ni uporabljal.
+
+**Popravek v1.238.0:** `computeBill` dobi `tz` (Location.timezone); ura/dan
+okna se bereta prek `localParts(now, tz)` (neveljavna cona → Ljubljana, ne
+strežnik); klicalca (bill route + issue.ts) posljeta cono lokacije.
+
+### E) Združevanje naročil: denar in popust ne smejo ostati na preklicanem viru (P0)
+
+**Kako imajo najboljši:** Toast/Square — prenos/merge prenaša plačila in
+popuste skupaj s postavkami; če jih ne more ohraniti (že zajeto plačilo), ga
+ZAVRNE.
+
+**Kako je bilo pri nas:** merge je varoval SAMO `checkId` postavke — a QR
+plačilne povezave poravnajo delež BREZ Checka (`PayLink.status='paid'`,
+`order.paymentStatus='partial'`). Tak vir je šel skozi merge: postavke so se
+prestavile, vir preklical (denar ujet na njem, brez računa → vračilo ni
+mogoče), cilj pa nosil POLNO vrednost — gost plača dvakrat. Ročni popust
+(Order.discount €) je prav tako ostal na preklicanem viru.
+
+**Popravek v1.238.0:** vir z `paymentStatus !== 'unpaid'`, s plačano povezavo
+ali z ročnim popustom → 409 z iskrenim razlogom (zunaj IN znotraj transakcije
+— CAS disciplina v1.145.0).
+
+### F) Tip naročila — strict enum na strežniku (P1)
+
+**Kako imajo najboljši:** Square/Toast — dining-option je strogi enum;
+strežnik neznano vrednost ZAVRNE, ne pa tiho preslika.
+
+**Kako je bilo pri nas:** hitra prodaja (šank) je pošiljala `type: 'TAKEOUT'`
+(tipkarska — preslikava `TYPE_TO_DB` pozna `TAKEAWAY`) → VSA hitra prodaja
+tiho pristala kot `dine-in` brez mize → poročila po kanalih (sales-by-hour,
+food-cost) so lažala od prvega dne.
+
+**Popravek v1.238.0:** dashboard pošlje `TAKEAWAY`; POST /api/orders neznano
+vrednost zavrne z 400 (bela lista DINE_IN/TAKEAWAY/DELIVERY, velike/male
+črke normalizirane).
+
+### G) Storno enega izstavka — žig računa na odjemu zaloge (P0)
+
+**Kako imajo najboljši:** MarketMan/Toast — refund/storno deluje per preglej
+računa; povrne se SAMO tisto, kar je ta račun odnesel.
+
+**Kako je bilo pri nas:** storno je povrnil zalogo po `orderId + type='SALE'`
+— na naročilu z dvema izstavkoma (2 računa) je storno ENEGA povrnilo odjeme
+OBEMA (zaloga napihnjena za porabljeno in plačano), celotno naročilo pa je
+postalo `storno`, čeprav je drugi račun ostal veljaven.
+
+**Popravek v1.238.0:** razknjižba ob izdaji računa zapiše žig
+(`StockTransaction.supplierDoc = receiptNumber` — isti vzorec referenc
+dokumentov kot transferNumber pri prenosih). Storno na več-računskem
+naročilu: žig obstaja → vrača SAMO odjeme tega računa, naročilo OSTANE
+'paid' (ostali izstavki so veljavni — Toast: refund ne razplača celote);
+žiga ni (računi pred v1.238.0) → 409 z iskrenim razlogom (ročni popravek
+zaloge) — tiha korupcija zaloge ni več možna. Eno-računska naročila:
+obnašanje nespremenjeno (nazaj-kompatibilno).
+
+### H) Nabava: statusni prehodi so CAS + zavrnjeno NI incoming (P1)
+
+**Kako imajo najboljši:** MarketMan/PO sistemi — statusni prehodi dokumentov
+so vedno `UPDATE … WHERE status = :expected`; pričakovana dobava =
+naročeno − prejeto − ZAVRNIHENO.
+
+**Kako je bilo pri nas:** (1) PATCH statusa nabavnega naročila je pisal
+BREZPOGONO — preklic na zastarelem branem je prepiSal 'received' (dobava
+fizično na zalogi, GRN + AP osnutek obstajajo), approve pa oživil preklicano.
+Prejemna ruta je imela to varovalo že od prej — PATCH je ni zrcalil.
+(2) Predlogi naročil so `remaining = ordered − received` — 5 zavrnjenih
+kosov (poškodovano, razlog zapisan) je štelo kot prihajajoče in sistem je
+tiho podnaročil.
+
+**Popravek v1.238.0:** PATCH je CAS (`updateMany where status = prebrano`,
+count=0 → 409 »osvežite seznam«); predlogi `remaining = max(0, ordered −
+received − rejected)`.
+
+### I) Druge najdbe raziskave (ocena — načrt za naslednje vale)
+
+- **Z-poročilo izmene po vrsticah Payment** (P1): 'mixed' računi (gotovina +
+  kartica) padajo v »drugo«, gotovinski deli manjkajo v pričakovani gotovini
+  predala → lažni primanjkljaj ob zaključku izmene. Načrt: agregacija po
+  Payment vrsticah (kot že X/Z izvoz reports/export).
+- **Storno ne negira napitnine v dnevnom bazenu** (P1): Payment.tipAmount
+  ostane pozitiven ob stornu računa. Načrt: negativna vrstica + poštevna
+  poizvedba bazena.
+- **Natisnjen račun izstavka pokaže vse postavke naročila** (P1): račun nima
+  posnetka postavk izstavka. Načrt: snapshot itemIds ob izdaji.
+- **Void postavke na že plačanem izstavku** (P1): brez vračila. Načrt: 409 z
+  usmeritvijo na storno.
+- **Rezervacije — strežniški prekrivni pogoj terminov** (P1): unique velja
+  samo za identičen časovni žig; dve rezervaciji 19:00/20:00 isto mizo gresta
+  skozi. Načrt: intervalsOverlap (isti motor kot widget).
+- **NO_SHOW/CANCELLED ne sprostita mize** (P1) + **usaditev čakalne vrste
+  lahko povozita rezervirano mizo** (P1) + **PATCH mize brez strežniške
+  varovale** (P1): načrt skupnega helperja `assertTableClaimable`.
+- **QR naročilo gosta brez push + brez požiga** (P1): pristane kot osnutek,
+  ki ga nihče ne posreduje kuhinji. Načrt: pushEvent + auto-fire.
+- **EAN unikat per lokacija** (P1), **receptura brez lokacijske varovalke**
+  (P1), **serije pri odpadu/inventuri** (P1), **varianca inventure proti
+  neto gibanjem** (P1), **pour cost pokritost** (P1): založni val.
+
+**Sklep §15:** denar ima v sistemu eno pot — terminalse bremenitev, knjige
+in fizični predal se pri vodilnih nikoli ne razidejo. Ta val zapira štiri
+P0 vrzeli, kjer so se lahko (addItems sirota, tip brez terminala, QR dvojna
+bremenitev, merge ujet denar, storno napihnjena zaloga), in postavlja
+strogo disciplino (CAS, strict enum, žig dokumenta) tam, kjer so jo vodilni
+imeli že od nekdaj.

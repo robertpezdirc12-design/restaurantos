@@ -157,9 +157,9 @@ describe('v1.209.0 — OSS-10 Č2: admin CRUD + ožičenje', () => {
 /* ── Č3 — registri ───────────────────────────────────────────────────────── */
 
 describe('v1.209.0 — OSS-10 Č3: registri', () => {
-  test('verzija 1.237.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.237.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.237\.0'/)
+  test('verzija 1.238.0 (toBe + ubežen regex)', () => {
+    expect(APP_VERSION).toBe('1.238.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.238\.0'/)
   })
 
   test('0 DDL — varianta je IZPELJANA, ne shranjena (shema nespremenjena)', () => {
@@ -184,8 +184,8 @@ describe('v1.209.0 — OSS-10 Č3: registri', () => {
   })
 
   test('i18n pariteta: 3709 → 3712 ključev v OBIH jezikih', () => {
-    expect(Object.keys(sl).length).toBe(3858)
-    expect(Object.keys(hr).length).toBe(3858)
+    expect(Object.keys(sl).length).toBe(3859)
+    expect(Object.keys(hr).length).toBe(3859)
   })
 
   test('oznaka slike ↔ APP_VERSION (selfhost kontrakt ostane pinežen)', () => {

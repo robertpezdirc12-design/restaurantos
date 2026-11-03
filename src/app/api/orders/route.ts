@@ -48,6 +48,19 @@ export async function POST(req: NextRequest) {
   if (!body?.items || !Array.isArray(body.items) || body.items.length === 0) {
     return fail('Naročilo mora vsebovati vsaj en artikel.')
   }
+  // v1.238.0 §15: neznana vrednost tipa se NIČ več tiho preslika v dine-in.
+  // PREJ: map.orderTypeToDB poznal samo DINE_IN/TAKEAWAY/DELIVERY — tipkarska
+  // napaka odjemalca ('TAKEOUT' hitre prodaje!) je tiho pristala kot dine-in in
+  // vsa poročila po kanalih (sales-by-hour, food-cost) lažala. Square/Toast:
+  // strežnik neznano dining-option ZAVRNE (strict enum), ne pa fallback.
+  const ORDER_TYPES_ALLOWED = ['DINE_IN', 'TAKEAWAY', 'DELIVERY']
+  if (body.type !== undefined && body.type !== null && String(body.type).trim() !== '') {
+    const t = String(body.type).trim().toUpperCase()
+    if (!ORDER_TYPES_ALLOWED.includes(t)) {
+      return fail(`Neznan tip naročila »${String(body.type).slice(0, 30)}« — dovoljeno: ${ORDER_TYPES_ALLOWED.join(', ')} (ali izpusti za privzeto DINE_IN).`, 400)
+    }
+    body.type = t
+  }
   try {
     // Issue #4 §10: brez findFirst() fallbacka — staff MORA imeti lokacijo (admin lahko poda body.locationId)
     const loc = requireUserLocation(user, body?.locationId)
