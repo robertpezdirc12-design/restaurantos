@@ -1,3 +1,15 @@
+Task ID: v1.245.0-finalna-verifikacija (nadaljevanje v1.245.0-kombinacijski-val)
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija KOMBINACIJSKEGA VALA v1.245.0 — CI, produkcija, DDL aplikacija, živ E2E na produkciji (PostgreSQL).
+
+Work Log:
+- Push 3efce34..2217042 ✅; CI quality gate (neon-smoke + typecheck-prod + tests) **SUCCESS** na prvih vratih @ 2217042 + GitLab zrcalo + pages build success; Vercel produkcija /api/health → ok · **1.245.0** · 2217042 · postgresql connected · schema ok (313 ms); sync-check SYNCED trojica @ 2217042.
+- DDL APLIKACIJA NA PRODUKCIJI (vroča pot, točno po napovedi): po deployu je GET /api/reservations padal na **500** (P2022 — Prisma bere comboTableIds pri vsakem branju, stolpec še ni obstajal) → POST /api/admin/migrate-reservation-combo → { applied: ["Reservation.comboTableIds"] } → GET /api/reservations **200**; idempotenca potrjena (2. klic: skipped, alreadyApplied true); mig konzola pending 0 / allApplied true.
+- E2E ŽIVO NA PRODUKCIJI (demo seja, PostgreSQL, čist približek scripts/e2e): registr kombinacije Miza 2+3 (4+4 = 8 sedežev) → 200; POST kombinacijske rezervacije 8 oseb → **201 z reservation.tableIds = [Miza2, Miza3]**; kapacitetna validacija izmerjena v živo (2+2 sedeža kombinacija za 8 oseb → 400 »Kombinacija ima skupaj 4 sedežev — premalo za 8 oseb.«); SEATED → 200 + OBE mizi zaklenjeni; enojna rezervacija na ČLANICI (Miza 3) 20:30 → **409 TABLE_TIME_CONFLICT »Miza 3 ima v tem času rezervacijo: E2E Prod Both, 20:00–22:00.«**; CANCELLED → 200 + obe mizi sproščeni (FREE); registr počiščen (čisto stanje). Prikaz zasedenosti po SEATED: ploščice kažejo DIRTY (obstoječa v1.220 semantika — occupied brez naročila/gosta = čakanje na pospravilo; zaklep v DB je occupied, izpust ga vrne na FREE) — konsistentno z enojnimi rezervacijami.
+
+Stage Summary:
+- Kombinacijski val je V ŽIVI PRODUKCIJI: miza ni več meja družbe — registrirana kombinacija je rezervabilna kot enota, blokira vse članice v vseh treh varovalih, se ob prihodu zaklene in ob odhodu sprosti CELA; spletna kapaciteta terminov spoštuje walk-in rezervo. Naslednji val: digitalni checklisti (Lightspeed Tasks marec 2026), saved report views (april 2026) ali sveža raziskava.
+
 Task ID: v1.245.0-kombinacijski-val (PRIMERJAVA-VMESNIKOV-2026 §19; R4b načrt kakovosti)
 Agent: glavni agent (Z.ai Code)
 Task: KOMBINACIJSKI VAL — družba, večja od največje mize, je prej slišala »nimate mize za 10«. Lightspeed november 2026 (»Automatic table combinations let you seamlessly welcome larger parties« + »choose specific bookable tables to preserve space for walk-ins«): registrirane kombinacije miz (Miza 5+6 = 8 sedežev), rezervacija blokira VSE članice, walk-in rezerva pa loči spletno kapaciteto od fizične. Dve plasti: registr (0 DDL, Integration vrstica) + nosilec kombinacije na rezervaciji (1 aditivni DDL stolpec po dokumentirani poti mig-konzole — vzorec receipt-snapshot v1.239.1).
