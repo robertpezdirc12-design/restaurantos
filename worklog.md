@@ -10,6 +10,7 @@ Work Log:
 
 Stage Summary:
 - Po deployu 1.239.2: ponovni klic /api/admin/migrate-coupons-waitlist na produkciji doda manjkajoči FK (idempotentno — vrstična sonda) → shema popolnoma konvergira (drift za coupons-waitlist izgine iz meritev).
+- ZAKLJUČNA VERIFIKACIJA (vse živo, 3. 11. 2026): push 9760acc..584420a ✅; CI quality gate #41614273076 **SUCCESS** + Neon backup #41614531696 success + GitLab zrcalo #41614273091 sinhrono + pages build success; Vercel produkcija /api/health → ok · **1.239.2** · 584420a · postgresql connected · schema ok (26 ms). DDL KORAKI NA PRODUKCIJI (demo ADMIN seja): /api/admin/migrate-receipt-snapshot → applied [Receipt.checkId, Receipt.itemsJson] (vroča pot računske celice ZAPRTA — izdaja računov varna); /api/admin/migrate-coupons-waitlist → applied [Coupon, WaitlistEntry.notifyStatus] (Kuponi odprti) + ponovitev po 1.239.2 → applied [Coupon_guestId_fkey] (vrstična sonda dela — FK dodan) + tretji klic → skipped vse / alreadyApplied true (idempotenca); /api/admin/migrations → pending 0/38, allApplied true; 401 brez žetona. E2E PRODUKCIJA (agent-browser, 0 konzolnih/page napak, posnetek /tmp/verify-v2392-produkcija-pos.png): demo prijava → Hitra prodaja → Bograč v kotličku 14,00 € → napitnina 1,00 € → Gotovina → Izdaj račun → uspeh; GET /api/furs/[id] vrača račun 2026-11-17-BLG001: subtotal 12,79 + DDV 1,21 (9,5 %) = 14,00 + tip 1,00 = 15,00, EOR B45621B6 verificiran, items TOČNO 1 postavka (Bograč — posnetek itemsJson na PG, ne izpeljava iz živega naročila), operator Ana Novak.
 
 
 Task ID: v1.239.1-receipt-snapshot-ddl
