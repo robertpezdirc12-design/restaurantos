@@ -5188,9 +5188,12 @@ function DashboardInner() {
                     <p className="max-w-sm text-sm text-stone-500">{resFilter === 'UPCOMING' ? t('resv.empty') : t('resv.emptyGeneric')}</p>
                   </div>
                 )}
+                {/* v1.240.0: kartica se na mobilnem prelomi v stolpec — 4 akcijski
+                    gumbi (opomnik/prišel/ni prišel/prekliči) v eni vrsti so štrleli
+                    čez 390 px (horizontalni scroll); besedilo ostane min-w-0 nad gumbi. */}
                 <div className="grid gap-2 sm:grid-cols-2">
                   {filteredRes.map((r) => (
-                    <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                    <div key={r.id} className="rounded-lg border border-stone-200 bg-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium truncate">
                           {r.guestName} <span className="text-xs text-stone-400">· {r.guests} {t('orders.persons')}</span>
@@ -5202,7 +5205,7 @@ function DashboardInner() {
                         {r.note && <p className="text-xs text-stone-400 truncate">ℹ {r.note}</p>}
                         {r.specialRequests && <p className="text-xs text-amber-700 truncate">★ {r.specialRequests}</p>}
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                         <Badge variant="outline">{RES_STATUS_KEYS[r.status] ? t(RES_STATUS_KEYS[r.status]) : r.status}</Badge>
                         {canRes && (
                           <>

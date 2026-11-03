@@ -879,3 +879,67 @@ strogo enosmernen ADD, DROP ostane hard fail); (4) i18n +1 ključ
 valov): izdaja računa (src/lib/furs/issue.ts) piše oba stolpca ob VSAKEM
 fiskalnem računu — korak apliciramo TAKOJ po deployu (vzorec issue31-36/38),
 sicer izdaja na produkciji pada na P2022.
+
+### G) REZERVACIJSKA CELICA v1.240.0 — miza ima eno resnico (B-načrta 1+2 iz §16 E)
+
+Trije klicatelji so vsak po svoje odločali, ali je miza "prosta" — in vsak
+je gledal le del resnice. Val združi vse v enem varovalcu:
+
+- **A · STREŽNIŠKI prekrivni pogoj terminov** (POST /api/reservations):
+  @@unique([tableId, dateTime]) je zavrnil SAMO identičen žig — 19:00
+  (120 min) in 20:00 na isti mizi sta obe uspeli; UI (autoAssignTable) je
+  prekrivanje znal preskočiti, strežnik pa ne ("pomoč pri izbiri, ne
+  obveza"). Zdaj: findTableReservationConflict preveri prekrivanje
+  intervalov [start, start+duration) ∩ obstoječa DEJAVNA rezervacija
+  (confirmed/seated/completed zavirajo — usklajeno z UI; cancelled/no_show
+  ne) ZNOTRAJ transakcije pod zaklepom lockReservationCapacity (UPSERT na
+  Counter, vzorec javnega widgeta v1.158.0 — serializira interni + javni
+  POST na lokaciji). 409 nosi ime gosta in termin ("Miza 12 ima v tem času
+  rezervacijo: Ana, 19:00–21:00.") — natakar vidi, KDO drži mizo, ne samo
+  da je "zasedena". P2002 ostaja zadnja obramba za identičen žig.
+- **B · assertTableClaimable** (src/lib/table-claim.ts, NOVA čista lib):
+  skupni varovalec zasedenosti mize s tremi plastmi — fizična
+  (Table.status occupied), rezervacijska (DEJAVNA rezervacija, ki se
+  prekriva z oknom zahteve [at, at+durationMin)) in pripadnost (lokacija).
+  Okno = standardni obrat mize (CLAIM_WINDOW_MIN = 120, isti vir kot
+  PUBLIC_RESERVATION_DURATION_MIN): gost, ki danes seda, drži mizo eno jed
+  — rezervacija, ki se začne znotraj tega okna, je konflikt.
+  excludeReservationId izključi lastno (SEATED na lastni rezervaciji,
+  usaditev waitlist vnosa, povezanega z rezervacijo).
+- **C · usaditev čakalne vrste ne povozita rezervacije** (PATCH
+  /api/waitlist → seated): prej je bil pogoj SAMO Table.status ===
+  'occupied' — miza z rezervacijo, ki se začne čez 30 min, je bila
+  "prosta". Zdaj: claim preverba ZNOTRAJ transakcije + lockReservationCapacity
+  (nova rezervacija ne more "prileteti" med preverbo in zaklepom) +
+  excludeReservationId za WaitlistEntry.reservationId.
+- **D · prehodi rezervacij upravljajo mizo** (PATCH /api/reservations):
+  SEATED z mizo jo zaklene (pogojno, v isti transakciji kot sprememba
+  statusa — vzorec usaditve) + actualArrival se izpolni ob prvem usajanju
+  (semantika modela, prej nikoli nezapolnjena). NO_SHOW/CANCELLED/
+  COMPLETED varno sprostijo: 'reserved' → 'available' vedno; 'occupied'
+  LE brez aktivnega naročila in brez novejše usaditve čakalne vrste (ista
+  varovala kot releaseTable v1.162.0 — ne rušimo tujega gosta). Prej noben
+  terminalni status ni sprostil ničesar — miza je ostala "rezervirana"
+  za vedno. Reviziji: RESERVATION_SEATED_TABLE_LOCKED,
+  RESERVATION_TABLE_RELEASED.
+- **E · tables PATCH varovalec ročne zasedbe**: prehod na 'occupied' prek
+  te rute (ročno) ne sme TIHO povoziti mize z dejavno rezervacijo v oknu —
+  409 z overrideRequired: true in razlago; izrecen preglas (force: true,
+  vzorec allowOutsideHours) + revizija TABLE_OCCUPIED_OVERRIDE. Natakarjeva
+  PRAVILNA pot za gosta z rezervacijo je gumb Usajeno na rezervaciji;
+  ročni 'occupied' je izredno popravljanje stanja. Prehod occupied →
+  occupied je idempotenten no-op in gre čez brez varovalca.
+
+0 DDL, 0 odvisnosti, 0 novih i18n ključev (sporočila so strežniška SL).
+Testi: tests/v240-reservation-cell.test.ts (27: A1–A6 overlap, B1–B7
+claim enota, C1–C3 waitlist seat, D1–D6 prehodi, E1–E4 tables PATCH,
+Ž1–Ž3 registri). Industrijska referenca: OpenTable (vodilni) drži mizo
+kot vir resnice — vsi prehodi (rezervacija, usaditev, ročni popravki)
+potekajo SKOZI eno tabelo zasedenosti; Toast "table status" ločuje
+fizično stanje od rezervacijskega okna. Ta val prinaša isto disciplino:
+en varovalec, trije klicatelji, ena resnica.
+
+**Sklep §16 G:** miza ni tabelica s statusom — je vir, ki ga delijo
+rezervacije, čakalna vrsta in naročila. Vsak, ki hoče mizo "zasedeti",
+gre čez isti varovalec; vsak, ki jo izpusti, to stori varno (brez rušenja
+tujega gosta) in revidirano.

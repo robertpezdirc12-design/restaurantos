@@ -3,10 +3,12 @@ import type { ReservationStatus, ReservationSource } from '@/lib/prisma-types'
 import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation, isCentralRole } from '@/lib/api'
 import { guardResource, assertOrgScope } from '@/lib/tenant'
-import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr } from '@/lib/map'
+import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
 import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
+import { lockReservationCapacity } from '@/lib/reservation-widget'
+import { findTableReservationConflict, claimConflictMessage, assertTableClaimable } from '@/lib/table-claim'
 
 /** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
@@ -100,20 +102,46 @@ export async function POST(req: NextRequest) {
   const email = String(body.customerEmail || '').trim().slice(0, 200)
   const duration = Math.min(600, Math.max(15, Math.round(Number(body.duration) || 120)))
   const specialRequests = String(body.specialRequests || '').trim().slice(0, 500)
+
+  // v1.240.0 (§16 E, B-načrt 1) — STREŽNIŠKI prekrivni pogoj terminov na mizi.
+  // @@unique([tableId, dateTime]) zavrne SAMO identičen žig; UI (autoAssignTable)
+  // je prekrivanje znal preskočiti, strežnik pa ne — 19:00 (120 min) in 20:00 na
+  // isti mizi sta obe uspeli. Zdaj: prekrivanje intervalov [start, start+duration)
+  // ∩ obstoječa DEJAVNA rezervacija (confirmed/seated/completed; cancelled/
+  // no_show ne zavirata) → 409 z imenom gosta in terminom (korenita razlaga).
+  // Zaklep: lockReservationCapacity (UPSERT na Counter, vzorec javnega widgeta
+  // v1.158.0) serializira vse ustvarjalce rezervacij na lokaciji do commita —
+  // dva sočasna POST-a ne moreta videti iste proste mize. P2002 ostaja kot
+  // zadnja obramba za identičen žig.
   let row
   try {
-    row = await db.reservation.create({
-      data: {
-        id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
-        customerEmail: email,
-        dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2, tableId: body.tableId || null,
-        duration,
-        status: reservationStatusToDB(body.status || 'CONFIRMED') as ReservationStatus,
-        source: reservationSourceToDB(body.source || 'PHONE') as ReservationSource,
-        notes: body.note || '',
-        specialRequests,
-        locationId,
-      },
+    row = await db.$transaction(async (tx) => {
+      await lockReservationCapacity(tx, locationId)
+      if (body.tableId && Number.isFinite(when.getTime())) {
+        const conflict = await findTableReservationConflict(tx, {
+          tableId: String(body.tableId),
+          at: when,
+          durationMin: duration,
+        })
+        if (conflict) {
+          const t = await tx.table.findUnique({ where: { id: String(body.tableId) }, select: { number: true } })
+          return { conflict: claimConflictMessage(t?.number ?? 0, conflict) }
+        }
+      }
+      const created = await tx.reservation.create({
+        data: {
+          id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
+          customerEmail: email,
+          dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2, tableId: body.tableId || null,
+          duration,
+          status: reservationStatusToDB(body.status || 'CONFIRMED') as ReservationStatus,
+          source: reservationSourceToDB(body.source || 'PHONE') as ReservationSource,
+          notes: body.note || '',
+          specialRequests,
+          locationId,
+        },
+      })
+      return { created }
     })
   } catch (e: unknown) {
     // @@unique([tableId, dateTime]) — a concrete table can host only one reservation per slot
@@ -122,15 +150,18 @@ export async function POST(req: NextRequest) {
     }
     throw e
   }
+  if ('conflict' in row) return ok({ error: row.conflict, code: 'TABLE_TIME_CONFLICT' }, 409)
+  if (!('created' in row) || !row.created) return ok({ error: 'Rezervacije ni bilo mogoče ustvariti.' }, 500)
+  const resvRow = row.created
   // OPS-8 val 2 (v1.72.0): push to waiters/management on new reservation (via notification
   // matrix; fire-and-forget — reservation is a critical path)
   void pushEvent('RESERVATION_NEW', {
     title: 'Nova rezervacija',
     body: `${String(body.guestName)} · ${new Date(body.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${Number(body.guests) || 2} oseb`,
     url: '/dashboard?tab=rezervacije',
-    tag: `reservation-${row.id}`,
+    tag: `reservation-${resvRow.id}`,
   }, { roles: ['waiter', 'manager'], locationId })
-  return ok({ reservation: mapReservation(row) }, 201)
+  return ok({ reservation: mapReservation(resvRow) }, 201)
 }
 
 const ALLOWED_STATUSES = ['CONFIRMED', 'SEATED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] as const
@@ -146,6 +177,86 @@ export async function PATCH(req: NextRequest) {
   if (!existing) return ok({ error: 'Rezervacija ne obstaja.' }, 404)
   const locRes = await guardResource(user, existing.locationId)
   if (locRes) return locRes
-  const row = await db.reservation.update({ where: { id }, data: { status: reservationStatusToDB(status) as ReservationStatus } })
+  const toDB = reservationStatusToDB(status) as ReservationStatus
+  const now = new Date()
+
+  // v1.240.0 (§16 E, B-načrt 2) — prehodi rezervacije upravljajo TUDI mizo:
+  //  - SEATED: če ima rezervacija mizo, jo zakleni (pogojno — samo če ni
+  //    fizično zasedena / rezervacijsko konfliktna) v isti transakciji kot
+  //    sprememba statusa (vzorec usaditve čakalne vrste); actualArrival se
+  //    izpolni ob prvem usajanju (semantika modela, prej nikoli nezapolnjena).
+  //  - NO_SHOW/CANCELLED/COMPLETED: miza, ki jo je ta rezervacija držala, se
+  //    VARNO sprosti — 'reserved' → 'available' vedno; 'occupied' LE brez
+  //    aktivnega naročila in brez novejše usaditve čakalne vrste (ista
+  //    varovala kot releaseTable v waitlist, v1.162.0). Prej noben terminalni
+  //    status ni sprostil ničesar — miza je ostala "rezervirana" za vedno.
+  if (toDB === 'seated' && existing.tableId) {
+    // okno = preostanek intervala TE rezervacije od zdaj naprej (lastna je
+    // izključena; druge dejavne rezervacije na isti mizi so konflikt)
+    const resvEnd = existing.dateTime.getTime() + Math.max(15, existing.duration || 120) * 60_000
+    const remainingMin = Math.max(15, Math.ceil((resvEnd - now.getTime()) / 60_000))
+    let seated: { ok: false; error: string } | { ok: true; row: typeof existing }
+    try {
+      seated = await db.$transaction(async (tx) => {
+        await lockReservationCapacity(tx, existing.locationId || '')
+        const claim = await assertTableClaimable(tx, {
+          tableId: existing.tableId as string,
+          expectLocationId: existing.locationId,
+          at: now,
+          durationMin: remainingMin,
+          excludeReservationId: existing.id,
+        })
+        if (!claim.ok) return { ok: false as const, error: claim.message }
+        const lock = await tx.table.updateMany({
+          where: { id: existing.tableId as string, status: { not: 'occupied' } },
+          data: { status: 'occupied' },
+        })
+        if (lock.count === 0) return { ok: false as const, error: 'Miza je bila vmes zasedena — osveži in poskusi znova.' }
+        return {
+          ok: true as const,
+          row: await tx.reservation.update({
+            where: { id },
+            data: { status: toDB, actualArrival: existing.actualArrival ?? now },
+          }),
+        }
+      })
+    } catch {
+      return ok({ error: 'Prehod v usajeno ni uspel — poskusi znova.' }, 500)
+    }
+    if (!seated.ok) return ok({ error: seated.error, code: 'TABLE_TIME_CONFLICT' }, 409)
+    await writeAudit(db, { userId: user.sub, action: 'RESERVATION_SEATED_TABLE_LOCKED', entityType: 'Reservation', entityId: id, details: jstr({ tableId: existing.tableId, guestName: existing.customerName, at: now.toISOString() }), locationId: existing.locationId }).catch(() => {})
+    return ok({ reservation: mapReservation(seated.row) })
+  }
+
+  if ((toDB === 'no_show' || toDB === 'cancelled' || toDB === 'completed') && existing.tableId) {
+    const table = await db.table.findUnique({
+      where: { id: existing.tableId },
+      select: { id: true, number: true, status: true },
+    })
+    if (table && table.status !== 'available') {
+      let released = false
+      if (table.status === 'reserved') {
+        const freed = await db.table.updateMany({ where: { id: table.id, status: 'reserved' }, data: { status: 'available' } })
+        released = freed.count > 0
+      } else if (table.status === 'occupied') {
+        // fizično zasedena: sprosti SAMO brez aktivnega naročila in brez
+        // novejše usaditve čakalne vrste (ne rušimo tujega gosta)
+        const activeOrder = await db.order.findFirst({ where: { tableId: table.id, status: { in: ORDER_ACTIVE_DB } }, select: { id: true } })
+        const newerSeat = await db.waitlistEntry.findFirst({
+          where: { tableId: table.id, status: 'seated', seatedAt: { gt: existing.actualArrival ?? existing.updatedAt } },
+          select: { id: true },
+        })
+        if (!activeOrder && !newerSeat) {
+          const freed = await db.table.updateMany({ where: { id: table.id, status: 'occupied' }, data: { status: 'available' } })
+          released = freed.count > 0
+        }
+      }
+      if (released) {
+        await writeAudit(db, { userId: user.sub, action: 'RESERVATION_TABLE_RELEASED', entityType: 'Reservation', entityId: id, details: jstr({ tableId: table.id, tableNumber: table.number, fromStatus: existing.status, toStatus: toDB }), locationId: existing.locationId }).catch(() => {})
+      }
+    }
+  }
+
+  const row = await db.reservation.update({ where: { id }, data: { status: toDB } })
   return ok({ reservation: mapReservation(row) })
 }

@@ -4,6 +4,7 @@ import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { tableStatusToDB, tableStatusToUI, jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
+import { assertTableClaimable, CLAIM_WINDOW_MIN } from '@/lib/table-claim'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Issue #4 §1: spreminjanje statusov miz je natakarjska akcija (orders.create).
@@ -46,6 +47,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (data.number !== undefined && data.number !== existing.number) {
     const clash = await db.table.findUnique({ where: { number_locationId: { number: data.number as number, locationId: existing.locationId } } })
     if (clash) return fail(`Miza s številko ${data.number} že obstaja.`, 409)
+  }
+  // v1.240.0 (§16 E, B-načrt 2) — varovalec zasedenosti: prehod na 'occupied'
+  // prek te rute (ročno) ne sme TIHO povoziti mize z dejavno rezervacijo, ki
+  // se začne v oknu [now, now+120 min). Natakarjeva PRAVILNA pot za gosta z
+  // rezervacijo je gumb Usajeno na rezervaciji (zaklep + actualArrival);
+  // ročni 'occupied' je izredno popravljanje stanja — zato izrecen preglasi
+  // (force: true, vzorec allowOutsideHours) + revizija, ne tiha zasedba.
+  // Prehod occupied → occupied je idempotenten no-op in gre čez brez varovalca.
+  if (data.status === 'occupied') {
+    const fresh = await db.table.findUnique({ where: { id }, select: { status: true } })
+    if (fresh && fresh.status !== 'occupied') {
+      const claim = await assertTableClaimable(db, {
+        tableId: id,
+        expectLocationId: existing.locationId,
+        at: new Date(),
+        durationMin: CLAIM_WINDOW_MIN,
+      })
+      if (!claim.ok && claim.code === 'reservation_conflict') {
+        if (body?.force !== true) {
+          return ok({ error: claim.message, code: 'TABLE_TIME_CONFLICT', overrideRequired: true }, 409)
+        }
+        await writeAudit(db, { userId: user.sub, action: 'TABLE_OCCUPIED_OVERRIDE', entityType: 'Table', entityId: id, details: jstr({ number: existing.number, conflict: claim.message, forcedBy: user.name }), locationId: existing.locationId }).catch(() => {})
+      } else if (!claim.ok && claim.code === 'wrong_location') {
+        return fail('Miza ne pripada pričakovani lokaciji.', 409)
+      }
+    }
   }
   const table = await db.table.update({ where: { id }, data })
   // v1.229.0: revizija konfiguracije (status ostane operativen brez revizije — vsak 15 s

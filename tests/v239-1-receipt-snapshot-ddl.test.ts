@@ -189,10 +189,10 @@ describe('v1.239.2 D · FK sonda migrate-coupons-waitlist', () => {
 /* ── Ž · verzija + dokumentacija ────────────────────────────────────────── */
 
 describe('v1.239.1 Ž · verzija in dokumenti', () => {
-  it('Ž1: APP_VERSION dvignjena na 1.239.2 (hotfix veriga: DDL pot + FK sonda)', () => {
-    expect(APP_VERSION).toBe('1.239.2')
-    expect(read('src/lib/version.ts')).toContain("'1.239.2'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.239.2')
+  it('Ž1: APP_VERSION je trenutna (veriga: v1.239.1 DDL pot + v1.239.2 FK sonda)', () => {
+    expect(APP_VERSION).toBe('1.240.0')
+    expect(read('src/lib/version.ts')).toContain("'1.240.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.240.0')
   })
 
   it('Ž2: AUDIT števci usklajeni (3860/3860) + POSODOBITEV v1.239.1 (živi ključ ostane)', () => {

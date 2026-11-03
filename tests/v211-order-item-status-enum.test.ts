@@ -109,8 +109,8 @@ describe('v1.211.0 — hotfix Č2: disk kontrakt tipizacije statusa', () => {
 /* ── Č3 — registri (verzija + oznaka slike) ───────────────────────────────── */
 describe('v1.211.0 — hotfix Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.239.2')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.239\.2'/)
+    expect(APP_VERSION).toBe('1.240.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.240\.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {

@@ -532,8 +532,8 @@ describe('v1.239.0 D — void postavke na plačanem izstavku', () => {
 /* ─────────── Ž — registri (verzija, dokumentacija) ─────────── */
 
 describe('v1.239.0 Ž — registri', () => {
-  test('Ž1: APP_VERSION = 1.239.2 (hotfix veriga: DDL pot + FK sonda)', () => {
-    expect(APP_VERSION).toBe('1.239.2')
+  test('Ž1: APP_VERSION = 1.240.0 (hotfix veriga: DDL pot + FK sonda)', () => {
+    expect(APP_VERSION).toBe('1.240.0')
   })
 
   test('Ž2: raziskava dokumentirana v PRIMERJAVA §16', () => {

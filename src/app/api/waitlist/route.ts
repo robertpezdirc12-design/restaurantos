@@ -4,6 +4,8 @@ import { requirePermission, isResponse, ok, fail, locationScope, requireUserLoca
 import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
 import { publishEvent } from '@/lib/events'
+import { lockReservationCapacity } from '@/lib/reservation-widget'
+import { assertTableClaimable, CLAIM_WINDOW_MIN } from '@/lib/table-claim'
 import {
   WAITLIST_ACTIVE_STATUSES,
   actualWaitMinutes,
@@ -232,12 +234,19 @@ export async function PATCH(req: NextRequest) {
   } else if (to === 'seated') {
     data.seatedAt = now
     data.actualWaitMinutes = actualWaitMinutes(rec.checkedInAt, now)
+    // v1.240.0 (§16 E, B-načrt 2): preverba zasedenosti mize se je preselila
+    // ZNOTRAJ transakcije (assertTableClaimable — fizična + rezervacijska
+    // plasti). Prej je bil pogoj le Table.status === 'occupied': miza z
+    // rezervacijo, ki se začne čez 30 min, je bila "prosta" — čakalna vrsta
+    // jo je zasedla in povozila rezervacijo. Zdaj: okno [now, now+120 min)
+    // (standardni obrat mize) ne sme biti prekrito z drugo DEJAVNO
+    // rezervacijo (lastna rezervacija vnosa — WaitlistEntry.reservationId —
+    // je izključena).
     if (body?.tableId) {
       const tableId = String(body.tableId)
-      const table = await db.table.findUnique({ where: { id: tableId }, select: { id: true, number: true, locationId: true, status: true } })
+      const table = await db.table.findUnique({ where: { id: tableId }, select: { id: true, locationId: true } })
       if (!table) return fail('Miza ne obstaja.', 404)
       if (rec.locationId && table.locationId !== rec.locationId) return fail('Miza ne pripada lokaciji vnosa.', 400)
-      if (table.status === 'occupied') return fail(`Miza ${table.number} je že zasedena — izberi drugo mizo.`, 409)
       data.tableId = tableId
     }
   } else if (to === 'left') {
@@ -246,17 +255,30 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const updated = await db.$transaction(async (tx) => {
-      // Usaditev: miza zaklenjena v isti transakciji (pogojno — samo če ni vmes zasedena)
+      // Usaditev: miza zaklenjena v isti transakciji (pogojno — samo če ni vmes zasedena).
+      // v1.240.0: claim preverba (fizična + rezervacijska plast) ZNOTRAJ transakcije
+      // + lockReservationCapacity serializira z ustvarjalci rezervacij na lokaciji
+      // (prej je lahko nova rezervacija "priletela" med preverbo in zaklepom).
       if (data.tableId) {
+        await lockReservationCapacity(tx, rec.locationId || '')
+        const claim = await assertTableClaimable(tx, {
+          tableId: String(data.tableId),
+          expectLocationId: rec.locationId,
+          at: now,
+          durationMin: CLAIM_WINDOW_MIN,
+          ...(rec.reservationId ? { excludeReservationId: rec.reservationId } : {}),
+        })
+        if (!claim.ok) return { claimError: claim.message }
         const lock = await tx.table.updateMany({
           where: { id: String(data.tableId), status: { not: 'occupied' } },
           data: { status: 'occupied' },
         })
-        if (lock.count === 0) return null
+        if (lock.count === 0) return { claimError: 'Miza je bila vmes zasedena — osveži in poskusi znova.' }
       }
-      return tx.waitlistEntry.update({ where: { id }, data })
+      return { row: await tx.waitlistEntry.update({ where: { id }, data }) }
     })
-    if (!updated) return fail('Miza je bila vmes zasedena — osveži in poskusi znova.', 409)
+    if ('claimError' in updated && updated.claimError) return fail(updated.claimError, 409)
+    if (!('row' in updated) || !updated.row) return fail('Miza je bila vmes zasedena — osveži in poskusi znova.', 409)
 
     // v1.188.0 (P2-14): SMS poskus SAMO ob prehodu v notified — fail-soft,
     // rezultat v reviziji in odgovoru (UI pokaže izid takoj).
@@ -280,7 +302,7 @@ export async function PATCH(req: NextRequest) {
         locationId: rec.locationId,
       }).catch(() => undefined)
     }
-    return ok({ entry: { id: updated.id, status: updated.status, seatedAt: updated.seatedAt, actualWaitMinutes: updated.actualWaitMinutes, tableId: updated.tableId, notifyStatus: updated.notifyStatus }, ...(notifyStatus ? { notifyStatus } : {}) })
+    return ok({ entry: { id: updated.row.id, status: updated.row.status, seatedAt: updated.row.seatedAt, actualWaitMinutes: updated.row.actualWaitMinutes, tableId: updated.row.tableId, notifyStatus: updated.row.notifyStatus }, ...(notifyStatus ? { notifyStatus } : {}) })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return fail(`Prehod ni uspel: ${msg}`, 500)
