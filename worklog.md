@@ -1,3 +1,18 @@
+Task ID: v1.238.0-verifikacija
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija DENARNEGA VALA v1.238.0 po pushu 64cb5de.
+
+Work Log:
+- GITHUB PUSH: 4c9c9b0..64cb5de main → sprejet (66 datotek, +1275/−224).
+- CI VRATA: #41551843534 »CI — quality gate (neon-smoke + tests)« ZELEN (completed success) na 64cb5de; #41551843460 Dvosmerna sinhronizacija GitLab ↔ GitHub ZELEN (zrcalo sinhrono).
+- VERCEL PRODUKCIJA: dpl_95HNp6X4AjD4 READY @ 64cb5de → health https://restaurantos-theta.vercel.app/api/health: version 1.238.0, commit 64cb5de59176c852f4d6a072e4b21bb2b552b8df, mode cloud, postgresql connected, schema ok, 253 ms.
+- E2E (pred pushom, dev 1.238.0): hitra prodaja → takeaway (živ dokaz F popravka), napitnina na računu (tip=1, totalWithTip=8,2), KDS brez regresij, 0 konzolnih napak, mobilni 390 px čist.
+- 0 DDL → produkcija ni potrebovala ročnih migracijskih klikov (vsi popravki so logika, ne shema).
+
+Stage Summary:
+- DENARNI VAL v1.238.0 je ZAKLJUČEN in V ŽIVI PRODUKCIJI: 4 P0 + 5 P1 finančno-celovitostnih popravkov, 0 novih okvar (4610 pass, baza 4578 + 32 novih), CI zelen, GitLab zrcalo sinhrono, produkcija 1.238.0.
+- AKCIJA ZA LASTNIKA: prekliči žeton te seje po pushu (stalna točka); naslednji val po B-načrtih §15 I (Z-poročilo po Payment vrsticah, rezervacije strežniški overlap, NO_SHOW sprosti mizo, QR push+autofire, EAN per lokacija).
+
 Task ID: v1.238.0-money-integrity
 Agent: glavni agent (Z.ai Code)
 Task: Lastnik: »nadaljuj z poliranjem, raziskovanjem, z logiko izboljšanjem, popravljanjem« (nadaljevanje R4b valov po v1.237.0) — poglobljen QA LOGIKE (ne videza) vseh petih vmesnikov s TREMI vzporednimi raziskavami (POS/plačila, zaloge/nabava, restavracija/KDS), iskreno iskanje vrsti P0 hroščev: izgubljen denar, race pogoji, napačni izračuni, tiha preslikava stanj. Izid: 4 najdbe razreda P0 + 5 razreda P1, vse implementirane v enem valu (0 DDL, 0 odvisnosti, 0 AI, 0 novih rut) + registri odkritih B-načrtov za naslednje vale (PRIMERJAVA §15 I).
