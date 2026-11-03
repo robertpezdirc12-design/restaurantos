@@ -216,7 +216,10 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // podpis kuhinje v uporabnikovem obsegu, await locationScope) → 76
     // v1.233.0 (PRIMERJAVA §11): reports/staff-performance GET (učinkovitost
     // natakarjev — plačana naročila v uporabnikovem obsegu) → 77
-    expect(wired.length).toBe(77)
+    // v1.244.0 (PRIMERJAVA §18 A): reservations/pacing GET+PUT (ritem prihodov —
+    // konfiguracija per lokacija; Issue #96 fallback za centralne vloge prek
+    // await locationScope v resolvePacingLocation) → 78
+    expect(wired.length).toBe(78)
   })
 })
 
