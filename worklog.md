@@ -1,3 +1,14 @@
+Task ID: v1.244.0-finalna-verifikacija (nadaljevanje v1.244.0-ritem-val)
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija RITEM VALA v1.244.0 — CI, produkcija, živ E2E na produkciji (PostgreSQL).
+
+Work Log:
+- Push ca59f5f..b971e23 ✅ (hotfix: Task 54 pin 77 → 78 — pacing ruta je 78. await locationScope klic; CI tests job je padel NATANČNO na tem pinu, lokalna suita je bila zagnana PRED Issue #96 fallback spremembo — lekcija: polna suita gre na vsako spremembo rute, ne samo na funkcionalne); CI quality gate (neon-smoke + typecheck-prod + tests) **SUCCESS** run 41691531016 @ b971e23 + GitLab zrcalo (dvosmerna sinhronizacija SUCCESS) + pages build success; Vercel produkcija /api/health → ok · **1.244.0** · b971e23 · postgresql connected · schema ok (304 ms); 0 DDL → brez migracijskega koraka; sync-check SYNCED trojica @ b971e23 (lokal = origin = produkcija).
+- E2E ŽIVO NA PRODUKCIJI (restaurantos-theta.vercel.app, demo seja, PostgreSQL): PUT /api/reservations/pacing { enabled, 30, 10 } → 200 kanonično + revizija; E2E Prod Ana 6 gostov 19:00 → 201; E2E Prod Bor 5 gostov 19:15 → **409 ARRIVAL_PACING »Ritem prihodov: med 19:00 in 19:30 prihaja že 6 gostov (omejitev 10). Izberite drug termin ali preglasite varovalo.«** z overrideRequired + windowStart/End + currentGuests 6 + maxGuests 10; Bor s forcePacing → 201; oba preklicana (200), konfiguracija pacanja izklopljena nazaj (čisto stanje); UI: gumb Zaklep zaslona prisoten v glavi KDS (posnetek /tmp/v244-produkcija-kds.png); 0 konzolnih napak.
+
+Stage Summary:
+- Ritem val je V ŽIVI PRODUKCIJI: interna in javna pot rezervacij delita strežniški varovalec ritma prihodov (fiksna okna, preglas samo za osebje z revizijo), nadzorna plošča Rezervacije kaže pričakovane goste po oknih, ploščice miz nosijo natakarja, KDS zaslon se da zakleniti proti pomotičnim bumpom. Naslednji val: kombinacije miz za velike družbe (Lightspeed nov 2026), digitalni checklisti (Lightspeed Tasks marec 2026) ali sveža raziskava.
+
 Task ID: v1.244.0-ritem-val (PRIMERJAVA-VMESNIKOV-2026 §18; R4b načrt kakovosti)
 Agent: glavni agent (Z.ai Code)
 Task: RITEM VAL — sveža raziskava november 2026 (Toast Spring/Fall 2026 + Lightspeed marec/april/november 2026) → štiri izmerjene ugotovitve, en val. Rezervacija ni samo zasedenost mize — je PRETOK gostov skozi kuhinjo; ta pretok je bil brez varovala na interni poti. 0 DDL (konfiguracija v Integration vrstici — vzorec auto86 v1.230.0, a PER LOKACIJA), 0 odvisnosti.
