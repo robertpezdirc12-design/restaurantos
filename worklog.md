@@ -1,3 +1,18 @@
+Task ID: v1.241.0-qr-autofire (PRIMERJAVA-VMESNIKOV-2026 §16 H; R4b načrt kakovosti)
+Agent: glavni agent (Z.ai Code)
+Task: QR PUSH + AVTO-POŽIG (§16 E točka 3). QR/kiosk naročilo gosta je pristalo TIHO: ORDER_NEW push ni šel nikomur (POS ga pošilja od OPS-7, javna pot ne), postajne deske niso videle naročila (StationTask nastane šele ob požigu), firedAt je ostal null (ETA/starost statistika laže). Tablica: gumb obljublja »Pošlji v pripravo« (tlb.send), implementacija pa postavk ni nikoli poslala — naročila so visela v pending do ročnega pošiljanja iz dashboarda.
+
+Work Log:
+- A · NOVA lib src/lib/order-fire.ts: fireOrderCore — poslovno jedro požiga dobesedno izpeljano iz fire rute (ista transakcija, ista varovala: terminalno/hold 409, CAS prevzem firedAt ORDER_MUTABLE_STATUS → dirka hold↔fire 409 + rollback, zajem postavk PRED updateMany, courseId coursing, StationTask usmerjanje, revizija, OrderFired dogodek), brez HTTP plasti; FireOrderError nosi status (POPRAVEK: OrderError iz TX je v stari ruti ušel kot 500 pri tečaju brez pending postavk).
+- B · public/orders: ORDER_NEW push (isti vzorec POS + portal; base bar/kitchen/chef) + AVTO-POŽIG neglect replaya (idempotenten helper pokrije retry po fail-soft); fail-soft — pending je varno stanje; odgovor + fired: boolean.
+- C · POST /api/orders autoFire zastavica (tablica submitCreate jo pošlje; dashboard/handheld ne — coursing ostaja); isti dovoljenji kontekst orders.create; odgovor firedCount + svež order PO požigu.
+- D · sync order.create z autoFire payload → požig PO createOrderCore (koren, brez gnezdenja); fail-soft — sync operacija ostane applied.
+- E · fire ruta refaktorirana na helper; ORDER_FIRE push ostane v ruti (avto-fire ga izpusti — ORDER_NEW je ravno odšel).
+- VERIFIKACIJA: tsc 0 · lint 0 · v241 21/21 · regresije orders-move-merge-fire 73/73 skupaj · handheld/issue9/route-coverage 34 · guest-offline/issue3/v240 58 — vse zeleno.
+
+Stage Summary:
+- 0 DDL · 0 odvisnosti · 0 novih i18n ključev (3860 — tlb.send že obstaja). DVIG 1.240.0 → 1.241.0: version.ts + compose + 52 datotek živih pinov (živi registri prejšnjih valov + escaped regexi + Task ID worklog preverbe).
+- Testi: tests/v241-qr-autofire.test.ts (21: A1–A6 helper, B1–B5 javna QR/kiosk, C1–C3 POS autoFire, D1–D2 offline vrsta, E1–E2 ročna pot, Ž1–Ž3 registri).
 Task ID: v1.240.0-t1-type-prod (nadaljevanje v1.240.0-reservation-cell)
 Agent: glavni agent (Z.ai Code)
 Task: HOTFIX tipa — CI typecheck-prod (run 41629558664) je padel na table-claim.ts(90): produkcijski (Postgres) Prisma klient zahteva ReservationStatus[] v status: { in: [...] }, CLAIM_BLOCKING_STATUSES je bil readonly string[]. Lokalni tsc (SQLite zrcalo brez enumov) napake NI videl — typecheck:cloud skripta (v1.184.0, natanko za ta razred napak) ni bila pognana v pred-push ritualu.

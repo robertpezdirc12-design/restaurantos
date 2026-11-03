@@ -486,16 +486,24 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
     const resume = readFileSync('src/app/api/orders/[id]/resume/route.ts', 'utf8')
     expect(resume).toContain("status: 'hold', paymentStatus: 'unpaid'")
     expect(resume).toContain("'ORDER_RESUMED'")
-    // fire: CAS prevzem firedAt + hold gard
+    // fire: CAS prevzem firedAt + hold gard — v1.241.0 (§16 H) je poslovno jedro
+    // požiga preseljeno v SKUPNI helper fireOrderCore (src/lib/order-fire.ts),
+    // ki ga poleg ročne rute poganjata še avto-požig javne QR/kiosk poti in
+    // POS autoFire zastavica (tablica). Statika sledi refaktorju: gardi živijo
+    // v helperju, RUTA pa ostane lastnik HTTP plasti (avtorizacija + helper klic).
+    const fireLib = readFileSync('src/lib/order-fire.ts', 'utf8')
+    expect(fireLib).toContain("order.status === 'hold'")
+    expect(fireLib).toContain('HoldRaceError')
+    expect(fireLib).toContain('ORDER_MUTABLE_STATUS')
+    expect(fireLib).toContain('createStationTasksForItems')
     const fire = readFileSync('src/app/api/orders/[id]/fire/route.ts', 'utf8')
-    expect(fire).toContain("order.status === 'hold'")
-    expect(fire).toContain('HoldRaceError')
-    expect(fire).toContain('ORDER_MUTABLE_STATUS')
+    expect(fire).toContain('fireOrderCore')
+    expect(fire).toContain('FireOrderError')
     const courses = readFileSync('src/app/api/orders/[id]/courses/route.ts', 'utf8')
     expect(courses).toContain("order.status === 'hold'")
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.240.0')
+    expect(APP_VERSION).toBe('1.241.0')
   })
 })

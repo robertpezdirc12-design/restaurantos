@@ -5,6 +5,7 @@ import { assertOrgScope } from '@/lib/tenant'
 import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
 import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 import { pushEvent } from '@/lib/push'
+import { fireOrderCore } from '@/lib/order-fire'
 
 /** Normalizacija produkcijske vrstice -> mapper pričakovana oblika */
 function normalize(o: Record<string, unknown>) {
@@ -86,6 +87,29 @@ export async function POST(req: NextRequest) {
         url: '/dashboard?tab=kuhinja',
         tag: `order-${order.id}`,
       }, { roles: ['bar', 'kitchen', 'chef'], locationId: loc })
+    }
+    // v1.241.0 (§16 E točka 3): autoFire — eksplicitna zastavica klicatelja
+    // (tablica submitCreate: gumb »Pošlji v pripravo« končno drži obljubo).
+    // Isti dovoljenji kontekst kot ročni fire (orders.create zgoraj) — ni novih
+    // pravic; dashboard/handheld zastavice ne pošljeta (coursing kontrola ostane
+    // pri natakarju). NEGLEJ replaya (helper idempotenten — pokrije tudi retry
+    // po fail-soft odpovedi); FAIL-SOFT: naročilo obstaja, pending je varno stanje.
+    let autoFireRes: { firedCount: number; alreadyFired: boolean } | null = null
+    if (body.autoFire === true) {
+      try {
+        autoFireRes = await fireOrderCore(order.id, {
+          userId: user.sub,
+          by: user.name,
+          auditExtra: { autoFire: true },
+        })
+      } catch (fireErr) {
+        console.error('order autoFire error', fireErr)
+      }
+    }
+    if (autoFireRes) {
+      // svež odgovor PO požigu (konzistentno s fire ruto — postavke so sedaj fired)
+      const fresh = await db.order.findUnique({ where: { id: order.id }, include: orderInclude })
+      return ok({ order: fresh ? mapOrder(normalizeOrder(fresh)) : order, replayed, firedCount: autoFireRes.firedCount }, replayed ? 200 : 201)
     }
     return ok({ order, replayed }, replayed ? 200 : 201)
   } catch (e) {

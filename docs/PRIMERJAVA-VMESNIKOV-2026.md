@@ -943,3 +943,62 @@ en varovalec, trije klicatelji, ena resnica.
 rezervacije, čakalna vrsta in naročila. Vsak, ki hoče mizo "zasedeti",
 gre čez isti varovalec; vsak, ki jo izpusti, to stori varno (brez rušenja
 tujega gosta) in revidirano.
+
+### H) QR PUSH + AVTO-POŽIG v1.241.0 (točka 3 iz §16 E)
+
+Najdba §16 E: QR/kiosk naročilo gosta je pristalo TIHO — in ostalo tiho.
+ORDER_NEW push (ki ga POS ruta pošilja od OPS-7) javna pot NI; postajne
+deske naročila NISO videle (StationTask nastane šele ob požigu); firedAt
+je ostal null (ETA/starost statistika na postajni deski je lagala). In
+najhuje: tablica — gumb obljublja »Pošlji v pripravo« (tlb.send),
+implementacija pa postavk ni nikoli poslala v pripravo; naročila so
+visela v pending, dokler natakar ni ročno poslal iz dashboarda.
+
+- **A · SKUPNI HELPER fireOrderCore** (src/lib/order-fire.ts, NOVA čista
+  lib): poslovno jedro požiga je dobesedno izpeljano iz fire rute (P2
+  audit §57) — ista transakcija, ista varovala, ista idempotenca — samo
+  brez HTTP plasti. Avtorizacija in tenant obseg sta odgovornost
+  klicatelja (javna pot reši lokacijo strežniško iz žetona; POS pot ima
+  requireUserLocation/assertOrgScope; fire ruta guardResource). Pravila
+  nespremenjena: terminalno → 409, hold → 409 (OSS-4), CAS prevzem
+  firedAt (ORDER_MUTABLE_STATUS) → dirka hold↔fire 409 + rollback,
+  zajem postavk PRED updateMany (posnetek za StationTask usmerjanje,
+  issue #14), courseId (OPS-7 coursing), revizija + dogodek OrderFired.
+  POPRAVEK hkrati: OrderError iz transakcije (tečaj brez pending
+  postavk) je v stari ruti ušel kot 500 — napake helperja zdaj nosijo
+  HTTP status (FireOrderError), ruta jih preslika.
+- **B · javna pot (POST /api/public/orders)**: ORDER_NEW push osebju ob
+  novem naročilu (isti vzorec kot POS + javni portal — fail-soft matrica,
+  base tarče bar/kitchen/chef) + AVTO-POŽIG: gost pri QR mizi s pošiljanjem
+  košarice že izrazi »daj v pripravo«. Toast/Square: self-order kanal gre
+  naravnost v kuhinjo. NEGLEJ replaya (helper je idempotenten — pokrije
+  retry po fail-soft odpovedi); FAIL-SOFT: naročilo obstaja, pending je
+  varno stanje — napaka požiga ne sme porušiti gostovega odgovora.
+  Odgovor gostu nosi fired: boolean.
+- **C · POS autoFire zastavica (POST /api/orders)**: eksplicitna
+  zastavica klicatelja — tablica submitCreate jo pošlje (gumb končno drži
+  obljubo), dashboard/handheld je NE (coursing kontrola ostane pri
+  natakarju). Isti dovoljenji kontekst kot ročni fire (orders.create) —
+  ni novih pravic. Odgovor vsebuje firedCount, order je svež PO požigu.
+- **D · offline vrsta**: tablica brez mreže → order.create op z autoFire →
+  sync applyOp požge PO createOrderCore (koren, brez gnezdenja TX).
+  FAIL-SOFT: operacija je aplicirana, napaka požiga ne sme označiti sync
+  operacije 'failed' in sprožiti replay dvojnika.
+- **E · ročna pot nespremenjena**: fire ruta je refaktorirana na helper
+  (isto vedenje, ORDER_FIRE push ostane v ruti — avto-fire ga namenoma
+  izpusti, ker je ORDER_NEW push ravno odšel za isto naročilo).
+
+0 DDL, 0 odvisnosti, 0 novih i18n ključev (3860 — tlb.send že obstaja!).
+Testi: tests/v241-qr-autofire.test.ts (21: A1–A6 helper enota, B1–B5
+javna QR/kiosk pot, C1–C3 POS autoFire, D1–D2 offline vrsta, E1–E2 ročna
+pot, Ž1–Ž3 registri). Industrijska referenca: Toast/Square self-order
+kanal (QR/kiosk) gre naravnost v kuhinjo brez posrednega koraka; ročni
+vir (natakar) obdrži coursing kontrolo. Pravilo vodilnih: EN požig na
+naročilo, ENA resnica o tem, kdaj je naročilo šlo v pripravo (firedAt),
+NE glede na to, kdo ga je poslal.
+
+**Sklep §16 H:** požig ni korak, ki si ga lasti natakar — je ODGOVOR na
+izražen namen naročnika. Gost pri QR mizi je namen izrazil s pošiljanjem
+košarice; natakar v tablici s pritiskom gumba; samo dashboard/handheld
+natakarja lahko namen še odloži (coursing, hold). En helper, štirje
+klicatelji, ena resnica o firedAt.

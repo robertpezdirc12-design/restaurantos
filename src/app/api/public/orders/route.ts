@@ -14,6 +14,8 @@ import {
   GUEST_VISIBLE_ORDER_STATUS,
 } from '@/lib/guest'
 import { writeAudit } from '@/lib/audit-chain'
+import { pushEvent } from '@/lib/push'
+import { fireOrderCore } from '@/lib/order-fire'
 
 /**
  * Issue #3 — JAVNO oddajanje naročila (QR self-order + kiosk).
@@ -98,6 +100,38 @@ export async function POST(req: NextRequest) {
     if (!replayed) {
       // 33-c: chain polja (tamper-evidentna veriga)
       await writeAudit(db, { userId: null, action: 'GUEST_ORDER_CREATED', entityType: 'Order', entityId: order.id, details: `vir=${orderSource} naročilo=#${order.orderNumber} postavke=${items.length}`, ipAddress: ip, locationId: locationId })
+      // v1.241.0 (§16 E točka 3): ORDER_NEW push osebju — isti vzorec kot POS
+      // POST /api/orders (OPS-7) in javni portal (fail-soft matrica; brez pravil
+      // = base tarče bar/kitchen/chef). Do zdaj je QR/kiosk naročilo TIHO
+      // pristalo — osebje je izvedelo šele iz polling vrste KDS.
+      void pushEvent('ORDER_NEW', {
+        title: 'Novo naročilo',
+        body: `${notePrefix}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${items.length} postavk`,
+        url: '/dashboard?tab=kuhinja',
+        tag: `order-${order.id}`,
+      }, { roles: ['bar', 'kitchen', 'chef'], locationId })
+    }
+
+    // v1.241.0 (§16 E točka 3): AVTO-POŽIG gostovega naročila. Gost pri QR mizi
+    // s pošiljanjem KOŠARICE že izrazi „daj v pripravo“ — čakanje na natakarjev
+    // ročni fire pomeni: postajne deske naročila NIKOLI ne vidijo (StationTask
+    // nastane šele ob požigu), firedAt ostane null (ETA/starost laže) in tablica
+    // naročila visijo v pending. Toast/Square: self-order kanal gre naravnost v
+    // kuhinjo. NEGLEJ replaya (helper je idempotenten — pokrije tudi retry po
+    // fail-soft odpovedi iz prejšnjega klica); FAIL-SOFT: naročilo OBSTOJA in je
+    // pending varno stanje (KDS ga pokaže prek SSE/polling) — napaka požiga ne
+    // sme porušiti gostovega odgovora.
+    let fired = false
+    try {
+      const fireRes = await fireOrderCore(order.id, {
+        userId: null,
+        by: orderSource,
+        auditAction: 'GUEST_ORDER_FIRED',
+        auditExtra: { source: orderSource, autoFire: true },
+      })
+      fired = fireRes.firedCount > 0
+    } catch (fireErr) {
+      console.error('public order auto-fire error', fireErr)
     }
 
     // Javni odgovor — brez občutljivih podatkov zaposlenih (status: DB 'open' → gostujoča beseda)
@@ -107,6 +141,7 @@ export async function POST(req: NextRequest) {
       status: GUEST_VISIBLE_ORDER_STATUS[String(order.status).toLowerCase()] || order.status,
       total: order.total,
       createdAt: order.createdAt,
+      fired,
     })
   } catch (e) {
     if (e instanceof GuestError) return fail(e.message, e.status)

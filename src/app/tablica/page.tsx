@@ -156,11 +156,14 @@ function TablicaInner() {
     const clientOperationId = newOperationId()
     try {
       // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
-      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: openTable.id, items, guests: 2, clientOperationId, locationId: openTable.locationId || undefined }) })
+      // v1.241.0 (§16 E): autoFire — gumb »Pošlji v pripravo« (tlb.send) končno drži
+      // obljubo: postavke grejo takoj v fired + postajne naloge (prej so visele v
+      // pending in natakar je moral ročno poslati iz dashboarda).
+      await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: openTable.id, items, guests: 2, clientOperationId, autoFire: true, locationId: openTable.locationId || undefined }) })
       setCart({}); setOpenTable(null); await load(true)
     } catch (err) {
       if (isNetworkError(err)) {
-        const rezultat = tryEnqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '', locationId: openTable.locationId || undefined }, clientOperationId)
+        const rezultat = tryEnqueueOp('order.create', { tableId: openTable.id, items, guests: 2, note: '', autoFire: true, locationId: openTable.locationId || undefined }, clientOperationId)
         if (!rezultat.ok) { setNotice(t('net.queueFull')); return }
         setCart({}); setOpenTable(null); setNotice(t('tlb.queued'))
       } else setNotice((err as Error).message)

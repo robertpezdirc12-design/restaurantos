@@ -618,9 +618,9 @@ describe('v1.238.0 I — predlogi nabave: zavrnjena količina ni incoming', () =
 
 describe('v1.238.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.240.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.240\.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.240.0')
+    expect(APP_VERSION).toBe('1.241.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.241\.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.241.0')
   })
 
   test('Ž2: PRIMERJAVA §15 — denarni val z raziskavo in dokazi', () => {

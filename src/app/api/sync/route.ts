@@ -7,6 +7,7 @@ import { guardResource } from '@/lib/tenant'
 import type { AuthPayload } from '@/lib/auth'
 import { nid, itemStatusToDB, ORDER_ACTIVE_DB, jstr } from '@/lib/map'
 import { createOrderCore, OrderError, claimMutableOrder, ORDER_MUTABLE_STATUS, ORDER_MUTABLE_PAYMENT } from '@/lib/ops'
+import { fireOrderCore } from '@/lib/order-fire'
 import { splitVat, vatFromGross } from '@/lib/billing'
 import { parseSeatOption } from '@/lib/seat-assignments'
 import { tasksForItem, completeTasksForItem } from '@/lib/station-task-service'
@@ -226,6 +227,22 @@ async function applyOp(client: SyncClient, user: { sub: string; loc: string | nu
         note: payload.note as string | undefined, guests: payload.guests as number | undefined,
         clientOperationId: (op.clientOperationId as string) || null,
       })
+      // v1.241.0 (§16 E točka 3): offline tablica — gumb »Pošlji v pripravo« drži
+      // obljubo tudi iz vrste. applyOp za order.create teče na KORENU (brez zunanje
+      // transakcije — glej opombo modula), zato fireOrderCore (lastna TX) tu ni
+      // gnezden. FAIL-SOFT: operacija je bila uspešno aplicirana (naročilo obstaja,
+      // claim se zaključi) — napaka požiga ne sme označiti sync operacije 'failed'
+      // in sprožiti replay dvojnika; pending je varno stanje.
+      if (payload.autoFire === true) {
+        try {
+          await fireOrderCore(order.id, {
+            userId: user.sub,
+            auditExtra: { autoFire: true, via: 'offline-sync' },
+          })
+        } catch (fireErr) {
+          console.error('sync order.create autoFire error', fireErr)
+        }
+      }
       return order.id
     }
     case 'order.addItems': {
