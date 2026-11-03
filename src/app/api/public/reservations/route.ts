@@ -11,6 +11,7 @@ import { publicSlotsPayload, validateSlot, type DayHoursInput } from '@/lib/rese
 import { brandThemeForLocation } from '@/lib/brand-themes-server'
 import { zonedDateParts, localDateKey } from '@/lib/haccp-ops'
 import { isValidDateKey, parseHHMM } from '@/lib/openinghours'
+import { loadPacingConfig, assertArrivalPacing } from '@/lib/reservation-pacing'
 
 /**
  * Issue #13 (P1/P2, v1.110.0) — JAVNI rezervacijski widget (/r/<token>).
@@ -141,6 +142,14 @@ export async function POST(req: NextRequest) {
       const fresh = await activeReservationsFor(widget.locationId, dayStart, dayEnd, tx)
       const recheck = validateSlot(policy, hours, date, time, partySize, new Date(), fresh, seats, timezone)
       if (!recheck.ok) return { kind: 'taken' as const, message: recheck.message }
+
+      // v1.244.0 (§18 A) — RITEM PRIHODOV tudi na javni poti: widget ima svoj
+      // maxCoversPerSlot po mreži terminov; to je DRUGA plast (fiksno okno
+      // prihodov, deljeno z interno potjo). Gost NE more preglasiti — izbere
+      // drug termin (fail 409 z razlago). Brez konfiguracije = izklop.
+      const pacingConfig = await loadPacingConfig(tx, widget.locationId)
+      const pacing = await assertArrivalPacing(tx, widget.locationId, recheck.start, partySize, pacingConfig)
+      if (pacing) return { kind: 'taken' as const, message: pacing.message }
 
       // kanonični model — isti vir kot interni POS
       const row = await tx.reservation.create({

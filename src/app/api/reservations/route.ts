@@ -9,6 +9,7 @@ import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { lockReservationCapacity } from '@/lib/reservation-widget'
 import { findTableReservationConflict, claimConflictMessage, assertTableClaimable } from '@/lib/table-claim'
+import { loadPacingConfig, assertArrivalPacing, type PacingCheck } from '@/lib/reservation-pacing'
 
 /** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
@@ -128,6 +129,19 @@ export async function POST(req: NextRequest) {
           return { conflict: claimConflictMessage(t?.number ?? 0, conflict) }
         }
       }
+      // v1.244.0 (§18 A) — RITEM PRIHODOV: interna pot (telefon/walk-in) je edina
+      // ustvarjalna pot brez kapacitetnega varovala (javni widget ima maxCoversPerSlot
+      // + leadMinutes). Skupni strežniški varovalec: največ gostov na fiksno okno,
+      // preverjeno pod istim zaklepom; izrecen preglas (forcePacing — vzorec
+      // allowOutsideHours) gre z revizijo. Brez konfiguracije = privzeto IZKLOP
+      // (obstoječe lokacije nespremenjene).
+      let pacingUsed: PacingCheck | null = null
+      if (Number.isFinite(when.getTime())) {
+        const pacingConfig = await loadPacingConfig(tx, locationId)
+        const pacing = await assertArrivalPacing(tx, locationId, when, Number(body.guests) || 2, pacingConfig)
+        if (pacing && !body.forcePacing) return { pacing }
+        if (pacing && body.forcePacing) pacingUsed = pacing
+      }
       const created = await tx.reservation.create({
         data: {
           id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
@@ -141,7 +155,7 @@ export async function POST(req: NextRequest) {
           locationId,
         },
       })
-      return { created }
+      return { created, pacingUsed }
     })
   } catch (e: unknown) {
     // @@unique([tableId, dateTime]) — a concrete table can host only one reservation per slot
@@ -151,8 +165,43 @@ export async function POST(req: NextRequest) {
     throw e
   }
   if ('conflict' in row) return ok({ error: row.conflict, code: 'TABLE_TIME_CONFLICT' }, 409)
+  // v1.244.0 (§18 A): ritem prihodov presežen BREZ preglasa → 409 z izrecno
+  // ponudbo (UI ponudi potrditev — isti potek kot OUTSIDE_OPENING_HOURS).
+  if ('pacing' in row) {
+    const p = row.pacing as PacingCheck
+    return ok({
+      error: p.message,
+      code: 'ARRIVAL_PACING',
+      overrideRequired: true,
+      windowStart: p.windowStart.toISOString(),
+      windowEnd: p.windowEnd.toISOString(),
+      currentGuests: p.currentGuests,
+      maxGuests: p.maxGuests,
+    }, 409)
+  }
   if (!('created' in row) || !row.created) return ok({ error: 'Rezervacije ni bilo mogoče ustvariti.' }, 500)
   const resvRow = row.created
+  // izrecen preglas ritemnega varovala — revizija (isti vzorec kot
+  // RESERVATION_OUTSIDE_HOURS: kdor preglasi, pusti sled)
+  if (row.pacingUsed) {
+    const p = row.pacingUsed
+    await writeAudit(db, {
+      userId: user.sub,
+      action: 'RESERVATION_PACING_OVERRIDE',
+      entityType: 'Reservation',
+      entityId: resvRow.id,
+      details: jstr({
+        when: resvRow.dateTime.toISOString(),
+        partySize: resvRow.partySize,
+        windowStart: p.windowStart.toISOString(),
+        windowEnd: p.windowEnd.toISOString(),
+        currentGuests: p.currentGuests,
+        maxGuests: p.maxGuests,
+        by: user.name,
+        locationId,
+      }),
+    }).catch(() => {})
+  }
   // OPS-8 val 2 (v1.72.0): push to waiters/management on new reservation (via notification
   // matrix; fire-and-forget — reservation is a critical path)
   void pushEvent('RESERVATION_NEW', {

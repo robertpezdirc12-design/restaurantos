@@ -4161,6 +4161,26 @@ export const hr: Record<string, string> = {
   'sp.total': 'Ukupno',
   'kds.queueTitle': 'Red — sljedeće narudžbe',
   'kds.queueHint': 'Narudžbe koje još nisu poslane u pripremu (bez opaljivanja) — pretpregled opterećenja. Toast »Start Queue« (srpanj 2026).',
+  // v1.244.0 (PRIMERJAVA §18) — ritam dolazaka (pacing) + očekivani gosti
+  'resv.pacingTitle': 'Ritam dolazaka',
+  'resv.pacingHint': 'Najviše gostiju koji smiju doći u jednom prozoru (npr. 30 min) — telefonske i web rezervacije zajedno. Zaštita kuhinje od naleta. Lightspeed »Arrival Pacing« (travanj 2026).',
+  'resv.pacingWindow': 'Prozor dolazaka (minute)',
+  'resv.pacingMax': 'Najviše gostiju po prozoru',
+  'resv.pacingSave': 'Spremi ritam',
+  'resv.pacingSaved': 'Ritam dolazaka spremljen',
+  'resv.pacingOn': 'Uključen',
+  'resv.pacingOff': 'Isključen',
+  'resv.confirmPacing': 'Svejedno stvori rezervaciju? Premosćenje ritma dolazaka bilježi se u revizijskom slijedu.',
+  'resv.coversTitle': 'Očekivani gosti',
+  'resv.coversTotal': 'Ukupno {guests} gostiju · {count} rezervacija',
+  'resv.coversEmpty': 'Nema nadolazećih rezervacija za odabrani dan.',
+  // v1.244.0 (§18 B) — KDS zaključavanje zaslona (view-only)
+  'kds.viewOnly': 'Samo pregled',
+  'kds.viewOnlyOn': 'Zaključavanje zaslona',
+  'kds.viewOnlyHint': 'Zaključano — radnje (pokretanje, izdavanje, bump) su onemogućene. Lightspeed »Lock prep station displays« (studeni 2026).',
+  // v1.244.0 (§18 C) — tlocrt: konobar + trajanje zauzetosti
+  'tables.seatedFor': 'Zauzeto {min} min',
+  'tables.waiterAria': 'Konobar: {name}',
 }
 
 export type DictionaryHr = typeof hr

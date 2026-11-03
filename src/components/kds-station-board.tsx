@@ -158,6 +158,7 @@ export function KdsStationBoard({
   tasks,
   onDone,
   onPrintOrder,
+  viewOnly = false,
 }: {
   station: KdsStationT
   /** ALL active tasks of the location (the expo view needs sibling tasks). */
@@ -166,6 +167,10 @@ export function KdsStationBoard({
   onDone: () => void | Promise<void>
   /** optional kitchen ticket print for an order id (wired in dashboard). */
   onPrintOrder?: (orderId: string) => void
+  /** v1.244.0 (§18 B): ZAKLEP ZASLONA — vrstice so NEDEJAVNE, izdaja blokirana
+   *  (zaščita pred pomotičnimi bumpi; Lightspeed »Lock prep station displays«
+   *  november 2026). Čisto prezentacijska plast — strežnik ostaja avtoritativa. */
+  viewOnly?: boolean
 }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState('')
@@ -260,6 +265,11 @@ export function KdsStationBoard({
             </Badge>
           )}
           <Badge variant="outline" className="shrink-0 text-stone-600">{t('kds.stTarget', { n: station.avgPrepTime })}</Badge>
+          {viewOnly && (
+            <Badge variant="outline" className="shrink-0 gap-1 border-amber-300 bg-amber-50 text-amber-800" title={t('kds.viewOnlyHint')}>
+              <Lock className="w-3 h-3" aria-hidden /> {t('kds.viewOnly')}
+            </Badge>
+          )}
           <Badge variant="secondary" className="shrink-0">{t('kds.stQueue', { n: total })}</Badge>
         </CardTitle>
       </CardHeader>
@@ -310,7 +320,8 @@ export function KdsStationBoard({
                       <Button
                         size="sm"
                         className="h-11 gap-1 bg-emerald-700 hover:bg-emerald-800"
-                        disabled={blockers.length > 0 || !!busy}
+                        disabled={blockers.length > 0 || !!busy || viewOnly}
+                        title={viewOnly ? t('kds.viewOnlyHint') : undefined}
                         onClick={() => void act(task, 'issue')}
                       >
                         {taskBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Ship className="w-4 h-4" aria-hidden />}
@@ -339,7 +350,7 @@ export function KdsStationBoard({
                 /* ISSUE #73 audit-22: row = TAP-CARD — pending/preparing rows
                    advance on tap (start/ready, the server 409 path is unchanged);
                    waiting/ready rows render inert. No more per-row buttons. */
-                const tapActive = (task.status === 'pending' || task.status === 'preparing') && !busy
+                const tapActive = (task.status === 'pending' || task.status === 'preparing') && !busy && !viewOnly
                 const nextLabel = task.status === 'pending' ? t('kds.stInPrep') : t('kds.stMarkReady')
                 return (
                   <KdsTapCard

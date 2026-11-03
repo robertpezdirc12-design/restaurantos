@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     // mizo (Issue #70 kanonična izpeljava: brez tega bi zadržana miza padla v DIRTY).
     // activeOrder ostane SAMO aktivni tok (urejevalnik/fire tarča); zadržano gre v
     // ločeno polje heldOrderId (aditivno, 0 DDL).
-    include: { Order: { where: { status: { in: [...ORDER_ACTIVE_DB, 'hold'] } }, include: { OrderItem: true } } },
+    include: { Order: { where: { status: { in: [...ORDER_ACTIVE_DB, 'hold'] } }, include: { OrderItem: true, Employee_Order_employeeIdToEmployee: { select: { name: true } } } } },
     orderBy: [{ area: 'asc' }, { number: 'asc' }],
   })
   // QA-val v1.220.0 (najdba #4, P1): usajeni vnosi čakalne liste držijo mizo

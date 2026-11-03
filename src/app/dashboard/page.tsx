@@ -100,10 +100,11 @@ import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type Ter
 import { PERMISSION_LABELS, effectivePermissionSets, FULL_ONLY_PERMISSIONS, permissionTierFor, PERMISSION_TIER_LABELS } from '@/lib/permissions'
 import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
+import { coversByWindow } from '@/lib/reservation-pacing'
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard,
+  InventoryTab, ShiftsTab, HaccpTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -125,7 +126,7 @@ import { stationViewKey } from '@/lib/kds-station-routing'
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
 import { groupKdsItemsByCourse } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
-import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2 } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2 } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -159,7 +160,7 @@ interface AuditT { id: string; timestamp: string; action: string; entityType: st
 interface UpdateCheckT { current: string; latest: string | null; updateAvailable: boolean; source: 'default' | 'env' | 'disabled' | 'invalid'; reason: string }
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
-interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
+interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number; waiterName?: string | null; openedAt?: string | null } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[]; voidedItems?: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
@@ -1961,6 +1962,15 @@ function DashboardInner() {
       nosi »Zadržano« (barva ostane zasedena — miza JE zasedena, Issue #70). Enotno na
       obeh vrsticah ploščice + aria/title, da se parkirano razloči od aktivnega toka. */
   const tileStatusL = (tb: TableT): string => (tb.heldOrderId && !tb.activeOrder ? stL('HOLD') : stL(tb.status))
+  /* v1.244.0 (§18 C): inicialki natakarja za ploščice (mreža + tloris) —
+     Lightspeed »server ownership badges«: ekipa vidi, ČIGAVA je miza.
+     Prazno ime (naročilo brez natakarja) → iskreno nič, ne »?«. */
+  const tileWaiterInitials = (tb: TableT): string | null => {
+    const n = tb.activeOrder?.waiterName?.trim()
+    if (!n) return null
+    const parts = n.split(/\s+/).filter(Boolean)
+    return (parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}` : n.slice(0, 2)).toUpperCase()
+  }
   /* QA-val v1.220.0: gost s čakalne liste na ploščici (SAMO brez naročila —
      z activeOrder ploščica že kaže naročilo). Handheld/tablica kažeta samo status. */
   const seatedGuestL = (tb: TableT): string | null => (!tb.activeOrder && tb.seatedGuest ? `${tb.seatedGuest.guestName} · ${tb.seatedGuest.party}` : null)
@@ -2125,7 +2135,7 @@ function DashboardInner() {
     toast({ title: t('resv.autoAssignOk', { table: candidates[0].name, seats: candidates[0].seats }) })
   }
 
-  async function createReservation(allowOutsideHours = false) {
+  async function createReservation(allowOutsideHours = false, forcePacing = false) {
     if (!newRes?.guestName || !newRes.reservedAt) return
     // Issue #96 (QA P1): centralna vloga BREZ dodeljene lokacije MORA izbrati
     // lokacijo v dialogu — sicer strežnik vrne 400 »Lokacija ni določena« ŠELE
@@ -2145,7 +2155,7 @@ function DashboardInner() {
         // user.loc — requireUserLocation ne glede na telo)
         body: JSON.stringify({
           guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests,
-          reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours,
+          reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours, forcePacing,
           ...(resvNeedsLocation && (newRes.locationId || viewLoc) ? { locationId: newRes.locationId || viewLoc } : {}),
           ...(newRes.tableId ? { tableId: newRes.tableId } : {}),
           source: newRes.source || 'phone',
@@ -2162,6 +2172,15 @@ function DashboardInner() {
         setSending(false)
         if (confirm(`${msg}\n\n${t('resv.confirmOutside')}`)) {
           await createReservation(true)
+        }
+        return
+      }
+      // v1.244.0 (§18 A): ritem prihodov presežen → ponudi izrecen pregled
+      // (audit RESERVATION_PACING_OVERRIDE — isti potek kot odpiralni čas)
+      if (msg.includes('Ritem prihodov')) {
+        setSending(false)
+        if (confirm(`${msg}\n\n${t('resv.confirmPacing')}`)) {
+          await createReservation(false, true)
         }
         return
       }
@@ -2457,6 +2476,11 @@ function DashboardInner() {
   const kdsStationRef = useRef<string>(kdsStation)
   useEffect(() => { kdsStationRef.current = kdsStation }, [kdsStation])
   const [kdsSound, setKdsSound] = useState(true)
+  // v1.244.0 (§18 B): ZAKLEP ZASLONA KDS (view-only) — per naprava (localStorage),
+  // privzeto IZKLOPLJENO. Zaščita pred pomotičnimi bumpi (Lightspeed »Lock prep
+  // station displays« nov 2026): vrstice nedejavne, izdaja blokirana; strežnik
+  // ostaja avtoritativa (presentacijska plast, ne varnostna).
+  const [kdsViewOnly, setKdsViewOnly] = useState(false)
   /* ISSUE #74 V-3/V-8/V-9 (v1.135.0) — KDS ergonomija, shranjena NA NAPRAVO
      (localStorage — isto kot jezik/tisk konfig; vloga/dovoljenja niso prizadeta):
       - starostni pragovi (ro_kds_age_thresholds): siva/emerald/amber/utrip/rdeča
@@ -2490,6 +2514,7 @@ function DashboardInner() {
         if ((KDS_COLUMN_OPTIONS as readonly number[]).includes(cl)) setKdsColumns(cl as KdsColumnsT)
         const vw = localStorage.getItem('ro_kds_view')
         if (vw === 'columns' || vw === 'list') setKdsView(vw)
+        if (localStorage.getItem('ro_kds_view_only') === '1') setKdsViewOnly(true)
       } catch { /* zasebni način — privzete vrednosti ostanejo */ }
     })
   }, [])
@@ -3048,6 +3073,23 @@ function DashboardInner() {
   // OPS-8 val 3 (v1.73.0): status filter chips — client-side filtering via lib/reservation-filters
   const filteredRes = filterReservations(reservations, resFilter, Date.now())
 
+  // v1.244.0 (§18 D) — PRIČAKOVANI GOSTI ČEZ DAN: pokritost po 30-min oknih
+  // (ista mreža kot strežniški varovalo ritma — ena resnica o »oknu prihodov«).
+  // Čista klient agregacija že naloženih rezervacij (Lightspeed »expected
+  // covers« april 2026 — »start each shift with a clear overview of expected
+  // covers to support better planning and preparation«).
+  const todayCovers = useMemo(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    const end = start.getTime() + 86_400_000
+    const active = reservations.filter((r) => {
+      if (r.status !== 'CONFIRMED' && r.status !== 'SEATED') return false
+      const at = new Date(r.reservedAt).getTime()
+      return Number.isFinite(at) && at >= start.getTime() && at < end
+    })
+    const slots = coversByWindow(active.map((r) => ({ reservedAt: r.reservedAt, guests: r.guests })), 30).filter((s) => s.guests > 0)
+    return { guests: active.reduce((s, r) => s + (r.guests || 0), 0), count: active.length, slots }
+  }, [reservations])
+
   return (
     <main data-screen="dashboard" className="min-h-screen flex flex-col bg-stone-50">
       {/* Naloga #11 (WCAG 2.4.1): 31 zavihkov + glava sta pred vsebino — tipkovnica
@@ -3394,6 +3436,17 @@ function DashboardInner() {
                           ))}
                         </span>
                       )}
+                      {/* v1.244.0 (§18 C): inicialke natakarja na obliki mize (tloris) —
+                          mali prostor, eno Same besedilo: badge; polno ime v aria/title. */}
+                      {tb.activeOrder && tileWaiterInitials(tb) && (
+                        <span
+                          data-region="plan-waiter"
+                          className="rounded bg-black/25 px-1 text-[9px] font-extrabold leading-none"
+                          aria-label={t('tables.waiterAria', { name: tb.activeOrder.waiterName ?? '' })}
+                        >
+                          {tileWaiterInitials(tb)}
+                        </span>
+                      )}
                       {/* v1.232.0: ura prihajajoče rezervacije na obliki mize (tooltip
                           nosi ime gosta/število) — prosti prostor na tlorisu za ta
                           signal je minimalen, zato samo 🕒 + ura. */}
@@ -3498,6 +3551,13 @@ function DashboardInner() {
                                 {ao && (
                                   <p className="text-xs font-semibold tabular-nums opacity-95 truncate">
                                     #{ao.orderNumber ?? '?'}{ao.guests > 0 ? ` · ${ao.guests} ${t('orders.persons')}` : ''}
+                                  </p>
+                                )}
+                                {/* v1.244.0 (§18 C): STREŽNIŠKA ZNAČKA — inicialke natakarja,
+                                    ki je odprl naročilo (Lightspeed »server ownership«). */}
+                                {tb.activeOrder?.waiterName && (
+                                  <p className="text-xs font-semibold opacity-95 truncate" title={t('tables.waiterAria', { name: tb.activeOrder.waiterName })}>
+                                    👤 {tb.activeOrder.waiterName}
                                   </p>
                                 )}
                                 <div className="flex items-baseline justify-between gap-2 mt-0.5 min-w-0">
@@ -4283,6 +4343,20 @@ function DashboardInner() {
                 <Switch checked={kdsSound} onCheckedChange={setKdsSound} aria-label={t('kds.sound')} />
                 <Volume2 className="w-3.5 h-3.5" /> {t('kds.sound')}
               </label>
+              {/* v1.244.0 (§18 B): ZAKLEP ZASLONA — vrstice nedejavne, izdaja blokirana
+                  (pomotični bumpi; Lightspeed »Lock prep station displays« nov 2026). */}
+              <Button
+                size="sm"
+                variant={kdsViewOnly ? 'default' : 'outline'}
+                className={`gap-1 ${kdsViewOnly ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+                aria-pressed={kdsViewOnly}
+                aria-label={t('kds.viewOnlyOn')}
+                title={kdsViewOnly ? t('kds.viewOnlyHint') : t('kds.viewOnlyOn')}
+                onClick={() => { const v = !kdsViewOnly; setKdsViewOnly(v); kdsPersist('ro_kds_view_only', v ? '1' : '0') }}
+              >
+                {kdsViewOnly ? <Lock className="w-3.5 h-3.5" aria-hidden /> : <LockOpen className="w-3.5 h-3.5" aria-hidden />}
+                <span className="hidden sm:inline">{kdsViewOnly ? t('kds.viewOnly') : t('kds.viewOnlyOn')}</span>
+              </Button>
               <Button size="sm" variant="outline" className="gap-1" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.() }}>
                 <Maximize2 className="w-3.5 h-3.5" /> {t('kds.fullscreen')}
               </Button>
@@ -4450,6 +4524,7 @@ function DashboardInner() {
               <KdsStationBoard
                 station={kdsCustomStation}
                 tasks={kdsTasks}
+                viewOnly={kdsViewOnly}
                 onDone={load}
                 onPrintOrder={(orderId) => {
                   const o = kitchen.find((x) => x.id === orderId)
@@ -4673,7 +4748,7 @@ function DashboardInner() {
                            the 86 sold-out toggle moves to a long-press (550 ms), print
                            stays in the ticket header (#69 layout). Tasked items and
                            ready items render inert. */
-                        const itInteractive = itemTasks.length === 0 && (it.status === 'PENDING' || it.status === 'PREPARING')
+                        const itInteractive = !kdsViewOnly && itemTasks.length === 0 && (it.status === 'PENDING' || it.status === 'PREPARING')
                         const itNext = it.status === 'PENDING' ? t('kds.stInPrep') : it.status === 'PREPARING' ? t('kds.stMarkReady') : ''
                         const can86 = perms.includes('menu.availability') && !!mi
                         /* E2E lekcija: NEDEJAVNA vrstica (READY s Servirano gumbom,
@@ -4821,7 +4896,8 @@ function DashboardInner() {
                           <Button
                             data-region="kds-bump-all"
                             className="w-full h-12 mt-1 text-base font-bold gap-2 bg-emerald-700 hover:bg-emerald-800"
-                            disabled={!!kdsBumpBusy}
+                            disabled={!!kdsBumpBusy || kdsViewOnly}
+                            title={kdsViewOnly ? t('kds.viewOnlyHint') : undefined}
                             onClick={() => void bumpWholeTicket(o)}
                             aria-label={t('kds.bumpAllAria')}
                           >
@@ -5178,6 +5254,31 @@ function DashboardInner() {
                 </Button>
               ))}
             </div>
+            {/* v1.244.0 (§18 D) — pričakovani gosti čez dan: pokritost po polurnih
+                oknih (kuhinja/oddaja vidi naskok, preden se zgodi) */}
+            {todayCovers.count > 0 && (
+              <Card data-region="resv-covers">
+                <CardContent className="pt-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-stone-700">{t('resv.coversTitle')}</h3>
+                    <span className="text-xs text-stone-500">{t('resv.coversTotal', { guests: todayCovers.guests, count: todayCovers.count })}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {todayCovers.slots.map((s) => (
+                      <span key={s.start} className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs tabular-nums text-stone-700">
+                        <span className="font-semibold">{new Date(s.start).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span aria-hidden>·</span>
+                        <span>{s.guests}× {t('orders.persons')}</span>
+                        <span className="sr-only">({s.count})</span>
+                      </span>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {todayCovers.count === 0 && (
+              <p className="text-xs text-stone-400">{t('resv.coversEmpty')}</p>
+            )}
             <Card>
               <CardContent className="pt-4">
                 {/* ISSUE #74 V-24: prazno stanje ima poziv ZNOTRAJ kartice (ikona + CTA
@@ -5543,6 +5644,8 @@ function DashboardInner() {
               <SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} />
               {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
               <ReservationWidgetCard />
+              {/* v1.244.0 (PRIMERJAVA §18 A) — ritem prihodov (arrival pacing) */}
+              <ReservationPacingCard />
               {/* P1 #8 (v1.190.0) — lastni spletni portal za naročila (povezava /s/<token>) */}
               <WebPortalCard />
             </SettingsSection>

@@ -4166,6 +4166,26 @@ export const sl: Record<string, string> = {
   'sp.total': 'Skupaj',
   'kds.queueTitle': 'Vrsta — naslednja naročila',
   'kds.queueHint': 'Naročila, ki še niso poslana v pripravo (brez požiga) — predogled obremenitve. Toast »Start Queue« (julij 2026).',
+  // v1.244.0 (PRIMERJAVA §18) — ritem prihodov (pacing) + pričakovani gosti
+  'resv.pacingTitle': 'Ritem prihodov',
+  'resv.pacingHint': 'Največ gostov, ki smejo priti v enem oknu (npr. 30 min) — telefonske in spletne rezervacije skupaj. Varovalo kuhinje pred naskokom. Lightspeed »Arrival Pacing« (april 2026).',
+  'resv.pacingWindow': 'Okno prihodov (minute)',
+  'resv.pacingMax': 'Največ gostov na okno',
+  'resv.pacingSave': 'Shrani ritem',
+  'resv.pacingSaved': 'Ritem prihodov shranjen',
+  'resv.pacingOn': 'Vklopljen',
+  'resv.pacingOff': 'Izklopljen',
+  'resv.confirmPacing': 'Vseeno ustvari rezervacijo? Preglas ritma prihodov se zabeleži v revizijski sledi.',
+  'resv.coversTitle': 'Pričakovani gosti',
+  'resv.coversTotal': 'Skupaj {guests} gostov · {count} rezervacij',
+  'resv.coversEmpty': 'Ni prihajajočih rezervacij za izbrani dan.',
+  // v1.244.0 (§18 B) — KDS zaklep zaslona (view-only)
+  'kds.viewOnly': 'Samo ogled',
+  'kds.viewOnlyOn': 'Zaklep zaslona',
+  'kds.viewOnlyHint': 'Zaklenjeno — dejanja (zagon, izdaja, bump) so onemogočena. Lightspeed »Lock prep station displays« (november 2026).',
+  // v1.244.0 (§18 C) — tloris: natakar + trajanje zasedenosti
+  'tables.seatedFor': 'Zasedeno {min} min',
+  'tables.waiterAria': 'Natakar: {name}',
 }
 
 export type Dictionary = typeof sl

@@ -90,8 +90,10 @@ describe('issue73 audit-22 — vrstica = tap-karta, sekundarna dejanja umaknjena
   })
 
   test('naloge v postajnem toku so inertne (brez 409 iz legacy poglede)', () => {
-    expect(dash).toContain('const itInteractive = itemTasks.length === 0 && (it.status === \'PENDING\' || it.status === \'PREPARING\')')
-    expect(board).toContain("const tapActive = (task.status === 'pending' || task.status === 'preparing') && !busy")
+    /* v1.244.0 (§18 D): pogoj je dobil še !kdsViewOnly (zaklep zaslona) —
+       nedejavnost postajnega toka ostaja, dodana je plast pomotičnega bumpanja. */
+    expect(dash).toContain("const itInteractive = !kdsViewOnly && itemTasks.length === 0 && (it.status === 'PENDING' || it.status === 'PREPARING')")
+    expect(board).toContain("const tapActive = (task.status === 'pending' || task.status === 'preparing') && !busy && !viewOnly")
   })
 
   test('E2E a11y lekcija: nedejavna vrstica je navaden div (Servirano gumb ne sme pasti pod aria-disabled)', () => {

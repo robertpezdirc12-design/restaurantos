@@ -1188,3 +1188,114 @@ zrcalno vrstico v svojem ledžerju in z revizijo. Vrnjeno blago ne
 zasluži točk; porabljen kupon ob povračilu ni porabljen; kartica brez
 povračila je lažno prazna. Instrument, ki ga ni mogoče povrniti
 (izbrisan), pade na iskreno opombo — nikoli na tiho tišino.
+
+## 18. Raziskava november 2026 — RITEM VAL v1.244.0 (pacing, tloris, KDS zaklep)
+
+Metoda: sveža raziskava objav vodilnih — Toast Spring Release 2026 in
+Fall Release 2026 (pos.toasttab.com/innovation-hub) + Lightspeed
+Restaurant (K-Series) »What's new« marec/april/november 2026 — z
+vsako trditvijo izmerjeno v lastni kodi (ne ugibanje). Štiri ugotovitve:
+ena P1 (kapaciteta) + tri P2 (vidljivost/varnost). 0 DDL (konfiguracija
+v Integration vrstici, vzorec auto86 v1.230.0 — a PER LOKACIJA).
+
+### A) Ritem prihodov — interna pot brez kapacitetnega varovala (P1)
+
+**Kako imajo najboljši (Lightspeed, april 2026):** Tempo — servisni
+pacing dashboard; »Arrival Pacing« — »Max guests arriving within 30
+minutes« + omejitve veljajo SAMO online ALI tudi na internih POS/Back
+Office rezervacijah. Toast table management ima pacing kontrole od
+zmeraj. Kuhinja ima konično propustnost — sistem, ki dovoli naskok
+(5× party of 8 v istem polurnem oknu prek telefona), jo preobremeni.
+
+**Kako je bilo pri nas (v1.243.0, izmerjeno):** javni widget ima STROGO
+terminsko politiko (maxCoversPerSlot na mreži slotMinutes + leadMinutes
++ maxAdvanceDays — v1.110.0), interna pot (POST /api/reservations —
+telefon/walk-in iz dashboarda) pa je šla čez ODPIRALNI ČAS + zasedenost
+mize (§16 G v1.240.0) — nikoli čez število gostov na časovno okno.
+Telefonska rezervacija je lahko povzročila naskok, ki ga widget ne bi
+pustil.
+
+**Popravek v1.244.0:** skupni strežniški varovalec
+`src/lib/reservation-pacing.ts` — assertArrivalPacing: fiksna okna
+(epoch mreža, privzeto 30 min), štejejo se confirmed+seated z dateTime
+ZNOTRAJ okna (isti statusna množica kot activeReservationsFor), preverjeno
+ZNOTRAJ transakcije pod zaklepom lockReservationCapacity (serializacija
+interni + javni POST — isti vzorec kot findTableReservationConflict).
+Konfiguracija: Integration vrstica `resv-pacing-config` per lokacija
+({ enabled, windowMin 10–120, maxGuests 1–500 }) — brez vrstice =
+IZKLOP (obstoječe lokacije nespremenjene). Interna pot: 409
+ARRIVAL_PACING { overrideRequired, currentGuests, maxGuests, okno } →
+UI ponudi izrecen preglas (confirm → forcePacing — isti potek kot
+OUTSIDE_OPENING_HOURS) → revizija RESERVATION_PACING_OVERRIDE. Javna
+pot: enak varovalec, brez preglasa (gost izbere drug termin).
+GET/PUT /api/reservations/pacing (reservations.manage + orgScope) +
+revizija RESERVATION_PACING_CONFIG; nastavitvena kartica v zavihku
+Nastavitve (ReservationPacingCard).
+
+### B) Pričakovani gostje čez dan (P2)
+
+**Kako imajo najboljši (Lightspeed, april 2026):** »start each shift
+with a clear overview of expected covers to support better planning and
+preparation« — dnevni povzetek pričakovanih gostov za načrtovanje.
+
+**Kako je bilo pri nas:** zavihek Rezervacije je pokazal SAMO seznam
+(kartice po gostih) — skupnega povzetka pokritosti po urah ni bilo;
+kuhinja/oddaja nista videla naskoka, preden se je zgodil.
+
+**Popravek:** čista agregacija coversByWindow (ista 30-min mreža kot
+varovalo — ena resnica o »oknu prihodov«) nad že naloženimi
+rezervacijami (CONFIRMED+SEATED izbranega dne) → kartica
+»Pričakovani gosti« nad seznamom: skupaj gostov + rezervacij + poližki
+po oknih (12:00 · 8×). Iskreno prazno stanje (resv.coversEmpty).
+
+### C) Tloris — strežniška značka na mizi (P2)
+
+**Kako imajo najboljši (Lightspeed, november 2026):** moderniziran
+tloris z »server ownership badges« in živimi metrikami (status, covers,
+seated times) — ekipa vidi, ČIGAVA je miza.
+
+**Kako je bilo pri nas (v1.243.0):** ploščica mize (mreža) je že nosila
+znesek, št. naročila, goste in ⏱ trajanje (v1.129) — a NE natakarja;
+tloris (plan) pa samo številko + znesek. Naročilo VE nosi employeeId,
+ploščica pa ga ni nikoli pokazala.
+
+**Popravek:** GET /api/tables razširi include z relacijo natakarja;
+mapTable.activeOrder dobi aditivni waiterName + openedAt. Mrežna
+ploščica: vrstica 👤 ime natakarja (title z aria); tloris: znak z
+inicialkama (AN) na obliki mize. Prazno ime (naročilo brez natakarja)
+→ iskreno nič, ne »?«.
+
+### D) KDS zaklep zaslona — view-only (P2)
+
+**Kako imajo najboljši (Lightspeed, november 2026):** »Lock prep
+station displays to avoid accidental bumps« — view-only preklop na
+kuhinjski postaji; bump ostane expediterju.
+
+**Kako je bilo pri nas:** vsak dotik KDS vrstice je pomenil napredek
+(priprava/pripravljeno) — pomotičen bum piha v smeri strežnika (isto
+pot kot namerni). Plošča postaje je bila vedno aktivna.
+
+**Popravek:** preklop »Zaklep zaslona« v glavi KDS (ro_kds_view_only,
+per naprava — localStorage, privzeto izklopljen): vrstice postanejo
+NEDEJAVNE (render inert), gumb izdaje onemogočen, jantarna značka
+»Samo ogled« na plošči postaje. Čisto prezentacijska plast — strežnik
+ostaja avtoritativa (PATCH /api/kitchen pot je nespremenjena; to je
+zaščita pred pomotami, ne pred zlorabo).
+
+0 DDL · 0 odvisnosti · 17 novih i18n ključev v vsakem slovarju
+(3860 → 3877; resv.pacing* + resv.covers* + kds.viewOnly* +
+tables.seatedFor/waiterAria — pariteta SL/HR ohranjena). Testi:
+tests/v244-ritem-val.test.ts (A1–A10 konfiguracija + interna pot,
+B1–B2 javna pot, C1 tloris značka, D1–D3 čiste funkcije, Ž1–Ž5
+registri). Industrijska referenca: Lightspeed Tempo/Arrival Pacing
+(april 2026), Lightspeed »Lock prep station displays« + »server
+ownership badges« (november 2026), Toast table management pacing.
+
+**Sklep §18:** rezervacija ni samo zasedenost mize — je PRETOK gostov
+skozi kuhinjo. Ta pretok ima tri plasti vidljivosti: varovalo (koliko
+gostov sme priti na okno — preglasi le vodja z revizijo), povzetek
+(koliko jih pride — pred smeno) in tloris (čigava je miza — med
+obratom). Četrta plast je varnost produkcije: zaslon, ki ne more
+pomotično izdati jedi. Naslednji val po načrtu: sveža raziskava ali
+P2 ostanki (kombinacije miz za velike družbe — Lightspeed november
+2026; digitalni checklisti — Lightspeed Tasks marec 2026).

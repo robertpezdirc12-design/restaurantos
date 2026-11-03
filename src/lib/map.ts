@@ -282,6 +282,13 @@ export function mapTable(t: Row, activeOrder?: Row | null, heldOrder?: Row | nul
           itemCount: (activeOrder._count as { items?: number } | undefined)?.items
             ?? (activeOrder.items as unknown[] | undefined)?.length
             ?? 0,
+          /* v1.244.0 (§18 C) — tloris: STREŽNIK + TRAJANJE zasedenosti na ploščici
+             (Lightspeed nov 2026: »server ownership badges … seated times«).
+             waiterName = natakar, ki je odprl naročilo (employeeId relacija);
+             openedAt = createdAt naročila (klient izračuna minute). Aditivno. */
+          waiterName: ((activeOrder as { Employee_Order_employeeIdToEmployee?: { name?: string } | null })
+            .Employee_Order_employeeIdToEmployee?.name) ?? null,
+          openedAt: (activeOrder.createdAt as Date | undefined)?.toISOString?.() ?? null,
         }
       : null,
     /** OSS-4 (v1.204.0): id zadržanega naročila na mizi (SAMO kadar ni aktivnega) —
