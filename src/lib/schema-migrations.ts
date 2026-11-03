@@ -563,6 +563,23 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-coupons-waitlist',
     probe: async () => (await tableExists('Coupon')) && (await columnExists('WaitlistEntry', 'notifyStatus')),
   },
+  {
+    // HOTFIX v1.239.1: RAČUNSKA CELICA (v1.239.0, PRIMERJAVA §16 C) — val je dodal
+    // 1 aditivno DDL (Receipt.checkId + Receipt.itemsJson), a zabral vpis v
+    // KNOWN_DRIFTS → neon-smoke rdeč (CI run 41596980960). VROČA POT: izdaja
+    // računa piše oba stolpca ob VSAKEM fiskalnem računu — do DDL aplikacija
+    // na produkciji pada na P2022; korak apliciramo TAKOJ po deployu.
+    // Posnetek postavk ob izdaji (precedens KotDocument.itemsJson) + mehka
+    // referenca na izstavek (vzorec stornoOf). Legacy računi: checkId=''+
+    // itemsJson='[]' = točno legacy padalo pri branju /api/furs/[id].
+    id: 'receipt-snapshot',
+    descKey: 'mig.receiptSnapshot.desc',
+    endpoint: '/api/admin/migrate-receipt-snapshot',
+    probe: async () => columnsAll([
+      ['Receipt', 'checkId'],
+      ['Receipt', 'itemsJson'],
+    ]),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

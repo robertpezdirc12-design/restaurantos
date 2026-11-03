@@ -9,6 +9,7 @@ import {
   isLotGovernanceStatement,
   isHaccpOpsStatement,
   isRestaurantSettingsPendingMergedStatement,
+  isReceiptSnapshotStatement,
   parseStatements,
   KNOWN_DRIFTS,
 } from '../scripts/drift-check'
@@ -473,5 +474,45 @@ describe('drift-check: isCouponsWaitlistStatement (hotfix v1.220.0)', () => {
     const entry = KNOWN_DRIFTS.find((k) => k.id === 'coupons-waitlist')
     expect(entry).toBeDefined()
     expect(entry!.reason).toContain('/api/admin/migrate-coupons-waitlist')
+  })
+})
+
+
+/* ── HOTFIX v1.239.1: računska celica — Receipt.checkId + itemsJson ─────── */
+
+const RECEIPT_SNAPSHOT_DIFF = [
+  '-- AlterTable',
+  'ALTER TABLE "Receipt" ADD COLUMN "checkId" TEXT NOT NULL DEFAULT \'\',',
+  'ADD COLUMN "itemsJson" JSONB NOT NULL DEFAULT \'[]\';',
+  '',
+].join('\n')
+
+describe('drift-check: isReceiptSnapshotStatement (hotfix v1.239.1)', () => {
+  test('vseh 2 stavkov CI runa 41596980960 → znani, 0 blokatorjev', () => {
+    const stmts = parseStatements(RECEIPT_SNAPSHOT_DIFF)
+    expect(stmts).toHaveLength(1) // prisma združi obe klavzuli v EN ALTER TABLE stavek
+    const cls = classifyDrift(RECEIPT_SNAPSHOT_DIFF)
+    expect(cls.unexpected).toHaveLength(0)
+    expect(cls.known.map((k) => k.id)).toContain('receipt-snapshot')
+  })
+
+  test('matcher: ADD checkId/itemsJson na Receipt ja; tuja tabela/DROP/drugi stolpci ne', () => {
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" ADD COLUMN "checkId" TEXT NOT NULL DEFAULT \'\'')).toBe(true)
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" ADD COLUMN "itemsJson" JSONB NOT NULL DEFAULT \'[]\'')).toBe(true)
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" ADD COLUMN "checkId" TEXT NOT NULL DEFAULT \'\', ADD COLUMN "itemsJson" JSONB NOT NULL DEFAULT \'[]\'')).toBe(true)
+    // negativni primeri — strogo enosmerno ADD, samo ta dva stolpca
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" DROP COLUMN "checkId"')).toBe(false)
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" DROP COLUMN "itemsJson"')).toBe(false)
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" ADD COLUMN "checkId" TEXT NOT NULL DEFAULT \'\', ADD COLUMN "kajDruga" TEXT')).toBe(false)
+    expect(isReceiptSnapshotStatement('ALTER TABLE "OrderItem" ADD COLUMN "checkId" TEXT')).toBe(false)
+    expect(isReceiptSnapshotStatement('CREATE TABLE "Receipt" ( "id" TEXT )')).toBe(false)
+    expect(isReceiptSnapshotStatement('ALTER TABLE "Receipt" ALTER COLUMN "total" DROP NOT NULL')).toBe(false)
+  })
+
+  test('register vsebuje receipt-snapshot z DDL potjo', () => {
+    const entry = KNOWN_DRIFTS.find((k) => k.id === 'receipt-snapshot')
+    expect(entry).toBeDefined()
+    expect(entry!.reason).toContain('/api/admin/migrate-receipt-snapshot')
+    expect(entry!.reason).toContain('P2022') // vroča pot je dokumentirana
   })
 })

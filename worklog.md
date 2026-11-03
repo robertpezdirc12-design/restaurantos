@@ -1,3 +1,20 @@
+Task ID: v1.239.1-receipt-snapshot-ddl
+Agent: glavni agent (Z.ai Code)
+Task: HOTFIX — v1.239.0 je dodal 1 aditivno DDL (Receipt.checkId + itemsJson), a ZABIL vpis v KNOWN_DRIFTS allowlist → neon-smoke drift vrata rdeča (CI run 41596980960 @ c0f8b13, 2 nepričakovana stavka), Vercel deploy blokiran. Popravek po precedensu coupons-waitlist (hotfix v1.219.1): admin ruta + register + konzola + allowlist + i18n + verzija. 0 spremembe vedenja, 0 odvisnosti.
+
+Work Log:
+- VZROK (izmerjeno): job neon-smoke korak "Schema drift check" failure — produkcija (Postgres) nima novih stolpcev, prisma migrate diff generira ALTER TABLE "Receipt" ADD COLUMN "checkId" + "itemsJson"; matcher v allowlistu ne obstaja → unexpected → hard fail. tests/typecheck-prod jobova ZELENA (koda pravilna), izključno vrata drifta.
+- (1) NOVA admin ruta /api/admin/migrate-receipt-snapshot: idempotentna (probe PRED vsakim stolpcem — P2022/no such column), dialekt itemsJson PG JSONB / SQLite TEXT (mirror shema String, kot vatBreakdown), checkId TEXT na obeh; audit SCHEMA_MIGRATION_RECEIPT_SNAPSHOT; requireCentralRole. VROČA POT dokumentirana: issue.ts piše oba stolpca ob VSAKEM fiskalnem računu — korak TAKOJ po deployu (vzorec issue31-36/38), sicer izdaja na produkciji P2022.
+- (2) register SCHEMA_MIGRATIONS +1 (receipt-snapshot, probe columnsAll [Receipt.checkId, Receipt.itemsJson]) + migracijska konzola HANDLERS +1 (delegacija, ENAK DDL vir).
+- (3) KNOWN_DRIFTS +1 (isReceiptSnapshotStatement — STROGO enosmernen ADD, vzorec isInventoryEanStatement; DROP ostane hard fail; kombiniran ALTER z drugimi stolpci Receipt ne ustreza) — drift vrata spet zelena (znani pending, ne blokator).
+- (4) i18n +1 ključ SL/HR (mig.receiptSnapshot.desc) 3859 → 3860 popolna pariteta; AUDIT POSODOBITEV hotfix v1.239.1.
+- DVIG 1.239.0 → 1.239.1 (patch — orodje): version.ts + compose + toBe/ubeženi regexi/toContain + Task ID pini; migrations-console števec 37 → 38; i18n števci 3859 → 3860 po vseh testih; PRIMERJAVA §16 F + PRD §8 R4b vrstica (DDL pot dokumentirana).
+- TESTI: NOVA tests/v239-1-receipt-snapshot-ddl.test.ts (12: A1 idempotenca na dev SQLite zrcalu + A2 drugi klic + A3 manager 403; B1 dialekt B2 probe B3 audit; C1–C5 register↔konzola↔allowlist↔i18n↔disk povezanost; Ž1 verzija Ž2 AUDIT Ž3 PRIMERJAVA); drift-check.test.ts +3 (vseh stavkov CI runa klasificiranih znanih, matcher matrika z negativnimi primeri DROP/tuja tabela/tretji stolpec/CREATE TABLE/ALTER COLUMN, register z DDL potjo).
+
+Stage Summary:
+- CI vrata odklenjena: neon-smoke pade SAMO na nedokumentirane pending DDL; akcija: push → CI zelen → Vercel 1.239.1 → TAKOJ aplicirat receipt-snapshot DDL na produkciji (konzola Enterprise → Shema migracije) → health + E2E izdaje računa.
+
+
 Task ID: v1.239.0-verifikacija
 Agent: glavni agent (Z.ai Code)
 Task: Zaključna verifikacija RAČUNSKE CELICE v1.239.0 pred pushom.

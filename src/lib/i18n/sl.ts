@@ -3765,6 +3765,7 @@ export const sl: Record<string, string> = {
   'mig.documents.desc': 'Dokumenti s priponkami (OSS-2) — tabela Document (SOP-i, pogodbe, recepture, navodila; vsebina v bazi — bytea, 1 MB na dokument; mime allowlist, prenos vedno kot priponka)',
   // HOTFIX v1.219.1: zamaskiran DDL korak (B-4 ga je skrivala kvota)
   'mig.couponsWaitlist.desc': 'Kuponi (P2-10b) + opomniki čakalne vrste — tabela Coupon (rojstnodnevni cron, ročna izdaja, POS unovčenje) in stolpec WaitlistEntry.notifyStatus; čisto aditivno',
+  'mig.receiptSnapshot.desc': 'Računska celica (v1.239.0) — stolpca Receipt.checkId (izstavek) in Receipt.itemsJson (posnetek postavk ob izdaji); vroča pot: apliciraj takoj po deployu',
 
   // ─── MEDLOKACIJSKI PRENOSI (issue #8, v1.116.0) — trf.* ───
   'trf.title': 'Medlokacijski prenosi',

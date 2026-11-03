@@ -861,3 +861,21 @@ negacija zrcali vse dele (B), njegova neprekljivost pa je pogojena s
 plačilnim stanjem IZSTAVKA, ne naročila (D). Vodilni imajo to disciplino
 vgrajeno; ta val jo prinaša v vseh štirih legah — z eno aditivno DDL
 (checkId + itemsJson) in brez novih odvisnosti.
+
+### F) HOTFIX v1.239.1 — DDL pot računske celice (orodje, 0 spremembe vedenja)
+
+Val v1.239.0 je dodal 1 aditivno DDL (Receipt.checkId + itemsJson), a ZABIL
+vpis v KNOWN_DRIFTS allowlist (vsak prejšnji DDL val ga je dodal — vzorec
+coupons-waitlist hotfix v1.219.1). neon-smoke drift vrata so po pushu izmerila
+2 nepričakovana stavka (CI run 41596980960 @ c0f8b13) → CI rdeč, Vercel
+deploy blokiran. POPRAVEK po istem precedensu: (1) NOVA admin ruta
+`/api/admin/migrate-receipt-snapshot` — idempotentna (probe PRED vsakim
+stolpcem; PG JSONB / SQLite TEXT dialekt za itemsJson), audit
+SCHEMA_MIGRATION_RECEIPT_SNAPSHOT, requireCentralRole; (2) register
+SCHEMA_MIGRATIONS +1 (receipt-snapshot, probe oba stolpca) + migracijska
+konzola HANDLERS +1; (3) KNOWN_DRIFTS +1 (isReceiptSnapshotStatement —
+strogo enosmernen ADD, DROP ostane hard fail); (4) i18n +1 ključ
+(mig.receiptSnapshot.desc) 3859 → 3860. VROČA POT (razlika od večine pending
+valov): izdaja računa (src/lib/furs/issue.ts) piše oba stolpca ob VSAKEM
+fiskalnem računu — korak apliciramo TAKOJ po deployu (vzorec issue31-36/38),
+sicer izdaja na produkciji pada na P2022.

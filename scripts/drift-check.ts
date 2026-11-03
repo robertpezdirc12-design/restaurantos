@@ -503,6 +503,28 @@ export function isInventoryEanStatement(stmt: string): boolean {
 }
 
 /**
+ * HOTFIX v1.239.1: RAČUNSKA CELICA (v1.239.0, PRIMERJAVA §16 C) — aditivna
+ * stolpca Receipt."checkId" (mehka referenca na izstavek, kot stornoOf) +
+ * Receipt."itemsJson" (posnetek postavk ob izdaji, precedens KotDocument.
+ * itemsJson; PG JSONB, SQLite String v mirror shemi). Matcher je STROGO
+ * enosmernen ADD (vzorec isInventoryEanStatement, brez DROP faze — main
+ * shema je stolpce prevzela v ISTI verziji kot DDL ruta, zato DROP nikoli
+ * legitimno ne nastane): tabela "Receipt" + VSAKA klavzula točno ADD COLUMN
+ * "checkId"|"itemsJson" — kombiniran ALTER z drugimi stolpci Receipt ostane
+ * unexpected. Ko lastnik aplicira DDL (konzola Enterprise → Shema migracije
+ * → receipt-snapshot) je shema usklajena in drift izgine (mrtva koda).
+ */
+export function isReceiptSnapshotStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"Receipt"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every(
+    (c) => /^ADD\s+COLUMN\s+"checkId"(\s|$)/i.test(c) || /^ADD\s+COLUMN\s+"itemsJson"(\s|$)/i.test(c),
+  )
+}
+
+/**
  * OSS-2 (v1.203.0): dokumenti s priponkami — NOVA tabela Document (SOP-i,
  * pogodbe, recepture, navodila; vsebina kot bytea — read-only disk na
  * produkciji, datoteke NIKOLI ne grejo na lokalni disk). Matcher je ime tabeli
@@ -962,6 +984,23 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'aditiven (nova tabela + indeksi + nov stolpec s praznim privzetkom). Ko je DDL ' +
       'apliciran, drift izgine in vnos postane mrtva koda.',
     matches: isCouponsWaitlistStatement,
+  },
+  {
+    id: 'receipt-snapshot',
+    reason:
+      'Računska celica (v1.239.0, PRIMERJAVA-VMESNIKOV-2026 §16 C) — aditivna stolpca ' +
+      'Receipt."checkId" (mehka referenca na izstavek Check, vzorec stornoOf — plačilna ' +
+      'entiteta ostaja Check) in Receipt."itemsJson" (posnetek postavk ob izdaji ' +
+      '[{id,name,qty,price,vatRate,vatAmount,amount}], precedens KotDocument.itemsJson — ' +
+      'ponatisk računa izstavka ne izpelje več vrstic iz ŽIVEGA naročila). VROČA POT: ' +
+      'izdaja računa (src/lib/furs/issue.ts) piše oba stolpca ob VSAKEM fiskalnem ' +
+      'računu — do DDL aplikacija na produkciji izdaja pada na P2022, zato korak ' +
+      'apliciramo TAKOJ po deployu (vzorec issue31-36/38). Produkcija čaka DDL korak: ' +
+      'admin ruta /api/admin/migrate-receipt-snapshot (konzola Enterprise → Shema ' +
+      'migracije → receipt-snapshot, en klik). Matcher STROGO enosmernen ADD (main ' +
+      'shema je stolpce prevzela v isti verziji — DROP faza ne obstaja). Ko je DDL ' +
+      'apliciran, drift izgine in vnos postane mrtva koda.',
+    matches: isReceiptSnapshotStatement,
   },
 ]
 

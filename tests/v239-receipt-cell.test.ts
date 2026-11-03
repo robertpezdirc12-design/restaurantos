@@ -532,8 +532,8 @@ describe('v1.239.0 D — void postavke na plačanem izstavku', () => {
 /* ─────────── Ž — registri (verzija, dokumentacija) ─────────── */
 
 describe('v1.239.0 Ž — registri', () => {
-  test('Ž1: APP_VERSION = 1.239.0', () => {
-    expect(APP_VERSION).toBe('1.239.0')
+  test('Ž1: APP_VERSION = 1.239.1 (hotfix: KNOWN_DRIFTS + DDL ruta receipt-snapshot)', () => {
+    expect(APP_VERSION).toBe('1.239.1')
   })
 
   test('Ž2: raziskava dokumentirana v PRIMERJAVA §16', () => {
