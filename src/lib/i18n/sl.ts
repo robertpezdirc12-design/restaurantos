@@ -3481,6 +3481,11 @@ export const sl: Record<string, string> = {
   'resv.autoAssignNeedTime': 'Najprej vnesi datum in uro rezervacije.',
   'resv.autoAssignNone': 'Ni proste mize za {n} oseb v tem terminu.',
   'resv.autoAssignOk': 'Dodeljena miza: {table} ({seats} sedežev)',
+  // v1.252.0 (§26) — strežniška avtododelitev interne poti (Lightspeed maj 2026)
+  'resv.autoServerOk': '{table} je dodeljena samodejno.',
+  'resv.autoServerNone': 'Proste mize za {n} oseb ni bilo mogoče najti — rezervacija je shranjena brez mize.',
+  'resv.autoServerToggle': 'Samodejno dodeli prosto mizo',
+  'resv.autoServerToggleHint': 'Če mize ne izbereš, strežnik ob shrani dodeli najmanjšo prosto mizo, ki ustreza številu oseb (tudi kombinacijo). Izključene mize za walk-in goste ne sodelujejo.',
   'resv.source': 'Vir',
   'resv.sourcePhone': 'Telefon',
   'resv.sourceWalkIn': 'Nenajavljen gost',

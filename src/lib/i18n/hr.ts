@@ -3476,6 +3476,11 @@ export const hr: Record<string, string> = {
   'resv.autoAssignNeedTime': 'Prvo unesi datum i vrijeme rezervacije.',
   'resv.autoAssignNone': 'Nema slobodnog stola za {n} osoba u tom terminu.',
   'resv.autoAssignOk': 'Dodijeljen stol: {table} ({seats} sjedala)',
+  // v1.252.0 (§26) — poslužiteljska automatska dodjela interne putanje (Lightspeed svibanj 2026)
+  'resv.autoServerOk': '{table} je dodijeljen automatski.',
+  'resv.autoServerNone': 'Slobodni stol za {n} osoba nije moguće pronaći — rezervacija je spremljena bez stola.',
+  'resv.autoServerToggle': 'Automatski dodijeli slobodan stol',
+  'resv.autoServerToggleHint': 'Ako ne odabereš stol, poslužitelj pri spremanju dodijeljuje najmanji slobodni stol koji odgovara broju osoba (i registriranu kombinaciju). Isključeni stolovi za walk-in goste ne sudjeluju.',
   'resv.source': 'Izvor',
   'resv.sourcePhone': 'Telefon',
   'resv.sourceWalkIn': 'Gost bez rezervacije',

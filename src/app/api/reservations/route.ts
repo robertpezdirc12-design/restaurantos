@@ -10,7 +10,8 @@ import { pushEvent } from '@/lib/push'
 import { lockReservationCapacity } from '@/lib/reservation-widget'
 import { findTableReservationConflict, claimConflictMessage, assertTableClaimable } from '@/lib/table-claim'
 import { loadPacingConfig, assertArrivalPacing, type PacingCheck } from '@/lib/reservation-pacing'
-import { comboTableIdsOf, parseComboTableIds } from '@/lib/table-combos'
+import { comboTableIdsOf, parseComboTableIds, autoassignPickForWindow } from '@/lib/table-combos'
+import type { AutoassignPick } from '@/lib/table-autoassign'
 
 /** Tedenske vrstice lokacije (ali org privzete); delni niz je veljaven — manjkajoči dnevi ne gate-ajo. */
 async function weeklyValidated(locationId: string): Promise<ValidatedRow[]> {
@@ -172,15 +173,33 @@ export async function POST(req: NextRequest) {
         if (pacing && !body.forcePacing) return { pacing }
         if (pacing && body.forcePacing) pacingUsed = pacing
       }
+      // v1.252.0 (§26) — AVTODODELITEV INTERNE POTI (Lightspeed maj 2026
+      // »automatic table assignments«): ko osebje NE izbere mize (telefon /
+      // walk-in brez mize) in je ne izklopi izrecno (skipAutoAssign, vzorec
+      // allowOutsideHours/forcePacing), strežnik ob ustvarjanju dodeli
+      // NAJMANJŠO ustrezno mizo ali registrirano kombinacijo — isti čisti
+      // sloj kot javna pot v1.248 (ena resnica o izbiri), a z DEJANSKIM
+      // trajanjem rezervacije (interna pot 15–600 min, javna fiksno 120).
+      // Teče ZA zaklepom kapacitete → sočasni ustvarjanji ne moreta dobiti
+      // iste mize. Nobena ne ustreza → rezervacija BREZ mize (dodelitev je
+      // pomoč, ne obveza — osebje dodeli ročno, Lightspeed »skip«).
+      let autoPick: AutoassignPick | null = null
+      if (!body.tableId && comboIds.length < 2 && !body.skipAutoAssign && Number.isFinite(when.getTime())) {
+        autoPick = await autoassignPickForWindow(tx, locationId, when, duration, Number(body.guests) || 2)
+      }
       const created = await tx.reservation.create({
         data: {
           id: nid(), customerName: String(body.guestName), customerPhone: String(body.phone || ''),
           customerEmail: email,
           dateTime: new Date(body.reservedAt), partySize: Number(body.guests) || 2,
-          tableId: comboIds.length >= 2 ? comboIds[0] : (body.tableId || null),
+          tableId: comboIds.length >= 2 ? comboIds[0] : (body.tableId || (autoPick ? autoPick.tableIds[0] : null)),
           // v1.245.0: kombinacija = ',id1,id2,' VSEH miz (vključno s primarno);
-          // enojna rezervacija = '' (obstoječe vrstice nespremenjene)
-          comboTableIds: comboIds.length >= 2 ? comboTableIdsOf(comboIds) : '',
+          // enojna rezervacija = '' (obstoječe vrstice nespremenjene).
+          // v1.252.0: kombinacija iz AVTODODELITVE nosi vse članice enako
+          // (primarna = prva članica); explicit > auto > brez mize.
+          comboTableIds: comboIds.length >= 2
+            ? comboTableIdsOf(comboIds)
+            : (autoPick && autoPick.tableIds.length >= 2 ? comboTableIdsOf(autoPick.tableIds) : ''),
           duration,
           status: reservationStatusToDB(body.status || 'CONFIRMED') as ReservationStatus,
           source: reservationSourceToDB(body.source || 'PHONE') as ReservationSource,
@@ -189,12 +208,15 @@ export async function POST(req: NextRequest) {
           locationId,
         },
       })
-      return { created, pacingUsed }
+      return { created, pacingUsed, autoPick }
     })
   } catch (e: unknown) {
-    // @@unique([tableId, dateTime]) — a concrete table can host only one reservation per slot
-    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002' && body.tableId) {
-      return ok({ error: 'Miza je že rezervirana ob izbranem času.' }, 409)
+    // @@unique([tableId, dateTime]) — a concrete table can host only one reservation per slot.
+    // v1.252.0: pod zaklepom teoretično nedosegljivo, a če se vseeno zgodi
+    // (avtododelitev na točno isti žig), je 409 s poštenim sporočilom
+    // boljši od 500 — nikoli ne prevajamo neznane napake v uspeh.
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: string }).code === 'P2002') {
+      return ok({ error: body.tableId ? 'Miza je že rezervirana ob izbranem času.' : 'Miza je pravkar postala zasedena — poskusite znova ali izberite drugo.' }, 409)
     }
     throw e
   }
@@ -215,6 +237,27 @@ export async function POST(req: NextRequest) {
   }
   if (!('created' in row) || !row.created) return ok({ error: 'Rezervacije ni bilo mogoče ustvariti.' }, 500)
   const resvRow = row.created
+  // v1.252.0 (§26): avtododeljena miza pusti revizijsko sled (kdor vidi
+  // »čudno« mizo, vidi tudi ZAKAJ — strežnik jo je izbral sam). Fire-and-
+  // forget: revizija NI kritična pot ustvarjanja (.catch vzorec).
+  const autoPick = row.autoPick ?? null
+  if (autoPick) {
+    await writeAudit(db, {
+      userId: user.sub,
+      action: 'RESERVATION_AUTOASSIGNED',
+      entityType: 'Reservation',
+      entityId: resvRow.id,
+      locationId,
+      details: jstr({
+        miza: autoPick.label,
+        sedezev: autoPick.seats,
+        termin: resvRow.dateTime.toISOString(),
+        oseb: resvRow.partySize,
+        trajanjeMin: resvRow.duration,
+        by: user.name,
+      }),
+    }).catch(() => {})
+  }
   // izrecen preglas ritemnega varovala — revizija (isti vzorec kot
   // RESERVATION_OUTSIDE_HOURS: kdor preglasi, pusti sled)
   if (row.pacingUsed) {
@@ -244,7 +287,10 @@ export async function POST(req: NextRequest) {
     url: '/dashboard?tab=rezervacije',
     tag: `reservation-${resvRow.id}`,
   }, { roles: ['waiter', 'manager'], locationId })
-  return ok({ reservation: mapReservation(resvRow) }, 201)
+  // v1.252.0: autoAssignedTable (label | null) — aditivno polje odgovora;
+  // UI ga pokaže kot toast, API integratorji pa vidijo, da miza NI bila
+  // človeška izbira (null = izrecna izbira ali brez mize).
+  return ok({ reservation: mapReservation(resvRow), autoAssignedTable: autoPick ? autoPick.label : null }, 201)
 }
 
 const ALLOWED_STATUSES = ['CONFIRMED', 'SEATED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] as const

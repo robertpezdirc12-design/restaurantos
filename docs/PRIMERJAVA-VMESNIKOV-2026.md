@@ -1959,3 +1959,71 @@ obstoječih podatkov (receiptNumber + locationScope), 0 DDL, 0 novih
 odvisnosti, 0 AI. Naslednji val: avtomatska dodelitev miz rezervacijam
 (Lightspeed maj 2026 — algoritem nad obstoječima modeloma, kandidat),
 sveža raziskava pomlad 2027 ali B-odločitve lastnika po »nadaljuj«.
+
+---
+
+## 26. Raziskava november 2026 — AVTODODELITEV INTERNE POTI v1.252.0 (samodejna dodelitev mize rezervaciji ob ustvarjanju)
+
+Sklep §25 je izmeril kandidata: Lightspeed maj 2026 »automatic table
+assignments« — rezervaciji se miza dodeli SAMODEJNO. Ta val zapre zadnjo
+vrzel te funkcije: NOTRANJO pot (telefon/walk-in).
+
+### A) Izmerja pred valom
+
+- **v1.231.0 (§9 točka 2):** gumb »Dodeli« v internem dialogu — KLIJENTSKA
+  sugestija (najmanjša ustrezna miza, brez prekrivanja); osebje mora
+  klikniti, predlog se šele takrat zapiše v obrazec.
+- **v1.248.0 (§22 A):** strežniška avtododelitev SAMO za javni widget
+  (/api/public/reservations) — spletni gost dobi mizo samodejno.
+- **vrzel:** interna pot (POST /api/reservations — telefon, walk-in,
+  vpis strežnika) ob ustvarjanju BREZ izbrane mize pusti rezervacijo
+  BREZ mize; osebje jo nato dodeljuje ročno (gumb/tloris). Lightspeed
+  maj 2026: »rezervaciji se miza dodeli samodejno« — brez človekovega
+  klika.
+
+### B) Odločitev
+
+- Avtododelitev steče STREŽNIŠKO v POST /api/reservations, ko miza NI
+  izrecno izbrana (noben tableId, nobena kombinacija) in ni izrecnega
+  izklopa (skipAutoAssign — vzorec allowOutsideHours/forcePacing:
+  privzeto VKLOP, izklop je zavedna odločitev osebja).
+- Izbira teče skozi ISTI čisti sloj table-autoassign kot javna pot
+  (ena resnica: najmanjša ustrezna miza ali registrirana kombinacija,
+  sedeži naraščajoče + 'sl' tie-break; izključene walk-in mize
+  ne sodelujejo; sosednji termini se lahko usedeta na isto mizo).
+- Razlika proti javni poti: trajanje je SPREMENLJIVO (interna pot
+  15–600 min po body.duration, javna fiksno 120) — okno zasedenosti
+  se računa z dejanskim trajanjem.
+- Znotraj obstoječe transakcije ZA lockReservationCapacity — sočasni
+  ustvarjanji ne moreta dobiti iste mize (vzorec javne poti).
+- Nobena miza ne ustreza → rezervacija BREZ mize + iskren toast
+  (Lightspeed »skip« — dodelitev je pomoč, ne obveza).
+- Izrecna izbira VEDNO zmaga (explicit > auto > brez).
+
+### C) Implementacija
+
+- **NALAGALCA autoassignPickForWindow (src/lib/table-combos.ts):**
+  naloži mize + kombinacije + izključene mize + zasedene rezervacije
+  dneva (±24 h, isti blokirajoči statusi confirmed/seated/completed
+  kot javna pot) in vrne izbor — čisti sloj table-autoassign ostane
+  0 uvozov, testi in ruta delijo isto resnico.
+- **RUTA POST /api/reservations:** avtododelitev v transakciji;
+  odgovor +autoAssignedTable (label | null, aditivno — API integratorji
+  vidijo, da miza ni bila človeška izbira); revizijska sled
+  RESERVATION_AUTOASSIGNED (fire-and-forget .catch — revizija NI
+  kritična pot); P2002 pod avtododelitvijo se iz 500 prevede v pošten
+  409.
+- **UI (dialog Nova rezervacija):** potrditveno polje »Samodejno
+  dodeli prosto mizo« (privzeto vklopljeno) pod izbirnikom mize; po
+  shrani toast »Miza X je dodeljena samodejno.« ali iskreno
+  »Proste mize ni bilo mogoče najti — rezervacija je brez mize.«.
+- **i18n:** +4 ključi resv.autoServer* v vsakem slovarju (4034 → 4038;
+  pariteta SL/HR ohranjena, EN/DE/IT gostujoči nedotaknjeni).
+- 0 DDL, 0 novih odvisnosti, 0 AI.
+
+**Sklep §26:** rezervacija po telefonu zdaj dobi mizo v isti meri kot
+spletna (v1.248) — brez dodatnega klika osebja, z izrecno možnostjo
+izklopa in izrecno izbiro, ki vedno zmaga. Lightspeed maj 2026
+»automatic table assignments« je pokrit na obeh ustvarjalnih poteh.
+Naslednji val: sveža raziskava pomlad 2027 (Toast/Lightspeed/Square
+objave) ali B-odločitve lastnika po »nadaljuj«.

@@ -755,7 +755,7 @@ function DashboardInner() {
   const [qrBusy, setQrBusy] = useState(false)
 
   // Rezervacije — nov vnos
-  const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string; tableId: string; source: string; email: string; duration: number; specialRequests: string; locationId: string } | null>(null)
+  const [newRes, setNewRes] = useState<{ guestName: string; phone: string; guests: number; reservedAt: string; note: string; tableId: string; source: string; email: string; duration: number; specialRequests: string; locationId: string; autoTable: boolean } | null>(null)
   /* v1.245.0 (§19): kombinacije osvežimo OB ODPRTJU dialoga Nova rezervacija —
      nastavitvena kartica jih lahko spremeni med sejo (poll prinese sveže šele
      čez 15 s); en fetch na odprtje, fail-soft (starejši seznam ostane). */
@@ -2285,7 +2285,10 @@ function DashboardInner() {
     }
     setSending(true)
     try {
-      await api('/api/reservations', {
+      // v1.252.0 (§26): ali je osebje IZRECNO izbralo mizo? (izrecna izbira
+      // vedno zmaga nad avtododelitvijo; samo v tem primeru strežnik ne izbira)
+      const hadExplicitTable = !!newRes.tableId
+      const data = await api<{ autoAssignedTable?: string | null }>('/api/reservations', {
         method: 'POST',
         // OPS-8 val 3 (v1.73.0): + tableId/source/customerEmail/duration/specialRequests
         // Issue #96: + locationId (samo centralnim vlogam brez lastne lokacije
@@ -2295,6 +2298,9 @@ function DashboardInner() {
           guestName: newRes.guestName, phone: newRes.phone, guests: newRes.guests,
           reservedAt: new Date(newRes.reservedAt).toISOString(), note: newRes.note, allowOutsideHours, forcePacing,
           ...(resvNeedsLocation && (newRes.locationId || viewLoc) ? { locationId: newRes.locationId || viewLoc } : {}),
+          // v1.252.0: izrecen izklop avtododelitve (checkbox v dialogu —
+          // vzorec allowOutsideHours: privzeto VKLOP, izklop je zavedna odločitev)
+          ...(newRes.autoTable === false ? { skipAutoAssign: true } : {}),
           // v1.245.0 (§19): kombinacija mize se v obrazcu nosi kot 'combo:<id>' —
           // ob oddaji se razplete v tableIds[] (strežnik preveri vsako članico)
           ...(newRes.tableId?.startsWith('combo:')
@@ -2306,6 +2312,16 @@ function DashboardInner() {
           ...(newRes.specialRequests ? { specialRequests: newRes.specialRequests } : {}),
         }),
       })
+      // v1.252.0 (§26): strežniška avtododelitev — iskren odgovor uporabniku
+      // (miza NI bila človeška izbira; če je ni bilo mogoče najti, tudi to
+      // povej — ne tiho zamolčaj)
+      if (!hadExplicitTable && newRes.autoTable !== false) {
+        if (data?.autoAssignedTable) {
+          toast({ title: t('resv.autoServerOk', { table: data.autoAssignedTable }) })
+        } else {
+          toast({ title: t('resv.autoServerNone', { n: newRes.guests }) })
+        }
+      }
       setNewRes(null); await load()
     } catch (err) {
       const msg = (err as Error).message
@@ -5378,7 +5394,7 @@ function DashboardInner() {
                   <Button size="sm" variant="outline" className="h-11 gap-1" disabled={sending || reminderCandidates.length === 0} onClick={() => setReminderConfirmOpen(true)}>
                     <Bell className="w-3.5 h-3.5" /> {t('resv.reminderAll')}
                   </Button>
-                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '', locationId: '' })}>
+                  <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 gap-1" onClick={() => setNewRes({ guestName: '', phone: '', guests: 2, reservedAt: '', note: '', tableId: '', source: 'phone', email: '', duration: 120, specialRequests: '', locationId: '', autoTable: true })}>
                     <Plus className="w-3.5 h-3.5" /> {t('resv.new')}
                   </Button>
                 </div>
@@ -7428,6 +7444,24 @@ function DashboardInner() {
                     >
                       <Wand2 className="h-3.5 w-3.5" aria-hidden="true" /> {t('resv.autoAssign')}
                     </Button>
+                  </div>
+                  {/* v1.252.0 (§26) — strežniška avtododelitev ob shrani (Lightspeed
+                      maj 2026): privzeto VKLOP; izklop je zavedna odločitev osebja
+                      (vzorec allowOutsideHours). Izrecna izbira mize zgoraj vedno
+                      zmaga — ta stikalo velja SAMO za shranjevanje brez izbrane mize. */}
+                  <div className="flex items-start gap-2 pt-0.5">
+                    <Checkbox
+                      id="res-auto-table"
+                      checked={newRes.autoTable !== false}
+                      onCheckedChange={(v) => setNewRes({ ...newRes, autoTable: v === true })}
+                      className="mt-0.5"
+                    />
+                    <div className="grid gap-0.5 leading-none">
+                      <Label htmlFor="res-auto-table" className="text-xs font-normal cursor-pointer">
+                        {t('resv.autoServerToggle')}
+                      </Label>
+                      <p className="text-[11px] text-stone-400">{t('resv.autoServerToggleHint')}</p>
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1.5">

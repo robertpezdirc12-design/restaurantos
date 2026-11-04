@@ -32,6 +32,7 @@
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { jparse } from '@/lib/map'
+import { autoassignTableForBooking, busyTableIdsForWindow, type AutoassignPick } from '@/lib/table-autoassign'
 
 /** Marker Integration vrstice s kombinacijami miz (per lokacija). */
 export const TABLE_COMBOS_MARKER = 'table-combos-config'
@@ -105,6 +106,66 @@ export async function loadBookableExcluded(client: CombosReader, locationId: str
     select: { config: true },
   })
   return parseBookableExcluded(row?.config)
+}
+
+/* ── v1.252.0 (§26) — AVTODODELITEV INTERNE POTI ─────────────────────────
+ *
+ * Lightspeed maj 2026 »automatic table assignments«: rezervaciji se miza
+ * dodeli SAMODEJNO ob ustvarjanju. v1.231 = ročni gumb (klient), v1.248 =
+ * strežniška avtododelitev SAMO za javni widget; TA nalagalca pokrije
+ * INTERNO pot (telefon/walk-in) — ena resnica o izbiri: isti čisti sloj
+ * table-autoassign (najmanjša ustrezna miza ali registrirana kombinacija,
+ * izključene walk-in mize ne sodelujejo, sosednja okna se lahko usedeta).
+ * Razlika proti javni poti: trajanje je SPREMENLJIVO (body.duration
+ * 15–600 min, javna pot ima fiksno 120) — okno zasedenosti se računa z
+ * dejanskim trajanjem rezervacije.
+ *
+ * Klicati ZNOTRAJ transakcije za lockReservationCapacity — tako dve
+ * sočasni rezervaciji ne moreta dobiti iste mize (vzorec javne poti). */
+
+/** Odjemalec za avtododelitev (db ali transakcija) — strukturni tip. */
+export type AutoassignReader = Pick<Prisma.TransactionClient, 'integration' | 'table' | 'reservation'>
+
+/**
+ * Strežniški izbor mize za termin: naloži mize + kombinacije + izključene
+ * mize + zasedene rezervacije dneva (±24 h, isti blokirajoči statusi kot
+ * javna pot v1.248: confirmed/seated/completed) in vrne NAJMANJŠO ustrezno
+ * izbiro (null = nobena ne ustreza; rezervacija brez mize, osebje dodeli).
+ */
+export async function autoassignPickForWindow(
+  client: AutoassignReader,
+  locationId: string,
+  at: Date,
+  durationMin: number,
+  party: number,
+): Promise<AutoassignPick | null> {
+  const [combos, excluded, tables, holds] = await Promise.all([
+    loadTableCombos(client, locationId),
+    loadBookableExcluded(client, locationId),
+    client.table.findMany({
+      where: { locationId },
+      select: { id: true, number: true, capacity: true },
+    }),
+    client.reservation.findMany({
+      where: {
+        locationId,
+        status: { in: ['confirmed', 'seated', 'completed'] },
+        dateTime: { gte: new Date(at.getTime() - 24 * 3600_000), lte: new Date(at.getTime() + 24 * 3600_000) },
+        OR: [{ tableId: { not: null } }, { comboTableIds: { not: '' } }],
+      },
+      select: { dateTime: true, duration: true, tableId: true, comboTableIds: true },
+      take: 500,
+    }),
+  ])
+  const busy = busyTableIdsForWindow(holds, at, durationMin)
+  return autoassignTableForBooking({
+    // capacity → seats (isti preslikava kot UI TableT.seats in javna pot)
+    tables: tables.map((t) => ({ id: t.id, number: t.number, seats: t.capacity })),
+    combos,
+    party,
+    busyTableIds: busy,
+    excludedTableIds: excluded,
+  })
 }
 
 /* ── ČISTI helperji za UI (avtododelitev + izbira v dialogu) ───────────── */
