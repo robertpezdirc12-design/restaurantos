@@ -159,8 +159,9 @@ beforeAll(async () => {
   tokWaiter = createToken({ sub: waiterA, name: `${PREFIX} Natakar A`, role: 'WAITER', loc: locA, sv: 0 })
 
   // urnik: vsak dan 00:00–23:59 BREZ odmika — Deterministično (testi tečejo ob
-  // poljubni uri; odmik kosila je pokrit v Č1 lib testih)
-  for (let dow = 1; dow <= 7; dow++) {
+  // poljubni uri; odmik kosila je pokrit v Č1 lib testih). KANONSKA konvencija
+  // OpeningRows: 0 = nedelja … 6 = sobota (oh.day* / reservation-slots weekdayOf)
+  for (let dow = 0; dow <= 6; dow++) {
     await db.openingHours.create({
       data: { id: nid(), locationId: locA, dayOfWeek: dow, openTime: '00:00', closeTime: '23:59', breakStart: '', breakEnd: '', isClosed: false },
     })
@@ -210,16 +211,16 @@ describe('v1.250.0 Č1 — čisti sloj: pas, spani, intervali, mize, luknje', ()
   })
 
   test('Č1-A3: DST prehod pomlad 2026 (29. 3., 02:00→03:00) — span 01:00–05:00 traja 3 h realno', () => {
-    // odprto 01:00–05:00 na dan prehoda: 01:00 CET = 00:00 UTC, 05:00 CEST = 03:00 UTC → 180 min
-    const weekly: TempoOpeningRow[] = [{ dayOfWeek: 7, openTime: '01:00', closeTime: '05:00', breakStart: '', breakEnd: '', isClosed: false }]
+    // odprto 01:00–05:00 na dan prehoda (NEDELJA = 0): 01:00 CET = 00:00 UTC, 05:00 CEST = 03:00 UTC → 180 min
+    const weekly: TempoOpeningRow[] = [{ dayOfWeek: 0, openTime: '01:00', closeTime: '05:00', breakStart: '', breakEnd: '', isClosed: false }]
     const spans = serviceSpansForLocalDay('2026-03-29', weekly, [], TZ, 0, Date.UTC(2026, 4, 1))
     expect(spans.length).toBe(1)
     expect((spans[0]!.end - spans[0]!.start) / 60000).toBe(180)
   })
 
   test('Č1-A4: DST prehod jesen 2026 (25. 10., 03:00→02:00) — span 01:00–05:00 traja 5 h realno', () => {
-    // 01:00 CEST = 23:00 UTC (prejšnji dan), 05:00 CET = 04:00 UTC → 300 min (ura se ponovi)
-    const weekly: TempoOpeningRow[] = [{ dayOfWeek: 7, openTime: '01:00', closeTime: '05:00', breakStart: '', breakEnd: '', isClosed: false }]
+    // 01:00 CEST = 23:00 UTC (prejšnji dan), 05:00 CET = 04:00 UTC → 300 min (ura se ponovi); 25. 10. 2026 = NEDELJA (0)
+    const weekly: TempoOpeningRow[] = [{ dayOfWeek: 0, openTime: '01:00', closeTime: '05:00', breakStart: '', breakEnd: '', isClosed: false }]
     const spans = serviceSpansForLocalDay('2026-10-25', weekly, [], TZ, 0, Date.UTC(2026, 11, 1))
     expect(spans.length).toBe(1)
     expect((spans[0]!.end - spans[0]!.start) / 60000).toBe(300)
@@ -233,12 +234,12 @@ describe('v1.250.0 Č1 — čisti sloj: pas, spani, intervali, mize, luknje', ()
       { dayOfWeek: 4, openTime: '22:00', closeTime: '08:00', breakStart: '', breakEnd: '', isClosed: false },
       { dayOfWeek: 5, openTime: '08:00', closeTime: '12:00', breakStart: '13:00', breakEnd: '14:00', isClosed: false }, // odmik IZVEN dneva → en span
     ]
-    // ponedeljek 2. 11. 2026 (ISO 1): dva spana, odmik izščrtan → 7 h + 5 h = 12 h
+    // ponedeljek 2. 11. 2026 (dan 1 v KANONSKI konvenciji 0=ned … 6=sob): dva spana, odmik izščrtan → 7 h + 5 h = 12 h
     const mon = serviceSpansForLocalDay('2026-11-02', weekly, [], TZ, 0, Date.UTC(2026, 11, 30))
     expect(mon.length).toBe(2)
     const monMin = mon.reduce((s, sp) => s + (sp.end - sp.start), 0) / 60000
     expect(monMin).toBe(720)
-    // torek (ISO 2, zaprto): nič
+    // torek (dan 2, zaprto): nič
     expect(serviceSpansForLocalDay('2026-11-03', weekly, [], TZ, 0, Date.UTC(2026, 11, 30))).toEqual([])
     // sreda (neveljavno odprto): nič
     expect(serviceSpansForLocalDay('2026-11-04', weekly, [], TZ, 0, Date.UTC(2026, 11, 30))).toEqual([])
@@ -269,7 +270,7 @@ describe('v1.250.0 Č1 — čisti sloj: pas, spani, intervali, mize, luknje', ()
 
   test('Č1-A7: serviceSpansInWindow — iteracija po LOKALNIH dnevih + varovalo 400', () => {
     const weekly: TempoOpeningRow[] = Array.from({ length: 7 }, (_, i) => ({
-      dayOfWeek: i + 1, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false,
+      dayOfWeek: i, openTime: '08:00', closeTime: '22:00', breakStart: '', breakEnd: '', isClosed: false,
     }))
     // točno 2 lokalna dneva (sreda 12:00 → petek 12:00 lokalno): sreda prirezana 12–22 + četrtek 8–22 + petek prirezan 8–12
     const since = tempoZonedTimeToUtc(2026, 11, 4, 12, 0, TZ).getTime()

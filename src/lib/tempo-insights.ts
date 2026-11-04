@@ -79,10 +79,12 @@ export function tempoZonedTimeToUtc(
   return new Date(ts)
 }
 
-/** ISO dan tedna lokalnega datuma: 1 = ponedeljek … 7 = nedelja. */
+/** Dan tedna lokalnega datuma v KANONSKI konvenciji OpeningRows: 0 = nedelja …
+ * 6 = sobota (getUTCDay; isti izraz kot reservation-slots weekdayOf in oznake
+ * oh.day0='Nedelja' … oh.day6='Sobota' — ISO 1..7 je bila napaka prve rešitve,
+ * ujeta na živi produkciji, kjer je edini odprt dan dayOfWeek=0). */
 function localWeekday(y: number, m: number, d: number): number {
-  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0 = nedelja
-  return wd === 0 ? 7 : wd
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay()
 }
 
 /** 'HH:MM' → minute od polnoči; neveljavno/prazno → null (payroll parseHM vzorec). */
@@ -99,7 +101,7 @@ export function parseHm(v: string | null | undefined): number | null {
 
 /** Tedenska odpiralna vrstica lokacije (surovi OpeningHours podatki). */
 export interface TempoOpeningRow {
-  dayOfWeek: number // 1 = pon … 7 = ned (OpeningHours.dayOfWeek)
+  dayOfWeek: number // 0 = ned … 6 = sob (OpeningHours.dayOfWeek — konvencija oh.day*)
   openTime: string
   closeTime: string
   breakStart: string

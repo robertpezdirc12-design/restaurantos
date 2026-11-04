@@ -1824,6 +1824,18 @@ manjkal je samo pogled.
   Časovni pas je samoizrojena ista tehnika kot haccp-ops (Intl, DST-varno)
   — uvoz od tam bi v čisto plast vpleten db graf; ~30 vrstic izrojenega
   časa, dokumentiranega in pokritega s testi (oba DST prehoda 2026).
+- **KONVENCIJA dayOfWeek (lekcija iz žive produkcije):** OpeningRows
+  nosijo 0 = nedeljo … 6 = soboto (getUTCDay; isti izraz kot
+  reservation-slots weekdayOf, oznake oh.day0 = »Nedelja« … oh.day6 =
+  »Sobota«, demo seed 0–6, produkcija edini odprt dan dayOfWeek 0).
+  Prva rešitev je napačno uporabila ISO 1–7: na demo podatkih (vsi dnevi
+  odprti) je hrošč tiho pojedel le nedeljo (72 h namesto 84 h — nevidno),
+  na produkciji pa izpraznil VSE spane (pon–sob zaprto, nedelja = vrstica
+  0, ki ISO iskanje nikoli ne najde) → iskreno stanje »ni odprtih ur« ob
+  odprti nedelji. Ujeto šele na živem E2E produkcije (dev suita zelena —
+  lastni testi so sejali ISO vrstice; A/B identičnost tega ne more ujeti).
+  Popravek: localWeekday vrne getUTCDay nespremenjen + testi sejejo
+  kanonske vrstice (A3/A4 nedelja 0, DB seed 0–6, A7 0–6).
 - **RUTA GET /api/reports/tempo?days=7:** reports.sales + locationScope
   (centralne vloge = cela organizacija — mize nosijo ime lokacije v
   oklepaju, osebje = lastna). take-varovala 500/1000/5000/50000/200000.
