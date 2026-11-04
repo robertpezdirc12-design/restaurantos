@@ -1858,3 +1858,104 @@ mediane po izmerjenih), 0 DDL, 0 novih odvisnosti. Naslednji val: sveža
 raziskava julij–november 2026 (Toast Fall 2026 objave), Full Profile
 Discount (B — cenovna politika lastnika) ali B-odločitve (WhatsApp
 transport, OSS-8 SMTP) po »nadaljuj«.
+
+## 25. Raziskava november 2026 — ČRTNA KODA RAČUNA v1.251.0 (skeniranje računa za vračila/storno)
+
+Sklep §24 je napovedal svežo raziskavo julij–november 2026 (Toast Fall 2026
+objave); B-odločitve (WhatsApp transport, OSS-8 SMTP, Full Profile Discount)
+čakajo lastnika in niso avtonomne. Spletna raziskava november 2026 (Toast,
+Lightspeed, Square, TouchBistro, trendi) je izmerila naslednje.
+
+### A) Izmerja raziskave (julij–november 2026)
+
+**Toast (januar–oktober 2026):**
+- **ČRTNA KODA RAČUNA** (30. 1. 2026,
+  »Look up checks by scanning the receipt barcode« —
+  »now available to all Toast POS locations«): gost
+  prinese račun nazaj (vračilo/storno, tip, poizvedba), osebje skenira
+  črtno kodo z računa in dokument se odpre — »streamline order lookups
+  for returns, exchanges, or pay-at-the-counter service models without
+  searching manually«. SPREJETO v tem valu — naše stanje: seznam zadnjih
+  100 računov z ročnim brskanjem, storno potrebuje izvirni račun, EAN
+  skenerska infrastruktura (v1.229) pa Obstaja SAMO za zalogo.
+- Toast Fall 2026 (oktober): Toast IQ Team, Seamless Checkout (shrani
+  plačilno sredstvo ob rezervaciji — ponudnik plačil = B-odločitev),
+  SMS Marketing (transport = B-odločitev), glasovni vnos naročil (0-AI
+  politika lastnika — zavestno NE).
+- Februar 2026: POS Break Enhancements, Receipt Barcode Lookup (zgoraj).
+
+**Lightspeed (marec–maj 2026):**
+- Marec: Table pacing — pokrito (Tempo vpogledi v1.250, §24 + priliv
+  ritma prihodov v1.244, §18 A). Digitalni checklisti — pokrito
+  (v1.246, §20: predloge + plošča + dodeljevanje + sledenje).
+- Maj: automatic table assignments (rezervaciji se miza dodeli
+  samodejno) — kandidat prihodnjega vala (algoritem nad obstoječima
+  Table + Reservation, 0 DDL); »Turn Google searches into guest
+  bookings« (zunanja integracija = B-odločitev); Tailor allergens —
+  pokrito (alergenski katalog + pregled potrditev, Issue #7).
+- KDS 2.0 — pokrito (vsa tri generacije našega KDS + ETA + tečaji).
+
+**Square (2026):** nested modifiers (Zahteva DDL hierarhijo — odloženo),
+kiosk hitrejše nalaganje/slike kategorij (naš /kiosk ima slike),
+heatmaps shranjevanje (pokrito: shranjeni pogledi poročil v1.247, §21),
+SSO (B-odločitev).
+
+**Trendi 2026:** AI vpogledi/napovedi (0-AI politika — zavestno NE),
+KDS namesto papirnatih listkov (pokrito), brezkontaktna plačila
+(povezave QR — pokrito, v1.238 §15).
+
+**Presoja:** edina čisto tehnična vrzel, ki jo lahko zapremo avtonomno
+(0 DDL, 0 odvisnosti, 0 AI, 0 B-odločitev) in prinaša takojšnjo vrednost
+vsakodnevnemu toku vračil, je Toast črtna koda računa.
+
+### B) Odločitev o vsebini kode
+
+Vsebina črtne kode = **receiptNumber** (npr. »2026-11-42-BLG001«):
+- je ŽE natisnjena človeku berljivo na računu (vrstica »Račun št.«) —
+  ročni vnos ob poškodovani kodi/brez skenerja je enostavno prepisovanje
+  iste vrste (Toast ista vzorec: »scan the barcode … or enter manually«);
+- je unikatna per lokacija (@@unique([locationId, receiptNumber])) —
+  skeniranje teče v uporabnikovem lokacijskem obsegu (enako seznamu);
+- stara shema »R-YYYY-NNNNN« se najde z ročnim vnosom (ujemanje po
+  nizu) — starejši računi ostanejo dosegljivi;
+- alternativa (receipt id, 25-mestni cuid) je daljša za tisk na 80 mm
+  in NEberljiva za ročni vnos — zavrnjena.
+
+### C) Implementacija
+
+- **ČISTI SLOJ src/lib/barcode.ts (0 uvozov, 0 odvisnosti):**
+  Code128-B enkodirnik — tabela 107 vzorcev širin (start B 104, podatki
+  ASCII−32, kontrolna vsota mod 103, stop 106 s 13 moduli), kanonski
+  testni vektor »ABC«; normalizeReceiptScan (trim + presledki ven,
+  velikost OHRANJENA — premises je lahko mešan), receiptScanVariants
+  ([kot-je, velike, male] za eno poizvedbo IN); varovalo 48 znakov;
+  quiet zone 10 modulov (spec minimum).
+- **NATISNJEN RAČUN (src/lib/receipt.ts):** SVG črtna koda Code128
+  receiptNumber pod fiskalnim blokom (ZOI/EOR ali ZKI/JIR), ŠE pred
+  nogo — inline `<rect>` črte (0 odvisnosti), bela podlaga s tihimi
+  prostori, napis številke pod kodo, max 68 mm na 76 mm vsebini.
+  Neenkodirljiva številka (znak izven ASCII 32–126) kodo TIHO izpusti —
+  tisk računa NIKOLI ne sme pasti (§18 print disciplina). Velja za SL
+  in HR izpis enako.
+- **RUTA GET /api/furs/lookup?code=:** reports.sales (IDENTIČNO seznamu
+  /api/furs GET, N5 revizija §4 — vpogled, ne izdaja), await
+  locationScope(user) (centralne vloge = cela organizacija → odgovor je
+  SEZNAM zadetkov, ker je lahko ista številka na več lokacijah);
+  normalizacija + variante velikosti v ENEM IN; prazno/krajše od 4 = 400
+  (prag EAN v1.229); take 50 varovalo; preslikava ista kot seznam
+  (tableName, orderNumber, isStorno, stornoOf).
+- **UI (zavihek Računi, tik nad seznamom):** kartica »Najdi račun po
+  črtni kodi« — mono vnosno polje + gumb; Enter = iskanje (skener je
+  tipkovnica, keyboard wedge, ista paradigma kao EAN čitalnik v1.229);
+  zadetki kot vrstice z emerald obrobo (ponatis + storno akciji isti
+  kot seznam); iskrena prazna stanja (ni zadetka; več zadetkov z
+  opombo); gating reports.sales.
+- **i18n:** +6 ključev rcpt.scan* v vsakem slovarju (4028 → 4034;
+  pariteta SL/HR ohranjena, EN/DE/IT gostujoči nedotaknjeni).
+
+**Sklep §25:** vračilo/storno po fizično prinesenem računu je zdaj en
+skener ali en vnos — enaka vzorec Toast januar 2026, izpeljan čisto iz
+obstoječih podatkov (receiptNumber + locationScope), 0 DDL, 0 novih
+odvisnosti, 0 AI. Naslednji val: avtomatska dodelitev miz rezervacijam
+(Lightspeed maj 2026 — algoritem nad obstoječima modeloma, kandidat),
+sveža raziskava pomlad 2027 ali B-odločitve lastnika po »nadaljuj«.

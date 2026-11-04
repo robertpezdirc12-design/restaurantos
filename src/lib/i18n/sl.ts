@@ -2002,6 +2002,13 @@ export const sl: Record<string, string> = {
   'rcpt.stornoBtn': 'Storno',
   'rcpt.stornoConfirm': 'Storniram račun {n} ({a})? Ustvari se storno račun z negativnim zneskom, razknjižena zaloga se povrne in naročilo označi kot storno. Akcija se zabeleži v revizijski sledi.',
   'rcpt.stornoDone': 'Storno račun {n} je izdan. Povrnjenih zalog: {s}.',
+  // v1.251.0 (PRIMERJAVA §25): iskanje računa po črtni kodi (Toast januar 2026)
+  'rcpt.scanTitle': 'Najdi račun po črtni kodi',
+  'rcpt.scanPlaceholder': 'npr. 2026-11-42-BLG001',
+  'rcpt.scanBtn': 'Najdi',
+  'rcpt.scanHint': 'Skeniraj črtno kodo z računa ali vnesi natisnjeno številko (Enter = iskanje).',
+  'rcpt.scanNone': 'Račun s to številko ni bil najden.',
+  'rcpt.scanMany': 'Več zadetkov ({n}) — ista številka na več lokacijah; izberi pravega:',
   // Zaposleni (inline kartica + Control Center dialog)
   'emp.bootstrapActive': 'Aktiven je začasni (bootstrap) dostop — seja poteče po 2 urah.',
   'emp.bootNoProfileA': 'E-poštni naslov',

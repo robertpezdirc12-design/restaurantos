@@ -231,7 +231,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // Issue #96 fallback v resolveViewsLocation) → 82
     // v1.250.0 (PRIMERJAVA §24): reports/tempo GET (tempo vpogledi — prazni čas
     // miz in servisne luknje naročil v uporabnikovem obsegu, await locationScope) → 84
-    expect(wired.length).toBe(84)
+    // v1.251.0 (PRIMERJAVA §25): furs/lookup GET (iskanje računa po črtni kodi —
+    // zadetki v uporabnikovem obsegu, await locationScope) → 85
+    expect(wired.length).toBe(85)
   })
 })
 

@@ -10,6 +10,7 @@
  */
 
 import { t, fiscalStatusLabel, type Locale } from '@/lib/i18n'
+import { encodeCode128b, CODE128_QUIET_MODULES } from '@/lib/barcode'
 
 export interface ReceiptItemT {
   name: string
@@ -106,6 +107,27 @@ export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null, loca
     ? `${esc(tr('receipt.taxNo'))} ${esc(d.taxId || '—')}`
     : `${esc(tr('receipt.taxNo'))} ${esc(d.taxId || '—')}${d.businessId ? ` · ${esc(tr('receipt.registrationNo'))} ${esc(d.businessId)}` : ''}`
 
+  // v1.251.0 (PRIMERJAVA §25): ČRTNA KODA RAČUNA — Code128-B vsebine
+  // receiptNumber (številka je že natisnjena zgoraj → ročni vnos = ista
+  // vrsta; Toast januar 2026 »look up checks by scanning the receipt
+  // barcode«). Neenkodirljiva številka (znak izven ASCII 32–126) črtno kodo
+  // tiho izpusti — tisk računa NIKOLI ne sme pasti (§18 print disciplina).
+  const bc = encodeCode128b(d.invoiceNumber || '')
+  let barcodeSvg = ''
+  if (bc) {
+    const quiet = CODE128_QUIET_MODULES
+    const viewW = bc.totalModules + quiet * 2
+    const rects: string[] = []
+    let x = quiet
+    for (let i = 0; i < bc.widths.length; i++) {
+      const w = bc.widths[i]
+      if (i % 2 === 0) rects.push(`<rect x="${x}" y="0" width="${w}" height="60"/>`)
+      x += w
+    }
+    const caption = `<p class="c small mono">${esc(d.invoiceNumber)}</p>`
+    barcodeSvg = `<div class="bcwrap"><svg class="bc" viewBox="0 0 ${viewW} 60" width="100%" height="44" preserveAspectRatio="none" role="img" aria-label="${esc(d.invoiceNumber)}"><rect x="0" y="0" width="${viewW}" height="60" fill="#fff"/>${rects.join('')}</svg>${caption}</div>`
+  }
+
   return `<!doctype html>
 <html lang="${isHr ? 'hr' : 'sl'}">
 <head>
@@ -129,6 +151,9 @@ export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null, loca
   .totals td { padding: 2px 0; }
   .grand { font-size: 14px; font-weight: bold; border-top: 1px dashed #111; padding-top: 4px; }
   .footer { margin-top: 8px; white-space: pre-line; }
+  .bcwrap { margin-top: 6px; }
+  .bc { display: block; max-width: 68mm; margin: 0 auto; }
+  .bcwrap .mono { margin: 1px 0 0; }
   .copy { margin-top: 6px; text-align: center; border: 1px solid #111; padding: 2px; letter-spacing: 2px; }
   @media print { body { padding: 0; } .rc { max-width: none; } }
 </style>
@@ -157,6 +182,7 @@ export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null, loca
     <p class="sep">${SEP}</p>
     ${fiscalRows}
     <p class="c small">${esc(fiscalStatusLabel(locale, country, d.fiscalStatus, d.fiscalVerified))}</p>
+    ${barcodeSvg}
     ${footer ? `<p class="c small footer">${esc(footer)}</p>` : ''}
     ${d.isCopy ? `<p class="copy small">${esc(tr('receipt.copy'))}</p>` : ''}
     ${d.isStorno ? `<p class="copy small">${esc(tr('receipt.storno'))}</p>` : ''}

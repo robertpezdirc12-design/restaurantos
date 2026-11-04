@@ -128,7 +128,7 @@ import { stationViewKey } from '@/lib/kds-station-routing'
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
 import { groupKdsItemsByCourse } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
-import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2 } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -776,6 +776,26 @@ function DashboardInner() {
   // seznam spodaj pa je kazal VSE račune ne glede na izbor).
   const [rcptFrom, setRcptFrom] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10) })
   const [rcptTo, setRcptTo] = useState(() => new Date().toISOString().slice(0, 10))
+
+  // v1.251.0 (PRIMERJAVA §25): ISKANJE RAČUNA PO ČRTNI KODI — skener je
+  // tipkovnica (keyboard wedge: koda + Enter, isti paradigma kao EAN v1.229);
+  // rezultati so vrstice istega tipa kao seznam (natisni ponovitev / storno).
+  const [rcptScanCode, setRcptScanCode] = useState('')
+  const [rcptScanResults, setRcptScanResults] = useState<ReceiptT[] | null>(null)
+  const [rcptScanning, setRcptScanning] = useState(false)
+  async function rcptScanSubmit() {
+    const code = rcptScanCode.trim()
+    if (!code) return
+    setRcptScanning(true)
+    try {
+      const d = await api<{ receipts: ReceiptT[] }>(`/api/furs/lookup?code=${encodeURIComponent(code)}`)
+      setRcptScanResults(d.receipts)
+    } catch {
+      setRcptScanResults([])
+    } finally {
+      setRcptScanning(false)
+    }
+  }
 
   // ISSUE #72 A4/C1: canManage je OD SEDAJ CENTRALNA vloga (OWNER/ADMIN/enterprise).
   // MANAGER ima od v1.133.0 OMEJEN nabor (19 ključev) in zavihke vidi SKOZ SVOJE
@@ -5533,6 +5553,66 @@ function DashboardInner() {
                 {t('rcpt.exportCsv')}
               </Button>
             </div>
+            {/* v1.251.0 (PRIMERJAVA §25; Toast januar 2026 »look up checks by scanning
+                the receipt barcode«): skeniranje črtne kode z računa ali ročni vnos
+                natisnjene številke — iskanje po VSEH računih obsega, ne samo zadnjih
+                100 s seznama. Skener = tipkovnica (koda + Enter, paradigma EAN v1.229).
+                Gating reports.sales — isti lastnik kao seznam in izvoz. */}
+            {hasPerm('reports.sales') && (
+              <Card data-region="receipt-scan">
+                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><ScanBarcode className="w-4 h-4" /> {t('rcpt.scanTitle')}</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      data-testid="receipt-scan-input"
+                      className="font-mono"
+                      placeholder={t('rcpt.scanPlaceholder')}
+                      value={rcptScanCode}
+                      onChange={(e) => setRcptScanCode(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void rcptScanSubmit() } }}
+                      aria-label={t('rcpt.scanTitle')}
+                    />
+                    <Button size="sm" className="gap-1.5 shrink-0" disabled={rcptScanning || !rcptScanCode.trim()} onClick={() => void rcptScanSubmit()}>
+                      {rcptScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} {t('rcpt.scanBtn')}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-1.5">{t('rcpt.scanHint')}</p>
+                  {rcptScanResults !== null && rcptScanResults.length === 0 && (
+                    <p className="text-sm text-stone-500 mt-3">{t('rcpt.scanNone')}</p>
+                  )}
+                  {rcptScanResults !== null && rcptScanResults.length > 1 && (
+                    <p className="text-xs text-amber-700 mt-3">{t('rcpt.scanMany', { n: rcptScanResults.length })}</p>
+                  )}
+                  {rcptScanResults !== null && rcptScanResults.length > 0 && (
+                    <div className="mt-3 space-y-2" data-region="receipt-scan-results">
+                      {rcptScanResults.map((r) => (
+                        <div key={r.id} className="rounded-lg border-2 border-emerald-300 bg-emerald-50/60 p-3 flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{r.invoiceNumber}{r.tableName ? ` · ${r.tableName}` : ''}</p>
+                            <p className="text-xs text-stone-500">{new Date(r.createdAt).toLocaleString('sl-SI')} · {r.paymentMethod.toUpperCase()}{r.orderNumber ? ` · ${t('rcpt.orderShort', { n: r.orderNumber })}` : ''}</p>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <span className="font-bold">{fmtEUR(r.total)}</span>
+                            {r.fiscalVerified ? <Badge className="bg-emerald-600 text-white">FURS ✓</Badge> : <Badge variant="outline">{r.fiscalStatus || t('rcpt.unverified')}</Badge>}
+                          </div>
+                          <div className="shrink-0 flex items-center gap-1 w-full sm:w-auto justify-end">
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
+                              <Printer className="w-3.5 h-3.5" /> {t('common.print')}
+                            </Button>
+                            {!r.isStorno && !isStorned(r.id) && hasPerm('receipts.storno') && (
+                              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-red-700 border-red-200 hover:bg-red-50" disabled={stornoing === r.id}
+                                onClick={() => stornoReceipt(r)} title={t('rcpt.stornoBtn')}>
+                                <Ban className="w-3.5 h-3.5" /> {stornoing === r.id ? t('common.processing') : t('rcpt.stornoBtn')}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">{t('rcpt.title')}</CardTitle></CardHeader>
               <CardContent>
