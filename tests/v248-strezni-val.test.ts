@@ -620,14 +620,14 @@ describe('Ž — registri v1.248.0', () => {
   const root = join(import.meta.dir, '..')
 
   test('Ž1: verzija 1.248.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.252.0')
+    expect(APP_VERSION).toBe('1.253.0')
     const compose = readFileSync(join(root, 'deploy', 'docker-compose.yml'), 'utf8')
-    expect(compose).toContain('restaurantos:1.252.0')
+    expect(compose).toContain('restaurantos:1.253.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 3989/3989 (+21: opv.validUntil×2, pn×10, posn×8, common.add)', () => {
-    expect(Object.keys(sl).length).toBe(4038)
-    expect(Object.keys(hr).length).toBe(4038)
+    expect(Object.keys(sl).length).toBe(4053)
+    expect(Object.keys(hr).length).toBe(4053)
     expect(sl['opv.validUntil']).toBeDefined()
     expect(hr['opv.validUntil']).toBeDefined()
     expect(sl['pn.title']).toBeDefined()

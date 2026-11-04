@@ -2027,3 +2027,100 @@ izklopa in izrecno izbiro, ki vedno zmaga. Lightspeed maj 2026
 »automatic table assignments« je pokrit na obeh ustvarjalnih poteh.
 Naslednji val: sveža raziskava pomlad 2027 (Toast/Lightspeed/Square
 objave) ali B-odločitve lastnika po »nadaljuj«.
+
+---
+
+## 27. Raziskava november 2026 (nadaljevanje) — ODPRTI RAČUNI V POROČILU v1.253.0 (Square oktober 2026)
+
+Sklep §26 je napovedal svežo raziskavo; uporabnik je rekel »nadaljuj« brez
+B-odločitev → raziskava je stekla takoj (splet, november 2026), ne čez zimo.
+
+### A) Izmerja (spletna raziskava + lastno stanje)
+
+- **Square 22. 10. 2026 (Release notes Vol 15, v 7.30):** »See open checks
+  in the Sales report on Point of Sale — The report counts sales on checks
+  that haven't closed yet alongside completed sales. Open checks are
+  included by default, and a banner on the report says so. … To show only
+  completed sales, turn off the Open Checks filter.« »Why it matters:
+  Sales on open checks are part of the day's business before anyone
+  settles them.« Ostali octobrski kvadrati: SSO = B-odločitev (znano),
+  nested modifiers = DDL odloženo, kartični pribitki = US-pravno (za
+  SL/HR neuporabno), stran košarice = kozmetika.
+- **Lightspeed november 2026 (»What's New: AI, POS, KDS, and more«):**
+  AI Pulse = 0-AI politika NE; zaklep KDS postaje = POKRITO v1.244 §18 D;
+  strežniške značke + ure sedenja na tlorisu = POKRITO v1.244 §18 C;
+  panning/pinch-zoom = ergonomika dotika nad istimi podatki (ni vrzeli
+  podatkov); opombe/alergeni na artiklu = POKRITO (allergenWarning
+  v1.104 Issue #7 na KDS/žig + notes v podrobnosti naloge); rezervacijske
+  kapacitete (odstotek/rezervabilne mize/samo-online) = POKRITO
+  (maxCoversPerSlot v1.110 + pacing v1.244 §18 A + izključene walk-in
+  mize v table-autoassign + ločena javna/interna pot); Google bookings =
+  B; belgijski boni = N/A.
+- **Toast oktober 2026:** Hotels Payments (limited release) = N/A za
+  gostilniški jedro; Retail POS Mode = N/A.
+- **Lastno stanje:** X/Z poslovno poročilo (v1.73.0, OPS-8 val 3,
+  Lightspeed Business Report vzorec) šteje SAMO fiskalizirane Receipt
+  vrstice (createdAt v obdobju). Odprta naročila (mize s saddle-bag
+  gosti: status open/sent/prepared/pending/hold, paidAt null,
+  cancelledAt null) niso nikjer v dnevnem prometu — vodja, ki medmenjadi
+  pogleda »kakšen je danes promet«, vidi le poravnane račune, denarja na
+  mizah pa ne. Točno to vrača Square: prodaja na odprtih računih je
+  že del današnjega poslovanja, še preden jih kdo poravna.
+
+### B) Odločitev
+
+- **Odprti račun** = Order z `paidAt: null`, `cancelledAt: null` in
+  `status NOT IN ['paid','cancelled']` (difenzivno: pokrije
+  open/sent/prepared/pending/hold — vse kar ni zaprto ali preklicano),
+  ustvarjen v istem oknu [from, to] kot računi, v istem lokacijskem
+  obsegu (locScope — centralne vloge = cela organizacija).
+- **Privzeto VKLJUČENO** (Square: »included by default«): nov query
+  parameter `open` na /api/reports/export?section=zz — vse razen
+  »0«/»false« pomeni vključitev; `open=0` = samo poravnano (Square:
+  »turn off the Open Checks filter«).
+- **Računovodska disciplina:** OBSTOJEČA polja poročila (grossSales,
+  netSales, vatTotal, vatByRate, paymentsByMethod, covers …) ostanejo
+  IZKLJUČNO poravnana (računi) — ni drsenja pomena za knjigovodje in
+  obstoječe porabnike. Odprti računi so ADITIVNI, jasno ločen blok:
+  `openChecks { included, count, gross, net, vat, rows[] }` +
+  pripomočni skupaj `grossWithOpen` / `netWithOpen` (bruto/neto skupaj
+  z odprtimi — Square »alongside completed sales«).
+- **Banner** (Square: »a banner on the report says so«): v predogledu
+  jantrobno poudarjen blok z napisom, da so odprti računi vključeni;
+  CSV nosi vrstico `Vkljuceni v dnevni promet;DA`.
+- **Iskrenost:** count je pošten (nezrezan agregat _count), vrstica
+  seznama UI pa je rezana na 50 najstarejših z opombo »… in še N«;
+  prazno stanje je vidno prazno (0 računov = izrecna vrstica, ne tišina).
+
+### C) Implementacija
+
+- **ČISTI SLOJ src/lib/xz-report.ts:** aditivni vhod `openChecks` v
+  buildXzReport (defenzivno normaliziran: count ≥ 0 celo, zneski r2,
+  rows max 50) + aditivni izhod `openChecks` blok + `grossWithOpen` /
+  `netWithOpen`. Brez vhoda = included:false, ničle, skupaj = osnova
+  (nazajzdružno prijazno za obstoječe klice).
+- **RUTA /api/reports/export?section=zz:** parameter `open` (privzeto
+  vklopljen); ob vklopu DVE poizvedbi ( isti lokacijski obseg kot
+  računi): agregat `_count + _sum(total, subtotal, tax)` (poštena
+  številka) + `findMany take 50` (starejši najprej) z relacijo Table
+  (number) za oznako mize; preslikava v vrstice { orderNumber,
+  tableNumber, type, total, createdAt }. CSV: nov blok ODPRTI RACUNI
+  (število, bruto, neto, DDV, skupaj z odprtimi) oz. `IZKLOPLJENO`
+  vrstica; JSON: aditivna polja.
+- **UI (Računovodstvo → Izvoz, sekcija X/Z):** preklop »Vključi odprte
+  račune« (privzeto vklopljen) ob gumbu Predogled — pošlje `open=1|0` na
+  predogled IN izvoz; predogledni dialog: jantrobni banner + blok
+  (število, bruto, neto, DDV) + poudarjena Skupaj z odprtimi (bruto in
+  neto) + seznam odprtih računov (miza/brez mize, vrsta, znesek,
+  starost odprtja; max višina z drsenjem; »… in še N«); iskreno prazno
+  stanje.
+- **i18n:** +14 ključev acct.xzOpen* v vsakem slovarju (4038 → 4052;
+  pariteta SL/HR ohranjena, EN/DE/IT gostujoči nedotaknjeni).
+- 0 DDL (branje obstoječih Order/Table), 0 novih odvisnosti, 0 AI.
+
+**Sklep §27:** dnevni promet v X/Z poročilu zdaj pokaže tudi denar, ki
+še sedi na mizah — privzeto, z banerjem in z možnostjo izklopa (Square
+oktober 2026 »See open checks in the Sales report«), brez drsenja
+pomena obstoječih računovodskih polj. Naslednji val: sveža raziskava
+pomlad 2027 (Toast/Lightspeed/Square objave) ali B-odločitve lastnika po
+»nadaljuj«.

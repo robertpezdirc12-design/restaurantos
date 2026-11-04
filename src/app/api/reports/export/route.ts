@@ -60,6 +60,10 @@ export async function GET(req: NextRequest) {
   // OPS-7 (v1.70.0): section=summary (privzeto) | dnevnik (račun po račun) | ddv (povzetek po stopnjah)
   const section = (url.searchParams.get('section') || 'summary').toLowerCase()
   const range = { gte: from, lte: to }
+  // PRIMERJAVA §27 (v1.253.0): open=0|false izklopi odprte račune v X/Z poročilu;
+  // privzeto VKLJUČENO (Square oktober 2026: »Open checks are included by default«).
+  const openParam = (url.searchParams.get('open') || '').toLowerCase()
+  const includeOpenChecks = openParam !== '0' && openParam !== 'false'
 
   // Issue #4 §1: izvoz je location-scoped (centralne vloge = globalno).
   // Payment nima locationId → scope prek relacije Check → Order.locationId;
@@ -129,6 +133,38 @@ export async function GET(req: NextRequest) {
     const payMap = new Map<string, number>()
     for (const p of pays) payMap.set(p.type, r2((payMap.get(p.type) || 0) + num(p.amount)))
     const wasteTotal = waste.reduce((a, w) => a + num(w.totalCost), 0)
+    // PRIMERJAVA §27 (v1.253.0) — ODPRTI RAČUNI (Square oktober 2026 »See open checks in
+    // the Sales report«): naročila, ki ŠE NISO poravnana (gosti na mizah), so del dnevnega
+    // prometa. Odprto = paidAt null + cancelledAt null + status ni paid/cancelled
+    // (defenzivno pokrije open/sent/prepared/pending/hold — vse kar ni zaprto ali
+    // preklicano). Lokacijski obseg IDENTIČEN računom (locScope); okno = isto [from, to]
+    // po createdAt. DVE poizvedbi: agregat (pošten count + vsote, nezrezane) + vrstice
+    // (najstarejših 50 za UI seznam — pozabljeni računi pridejo na plano prvi).
+    const openWhere = {
+      createdAt: range,
+      paidAt: null,
+      cancelledAt: null,
+      status: { notIn: ['paid', 'cancelled'] },
+      ...locScope,
+    }
+    const [openAgg, openRows] = includeOpenChecks
+      ? await Promise.all([
+        db.order.aggregate({
+          where: openWhere,
+          _count: true,
+          _sum: { total: true, subtotal: true, tax: true },
+        }),
+        db.order.findMany({
+          where: openWhere,
+          select: {
+            orderNumber: true, type: true, total: true, createdAt: true,
+            Table: { select: { number: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 50,
+        }),
+      ])
+      : [null, []]
     const report = buildXzReport({
       from: day(from),
       to: day(to),
@@ -147,6 +183,21 @@ export async function GET(req: NextRequest) {
       prevCovers: prevRecs._count,
       prevFrom: day(pw.from),
       prevTo: day(pw.to),
+      // §27: aditivni blok odprtih računov (ob izklopu included:false + ničle)
+      openChecks: {
+        included: includeOpenChecks,
+        count: openAgg?._count ?? 0,
+        gross: num(openAgg?._sum.total),
+        net: num(openAgg?._sum.subtotal),
+        vat: num(openAgg?._sum.tax),
+        rows: openRows.map((o) => ({
+          orderNumber: o.orderNumber ?? null,
+          tableNumber: o.Table?.number ?? null,
+          type: o.type || '',
+          total: num(o.total),
+          createdAt: (o.createdAt instanceof Date ? o.createdAt : new Date(o.createdAt)).toISOString(),
+        })),
+      },
     })
     if (format === 'json') return ok({ section: 'zz', generatedAt: new Date().toISOString(), ...report })
     // CSV — same conventions as the other sections (UTF-8 BOM, `;` separator, SL literals)
@@ -164,6 +215,23 @@ export async function GET(req: NextRequest) {
     L4.push(`Storno - stevilo;${report.voidedCount}`)
     L4.push(`Storno - znesek;${p2(report.voidedTotal)}`)
     L4.push(`Kalo (odpad);${p2(report.wasteTotal)}`)
+    // PRIMERJAVA §27 (v1.253.0) — blok ODPRTI RAČUNI (aditivno; obstoječe vrstice
+    // ostanejo izključno poravnane — računovodska disciplina). Banner = vrstica
+    // »Vkljuceni v dnevni promet;DA« (Square: »a banner on the report says so«).
+    if (report.openChecks.included) {
+      L4.push('')
+      L4.push(`ODPRTI RACUNI (se odprta narocila, neplacano)`)
+      L4.push(`Vkljuceni v dnevni promet;DA`)
+      L4.push(`Stevilo odprtih;${report.openChecks.count}`)
+      L4.push(`Odprti - bruto (z DDV);${p2(report.openChecks.gross)}`)
+      L4.push(`Odprti - neto (brez DDV);${p2(report.openChecks.net)}`)
+      L4.push(`Odprti - DDV;${p2(report.openChecks.vat)}`)
+      L4.push(`Skupaj z odprtimi - bruto;${p2(report.grossWithOpen)}`)
+      L4.push(`Skupaj z odprtimi - neto;${p2(report.netWithOpen)}`)
+    } else {
+      L4.push('')
+      L4.push(`ODPRTI RACUNI;IZKLOPLJENO`)
+    }
     L4.push('')
     L4.push(`DDV PO STOPNJAH`)
     L4.push(`Stopnja (%);Osnova;DDV (EUR)`)

@@ -37,7 +37,7 @@ import { GET as lookupGET } from '../src/app/api/furs/lookup/route'
  *      stara shema R-YYYY-NNNNN, multi-lokacija za centralno vlogo, storno.
  *  Č4) UI MONTAŽA — kartica skeniranja v zavihku Računi, gating reports.sales,
  *      Enter submit (skener = tipkovnica, paradigma EAN v1.229), i18n pariteta.
- *  Ž)  REGISTRI — verzija 1.252.0, compose, i18n 4038/4038 pariteta,
+ *  Ž)  REGISTRI — verzija 1.253.0, compose, i18n 4053/4053 pariteta,
  *      dokumenta (PRIMERJAVA §25, AUDIT števci), worklog pin.
  *
  * 0 DDL · 0 novih odvisnosti · 0 AI.
@@ -446,15 +446,15 @@ describe('v1.251.0 Č4 — UI: kartica skeniranja v zavihku Računi', () => {
 /* ═══════════ Ž — registri in pini ═══════════ */
 
 describe('v1.251.0 Ž — registri in pini', () => {
-  test('Ž1: verzija 1.252.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.252.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.252.0'")
-    expect(compose).toContain('restaurantos:1.252.0')
+  test('Ž1: verzija 1.253.0 + compose oznaka', () => {
+    expect(APP_VERSION).toBe('1.253.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.253.0'")
+    expect(compose).toContain('restaurantos:1.253.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4038/4038 (+6 rcpt.scan*)', () => {
-    expect(Object.keys(sl).length).toBe(4038)
-    expect(Object.keys(hr).length).toBe(4038)
+  test('Ž2: i18n pariteta SL/HR 4053/4053 (+6 rcpt.scan*)', () => {
+    expect(Object.keys(sl).length).toBe(4053)
+    expect(Object.keys(hr).length).toBe(4053)
   })
 
   test('Ž3: ruta — pravica, obseg, variante, 0 DDL dokaz, 0 novih odvisnosti', () => {
@@ -476,10 +476,10 @@ describe('v1.251.0 Ž — registri in pini', () => {
     expect(doc).toContain('## 25.')
     expect(doc).toContain('Look up checks by scanning the receipt barcode')
     expect(auditDoc).toContain('v1.251.0')
-    expect(auditDoc).toContain('- 4038 ključev SL in 4038 HR')
+    expect(auditDoc).toContain('- 4053 ključev SL in 4053 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.252.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.253.0-odprti-racuni-val')
   })
 })

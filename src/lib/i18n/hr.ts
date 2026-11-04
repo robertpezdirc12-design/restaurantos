@@ -3427,6 +3427,23 @@ export const hr: Record<string, string> = {
   'acct.xzNoPrev': 'Nema podataka prethodnog razdoblja',
   'acct.xzLoadFailed': 'Pregled nije uspio.',
 
+  // ── PRIMERJAVA §27 (v1.253.0) — otvoreni računi u X/Z izvještaju (Square listopad 2026) ──
+  'acct.xzOpenToggle': 'Uključi otvorene račune',
+  'acct.xzOpenHint': 'Još neplaćene narudžbe na stolovima dio su današnjeg prometa (Square listopad 2026). Isključenje pokazuje samo plaćene račune.',
+  'acct.xzOpenBanner': 'Otvoreni računi su uključeni u dnevni promet.',
+  'acct.xzOpenCount': 'Br. otvorenih računa',
+  'acct.xzOpenGross': 'Otvoreni — bruto (s PDV-om)',
+  'acct.xzOpenNet': 'Otvoreni — neto (bez PDV-a)',
+  'acct.xzOpenVat': 'Otvoreni — PDV',
+  'acct.xzOpenTotalGross': 'Ukupno s otvorenima — bruto',
+  'acct.xzOpenTotalNet': 'Ukupno s otvorenima — neto',
+  'acct.xzOpenListTitle': 'Otvoreni računi (najstariji prvi)',
+  'acct.xzOpenEmpty': 'U odabranom razdoblju trenutno nema otvorenih računa.',
+  'acct.xzOpenTable': 'Stol {n}',
+  'acct.xzOpenNoTable': 'Bez stola',
+  'acct.xzOpenMore': '… i još {n} otvorenih',
+  'acct.xzOpenAge': 'Starost otvorenog računa',
+
   // ── OPS-8 val 3 (v1.73.0) — GL dnevnik (orijentacijski) ──
   'gl.title': 'GL dnevnik (orijentacijski)',
   'gl.note': 'Orijentacijski obračun — ne zamjenjuje knjigovođu.',

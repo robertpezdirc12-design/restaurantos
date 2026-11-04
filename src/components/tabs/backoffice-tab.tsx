@@ -16,12 +16,13 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ReferenceLine, Legend, BarChart, Bar,
 } from 'recharts'
-import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download } from 'lucide-react'
+import { Loader2, Plug, RefreshCw, PackageSearch, Clock, Thermometer, Wallet, HeartHandshake, TrendingUp, AlertTriangle, Truck, UtensilsCrossed, Star, Briefcase, Store, MonitorSmartphone, ShieldAlert, Plus, Bell, UserCheck, Trash2, Hourglass, LogIn, LogOut, Coffee, CheckCircle2, XCircle, Timer, CalendarClock, CalendarDays, Percent, Ticket, Pencil, RotateCcw, Building2, Link2, ClipboardList, Database, ChevronDown, Eye, FileUp, Repeat, Zap, Layers, Paperclip, Download, Info } from 'lucide-react'
 import { deltaArrow } from '@/lib/xz-report'
 import { heatClass } from '@/lib/sales-by-hour'
 import { durationLabel } from '@/lib/timeclock'
@@ -558,6 +559,10 @@ interface XzPreviewT {
   avgCheck: number
   avgPartySize: number
   comparison: { prevFrom: string; prevTo: string; prevNetSales: number; prevCovers: number; deltaNetPct: number | null; deltaCoversPct: number | null }
+  /** PRIMERJAVA §27 (v1.253.0) — odprti računi (aditivno; starejši odgovori brez bloka so defenzivno nevidni) */
+  openChecks?: { included: boolean; count: number; gross: number; net: number; vat: number; rows: { orderNumber: number | null; tableNumber: number | null; type: string; total: number; createdAt: string }[] }
+  grossWithOpen?: number
+  netWithOpen?: number
 }
 
 const Row = ({ label, value, sub }: { label: string; value: string; sub?: boolean }) => (
@@ -566,6 +571,26 @@ const Row = ({ label, value, sub }: { label: string; value: string; sub?: boolea
     <span className={sub ? 'text-xs font-medium text-stone-700' : 'font-semibold text-stone-900'}>{value}</span>
   </div>
 )
+
+/* PRIMERJAVA §27 (v1.253.0) — odprti računi v X/Z predogledu: oznake tipov naročila
+   (ponovna uporaba obstoječih order.type.* ključev — surovi DB tipi niso za uporabnika). */
+const ORDER_TYPE_LABELS: Record<string, string> = {
+  'dine-in': 'order.type.DINE_IN',
+  takeaway: 'order.type.TAKEAWAY',
+  delivery: 'order.type.DELIVERY',
+}
+
+/** Starost odprtega računa (od odprtja do izdelave poročila): »37 min« / »2 h 05 min«. */
+function openAgeLabel(createdAt: string, generatedAt: string): string {
+  const from = new Date(createdAt).getTime()
+  const to = new Date(generatedAt).getTime()
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return '—'
+  const mins = Math.floor((to - from) / 60000)
+  if (mins < 60) return `${mins} min`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${h} h ${String(m).padStart(2, '0')} min`
+}
 const DeltaRow = ({ label, pct, t }: { label: string; pct: number | null; t: (key: string, vars?: Record<string, string | number>) => string }) => (
   <div className="flex items-center justify-between gap-3">
     <span className="text-stone-600">{label}</span>
@@ -593,12 +618,16 @@ export function AccountingExportCard() {
   const [xzPreview, setXzPreview] = useState<XzPreviewT | null>(null)
   const [xzBusy, setXzBusy] = useState(false)
   const [xzErr, setXzErr] = useState('')
+  // PRIMERJAVA §27 (v1.253.0) — odprti računi v X/Z poročilu (Square oktober 2026):
+  // privzeto VKLJUČENO (»included by default«), izklop je zavedna odločitev.
+  const [xzOpen, setXzOpen] = useState(true)
 
   async function download(fmt: 'csv' | 'json') {
     setBusy(fmt); setErr('')
     try {
       const token = getToken()
-      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=${fmt}&section=${section}`, {
+      const openQ = section === 'zz' ? `&open=${xzOpen ? '1' : '0'}` : ''
+      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=${fmt}&section=${section}${openQ}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) {
@@ -622,12 +651,12 @@ export function AccountingExportCard() {
     }
   }
 
-  /** OPS-8 val 3 (v1.73.0): X/Z preview dialog (JSON, no download). */
+  /** OPS-8 val 3 (v1.73.0): X/Z preview dialog (JSON, no download). §27: + open=1|0. */
   async function loadXzPreview() {
     setXzBusy(true); setXzErr('')
     try {
       const token = getToken()
-      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=json&section=zz`, {
+      const res = await fetch(`/api/reports/export?from=${from}&to=${to}&format=json&section=zz&open=${xzOpen ? '1' : '0'}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) {
@@ -679,9 +708,24 @@ export function AccountingExportCard() {
             {busy === 'json' ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />} {t('acct.exportJson')}
           </Button>
           {section === 'zz' && (
-            <Button size="sm" variant="outline" className="min-h-10 gap-1.5" disabled={xzBusy || !from || !to} onClick={() => void loadXzPreview()}>
-              {xzBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} {t('acct.preview')}
-            </Button>
+            <>
+              {/* §27: preklop odprtih računov (privzeto vklopljen) ob gumbu Predogled */}
+              <label
+                htmlFor="xz-open-checks"
+                className="flex items-center gap-2 min-h-11 px-1 cursor-pointer select-none"
+                title={t('acct.xzOpenHint')}
+              >
+                <Checkbox
+                  id="xz-open-checks"
+                  checked={xzOpen}
+                  onCheckedChange={(v) => setXzOpen(v === true)}
+                />
+                <span className="text-sm text-stone-700">{t('acct.xzOpenToggle')}</span>
+              </label>
+              <Button size="sm" variant="outline" className="min-h-10 gap-1.5" disabled={xzBusy || !from || !to} onClick={() => void loadXzPreview()}>
+                {xzBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} {t('acct.preview')}
+              </Button>
+            </>
           )}
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
@@ -708,6 +752,49 @@ export function AccountingExportCard() {
                 <Row label={t('acct.xzVoidedTotal')} value={fmtEUR(xzPreview.voidedTotal)} />
                 <Row label={t('acct.xzWaste')} value={fmtEUR(xzPreview.wasteTotal)} />
               </div>
+              {/* PRIMERJAVA §27 (v1.253.0) — ODPRTI RAČUNI (Square oktober 2026): jantrobni
+                  banner + aditivni blok; obstoječe vrstice zgoraj ostanejo izključno
+                  poravnane. Vsota z odprtimi = poudarjena številka dnevnega prometa. */}
+              {xzPreview.openChecks?.included && (
+                <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-2.5">
+                  <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 shrink-0" aria-hidden /> {t('acct.xzOpenBanner')}
+                  </p>
+                  <Row label={t('acct.xzOpenCount')} value={String(xzPreview.openChecks.count)} />
+                  <Row label={t('acct.xzOpenGross')} value={fmtEUR(xzPreview.openChecks.gross)} />
+                  <Row sub label={t('acct.xzOpenNet')} value={fmtEUR(xzPreview.openChecks.net)} />
+                  <Row sub label={t('acct.xzOpenVat')} value={fmtEUR(xzPreview.openChecks.vat)} />
+                  <Row label={t('acct.xzOpenTotalGross')} value={fmtEUR(xzPreview.grossWithOpen ?? xzPreview.grossSales)} />
+                  <Row sub label={t('acct.xzOpenTotalNet')} value={fmtEUR(xzPreview.netWithOpen ?? xzPreview.netSales)} />
+                  {xzPreview.openChecks.rows.length > 0 ? (
+                    <div className="pt-1 space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">{t('acct.xzOpenListTitle')}</p>
+                      {/* dolg seznam: max višina + drsenje (UI disciplina) */}
+                      <div className="max-h-40 overflow-y-auto pr-1 space-y-1" data-region="xz-open-list">
+                        {xzPreview.openChecks.rows.map((r, i) => (
+                          <div key={`${r.orderNumber ?? 'o'}-${i}`} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-stone-700 truncate">
+                              <span className="font-medium">
+                                {r.tableNumber != null ? t('acct.xzOpenTable', { n: r.tableNumber }) : t('acct.xzOpenNoTable')}
+                              </span>
+                              <span className="text-stone-400"> · {t(ORDER_TYPE_LABELS[r.type] || 'order.type.DINE_IN')}</span>
+                            </span>
+                            <span className="font-medium tabular-nums text-stone-800 shrink-0">{fmtEUR(r.total)}</span>
+                            <span className="text-stone-400 tabular-nums shrink-0" title={t('acct.xzOpenAge')}>{openAgeLabel(r.createdAt, xzPreview.generatedAt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {xzPreview.openChecks.count > xzPreview.openChecks.rows.length && (
+                        <p className="text-[11px] text-amber-700">
+                          {t('acct.xzOpenMore', { n: xzPreview.openChecks.count - xzPreview.openChecks.rows.length })}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-700">{t('acct.xzOpenEmpty')}</p>
+                  )}
+                </div>
+              )}
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{t('acct.xzPayments')}</p>
                 {xzPreview.paymentsByMethod.length === 0 ? (

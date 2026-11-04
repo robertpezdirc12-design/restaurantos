@@ -47,7 +47,38 @@ export interface XzReport {
   avgCheck: number
   avgPartySize: number
   comparison: XzComparison
+  /** PRIMERJAVA §27 (v1.253.0) — ODPRTI RAČUNI (Square oktober 2026): aditivni blok
+   * še ne poravnanih naročil (gosti še sedijo na mizah). OBSTOJEČA polja zgoraj
+   * ostanejo IZKLJUČNO poravnana (računi) — odprti so ločeni, da pomen knjigovodskih
+   * polj ne drsi. rows = najstarejših MAX_XZ_OPEN_ROWS za UI seznam (count je pošten). */
+  openChecks: XzOpenChecks
+  /** grossSales + openChecks.gross (ob izklopu = grossSales) */
+  grossWithOpen: number
+  /** netSales + openChecks.net (ob izklopu = netSales) */
+  netWithOpen: number
 }
+
+/** Vrstica odprtega naročila za UI seznam (miza/brez mize, vrsta, znesek, kdaj odprto). */
+export interface XzOpenCheckRow {
+  orderNumber: number | null
+  tableNumber: number | null
+  type: string
+  total: number
+  createdAt: string
+}
+
+/** Odprti računi — aditivni blok X/Z poročila (PRIMERJAVA §27). */
+export interface XzOpenChecks {
+  included: boolean
+  count: number
+  gross: number
+  net: number
+  vat: number
+  rows: XzOpenCheckRow[]
+}
+
+/** Varovalo seznama UI vrstic (najstarejši najprej; count ostane pošten prek agregata). */
+export const MAX_XZ_OPEN_ROWS = 50
 
 export const r2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 /** one decimal, used for percentages */
@@ -105,8 +136,29 @@ export function buildXzReport(input: {
   prevCovers: number
   prevFrom: string
   prevTo: string
+  /** PRIMERJAVA §27 (v1.253.0) — neobvezno: odprti računi (privzeto IZKLOP → ničle). */
+  openChecks?: Partial<XzOpenChecks> | null
 }): XzReport {
   const vatTotal = r2(input.vatByRate.reduce((a, v) => a + v.amount, 0))
+  // §27: defenzivna normalizacija — manjkajoči/nesmiselni vhodi se spognejo v ničle,
+  // rows se poreže na MAX_XZ_OPEN_ROWS, zneski zaokrožijo na cent (r2 disciplina sloja).
+  const oc = input.openChecks || {}
+  const ocIncluded = oc.included === true
+  const ocCount = ocIncluded ? Math.max(0, Math.floor(num2(oc.count))) : 0
+  const ocGross = ocIncluded ? r2(num2(oc.gross)) : 0
+  const ocNet = ocIncluded ? r2(num2(oc.net)) : 0
+  const ocVat = ocIncluded ? r2(num2(oc.vat)) : 0
+  const ocRows = ocIncluded && Array.isArray(oc.rows)
+    ? oc.rows.slice(0, MAX_XZ_OPEN_ROWS).map((r) => ({
+      orderNumber: num2(r?.orderNumber) || null,
+      tableNumber: num2(r?.tableNumber) || null,
+      type: String(r?.type || ''),
+      total: r2(num2(r?.total)),
+      createdAt: String(r?.createdAt || ''),
+    }))
+    : []
+  const grossSales = r2(input.grossSales)
+  const netSales = r2(input.netSales)
   return {
     from: input.from,
     to: input.to,
@@ -131,7 +183,16 @@ export function buildXzReport(input: {
       deltaNetPct: deltaPct(input.netSales, input.prevNetSales),
       deltaCoversPct: deltaPct(input.covers, input.prevCovers),
     },
+    openChecks: { included: ocIncluded, count: ocCount, gross: ocGross, net: ocNet, vat: ocVat, rows: ocRows },
+    grossWithOpen: r2(grossSales + ocGross),
+    netWithOpen: r2(netSales + ocNet),
   }
+}
+
+/** §27 — defenzivna pretvorba neznanega števila (null/NaN/negativno → 0). */
+function num2(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : 0
 }
 
 /** Delta arrow for the preview dialog: ▲ / ▼ / · (emerald / rose / muted handled by UI). */
