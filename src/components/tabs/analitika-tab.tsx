@@ -16,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ReferenceLine, Legend,
 } from 'recharts'
-import { Loader2, RefreshCw, TrendingUp, CheckCircle2, Timer, Database, ChevronDown, Scale, Download, AlertTriangle, Users } from 'lucide-react'
+import { Loader2, RefreshCw, TrendingUp, CheckCircle2, Timer, Database, ChevronDown, Scale, Download, AlertTriangle, Users, Hourglass, Gauge } from 'lucide-react'
 
 /* ─────────────── OPS-8 v1.71.0 — MENU ENGINEERING (Kasavana-Smith) ─────────────── */
 
@@ -1312,6 +1312,268 @@ export function StaffPerformanceCard() {
               </table>
             </div>
             <p className="text-xs text-stone-400">{t('sp.desc')}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ─────────────── v1.250.0 — TEMPO VPOGLEDI (mize + servisne luknje) ───────────────
+   PRIMERJAVA-VMESNIKOV-2026 §24 (TEMPO INSIGHTS VAL; Lightspeed junij 2026
+   Tempo »service insights«: »tables with the most empty time and orders with
+   the longest service gaps«): dopolnilo KDS statistikam (postavka/postaja) —
+   ta kartica gleda MIZO/NAROČILO end-to-end. Vir: GET /api/reports/tempo
+   (čista agregacija lib/tempo-insights, 0 DDL). */
+
+interface TempoTableRowUi {
+  tableId: string
+  label: string
+  locationName: string
+  orders: number
+  serviceMin: number
+  occupiedMin: number
+  emptyMin: number
+  utilization: number
+  avgTurnMin: number | null
+  revenue: number
+}
+interface TempoGapRowUi {
+  orderId: string
+  orderNumber: number
+  tableLabel: string | null
+  waiter: string
+  createdAt: number
+  paidAt: number | null
+  entryToFireMin: number | null
+  firstReadyMin: number | null
+  fullServiceMin: number | null
+  turnMin: number | null
+}
+interface TempoResp {
+  periodDays: number
+  since: string
+  generatedAt: string
+  tables: TempoTableRowUi[]
+  gaps: {
+    rows: TempoGapRowUi[]
+    stats: {
+      orders: number
+      measured: number
+      unknownReady: number
+      medianFullServiceMin: number | null
+      medianFirstReadyMin: number | null
+      medianEntryToFireMin: number | null
+      medianTurnMin: number | null
+    }
+  }
+}
+
+
+
+/** Minute (nullable) → »1 h 23 min« / »45 min« / »—« (tempo kartica; obstoječi
+ *  fmtMin zgoraj je KDS statistika in ne nosi null vrednosti). */
+function fmtTempoMin(min: number | null | undefined): string {
+  if (min == null || !Number.isFinite(min)) return '—'
+  const m = Math.round(min)
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  return rest === 0 ? `${h} h` : `${h} h ${rest} min`
+}
+
+export function TempoInsightsCard() {
+  const { t } = useI18n()
+  const [days, setDays] = useState<'7' | '30' | '90'>('7')
+  const [data, setData] = useState<TempoResp | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setBusy(true)
+      setErr('')
+      try {
+        const d = await api<TempoResp>(`/api/reports/tempo?days=${days}`)
+        if (alive) setData(d)
+      } catch (e) {
+        if (alive) setErr(String((e as Error).message || e))
+      } finally {
+        if (alive) setBusy(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [days, reload])
+
+  const exportCsv = () => {
+    if (!data) return
+    const rows: (string | number | null)[][] = [
+      [t('tempo.tablesTitle')],
+      [t('tempo.th.table'), t('tempo.th.empty'), t('tempo.th.util') + ' (%)', t('tempo.th.orders'), t('tempo.th.turn') + ' (min)', t('tempo.th.revenue')],
+      ...data.tables.map((r) => [
+        r.locationName ? `${r.label} (${r.locationName})` : r.label,
+        Math.round(r.emptyMin), Math.round(r.utilization * 100), r.orders,
+        r.avgTurnMin == null ? '—' : Math.round(r.avgTurnMin), r.revenue.toFixed(2),
+      ]),
+      [],
+      [t('tempo.gapsTitle')],
+      [t('tempo.order'), t('tempo.th.table'), t('urnik.employee'), t('tempo.gap.full') + ' (min)', t('tempo.gap.first') + ' (min)', t('tempo.gap.entry') + ' (min)', t('tempo.gap.turn') + ' (min)'],
+      ...data.gaps.rows.map((r) => [
+        r.orderNumber, r.tableLabel ?? t('tempo.noTable'), r.waiter || '—',
+        r.fullServiceMin == null ? '—' : Math.round(r.fullServiceMin),
+        r.firstReadyMin == null ? '—' : Math.round(r.firstReadyMin),
+        r.entryToFireMin == null ? '—' : Math.round(r.entryToFireMin),
+        r.turnMin == null ? '—' : Math.round(r.turnMin),
+      ]),
+    ]
+    downloadCSV(`tempo-vpogledi-${days}dni.csv`, rows)
+  }
+
+  const tables = data?.tables ?? []
+  const hasService = tables.some((r) => r.serviceMin > 0)
+  const gaps = data?.gaps
+  const gapRows = gaps?.rows ?? []
+  const stats = gaps?.stats
+
+  return (
+    <Card data-region="tempo-insights-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-1.5"><Hourglass className="w-4 h-4" /> {t('tempo.title')}</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-stone-500">{t('tempo.desc')}</p>
+          <div className="flex items-center gap-2">
+            <Select value={days} onValueChange={(v) => setDays(v as '7' | '30' | '90')}>
+              <SelectTrigger className="h-8 w-28" aria-label={t('me.period')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">{t('sp.days7')}</SelectItem>
+                <SelectItem value="30">{t('me.days30')}</SelectItem>
+                <SelectItem value="90">{t('me.days90')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)}>
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </Button>
+            {data && gapRows.length > 0 && (
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={exportCsv}>
+                <Download className="w-3.5 h-3.5" /> CSV
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
+        {!err && busy && !data && <Skeleton className="h-24 w-full" />}
+
+        {!err && data && (
+          <>
+            {/* 1) MIZE Z NAJVEČ PRAZNIM ČASOM */}
+            <section aria-label={t('tempo.tablesTitle')}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Gauge className="w-4 h-4 text-stone-500" />
+                <h3 className="text-sm font-semibold">{t('tempo.tablesTitle')}</h3>
+              </div>
+              <p className="text-xs text-stone-400 mb-2">{t('tempo.tablesInfo')}</p>
+              {tables.length === 0 && <p className="text-sm text-stone-500">{t('tempo.noTables')}</p>}
+              {tables.length > 0 && !hasService && <p className="text-sm text-stone-500">{t('tempo.noService')}</p>}
+              {tables.length > 0 && hasService && (
+                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b text-left text-xs text-stone-500">
+                        <th className="py-2 pr-2 font-medium">{t('tempo.th.table')}</th>
+                        <th className="py-2 pr-2 font-medium text-right">{t('tempo.th.empty')}</th>
+                        <th className="py-2 pr-2 font-medium text-right">{t('tempo.th.util')}</th>
+                        <th className="py-2 pr-2 font-medium text-right">{t('tempo.th.orders')}</th>
+                        <th className="py-2 pr-2 font-medium text-right">{t('tempo.th.turn')}</th>
+                        <th className="py-2 pr-2 font-medium text-right">{t('tempo.th.revenue')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tables.map((r) => (
+                        <tr key={r.tableId} data-region="tempo-table-row" className="border-b border-stone-100 last:border-0">
+                          <td className="py-2 pr-2 font-medium">
+                            {r.label}
+                            {r.locationName && <span className="ml-1 text-xs text-stone-400">({r.locationName})</span>}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.serviceMin > 0 ? fmtTempoMin(r.emptyMin) : '—'}</td>
+                          <td className="py-2 pr-2 text-right tabular-nums">
+                            <span className="flex items-center justify-end gap-2">
+                              <span className="hidden sm:block h-1.5 w-16 rounded-full bg-stone-100 overflow-hidden" aria-hidden>
+                                <span
+                                  className={`block h-full rounded-full ${r.utilization >= 0.6 ? 'bg-emerald-600' : r.utilization >= 0.25 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                  style={{ width: `${Math.round(r.utilization * 100)}%` }}
+                                />
+                              </span>
+                              {r.serviceMin > 0 ? `${Math.round(r.utilization * 100)} %` : '—'}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.orders}</td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{fmtTempoMin(r.avgTurnMin)}</td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.revenue > 0 ? fmtEUR(r.revenue) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* 2) NAJDALJŠE SERVISNE LUKNJE */}
+            <section aria-label={t('tempo.gapsTitle')}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Timer className="w-4 h-4 text-stone-500" />
+                <h3 className="text-sm font-semibold">{t('tempo.gapsTitle')}</h3>
+              </div>
+              <p className="text-xs text-stone-400 mb-2">{t('tempo.gapsInfo')}</p>
+              {(stats?.orders ?? 0) === 0 && <p className="text-sm text-stone-500">{t('tempo.empty')}</p>}
+              {(stats?.orders ?? 0) > 0 && (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+                    <div className="rounded-lg border border-stone-200 p-2.5" data-region="tempo-stat">
+                      <p className="text-xs text-stone-500">{t('tempo.stat.medianFull')}</p>
+                      <p className="text-lg font-bold tabular-nums">{fmtTempoMin(stats?.medianFullServiceMin ?? null)}</p>
+                    </div>
+                    <div className="rounded-lg border border-stone-200 p-2.5">
+                      <p className="text-xs text-stone-500">{t('tempo.stat.medianTurn')}</p>
+                      <p className="text-lg font-bold tabular-nums">{fmtTempoMin(stats?.medianTurnMin ?? null)}</p>
+                    </div>
+                    <div className="rounded-lg border border-stone-200 p-2.5">
+                      <p className="text-xs text-stone-500">{t('tempo.stat.measured')}</p>
+                      <p className="text-lg font-bold tabular-nums">{stats?.measured ?? 0}<span className="text-xs font-normal text-stone-400"> / {stats?.orders ?? 0}</span></p>
+                    </div>
+                    <div className="rounded-lg border border-stone-200 p-2.5">
+                      <p className="text-xs text-stone-500">{t('tempo.stat.unknown')}</p>
+                      <p className="text-lg font-bold tabular-nums">{stats?.unknownReady ?? 0}</p>
+                    </div>
+                  </div>
+                  {gapRows.length === 0 && <p className="text-sm text-stone-500">{t('tempo.noMeasured')}</p>}
+                  {gapRows.length > 0 && (
+                    <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                      {gapRows.map((r) => (
+                        <div key={r.orderId} data-region="tempo-gap-row" className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {t('tempo.order')} #{r.orderNumber} · {r.tableLabel ?? t('tempo.noTable')}
+                              {r.waiter && <span className="font-normal text-stone-500"> · {r.waiter}</span>}
+                            </p>
+                            <p className="text-xs text-stone-500">
+                              {t('tempo.gap.first')}: {fmtTempoMin(r.firstReadyMin)} · {t('tempo.gap.entry')}: {fmtTempoMin(r.entryToFireMin)} · {t('tempo.gap.turn')}: {fmtTempoMin(r.turnMin)}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-base font-bold tabular-nums" title={t('tempo.gap.full')}>{fmtTempoMin(r.fullServiceMin)}</p>
+                            <p className="text-xs text-stone-400">{t('tempo.gap.full')}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
           </>
         )}
       </CardContent>

@@ -106,7 +106,7 @@ import { composeItemNote } from '@/lib/preset-notes'
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, OpravilaTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, PresetNotesCard, StaffPerformanceCard, SavedViewsCard,
+  InventoryTab, ShiftsTab, HaccpTab, OpravilaTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, PresetNotesCard, StaffPerformanceCard, SavedViewsCard, TempoInsightsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -3452,6 +3452,12 @@ function DashboardInner() {
                 naročila, prihodek, povprečje, napitnine, delež; lazy fetch,
                 ista pravica kot ostala prodajna poročila (reports.sales). */}
             {hasPerm('reports.sales') && <StaffPerformanceCard />}
+            {/* v1.250.0 (PRIMERJAVA §24 — TEMPO INSIGHTS VAL; Lightspeed junij
+                2026 Tempo »service insights«): mize z največ praznim časom +
+                najdaljše servisne luknje — lazy fetch, ista pravica kot ostala
+                prodajna poročila (reports.sales); dopolnilo KDS statistikam
+                (postavka/postaja → miza/naročilo end-to-end). */}
+            {hasPerm('reports.sales') && <TempoInsightsCard />}
             {/* Issue #10 (v1.117.0) — Strošek dela in pokritost izmen: načrtovano vs.
                 dejansko + urna matrika + napoved pokritosti (isti 'pregled' blok kot
                 LaborCostCard — backend varuje reports.view; lazy fetch ko je vidna). */}

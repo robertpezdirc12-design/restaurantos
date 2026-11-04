@@ -1751,3 +1751,98 @@ posnetku računa. 0 DDL (mrtva shramba modifiersJson + aditivni ključ v
 itemsJson), 0 novih odvisnosti. Naslednji val: Tempo insights (junij P2 —
 deterministična izpeljava iz Order.createdAt→paidAt po mizah), sveža
 raziskava julij–november 2026 ali B-odločitve lastnika.
+
+## 24. Raziskava november 2026 — TEMPO VAL v1.250.0 (tempo vpogledi: prazni čas miz + servisne luknje)
+
+Odložena točka §22 D in sklep §23 (»naslednji val: Tempo insights —
+deterministična izpeljava iz Order.createdAt→paidAt po mizah«). Lightspeed
+junij 2026 Tempo »service insights«: »tables with the most empty time and
+orders with the longest service gaps« — dve merili, obe čisto bralna, obe
+nad ŽE OBSTOJEČIMI časovnimi žigi (0 DDL, 0 novih odvisnosti).
+
+### A) Izmera pred valom
+
+**Kako ima RestaurantOS (v1.249.0):** KDS statistike (v1.76/1.77) merijo
+POSTAVKO/POSTAJO — prepMin = firedAt→readyAt po artiklu in postaji, z
+toplotno mrežo po polurnah. A vodja, ki odloča o TLORISU in pokritosti
+dvorane, nima odgovorov na dve PRAVO vprašanji gostilne: katera miza stoji
+prazna med odprtimi urami (kapaciteta, ki ne zasluži), in katera naročila
+so čakala najdlje, da je bilo VSE krožnikov zunaj (celotna strežba, ne
+posamezen listek). Podatki so bili tam od nekdaj — Order.createdAt/paidAt/
+cancelledAt + OrderItem.firedAt/readyAt + OpeningHours/SpecialOpeningDay —
+manjkal je samo pogled.
+
+**Kako imajo najboljši (Lightspeed Tempo, junij 2026):** servisni vpogledi
+»tables with the most empty time and orders with the longest service gaps«
+— dining room efficiency iz obstoječih podatkov, brez novih vnosov osebja.
+
+### B) Prazni čas miz (dvorana)
+
+- **ODPRTE URE = merilo praznega:** spani tedenskih vrstic + posebnih dni
+  lokacije (prednost lastne vrstice pred org null — isti padec kot
+  rezervacijski widget), v LOKALNEM pasu lokacije (Location.timezone,
+  prazna → Europe/Ljubljana), DST-varno (dvostopenjski ugib — pomladni
+  prehod 01:00–05:00 traja 3 h, jesenski 5 h). ODMIK KOSILA ni odprta ura
+  (dan z odmikom da DVA spana; gost, ki sedi čez odmik, ne naredi mizo
+  »nezasedeno«, ampak odmik se NE ŠTEJE v odprte ure — prazno čez odmik ne
+  obstaja). Vsi spani prirezani na okno [since, now].
+- **ZESEDENOST = fizična resnica:** UNIJA intervalov naročil na mizi
+  (prekrivanja se ne seštevajo dvakrat — zaporedna naročila istega večera).
+  Plačano: createdAt→paidAt · preklicano: createdAt→cancelledAt (tudi
+  preklic je BLOKIRAL mizo — prihodek 0, čas pa je šel) · odprto:
+  createdAt→meja okna (gostje še sedijo). Naročila brez mize (dostava/ponos)
+  v tem delu ne sodelujejo — mize ne zasedejo.
+- **VRSTICA PO MIZI:** serviceMin, occupiedMin, emptyMin = max(0,
+  serviceMin − occupiedMin), utilization = min(1, occupied/service),
+  orders (plačana + odprta — preklicana se ne štejejo kot strežena),
+  avgTurnMin (povprečen obrat PLAČANIH), revenue (plačana). Razvrščeno
+  padajoče po praznem — MIZA, KI JE NISO NIKOLI ODPRLI, JE NAJPRAZNEJŠA
+  (registr vseh miz obsega, tudi nikoli uporabljenih). Miza brez odprtih ur
+  ostane v seznamu s serviceMin 0 (iskreno, ne tiho skrita).
+
+### C) Servisne luknje (naročila)
+
+- **Disciplina plačanih** (ista kot staff-performance/sales-by-hour):
+  naročila z paidAt ≥ since — poročilo je za PREGLED preteklosti; živo
+  dogajanje pokriva KDS plošča.
+- **ŠTIRI METRIKE po naročilu:** vnos→pošiljanje (min firedAt − createdAt —
+  zamuda, preden kuhinja sploh vidi naročilo), prvi krožnik (min readyAt —
+  prvi dokaz strežbe), CELOTNA strežba (max readyAt − createdAt — prava
+  luknja: kdaj je imel gost VSE), obrat mize (paidAt − createdAt).
+  Preklicane postavke ne štejejo; negativni čas (urona nesreča) se prižge
+  na 0 (vzorec kds-stats prepMinutes).
+- **ISKRENA MEJA unknownReady:** plačano naročilo brez katere koli
+  pripravljene postavke (ročno plačano, brez KDS poti) NI tiho zlito v
+  mediane — šteje se ločeno; mediana teče po IZMERJENIH vrednostih vsake
+  metrike posebej. Top 10 padajoče po celotni strežbi, izenačena → nižja
+  številka naročila naprej (stabilno).
+
+### D) Implementacija (enaka arhitektura kot staff-performance)
+
+- **ČISTA PLAST src/lib/tempo-insights.ts (0 uvozov):** vzorci → vrstice +
+  statistike, testabilno brez baze (vzorec sales-by-hour/staff-performance).
+  Časovni pas je samoizrojena ista tehnika kot haccp-ops (Intl, DST-varno)
+  — uvoz od tam bi v čisto plast vpleten db graf; ~30 vrstic izrojenega
+  časa, dokumentiranega in pokritega s testi (oba DST prehoda 2026).
+- **RUTA GET /api/reports/tempo?days=7:** reports.sales + locationScope
+  (centralne vloge = cela organizacija — mize nosijo ime lokacije v
+  oklepaju, osebje = lastna). take-varovala 500/1000/5000/50000/200000.
+- **UI TempoInsightsCard** (Analitika → Pregled, tik za učinkovitostjo
+  natakarjev, gating reports.sales, lazy fetch): tabela miz s trakom
+  zasedenosti (emerald ≥ 60 %, amber ≥ 25 %, rose pod) + top naročja z
+  vsemi štirimi metrikami + štiri statistične kartice (mediana celotne
+  strežbe, mediana obrata, izmerjeno naročil, brez žiga priprave) + CSV
+  izvoz + iskrena prazna stanja (ni miz / ni odprtih ur / ni naročil /
+  nobeno naročilo nima žiga). Dopolnilo KDS statistikam (postavka/postaja
+  → miza/naročilo end-to-end), ne podvajanje.
+- **i18n:** +26 ključev tempo.* v vsakem slovarju (4002 → 4028; pariteta
+  SL/HR ohranjena, EN/DE/IT gostujoči nedotaknjeni).
+
+**Sklep §24:** vodja zdaj vidi, katera miza stoji prazna med odprtimi urami
+in katera naročila so čakala najdlje do popolne strežbe — dve merili
+Lightspeed Tempa, izpeljani deterministično iz obstoječih časovnih žigov
+(odpiralne ure v lokalnem pasu z DST-robno pretvorbo, unija zasedenosti,
+mediane po izmerjenih), 0 DDL, 0 novih odvisnosti. Naslednji val: sveža
+raziskava julij–november 2026 (Toast Fall 2026 objave), Full Profile
+Discount (B — cenovna politika lastnika) ali B-odločitve (WhatsApp
+transport, OSS-8 SMTP) po »nadaljuj«.

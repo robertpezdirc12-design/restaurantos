@@ -229,7 +229,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // obeh rut; plošča je requireAuth, predloge settings.manage) → 81
     // v1.247.0 (PRIMERJAVA §21): reports/views GET+PUT (shranjeni pogledi poročil —
     // Issue #96 fallback v resolveViewsLocation) → 82
-    expect(wired.length).toBe(83)
+    // v1.250.0 (PRIMERJAVA §24): reports/tempo GET (tempo vpogledi — prazni čas
+    // miz in servisne luknje naročil v uporabnikovem obsegu, await locationScope) → 84
+    expect(wired.length).toBe(84)
   })
 })
 
