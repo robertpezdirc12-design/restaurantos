@@ -161,6 +161,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     expect(stale).toEqual([])
   })
 
+  // STREŽNI VAL v1.248.0 (§22 B): preset-notes GET (registr prednastavljenih
+  // opomb — branje v uporabnikovem obsegu, Issue #96 fallback na aktivno
+  // lokacijo) → 83
   it('codemod je dejansko potrdil ≥ 20 rut z await locationScope', () => {
     const routes = walkRoutes(join(process.cwd(), 'src/app/api'))
     const wired = routes.filter((f) => readFileSync(f, 'utf8').includes('await locationScope('))
@@ -226,7 +229,7 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // obeh rut; plošča je requireAuth, predloge settings.manage) → 81
     // v1.247.0 (PRIMERJAVA §21): reports/views GET+PUT (shranjeni pogledi poročil —
     // Issue #96 fallback v resolveViewsLocation) → 82
-    expect(wired.length).toBe(82)
+    expect(wired.length).toBe(83)
   })
 })
 

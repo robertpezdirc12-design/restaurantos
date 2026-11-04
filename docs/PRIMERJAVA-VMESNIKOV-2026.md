@@ -1528,3 +1528,143 @@ scope) ostanejo nespremenjena.
 klikom, obdobje pa se reši sveže ob vsakem zagonu — datoteka, ki jo
 knjigovodja čaka, ni več štirikrožni ritual. Naslednji val: sveža
 raziskava (maj/junij 2027 objave) ali globlje rezanje po B-načrtu.
+
+## 22. Raziskava maj/junij 2026 — STREŽNI VAL v1.248.0 (dodelitve, opombe, povzetki opravil)
+
+Viri: Lightspeed »What's New: May 2026 — Faster menu updates, easier
+bookings, automatic table assignments« in »What's New: June 2026 — Service
+insights, promotions, task summary emails« (k-series-support.lightspeedhq.
+com, prebrano 4. 11. 2026). Metodologija nespremenjena: vsako točko najprej
+IZMERIMO proti kodi (vzorec §11–§21) — kar že imamo, zapišemo kot imamo;
+kar manjka, ocenimo po razredu (A koda / B odločitev / C mreža).
+
+### A) Samodejna dodelitev mize spletnim rezervacijam (P1)
+
+Lightspeed maj 2026: »automatic table assignments that assign a suitable
+table to a new online booking based on guest count. On the POS, staff can
+simply accept, change or skip the suggestion. There's no setup required.«
+
+Izmerjeno: v1.231.0 je prinesla avtododelitev kot GUMB v internem
+rezervacijskem dialogu (autoAssignTable → seatCandidatesForParty — najmanjša
+ustrezna miza ali registrirana kombinacija, brez prekrivanja z AKTIVNIMI
+rezervacijami). JAVNA pot (/api/public/reservations, widget) pa ustvari
+rezervacijo BREZ mize — notes: 'Spletna rezervacija', tableId: null. Vsako
+jutro osebje ročno razdeljuje mize spletnim gostom.
+
+Popravek: STREŽNIŠKA dodelitev v javni poti — po zaklepu kapacitete
+(lockReservationCapacity) in opravljenih validacijah (termin, kapaciteta,
+pacing) isti čisti kandidatni motor izbere mizo: enojne mize + registrirane
+kombinacije, sedežev ≥ oseb, najmanjša zmaga, izključene walk-in mize
+(resv-bookable-config) ne sodelujejo, prekrivanje štejemo proti vsem
+AKTIVNIM rezervacijam dneva (CONFIRMED/SEATED/COMPLETED zavirajo — isti
+CLAIM_BLOCKING_STATUSES kot v1.240.0). Nobena miza ne ustreza → rezervacija
+ustvarjena BREZ mize (iskrena rezerva — osebje dodeli ročno, kot pri
+Lightspeed »skip«); avtododelitev je POMOČ, ne obveza (v1.231 načelo).
+Revizija GUEST_RESERVATION_CREATED nosi dodeljeno mizo; dashboard že prikazuje
+tableId v rezervacijski vrstici — sprememba/odvzem sta obstoječi interakciji.
+
+### B) Prednastavljene opombe za kuhinjo (P1)
+
+Lightspeed maj 2026 (»preset notes«): »Create reusable notes in the Back Office to save time,
+reduce errors and keep kitchen instructions consistent. You can also reorder
+notes and choose whether they print on the order ticket, plus staff can still
+add ad-hoc notes at POS.«
+
+Izmerjeno: CELA cev obstaja razen vnosa — createOrderCore sprejema
+`note` per postavka (OrderItem.notes), KDS listek kaže »ℹ opomba«, postajni
+nalogi nosijo opombo v detailu, kuhinjski/bar list tiska »opomba: …«, POS
+urejevalnik pokaže opombo pošiljanja. A v košaricah (novo naročilo mize,
+hitra prodaja, urejevalnik) NI vnosa opombe — edina pot je bila QR gost
+(specialRequests naročila, ne postavke). Registr prednastavljenih opomb ne
+obstaja nikjer.
+
+Popravek v dveh plasteh: (1) REGISTR — Integration vrstica
+`preset-notes-config` per lokacija (0 DDL, vzorec ops-checklists) z
+validacijo (≤ 20 opomb, oznaka ≤ 60, vrstni red, aktiven/streljalna
+zastavica ne — enostavno: id/label/sortOrder) + GET/PUT /api/preset-notes
+(branje = vsa prijavljena osebja, pisanje = menu.manage — kuhinjska navodila
+so domeno upravitelja menija, kot pri Lightspeed Back Office > Menu >
+Production instructions) + revizija PRESET_NOTES_CONFIG + kartica v zavihku
+Meni poleg Skupin opcij. (2) POS VNOS — skupni dialog po vzorcu variantPick
+(mode cart/sale/sheet): čipi prednastavljenih opomb (večizbirno) + prosto
+besedilo; sestavljena opomba = izbrane oznake + besedilo, shranjena per
+vrstica košarice; ob oddaji gre v items[].note (obstoječa validacija —
+dolžina omejena strežniško pri zapisu). ISKRENA MEJA (zavestno preprosteje
+kot Lightspeed): ena opomba per vrstica, ki gre VEDNO na KDS in na tisk —
+per-note stikalo tiska je Back Office niansa, ki bi zahtevala shranjevanje
+zastavice skupaj z besedilom na postavki; naša opomba je ena resnica, ki jo
+kuhinja vidi povsod (KDS zaslon + listek), kar je prav tisto, kar
+»keep kitchen instructions consistent« zahteva.
+
+### C) Povzetki opravil po e-pošti + končni datumi razporedov (P1)
+
+Lightspeed junij 2026: »Stay on top of operational compliance with new daily
+and weekly Tasks summary emails … checklist completion rates by location« in
+»Create recurring tasks on a bi-weekly, monthly, quarterly, bi-annual, or
+yearly basis, add optional end dates, and preview upcoming due dates.«
+
+Izmerjeno: v1.246.0 je prinesla VSEH sedem pogostosti (daily/weekly/
+biweekly/every4weeks/monthly/quarterly/semiannual) + anchorDate — pogostosti
+iz junij 2026 objave smo pokrili PRED raziskavo (raziskava marec 2026 je
+navajala »daily/weekly/monthly«, junij dodal ostale). MANJKA: (a) končni
+datum predloge (sezsonski seznam — »terasa poleti« bi moral nehateti
+samodejno), (b) dnevni/tedenski povzetek izpolnjenosti po e-pošti — digest
+(v1.206.0) ima sekcije top artiklov/urno/zapadle obveznosti, ne opravil.
+
+Popravek: (a) validUntil na predlogi (datum ključ YYYY-MM-DD; motor
+checklistOccurrenceForDate po njem ne vrne termina; urejevalnik + stroga
+validacija + defenzivno branje — neveljaven zapis se bere kot null, ne
+izpusti predloge); (b) sekcija »Opravila« v dnevnem digestu (aditivna —
+absent/empty → brez sekcije, izhod za stare vnose byte-identičen, vzorec
+hourlyBuckets v1.206.0): za vsako AKTIVNO predlogo s terminom v dnevu
+digesta vrstica » ime — pokritost n/N oz. ZAKLJUČENO«, po lokacijah; (c)
+TEDENSKI povzetek (ponedelki — isti cron, lasten reportType TASK_WEEKLY +
+ScheduledEmailLog varovalka že_poslano): izpolnjenost po predlogah za
+prejšnji ISO teden (pojavitve × zaključki × povprečna pokritost). Prejemniki
+= obstoječi SMTP profil digesta (emailReportRecipients cc) — Lightspeedov
+izbor prejemnikov per lokacija je nadgradnja, ki bi zahtevala DDL
+(EmployeeIntegration želenih prejemnikov); pošteno zapisano kot meja.
+
+### D) Druge točke raziskave maj/junij 2026 (ocena — naslednji valovi)
+
+- **Popravek cene postavke na POS** (junij, P2): »Authorized staff can now
+  override an item's price directly on the POS during an active order.«
+  Denarna pot — FURS račun nosi ceno, vsak poseg zahteva pravico + revizijo +
+  žig na izstavku. Zavestno ODLOŽENO v lastni val (R-numera denarne celice,
+  vzorec §15/§16 discipline), ne tiho.
+- **Tempo service insights** (junij, P2): »tables with the most empty time
+  and orders with the longest service gaps« — deterministična izpeljava iz
+  obstoječih podatkov (Order.createdAt→paidAt po mizah); kandidat za
+  analitični val.
+- **Full Profile Discount** (junij, P2/B): »menu-wide discounts in Order
+  Anywhere … percentage discount across an entire menu« — cenovna strategija
+  javne površine (mi imamo kupone gostov); odločitev o cenovni politiki je
+  lastnikova (B), mehanika pa bi šla čez obstoječi coupons/display-promos.
+- **Resend gift card email** (maj, B): pri nas darilna kartica NIMA e-poštne
+  dostave (izdaja osebja na pultu) — resend predpostavlja tok, ki ga ni;
+  uvajanje e-dostave kartic je ločena (B) odločitev.
+- **Reprint orders** (maj, P2): ponatis kuhinjskega/bar lista obstaja
+  (buildKitchenTicketLines + printKitchenTicket na postajah); Lightspeedova
+  razširitev na ZAPRTA naročila + izbira produkcijskih središč je kandidat
+  za KDS val.
+- **Reserve with Google** (maj, C-mreža): rezervacije čez Google Search/Maps
+  zahtevajo partnerstvo Google Business — zunaj lokalne izvedljivosti
+  (enak razred kot OSS-12).
+- **Prostobesedilni alergeni** (maj, B-zavestno): naš katalog je uradni EU
+  seznam (issue #7 »allergen truth« — kode, ne svobodno besedilo); Lightspeed
+  dopušča free-text. Naša rigoroznost je ZAVESTNA odločitev (katalog =
+  zavezljiva, strojno berljiva resnica), ne vrzel.
+- **KDS zoom listkov** (junij, P3): gostota compact/normal že obstaja
+  (ro_kds_density, issue #69); zvezna skala je kozmetika.
+- **Order Anywhere Menu Upsells** (maj — ŽE IMAMO): kiosk-upsell (»Dodaj še«)
+  pokriva priporočilo top artiklov; Lightspeedov prag 150 naročil/21 dni je
+  njihova hevristika za samodejni izbor — naš UpsellCard ima ročni izbor
+  (menu.manage), ki je iskrenejši za malo gostilno.
+
+**Sklep §22:** spletna rezervacija prispe z mizo, kuhinja dobi dosledne
+opombe iz enega registra, vodja pa zjutraj v pošti vidi, kateri seznami so
+zaključeni — trije ročni rituali iz vsakdanjega obrata so odstranjeni, vsi
+trije nad obstoječimi motorji (kandidati miz, cev opomb, ChecklistRun),
+0 DDL, 0 novih odvisnosti. Naslednji val: cena postavke na POS (denarna
+celica nadaljevanje), Tempo insights ali sveža raziskava (julij–november
+2026 objave).

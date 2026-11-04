@@ -51,6 +51,8 @@ interface ChecklistTemplateT {
   weekday: number | null
   monthDay: number | null
   anchorDate: string
+  /** §22 C — končni datum (null/'' = brez konca). */
+  validUntil: string | null
   dueTime: string
   active: boolean
   items: ChecklistItemT[]
@@ -212,6 +214,7 @@ export function OpravilaTab() {
       weekday: 1,
       monthDay: 1,
       anchorDate: todayKey(),
+      validUntil: null,
       dueTime: '09:00',
       active: true,
       items: [{ id: `it-${Date.now().toString(36)}`, label: '', response: 'check' }],
@@ -559,6 +562,20 @@ export function OpravilaTab() {
                           <Input id="opv-anchor" type="date" value={draft.anchorDate} onChange={(e) => setDraft({ ...draft, anchorDate: e.target.value })} />
                         </div>
                       )}
+                      {/* §22 C (raziskava junij 2026 »optional end dates«): sezonski
+                          seznam preneha rojevati termine po tem datumu; prazno = brez konca. */}
+                      <div className="space-y-1.5">
+                        <Label htmlFor="opv-until" className="text-sm">{t('opv.validUntil')}</Label>
+                        <Input
+                          id="opv-until"
+                          type="date"
+                          value={draft.validUntil ?? ''}
+                          onChange={(e) => setDraft({ ...draft, validUntil: e.target.value || null })}
+                        />
+                        {draft.validUntil && (
+                          <p className="text-xs text-stone-500">{t('opv.validUntilHint')}</p>
+                        )}
+                      </div>
                       <div className="flex items-center justify-between gap-4">
                         <Label htmlFor="opv-active" className="text-sm">{t('opv.active')}</Label>
                         <Switch id="opv-active" checked={draft.active} onCheckedChange={(v) => setDraft({ ...draft, active: v })} />

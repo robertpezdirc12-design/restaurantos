@@ -105,6 +105,12 @@ export interface ChecklistTemplate {
   monthDay: number | null
   /** YYYY-MM-DD — prvi dan obveznosti (Lightspeed »start date«) + faza za večtedenske/mesečne. */
   anchorDate: string
+  /**
+   * STREŽNI VAL v1.248.0 (§22 C — Lightspeed junij 2026 »optional end dates«):
+   * YYYY-MM-DD zadnji veljavni dan termina (null = brez konca). Sezsonski
+   * seznam (»terasa poleti«) po tem datumu ne rojeva več terminov.
+   */
+  validUntil: string | null
   /** HH:MM — rok izvedbe v lokalnem pasu. */
   dueTime: string
   active: boolean
@@ -207,6 +213,9 @@ export function parseChecklistTemplates(raw: unknown): ChecklistTemplate[] {
       monthDay:
         monthDayRaw !== null && Number.isInteger(monthDayRaw) && monthDayRaw >= 1 && monthDayRaw <= 28 ? monthDayRaw : null,
       anchorDate: isValidDateKey(row.anchorDate) ? row.anchorDate : '',
+      // §22 C — defenzivno: neveljaven končni datum se bere kot ODSOTEN
+      // (predloga ostane živa), ne izpusti predloge
+      validUntil: isValidDateKey(row.validUntil) ? (row.validUntil as string) : null,
       dueTime: isValidDueTime(row.dueTime ?? '') ? (row.dueTime as string) : '09:00',
       active: row.active === undefined ? true : Boolean(row.active),
       items: items.slice(0, 40),
@@ -257,6 +266,8 @@ export interface ChecklistScheduleFields {
   weekday: number | null
   monthDay: number | null
   anchorDate: string
+  /** §22 C: zadnji veljavni dan termina (null = brez konca). */
+  validUntil?: string | null
   dueTime: string
 }
 
@@ -314,6 +325,9 @@ export function checklistOccurrenceForDate(
   const anchor = localDateFromKey(template.anchorDate) ?? { y: date.y, m: 1, d: 1 }
   // startni datum: dni PRED anchorjem nimajo termina (Lightspeed »first day«)
   if (hasAnchor && dayNumber(date) < dayNumber(anchor)) return null
+  // §22 C — končni datum: dni ZA validUntil nimajo termina (»optional end
+  // dates«); neveljaven zapis sebere kot odsoten (defenzivno branje)
+  if (isValidDateKey(template.validUntil ?? null) && dayNumber(date) > dayNumber(localDateFromKey(template.validUntil as string)!)) return null
 
   const daysFromAnchor = dayNumber(date) - dayNumber(anchor)
   const monthsFromAnchor = monthDiff(anchor, date)
@@ -491,6 +505,19 @@ export function validateChecklistTemplates(raw: unknown): ChecklistValidationRes
       }
     }
 
+    // §22 C — končni datum: neobvezen, a ČE je podan, mora biti veljaven datum
+    // IN za prvim dnem (tipkarska napaka, ki bi tiho ubila predlogo, se zavrne)
+    const validUntilRaw = row.validUntil === undefined || row.validUntil === null || String(row.validUntil).trim() === '' ? null : String(row.validUntil).trim()
+    if (validUntilRaw !== null) {
+      if (!isValidDateKey(validUntilRaw)) {
+        return { templates: [], error: `Predloga ${name}: končni datum mora biti v obliki YYYY-MM-DD.` }
+      }
+      const anchorOk = isValidDateKey(row.anchorDate) ? (row.anchorDate as string) : null
+      if (anchorOk && validUntilRaw < anchorOk) {
+        return { templates: [], error: `Predloga ${name}: končni datum ne more biti pred prvim dnem.` }
+      }
+    }
+
     const dueTime = String(row.dueTime ?? '').trim()
     if (!isValidDueTime(dueTime)) {
       return { templates: [], error: `Predloga ${name}: rok mora biti v obliki HH:MM (00:00–23:59).` }
@@ -532,6 +559,7 @@ export function validateChecklistTemplates(raw: unknown): ChecklistValidationRes
       monthDay:
         monthDayRaw !== null && Number.isInteger(monthDayRaw) && monthDayRaw >= 1 && monthDayRaw <= 28 ? monthDayRaw : null,
       anchorDate: isValidDateKey(anchorDate) ? anchorDate : '',
+      validUntil: validUntilRaw,
       dueTime,
       active: row.active === undefined ? true : Boolean(row.active),
       items,

@@ -54,7 +54,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   LayoutDashboard, Utensils, ClipboardList, ChefHat, BookOpen, Users, Settings,
-  LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays,
+  LogOut, Plus, Minus, Loader2, ReceiptText, RefreshCw, Banknote, CalendarDays, MessageSquareText,
   ShieldCheck, UserCog, Search, Star, KeyRound, Dices, Printer, Wifi, WifiOff, CloudUpload,
   AlertTriangle, Download,
   QrCode,
@@ -102,10 +102,11 @@ import { filterByLocation, isCentralUIRole } from '@/lib/multilocation'
 import { filterReservations, type ReservationFilter } from '@/lib/reservation-filters'
 import { coversByWindow } from '@/lib/reservation-pacing'
 import { seatCandidatesForParty } from '@/lib/table-combos'
+import { composeItemNote } from '@/lib/preset-notes'
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, OpravilaTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard, SavedViewsCard,
+  InventoryTab, ShiftsTab, HaccpTab, OpravilaTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, PresetNotesCard, StaffPerformanceCard, SavedViewsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -569,6 +570,45 @@ function DashboardInner() {
   const [saleVariants, setSaleVariants] = useState<PosVariantLine[]>([])
   const [sheetVariants, setSheetVariants] = useState<PosVariantLine[]>([])
   const [variantPick, setVariantPick] = useState<{ mode: 'cart' | 'sale' | 'sheet'; item: MenuT; selections: Record<string, string> } | null>(null)
+  /* STREŽNI VAL v1.248.0 (§22 B — Lightspeed maj 2026 »preset notes«):
+     PREDNASTAVLJENE OPOMBE ZA KUHINJO — register (menu.manage v Meni zavihku)
+     + izbira na vrstici košarice (vse tri košarice delijo skupni dialog po
+     vzorcu variantPick). Opomba gre v items[].note → createOrderCore zapiše
+     OrderItem.notes → KDS listek (ℹ) + postajni nalogi + kuhinjski/bar list
+     (»opomba: …«) — CELA obstoječa cev, do zdaj brez vnosa. */
+  const [presetNotes, setPresetNotes] = useState<{ id: string; label: string; sortOrder: number }[]>([])
+  const [cartNotes, setCartNotes] = useState<Record<string, string>>({})
+  const [saleNotes, setSaleNotes] = useState<Record<string, string>>({})
+  const [sheetNotes, setSheetNotes] = useState<Record<string, string>>({})
+  const [notePick, setNotePick] = useState<{ mode: 'cart' | 'sale' | 'sheet'; key: string; name: string } | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [noteChips, setNoteChips] = useState<Set<string>>(new Set())
+  /** trenutna vrednost ključa v izbrani košarici (gumb »Počisti« + indikator) */
+  const notePickValue = notePick
+    ? (notePick.mode === 'cart' ? cartNotes[notePick.key] : notePick.mode === 'sale' ? saleNotes[notePick.key] : sheetNotes[notePick.key]) ?? ''
+    : ''
+  /** Odpri dialog opombe: razpusti obstoječo vrednost na čipe + prosto besedilo. */
+  function openNotePick(mode: 'cart' | 'sale' | 'sheet', key: string, name: string) {
+    const existing = (mode === 'cart' ? cartNotes[key] : mode === 'sale' ? saleNotes[key] : sheetNotes[key]) ?? ''
+    const parts = existing ? existing.split('; ').filter(Boolean) : []
+    const labels = new Set(presetNotes.map((n) => n.label))
+    setNoteChips(new Set(parts.filter((p) => labels.has(p))))
+    setNoteText(parts.filter((p) => !labels.has(p)).join('; '))
+    setNotePick({ mode, key, name })
+  }
+  /** Potrdi izbiro: sestavljena opomba (čipi + besedilo) ali odstranitev. */
+  function applyNotePick(clear = false) {
+    if (!notePick) return
+    const value = clear ? '' : composeItemNote([...noteChips], noteText)
+    const setter = notePick.mode === 'cart' ? setCartNotes : notePick.mode === 'sale' ? setSaleNotes : setSheetNotes
+    setter((m) => {
+      const nx = { ...m }
+      if (value) nx[notePick.key] = value
+      else delete nx[notePick.key]
+      return nx
+    })
+    setNotePick(null)
+  }
   // N-27-1 (v1.195.0): aktivni sedež v urejevalniku naročila (OPS-7) —
   // postavke, dodane medtem, ko je sedež aktiven, ga nosijo (null = brez).
   const [sheetSeat, setSheetSeat] = useState<number | null>(null)
@@ -859,7 +899,7 @@ function DashboardInner() {
       const effPerms = freshPerms ?? curPerms
       const hp = (p: string) => manage || effPerms.includes(p)
       const hpAny = (...ps: string[]) => manage || ps.some((x) => effPerms.includes(x))
-      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc, vg, tc] = await Promise.all([
+      const [d, t, o, oh, k, m, e, r, rec, inv, sh, fin, haccpRows, ex, loy, sup, recp, jb, fb, ls, ig, wb, el, se, dv, au, dl, lc, vg, tc, pn] = await Promise.all([
         soft(api<{ stats: Stats }>(`/api/dashboard${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)),
         soft(api<{ tables: TableT[] }>('/api/tables')),
         soft(api<{ orders: OrderT[] }>('/api/orders')),
@@ -905,6 +945,9 @@ function DashboardInner() {
         dashboardPollIncludes(scope, 'reservations') && hp('reservations.manage')
           ? soft(api<{ combos: { id: string; tableIds: string[] }[]; excludedTableIds: string[] }>(`/api/tables/combos${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`))
           : undefined,
+        // STREŽNI VAL v1.248.0 (§22 B): prednastavljene opombe (requireAuth — vse
+        // vloge; isti vratar 'menus' kot skupine opcij — POS izbira v košaricah)
+        dashboardPollIncludes(scope, 'menus') ? soft(api<{ notes: { id: string; label: string; sortOrder: number }[] }>('/api/preset-notes')) : undefined,
       ])
       if (d) setStats(d.stats)
       if (t) setTables(t.tables)
@@ -958,6 +1001,9 @@ function DashboardInner() {
       // OSS-10 B-del (v1.210.0): skupine opcij (fail-soft: padec → [] → UI se obnaša
       // kot prej, strežnik ostane varovalka z 400 »Skupina … je obvezna«)
       if (vg) setVariantGroups(vg.groups || [])
+      // §22 B: prednastavljene opombe (fail-soft — brez registra dialog ponudi
+      // SAMO prosto besedilo, kar je nadgradnja obstoječega stanja brez njega)
+      if (pn) setPresetNotes(pn.notes || [])
     } catch { /* 401 → redirect handled in api() */ } finally { setRefreshing(false) }
   }, [])
 
@@ -1133,9 +1179,11 @@ function DashboardInner() {
     // ne ustvari dvojnega naročila.
     // OSS-10 B-del (v1.210.0): + vrstice variant (modifierji tečejo v istem items
     // nizu — createOrderCore jih validira in oceni iz DB; offline replay jih nosi).
+    // §22 B: opombe vrstic (artikel + varianta) — note gre v items[].note,
+    // createOrderCore zapiše OrderItem.notes (kuhinja/list ju že prikazujeta)
     const items = [
-      ...Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })),
-      ...posVariantItemsPayload(cartVariants),
+      ...Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty, ...(cartNotes[menuItemId] ? { note: cartNotes[menuItemId] } : {}) })),
+      ...posVariantItemsPayload(cartVariants).map((it, i) => ({ ...it, ...(cartNotes[cartVariants[i].key] ? { note: cartNotes[cartVariants[i].key] } : {}) })),
     ]
     if (items.length === 0) return
     // idempotencija: isti clientOperationId ob replayu ne ustvari dvojnega naročila
@@ -1143,14 +1191,14 @@ function DashboardInner() {
     try {
       // v1.86.2: lokacija iz mize za centralno vlogo brez lokacije (server ignorira za osebje)
       await api('/api/orders', { method: 'POST', body: JSON.stringify({ tableId: newOrderTable.id, items, guests: 2, clientOperationId, locationId: newOrderTable.locationId || undefined }) })
-      setCart({}); setCartVariants([]); setNewOrderTable(null); await load()
+      setCart({}); setCartVariants([]); setCartNotes({}); setNewOrderTable(null); await load()
     } catch (err) {
       if (isNetworkError(err)) {
         // offline → naročilo se NE IZGUBI, gre v lokalno vrsto za sinhronizacijo
         // v1.170.0: zavrnitev (polna vrsta / kvota) pomeni, da naročilo NI shranjeno
         const rezultat = tryEnqueueOp('order.create', { tableId: newOrderTable.id, items, guests: 2, note: '', locationId: newOrderTable.locationId || undefined }, clientOperationId)
         if (!rezultat.ok) { toast({ title: t('net.queueFull'), variant: 'destructive' }); return }
-        setCart({}); setCartVariants([]); setNewOrderTable(null)
+        setCart({}); setCartVariants([]); setCartNotes({}); setNewOrderTable(null)
         toast({ title: t('net.offlineOrderQueued') })
       } else {
         toast({ title: (err as Error).message, variant: 'destructive' })
@@ -1233,6 +1281,7 @@ function DashboardInner() {
   async function openOrderSheet(o: OrderT) {
     setOrderSheet(o)
     setSheetCart({})
+    setSheetNotes({})
     setSheetCourses([])
     try {
       const d = await api<{ courses: CourseT[] }>(`/api/orders/${o.id}/courses`)
@@ -1320,15 +1369,15 @@ function DashboardInner() {
     // validira z ISTO logiko kot createOrderCore — cena doplačila teče v vrstico).
     const seatField = sheetSeat != null ? { seat: sheetSeat } : {} // N-27-1: aktivni sedež
     const items = [
-      ...Object.entries(sheetCart).map(([menuItemId, qty]) => ({ menuItemId, qty, ...seatField })),
-      ...posVariantItemsPayload(sheetVariants).map((it) => ({ ...it, ...seatField })),
+      ...Object.entries(sheetCart).map(([menuItemId, qty]) => ({ menuItemId, qty, ...seatField, ...(sheetNotes[menuItemId] ? { note: sheetNotes[menuItemId] } : {}) })),
+      ...posVariantItemsPayload(sheetVariants).map((it, i) => ({ ...it, ...seatField, ...(sheetNotes[sheetVariants[i].key] ? { note: sheetNotes[sheetVariants[i].key] } : {}) })),
     ]
     if (items.length === 0) return
     setSending(true)
     try {
       const clientOperationId = newOperationId()
       await api(`/api/orders/${orderSheet.id}`, { method: 'PATCH', body: JSON.stringify({ addItems: items, clientOperationId }) })
-      setSheetCart({}); setSheetVariants([])
+      setSheetCart({}); setSheetVariants([]); setSheetNotes({})
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
@@ -2900,6 +2949,24 @@ function DashboardInner() {
   // bilo »1× Bolognese …«) — razločitev mora biti VIDNA, ne odrezana. Zato
   // dvovrstična postavitev: ime v 1. vrstici, kontekst kategorije v 2. (samo
   // pri dvoumnih imenih). −1 na napačni vrstici v naglici = izgubljen račun.
+  /* §22 B: gumb opombe vrstice — enako obnašanje v vseh treh košaricah;
+     jantarno polnilo + opomba pod vrstico, ko opomba obstaja (kuhinja jo
+     vidi na KDS/listu — POS naj jo vidi PRI VNOSU). */
+  const CartNoteButton = ({ mode, k, name }: { mode: 'cart' | 'sale' | 'sheet'; k: string; name: string }) => {
+    const cur = mode === 'cart' ? cartNotes[k] : mode === 'sale' ? saleNotes[k] : sheetNotes[k]
+    return (
+      <button
+        type="button"
+        data-region="pos-note-btn"
+        onClick={() => openNotePick(mode, k, name)}
+        aria-label={cur ? t('posn.edit', { note: cur.slice(0, 40) }) : t('posn.add', { name })}
+        title={cur || t('posn.add', { name })}
+        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${cur ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-stone-200 bg-white text-stone-500 hover:bg-stone-50'}`}
+      >
+        <MessageSquareText className="h-3.5 w-3.5" aria-hidden />
+      </button>
+    )
+  }
   const SaleCartLineName = ({ mi, qty }: { mi: MenuT; qty: number }) => {
     const cn = saleAmbiguous.has(normItemName(mi.name)) ? saleCatNameOf(mi) : ''
     return (
@@ -3063,8 +3130,8 @@ function DashboardInner() {
   async function submitSale() {
     // OSS-10 B-del (v1.210.0): + vrstice variant (modifierji → createOrderCore validira)
     const items = [
-      ...Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty })),
-      ...posVariantItemsPayload(saleVariants),
+      ...Object.entries(saleCart).map(([menuItemId, qty]) => ({ menuItemId, qty, ...(saleNotes[menuItemId] ? { note: saleNotes[menuItemId] } : {}) })),
+      ...posVariantItemsPayload(saleVariants).map((it, i) => ({ ...it, ...(saleNotes[saleVariants[i].key] ? { note: saleNotes[saleVariants[i].key] } : {}) })),
     ]
     if (items.length === 0) return
     // Naloga #7: lokacija je obvezen parameter CREATE (requireUserLocation). Osebje
@@ -3089,7 +3156,7 @@ function DashboardInner() {
         // in poročila po kanalih lažala; strežnik zdaj neznane tipe tudi zavre (400).
         body: JSON.stringify({ items, type: 'TAKEAWAY', guests: 1, clientOperationId: newOperationId(), locationId: viewLoc || undefined }),
       })
-      setSaleCart({}); setSaleVariants([])
+      setSaleCart({}); setSaleVariants([]); setSaleNotes({})
       // v1.128.0: uspešno plačilo zapre list košare (odpre se plačilni dialog naročila)
       setSaleCartOpen(false)
       // OSS-4 (v1.204.0): sveže pridobivanje vključi tudi zadržane (merge, kot v loadAll)
@@ -3457,7 +3524,7 @@ function DashboardInner() {
                         // OSS-4 (v1.204.0): miza z ZADRŽANIM naročilom → skok na seznam
                         // zadržanih (urejevalnik se zadržanega ne odpre — urejanje je 409)
                         if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
-                        if (!tb.activeOrder) { setCart({}); setCartVariants([]); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
+                        if (!tb.activeOrder) { setCart({}); setCartVariants([]); setCartNotes({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                       }}
                       className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 shadow text-xs font-bold cursor-grab active:cursor-grabbing ${shapeCls} ${statusColors[tb.status] ?? 'bg-stone-500 text-white'}`}
                       style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
@@ -3537,7 +3604,7 @@ function DashboardInner() {
                             if (tb.status === 'DIRTY' && !tb.activeOrder) { void markClean(tb); return }
                             // OSS-4 (v1.204.0): miza z ZADRŽANIM naročilom → seznam zadržanih
                             if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
-                            if (!tb.activeOrder) { setCart({}); setCartVariants([]); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
+                            if (!tb.activeOrder) { setCart({}); setCartVariants([]); setCartNotes({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
                           className={`flex h-32 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
                         >
@@ -4165,7 +4232,7 @@ function DashboardInner() {
                         {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
                       </span>
                       {saleCartCount > 0 && (
-                        <Button size="sm" variant="ghost" className="h-10 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => { setSaleCart({}); setSaleVariants([]) }} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                        <Button size="sm" variant="ghost" className="h-10 shrink-0 px-2 text-xs text-stone-500 hover:text-red-700" onClick={() => { setSaleCart({}); setSaleVariants([]); setSaleNotes({}) }} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -4188,6 +4255,7 @@ function DashboardInner() {
                               <SaleCartLineName mi={mi} qty={qty} />
                               <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                               <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                              <CartNoteButton mode="sale" k={id} name={mi.name} />
                               <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
                             </div>
                           )
@@ -4205,6 +4273,7 @@ function DashboardInner() {
                               </span>
                               <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleVariants((pr) => changePosVariantLineQty(pr, l.key, -1))}>−</Button>
                               <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleVariants((pr) => addPosVariantLine(pr, l))}>+</Button>
+                              <CartNoteButton mode="sale" k={l.key} name={orderItemDisplayName(mi.name, l.optionNames)} />
                               <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{fmtEUR((mi.price + l.optionPrice) * l.qty)}</span>
                             </div>
                           )
@@ -4270,7 +4339,7 @@ function DashboardInner() {
                           {saleCartCount > 0 && <Badge className="shrink-0 bg-emerald-700 tabular-nums text-white">{saleCartCount}</Badge>}
                         </span>
                         {saleCartCount > 0 && (
-                          <Button size="sm" variant="ghost" className="h-9 w-9 shrink-0 p-0 text-stone-500 hover:text-red-700" onClick={() => { setSaleCart({}); setSaleVariants([]) }} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
+                          <Button size="sm" variant="ghost" className="h-9 w-9 shrink-0 p-0 text-stone-500 hover:text-red-700" onClick={() => { setSaleCart({}); setSaleVariants([]); setSaleNotes({}) }} title={t('sale.clearCart')} aria-label={t('sale.clearCart')}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
@@ -4295,6 +4364,7 @@ function DashboardInner() {
                               <SaleCartLineName mi={mi} qty={qty} />
                               <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleCart((pr) => { const q = (pr[id] || 0) - 1; const nx = { ...pr }; if (q <= 0) delete nx[id]; else nx[id] = q; return nx })}>−</Button>
                               <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleCart((pr) => ({ ...pr, [id]: (pr[id] || 0) + 1 }))}>+</Button>
+                              <CartNoteButton mode="sale" k={id} name={mi.name} />
                               <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR(mi.price * qty)}</span>
                             </div>
                           )
@@ -4311,6 +4381,7 @@ function DashboardInner() {
                               </span>
                               <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleVariants((pr) => changePosVariantLineQty(pr, l.key, -1))}>−</Button>
                               <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleVariants((pr) => addPosVariantLine(pr, l))}>+</Button>
+                              <CartNoteButton mode="sale" k={l.key} name={orderItemDisplayName(mi.name, l.optionNames)} />
                               <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{fmtEUR((mi.price + l.optionPrice) * l.qty)}</span>
                             </div>
                           )
@@ -5163,6 +5234,10 @@ function DashboardInner() {
             <UpsellCard menuItems={menu.map((m) => ({ id: m.id, name: m.name, price: m.price, available: m.available }))} canManage={hasPerm('menu.manage')} />
             {/* OSS-10 (v1.209.0): variante postavk — skupine opcij (velikosti/nivoji), prvi admin CRUD */}
             <MenuModifiersCard canManage={hasPerm('menu.manage')} />
+            {/* STREŽNI VAL v1.248.0 (§22 B): prednastavljene opombe za kuhinjo —
+                registr (Lightspeed Back Office > Menu > Production instructions
+                > Notes); POS izbira v košaricah prebere isti vir. */}
+            <PresetNotesCard canManage={hasPerm('menu.manage')} />
             {/* Issue #69 (2. val): hitri skok po kategorijah — lepljiva vrstica čipov nad dolgim
                 seznamom (čista sidra href="#cat-…" → id na glavi razdelka; BREZ stanja/JS logike) */}
             {menuByCat.length > 0 && (
@@ -6018,8 +6093,10 @@ function DashboardInner() {
                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                             <span className="w-6 text-center text-sm font-semibold">{cart[m.id] || 0}</span>
                             <Button size="icon" variant="outline" className="h-7 w-7" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => posAddClick('cart', m)} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                            <CartNoteButton mode="cart" k={m.id} name={m.name} />
                           </div>
                         </div>
+                        {cartNotes[m.id] && <p className="ml-3 text-xs text-amber-800 truncate" title={cartNotes[m.id]}>ℹ {cartNotes[m.id]}</p>}
                         {cartVariants.filter((l) => l.menuItemId === m.id).map((l) => (
                           <div key={l.key} className="ml-6 flex items-center justify-between gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2.5 py-1.5">
                             <div className="min-w-0">
@@ -6031,7 +6108,9 @@ function DashboardInner() {
                               <span className="w-6 text-center text-sm font-semibold">{l.qty}</span>
                               <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setCartVariants((p) => addPosVariantLine(p, l))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
                               <span className="w-16 text-right text-sm font-semibold tabular-nums">{fmtEUR((m.price + l.optionPrice) * l.qty)}</span>
+                              <CartNoteButton mode="cart" k={l.key} name={orderItemDisplayName(m.name, l.optionNames)} />
                             </div>
+                            {cartNotes[l.key] && <p className="ml-6 text-xs text-amber-800 truncate" title={cartNotes[l.key]}>ℹ {cartNotes[l.key]}</p>}
                           </div>
                         ))}
                       </div>
@@ -6082,6 +6161,63 @@ function DashboardInner() {
             <Button variant="outline" onClick={() => setVariantPick(null)}>{t('common.cancel')}</Button>
             <Button className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500" disabled={!variantPickComplete} onClick={confirmVariantPick}>
               {t('orders.variantAdd')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── STREŽNI VAL v1.248.0 (§22 B): OPOMBA VRSTICE — skupni dialog za vse tri
+          košarice POS (vzorec variantPick). Čipi prednastavljenih opomb (večizbirno,
+          vir GET /api/preset-notes — register ureja menu.manage v Meni zavihku) +
+          prosto besedilo; sestavljena opomba gre na vrstico (items[].note → KDS +
+          kuhinjski/bar list). Počisti = odstranitev opombe z vrstice. ── */}
+      <Dialog open={!!notePick} onOpenChange={(v) => !v && setNotePick(null)}>
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{t('posn.title')} — {notePick?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {presetNotes.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase text-stone-400">{t('posn.presets')}</p>
+                <div className="flex flex-wrap gap-1.5" data-region="posn-chips">
+                  {presetNotes.map((n) => {
+                    const on = noteChips.has(n.label)
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => setNoteChips((prev) => { const nx = new Set(prev); if (nx.has(n.label)) nx.delete(n.label); else nx.add(n.label); return nx })}
+                        aria-pressed={on}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${on ? 'border-amber-400 bg-amber-100 text-amber-900' : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}
+                      >
+                        {n.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <label htmlFor="posn-text" className="text-xs font-semibold uppercase text-stone-400">{t('posn.free')}</label>
+              <Input
+                id="posn-text"
+                value={noteText}
+                maxLength={200}
+                placeholder={t('posn.placeholder')}
+                onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyNotePick() } }}
+              />
+            </div>
+            {notePickValue && <p className="text-xs text-stone-500 break-words" data-region="posn-current">ℹ {notePickValue}</p>}
+          </div>
+          <DialogFooter className="items-center gap-2 sm:gap-0">
+            {notePickValue && (
+              <Button variant="ghost" className="mr-auto text-red-700 hover:text-red-800" onClick={() => applyNotePick(true)}>{t('posn.clear')}</Button>
+            )}
+            <Button variant="outline" onClick={() => setNotePick(null)}>{t('common.cancel')}</Button>
+            <Button className="bg-emerald-700 hover:bg-emerald-800" onClick={() => applyNotePick()}>
+              <MessageSquareText className="w-4 h-4 mr-1" aria-hidden /> {t('posn.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -6215,7 +6351,7 @@ function DashboardInner() {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}); setSheetVariants([]) } }}>
+      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}); setSheetVariants([]); setSheetNotes({}) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="text-lg">
@@ -6356,7 +6492,9 @@ function DashboardInner() {
                                 <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                                 <span className="w-5 text-center text-sm font-semibold">{sheetCart[m.id] || 0}</span>
                                 <Button size="icon" variant="outline" className="h-6 w-6" disabled={!m.available} title={m.available ? undefined : t('kds.markUnavailable')} onClick={() => posAddClick('sheet', m)} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
+                                <CartNoteButton mode="sheet" k={m.id} name={m.name} />
                               </div>
+                              {sheetNotes[m.id] && <p className="ml-3 text-xs text-amber-800 truncate" title={sheetNotes[m.id]}>ℹ {sheetNotes[m.id]}</p>}
                             </div>
                             {sheetVariants.filter((l) => l.menuItemId === m.id).map((l) => (
                               <div key={l.key} className="ml-5 flex items-center justify-between gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 py-1">
@@ -6366,6 +6504,7 @@ function DashboardInner() {
                                   <span className="w-5 text-center text-sm font-semibold">{l.qty}</span>
                                   <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetVariants((p) => addPosVariantLine(p, l))} aria-label={t('orders.more')}><Plus className="w-3 h-3" /></Button>
                                   <span className="w-14 text-right text-sm font-semibold tabular-nums">{fmtEUR((m.price + l.optionPrice) * l.qty)}</span>
+                                  <CartNoteButton mode="sheet" k={l.key} name={orderItemDisplayName(m.name, l.optionNames)} />
                                 </div>
                               </div>
                             ))}

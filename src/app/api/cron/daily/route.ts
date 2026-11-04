@@ -5,7 +5,7 @@ import { requireAuth, isResponse, ok, fail, forbidden } from '@/lib/api'
 import { jstr, jparse, num } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { runDueRecurringRules } from '@/lib/recurring-run'
-import { sendDailyDigest, type OverdueApEntry } from '@/lib/daily-email'
+import { sendDailyDigest, sendWeeklyTaskSummary, type OverdueApEntry } from '@/lib/daily-email'
 import { pushEvent, apOverduePushPayload } from '@/lib/push'
 import { runDailyLotAlerts } from '@/lib/lot-alert'
 import { runDailyHaccpOverdue } from '@/lib/haccp-overdue'
@@ -146,6 +146,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   const steps: {
     recurring: { created: number; skipped: number }
     digest: { sent: boolean; reason?: string }
+    taskWeekly: { sent: boolean; reason?: string }
     apOverdue: { count: number }
     lotAlert: { count: number }
     haccpOverdue: { count: number }
@@ -155,6 +156,7 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   } = {
     recurring: { created: 0, skipped: 0 },
     digest: { sent: false },
+    taskWeekly: { sent: false },
     apOverdue: { count: 0 },
     lotAlert: { count: 0 },
     haccpOverdue: { count: 0 },
@@ -222,6 +224,20 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     if (digest.error) errors.push(`digest: ${digest.error}`)
   } catch (e) {
     errors.push(`digest: ${String((e as Error).message || e).slice(0, 200)}`)
+  }
+
+  // 3d) STREŽNI VAL v1.248.0 (§22 C — Lightspeed junij 2026 »weekly Tasks
+  //     summary emails«): TEDENSKI povzetek opravil ob ponedeljkih — isti
+  //     SMTP profil kot digest, lastna varovalka že_poslano (reportType
+  //     TASK_WEEKLY + reportDate = ponedeljek tedna). Ne-ponedeljek je
+  //     hitra izhodna pot; napaka NE blokira ostalih korakov.
+  try {
+    const weekly = await sendWeeklyTaskSummary({ now })
+    steps.taskWeekly = weekly.sent
+      ? { sent: true }
+      : { sent: false, ...(weekly.reason ? { reason: weekly.reason } : {}) }
+  } catch (e) {
+    errors.push(`taskWeekly: ${String((e as Error).message || e).slice(0, 200)}`)
   }
 
   // 3e) Issue #11 (v1.126.0): CRM kampanje — pošiljanje ZAPADLIH načrtovanih

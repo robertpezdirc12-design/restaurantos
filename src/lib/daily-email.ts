@@ -31,6 +31,15 @@ import { smtpTransportForLocation } from '@/lib/reminders'
 import { dueTodayRules, parseRecurringConfig } from '@/lib/recurring-po'
 import { daysOverdue, localDateKey, startOfDay } from '@/lib/cron-daily'
 import { hourlyReportSection, type HourlyEmailBucket } from '@/lib/hourly-email'
+import { dailyTaskSummarySection, weeklyTaskSummaryEmailText, weeklyCoveragePct, type TaskSummaryLine, type WeeklyTaskRow } from '@/lib/task-summary-email'
+import {
+  loadChecklistTemplates,
+  checklistOccurrenceForDate,
+  parseItemResults,
+  coverageOf,
+  runCompletedFromCoverage,
+} from '@/lib/ops-checklists'
+import { localDateFromKey } from '@/lib/ops-checklists'
 import { aggregateSalesByVariant } from '@/lib/item-variants'
 import type { SendMailOptions } from 'nodemailer'
 
@@ -84,6 +93,13 @@ export interface ShiftSummaryData {
    * Cron digest izpelje iz že naloženih Receipt.createdAt — brez nove poizvedbe.
    */
   hourlyBuckets?: HourlyEmailBucket[]
+  /**
+   * STREŽNI VAL v1.248.0 (§22 C — Lightspeed junij 2026 »daily … Tasks summary
+   * emails«): izpolnjenost seznamov dneva (additive, optional; absent/empty
+   * → NO section — izhod za obstoječe vhode ostane byte-identičen).
+   * Čisti sestavljalnik živi v task-summary-email.ts (0 uvozov).
+   */
+  taskSummary?: TaskSummaryLine[]
 }
 
 const eur = (v: number): string => `${(Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2)} EUR`
@@ -133,6 +149,12 @@ function summaryBodyLines(d: ShiftSummaryData): string[] {
   // sestavljanje živi v hourly-email.ts (0 uvozov) — tukaj samo glue.
   if (Array.isArray(d.hourlyBuckets) && d.hourlyBuckets.length > 0) {
     for (const line of hourlyReportSection(d.hourlyBuckets)) lines.push(line)
+  }
+  // STREŽNI VAL v1.248.0 (§22 C): sekcija »Opravila« — izpolnjenost seznamov
+  // dneva (additive; absent/empty → NO section). Čisti sestavljalnik živi v
+  // task-summary-email.ts (0 uvozov) — tukaj samo glue.
+  if (Array.isArray(d.taskSummary) && d.taskSummary.length > 0) {
+    for (const line of dailyTaskSummarySection(d.taskSummary)) lines.push(line)
   }
   // OPS-10 val 3: "Naročilnice za zagon danes" — recurring PO rules due today (additive)
   if (Array.isArray(d.recurringToday) && d.recurringToday.length > 0) {
@@ -310,6 +332,9 @@ export async function sendDailyDigest(
     // digest sections are best-effort — a failure never blocks the e-mail
     const recurringToday = await loadRecurringToday()
     const overdueAps = args.overdueAps ?? (await loadOverdueApsForDigest(now))
+    // §22 C: izpolnjenost seznamov dneva (fail-soft — brez ChecklistRun
+    // tabele/ predlog sekcija preprosto izostane, digest OSTANE)
+    const taskSummary = await loadTaskSummaryForDigest(from, args.locationId ?? null)
 
     const extra = Array.isArray(settings.emailReportRecipients)
       ? (settings.emailReportRecipients as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 5)
@@ -327,6 +352,7 @@ export async function sendDailyDigest(
       payments: [...payTotals.entries()].map(([method, amount]) => ({ method, amount })),
       topItems,
       hourlyBuckets,
+      taskSummary,
       recurringToday,
       overdueAps,
       windowLabel: 'Dan',
@@ -449,5 +475,196 @@ export async function sendShiftDailySummary(d: ShiftSummaryData): Promise<void> 
     } catch {
       // logging must never break the caller — swallow
     }
+  }
+}
+
+/* ═══════ STREŽNI VAL v1.248.0 (§22 C) — POVZETKI OPRAVIL (nalagalca) ═══════ */
+
+/**
+ * Izpolnjenost seznamov za EN dan (digest sekcija). Fail-soft: brez
+ * ChecklistRun tabele (DDL pending), brez predlog ali brez terminov → []
+ * (sekcija izostane, digest ostane). Več lokacij: vrstica nosi ime
+ * lokacije (renderer prikaže predpono samodejno, ko jih je več).
+ */
+export async function loadTaskSummaryForDigest(day: Date, locationId: string | null): Promise<TaskSummaryLine[]> {
+  try {
+    const locations = await db.location.findMany({
+      ...(locationId ? { where: { id: locationId } } : {}),
+      select: { id: true, name: true, timezone: true },
+      take: 50,
+    })
+    if (locations.length === 0) return []
+    const dayKey = localDateKey(day)
+    const out: TaskSummaryLine[] = []
+    for (const loc of locations) {
+      const templates = (await loadChecklistTemplates(db, loc.id)).filter((t) => t.active)
+      if (templates.length === 0) continue
+      const tz = loc.timezone || 'Europe/Ljubljana'
+      const due = templates
+        .map((t) => ({ t, occ: checklistOccurrenceForDate(t, localDateFromKey(dayKey)!, tz) }))
+        .filter((x) => x.occ !== null)
+      if (due.length === 0) continue
+      const keys = due.map((x) => x.occ!.key)
+      const runs = await db.checklistRun.findMany({
+        where: { locationId: loc.id, occurrenceKey: { in: keys } },
+        select: { occurrenceKey: true, itemResults: true, completedById: true },
+      })
+      const byKey = new Map(runs.map((r) => [r.occurrenceKey, r]))
+      for (const { t } of due) {
+        const key = `${t.id}|${dayKey}`
+        const run = byKey.get(key)
+        const results = run ? parseItemResults(run.itemResults) : {}
+        const { done, total } = coverageOf(t, results)
+        out.push({
+          template: t.name,
+          done,
+          total,
+          completed: runCompletedFromCoverage(t, results),
+          location: locations.length > 1 ? loc.name : null,
+        })
+      }
+    }
+    return out
+  } catch {
+    // DDL pending / infra — sekvenca je best-effort, nikoli ne mine izjemo
+    return []
+  }
+}
+
+/**
+ * TEDENSKI povzetek opravil (ponedelki, Lightspeed junij 2026 »weekly Tasks
+ * summary emails«). Samostojno pismo z lastno varovalko že_poslano
+ * (reportType TASK_WEEKLY + reportDate = ponedeljek tedna) — cron pokliče
+ * ob ponedeljkih; prejšnji ISO teden (pon–ned) po LOKALNEM koledarju
+ * strežnika (ista disciplina datumov kot digest okno).
+ */
+export async function sendWeeklyTaskSummary(args: { now?: Date; transportFactory?: (locationId: string | null) => Promise<DigestMailer | null> } = {}): Promise<{ sent: boolean; reason?: string }> {
+  const now = args.now ?? new Date()
+  // ponedeljek? (0 = ned … 1 = pon) — drugi dnevi so hitra izhodna pot
+  if (now.getDay() !== 1) return { sent: false, reason: 'not_monday' }
+  // ponedeljek tekočega tedna (reportDate) + prejšnji teden pon..ned
+  const mondayThis = startOfDay(now)
+  mondayThis.setDate(mondayThis.getDate() - (mondayThis.getDay() - 1))
+  const weekStart = new Date(mondayThis)
+  weekStart.setDate(weekStart.getDate() - 7)
+  const weekEnd = new Date(mondayThis) // ekskluzivno (ponedeljek 00:00)
+  const reportType = 'TASK_WEEKLY'
+  try {
+    const already = await db.scheduledEmailLog.findFirst({
+      where: { reportType, status: 'sent', reportDate: weekStart },
+      select: { id: true },
+    })
+    if (already) return { sent: false, reason: 'already_sent' }
+    const settings = await db.restaurantSettings.findFirst()
+    if (!settings?.emailEnabled || !settings.email) return { sent: false, reason: 'email_not_configured' }
+    const transport = await (args.transportFactory ?? smtpTransportForLocation)(null)
+    if (!transport) return { sent: false, reason: 'smtp_not_configured' }
+
+    const rows = await loadWeeklyTaskRows(weekStart, weekEnd)
+    const label = `${weekStart.toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit' })} – ${new Date(weekEnd.getTime() - 1).toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+    const email = weeklyTaskSummaryEmailText({ rows, weekLabel: label })
+    if (!email) return { sent: false, reason: 'no_occurrences' }
+    const extra = Array.isArray(settings.emailReportRecipients)
+      ? (settings.emailReportRecipients as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 5)
+      : []
+    await transport.sendMail({
+      from: settings.emailFromAddress || undefined,
+      to: settings.email,
+      ...(extra.length > 0 ? { cc: extra.join(', ') } : {}),
+      subject: email.subject,
+      text: email.body,
+    })
+    await db.scheduledEmailLog.create({
+      data: {
+        id: nid(),
+        reportType,
+        recipient: settings.email,
+        subject: email.subject,
+        body: email.body,
+        status: 'sent',
+        sentAt: new Date(),
+        reportDate: weekStart,
+      },
+    })
+    return { sent: true }
+  } catch (e) {
+    const error = String((e as Error).message || e).slice(0, 250)
+    try {
+      await db.scheduledEmailLog.create({
+        data: {
+          id: nid(),
+          reportType,
+          recipient: '(neznano)',
+          subject: 'RestaurantOS — Opravila tedenski povzetek',
+          body: '',
+          status: 'failed',
+          errorMessage: error,
+          reportDate: weekStart,
+        },
+      })
+    } catch {
+      // logging must never break the caller — swallow
+    }
+    return { sent: false, reason: 'error' }
+  }
+}
+
+/** Agregat predlog cez teden [weekStart, weekEnd) — pojavitve × zaključki × pokritost. */
+async function loadWeeklyTaskRows(weekStart: Date, weekEnd: Date, locationId: string | null = null): Promise<WeeklyTaskRow[]> {
+  try {
+    const locations = await db.location.findMany({
+      ...(locationId ? { where: { id: locationId } } : {}),
+      select: { id: true, name: true, timezone: true },
+      take: 50,
+    })
+    if (locations.length === 0) return []
+    const out: WeeklyTaskRow[] = []
+    for (const loc of locations) {
+      const templates = (await loadChecklistTemplates(db, loc.id)).filter((t) => t.active)
+      if (templates.length === 0) continue
+      const tz = loc.timezone || 'Europe/Ljubljana'
+      for (const t of templates) {
+        let occurrences = 0
+        let completedCount = 0
+        const parts: { done: number; total: number }[] = []
+        for (let d = new Date(weekStart); d < weekEnd; d.setDate(d.getDate() + 1)) {
+          const occ = checklistOccurrenceForDate(t, localDateFromKey(localDateKey(d))!, tz)
+          if (!occ) continue
+          occurrences += 1
+          parts.push({ done: 0, total: t.items.length })
+        }
+        if (occurrences === 0) continue
+        const keys: string[] = []
+        for (let d = new Date(weekStart); d < weekEnd; d.setDate(d.getDate() + 1)) {
+          const occ = checklistOccurrenceForDate(t, localDateFromKey(localDateKey(d))!, tz)
+          if (occ) keys.push(occ.key)
+        }
+        const runs = keys.length
+          ? await db.checklistRun.findMany({
+              where: { locationId: loc.id, occurrenceKey: { in: keys } },
+              select: { occurrenceKey: true, itemResults: true },
+            })
+          : []
+        const byKey = new Map(runs.map((r) => [r.occurrenceKey, r]))
+        for (const key of keys) {
+          const run = byKey.get(key)
+          const results = run ? parseItemResults(run.itemResults) : {}
+          const cov = coverageOf(t, results)
+          if (runCompletedFromCoverage(t, results)) completedCount += 1
+          const idx = keys.indexOf(key)
+          if (idx >= 0 && parts[idx]) parts[idx] = cov
+        }
+        out.push({
+          template: t.name,
+          occurrences,
+          completedCount,
+          coveragePct: weeklyCoveragePct(parts),
+          location: locations.length > 1 ? loc.name : null,
+        })
+      }
+    }
+    return out.sort((a, b) => a.template.localeCompare(b.template, 'sl'))
+  } catch {
+    return []
   }
 }

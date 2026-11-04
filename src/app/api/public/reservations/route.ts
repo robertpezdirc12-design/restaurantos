@@ -12,6 +12,8 @@ import { brandThemeForLocation } from '@/lib/brand-themes-server'
 import { zonedDateParts, localDateKey } from '@/lib/haccp-ops'
 import { isValidDateKey, parseHHMM } from '@/lib/openinghours'
 import { loadPacingConfig, assertArrivalPacing } from '@/lib/reservation-pacing'
+import { autoassignTableForBooking, busyTableIdsForWindow } from '@/lib/table-autoassign'
+import { loadTableCombos, loadBookableExcluded, comboTableIdsOf } from '@/lib/table-combos'
 
 /**
  * Issue #13 (P1/P2, v1.110.0) — JAVNI rezervacijski widget (/r/<token>).
@@ -124,7 +126,7 @@ export async function POST(req: NextRequest) {
   let outcome:
     | { kind: 'replay'; row: ReservationRow }
     | { kind: 'taken'; message: string }
-    | { kind: 'created'; row: ReservationRow; start: Date }
+    | { kind: 'created'; row: ReservationRow; start: Date; table: string | null }
   try {
     outcome = await db.$transaction(async (tx) => {
       await lockReservationCapacity(tx, widget.locationId)
@@ -155,6 +157,43 @@ export async function POST(req: NextRequest) {
       if (pacing) return { kind: 'taken' as const, message: pacing.message }
 
       // kanonični model — isti vir kot interni POS
+      // STREŽNI VAL v1.248.0 (§22 A) — SAMODEJNA DODELITEV MIZE: spletni
+      // rezervaciji strežnik ob ustvarjanju dodeli NAJMANJŠO ustrezno mizo
+      // (ali registrirano kombinacijo) po številu oseb — Lightspeed maj 2026
+      // »no setup required; staff can accept, change or skip«. Dodelitev teče
+      // ZNOTRAJ transakcije (za zaklepom kapacitete), zato dve sočasni
+      // rezervaciji ne moreta dobiti iste mize. Izključene mize (walk-in
+      // rezerva) ne sodelujejo; nobena ne ustreza → rezervacija BREZ mize
+      // (osebje dodeli ročno — dodelitev je pomoč, ne obveza).
+      const [comboList, excludedIds, comboTablesRaw, tableHoldRes] = await Promise.all([
+        loadTableCombos(tx, widget.locationId),
+        loadBookableExcluded(tx, widget.locationId),
+        tx.table.findMany({
+          where: { locationId: widget.locationId },
+          select: { id: true, number: true, capacity: true },
+        }),
+        // mize zASEDAJOČE rezervacije dneva (primarne + članice kombinacij;
+        // isti blokirajoči statusi kot v1.240.0 claim varovalec)
+        tx.reservation.findMany({
+          where: {
+            locationId: widget.locationId,
+            status: { in: ['confirmed', 'seated', 'completed'] },
+            dateTime: { gte: new Date(dayStart.getTime() - 24 * 3600_000), lte: new Date(dayEnd.getTime() + 24 * 3600_000) },
+            OR: [{ tableId: { not: null } }, { comboTableIds: { not: '' } }],
+          },
+          select: { dateTime: true, duration: true, tableId: true, comboTableIds: true },
+          take: 500,
+        }),
+      ])
+      const busyIds = busyTableIdsForWindow(tableHoldRes, recheck.start, 120)
+      const pick = autoassignTableForBooking({
+        // capacity → seats (isti preslikava kot UI TableT.seats)
+        tables: comboTablesRaw.map((t) => ({ id: t.id, number: t.number, seats: t.capacity })),
+        combos: comboList,
+        party: partySize,
+        busyTableIds: busyIds,
+        excludedTableIds: excludedIds,
+      })
       const row = await tx.reservation.create({
         data: {
           id: nid(),
@@ -170,9 +209,14 @@ export async function POST(req: NextRequest) {
           specialRequests: note,
           confirmedAt: now,
           locationId: widget.locationId,
+          // §22 A: primarna miza + vse članice kombinacije (vzorec interne poti)
+          ...(pick ? {
+            tableId: pick.tableIds[0],
+            comboTableIds: pick.tableIds.length >= 2 ? comboTableIdsOf(pick.tableIds) : '',
+          } : {}),
         },
       })
-      return { kind: 'created' as const, row, start: recheck.start }
+      return { kind: 'created' as const, row, start: recheck.start, table: pick ? pick.label : null }
     })
   } catch {
     return fail('Termin je žal pravkar zasedel drug gost. Izberite drug termin.', 409)
@@ -200,7 +244,7 @@ export async function POST(req: NextRequest) {
     action: 'GUEST_RESERVATION_CREATED',
     entityType: 'Reservation',
     entityId: row.id,
-    details: jstr({ vir: 'widget', termin: start.toISOString(), oseb: partySize, ime: name, telefon: phone }),
+    details: jstr({ vir: 'widget', termin: start.toISOString(), oseb: partySize, ime: name, telefon: phone, miza: outcome.table ?? null }),
     ipAddress: ip,
     locationId: widget.locationId,
   }).catch(() => {})
@@ -226,6 +270,8 @@ export async function POST(req: NextRequest) {
       dateTime: row.dateTime,
       partySize: row.partySize,
       status: row.status,
+      // §22 A: dodeljena miza (null = osebje dodeli ročno) — aditivno polje
+      tableName: outcome.table,
     },
   }, 201)
 }
