@@ -479,7 +479,7 @@ describe('v1.251.0 Ž — registri in pini', () => {
     expect(auditDoc).toContain('- 4034 ključev SL in 4034 HR')
   })
 
-  test('Ž5: worklog vrhnji vnos nosi Task ID v1.251.0-crtna-koda-val', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.251.0-crtna-koda-val')
+  test('Ž5: worklog vrhnji vnos nosi Task ID v1.251.0-finalna-verifikacija', () => {
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.251.0-finalna-verifikacija')
   })
 })
