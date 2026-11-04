@@ -499,6 +499,6 @@ describe('Č4 registri, i18n in verzija', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.246.0')
+    expect(APP_VERSION).toBe('1.247.0')
   })
 })

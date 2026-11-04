@@ -105,7 +105,7 @@ import { seatCandidatesForParty } from '@/lib/table-combos'
 import { AllergenDialog } from '@/components/allergen-dialog'
 import { ALLERGEN_CODES, allergenLabel, type AllergenCode, type AllergenLocale } from '@/lib/allergen-catalog'
 import {
-  InventoryTab, ShiftsTab, HaccpTab, OpravilaTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard,
+  InventoryTab, ShiftsTab, HaccpTab, OpravilaTab, ExpensesTab, LoyaltyTab, FeedbackTab, JobsCard, SettingsEditor, DevicesCard, DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab, NabavaTab, DarilneKarticeTab, OdpadTab, CakalnaListaTab, DelovniCasTab, OdpiralniCasTab, DiscountsTab, IntegracijeTab, EnterpriseTab, StaffScheduleTab, MenuEngineeringTab, FoodCostVarianceCard, PourCostCard, ExceptionsReportCard, KdsStatsSection, NotificationsCard, SalesByHourCard, LaborCostCard, LaborCoverageCard, LaborForecastCard, AiInsightsCard, UpsellCard, DisplayPromosCard, MfaCard, ReservationWidgetCard, ReservationPacingCard, ReservationCombosCard, WebPortalCard, ManagerCallsCard, ManagerCallSettingsCard, PrepStationsCard, EquipmentCard, DocumentsCard, LabelRulesCard, PayrollTab, TransfersTab, CrmTab, AccountingPortalCard, MenuModifiersCard, StaffPerformanceCard, SavedViewsCard,
   type InventoryT, type ShiftT, type FinancialT, type HaccpT, type ExpenseT, type LoyaltyT,
   type SupplierT, type RecipeT, type FeedbackT, type JobT, type SettingsT, type DeviceT,
   type DeliveryOrderT, type DeliveryZoneT, type PlatformIntegrationT,
@@ -5393,6 +5393,11 @@ function DashboardInner() {
           </TabsContent>
 
           <TabsContent value="racuni" className="space-y-4">
+            {/* v1.247.0 (PRIMERJAVA §21; Lightspeed april 2026 »saved report views«):
+                pogosto poročilo shranjeno enkrat z RELATIVNIM obdobjem — zagon z
+                enim klikom poteže svež termin (»ta mesec« je vedno trenutni mesec).
+                Gating reports.sales — isti lastnik kot sam izvoz. */}
+            {hasPerm('reports.sales') && <SavedViewsCard />}
             {/* P2-13 (v1.189.0) — knjigovodski portal (read-only agregacija; ACCOUNTING tu pristane) */}
             {/* Issue #94 (QA): from/to sta NADZOROVANA iz zavihka — isto obdobje
                 velja za kartice portala IN seznam izdanih računov + CSV izvoz. */}

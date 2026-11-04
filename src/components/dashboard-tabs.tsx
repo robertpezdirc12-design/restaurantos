@@ -68,3 +68,6 @@ export { TransfersTab } from './tabs/transfers-tab'
 export type { TransferT, TransferLineT } from './tabs/transfers-tab'
 /* Issue #11 (v1.126.0) — CRM gostov: segmenti, soglasje, kampanje, dedupe */
 export { CrmTab } from './tabs/crm-tab'
+/* v1.247.0 (PRIMERJAVA §21; Lightspeed april 2026 »saved report views«) —
+ * shranjeni pogledi poročil: enkrat definirano + relativno obdobje → en klik */
+export { SavedViewsCard } from './tabs/saved-views-card'

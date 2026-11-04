@@ -1469,3 +1469,62 @@ izvajalec+čas na vsaki postavki, zgodovina pojavitev z zapadlimi dnevi.
 HACCP ostane merilni register (pragi, odstopanja, verifikacija), Opravila
 pa so operativni dnevni ritem. Naslednji val: saved report views
 (Lightspeed april 2026) ali sveža raziskava.
+
+## 21. Raziskava april 2026 — POGLEDI VAL v1.247.0 (shranjeni pogledi poročil)
+
+Nadaljevanje §20 (»naslednji val: saved report views — Lightspeed april
+2026«). Vir: Lightspeed »What's New: April 2026« — »saved report views:
+customize your reports and save them for quick access«; Toast/Square
+ekvivalent: priljubljeni poročilni pogledi v analitiki. Ena izmerjena
+ugotovitev, dve odločitvi.
+
+### A) Mesečni izvoz je vsak mesec ISTA ročna naloga (P1)
+
+**Kako imamo mi (merjeno v kodi):** AccountingExportCard zahteva ob vsakem
+zagonu ŠTIRI ročne izbire — sekcija (summary/dnevnik/ddv/zz), Od, Do,
+format (CSV/JSON). Knjigovodski izvoz vsak 1. v mesecu in tedenski X/Z sta
+identični nalogi z istim štirikrožnim ritomom; food-cost varianca (v1.106.0)
+vsak teden enako. Odložena datoteka je cilj, ne pot do nje.
+
+**Kako imajo najboljši (Lightspeed, april 2026):** poročilo prilagodiš
+enkrat, pogled shraniš z imenom, naslednjič en klik.
+
+**Zdaj (v1.247.0):** kartica »Shranjeni pogledi poročil« na zavihku Računi
+(gating reports.sales — kdor sme poganjati izvoz, sme imeti pogled): nov
+pogled (ime + poročilo [računovodski izvoz | food-cost varianca] + sekcija +
+format + obdobje) → vrstica z zadetkom + obsegom → gumb »Zaženi« prenese
+datoteko. Brisanje s potrditvijo; vrstica je Integration registr
+(0 DDL — vzorec resv-pacing v1.244.0 / table-combos v1.245.0 /
+ops-checklists v1.246.0), GET/PUT /api/reports/views s strogo validacijo
+(≤ 20 pogledov, enumi poročila/sekcije/formata/obdobja, custom datumi
+from ≤ to) + revizija REPORT_VIEWS_CONFIG.
+
+### B) RELATIVNA obdobja — pogled, ki ne zastara (P1, izpeljano)
+
+Fiksna datuma shranjenega pogleda sta naslednji mesec mrtva (»november«
+je decembra neuporaben). Zato pogled nosi PREDLOG obdobja, ki se ob vsakem
+zagonu reši SVEŽE iz čistega jedra `resolveReportRange` (lokalni koledar,
+NI UTC — zvečer CET bi toISOString zamaknil na včerajšnji dan):
+today/yesterday/thisWeek/lastWeek/thisMonth/lastMonth/last7/last30/last90/
+ytd + custom (izjema). Semantika poštenosti: tekoči teden/mesec/leto se
+končajo z DANES (devet praznih dni v datoteki je laž), zaključena obdobja
+(prejšnji teden/mesec, včeraj) pokrijejo celoto; tedni so ISO
+(ponedeljek–nedelja, slovenska konvencija); last7/30/90 so vključujoča
+okna (danes + 6/29/89). Vsaka vrstica pokazuje DANES rešen obseg
+(»Zagon: 2026-11-01 – 2026-11-04«) — uporabnik vidi, kaj bo poteženo,
+preden klikne.
+
+### C) SKUPNI registr per lokacija, ne per oseba (P2, zavestna odločitev)
+
+Lightspeedovi pogledi so osebni. Naša lokacija: gostilna z 2–3 poročevalci
+si deli delo — ko je Ana na dopustu, poteže Borut isti mesečni izvoz.
+Iskrena meja: per-uporabniška lastnina bi zahtevala DDL (Integration nima
+zaposlenega); skupna knjižnica je 0 DDL in poštena za ekipo. Pravice
+reports.sales (isti lastnik kot /api/reports/export) — zagon poteče klient
+prek obstoječih GET rut, zato vsa strežniška varovala (pravice, location
+scope) ostanejo nespremenjena.
+
+**Sklep §21:** pogosto poročilo je definirano enkrat, poteženo z enim
+klikom, obdobje pa se reši sveže ob vsakem zagonu — datoteka, ki jo
+knjigovodja čaka, ni več štirikrožni ritual. Naslednji val: sveža
+raziskava (maj/junij 2027 objave) ali globlje rezanje po B-načrtu.
