@@ -480,6 +480,6 @@ describe('v1.251.0 Ž — registri in pini', () => {
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.253.0-odprti-racuni-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.253.0-finalna-verifikacija')
   })
 })
