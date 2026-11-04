@@ -591,6 +591,6 @@ describe('v242 Ž · Registri in verzija', () => {
     const doc = readFileSync('docs/PRIMERJAVA-VMESNIKOV-2026.md', 'utf8')
     expect(doc).toContain('ZALOŽNI VAL v1.242.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.249.0-cenovni-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.249.0-finalna-verifikacija')
   })
 })

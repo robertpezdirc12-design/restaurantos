@@ -1,3 +1,21 @@
+Task ID: v1.249.0-finalna-verifikacija (nadaljevanje v1.249.0-cenovni-val)
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija CENOVNEGA VALA v1.249.0 (R4b) — push, CI, produkcija, živ E2E cenovnega posega na produkciji (PostgreSQL).
+
+Work Log:
+- PUSH: **8fcc640..a78ecd3** ✅ (delovno drevo čisto; v istem dnevu kot zaključna verifikacija v1.248.0 — dva izdajalna cikla enega delavnega dne).
+- CI quality gate (neon-smoke + tests) **SUCCESS @ a78ecd3 na prvih vratih** + Dvosmerna sinhronizacija GitLab success + pages build success — brez hotfixa (lekcija Ž7 upoštevana v valu: lastni pini usklajeni pred pushom; v249 Ž5 pin bo zdaj usklajen na ta vnos).
+- PRODUKCIJA: /api/health → **1.249.0 · a78ecd3 · cloud · postgresql connected · schema ok** (prvi polling — VercelMinute). 0 DDL → brez mig koraka.
+- ŽIV E2E NA PRODUKCIJI (demo seja Ana Novak, PostgreSQL, 0 konzolnih/page napak): naročilo Miza 2 (2× Ananasov Sok 0,20 L = 7,00 €, unpaid) → **POST /api/orders/[id]/price-override {price: 3, reason: »E2E Prod — dogovor z gostom«} → 200** + overridden {oldPrice 3,50, newPrice 3, delta −1} + **order.total 7 → 6** (preračun v isti TX) + marker priceOverride {from: 3,5, to: 3, by: Ana Novak}; UI urejevalnik naročila: vrstica 2× Ananasov Sok nosi **✱ oznako** + gumb Spremeni ceno postavke; **poročilo izjem**: byKind price_override {count: 1, amount: 1} (|delta|, vrsta ORDER_ITEM_PRICE_OVERRIDE); plačilo gotovina → FURS 201 → **račun 2026-11-20-BLG001 total 6,00 + posnetek itemsJson vrstice priceOverride {from: 3,5, to: 3}** (branje /api/furs/[id] žig posreduje); STORNO z razlogom »E2E v1.249.0 cenovni val — čiščenje« → 201 + naročilo 'storno' (terminalno čisto; računski par ostaja v zgodovini kot pri v239/v242 E2E; Miza 2 sproščena → DIRTY obstoječa semantika).
+- ŽIV E2E NA DEV (podrobnosti v vnosu vala): dialog → ✱ → total 3,00 → 2,50 → FURS žig na posnetku → revizija; 390 px brez overflowa; 0 napak.
+- SUITA: **4956 pass / 4990 testov / 122.854 expect** (244 datotek, +36 v249) · 30 okoljskih padcev **A/B dokazano identičnih bazni liniji 8fcc640** (unikatna lista padcev ista po imenih — F1–F5/F9, v165, v180 §C×15/§G/§H×4/§I×2, v248 G3; razlika le v ms časih izvajanja). tsc 0 · lint 0 · typecheck:cloud 0.
+- PINI (lekcija Ž7): strogi worklog-pini **v242 Ž3 + v245 Ž6 + v247 Ž7 + v249 Ž5** usklajeni na »Task ID: v1.249.0-finalna-verifikacija« (vzorec 18b660b/47d0e2f/8fcc640 — tokrat lastni Ž5 vala usklajen V tem commitu, ne v hotfixu); 11 ohlapnih pinov ('Task ID: v1.249.0') ostaja zelenih brez spremembe; VSI worklog-pini pognani lokalno po prependu.
+- AKCIJA ZA LASTNIKA: (1) prekliči žeton te seje (stalna točka po pushu); (2) B-odločitve ostajajo (WhatsApp transport Meta Business API, OSS-8 SMTP urni pošiljanji); (3) DDL kliki na produkciji še vedno PORABLJENI — naslednji valovi ostajajo 0 DDL (ta val: mrtva shramba modifiersJson + aditivni ključ itemsJson).
+- sync-check: pred tem vnosom LOCAL = MIRROR = PRODUKCIJA **1.249.0 @ a78ecd3**; po pushu tega vnosa se trojica znova uskladi na novem vrhnjem commitu.
+
+Stage Summary:
+- Cenovni val je V ŽIVI PRODUKCIJI: pooblaščena oseba spremeni ceno neplačane postavke v eni potezi z obveznim razlogom — DDV in totals v isti transakciji, revizija v verigi, žig na izdanem računu, vrsta v poročilu izjem. Naslednji val: Tempo insights (§22 D — mize z največ praznega časa, naročila z najdaljšo luknjo strežbe; deterministična izpeljava Order.createdAt→paidAt), sveža raziskava julij–november 2026 ali B-odločitve lastnika po »nadaljuj«.
+
 Task ID: v1.249.0-cenovni-val (PRIMERJAVA-VMESNIKOV-2026 §23; odložena točka §22 D kot lastni denarni val; R4b načrt kakovosti)
 Agent: glavni agent (Z.ai Code)
 Task: CENOVNI VAL — sprememba cene postavke na POS (Lightspeed junij 2026 »authorized staff can now override an item's price directly on the POS during an active order«): pooblaščena oseba spremeni ceno NEPLAČANE postavke v eni potezi z obveznim razlogom — nad istim denarnim oklepom kot preklic (pravica, 409 na plačenem, CAS transakcija, revizija v verigi), z DDV preračunanim v isti transakciji in žigom na posnetku računa. 0 DDL (mrtva shramba OrderItem.modifiersJson kot nosilec metapodatkov), 0 novih odvisnosti.
