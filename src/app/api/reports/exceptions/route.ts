@@ -31,6 +31,9 @@ const EXCEPTION_ACTIONS: Record<string, string> = {
   DISCOUNT_APPLIED: 'discount',
   DISCOUNT_REMOVED: 'discount_remove',
   ORDER_ITEM_VOID: 'void',
+  // PRIMERJAVA §23 (v1.249.0): sprememba cene postavke = denarna izjema
+  // (|delta| vrstice — lahko tudi navzgor, zato absolutna vrednost)
+  ORDER_ITEM_PRICE_OVERRIDE: 'price_override',
   ORDER_CANCELLED: 'cancel',
   ORDER_STATUS_CANCELLED_OVERRIDE: 'cancel',
   RECEIPT_STORNO: 'storno',
@@ -45,6 +48,8 @@ function amountOf(kind: string, d: Record<string, unknown>): number | null {
       return d.removedAmount !== undefined ? num(d.removedAmount) : null
     case 'void':
       return d.amountRemovedFromOrder !== undefined ? num(d.amountRemovedFromOrder) : null
+    case 'price_override':
+      return d.delta !== undefined ? Math.abs(num(d.delta)) : null
     case 'cancel':
       return d.total !== undefined ? num(d.total) : null
     case 'storno':

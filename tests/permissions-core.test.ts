@@ -48,6 +48,8 @@ const MANAGER_EXPECTED = [
   'reports.sales', 'reports.labour', 'guests.read', 'employees.manage',
   'orders.void', 'cash.manage', 'menu.availability', 'haccp.execute',
   'timeclock.manage', 'delivery.manage', 'giftcards.manage', 'discounts.manage',
+  // PRIMERJAVA §23 (v1.249.0): sprememba cene postavke — vodstvo privzeto (kot orders.void)
+  'orders.priceOverride',
 ] as const
 
 describe('resolvePermissions — vloge s polnim naborom dovoljenj', () => {
@@ -59,7 +61,7 @@ describe('resolvePermissions — vloge s polnim naborom dovoljenj', () => {
     })
   }
 
-  test('ISSUE #72 C1: vloga "manager" ima OMEJEN nabor (19) — brez globalnih stropov', () => {
+  test('ISSUE #72 C1: vloga "manager" ima OMEJEN nabor (20) — brez globalnih stropov', () => {
     const perms = resolvePermissions('manager', [])
     expect(sortedEq(perms, [...MANAGER_EXPECTED])).toBe(true)
     // stropovi so LASTNIŠKI: globalne nastavitve, fiskalna razveljavitev, e-računi
@@ -128,8 +130,8 @@ describe('resolvePermissions — podnabori po vlogah (staff/vodstvo operativke)'
     expect(perms).not.toContain('settings.manage')
   })
 
-  test('ISSUE #72 D1/D2/D3/D4: 22 kanoničnih dovoljenj (stari 20 − 3 odstranjeni + 5 novih)', () => {
-    expect(canonical).toHaveLength(22)
+  test('ISSUE #72 D1/D2/D3/D4: 23 kanoničnih dovoljenj (stari 20 − 3 odstranjeni + 5 novih; +1 v1.249.0 §23 orders.priceOverride)', () => {
+    expect(canonical).toHaveLength(23)
     for (const k of [
       'orders.void', 'cash.manage', 'menu.availability',
       'haccp.execute', 'timeclock.manage', 'delivery.manage', 'giftcards.manage',
@@ -273,9 +275,9 @@ describe('ISSUE #72 A1: effectivePermissionSets — ločena vira za PRIKAZ', () 
     expect(eff.roleDefaultCount).toBe(5)
   })
 
-  test('C1: manager — 19 branih; settings.manage/receipts.storno sta dodatek (če jih admin da)', () => {
+  test('C1: manager — 20 branih; settings.manage/receipts.storno sta dodatek (če jih admin da)', () => {
     const eff = effectivePermissionSets('manager', ['settings.manage'])
-    expect(eff.fromRole).toHaveLength(19)
+    expect(eff.fromRole).toHaveLength(20)
     expect(eff.added).toEqual(['settings.manage'])
   })
 })

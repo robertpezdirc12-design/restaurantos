@@ -26,6 +26,11 @@ export interface BillItem {
   vatAmount: number
   categoryId: string | null
   voided: boolean
+  // PRIMERJAVA §23 (v1.249.0) — ADITIVNO: oznaka spremembe cene postavke
+  // (Orders s predlagano ceno na POS). Odsotno = nikoli preverjeno (byte-
+  // identično ponašanje prejšnjih klicev); prisotno samo za žig na posnetku
+  // računa (Receipt.itemsJson) — computeBill/plitVat se je NE dotikata.
+  priceOverride?: { from: number; to: number } | null
 }
 
 export interface AutoDiscountLine {

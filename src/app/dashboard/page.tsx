@@ -163,7 +163,7 @@ interface UpdateCheckT { current: string; latest: string | null; updateAvailable
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number; waiterName?: string | null; openedAt?: string | null } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean; priceOverride?: { from: number; to: number; at: string; by: string } | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[]; voidedItems?: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
@@ -617,6 +617,11 @@ function DashboardInner() {
   const [voidReasons, setVoidReasons] = useState<{ id: string; name: string }[]>([])
   const [voidReasonId, setVoidReasonId] = useState('')
   const [voidReasonText, setVoidReasonText] = useState('')
+  // PRIMERJAVA §23 (v1.249.0): sprememba cene postavke na POS (orders.priceOverride)
+  // — dialog + nova cena + OBVEZEN razlog (denarni poseg)
+  const [priceItem, setPriceItem] = useState<OrderItemT | null>(null)
+  const [priceNew, setPriceNew] = useState('')
+  const [priceReason, setPriceReason] = useState('')
   // Issue #19 (v1.107.0): politika finančnih izjem + generični dialog razloga/odobritve
   const [excPolicy, setExcPolicy] = useState<{ policy: { discountApprovalPct: number; discountApprovalAmountCents: number; voidApprovalAmountCents: number; requireReasonDiscount: boolean }; isManagerial: boolean } | null>(null)
   const [excAction, setExcAction] = useState<
@@ -1354,6 +1359,40 @@ function DashboardInner() {
       setVoidItem(null)
       if (d.order) setOrderSheet(d.order)
       toast({ title: t('void.done') })
+      void load()
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  /**
+   * PRIMERJAVA §23 (v1.249.0): potrdi spremembo cene postavke (denarni
+   * poseg — razlog OBVEZEN vedno, strežnik ga zahteva neodvisno od politike
+   * izjem). Vnos preverimo pred pošiljanjem (priazna sporočila), avtoriteta
+   * je strežnik (CAS + transakcija).
+   */
+  async function confirmPriceOverride() {
+    if (!priceItem || !orderSheet) return
+    const parsed = Number(priceNew.trim().replace(',', '.'))
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast({ title: t('prc.invalid'), variant: 'destructive' })
+      return
+    }
+    if (priceReason.trim().length < 3) {
+      toast({ title: t('prc.reasonMissing'), variant: 'destructive' })
+      return
+    }
+    setSending(true)
+    try {
+      const d = await api<{ overridden: { oldPrice: number; newPrice: number; delta: number }; order: OrderT | null }>(`/api/orders/${orderSheet.id}/price-override`, {
+        method: 'POST',
+        body: JSON.stringify({ itemId: priceItem.id, price: parsed, reason: priceReason.trim() }),
+      })
+      setPriceItem(null)
+      if (d.order) setOrderSheet(d.order)
+      toast({ title: t('prc.done'), description: `${d.overridden.oldPrice.toFixed(2)} € → ${d.overridden.newPrice.toFixed(2)} €` })
       void load()
     } catch (e) {
       toast({ title: (e as Error).message, variant: 'destructive' })
@@ -6398,7 +6437,18 @@ function DashboardInner() {
                   {orderSheet?.items.filter((it) => !it.voided).map((it) => (
                     <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 px-2 py-1.5">
                       {/* OSS-10 B-del: izbrane opcije (»0,5 L«) ob imenu — vidijo se tudi po osvežitvi */}
-                      <span className="min-w-0 truncate">{it.qty}× {it.name}{it.modifiers?.length ? ` · ${it.modifiers.join(', ')}` : ''}</span>
+                      <span className="min-w-0 truncate flex items-center gap-1">
+                        <span className="min-w-0 truncate">{it.qty}× {it.name}{it.modifiers?.length ? ` · ${it.modifiers.join(', ')}` : ''}</span>
+                        {/* PRIMERJAVA §23 (v1.249.0): ✱ cena te postavke je bila
+                            spremenjena na POS (tooltip nosi prejšnjo ceno + izvajalca) */}
+                        {it.priceOverride && (
+                          <span
+                            title={`${t('prc.mark')}: ${it.priceOverride.from.toFixed(2)} € → ${it.priceOverride.to.toFixed(2)} € · ${it.priceOverride.by}`}
+                            aria-label={t('prc.mark')}
+                            className="shrink-0 inline-flex h-4 w-4 items-center justify-center rounded-full border border-orange-300 bg-orange-50 text-[10px] font-bold text-orange-800"
+                          >✱</span>
+                        )}
+                      </span>
                       <span className="flex items-center gap-1.5 shrink-0">
                         {/* QA najdba #3 (v1.218.0): surovi status (»PREPARING«) →
                             prevod iz status.* nabora (handheld že uporablja isti
@@ -6406,6 +6456,14 @@ function DashboardInner() {
                         <Badge variant="outline" className="text-xs px-1.5 py-0">
                           {['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(it.status) ? t(`status.${it.status}`) : it.status}
                         </Badge>
+                        {/* PRIMERJAVA §23 (v1.249.0): sprememba cene postavke —
+                            isti trije varovali kot preklic (pravica + naročilo ni
+                            plačano + postavka ni na plačanem izstavku §16 D). */}
+                        {hasPerm('orders.priceOverride') && orderSheet.paymentStatus !== 'paid' && !it.checkPaid && (
+                          <Button size="icon" variant="outline" className="h-6 w-6 text-orange-700 hover:bg-orange-50 hover:text-orange-800" disabled={sending} onClick={() => { setPriceItem(it); setPriceNew(it.unitPrice.toFixed(2)); setPriceReason('') }} title={t('prc.button')} aria-label={t('prc.button')}>
+                            <Coins className="w-3 h-3" />
+                          </Button>
+                        )}
                         {/* v1.239.0 §16 D: postavka na PLAČANEM izstavku (delno plačano
                             naročilo 'partial') — gumb skrit: preklic bi odvzel že
                             pobran denar brez vračila (strežnik vrne 409 + usmeritev
@@ -6604,6 +6662,53 @@ function DashboardInner() {
             <Button variant="outline" className="h-9" onClick={() => setVoidItem(null)}>{t('common.cancel')}</Button>
             <Button variant="destructive" className="h-9" disabled={sending} onClick={() => void confirmVoidItem()}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />} {t('void.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PRIMERJAVA §23 (v1.249.0): dialog spremembe cene postavke — denarni
+          poseg (nova cena + OBVEZEN razlog; strežnik validira strogo, preračuna
+          DDV in totale v transakciji, zapiše revizijo ORDER_ITEM_PRICE_OVERRIDE) */}
+      <Dialog open={!!priceItem} onOpenChange={(v) => { if (!v) setPriceItem(null) }}>
+        <DialogContent aria-describedby={undefined} className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2"><Coins className="w-5 h-5 text-orange-700" /> {t('prc.title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="rounded-lg border border-stone-200 px-3 py-2">{priceItem?.qty}× {priceItem?.name}</p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-current">{t('prc.current')}</label>
+              <p id="prc-current" className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-semibold tabular-nums">{priceItem?.unitPrice?.toFixed(2)} €</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-new">{t('prc.new')}</label>
+              <input
+                id="prc-new"
+                value={priceNew}
+                onChange={(e) => setPriceNew(e.target.value.slice(0, 12))}
+                placeholder={t('prc.newPh')}
+                inputMode="decimal"
+                autoComplete="off"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-stone-300"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-reason">{t('prc.reason')}</label>
+              <input
+                id="prc-reason"
+                value={priceReason}
+                onChange={(e) => setPriceReason(e.target.value.slice(0, 200))}
+                placeholder={t('prc.reasonPh')}
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                maxLength={200}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="h-9" onClick={() => setPriceItem(null)}>{t('common.cancel')}</Button>
+            <Button variant="outline" className="h-9 border-orange-300 text-orange-800 hover:bg-orange-50 hover:text-orange-900" disabled={sending} onClick={() => void confirmPriceOverride()}>
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />} {t('prc.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

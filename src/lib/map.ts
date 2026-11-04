@@ -6,6 +6,7 @@
  *  - prisma/schema.sqlite.prisma (lokalno zrcalo; String namesto enum/Json)
  */
 import { randomUUID } from 'crypto'
+import { parsePriceOverrideMeta } from '@/lib/price-override'
 
 /**
  * Issue #7 (P1, v1.104.0): toleranten parse alergenskega posnetka OrderItem
@@ -369,6 +370,11 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
           .map((m) => ((m as { name?: unknown } | null)?.name))
           .filter((n): n is string => typeof n === 'string' && n.length > 0)
       : undefined,
+    // PRIMERJAVA §23 (v1.249.0): oznaka spremembe cene (modifiersJson —
+    // zgodovinsko mrtva shramba, od tega vala metapodatki vrstice). ADITIVNO:
+    // brez oznake null; defenzivno branje (neveljavno → null, self-healing).
+    // price-override.ts je ČIST sloj (0 uvozov) — ne prekleti db verige.
+    priceOverride: parsePriceOverrideMeta(it.modifiersJson as string | null | undefined),
   }
 }
 

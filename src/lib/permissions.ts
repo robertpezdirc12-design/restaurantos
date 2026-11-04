@@ -53,6 +53,9 @@ export const CANONICAL_PERMISSIONS = [
   'einvoices.issue',
   // OPS-4 matrica (v1.67.0) — 8 novih ključev za granularne vloge:
   'orders.void',
+  // PRIMERJAVA §23 (v1.249.0) — sprememba cene postavke na POS (denarni
+  // poseg: FURS račun nosi ceno → pravica + obvezen razlog + revizija)
+  'orders.priceOverride',
   'cash.manage',
   'menu.availability',
   'haccp.execute',
@@ -112,6 +115,9 @@ const ENHANCED_PERMISSIONS: readonly CanonicalPermission[] = [
   'reports.sales', 'reports.labour', 'guests.read', 'employees.manage',
   'orders.void', 'cash.manage', 'menu.availability', 'haccp.execute',
   'timeclock.manage', 'delivery.manage', 'giftcards.manage', 'discounts.manage',
+  // PRIMERJAVA §23 (v1.249.0): vodstvo dobi spremembo cene privzeto (kot
+  // orders.void); natakarju jo lastnik podeli POSEBEJ prek override-a
+  'orders.priceOverride',
 ]
 
 export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
@@ -129,6 +135,8 @@ export const PERMISSION_LABELS: Record<CanonicalPermission, string> = {
   'einvoices.issue': 'E-računi — izdaja (B2B)',
   // OPS-4 matrica (v1.67.0):
   'orders.void': 'Naročila — storno postavk (kritično)',
+  // PRIMERJAVA §23 (v1.249.0):
+  'orders.priceOverride': 'Naročila — sprememba cene postavke (denarni poseg)',
   'cash.manage': 'Blagajna — odpiranje/zapiranje izmene, no-sale',
   'menu.availability': 'Meni — razpoložljivost (86 / razprodano)',
   'haccp.execute': 'HACCP — izvedba kontrol in meritev',

@@ -47,10 +47,12 @@ interface ExcResp {
   withoutReasonCount: number
 }
 
-const KIND_ORDER = ['discount', 'discount_remove', 'void', 'cancel', 'storno']
+const KIND_ORDER = ['discount', 'discount_remove', 'price_override', 'void', 'cancel', 'storno']
 const KIND_STYLE: Record<string, string> = {
   discount: 'bg-emerald-100 text-emerald-800 border-emerald-200',
   discount_remove: 'bg-amber-100 text-amber-800 border-amber-200',
+  // PRIMERJAVA §23 (v1.249.0): sprememba cene postavke — denarni poseg
+  price_override: 'bg-orange-100 text-orange-800 border-orange-200',
   void: 'bg-rose-100 text-rose-800 border-rose-200',
   cancel: 'bg-stone-200 text-stone-700 border-stone-300',
   storno: 'bg-violet-100 text-violet-800 border-violet-200',
@@ -141,7 +143,7 @@ export function ExceptionsReportCard() {
 
         {data && !busy && data.total > 0 && (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
               {KIND_ORDER.filter((k) => data.byKind[k]).map((k) => (
                 <div key={k} className="rounded-lg border border-stone-200 p-2.5">
                   <p className="text-xs text-stone-500 truncate">{kindLabel(k)}</p>

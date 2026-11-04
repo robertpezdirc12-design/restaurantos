@@ -2592,6 +2592,7 @@ export const sl: Record<string, string> = {
   'exc.report.refresh': 'Osveži',
   'exc.report.kind.discount': 'Popust',
   'exc.report.kind.discount_remove': 'Odstranjen popust',
+  'exc.report.kind.price_override': 'Sprememba cene',
   'exc.report.kind.void': 'Preklic postavke',
   'exc.report.kind.cancel': 'Preklic naročila',
   'exc.report.kind.storno': 'Fiskalni storno',
@@ -4303,6 +4304,20 @@ export const sl: Record<string, string> = {
   'rv.runFailed': 'Poročila ni bilo mogoče pridobiti.',
   'rv.resolved': 'Zagon: {from} – {to}',
   'rv.footerHint': 'Zagon prenese datoteko z danes rešenim obdobjem.',
+
+/* PRIMERJAVA §23 (v1.249.0) — sprememba cene postavke na POS (denarni poseg) */
+  'prc.button': 'Spremeni ceno postavke',
+  'prc.title': 'Sprememba cene postavke',
+  'prc.current': 'Trenutna cena',
+  'prc.new': 'Nova cena (EUR)',
+  'prc.newPh': 'npr. 4,50',
+  'prc.reason': 'Razlog (obvezen)',
+  'prc.reasonPh': 'npr. dogovor z gostom, dnevna cena …',
+  'prc.confirm': 'Spremeni ceno',
+  'prc.done': 'Cena spremenjena',
+  'prc.invalid': 'Vnesite veljavno ceno (0 ali več).',
+  'prc.reasonMissing': 'Razlog je obvezen (vsaj 3 znaki).',
+  'prc.mark': 'Cena spremenjena',
 }
 
 export type Dictionary = typeof sl

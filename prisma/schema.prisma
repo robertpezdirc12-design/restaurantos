@@ -2010,6 +2010,11 @@ model OrderItem {
   vatRate           Decimal             @default(22.00) @db.Decimal(5, 2)
   vatAmount         Decimal             @default(0) @db.Decimal(12, 2)
   notes             String              @default("")
+  // PRIMERJAVA §23 (v1.249.0) — ZGODOVINSKO IME, nova vsebina: polje je od
+  // nastanka NOSILO METAPODATKOV VRSTICE ('[]' = brez; posnetek opcij živi v
+  // OrderItemModifier vrsticah — OSS-10 dokumentacija). Od v1.249.0 nosi oznako
+  // spremembe cene: {"priceOverride":{from,to,at,by}} (0 DDL — bralci
+  // defenzivni, parsePriceOverrideMeta). Preimenovanje bi bilo DDL.
   modifiersJson     String              @default("[]")
   // Issue #7 (P1, v1.104.0) — POSNETEK alergenskih informacij OB NASTANKU
   // naročila (kasnejša sprememba recepta NE spremeni zgodovine) + izrecno

@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // dokumenta (sign, zgoraj) se uporabi enako kot pri izpeljavi iz živih postavk.
   // Legacy računi (izdani pred v1.239.0, itemsJson='[]') → izpeljava iz živih postavk
   // naročila (prejšnje obnašanje, nazaj-kompatibilno).
-  let snapshotItems: { name?: unknown; qty?: unknown; price?: unknown; vatRate?: unknown; vatAmount?: unknown; amount?: unknown }[] = []
+  let snapshotItems: { name?: unknown; qty?: unknown; price?: unknown; vatRate?: unknown; vatAmount?: unknown; amount?: unknown; priceOverride?: unknown }[] = []
   try {
     const rawItems = typeof r.itemsJson === 'string' ? JSON.parse(r.itemsJson) : (r.itemsJson ?? [])
     if (Array.isArray(rawItems)) snapshotItems = rawItems as typeof snapshotItems
@@ -68,6 +68,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         vatRate: num(it.vatRate, 22),
         vatAmount: num(it.vatAmount) * sign,
         amount: num(it.amount) * sign,
+        // PRIMERJAVA §23 (v1.249.0): žig spremembe cene na posnetku (from → to,
+        // pozitivni zneski — predznaka dokumenta NE nosita, ker opisujejeta
+        // POSEG, ne znesek). ADITIVNO: odsotno za nepreganjene/legacy vrstice.
+        ...(it.priceOverride && typeof it.priceOverride === 'object'
+          ? { priceOverride: it.priceOverride }
+          : {}),
       }))
     : (r.Order?.OrderItem ?? []).filter((i) => !i.voided).map((i) => ({
         name: i.menuItemName || 'Artikel',

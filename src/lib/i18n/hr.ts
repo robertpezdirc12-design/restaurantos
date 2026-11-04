@@ -2587,6 +2587,7 @@ export const hr: Record<string, string> = {
   'exc.report.refresh': 'Osvježi',
   'exc.report.kind.discount': 'Popust',
   'exc.report.kind.discount_remove': 'Uklonjen popust',
+  'exc.report.kind.price_override': 'Promjena cijene',
   'exc.report.kind.void': 'Otkaz stavke',
   'exc.report.kind.cancel': 'Otkaz narudžbe',
   'exc.report.kind.storno': 'Fiskalni storno',
@@ -4298,6 +4299,20 @@ export const hr: Record<string, string> = {
   'rv.runFailed': 'Izvješće nije bilo moguće dohvatiti.',
   'rv.resolved': 'Pokretanje: {from} – {to}',
   'rv.footerHint': 'Pokretanje preuzima datoteku s danas razriješenim razdobljem.',
+
+/* PRIMERJAVA §23 (v1.249.0) — sprememba cene postavke na POS (denarni poseg) */
+  'prc.button': 'Promijeni cijenu stavke',
+  'prc.title': 'Promjena cijene stavke',
+  'prc.current': 'Trenutna cijena',
+  'prc.new': 'Nova cijena (EUR)',
+  'prc.newPh': 'npr. 4,50',
+  'prc.reason': 'Razlog (obavezan)',
+  'prc.reasonPh': 'npr. dogovor s gostom, dnevna cijena …',
+  'prc.confirm': 'Promijeni cijenu',
+  'prc.done': 'Cijena promijenjena',
+  'prc.invalid': 'Unesite valjanu cijenu (0 ili više).',
+  'prc.reasonMissing': 'Razlog je obavezan (najmanje 3 znaka).',
+  'prc.mark': 'Cijena promijenjena',
 }
 
 export type DictionaryHr = typeof hr

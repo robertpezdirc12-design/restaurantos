@@ -22,6 +22,7 @@ import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { publishEvent } from '@/lib/events'
 import { OrderError, ORDER_PAYABLE_STATUS, ORDER_MUTABLE_PAYMENT } from '@/lib/ops'
 import { computeBill, earnPointsFor, splitVat, tierForPoints, vatBreakdownAfterDiscount, BillItem, VatDiscountLine } from '@/lib/billing'
+import { parsePriceOverrideMeta } from '@/lib/price-override'
 import { deductStockForOrderTx, type StockDeductionResult } from '@/lib/inventory'
 import { maybeNotifyLowStock } from '@/lib/low-stock'
 import { applyAuto86ForDeductions, type Auto86Entry } from '@/lib/auto-86'
@@ -148,6 +149,9 @@ export async function issueFursReceipt(req: NextRequest) {
       vatAmount: num(it.vatAmount),
       categoryId: it.MenuItem?.categoryId || null,
       voided: it.voided,
+      // PRIMERJAVA §23 (v1.249.0): oznaka spremembe cene (modifiersJson —
+      // defenzivno, neveljavno → null) — za žig na posnetku računa spodaj
+      priceOverride: parsePriceOverrideMeta(it.modifiersJson),
     }))
   // Naloga #6: cena postavke je KONČNA (z DDV) → computeBill pričakuje NETO
   // osnovo (vsota prikazanih cen − izvlečeni DDV); DDV se NE prišteva nazaj.
@@ -651,6 +655,11 @@ export async function issueFursReceipt(req: NextRequest) {
         vatRate: it.vatRate,
         vatAmount: it.vatAmount,
         amount: r2(it.unitPrice * it.quantity),
+        // PRIMERJAVA §23 (v1.249.0) — ŽIG na posnetku računa: izdani račun
+        // razkriva, da je bila cena postavke spremenjena na POS (from → to).
+        // ADITIVNO: ključ IZOSTANE za nepreganjene postavke (oblika posnetka
+        // za račune brez posegov ostane enaka; bralci so defenzivni).
+        ...(it.priceOverride ? { priceOverride: { from: it.priceOverride.from, to: it.priceOverride.to } } : {}),
       }))
 
       const created = await tx.receipt.create({

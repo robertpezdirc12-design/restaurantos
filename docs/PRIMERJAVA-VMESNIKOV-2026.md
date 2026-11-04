@@ -1668,3 +1668,86 @@ trije nad obstoječimi motorji (kandidati miz, cev opomb, ChecklistRun),
 0 DDL, 0 novih odvisnosti. Naslednji val: cena postavke na POS (denarna
 celica nadaljevanje), Tempo insights ali sveža raziskava (julij–november
 2026 objave).
+
+## 23. Raziskava maj/junij 2026 — CENOVNI VAL v1.249.0 (sprememba cene postavke na POS)
+
+Odložena točka §22 D, izvedena kot lastni denarni val (disciplina §15/§16:
+R-numera denarne celice). Lightspeed junij 2026: »Authorized staff can now
+override an item's price directly on the POS during an active order.«
+
+### A) Izmera pred valom
+
+**Kako ima RestaurantOS (v1.248.0):** `OrderItem.price` je ŽE posnetek po
+vrstici (zapisan ob nastanku: `MenuItem.price` + doplačila opcij, ops.ts),
+račun (Receipt.itemsJson posnetek v1.239.0 §16 C) in `computeBill` bereta
+ravno njega — torej cev obstaja, manjka SAMO pooblaščena sprememba cene
+neplačane postavke. Doslej: vodja je moral artikel preklicati (void) in
+zagnati novega s »pravilno« ceno — dve potezi, dve reviziji, naročilo pa je
+izgubilo zveznost (postavka je šla na konec vrste, sedež/tečaj sta padla).
+Alternativna pot je bil popust na nivoju naročila — ampak popust je ODMIK od
+cenašnika, ne sprememba cene postavke (knjigovodstvo vidi drugačen dokument).
+
+**Kako imajo najboljši (Toast/Square):** override cene je pooblaščena poteza
+na odprtem checku — zahteva pravico + razlog, piše se v revizijsko sled in na
+račun; plačanega dela checka se ne dotika (refund = fiskalna pot).
+
+### B) Denarna disciplina (vzorec void Issue #5/#39, brez izumiranja)
+
+- **PRAVICA**: nov kanonični ključ `orders.priceOverride` (permissions.ts —
+  0 DDL, Json stolpec overrides). Vodstvo (manager/property_manager) ga dobi
+  privzeto (isto hierarhijo kot `orders.void`), natakarju ga lastnik podeli
+  prek override-a. NE FULL-only: podelitev je lastnikova odločitev
+  (gostilna, kjer vodja zaupa natakarjem pri dnevni ceni rib, to želi).
+- **RAZLOG OBVEZEN VEDNO** (3–200 znakov, prosta besedila — katalog
+  VoidReason je domena preklica): denarni poseg brez utemeljitve ne obstaja.
+  Strožje od preklica, kjer je obveznost politika `excRequireReasonVoid`.
+- **TABU** (iste 409 kot void v1.239.0 §16 D): plačano/stornirano naročilo;
+  postavka na PLAČANEM izstavku delno plačanega naročila (pre-bran +
+  race-safe znotraj TX — izdani račun se spreminja samo s fiskalnim stornom);
+  preklicana postavka; ista cena (400 — no-op poseg ne smrdi po sledi).
+- **DDV v isti transakciji**: cena je končna z DDV (Naloga #6) →
+  `vatAmount = vatFromGross(novaCena × qty, stopnja)` se zapiše skupaj s
+  ceno; `recalcOrderTotals` bere shranjeni DDV (brez tega bi Order.tax tiha
+  zaostal). Totals se zapišejo pod optimistic-concurrency CAS (prejšnji
+  subtotal/tax/total v where — sočasen addItems/void/popust → rollback +
+  retry ≤ 3).
+- **REVIZIJA**: `ORDER_ITEM_PRICE_OVERRIDE` v verigi (writeAudit PO commitu —
+  oldPrice/newPrice/delta/qty/razlog/izvajalec + previousOverride, če je bila
+  vrstica že preganjena); poročilo finančnih izjem dobi vrsto
+  `price_override` (|delta| vrstice — lahko tudi navzgor).
+- **ISKRENA MEJA**: prag odobritve NI vključen — `excVoidApprovalAmountCents`
+  je specifičen za preklic, nov prag pa bi zahteval stolpec (= DDL, kliki so
+  porabljeni). Pooblastilo JE dovoljenje, ki ga podeljuje lastnik.
+
+### C) Oznaka na vrstici + žig na računu (0 DDL)
+
+`OrderItem.modifiersJson` je OD NASTANKA mrtva shramba (ops.ts vedno zapiše
+'[]', posnetek opcij živi v OrderItemModifier vrsticah — dokumentirano v
+item-variants.ts). Od tega vala nosi METAPODATKE VRSTICE:
+`{"priceOverride":{from,to,at,by}}` (ime polja zgodovinsko — preimenovanje
+bi bilo DDL; komentar v obeh shemah). Branje je defenzivno
+(parsePriceOverrideMeta — neveljavno → null, self-healing), pisanje strogo
+(validirana ruta). UI: ✱ na vrstici urejevalnika naročila s tooltipom
+(prejšnja cena + kdo). RAČUN: posnetek Receipt.itemsJson ob izdaji nosi
+ADITIVNI ključ `priceOverride: {from, to}` samo za preganjene postavke
+(nepreganjene vrstice in vsi legacy računi ostanejo byte-identični); branje
+/api/furs/[id] ga posreduje naprej (žig POSNETKA — termični tisk cene ne
+spreminja: natisnjena cena JE preganjena, sled kdo/zakaj je v reviziji).
+
+### D) UI (NaročiloSheet — isto mesto kot preklic)
+
+Gumb 💰 (Coins) na vrstici obstoječe postavke z ISTIMI tremi varovali kot
+preklic (`hasPerm('orders.priceOverride')` + naročilo ni plačano + postavka
+ni na plačanem izstavku §16 D) → dialog (trenutna cena readonly, nova cena
+inputMode decimal — vejica ALI pika, razlog obvezen) → POST
+/api/orders/[id]/price-override → toast »Cena spremenjena: X € → Y €« +
+osvežen naročilo. Gumb je videti tudi na naročilih v statusu sent/prepared
+(kuhinja že dela — cena je plačilna, ne produkcijska spremenljivka).
+
+**Sklep §23:** cena postavke na POS je zdaj ena pooblaščena poteza z razlogom
+— nad istim oklepom kot preklic (pravica, 409 na plačenem, CAS transakcija,
+revizija v verigi), z DDV preračunanim v isti transakciji in žigom na
+posnetku računa. 0 DDL (mrtva shramba modifiersJson + aditivni ključ v
+itemsJson), 0 novih odvisnosti. Naslednji val: Tempo insights (junij P2 —
+deterministična izpeljava iz Order.createdAt→paidAt po mizah), sveža
+raziskava julij–november 2026 ali B-odločitve lastnika.
