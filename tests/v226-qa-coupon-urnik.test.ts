@@ -57,6 +57,11 @@ let locId = ''
 let adminId = ''
 let adminToken = ''
 let itemSeq = 0
+// kuponova koda nosi SEKVENCO, ne naključno pripono: Math.random(100–999)
+// daje ~0,3 % možnost trka unique(code) na poskus (CI fail 68a27f2 — flaky,
+// ki je izstrelil šele po mesecih zelenih tekov); sekvenca je deterministično
+// unikatna znotraj teka, RUN pa loči posamezne teke
+let couponSeq = 0
 let menuItemId = ''
 
 function req(url: string, token: string | null, method = 'GET', body?: unknown): NextRequest {
@@ -114,7 +119,7 @@ async function seedGuest(name: string): Promise<string> {
 }
 
 async function seedCoupon(guestId: string, percent = 10): Promise<string> {
-  const code = `V226${RUN.toUpperCase().slice(-5)}${Math.floor(Math.random() * 900 + 100)}`
+  const code = `V226${RUN.toUpperCase().slice(-5)}${String(++couponSeq).padStart(3, '0')}`
   await db.coupon.create({
     data: { id: `${PREFIX}cp${++itemSeq}-${RUN}`, code, guestId, percent, status: 'issued', locationId: locId, reason: 'manual', expiresAt: new Date(Date.now() + 30 * 86400_000) },
   })
