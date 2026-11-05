@@ -101,6 +101,7 @@ import {
   Eye,
   CheckCircle2,
   Pause,
+  RotateCcw,
 } from 'lucide-react'
 import { CommandPalette, PaletteButton } from '@/components/command-palette'
 import { DashboardSidebar, MobileBottomNav, MobileNavDrawer } from '@/components/dashboard-nav'
@@ -114,7 +115,7 @@ import {
   type QueuedOp,
 } from '@/lib/offline-queue'
 import {
-  printLines, buildKitchenTicketLines, getPrintConfig, savePrintConfig,
+  printLines, buildKitchenTicketLines, filterTicketItems, getPrintConfig, savePrintConfig,
   type PrintConfig, type PrintLine, type PrintTarget,
 } from '@/lib/devices/print'
 import { getTerminalConfig, saveTerminalConfig, processTerminalPayment, type TerminalMode } from '@/lib/devices/terminal'
@@ -822,6 +823,67 @@ function DashboardInner() {
       setRcptScanning(false)
     }
   }
+
+  /* ── v1.256.0 (PRIMERJAVA §30; Lightspeed maj 2026 »Reprint orders«):
+        PONATIS LISTKOV ZAPRTEGA NAROČILA z izbiro produkcijskega središča ── */
+  const [reprintTarget, setReprintTarget] = useState<ReceiptT | null>(null)
+  const [reprintOrder, setReprintOrder] = useState<OrderT | null>(null)
+  const [reprintStation, setReprintStation] = useState<'KITCHEN' | 'BAR' | 'ALL'>('ALL')
+  const [reprintBusy, setReprintBusy] = useState(false)
+  /** Odpre dialog: naloži povezano naročilo (GET /api/orders/[id] — requireAuth +
+   *  lokacijska vrata strežnika) za števce postavk po središčih. */
+  async function openReprint(r: ReceiptT) {
+    if (!r.orderId) { toast({ title: t('rcpt.reprintNoOrder'), variant: 'destructive' }); return }
+    setReprintTarget(r)
+    setReprintOrder(null)
+    setReprintStation('ALL')
+    try {
+      const d = await api<{ order: OrderT }>(`/api/orders/${r.orderId}`)
+      setReprintOrder(d.order)
+    } catch {
+      toast({ title: t('rcpt.reprintLoadFail'), variant: 'destructive' })
+      setReprintTarget(null)
+    }
+  }
+  /** Potrdi ponatis: POST (revizija ORDER_TICKET_REPRINT na strežniku) → tisk po
+   *  obstoječi cevi (buildKitchenTicketLines + printLines, enako kot KDS). */
+  async function confirmReprint() {
+    if (!reprintOrder || !reprintTarget) return
+    setReprintBusy(true)
+    try {
+      const d = await api<{ order: OrderT }>(`/api/orders/${reprintOrder.id}/reprint-ticket`, {
+        method: 'POST',
+        body: JSON.stringify({ station: reprintStation }),
+      })
+      const o = d.order
+      // iskrenost: samo produkcija, ki je nastala (preklicane/umaknjene izpustimo)
+      const live = filterTicketItems(o.items)
+      const res = await printLines(`Narocilo #${o.orderNumber ?? '?'}`, buildKitchenTicketLines({
+        orderNumber: o.orderNumber ?? undefined,
+        tableName: o.table?.name || null,
+        type: o.type,
+        createdAt: o.createdAt,
+        employeeName: o.employee?.name || null,
+        items: live.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [], modifiers: it.modifiers ?? [] })),
+      }, reprintStation === 'ALL' ? undefined : reprintStation, { by: user?.name || null }))
+      if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
+      else if (res.simulated) {
+        toast({ title: reprintStation === 'BAR' ? t('print.simBar') : reprintStation === 'KITCHEN' ? t('print.simKitchen') : t('print.simAll') })
+      }
+      setReprintTarget(null)
+      setReprintOrder(null)
+    } catch (e) {
+      toast({ title: (e as Error).message, variant: 'destructive' })
+    } finally {
+      setReprintBusy(false)
+    }
+  }
+  /** Števci postavk po središčih za izbirnik (isti kanon kot strežniška revizija). */
+  const reprintCounts = useMemo(() => {
+    const live = reprintOrder ? filterTicketItems(reprintOrder.items) : []
+    const qty = (st: string) => live.filter((it) => (it.station || '').toUpperCase() === st).reduce((s, it) => s + it.qty, 0)
+    return { KITCHEN: qty('KITCHEN'), BAR: qty('BAR'), ALL: live.reduce((s, it) => s + it.qty, 0) }
+  }, [reprintOrder])
 
   // ISSUE #72 A4/C1: canManage je OD SEDAJ CENTRALNA vloga (OWNER/ADMIN/enterprise).
   // MANAGER ima od v1.133.0 OMEJEN nabor (19 ključev) in zavihke vidi SKOZ SVOJE
@@ -5733,6 +5795,13 @@ function DashboardInner() {
                             <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
                               <Printer className="w-3.5 h-3.5" /> {t('common.print')}
                             </Button>
+                            {/* v1.256.0 (PRIMERJAVA §30): ponatis listka iz zadetka
+                                skeniranja — isti spor (gost prinese stari račun) */}
+                            {r.orderId && (
+                              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => void openReprint(r)} title={t('rcpt.reprintBtnTitle')} aria-label={t('rcpt.reprintBtnTitle')}>
+                                <RotateCcw className="w-3.5 h-3.5" /> {t('rcpt.reprintBtn')}
+                              </Button>
+                            )}
                             {!r.isStorno && !isStorned(r.id) && hasPerm('receipts.storno') && (
                               <Button size="sm" variant="outline" className="h-8 gap-1.5 text-red-700 border-red-200 hover:bg-red-50" disabled={stornoing === r.id}
                                 onClick={() => stornoReceipt(r)} title={t('rcpt.stornoBtn')}>
@@ -5790,6 +5859,13 @@ function DashboardInner() {
                           <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={printing} onClick={() => printInvoice(r.id)} title={t('payment.printTitle')}>
                             <Printer className="w-3.5 h-3.5" /> {t('common.print')}
                           </Button>
+                          {/* v1.256.0 (PRIMERJAVA §30): ponatis kuhinjskega/bar listka
+                              zaprtega naročila — samo, če račun nosi orderId */}
+                          {r.orderId && (
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => void openReprint(r)} title={t('rcpt.reprintBtnTitle')} aria-label={t('rcpt.reprintBtnTitle')}>
+                              <RotateCcw className="w-3.5 h-3.5" /> {t('rcpt.reprintBtn')}
+                            </Button>
+                          )}
                           {!r.isStorno && !isStorned(r.id) && hasPerm('receipts.storno') && (
                             <Button size="sm" variant="outline" className="h-8 gap-1.5 text-red-700 border-red-200 hover:bg-red-50" disabled={stornoing === r.id}
                               onClick={() => stornoReceipt(r)} title={t('rcpt.stornoBtn')}>
@@ -5809,6 +5885,56 @@ function DashboardInner() {
             {/* Issue #19 (v1.107.0) — poročilo finančnih izjem (razlog + odobritev) */}
             <ExceptionsReportCard />
           </TabsContent>
+
+          {/* v1.256.0 (PRIMERJAVA §30; Lightspeed maj 2026 »Reprint orders«):
+              ponatis listkov ZAPRTEGA naročila z izbiro produkcijskega središča
+              (kuhinja / bar / vse) — vsako s številom postavk, potrditev gre
+              čez revizijsko vrata ORDER_TICKET_REPRINT na strežniku. */}
+          <Dialog open={!!reprintTarget} onOpenChange={(op) => { if (!op) { setReprintTarget(null); setReprintOrder(null) } }}>
+            {/* aria-describedby={undefined} — vzorec v1.202.0+: dialog brez Description
+                sicer sproži radix »Missing Description« warning (čista konsola) */}
+            <DialogContent aria-describedby={undefined} className="max-w-sm" data-region="reprint-ticket-dialog">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5"><RotateCcw className="w-4 h-4" /> {t('rcpt.reprintTitle')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm">
+                <p className="text-stone-500">{t('rcpt.reprintHint', { n: reprintTarget?.invoiceNumber ?? '', order: String(reprintTarget?.orderNumber ?? '?') })}</p>
+                {!reprintOrder && (
+                  <div className="flex min-h-20 items-center justify-center gap-2 text-stone-500" role="status">
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('common.loading')}
+                  </div>
+                )}
+                {reprintOrder && reprintCounts.ALL === 0 && (
+                  <p className="text-stone-500">{t('rcpt.reprintNone')}</p>
+                )}
+                {reprintOrder && reprintCounts.ALL > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-stone-600">{t('rcpt.reprintStation')}</p>
+                    <div role="radiogroup" aria-label={t('rcpt.reprintStation')} className="space-y-1.5">
+                      {(['KITCHEN', 'BAR', 'ALL'] as const).map((st) => {
+                        const count = reprintCounts[st]
+                        const active = reprintStation === st
+                        return (
+                          <button key={st} type="button" role="radio" aria-checked={active} disabled={count === 0 || reprintBusy}
+                            onClick={() => setReprintStation(st)}
+                            className={`min-h-11 w-full rounded-lg border px-3 py-2 flex items-center justify-between gap-2 text-left transition-colors ${active ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-stone-200 bg-white hover:bg-stone-50'} ${count === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            <span className="font-medium">{st === 'KITCHEN' ? t('rcpt.reprintKitchen') : st === 'BAR' ? t('rcpt.reprintBar') : t('rcpt.reprintAll')}</span>
+                            <span className="text-xs text-stone-500">{t('rcpt.reprintItems', { n: count })}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setReprintTarget(null); setReprintOrder(null) }}>{t('common.cancel')}</Button>
+                <Button className="bg-emerald-700 hover:bg-emerald-800 gap-1.5" disabled={reprintBusy || !reprintOrder || reprintCounts[reprintStation] === 0} onClick={() => void confirmReprint()}>
+                  {reprintBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />} {t('rcpt.reprintConfirm')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <TabsContent value="inzeniring" className="space-y-4">
             {/* OPS-8 v1.71.0 — menu engineering (Kasavana-Smith kvadrant) */}

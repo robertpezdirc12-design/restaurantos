@@ -597,23 +597,23 @@ describe('v1.249.0 E — pravice orders.priceOverride', () => {
 
 describe('v1.249.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.249.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.255.0')
+    expect(APP_VERSION).toBe('1.256.0')
     const versionFile = read('src/lib/version.ts')
-    expect(versionFile).toContain("'1.255.0'")
+    expect(versionFile).toContain("'1.256.0'")
     const compose = read('deploy/docker-compose.yml')
-    expect(compose).toContain('restaurantos:1.255.0')
+    expect(compose).toContain('restaurantos:1.256.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4002/4002 (+13: prc×12 + exc.report.kind.price_override)', () => {
-    expect(Object.keys(sl).length).toBe(4074)
-    expect(Object.keys(hr).length).toBe(4074)
+    expect(Object.keys(sl).length).toBe(4088)
+    expect(Object.keys(hr).length).toBe(4088)
   })
 
   test('Ž3: dokumenti — PRIMERJAVA §23 CENOVNI VAL + AUDIT števci', () => {
     expect(doc).toContain('## 23. Raziskava maj/junij 2026 — CENOVNI VAL v1.249.0')
     expect(doc).toContain('orders.priceOverride')
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4074 ključev SL in 4074 HR')
+    expect(audit).toContain('4088 ključev SL in 4088 HR')
     expect(audit).toContain('**POSODOBITEV (v1.249.0, PRIMERJAVA-VMESNIKOV-2026 §23 — cenovni val):**')
   })
 
@@ -628,7 +628,7 @@ describe('v1.249.0 Ž — registri in pini', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.249.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.255.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.256.0-ponatis-listkov-val')
   })
 
   test('Ž6: ruta pošilja dogodev + push (osvežitev plošč PO commitu)', () => {

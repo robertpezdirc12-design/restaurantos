@@ -172,7 +172,36 @@ function printLinesBrowser(title: string, lines: PrintLine[]) {
   w.print()
 }
 
-/** Kuhinjski list (issue #1: kuhinjski tisk) */
+/**
+ * v1.256.0 (PRIMERJAVA §30; Lightspeed maj 2026 »Reprint orders«): iskreni
+ * ponatis nosi SAMO produkcijo, ki je nastala — preklicane (status cancelled)
+ * in umaknjene (voided) postavke kuhinja/bar NIKOLI nista dobili, zato jih
+ * ponatis zaprtega naročila ne sme izrisati (ponatis ne laže o produkciji).
+ * Defenzivno: manjkajoč status/voided se obravnava kot AKTIVNA postavka
+ * (KDS pot pošilja že prefiltrirane vrstice — neznano ≠ preklicano).
+ */
+export function filterTicketItems<T extends { status?: string | null; voided?: boolean | null }>(
+  items: T[],
+): T[] {
+  if (!Array.isArray(items)) return []
+  return items.filter((it) => {
+    if (it && it.voided === true) return false
+    const st = (it?.status || '').toLowerCase()
+    return st !== 'cancelled' && st !== 'voided'
+  })
+}
+
+/**
+ * v1.256.0 (PRIMERJAVA §30): kontekst ponatisa za buildKitchenTicketLines.
+ * Ponatis, ki je vizualno enak izvirniku, je goljufivi dokaz — glava zato
+ * nosi PONATIS, vrstica pa kdo in kdaj je ponatisnil + IZVIRNI čas naročila.
+ */
+export interface KitchenTicketReprint {
+  /** ime ponatisnika (revizijska identiteta) */
+  by?: string | null
+}
+
+/** Kuhinjski list (issue #1: kuhinjski tisk; §30: reprint kontekst) */
 export function buildKitchenTicketLines(order: {
   orderNumber?: number
   tableName?: string | null
@@ -180,17 +209,29 @@ export function buildKitchenTicketLines(order: {
   createdAt?: string
   employeeName?: string | null
   items: { name: string; qty: number; note?: string | null; station?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; modifiers?: string[] | null }[]
-}, stationFilter?: 'KITCHEN' | 'BAR'): PrintLine[] {
+}, stationFilter?: 'KITCHEN' | 'BAR', reprint?: KitchenTicketReprint): PrintLine[] {
   const now = new Date()
   const time = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
   const items = stationFilter
     ? order.items.filter((i) => (i.station || '').toUpperCase() === stationFilter)
     : order.items
+  const baseTitle = stationFilter === 'BAR' ? 'BAR LIST' : stationFilter === 'KITCHEN' ? 'KUHINJSKI LIST' : 'KUHINJA'
   const out: PrintLine[] = [
-    { text: stationFilter === 'BAR' ? '=== BAR LIST ===' : stationFilter === 'KITCHEN' ? '=== KUHINJSKI LIST ===' : '=== KUHINJA ===', align: 'center', bold: true, size: 'large' },
+    { text: `=== ${reprint ? 'PONATIS · ' : ''}${baseTitle} ===`, align: 'center', bold: true, size: 'large' },
     { text: `Naročilo #${order.orderNumber ?? '?'}   ${time}`, bold: true },
-    { text: order.tableName ? `Miza: ${order.tableName}` : `Tip: ${order.type || 'DINE_IN'}` },
   ]
+  // §30: izvirni čas naročila — pri ponatisu LOČENO od ure tiska (prej je
+  // builder order.createdAt tiho ignoriral; dokument v sporu mora kazati OBEMA)
+  if (reprint && order.createdAt) {
+    const orig = new Date(order.createdAt)
+    if (!Number.isNaN(orig.getTime())) {
+      out.push({ text: `Izvirno naročilo: ${orig.toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` })
+    }
+  }
+  if (reprint && typeof reprint.by === 'string' && reprint.by.trim()) {
+    out.push({ text: `Ponatis: ${reprint.by.trim().slice(0, 60)} · ${time}`, bold: true })
+  }
+  out.push({ text: order.tableName ? `Miza: ${order.tableName}` : `Tip: ${order.type || 'DINE_IN'}` })
   if (order.employeeName) out.push({ text: `Natakar: ${order.employeeName}` })
   out.push({ text: '--------------------------------' })
   for (const it of items) {

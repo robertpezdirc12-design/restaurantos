@@ -367,15 +367,15 @@ describe('v1.253.0 Ž — registri', () => {
   const routeSrc = read('src/app/api/reports/export/route.ts')
   const uiSrc = read('src/components/tabs/backoffice-tab.tsx')
 
-  test('Ž1: verzija 1.255.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.255.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.255.0'")
-    expect(compose).toContain('restaurantos:1.255.0')
+  test('Ž1: verzija 1.256.0 + compose oznaka', () => {
+    expect(APP_VERSION).toBe('1.256.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.256.0'")
+    expect(compose).toContain('restaurantos:1.256.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4074/4074 (+15 acct.xzOpen*)', () => {
-    expect(Object.keys(sl).length).toBe(4074)
-    expect(Object.keys(hr).length).toBe(4074)
+  test('Ž2: i18n pariteta SL/HR 4088/4088 (+15 acct.xzOpen*)', () => {
+    expect(Object.keys(sl).length).toBe(4088)
+    expect(Object.keys(hr).length).toBe(4088)
     for (const k of [
       'acct.xzOpenToggle', 'acct.xzOpenHint', 'acct.xzOpenBanner', 'acct.xzOpenCount',
       'acct.xzOpenGross', 'acct.xzOpenNet', 'acct.xzOpenVat', 'acct.xzOpenTotalGross',
@@ -411,11 +411,11 @@ describe('v1.253.0 Ž — registri', () => {
     expect(doc).toContain('## 27.')
     expect(doc).toContain('See open checks')
     expect(auditDoc).toContain('v1.253.0')
-    expect(auditDoc).toContain('- 4074 ključev SL in 4074 HR')
+    expect(auditDoc).toContain('- 4088 ključev SL in 4088 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.255.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.256.0-ponatis-listkov-val')
   })
 })

@@ -166,9 +166,9 @@ describe('v1.233.0 C — KDS vrsta / Start Queue (Toast julij 2026)', () => {
 
 describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.255.0')
-    expect(read('src/lib/version.ts')).toContain("'1.255.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.255.0')
+    expect(APP_VERSION).toBe('1.256.0')
+    expect(read('src/lib/version.ts')).toContain("'1.256.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.256.0')
   })
 
   test('Ž2: dokument PRIMERJAVA — §4 cona v1.233, presoja 22/22, NOVA §11 z valom', () => {
@@ -184,18 +184,18 @@ describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.255.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.256.0')
     expect(wl.indexOf('Task ID: v1.239.0')).toBeLessThan(wl.indexOf('Task ID: v1.232.0'))
   })
 
   test('Ž5: i18n števci + novi ključi SL/HR (3846/3846, +28)', () => {
-    expect(Object.keys(sl).length).toBe(4074)
-    expect(Object.keys(hr).length).toBe(4074)
+    expect(Object.keys(sl).length).toBe(4088)
+    expect(Object.keys(hr).length).toBe(4088)
     for (const k of ['zones.edit', 'zones.editTitle', 'zones.renameBtn', 'zones.mergeBtn', 'zones.tablesCount', 'zones.updated', 'sp.title', 'sp.waiter', 'sp.avgTicket', 'sp.unassigned', 'sp.total', 'kds.queueTitle', 'kds.queueHint']) {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(auditDoc).toContain('4074 ključev SL in 4074 HR')
+    expect(auditDoc).toContain('4088 ključev SL in 4088 HR')
     expect(auditDoc).toContain('POSODOBITEV (v1.233.0')
   })
 })

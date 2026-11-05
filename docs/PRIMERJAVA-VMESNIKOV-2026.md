@@ -2369,3 +2369,96 @@ zapisovanja (banner ne piše — zapis teče po starih vratih: strežnik +
 validacije + revizije). Naslednji val: Square Vol 16 (pričakovana
 objava sredi novembra 2026 — tedaj sveža ocena), Toast/Lightspeed
 zimske objave ali B-odločitve lastnika po »nadaljuj«.
+
+## 30. Raziskava november 2026 (nadaljevanje 4) — PONATIS LISTKOV ZAPRTIH NAROČIL v1.256.0 (Lightspeed »Reprint orders«)
+
+Nadaljevanje sklepa §29 in kandidata §22 D. Square Vol 16 po novi
+oceni še ni objavljen (zimski cikel) — tok izbere ZAKLJUČEN kandidat
+z evidence liste prejšnjih raziskav.
+
+### A) Izmere (zabeleženo maj 2026 + lastno stanje)
+
+- **Lightspeed maj 2026** (§22 D, P2): »Reprint orders — reprint
+  kitchen tickets for CLOSED orders, with a selection of production
+  centers«. Ponatis listka ni več omejen na odprta naročila na KDS
+  plošči; vodja lahko rekonstruira listek ŽE PLAČANEGA naročila in
+  izbere, katero produkcijsko središče (kuhinja/bar/vse) zanima.
+- **Lastno stanje (izmera v valovanju):** ponatis kuhinjskega/bar
+  lista obstaja SAMO na KDS zavihku (printKitchenTicket +
+  buildKitchenTicketLines, station filter KITCHEN|BAR) — torej samo
+  za naročila, ki so NA plošči (open/sent/prepared). Plačano naročilo
+  zaposli tab »Računi«, kjer sta na voljo Print (fiskalni račun prek
+  /api/furs/[id]) in Storno — listka NI mogoče ponatisniti. Račun
+  nosi orderId (povezava nazaj na naročilo + postavke z žigi
+  statusov), a poti ni.
+- **Realni scenarij (Square/Toast forum pritožbe, vzorec »lost
+  ticket«):** gost po plačilu razpravlja, da jed ni nikoli prispela;
+  kuhinja pravi, da listka ni dobila; vodja potrebuje DOKAZ, kaj je
+  bilo poslano v produkcijo — račun pokaže ZMERE, listek pa POT
+  produkcije. Brez ponatisa zaprtih naročil je edina možnost
+  ročno prepisovanje iz spomina.
+- **Odkritje ob meri:** ponatis, ki je VIZUALNO ENAK izvirniku, je
+  goljufivi dokaz (kdor koli natisne »zgodovinski« listek in ga
+  podtakne kot izvirnik). Lightspeed ponatise OZNAČI. Naša pot
+  mora nositi glavo »PONATIS« + kdo + kdaj + izvirni čas naročila.
+
+### B) Odločitev
+
+VAL Ž5 — zapre kandidata §22 D (P2) nad obstoječimi motorji:
+
+1. **Vstopna točka = račun** (tab »Računi«, gating reports.sales —
+   lastnik zaprte površine, enak prag kot seznam, CSV izvoz in
+   skeniranje §25). Gumb »Ponatis listkov« na VRSTICI računa
+   (seznam + rezultati skeniranja) samo, če račun nosi orderId.
+2. **Izbira produkcijskega središča** v dialogu: Kuhinja / Bar /
+   Vse — vsako s številom postavk (odgovor mora biti INFORMATIVEN,
+   ne ugibanje). Dialog naloži naročilo prek obstoječega
+   GET /api/orders/[id] (requireAuth + lokacijska vrata že živita).
+3. **Nova ruta** POST /api/orders/[id]/reprint-ticket
+   body { station: 'KITCHEN' | 'BAR' | 'ALL' }:
+   - dovoljenje `reports.sales` ALI `kitchen.update` (površina je
+     računi, a produkcija je lastnik listka — vodja kuhinje sme
+     rekonstruirati svoj dokument; blagajna/čistilka ne),
+   - lokacijska vrata (guardResource) + validacija station,
+   - revizija ORDER_TICKET_REPRINT (auditLog — kdo, kdaj, kateri
+     listek, katero središče, koliko postavk) — listek zaprtega
+     naročila je DOKUMENT v sporu, vsak ponatis mora biti sledljiv,
+   - odgovor: sveže naročilo (za tisk po klientu).
+4. **Tisk** po obstoječi cevi: buildKitchenTicketLines + printLines
+   (naprava ALI simulator — enako kot KDS ponatis). Razširitev
+   builderja: neobvezen reprint kontekst { by } → glava
+   »=== PONATIS · KUHINJSKI LIST ===«, vrstica »Ponatis: <by> · <čas>«
+   in IZVIRNI čas naročila (order.createdAt, ki ga je builder prej
+   ignoriral). Brez konteksta je izhod NEspremenjen (backwards
+   kompatibilen — KDS pot pinta obstoječe obnašanje).
+5. **Iskrenost postavk:** ponatis nosi SAMO produkcijo, ki je
+   nastala — preklicane/umaknjene postavke (status cancelled/voided)
+   se IZPUSTIJO (lib helper filterTicketItems; kuhinja jih nikoli ni
+   dobila, ponatis ne laže o produkciji).
+6. 0 DDL (auditLog je obstoječa revizijska miza), 0 novih
+   odvisnosti, 0 AI. HR prevodi (Dodatak vzorec — dvojezičnost
+   površine).
+
+### C) Implementacija
+
+- **Lib** (src/lib/devices/print.ts): buildKitchenTicketLines
+  neobvezni tretji argument reprint { by } (glava PONATIS, vrstica
+  ponatisnika + ure, izvirni čas naročila pod številko) +
+  izvozani filterTicketItems (izpust voided/cancelled) — testi A1–A5.
+- **API** (src/app/api/orders/[id]/reprint-ticket/route.ts):
+  requireAnyPermission [reports.sales, kitchen.update], guardResource,
+  station validacija, writeAudit ORDER_TICKET_REPRINT (entityType
+  Order, details: station/orderNumber/itemCount/by), odgovor
+  ok({ order }) — testi B1–B3 (struktura + vrata + revizija).
+- **Page** (dashboard/page.tsx): stanje reprintTarget (ReceiptT) /
+  reprintOrder (OrderT) / reprintStation; gumb na vrstici računa
+  (seznam receiptsInRange + rezultati rcptScanResults) kadar
+  r.orderId; dialog s tremi izbirami središča s števci postavk
+  (filterTicketItems + station), potrditev → POST → tisk → toast
+  (simulator sporočili obstoječa print.sim*); 44 px dotik, aria,
+  data-region reprint-ticket-dialog.
+- **i18n:** rcpt.reprint* ključi (sl + hr).
+- **Testi:** tests/v256-ponatis-listkov.test.ts — A čisti sloj
+  (builder + filter), B ruta (struktura vrata + revizija), Ž montaža
+  (gumbi na obeh površinah, dialog, POST klic, tisk po uspehu) in
+  0 DDL dokaz.

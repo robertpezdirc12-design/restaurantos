@@ -280,13 +280,13 @@ describe('v1.254.0 Ž — registri', () => {
   const compSrc = read('src/components/live-check-aside.tsx')
   const libSrc = read('src/lib/live-check.ts')
 
-  test('Ž1: verzija 1.255.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.255.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.255.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.255.0')
+  test('Ž1: verzija 1.256.0 + compose oznaka', () => {
+    expect(APP_VERSION).toBe('1.256.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.256.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.256.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4074/4074 (+10 lcv.*)', () => {
+  test('Ž2: i18n pariteta SL/HR 4088/4088 (+10 lcv.*)', () => {
     for (const k of [
       'lcv.title', 'lcv.live', 'lcv.empty', 'lcv.pending', 'lcv.voided',
       'lcv.more', 'lcv.total', 'lcv.totalAfterVoid', 'lcv.prev', 'lcv.hint',
@@ -296,8 +296,8 @@ describe('v1.254.0 Ž — registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4074)
-    expect(hrCount).toBe(4074)
+    expect(slCount).toBe(4088)
+    expect(hrCount).toBe(4088)
   })
 
   test('Ž3: montaža — štirje dialogi z LiveCheckAside + tap na vrstico + 0 DDL dokaz', () => {
@@ -339,12 +339,12 @@ describe('v1.254.0 Ž — registri', () => {
     expect(doc).toContain('Real-Time Check View')
     expect(doc).toContain('updates with each choice as staff edit')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(auditDoc).toContain('v1.255.0')
-    expect(auditDoc).toContain('- 4074 ključev SL in 4074 HR')
+    expect(auditDoc).toContain('v1.256.0')
+    expect(auditDoc).toContain('- 4088 ključev SL in 4088 HR')
   })
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.255.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.256.0-ponatis-listkov-val')
   })
 })
