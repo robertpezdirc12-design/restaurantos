@@ -7,7 +7,7 @@
  * (dom poročila o prodaji) grupira PLAČANA naročila izbranega obdobja po
  * prihodkovnih centrih: CONA mize (DINE_IN) + kanala ODNES in DOSTAVA.
  *
- * Obdobje NADZORUJE zavihek (ista from/to kot knjigovodski portal in seznam
+ * Časovni okvir NADZORUJE zavihek (ista from/to kot knjigovodski portal in seznam
  * računov — Issue #94 vzorec); kartica nima lastnih datumov, SAMO prikaz.
  * Data: GET /api/reports/revenue-centers (READ-ONLY, izpeljava ob branju —
  * 0 DDL, 0 mutacij; center = Table.area | Order.type, glej ruto za prevod).
@@ -151,7 +151,15 @@ export function RevenueCentersCard(props: {
                     <td className="py-2.5 pr-3 text-right tabular-nums text-stone-600 hidden md:table-cell">{fmtEUR(r.tips)}</td>
                     <td className="py-2.5 pr-3 text-right tabular-nums text-stone-600 hidden sm:table-cell">{fmtEUR(r.avgCheck)}</td>
                     <td className="py-2.5 text-right">
-                      <span className="flex items-center justify-end gap-2">
+                      {/* FIX (živa preverba mobilnega 390 px na produkciji): .sr-only
+                          je position:absolute — brez relativnega prednika UBEŽI
+                          obrezovanju overflow-x-auto ovojnice (absolutni elementi
+                          niso posrebani, razen če je drsalec njihov containing
+                          block) in razširi DOKUMENT za širino tabele (izmerjeno:
+                          scrollX 38 px na 390 px). relative na tej vsebniki
+                          zapre zanko: containing block = vsebnik, obrezuje
+                          ovojnica. */}
+                      <span className="relative flex items-center justify-end gap-2">
                         <span
                           aria-hidden
                           className={`h-2 rounded-full ${r.kind === 'zone' ? 'bg-emerald-700' : r.kind === 'none' ? 'bg-stone-400' : 'bg-amber-700'}`}
