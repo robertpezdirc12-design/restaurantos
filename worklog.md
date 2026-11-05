@@ -1,3 +1,22 @@
+Task ID: v1.261.0-finalna-verifikacija (nadaljevanje v1.261.0-sedezni-listki-val)
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija SEDEŽEV NA KUHINJSKEM LISTKU v1.261.0 (R4b) — CI, produkcija, živa E2E preverba, sync-check; ob seji tudi: novi GitHub PAT na originu + zaključek post-push obveznosti v1.260.0 (mobilna 390 na novem deployju).
+
+Work Log:
+- SEJA OKVIR: novi PAT (izmenjan v klepetu) nameščen na origin (https://robertpezdirc12-design:<PAT>@github.com/...) in preverjen z git fetch (EXIT 0) pred delom; push c9ddee1 je šel čez njega brez napake.
+- ZAKLJUČEK v1.260.0 (post-push obveznost iz d64e824): CI @ d64e824 vse zeleno na GitHub Actions (GitLab sync r264 + quality gate r297 + pages r108 — vsi attempt 1 SUCCESS; rdeča sync/neon-smoke check-runa sta app=BUILDKITE, znana zapuščena integracija z lažnim rdečim, odprta točka lastnika); mobilna 390 na NOVEM deployju: Računi zavihek docW 390 = innerW 390, scrollX 0, rc-tabela 7 vrstic + skupna z živimi podatki (Brez mize 61,2 %), sr-only starš position:relative (popravek §34 je v produkciji), posnetek /tmp/verify-v260-prod-390-racuni.png; sync-check SYNCED (d64e824 na vseh treh pikah). v1.260.0 S TEM POVSEM ZAKLJUČEN.
+- CI @ c9ddee1: Dvosmerna sinhronizacija GitLab SUCCESS (r265) · pages SUCCESS (r109) · CI — quality gate (neon-smoke + tests) SUCCESS (r298) — vsi trije na PRVIH vratih, 0 retryjev; testi v CI zeleno (okoljski padci 33 so LOKALNI — CI teče na svežem okolju).
+- PRODUKCIJA: 1.261.0 @ c9ddee1 (database connected, schema ok) — deploy je bil PRIPRRAVLJEN v ~40 s po pushu.
+- ŽIVA E2E PREVERBA NA PRODUKCIJI: demo prijava → GET /api/orders: seatFieldPresent TRUE na postavkah (serializacija §35 JE v živi produkciji; seatValue null je iskren — obstoječa produkcijska naročila nimajo dodeljenih sedežev, nič se ne laže); KDS zavihek izrisan (regresija 0), docW = innerW 1280, 0 napak brskalja/konzole.
+- DEV ŽIVA E2E (že v feature commitu zapisano, tu povzeto): naročilo #1 z addItems seat 1/2/null → API odgovor nosi seat → KDS osnutek čipa »Sedež 1«/»Sedež 2« (postavka brez sedeža brez čipa) → požig → tisk: ── SEDEŽ 1 ── (1× Bruskete) + ── SEDEŽ 2 ── (2× Chicken burger), BAR izločen s KITCHEN filtra, Št. artiklov 3 → čiščenje po Issue #19 (CANCELLED z razlogom, miza FREE → izbrisana); posnetka /tmp/verify-v261-kds-seat-chips.png + /tmp/verify-v261-print-seats.png.
+- SYNC-CHECK po vsem: local = mirror = prod = c9ddee1 (v1.261.0) — SINHRONIZIRANO.
+- Pini prevezani na finalna-verifikacija (vsi wl.slice(0, 400) Task ID pini).
+
+Stage Summary:
+- v1.261.0 SEDEŽI NA KUHINJSKEM LISTKU popolnoma zaključen: CI zeleno na prvih vratih, produkcija živi na 1.261.0, serializacija sedeža izmerjena v produkciji, dev E2E dokazal celoten tok (API → KDS čip → tisk z odseki), sync-check SINHRONIZIRANO.
+- Status: A-razred PRIMERJAVA brez lastniških odločitev izčrpan do naslednje objave (Square Vol 16 pričakovan sredi novembra 2026 — tedaj sveža ocena; Toast/Lightspeed zimske objave); preostali kandidati so DDL (load balancing, nest modifier sets, predizbira variante, rezervacijske kapacitete, kombinacije miz) ali brez vira (Toast Grid KDS).
+- AKCIJA ZA LASTNIKA: (1) prekliči žeton te seje po klepetu (stalna točka); (2) zapuščena Buildkite integracija še vedno piše lažen rdeč check-run ob vsakem pushu (sync + neon-smoke @ app=buildkite) — odstrani ali uredi integracijo; (3) ni novih DDL klikov (val 0 DDL).
+
 Task ID: v1.261.0-sedezni-listki-val (PRIMERJAVA-VMESNIKOV-2026 §35; sklep §34 — zadnji A-razred kandidat brez DDL: odloženi Vol 12 P3 »razvrstitev po sedežih na tisku«; R4b načrt kakovosti)
 Agent: glavni agent (Z.ai Code)
 Task: SEDEŽI NA KUHINJSKEM LISTKU — Square Vol 12 (10. 9. 2026) »razvrstitev po sedežih na tisku«; evidence §31 (»imamo sedeže v1.193 — tiskalna podrobnost P3«). Po zaključku §34 je A-razred brez lastniških odločitev PRAZEN (Square Vol 16 še ni objavljen — zimski cikel, pričakovan sredi novembra; Lightspeed november obdelan §33; Toast Grid KDS brez izmerljivega javnega vira podrobnosti — iskalni izraz »Grid KDS« 0 zadetkov, pos.toasttab.com za Cloudflare → implementacija po ugibanju bi kršila načelo izmer; KDS load balancing = DDL skupno stanje) ⇒ izbran zadnji izmerjeni neizvedeni P3. 0 DDL (OrderItem.seat od v1.193.0), 0 novih odvisnosti, 0 strežniških sprememb poti.
