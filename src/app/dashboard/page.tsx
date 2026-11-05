@@ -150,7 +150,7 @@ import { stationViewKey } from '@/lib/kds-station-routing'
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
 import { groupKdsItemsByCourse } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
-import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode, PanelLeft, PanelRight } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -2843,6 +2843,27 @@ function DashboardInner() {
     setSaleView(v)
     try { localStorage.setItem('ro_sale_view', v) } catch { /* brez shramve */ }
   }
+  /* v1.257.0 (PRIMERJAVA-VMESNIKOV-2026 §31, Square Vol 15 oktober 2026
+     »Choose the cart's side of the checkout screen«): stran košare na
+     prodaji — per-naprava izbira LEVO/DESP. Naša lastna zgodovina je bila
+     razprava benchmarkov (v1.127 desno po Square → v1.141 levo po Toast
+     »left rail«); Vol 15 jo razreši odločitvijo NAPRAVE, ne sistema:
+     levo = desničarjem lažji dostop do mreže, desno = levičarjem.
+     Privzeto 'left' ohranja v1.141 status quo; persist po vzorcu
+     ro_sale_view (queueMicrotask restore + validacija vrednosti). */
+  const [saleCartSide, setSaleCartSide] = useState<'left' | 'right'>('left')
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const v = localStorage.getItem('ro_sale_cart_side')
+        if (v === 'left' || v === 'right') setSaleCartSide(v)
+      } catch { /* zasebni način */ }
+    })
+  }, [])
+  const saleCartSideSet = (v: 'left' | 'right') => {
+    setSaleCartSide(v)
+    try { localStorage.setItem('ro_sale_cart_side', v) } catch { /* brez shramve */ }
+  }
   /* v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §1–2, Toast/Clover benchmark): PRILJUBLJENO ★ —
      per-naprava persist (ro_sale_favs); zvezdica v pogledu KARTICE (kompaktni grid je
      premajhen za še en gumb — upravljanje ★ je v karticah, FILTER ★ deluje povsod). */
@@ -4279,13 +4300,21 @@ function DashboardInner() {
                 desno — oko je moralo potovati čez cel zaslon). Vrstni red = grid
                 order (1=košara, 2=mreža) — mobilna postavitev (fiksna vrstica
                 spodaj) je NEODVISNA od tega (aside skrit < md). */}
-            <div className="md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-start md:gap-4 lg:grid-cols-[21rem_minmax(0,1fr)]">
+            {/* v1.141.0 (Toast benchmark): KOŠARA LEVO — v1.257.0 (§31, Square
+                Vol 15 »Choose the cart's side«) stran postane PER-NAPRAVA izbira:
+                predloga mreže + order-1/order-2 se zrcalita; mobilna (<md)
+                postavitev NEODVISNA (aside hidden md:block, fiksna vrstica). */}
+            <div className={`md:grid md:items-start md:gap-4 ${
+              saleCartSide === 'left'
+                ? 'md:grid-cols-[17rem_minmax(0,1fr)] lg:grid-cols-[21rem_minmax(0,1fr)]'
+                : 'md:grid-cols-[minmax(0,1fr)_17rem] lg:grid-cols-[minmax(0,1fr)_21rem]'
+            }`}>
               {/* LEVO: iskanje + čipi kategorij + mreža izbire (order-2 za md+) */}
               {/* ISSUE #74 V-6 (blocker): prej 40 gumbov kategorij v 6 ovitih vrstah —
                 mreža izbire se je začela šele pri y=429/860 px (na mobilnem 61 % višine).
                 Toast/Square vzorec: iskanje VEDNO v svoji vrstici + ENA vodoravno drsna
                 vrstica kategorij (flex-nowrap + overflow-x-auto) — mreža pri y≈140. */}
-            <div className="min-w-0 space-y-3 pb-20 md:order-2 md:pb-0">
+            <div className={`min-w-0 space-y-3 pb-20 md:pb-0 ${saleCartSide === 'left' ? 'md:order-2' : 'md:order-1'}`}>
               <div className="flex items-center gap-2">
                 {/* v1.229.0: Enter v iskalnem polju = EAN čitalnik (scanner pošlje Enter);
                     besedne poizvedbe se ne sprožijo (regex samo številke). */}
@@ -4320,6 +4349,38 @@ function DashboardInner() {
                   >
                     <Rows3 className="w-4 h-4" aria-hidden />
                     <span className="hidden lg:inline">{t('sale.viewCompact')}</span>
+                  </button>
+                </div>
+                {/* v1.257.0 (§31, Square Vol 15 »Choose the cart's side«): stran
+                    košare — segmentirana kontrola ob gostoti; 44 px dotik,
+                    aria-pressed, per-naprava persist. Vzorec zgornje skupine
+                    (ikona vedno, besedilo od lg). */}
+                <div data-region="sale-cart-side" className="inline-flex shrink-0 rounded-lg border border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-950 p-0.5" role="group" aria-label={t('sale.cartSide')}>
+                  <button
+                    type="button"
+                    aria-pressed={saleCartSide === 'left'}
+                    aria-label={t('sale.cartSideLeft')}
+                    title={t('sale.cartSideLeft')}
+                    onClick={() => saleCartSideSet('left')}
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold transition ${
+                      saleCartSide === 'left' ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <PanelLeft className="w-4 h-4" aria-hidden />
+                    <span className="hidden lg:inline">{t('sale.cartSideLeftShort')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={saleCartSide === 'right'}
+                    aria-label={t('sale.cartSideRight')}
+                    title={t('sale.cartSideRight')}
+                    onClick={() => saleCartSideSet('right')}
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold transition ${
+                      saleCartSide === 'right' ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <PanelRight className="w-4 h-4" aria-hidden />
+                    <span className="hidden lg:inline">{t('sale.cartSideRightShort')}</span>
                   </button>
                 </div>
               </div>
@@ -4478,8 +4539,9 @@ function DashboardInner() {
 
               {/* KOŠARA — Toast »left rail« (v1.141.0): trajna košara LEVO (md:order-1)
                   — natakarjevo oko ostaja na mreži; glava s števcem, drsni seznam
-                  postavk, vsota + Plačaj VEDNO pritrjena spodaj */}
-              <aside className="hidden md:block md:order-1" aria-label={t('sale.cartTitle')}>
+                  postavk, vsota + Plačaj VEDNO pritrjena spodaj. v1.257.0 (§31):
+                  DESNO = zrcaljeno (md:order-2) — izbira naprave po Square Vol 15. */}
+              <aside className={`hidden md:block ${saleCartSide === 'left' ? 'md:order-1' : 'md:order-2'}`} aria-label={t('sale.cartTitle')}>
                 <Card className="sticky top-20 flex max-h-[calc(100vh-6.25rem)] flex-col shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center justify-between gap-2 text-base">

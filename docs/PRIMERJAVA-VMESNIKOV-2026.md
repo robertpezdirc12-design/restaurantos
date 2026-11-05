@@ -2476,3 +2476,108 @@ produkciji, ki je nastala. 0 DDL, 0 novih odvisnosti. Naslednji val:
 Square Vol 16 (objava pričakovana sredi novembra 2026 — tedaj sveža
 ocena), Toast/Lightspeed zimske objave ali B-odločitve lastnika po
 »nadaljuj«.
+
+## 31. Raziskava november 2026 (nadaljevanje 5) — STRAN KOŠARE v1.257.0 (Square Vol 15 »Choose the cart's side«)
+
+Sveža raziskava po zaključku §30: prebrane vse tri nove Square
+objave (Vol 12 · 10. 9. 2026, Vol 13 · 24. 9. 2026, Vol 15 ·
+22. 10. 2026 — »Vol 16« zimskega cikla še ni na spletišču).
+Tok izbere postavko iz NAJNOVEJŠE objave, ki jo naš model nosi
+brez DDL.
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Square Vol 15 (22. 10. 2026, v7.30) — 6 postavk:**
+  - *Single sign-on (Okta/Entra ID, OIDC)* — podjetniška
+    identiteta; naš POS je lokalni z lastnim avtorizacijskim
+    motorjem (vpisna koda + pravice), OIDC ponudnika zunaj
+    izvedljivosti. IZHOD.
+  - *Kartični doplatek na računih* — ZDA-only (državne omejitve);
+    v SI/HR je doplačilo kartice pravno občutljivo (ES direktiva o
+    stroških plačil). IZHOD.
+  - *Edit items with the check in view* — ŽE ZAPRTO §28 (v1.254.0).
+    Pod-postavka »izbira razdelkov podrobnosti« (skrij opombe/
+    davke/popuste) je premium nastavitev naših že vitkih dialogov
+    (opomba/varianta/cena/preklic — vsak že pravilno ovratničen).
+    Nizka dodana vrednost za malo gostilno.
+  - *Nest modifier sets* (»choosing a side salad brings up dressing
+    options just for that salad«, do tri ravni) — prava vrzel,
+    a zahteva `Modifier.subModifierGroupId` + starševsko vez na
+    `OrderItemModifier` = DDL. ZAVESTNO ODLOŽENO kot B-načrt za
+    lastnikov DDL okvir (evidence: ta odstavek).
+  - *Choose the cart's side of the checkout screen* — **IZBRANO**.
+  - *See open checks in the Sales report* — ŽE ZAPRTO §27 (v1.253.0).
+- **Square Vol 13 (24. 9. 2026) — ocena:** Apple Business Connect
+  (mrežna integracija, IZHOD); revenue centers (Premium — naše cone
+  tlorisa + produkcijska središča so bližina, poročilska val
+  srednje velikosti, kandidat za kasneje); dark mode Retail (imamo);
+  **KDS osnuti listki** (»preview tickets as items are rung in« —
+  dotika ŽIVE KDS cevi, srednje velika, kandidat); KDS stolpci 4–10
+  (imamo gostoto compact/normal, štetje stolpcev je kozmetika);
+  enake vsote POS/nadzorna plošča (ena pot že — poročila so isti
+  motor); samodejni storitvni dodatek (ZDA/Kanada; v SI dodatek za
+  storitev določa lastnik z odločbo, ne avtomat — IZHOD); prednaročila
+  razprodanih (reset čas = DDL na MenuItem, ODLOŽENO).
+- **Square Vol 12 (10. 9. 2026) — ocena:** prenovljena mreža
+  blagajne + Live Cart (pokrito v1.127/128/141 — čipi, levi rail,
+  živi števec); QR dine-in zavihki čez kroge (naš QR tok je
+  eno-naročilo-na-pojav; zavihki = B odločitev o toku); **nevvezani
+  povratki** (»refund a card with no original sale« — FURS: storno
+  mora nositi povezavo na izvirni račun, samostojno izplačilo ni
+  fiskalni dokument → v SI pravno IZHOD); vlečenje listkov v zaporedje
+  na KDS (ročna sekvenca — srednje, kandidat); predizbira variante +
+  preskok prilagoditve per artikel (DDL na MenuItem, ODLOŽENO);
+  zaporedje modifikatorjev na tisku (P3); razvrstitev po sedežih na
+  tisku (imamo sedeže v1.193 — tiskalna podrobnost P3); pametni
+  upsells kioska brez nastavitve (imamo ROČNI izbor — iskreneje za
+  malo gostilno, §22 D).
+- **Lastno stanje (izmera v valovanju):** košara prodaje ima
+  ZAPISANO ZGODOVINO STRANI — v1.127 desna košara (Square), v1.128
+  popravljena vidnost (≥md + fiksna mobilna vrstica), v1.141
+  KOŠARA LEVO (Toast »left rail«: »natakarjevo oko ostaja na mreži«).
+  Razprava levo/desno je torej NAIŠČENA v naši lastni kodi — vsak
+  benchmark je rekel nekaj drugega. Square Vol 15 razreši spor tako,
+  kot ga razrešujejo najboljši: **ne odloči sistem, odloči naprava**
+  — »placing the cart on the left gives right-handed staff easier
+  access to the item grid, while placing it on the right does the
+  same for left-handed staff«. Nastavitev je per-naprava (pri nas
+  vzorec `ro_sale_view`/`ro_sale_favs` — localStorage), površina
+  prodaja (handheld/kiosk sta mobilna brez stranske košare).
+
+### B) Odločitev
+
+VAL Ž2 — stran košare na prodaji, nad obstoječimi motorji:
+
+1. **Stanje** `saleCartSide: 'left' | 'right'`, privzeto `'left'`
+   (ohranja v1.141 status quo — noben obstoječ uporabnik ne dobi
+   presenetljivo zrcaljene plošče), persist `ro_sale_cart_side`
+   per-naprava (isti vzorec kot ro_sale_view: queueMicrotask restore,
+   validacija vrednosti, tiha odpoved v zasebnem načinu).
+2. **Preklop**: segmentirana kontrola ob KARTICE/KOMPAKTNO v glavi
+   prodaje — ikoni PanelLeft/PanelRight, 44 px dotik, aria-pressed,
+   dvojezični naslovi (gumb z ikono samo na ozkih zaslonih, z
+   besedilom od lg — enako kot zgornji preklop gostote).
+3. **Postavitev**: levo = sedanje `md:grid-cols-[17rem_minmax(0,1fr)]`
+   (+ lg 21rem) z mrežo `md:order-2` in košaro `md:order-1`; desno =
+   zrcaljena predloga `md:grid-cols-[minmax(0,1fr)_17rem]` (+ lg)
+   s PREZENJENIMA vrstnima redoma (Tailwind razredi statično v
+   viru — obe veji izbrane). Mobilna (<md) postavitev NEODVISNA:
+   aside je `hidden md:block`, fiksna vrstica + list ostajata.
+4. **Revizija?** NE — bralna, per-naprava, brez denarne posledice
+   (kost košare je videz, ne pravica). Enaka odločitev kot
+   ro_sale_view/ro_sale_favs (0 revizij, 0 strežnika).
+5. 0 DDL, 0 novih odvisnosti, 0 strežniških sprememb. HR prevodi.
+
+### C) Implementacija
+
+- **Page** (src/app/dashboard/page.tsx): stanje + persist
+  ro_sale_cart_side; segmentirana kontrola (data-region
+  sale-cart-side) v glavi prodaje ob preklopu gostote; pogojni
+  razredi predloge mreže + order-1/order-2 zrcaljenje.
+- **i18n:** sale.cartSide (skupina) + polna aria opisa
+  sale.cartSideLeft/sale.cartSideRight + kratki oznaki gumba
+  sale.cartSideLeftShort/sale.cartSideRightShort (sl + hr).
+- **Testi:** tests/v257-stran-kosare.test.ts — A montaža vira
+  (persist + validacija + preklop + aria + obe postavitveni veji),
+  Ž registri (verzija, i18n pariteta 4093/4093, dokumenta §31 +
+  AUDIT, 0 DDL dokaz, mobilna neodvisnost, worklog).

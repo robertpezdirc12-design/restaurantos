@@ -44,7 +44,7 @@ import { GET as tempoGET } from '../src/app/api/reports/tempo/route'
  *      okno dni (clamp 1..90).
  *  Č3) UI MONTAŽA — kartica v Analitiki (pregled), gating reports.sales,
  *      data-region oznake, CSV izvoz.
- *  Ž)  REGISTRI — verzija 1.256.0, compose, i18n 4088/4088 pariteta,
+ *  Ž)  REGISTRI — verzija 1.257.0, compose, i18n 4093/4093 pariteta,
  *      dokumenti (PRIMERJAVA §24, AUDIT števci), worklog pin.
  *
  * 0 DDL · 0 novih odvisnosti · 0 AI.
@@ -597,14 +597,14 @@ describe('v1.250.0 Č3 — UI montaža (Analitika/Pregled + i18n)', () => {
 
 describe('v1.250.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.250.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.256.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.256.0'")
-    expect(compose).toContain('restaurantos:1.256.0')
+    expect(APP_VERSION).toBe('1.257.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.257.0'")
+    expect(compose).toContain('restaurantos:1.257.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4088/4088 (+26 tempo.*)', () => {
-    expect(Object.keys(sl).length).toBe(4088)
-    expect(Object.keys(hr).length).toBe(4088)
+  test('Ž2: i18n pariteta SL/HR 4093/4093 (+26 tempo.*)', () => {
+    expect(Object.keys(sl).length).toBe(4093)
+    expect(Object.keys(hr).length).toBe(4093)
     expect(Object.keys(sl).filter((k) => k.startsWith('tempo.')).length).toBe(26)
     expect(Object.keys(hr).filter((k) => k.startsWith('tempo.')).length).toBe(26)
   })
@@ -630,10 +630,10 @@ describe('v1.250.0 Ž — registri in pini', () => {
     expect(doc).toContain('tables with the most empty time')
     expect(doc).toContain('orders with the longest service gaps')
     expect(auditDoc).toContain('**POSODOBITEV (v1.250.0, PRIMERJAVA-VMESNIKOV-2026 §24 — tempo vpogledi):**')
-    expect(auditDoc).toContain('- 4088 ključev SL in 4088 HR')
+    expect(auditDoc).toContain('- 4093 ključev SL in 4093 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.250.0', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.256.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.257.0-finalna-verifikacija')
   })
 })

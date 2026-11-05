@@ -553,7 +553,7 @@ describe('v1.246.0 E · DDL gate (haccp-plans vzorec)', () => {
 
 describe('v1.246.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.246.0', () => {
-    expect(APP_VERSION).toBe('1.256.0')
+    expect(APP_VERSION).toBe('1.257.0')
   })
 
   test('Ž2: SCHEMA_MIGRATIONS 40 vnosov — checklist-runs z endpointom + desc ključem', () => {
@@ -583,8 +583,8 @@ describe('v1.246.0 Ž · verzija in dokumenti', () => {
   })
 
   test('Ž4: i18n števci 3968 v SL in HR (3889 + 47; pariteta) + vzorčni opv ključi', () => {
-    expect(Object.keys(sl).length).toBe(4088)
-    expect(Object.keys(hr).length).toBe(4088)
+    expect(Object.keys(sl).length).toBe(4093)
+    expect(Object.keys(hr).length).toBe(4093)
     for (const key of ['tabs.opravila', 'opv.board', 'opv.state.overdue', 'opv.cat.opening', 'opv.rep.semiannual', 'opv.resp.count', 'opv.anchorDate', 'opv.itemLabel']) {
       expect(sl[key]).toBeTruthy()
       expect(hr[key]).toBeTruthy()

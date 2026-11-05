@@ -2374,6 +2374,14 @@ export const hr: Record<string, string> = {
   'sale.viewMode': 'Način prikaza mreže',
   'sale.viewCards': 'Kartice',
   'sale.viewCompact': 'Kompaktno',
+  // v1.257.0 (PRIMERJAVA §31, Square Vol 15 oktober 2026 »Choose the cart's
+  // side«): stran košarice na prodaji — izbora po uređaju (lijevo = dešnjacima
+  // lakši dohvat mreže, desno = ljevacima); aria nosi puni opis, gumb kratko
+  'sale.cartSide': 'Stran košarice',
+  'sale.cartSideLeft': 'Košarica na lijevoj strani',
+  'sale.cartSideRight': 'Košarica na desnoj strani',
+  'sale.cartSideLeftShort': 'Lijevo',
+  'sale.cartSideRightShort': 'Desno',
   // v1.229.0 (PRIMERJAVA-VMESNIKOV-2026 §1–2): Toast benchmark — favoriti ★,
   // EAN čitač, Happy Hour ⚡ znak na pločici
   'sale.favs': 'Favoriti',

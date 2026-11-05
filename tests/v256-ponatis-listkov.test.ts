@@ -198,13 +198,13 @@ describe('v1.256.0 B — POST /api/orders/[id]/reprint-ticket', () => {
 // ── Ž) MONTAŽA + REGISTRI ──
 
 describe('v1.256.0 Ž — montaža + registri', () => {
-  test('Ž1: verzija 1.256.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.256.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.256.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.256.0')
+  test('Ž1: verzija 1.257.0 + compose oznaka', () => {
+    expect(APP_VERSION).toBe('1.257.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.257.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.257.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4088/4088 (+13 rcpt.reprint* + print.simAll)', () => {
+  test('Ž2: i18n pariteta SL/HR 4093/4093 (+13 rcpt.reprint* + print.simAll)', () => {
     for (const k of [
       'rcpt.reprintBtn', 'rcpt.reprintBtnTitle', 'rcpt.reprintTitle', 'rcpt.reprintHint',
       'rcpt.reprintStation', 'rcpt.reprintKitchen', 'rcpt.reprintBar', 'rcpt.reprintAll',
@@ -216,8 +216,8 @@ describe('v1.256.0 Ž — montaža + registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4088)
-    expect(hrCount).toBe(4088)
+    expect(slCount).toBe(4093)
+    expect(hrCount).toBe(4093)
   })
 
   test('Ž3: montaža — gumb na OBEH površinah računov, dialog središč, POST → tisk', () => {
@@ -252,7 +252,7 @@ describe('v1.256.0 Ž — montaža + registri', () => {
     expect(doc).toContain('ORDER_TICKET_REPRINT')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.256.0')
-    expect(auditDoc).toContain('- 4088 ključev SL in 4088 HR')
+    expect(auditDoc).toContain('- 4093 ključev SL in 4093 HR')
   })
 
   test('Ž5: 0 DDL dokaz — print lib brez db; schema brez novih modelov/ stolpcev tega vala', () => {
@@ -266,6 +266,6 @@ describe('v1.256.0 Ž — montaža + registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.256.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.257.0-finalna-verifikacija')
   })
 })
