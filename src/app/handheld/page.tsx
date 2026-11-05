@@ -526,16 +526,28 @@ function HandheldInner() {
             {openOrder && <Badge className="bg-amber-600 shrink-0">{fmtEUR(openOrder.total)}</Badge>}
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
+          {/* FIX (zaključna verifikacija v1.259.0, runtime izmerjeno na produkciji): glavni
+              del strani je min-h-dvh (okno je drsalni mehanizem te površine — glava in
+              filtrna vrstica sta vedno lepljivi na OKNO), zato je bil overflow-y-auto na
+              tem vsebniku MRTVI drseči vsebnik: nikoli ni drsal (zrasel je na višino
+              vsebine, drsalo je okno), a kot scroll-container je UGRABIL lepljivo
+              zavezo vrstice — vrstica je zdrsnila z oknom (izmerjeno: po 700 px drsanja
+              je bil rob vrstice na −550 px, obljuba »povzetek ostane v pogledu« NI
+              delovala). Odstranjen overflow-y-auto → vrstica se lepi na OKNO. */}
+          <div className="flex-1 min-h-0 px-4 py-3 space-y-3">
             {/* v1.259.0 (§33): VRSTICA NAROČILA — obstoječe postavke v ZLOŽLJIVI
-                LEPILJIVI sekciji na vrhu drsečega območja (Lightspeed nov 2026
+                LEPILJIVI sekciji na vrhu območja menija (Lightspeed nov 2026
                 »Keep active orders visible while browsing menus« — slide-out
                 menu layer). Povzetek (števec + znesek + faza) OSTANE v pogledu
                 med brskanjem menija; razpenjanje razkrije poln seznam nad menijem
                 (meni ne izgine — plast je nad njim). -mx-4/-mt-3 raztegne sekcijo
-                čez odmik vsebnika, da se pod njo ne vidi drseče vsebine. */}
+                čez odmik vsebnika, da se pod njo ne vidi drseče vsebine.
+                FIX (zaključna verifikacija): lepljiva na OKNO pod glavo — top-[65px]
+                je 77 px glave (py-3 ×2 + 54 px LanguageToggle, izmerjeno) − 12 px
+                -mt-3 (lepljivi rob je ROB ROBE z robom odmika → obroba vrstice
+                pristane točno ob spodnjem robu glave, brez pasu, ki bi kaksel). */}
             {activeItems.length > 0 && (
-              <div data-region="hh-order-bar" className="sticky top-0 z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
+              <div data-region="hh-order-bar" className="sticky top-[65px] z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
                 <button
                   type="button"
                   data-region="hh-order-bar-toggle"

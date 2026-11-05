@@ -49,14 +49,23 @@ describe('v1.259.0 A1 — handheld: zložljiva lepljiva vrstica naročila', () =
     expect(hhSrc).not.toContain("localStorage.setItem('ro_order_bar")
   })
 
-  test('A1b: sekcija je LEPILJIVA na vrhu drsečega območja menija (raztegnjena čez odmik)', () => {
+  test('A1b: sekcija je LEPILJIVA na OKNO pod glavo (raztegnjena čez odmik; FIX zaključne verifikacije)', () => {
     const idx = hhSrc.indexOf('data-region="hh-order-bar"')
     expect(idx).toBeGreaterThan(0)
     const seg = hhSrc.slice(idx, idx + 220)
-    expect(seg).toContain('sticky top-0')
+    // FIX (zaključna verifikacija, runtime izmerjeno na produkciji): glavni del je
+    // min-h-dvh — okno drsa, vsebnik menija z overflow-y-auto je bil MRTVI
+    // scroll-container, ki je ugrabil lepljivo zavezo (vrstica je zdrsla z oknom,
+    // rob −550 px po 700 px drsanja). Popravek: BREZ overflow-y-auto na vsebniku
+    // + top-[65px] = 77 px glave − 12 px -mt-3 (lepljivi rob je rob robe z robom
+    // odmika → obroba pristane ob spodnjem robu glave, brez pasu).
+    expect(seg).toContain('sticky top-[65px]')
     expect(seg).toContain('-mx-4 -mt-3')
     // trdna podlaga — drseči meni se ne vidi skozi
     expect(seg).toContain('bg-white/95')
+    // MRTVI drseči vsebnik ODSTRANJEN na območju menija naročanja (listek/račun
+    // pogled sta space-y-4, ta trditev cilja SAMO vsebnik naročanja space-y-3)
+    expect(hhSrc).not.toContain('overflow-y-auto px-4 py-3 space-y-3')
   })
 
   test('A1c: preklop 44 px z aria-expanded/controls + polni opis', () => {
@@ -114,11 +123,16 @@ describe('v1.259.0 A2 — tablica: enak vzorec v listku (hiter način)', () => {
     expect(tlbSrc).not.toContain('ro_tlb_order_bar')
   })
 
-  test('A2b: sekcija lepljiva na vrhu drsečega območja listka z lastno regijo', () => {
+  test('A2b: sekcija lepljiva na vrhu drsečega območja listka z lastno regijo (flush po FIX)', () => {
     const idx = tlbSrc.indexOf('data-region="tlb-order-bar"')
     expect(idx).toBeGreaterThan(0)
     const seg = tlbSrc.slice(idx, idx + 220)
-    expect(seg).toContain('sticky top-0')
+    // FIX (zaključna verifikacija, runtime izmerjeno na produkciji): Sheet je
+    // višinsko omejen → vsebnik RES drsa in lepljivost deluje, a je bila vrstica
+    // prilepljena 12 px POD robom vsebnika (-mt-3 premakne rob robe odmika) —
+    // nad vrstico je pek 12 px pas z vsebino menija. -top-3 (−12 px) kompenzira
+    // odmik → obroba pristane TOČNO na robu vsebnika (živo preizkušeno: flush).
+    expect(seg).toContain('sticky -top-3')
     expect(seg).toContain('-mx-4 -mt-3')
     expect(seg).toContain('bg-white/95')
   })
@@ -211,6 +225,6 @@ describe('v1.259.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.259.0-vedno-vidno-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.259.0-finalna-verifikacija')
   })
 })
