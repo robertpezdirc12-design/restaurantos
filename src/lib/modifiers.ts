@@ -25,6 +25,16 @@ export interface ModifierRow {
   price: number
   modifierGroupId: string
   isAvailable: boolean
+  /**
+   * PRIMERJAVA §36 (v1.262.0): MENIJSKI vrstni red opcije (Modifier.sortOrder) in
+   * njene skupine (ModifierGroup.sortOrder) — točno to urejanje natakar vidi v
+   * variantnem dialogu (/api/modifier-groups orderBy [sortOrder, name] na obeh
+   * ravneh). ADITIVNO-OPCIJSKO: polji se napolnita iz DB v loadModifierContext;
+   * manjkajoči vrednosti se defenzivno obravnavajo kot 0 (num0) — konstruktorji
+   * brez njih (fixture-ji, stare poti) ostanejo združljivi.
+   */
+  sortOrder?: number
+  groupSort?: number
 }
 
 export interface ResolvedModifierOut {
@@ -33,6 +43,9 @@ export interface ResolvedModifierOut {
   price: number
   groupName: string
   modifierGroupId: string
+  /** §36: menijski ureditveni ključi (iz ModifierRow — vir resnice DB; opcijsko-aditivno) */
+  groupSort?: number
+  modSort?: number
 }
 
 export interface ModifierValidationInput {
@@ -83,6 +96,10 @@ export function validateItemModifiers(input: ModifierValidationInput): ModifierV
       price: m.price,
       groupName: g?.name || '',
       modifierGroupId: m.modifierGroupId,
+      // §36: menijski ključi iz DB vrstice (defenzivno ?? 0 — klicalec brez
+      // novih polj v kontekstu dobi 0 = neutralno glede urejanja)
+      groupSort: num0(m.groupSort),
+      modSort: num0(m.sortOrder),
     })
   }
 
@@ -114,6 +131,44 @@ export function validateItemModifiers(input: ModifierValidationInput): ModifierV
   return { ok: true, error: null, resolved }
 }
 
+/** §36 defenzivno: končno število ali 0 (NaN/Infinity/undefined/niz ne explode). */
+function num0(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * PRIMERJAVA §36 (v1.262.0) — KANONSKI POSNETEK ZAPOREDJA MODIFIKATORJEV.
+ *
+ * Square Vol 12 »zaporedje modifikatorjev na tisku«: listku/KDS-ju se posreduje
+ * MENIJSKI vrstni red (skupine po sortOrder, ime pri izenačitvi; znotraj skupine
+ * po sortOrder, ime pri izenačitvi) — točno dialogovo urejanje iz
+ * /api/modifier-groups — NE vrstni red natakarjevih klikov, ki je bil edini
+ * vir zaporedja do tega vala (ista jed je lahko natisnila »+ slanina / + 0,5 L«
+ * ali »+ 0,5 L / + slanina« glede na to, kaj je bilo kliknjeno prej).
+ *
+ * Čista funkcija (0 uvozov, 0 stranskih učinkov): stabilna ureditev resolvanih
+ * opcij po (groupSort, groupName, modSort, name). Pokličeta jo OBA pisalca
+ * vrstic OrderItemModifier (createOrderCore — POS/sync/QR/kiosk/portal — in
+ * PATCH dodajanje postavk); sortOrder vrstice tako postane kanonska pozicija.
+ * Stabilnost: popolnoma enaki ključi ohranijo vhodni red (iskren fallback).
+ */
+export function orderModifiersForSnapshot(resolved: ResolvedModifierOut[]): ResolvedModifierOut[] {
+  if (!Array.isArray(resolved) || resolved.length <= 1) return resolved
+  return [...resolved]
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => {
+      const d =
+        num0(a.r.groupSort) - num0(b.r.groupSort) ||
+        String(a.r.groupName || '').localeCompare(String(b.r.groupName || ''), 'sl') ||
+        num0(a.r.modSort) - num0(b.r.modSort) ||
+        String(a.r.name || '').localeCompare(String(b.r.name || ''), 'sl')
+      // pri popolni izenačitvi odloči vhodna pozicija (stabilno urejanje)
+      return d !== 0 ? d : a.i - b.i
+    })
+    .map((x) => x.r)
+}
+
 /** DB kontekst za validacijo: povezave artikel→skupina, pravila skupin, razpoložljivi modifierji. */
 export async function loadModifierContext(menuItemIds: string[], chosenModifierIds: string[]) {
   // REAL BUG FIX (v1.210.0): prej je `groupById` dobil pravila SAMO iz IZBRANIH
@@ -142,7 +197,9 @@ export async function loadModifierContext(menuItemIds: string[], chosenModifierI
             price: unknown
             isAvailable: boolean
             modifierGroupId: string
-            ModifierGroup: { id: string; name: string; required: boolean; minSelect: number; maxSelect: number } | null
+            /** §36: tudi fallback tip nosi urejanja (prazna tabela — nikoli brana, tip mora pa sovpadati) */
+            sortOrder: number
+            ModifierGroup: { id: string; name: string; required: boolean; minSelect: number; maxSelect: number; sortOrder: number } | null
           }[]
         ),
     linkedGroupIds.length
@@ -191,6 +248,13 @@ export async function loadModifierContext(menuItemIds: string[], chosenModifierI
       price: Number(m.price) || 0,
       modifierGroupId: m.modifierGroupId,
       isAvailable: !!m.isAvailable,
+      // §36: menijska urejanja iz DB vrstic (chosen include že nosi
+      // Modifier.sortOrder + ModifierGroup.sortOrder; defenzivno → 0)
+      sortOrder: typeof m.sortOrder === 'number' && Number.isFinite(m.sortOrder) ? m.sortOrder : 0,
+      groupSort:
+        m.ModifierGroup && typeof m.ModifierGroup.sortOrder === 'number' && Number.isFinite(m.ModifierGroup.sortOrder)
+          ? m.ModifierGroup.sortOrder
+          : 0,
     })
   }
   return { allowedByItem, groupById, modById }

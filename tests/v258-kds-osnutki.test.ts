@@ -156,9 +156,9 @@ describe('v1.258.0 A4 — izločitve + deljeni predikat (en vir resnice)', () =>
 
 describe('v1.258.0 Ž — registri', () => {
   test('Ž1: verzija 1.258.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.261.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.261.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.261.0')
+    expect(APP_VERSION).toBe('1.262.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.262.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.262.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4099/4099 (+6 kds.draft*)', () => {
@@ -205,6 +205,6 @@ describe('v1.258.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.261.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.262.0-zaporedje-modifikatorjev-val')
   })
 })

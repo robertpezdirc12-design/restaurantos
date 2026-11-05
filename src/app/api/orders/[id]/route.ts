@@ -6,7 +6,7 @@ import { mapOrder, mapOrderItem, nid, num, r2, itemStatusToDB, jstr } from '@/li
 import { publishEvent } from '@/lib/events'
 import { writeAudit } from '@/lib/audit-chain'
 import { recalcOrderTotals, claimMutableOrder } from '@/lib/ops'
-import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
+import { loadModifierContext, validateItemModifiers, orderModifiersForSnapshot, ResolvedModifierOut } from '@/lib/modifiers'
 // v1.211.0 (hotfix CI typecheck-prod): pod Postgres shemo je OrderItem.status ENUM
 // (OrderItemStatus), pod SQLite pa String — v1.210.0 je uvedel tipiziran
 // addItemsBody (prej rows implicitno any prek body.addItems) in latentno
@@ -33,7 +33,7 @@ const orderInclude = {
   // isti vzorec kot ops.ts orderInclude od v1.209.0 (list urejevalnika pokaže
   // velikost/dodatek tudi po osvežitvi naročila).
   // v1.239.0 §16 D: + Check (paymentStatus) — checkPaid v urejevalniku naročila.
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } }, Check: { select: { paymentStatus: true, checkNumber: true } } } },
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true, sortOrder: true } }, Check: { select: { paymentStatus: true, checkNumber: true } } } },
   Table: true,
   Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
   Receipt: { orderBy: { createdAt: 'desc' as const } },
@@ -322,7 +322,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // samodejno; vrstice OrderItemModifier z stabilnimi id-ji (retry-varno,
       // isti vzorec kot vrstice artiklov).
       const rowId = nid()
-      const mods = (resolvedByIdx[itemIdx] || []).map((m, idx) => ({
+      // PRIMERJAVA §36 (v1.262.0): ZAPOREDJE MODIFIKATORJEV NA TISKU — enako kot
+      // createOrderCore: vrstice se zamrznejo v MENIJSKEM vrstnem redu (ne po
+      // vrstnem redu klikov) — sortOrder = kanonska pozicija posnetka.
+      const mods = orderModifiersForSnapshot(resolvedByIdx[itemIdx] || []).map((m, idx) => ({
         id: nid(),
         orderItemId: rowId,
         name: m.name.slice(0, 120),

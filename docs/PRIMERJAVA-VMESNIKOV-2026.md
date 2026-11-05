@@ -2999,3 +2999,117 @@ VAL Ž6 — sedeži na kuhinjskem listku (0 DDL, 0 novih rut):
   (seat null-safe), Ž montaža + registri (obe mesti preslikata,
   čip pogojen, 0 DDL dokaz, verzija 1.261.0, dokument §35,
   AUDIT 0 ključev, worklog Task ID).
+
+## 36. Raziskava november 2026 (nadaljevanje 10) — ZAPOREDJE MODIFIKATORJEV NA TISKU v1.262.0 (Square Vol 12 »zaporedje modifikatorjev na tisku«)
+
+### A) Izmere (evidence §31 + lastno stanje)
+
+- **Sklep §35 je A-razred pustil praznega do naslednjih objav**
+  (Square Vol 16 pričakovan sredi novembra 2026; Toast Grid KDS
+  brez izmerljivega vira; KDS load balancing = DDL). Sveža
+  raziskava istega dne (5. 11. 2026, dokumentirana v §35: Square
+  release notes nedosegljivo, izhodišče lastne izmere) velja TUDI
+  za ta val — med obema valu NI minilo merjenja. ⇒ IZBRAN
+  zadnji neizvedeni Vol 12 P3 iz ocene §31: »zaporedje
+  modifikatorjev na tisku« (ocena §31: enostavno P3 tiskalne
+  plasti — sestrski kandidat »razvrstitev po sedežih« je zaprl
+  §35).
+- **Lastno stanje (izmere po kodi):** `OrderItemModifier` hrani
+  `sortOrder`, a se PIŠE kot `idx` — vrstni red NATAKARJEVIH
+  klikov (oba pisalca: createOrderCore ops.ts, PATCH dodajanje
+  postavk orders/[id]); bralcev vrstičnega `sortOrder` NI
+  (mrtvo polje ob branju — edini bralni `sortOrder` v sistemu je
+  na MENU plasti: /api/modifier-groups). Tiskalni listek
+  (print.ts emitItem → `+ ime`), KDS vrstica postavke in
+  urejevalnik naročila izrisujejo opcije v VRSTNEM REDU VNOSA
+  vrstic = vrstni red klikov. Hkrati kanonski vrstni red MENIJA
+  OBSTAJA in je TAKO, kot ga natakar vidi v variantnem dialogu:
+  skupine po `ModifierGroup.sortOrder` (ime pri izenačitvi),
+  znotraj skupine po `Modifier.sortOrder` (ime pri izenačitvi) —
+  natanko to urejanje vrača /api/modifier-groups (orderBy
+  [sortOrder, name] na obeh ravneh), ki ga dialog prikaže.
+  POSLEDICA (izmerjena vrzel): ISTA jed natisne »+ slanina /
+  + 0,5 L« ali »+ 0,5 L / + slanina« glede na to, kaj je
+  natakar prej kliknil — velikost, ki jo dialog pokaže PRVO, je
+  na listku včasih ZADNJA; kuhar skenira nedosledne listke.
+- **Odloženi kandidati ostajajo pošteno odloženi:** ročna
+  sekvenca vlečenja na KDS (§31/§32: deljeno stanje brez
+  nosilca → DDL), gnezdene skupine opcij (§31: DDL), predizbira
+  variante per artikel (§31: DDL na MenuItem), Toast Grid KDS
+  (§35: brez vira), load balancing (DDL), Toast IQ (zunanji LLM,
+  B-načrt), Square »Allergy and dietary preferences by seat«
+  (tweet §34 — neobjavljeno, brez izmere).
+
+### B) Odločitev
+
+VAL Ž7 — zaporedje modifikatorjev na tisku kot KANONSKI
+POSNETEK OB PISANJU (0 DDL, 0 novih rut, 0 novih odvisnosti):
+
+1. **Vrstni red postane del posnetka vrstice.** OrderItemModifier
+   ŽE je posnetek (name/price/groupName se zamrznejo ob
+   naročilu — kasnejša sprememba menija NE spreminja zgodovine,
+   dokazano v1.209/210 OSS-10). Vrstni red ureditve gre v ISTO
+   zamrznitev: ob pisanju se izbrani modifierji uredijo po
+   MENIJSKEM vrstnem redu (groupSort, groupName, modSort, ime —
+   točno dialogovo urejanje iz /api/modifier-groups) in `sortOrder`
+   vrstice postane kanonska pozicija (prej: pozicija klika).
+   Polje `sortOrder` nima bralcev — prepis pomena ob pisanju je
+   aditiven.
+2. **Ena točka kanonizacije pokrije VSE vire:** čista funkcija
+   `orderModifiersForSnapshot()` v modifiers.ts; pokličeta jo
+   OBA pisalca (createOrderCore — POS + offline sync + QR/kiosk
+   + spletni portal, ki vsi tečejo skoznjo; PATCH dodajanje
+   postavk). Validacija (validateItemModifiers) ostaja VALIDATOR
+   — njeno odločanje se ne meša s politiko urejanja.
+3. **Bralna plast (map.ts mapOrderItem): stabilna ureditev po
+   vrstičnem `sortOrder`** (manjkajoč izbor → ?? 0 → stabilno =
+   vhodni red). Nove vrstice: kanonsko. Stare vrstice: sortOrder
+   = vrstni red klikov = vrstni red vnosa → izhod ENAK
+   prejšnjemu (ničelna regresija zgodovine — ponatis zaprtega
+   naročila ostane TAKO, kot je bil izvirni listek). Select
+   `sortOrder: true` se DODA na 5 vključitvenih mest, ki napajajo
+   serializacijo (ops orderInclude, kitchen ×3, orders/[id]) —
+   eksplicitna invarianta namesto zanašanja na nedokumentiran
+   vrstni red SQLite brez ORDER BY (relacijski include brez
+   orderBy je po specifikaciji NEDOLGOČEN).
+4. **Poročilske površine izven merjene vrzeli** (shifts,
+   daily-email, dashboard top-liste) ostajajo nedotaknjene —
+   vrzel je LISTEK (print + KDS + urejevalnik); obseg P3 ne
+   zateče v poročila.
+5. **0 DDL** (vsa polja obstajajo: OrderItemModifier.sortOrder /
+   ModifierGroup.sortOrder / Modifier.sortOrder), 0 novih
+   odvisnosti, 0 sprememb poti, 0 UI sprememb (listek in KDS
+   že izrisujeta `modifiers[]` — spremeni se VSEBINA vrstnega
+   reda, ne izris), 0 i18n ključev (števci 4121 nespremenjeni;
+   čisti strežniški val).
+
+### C) Implementacija
+
+- **Lib** (src/lib/modifiers.ts): ResolvedModifierOut aditivno
+  `groupSort`/`modSort` (iz DB: ModifierGroup.sortOrder /
+  Modifier.sortOrder — chosen vrstice že nosijo include
+  ModifierGroup; defenzivno Number.isFinite → 0); ModifierRow
+  aditivno sortOrder/groupSort; nova čista funkcija
+  orderModifiersForSnapshot(resolved) — stabilna ureditev po
+  (groupSort, groupName, modSort, name); prazna/v enem
+  elementu → ista referenčna vsebina.
+- **Pisalci:** ops.ts (createOrderCore: resolved → urejanje →
+  vrstice; sortOrder = kanonska pozicija) +
+  orders/[id]/route.ts (PATCH dodajanje: enako pred map).
+- **Bralci** (src/lib/map.ts): mapOrderItem uredi vrstice po
+  (sortOrder ?? 0) stabilno PRED map v imena; 5 vključitvenih
+  mest dobi `sortOrder: true` v select.
+- **Registri:** PRIMERJAVA §36 (ta odstavek) + AUDIT
+  POSODOBITEV v1.262.0 (0 ključev); verzija 1.261.0 →
+  1.262.0 (version.ts + compose + pini testov s klasifikacijo
+  zadetkov).
+- **Testi:** tests/v262-zaporedje-modifikatorjev.test.ts —
+  Č1 čisti sloj (prazno/en element, ureditev po skupinah,
+  znotraj skupine, izenačitve po imenu na obeh ravneh,
+  stabilnost ob enakih ključih, defenzivno NaN/undefined,
+  permutacijska neodvisnost), Č2 serializacija (mapOrderItem
+  ureja po vrstičnem sortOrder, manjkajoč izbor → stabilno
+  vhodno, duplikatni ključi stabilno), Ž montaža + registri
+  (oba pisalca pokličeta urejanje, 5 select mest, 0 DDL dokaz,
+  verzija 1.262.0, dokument §36, AUDIT 0 ključev, worklog
+  Task ID).

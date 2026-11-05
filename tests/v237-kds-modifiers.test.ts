@@ -122,9 +122,11 @@ beforeAll(async () => {
   itemJedi = (await db.menuItem.create({ data: { id: nid(), name: `${PREFIX} Jedi`, price: 8, categoryId: catA, vatRate: 22 } })).id
   table1 = (await db.table.create({ data: { id: nid(), number: 73, capacity: 4, locationId: locA, status: 'available' } })).id
 
-  // OSS-10 struktura: skupini opcij (Velikost + Dodatek), povezani na artikel Piva
-  grpVelikost = (await db.modifierGroup.create({ data: { id: nid(), name: `${PREFIX} Velikost`, locationId: locA, required: true, minSelect: 1, maxSelect: 1 } })).id
-  grpDodatek = (await db.modifierGroup.create({ data: { id: nid(), name: `${PREFIX} Dodatek`, locationId: locA, required: false, minSelect: 0, maxSelect: 2 } })).id
+  // OSS-10 struktura: skupini opcij (Velikost + Dodatek), povezani na artikel Piva.
+  // §36 (v1.262.0): eksplicitna sortOrder skupin (Velikost 0 < Dodatek 1) —
+  // kanonski menijski vrstni red, ki ga od tega vala piše pisalec v posnetek.
+  grpVelikost = (await db.modifierGroup.create({ data: { id: nid(), name: `${PREFIX} Velikost`, locationId: locA, required: true, minSelect: 1, maxSelect: 1, sortOrder: 0 } })).id
+  grpDodatek = (await db.modifierGroup.create({ data: { id: nid(), name: `${PREFIX} Dodatek`, locationId: locA, required: false, minSelect: 0, maxSelect: 2, sortOrder: 1 } })).id
   mod03 = (await db.modifier.create({ data: { id: nid(), name: '0,3 L', price: 0, modifierGroupId: grpVelikost, sortOrder: 1 } })).id
   mod05 = (await db.modifier.create({ data: { id: nid(), name: '0,5 L', price: 1.5, modifierGroupId: grpVelikost, sortOrder: 2 } })).id
   modZveca = (await db.modifier.create({ data: { id: nid(), name: 'Zvečana', price: 0.8, modifierGroupId: grpDodatek, sortOrder: 1 } })).id
@@ -141,7 +143,10 @@ describe('v1.237.0 A — API: modifikatorji pridejo na KDS (include relacije)', 
     const res = await ordersPOST(req('/api/orders', tokMgr, 'POST', {
       tableId: table1,
       items: [
-        { menuItemId: itemPiva, qty: 2, modifiers: [{ modifierId: mod05 }, { modifierId: modZveca }] },
+        // §36 (v1.262.0): NATAKAR klikne NAJPREJ dodatek, POL velikost — posnetek
+        // vseeno nosi MENIJSKI vrstni red (Velikost 0 pred Dodatek 1): pričakovani
+        // ['0,5 L', 'Zvečana'] zdaj dokazuje kanonizacijo, ne slučajni vrstni red klikov
+        { menuItemId: itemPiva, qty: 2, modifiers: [{ modifierId: modZveca }, { modifierId: mod05 }] },
         { menuItemId: itemJedi, qty: 1 },
       ],
       guests: 2,
@@ -193,9 +198,10 @@ describe('v1.237.0 A — API: modifikatorji pridejo na KDS (include relacije)', 
   })
 
   test('A3: vir — include OrderItemModifier v GLAVNI poizvedbi in v poizvedbi preklicanih', () => {
-    expect(kitchenRoute).toContain('OrderItemModifier: { select: { name: true } }')
+    // §36 (v1.262.0): select razširjen aditivno z vrstičnim sortOrder (bralna invarianta)
+    expect(kitchenRoute).toContain('OrderItemModifier: { select: { name: true, sortOrder: true } }')
     // obe pojavitvi: glavna vrsta + voidedRows (vsaj 2)
-    const hits = kitchenRoute.split('OrderItemModifier: { select: { name: true } }').length - 1
+    const hits = kitchenRoute.split('OrderItemModifier: { select: { name: true, sortOrder: true } }').length - 1
     expect(hits).toBeGreaterThanOrEqual(2)
   })
 
@@ -275,9 +281,9 @@ describe('v1.237.0 D — i18n (SL + HR pariteta, 3857 → 3858)', () => {
 
 describe('v1.237.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.261.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.261\.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.261.0')
+    expect(APP_VERSION).toBe('1.262.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.262\.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.262.0')
   })
 
   test('Ž2: PRIMERJAVA §14 (kako ima Toast / kako ima RestaurantOS z datotečnimi potmi)', () => {

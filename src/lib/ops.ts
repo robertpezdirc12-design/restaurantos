@@ -21,7 +21,7 @@ import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { mapOrder, nid, num, r2, orderTypeToDB } from '@/lib/map'
 import { nextSequence } from '@/lib/sequences'
-import { loadModifierContext, validateItemModifiers, ResolvedModifierOut } from '@/lib/modifiers'
+import { loadModifierContext, validateItemModifiers, orderModifiersForSnapshot, ResolvedModifierOut } from '@/lib/modifiers'
 import { publishEvent } from '@/lib/events'
 import { buildAllergenSnapshots, sanitizeAllergenWarning } from '@/lib/allergen-profile'
 import { vatFromGross } from '@/lib/billing'
@@ -32,7 +32,7 @@ export const orderInclude = {
   // — aditivni select, zgodovinske rute ostanejo byte-identične, če opcij ni.
   // v1.239.0 §16 D: + Check (paymentStatus) — mapOrderItem aditivno izpostavi
   // checkPaid (gumb za preklic postavke na plačanem izstavku se skrije).
-  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } }, Check: { select: { paymentStatus: true, checkNumber: true } } } },
+  OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true, sortOrder: true } }, Check: { select: { paymentStatus: true, checkNumber: true } } } },
   Table: true,
   Employee_Order_employeeIdToEmployee: { select: { id: true, name: true, role: true } },
   Receipt: { orderBy: { createdAt: 'desc' as const } },
@@ -244,7 +244,13 @@ export async function createOrderCore(
       chosenIds: (i.modifiers || []).map((m) => String(m.modifierId || '')),
     })
     if (!v.ok) throw new OrderError(v.error || 'Opcije niso veljavne.')
-    const mods = v.resolved.map((m: ResolvedModifierOut, idx: number) => ({
+    // PRIMERJAVA §36 (v1.262.0): ZAPOREDJE MODIFIKATORJEV NA TISKU — vrstice se
+    // zamrznejo v MENIJSKEM vrstnem redu (groupSort → groupName → modSort → ime;
+    // točno dialogovo urejanje /api/modifier-groups), NE v vrstnem redu klikov.
+    // sortOrder vrstice = kanonska pozicija (posnetek po vzorcu name/price OSS-10);
+    // POS + offline sync + QR/kiosk + spletni portal — vsi tečejo skoznje.
+    const ordered = orderModifiersForSnapshot(v.resolved)
+    const mods = ordered.map((m: ResolvedModifierOut, idx: number) => ({
       id: nid(),
       name: m.name.slice(0, 120),
       price: Math.max(0, m.price),

@@ -21,7 +21,7 @@ type KitchenOrder = Prisma.OrderGetPayload<{
   include: {
     Table: true
     Employee_Order_employeeIdToEmployee: { select: { name: true } }
-    OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } } } }
+    OrderItem: { include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true, sortOrder: true } } } }
     Course: true
   }
 }>
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
         // (mapOrderItem, OSS-10 v1.209.0) — vrsta brez opcij ga pošlje kot [] in je
         // vidno enako kot prej; tiskani listki (printKitchenTicket) ga dobi ZDAJ
         // prvič pravega (prej `it.modifiers ?? []` = vedno prazno s te poti).
-        include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true } } },
+        include: { MenuItem: { include: { PrepStation: true } }, OrderItemModifier: { select: { name: true, sortOrder: true } } },
       },
       // v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«): tečaji naročila —
       // ADITIVNO polje `courses` na vsakem listku vrste (id/courseNumber/name/status/
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
       VoidReason: { select: { name: true } },
       // v1.237.0: tudi preklicana postavka nosi svoje opcije — kuhar ve, KATERA
       // velikost/varianta ne gre ve v pripravo (aditivno, isto preslikavo)
-      OrderItemModifier: { select: { name: true } },
+      OrderItemModifier: { select: { name: true, sortOrder: true } },
     },
     orderBy: { createdAt: 'asc' },
     take: 200,

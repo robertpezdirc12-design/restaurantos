@@ -118,7 +118,8 @@ describe('v1.209.0 — OSS-10 Č2: admin CRUD + ožičenje', () => {
 
   test('orders include + mapOrderItem + kiosk sestavljeno ime', () => {
     const ops = read('src/lib/ops.ts')
-    expect(ops).toContain('OrderItemModifier: { select: { name: true } }')
+    // §36 (v1.262.0): select aditivno razširjen z vrstičnim sortOrder (bralna invarianta zaporedja)
+    expect(ops).toContain('OrderItemModifier: { select: { name: true, sortOrder: true } }')
     const map = read('src/lib/map.ts')
     expect(map).toContain('it.OrderItemModifier')
     const kiosk = read('src/app/kiosk/page.tsx')
@@ -158,8 +159,8 @@ describe('v1.209.0 — OSS-10 Č2: admin CRUD + ožičenje', () => {
 
 describe('v1.209.0 — OSS-10 Č3: registri', () => {
   test('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.261.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.261\.0'/)
+    expect(APP_VERSION).toBe('1.262.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.262\.0'/)
   })
 
   test('0 DDL — varianta je IZPELJANA, ne shranjena (shema nespremenjena)', () => {

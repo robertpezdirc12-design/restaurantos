@@ -369,8 +369,22 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
     // OSS-10 (v1.209.0): izbrane opcije (npr. velikost »0,5 L«) — imena OrderItemModifier
     // vrstic; aditivno: če poizvedba ne vključuje relacije, polje pade ven
     // (undefined → odgovor byte-identičen prejšnjemu).
+    // PRIMERJAVA §36 (v1.262.0): ZAPOREDJE MODIFIKATORJEV NA TISKU — vrstice se
+    // uredijo STABILNO po vrstičnem sortOrder (kanonska pozicija posnetka, ki jo
+    // od tega vala pišeta oba pisalca po MENIJSKEM vrstnem redu). Eksplicitna
+    // invarianta namesto zanašanja na nedokumentiran vrstni red relacijskega
+    // include brez orderBy: nove vrstice → menijsko (listek/KDS/urejevalnik);
+    // stare vrstice → sortOrder = vrstni red klikov = vrstni red vnosa → izhod
+    // ENAK prejšnjemu (ničelna regresija zgodovine). Manjkajoč izbor (stare poti
+    // brez select sortOrder) → ?? 0 → stabilno = vhodni red.
     modifiers: Array.isArray(it.OrderItemModifier)
-      ? (it.OrderItemModifier as unknown[])
+      ? (it.OrderItemModifier as { name?: unknown; sortOrder?: unknown }[])
+          .slice()
+          .sort((a, b) => {
+            const sa = typeof a.sortOrder === 'number' && Number.isFinite(a.sortOrder) ? a.sortOrder : 0
+            const sb = typeof b.sortOrder === 'number' && Number.isFinite(b.sortOrder) ? b.sortOrder : 0
+            return sa - sb // Array.sort je stabilen — enaki ključi ohranijo vhodni red
+          })
           .map((m) => ((m as { name?: unknown } | null)?.name))
           .filter((n): n is string => typeof n === 'string' && n.length > 0)
       : undefined,

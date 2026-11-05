@@ -357,7 +357,8 @@ describe('v1.210.0 — OSS-10 B-del Č2b: disk kontrakt (ožičenje)', () => {
     // vrstice opcij v ISTI transakciji (rollback izniči skupaj z artikli)
     expect(route).toContain('orderItemModifier.createMany')
     // odgovor nosi imena opcij (list urejevalnika pokaže velikost tudi po osvežitvi)
-    expect(route).toContain('OrderItemModifier: { select: { name: true } }')
+    // §36 (v1.262.0): select aditivno razširjen z vrstičnim sortOrder (bralna invarianta)
+    expect(route).toContain('OrderItemModifier: { select: { name: true, sortOrder: true } }')
   })
 
   it('sync order.create tip nosi modifiers (offline replay variante)', () => {
@@ -402,8 +403,8 @@ describe('v1.210.0 — OSS-10 B-del Č2b: disk kontrakt (ožičenje)', () => {
 
 describe('v1.210.0 — OSS-10 B-del Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.261.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.261\.0'/)
+    expect(APP_VERSION).toBe('1.262.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.262\.0'/)
   })
 
   it('GAP OSS-10 B-del: IZVEDENO @ v1.210.0 z dokazi + nova meja', () => {

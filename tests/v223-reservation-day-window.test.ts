@@ -70,8 +70,8 @@ describe('v223 Č2 · javni površini ostajata pošteni do zaprtja', () => {
 
 describe('v223 Č3 · verzija + dokumentacija', () => {
   test('verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.261.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.261.0')
+    expect(APP_VERSION).toBe('1.262.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.262.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
@@ -80,6 +80,6 @@ describe('v223 Č3 · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.261.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.262.0')
   })
 })
