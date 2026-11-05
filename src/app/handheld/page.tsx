@@ -542,12 +542,15 @@ function HandheldInner() {
                 med brskanjem menija; razpenjanje razkrije poln seznam nad menijem
                 (meni ne izgine — plast je nad njim). -mx-4/-mt-3 raztegne sekcijo
                 čez odmik vsebnika, da se pod njo ne vidi drseče vsebine.
-                FIX (zaključna verifikacija): lepljiva na OKNO pod glavo — top-[65px]
-                je 77 px glave (py-3 ×2 + 54 px LanguageToggle, izmerjeno) − 12 px
-                -mt-3 (lepljivi rob je ROB ROBE z robom odmika → obroba vrstice
-                pristane točno ob spodnjem robu glave, brez pasu, ki bi kaksel). */}
+                FIX (zaključna verifikacija, drugi korak — živa preverba je popravila popravek):
+                odmik lepljive vrstice se meri od ROBA VSEBINE drsečega vsebnika
+                (ne od roba robe z odmikom, kot je predvideval prvi poskus 65 px —
+                izmerjeno na produkciji: vrstica je prilepljena na 65 px, 12 px ZA
+                glavo; živi preizkus top:77px → flush 77=77). Okno nima obloge →
+                top-[77px] prilepi obrobo vrstice TOČNO ob 77 px glavo (py-3 ×2 +
+                54 px LanguageToggle, izmerjeno), CELA vrstica 45 px vidna. */}
             {activeItems.length > 0 && (
-              <div data-region="hh-order-bar" className="sticky top-[65px] z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
+              <div data-region="hh-order-bar" className="sticky top-[77px] z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
                 <button
                   type="button"
                   data-region="hh-order-bar-toggle"

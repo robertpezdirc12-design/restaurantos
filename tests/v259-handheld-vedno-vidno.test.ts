@@ -53,13 +53,15 @@ describe('v1.259.0 A1 — handheld: zložljiva lepljiva vrstica naročila', () =
     const idx = hhSrc.indexOf('data-region="hh-order-bar"')
     expect(idx).toBeGreaterThan(0)
     const seg = hhSrc.slice(idx, idx + 220)
-    // FIX (zaključna verifikacija, runtime izmerjeno na produkciji): glavni del je
-    // min-h-dvh — okno drsa, vsebnik menija z overflow-y-auto je bil MRTVI
-    // scroll-container, ki je ugrabil lepljivo zavezo (vrstica je zdrsla z oknom,
-    // rob −550 px po 700 px drsanja). Popravek: BREZ overflow-y-auto na vsebniku
-    // + top-[65px] = 77 px glave − 12 px -mt-3 (lepljivi rob je rob robe z robom
-    // odmika → obroba pristane ob spodnjem robu glave, brez pasu).
-    expect(seg).toContain('sticky top-[65px]')
+    // FIX (zaključna verifikacija, drugi korak — živa preverba je popravila
+    // popravek): glavni del je min-h-dvh — okno drsa, vsebnik menija z
+    // overflow-y-auto je bil MRTVI scroll-container, ki je ugrabil lepljivo
+    // zavezo (vrstica je zdrsla z oknom, rob −550 px po 700 px drsanja).
+    // Popravek: BREZ overflow-y-auto na vsebniku + top-[77px] — odmik se meri
+    // od ROBA VSEBINE drsečega vsebnika (prvi poskus 65 px je napačno
+    // predvideval margin-edge; živa izmera: 65 = 12 px ZA glavo, 77 = flush
+    // 77=77, cela vrstica 45 px vidna).
+    expect(seg).toContain('sticky top-[77px]')
     expect(seg).toContain('-mx-4 -mt-3')
     // trdna podlaga — drseči meni se ne vidi skozi
     expect(seg).toContain('bg-white/95')
@@ -127,11 +129,14 @@ describe('v1.259.0 A2 — tablica: enak vzorec v listku (hiter način)', () => {
     const idx = tlbSrc.indexOf('data-region="tlb-order-bar"')
     expect(idx).toBeGreaterThan(0)
     const seg = tlbSrc.slice(idx, idx + 220)
-    // FIX (zaključna verifikacija, runtime izmerjeno na produkciji): Sheet je
-    // višinsko omejen → vsebnik RES drsa in lepljivost deluje, a je bila vrstica
-    // prilepljena 12 px POD robom vsebnika (-mt-3 premakne rob robe odmika) —
-    // nad vrstico je pek 12 px pas z vsebino menija. -top-3 (−12 px) kompenzira
-    // odmik → obroba pristane TOČNO na robu vsebnika (živo preizkušeno: flush).
+    // FIX (zaključna verifikacija, živo preverjeno na produkciji po deployju):
+    // Sheet je višinsko omejen → vsebnik RES drsa in lepljivost deluje, a je
+    // bila vrstica prilepljena 12 px POD robom vsebnika — odmik se meri od
+    // ROBA VSEBINE drsečega vsebnika (pt-3 obloga vsebnika premakne izhodišče
+    // za 12 px, ne -mt-3 na vrstici — lekcija iz handheld popravka). Nad
+    // vrstico je pek 12 px pas z vsebino menija. -top-3 (−12 px) kompenzira
+    // oblogo → obroba pristane TOČNO na robu vsebnika (živo po deployju:
+    // flush 138=138, pas izgine, element nad robom = vrstica sama).
     expect(seg).toContain('sticky -top-3')
     expect(seg).toContain('-mx-4 -mt-3')
     expect(seg).toContain('bg-white/95')

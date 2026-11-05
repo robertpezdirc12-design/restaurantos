@@ -1,3 +1,19 @@
+Task ID: v1.259.0-finalna-verifikacija-k2 (drugi korak zaključne verifikacije v1.259.0; popravek popravek-popravka defekta #1)
+Agent: glavni agent (Z.ai Code)
+Task: Korekcija handheld odmika lepljivosti po živi ponovni preverbi na produkciji (18a7d08) + potrditev tablica popravka na živem deployju.
+
+Work Log:
+- ŽIVA PONOVNA PREVERBA PO PUSHU 18a7d08 (produkcija 1.259.0 · 18a7d08 · cloud · connected, CI quality gate + GitLab sync + pages VSE SUCCESS na prvih vratih):
+  - **TABLICA POTRJENA** (800×600, listek #725): vsebnik zdrsal 900 px → vrstica prilepljena flush (barTop 138 = contTop 138), pas z vsebino IZGINIL (elementFromPoint nad robom = vrstica sama), povzetek »NAROČILO #725 | 2 že na naročilu | 17,50 €« — popravek -top-3 DELUJE na živem deployju.
+  - **HANDHELD: PRVI POPRAVEK BILO 12 PX NAPAČEN** (390×844, isti listek): po 700 px drsanja okna vrstica OSTANE v pogledu (65–110 px — glavni defekt #1 je ZAPRT, prej −550 px) — A prilepljena je na 65 px, torej 12 px vrstice ZADETE ZA glavo (vidnih le 33 od 45 px). Vzrok napačne teorije: predvideval sem, da se lepljivi odmik meri od ROBA ROBE z odmikom (−mt-3), izpeljal 65 = 77 − 12; živa izmera obeh površin pokaže PRAVI mehanizem — odmik se meri od ROBA VSEBINE drsečega vsebnika (tablica: pt-3 obloga vsebnika premakne izhodišče za 12 px → zato je top:0 dajal +12; okno nima obloge → top deluje točno). Živi preizkus top:77px na produkciji: flush 77=77, CELA vrstica 45 px vidna.
+- **KOREKCIJA (TA COMMIT)**: handheld vrstica top-[65px] → **top-[77px]** (obroba točno ob 77 px glavi — py-3 ×2 + 54 px LanguageToggle); komentarji v obeh datotekah popravljeni na pravi mehanizem (pt-3 obloga / rob vsebine, ne margin-edge); test A1b posodobljen na top-[77px] z dokumentirano lekcijo, A2b komentar pripis popravljen (fix -top-3 ostaja PRAVILEN, živo potrjen). 0 DDL · 0 odvisnosti · 0 strežniških sprememb.
+- VRATA: tsc 0 · v259 datoteka 18/18 · pini 14 prevezanih datotek zeleni nad vrhom finalna-verifikacija (ta vnos ne spreminja vrha — Task ID se začne z v1.259.0-finalna-verifikacija, kratka oblika ostane zelena).
+- LEKCIJA (zapisana v kodeks): lepljivi odmik CSS sticky se meri od ROBA VSEBINE drsečega vsebnika — obloga (padding) drsalca premakne izhodišče, negativni odmik (-mt-3) na SAMI vrstici vpliva SAMO na lego v toku (mirovanje), ne na prilepljeno lego; obe stvari izmeri ŽIVO pred oddajo (prvi popravek je bil teoretičen in 12 px napačen — živa preverba ga je ujela v nekaj minutah).
+- NASLEDNJI KORAK (po pushu tega vnosa): živa preverba handheld flush (77=77) na novem deployju + E2E čiščenje (naročilo #725 preklic z razlogom po Issue #19, Miza 10 → PROSTA) + sync-check četverice.
+
+Stage Summary:
+- Defekt #1 (handheld lepljivost) zaprt v dveh korakih: prvi popravek (top-[65px]) je vrstico rešil iz odpadanja (−550 px → stalno vidna), a 12 px ZA glavo; korekcija na top-[77px] (izmerjen pravi mehanizem: rob vsebine drsalca) prilepi obrobo točno ob glavo — cela vrstica 45 px vidna celo brskanje. Tablica (-top-3) živo potrjena flush na deployju 18a7d08. Po pushu: handheld flush preverba + čiščenje #725.
+
 Task ID: v1.259.0-finalna-verifikacija (nadaljevanje v1.259.0-vedno-vidno-val)
 Agent: glavni agent (Z.ai Code)
 Task: Zaključna verifikacija VEDNO VIDNEGA NAROČILA NA MOBILNIH POVRŠINAH v1.259.0 (R4b) — CI, produkcija, živ E2E, odkriti in popravljeni RUNTIME defekti lepljivosti na obeh površinah, pini.

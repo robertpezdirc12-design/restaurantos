@@ -257,15 +257,16 @@ function TablicaInner() {
                 ostane v pogledu med brskanjem menija; razpenjanje razkrije seznam
                 nad menijem. Brez statusnih pilul — hiter način te površine
                 (status quo). PRAZNO naročilo ostane kot prej, izven plasti.
-                FIX (zaključna verifikacija v1.259.0, runtime izmerjeno na produkciji):
-                Sheet je višinsko OMEJEN (fixed inset-y-0), zato vsebnik RES drsa
-                notranje in lepljivost deluje — a je bila vrstica prilepljena 12 px
-                POD zgornjim robom vsebnika (lepljivi rob je ROB ROBE z robom
-                odmika: -mt-3 potegne prilepljeno lego za 12 px navzdol), zato je
-                nad prilepljeno vrstico PEK 12 px pas z vsebino menija (izmerjeno:
-                gumb »Bela Kava…« nad vrstico). -top-3 (top: −12 px) kompenzira
-                odmik → obroba vrstice pristane TOČNO na zgornjem robu vsebnika
-                (preizkušeno živo na produkciji pred oddajo: flush). */}
+                FIX (zaključna verifikacija v1.259.0, živo preverjeno na produkciji
+                PO deployju): Sheet je višinsko OMEJEN (fixed inset-y-0), zato
+                vsebnik RES drsa notranje in lepljivost deluje — a je bila vrstica
+                prilepljena 12 px POD zgornjim robom vsebnika, zato je nad
+                prilepljeno vrstico PEK 12 px pas z vsebino menija (izmerjeno:
+                gumb »Bela Kava…« nad vrstico). Vzrok: odmik lepljive vrstice se
+                meri od ROBA VSEBINE drsečega vsebnika — pt-3 obloga vsebnika
+                premakne izhodišče za 12 px. -top-3 (top: −12 px) kompenzira
+                oblogo → obroba vrstice pristane TOČNO na zgornjem robu vsebnika
+                (živo po deployju: flush 138=138, pas izgine). */}
             {openOrder && openOrder.items.filter((it) => !it.voided).length > 0 && (
               <div data-region="tlb-order-bar" className="sticky -top-3 z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
                 <button
