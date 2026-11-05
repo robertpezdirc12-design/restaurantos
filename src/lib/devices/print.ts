@@ -201,14 +201,14 @@ export interface KitchenTicketReprint {
   by?: string | null
 }
 
-/** Kuhinjski list (issue #1: kuhinjski tisk; §30: reprint kontekst) */
+/** Kuhinjski list (issue #1: kuhinjski tisk; §30: reprint kontekst; §35: sedeži) */
 export function buildKitchenTicketLines(order: {
   orderNumber?: number
   tableName?: string | null
   type?: string
   createdAt?: string
   employeeName?: string | null
-  items: { name: string; qty: number; note?: string | null; station?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; modifiers?: string[] | null }[]
+  items: { name: string; qty: number; note?: string | null; station?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; modifiers?: string[] | null; seat?: number | null }[]
 }, stationFilter?: 'KITCHEN' | 'BAR', reprint?: KitchenTicketReprint): PrintLine[] {
   const now = new Date()
   const time = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })
@@ -234,7 +234,24 @@ export function buildKitchenTicketLines(order: {
   out.push({ text: order.tableName ? `Miza: ${order.tableName}` : `Tip: ${order.type || 'DINE_IN'}` })
   if (order.employeeName) out.push({ text: `Natakar: ${order.employeeName}` })
   out.push({ text: '--------------------------------' })
+  // §35 (v1.261.0): SEDEŽI NA LISTKU — Square Vol 12 »razvrstitev po sedežih na
+  // tisku«. Sedež obstaja od v1.193.0 (OrderItem.seat), a ga tisk ni nosil: kuhinja
+  // je videla LESO zaporedje postavk brez odgovora »kateri sedež je naročil« —
+  // ravno tam, kjer sedež nosi informacijo (alergije po gostu!). Grupiranje je
+  // POŠTENO do zgodovine: SAMO če je v (že filtriranem) nizu ≥ 2 RAZLIČNIH sedežev
+  // listek dobi odseke po sedežih (naraščajoče); pri 0–1 sedežu je izhod
+  // BYTE-IDENTIČEN prejšnjemu (ničelna regresija — večina listkov nima sedežev).
+  // Postavke BREZ sedeža sledijo za odseki brez glave (iskrenost: neizpostavljeno
+  // ≠ napačno; lažna glava »brez sedeža« bi zvenela kot sklep).
+  const seatOf = (it: (typeof items)[number]): number | null =>
+    typeof it.seat === 'number' && Number.isFinite(it.seat) ? it.seat : null
+  const distinctSeats = new Set<number>()
   for (const it of items) {
+    const s = seatOf(it)
+    if (s !== null) distinctSeats.add(s)
+  }
+  const groupBySeat = distinctSeats.size >= 2
+  const emitItem = (it: (typeof items)[number]): void => {
     out.push({ text: `${it.qty}× ${it.name}`, bold: true, size: 'large' })
     // OSS-10 (v1.209.0): izbrane opcije (velikost/nivo/dodatki) na lastnih vrsticah —
     // kuhinja vidi »0,5 L« tudi na tiskanem listu (KDS jih že vidi kot detail naloge)
@@ -250,6 +267,28 @@ export function buildKitchenTicketLines(order: {
       out.push({ text: `   alergeni: ${allergenLabels(it.allergenCodes, 'sl')}` })
     }
     if (it.note) out.push({ text: `   opomba: ${it.note}` })
+  }
+  if (!groupBySeat) {
+    for (const it of items) emitItem(it)
+  } else {
+    const bySeat = new Map<number, (typeof items)[number][]>()
+    const withoutSeat: (typeof items)[number][] = []
+    for (const it of items) {
+      const s = seatOf(it)
+      if (s === null) {
+        withoutSeat.push(it)
+      } else {
+        const arr = bySeat.get(s) ?? []
+        arr.push(it)
+        bySeat.set(s, arr)
+      }
+    }
+    const sortedSeats = [...bySeat.keys()].sort((a, b) => a - b)
+    for (const s of sortedSeats) {
+      out.push({ text: `── SEDEŽ ${s} ──`, bold: true })
+      for (const it of bySeat.get(s) ?? []) emitItem(it)
+    }
+    for (const it of withoutSeat) emitItem(it)
   }
   out.push({ text: '--------------------------------' })
   out.push({ text: `Št. artiklov: ${items.reduce((s, i) => s + i.qty, 0)}` })

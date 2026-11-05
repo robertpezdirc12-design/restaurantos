@@ -2908,3 +2908,94 @@ VAL Ž4 — prihodkovni centri kot IZPELJAVA OB BRANJU (0 DDL):
   from/to validacija, data-regioni, deležne vrstice, izločitve),
   Ž registri (verzija 1.260.0 + compose, i18n pariteta 4121/4121,
   dokumenta §34 + AUDIT, 0 DDL dokaz, read-only dokaz, worklog).
+
+## 35. Raziskava november 2026 (nadaljevanje 9) — SEDEŽI NA KUHINJSKEM LISTKU v1.261.0 (Square Vol 12 »razvrstitev po sedežih na tisku«)
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Zaključek §34 je pustil prazen A-razred:** Square Vol 16
+  ŠE NI objavljen (zimski cikel, pričakovana objava sredi novembra
+  2026 — tedaj sveža ocena); Lightspeed K-Series november 2026 je
+  obdelan v §33; Toast oktober 2026 ima samo dva kandidata — KDS
+  load balancing zahteva DELJENO stanje med zasloni (DDL tveganje,
+  zavrnjeno §32/§33), Grid KDS pa je »večja prenova izgleda KDS«
+  za hitre lokale (QSR) brez izmerljivega javnega vira podrobnosti
+  (poskus merjenja 5. 11. 2026: natanko-dovoljen iskalni izraz
+  »Grid KDS« 0 javnih zadetkov; pos.toasttab.com/last-updates za
+  Cloudflare preverbo) — implementacija po ugibanju bi kršila
+  načelo izmer, ne ugiban. Ostane ODLOŽEN.
+- **Sveža raziskava (stanje 5. 11. 2026):** Square release notes
+  spletišče nedosegljivo za merjenje (prazen odgovor); Bing/DDG
+  vračata sabotažne rezultate — izhodišče ostajajo LASTNE izmere
+  §31 (vsi trije voli 12/13/15 so bili takrat prebrani v celoti).
+  ⇒ IZBRAN zadnji neizvedeni Vol 12 P3: »razvrstitev po sedežih
+  na tisku« (ocena §31: »imamo sedeže v1.193 — tiskalna
+  podrobnost P3«).
+- **Lastno stanje (izmere po kodi):** OrderItem.seat obstaja od
+  v1.193.0 (P3 #20; Int?, 1..10, ničen = brez dodelitve), pisanje
+  pa teče iz TREH tokov — aktivni sedež pri naročanju (N-27-1,
+  v1.195.0: handheld + urejevalnik), ročna dodelitev v plačilnem
+  dialogu (PATCH /seats + razdelitev izstavkov po sedežih) in
+  offline vrsta (/api/sync). A je sedež VIDEN samo v plačilnem
+  dialogu: buildKitchenTicketLines (print.ts) polja sploh ne
+  pozna (0 zadetkov »seat« v datoteki), KDS vrstica postavke
+  prav tako ne. Kuhinja — površina, kjer sedež nosi NAJVEČ
+  informacije (»gost na sedežu 3 ima alergijo na lešnike«) —
+  ne vidi, kateri sedež je kaj naročil, ne na zaslonu, ne na
+  tisku. Vrzel: podatki obstajajo, produkcija jih ne dobi.
+
+### B) Odločitev
+
+VAL Ž6 — sedeži na kuhinjskem listku (0 DDL, 0 novih rut):
+
+1. **Grupiranje na listku je POŠTENO do zgodovine:** SAMO če je
+   v (že strežniško filtriranem) nizu ≥ 2 RAZLIČNIH sedežev,
+   listek dobi odseke `── SEDEŽ N ──` (naraščajoče; Square:
+   »tickets print items grouped by seat«). Pri 0–1 sedežu je
+   izhod BYTE-IDENTIČEN prejšnjemu — večina listkov nima
+   sedežev, ničelna regresija. Postavke BREZ sedeža sledijo za
+   odseki BREZ glave (neizpostavljeno ≠ sklep; lažna glava
+   »brez sedeža« bi zvenela kot trditev).
+2. **KDS zaslon dobi čip sedeža** na vrstici postavke (isto
+   valovanje, isti vir resnice): stone čip »Sedež N« SAMO ko
+   seat ≠ null, ob postaji, pred alergenskimi čipi; ključ
+   `payment.seatsAssign` re-uporabljen iz plačilnega dialoga —
+   0 duplikatov prevodov (vzorec order.type.* iz §34).
+3. **Serializacija:** mapOrderItem aditivno izpostavi seat
+   (?? null) — skalarno polje teče z obstoječimi include brez
+   spremembe poizvedb; OrderItemT (dashboard) dobi `seat?`.
+   Obe tiskalni mesti (KDS plošča + §30 ponatis) preslikata
+   sedež v builder; ponatis zaprtega naročila s sedeži TUDI
+   rekonstruira odseke (dokument v sporu nosi isto resnico).
+4. **Station filter ostaja nad grupiranjem** (bar list skupine
+   šteje SAMO bar postavke — sedeži se štejejo znotraj že
+   filtriranega niza) in Št. artiklov šteje vse filtrirane
+   postavke neodvisno od odsekov.
+5. **0 DDL** (OrderItem.seat od v1.193.0), 0 novih odvisnosti,
+   0 strežniških sprememb poti (samo aditivna serializacija),
+   0 mutacij/revizij (bralna plast). Tiskalna besedila so SL
+   literali po konvenciji (Miza/Natakar/opomba) — 0 novih
+   i18n ključev; števci 4121 nespremenjeni.
+
+### C) Implementacija
+
+- **Lib** (src/lib/devices/print.ts): tip postave + `seat?`;
+  seatOf (finite number → številka, sicer null); distinctSeats
+  ≥ 2 → groupBySeat (Map sedež→postavke, naraščajoče, brez
+  sedeža na konec brez glave); emitItem izvleče obstoječe telo
+  postavke (opcije/alergeni/opomba nedotaknjene znotraj odsekov);
+  ≤ 1 sedež → izvirna zanka (byte-identično).
+- **Serializacija** (src/lib/map.ts): mapOrderItem + seat
+  (`?? null`, komentar §35).
+- **UI** (src/app/dashboard/page.tsx): OrderItemT + `seat?`;
+  printKitchenTicket + confirmReprint preslikata `seat: it.seat
+  ?? null`; KDS čip (data-region kds-seat-chip) pogojno na
+  seat ≠ null.
+- **Testi:** tests/v261-sedezni-listki.test.ts — Č1 čisti sloj
+  (brez sedežev = byte-identično, en sedež = brez glav, ≥ 2 =
+  odseki naraščajoče + brez sedeža na koncu, station filter +
+  grupiranje skupaj, opcije/alergeni znotraj odsekov, ponatis +
+  sedeži sooplastična, Št. artiklov vse), Č2 serializacija
+  (seat null-safe), Ž montaža + registri (obe mesti preslikata,
+  čip pogojen, 0 DDL dokaz, verzija 1.261.0, dokument §35,
+  AUDIT 0 ključev, worklog Task ID).

@@ -233,7 +233,7 @@ describe('v1.237.0 B — klient: horizontalna vrstica opcij (Toast horizontal mo
   })
 
   test('B4: tip OrderItemT nosi modifiers (živ tip, ne assertions)', () => {
-    expect(dash).toContain('modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean; priceOverride?: { from: number; to: number; at: string; by: string } | null }')
+    expect(dash).toContain('modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean; seat?: number | null; priceOverride?: { from: number; to: number; at: string; by: string } | null }')
   })
 })
 
@@ -275,9 +275,9 @@ describe('v1.237.0 D — i18n (SL + HR pariteta, 3857 → 3858)', () => {
 
 describe('v1.237.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.260.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.260\.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.260.0')
+    expect(APP_VERSION).toBe('1.261.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.261\.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.261.0')
   })
 
   test('Ž2: PRIMERJAVA §14 (kako ima Toast / kako ima RestaurantOS z datotečnimi potmi)', () => {

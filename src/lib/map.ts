@@ -358,6 +358,10 @@ export function mapOrderItem(it: Row & { menuItem?: { prepStation?: { type?: str
     // (undefined) — obstoječi klicalci byte-identični.
     checkId: (it.checkId as string | null | undefined) ?? null,
     checkPaid: it.Check ? (it.Check as { paymentStatus?: unknown }).paymentStatus === 'paid' : undefined,
+    // v1.261.0 §35: sedež postavke (OrderItem.seat od v1.193.0 — tiskalna/KDS
+    // plast ga doslej nista videla). Skalarno polje teče z include brez relacije;
+    // ?? null drži obliko tudi za vrstice brez stolpca (defenzivno).
+    seat: (it.seat as number | null | undefined) ?? null,
     // OPS-7 coursing (v1.68.0): tečaj postavke (Course) — za urejevalnik naročila
     courseId: (it.courseId as string | null | undefined) ?? null,
     // OPS-9 val 3 (v1.76.0): firedAt for the KDS per-item live timer / delay-reason dialog

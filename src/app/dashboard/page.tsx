@@ -185,7 +185,7 @@ interface UpdateCheckT { current: string; latest: string | null; updateAvailable
 
 interface Stats { activeOrders: number; openTables: number; todayOrders: number; todayRevenue: number; yesterdayRevenue: number | null; paidToday: { count: number; total: number }; financialPerm: boolean; employees: number; menuItems: number }
 interface TableT { id: string; name: string; number?: number; zone: string; seats: number; status: string; shape?: string; locationId?: string | null; activeOrder: { id: string; total: number; guests: number; itemCount: number; waiterName?: string | null; openedAt?: string | null } | null; heldOrderId?: string | null; posX?: number; posY?: number; seatedGuest?: { guestName: string; party: number } | null }
-interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean; priceOverride?: { from: number; to: number; at: string; by: string } | null }
+interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean; courseId?: string | null; firedAt?: string | null; allergenWarning?: string | null; allergenCodes?: string[]; allergenStatus?: string | null; modifiers?: string[]; voidReasonName?: string | null; checkId?: string | null; checkPaid?: boolean; seat?: number | null; priceOverride?: { from: number; to: number; at: string; by: string } | null }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; locationId?: string | null; table?: { name: string; zone: string } | null; tableId?: string | null; employee?: { id?: string; name: string } | null; items: OrderItemT[]; paymentStatus?: string | null; courses?: CourseT[]; voidedItems?: OrderItemT[] }
 interface MenuT { id: string; name: string; price: number; station: string; available: boolean; categoryId?: string | null; locationId?: string | null; vatRate?: number; allergenStatus?: string; allergenCodes?: string[]; allergenReviewFlag?: boolean }
 interface CategoryT { id: string; name: string }
@@ -864,7 +864,7 @@ function DashboardInner() {
         type: o.type,
         createdAt: o.createdAt,
         employeeName: o.employee?.name || null,
-        items: live.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [], modifiers: it.modifiers ?? [] })),
+        items: live.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [], modifiers: it.modifiers ?? [], seat: it.seat ?? null })),
       }, reprintStation === 'ALL' ? undefined : reprintStation, { by: user?.name || null }))
       if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
       else if (res.simulated) {
@@ -2316,7 +2316,7 @@ function DashboardInner() {
       tableName: o.table?.name || null,
       type: o.type,
       employeeName: o.employee?.name || null,
-      items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [], modifiers: it.modifiers ?? [] })),
+      items: o.items.map((it) => ({ name: it.name, qty: it.qty, note: it.note, station: it.station, allergenWarning: it.allergenWarning || '', allergenCodes: it.allergenCodes || [], modifiers: it.modifiers ?? [], seat: it.seat ?? null })),
     }, station))
     if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
     else if (res.simulated) toast(station === 'BAR' ? { title: t('print.simBar') } : { title: t('print.simKitchen') })
@@ -5300,6 +5300,17 @@ function DashboardInner() {
                                 per-item opozorilo ostane rdeče, vendar kot pas, ne majhen čip. */}
                             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                               <Badge variant="outline" className="shrink-0">{it.station === 'BAR' ? t('menu.stationBar') : t('menu.stationKitchen')}</Badge>
+                              {/* v1.261.0 (PRIMERJAVA §35): sedež postavke na KDS — isti vir
+                                  resnice kot tisk (OrderItem.seat od v1.193.0); ključ je
+                                  re-uporabljen iz plačilnega dialoga (0 duplikatov). */}
+                              {it.seat != null && (
+                                <span
+                                  data-region="kds-seat-chip"
+                                  className="inline-flex items-center rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700 shrink-0"
+                                >
+                                  {t('payment.seatsAssign', { n: it.seat })}
+                                </span>
+                              )}
                               {(it.allergenCodes ?? []).length > 0 && (it.allergenCodes ?? []).map((code) => (
                                 <span
                                   key={code}
