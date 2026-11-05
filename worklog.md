@@ -1,3 +1,20 @@
+Task ID: v1.262.0-finalna-verifikacija (nadaljevanje v1.262.0-zaporedje-modifikatorjev-val)
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija ZAPOREDJA MODIFIKATORJEV NA TISKU v1.262.0 (R4b) — CI, produkcija, živa E2E preverba, sync-check.
+
+Work Log:
+- CI @ 4df7354 vse zeleno na PRVIH vratih: Dvosmerna sinhronizacija GitLab SUCCESS (r268) · pages build SUCCESS (r111) · CI — quality gate (neon-smoke + tests) SUCCESS (r300) — 0 retryjev; testi v CI zeleno (33 okoljskih padcev je LOKALNI profil, CI teče na svežem okolju).
+- PRODUKCIJA: 1.262.0 @ 4df7354 (mode cloud, postgresql connected, schema ok, latency 247 ms) — Vercel je deployal v ~1 min po pushu.
+- ŽIVA PREVERBA NA PRODUKCIJI (read-only, demo prijava): GET /api/orders — ključ `modifiers` PRISOTEN v obliki postavk (vrednost [] je iskrena — produkcijska zgodovina naročil brez izbranih opcij; kanonizacija se izrazi pri NOVIH naročilih, za zgodovino pa velja obljuba byte-identičnosti); §35 `seat` polje še vedno prisotno (0 regresije prejšnjega vala).
+- DEV ŽIVA E2E (že v feature commitu, tu povzeto): naročilo #1 s POPOLNOMA OBRATNIM vrstnim redom klikov [Avokado, Slanina, 0,5 L] → API odgovor modifiers ['0,5 L', 'Slanina', 'Avokado'] (menijski red) → DB posnetek vrstic kanoničen (sortOrder 0,1,2) → KDS zaslon »0,5 L · Slanina · Avokado« → požig → tiskan kuhinjski listek »+ 0,5 L → + Slanina → + Avokado« (velikost, ki jo dialog pokaže prvo, je zdaj na listku PRVA); cena vrstice 13 = 9,5 + 1,5 + 0,8 + 1,2 ✓; posnetka /tmp/verify-v262-print-ticket.png + /tmp/verify-v262-kds-modifiers.png; čiščenje po Issue #19 (preklic z razlogom — revizijska sled ORDER_STATUS_CANCELLED_OVERRIDE ostaja; miza 262 prosta → izbrisana; skupini/opcije izbrisani z 0 referencami).
+- SYNC-CHECK po vsem: local = mirror = prod = 4df7354 (v1.262.0) — SINHRONIZIRANO (GitLab mirror prek uspešnega dvosmernega workflowa r268).
+- Pini prevezani na finalna-verifikacija (vsi wl.slice(0, 400) Task ID pini).
+
+Stage Summary:
+- v1.262.0 ZAPOREDJE MODIFIKATORJEV NA TISKU popolnoma zaključen: CI zeleno na prvih vratih, produkcija živi na 1.262.0, živa dev E2E dokazala celoten tok (obraten klik → API/DB/KDS/tisk vsi v menijskem redu), produkcija read-only brez regresije, sync-check SINHRONIZIRANO.
+- Status: ZADNJI neizvedeni Vol 12 P3 zaprt — A-razred PRIMERJAVA brez lastniških odločitev izčrpan do naslednjih objav (Square Vol 16 pričakovan sredi novembra 2026 — tedaj sveža ocena; Toast/Lightspeed zimske objave; preostali kandidati so DDL ali brez vira).
+- AKCIJA ZA LASTNIKA: (1) prekliči žeton te seje po klepetu (stalna točka); (2) zapuščena Buildkite integracija še vedno piše lažen rdeč check-run ob vsakem pushu — odstrani ali uredi integracijo (odprta točka od prej); (3) ni novih DDL klikov (val 0 DDL).
+
 Task ID: v1.262.0-zaporedje-modifikatorjev-val (PRIMERJAVA-VMESNIKOV-2026 §36; sklep §35 — zadnji neizvedeni Vol 12 P3 iz evidence §31; R4b načrt kakovosti)
 Agent: glavni agent (Z.ai Code)
 Task: ZAPOREDJE MODIFIKATORJEV NA TISKU — Square Vol 12 (10. 9. 2026) »zaporedje modifikatorjev na tisku«; evidence §31 (sestrski P3 »razvrstitev po sedežih« je zaprl §35). Po zaključku §35 je A-razred brez lastniških odločitev prazen (Vol 16 pričakovan sredi novembra; Toast Grid KDS brez izmerljivega vira; load balancing DDL) ⇒ izbran ZADNJI izmerjeni neizvedeni P3 istega dne (sveža raziskava §35 5. 11. 2026 velja tudi za ta val — med valu ni minilo merjenja). 0 DDL, 0 novih odvisnosti, 0 novih rut, 0 UI sprememb.

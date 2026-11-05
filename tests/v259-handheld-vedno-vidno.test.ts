@@ -230,6 +230,6 @@ describe('v1.259.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.262.0-zaporedje-modifikatorjev-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.262.0-finalna-verifikacija')
   })
 })
