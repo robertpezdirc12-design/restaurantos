@@ -318,14 +318,14 @@ describe('v1.252.0 Ž — registri', () => {
   const routeSrc = read('src/app/api/reservations/route.ts')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.258.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.258.0'")
-    expect(compose).toContain('restaurantos:1.258.0')
+    expect(APP_VERSION).toBe('1.259.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.259.0'")
+    expect(compose).toContain('restaurantos:1.259.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+4 resv.autoServer*)', () => {
-    expect(Object.keys(sl).length).toBe(4099)
-    expect(Object.keys(hr).length).toBe(4099)
+    expect(Object.keys(sl).length).toBe(4105)
+    expect(Object.keys(hr).length).toBe(4105)
     for (const k of ['resv.autoServerOk', 'resv.autoServerNone', 'resv.autoServerToggle', 'resv.autoServerToggleHint']) {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
@@ -355,10 +355,10 @@ describe('v1.252.0 Ž — registri', () => {
     expect(doc).toContain('## 26.')
     expect(doc).toContain('automatic table\nassignments')
     expect(auditDoc).toContain('v1.252.0')
-    expect(auditDoc).toContain('- 4099 ključev SL in 4099 HR')
+    expect(auditDoc).toContain('- 4105 ključev SL in 4105 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.258.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.259.0-vedno-vidno-val')
   })
 })

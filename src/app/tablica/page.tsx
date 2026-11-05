@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { Loader2, LogOut, Monitor, Search, Smartphone, Utensils } from 'lucide-react'
+import { Loader2, LogOut, Monitor, Search, Smartphone, Utensils, ChevronDown } from 'lucide-react'
 
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; tableId?: string | null; items: OrderItemT[]; paymentStatus?: string | null }
@@ -60,6 +60,11 @@ function TablicaInner() {
   const [cart, setCart] = useState<Record<string, number>>({})
   const [cat, setCat] = useState('ALL')
   const [search, setSearch] = useState('')
+  /* v1.259.0 (§33): VRSTICA NAROČILA — zložljiva, lepljiva sekcija obstoječih
+     postavk nad menijem v listku (Lightspeed nov 2026 »Keep active orders visible
+     while browsing menus«). Povzetek ostane v pogledu med brskanjem; prehodno
+     stanje per obisk, BREZ persist, privzeto ZLOŽENO (enako handheld). */
+  const [orderBarOpen, setOrderBarOpen] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (withMenu: boolean) => {
@@ -246,17 +251,44 @@ function TablicaInner() {
             </SheetTitle>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {/* obstoječe naročilo */}
-            {openOrder && (
+            {/* v1.259.0 (§33): VRSTICA NAROČILA — obstoječe postavke v zložljivi
+                LEPILJIVI sekciji na vrhu drsečega območja listka (Lightspeed nov
+                2026 »Keep active orders visible while browsing menus«). Povzetek
+                ostane v pogledu med brskanjem menija; razpenjanje razkrije seznam
+                nad menijem. Brez statusnih pilul — hiter način te površine
+                (status quo). PRAZNO naročilo ostane kot prej, izven plasti. */}
+            {openOrder && openOrder.items.filter((it) => !it.voided).length > 0 && (
+              <div data-region="tlb-order-bar" className="sticky top-0 z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
+                <button
+                  type="button"
+                  data-region="tlb-order-bar-toggle"
+                  aria-expanded={orderBarOpen}
+                  aria-controls="tlb-order-bar-list"
+                  aria-label={t('tlb.orderBarAria')}
+                  onClick={() => setOrderBarOpen((v) => !v)}
+                  className="flex w-full items-center gap-2 min-h-11 px-4 py-1.5 text-left active:bg-stone-50"
+                >
+                  <span className="text-xs font-semibold uppercase text-stone-500 shrink-0">{t('tlb.currentOrder')} #{openOrder.orderNumber ?? '—'}</span>
+                  <span className="text-sm font-bold tabular-nums shrink-0">{t('tlb.orderBar', { n: openOrder.items.filter((it) => !it.voided).length })}</span>
+                  <span className="text-sm font-bold tabular-nums ml-auto shrink-0">{fmtEUR(openOrder.total)}</span>
+                  <ChevronDown className={`w-5 h-5 shrink-0 text-stone-400 transition-transform ${orderBarOpen ? 'rotate-180' : ''}`} aria-hidden />
+                </button>
+                {orderBarOpen && (
+                  <div id="tlb-order-bar-list" data-region="tlb-order-bar-list" className="max-h-56 overflow-y-auto px-4 pb-2 space-y-1.5">
+                    {openOrder.items.filter((it) => !it.voided).map((it) => (
+                      <div key={it.id} className="flex items-center justify-between text-sm">
+                        <span className="truncate">{it.qty}× {it.name}</span>
+                        <span className="text-stone-500 shrink-0 ml-2">{fmtEUR(it.unitPrice * it.qty)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {openOrder && openOrder.items.filter((it) => !it.voided).length === 0 && (
               <div className="space-y-1.5">
                 <p className="text-xs font-semibold text-stone-500 uppercase">{t('tlb.currentOrder')} #{openOrder.orderNumber ?? '—'}</p>
-                {openOrder.items.filter((it) => !it.voided).map((it) => (
-                  <div key={it.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{it.qty}× {it.name}</span>
-                    <span className="text-stone-500 shrink-0 ml-2">{fmtEUR(it.unitPrice * it.qty)}</span>
-                  </div>
-                ))}
-                {openOrder.items.filter((it) => !it.voided).length === 0 && <p className="text-sm text-stone-500">{t('tlb.emptyOrder')}</p>}
+                <p className="text-sm text-stone-500">{t('tlb.emptyOrder')}</p>
               </div>
             )}
             {/* izbira postavk */}

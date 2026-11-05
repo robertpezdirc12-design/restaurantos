@@ -2675,3 +2675,107 @@ VAL Ž4 — osnutki listkov na KDS, nad obstoječimi motorji:
   ohranjene), Ž registri (verzija, i18n pariteta 4099/4099,
   dokumenta §32 + AUDIT, 0 DDL dokaz, 0 strežniških sprememb,
   worklog).
+
+## 33. Raziskava november 2026 (nadaljevanje 7) — VEDNO VIDNO NAROČILO NA MOBILNIH POVRŠINAH v1.259.0 (Lightspeed »slide-out menu layer«)
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Lightspeed K-Series What's New november 2026 — »Keep active
+  orders visible while browsing menus«:** »A new slide-out menu
+  layer on handheld POS devices. The menu opens over the active
+  order tab, allowing staff to pull up or collapse the view to
+  check added items while browsing, reducing screen toggling and
+  speeding up service during busy shifts.« Natakar na ročnem
+  terminalu med brskanjem menija vidi stanje naročila BREZ
+  preklapljanja zaslonov.
+- **Lastno stanje (izmera v valovanju):** obe mobilni površini
+  (handheld `/handheld` ORDER pogled + tablica `/tablica` listek)
+  postavita OBSTOJEČE postavke naročila v isti drseči vsebnik
+  kot meni — drseči seznam obstoječih postavk je NAD iskalnikom,
+  potem pa pridejo kategorije in mreža artiklov. Ko natakar
+  drsi po meniju (glavna dejavnost pogleda), obstoječe postavke
+  ODPADEJO iz pogleda — »did I already ring in a Bograč?« terja
+  vrnitev na vrh (drsanje nazaj) ali preklop zaslona. Točno
+  vrzel, ki jo Lightspeed zapira s slide-out plastjo. Košarica
+  NOVIH postavk je sicer že lepljiva na dnu (conca palca), a
+  obstoječe (poslane) postavke niso vidne nikjer med brskanjem.
+- **Ocena drugih novosti istega članka (november 2026):** zaklep
+  KDS zaslonov — ŽE ZAPRTO v1.244.0 (§18 B, ista referenca);
+  prenova tlorisa (strežniške značke — ŽE §18 C, časi/zneski/
+  gostje na ploščicah — ŽE v1.129/232, panning/pinch-zoom so
+  gesto tabletne aplikacije, naš tloris je namenjen miški);
+  oznake alergenov/opomb na posamezni postavki — ŽE pokrito
+  (opomba + rdeče alergensko opozorilo na postavki, Issue #7,
+  viden na KDS + tisku); AI klepet v Pulse aplikaciji — zunanj
+  LLM v produkciji gospodinjskega POS-a je arhitekturna odločitev
+  višje ravni (B-načrt, ne ta val); rezervacijske kapacitete +
+  kombinacije miz (Lightspeed Reservations) — rezervacijski val
+  z DDL tveganjem (združevanje miz), ODLOŽENO.
+- **Toast (oktober 2026):** Grid KDS (nova izkušnja za hitre
+  lokale — večja prenova izgleda KDS) in »KDS load balancing«
+  (prevzemanje listkov med identičnimi postajami zahteva DELJENO
+  stanje med zasloni → strežniško stanje, tveganje DDL) — oba
+  ocenjena kot kasnejša kandidata; Square Vol 16 po novi oceni
+  ŠE ni objavljen (zimski cikel).
+
+### B) Odločitev
+
+VAL Ž3 — vedno vidno naročilo na obeh mobilnih površinah, nad
+obstoječimi motorji:
+
+1. **Vrstica naročila (zložljiva, LEPILJIVA):** obstoječi drseči
+   seznam postavk se prenese v ZLOŽLJIVO sekcijo, pripeto na vrh
+   drsečega območja menija (`sticky top-0`) — med brskanjem
+   OSTAJE vidna ena vrstica povzetka, razpenjanje razkrije poln
+   seznam. To je naš prevod Lightspeed slide-out plasti: povzetek
+   naročila je vedno v pogledu, podrobnosti en dotik stran.
+2. **Zložena vrstica (44 px):** števec postavk + znesek naročila
+   + NAJBOLJ RELEVANTNA faza (priprava: »N v pripravi« amber /
+   pripravljeno: »N pripravljenih« emerald — nič med PENDING in
+   SERVED) + puščica. Edina resnica so obstoječi podatki
+   (`openOrder`/`activeItems`) — nič ni izračunanega dvakrat.
+3. **Razprta sekvenca:** poln seznam z obstoječimi statusnimi
+   pilulami (handheld) oz. cenovnimi vrsticami (tablica),
+   `max-h` z lastnim drsanjem — meni OSTAJE pod plastjo, ne
+   izgine (Lightspeed: »menu opens over the active order tab«).
+   Zloži se z istim 44 px dotikom. Prazno naročilo in nov listek
+   (brez odprtega naročila) vrstice NE nosijo — stanje ostane
+   iskreno (prazen seznam ostane kot prej, izven plasti).
+4. **Stanje:** prehodno pomnilniško stanje per obisk (enako
+   `noteOpen`) — BREZ persist; to je trenutna plast brskanja, ne
+   nastavitev naprave. Privzeto ZLOŽENO ( povzetek je novi
+   status quo — popoln seznam je bil prej viden le do prvega
+   drsenja).
+5. **Dostopnost:** `aria-expanded`/`aria-controls`, 44 px dotik,
+   `ChevronDown` rotacija, `data-region` oznake (hh-order-bar,
+   tlb-order-bar) po vzorcu ostalih regij.
+6. **Revizija?** NE — bralna vizualna plast, 0 denarne
+   posledice, 0 strežniških sprememb (naročila in mize se ŽE
+   nalagajo na obe površini). Enaka odločitev kot §32 B6.
+7. 0 DDL, 0 novih odvisnosti, 0 strežniških sprememb. HR
+   prevodi. Kiosk izvzet (samo-naročanje gosta, eno naročilo na
+   sejo — vrstica nima pomena).
+
+### C) Implementacija
+
+- **Handheld** (src/app/handheld/page.tsx): stanje
+  `orderBarOpen` (privzeto false); ORDER pogled — obstoječi
+  seznam postavk `activeItems` se izrise ZNOTRAJ zložljive
+  lepljive sekcije (data-region hh-order-bar; gumb-po-celotni
+  širini povzetek + razprta veja z max-h-64 overflow-y-auto);
+  povzetek: števec + znesek + faza (priprava/pripravljeno)
+  + puščica; statusne pilule postavk nespremenjene.
+- **Tablica** (src/app/tablica/page.tsx): isto stanje
+  `orderBarOpen`; obstoječi seznam v listku (Sheet) preide v
+  enako zložljivo lepljivo sekcijo (data-region tlb-order-bar,
+  max-h-56); vrstice brez statusnih pilul (status quo te
+  površine — hiter način).
+- **i18n:** hh.orderBar ({n} na računu), hh.orderBarPrep
+  ({n} v pripravi), hh.orderBarReady ({n} pripravljenih),
+  hh.orderBarAria, tlb.orderBar, tlb.orderBarAria
+  (sl + hr, 4099 → 4105).
+- **Testi:** tests/v259-handheld-vedno-vidno.test.ts — A montaža
+  vira (obeh površin: lepljivost, zloženi povzetek, razpenjanje,
+  izločitve praznega/novega naročila), Ž registri (verzija,
+  i18n pariteta 4105/4105, dokumenta §33 + AUDIT, 0 DDL dokaz,
+  0 strežniških sprememb, worklog).

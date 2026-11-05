@@ -35,7 +35,7 @@ import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { ManagerCallButton } from '@/components/manager-call-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Loader2, LogOut, ChevronLeft, Smartphone, Search, CheckCircle2, MessageSquare, Monitor, ArrowUpRight, QrCode, Users} from 'lucide-react'
+import { Loader2, LogOut, ChevronLeft, ChevronDown, Smartphone, Search, CheckCircle2, MessageSquare, Monitor, ArrowUpRight, QrCode, Users} from 'lucide-react'
 
 interface OrderItemT { id: string; name: string; qty: number; unitPrice: number; status: string; station?: string; note?: string | null; voided?: boolean }
 interface OrderT { id: string; orderNumber?: number | null; type: string; status: string; guests: number; total: number; createdAt: string; tableId?: string | null; items: OrderItemT[]; paymentStatus?: string | null }
@@ -115,6 +115,12 @@ function HandheldInner() {
   // Issue #7 (P1, v1.104.0): izrecno alergensko opozorilo na postavki (gost prijavi alergijo)
   const [allergenNotes, setAllergenNotes] = useState<Record<string, string>>({})
   const [noteOpen, setNoteOpen] = useState<string | null>(null)
+  /* v1.259.0 (§33): VRSTICA NAROČILA — zložljiva, LEPILJIVA sekcija obstoječih
+     postavk nad menijem (Lightspeed nov 2026 »Keep active orders visible while
+     browsing menus« — slide-out menu layer). Med brskanjem menija povzetek
+     naročila OSTANE v pogledu (prej: seznam je odpadel iz pogleda pri drsanju).
+     Prehodno stanje per obisk (enako noteOpen) — BREZ persist. Privzeto ZLOŽENO. */
+  const [orderBarOpen, setOrderBarOpen] = useState(false)
   const [cat, setCat] = useState('ALL')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'ALL' | 'FREE' | 'OCCUPIED' | 'DIRTY'>('ALL')
@@ -206,6 +212,11 @@ function HandheldInner() {
   }, [selTable, orders])
   const activeItems = useMemo(() => (openOrder ? openOrder.items.filter((it) => !it.voided) : []), [openOrder])
   const pendingCount = useMemo(() => activeItems.filter((it) => it.status === 'PENDING').length, [activeItems])
+  /* v1.259.0 (§33): faze za POVZETEK vrstice naročila — najbolj relevantna
+     odgovori na vprašanje natakarja med brskanjem: »se mi že kuha?«
+     (priprava, amber) oz. »je že pripravljeno?« (emerald). */
+  const prepCount = useMemo(() => activeItems.filter((it) => it.status === 'PREPARING').length, [activeItems])
+  const readyCount = useMemo(() => activeItems.filter((it) => it.status === 'READY').length, [activeItems])
 
   /** mize → koliko postavk še NI poslanih v kuhinjo (varnostna mreža Toast-style) */
   const pendingByOrder = useMemo(() => {
@@ -516,22 +527,52 @@ function HandheldInner() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
-            {/* obstoječe naročilo s statusi postavk */}
+            {/* v1.259.0 (§33): VRSTICA NAROČILA — obstoječe postavke v ZLOŽLJIVI
+                LEPILJIVI sekciji na vrhu drsečega območja (Lightspeed nov 2026
+                »Keep active orders visible while browsing menus« — slide-out
+                menu layer). Povzetek (števec + znesek + faza) OSTANE v pogledu
+                med brskanjem menija; razpenjanje razkrije poln seznam nad menijem
+                (meni ne izgine — plast je nad njim). -mx-4/-mt-3 raztegne sekcijo
+                čez odmik vsebnika, da se pod njo ne vidi drseče vsebine. */}
             {activeItems.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold text-stone-500 uppercase">{t('hh.existingItems')}</p>
-                {activeItems.map((it) => (
-                  <div key={it.id} className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 truncate">
-                      {it.qty}× {it.name}
-                      {it.note ? <span className="text-stone-400"> ({it.note})</span> : null}
-                    </span>
-                    <span className="text-stone-500 shrink-0 text-xs">{fmtEUR(it.unitPrice * it.qty)}</span>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${ITEM_STATUS_BADGE[it.status] ?? ITEM_STATUS_BADGE.PENDING}`}>
-                      {['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(it.status) ? t(`status.${it.status}`) : it.status}
-                    </span>
+              <div data-region="hh-order-bar" className="sticky top-0 z-10 -mx-4 -mt-3 bg-white/95 backdrop-blur-sm border-b border-stone-200 shadow-sm">
+                <button
+                  type="button"
+                  data-region="hh-order-bar-toggle"
+                  aria-expanded={orderBarOpen}
+                  aria-controls="hh-order-bar-list"
+                  aria-label={t('hh.orderBarAria')}
+                  onClick={() => setOrderBarOpen((v) => !v)}
+                  className="flex w-full items-center gap-2 min-h-11 px-4 py-1.5 text-left active:bg-stone-50"
+                >
+                  <span className="text-xs font-semibold uppercase text-stone-500 shrink-0">{t('hh.existingItems')}</span>
+                  <span className="text-sm font-bold tabular-nums shrink-0">{t('hh.orderBar', { n: activeItems.length })}</span>
+                  {/* najbolj relevantna faza: priprava (amber) > pripravljeno (emerald) */}
+                  {prepCount > 0 && (
+                    <span className="rounded-full border border-amber-300 bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-semibold shrink-0">{t('hh.orderBarPrep', { n: prepCount })}</span>
+                  )}
+                  {prepCount === 0 && readyCount > 0 && (
+                    <span className="rounded-full border border-emerald-300 bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs font-semibold shrink-0">{t('hh.orderBarReady', { n: readyCount })}</span>
+                  )}
+                  <span className="text-sm font-bold tabular-nums ml-auto shrink-0">{fmtEUR(openOrder?.total ?? 0)}</span>
+                  <ChevronDown className={`w-5 h-5 shrink-0 text-stone-400 transition-transform ${orderBarOpen ? 'rotate-180' : ''}`} aria-hidden />
+                </button>
+                {orderBarOpen && (
+                  <div id="hh-order-bar-list" data-region="hh-order-bar-list" className="max-h-64 overflow-y-auto px-4 pb-2 space-y-1.5">
+                    {activeItems.map((it) => (
+                      <div key={it.id} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 truncate">
+                          {it.qty}× {it.name}
+                          {it.note ? <span className="text-stone-400"> ({it.note})</span> : null}
+                        </span>
+                        <span className="text-stone-500 shrink-0 text-xs">{fmtEUR(it.unitPrice * it.qty)}</span>
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${ITEM_STATUS_BADGE[it.status] ?? ITEM_STATUS_BADGE.PENDING}`}>
+                          {['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(it.status) ? t(`status.${it.status}`) : it.status}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
             {openOrder && activeItems.length === 0 && <p className="text-sm text-stone-500">{t('tlb.emptyOrder')}</p>}
