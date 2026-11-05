@@ -233,7 +233,10 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // miz in servisne luknje naročil v uporabnikovem obsegu, await locationScope) → 84
     // v1.251.0 (PRIMERJAVA §25): furs/lookup GET (iskanje računa po črtni kodi —
     // zadetki v uporabnikovem obsegu, await locationScope) → 85
-    expect(wired.length).toBe(85)
+    // v1.260.0 (PRIMERJAVA §34): reports/revenue-centers GET (prodaja po
+    // prihodkovnih centrih — izpeljava con/kanalov v uporabnikovem obsegu,
+    // await locationScope) → 86
+    expect(wired.length).toBe(86)
   })
 })
 

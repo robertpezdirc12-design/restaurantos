@@ -4436,6 +4436,26 @@ export const sl: Record<string, string> = {
   'prc.invalid': 'Vnesite veljavno ceno (0 ali več).',
   'prc.reasonMissing': 'Razlog je obvezen (vsaj 3 znaki).',
   'prc.mark': 'Cena spremenjena',
+
+/* PRIMERJAVA §34 (v1.260.0) — prodaja po prihodkovnih centrih (Square Vol 13
+   »revenue centers«: cone miz + kanala odnes/dostava; kanala pozivata
+   order.type.*, samo lastne oznake kartice so tu) */
+  'rc.title': 'Prodaja po prihodkovnih centrih',
+  'rc.desc': 'Katera območja nosijo dan: mize po conah ter kanala odnes in dostava.',
+  'rc.zone': 'Cona',
+  'rc.channel': 'Kanal',
+  'rc.none': 'Brez mize',
+  'rc.colCenter': 'Center',
+  'rc.colOrders': 'Naročil',
+  'rc.colGross': 'Bruto',
+  'rc.colNet': 'Neto',
+  'rc.colTips': 'Napitnine',
+  'rc.colAvg': 'Povpr. račun',
+  'rc.colShare': 'Delež',
+  'rc.total': 'Skupaj',
+  'rc.empty': 'V izbranem obdobju ni plačanih naročil.',
+  'rc.loadErr': 'Poročila ni bilo mogoče pridobiti.',
+  'rc.ariaShare': 'Delež neto prodaje: {p} %',
 }
 
 export type Dictionary = typeof sl

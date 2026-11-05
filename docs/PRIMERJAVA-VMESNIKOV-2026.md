@@ -2779,3 +2779,132 @@ obstoječimi motorji:
   izločitve praznega/novega naročila), Ž registri (verzija,
   i18n pariteta 4105/4105, dokumenta §33 + AUDIT, 0 DDL dokaz,
   0 strežniških sprememb, worklog).
+
+## 34. Raziskava november 2026 (nadaljevanje 8) — PRIHODKOVNI CENTRI v1.260.0 (Square Vol 13 »revenue centers«)
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Square Vol 13 (september 24, 2026) — »Create revenue centers
+  to group and compare sales«:** »A revenue center is one part of a
+  business — a bar, a patio, or a delivery channel. Sellers assign
+  devices, floor plan sections, and channels to each, so orders are
+  counted in the right place automatically. Grouping the Sales
+  summary report by revenue center then shows how each area
+  performed.« Vrednost: »When every part of a business feeds one
+  sales total, there's no way to tell which areas are carrying the
+  day and which are dragging it down. Revenue centers give each
+  area its own line in reporting, so staffing and menu decisions
+  rest on real numbers.« Dostop pri Square: Premium naročnina +
+  dovoljenje Manage revenue centers; selitev posameznega naročila
+  v drug center prek Order Manager.
+- **Sveža raziskava november 2026 (stanje ob valu):** Square Vol 16
+  ŠE NI objavljen (zadnji vnos release notes stran je oktober 22 =
+  Vol 15, že obdelan v §27/§28/§31); tweet napoveduje prihodnjo
+  objavo »Allergy and dietary preferences by seat« — ni izmerljiv
+  benchmark, dokler ni objavljen. Toast Fall 2026 (oktober 6) =
+  Toast IQ AI agenti (urniki/SEO/recenzije/ponudbe) — zunanj LLM v
+  produkciji gospodinjskega POS-a ostaja arhitekturna odločitev
+  višje ravni (B-načrt, isto kot §33). Lightspeed K-Series What's
+  New november 2026 obdelan v §33. ⇒ IZBRAN odloženi kandidat
+  v1.258.0: »revenue centers (kasnejši val)«.
+- **Lastno stanje (izmere po kodi):** RevenueCenter model OBSTAJA
+  (id/name/code/isActive/sortOrder/locationId/propertyId; relacije
+  MenuItem/Order/Table/Property) a brez CRUD poti, brez UI forme,
+  brez seederja — uporablja ga SAMO enterprise drevo za štetje
+  (ent.rcCount). Order.revenueCenterId in Table.revenueCenterId se
+  NIKOLI ne nastavita (0 zadetkov v src/). Poročila ne grupirajo
+  po NIČEMER prostorskem/kanalnem: X/Z in summary po dnevih/DDV/
+  plačilih, sales-by-hour po urah, tempo PO POSAMEZNI mizi, edina
+  groupBy v poročilih sta vatRate in zaposleni. Hkrati pa:
+  Table.area je ŽE cona z urejevalnikom (preimenuj/združi +
+  ZONE_RENAME revizija, v1.233.0 §4) in demo vrednostmi (Glavna
+  dvorana/Bar/Šank/Terasa/VIP loža), Order.type je ŽE kanal
+  (DINE_IN/TAKEAWAY/DELIVERY, strogo validiran od v1.238.0 §15).
+  Vrzel: lastnik vidi EN sam skupni promet — katera cona nosi dan
+  in katera vleče navzdol NI odgovorljivo iz nobenega poročila.
+
+### B) Odločitev
+
+VAL Ž4 — prihodkovni centri kot IZPELJAVA OB BRANJU (0 DDL):
+
+1. **Center = cona mize ali kanal naročila, izpeljano ob branju:**
+   DINE_IN z mizo → cona mize (Table.area); TAKEAWAY → kanal
+   ODNES; DELIVERY → kanal DOSTAVA. To je ista avtomatika, ki jo
+   obljavlja Square (»orders are counted in the right place
+   automatically«) — cona mize JE vezava na odsek tlorisa, vrsta
+   naročila JE kanal. Odpovedana alternativa (poštena navedba):
+   upravna plast po Square vzorcu (CRUD centrov + dodelitev
+   odsekov/naprav + selitev posameznega naročila v Order Manager)
+   — zavrnjena ZA TA VAL: prinesla bi admin UI + selitveno
+   logiko + praznino za vso obstoječo zgodovino (Order.
+   revenueCenterId se ne piše); izpeljava deluje nad VSO
+   zgodovino DANES. POMEMBNO: preimenovanje/združitev cone
+   (ZONE_RENAME) združi tudi pretekle naročila pod novo ime —
+   enako obnašanje kot pogled miz po conah; sprejemljivo (cone se
+   preimenujejo redko, združitev je želena posledica).
+2. **Kartica v zavihku Računi** (dom poročila o prodaji — portal +
+   X/Z + seznam računov), NE v X/Z samoživo: X/Z je fiskalni
+   zaključek, grupiranje po centru je poslovni vpogled (B-načrt:
+   vključitev v zz, če lastnik izrecno želi). Obdobje NADZORUJE
+   zavihek (iste from/to kot portal in seznam — Issue #94 vzorec);
+   kartica nima lastnih datumov.
+3. **Vrstice:** naročil (števec), bruto, neto (bruto − DDV),
+   napitnine, povprečni račun, delež neto z deležno vrstico.
+   Vrstni red po neto padajoče (»who is carrying the day«); cone
+   pred kanali; PRAZNE cone/kanali ostanejo vidne (mrtvo območje
+   je informacija — Square izrise vse centre). DINE_IN brez mize
+   (robni primer, naj ne bi nastal) → »Brez mize«, SAMO če ni
+   prazen.
+4. **Strežnik:** GET /api/reports/revenue-centers?from&to —
+   requirePermission reports.sales + locationScope (Issue #4 §1)
+   + samo PLAČANA naročila (paidAt v oknu — isti diskont kot
+   financial/sales-by-hour; performance = realizirana prodaja);
+   groupBy type+tableId (stolpca na Order, brez joina) + preslikava
+   miza→cona. READ-ONLY: 0 mutacij, 0 revizij (bralno poročilo,
+   enaka odločitev kot §32 B6). Zajem con = distinct Table.area.
+5. **Dostopnost/oblika:** data-region oznake (revenue-centers-card,
+   rc-row, rc-total-row, rc-window, rc-empty, rc-error, rc-skeleton),
+   aria-label osveževanja, sr-only delež, tabular-nums, odzivni
+   stolpci (bruto/povprečje skriti <sm, napitnine <md), kanala
+   pozivata OBSTOJEČA order.type.TAKEAWAY/DELIVERY ključa (en vir
+   resnice — 0 duplikatov prevodov).
+6. **Izločitve:** kiosk izvzet (izrazito prevzemno — se šteje v
+   kanal po vrsti naročila), QR meni pa DIHNE z mizo v cono (isto
+   kot pogled miz). Enterprise RevenueCenter drevo NI dotaknjeno
+   (števec ostaja; polna sinteza enterprise-centrov z izpeljanimi
+   conami = kasnejši kandidat, če bo potrebna večlokacijska
+   primerjava).
+7. 0 DDL (modeli/stolpci predhodno obstajajo in ostajajo
+   neizkoriščeni), 0 novih odvisnosti, 0 strežniških sprememb
+   obstoječih poti (SAMO nova read-only ruta). HR prevodi
+   (rc.* ×16, 4105 → 4121).
+
+### C) Implementacija
+
+- **Strežnik** (src/app/api/reports/revenue-centers/route.ts): from/
+  to (privzeto danes, enak pars vzorec kot export), scope
+  locationScope, groupBy ['type','tableId'] _sum total/tax/tip +
+  _count nad paymentStatus='paid' ∧ paidAt ∈ [from, to]; preslikava
+  miza→cona prek findMany tabel; zagotovljene vrstice za VSE cone
+  (distinct area) + oba kanala; neto = total − tax; delež =
+  neto/skupno neto (0,1 % natančnost); razvrstitev neto ↓ → vrsta
+  (cone/kanali) → ime; skupna vrstica (totals). Odgovor: { from,
+  to, rows[{key, kind: zone|takeaway|delivery|none, label,
+  orders, gross, net, tips, avgCheck, share}], totals }.
+- **UI** (src/components/tabs/revenue-centers-card.tsx, montaža v
+  dashboard/page.tsx racuni zavihek takoj za portalom, gating
+  reports.sales): tabela s stolpci Center (ime + značka cona/
+  kanal) · Naročil · Bruto (≥sm) · Neto · Napitnine (≥md) ·
+  Povpr. račun (≥sm) · Delež (vrstica: cona emerald, kanal amber,
+  brez mize stone); okno obdobja v glavi; osveži gumb; skeleton/
+  napaka/prazno stanje; izvoz v bodočih valovih po potrebi.
+- **i18n:** rc.title, rc.desc, rc.zone, rc.channel, rc.none,
+  rc.colCenter, rc.colOrders, rc.colGross, rc.colNet, rc.colTips,
+  rc.colAvg, rc.colShare, rc.total, rc.empty, rc.loadErr,
+  rc.ariaShare (sl + hr, 4105 → 4121; kanala odnes/dostava iz
+  order.type.*).
+- **Testi:** tests/v260-prihodkovni-centri.test.ts — A strežnik/
+  kartica montaža vira (izpeljava cona/kanal, paid filter, pravice,
+  from/to validacija, data-regioni, deležne vrstice, izločitve),
+  Ž registri (verzija 1.260.0 + compose, i18n pariteta 4121/4121,
+  dokumenta §34 + AUDIT, 0 DDL dokaz, read-only dokaz, worklog).

@@ -268,16 +268,16 @@ describe('v1.237.0 D — i18n (SL + HR pariteta, 3857 → 3858)', () => {
   })
 
   test('D2: pariteta števcev 3968/3968', () => {
-    expect(Object.keys(sl).length).toBe(4105)
-    expect(Object.keys(hr).length).toBe(4105)
+    expect(Object.keys(sl).length).toBe(4121)
+    expect(Object.keys(hr).length).toBe(4121)
   })
 })
 
 describe('v1.237.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.259.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.259\.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.259.0')
+    expect(APP_VERSION).toBe('1.260.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.260\.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.260.0')
   })
 
   test('Ž2: PRIMERJAVA §14 (kako ima Toast / kako ima RestaurantOS z datotečnimi potmi)', () => {
@@ -290,7 +290,7 @@ describe('v1.237.0 Ž — registri (doc-truth + verzija)', () => {
   })
 
   test('Ž3: AUDIT — števec i18n 3859 + POSODOBITEV v1.237.0', () => {
-    expect(audit).toContain('4105 ključev SL in 4105 HR')
+    expect(audit).toContain('4121 ključev SL in 4121 HR')
     expect(audit).toContain('POSODOBITEV (v1.237.0')
   })
 

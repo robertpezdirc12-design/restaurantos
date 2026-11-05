@@ -27,6 +27,8 @@ export { DeliveryTab, AccountingExportCard, GlJournalCard, NapitnineTab } from '
 export type { DeliveryInfoT, DeliveryOrderT, DeliveryZoneT, PlatformIntegrationT } from './tabs/backoffice-tab'
 /* P2-13 (v1.189.0) — knjigovodski portal (read-only agregacija, nova datoteka) */
 export { AccountingPortalCard } from './tabs/accounting-portal-card'
+/* PRIMERJAVA §34 (v1.260.0) — prodaja po prihodkovnih centrih (Square Vol 13) */
+export { RevenueCentersCard } from './tabs/revenue-centers-card'
 export { InventoryTab } from './tabs/zaloga-tab'
 export type { InventoryT, SupplierT, RecipeT, RecipeLineT } from './tabs/zaloga-tab'
 export { ShiftsTab, ExpensesTab } from './tabs/finance-tab'

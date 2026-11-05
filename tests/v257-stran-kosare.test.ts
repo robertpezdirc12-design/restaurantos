@@ -110,9 +110,9 @@ describe('v1.257.0 A3 — zrcaljenje postavitve (obe veji statično v viru)', ()
 
 describe('v1.257.0 Ž — registri', () => {
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.259.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.259.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.259.0')
+    expect(APP_VERSION).toBe('1.260.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.260.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.260.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+5 sale.cartSide*)', () => {
@@ -125,8 +125,8 @@ describe('v1.257.0 Ž — registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4105)
-    expect(hrCount).toBe(4105)
+    expect(slCount).toBe(4121)
+    expect(hrCount).toBe(4121)
   })
 
   test('Ž3: dokumenta — PRIMERJAVA §31 + AUDIT POSODOBITEV + števci', () => {
@@ -136,7 +136,7 @@ describe('v1.257.0 Ž — registri', () => {
     expect(doc).toContain('ro_sale_cart_side')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.257.0')
-    expect(auditDoc).toContain('- 4105 ključev SL in 4105 HR')
+    expect(auditDoc).toContain('- 4121 ključev SL in 4121 HR')
   })
 
   test('Ž4: 0 DDL dokaz — čista klientna nastavitev brez strežnika (noben nov vir v api/ tega vala, schema brez CartSide)', () => {
@@ -159,6 +159,6 @@ describe('v1.257.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.259.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.260.0-prihodkovni-centri-val')
   })
 })

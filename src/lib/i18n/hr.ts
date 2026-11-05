@@ -4431,6 +4431,26 @@ export const hr: Record<string, string> = {
   'prc.invalid': 'Unesite valjanu cijenu (0 ili više).',
   'prc.reasonMissing': 'Razlog je obavezan (najmanje 3 znaka).',
   'prc.mark': 'Cijena promijenjena',
+
+/* PRIMERJAVA §34 (v1.260.0) — prodaja po prihodovnim centrima (Square Vol 13
+   »revenue centers«: zone stolova + kanali za ponijeti/dostava; kanali pozivaju
+   order.type.*, samo vlastite oznake kartice su ovdje) */
+  'rc.title': 'Prodaja po prihodovnim centrima',
+  'rc.desc': 'Koja područja nose dan: stolovi po zonama te kanali za ponijeti i dostava.',
+  'rc.zone': 'Zona',
+  'rc.channel': 'Kanal',
+  'rc.none': 'Bez stola',
+  'rc.colCenter': 'Centar',
+  'rc.colOrders': 'Narudžbi',
+  'rc.colGross': 'Bruto',
+  'rc.colNet': 'Neto',
+  'rc.colTips': 'Napojnice',
+  'rc.colAvg': 'Prosječni račun',
+  'rc.colShare': 'Udio',
+  'rc.total': 'Ukupno',
+  'rc.empty': 'U odabranom razdoblju nema plaćenih narudžbi.',
+  'rc.loadErr': 'Izvješće nije bilo moguće dohvatiti.',
+  'rc.ariaShare': 'Udio neto prodaje: {p} %',
 }
 
 export type DictionaryHr = typeof hr
