@@ -29,6 +29,18 @@ import {
   type PosVariantGroupView,
   type PosVariantLine,
 } from '@/lib/item-variants'
+// PRIMERJAVA §28 (v1.254.0): REAL-TIME CHECK VIEW — živi predogled računa zraven
+// urejevalca (čista lib + plošča; Square oktober 2026 »Edit items with the check in view«)
+import {
+  LIVE_CHECK_EMPTY,
+  buildLiveCheck,
+  cartPreviewLines,
+  orderPreviewLines,
+  parsePriceInput,
+  variantPendingLine,
+  withLineUpdate,
+} from '@/lib/live-check'
+import { LiveCheckAside } from '@/components/live-check-aside'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -3007,6 +3019,59 @@ function DashboardInner() {
   // vizualni benchmark (Toast/Square): skupno število kosov za oznako v glavi košare
   // (OSS-10 B-del: + količine vrstic variant)
   const saleCartCount = Object.values(saleCart).reduce((s, q) => s + q, 0) + saleVariants.reduce((s, l) => s + l.qty, 0)
+  /* PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW: živi modeli plošč za vse
+     ŠTIRI urejevalne dialoge POS (izbira variante / opomba vrstice / sprememba
+     cene / preklic postavke). Vsak se preračuna ob VSAKI spremembi stanja —
+     plošča zraven urejevalca se posodablja z vsako izbiro (Square oktober 2026
+     »the check updates with each choice as staff edit«). Zapis ostane na Potrdi
+     (dialogi omogočajo umik spremembe — predogled ne piše). */
+  /** stanje ene od treh košaric POS po načinu (cart / sale / sheet) */
+  const posCartOf = useCallback((mode: 'cart' | 'sale' | 'sheet') =>
+    mode === 'cart'
+      ? { cart, variants: cartVariants, notes: cartNotes }
+      : mode === 'sale'
+        ? { cart: saleCart, variants: saleVariants, notes: saleNotes }
+        : { cart: sheetCart, variants: sheetVariants, notes: sheetNotes },
+    [cart, cartVariants, cartNotes, saleCart, saleVariants, saleNotes, sheetCart, sheetVariants, sheetNotes])
+  /** plošča izbire variante: obstoječe + nova vrstica iz TRENUTNIH izbir (pending) */
+  const variantAsideModel = useMemo(() => {
+    if (!variantPick) return LIVE_CHECK_EMPTY
+    const mc = posCartOf(variantPick.mode)
+    const base = variantPick.mode === 'sheet' && orderSheet ? orderPreviewLines(orderSheet.items) : []
+    const pending = variantPendingLine(variantPick.item, variantPickGroups, variantPick.selections)
+    return buildLiveCheck([
+      ...base,
+      ...cartPreviewLines(mc.cart, mc.variants, mc.notes, menu),
+      ...(pending ? [pending] : []),
+    ])
+  }, [variantPick, variantPickGroups, posCartOf, orderSheet, menu])
+  /** plošča opombe vrstice: vrstica v urejanju nosi ŽIVO sestavljeno opombo (čipi + besedilo) */
+  const noteAsideModel = useMemo(() => {
+    if (!notePick) return LIVE_CHECK_EMPTY
+    const mc = posCartOf(notePick.mode)
+    const live = composeItemNote([...noteChips], noteText)
+    const base = notePick.mode === 'sheet' && orderSheet ? orderPreviewLines(orderSheet.items) : []
+    return buildLiveCheck(withLineUpdate(
+      [...base, ...cartPreviewLines(mc.cart, mc.variants, mc.notes, menu)],
+      notePick.key,
+      { note: live },
+    ))
+  }, [notePick, noteChips, noteText, posCartOf, orderSheet, menu])
+  /** plošča spremembe cene: vrstica pokaže prej → novo (živo iz tipkanja), skupaj sledi */
+  const priceAsideModel = useMemo(() => {
+    if (!priceItem || !orderSheet) return LIVE_CHECK_EMPTY
+    const parsed = parsePriceInput(priceNew)
+    return buildLiveCheck(withLineUpdate(
+      orderPreviewLines(orderSheet.items),
+      priceItem.id,
+      { unitPrice: parsed ?? priceItem.unitPrice, prevPrice: priceItem.unitPrice },
+    ))
+  }, [priceItem, priceNew, orderSheet])
+  /** plošča preklica: vrstica prečrtana (pending + voided), skupaj brez nje */
+  const voidAsideModel = useMemo(() => {
+    if (!voidItem || !orderSheet) return LIVE_CHECK_EMPTY
+    return buildLiveCheck(withLineUpdate(orderPreviewLines(orderSheet.items), voidItem.id, { voided: true }))
+  }, [voidItem, orderSheet])
   // ISSUE #73 audit-15: podvojena prikazna imena ČEZ kategorije (isti niz,
   // različna artikla — »Bolognese« testenina/pica) — v košari morajo biti
   // RAZLOČNA: −1 na napačni vrstici v naglici pomeni izgubljen račun.
@@ -3042,13 +3107,25 @@ function DashboardInner() {
       </button>
     )
   }
+  /* PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW: TAP na vrstico košarice
+     odpre podrobnosti (opombo) — cela vrstica je tarča (44px+), ne samo 7×7 ℹ
+     ikona (Square: »A tap on a check item opens its details«). Uporabljeno v
+     namiznem in mobilnem tiru hitre prodaje. */
   const SaleCartLineName = ({ mi, qty }: { mi: MenuT; qty: number }) => {
     const cn = saleAmbiguous.has(normItemName(mi.name)) ? saleCatNameOf(mi) : ''
+    const cur = saleNotes[mi.id]
     return (
-      <span className="flex min-w-0 flex-1 flex-col">
+      <button
+        type="button"
+        onClick={() => openNotePick('sale', mi.id, mi.name)}
+        aria-label={cur ? t('posn.edit', { note: cur.slice(0, 40) }) : t('posn.add', { name: mi.name })}
+        title={cur || t('posn.add', { name: mi.name })}
+        className="flex min-h-11 min-w-0 flex-1 flex-col rounded-md px-1 py-1 text-left hover:bg-stone-100"
+      >
         <span className="min-w-0 truncate font-medium leading-tight">{qty}× {mi.name}</span>
         {cn ? <span className="min-w-0 truncate text-xs leading-tight text-stone-400">{cn}</span> : null}
-      </span>
+        {cur ? <span className="min-w-0 truncate text-xs leading-tight text-amber-800">ℹ {cur}</span> : null}
+      </button>
     )
   }
 
@@ -4348,10 +4425,12 @@ function DashboardInner() {
                           if (!mi) return null
                           return (
                             <div key={l.key} className="flex items-center gap-1.5 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 py-1.5 text-sm">
-                              <span className="flex min-w-0 flex-1 flex-col">
+                              {/* §28: tap na vrstico = podrobnosti (opomba) */}
+                              <button type="button" onClick={() => openNotePick('sale', l.key, orderItemDisplayName(mi.name, l.optionNames))} title={saleNotes[l.key] || t('posn.add', { name: orderItemDisplayName(mi.name, l.optionNames) })} aria-label={saleNotes[l.key] ? t('posn.edit', { note: saleNotes[l.key].slice(0, 40) }) : t('posn.add', { name: orderItemDisplayName(mi.name, l.optionNames) })} className="flex min-h-11 min-w-0 flex-1 flex-col rounded-md px-1 py-1 text-left hover:bg-stone-100">
                                 <span className="min-w-0 truncate font-medium leading-tight">{l.qty}× {orderItemDisplayName(mi.name, l.optionNames)}</span>
                                 {l.optionPrice > 0 ? <span className="min-w-0 truncate text-xs leading-tight text-stone-400">{t('orders.variantSurcharge')}: +{fmtEUR(l.optionPrice)}</span> : null}
-                              </span>
+                                {saleNotes[l.key] ? <span className="min-w-0 truncate text-xs leading-tight text-amber-800">ℹ {saleNotes[l.key]}</span> : null}
+                              </button>
                               <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="-1" onClick={() => setSaleVariants((pr) => changePosVariantLineQty(pr, l.key, -1))}>−</Button>
                               <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 p-0" aria-label="+1" onClick={() => setSaleVariants((pr) => addPosVariantLine(pr, l))}>+</Button>
                               <CartNoteButton mode="sale" k={l.key} name={orderItemDisplayName(mi.name, l.optionNames)} />
@@ -4456,10 +4535,12 @@ function DashboardInner() {
                           if (!mi) return null
                           return (
                             <div key={l.key} className="flex items-center gap-2 rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-2.5 text-sm">
-                              <span className="flex min-w-0 flex-1 flex-col">
+                              {/* §28: tap na vrstico = podrobnosti (opomba) */}
+                              <button type="button" onClick={() => openNotePick('sale', l.key, orderItemDisplayName(mi.name, l.optionNames))} title={saleNotes[l.key] || t('posn.add', { name: orderItemDisplayName(mi.name, l.optionNames) })} aria-label={saleNotes[l.key] ? t('posn.edit', { note: saleNotes[l.key].slice(0, 40) }) : t('posn.add', { name: orderItemDisplayName(mi.name, l.optionNames) })} className="flex min-h-11 min-w-0 flex-1 flex-col rounded-md px-1 py-1 text-left hover:bg-stone-100">
                                 <span className="min-w-0 truncate font-medium leading-tight">{l.qty}× {orderItemDisplayName(mi.name, l.optionNames)}</span>
                                 {l.optionPrice > 0 ? <span className="min-w-0 truncate text-xs leading-tight text-stone-400">{t('orders.variantSurcharge')}: +{fmtEUR(l.optionPrice)}</span> : null}
-                              </span>
+                                {saleNotes[l.key] ? <span className="min-w-0 truncate text-xs leading-tight text-amber-800">ℹ {saleNotes[l.key]}</span> : null}
+                              </button>
                               <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="-1" onClick={() => setSaleVariants((pr) => changePosVariantLineQty(pr, l.key, -1))}>−</Button>
                               <Button size="sm" variant="outline" className="h-9 w-9 shrink-0 p-0 text-base" aria-label="+1" onClick={() => setSaleVariants((pr) => addPosVariantLine(pr, l))}>+</Button>
                               <CartNoteButton mode="sale" k={l.key} name={orderItemDisplayName(mi.name, l.optionNames)} />
@@ -6222,14 +6303,15 @@ function DashboardInner() {
                          so VIDNE pod artikel vrstico (ločeno −/+ — v naglici ni ugibanja). */
                       <div key={m.id} className="space-y-1">
                         <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${m.available ? 'border-stone-200' : 'border-stone-200 bg-stone-100 opacity-70'}`}>
-                          <div className="min-w-0">
+                          {/* §28: tap na ime = podrobnosti (opomba) */}
+                          <button type="button" onClick={() => openNotePick('cart', m.id, m.name)} title={cartNotes[m.id] || t('posn.add', { name: m.name })} aria-label={cartNotes[m.id] ? t('posn.edit', { note: cartNotes[m.id].slice(0, 40) }) : t('posn.add', { name: m.name })} className="min-w-0 min-h-11 flex-1 rounded-md px-1 py-1 text-left hover:bg-stone-50">
                             <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}{(variantReqMap.get(m.id)?.length ?? 0) > 0 && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">{variantReqMap.get(m.id)![0].name}</span>}</p>
                             {!m.available && (
                               <p className="text-xs text-stone-500 truncate">
                                 {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
                               </p>
                             )}
-                          </div>
+                          </button>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                             <span className="w-6 text-center text-sm font-semibold">{cart[m.id] || 0}</span>
@@ -6240,10 +6322,12 @@ function DashboardInner() {
                         {cartNotes[m.id] && <p className="ml-3 text-xs text-amber-800 truncate" title={cartNotes[m.id]}>ℹ {cartNotes[m.id]}</p>}
                         {cartVariants.filter((l) => l.menuItemId === m.id).map((l) => (
                           <div key={l.key} className="ml-6 flex items-center justify-between gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2.5 py-1.5">
-                            <div className="min-w-0">
+                            {/* §28: tap na vrstico = podrobnosti (opomba) */}
+                            <button type="button" onClick={() => openNotePick('cart', l.key, orderItemDisplayName(m.name, l.optionNames))} title={cartNotes[l.key] || t('posn.add', { name: orderItemDisplayName(m.name, l.optionNames) })} aria-label={cartNotes[l.key] ? t('posn.edit', { note: cartNotes[l.key].slice(0, 40) }) : t('posn.add', { name: orderItemDisplayName(m.name, l.optionNames) })} className="min-w-0 min-h-11 py-1 px-1 flex-1 rounded-md text-left hover:bg-stone-100">
                               <p className="text-sm truncate font-medium">{orderItemDisplayName(m.name, l.optionNames)}</p>
                               {l.optionPrice > 0 && <p className="text-xs text-stone-500">{t('orders.variantSurcharge')}: +{fmtEUR(l.optionPrice)}</p>}
-                            </div>
+                              {cartNotes[l.key] && <p className="text-xs text-amber-800 truncate">ℹ {cartNotes[l.key]}</p>}
+                            </button>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setCartVariants((p) => changePosVariantLineQty(p, l.key, -1))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                               <span className="w-6 text-center text-sm font-semibold">{l.qty}</span>
@@ -6276,27 +6360,34 @@ function DashboardInner() {
           morajo dobiti izbiro PRED vnosom (sicer strežnik vrne 400); potrditev je
           omogočena šele, ko ima vsaka skupina izbrano razpoložljivo opcijo. ── */}
       <Dialog open={!!variantPick} onOpenChange={(v) => !v && setVariantPick(null)}>
-        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        {/* PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW: živi račun ZRAVEN
+            izbire variante — pending vrstica se posodablja z VSAKO izbiro
+            (ime z opcijo, cena z doplačilom) še pred Dodaj (Square oktober
+            2026 »the check updates with each choice as staff edit«). */}
+        <DialogContent className="max-w-sm sm:max-w-2xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('orders.variantTitle')} — {variantPick?.item.name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            {variantPickGroups.map((g) => (
-              <div key={g.id}>
-                <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{g.name}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {g.modifiers.filter((m) => m.isAvailable).map((m) => {
-                    const sel = variantPick?.selections[g.id] === m.id
-                    return (
-                      <button key={m.id} type="button" aria-pressed={sel} onClick={() => setVariantPick((p) => (p ? { ...p, selections: { ...p.selections, [g.id]: m.id } } : p))}
-                        className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition ${sel ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800' : 'border-stone-300 bg-white text-stone-800 hover:bg-stone-50'}`}>
-                        {m.name}{m.price > 0 ? ` · +${fmtEUR(m.price)}` : ''}
-                      </button>
-                    )
-                  })}
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <LiveCheckAside model={variantAsideModel} region="lcv-aside-variant" />
+            <div className="space-y-3">
+              {variantPickGroups.map((g) => (
+                <div key={g.id}>
+                  <p className="text-xs font-semibold uppercase text-stone-400 mb-1.5">{g.name}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.modifiers.filter((m) => m.isAvailable).map((m) => {
+                      const sel = variantPick?.selections[g.id] === m.id
+                      return (
+                        <button key={m.id} type="button" aria-pressed={sel} onClick={() => setVariantPick((p) => (p ? { ...p, selections: { ...p.selections, [g.id]: m.id } } : p))}
+                          className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition ${sel ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800' : 'border-stone-300 bg-white text-stone-800 hover:bg-stone-50'}`}>
+                          {m.name}{m.price > 0 ? ` · +${fmtEUR(m.price)}` : ''}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
           <DialogFooter className="items-center gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setVariantPick(null)}>{t('common.cancel')}</Button>
@@ -6313,44 +6404,50 @@ function DashboardInner() {
           prosto besedilo; sestavljena opomba gre na vrstico (items[].note → KDS +
           kuhinjski/bar list). Počisti = odstranitev opombe z vrstice. ── */}
       <Dialog open={!!notePick} onOpenChange={(v) => !v && setNotePick(null)}>
-        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        {/* PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW: živi račun ZRAVEN
+            opombe — vrstica v urejanju nosi ŽIVO sestavljeno opombo (čipi +
+            besedilo) že med tipkanjem, ne šele po Shrani. */}
+        <DialogContent className="max-w-sm sm:max-w-2xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('posn.title')} — {notePick?.name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            {presetNotes.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold uppercase text-stone-400">{t('posn.presets')}</p>
-                <div className="flex flex-wrap gap-1.5" data-region="posn-chips">
-                  {presetNotes.map((n) => {
-                    const on = noteChips.has(n.label)
-                    return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => setNoteChips((prev) => { const nx = new Set(prev); if (nx.has(n.label)) nx.delete(n.label); else nx.add(n.label); return nx })}
-                        aria-pressed={on}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${on ? 'border-amber-400 bg-amber-100 text-amber-900' : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}
-                      >
-                        {n.label}
-                      </button>
-                    )
-                  })}
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <LiveCheckAside model={noteAsideModel} region="lcv-aside-note" />
+            <div className="space-y-3">
+              {presetNotes.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase text-stone-400">{t('posn.presets')}</p>
+                  <div className="flex flex-wrap gap-1.5" data-region="posn-chips">
+                    {presetNotes.map((n) => {
+                      const on = noteChips.has(n.label)
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => setNoteChips((prev) => { const nx = new Set(prev); if (nx.has(n.label)) nx.delete(n.label); else nx.add(n.label); return nx })}
+                          aria-pressed={on}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${on ? 'border-amber-400 bg-amber-100 text-amber-900' : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}
+                        >
+                          {n.label}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
+              )}
+              <div className="space-y-1.5">
+                <label htmlFor="posn-text" className="text-xs font-semibold uppercase text-stone-400">{t('posn.free')}</label>
+                <Input
+                  id="posn-text"
+                  value={noteText}
+                  maxLength={200}
+                  placeholder={t('posn.placeholder')}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyNotePick() } }}
+                />
               </div>
-            )}
-            <div className="space-y-1.5">
-              <label htmlFor="posn-text" className="text-xs font-semibold uppercase text-stone-400">{t('posn.free')}</label>
-              <Input
-                id="posn-text"
-                value={noteText}
-                maxLength={200}
-                placeholder={t('posn.placeholder')}
-                onChange={(e) => setNoteText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyNotePick() } }}
-              />
+              {notePickValue && <p className="text-xs text-stone-500 break-words" data-region="posn-current">ℹ {notePickValue}</p>}
             </div>
-            {notePickValue && <p className="text-xs text-stone-500 break-words" data-region="posn-current">ℹ {notePickValue}</p>}
           </div>
           <DialogFooter className="items-center gap-2 sm:gap-0">
             {notePickValue && (
@@ -6640,14 +6737,15 @@ function DashboardInner() {
                           /* OSS-10 B-del (v1.210.0): varianta = Plus odpre izbiro; vrstice pod artikel vrstico. */
                           <div key={m.id} className="space-y-1">
                             <div className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${m.available ? 'border-stone-100' : 'border-stone-100 bg-stone-100 opacity-70'}`}>
-                              <div className="min-w-0">
+                              {/* §28: tap na ime = podrobnosti (opomba) */}
+                              <button type="button" onClick={() => openNotePick('sheet', m.id, m.name)} title={sheetNotes[m.id] || t('posn.add', { name: m.name })} aria-label={sheetNotes[m.id] ? t('posn.edit', { note: sheetNotes[m.id].slice(0, 40) }) : t('posn.add', { name: m.name })} className="min-w-0 min-h-11 flex-1 rounded-md px-1 py-1 text-left hover:bg-stone-50">
                                 <p className="text-sm truncate">{m.name} · <b>{fmtEUR(m.price)}</b>{!m.available && <Badge variant="outline" className="ml-1 text-xs px-1.5 py-0">86</Badge>}</p>
                                 {!m.available && (
                                   <p className="text-xs text-stone-500 truncate">
                                     {t('kds.substitutes')}: {g.items.filter((x) => x.available && x.id !== m.id).slice(0, 2).map((x) => x.name).join(' · ') || t('kds.noSubstitutes')}
                                   </p>
                                 )}
-                              </div>
+                              </button>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetCart((c) => ({ ...c, [m.id]: Math.max(0, (c[m.id] || 0) - 1) }))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                                 <span className="w-5 text-center text-sm font-semibold">{sheetCart[m.id] || 0}</span>
@@ -6658,7 +6756,11 @@ function DashboardInner() {
                             </div>
                             {sheetVariants.filter((l) => l.menuItemId === m.id).map((l) => (
                               <div key={l.key} className="ml-5 flex items-center justify-between gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 py-1">
-                                <p className="min-w-0 truncate text-sm font-medium">{orderItemDisplayName(m.name, l.optionNames)}</p>
+                                {/* §28: tap na vrstico = podrobnosti (opomba) */}
+                                <button type="button" onClick={() => openNotePick('sheet', l.key, orderItemDisplayName(m.name, l.optionNames))} title={sheetNotes[l.key] || t('posn.add', { name: orderItemDisplayName(m.name, l.optionNames) })} aria-label={sheetNotes[l.key] ? t('posn.edit', { note: sheetNotes[l.key].slice(0, 40) }) : t('posn.add', { name: orderItemDisplayName(m.name, l.optionNames) })} className="min-w-0 min-h-11 flex-1 rounded-md px-1 py-1 text-left hover:bg-stone-100">
+                                  <p className="min-w-0 truncate text-sm font-medium">{orderItemDisplayName(m.name, l.optionNames)}</p>
+                                  {sheetNotes[l.key] && <p className="min-w-0 truncate text-xs text-amber-800">ℹ {sheetNotes[l.key]}</p>}
+                                </button>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setSheetVariants((p) => changePosVariantLineQty(p, l.key, -1))} aria-label={t('orders.less')}><Minus className="w-3 h-3" /></Button>
                                   <span className="w-5 text-center text-sm font-semibold">{l.qty}</span>
@@ -6704,61 +6806,67 @@ function DashboardInner() {
 
       {/* ── Issue #5: preklic posamezne postavke (orders.void + obvezen razlog; plačano zavrnjeno) ── */}
       <Dialog open={!!voidItem} onOpenChange={(v) => { if (!v) setVoidItem(null) }}>
-        <DialogContent aria-describedby={undefined} className="max-w-sm">
+        {/* PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW: živi račun ZRAVEN
+            preklica — vrstica prečrtana, skupaj po preklicu ŽIVO (denar, ki ga
+            preklic odnese, je viden PREJ potrditve). */}
+        <DialogContent aria-describedby={undefined} className="max-w-sm sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg">{t('void.title')}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p className="rounded-lg border border-stone-200 px-3 py-2">{voidItem?.qty}× {voidItem?.name}</p>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="void-reason-text">{t('void.reasonLabel')}</label>
-              {voidReasons.length > 0 ? (
-                <Select value={voidReasonId} onValueChange={setVoidReasonId}>
-                  <SelectTrigger aria-label="—" className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    {voidReasons.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-              <input
-                id="void-reason-text"
-                value={voidReasonText}
-                onChange={(e) => setVoidReasonText(e.target.value.slice(0, 200))}
-                placeholder={t('void.reasonPlaceholder')}
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
-                maxLength={200}
-              />
-            </div>
-            {/* #19: komentar + polja odobritelja (prag preklica aktiven) */}
-            <input
-              value={excComment}
-              onChange={(e) => setExcComment(e.target.value.slice(0, 500))}
-              placeholder={t('exc.commentPlaceholder')}
-              aria-label={t('exc.commentLabel')}
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
-              maxLength={500}
-            />
-            {excPolicy && !excPolicy.isManagerial && excPolicy.policy.voidApprovalAmountCents > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
-                <p className="text-xs text-amber-800">{t('exc.approverHint')}</p>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <LiveCheckAside model={voidAsideModel} region="lcv-aside-void" totalKey="lcv.totalAfterVoid" />
+            <div className="space-y-3 text-sm">
+              <p className="rounded-lg border border-stone-200 px-3 py-2">{voidItem?.qty}× {voidItem?.name}</p>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="void-reason-text">{t('void.reasonLabel')}</label>
+                {voidReasons.length > 0 ? (
+                  <Select value={voidReasonId} onValueChange={setVoidReasonId}>
+                    <SelectTrigger aria-label="—" className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      {voidReasons.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
                 <input
-                  value={excApproverEmail}
-                  onChange={(e) => setExcApproverEmail(e.target.value)}
-                  placeholder={t('exc.approverLabel')}
-                  aria-label={t('exc.approverLabel')}
-                  type="email"
-                  className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
-                />
-                <input
-                  value={excApproverPin}
-                  onChange={(e) => setExcApproverPin(e.target.value)}
-                  placeholder={t('exc.approverPinLabel')}
-                  aria-label={t('exc.approverPinLabel')}
-                  inputMode="numeric"
-                  className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                  id="void-reason-text"
+                  value={voidReasonText}
+                  onChange={(e) => setVoidReasonText(e.target.value.slice(0, 200))}
+                  placeholder={t('void.reasonPlaceholder')}
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                  maxLength={200}
                 />
               </div>
-            )}
+              {/* #19: komentar + polja odobritelja (prag preklica aktiven) */}
+              <input
+                value={excComment}
+                onChange={(e) => setExcComment(e.target.value.slice(0, 500))}
+                placeholder={t('exc.commentPlaceholder')}
+                aria-label={t('exc.commentLabel')}
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                maxLength={500}
+              />
+              {excPolicy && !excPolicy.isManagerial && excPolicy.policy.voidApprovalAmountCents > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+                  <p className="text-xs text-amber-800">{t('exc.approverHint')}</p>
+                  <input
+                    value={excApproverEmail}
+                    onChange={(e) => setExcApproverEmail(e.target.value)}
+                    placeholder={t('exc.approverLabel')}
+                    aria-label={t('exc.approverLabel')}
+                    type="email"
+                    className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={excApproverPin}
+                    onChange={(e) => setExcApproverPin(e.target.value)}
+                    placeholder={t('exc.approverPinLabel')}
+                    aria-label={t('exc.approverPinLabel')}
+                    inputMode="numeric"
+                    className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" className="h-9" onClick={() => setVoidItem(null)}>{t('common.cancel')}</Button>
@@ -6773,38 +6881,45 @@ function DashboardInner() {
           poseg (nova cena + OBVEZEN razlog; strežnik validira strogo, preračuna
           DDV in totale v transakciji, zapiše revizijo ORDER_ITEM_PRICE_OVERRIDE) */}
       <Dialog open={!!priceItem} onOpenChange={(v) => { if (!v) setPriceItem(null) }}>
-        <DialogContent aria-describedby={undefined} className="max-w-sm">
+        {/* PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW: živi račun ZRAVEN
+            spremembe cene — vrstica pokaže prej → novo ŽIVO iz tipkanja in
+            skupaj sledi (§23 denarna disciplina ostaja: vrata = Potrdi +
+            obvezen razlog + strežniška validacija + revizija). */}
+        <DialogContent aria-describedby={undefined} className="max-w-sm sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg flex items-center gap-2"><Coins className="w-5 h-5 text-orange-700" /> {t('prc.title')}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p className="rounded-lg border border-stone-200 px-3 py-2">{priceItem?.qty}× {priceItem?.name}</p>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-current">{t('prc.current')}</label>
-              <p id="prc-current" className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-semibold tabular-nums">{priceItem?.unitPrice?.toFixed(2)} €</p>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-new">{t('prc.new')}</label>
-              <input
-                id="prc-new"
-                value={priceNew}
-                onChange={(e) => setPriceNew(e.target.value.slice(0, 12))}
-                placeholder={t('prc.newPh')}
-                inputMode="decimal"
-                autoComplete="off"
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-stone-300"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-reason">{t('prc.reason')}</label>
-              <input
-                id="prc-reason"
-                value={priceReason}
-                onChange={(e) => setPriceReason(e.target.value.slice(0, 200))}
-                placeholder={t('prc.reasonPh')}
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
-                maxLength={200}
-              />
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <LiveCheckAside model={priceAsideModel} region="lcv-aside-price" />
+            <div className="space-y-3 text-sm">
+              <p className="rounded-lg border border-stone-200 px-3 py-2">{priceItem?.qty}× {priceItem?.name}</p>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-current">{t('prc.current')}</label>
+                <p id="prc-current" className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-semibold tabular-nums">{priceItem?.unitPrice?.toFixed(2)} €</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-new">{t('prc.new')}</label>
+                <input
+                  id="prc-new"
+                  value={priceNew}
+                  onChange={(e) => setPriceNew(e.target.value.slice(0, 12))}
+                  placeholder={t('prc.newPh')}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-stone-300"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-reason">{t('prc.reason')}</label>
+                <input
+                  id="prc-reason"
+                  value={priceReason}
+                  onChange={(e) => setPriceReason(e.target.value.slice(0, 200))}
+                  placeholder={t('prc.reasonPh')}
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+                  maxLength={200}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

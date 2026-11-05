@@ -384,14 +384,14 @@ describe('v1.247.0 D — zagon pogleda poteče obstoječe rute (en klik, isti va
 
 describe('v1.247.0 Ž — registri in pini', () => {
   test('Ž1: APP_VERSION dvignjena na 1.247.0', () => {
-    expect(APP_VERSION).toBe('1.253.0')
-    expect(read('src/lib/version.ts')).toContain("'1.253.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.253.0')
+    expect(APP_VERSION).toBe('1.254.0')
+    expect(read('src/lib/version.ts')).toContain("'1.254.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.254.0')
   })
 
   test('Ž2: i18n — 3968 ključev SL in HR, popolna pariteta', () => {
-    expect(Object.keys(sl).length).toBe(4053)
-    expect(Object.keys(hr).length).toBe(4053)
+    expect(Object.keys(sl).length).toBe(4063)
+    expect(Object.keys(hr).length).toBe(4063)
     expect(Object.keys(sl).length).toBe(Object.keys(hr).length)
     // novi ključi vala so prisotni v obeh slovarjih
     for (const k of ['rv.title', 'rv.range.thisMonth', 'rv.run', 'rv.deleteConfirm', 'rv.resolved']) {
@@ -408,7 +408,7 @@ describe('v1.247.0 Ž — registri in pini', () => {
     expect(doc).toContain('## 21. Raziskava april 2026 — POGLEDI VAL v1.247.0')
     expect(doc).toContain('saved report views')
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4053 ključev SL in 4053 HR')
+    expect(audit).toContain('4063 ključev SL in 4063 HR')
     expect(audit).toContain('v1.247.0')
   })
 
@@ -441,6 +441,6 @@ describe('v1.247.0 Ž — registri in pini', () => {
 
   test('Ž7: worklog vrhnji vnos nosi Task ID v1.247.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.253.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.254.0-realtime-check-val')
   })
 })

@@ -2124,3 +2124,121 @@ oktober 2026 »See open checks in the Sales report«), brez drsenja
 pomena obstoječih računovodskih polj. Naslednji val: sveža raziskava
 pomlad 2027 (Toast/Lightspeed/Square objave) ali B-odločitve lastnika po
 »nadaljuj«.
+
+## 28. Raziskava november 2026 (nadaljevanje 2) — REAL-TIME CHECK VIEW v1.254.0 (Square Vol 15, zamujena postavka)
+
+Sklep §27 je napovedal svežo raziskavo ali B-odločitve; uporabnik je
+rekel »nadaljuj« brez B-odločitev → raziskava je stekla takoj
+(4. 11. 2026, agent-browser po mestih objav).
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Square Vol 15 (22. 10. 2026, v 7.30)** — ŠEST postavk; §27 jih je
+  ocenil PET (SSO = B, nested modifiers = DDL odloženo, kartični
+  pribitki = US-pravno, stran košarice = kozmetika, odprti računi =
+  v1.253.0). **ZAMUJENA postavka:** »Edit items with the check in view
+  on Point of Sale« (**Real-Time Check View**) — preverjeno 4. 11. 2026:
+  besedna zveza ni nikoli ocenjena (rg po PRIMERJAVI in worklogu brez
+  zadetkov). Square: »Item details open next to the check, and the check
+  updates with each choice as staff edit. Edits save automatically. A
+  tap on a check item opens its details, and a long press opens bulk
+  edit mode. Sellers choose which item detail sections appear: notes,
+  fulfillment methods, taxes, discounts, and service charges.« Zakaj
+  pomembno (Square): »Item edits show up on the check, which is where
+  staff confirm them. Showing the check next to item details, with only
+  the sections a business uses, lets staff edit and confirm without
+  switching screens.« Vol 16 (november 2026) še ni objavljen (objavni
+  ritem ~2× mesečno; release-notes vozlišče je na /us/en/release-notes).
+- **Lightspeed (4. 11. 2026):** §27 (november 2026 »What's New: AI, POS,
+  KDS, and more«) je ocenil vse postavke in ni odkril odprtih vrzeli;
+  novih objav po oceni ni (naslednji »What's New« čez zimo).
+- **Toast (4. 11. 2026):** stran za Cloudflare zidom (glava ne preide —
+  vrtanje v past bi potekalo čez urni prag); oktober 2026 je §27 ocenil
+  (Hotels Payments = N/A za gostilniško jedro, Retail POS Mode = N/A).
+- **Lastno stanje:** TRI košarice POS (novo naročilo / hitra prodaja /
+  urejevalnik naročila NaročiloSheet) imajo račun in meni v istem
+  pogledu, VENDAR vsa ŠTIRI urejevalna dialoga odprejo max-w-sm modal,
+  ki račun PREKRIJE: izbira variante (OSS-10 v1.210.0), opomba vrstice
+  (§22 B v1.248.0), sprememba cene (§23 v1.249.0), preklic postavke
+  (Issue #5). Osebje ureja »na slepo« — račun se posodobi šele po
+  Potrdi. Vrstice košaric niso tapljive (samo 7×7 ℹ ikona odpre
+  opombo). Točno to vrača Square: potrditev urejanja je NA RAČUNU,
+  urejevalec pa ga trenutno prekrije.
+
+### B) Odločitev
+
+- **Presnamemo esenco:** živi predogled računa ZRAVEN urejevalca, ki se
+  posodablja z VSAKO izbiro (Square: »the check updates with each
+  choice as staff edit«), + tap na vrstico košarice odpre njene
+  podrobnosti (»A tap on a check item opens its details«).
+- **Nova čista lib `src/lib/live-check.ts`** (0 uvozov iz db/api):
+  vrstica `LiveCheckLine { key, name, qty, unitPrice, note?, pending?,
+  voided?, prevPrice? }`, `buildLiveCheck` (defenzivna normalizacija:
+  qty ≥ 0 celo, cene r2 ≥ 0, opombe trim, podvojeni ključ — prvi zmaga,
+  kap 30 z iskrenim »… in še N«, prečrtane IZPUŠČENE iz skupaj),
+  `cartPreviewLines` (preslikava vseh treh košaric; manjkajoči artikel
+  preskočen — predogled ne laže o 0,00 €), `orderPreviewLines`
+  (obstoječe postavke NaročiloSheeta, modifiers v imenu, voided ven),
+  `variantPendingLine` (živa pending vrstica iz trenutnih izbir:
+  ime z opcijami + cena z doplačilom, qty 1), `withLineUpdate` (čist
+  patch note/cena/preklic na ENO vrstico — pending obroba) in
+  `parsePriceInput` ('12,50' → 12,5; smeti → null — predogled pokaže
+  trenutno ceno, ne laže).
+- **Plošča `src/components/live-check-aside.tsx`:** naslov + značka
+  »v živo«, vrstice (pending → jantarna obroba + značka »urejanje«;
+  voided → prečrtana; prevPrice → prečrtana prejšnja vsota vrstice;
+  opomba → ℹ pod vrstico), skupaj (r2) in namig »Spremembe se vidijo
+  takoj; zapis ob potrditvi.« Prazno stanje je vidno prazno (izrecna
+  vrstica, ne tišina). Max višina z drsenjem.
+- **Štirje dialogi** dobijo dvostolpčno postavitev
+  (`sm:grid-cols-[0.95fr_1.05fr]`, mobilno plošča NAD urejevalcem —
+  isti DOM): variant (pending vrstica živo iz izbir), note (vrstica v
+  urejanju nosi ŽIVO sestavljeno opombo — čipi + besedilo med
+  tipkanjem), price (prej → novo živo iz tipkanja, skupaj sledi),
+  void (vrstica prečrtana, »Skupaj po preklicu«).
+- **Tap na vrstico = podrobnosti:** vseh šest mest (navadna + variantna
+  vrstica × tri košarice; SaleCartLineName pokriva namizni in mobilni
+  tir) — cela vrstica je gumb (min-h-11, 44px+ tarča), ki odpre
+  obstoječi dialog opombe; ℹ ikona ostane (dvojna pot). Obstoječe
+  (poslane) postavke v NaročiloSheetu NISO tapljive — njihova opomba
+  je že pri kuhinji, urejanje ne obstaja (iskrena meja, ne lažljivi
+  gumb).
+- **Samodejno shranjevanje ostaja na Potrdi** (naša dialoga imata
+  Prekliči — sprememba je vidna v predogledu živo, zapis pa šele ob
+  potrditvi; Square auto-save je mehanika njihove modal-less zasnove).
+  Dolgi pritisk/množično urejanje in konfiguracija sekcij so zavestno
+  ZUNAJ (Square-specifična ergonomika njihove razporeditve; naši
+  dialogi imajo po eno sekcijo).
+- **i18n:** +10 ključev `lcv.*` v vsakem slovarju (4053 → 4063;
+  pariteta SL/HR ohranjena, EN/DE/IT gostujoči nedotaknjeni).
+- 0 DDL (samo branje stanja košaric v klientu), 0 novih odvisnosti,
+  0 AI.
+
+### C) Implementacija
+
+- **Lib** kot v odločitvi B (popolnoma čist sloj; testi A1–E4 v
+  tests/v254-realtime-check.test.ts: normalizacija smeti, kap s pošteno
+  vsoto, voided izpuščene, preslikave košaric/naročila, pending
+  varianta, patchi, parse cene).
+- **Page:** izpeljani modeli `variantAsideModel` / `noteAsideModel` /
+  `priceAsideModel` / `voidAsideModel` (useMemo iz stanja — preračun ob
+  vsaki spremembi) + `posCartOf` (izbira stanja po načinu cart/sale/
+  sheet); štirje dialogi prestrukturirani v grid z LiveCheckAside
+  (data-region `lcv-aside-variant|note|price|void`); šest mest tapa na
+  vrstico (openNotePick z ustreznim ključem in imenom; aria-label iz
+  posn.add/posn.edit z vsebino opombe).
+- **Plošča:** ScrollArea max-h-48, jantarna pending obroba, prečrtane
+  vrstice, ℹ opombe, iskren »… in še {n}«, skupaj r2, namig o zapisu ob
+  potrditvi.
+- **Testi:** 21 primerov (A1a–d, A2a–d, B1–3, C1–2, D1–3, E1–4, Ž1–5);
+  Ž3 dokazuje montažo (štirje regioni, 4× grid razred, 6× openNotePick
+  iz vrstic) in 0 DDL (lib brez db uvoza, schema brez LiveCheck).
+
+**Sklep §28:** vsako urejanje postavke na POS zdaj pokaže račun zraven
+sebe — živo, z vsako izbiro (varianta, opomba, cena, preklic), z
+jantarno obrobo na vrstici v urejanju in pošteno vsoto — in tap na
+vrstico košarice odpre njene podrobnosti (Square oktober 2026 »Real-Time
+Check View«), brez drsenja discipline zapisovanja (vrata ostajajo
+Potrdi + strežniške validacije + revizije). Naslednji val: Square Vol 16
+(november 2026, pričakovana objava sredi meseca), Lightspeed/Toast
+zimske objave ali B-odločitve lastnika po »nadaljuj«.

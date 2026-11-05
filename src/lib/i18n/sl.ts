@@ -3449,6 +3449,18 @@ export const sl: Record<string, string> = {
   'acct.xzOpenMore': '… in še {n} odprtih',
   'acct.xzOpenAge': 'Starost odprtega računa',
 
+  // ── PRIMERJAVA §28 (v1.254.0) — REAL-TIME CHECK VIEW (Square oktober 2026): živi predogled računa zraven urejevalca
+  'lcv.title': 'Račun — predogled',
+  'lcv.live': 'v živo',
+  'lcv.empty': 'Račun je še prazen.',
+  'lcv.pending': 'urejanje',
+  'lcv.voided': 'preklicano',
+  'lcv.more': '… in še {n}',
+  'lcv.total': 'Skupaj',
+  'lcv.totalAfterVoid': 'Skupaj po preklicu',
+  'lcv.prev': 'prej',
+  'lcv.hint': 'Spremembe se vidijo takoj; zapis ob potrditvi.',
+
   // ── OPS-8 val 3 (v1.73.0) — GL dnevnik (orientacijsko) ──
   'gl.title': 'GL dnevnik (orientacijsko)',
   'gl.note': 'Orientacijski obračun — ne nadomešča knjigovodje.',
