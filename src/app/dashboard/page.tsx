@@ -40,6 +40,15 @@ import {
   variantPendingLine,
   withLineUpdate,
 } from '@/lib/live-check'
+import { ConfirmBannerView } from '@/components/confirm-banner'
+import {
+  addItemsBanner,
+  courseAssignBanner,
+  discountBanner,
+  fireAllBanner,
+  fireCourseBanner,
+} from '@/lib/confirm-banner'
+import type { ConfirmBanner } from '@/lib/confirm-banner'
 import { LiveCheckAside } from '@/components/live-check-aside'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -573,6 +582,11 @@ function DashboardInner() {
   // OPS-7 (v1.68.0): urejevalnik naročila (NaročiloSheet) + split po izstavkih + coursing
   const [orderSheet, setOrderSheet] = useState<OrderT | null>(null)
   const [sheetCourses, setSheetCourses] = useState<CourseT[]>([])
+  // v1.255.0 (PRIMERJAVA-VMESNIKOV-2026 §29): potrditveni banner na vrhu urejevalnika
+  // naročila in plačilnega dialoga (Lightspeed »Order view confirmation banner«) —
+  // povratni odziv po TIHIH uspehih (dodatek/fire vseh/fire tečaja/dodelitev tečaja/popust).
+  const [sheetBanner, setSheetBanner] = useState<ConfirmBanner | null>(null)
+  const [payBanner, setPayBanner] = useState<ConfirmBanner | null>(null)
   const [sheetCart, setSheetCart] = useState<Record<string, number>>({})
   // OSS-10 B-del (v1.210.0): izbira variante OSEBJA — skupine opcij (razred `variant`
   // prihaja s strežnika) + vrstice variant za VSE TRI košarice POS (novo naročilo /
@@ -1449,6 +1463,9 @@ function DashboardInner() {
       const clientOperationId = newOperationId()
       await api(`/api/orders/${orderSheet.id}`, { method: 'PATCH', body: JSON.stringify({ addItems: items, clientOperationId }) })
       setSheetCart({}); setSheetVariants([]); setSheetNotes({})
+      // v1.255.0 §29: dodatek je bil TIHO uspešen — banner potrdi število (Lightspeed
+      // »confirmation banner … when a task is complete«); vrata ostanejo na strežniku.
+      setSheetBanner(addItemsBanner(items.length))
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
@@ -1461,7 +1478,10 @@ function DashboardInner() {
     if (!orderSheet) return
     setSending(true)
     try {
-      await api(`/api/orders/${orderSheet.id}/fire`, { method: 'POST' })
+      const d = await api<{ firedCount: number }>(`/api/orders/${orderSheet.id}/fire`, { method: 'POST' })
+      // v1.255.0 §29: streljanje vseh pending postavk je bilo TIHO — banner
+      // potrdi koliko jih je šlo v kuhinjo (firedCount iz strežniškega odgovora).
+      setSheetBanner(fireAllBanner(d.firedCount))
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
@@ -1491,9 +1511,13 @@ function DashboardInner() {
     if (!orderSheet) return
     setSending(true)
     try {
+      // identiteta tečaja iz ZNANEGA stanja (pred osvežitvijo) — banner pove kdo je šel
+      const course = sheetCourses.find((c) => c.id === courseId)
       await api(`/api/orders/${orderSheet.id}/fire`, { method: 'POST', body: JSON.stringify({ courseId }) })
       const d = await api<{ courses: CourseT[] }>(`/api/orders/${orderSheet.id}/courses`)
       setSheetCourses(d.courses)
+      // v1.255.0 §29: fire tečaja je bil TIH — banner potrdi številko in ime tekme.
+      setSheetBanner(fireCourseBanner(course?.courseNumber, course?.name))
       await load()
       void refreshSheetOrder(orderSheet.id)
     } catch (err) {
@@ -1505,6 +1529,7 @@ function DashboardInner() {
   async function assignCourse(itemId: string, v: string) {
     if (!orderSheet || v === 'none') return
     try {
+      const course = sheetCourses.find((c) => c.id === v)
       if (v === '__new') {
         await api(`/api/orders/${orderSheet.id}/courses`, { method: 'POST', body: JSON.stringify({ itemIds: [itemId] }) })
       } else {
@@ -1512,6 +1537,14 @@ function DashboardInner() {
       }
       const d = await api<{ courses: CourseT[] }>(`/api/orders/${orderSheet.id}/courses`)
       setSheetCourses(d.courses)
+      // v1.255.0 §29: dodelitev h tečaju je bila TIHA — nov tečaj nosi svoje
+      // številko iz odgovora, obstoječi pa identiteto iz znanega stanja.
+      if (v === '__new') {
+        const created = d.courses.length > 0 ? d.courses[d.courses.length - 1] : undefined
+        setSheetBanner(courseAssignBanner(created?.courseNumber, created?.name))
+      } else {
+        setSheetBanner(courseAssignBanner(course?.courseNumber, course?.name))
+      }
     } catch (err) {
       toast({ title: (err as Error).message, variant: 'destructive' })
     }
@@ -1607,6 +1640,7 @@ function DashboardInner() {
   async function openPayment(o: OrderT, checkId?: string, openSplit = false) {
     setPayingOrder(o)
     setInvoice(null)
+    setPayBanner(null) // v1.255.0 §29: vsak plačilni pogled začne čist (brez tujih potrditev)
     setPayCheckId(checkId ?? null)
     setPayCheckNum(0)
     setChecksData(null)
@@ -1792,6 +1826,9 @@ function DashboardInner() {
       setSelDiscountId(discountId)
       const b = await api<{ bill: BillT }>(`/api/orders/${payingOrder.id}/bill`)
       setBill(b.bill)
+      // v1.255.0 §29: popust pod pragom je bil TIH — banner potrdi ime in znesek
+      // (Lightspeed »every discount added will be clear«); znesek iz OSVEŽENEGA računa.
+      setPayBanner(discountBanner(d.name, b.bill.manualDiscount))
       await load()
     } catch (err) {
       // 400 (razlog obvezen — politika se je medtem spremenila) → odpri dialog
@@ -6589,7 +6626,7 @@ function DashboardInner() {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}); setSheetVariants([]); setSheetNotes({}) } }}>
+      <Dialog open={!!orderSheet} onOpenChange={(v) => { if (!v) { setOrderSheet(null); setSheetCart({}); setSheetVariants([]); setSheetNotes({}); setSheetBanner(null) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="text-lg">
@@ -6619,6 +6656,9 @@ function DashboardInner() {
               </Select>
             </div>
           )}
+          {/* v1.255.0 (§29): potrditev tik pod glavo urejevalnika (Lightspeed »at the
+              top of the screen when a task is complete«) — dodatek / fire / tečaj. */}
+          <ConfirmBannerView banner={sheetBanner} onDismiss={() => setSheetBanner(null)} region="confirm-banner-sheet" />
           <div className="space-y-3 text-sm">
             {/* postavke + tečaji */}
             <div className="rounded-xl border border-stone-200 p-3 space-y-1.5">
@@ -7009,7 +7049,7 @@ function DashboardInner() {
       </Dialog>
 
       {/* ── Plačilo + FURS (issue #1 §6: kanonični račun, popusti, zvestoba, deljeno plačilo; §7: večji gumbi) ── */}
-      <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null) } }}>
+      <Dialog open={!!payingOrder} onOpenChange={(v) => { if (!v) { setPayingOrder(null); setInvoice(null); setPayBanner(null) } }}>
         <DialogContent aria-describedby={undefined} className="max-w-lg">
           <DialogHeader className="flex flex-row items-center justify-between gap-2">
             <DialogTitle className="text-lg">{t('payment.title', { name: payingOrder?.table?.name || '' })}{payCheckNum ? ` — ${t('payment.checkLabel', { n: payCheckNum })}` : ''}</DialogTitle>
@@ -7024,6 +7064,8 @@ function DashboardInner() {
               {payCue ? <Volume2 className="w-4 h-4" aria-hidden /> : <VolumeX className="w-4 h-4" aria-hidden />}
             </button>
           </DialogHeader>
+          {/* v1.255.0 (§29): potrditev tik pod glavo plačilnega pogleda — popust. */}
+          <ConfirmBannerView banner={payBanner} onDismiss={() => setPayBanner(null)} region="confirm-banner-payment" />
           {!bill && payingOrder && (
             <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-stone-400" /></div>
           )}

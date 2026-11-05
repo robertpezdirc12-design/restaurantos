@@ -10,7 +10,7 @@
  *       oknu, izčrpane mize → brez mize, izrecen izklop skipAutoAssign,
  *       izrecna izbira vedno zmaga, revizija RESERVATION_AUTOASSIGNED,
  *       pravice reservations.manage)
- *  Ž  — registri (verzija 1.254.0, compose, i18n 4063/4063 pariteta,
+ *  Ž  — registri (verzija 1.255.0, compose, i18n 4074/4074 pariteta,
  *       dokumenta §26 + AUDIT števci, montaža kode, worklog pin)
  */
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test'
@@ -317,15 +317,15 @@ describe('v1.252.0 Ž — registri', () => {
   const wl = read('worklog.md')
   const routeSrc = read('src/app/api/reservations/route.ts')
 
-  test('Ž1: verzija 1.254.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.254.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.254.0'")
-    expect(compose).toContain('restaurantos:1.254.0')
+  test('Ž1: verzija 1.255.0 + compose oznaka', () => {
+    expect(APP_VERSION).toBe('1.255.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.255.0'")
+    expect(compose).toContain('restaurantos:1.255.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4063/4063 (+4 resv.autoServer*)', () => {
-    expect(Object.keys(sl).length).toBe(4063)
-    expect(Object.keys(hr).length).toBe(4063)
+  test('Ž2: i18n pariteta SL/HR 4074/4074 (+4 resv.autoServer*)', () => {
+    expect(Object.keys(sl).length).toBe(4074)
+    expect(Object.keys(hr).length).toBe(4074)
     for (const k of ['resv.autoServerOk', 'resv.autoServerNone', 'resv.autoServerToggle', 'resv.autoServerToggleHint']) {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
@@ -355,10 +355,10 @@ describe('v1.252.0 Ž — registri', () => {
     expect(doc).toContain('## 26.')
     expect(doc).toContain('automatic table\nassignments')
     expect(auditDoc).toContain('v1.252.0')
-    expect(auditDoc).toContain('- 4063 ključev SL in 4063 HR')
+    expect(auditDoc).toContain('- 4074 ključev SL in 4074 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.254.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.255.0-confirmation-banner-val')
   })
 })

@@ -2242,3 +2242,130 @@ Check View«), brez drsenja discipline zapisovanja (vrata ostajajo
 Potrdi + strežniške validacije + revizije). Naslednji val: Square Vol 16
 (november 2026, pričakovana objava sredi meseca), Lightspeed/Toast
 zimske objave ali B-odločitve lastnika po »nadaljuj«.
+
+## 29. Raziskava november 2026 (nadaljevanje 3) — CONFIRMATION BANNER v1.255.0 (Lightspeed hub)
+
+Sklep §28 je napovedal Vol 16 / zimske objave / B-odločitve; uporabnik
+je rekel »nadaljuj« brez B-odločitev → sveža raziskava je stekla takoj
+(5. 11. 2026, agent-browser po mestih objav).
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Square (5. 11. 2026):** release-notes vozlišče še vedno nosi Vol 15
+  (22. 10. 2026) kot najnovejšo objavo — Vol 16 (objavni ritem ~2×
+  mesečno, ~14 dni) bi bil pričakovan šele okrog 5.–12. 11. in ob
+  4:30 ET zjutraj še ni bil objavljen. Nič novega za oceno.
+- **Toast (5. 11. 2026):** stran še vedno za Cloudflare zidom
+  (»Just a moment…« — glava ne preide); oktober 2026 je §27 ocenil
+  (Hotels Payments = N/A, Retail POS Mode = N/A). Zaprto do zime.
+- **Lightspeed hub (5. 11. 2026):** poleg mesečnih blog objav (»What's
+  New: AI, POS, KDS, and more« — november ocenjen v §27) obstaja
+  tekoča stran »What's New in Lightspeed Restaurant« (K-Series Back
+  Office) s SEDEMJIMI postavkami, ki jih §27 NI videl (ocenil je blog,
+  ne hub). Ocena vseh sedmih:
+  1. **Receipt printing configurations** (»Virtual merchant receipt« —
+     izbira, ali se po plačilu natisne tudi izvod za gostilno) = N/A
+     za naš tržni prostor: FURS račun je EN fiskalni izdelek (EOR/QR
+     na izročku za gosta); kartično potrdilo živi na terminalu, ne v
+     POS. Uvajanje »kuharske kopije« bi bila izmišljotina brez zakonske
+     podlage v SI/HR.
+  2. Quicker access to local support contact = kozmetika (mi SMO
+     podpora; About/System kartica že obstaja).
+  3. New label printer (Epson L90) = hardware matrika (naprave, ki je
+     nimamo, ne moremo preizkusiti; HARDWARE-MATRIX ostaja resnica).
+  4. Customizable Order List view = odloženo: naše naročilne kartice
+     že imajo identiteto (Issue #74: številka/ura/natakar), strnjenje
+     (Issue #71 audit-23: 3 postavke + »＋ N ostalih«) in statusne
+     filtre; prilagoditev stolpcev je luksuz brez izmerjene vrzeli.
+  5. **Order view confirmation banner** = **VRZEL** (edina postavka z
+     izmerjeno luknjo v naši kodi — spodaj). Lightspeed: »The order view
+     now has a confirmation banner at the top of the screen when a task
+     is complete. Every discount added, sequence completed or course
+     fired will be clear — so staff can manage their shifts with confidence.«
+  6. Search options by SKUs = DDL: MenuItem nima polja za kodo/SKU
+     (rg po kodi: zadetki so le lažni prijemi slovenskih besed);
+     dodajanje polja = migracija = ZAVESTNO ODLOŽENO (0-DDL pravilo,
+     produkcija je porabila DDL klike).
+  7. Adyen payment terminal signatures = N/A (Adyen + ameriški
+     kreditni spori; mi nimamo Adyen poti).
+- **Lastno stanje (izmere po kodi):** pet dejanj v NaročiloSheetu in
+  plačilnem dialogu uspe TIHO — pošiljanje dodatka obstoječemu
+  naročilu (`sendSheetItems`), streljanje vseh pending postavk
+  (`fireSheetAll`), streljanje posameznega tečaja (`fireCourse`),
+  dodelitev postavke h tečaju (`assignCourse`) in ročni popust pod
+  pragom (`applyManualDiscount`, direktna pot). Vseh pet ima toast
+  SAMO na napako; uspeh ne pokaže NIČ. (Sorodna dejanja, ki ŽE
+  potrjujejo: fireOrder s kartice — toast mmv.fireDone; kupon —
+  cp.applied; prenos — sheet.transferred; zadržanje/nadaljevanje —
+  holdDone/resumeDone. Kuhinjsko SERVED iz vrste KDS ima lastni
+  povratni odziv — izstop iz vrste.) Lightspeedova teza zadene
+  točno: osebje v izmeni »upravlja s prepričanjem« samo takrat, ko
+  dejanje POTRDJENO pristane.
+
+### B) Odločitev
+
+- **Presnamemo esenco:** emerald pas na VRHU poglede, kjer se dejanje
+  zgodi (NaročiloSheet pod glavo, plačilni dialog pod glavo), ki
+  potrdi DOKONČANO dejanje: kljukica + naslov + detail (število
+  postavk / tečaj št. + ime / popust z imenom in zneskom) + ura
+  potrditve. Banner je ČISTI POVRATNI odziv po strežniškem uspehu —
+  nič se ne zapisuje ob prikazu (avtoriteta ostaja API + validacije +
+  revizije; enaka disciplina kot §28: predogled ne piše).
+- **Nova čista lib `src/lib/confirm-banner.ts`** (0 uvozov iz db/api):
+  pet builderjev (`fireAllBanner` — count ≥ 0 celo iz strežniškega
+  firedCount; `fireCourseBanner`/`courseAssignBanner` — courseNumber
+  ≥ 1 + ime trim/kap 60, brez obeh → gol naslov brez lažljive ničle;
+  `addItemsBanner` — število novih vrstic navadne + variantne;
+  `discountBanner` — ime + znesek r2, znesek v detail vedno s vejico)
+  + `bannerTitleKey`/`bannerDetailParams`/`hasBannerDetail` (cb.*
+  preslikava) + `CONFIRM_BANNER_MS = 6000`. Nov banner vedno ZAMENJA
+  starega (eno mesto resnice — zastoj vrst ni zaščitni znak POS).
+- **Komponenta `src/components/confirm-banner.tsx`:** `role="status"`
+  + `aria-live="polite"` (bralnik zaslonov OZNANI uspeh), avto-odpad
+  po 6 s (časovnik se ponastavi ob zamenjavi — hitra zaporedna
+  dejanja vsako dobejo polnih 6 s), ročni gumb Zapri 44 px (h-11
+  w-11), ura HH:MM:SS, brez bannerja se ne izriše NIČ (brez praznega
+  okvirja).
+- **Pet mest v page:** sendSheetItems → banner po uspehu (število
+  vrstic), fireSheetAll → banner s firedCount iz strežniškega
+  odgovora, fireCourse → identiteta tečaja iz znanega stanja pred
+  osvežitvijo, assignCourse → novi tečaj nosi številko iz odgovora,
+  obstoječi iz znanega stanja, applyManualDiscount (direktna pot) →
+  banner z imenom popusta in zneskom iz OSVEŽENEGA računa
+  (bill.manualDiscount — banner pokažekar ta popust). Čiščenje:
+  zaprtje sheet/plačila počisti banner; nov plačilni pogled začne
+  čist. Dejanja, ki ŽE imajo toaste (fireOrder, kupon, prenos,
+  hold/resume, exc.done), ostajajo NETAKNJENA — val zapira samo
+  izmerjene TIHE uspehe.
+- **i18n:** +11 ključev `cb.*` v vsakem slovarju (4063 → 4074;
+  pariteta SL/HR ohranjena, EN/DE/IT gostujoči nedotaknjeni).
+- 0 DDL (čisti klientni povratni odziv), 0 novih odvisnosti, 0 AI.
+
+### C) Implementacija
+
+- **Lib** kot v odločitvi B (defenzivni builderji; testi A1–B3 v
+  tests/v255-confirmation-banner.test.ts: normalizacija števk/r2/trim,
+  kap 60, izpuščeni znesek 0, gol banner brez identitete, vejica v
+  znesku).
+- **Komponenta:** useEffect časovnik na banner identiteti (zamenjava
+  ponastavi), lucide CheckCircle2/X, emerald paleta (border-emerald-200
+  bg-emerald-50 — uspeh ima barvo, ne ovire).
+- **Page:** stanje sheetBanner/payBanner; pet dejanj postavi banner PO
+  uspehu; ConfirmBannerView v obeh dialogih (data-region
+  confirm-banner-sheet | confirm-banner-payment); openPayment in oba
+  onOpenChange čistita.
+- **Testi:** 21 primerov (A1a–b, A2a–d, A3a–b, A4a, A5a–c, B1–3,
+  Ž1–Ž5); Ž3 dokazuje montažo (5 klicev setSheet/PayBanner iz
+  dejanj, oba regiona, 3× čiščenje payBanner, aria-live + 44 px +
+  avto-odpad v komponenti) in 0 DDL (lib brez db uvoza, schema brez
+  ConfirmBanner).
+
+**Sklep §29:** vsako od petih doslej TIHIH dejanj v urejevalniku
+naročila in plačilnem pogledu zdaj potrdi emerald pas na vrhu pogleda
+— s kljukico, številom, identiteto tečaja ali zneskom popusta in uro
+(Lightspeed november 2026 »Order view confirmation banner«), z
+avto-odpadom 6 s in dostopnostjo aria-live, brez drsenja discipline
+zapisovanja (banner ne piše — zapis teče po starih vratih: strežnik +
+validacije + revizije). Naslednji val: Square Vol 16 (pričakovana
+objava sredi novembra 2026 — tedaj sveža ocena), Toast/Lightspeed
+zimske objave ali B-odločitve lastnika po »nadaljuj«.

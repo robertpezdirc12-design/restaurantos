@@ -3461,6 +3461,19 @@ export const sl: Record<string, string> = {
   'lcv.prev': 'prej',
   'lcv.hint': 'Spremembe se vidijo takoj; zapis ob potrditvi.',
 
+  // ── v1.255.0 (§29) — potrditveni banner (Lightspeed »Order view confirmation banner«) ──
+  'cb.fire-all': 'Poslano v kuhinjo',
+  'cb.fire-allDetail': 'Poslanih postavk: {n}',
+  'cb.fire-course': 'Tek poslan v kuhinjo',
+  'cb.fire-courseDetail': 'Tek št. {n} · {name}',
+  'cb.course-assign': 'Dodeljeno h tečaju',
+  'cb.course-assignDetail': 'Tečaj št. {n} · {name}',
+  'cb.add-items': 'Dodatek zapisan',
+  'cb.add-itemsDetail': 'Novih postavk: {n}',
+  'cb.discount': 'Popust uporabljen',
+  'cb.discountDetail': '{name} · −{amount} €',
+  'cb.dismiss': 'Zapri potrditev',
+
   // ── OPS-8 val 3 (v1.73.0) — GL dnevnik (orientacijsko) ──
   'gl.title': 'GL dnevnik (orientacijsko)',
   'gl.note': 'Orientacijski obračun — ne nadomešča knjigovodje.',
