@@ -2462,3 +2462,17 @@ VAL Ž5 — zapre kandidata §22 D (P2) nad obstoječimi motorji:
   (builder + filter), B ruta (struktura vrata + revizija), Ž montaža
   (gumbi na obeh površinah, dialog, POST klic, tisk po uspehu) in
   0 DDL dokaz.
+
+**Sklep §30:** zaprto naročilo (račun) ni več slepa ulica za
+produkcijo — ob sporu vodja ponatisne kuhinjski/bar/celoten listek z
+izbiro središča in živim številom postavk (Lightspeed maj 2026
+»Reprint orders — closed orders, selection of production centers«),
+tiskovni dokument nosi VIDNO oznako PONATIS + ponatisnika + uro +
+IZVIRNI čas naročila (goljufivi dokaz nemogoč), strežnik pa vsak
+ponatis zabeleži v revizijsko sled (ORDER_TICKET_REPRINT — kdo, kdaj,
+katero središče, koliko postavk). Iskrenost filterTicketItems:
+preklicane/umaknjene postavke se ne natisnejo — ponatis ne laže o
+produkciji, ki je nastala. 0 DDL, 0 novih odvisnosti. Naslednji val:
+Square Vol 16 (objava pričakovana sredi novembra 2026 — tedaj sveža
+ocena), Toast/Lightspeed zimske objave ali B-odločitve lastnika po
+»nadaljuj«.
