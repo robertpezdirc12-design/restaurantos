@@ -141,14 +141,17 @@ describe('v1.233.0 B — učinkovitost natakarjev (lib + poročilo + kartica)', 
 
 describe('v1.233.0 C — KDS vrsta / Start Queue (Toast julij 2026)', () => {
   test('C1: kdsIncoming — samo naročila, katerih postavke vedi so VSE PENDING', () => {
-    expect(dash).toContain('const kdsIncoming = kdsQueue.filter((o) => {')
+    /* v1.258.0 (§32): predikat je bil dvignjen na raven komponente (kdsIsDraftOrder) —
+       isti pogoji (its.length > 0 + every PENDING), deljen med odsekom/praznim stanjem/all-day. */
+    expect(dash).toContain('const kdsIncoming = kdsQueue.filter((o) => kdsIsDraftOrder(o))')
     expect(dash).toContain("its.every((it) => it.status === 'PENDING')")
     expect(dash).toContain('its.length > 0')
   })
 
   test('C2: trak nad aktivnimi listki — data-region kds-start-queue, iskreno izostane ob prazni', () => {
     expect(dash).toContain('data-region="kds-start-queue"')
-    expect(dash).toContain("kdsIncoming.length > 0 && (")
+    /* v1.258.0 (§32): pas je ZLOŽENI obraz oddelka OSNUTKI (kdsDraftIdSet.size > 0). */
+    expect(dash).toContain('kdsDraftIdSet.size > 0 && (')
     expect(dash).toContain("t('kds.queueTitle')")
   })
 
@@ -158,17 +161,19 @@ describe('v1.233.0 C — KDS vrsta / Start Queue (Toast julij 2026)', () => {
     expect(dash).toContain('o.table?.name || orderTypeL(o.type)')
   })
 
-  test('C4: ničelna regresija — listki ostanejo v glavni vrsti (kdsActive.map nespremenjen)', () => {
-    expect(dash).toContain('kdsActive.map(renderKdsTicket)')
-    expect(dash).toContain('kdsStale.map(renderKdsTicket)')
+  test('C4: ničelna regresija — listki ostanejo v glavni vrsti (v1.258.0: živi v kdsActiveLive)', () => {
+    /* v1.258.0 (§32): aktivna vrsta izloči osnutke (kdsActiveLive); izris ostaja
+       renderKdsTicket z izrecnim draft=false (živi) — mešani listki ostanejo v vrsti. */
+    expect(dash).toContain('kdsActiveLive.map((o) => renderKdsTicket(o, false))')
+    expect(dash).toContain('kdsStale.map((o) => renderKdsTicket(o, false))')
   })
 })
 
 describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.257.0')
-    expect(read('src/lib/version.ts')).toContain("'1.257.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.257.0')
+    expect(APP_VERSION).toBe('1.258.0')
+    expect(read('src/lib/version.ts')).toContain("'1.258.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.258.0')
   })
 
   test('Ž2: dokument PRIMERJAVA — §4 cona v1.233, presoja 22/22, NOVA §11 z valom', () => {
@@ -184,18 +189,18 @@ describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.257.0')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.258.0')
     expect(wl.indexOf('Task ID: v1.239.0')).toBeLessThan(wl.indexOf('Task ID: v1.232.0'))
   })
 
   test('Ž5: i18n števci + novi ključi SL/HR (3846/3846, +28)', () => {
-    expect(Object.keys(sl).length).toBe(4093)
-    expect(Object.keys(hr).length).toBe(4093)
+    expect(Object.keys(sl).length).toBe(4099)
+    expect(Object.keys(hr).length).toBe(4099)
     for (const k of ['zones.edit', 'zones.editTitle', 'zones.renameBtn', 'zones.mergeBtn', 'zones.tablesCount', 'zones.updated', 'sp.title', 'sp.waiter', 'sp.avgTicket', 'sp.unassigned', 'sp.total', 'kds.queueTitle', 'kds.queueHint']) {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(auditDoc).toContain('4093 ključev SL in 4093 HR')
+    expect(auditDoc).toContain('4099 ključev SL in 4099 HR')
     expect(auditDoc).toContain('POSODOBITEV (v1.233.0')
   })
 })

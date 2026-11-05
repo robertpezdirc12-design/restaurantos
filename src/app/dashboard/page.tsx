@@ -2814,6 +2814,10 @@ function DashboardInner() {
   const [kdsBumpBusy, setKdsBumpBusy] = useState('')
   // Issue #71 audit-1: zastareli listki — LOČEN oddelek, privzeto ZLOŽEN (števec viden)
   const [kdsStaleOpen, setKdsStaleOpen] = useState(false)
+  // v1.258.0 (PRIMERJAVA §32, Square Vol 13 »KDS draft tickets«): OSNUTKI — ločen
+  // zložljiv oddelek, privzeto ZLOŽEN (vidne pilule VRSTE v1.233.0, ničelna regresija
+  // gostote); razpenjanje razkrije polne osnutek listke (Square predogled).
+  const [kdsDraftsOpen, setKdsDraftsOpen] = useState(false)
   // Issue #71 audit-23: zgoščene postavke naročil — razširjeni seznami po id-ju
   const [expandedOrderItems, setExpandedOrderItems] = useState<Record<string, boolean>>({})
   // Issue #71 audit-18: potrditveno okno za množične opomnike (neponovljivo dejanje)
@@ -3002,6 +3006,18 @@ function DashboardInner() {
   // legacy queue/86 filters use ONLY the two buckets — an unknown/custom id must
   // not silently empty the queue (it renders the task board instead)
   const kdsLegacyBucket: 'ALL' | 'KITCHEN' | 'BAR' = kdsStation === 'KITCHEN' || kdsStation === 'BAR' ? kdsStation : 'ALL'
+
+  /* v1.258.0 (PRIMERJAVA §32, Square Vol 13 »KDS draft tickets«): OSNUTEK predikat
+     (isti kot VRSTA v1.233.0, per pogled postaje) + množica id-jev na ravni komponente —
+     DELJENA med odsekom OSNUTKOV, aktivno vrsto, praznim stanjem in all-day vrstico
+     (en vir resnice). Zastareli osnutki izpadejo iz množice (ostanejo v ZASTARELO
+     revizijski veji). Požig ali zgodnji začetek kuharja listek organično prestavi
+     iz OSNUTKOV v aktivno vrsto (predikat se računa ob vsakem izrisu). */
+  const kdsIsDraftOrder = (o: (typeof viewKitchen)[number]): boolean => {
+    const its = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
+    return its.length > 0 && its.every((it) => it.status === 'PENDING')
+  }
+  const kdsDraftIdSet = new Set(viewKitchen.filter((o) => kdsIsDraftOrder(o) && !isStaleKdsTicket(kdsMinutes(o.createdAt))).map((o) => o.id))
 
   // OPS-4 + v1.236.0 (PRIMERJAVA §13, Toast KDS »Flash Changes«): zvok + UTRIP ne samo
   // ob NOVEM listku, temveč tudi ob SPREMEMBI obstoječega (dodatek postavk — Toast:
@@ -4986,12 +5002,16 @@ function DashboardInner() {
               /* v1.233.0 (PRIMERJAVA §11; Toast julij 2026 »Start Queue«): VRSTA —
                  naročila, katerih postavke (v tej vedi) so ŠE VSE PENDING (brez
                  požiga) — kuhinja vidi prihajajočo obremenitev, preden natakar
-                 pošlje. Listki ostanejo v glavni vrsti (ničelna regresija). */
-              const kdsIncoming = kdsQueue.filter((o) => {
-                const its = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
-                return its.length > 0 && its.every((it) => it.status === 'PENDING')
-              })
-              const renderKdsTicket = (o: (typeof viewKitchen)[number]) => {
+                 pošlje. v1.258.0 (PRIMERJAVA §32, Square Vol 13 »KDS draft tickets«):
+                 ista množica je zdaj OSNUTKI — lastni zložljiv oddelek (zloženo =
+                 pilule v1.233.0, razprto = polni predogled listkov). */
+              const kdsIncoming = kdsQueue.filter((o) => kdsIsDraftOrder(o))
+              /* v1.258.0 (§32 B2): aktivna vrsta šteje SAMO kuhanje — osnutki
+                 (nedotaknjeni s požigom) izpadejo iz »Aktivna izmena« (kdsDraftIdSet
+                 na ravni komponente — en vir resnice za oddelek/prazno stanje/all-day;
+                 zastareli osnutki ostanejo v ZASTARELO revizijski veji). */
+              const kdsActiveLive = kdsActive.filter((o) => !kdsDraftIdSet.has(o.id))
+              const renderKdsTicket = (o: (typeof viewKitchen)[number], draft = false) => {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
                 const stale = isStaleKdsTicket(ageMin)
@@ -5025,8 +5045,11 @@ function DashboardInner() {
                        ISSUE #74 V-3: rob sedaj po RAZREDU starosti (5 stopenj), ne prag 5/10.
                        VRSTNI RED razredov je KLJUČEN: cn() (tailwind-merge)
                        odstrani stransko-specifičen border-l-{color}, če celovit
-                       border-{color} pride ZA njim — najprej nevtralen border, nato leva. */
-                    className={`relative ${kdsDensityCls.card} border-l-4 ${stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : kdsAgeBorderCls(ageCls)}`}
+                       border-{color} pride ZA njim — najprej nevtralen border, nato leva.
+                       v1.258.0 (§32 B3): OSNUTEK listek — amber ČRTKAN obroč + bledlo
+                       (vizualno jasno »še ni poslano k nam«; črtkano loči od zastarelega
+                       kamna, amber od žive starosti). */
+                    className={`relative ${kdsDensityCls.card} border-l-4 ${draft ? 'border-dashed border-amber-300 border-l-amber-400 bg-amber-50/40' : stale ? 'border-dashed border-stone-300 border-l-stone-300 bg-stone-50' : kdsAgeBorderCls(ageCls)}`}
                   >
                     {/* v1.236.0 (Toast KDS »Flash Changes«): NOV listek — utripajoči
                         oranžni OBROČ. Čist prekrivni prazen span (pointer-events-none):
@@ -5059,35 +5082,60 @@ function DashboardInner() {
                         )}
                         {/* PRIMARNI STATUS — v1.129.0 (Toast/Square): NEVTRALEN obrobec (stone)
                             — RDEČA je rezervirana IZKLJUČNO za zamudo (starost listka),
-                            polnjena barva statusa se je kuharjem zlivala z alarmno barvo. */}
-                        <span className={`ml-auto inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide border ${o.status === 'SENT' ? 'border-stone-300 bg-stone-50 text-stone-700' : o.status === 'PREPARED' || o.status === 'READY' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-stone-300 bg-stone-50 text-stone-700'}`} title={stL(o.status)}>
-                          {stL(o.status)}
-                        </span>
+                            polnjena barva statusa se je kuharjem zlivala z alarmno barvo.
+                            v1.258.0 (§32 B3): OSNUTEK — pilula statusa se nadomesti z
+                            izrecno značko OSNUTEK (amber, ikona peska): ODPRTO/POSLANO
+                            sta si bila vizualno preveč podobna, kuhar ob steni ni mogel
+                            hitro presoditi, ali je listek ŽE poslan k njim. */}
+                        {draft ? (
+                          <span data-region="kds-draft-badge" title={t('kds.draftHint')} className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400 bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-amber-900">
+                            <Hourglass className="w-3.5 h-3.5 shrink-0" aria-hidden /> {t('kds.draftBadge')}
+                          </span>
+                        ) : (
+                          <span className={`ml-auto inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide border ${o.status === 'SENT' ? 'border-stone-300 bg-stone-50 text-stone-700' : o.status === 'PREPARED' || o.status === 'READY' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-stone-300 bg-stone-50 text-stone-700'}`} title={stL(o.status)}>
+                            {stL(o.status)}
+                          </span>
+                        )}
                       </CardTitle>
                       <div data-region="kds-ticket-timer-row" className="flex items-center gap-2 flex-wrap">
                         {/* ČASOVNIK — v1.141.0: ODBROJEVALNI kuharjev zorni kot (še-MM:SS do
                             praga zamude; prek → ZAMUDA +MM:SS rdeče). Prag = najvišji
-                            postajni cilj listka (kdsTargetOf) ali globalni late prag. */}
-                        <KdsCountdownPill
-                          createdAt={o.createdAt}
-                          lateMin={(() => {
-                            const tt = Math.max(0, ...items.map((it) => kdsTargetOf(it) ?? 0))
-                            return kdsLateThreshold(tt > 0 ? tt : null, kdsAgeTh)
-                          })()}
-                          stale={stale}
-                          staleNode={(
-                            <span
-                              data-region="kds-ticket-timer"
-                              className="text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
-                              title={`${t('kds.stale')} — ${t('kds.minutes', { m: ageMin })}`}
-                            >
-                              {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
-                            </span>
-                          )}
-                          fontCls={kdsFont.timer}
-                          pillCls={kdsAgePillCls(ageCls)}
-                          ageMin={ageMin}
-                        />
+                            postajni cilj listka (kdsTargetOf) ali globalni late prag.
+                            v1.258.0 (§32 B3): OSNUTEK ga NE DOBIVA — odbrojevanje je
+                            obljuba kuhanju, osnutek pa še ni bil poslan; namesto njega
+                            pasivna amber starost vnosa (BREZ rdeče eskalacije — lažni
+                            alarm na steni, medtem ko natakar še vnosa, je bil vrzel 2). */}
+                        {draft ? (
+                          <span
+                            data-region="kds-draft-age"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-bold tabular-nums text-amber-800 shrink-0"
+                            title={t('kds.draftWaiting')}
+                          >
+                            <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                            {t('kds.draftAge', { m: ageMin })}
+                          </span>
+                        ) : (
+                          <KdsCountdownPill
+                            createdAt={o.createdAt}
+                            lateMin={(() => {
+                              const tt = Math.max(0, ...items.map((it) => kdsTargetOf(it) ?? 0))
+                              return kdsLateThreshold(tt > 0 ? tt : null, kdsAgeTh)
+                            })()}
+                            stale={stale}
+                            staleNode={(
+                              <span
+                                data-region="kds-ticket-timer"
+                                className="text-sm font-extrabold tabular-nums px-2.5 py-1 rounded-full border bg-stone-100 text-stone-600 border-stone-300"
+                                title={`${t('kds.stale')} — ${t('kds.minutes', { m: ageMin })}`}
+                              >
+                                {t('kds.stale')}: {t('kds.staleHours', { h: staleTicketHours(ageMin) })}
+                              </span>
+                            )}
+                            fontCls={kdsFont.timer}
+                            pillCls={kdsAgePillCls(ageCls)}
+                            ageMin={ageMin}
+                          />
+                        )}
                         {/* v1.232.0 (PRIMERJAVA §3, Lightspeed KDS »Prep ETA«): OBETANA URA
                             PRIPRAVE listka — natakarju povedljiv ODGOVOR (»miza 12 bo
                             pripravljena ob 19:42«) namesto odbrojevanja. ETA = ura
@@ -5097,6 +5145,9 @@ function DashboardInner() {
                             ETA postane rdeč — obljuba je prekinjena, naknadna zelena
                             izdaja bi lagala. */}
                         {(() => {
+                          /* v1.258.0 (§32 B3): OSNUTEK brez ETA — obljuba priprave se
+                              začne s pošiljanjem, ne z vpisom prve postavke. */
+                          if (draft) return null
                           const tt = Math.max(0, ...items.map((it) => kdsTargetOf(it) ?? 0))
                           if (tt <= 0 || stale) return null
                           const etaMs = new Date(o.createdAt).getTime() + tt * 60000
@@ -5228,7 +5279,10 @@ function DashboardInner() {
                               </p>
                               {/* OPS-9 val 3: per-item live timer (firedAt → order clock); OPS-11 val 1: red escalation per station (target → max(10, ceil(target×1.25))) */}
                               {/* Issue #70 §2: zastareli listki — starost postavke v urah (ne "13.496′") */}
-                              <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
+                              {/* v1.258.0 (§32 B3): OSNUTEK — postavka nosi NEVTRALNO amber
+                                  starost (brez rdeče eskalacije): kuhinja še ni bila prosena
+                                  kuhati, minuta vnosa ni zamuda. */}
+                              <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border shrink-0 ${draft ? 'bg-amber-50 text-amber-800 border-amber-300' : stale ? 'bg-stone-100 text-stone-600 border-stone-300' : kdsAgeClass(itAge, delayThresholdForTarget(kdsTargetOf(it)))}`}>{stale ? t('kds.staleHours', { h: staleTicketHours(itAge) }) : `${itAge}′`}</span>
                             </div>
                               {/* v1.237.0 (PRIMERJAVA §14, Toast KDS horizontalni prikaz):
                                   izbrane opcije v ENI vrstici pod imenom — Toast
@@ -5320,8 +5374,14 @@ function DashboardInner() {
                       {/* v1.129.0 (Toast/Square benchmark): bump CELEGA LISTKA — en velik
                           celoširinski gumb (kitchenski dotik, Toast: dvoklik/fulfill listka).
                           Prikazan samo, če so vse odprte postavke LEGACY (brez postajnih
-                          nalogov — te upravlja postajni tok) in vsaj ena ni pripravljena. */}
+                          nalogov — te upravlja postajni tok) in vsaj ena ni pripravljena.
+                          v1.258.0 (§32 B3): OSNUTEK ga NE DOBIVA — »vse pripravljeno« na
+                          listku, ki ni bil nikoli poslan, je vektor pomote (Square: osnutek
+                          je predogled, ne dejanje). Posamezne postavke ostanejo tap-karte —
+                          izrecen zgodnji začetek kuharja listek organično premakne v
+                          aktivno vrsto. */}
                       {(() => {
+                        if (draft) return null
                         const anyTasked = items.some((it) => kdsTasks.some((task) => task.itemId === it.id))
                         const openItems = items.filter((it) => !it.voided && (it.status === 'PENDING' || it.status === 'PREPARING'))
                         if (anyTasked || openItems.length === 0) return null
@@ -5347,29 +5407,52 @@ function DashboardInner() {
                 <>
                   {/* v1.233.0: VRSTA (Start queue) — pasivni predogled, iskreno
                       izostane, ko je prazna; starostni razred po istem viru kot
-                      listki (kdsAgeCls + kdsAgePillCls). */}
-                  {kdsIncoming.length > 0 && (
-                    <div data-region="kds-start-queue" role="group" aria-label={t('kds.queueTitle')} title={t('kds.queueHint')}
-                      className="flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-amber-800 shrink-0">{t('kds.queueTitle')} · {kdsIncoming.length}</span>
-                      {kdsIncoming.map((o) => {
-                        const qItems = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
-                        const qAge = kdsMinutes(o.createdAt)
-                        return (
-                          <span key={o.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${kdsAgePillCls(kdsAgeCls(qAge))}`}>
-                            {o.table?.name || orderTypeL(o.type)} · {qItems.reduce((s, it) => s + (it.qty || 0), 0)}× · {qAge} min
-                          </span>
-                        )
-                      })}
-                    </div>
+                      listki (kdsAgeCls + kdsAgePillCls).
+                      v1.258.0 (§32 B2, Square Vol 13 »KDS draft tickets«): VRSTA je
+                      zdaj ZLOŽENI obraz OSNUTKOV — preklop (44 px, aria-expanded)
+                      razkrije POLNE osnutek listke (predogled postavk/opcij/alergenov
+                      za predpripravo). Zloženo stanje je PO BARVI GOSTOTI enako
+                      v1.233.0 (pilule, kds-start-queue regija) — ničelna regresija. */}
+                  {kdsDraftIdSet.size > 0 && (
+                    <section data-region="kds-drafts" className="space-y-2 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-2.5" aria-label={t('kds.draftSection')}>
+                      <button
+                        type="button"
+                        onClick={() => setKdsDraftsOpen((v) => !v)}
+                        aria-expanded={kdsDraftsOpen}
+                        aria-controls="kds-drafts-content"
+                        aria-label={t('kds.draftSectionHint')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-amber-800 hover:bg-amber-100 hover:text-amber-900 transition-colors min-h-11"
+                      >
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${kdsDraftsOpen ? '' : '-rotate-90'}`} aria-hidden />
+                        <span className="truncate min-w-0">{t('kds.draftSection')}</span>
+                        <span className="ml-auto shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 tabular-nums font-semibold text-amber-900">{t('kds.staleCount', { n: kdsDraftIdSet.size })}</span>
+                      </button>
+                      <div id="kds-drafts-content">
+                        {!kdsDraftsOpen && (
+                          <div data-region="kds-start-queue" role="group" aria-label={t('kds.queueTitle')} title={t('kds.queueHint')}
+                            className="flex flex-wrap items-center gap-1.5 px-1 pb-0.5">
+                            {kdsIncoming.filter((o) => !isStaleKdsTicket(kdsMinutes(o.createdAt))).map((o) => {
+                              const qItems = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
+                              const qAge = kdsMinutes(o.createdAt)
+                              return (
+                                <span key={o.id} className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${kdsAgePillCls(kdsAgeCls(qAge))}`}>
+                                  {o.table?.name || orderTypeL(o.type)} · {qItems.reduce((s, it) => s + (it.qty || 0), 0)}× · {qAge} min
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )}
+                        {kdsDraftsOpen && kdsIncoming.filter((o) => !isStaleKdsTicket(kdsMinutes(o.createdAt))).map((o) => renderKdsTicket(o, true))}
+                      </div>
+                    </section>
                   )}
-                  {kdsActive.length > 0 && (
+                  {kdsActiveLive.length > 0 && (
                     <p data-region="kds-section-active" className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-stone-500 px-1">
                       {t('kds.activeShift')}
-                      <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsActive.length })}</span>
+                      <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsActiveLive.length })}</span>
                     </p>
                   )}
-                  {kdsActive.map(renderKdsTicket)}
+                  {kdsActiveLive.map((o) => renderKdsTicket(o, false))}
                   {kdsStale.length > 0 && (
                     <section data-region="kds-section-stale" className="space-y-2 rounded-xl border border-dashed border-stone-300 bg-stone-50/60 p-2.5" aria-label={t('kds.staleSection')}>
                       <button
@@ -5383,15 +5466,17 @@ function DashboardInner() {
                         <span className="truncate min-w-0">{t('kds.staleSection')}</span>
                         <span className="ml-auto shrink-0 rounded-full border border-stone-300 bg-stone-200 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsStale.length })}</span>
                       </button>
-                      {kdsStaleOpen && kdsStale.map(renderKdsTicket)}
+                      {kdsStaleOpen && kdsStale.map((o) => renderKdsTicket(o, false))}
                     </section>
                   )}
                 </>
               )
             })()}
-            {!kdsCustomView && viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))).length === 0 && (
+            {!kdsCustomView && viewKitchen.filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)) && !kdsDraftIdSet.has(o.id)).length === 0 && (
               /* Vizualni benchmark (Toast KDS): prazno stanje = velik jasni status »kuhinja
-                 čista«, ne iskalna vrstica — ko pride listek, dobi 100 % pozornosti. */
+                 čista«, ne iskalna vrstica — ko pride listek, dobi 100 % pozornosti.
+                 v1.258.0 (§32 B5): osnutki NE ŠTEJEJO za kuhanje — če so na zidu samo
+                 osnutki, je kuhinja iskreno čista (osnutki so zgoraj v svojem oddelku). */
               <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-stone-300 bg-stone-50/60 py-10 text-center" role="status">
                 <CheckCircle2 className="h-10 w-10 text-emerald-700" aria-hidden />
                 <p className="text-base font-bold text-stone-800">{t('kitchen.queueClearTitle')}</p>
@@ -5403,8 +5488,10 @@ function DashboardInner() {
                 ne pripravljenih) vseh listkov trenutnega pogleda. Toast jo ima v dnu ekrana,
                 Square v stranski vrstici; kuhar vidi brez lista, kaj je v delu. */}
             {!kdsCustomView && (() => {
+              /* v1.258.0 (§32 B2): all-day vrstica šteje samo DELO (živi + mešani
+                 listki + zastareli) — osnutki niso obljuba kuhanja in je ne napihujejo. */
               const openItems = viewKitchen
-                .filter((o) => o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
+                .filter((o) => !kdsDraftIdSet.has(o.id) && o.items.some((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
                 .flatMap((o) => o.items.filter((it) => !it.voided && (it.status === 'PENDING' || it.status === 'PREPARING') && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
               const byName = new Map<string, number>()
               for (const it of openItems) byName.set(it.name, (byName.get(it.name) ?? 0) + it.qty)

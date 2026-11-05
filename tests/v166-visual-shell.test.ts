@@ -352,7 +352,10 @@ describe('v1.166.0 §E — hero zasloni (samo dejanska sidra)', () => {
     expect(d).toContain("RESERVED: 'bg-white text-stone-900 border-2 border-dashed border-stone-500 hover:bg-stone-50 shadow-sm'")
   })
   it('starostni rob KDS listka ostane razred-drivana preslikava (page.tsx:3375)', () => {
-    expect(d).toContain('border-l-4 ${stale ?')
+    /* v1.258.0 (§32): pred sabo je pristala draft veja (border-l-4 ${draft ? … : stale ? …}) —
+       starostna preslikava ostaja razred-drivana, samo z dodatnim osnutkovim odcepom. */
+    expect(d).toContain('border-l-4 ${draft ?')
+    expect(d).toContain("draft ? 'border-dashed border-amber-300 border-l-amber-400 bg-amber-50/40'")
     expect(d).toContain("'border-l-emerald-600', 'border-l-amber-500', 'border-l-orange-600', 'border-l-rose-500',")
   })
 })

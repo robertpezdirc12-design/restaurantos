@@ -2581,3 +2581,97 @@ VAL Ž2 — stran košare na prodaji, nad obstoječimi motorji:
   (persist + validacija + preklop + aria + obe postavitveni veji),
   Ž registri (verzija, i18n pariteta 4093/4093, dokumenta §31 +
   AUDIT, 0 DDL dokaz, mobilna neodvisnost, worklog).
+
+## 32. Raziskava november 2026 (nadaljevanje 6) — KDS OSNUTNI LISTKI v1.258.0 (Square Vol 13 »draft tickets«)
+
+Zaključek §31 je iz Vol 12/13 ocene pustil tri kandidate
+(osnuti listki, ročna sekvenca vlečenja, revenue centers).
+Tok izbere OSNUTNE LISTKE: najnovejša nezaprta vrzel, ki jo
+model nosi BREZ DDL in brez strežniških sprememb.
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Square Vol 13 (24. 9. 2026) — KDS draft tickets:** »preview
+  tickets as items are rung in« — listek se na kuhinjskem zaslonu
+  pokaže ŽE MED VNAŠANJEM postavk (pred pošiljanjem), jasno
+  označen kot osnutek. Kuhinja vidi, kaj prihaja (predpriprava,
+  razporeditev zmogljivosti), a VE, da uradno še ni bila prosena
+  kuhati.
+- **Lastno stanje (izmera v valovanju):**
+  - KDS vrsta ŽE nosi pending postavke (`ITEM_ACTIVE_DB` vključuje
+    `pending`) — odprto naročilo se izriše kot NAVADEN listek v
+    aktivni vrsti. Vrsta v1.233.0 (»Start queue«, Toast julij 2026)
+    doda pas pilul (miza · kos · starost) nad vrsto — pasiven
+    predogled obremenitve.
+  - **Vrzel 1 — neločljivost:** listek brez enega samega požiga je
+    na prvi pogled ENAK živemu listku: statusna pilula ODPRTO je
+    vizualno enaka POSLANO (obe nevtralni kamn). Kuhar ob steni ne
+    more hitro presoditi »to še ni poslano k nam«.
+  - **Vrzel 2 — napačen časovnik:** odbrojevalni čas + ETA + rdeča
+    eskalacija starosti tečeta od `order.createdAt` TUDI za
+    nedotaknjene osnutke — listek postane »ZAMUDA« rdeč, medtem ko
+    natakar še vnosa postavke. Lažni alarm na steni.
+  - **Vrzel 3 — samo pilule:** VRSTA pas pokaže mizo in količino,
+    ne pa postavk, opcij in alergenov — kuhinja ne more
+    predpripravljati (Square prav to omogoča: polni predogled).
+  - Mešani listki (del požganih, del pending) so ŽIVI listki s
+    PENDING čipi na postavkah — pravilno in nespremenjeno.
+- **Zavrnjene alternative tega vala:** ročna sekvenca vlečenja
+  listkov (Vol 12) zahteva DELJENO stanje vrstnega reda med
+  zasloni kuhinje → strežniško stanje brez obstoječega nosilca
+  (StationTask.sequence je per-postavka požiga, ne per-listek) —
+  tveganje DDL; revenue centers = poročilski val srednje-velike
+  ločljivosti (bližina: cone tlorisa + produkcijska središča),
+  kandidat za poznejši val.
+
+### B) Odločitev
+
+VAL Ž4 — osnutki listkov na KDS, nad obstoječimi motorji:
+
+1. **Osnutek** (isti predikat kot VRSTA v1.233.0, per pogled
+   postaje): vse ne-voided postavke listka v tej vedi so PENDING.
+2. **OSNUTKI oddelek** namesto golega VRSTA pasa: zložljiv
+   (privzeto ZLOŽEN = sedanje pilule, ničelna regresija gostote;
+   `kds-start-queue` regija ostane), razpenjanje razkrije POLNE
+   osnutek listke (Square predogled). Osnutki IZPadejo iz
+   aktivne vrste — »Aktivna izmena« šteje samo kuhanje, kar je
+   iskreneje; natančno kot ZASTARELO zložljiv oddelek z
+   števcem in 44 px preklopom.
+3. **Osnutek listek** (draft način): amber črtkan obroč + bledlo,
+   značka OSNUTEK namesto statusne pilule, BREZ odbrojevalnika
+   in BREZ ETA (kuhinja še ni dobila obljube — pasivna starost
+   »V vnašanju: X min«, brez rdeče eskalacije tudi na postavkah),
+   tiskanje ostane (predpriprava), bump-CELEGA-listka SKRIT
+   (»vse pripravljeno« na nečem, kar ni bilo poslano, je vektor
+   pomote); posamezne postavke ostanej tap-karte (kuhar LAHKO
+   začne zgodaj — izrecno dejanje, listek organično zapusti
+   osnutke, ko prva postavka zapusti PENDING).
+4. **Organic promocija:** požig iz POS (ali zgodnji začetek
+   kuharja) prestavi listek iz OSNUTKOV v aktivno vrsto v istem
+   izrisu — predikati se računajo ob vsakem renderju, brez
+   dodatnega stanja.
+5. **Prazno stanje** »kuhinja čista« upošteva samo ne-osnutke —
+   če so na zidu samo osnutki, je kuhinja iskreno čista.
+6. **Revizija?** NE — bralna vizualna plast, 0 denarne
+   posledice, 0 strežniških sprememb (vrsta ŽE nosi pending
+   postavke in SSE podpis že udari ob vsaki spremembi postavke).
+   Enaka odločitev kot §31 B4.
+7. 0 DDL, 0 novih odvisnosti, 0 strežniških sprememb. HR prevodi.
+
+### C) Implementacija
+
+- **Page** (src/app/dashboard/page.tsx): stanje `kdsDraftsOpen`
+  (privzeto false, vzorec kdsStaleOpen); OSNUTKI oddelek
+  (data-region kds-drafts, aria-expanded/controls, števec);
+  `renderKdsTicket(o, draft)` — draft veja (obroč, značka,
+  pasivna starost, brez odbrojevalnika/ETA/bump); kdsActive in
+  prazno stanje izločita osnutke; pilule ostanejo v zloženem
+  stanju (kds-start-queue).
+- **i18n:** kds.draftSection, kds.draftSectionHint,
+  kds.draftBadge, kds.draftHint, kds.draftWaiting,
+  kds.draftAge (sl + hr, 4093 → 4099).
+- **Testi:** tests/v258-kds-osnutki.test.ts — A montaža vira
+  (oddelek + preklop + draft veja + izločitve + pilule
+  ohranjene), Ž registri (verzija, i18n pariteta 4099/4099,
+  dokumenta §32 + AUDIT, 0 DDL dokaz, 0 strežniških sprememb,
+  worklog).

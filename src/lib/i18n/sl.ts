@@ -4274,6 +4274,13 @@ export const sl: Record<string, string> = {
   'tempo.noTable': 'Brez mize',
   'kds.queueTitle': 'Vrsta — naslednja naročila',
   'kds.queueHint': 'Naročila, ki še niso poslana v pripravo (brez požiga) — predogled obremenitve. Toast »Start Queue« (julij 2026).',
+  // v1.258.0 (PRIMERJAVA §32) — KDS osnutki listkov (Square Vol 13 »draft tickets«)
+  'kds.draftSection': 'Osnutki — v vnašanju',
+  'kds.draftSectionHint': 'Razpri osnutke: naročila, ki jih natakar še vnosa (brez požiga) — polni predogled postavk za predpripravo. Square »draft tickets« (september 2026).',
+  'kds.draftBadge': 'Osnutek',
+  'kds.draftHint': 'Ni še poslano v kuhinjo — brez požiga. Predogled za predpripravo; odbrojevalnik se začne s pošiljanjem.',
+  'kds.draftWaiting': 'Čaka na pošiljanje v pripravo',
+  'kds.draftAge': 'V vnašanju: {m} min',
   // v1.244.0 (PRIMERJAVA §18) — ritem prihodov (pacing) + pričakovani gosti
   'resv.pacingTitle': 'Ritem prihodov',
   'resv.pacingHint': 'Največ gostov, ki smejo priti v enem oknu (npr. 30 min) — telefonske in spletne rezervacije skupaj. Varovalo kuhinje pred naskokom. Lightspeed »Arrival Pacing« (april 2026).',
