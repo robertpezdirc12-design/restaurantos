@@ -486,7 +486,7 @@ interface OdpadInvT { id: string; name: string; unit: string; qty: number; cost:
 
 /** Issue #1 (triage ④): odpad hrane — evidenca (zaloga ↓, StockTransaction WASTE), statistika po razlogih, reverzija pomote. */
 export function OdpadTab({ canManage }: { canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [records, setRecords] = useState<WasteT[]>([])
   const [stats, setStats] = useState<WasteStatsT | null>(null)
   const [items, setItems] = useState<OdpadInvT[]>([])
@@ -622,12 +622,12 @@ export function OdpadTab({ canManage }: { canManage: boolean }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2"><CardDescription className="text-xs">{t('waste.inPeriod')}</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-red-700">{fmtEUR(stats.totalCents / 100)}</p><p className="text-xs text-stone-500">{t('waste.recordsCount', { n: stats.count })}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold text-red-700">{fmtEUR(stats.totalCents / 100)}</p><p className="text-xs text-stone-500">{tN('waste.recordsCount', 'zapis', stats.count)}</p></CardContent>
           </Card>
           {stats.byReason.slice(0, 3).map((r) => (
             <Card key={r.reason}>
               <CardHeader className="pb-2"><CardDescription className="text-xs">{WASTE_REASON_KEYS[r.reason] ? t(WASTE_REASON_KEYS[r.reason]) : r.label}</CardDescription></CardHeader>
-              <CardContent><p className="text-xl font-semibold">{fmtEUR(r.totalCents / 100)}</p><p className="text-xs text-stone-500">{t('waste.recordsCount', { n: r.count })}</p></CardContent>
+              <CardContent><p className="text-xl font-semibold">{fmtEUR(r.totalCents / 100)}</p><p className="text-xs text-stone-500">{tN('waste.recordsCount', 'zapis', r.count)}</p></CardContent>
             </Card>
           ))}
         </div>
@@ -777,14 +777,8 @@ interface WaitlistStatsT { waiting: number; notified: number; seated: number; le
 
 interface TableLiteT { id: string; name: string; number: number; zone: string; seats: number; status: string }
 
-/** Slovenska n-tev "oseba" (v ravnovesju z src/lib/waitlist.ts) */
-const wlParty = (n: number, tx: (key: string, vars?: Record<string, string | number>) => string): string => {
-  const v = Math.max(0, Math.floor(n))
-  if (v === 1) return tx('wl.party1')
-  if (v === 2) return tx('wl.party2')
-  if (v === 3 || v === 4) return tx('wl.party34', { n: v })
-  return tx('wl.partyN', { n: v })
-}
+// v1.269.0: wlParty (4 ročne oblike wl.party1/2/34/N) upokojen — obliko nosi
+// nounKey:  tN('wl.partyN', 'oseba', n)  (enaka semantika: floor + max(0, n)).
 const wlMin = (s: string, now: number): number => {
   const a = new Date(s).getTime()
   return Number.isFinite(a) && now > a ? Math.floor((now - a) / 60_000) : 0
@@ -1003,7 +997,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statWaiting')}</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-amber-700">{stats.waiting}</p><p className="text-xs text-stone-500">{wlParty(stats.waitingParty, t)} {t('wl.naListo')}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold text-amber-700">{stats.waiting}</p><p className="text-xs text-stone-500">{tN('wl.partyN', 'oseba', stats.waitingParty)} {t('wl.naListo')}</p></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statNotified')}</CardDescription></CardHeader>
@@ -1011,7 +1005,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statSeated')}</CardDescription></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-green-700">{stats.seated}</p><p className="text-xs text-stone-500">{t('wl.leftCount', { n: stats.left })}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold text-green-700">{stats.seated}</p><p className="text-xs text-stone-500">{tN('wl.leftCount', 'odhod', stats.left)}</p></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardDescription className="text-xs">{t('wl.statAvgWait')}</CardDescription></CardHeader>
@@ -1052,7 +1046,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
                         <td className="px-3 py-2 text-xs text-stone-400 font-medium">{i + 1}.</td>
                         <td className="px-3 py-2">
                           <span className="font-medium">{w.guestName}</span>
-                          <span className="block text-xs text-stone-500">{wlParty(w.partySize, t)}{w.guestPhone ? ` · ${w.guestPhone}` : ''}{w.preferredArea ? ` · ${w.preferredArea}` : ''}</span>
+                          <span className="block text-xs text-stone-500">{tN('wl.partyN', 'oseba', w.partySize)}{w.guestPhone ? ` · ${w.guestPhone}` : ''}{w.preferredArea ? ` · ${w.preferredArea}` : ''}</span>
                           {(w.specialNeeds || w.notes) && (
                             <span className="block text-xs text-stone-500 max-w-64 truncate" title={w.specialNeeds || w.notes}>ℹ {w.specialNeeds || w.notes}</span>
                           )}
@@ -1125,7 +1119,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
                     const badge = wlStatusBadge(w.status, t)
                     return (
                       <tr key={w.id} className="border-b last:border-0">
-                        <td className="px-3 py-2 font-medium">{w.guestName} <span className="text-xs text-stone-400 font-normal">{wlParty(w.partySize, t)}</span></td>
+                        <td className="px-3 py-2 font-medium">{w.guestName} <span className="text-xs text-stone-400 font-normal">{tN('wl.partyN', 'oseba', w.partySize)}</span></td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{w.status === 'seated' ? wlDur(w.actualWaitMinutes) : '—'}</td>
                         <td className="px-3 py-2 text-xs text-stone-600">{w.tableNumber ? t('wl.tableN', { n: w.tableNumber }) : '—'}</td>
                         <td className="px-3 py-2"><Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge></td>
@@ -1205,7 +1199,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
           <div className="space-y-3">
             {seatFor && (
               <p className="text-sm text-stone-600">
-                {wlParty(seatFor.partySize, t)} {t('wl.waitingSince')} <strong>{wlDur(wlMin(seatFor.checkedInAt, nowMs))}</strong>
+                {tN('wl.partyN', 'oseba', seatFor.partySize)} {t('wl.waitingSince')} <strong>{wlDur(wlMin(seatFor.checkedInAt, nowMs))}</strong>
                 {seatFor.preferredArea ? t('wl.wantsSuffix', { area: seatFor.preferredArea }) : ''}
               </p>
             )}

@@ -1218,7 +1218,7 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
               <p className="text-sm text-stone-500">{t('tips.emptyDay')}</p>
             )}
             {method === 'points' && data && data.employees.length > 0 && (
-              <p className="text-xs text-stone-500">{t('tips.pointsSum', { n: Object.values(pointsInput).reduce((a, b) => a + (Number(b) || 0), 0) })}</p>
+              <p className="text-xs text-stone-500">{tN('tips.pointsSum', 'tocka', Object.values(pointsInput).reduce((a, b) => a + (Number(b) || 0), 0))}</p>
             )}
             {method === 'points' && data && data.employees.length > 0 && Object.values(pointsInput).every((v) => !Number(v)) && (
               /* §40: iskrena obramba — 0 točk pomeni tiho enakovredno delitev

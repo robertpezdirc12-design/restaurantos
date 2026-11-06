@@ -59,7 +59,7 @@ describe('issue #71 audit-2 — identiteta listka = miza, ne surovi enum', () =>
   test('KDS podnaslov: ura brez sekund + število oseb + natakar', () => {
     const d = dash()
     expect(d).toContain("hour: '2-digit', minute: '2-digit'")
-    expect(d).toContain("t('kds.guestsShort', { n: o.guests })")
+    expect(d).toContain("tN('kds.guestsShort', 'oseba', o.guests)")
     expect(d).toContain('o.employee?.name')
   })
   test('tip naročila je ZNAČKA ob naslovu, ne naslov', () => {

@@ -8,7 +8,6 @@ import {
   isOverQuoted,
   isTerminalWaitlistStatus,
   minutesWaiting,
-  partySizeLabel,
   quoteLabel,
   transitionError,
   validateEntryInput,
@@ -128,17 +127,8 @@ describe('waitlist — čakanje', () => {
   })
 })
 
-describe('waitlist — partySizeLabel (slovenska n-tev)', () => {
-  test('1 oseba, 2 osebi, 3/4 osebe, 5+ oseb', () => {
-    expect(partySizeLabel(1)).toBe('1 oseba')
-    expect(partySizeLabel(2)).toBe('2 osebi')
-    expect(partySizeLabel(3)).toBe('3 osebe')
-    expect(partySizeLabel(4)).toBe('4 osebe')
-    expect(partySizeLabel(5)).toBe('5 oseb')
-    expect(partySizeLabel(8)).toBe('8 oseb')
-    expect(partySizeLabel(30)).toBe('30 oseb')
-  })
-})
+// v1.269.0: describe partySizeLabel je upokojen skupaj s funkcijo — obliko
+// "oseba" zdaj nosi nounKey (tests/v269-mnozine-ii-unifikacija.test.ts Č1).
 
 describe('waitlist — waitlistStats', () => {
   test('prazen seznam → ničelna statistika', () => {

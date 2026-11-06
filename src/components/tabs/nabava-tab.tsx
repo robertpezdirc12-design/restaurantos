@@ -122,7 +122,7 @@ const nabavaNum = (s: string): number => {
 const nabavaDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('sl-SI') : '—')
 
 export function NabavaTab({ locations, canManage }: { locations: { id: string; name: string }[]; canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [suppliers, setSuppliers] = useState<NabavaSupplier[]>([])
   const [invItems, setInvItems] = useState<NabavaInvItem[]>([])
   const [orders, setOrders] = useState<NabavaPo[]>([])
@@ -1055,7 +1055,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                     <p className="text-xs text-stone-500 mt-1">
                       {o.supplierName || '—'} · {t('proc.ordered')} {nabavaDate(o.orderDate)}
                       {o.expectedDate ? ` · ${t('proc.expected')} ${nabavaDate(o.expectedDate)}` : ''}
-                      {' · '}{t('proc.linesCount', { n: o.items.length })} · {o.receiptsCount === 1 ? t('proc.receiptOne') : o.receiptsCount === 2 ? t('proc.receiptTwo') : t('proc.receiptMany', { n: o.receiptsCount })}
+                      {' · '}{tN('proc.linesCount', 'vrstica', o.items.length)} · {tN('proc.receiptMany', 'prevzem', o.receiptsCount)}
                     </p>
                     {canManage && active && (
                       <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>

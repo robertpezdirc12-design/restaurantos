@@ -717,7 +717,7 @@ const WEEKDAY_KEYS: Record<number, string> = {
  * (plans.get ddlOpsPending → pasivna sekcija).
  */
 function HaccpPlansSection() {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [plans, setPlans] = useState<HaccpPlanT[]>([])
   const [ddlPending, setDdlPending] = useState(false)
   const [opsPending, setOpsPending] = useState(false)
@@ -875,7 +875,7 @@ function HaccpPlansSection() {
                     {p.dueTime ? ` · ${t('haccpPlan.dueTime')}: ${p.dueTime}` : ''}
                     {p.frequency === 'weekly' && p.weekday ? ` · ${WEEKDAY_KEYS[p.weekday] ? t(WEEKDAY_KEYS[p.weekday]) : ''}` : ''}
                     {p.frequency === 'monthly' && p.monthDay ? ` · ${t('haccpPlan.monthDay')}: ${p.monthDay}.` : ''}
-                    {p.steps.length > 0 ? ` · ${t('haccpPlan.stepsCount').replace('{n}', String(p.steps.length))}` : ''}
+                    {p.steps.length > 0 ? ` · ${tN('haccpPlan.stepsCount', 'korak', p.steps.length)}` : ''}
                   </p>
                   {p.steps.length > 0 && (
                     <ol className="list-decimal list-inside text-xs text-stone-600 mt-1 space-y-0.5">

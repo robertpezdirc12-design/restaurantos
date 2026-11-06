@@ -341,13 +341,9 @@ function KdsCountdownPill({ createdAt, lateMin, staleNode, stale, fontCls, pillC
 
 /* ═══ ISSUE #74 (v1.135.0) Stopnja 2+3 — KDS ergonomija in statusni jezik ═══ */
 
-/** V-11: število listkov po slovensko — dvojina/množina (ne "2 LISTKOV"). */
-function listekCountKey(n: number): 'kds.countOne' | 'kds.countTwo' | 'kds.countFew' | 'kds.countMany' {
-  if (n === 1) return 'kds.countOne'
-  if (n === 2) return 'kds.countTwo'
-  if (n >= 3 && n <= 4) return 'kds.countFew'
-  return 'kds.countMany'
-}
+// v1.269.0: listekCountKey (4 ročne oblike kds.count*) je bil MRTVA KODA (ni bil
+// nikoli klican od preureditve KDS števca) — upokojen skupaj s ključi; števec
+// listkov sedaj nosi tN('kds.staleCount', 'listek', n) prek nounKey.
 
 /** V-8: velikost pisave listka S/M/L/XL (Toast "do Enormous" vzorec). Nazivna
     vrstica + postavke + starostne pili sorazmerno; dejanja (44 px cilji) ostanejo. */
@@ -3964,7 +3960,7 @@ function DashboardInner() {
                       <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-semibold truncate">{o.table?.name || orderTypeL(o.type)}</p>
-                          <p className="text-xs text-stone-500">{t('dash.itemsCount', { n: o.items.length, name: o.employee?.name || '—' })}</p>
+                          <p className="text-xs text-stone-500">{tN('dash.itemsCount', 'artikel', o.items.length, { name: o.employee?.name || '—' })}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-bold">{fmtEUR(o.total)}</p>
@@ -5482,7 +5478,7 @@ function DashboardInner() {
                             ne surovi enum; podnaslov #num + ura brez sekund + osebe + natakar */}
                         <span className="inline-flex shrink-0 items-center rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-xs font-semibold text-stone-600">{orderTypeL(o.type)}</span>
                         {o.employee?.name && <span className="text-xs font-normal text-stone-400 min-w-0 shrink truncate" title={o.employee.name}>· {o.employee.name}</span>}
-                        <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })} · {t('kds.guestsShort', { n: o.guests })}</span>
+                        <span className="text-xs font-normal text-stone-500 min-w-0 shrink">#{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })} · {tN('kds.guestsShort', 'oseba', o.guests)}</span>
                         {/* v1.236.0 (Toast KDS »Flash Changes«): značka NOVO (nov listek)
                             oz. +n (dodane postavke na obstoječem) — 10 s po utripu izgine
                             (»recently fulfilled tickets stop flashing« — Toast okt 2026). */}
@@ -5896,7 +5892,7 @@ function DashboardInner() {
                       >
                         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${kdsDraftsOpen ? '' : '-rotate-90'}`} aria-hidden />
                         <span className="truncate min-w-0">{t('kds.draftSection')}</span>
-                        <span className="ml-auto shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 tabular-nums font-semibold text-amber-900">{t('kds.staleCount', { n: kdsDraftIdSet.size })}</span>
+                        <span className="ml-auto shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 tabular-nums font-semibold text-amber-900">{tN('kds.staleCount', 'listek', kdsDraftIdSet.size)}</span>
                       </button>
                       <div id="kds-drafts-content">
                         {!kdsDraftsOpen && (
@@ -5920,7 +5916,7 @@ function DashboardInner() {
                   {kdsActiveLive.length > 0 && (
                     <p data-region="kds-section-active" className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-stone-500 px-1">
                       {t('kds.activeShift')}
-                      <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsActiveLive.length })}</span>
+                      <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 tabular-nums font-semibold">{tN('kds.staleCount', 'listek', kdsActiveLive.length)}</span>
                     </p>
                   )}
                   {/* §38 (v1.264.0): wrapper aktivne vrste — drop tarče ([data-order-id]
@@ -5956,7 +5952,7 @@ function DashboardInner() {
                       >
                         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${kdsStaleOpen ? '' : '-rotate-90'}`} aria-hidden />
                         <span className="truncate min-w-0">{t('kds.staleSection')}</span>
-                        <span className="ml-auto shrink-0 rounded-full border border-stone-300 bg-stone-200 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsStale.length })}</span>
+                        <span className="ml-auto shrink-0 rounded-full border border-stone-300 bg-stone-200 px-2 py-0.5 tabular-nums font-semibold">{tN('kds.staleCount', 'listek', kdsStale.length)}</span>
                       </button>
                       {kdsStaleOpen && kdsStale.map((o) => renderKdsTicket(o, false))}
                     </section>
@@ -6566,7 +6562,7 @@ function DashboardInner() {
                             onClick={() => setReprintStation(st)}
                             className={`min-h-11 w-full rounded-lg border px-3 py-2 flex items-center justify-between gap-2 text-left transition-colors ${active ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-stone-200 bg-white hover:bg-stone-50'} ${count === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
                             <span className="font-medium">{st === 'KITCHEN' ? t('rcpt.reprintKitchen') : st === 'BAR' ? t('rcpt.reprintBar') : t('rcpt.reprintAll')}</span>
-                            <span className="text-xs text-stone-500">{t('rcpt.reprintItems', { n: count })}</span>
+                            <span className="text-xs text-stone-500">{tN('rcpt.reprintItems', 'postavka', count)}</span>
                           </button>
                         )
                       })}
@@ -6768,7 +6764,7 @@ function DashboardInner() {
                         <p className="text-xs text-red-600 flex items-center gap-0.5 font-medium"><MapPin className="w-3 h-3" /> {t('emp.noLocation')}</p>
                       )}
                       {(e.permissionOverrides?.length || 0) > 0 && (
-                        <p className="text-xs text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {t('emp.permsCount', { n: e.permissionOverrides.length })}</p>
+                        <p className="text-xs text-emerald-700 flex items-center gap-0.5"><ShieldCheck className="w-3 h-3" /> {tN('emp.permsCount', 'dovoljenje', e.permissionOverrides.length)}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -6932,7 +6928,7 @@ function DashboardInner() {
                         <div className="text-right shrink-0 flex items-center gap-1.5">
                           <div>
                             <p className="font-bold">{st ? fmtEUR(st.todayRevenue) : '—'}</p>
-                            <p className="text-xs text-stone-400">{t('loc.today', { n: st ? st.todayOrders : '—' })}</p>
+                            <p className="text-xs text-stone-400">{st ? tN('loc.today', 'narocilo', st.todayOrders) : '—'}</p>
                           </div>
                           {hasPerm('settings.manage') && (
                             <div className="flex flex-col gap-0.5">
@@ -6976,7 +6972,7 @@ function DashboardInner() {
                         <Badge className={w.isActive ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{w.isActive ? t('integ.activeF') : t('integ.offF')}</Badge>
                       </div>
                       <p className="text-xs text-stone-500 truncate">{w.url}</p>
-                      <p className="text-xs text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : t('integ.noEvents')}{w.failureCount > 0 ? t('integ.errorsCount', { n: w.failureCount }) : ''}{w.lastTriggered ? t('integ.lastTriggered', { when: new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : ''}</p>
+                      <p className="text-xs text-stone-400">{w.events.length > 0 ? w.events.join(' · ') : t('integ.noEvents')}{w.failureCount > 0 ? tN('integ.errorsCount', 'napaka', w.failureCount) : ''}{w.lastTriggered ? t('integ.lastTriggered', { when: new Date(w.lastTriggered).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }) : ''}</p>
                     </div>
                   ))}
                 </CardContent>

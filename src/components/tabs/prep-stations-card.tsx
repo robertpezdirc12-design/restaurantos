@@ -70,7 +70,7 @@ interface RouteDraftT {
 const EMPTY_FORM = { name: '', type: '', avg: '15', order: '0', expo: false }
 
 export function PrepStationsCard() {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const user = typeof window !== 'undefined' ? getUser() : null
   const perms = user?.permissions ?? []
   const canConfigure =
@@ -326,7 +326,7 @@ export function PrepStationsCard() {
                           </Badge>
                         )}
                         <Badge variant="outline" className="shrink-0 text-xs text-stone-500">
-                          {t('kds.cfg.inUse', { n: st.menuItemCount })}
+                          {tN('kds.cfg.inUse', 'artikel', st.menuItemCount)}
                         </Badge>
                         <span className="ml-auto flex gap-1 shrink-0">
                           <Button
@@ -518,7 +518,7 @@ export function PrepStationsCard() {
             <AlertDialogTitle>{t('kds.cfg.deleteConfirm', { name: deleteFor?.name || '' })}</AlertDialogTitle>
             <AlertDialogDescription>
               {t('kds.cfg.deleteHint')}
-              {deleteFor && deleteFor.menuItemCount > 0 ? ` ${t('kds.cfg.inUse', { n: deleteFor.menuItemCount })}.` : ''}
+              {deleteFor && deleteFor.menuItemCount > 0 ? ` ${tN('kds.cfg.inUse', 'artikel', deleteFor.menuItemCount)}.` : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

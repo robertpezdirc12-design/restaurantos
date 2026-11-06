@@ -281,9 +281,9 @@ describe('v1.254.0 Ž — registri', () => {
   const libSrc = read('src/lib/live-check.ts')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.268.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.268.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.268.0')
+    expect(APP_VERSION).toBe('1.269.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.269.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.269.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+10 lcv.*)', () => {
@@ -296,8 +296,8 @@ describe('v1.254.0 Ž — registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4188)
-    expect(hrCount).toBe(4188)
+    expect(slCount).toBe(4231)
+    expect(hrCount).toBe(4231)
   })
 
   test('Ž3: montaža — štirje dialogi z LiveCheckAside + tap na vrstico + 0 DDL dokaz', () => {
@@ -340,11 +340,11 @@ describe('v1.254.0 Ž — registri', () => {
     expect(doc).toContain('updates with each choice as staff edit')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.256.0')
-    expect(auditDoc).toContain('- 4188 ključev SL in 4188 HR')
+    expect(auditDoc).toContain('- 4231 ključev SL in 4231 HR')
   })
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-množine-ii-unifikacija-val')
   })
 })

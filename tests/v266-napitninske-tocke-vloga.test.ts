@@ -35,7 +35,7 @@
  *    points + stolpec vloge); JobsCard (DDL-gated urejanje, shrani SAMO
  *    ob spremembi); dashboard posreduje tipPointsDdlActive.
  *  Ž · REGISTRI: verzija 1.267.0, mirror DA / main NE, drift matcher
- *    dvosmerno strogo SAMO Job.tipPoints, i18n pariteta 4188/4188
+ *    dvosmerno strogo SAMO Job.tipPoints, i18n pariteta 4231/4231
  *    (+15 ključev), dokument §40 + AUDIT POSODOBITEV, worklog Task ID.
  */
 import { describe, test, expect } from 'bun:test'
@@ -233,7 +233,7 @@ describe('v1.266.0 Č2 — API točk + DDL + UI montaža', () => {
     expect(tab).toContain("t('tips.roleCol')")
     expect(tab).toContain("t('tips.pointsNoRole')")
     // vsota točk + zero-guard (iskrena obramba pred TIHO enakovredno delitvijo)
-    expect(tab).toContain("t('tips.pointsSum'")
+    expect(tab).toContain("tN('tips.pointsSum', 'tocka'")
     expect(tab).toContain("t('tips.pointsZero')")
     expect(tab).toContain("!(method === 'points' && Object.values(pointsInput).every((v) => !Number(v)))")
     // namig predpolnitve po vlogi
@@ -276,12 +276,12 @@ describe('v1.266.0 Č2 — API točk + DDL + UI montaža', () => {
 
 describe('v1.266.0 Ž — registri', () => {
   test('Ž1: verzija 1.267.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.268.0')
-    expect(read('src/lib/version.ts')).toContain("'1.268.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.268.0')
+    expect(APP_VERSION).toBe('1.269.0')
+    expect(read('src/lib/version.ts')).toContain("'1.269.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.269.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4188/4188 (+15 ključev vala)', () => {
+  test('Ž2: i18n pariteta SL/HR 4231/4231 (+15 ključev vala)', () => {
     for (const k of [
       'tips.roleCol', 'tips.pointsCol', 'tips.pointsColAria', 'tips.pointsRoleHint',
       'tips.pointsNoRole', 'tips.pointsZero', 'tips.pointsSum',
@@ -293,8 +293,8 @@ describe('v1.266.0 Ž — registri', () => {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4188)
-    expect(Object.keys(hr).length).toBe(4188)
+    expect(Object.keys(sl).length).toBe(4231)
+    expect(Object.keys(hr).length).toBe(4231)
     // 'kmalu' je odšlo — osnova je ZDAJ po vlogi (luknja §40 zapečatena)
     expect(sl['tips.basisPoints']).not.toContain('kmalu')
     expect(hr['tips.basisPoints']).not.toContain('uskoro')
@@ -327,6 +327,6 @@ describe('v1.266.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-množine-ii-unifikacija-val')
   })
 })

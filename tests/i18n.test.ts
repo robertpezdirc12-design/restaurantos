@@ -179,7 +179,8 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
       ['Današnji promet', 'dash.todayRevenue'],
       // Task 25-f — faza 2, skupina F (page.tsx inline sekcije: meni/rezervacije/računi/zaposleni/nastavitve + ostanki)
       ['Aktivna naročila', 'dash.activeOrders'],
-      ['artiklov', 'dash.itemsCount'],
+      // v1.269.0: dash.itemsCount je zdaj '{n} {w} · {name}' (nounKey artikel)
+      ['{n} {w} · {name}', 'dash.itemsCount'],
       ['Kuhinjska vrsta je prazna. 🎉', 'kitchen.queueEmpty'],
       ['Natisni kuhinjski list', 'kitchen.printKitchenTitle'],
       ['Natisni bar list', 'kitchen.printBarTitle'],
@@ -535,10 +536,9 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
       ['Artikel', 'proc.article'],
       ['Količina', 'proc.qty'],
       ['Razlog', 'loy.reason'],
-      ['Brez lastnika', 'payment.noOwner'],      ['1 oseba', 'wl.party1'],
-      ['2 osebi', 'wl.party2'],
-      ['{n} osebe', 'wl.party34'],
-      ['{n} oseb', 'wl.partyN'],
+      ['Brez lastnika', 'payment.noOwner'],
+      // v1.269.0: wl.party1/2/34 upokojeni — obliko nosi nounKey (wl.partyN '{n} {w}')
+      ['{n} {w}', 'wl.partyN'],
       ['Čaka', 'wl.stWaiting'],
       ['Obveščen', 'wl.stNotified'],
       ['Usajen', 'wl.stSeated'],
@@ -559,7 +559,8 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
       ['Obveščeni', 'wl.statNotified'],
       ['miza se pripravlja', 'wl.preparingTable'],
       ['Usajeni danes', 'wl.statSeated'],
-      ['{n} odhodov', 'wl.leftCount'],
+      // v1.269.0: wl.leftCount je zdaj '{n} {w}' (nounKey odhod)
+      ['{n} {w}', 'wl.leftCount'],
       ['Povprečno čakanje', 'wl.statAvgWait'],
       ['najdaljše {dur}', 'wl.longest'],
       ['Aktivna lista', 'wl.activeTitle'],

@@ -307,7 +307,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-1.5">
               <Copy className="w-4 h-4" aria-hidden="true" /> {t('crm.dup.title')}
-              <Badge className="bg-amber-100 text-amber-800">{t('crm.dup.count', { n: pairs.length })}</Badge>
+              <Badge className="bg-amber-100 text-amber-800">{tN('crm.dup.count', 'par', pairs.length)}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>

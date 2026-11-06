@@ -151,14 +151,9 @@ export function isOverQuoted(minutesWaiting: number, quotedWaitMinutes: number):
 
 // ── Slovenske oznake ─────────────────────────────────────────────────────────
 
-/** N-tev "oseba": 1 oseba, 2 osebi, 3/4 osebe, 5+ oseb */
-export function partySizeLabel(n: number): string {
-  const v = Math.max(0, Math.floor(n))
-  if (v === 1) return '1 oseba'
-  if (v === 2) return '2 osebi'
-  if (v === 3 || v === 4) return `${v} osebe`
-  return `${v} oseb`
-}
+// v1.269.0: partySizeLabel (SL-hardcodirana n-tev "oseba", brez klicnih mest v
+// UI — čakalna lista je od v1.268 na i18n ključih) je upokojen; obliko nosi
+// nounKey/tN('wl.partyN', 'oseba', n) v SL in HR slovarjih (noun.oseba.*).
 
 /** Oznaka napovedanega časa: "≈ 15 min" (0 → brez napovedi) */
 export function quoteLabel(minutes: number): string {
