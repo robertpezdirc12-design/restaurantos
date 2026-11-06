@@ -52,7 +52,7 @@ describe('v1.198.0 — override dvignjen na 7.1.1 (rh198-a)', () => {
 
   test('lint skript teče z omejeno kopico (7.1.1 analiza na 4 GB peskovniku sicer OOM)', () => {
     const lint = ((pkg.scripts ?? {}) as Record<string, string>).lint ?? ''
-    expect(lint).toContain('--max-old-space-size=1536')
+    expect(lint).toContain('--max-old-space-size=2560') // v1.264.0: CI OOM na 64b98c8 — dvignjeno iz 1536 (ista vrednost kot lokalna disciplina v1.263.0+)
     expect(lint).toContain('eslint .')
   })
 })
