@@ -359,6 +359,6 @@ describe('v1.252.0 Ž — registri', () => {
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-rocno-zaporedje-listkov-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-finalna-verifikacija')
   })
 })

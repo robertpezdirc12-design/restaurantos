@@ -226,6 +226,6 @@ describe('v1.260.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-rocno-zaporedje-listkov-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-finalna-verifikacija')
   })
 })
