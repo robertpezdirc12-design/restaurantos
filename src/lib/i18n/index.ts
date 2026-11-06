@@ -172,11 +172,16 @@ export function pluralForm(n: number): '1' | '2' | '34' | 'n' {
  */
 export function tForm(locale: Locale, key: string, n: number, vars?: Record<string, string | number>): string {
   const dict = DICTS[locale] ?? DICTS[DEFAULT_LOCALE]
+  // BUGFIX (v1.270.0 pred zaprtjem vala): predloge <key>.<oblika> nosijo {n},
+  // a klic tF('hh.unpaidWarn', 2) vars ne podaja — brez tega vnosa bi handheld
+  // izrisal literal »{n} postavki nista poslani v kuhinjo!«. Vzorec tN: n gre
+  // v vars vedno, klic lahko povozi (…vars na koncu).
+  const withN: Record<string, string | number> = { n, ...vars }
   const form = pluralForm(n)
   const full = `${key}.${form}`
-  if (dict[full] !== undefined || DICTS[DEFAULT_LOCALE][full] !== undefined) return t(locale, full, vars)
-  if (dict[`${key}.n`] !== undefined || DICTS[DEFAULT_LOCALE][`${key}.n`] !== undefined) return t(locale, `${key}.n`, vars)
-  return t(locale, key, vars)
+  if (dict[full] !== undefined || DICTS[DEFAULT_LOCALE][full] !== undefined) return t(locale, full, withN)
+  if (dict[`${key}.n`] !== undefined || DICTS[DEFAULT_LOCALE][`${key}.n`] !== undefined) return t(locale, `${key}.n`, withN)
+  return t(locale, key, withN)
 }
 
 /**
