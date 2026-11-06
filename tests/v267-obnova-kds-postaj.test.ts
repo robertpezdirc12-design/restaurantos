@@ -241,7 +241,9 @@ describe('v1.267.0 Č2 — API + UI montaža', () => {
     const page = read('src/app/dashboard/page.tsx')
     expect(page).toContain('if (!kdsProfileFreshRef.current || kdsUserTouchedRef.current) return')
     expect(page).toContain('if (kdsAutoRestoredRef.current.has(kdsStation)) return')
-    expect(page).toContain("applyKdsProfile(p, 'kds.profileAuto')")
+    // CI lint najdba: aplikacija teče v MIKROTASKI (react-hooks/set-state-in-effect
+    // — isti vzorec kot hidracijska mikrotakta; sinhroni setState v efektu je padel CI)
+    expect(page).toContain("queueMicrotask(() => applyKdsProfile(p, 'kds.profileAuto'))")
   })
 
   test('Č2h: dashboard — touched zastavica v OBEH uporabniških poteh (kdsPersist + pragovi)', () => {

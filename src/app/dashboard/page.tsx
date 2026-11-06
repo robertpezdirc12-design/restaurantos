@@ -2944,7 +2944,10 @@ function DashboardInner() {
     const p = kdsProfiles[kdsStation]
     if (!p) return
     kdsAutoRestoredRef.current.add(kdsStation)
-    applyKdsProfile(p, 'kds.profileAuto')
+    // mikrotaska — aplikacija profila BREZ sinhronnega setState v telesu efekta
+    // (isti vzorec kot hidracijska mikrotakta Issue #74; react-hooks/
+    // set-state-in-effect — CI lint najdba, lokalni OOM je zakril datoteko)
+    queueMicrotask(() => applyKdsProfile(p, 'kds.profileAuto'))
   }, [kdsStation, kdsProfiles, applyKdsProfile])
   /** §41: shrani trenutne nastavitve zaslona kot profil IZBRANE postaje. */
   const saveKdsStationProfile = useCallback(async () => {
