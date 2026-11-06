@@ -3725,3 +3725,122 @@ zatorej odkljuka zadnjega A-kandidata Vol 16.
   2 → 5 (toast, persist, DB raw), čiščenje (bazen/distribucije/
   plačilo/naročilo/izmeni/zaposlena/vloge izbrisani; revizijska
   sled ostaja).
+
+
+## 41. Raziskava november 2026 (nadaljevanje 15) — OBNOVA NASTAVITEV KDS POSTAJ v1.267.0 (Lightspeed julij 2026 »Restore KDS stations in seconds«)
+
+Sveža raziskovalna kontrola po zaključku Vol 16 (§40): okno Square Vol 17
+PRAZNO (pričakovano pomladi 2027), a poglobljen pregled Lightspeed »What's
+New« arhiva 2026 je odkril TRI objave, ki prejšnje raziskave niso izmerile:
+julij 2026 (»Easier guest bookings, customizable upsells«), avgust 2026
+(»Faster payments, orders, and insights«) in oktober 2026 (»Multi-Location
+Management, KDS Connections«) — vse tri prebrane v celoti z vsako trditvijo
+izmerjeno v lastni kodi.
+
+### A) Izmere (tri neizkopane objave + lastno stanje)
+
+- **Lightspeed julij 2026:** Reserve with Google = B (znana odločitev);
+  AI izvoz vpogledov = 0-AI politika NE; »Restore KDS stations in seconds«
+  — »Recover Kitchen Display System stations faster after a reset or
+  reconnection with automatic configuration restore. Simply select the
+  station name, and KDS applies the latest saved settings«; Menu Upsells
+  ročna kontrola = POKRITO (naš kiosk-upsell je od OPS-10 val 2 v1.78.0
+  ČISTO ROČEN — sanitizeUpsellConfig nad živimi id-ji artiklov; ni
+  avtomatizacije, ki bi jo bilo treba preglasiiti).
+- **Lightspeed avgust 2026:** Modifiers (pravila min/max, cene, tiskalne
+  poti) = POKRITO (ModifierGroup + OrderItemModifier OSS-10 v1.209.0 +
+  KDS vidnost v1.237.0 §14); AI grafikoni = NE; Tempo kartice »Emptiest
+  Tables« + »Longest Service Gaps« = POKRITO (tempo-insights v1.246.0
+  valu — aggregateTableTempo + aggregateServiceGaps); spletna izgava
+  darilnih kartic = B (e-com obseg); napitnine ob spletnem naročanju
+  (6 prednastavljenih odstotkov) = NIZKO za SI/HR trg; »Scan to Pay«
+  (QR na računu, gost plača s telefona, naročilo se samo zapre) = B
+  (odločitev o ponudniku plačil — TERMINAL-PROVIDERS); nov POS layout =
+  kozmetika.
+- **Lightspeed oktober 2026:** Locations Manager (meni/artikli enkrat,
+  sinhronizacija čez lokacije) = POKRITO ARHITEKTURNO (MenuItem NIMA
+  locationId — meni je souporabljen med vsemi lokacijami že od začetka);
+  AI stranski panel = NE; KDS Local (kds.local hostname, mDNS odkrivanje)
+  = IZHOD (omrežna/hardverska plast — naš KDS je spletni odjemalec).
+- **Lastno stanje (izmerjeno):** VSE nastavitve KDS zaslona so PER
+  NAPRAVA v localStorage — sedem ključev ro_kds_* (pragovi starosti
+  Issue #74 V-3, pisava V-8, gostota V-8, stolpci V-8, pogled V-9, zaklep
+  §18 B, vrstni red §38). Izbira postaje prihaja iz URL ?station=
+  (KITCHEN/BAR/ALL/id). Obrezena/zamenjana tablica v kuhinji izgubi
+  CELOTNO konfiguracijo — nadomestitev zahteva ročno vpisovanje pragov
+  in pisave med obratom. Točno to luknjo pokriva julij 2026 objava.
+
+### B) Odločitev (Ž12)
+
+Val v1.267.0: STREŽNIŠKI PROFIL KDS POSTAJE — nastavitve zaslona se
+zapišejo PO POSTAJI na strežnik; SVEŽA naprava (noben ro_kds_* ključ)
+jih ob izbiri postaje SAMODEJNO obnovi (točno Lightspeed semantika
+»select the station name → applies saved settings«); naprava, na kateri
+je uporabnik karkoli spremenil (pisava/gostota/stolpci/pogled/zaklep/
+vrstni red/pragovi), samodejne obnove NE dobi — njegova izbira vedno
+zmaga. Ročna pot (Shrani/Obnovi profil) je vedno na voljo v nastavitvah
+KDS. ISKRENE MEJE: profil je PREZENTACIJSKA plast (kaj zaslon prikaže),
+NE varnostna (zaklep §18 B ostaja varovanje pred pomotami, ne pred
+zlorabo — strežnik ostaja avtoritativen); zvok ostaja per-naprava brez
+persista (kot prej — ni del profila); ročna zaporedja listkov §38 so
+že strežniška (v profilu je samo NAČIN default/manual, ne mesta).
+
+### C) Implementacija
+
+- NOSILEC: GLOBALNA Integration vrstica name='kds-station-profile',
+  type='other', BREZ locationId (vzorec auto86 v1.230.0 / kiosk-upsell
+  v1.78.0 — 0 DDL). E2E najdba #1 (demo, 6. 11. 2026): prva zasnova je
+  sledila resv-pacing §18 A (PER LOKACIJA + requireUserLocation), a KDS
+  zaslon teče v org-obsegu (»Vse lokacije« + ?station= brez lokacijske
+  vezi — enako kot GET /api/kitchen); centralni uporabnik na 5 lokacijah je
+  dobil 400 brez poti naprej. Postaje (PrepStation.id, cuid) so globalno
+  unikatne čez lokacije; bucket ključi (ALL/KITCHEN/BAR) so privzetki
+  ZASLONA, ne lokacije — profil je lastnost postaje/zaslona, zato živi v
+  eni globalni vrstici. config = zemljevid { [stationKey]: profil };
+  stationKey = 'ALL' | 'KITCHEN' | 'BAR' | <PrepStation.id> (ista domena
+  kot ?station=). Meja 64 postaj.
+- ČISTI SLOJ src/lib/kds-station-profile.ts: KDS_STATION_PROFILE_MARKER,
+  dovoljene množice (pisave S/M/L/XL, gostote, pogledi, načini vrstnega
+  reda, stolpci 4/6/8/10), sanitizeKdsStationProfile (neveljavno polje →
+  privzeta vrednost naprave; savedAt/savedBy samo neprazna niza),
+  sanitizeKdsProfileMap (neveljavni ključi/čezmerne postaje izpadejo),
+  isValidProfileStationKey (regularnost ?station=), KDS_PROFILE_LS_KEYS
+  (sedem ključev za test sveže naprave), kdsProfileContentSig.
+- API /api/kitchen/profile: GET → { profiles } (kitchen.update — ista
+  vrata kot KDS zaslon); PUT { station, profile } → sanitizacija čistega
+  sloja → MERGE ene postaje v obstoječi zemljevid (dve tablici, ki hkrati
+  shranjujeta RAZLIČNI postaji, si ne povozieta vrstice) → revizija
+  KDS_STATION_PROFILE_SAVED { station, from, to, by }. Brez lokacijskega
+  ugibanja: globalna vrstica nima lokacijske veze (E2E najdba #1).
+  E2E NAJDBA #2 (demo, agent-browser): config stolpec Integration je NIZ
+  (JSON tekst) — loadMap brez razčlenitve je sanitizeKdsProfileMap(row.config)
+  zavrnil kot ne-objekt in profil je TIHO izginil po vsakem shranjevanju
+  (PUT 200 z zlito mapo, GET prazno; suite montaža tega NI ujela — ujel jo
+  je živi E2E klic). POPRAVEK: jparse (vzorec kiosk-upsell/parsePacingConfig)
+  + regresijski test Č2c-pre.
+- UI (dashboard KDS): hidracijska mikrotakta izračuna SVEŽO napravo
+  (noben ro_kds_* ključ); nalaganje profilov enkrat (ko so pravice
+  znane, kitchen.update); SAMODEJNA OBNOVA ob izbiri postaje (sveža +
+  neranesena + profil obstaja → apliciraj + toast; postaja se zabeleži,
+  da se ne aplicira dvakrat); kdsPersist + kdsSaveAgeThresholds
+  postavita touched zastavico (uporabniška sprememba izklopi samodejno
+  obnovo za seanso — predvidljivo); applyKdsProfile aplicira VSE
+  nastavitve + zapiše localStorage (ista ključa kot hidracija);
+  nastavitveni Popover dobi sekcijo Profil postaje (Shrani profil /
+  Obnovi + zadnji shranil/čas + aria z imenom postaje; Obnovi
+  onemogočen brez profila).
+- i18n +11 SL/HR (kds.profileTitle/Hint/Existing/Save/Restore/SaveAria/
+  RestoreAria/Saved/Restored/Auto/SaveFail; 4157 → 4168, popolna
+  pariteta).
+- VERZIJA 1.266.0 → 1.267.0 (version.ts + compose + pini: toBe 106 +
+  ubeženi regexi 15 + compose-tag 40, i18n števci 124 mest).
+- TESTI v267: Č1 čisti sloj (sanitizacija veljavnih/neveljavnih polj,
+  pragovi monotonost, meje stolpcev, savedAt/savedBy prazni nizi, mapa
+  neveljavni ključi/meja 64, station key regularnost, vsebinski podpis);
+  Č2 API+UI (GET prazno/veljavno, PUT merge + revizija + orgScope,
+  400 neveljavna postaja/profil, pravice kitchen.update, GLOBALNA vrstica
+  (E2E najdba #1 — trditve odsotnosti ciljajo Klice, ne besede, lekcija
+  v259 #3), montaža Popover sekcije + auto-restore efekta + touched
+  zastavic); Ž registri
+  (verzija 1.267.0, i18n 4168/4168 + 11 ključev, dokument §41 +
+  AUDIT POSODOBITEV, worklog Task ID).

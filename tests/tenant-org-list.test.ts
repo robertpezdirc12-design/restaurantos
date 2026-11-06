@@ -236,6 +236,9 @@ describe('Task 54 — statična regresija: vse rute awaitajo locationScope', () 
     // v1.260.0 (PRIMERJAVA §34): reports/revenue-centers GET (prodaja po
     // prihodkovnih centrih — izpeljava con/kanalov v uporabnikovem obsegu,
     // await locationScope) → 86
+    // v1.267.0 (PRIMERJAVA §41): kitchen/profile GET+PUU je ZAVESNO — globalna
+    // vrstica brez lokacijske veze (E2E najdba #1) NE uporablja locationScope;
+    // pin ostaja 86 (dvig SAMO z novo locationScope ruto)
     expect(wired.length).toBe(86)
   })
 })

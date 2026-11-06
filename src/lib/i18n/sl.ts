@@ -4333,6 +4333,19 @@ export const sl: Record<string, string> = {
   'kds.viewOnly': 'Samo ogled',
   'kds.viewOnlyOn': 'Zaklep zaslona',
   'kds.viewOnlyHint': 'Zaklenjeno — dejanja (zagon, izdaja, bump) so onemogočena. Lightspeed »Lock prep station displays« (november 2026).',
+  // §41 (v1.267.0, Lightspeed julij 2026 »Restore KDS stations in seconds«):
+  // strežniški profil KDS postaje — shranjevanje/obnova nastavitev zaslona.
+  'kds.profileTitle': 'Profil postaje',
+  'kds.profileHint': 'Nastavitve tega zaslona se shranijo po postaji — nova ali zamenjana naprava jih samodejno obnovi ob izbiri postaje.',
+  'kds.profileExisting': 'Zadnji shranil: {who} · {when}',
+  'kds.profileSave': 'Shrani profil',
+  'kds.profileRestore': 'Obnovi',
+  'kds.profileSaveAria': 'Shrani profil postaje {station}',
+  'kds.profileRestoreAria': 'Obnovi profil postaje {station}',
+  'kds.profileSaved': 'Profil postaje shranjen',
+  'kds.profileRestored': 'Profil postaje obnovljen',
+  'kds.profileAuto': 'Nastavitve postaje samodejno obnovljene',
+  'kds.profileSaveFail': 'Shranjevanje profila ni uspelo',
   // §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«): ročno
   // zaporedje listkov — način per naprava, sekvenca deljena med Manual napravami.
   'kds.orderModeDefault': 'Samodejno',

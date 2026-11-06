@@ -630,6 +630,6 @@ describe('Č4 UI statika + registri', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.266.0')
+    expect(APP_VERSION).toBe('1.267.0')
   })
 })

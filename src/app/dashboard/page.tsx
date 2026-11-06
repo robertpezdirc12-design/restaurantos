@@ -16,6 +16,7 @@ import {
   normalizeKdsAgeThresholds, staleTicketHours, type KdsAgeThresholds,
 } from '@/lib/kds-delays'
 import { applyManualTicketOrder } from '@/lib/kds-ticket-order'
+import { KDS_PROFILE_LS_KEYS, type KdsStationProfile } from '@/lib/kds-station-profile'
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
 import { tabHasPerm, TAB_PERM } from '@/lib/tab-permissions'
 import { normItemName } from '@/lib/menu-dup'
@@ -151,7 +152,7 @@ import { stationViewKey } from '@/lib/kds-station-routing'
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
 import { groupKdsItemsByCourse, KDS_EXPO_FIRE_COUNTDOWN_MS, KDS_EXPO_FIRE_TICK_MS, expoFireCountdownSeconds } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
-import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode, PanelLeft, PanelRight, GripVertical, ListOrdered } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Save, History, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode, PanelLeft, PanelRight, GripVertical, ListOrdered } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -2820,6 +2821,10 @@ function DashboardInner() {
     // v telesu efekta (hidracija: SSR izriše privzete, kot prej)
     queueMicrotask(() => {
       try {
+        /* §41 (v1.267.0): snapshot SVEŽE NAPRAVE — obrezena/zamenjana tablica nima
+           NOBENEGA ro_kds_* ključa; samo takšni zasloni samodejno obnovijo strežniški
+           profil postaje ob izbiri (naprava z lastnimi nastavitvami jih NE preglasi). */
+        kdsProfileFreshRef.current = !KDS_PROFILE_LS_KEYS.some((k) => localStorage.getItem(k) !== null)
         const rawTh = localStorage.getItem(KDS_AGE_THRESHOLD_LS_KEY)
         if (rawTh) {
           const th = normalizeKdsAgeThresholds(JSON.parse(rawTh))
@@ -2841,11 +2846,13 @@ function DashboardInner() {
   const kdsSaveAgeThresholds = (th: KdsAgeThresholds) => {
     const norm = normalizeKdsAgeThresholds(th)
     setKdsAgeTh(norm); setKdsAgeDraft(norm)
+    kdsUserTouchedRef.current = true // §41: ročna sprememba izklopi samodejno obnovo
     try { localStorage.setItem(KDS_AGE_THRESHOLD_LS_KEY, JSON.stringify(norm)) } catch { /* brez shramve — velja do osvežitve */ }
     toast({ title: t('kds.settingsSaved') })
   }
   /** V-8/V-9: persist pomočnik za preproste izbire. */
   const kdsPersist = (key: string, value: string) => {
+    kdsUserTouchedRef.current = true // §41: ročna sprememba izklopi samodejno obnovo (vsi preklopniki: pisava/gostota/stolpci/pogled/zaklep/vrstni red)
     try { localStorage.setItem(key, value) } catch { /* brez shramve */ }
   }
   /* ── §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«):
@@ -2878,6 +2885,94 @@ function DashboardInner() {
     if (!o || !c || c.status !== 'pending') return null
     return kdsFireArm
   })()
+  /* ── §41 (v1.267.0, Lightspeed julij 2026 »Restore KDS stations in
+     seconds«): STREŽNIŠKI PROFIL KDS POSTAJE. Nastavitve zaslona ostanejo
+     PER NAPRAVA (localStorage, Issue #74 družina) — profil jih prinese nazaj
+     na obrezano/zamenjano tablico: SVEŽA naprava (noben ro_kds_* ključ) ob
+     izbiri postaje SAMODEJNO aplicira zadnji shranjen profil te postaje;
+     naprava, na kateri je uporabnik karkoli spremenil (kdsUserTouchedRef),
+     samodejne obnove NE dobi — njegova izbira vedno zmaga. Ročna pot je
+     vedno na voljo: gumb v nastavitvah KDS (Shrani/Obnovi profil postaje).
+     NOSILEC: Integration vrstica kds-station-profile PER LOKACIJA (0 DDL,
+     vzorec resv-pacing §18 A); API /api/kitchen/profile (kitchen.update). ── */
+  const [kdsProfiles, setKdsProfiles] = useState<Record<string, KdsStationProfile>>({})
+  const kdsProfileFreshRef = useRef(true)
+  const kdsUserTouchedRef = useRef(false)
+  const kdsAutoRestoredRef = useRef<Set<string>>(new Set())
+  const [kdsProfileBusy, setKdsProfileBusy] = useState(false)
+  /** §41: aplicira profil na VSE KDS prikaze + zapiše localStorage (ista
+      ključ kot hidracija — po obnovitvi ni več »sveža naprava«). NE gre
+      skozi kdsPersist (obnova NI uporabniška sprememba — ne postavi touched). */
+  const applyKdsProfile = useCallback((p: KdsStationProfile, msgKey: 'kds.profileRestored' | 'kds.profileAuto') => {
+    setKdsFontSize(p.fontSize); setKdsDensity(p.density); setKdsColumns(p.columns)
+    setKdsView(p.view); setKdsViewOnly(p.viewOnly); setKdsTicketOrder(p.ticketOrder)
+    setKdsAgeTh(p.ageThresholds); setKdsAgeDraft(p.ageThresholds)
+    try {
+      localStorage.setItem('ro_kds_font_size', p.fontSize)
+      localStorage.setItem('ro_kds_density', p.density)
+      localStorage.setItem('ro_kds_columns', String(p.columns))
+      localStorage.setItem('ro_kds_view', p.view)
+      localStorage.setItem('ro_kds_view_only', p.viewOnly ? '1' : '0')
+      localStorage.setItem('ro_kds_ticket_order', p.ticketOrder)
+      localStorage.setItem(KDS_AGE_THRESHOLD_LS_KEY, JSON.stringify(p.ageThresholds))
+    } catch { /* zasebni način — velja do osvežitve */ }
+    toast({ title: t(msgKey) })
+  }, [t])
+  /** §41: nalozže profile lokacije (enkrat — ko so pravice znane; kitchen.update
+      je ista vrata kot KDS zaslon). Napaka = tiho: brez profilov KDS deluje naprej. */
+  useEffect(() => {
+    if (!perms.length) return
+    const { canManage: mg, perms: pm } = gateRef.current
+    if (!mg && !pm.includes('kitchen.update')) return
+    let cancelled = false
+    void (async () => {
+      try {
+        // E2E najdba #1: GLOBALNA vrstica (vzorec auto86) — KDS zaslon teče v
+        // org-obsegu, profil je lastnost postaje/zaslona, ne lokacije.
+        const res = await api<{ profiles?: Record<string, KdsStationProfile> }>('/api/kitchen/profile')
+        if (!cancelled && res?.profiles) setKdsProfiles(res.profiles)
+      } catch { /* 403/omrežje — KDS brez profilov deluje naprej */ }
+    })()
+    return () => { cancelled = true }
+  }, [perms])
+  /** §41: SAMODEJNA OBNOVA — sveža naprava + izbrana postaja ima shranjen
+      profil (in ga ta seansa še ni že aplicirala) → apliciraj. Uporabniške
+      spremembe (touched) izklopijo obnovo za CELO seanso — predvidljivo. */
+  useEffect(() => {
+    if (!kdsProfileFreshRef.current || kdsUserTouchedRef.current) return
+    if (kdsAutoRestoredRef.current.has(kdsStation)) return
+    const p = kdsProfiles[kdsStation]
+    if (!p) return
+    kdsAutoRestoredRef.current.add(kdsStation)
+    applyKdsProfile(p, 'kds.profileAuto')
+  }, [kdsStation, kdsProfiles, applyKdsProfile])
+  /** §41: shrani trenutne nastavitve zaslona kot profil IZBRANE postaje. */
+  const saveKdsStationProfile = useCallback(async () => {
+    if (kdsProfileBusy) return
+    setKdsProfileBusy(true)
+    try {
+      const profile: KdsStationProfile = {
+        fontSize: kdsFontSize, density: kdsDensity, columns: kdsColumns, view: kdsView,
+        viewOnly: kdsViewOnly, ageThresholds: kdsAgeTh, ticketOrder: kdsTicketOrder,
+        savedAt: new Date().toISOString(), savedBy: '',
+      }
+      const res = await api<{ profiles?: Record<string, KdsStationProfile> }>('/api/kitchen/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ station: kdsStationRef.current, profile }),
+      })
+      if (res?.profiles) setKdsProfiles(res.profiles)
+      toast({ title: t('kds.profileSaved') })
+    } catch {
+      toast({ title: t('common.error'), description: t('kds.profileSaveFail') })
+    } finally {
+      setKdsProfileBusy(false)
+    }
+  }, [kdsProfileBusy, kdsFontSize, kdsDensity, kdsColumns, kdsView, kdsViewOnly, kdsAgeTh, kdsTicketOrder, t])
+  /** §41: ročna obnova — izrecna izbira uporabnika (ne glede na touched). */
+  const restoreKdsStationProfile = useCallback(() => {
+    const p = kdsProfiles[kdsStationRef.current]
+    if (p) applyKdsProfile(p, 'kds.profileRestored')
+  }, [kdsProfiles, applyKdsProfile])
   /* risalni tick odštevanja (250 ms) — preostanek se izračuna ob vsakem renderu */
   const [, setKdsFireTick] = useState(0)
   useEffect(() => {
@@ -5150,6 +5245,40 @@ function DashboardInner() {
                           {cl}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                  {/* §41 (v1.267.0): STREŽNIŠKI PROFIL POSTAJE — shranjevanje/
+                      obnova nastavitev zaslona PO POSTAJI (nova/zamenjana tablica
+                      samodejno dobi zadnji profil ob izbiri postaje; gumbi sta
+                      vedno na voljo tudi ročno). */}
+                  <div className="space-y-2 border-t border-stone-200 pt-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-500">{t('kds.profileTitle')}</p>
+                    <p className="text-xs text-stone-500">
+                      {t('kds.profileHint')}
+                      {kdsProfiles[kdsStation] ? (
+                        <> · {t('kds.profileExisting', { when: new Date(kdsProfiles[kdsStation].savedAt || Date.now()).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), who: kdsProfiles[kdsStation].savedBy || '—' })}</>
+                      ) : null}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        size="sm"
+                        className="h-9 gap-1 bg-emerald-700 hover:bg-emerald-800"
+                        disabled={kdsProfileBusy}
+                        onClick={() => void saveKdsStationProfile()}
+                        aria-label={t('kds.profileSaveAria', { station: kdsStation === 'ALL' ? t('kds.all') : kdsStation === 'KITCHEN' ? t('menu.stationKitchen') : kdsStation === 'BAR' ? t('menu.stationBar') : kdsStation })}
+                      >
+                        <Save className="w-3.5 h-3.5" aria-hidden /> {t('kds.profileSave')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 gap-1"
+                        disabled={kdsProfileBusy || !kdsProfiles[kdsStation]}
+                        onClick={restoreKdsStationProfile}
+                        aria-label={t('kds.profileRestoreAria', { station: kdsStation === 'ALL' ? t('kds.all') : kdsStation === 'KITCHEN' ? t('menu.stationKitchen') : kdsStation === 'BAR' ? t('menu.stationBar') : kdsStation })}
+                      >
+                        <History className="w-3.5 h-3.5" aria-hidden /> {t('kds.profileRestore')}
+                      </Button>
                     </div>
                   </div>
                 </PopoverContent>
