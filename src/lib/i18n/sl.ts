@@ -2150,6 +2150,11 @@ export const sl: Record<string, string> = {
   'loc.premisesLabel': 'FURS poslovni prostor',
   'loc.premisesPlaceholder': 'npr. BLG002',
   'loc.activeHint': 'Neaktivna lokacija izgine iz pogledov; podatki (zgodovina, FURS računi) ostanejo.',
+  // §39 (v1.265.0, Square Vol 16 »Allow Firing from Expo KDS«): per-lokacijska
+  // nastavitev — ekspeditor na KDS zaslonu lahko pošlje zadržane tečaje v pripravo.
+  'loc.kdsExpoFire': 'Dovoli požig tečajev s KDS',
+  'loc.kdsExpoFireHint': 'Ekspeditor na KDS zaslonu lahko z dvotapno potrditvijo (odštevanje) pošlje zadržane tečaje v pripravo. Privzeto izklopljeno — požig ostane natakarjeva pristojnost.',
+  'loc.kdsExpoFireDdl': 'Požig s KDS čaka shemsko migracijo (Enterprise → Shema migracije → kds-expo-fire).',
   'loc.save': 'Shrani lokacijo',
   'loc.confirmDeactivate': 'Deaktiviram {name}?',
   'loc.confirmActivate': 'Aktiviram {name}?',
@@ -4317,6 +4322,13 @@ export const sl: Record<string, string> = {
   'kds.moveUp': 'Premakni listek višje',
   'kds.moveDown': 'Premakni listek niže',
   'kds.reorderPending': 'Ročno zaporedje čaka shemsko migracijo (Enterprise → Shema migracije → kds-ticket-sequence).',
+  // §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo KDS«): expo
+  // požig zadržanih tečajev — dvotapna potrditev z odštevanjem na glavi tečaja.
+  'kds.expoFireArm': 'Požigi tečaj {name}',
+  'kds.expoFireHint': 'Tapni: tečaj gre v pripravo po 3 s odštevanju — drugi tap prekliče.',
+  'kds.expoFireArmed': 'Požig čez {s} s — drugi tap prekliče',
+  'kds.expoFireCancel': 'Preklicano — tečaj {name} ostaja zadržan',
+  'kds.expoFireDone': 'Tečaj {name} poslan v pripravo — {n} kos',
   // v1.244.0 (§18 C) — tloris: natakar + trajanje zasedenosti
   'tables.seatedFor': 'Zasedeno {min} min',
   'tables.waiterAria': 'Natakar: {name}',
@@ -4403,6 +4415,7 @@ export const sl: Record<string, string> = {
   'mig.checklistRuns.desc': 'Digitalni checklisti (v1.246.0) — nova tabela ChecklistRun (izvedbe po postavki: kdo, kdaj, vrednost); brez vroče poti: plošča vrne prazno do DDL',
   'mig.receiptDisplayPolicy.desc': 'Prikazovna politika računa (v1.263.0) — skrivanje ničelnih postavk na natisnjenem računu (Square Vol 16): 1 stolpec na nastavitvah; do DDL je filter izklopljen in preklop onemogočen',
   'mig.kdsTicketSequence.desc': 'Ročno zaporedje listkov na KDS (v1.264.0) — vlečenje/tipke v Manual načinu, sekvenca deljena med KDS naprave lokacije (Square Vol 16): 1 stolpec na naročilih; do DDL je vrsta enaka samodejni in premiki onemogočeni',
+  'mig.kdsExpoFire.desc': 'Expo požig zadržanih tečajev s KDS (v1.265.0) — per-lokacijska nastavitev »Dovoli požig s KDS«, dvotapna potrditev z odštevanjem (Square Vol 16): 1 stolpec na lokacijah; do DDL je požig s KDS povsod izklopljen',
 
   /* ── v1.247.0 (PRIMERJAVA §21) — shranjeni pogledi poročil (rv.*) ── */
   'rv.title': 'Shranjeni pogledi poročil',

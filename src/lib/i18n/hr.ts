@@ -2146,6 +2146,11 @@ export const hr: Record<string, string> = {
   'loc.premisesLabel': 'FURS poslovni prostor',
   'loc.premisesPlaceholder': 'npr. BLG002',
   'loc.activeHint': 'Neaktivna lokacija nestaje iz pogleda; podaci (povijest, FURS računi) ostaju.',
+  // §39 (v1.265.0, Square Vol 16 »Allow Firing from Expo KDS«): postavka
+  // po lokaciji — ekspeditor na KDS zaslonu može poslati zadržane tečajeve u pripremu.
+  'loc.kdsExpoFire': 'Dozvoli okidanje tečajeva s KDS-a',
+  'loc.kdsExpoFireHint': 'Ekspeditor na KDS zaslonu može dvotapnom potvrdom (odbrojavanje) poslati zadržane tečajeve u pripremu. Zadano isključeno — okidanje ostaje nadležnost konobara.',
+  'loc.kdsExpoFireDdl': 'Okidanje s KDS-a čeka shemsku migraciju (Enterprise → Shema migracije → kds-expo-fire).',
   'loc.save': 'Spremi lokaciju',
   'loc.confirmDeactivate': 'Deaktiviram {name}?',
   'loc.confirmActivate': 'Aktiviram {name}?',
@@ -4312,6 +4317,13 @@ export const hr: Record<string, string> = {
   'kds.moveUp': 'Pomakni listić više',
   'kds.moveDown': 'Pomakni listić niže',
   'kds.reorderPending': 'Ručni red čeka shemsku migraciju (Enterprise → Shema migracije → kds-ticket-sequence).',
+  // §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo KDS«): expo
+  // požig zadržanih tečajeva — dvotapna potvrda s odbrojavanjem na glavi tečaja.
+  'kds.expoFireArm': 'Okini tečaj {name}',
+  'kds.expoFireHint': 'Tapni: tečaj ide u pripremu nakon 3 s odbrojavanja — drugi tap otkazuje.',
+  'kds.expoFireArmed': 'Okidanje za {s} s — drugi tap otkazuje',
+  'kds.expoFireCancel': 'Otkazano — tečaj {name} ostaje zadržan',
+  'kds.expoFireDone': 'Tečaj {name} poslan u pripremu — {n} kom',
   // v1.244.0 (§18 C) — tlocrt: konobar + trajanje zauzetosti
   'tables.seatedFor': 'Zauzeto {min} min',
   'tables.waiterAria': 'Konobar: {name}',
@@ -4398,6 +4410,7 @@ export const hr: Record<string, string> = {
   'mig.checklistRuns.desc': 'Digitalni popisi (v1.246.0) — nova tablica ChecklistRun (izvedbe po stavki: tko, kada, vrijednost); bez vrućeg puta: ploča vraća prazno do DDL',
   'mig.receiptDisplayPolicy.desc': 'Prikazna politika računa (v1.263.0) — sakrivanje ničtunih stavki na ispisanom računu (Square Vol 16): 1 stupac na postavkama; do DDL je filter isključen i preklop onemogućen',
   'mig.kdsTicketSequence.desc': 'Ručni red listićâ na KDS-u (v1.264.0) — povlačenje/tipke u Manual načinu, sekvenca dijeljena među KDS uređaje lokacije (Square Vol 16): 1 stupac na narudžbama; do DDL je red jednak automatskom i premještanja onemogućena',
+  'mig.kdsExpoFire.desc': 'Expo okidanje zadržanih tečajeva s KDS-a (v1.265.0) — postavka po lokaciji »Dozvoli okidanje s KDS-a«, dvotapna potvrda s odbrojavanjem (Square Vol 16): 1 stupac na lokacijama; do DDL je okidanje s KDS-a svugdje isključeno',
 
   /* ── v1.247.0 (PRIMERJAVA §21) — spremljeni prikazi izvješća (rv.*) ── */
   'rv.title': 'Spremljeni prikazi izvješća',

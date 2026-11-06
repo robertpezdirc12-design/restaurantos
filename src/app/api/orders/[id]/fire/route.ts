@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { requirePermission, isResponse, ok, fail } from '@/lib/api'
+import { requireAnyPermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { mapOrder } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
 import { pushEvent } from '@/lib/push'
 import { fireOrderCore, FireOrderError, type FireOrderResult } from '@/lib/order-fire'
+import { expoFireEnabled } from '@/lib/kds-expo-fire'
 
 /**
  * P2 audit §57 — ekspliciten "fire" na kuhinjo (draft → fire korak).
@@ -18,14 +19,24 @@ import { fireOrderCore, FireOrderError, type FireOrderResult } from '@/lib/order
  *    Ruta ostane odgovorna za HTTP plast: avtorizacija, tenant obseg,
  *    ORDER_FIRE push (avto-fire ga namenoma izpusti — ORDER_NEW push je
  *    ravno odšel) in svež odgovor.
+ *  - PRIMERJAVA §39 (v1.265.0, Square Vol 16 »Fire held courses from an
+ *    Expo KDS«): DVOJNA AVTORIZACIJA — orders.create (natakar v POS,
+ *    nespremenjeno) ALI kitchen.update + per-lokacijska nastavitev
+ *    »Dovoli požig s KDS« VKLOPLJENA na lokaciji NAROČILA (ekspeditor
+ *    na KDS zaslonu; jurisdikcična odločitev lastnika — pri Square kuha,
+ *    pri nas natakar). Brez nastavitve: kitchen.update SAMO → 403.
+ *    KDS pot nosi reviziji source:'kds' (POS pot byte-identična).
  *  - idempotentno: že požgano naročilo → 200 alreadyFired BREZ sprememb
  *  - OSS-7 coursing: body.courseId → fire SAMO pending postavk TEGA tečaja
  *  - revizija ORDER_FIRED + dogodek OrderFired (fire-and-forget)
  *  - če ni pending postavk → 200 s firedCount 0 (idempotentna prijaznost)
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requirePermission(req, 'orders.create')
-  if (isResponse(user)) return user
+  // §39: orders.create (POS, nespremenjeno) ALI kitchen.update (KDS —
+  // nadaljnje pogojenje z nastavitvijo lokacije spodaj)
+  const ctx = await requireAnyPermission(req, ['orders.create', 'kitchen.update'])
+  if (isResponse(ctx)) return ctx
+  const user = ctx.user
   const { id } = await params
   const body = await req.json().catch(() => null)
   const fireCourseId = typeof body?.courseId === 'string' && body.courseId.trim() ? body.courseId.trim() : null
@@ -35,9 +46,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const guard = await guardResource(user, order.locationId)
   if (guard) return guard
 
+  // §39: KDS pot — kitchen.update brez orders.create potrebuje IZRECEN
+  // vklop nastavitve na lokaciji naročila (privzeto IZKLOPLJENO; pre-DDL
+  // probe vrne false → 403 z nasvetom poti do konzole)
+  let kdsSource = false
+  if (!ctx.perms.includes('orders.create')) {
+    const enabled = await expoFireEnabled(order.locationId)
+    if (!enabled) {
+      return fail('Požig s KDS je za to lokacijo izklopljen — omogočite ga v nastavitvah lokacije (Dovoli požig s KDS; potreben DDL korak kds-expo-fire, če še ni apliciran).', 403)
+    }
+    kdsSource = true
+  }
+
   let result: FireOrderResult
   try {
-    result = await fireOrderCore(id, { courseId: fireCourseId, userId: user.sub, by: user.name })
+    result = await fireOrderCore(id, {
+      courseId: fireCourseId,
+      userId: user.sub,
+      by: user.name,
+      ...(kdsSource ? { auditExtra: { source: 'kds' } } : {}),
+    })
   } catch (e) {
     // v1.241.0: napake helperja nosijo HTTP status (404/409/400) — prej je
     // OrderError iz transakcije (tečaj brez pending postavk) ušel kot 500.

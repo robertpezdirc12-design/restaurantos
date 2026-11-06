@@ -1602,12 +1602,18 @@ model Location {
   subscriptionId              String?
   loyaltyEnabled              Boolean                 @default(false)
   loyaltyPointsPerEuro        Int                     @default(1)
-  loyaltyPointsValue          Decimal                 @default(0.01) 
+  loyaltyPointsValue          Decimal                 @default(0.01)
   emailReportRecipients       String                    @default("[]")
   emailEnabled                Boolean                 @default(false)
-  dailyCloseVarianceThreshold Decimal                 @default(5.00) 
+  dailyCloseVarianceThreshold Decimal                 @default(5.00)
   tokenVersion                Int                     @default(0)
   propertyId                  String?
+  // PRIMERJAVA §39 (v1.265.0): EXPO POŽIG ZADRŽANIH TEČAJEV S KDS (Square
+  // Vol 16 »Fire held courses from an Expo KDS«) — per-lokacijska nastavitev
+  // »Dovoli požig s KDS« (privzeto IZKLOPLJENO). MAIN schema.prisma stolpca
+  // NIMA (P2022 disciplina do produkcijskega DDL klika — dostop izključno
+  // raw SQL + probe, src/lib/kds-expo-fire.ts).
+  kdsExpoFireEnabled          Boolean                 @default(false)
   Property                    Property?               @relation(fields: [propertyId], references: [id], onUpdate: SetNull)
   AccountsPayable             AccountsPayable[]
   AccountsReceivable          AccountsReceivable[]

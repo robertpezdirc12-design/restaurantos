@@ -597,14 +597,14 @@ describe('v1.250.0 Č3 — UI montaža (Analitika/Pregled + i18n)', () => {
 
 describe('v1.250.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.250.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.264.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.264.0'")
-    expect(compose).toContain('restaurantos:1.264.0')
+    expect(APP_VERSION).toBe('1.265.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.265.0'")
+    expect(compose).toContain('restaurantos:1.265.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+26 tempo.*)', () => {
-    expect(Object.keys(sl).length).toBe(4133)
-    expect(Object.keys(hr).length).toBe(4133)
+    expect(Object.keys(sl).length).toBe(4142)
+    expect(Object.keys(hr).length).toBe(4142)
     expect(Object.keys(sl).filter((k) => k.startsWith('tempo.')).length).toBe(26)
     expect(Object.keys(hr).filter((k) => k.startsWith('tempo.')).length).toBe(26)
   })
@@ -630,10 +630,10 @@ describe('v1.250.0 Ž — registri in pini', () => {
     expect(doc).toContain('tables with the most empty time')
     expect(doc).toContain('orders with the longest service gaps')
     expect(auditDoc).toContain('**POSODOBITEV (v1.250.0, PRIMERJAVA-VMESNIKOV-2026 §24 — tempo vpogledi):**')
-    expect(auditDoc).toContain('- 4133 ključev SL in 4133 HR')
+    expect(auditDoc).toContain('- 4142 ključev SL in 4142 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.250.0', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-expo-pozig-tecajev-val')
   })
 })

@@ -196,7 +196,7 @@ describe('v1.264.0 Č2 — API reorder veja + DDL + montaža', () => {
   })
 
   test('Č2e: register SCHEMA_MIGRATIONS 41 → 42 (kds-ticket-sequence) + konzola HANDLERS', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(42)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(43)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'kds-ticket-sequence')
     expect(m).toBeTruthy()
     expect(m!.endpoint).toBe('/api/admin/migrate-kds-ticket-sequence')
@@ -244,9 +244,9 @@ describe('v1.264.0 Č2 — API reorder veja + DDL + montaža', () => {
 
 describe('v1.264.0 Ž — registri', () => {
   test('Ž1: verzija 1.264.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.264.0')
-    expect(read('src/lib/version.ts')).toContain("'1.264.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.264.0')
+    expect(APP_VERSION).toBe('1.265.0')
+    expect(read('src/lib/version.ts')).toContain("'1.265.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.265.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4133/4133 (+8 ključev vala)', () => {
@@ -258,8 +258,8 @@ describe('v1.264.0 Ž — registri', () => {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4133)
-    expect(Object.keys(hr).length).toBe(4133)
+    expect(Object.keys(sl).length).toBe(4142)
+    expect(Object.keys(hr).length).toBe(4142)
   })
 
   test('Ž3: SQLite mirror nosi stolpec, MAIN shema GA NE (P2022 disciplina)', () => {
@@ -288,6 +288,6 @@ describe('v1.264.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-expo-pozig-tecajev-val')
   })
 })

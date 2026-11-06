@@ -6,6 +6,7 @@ import { describeLocationChanges, validateLocationInput } from '@/lib/multilocat
 import { writeAudit } from '@/lib/audit-chain'
 import { guardResource } from '@/lib/tenant'
 import { safeLocationDto } from '@/lib/secret-dto'
+import { writeKdsExpoFire, expoFireEnabledFor } from '@/lib/kds-expo-fire'
 
 /**
  * Več poslovalnic (triage ⑧) — urejanje lokacije (settings.manage).
@@ -16,6 +17,11 @@ import { safeLocationDto } from '@/lib/secret-dto'
  * #23 §2: settings.manage sam po sebi ne upraviči poljubnega ID-ja — ciljna
  * lokacija mora biti v uporabnikovem tenant/lokacijskem obsegu (guardResource);
  * odgovor vrača varni DTO (fursCertPassword = indikator, ne surova vrednost).
+ *
+ * PRIMERJAVA §39 (v1.265.0): kdsExpoFireEnabled (boolean) — per-lokacijska
+ * nastavitev »Dovoli požig s KDS« (raw UPDATE + probe; pre-DDL → 503 s potjo
+ * konzole). Ločena veja od validiranih naslovnih polj — vzorec politika
+ * stolpcev na PUT /api/settings.
  */
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -64,7 +70,20 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     data.isActive = body.isActive === true || body.isActive === 'true'
   }
 
-  if (Object.keys(data).length === 0) return fail('Ni podatkov za posodobitev.', 400)
+  if (Object.keys(data).length === 0 && body?.kdsExpoFireEnabled === undefined) return fail('Ni podatkov za posodobitev.', 400)
+
+  // §39: per-lokacijska nastavitev expo požiga — LOČENA veja (raw UPDATE;
+  // pre-DDL → 503 s potjo konzole). Pisanje je nad settings.manage (UI
+  // družina lokacijskega dialoga), NE central-only — ni denarna politika.
+  let kdsExpoFireChanged: boolean | undefined
+  if (body?.kdsExpoFireEnabled !== undefined) {
+    if (typeof body.kdsExpoFireEnabled !== 'boolean') {
+      return fail('kdsExpoFireEnabled mora biti true/false.', 400)
+    }
+    const err = await writeKdsExpoFire(id, body.kdsExpoFireEnabled)
+    if (err) return fail(err, 503)
+    kdsExpoFireChanged = body.kdsExpoFireEnabled
+  }
 
   // unikatnost (razen same nase)
   if (data.code && data.code !== loc.code) {
@@ -77,10 +96,22 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   try {
-    const updated = await db.location.update({ where: { id }, data })
+    // §39: samo-nastavitev (brez naslovnih polj) ne potrebuje update klica —
+    // raw UPDATE zgoraj je ŽE zapisal; Prisma update s praznim data bi bil no-op
+    let updated = loc
+    if (Object.keys(data).length > 0) {
+      updated = await db.location.update({ where: { id }, data })
+    }
     const changes = describeLocationChanges(loc as unknown as Record<string, unknown>, data)
-    await writeAudit(db, { userId: user.sub, action: 'LOCATION_UPDATE', entityType: 'Location', entityId: id, details: jstr({ name: updated.name, changes }) }).catch(() => null)
-    return ok({ location: safeLocationDto(updated) })
+    await writeAudit(db, { userId: user.sub, action: 'LOCATION_UPDATE', entityType: 'Location', entityId: id, details: jstr({ name: updated.name, changes, ...(kdsExpoFireChanged !== undefined ? { kdsExpoFireEnabled: kdsExpoFireChanged } : {}) }) }).catch(() => null)
+    // §39: nastavitev živi v raw stolpcu (main schema je nima) — odgovor
+    // ji priloži NAZIČNO vrednost iz baze, ne pa surovega modela
+    let kdsExpoFireNow = false
+    try {
+      const m = await expoFireEnabledFor([id])
+      kdsExpoFireNow = m[id] === true
+    } catch { /* pre-DDL → privzetek */ }
+    return ok({ location: { ...safeLocationDto(updated), kdsExpoFireEnabled: kdsExpoFireNow } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return fail(`Posodobitev ni uspela: ${msg}`, 500)

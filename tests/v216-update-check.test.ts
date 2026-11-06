@@ -432,8 +432,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
       expect(hr[k]).toBeTruthy()
     }
     // števca slovarjev: 3731 → 3737 (6 novih v vsakem)
-    expect(Object.keys(sl).length).toBe(4133)
-    expect(Object.keys(hr).length).toBe(4133)
+    expect(Object.keys(sl).length).toBe(4142)
+    expect(Object.keys(hr).length).toBe(4142)
   })
 
   it('.env.example dokumentira UPDATE_CHECK_URL (privzeto/izklopljeno/napačno)', () => {
@@ -481,8 +481,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 
 describe('v1.216.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.264.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.264\.0'/)
+    expect(APP_VERSION).toBe('1.265.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.265\.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
@@ -492,7 +492,7 @@ describe('v1.216.0 — Č3: registri', () => {
 
   it('AUDIT §8: števec 3738 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4133 ključev SL in 4133 HR')
+    expect(audit).toContain('4142 ključev SL in 4142 HR')
     expect(audit).toContain('**POSODOBITEV (v1.216.0):**')
     expect(audit).toContain('sys.upd*')
   })
@@ -501,6 +501,6 @@ describe('v1.216.0 — Č3: registri', () => {
     const wl = read('worklog.md')
     expect(wl.indexOf('Task ID: v1.216.0-update-check')).toBeLessThan(wl.indexOf('Task ID: v1.215.0-ci-alarm-lifecycle'))
     // v1.263.0 §37 finalna-verifikacija: okno povečano (novejši vnosi glave potiskajo R4b globlje)
-    expect(wl.slice(0, 20000)).toContain('R4b') // v1.264.0 §38 finalna-verifikacija: okno spet povečano (DVA nova vnosa glave potiskata R4b globlje)
+    expect(wl.slice(0, 26000)).toContain('R4b') // v1.265.0 §39: okno spet povečano (nov vnos glave vala potiska R4b globlje)
   })
 })

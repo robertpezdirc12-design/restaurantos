@@ -5,6 +5,7 @@ import { jstr, nid } from '@/lib/map'
 import { validateLocationInput, codeCandidateFromName } from '@/lib/multilocation'
 import { writeAudit } from '@/lib/audit-chain'
 import { safeLocationDto } from '@/lib/secret-dto'
+import { expoFireEnabledFor, kdsExpoFireAvailable } from '@/lib/kds-expo-fire'
 
 /**
  * Več poslovalnic (GitLab issue #1, triage ⑧).
@@ -12,6 +13,10 @@ import { safeLocationDto } from '@/lib/secret-dto'
  * GET   — seznam lokacij: centralne vloge (OWNER/ADMIN) vidijo vse,
  *         ostali SAMO svojo lokacijo (fail-closed, usklajeno z /api/locations/stats, issue #4 §1)
  * POST  — nova lokacija (settings.manage) — brez tega 2. poslovalnice ni mogoče ustvariti
+ *
+ * PRIMERJAVA §39 (v1.265.0): GET aditivno nosi kdsExpoFire per lokacijo
+ * (nastavitev »Dovoli požig s KDS« — raw + probe; pre-DDL prazna mapa,
+ * kdsExpoFireDdlActive false → UI preklop onemogočen z nasvetom konzole).
  */
 
 export async function GET(req: NextRequest) {
@@ -25,8 +30,19 @@ export async function GET(req: NextRequest) {
     where: { id: scope.locationId ?? undefined },
     orderBy: { name: 'asc' },
   })
+  // §39: per-lokacijska nastavitev expo požiga (raw + probe; graceful pre-DDL)
+  let kdsExpoFire: Record<string, boolean> = {}
+  let kdsExpoFireDdlActive = false
+  try {
+    kdsExpoFireDdlActive = await kdsExpoFireAvailable()
+    if (kdsExpoFireDdlActive && locations.length > 0) {
+      kdsExpoFire = await expoFireEnabledFor(locations.map((l) => l.id))
+    }
+  } catch {
+    // infra napaka na politiki ne smrdi po seznamu lokacij (graceful)
+  }
   // #23 §2: surov model Location vsebuje fursCertPassword → varni DTO
-  return ok({ locations: locations.map((l) => safeLocationDto(l)) })
+  return ok({ locations: locations.map((l) => ({ ...safeLocationDto(l), kdsExpoFireEnabled: kdsExpoFire[l.id] === true })), kdsExpoFireDdlActive })
 }
 
 export async function POST(req: NextRequest) {

@@ -149,7 +149,7 @@ import { ModuleIntro } from '@/components/module-intro'
 import { stationViewKey } from '@/lib/kds-station-routing'
 /* v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«): skupine postavk listka
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
-import { groupKdsItemsByCourse } from '@/lib/kds-courses'
+import { groupKdsItemsByCourse, KDS_EXPO_FIRE_COUNTDOWN_MS, KDS_EXPO_FIRE_TICK_MS, expoFireCountdownSeconds } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
 import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode, PanelLeft, PanelRight, GripVertical, ListOrdered } from 'lucide-react'
 
@@ -172,7 +172,7 @@ const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
 
 interface LocationStatT { id: string; name: string; tables: number; employees: number; orders: number; todayOrders: number; todayRevenue: number }
 /** triage ⑧ — polna vrstica lokacije (GET /api/locations, centralne vloge vidijo vse) */
-interface LocationRowT { id: string; name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string | null; timezone: string; currency: string; isActive: boolean }
+interface LocationRowT { id: string; name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string | null; timezone: string; currency: string; isActive: boolean; kdsExpoFireEnabled?: boolean }
 interface IntegrationT { id: string; name: string; type: string; provider: string; syncEnabled: boolean; connectionStatus: string; lastSyncAt?: string | null }
 interface WebhookT { id: string; name: string; url: string; events: string[]; isActive: boolean; lastTriggered?: string | null; failureCount: number }
 interface ErrLogT { id: string; employeeId?: string | null; action: string; entity: string; entityId?: string | null; data?: string | null; createdAt: string }
@@ -435,6 +435,11 @@ function DashboardInner() {
   const [tables, setTables] = useState<TableT[]>([])
   const [orders, setOrders] = useState<OrderT[]>([])
   const [kitchen, setKitchen] = useState<OrderT[]>([])
+  /* §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo KDS«):
+     per-lokacijska nastavitev »Dovoli požig s KDS« — mapa {locationId: bool}
+     iz GET /api/kitchen polla (pre-DDL → prazna → glave tečajev povsod
+     nedejavne, požig ostane POS pristojnost — graceful). */
+  const [kdsExpoFireLocs, setKdsExpoFireLocs] = useState<Record<string, boolean>>({})
   // OPS-11 val 1 (v1.80.0): per-station delay targets from GET /api/kitchen (PrepStation.avgPrepTime
   // by KDS bucket) — the live timer / bump dialog resolve the threshold client-side via isLatePrep.
   const [stationTargets, setStationTargets] = useState<Record<string, number | null>>({})
@@ -770,6 +775,11 @@ function DashboardInner() {
   const [locList, setLocList] = useState<LocationRowT[]>([])
   const [locDialogOpen, setLocDialogOpen] = useState(false)
   const [locEditing, setLocEditing] = useState<LocationRowT | null>(null)
+  /* §39 (v1.265.0): per-lokacijska nastavitev »Dovoli požig s KDS« — DDL
+     zastavica (GET /api/locations) + vrednost v dialogu (ločena od locForm:
+     pošlje se SAMO ob spremembi, da shranjevanje lokacije pre-DDL ostane čisto). */
+  const [kdsExpoFireDdlActive, setKdsExpoFireDdlActive] = useState(false)
+  const [locKdsExpoFire, setLocKdsExpoFire] = useState(false)
   const [locForm, setLocForm] = useState<{ name: string; code: string; address: string; city: string; postCode: string; country: string; phone: string; email: string; premisesId: string; timezone: string; currency: string; isActive: boolean }>({ name: '', code: '', address: '', city: '', postCode: '', country: 'SI', phone: '', email: '', premisesId: '', timezone: 'Europe/Ljubljana', currency: 'EUR', isActive: true })
   const [locSaving, setLocSaving] = useState(false)
   const [locNotice, setLocNotice] = useState('')
@@ -1029,7 +1039,7 @@ function DashboardInner() {
         // svojo postajo (kdsStationRef mirror za poll closure). Issue #14: custom
         // station ids are ADDITIVE (server ignores unknown values for the legacy
         // queue filter — the task board does its own client-side filtering).
-        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[]; ticketSequences?: Record<string, number>; ticketSequenceDdlActive?: boolean }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
+        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[]; ticketSequences?: Record<string, number>; ticketSequenceDdlActive?: boolean; expoFireLocations?: Record<string, boolean> }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
         // v1.164.0 (Neon egress): počasni viri samo v polnem 60-sekundnem ciklu
         // v1.164.0 (Neon egress): počasni viri samo v polnem 60-sekundnem ciklu
         dashboardPollIncludes(scope, 'menus') ? soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)) : undefined,
@@ -1054,7 +1064,7 @@ function DashboardInner() {
         full && hp('employees.manage') ? soft(api<{ devices: DeviceT[] }>('/api/devices')) : undefined,
         full && hp('reports.sales') ? soft(api<{ entries: AuditT[] }>('/api/audit')) : undefined,
         full && hp('delivery.manage') ? soft(api<{ orders: DeliveryOrderT[]; zones: DeliveryZoneT[]; platformIntegrations: PlatformIntegrationT[] }>('/api/delivery')) : undefined,
-        full && hp('settings.manage') ? soft(api<{ locations: LocationRowT[] }>('/api/locations')) : undefined,
+        full && hp('settings.manage') ? soft(api<{ locations: LocationRowT[]; kdsExpoFireDdlActive?: boolean }>('/api/locations')) : undefined,
         // OSS-10 B-del (v1.210.0): skupine opcij — vir razreda `variant` za POS
         // (requireAuth — za vse vloge, kot meni; isti poll vratarj 'menus').
         dashboardPollIncludes(scope, 'menus') ? soft(api<{ groups: PosVariantGroupView[] }>('/api/modifier-groups')) : undefined,
@@ -1082,6 +1092,9 @@ function DashboardInner() {
         // (pre-DDL → prazna → vrsta enaka default, graceful) + DDL zastavica
         setKdsSequences(k.ticketSequences ?? {})
         setKdsSeqDdlActive(k.ticketSequenceDdlActive === true)
+        // §39 (v1.265.0): per-lokacijska nastavitev expo požiga — mapa iz polla
+        // (pre-DDL → prazna → glave tečajev nedejavne, graceful)
+        setKdsExpoFireLocs(k.expoFireLocations ?? {})
       }
       if (m) { setMenu(m.items); setCategories(m.categories) }
       if (e) setEmployees(e.employees)
@@ -1123,7 +1136,12 @@ function DashboardInner() {
       if (dv) setDevices(dv.devices)
       if (au) setAuditLog(au.entries)
       if (dl) { setDeliveryOrders(dl.orders); setDeliveryZones(dl.zones); setDeliveryIntegrations(dl.platformIntegrations) }
-      if (lc) setLocList(lc.locations)
+      if (lc) {
+        setLocList(lc.locations)
+        // §39: DDL zastavica nastavitve expo požiga (migrBox vzorec — preklop
+        // v dialogu lokacije je onemogočen do migracije kds-expo-fire)
+        setKdsExpoFireDdlActive(lc.kdsExpoFireDdlActive === true)
+      }
       // OSS-10 B-del (v1.210.0): skupine opcij (fail-soft: padec → [] → UI se obnaša
       // kot prej, strežnik ostane varovalka z 400 »Skupina … je obvezna«)
       if (vg) setVariantGroups(vg.groups || [])
@@ -2513,7 +2531,14 @@ function DashboardInner() {
     setLocSaving(true); setLocNotice('')
     try {
       if (locEditing) {
-        await api(`/api/locations/${locEditing.id}`, { method: 'PATCH', body: JSON.stringify(locForm) })
+        // §39: nastavitev expo požiga se pošlje SAMO ob spremembi in SAMO
+        // ob aktivnem DDL (pre-DDL je preklop v dialogu onemogočen — tu je
+        // obramba v globini, da shranjevanje lokacije ostane čisto)
+        const expoFireChanged = kdsExpoFireDdlActive && locKdsExpoFire !== (locEditing.kdsExpoFireEnabled === true)
+        await api(`/api/locations/${locEditing.id}`, { method: 'PATCH', body: JSON.stringify({
+          ...locForm,
+          ...(expoFireChanged ? { kdsExpoFireEnabled: locKdsExpoFire } : {}),
+        }) })
       } else {
         await api('/api/locations', { method: 'POST', body: JSON.stringify(locForm) })
       }
@@ -2830,6 +2855,41 @@ function DashboardInner() {
   const [kdsTicketOrder, setKdsTicketOrder] = useState<'default' | 'manual'>('default')
   const [kdsSequences, setKdsSequences] = useState<Record<string, number>>({})
   const [kdsSeqDdlActive, setKdsSeqDdlActive] = useState(false)
+  /* §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo KDS«):
+     EXPO POŽIG ZADRŽANIH TEČAJS — dvotapna potrditev z ODŠTEVANJEM na glavah
+     pending tečajev ŽIVIH listkov (ne osnutki §32, ne zastareli #70, ne viewOnly
+     §18 B). Prvi tap glavo OBOROŽI (3 s jantrobno odštevanje), drugi tap
+     PREKLIČE, potek pa pošlje POST /api/orders/[id]/fire {courseId} (dvojna
+     avtorizacija na strežniku: orders.create ALI kitchen.update + nastavitev
+     lokacije). Arm je enočasno SAMO EN (zamenjava tečaja preklopi cilj). */
+  const [kdsFireArm, setKdsFireArm] = useState<{ orderId: string; courseId: string; label: string; until: number } | null>(null)
+  /* OBOROŽEN tečaj velja samo, dokler je ŠE pending (izpeljano ob vsakem
+     renderu — druga naprava ali natakar v POS ga lahko požge med odštevanjem;
+     takrat arm UMRÉ: interval se počisti, potek NE kliče fire → brez 409.
+     Izpeljava namesto efekta + setState — react-hooks/set-state-in-effect;
+     raw stanje zamenja naslednji tap ali potek). */
+  const kdsFireArmLive = (() => {
+    if (!kdsFireArm) return null
+    const o = kitchen.find((x) => x.id === kdsFireArm.orderId)
+    const c = o?.courses?.find((x) => x.id === kdsFireArm.courseId)
+    if (!o || !c || c.status !== 'pending') return null
+    return kdsFireArm
+  })()
+  /* risalni tick odštevanja (250 ms) — preostanek se izračuna ob vsakem renderu */
+  const [, setKdsFireTick] = useState(0)
+  useEffect(() => {
+    if (!kdsFireArmLive) return
+    const iv = setInterval(() => {
+      if (Date.now() >= kdsFireArmLive.until) {
+        const { orderId, courseId, label } = kdsFireArmLive
+        setKdsFireArm(null)
+        void kdsFireCourseRef.current(orderId, courseId, label)
+      } else {
+        setKdsFireTick((x) => (x + 1) % 1000000)
+      }
+    }, KDS_EXPO_FIRE_TICK_MS)
+    return () => clearInterval(iv)
+  }, [kdsFireArmLive])
   useEffect(() => {
     // mikrotaska — obnova iz localStorage brez sinhronnega setState v telesu efekta
     queueMicrotask(() => {
@@ -2862,6 +2922,24 @@ function DashboardInner() {
     next.splice(j, 0, next.splice(i, 1)[0])
     void kdsPersistTicketOrder(next)
   }
+  /* §39 (v1.265.0): IZVEDBA EXPO POŽIGA — potek odštevanja pošlje POST fire
+     {courseId} (isti jedrni klic kot POS pot — fireOrderCore pod kapo). Toast
+     potrdi (število kosov) ali pokaže strežniško resnico (409 že poslan /
+     403 izklopljena nastavitev / mreža); sledi svež load() — vrsta, tečaji in
+     postaje se osvežijo iz enega vira resnice (ref: countdown effect teče
+     nad stale closure — zato ref na svežo funkcijo). */
+  const kdsFireCourse = async (orderId: string, courseId: string, label: string) => {
+    try {
+      const d = await api<{ firedCount: number }>(`/api/orders/${orderId}/fire`, { method: 'POST', body: JSON.stringify({ courseId }) })
+      toast({ description: t('kds.expoFireDone', { name: label, n: d.firedCount }) })
+    } catch (e) {
+      toast({ variant: 'destructive', description: String((e as Error).message || e) })
+    } finally {
+      void load('hot')
+    }
+  }
+  const kdsFireCourseRef = useRef(kdsFireCourse)
+  useEffect(() => { kdsFireCourseRef.current = kdsFireCourse })
   /* Vlečenje POIINTER dogodki (miška + dotik — HTML5 draggable na tablicah
      NE deluje; tloris OPS-4 v1.67 vzorec: ročaj → window move/up → drop).
      State je SAMO za izris (zarisani listek + drop indikator); odločitve
@@ -5404,15 +5482,59 @@ function DashboardInner() {
                       {/* v1.232.0 (PRIMERJAVA §3, Toast/Square »course grouping«):
                           postavke istega tečaja pod ENO glavo (coursing — kuhar vidi,
                           kaj gre SKUPAJ na mizo). Brez tečajev na listku = ena skupina
-                          brez glave = ISTITA flat seznam kot prej (ničelna regresija). */}
+                          brez glave = ISTITA flat seznam kot prej (ničelna regresija).
+                          §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo
+                          KDS«): glava ZADRŽANEGA (pending) tečaja na ŽIVEM listku je
+                          TAP TARČA ekspeditorja — prvi tap oboroži (3 s odštevanje),
+                          drugi tap prekliče, potek pošlje fire. Dostop: orders.create
+                          (POS) ALI kitchen.update + per-lokacijska nastavitev (strežnik
+                          je avtoritativa — to je samo prikaz dostopa). Osnutki (§32),
+                          zastareli (#70), zaklep zaslona (§18 B) in že poslani tečaji
+                          glave ostanejo pasivne (isti izris kot prej). */}
                       {groupKdsItemsByCourse(items, o.courses ?? []).map((g) => (
                         <Fragment key={g.courseId ?? 'no-course'}>
-                          {g.courseId && (
-                            <p data-region="kds-course-group" className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-stone-600">
-                              <Flame className={`w-3.5 h-3.5 shrink-0 ${g.fired ? 'text-orange-600' : 'text-stone-400'}`} aria-hidden />
-                              {g.courseNumber}. {g.label}{g.fired ? ' 🔥' : ''}
-                            </p>
-                          )}
+                          {g.courseId && (() => {
+                            const expoCourseId = g.courseId
+                            const expoArmedHere = kdsFireArmLive?.orderId === o.id && kdsFireArmLive.courseId === expoCourseId
+                            const expoArmable = !draft && !stale && !kdsViewOnly && !g.fired
+                              && (canManage || perms.includes('orders.create') || (perms.includes('kitchen.update') && kdsExpoFireLocs[o.locationId ?? ''] === true))
+                            if (!expoArmable) {
+                              return (
+                                <p data-region="kds-course-group" className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-stone-600">
+                                  <Flame className={`w-3.5 h-3.5 shrink-0 ${g.fired ? 'text-orange-600' : 'text-stone-400'}`} aria-hidden />
+                                  {g.courseNumber}. {g.label}{g.fired ? ' 🔥' : ''}
+                                </p>
+                              )
+                            }
+                            const remainSec = expoArmedHere ? expoFireCountdownSeconds(kdsFireArmLive.until, Date.now()) : 0
+                            return (
+                              <button
+                                type="button"
+                                data-region="kds-course-group"
+                                aria-label={expoArmedHere ? t('kds.expoFireArmed', { s: remainSec }) : t('kds.expoFireArm', { name: g.label })}
+                                title={expoArmedHere ? t('kds.expoFireArmed', { s: remainSec }) : t('kds.expoFireHint')}
+                                onClick={() => {
+                                  if (expoArmedHere) {
+                                    setKdsFireArm(null)
+                                    toast({ description: t('kds.expoFireCancel', { name: g.label }) })
+                                  } else {
+                                    setKdsFireArm({ orderId: o.id, courseId: expoCourseId, label: g.label, until: Date.now() + KDS_EXPO_FIRE_COUNTDOWN_MS })
+                                  }
+                                }}
+                                className={`flex w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide min-h-8 cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+                                  expoArmedHere
+                                    ? 'border-amber-400 bg-amber-100 text-amber-900 animate-pulse'
+                                    : 'border-stone-300 bg-stone-100 text-stone-600 hover:border-amber-300 hover:bg-amber-50 active:bg-amber-100'
+                                }`}
+                              >
+                                <Flame className={`w-3.5 h-3.5 shrink-0 ${expoArmedHere ? 'text-amber-600' : 'text-stone-400'}`} aria-hidden />
+                                {g.courseNumber}. {g.label}
+                                {expoArmedHere && (
+                                  <span data-region="kds-expo-fire-countdown" className="ml-auto tabular-nums normal-case">· {remainSec} s</span>
+                                )}
+                              </button>
+                            )
+                          })()}
                           {g.items.map((it) => {
                         const mi = menu.find((x) => x.name === it.name && (x.station || 'KITCHEN') === (it.station || 'KITCHEN'))
                         const itAge = kdsItemAge(it, o)
@@ -6668,7 +6790,7 @@ function DashboardInner() {
                           </div>
                           {hasPerm('settings.manage') && (
                             <div className="flex flex-col gap-0.5">
-                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${t('common.edit')} ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId || '', timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocNotice(''); setLocDialogOpen(true) }}>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${t('common.edit')} ${l.name}`} onClick={() => { setLocEditing(l); setLocForm({ name: l.name, code: l.code, address: l.address, city: l.city, postCode: l.postCode, country: l.country || 'SI', phone: l.phone, email: l.email, premisesId: l.premisesId || '', timezone: l.timezone || 'Europe/Ljubljana', currency: l.currency || 'EUR', isActive: l.isActive }); setLocKdsExpoFire(l.kdsExpoFireEnabled === true); setLocNotice(''); setLocDialogOpen(true) }}>
                                 <Settings className="w-3.5 h-3.5" />
                               </Button>
                               <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`${l.isActive ? t('loc.deactivate') : t('loc.activate')} ${l.name}`} onClick={() => setConfirmLocToggle(l)}>
@@ -8425,6 +8547,26 @@ function DashboardInner() {
                   <p className="text-xs text-stone-400">{t('loc.activeHint')}</p>
                 </div>
                 <Switch checked={locForm.isActive} onCheckedChange={(v) => setLocForm((f) => ({ ...f, isActive: v }))} />
+              </div>
+            )}
+            {/* §39 (v1.265.0, Square Vol 16 »Allow Firing from Expo KDS«):
+                per-lokacijska nastavitev — ekspeditor na KDS zaslonu lahko z
+                dvotapno potrditvijo pošlje zadržane tečaje v pripravo. Pre-DDL:
+                preklop onemogočen z nasvetom poti konzole (migrBox v1.197
+                vzorec); poslje se SAMO ob spremembi (ostalo shranjevanje
+                lokacije ostane čisto). */}
+            {locEditing && (
+              <div className="flex items-center justify-between rounded-lg border border-stone-200 p-2.5">
+                <div className="pr-2">
+                  <Label className="text-sm">{t('loc.kdsExpoFire')}</Label>
+                  <p className={`text-xs ${kdsExpoFireDdlActive ? 'text-stone-400' : 'text-amber-700'}`}>{kdsExpoFireDdlActive ? t('loc.kdsExpoFireHint') : t('loc.kdsExpoFireDdl')}</p>
+                </div>
+                <Switch
+                  checked={locKdsExpoFire}
+                  disabled={!kdsExpoFireDdlActive}
+                  aria-label={t('loc.kdsExpoFire')}
+                  onCheckedChange={setLocKdsExpoFire}
+                />
               </div>
             )}
           </div>

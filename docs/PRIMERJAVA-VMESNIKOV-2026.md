@@ -3441,3 +3441,131 @@ stolpec, exception-policy disciplina):
   DA / main NE), Ž registri (verzija 1.264.0, drift matcher
   dvosmerno + drug stolpec fail, i18n pariteta 4133/4133 + 8
   ključev, dokument §38, AUDIT, worklog Task ID).
+
+## 39. Raziskava november 2026 (nadaljevanje 13) — EXPO POŽIG ZADRŽANIH TEČAJEV S KDS v1.265.0 (Square Vol 16 »Fire held courses from an Expo KDS«)
+
+### A) Izmere (§37 semantika + lastno stanje po kodni preverbi)
+
+- **Square dobesedno (Vol 16, 5. 11. 2026):** »Fire held courses from
+  an Expo KDS« — tap glave tečaja na Expo KDS zaslenu → odštevanje →
+  drugi tap prekliče; nastavitev per lokacija »Allow Firing from Expo
+  KDS«. Ekspeditor (vloga kuhinje) torej lahko SAM pošlje zadržane
+  tečaje v pripravo — pri nas je požig do tega vala IZKLJUČNO
+  natakarjeva pristojnost (orders.create v POS urejevalniku).
+- **Naša koda ŽE ima (izmerjeno):** skupno jedro `fireOrderCore`
+  (src/lib/order-fire.ts — ista transakcija, varovala, idempotenca;
+  courseId veja: fire SAMO pending postavk TEGA tečaja, tečaj pending →
+  fired, revizija ORDER_FIRED) + `POST /api/orders/[id]/fire
+  {courseId}` (OSS-7 coursing) + KDS glave tečajev
+  (`groupKdsItemsByCourse`, regija kds-course-group od §3 — pasiven
+  napis z 🔥 ob poslanem tečaju). Postajne naloge (StationTask) se
+  ustvarijo OB požigu — požig s KDS torej takoj naseli postajne deske.
+- **Vrzel (izmerjena):** (1) požig teče SAMO iz POS urejevalnika
+  (fireCourse v NaročiloSheetu — gumb §16 F); KDS glava je pasivna;
+  (2) pravice: fire zahteva orders.create (natakar), KDS zaslon nosi
+  kitchen.update (kuhinja) — požig s KDS je ODLOČITEV o pristojnosti,
+  ki si jo lasti lastnik lokacije (pri Square ekspeditor kuha, pri nas
+  natakar — nastavitev premosti razliko); (3) countdown potrditve ne
+  obstaja (požig je enkraten gumb brez obramba pred pomoto); (4)
+  per-lokacijska nastavitev ne obstaja (RestaurantSettings je
+  singleton — lokacije imajo svojo tabelo Location).
+
+### B) Odločitev (Ž10)
+
+1. **Nosilec:** `Location."kdsExpoFireEnabled" BOOLEAN NOT NULL
+   DEFAULT FALSE` — PER LOKACIJA (Square dobesedno; prvi
+   Location-stolpec v pending DDL družini). Privzeto IZKLOPLJENO:
+   požig s KDS nemogoč — sedanje stanje (natakar v POS) byte-identično.
+2. **Pravice (dvojna avtorizacija):** fire ruta dovoli orders.create
+   (NESPREMENJENA POS pot — brez nastavitke) ALI kitchen.update +
+   nastavitev VKLOPLJENA na lokaciji NAROČILA (403 s potjo konzole
+   sicer; pre-DDL probe vrne false → 403, graceful). KDS pot nosi
+   reviziji `source: 'kds'` (aditivno v details; POS pot brez polja —
+   byte-identična zgodovina). Požig s KDS je ODGOVOR na povpraševanje
+   kuhanja, ne prevzem natakarjeve naročnine (sklep §16 H).
+3. **Countdown (dvotapna potrditev):** prvi tap na glavo PENDING
+   tečaja → OBOROŽITEV (jantrobna glava, odštevanje 3 s —
+   KDS_EXPO_FIRE_COUNTDOWN_MS), drugi tap → PREKLIK (toast), potek →
+   POST fire {courseId} (isti jedrni klic). Arm je enočasno SAMO EN;
+   avto-preklic, če tečaj med odštevanjem preide v fired (druga
+   naprava/natakar — brez 409 ob poteku).
+4. **Površina:** ŽIVI listki KDS vrste (ne osnutki §32 — ti so
+   natakarjev prihodnji tok; ne zastareli #70 — revizijska veja; ne
+   viewOnly §18 B — zaklep blokira dejanja dosledno z bumpi; ne
+   KdsStationBoard — po-stajni FIFO ostaja njegova disciplina, ISKRENA
+   MEJA). Naša KDS vrsta (ALL/KITCHEN/BAR pogledi) JE ekspeditorska
+   površina — Square ima dedikiran Expo zaslon, mi jo pokrijemo z
+   vrsto listkov, kjer glave tečajev že živijo (§3).
+5. **GET /api/kitchen:** aditivno `expoFireLocations:
+   Record<string, boolean>` — mapa za lokacije V VRSTI (klient prikaže
+   tap tarče samo za vklopljene; pre-DDL → {} → nikjer, graceful).
+   SSE OrderFired se objavi iz fireOrderCore (obstoječe — druge KDS
+   naprave vidno osvežijo vrsto brez novega dogodka).
+6. **Nastavitev:** PATCH /api/locations/[id] {kdsExpoFireEnabled}
+   (settings.manage + guardResource; raw UPDATE, pre-DDL → 503 s potjo
+   konzole; revizija LOCATION_UPDATE nosi kdsExpoFireEnabled); GET
+   /api/locations nosi kdsExpoFireEnabled per vrstico +
+   kdsExpoFireDdlActive; UI preklop v dialogu lokacije (migrBox vzorec
+   v1.197 — disabled + jantrobni nasvet do DDL; pošlje se SAMO ob
+   spremembi, da ostalo shranjevanje lokacije pre-DDL ostane čisto).
+
+### C) Implementacija
+
+- **Čisti sloj** (src/lib/kds-courses.ts aditivno — 0 uvozov, client
+  safe): `KDS_EXPO_FIRE_COUNTDOWN_MS = 3000` + `KDS_EXPO_FIRE_TICK_MS
+  = 250` + `expoFireCountdownSeconds(until, now)` (celoštevilski
+  preostanek 3→1; ne-številčen/potrjen rok defenzivno 0 — §36).
+- **DB sloj** (src/lib/kds-expo-fire.ts, NOVA — vzorec
+  receipt-display-policy/kds-ticket-sequence): probe
+  `kdsExpoFireAvailable()` + `resetKdsExpoFireProbe()` (60 s TTL,
+  isMissingSchemaError); `expoFireEnabledFor(locationIds)` (raw SELECT
+  IN, samo boolean vrstice, pre-DDL → {} graceful);
+  `writeKdsExpoFire(locationId, enabled)` (raw UPDATE vezani parametri,
+  pre-DDL → sporočilo s potjo konzole).
+- **DDL**: mirror schema.sqlite.prisma + `kdsExpoFireEnabled Boolean
+  @default(false)` (dev db:push); main schema NE (P2022 disciplina);
+  /api/admin/migrate-kds-expo-fire (idempotentno, IF NOT EXISTS, obeh
+  dialektov BOOLEAN NOT NULL DEFAULT FALSE, requireCentralRole, audit
+  SCHEMA_MIGRATION_KDS_EXPO_FIRE); register SCHEMA_MIGRATIONS 42 → 43
+  (id kds-expo-fire, probe columnExists('Location',
+  'kdsExpoFireEnabled')); konzola HANDLERS +1; KNOWN_DRIFTS 34 → 35
+  (isKdsExpoFireStatement — dvosmerno strogo SAMO
+  Location.kdsExpoFireEnabled).
+- **API**: POST /api/orders/[id]/fire — requireAnyPermission
+  ['orders.create', 'kitchen.update'] (P0-B OR logika); KDS veja
+  (klicatelj BREZ orders.create): expoFireEnabled(order.locationId)
+  → 403 z nasvetom ali nadaljevanje; auditExtra {source: 'kds'} SAMO
+  na KDS poti. GET /api/kitchen — aditivni `expoFireLocations` (iz
+  distinct locationIds queue, isMissingSchemaError catch → {}).
+  PATCH /api/locations/[id] — veja kdsExpoFireEnabled (boolean
+  validacija, raw write, 503 pre-DDL, revizija + sveža vrednost v
+  odgovoru); GET /api/locations — kdsExpoFireEnabled per vrstico +
+  kdsExpoFireDdlActive (graceful catch).
+- **UI** (dashboard): KDS glava tečaja postane GUMB, ko oborožljiva
+  (!draft && !stale && !viewOnly && !fired && (canManage ||
+  orders.create || (kitchen.update && lokacija vklopljena))): idle =
+  isti pill + hover amber + title kds.expoFireHint; armed = amber
+  animate-pulse + tabular-nums odštevanje (kds-expo-fire-countdown
+  regija) + aria kds.expoFireArmed; drugi tap = preklic (toast
+  kds.expoFireCancel); potek = kdsFireCourse (POST + toast
+  kds.expoFireDone + load('hot'); napaka → destruktivni toast +
+  resnica s strežnika). Countdown effect (interval 250 ms, ref na
+  svežo funkcijo — pattern gateRef) + avto-preklic effect (tečaj ni
+  več pending → arm ugasne). Dialog lokacije: preklop ob isActive
+  (disabled + jantrobni nasvet do DDL, migrBox v1.197), vrednost iz
+  locEditing.kdsExpoFireEnabled, pošilja se SAMO ob spremembi in
+  aktivnem DDL.
+- **i18n:** kds.expoFireArm/Hint/Armed/Cancel/Done,
+  loc.kdsExpoFire/Hint/Ddl + mig.kdsExpoFire.desc (SL + HR,
+  4133 → 4142, popolna pariteta).
+- **Testi:** tests/v265-expo-pozig-tecajev.test.ts — Č1 čisti sloj
+  (odštevanje 3→2→1, potek 0, NaN/Infinity defenzivno, negativni
+  remain, konstanti), Č2 API + DDL + montaža (fire ruta dvojna
+  avtorizacija + source:'kds' + 403 sporočilo; kitchen GET polje +
+  graceful; locations PATCH veja + 503 pre-DDL + revizija; DDL stavek
+  + centralna vloga + audit + alreadyApplied; register 43 + konzola
+  handler; UI montaža — gumb, aria, countdown regija, viewOnly/draft/
+  stale izključitve, dialog preklop; KdsStationBoard brez požiga),
+  Ž registri (verzija 1.265.0, mirror DA / main NE, drift matcher
+  dvosmerno + kamuflaža fail, i18n pariteta 4142/4142 + 9 ključev,
+  dokument §39 + AUDIT POSODOBITEV, worklog Task ID).

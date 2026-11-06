@@ -16,6 +16,7 @@ import { taskTransitionFrom, stationViewKey } from '@/lib/kds-station-routing'
 import { rollupItemStatusFromTasks, completeTasksForItem, tasksForItem } from '@/lib/station-task-service'
 import { parseReorderPayload } from '@/lib/kds-ticket-order'
 import { kdsTicketSequenceAvailable, readTicketSequences, writeTicketSequences, type TicketSequenceWrite } from '@/lib/kds-ticket-sequence'
+import { expoFireEnabledFor } from '@/lib/kds-expo-fire'
 
 const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
@@ -246,7 +247,20 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     if (!isMissingSchemaError(e)) throw e
   }
-  return ok({ queue, stationTargets, stations, tasks, stationStats, ticketSequences, ticketSequenceDdlActive })
+  // ── §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo KDS«):
+  //    EXPO POŽIG TEČAJS — per-lokacijska nastavitev »Dovoli požig s KDS«
+  //    (Location.kdsExpoFireEnabled, raw + probe). Additivno polje odgovora:
+  //    mapa {locationId: boolean} ZA LOKACIJE V VRSTI — klient prikaže tap
+  //    tarče (glave zadržanih tečajev) samo za vklopljene lokacije. Pre-DDL
+  //    → prazna mapa (graceful — nikjer, požig ostane POS pristojnost). ──
+  let expoFireLocations: Record<string, boolean> = {}
+  try {
+    const locIds = [...new Set(queue.map((o) => o.locationId).filter((x): x is string => !!x))]
+    expoFireLocations = await expoFireEnabledFor(locIds)
+  } catch (e) {
+    if (!isMissingSchemaError(e)) throw e
+  }
+  return ok({ queue, stationTargets, stations, tasks, stationStats, ticketSequences, ticketSequenceDdlActive, expoFireLocations })
 }
 
 /** Skupni order-rollup po spremembi statusa postavke (legacy + postajni tok). */

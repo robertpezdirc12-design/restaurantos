@@ -629,6 +629,21 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-kds-ticket-sequence',
     probe: () => columnExists('Order', 'ticketSequence'),
   },
+  {
+    // PRIMERJAVA §39 (v1.265.0): EXPO POŽIG ZADRŽANIH TEČAJEV S KDS
+    // (Square Vol 16 »Fire held courses from an Expo KDS«) — 1 stolpec
+    // na Location (kdsExpoFireEnabled BOOLEAN NOT NULL DEFAULT FALSE;
+    // per-lokacijska nastavitev »Dovoli požig s KDS« — dvotapna
+    // potrditev z odštevanjem na glavah zadržanih tečajev). Privzeto
+    // IZKLOPLJENO. Do DDL: GET /api/kitchen vrača prazno mapo
+    // expoFireLocations (graceful — KDS nikjer ne pokaže tap tarč),
+    // PATCH /api/locations/[id] → 503. Raw SQL + probe (vzorec
+    // receipt-display-policy; prvi Location-stolpec v pending družini).
+    id: 'kds-expo-fire',
+    descKey: 'mig.kdsExpoFire.desc',
+    endpoint: '/api/admin/migrate-kds-expo-fire',
+    probe: () => columnExists('Location', 'kdsExpoFireEnabled'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

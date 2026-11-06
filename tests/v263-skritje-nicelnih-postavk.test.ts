@@ -209,9 +209,9 @@ describe('v1.263.0 Č2 — izris HTML + montaža virov', () => {
 
 describe('v1.263.0 Ž — registri', () => {
   test('Ž1: verzija 1.263.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.264.0')
-    expect(read('src/lib/version.ts')).toContain("'1.264.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.264.0')
+    expect(APP_VERSION).toBe('1.265.0')
+    expect(read('src/lib/version.ts')).toContain("'1.265.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.265.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4133/4133 (+4 ključi vala)', () => {
@@ -219,8 +219,8 @@ describe('v1.263.0 Ž — registri', () => {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4133)
-    expect(Object.keys(hr).length).toBe(4133)
+    expect(Object.keys(sl).length).toBe(4142)
+    expect(Object.keys(hr).length).toBe(4142)
   })
 
   test('Ž3: DDL ruta — natančen stavek, idempotenca, centralna vloga, audit', () => {
@@ -232,7 +232,7 @@ describe('v1.263.0 Ž — registri', () => {
   })
 
   test('Ž4: register SCHEMA_MIGRATIONS 40 → 41 (receipt-display-policy)', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(42)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(43)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'receipt-display-policy')
     expect(m).toBeTruthy()
     expect(m!.endpoint).toBe('/api/admin/migrate-receipt-display-policy')
@@ -274,11 +274,11 @@ describe('v1.263.0 Ž — registri', () => {
     expect(doc).toContain('SKRIVANJE NIČELNIH POSTAVK NA RAČUNU v1.263.0')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('POSODOBITEV (v1.263.0, PRIMERJAVA-VMESNIKOV-2026 §37)')
-    expect(auditDoc).toContain('- 4133 ključev SL in 4133 HR')
+    expect(auditDoc).toContain('- 4142 ključev SL in 4142 HR')
   })
 
   test('Ž10: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-expo-pozig-tecajev-val')
   })
 })

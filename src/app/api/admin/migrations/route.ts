@@ -45,6 +45,7 @@ import { POST as reservationComboPOST } from '../migrate-reservation-combo/route
 import { POST as checklistRunsPOST } from '../migrate-checklist-runs/route'
 import { POST as receiptDisplayPolicyPOST } from '../migrate-receipt-display-policy/route'
 import { POST as kdsTicketSequencePOST } from '../migrate-kds-ticket-sequence/route'
+import { POST as kdsExpoFirePOST } from '../migrate-kds-expo-fire/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -103,6 +104,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'checklist-runs': checklistRunsPOST,
   'receipt-display-policy': receiptDisplayPolicyPOST,
   'kds-ticket-sequence': kdsTicketSequencePOST,
+  'kds-expo-fire': kdsExpoFirePOST,
 }
 
 interface ConsoleResult {

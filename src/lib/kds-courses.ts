@@ -37,6 +37,34 @@ export interface KdsCourseGroup<T> {
   items: T[]
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PRIMERJAVA §39 (v1.265.0, Square Vol 16 »Fire held courses from an Expo
+ * KDS«) — EXPO POŽIG ZADRŽANIH TEČAJEV S KDS: dvotapna potrditev z
+ * ODŠTEVANJEM na glavah zadržanih (pending) tečajev. Prvi tap glavo
+ * OBOROŽI (jantrobna, odštevanje), drugi tap PREKLIČE, potek pa pošlje
+ * POST /api/orders/[id]/fire {courseId}. Čisti client-safe deli živijo
+ * TUKAJ (0 uvozov — dashboard jih deli s testi).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** Dolžina odštevanja potrditve (ms) — dovolj dolgo za drugi tap, dovolj
+ *  kratko, da ekspeditor ne čaka. Square semantike ne narekuje števila. */
+export const KDS_EXPO_FIRE_COUNTDOWN_MS = 3_000
+
+/** Interval osveževanja prikaza odštevanja (ms) — 4× na sekundo. */
+export const KDS_EXPO_FIRE_TICK_MS = 250
+
+/**
+ * Preostanek odštevanja v CELIH sekundah (3 → 2 → 1). Defenzivno (§36
+ * disciplina): ne-številčen/potrjen rok → 0 (nulo nikoli ne prikažemo
+ * kot »še čas« — potek poti ura ticks v dashboard učinku).
+ */
+export function expoFireCountdownSeconds(until: number, now: number): number {
+  if (!Number.isFinite(until) || !Number.isFinite(now)) return 0
+  const remain = until - now
+  if (remain <= 0) return 0
+  return Math.ceil(remain / 1000)
+}
+
 /**
  * Postavke listka združi v skupine po tečaju. Če NOBENA postavka nima tečaja,
  * vrne NATANKO eno skupino (courseId = null) z vsemi postavkami v obstoječem

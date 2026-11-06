@@ -417,6 +417,27 @@ export function isKdsTicketSequenceStatement(stmt: string): boolean {
   })
 }
 
+/**
+ * PRIMERJAVA §39 (v1.265.0) — EXPO POŽIG ZADRŽANIH TEČAJEV S KDS
+ * (kds-expo-fire): 1 stolpec na Location (kdsExpoFireEnabled BOOLEAN
+ * NOT NULL DEFAULT FALSE — per-lokacijska nastavitev »Dovoli požig s
+ * KDS«, Square Vol 16 »Fire held courses from an Expo KDS«). Dvosmerna
+ * faza kot receipt-display-policy: pred DDL ADD COLUMN, po DDL in pred
+ * uskladitvijo main sheme DROP COLUMN — oba strogo SAMO tega stolpca
+ * na tabeli Location (prvi Location-stolpec v pending družini; stroga
+ * klavzularna preverba prepreči kamuflažo drugih Location sprememb).
+ */
+export function isKdsExpoFireStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"Location"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && mm[2] === 'kdsExpoFireEnabled'
+  })
+}
+
 /** Issue #20 (v1.109.0): HACCP operativni tok — HaccpEntry/HaccpPlan novi
  * stolpci + NOVA tabela HaccpAction (strogo po tabelah, vzorec cash-movements). */
 const HACCP_OPS_ENTRY_COLS = new Set([
@@ -1144,6 +1165,22 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'reorder → 503. Nobena tipizirana poizvedba stolpca ne uporablja (raw SQL + ' +
       'probe, src/lib/kds-ticket-sequence.ts).',
     matches: isKdsTicketSequenceStatement,
+  },
+  {
+    id: 'kds-expo-fire',
+    reason:
+      'Expo požig zadržanih tečajev s KDS (PRIMERJAVA §39, v1.265.0, Square Vol 16 ' +
+      '»Fire held courses from an Expo KDS«) — 1 stolpec na Location ' +
+      '(kdsExpoFireEnabled BOOLEAN NOT NULL DEFAULT FALSE; per-lokacijska nastavitev ' +
+      '»Dovoli požig s KDS« — dvotapna potrditev z odštevanjem na glavah zadržanih ' +
+      'tečajev): produkcija čaka DDL korak — admin ruta ' +
+      '/api/admin/migrate-kds-expo-fire (konzola Enterprise → Shema migracije → ' +
+      'en klik). Dvosmerna faza (kot receipt-display-policy): po DDL in pred ' +
+      'uskladitvijo main sheme diff generira DROP COLUMN. Do DDL GET /api/kitchen ' +
+      'vrača prazno mapo expoFireLocations (graceful — KDS nikjer ne pokaže tap ' +
+      'tarč), PATCH /api/locations/[id] s kdsExpoFireEnabled → 503. Nobena tipizirana ' +
+      'poizvedba stolpca ne uporablja (raw SQL + probe, src/lib/kds-expo-fire.ts).',
+    matches: isKdsExpoFireStatement,
   },
 ]
 

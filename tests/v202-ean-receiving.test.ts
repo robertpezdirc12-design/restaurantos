@@ -294,9 +294,9 @@ describe('Č2 backend EAN (/api/inventory)', () => {
 
 describe('Č3 DDL ruta migrate-inventory-ean + registri', () => {
   it('SCHEMA_MIGRATIONS: 36 vnosov, documents na koncu; inventory-ean ostane (endpoint + probe)', async () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(42)
+    expect(SCHEMA_MIGRATIONS.length).toBe(43)
     const last = SCHEMA_MIGRATIONS[SCHEMA_MIGRATIONS.length - 1]
-    expect(last.id).toBe('kds-ticket-sequence') // v1.264.0 §38: +kds-ticket-sequence (ročno zaporedje listkov) — receipt-display-policy predzadnji // v1.245.0: +reservation-combo // v1.239.1: +receipt-snapshot
+    expect(last.id).toBe('kds-expo-fire') // v1.265.0 §39: +kds-expo-fire (expo požig tečajev) — kds-ticket-sequence predzadnji // v1.245.0: +reservation-combo // v1.239.1: +receipt-snapshot
     const ean = SCHEMA_MIGRATIONS.find((x) => x.id === 'inventory-ean')
     expect(ean).toBeDefined()
     expect(ean?.endpoint).toBe('/api/admin/migrate-inventory-ean')
@@ -331,8 +331,8 @@ describe('Č3 DDL ruta migrate-inventory-ean + registri', () => {
   })
 
   it('drift: classifyDrift uvrsti ADD COLUMN "ean" med KNOWN (inventory-ean); register 28', () => {
-    expect(KNOWN_DRIFTS.length).toBe(34) // v1.264.0 §38: +kds-ticket-sequence
-    expect(KNOWN_DRIFTS[KNOWN_DRIFTS.length - 1].id).toBe('kds-ticket-sequence') // v1.264.0 §38: +kds-ticket-sequence (ročno zaporedje listkov) — receipt-display-policy predzadnji // v1.245.0: +reservation-combo // v1.239.1: +receipt-snapshot
+    expect(KNOWN_DRIFTS.length).toBe(35) // v1.265.0 §39: +kds-expo-fire
+    expect(KNOWN_DRIFTS[KNOWN_DRIFTS.length - 1].id).toBe('kds-expo-fire') // v1.265.0 §39: +kds-expo-fire (expo požig tečajev) — kds-ticket-sequence predzadnji // v1.245.0: +reservation-combo // v1.239.1: +receipt-snapshot
     const c = classifyDrift(`ALTER TABLE "InventoryItem" ADD COLUMN "ean" TEXT NOT NULL DEFAULT '';`)
     expect(c.known.map((k) => k.id)).toEqual(['inventory-ean'])
     expect(c.unexpected.length).toBe(0)
@@ -399,6 +399,6 @@ describe('Č4 registri, UI statika, i18n, verzija', () => {
   })
 
   it('verzija: pin 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.264.0')
+    expect(APP_VERSION).toBe('1.265.0')
   })
 })
