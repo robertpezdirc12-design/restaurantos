@@ -1,3 +1,19 @@
+Task ID: v1.265.0-finalna-verifikacija (nadaljevanje v1.265.0-expo-pozig-tecajev-val)
+Agent: glavni agent (Z.ai Code)
+Task: Zaključna verifikacija EXPO POŽIGA ZADRŽANIH TEČAJEV S KDS v1.265.0 (§39) — CI, produkcija, sync-check.
+
+Work Log:
+- CI @ 44097be vse zeleno NA PRVIH VRATIH (0 retryjev, 0 vročih poti): GitHub Actions build + tests (celoten suite) + typecheck-prod + neon-smoke + Dvosmerna sinhronizacija GitLab + pages build + deploy + report-build-status VSI SUCCESS. Buildkite (zapuščena integracija, lastnikova odprta točka) je pripisal oba znana LAŽNA rdeča (neon-smoke + sync — isti vzorec kot na vseh prejšnjih pushih; pravi Actions runi istega imena so zeleni).
+- PRODUKCIJA: 1.265.0 @ 44097be (db connected, schema ok). PRE-DDL STANJE ISKRENO: stolpec Location.kdsExpoFireEnabled na produkciji ŠE NI apliciran (lastnikov DDL klik — konzola Enterprise → Shema migracije → kds-expo-fire); do takrat GET /api/kitchen vrača expoFireLocations {} (KDS nikjer ne pokaže tap tarč), PATCH /api/locations/[id] s kdsExpoFireEnabled → 503 s potjo konzole, fire s KDS → 403 z nasvetom — načrtovana graceful faza vzorca exception-policy, NE napaka (isti profil kot kds-ticket-sequence v1.264.0).
+- sync-check SYNCED (44097be na vseh treh pikah: lokalno = GitHub = produkcija).
+- VRATA (ponovitev po valvnem vnosu): tsc 0 · lint 0 (heap 2560 MB) · suita 5314 pass / 5347 (33 padcev + 4 errors IDENTIČNO okoljskemu profilu osnove — F1-F5/F9/v1.165/v1.180, 0 ne-okoljskih) · i18n pariteta 4142/4142.
+- DEV E2E (demo baza, 8 dokazov — zapis v valvnem vnosu): (a) izklopljena nastavitev → vloga kitchen vidi pasivne glave; (b) PATCH vklop → 200 + kdsExpoFireDdlActive; (c) zadržani tečaj postane gumb z ario; (d) prvi tap → amber + odštevanje; (e) potek → strežniški fired + PREPARING + StationTask; (f) KDS osvežen 🔥; (g) revizija source:'kds' (KDS pot) vs brez polja (POS pot); (h) drugi tap → preklic (tečaj ostane pending); bonus: osnutki §32 in požgani tečaji nikoli tarče.
+- NASTALI KANDIDATI NASLEDNJIH VALOV (ostanek §37): tips by ROLE points (jedro ŽE pokrito — method=points per oseba; delta = predpolnitev po vlogi, NIZKA prioriteta) — zadnji A-kandidat Vol 16; sveža raziskava ob novih Square/Lightspeed/Toast objavah (okno Vol 17).
+
+Stage Summary:
+- v1.265.0 ZAKLJUČEN po vzorcu valov: pristojnostna odločitev (požig tečajev s KDS) kot per-lokacijska nastavitev nad nespremenjenim POS tokom; dvotapna potrditev z odštevanjem (3 s) na glavah zadržanih tečajev ŽIVIH listkov; dvojna avtorizacija (orders.create | kitchen.update + nastavitev); revizija razločuje izvor (source:'kds'); 1 aditivna DDL (Location-stolpec, konzola, privzeto IZKLOPLJENO); produkcija čaka lastnikov DDL klik (iskrena faza, dokumentirana).
+- Square Vol 16 A-kandidati: 3 od 3 odkljukani (§37 hide $0, §38 draggable KDS, §39 expo fire); preostali kandidati Vol 16 so IZHOD (ZDA/mreža/maloprodaja) ali NIZKO (tips by role).
+- AKCIJA: naslednji val po »nadaljuj« — sveža raziskava ob novih objavah (okno Vol 17 ali Lightspeed/Toast december 2026), ali NIZKO prioriteten tips by ROLE points, ali B-kandidati TRZNA-VRZELI-2027 (P2-11 transport, FINA 2.0 cert — lastnikove odločitve čakajo).
 Task ID: v1.265.0-expo-pozig-tecajev-val (nadaljevanje v1.264.0-finalna-verifikacija)
 Agent: glavni agent (Z.ai Code)
 Task: Drugi odkljukani kandidat §37 (semantika izmerjena 5. 11. 2026 zvečer) — VAL Ž10: EXPO POŽIG ZADRŽANIH TEČAJEV S KDS (Square Vol 16 »Fire held courses from an Expo KDS«; SREDNJE — vrzel v pristojnostih + countdown + per-lokacija nastavitev). Vsa izmerjena semantika §37 pretvorjena v implementacijo PRIMERJAVA §39.

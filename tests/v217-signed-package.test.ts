@@ -600,7 +600,7 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = readFileSync(join(ROOT, 'worklog.md'), 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-expo-pozig-tecajev-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-finalna-verifikacija')
   })
 
   test('meje paketa so izmerjene in zapisane (623 datotek / ~10,2 MB osnova @ v1.217.0)', () => {

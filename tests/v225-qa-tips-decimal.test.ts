@@ -199,7 +199,7 @@ describe('v225 Č · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-expo-pozig-tecajev-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.265.0-finalna-verifikacija')
     expect(wl.indexOf('Task ID: v1.227.0')).toBeLessThan(wl.indexOf('Task ID: v1.224.0'))
   })
 })
