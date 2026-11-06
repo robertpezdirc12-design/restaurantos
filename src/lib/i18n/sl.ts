@@ -1157,6 +1157,16 @@ export const sl: Record<string, string> = {
   'jobs.none': 'Ni definiranih delovnih mest.',
   'jobs.activeF': 'Aktivno',
   'jobs.inactiveF': 'Neaktivno',
+  /* §40 (v1.266.0) — napitninske točke po vlogi (Square Vol 16
+     »Split pooled tips by points assigned to each role«): privzete točke
+     delovnega mesta za delitev napitnin, DDL-gated urejanje v JobsCard */
+  'jobs.tipPoints': 'Napitninske točke',
+  'jobs.tipPointsShort': 'Točke',
+  'jobs.tipPointsHint': 'Privzete točke vloge za delitev napitnin (0 = brez predpolnitve). Vnos v zavihku Napitnine se predpolni iz te vrednosti — prilagodljiv per dan.',
+  'jobs.tipPointsSave': 'Shrani',
+  'jobs.tipPointsSaved': 'Točke za {job}: {n}',
+  'jobs.tipPointsInvalid': 'Točke morajo biti celo število 0..999.',
+  'jobs.tipPointsAria': 'Napitninske točke za {job}',
   // Nastavitve (SettingsEditor)
   'set.notCreated': 'Nastavitve še niso ustvarjene — shrani obrazec za prvo inicializacijo.',
   'set.company': 'Nastavitve podjetja',
@@ -1333,7 +1343,7 @@ export const sl: Record<string, string> = {
   'tips.basis': 'Osnova delitve',
   'tips.basisHours': 'Po urah (izmene)',
   'tips.basisEqual': 'Enakovredno',
-  'tips.basisPoints': 'Po točkah (kmalu)',
+  'tips.basisPoints': 'Po točkah (po vlogi)',
   'tips.collected': 'Zbrane napitnine',
   'tips.cash': 'Gotovina',
   'tips.cardOther': 'Kartica/druge',
@@ -1362,6 +1372,16 @@ export const sl: Record<string, string> = {
   'tips.history': 'Zgodovina bazenov',
   'tips.total': 'Skupaj',
   'tips.noHistory': 'Še ni zaključenih dni.',
+  /* §40 (v1.266.0) — napitninske točke po vlogi (Square Vol 16
+     »Split pooled tips by points assigned to each role«): vnos točk
+     per oseba v predogledu delitve, predpolnjen po vlogi dneva */
+  'tips.roleCol': 'Vloga',
+  'tips.pointsCol': 'Točke',
+  'tips.pointsColAria': 'Točke za {name}',
+  'tips.pointsRoleHint': 'Točke so predpolnjene po vlogi (delovnem mestu) dneva — prilagodi po potrebi; vsota delitve je točna do centa.',
+  'tips.pointsNoRole': 'Vloga ni dodeljena — točke vnesi ročno.',
+  'tips.pointsZero': 'Vseh 0 točk — delitev bi bila tiho enakovredna. Vnesi točke vsaj enemu zaposlenemu ali izberi drugo osnovo.',
+  'tips.pointsSum': 'Skupaj točk: {n}',
   // Nabava (NabavaTab)
   'proc.desc': 'Nabavni tok: dobavitelj → naročilo (osnutek → oddaja → odobritev) → prevzem (delna ali popolna dobava) → primerjava naročeno/prejeto in zgodovina nabavnih cen. Prevzem samodejno posodobi zalogo (uteženo povprečje) in zapiše serijo (batch) ter revizijski sled.',
   'proc.stDraft': 'Osnutek',
@@ -4416,6 +4436,7 @@ export const sl: Record<string, string> = {
   'mig.receiptDisplayPolicy.desc': 'Prikazovna politika računa (v1.263.0) — skrivanje ničelnih postavk na natisnjenem računu (Square Vol 16): 1 stolpec na nastavitvah; do DDL je filter izklopljen in preklop onemogočen',
   'mig.kdsTicketSequence.desc': 'Ročno zaporedje listkov na KDS (v1.264.0) — vlečenje/tipke v Manual načinu, sekvenca deljena med KDS naprave lokacije (Square Vol 16): 1 stolpec na naročilih; do DDL je vrsta enaka samodejni in premiki onemogočeni',
   'mig.kdsExpoFire.desc': 'Expo požig zadržanih tečajev s KDS (v1.265.0) — per-lokacijska nastavitev »Dovoli požig s KDS«, dvotapna potrditev z odštevanjem (Square Vol 16): 1 stolpec na lokacijah; do DDL je požig s KDS povsod izklopljen',
+  'mig.jobTipPoints.desc': 'Napitninske točke po vlogi (v1.266.0) — privzete točke delovnega mesta za delitev napitnin, predpolnitev vnosa per oseba (Square Vol 16): 1 stolpec na delovnih mestih; do DDL so vnosna polja točk skrita',
 
   /* ── v1.247.0 (PRIMERJAVA §21) — shranjeni pogledi poročil (rv.*) ── */
   'rv.title': 'Shranjeni pogledi poročil',

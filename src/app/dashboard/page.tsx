@@ -467,6 +467,9 @@ function DashboardInner() {
   const [suppliers, setSuppliers] = useState<SupplierT[]>([])
   const [recipes, setRecipes] = useState<RecipeT[]>([])
   const [jobs, setJobs] = useState<JobT[]>([])
+  /* §40 (v1.266.0): ali je DDL Job.tipPoints aplikiran (JobsCard pokaže urejanje
+     napitninskih točk vloge SAMO po DDL koraku — graceful pre-DDL) */
+  const [jobsTipDdl, setJobsTipDdl] = useState(false)
   const [feedback, setFeedback] = useState<FeedbackT[]>([])
   const [locStats, setLocStats] = useState<LocationStatT[]>([])
   const [integrations, setIntegrations] = useState<IntegrationT[]>([])
@@ -1054,7 +1057,7 @@ function DashboardInner() {
         full && hp('settings.manage') ? soft(api<{ accounts: LoyaltyT[] }>('/api/loyalty')) : undefined,
         full && hpAny('inventory.manage', 'reports.sales', 'settings.manage') ? soft(api<{ suppliers: SupplierT[] }>('/api/suppliers')) : undefined,
         full && hp('inventory.manage') ? soft(api<{ recipes: RecipeT[] }>('/api/recipes')) : undefined,
-        full && hp('employees.manage') ? soft(api<{ jobContexts: JobT[] }>('/api/jobs')) : undefined,
+        full && hp('employees.manage') ? soft(api<{ jobContexts: JobT[]; tipPointsDdlActive?: boolean }>('/api/jobs')) : undefined,
         full && hp('reservations.manage') ? soft(api<{ feedback: FeedbackT[] }>('/api/guests/feedback')) : undefined,
         full && manage ? soft(api<{ stats: LocationStatT[] }>('/api/locations/stats')) : undefined,
         full && hp('settings.manage') ? soft(api<{ integrations: IntegrationT[] }>('/api/integrations')) : undefined,
@@ -1110,7 +1113,7 @@ function DashboardInner() {
       if (loy) setLoyalty(loy.accounts)
       if (sup) setSuppliers(sup.suppliers)
       if (recp) setRecipes(recp.recipes)
-      if (jb) setJobs(jb.jobContexts)
+      if (jb) { setJobs(jb.jobContexts); setJobsTipDdl(jb.tipPointsDdlActive === true) }
       if (fb) setFeedback(fb.feedback)
       if (ls) setLocStats(ls.stats)
       if (ig) setIntegrations(ig.integrations)
@@ -6634,7 +6637,7 @@ function DashboardInner() {
                 })()}
               </CardContent>
             </Card>
-            <JobsCard jobs={jobs} canManage={hasPerm('inventory.manage')} onReload={load} />
+            <JobsCard jobs={jobs} canManage={hasPerm('inventory.manage')} onReload={load} tipPointsDdlActive={jobsTipDdl} />
           </TabsContent>
 
           <TabsContent value="nastavitve" className="space-y-4">

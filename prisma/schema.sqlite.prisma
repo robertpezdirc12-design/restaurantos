@@ -1481,6 +1481,12 @@ model Job {
   permissions  String          @default("[]")
   isActive     Boolean       @default(true)
   sortOrder    Int           @default(0)
+  // PRIMERJAVA §40 (v1.266.0): napitninske točke po vlogi (Square Vol 16
+  // »Split pooled tips by points assigned to each role«) — privzete točke
+  // VLOGI za delitev napitnin. MAIN schema.prisma NIMA stolpca (P2022 do
+  // produkcijskega DDL klika — /api/admin/migrate-job-tip-points); dostop
+  // IZKLJUČNO prek raw SQL (src/lib/job-tip-points.ts), mirror DA (db:push).
+  tipPoints    Int           @default(0)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime @updatedAt
   workspace    String?

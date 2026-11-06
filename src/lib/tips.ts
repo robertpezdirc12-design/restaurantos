@@ -17,6 +17,29 @@ export function parseTipMethod(m: unknown): TipMethod | null {
   return m === 'hours' || m === 'equal' || m === 'points' ? m : null
 }
 
+/**
+ * PRIMERJAVA §40 (v1.266.0) — NAPITNINSKE TOČKE PO VLOGI: sanitizacija
+ * vnosa točk per oseba (POST body + GET query). Mapa employeeId → točke:
+ * ohranjeni so IZKLJUČNO končni CELOŠTEVILSKI vnosi 0..999; NaN/Infinity/
+ * negativ/decimal/niz/Polje → izpuščeni (0). Prej je surovi body šel v
+ * methodWeights, kjer je Math.max(0, Number(x) || 0) spustil Infinity
+ * skozi — splitTips je potem VRŽIL 'Uteži morajo biti ne-negativna
+ * števila.' (neobdelan 500). Sanitizacija na VHODU = poštena obramba.
+ */
+export const TIP_POINTS_MAX = 999
+
+export function sanitizeTipPointsRecord(input: unknown): Record<string, number> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof k !== 'string' || k.trim() === '') continue
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= TIP_POINTS_MAX) {
+      out[k] = v
+    }
+  }
+  return out
+}
+
 /** Dnevno okno [00:00, naslednji dan 00:00) — DB časi so UTC, zato UTC okno. */
 export function dayRange(dateStr: string): { from: Date; to: Date } {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('Datum mora biti v obliki YYYY-MM-DD.')
@@ -28,7 +51,12 @@ export function dayRange(dateStr: string): { from: Date; to: Date } {
 
 /**
  * Razdeli totalCents po utežeh. Vsota rezultatov je TOČNO totalCents.
- * - uteži < 0 / ne-finite → napaka; prazna poraba uteži (vsota 0) → ostanek gre po indeksu (enakomerno)
+ * - uteži < 0 / ne-finite → napaka; PRAZNA poraba uteži (vsota 0) →
+ *   ENAKOVREDNA delitev (v1.266.0 §40 E2E najdba: prej je vsota-0 zanka
+ *   razdelila le po 1 cent po vrstnem redu in OSTANEK TIHO VRGILA PROČ —
+ *   [1,1] pri 30,00 € je kršilo lastno invarianto »vsota je TOČNO skupni
+ *   znesek«; enakovredna delitev jo izpolni, enako kot fallbackEqual veja
+ *   methodWeights za ure brez evidenc)
  * - največji ostanek: preostali centi gredejo k največjim frakcijam (neodločeno → nižji indeks)
  */
 export function splitTips(totalCents: number, weights: number[]): number[] {
@@ -40,10 +68,14 @@ export function splitTips(totalCents: number, weights: number[]): number[] {
     throw new Error('Uteži morajo biti ne-negativna števila.')
   }
   const sum = weights.reduce((a, w) => a + w, 0)
-  const base = weights.map((w) => (sum > 0 ? Math.floor((w / sum) * totalCents) : 0))
+  // vsota 0 (vse uteži prazne) = enakovredna osnova: floor vsakemu, ostanek po indeksu
+  const base =
+    sum > 0
+      ? weights.map((w) => Math.floor((w / sum) * totalCents))
+      : weights.map(() => Math.floor(totalCents / weights.length))
   let remainder = totalCents - base.reduce((a, b) => a + b, 0)
   const order = weights
-    .map((w, i) => ({ i, frac: sum > 0 ? (w / sum) * totalCents - base[i] : i / weights.length }))
+    .map((w, i) => ({ i, frac: sum > 0 ? (w / sum) * totalCents - base[i] : 0 }))
     .sort((a, b) => b.frac - a.frac || a.i - b.i)
   const out = base.slice()
   for (const { i } of order) {

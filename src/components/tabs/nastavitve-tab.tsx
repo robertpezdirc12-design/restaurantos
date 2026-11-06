@@ -208,20 +208,66 @@ export function MfaCard() {
 
 /* ─────────────────────────── DELOVNA MESTA ─────────────────────────── */
 
-export interface JobT { id: string; title: string; permissions: string; active: boolean; startedAt: string }
+export interface JobT {
+  id: string
+  title: string
+  permissions: string
+  active: boolean
+  startedAt: string
+  /** §40 (v1.266.0): privzete napitninske točke vloge (DDL-gated; pre-DDL 0) */
+  tipPoints?: number
+}
 
-export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManage: boolean; onReload: () => Promise<void> }) {
+export function JobsCard({ jobs, canManage, onReload, tipPointsDdlActive = false }: { jobs: JobT[]; canManage: boolean; onReload: () => Promise<void>; tipPointsDdlActive?: boolean }) {
   const { t } = useI18n()
   const [title, setTitle] = useState('')
   const [payRate, setPayRate] = useState('')
+  /* §40: urejanje točk vloge — vrednost sledi vrstici dokler uporabnik ne spreminja
+     (vzorec prevX varovanega stanja; shranjuje SAMO ob spremembi) */
+  const [tipDraft, setTipDraft] = useState<Record<string, string>>({})
+  const [tipPrev, setTipPrev] = useState<JobT[]>(jobs)
+  const [tipBusy, setTipBusy] = useState<string | null>(null)
+  if (tipPrev !== jobs) {
+    setTipPrev(jobs)
+    setTipDraft({})
+  }
+  const [newTipPoints, setNewTipPoints] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function submit() {
     setBusy(true)
     try {
-      await api('/api/jobs', { method: 'POST', body: JSON.stringify({ title, payRate: Number(payRate.replace(',', '.')) || 0 }) })
-      setTitle(''); setPayRate(''); await onReload()
+      const body: Record<string, unknown> = { title, payRate: Number(payRate.replace(',', '.')) || 0 }
+      if (tipPointsDdlActive) {
+        const tp = Number(newTipPoints)
+        if (newTipPoints !== '' && (!Number.isInteger(tp) || tp < 0 || tp > 999)) {
+          toast({ title: t('jobs.tipPointsInvalid'), variant: 'destructive' })
+          setBusy(false)
+          return
+        }
+        if (newTipPoints !== '') body.tipPoints = tp
+      }
+      await api('/api/jobs', { method: 'POST', body: JSON.stringify(body) })
+      setTitle(''); setPayRate(''); setNewTipPoints(''); await onReload()
     } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setBusy(false) }
+  }
+
+  /* §40: shranjevanje točk ene vloge — PATCH /api/jobs/[id]; pošlje se SAMO ob
+     spremembi (migrBox vzorec iz §39); DDL-gated (gumb viden samo po DDL). */
+  async function saveTipPoints(j: JobT) {
+    const draft = tipDraft[j.id] !== undefined ? tipDraft[j.id] : String(j.tipPoints ?? 0)
+    const v = Number(draft)
+    if (!Number.isInteger(v) || v < 0 || v > 999) {
+      toast({ title: t('jobs.tipPointsInvalid'), variant: 'destructive' })
+      return
+    }
+    if (v === (j.tipPoints ?? 0)) return
+    setTipBusy(j.id)
+    try {
+      await api(`/api/jobs/${j.id}`, { method: 'PATCH', body: JSON.stringify({ tipPoints: v }) })
+      toast({ title: t('jobs.tipPointsSaved', { job: j.title, n: v }) })
+      await onReload()
+    } catch (err) { toast({ title: (err as Error).message, variant: 'destructive' }) } finally { setTipBusy(null) }
   }
 
   return (
@@ -238,20 +284,56 @@ export function JobsCard({ jobs, canManage, onReload }: { jobs: JobT[]; canManag
               <Label htmlFor="job-rate">{t('jobs.hourlyRate')}</Label>
               <Input id="job-rate" inputMode="decimal" value={payRate} onChange={(e) => setPayRate(e.target.value.replace(/[^\d.,]/g, ''))} placeholder={t('jobs.ratePlaceholder')} className="w-36" />
             </div>
+            {tipPointsDdlActive && (
+              <div className="space-y-1.5">
+                <Label htmlFor="job-tip-points">{t('jobs.tipPoints')}</Label>
+                <Input id="job-tip-points" inputMode="numeric" value={newTipPoints} onChange={(e) => setNewTipPoints(e.target.value.replace(/\D/g, '').slice(0, 3))} placeholder="0" className="w-20" />
+              </div>
+            )}
             <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={busy || !title} onClick={submit}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('inv.add')}</Button>
           </div>
         )}
+        {tipPointsDdlActive && (
+          /* §40: opomba — točke so privzeta utež VLOGE za delitev napitnin (Square
+             Vol 16); per-dan vnos v zavihku Napitnine se predpolni iz te vrednosti */
+          <p className="text-xs text-stone-500">{t('jobs.tipPointsHint')}</p>
+        )}
         {jobs.length === 0 && <p className="text-sm text-stone-500">{t('jobs.none')}</p>}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {jobs.map((j) => (
-            <div key={j.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-medium truncate">{j.title}</p>
-                {j.permissions && <p className="text-xs text-stone-500 truncate">{j.permissions.split(',').join(' · ')}</p>}
+          {jobs.map((j) => {
+            const draft = tipDraft[j.id] !== undefined ? tipDraft[j.id] : String(j.tipPoints ?? 0)
+            const changed = tipPointsDdlActive && Number(draft) !== (j.tipPoints ?? 0)
+            return (
+              <div key={j.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{j.title}</p>
+                  {j.permissions && <p className="text-xs text-stone-500 truncate">{j.permissions.split(',').join(' · ')}</p>}
+                  {tipPointsDdlActive && (
+                    <p className="text-xs text-stone-400">{t('jobs.tipPointsShort')}: {j.tipPoints ?? 0}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {tipPointsDdlActive && canManage && (
+                    <>
+                      <Label htmlFor={`job-tip-${j.id}`} className="sr-only">{t('jobs.tipPoints')}</Label>
+                      <Input
+                        id={`job-tip-${j.id}`}
+                        inputMode="numeric"
+                        aria-label={t('jobs.tipPointsAria', { job: j.title })}
+                        value={draft}
+                        onChange={(e) => setTipDraft((prev) => ({ ...prev, [j.id]: e.target.value.replace(/\D/g, '').slice(0, 3) }))}
+                        className="h-8 w-16"
+                      />
+                      <Button size="sm" variant="outline" disabled={!changed || tipBusy === j.id} onClick={() => void saveTipPoints(j)}>
+                        {tipBusy === j.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t('jobs.tipPointsSave')}
+                      </Button>
+                    </>
+                  )}
+                  <Badge className={j.active ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{j.active ? t('jobs.activeF') : t('jobs.inactiveF')}</Badge>
+                </div>
               </div>
-              <Badge className={j.active ? 'bg-emerald-600 text-white' : 'bg-stone-400 text-white'}>{j.active ? t('jobs.activeF') : t('jobs.inactiveF')}</Badge>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </CardContent>
     </Card>

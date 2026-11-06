@@ -438,6 +438,27 @@ export function isKdsExpoFireStatement(stmt: string): boolean {
   })
 }
 
+/**
+ * PRIMERJAVA §40 (v1.266.0) — NAPITNINSKE TOČKE PO VLOGI (job-tip-points):
+ * 1 stolpec na Job (tipPoints INTEGER NOT NULL DEFAULT 0 — privzete točke
+ * vlogi za delitev napitnin, Square Vol 16 »Split pooled tips by points
+ * assigned to each role«). Dvosmerna faza kot receipt-display-policy:
+ * pred DDL ADD COLUMN, po DDL in pred uskladitvijo main sheme DROP COLUMN
+ * — oba strogo SAMO tega stolpca na tabeli Job (prvi Job-stolpec v
+ * pending družini; stroga klavzularna preverba prepreči kamuflažo
+ * drugih Job sprememb).
+ */
+export function isJobTipPointsStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"Job"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && mm[2] === 'tipPoints'
+  })
+}
+
 /** Issue #20 (v1.109.0): HACCP operativni tok — HaccpEntry/HaccpPlan novi
  * stolpci + NOVA tabela HaccpAction (strogo po tabelah, vzorec cash-movements). */
 const HACCP_OPS_ENTRY_COLS = new Set([
@@ -1181,6 +1202,23 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'tarč), PATCH /api/locations/[id] s kdsExpoFireEnabled → 503. Nobena tipizirana ' +
       'poizvedba stolpca ne uporablja (raw SQL + probe, src/lib/kds-expo-fire.ts).',
     matches: isKdsExpoFireStatement,
+  },
+  {
+    id: 'job-tip-points',
+    reason:
+      'Napitninske točke po vlogi (PRIMERJAVA §40, v1.266.0, Square Vol 16 ' +
+      '»Split pooled tips by points assigned to each role«) — 1 stolpec na Job ' +
+      '(tipPoints INTEGER NOT NULL DEFAULT 0; privzete točke VLOGI za delitev ' +
+      'napitnin — zaposleni sledijo vlogi tega dne (TimeEntry.jobId → primarna ' +
+      'EmployeeJob), vnos prilagodljiv per oseba pred zaključkom dneva): ' +
+      'produkcija čaka DDL korak — admin ruta /api/admin/migrate-job-tip-points ' +
+      '(konzola Enterprise → Shema migracije → en klik). Dvosmerna faza (kot ' +
+      'receipt-display-policy): po DDL in pred uskladitvijo main sheme diff ' +
+      'generira DROP COLUMN. Do DDL GET /api/tips predpolni 0 (ročen vnos ' +
+      'deluje, graceful), PATCH /api/jobs/[id] s tipPoints → 503. Nobena ' +
+      'tipizirana poizvedba stolpca ne uporablja (raw SQL + probe, ' +
+      'src/lib/job-tip-points.ts).',
+    matches: isJobTipPointsStatement,
   },
 ]
 

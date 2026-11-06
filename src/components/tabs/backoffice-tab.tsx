@@ -936,8 +936,10 @@ interface TipPreviewT {
   locationId: string
   method: string
   fallbackEqual: boolean
+  /** §40: ali je DDL Job.tipPoints aplikiran (vir predpolnitve po vlogi) */
+  tipPointsDdlActive?: boolean
   totals: { totalCents: number; cashCents: number; nonCashCents: number; payments: number }
-  employees: { employeeId: string; employeeName: string; minutes: number; points: number; previewCents: number }[]
+  employees: { employeeId: string; employeeName: string; minutes: number; points: number; jobId?: string | null; jobName?: string | null; jobTipPoints?: number; enteredPoints?: number; previewCents: number }[]
   pool: {
     id: string
     date: string
@@ -961,6 +963,31 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
   const [data, setData] = useState<TipPreviewT | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  /* §40: vnos točk per oseba — predpolnjen po vlogi (jobTipPoints), ročno
+     prilagodljiv; refetch (debounce) nosi points v query, da predogled
+     odraža STREŽNIŠKO matematiko (en vir resnice — splitTips ostaja na serverju) */
+  const [pointsInput, setPointsInput] = useState<Record<string, number>>({})
+  const [pointsDirty, setPointsDirty] = useState(false)
+
+  // (re)inicializacija vnosov iz odgovora — SAMO dokler uporabnik ni spreminjal
+  // (predpolnitev po vlogi; po ročnem vnosu njegovo stanje ostane)
+  const [prevData, setPrevData] = useState<TipPreviewT | null>(null)
+  if (prevData !== data) {
+    setPrevData(data)
+    if (!pointsDirty) {
+      const init: Record<string, number> = {}
+      for (const e of data?.employees ?? []) init[e.employeeId] = e.enteredPoints ?? e.jobTipPoints ?? 0
+      setPointsInput(init)
+    }
+  }
+
+  /* §40: PODPIS namesto objekta v odvisnostih — predpolnitveni init ustvari NOVO
+     identiteto Record-a ob vsakem odgovoru; če bi bil pointsInput sam odvisnost,
+     bi zanka init → refetch → nov odgovor → init … neskončno drsala (dokazano v
+     E2E: gumb Zaključi dan ujet v busy). Niz je vsebinsko stabilen: prefill brez
+     ročnega vnosa = '' (strežnik sam upošteva predpolnitev), ročni vnos pa se
+     spremeni SAMO ob dejanski spremembi vrednosti. */
+  const ptsSig = method === 'points' && pointsDirty ? JSON.stringify(pointsInput) : ''
 
   useEffect(() => {
     const id = locId || locations[0]?.id || ''
@@ -970,7 +997,8 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
       setBusy(true)
       setErr('')
       try {
-        const d = await api<TipPreviewT>(`/api/tips?date=${date}&locationId=${id}&method=${method}`)
+        const pts = ptsSig ? `&points=${encodeURIComponent(ptsSig)}` : ''
+        const d = await api<TipPreviewT>(`/api/tips?date=${date}&locationId=${id}&method=${method}${pts}`)
         if (alive) setData(d)
       } catch (e) {
         if (alive) setErr(String((e as Error).message || e))
@@ -979,13 +1007,15 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
       }
     })()
     return () => { alive = false }
-  }, [date, locId, method, locations.length])
+  }, [date, locId, method, locations.length, ptsSig])
 
   const closeDay = async () => {
     setBusy(true)
     setErr('')
     try {
-      await api('/api/tips', { method: 'POST', body: JSON.stringify({ date, locationId: locId || locations[0]?.id, method }) })
+      const body: Record<string, unknown> = { date, locationId: locId || locations[0]?.id, method }
+      if (method === 'points') body.points = pointsInput
+      await api('/api/tips', { method: 'POST', body: JSON.stringify(body) })
       await new Promise((r) => setTimeout(r, 150)) // oddih pred osvežitvijo
       setData(await api<TipPreviewT>(`/api/tips?date=${date}&locationId=${locId || locations[0]?.id}&method=${method}`))
     } catch (e) {
@@ -1138,13 +1168,19 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">{t('tips.previewFor', { date })}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
+            {method === 'points' && data && data.employees.length > 0 && (
+              /* §40: predpolnitev po vlogi — Square Vol 16 »points assigned to each role«;
+                 vnos ostane ročno prilagodljiv per oseba pred zaključkom dneva */
+              <p className="text-xs text-stone-500 flex items-center gap-1.5"><Info className="w-3.5 h-3.5 shrink-0" /> {t('tips.pointsRoleHint')}</p>
+            )}
             {data && data.employees.length > 0 ? (
               <div className="max-h-96 overflow-y-auto rounded-xl border border-stone-200">
                 <table className="w-full text-sm">
                   <thead className="bg-stone-50 text-left text-xs text-stone-500 sticky top-0">
                     <tr>
                       <th className="p-2">{t('shifts.csvEmployee')}</th>
-                      <th className="p-2">{t('tips.hoursToday')}</th>
+                      {method === 'points' && <th className="p-2">{t('tips.roleCol')}</th>}
+                      <th className="p-2">{method === 'points' ? t('tips.pointsCol') : t('tips.hoursToday')}</th>
                       <th className="p-2 text-right">{t('tips.expectedShare')}</th>
                     </tr>
                   </thead>
@@ -1152,7 +1188,26 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
                     {data.employees.map((e) => (
                       <tr key={e.employeeId} className="border-t border-stone-100">
                         <td className="p-2 font-medium">{e.employeeName}</td>
-                        <td className="p-2 text-stone-600">{e.minutes > 0 ? fmtMin(e.minutes) : '—'}</td>
+                        {method === 'points' && (
+                          <td className="p-2 text-stone-500 text-xs">{e.jobName ?? <span title={t('tips.pointsNoRole')}>—</span>}</td>
+                        )}
+                        <td className={'p-2 ' + (method === 'points' ? '' : 'text-stone-600')}>
+                          {method === 'points' ? (
+                            <Input
+                              aria-label={t('tips.pointsColAria', { name: e.employeeName })}
+                              inputMode="numeric"
+                              className="h-8 w-20"
+                              value={String(pointsInput[e.employeeId] ?? 0)}
+                              onChange={(ev) => {
+                                const v = ev.target.value.replace(/\D/g, '').slice(0, 3)
+                                setPointsInput((prev) => ({ ...prev, [e.employeeId]: Number(v || 0) }))
+                                setPointsDirty(true)
+                              }}
+                            />
+                          ) : (
+                            e.minutes > 0 ? fmtMin(e.minutes) : '—'
+                          )}
+                        </td>
                         <td className="p-2 text-right font-semibold">{fmtEUR(e.previewCents / 100)}</td>
                       </tr>
                     ))}
@@ -1162,7 +1217,16 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
             ) : (
               <p className="text-sm text-stone-500">{t('tips.emptyDay')}</p>
             )}
-            {canManage && tot && tot.totalCents > 0 && data && data.employees.length > 0 && (
+            {method === 'points' && data && data.employees.length > 0 && (
+              <p className="text-xs text-stone-500">{t('tips.pointsSum', { n: Object.values(pointsInput).reduce((a, b) => a + (Number(b) || 0), 0) })}</p>
+            )}
+            {method === 'points' && data && data.employees.length > 0 && Object.values(pointsInput).every((v) => !Number(v)) && (
+              /* §40: iskrena obramba — 0 točk pomeni tiho enakovredno delitev
+                 (splitTips fallback); uporabnik mora to POTRDITI z vnosom ali
+                 izbiro druge osnove, ne pa odkriti po zaključku dneva */
+              <p className="text-xs text-amber-700 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {t('tips.pointsZero')}</p>
+            )}
+            {canManage && tot && tot.totalCents > 0 && data && data.employees.length > 0 && !(method === 'points' && Object.values(pointsInput).every((v) => !Number(v))) && (
               <div className="flex justify-end">
                 <Button disabled={busy} onClick={closeDay} className="bg-emerald-700 hover:bg-emerald-800 text-white">{t('tips.closeDay', { amount: fmtEUR(tot.totalCents / 100) })}</Button>
               </div>

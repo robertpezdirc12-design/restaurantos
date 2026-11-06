@@ -644,6 +644,19 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-kds-expo-fire',
     probe: () => columnExists('Location', 'kdsExpoFireEnabled'),
   },
+  {
+    // PRIMERJAVA §40 (v1.266.0): NAPITNINSKE TOČKE PO VLOGI (Square
+    // Vol 16 »Split pooled tips by points assigned to each role«) —
+    // 1 stolpec na Job (tipPoints INTEGER NOT NULL DEFAULT 0; privzete
+    // točke vlogi za delitev napitnin — zaposleni sledijo vlogi tega
+    // dne, vnos prilagodljiv per oseba). Do DDL: GET /api/tips
+    // predpolni 0 (ročen vnos deluje, graceful), PATCH /api/jobs/[id]
+    // s tipPoints → 503. Raw SQL + probe (vzorec kds-expo-fire).
+    id: 'job-tip-points',
+    descKey: 'mig.jobTipPoints.desc',
+    endpoint: '/api/admin/migrate-job-tip-points',
+    probe: () => columnExists('Job', 'tipPoints'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

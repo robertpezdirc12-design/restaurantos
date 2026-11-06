@@ -3569,3 +3569,159 @@ stolpec, exception-policy disciplina):
   Ž registri (verzija 1.265.0, mirror DA / main NE, drift matcher
   dvosmerno + kamuflaža fail, i18n pariteta 4142/4142 + 9 ključev,
   dokument §39 + AUDIT POSODOBITEV, worklog Task ID).
+
+## 40. Raziskava november 2026 (nadaljevanje 14) — NAPITNINSKE TOČKE PO VLOGI v1.266.0 (Square Vol 16 »Split pooled tips by points assigned to each role«)
+
+Zadnji odloženi A-kandidat §37 (»tips by ROLE points — jedro pokrito,
+delta = predpolnitev per vloga, NIZKA prioriteta«). Raziskovalno okno
+Vol 17 je PRAZNO (Vol 16 objavljen 5. 11. 2026 — ritem ~2× letno,
+naslednja objava pričakovana pozno pomlad 2027; Lightspeed/Toast
+decembrske objave še niso na spletiščih); B-kandidati TRZNA-VRZELI-2027
+(P2-11 transport, FINA 2.0 cert) čakajo lastnikove odločitve — tok
+zatorej odkljuka zadnjega A-kandidata Vol 16.
+
+### A) Izmere (§37 semantika + lastno stanje po kodni preverbi)
+
+- **Square dobesedno (Vol 16, 5. 11. 2026):** »Split pooled tips by
+  points assigned to each role« — točke za delitev bazena napitnin so
+  pripisane VLOGI (enkrat nastavljeno), član delitve sledi svoji vlogi.
+  §37 izmera: »Square dodeli točke VLOGI (enkrat nastavljeno, član
+  sledi svoji vlogi), pri nas se točke vnesejo per oseba per dan.«
+- **Naša koda ŽE ima (izmerjeno):** matematika točkovne delitve je
+  IZVEDENA od Issue #1 — `TipMethod = 'hours' | 'equal' | 'points'`,
+  `methodWeights` points veja + POST body `points` +
+  `splitTips` (metoda največjega ostanka, vsota TOČNO skupni znesek)
+  + `TipDistribution.points` zapis + hash-veriga.
+- **Vrzel (izmerjena — VEČJA od §37 ocene):** (1) UI NIKOLI ni poslal
+  `points` — NapitnineTab closeDay pošlje `{date, locationId, method}`
+  BREZ points; izbirnik osnove dobesedno pravi »Po točkah (kmalu)«
+  (`tips.basisPoints`, postojeno iz Issue #1); (2) GET predogled trdo
+  kliče `methodWeights(method, rows, {})` — prazna mapa = vse uteži 0
+  = splitTips fallback ENAKOVREDNO po vrstnem redu: izbira »po točkah«
+  je v UI TIHO delila enakovredno (uporabnik tega ne more odkriti do
+  zaključka dneva); (3) POST sanitizacija: `Math.max(0, Number(x) || 0)`
+  v methodWeights spusti Infinity skozi — splitTips vrže »Uteži morajo
+  biti ne-negativna števila.« = neobdelan 500; (4) predpolnitev po
+  vlogi ne obstaja (Squareeva lastnost iz §37); (5) vloga dneva
+  per zaposleni ni izpeljana (TimeEntry.jobId + primarna EmployeeJob
+  obstajata, nihče ju ne bere za napitnine).
+- **Izbira vlogе:** Job (delovno mesto) — payroll entiteta z imenom,
+  aktivnostjo in plačo; EmployeeJob dodelitve (issue #22) + TimeEntry.
+  jobId (snapshot izmene). NE EmployeeRole enum (sistemske pravice
+  owner/admin/staff mešane s položaji waiter/bar/chef — napitninska
+  vloga je plačni položaj, ne pravica).
+
+### B) Odločitev (Ž11)
+
+1. **Nosilec:** `Job."tipPoints" INTEGER NOT NULL DEFAULT 0` —
+   privzete točke VLOGI (0 = brez predpolnitve, vnos ročen; meja 999).
+   Prvi Job-stolpec v pending DDL družini; mirror DA (db:push)/main NE,
+   raw SQL + probe 60 s (vzorec receipt-display-policy §37).
+2. **Izpeljava vloge dneva (per zaposleni):** TimeEntry.jobId z
+   NAJVEČ minutami v dnevnem oknu (izenačeno → prvi po jobId,
+   deterministično); brez TimeEntry jobId → primarna EmployeeJob
+   (issue #22); sicer null (— v stolpcu vloge, točke ročne).
+3. **Predogled USKLAJEN s predpolnitvijo:** GET points param
+   (sanitiziran JSON) — učinkovite točke predogleda = vnešene ??
+   jobTipPoints (predogled SINHRON z tistim, kar UI pošlje ob
+   zaključku); POST pa uporabi IZKLJUČNO prejete vrednosti — BREZ
+   tihega vpliva vloge na denarno pot (revizija nosi pointsSum/
+   pointsEntered = iskren zapis uteži).
+4. **Iskrena obramba:** 0 točk (vseh) = gumb zaključka dneva
+   ONEMOGOČEN + jantrobni nasvet — TIHA enakovredna delitev zahteva
+   izrecno potrditev (vnos točke ali izbor druge osnove).
+5. **Urejanje točk vloge:** JobsCard (Nastavitve → Delovna mesta),
+   DDL-gated (pre-DDL skrito, graceful); PATCH /api/jobs/[id]
+   (settings.manage; 400 validacija NAJPREJ, 503 DDL vrata šele nato;
+   revizija JOB_TIP_POINTS before/after); POST /api/jobs opcijsen
+   tipPoints (pre-DDL > 0 → 503 s potjo konzole).
+6. **Meje (iskrene):** točke so UTEŽ, ne denar (0..999 celo);
+   delitev ostaja per DAN + lokacija (bazen Issue #1); izplačila,
+   hash-veriga in storno pot NESPREMENJENI; splitTips/methodWeights
+   brez novih poti (matematika Issue #1 byte-identična).
+
+### C) Implementacija
+
+- **DDL (exception-policy disciplina; prvi Job-stolpec v pending
+  družini):** Job."tipPoints" INTEGER NOT NULL DEFAULT 0; admin ruta
+  /api/admin/migrate-job-tip-points (idempotentno IF NOT EXISTS,
+  requireCentralRole, audit SCHEMA_MIGRATION_JOB_TIP_POINTS); register
+  SCHEMA_MIGRATIONS 43 → 44 (id job-tip-points, probe columnExists
+  Job.tipPoints); konzola HANDLERS +1; KNOWN_DRIFTS 35 → 36
+  (isJobTipPointsStatement — dvosmerno strogo SAMO Job.tipPoints).
+- **DB sloj src/lib/job-tip-points.ts (NOVA — kds-expo-fire vzorec):**
+  probe jobTipPointsAvailable() + reset (60 s TTL, isMissingSchemaError);
+  jobTipPointsFor(jobIds) (raw SELECT IN, integer-only 0..999, pre-DDL →
+  {} graceful); writeJobTipPoints (integer-only, raw UPDATE, pre-DDL →
+  napaka s potjo konzole).
+- **Čisti sloj src/lib/tips.ts (aditivno):** TIP_POINTS_MAX 999 +
+  sanitizeTipPointsRecord (vhodna sanitizacija POST body + GET query —
+  končni celi 0..999 ostanejo, NaN/Infinity/negativ/decimal/niz/Polje
+  izpadejo; popravek neobdelanega 500 iz §40 A(3)).
+- **API /api/tips:** GET opcijsen points=<JSON> (sanitiziran) +
+  previewPoints = vnešene ?? jobTipPoints + employees[].jobId/jobName/
+  jobTipPoints/enteredPoints + tipPointsDdlActive; POST sanitizeTipPointsRecord
+  na vhodu + revizija pointsSum/pointsEntered pri points metodi;
+  dayBasisRows izpeljava vloge dneva (jobMinutes akumulacija → največ
+  minut → primarna EmployeeJob fallback → imena + točke DDL-gated).
+- **API /api/jobs:** GET tipPointsDdlActive + per vrstica tipPoints
+  (raw read); POST opcijsen tipPoints (validacija 0..999, pre-DDL > 0 →
+  503 s potjo konzole, writeJobTipPoints po typed create).
+- **API /api/jobs/[id] (NOVA PATCH):** settings.manage; body
+  {tipPoints}; 400 validacija NAJPREJ (celo 0..999), 503 DDL vrata
+  šele nato (ločena sporočila); revizija JOB_TIP_POINTS
+  {jobName, before, after}; odgovor nosi svežo vrednost iz baze.
+- **UI NapitnineTab (backoffice-tab):** pri osnovi »po točkah« tabela
+  dobi stolpec VLOGA (jobName, — brez) + vnosno polje TOČKE per
+  zaposleni (aria, samo-cifer, ≤3 znaki); predpolnitev iz
+  enteredPoints ?? jobTipPoints (varovano stanje prevData — samo dokler
+  uporabnik ni spreminjal); refetch s points v query (strežniška
+  matematika — en vir resnice, splitTips ostaja na strežniku); vsota
+  točk; zero-guard (gumb + jantrobni nasvet); closeDay pošlje points;
+  izbirnik osnove 'Po točkah (kmalu)' → 'Po točkah (po vlogi)'
+  (tips.basisPoints vrednost — luknja §40 A(1) zapečatena).
+- **UI JobsCard (nastavitve-tab):** DDL-gated urejanje (tipDraft
+  varovano stanje, shrani SAMO ob spremembi — migrBox vzorec §39),
+  aria, toast; nov vnos (create) z opcijsenimi točkami; namig
+  predpolnitve; dashboard posreduje tipPointsDdlActive iz /api/jobs.
+- **i18n:** tips.roleCol/pointsCol/pointsColAria/pointsRoleHint/
+  pointsNoRole/pointsZero/pointsSum + jobs.tipPoints/Short/Hint/Save/
+  Saved/Invalid/Aria + mig.jobTipPoints.desc (SL + HR, 4142 → 4157,
+  popolna pariteta; +15 ključev).
+- **Testi:** tests/v266-napitninske-tocke-vloga.test.ts — Č1 čisti
+  sloj (veljavni celi ostanejo; NaN/Infinity/negativ/decimal/niz/Polje/
+  Array izpadejo; prazni ključi; parseJobTipPoints meje; konstanti),
+  Č2 API + DDL + montaža (GET points param + usklajen predogled; POST
+  revizija pointsSum; izpeljava vloge — jobMinutes + isPrimary +
+  jobTipPointsFor; sloj pre-DDL read {}/write napaka; DDL stavek +
+  register 44 + konzola; PATCH 400-pred-503 + revizija; jobs GET/POST;
+  NapitnineTab vnosna polja + aria + predpolnitev + refetch + vsota +
+  zero-guard + closeDay points + stolpec vloge; JobsCard DDL-gated +
+  shrani ob spremembi + aria; dashboard posredovanje; splitTips brez
+  novih poti), Ž registri (verzija 1.266.0, mirror DA / main NE, drift
+  matcher dvosmerno + kamuflaža fail + druga tabela fail, i18n pariteta
+  4157/4157 + 15 ključev + 'kmalu' odšel, dokument §40 + AUDIT
+  POSODOBITEV, worklog Task ID).
+- **E2E najdbi (demo baza, agent-browser, 12 dokazov):** (1) NAPAKA
+  zanke predpolnitve — init vnosov iz vsakega odgovora ustvari NOVO
+  identiteto Record-a; pointsInput kot odvisnost efekta je poganjala
+  neskončni init → refetch → init (gumb Zaključi dan ujet v busy).
+  POPRAVEK: ptsSig PODPIS (JSON niz, vsebinsko stabilen) namesto
+  objekta v odvisnostih — predogled brez ročnega vnosa sploh ne
+  pošlje points (strežnik sam upošteva predpolnitev), ročni vnos pa
+  sproži refetch SAMO ob dejanski spremembi vrednosti. (2) NAPAKA
+  invarianta vsote splitTips — vsota uteži 0 je razdelila le po en
+  cent po vrstnem redu in ostanek TIHO VRGLA PROČ ([1,1] pri 30,00 €
+  = 29,98 € izginilo; dokumentirana invarianta »vsota je TOČNO skupni
+  znesek« kršena od Issue #1, nedosegljiva dokler UI ni pošiljal
+  points). POPRAVEK: vsota 0 = ENAKOVREDNA delitev (floor + ostanek
+  po indeksu — ista disciplina kot fallbackEqual veja); delne ničle
+  ostanejo nič (utež 0 niso enakovredne, samo PRAZNA poraba).
+  Ostali dokazi: osnova brez »kmalu«, stolpec vloge, predpolnitev
+  2/1, predogled 20,00/10,00, vsota 3, zero-guard (gumb izginil +
+  jantrobni namig v DOM), zaključek dneva (1 točka → 10,00 €, 2
+  točki → 20,00 €, hash-veriga, zgodovina), revizija pointsSum:3/
+  pointsEntered:2 + JOB_TIP_POINTS before/after, JobsCard urejanje
+  2 → 5 (toast, persist, DB raw), čiščenje (bazen/distribucije/
+  plačilo/naročilo/izmeni/zaposlena/vloge izbrisani; revizijska
+  sled ostaja).

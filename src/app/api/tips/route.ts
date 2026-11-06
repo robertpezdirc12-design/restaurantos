@@ -3,28 +3,49 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, isCentralRole } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
 import { nid, jstr, num } from '@/lib/map'
-import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange, type TipMethod } from '@/lib/tips'
+import { dayRange, parseTipMethod, splitTips, tipChainHash, entryMinutesInRange, sanitizeTipPointsRecord, type TipMethod } from '@/lib/tips'
 import { writeAudit } from '@/lib/audit-chain'
+import { jobTipPointsAvailable, jobTipPointsFor } from '@/lib/job-tip-points'
 
 /**
  * Issue #1 (triage ①) — napitnine: dnevni bazen + distribucija po zaposlenih.
  *
- * GET  /api/tips?date=YYYY-MM-DD&locationId=&method=hours|equal|points
+ * GET  /api/tips?date=YYYY-MM-DD&locationId=&method=hours|equal|points&points=<JSON>
  *   → predogled dneva (zbirke cash/non-cash, ure po zaposlenih, predogled delitve)
  *     + obstoječi bazen za dan (z distribucijami) + zgodovina zadnjih bazenov.
  *     N5 (revizija §4): finančni podatki (zneski napitnin, distribucije) — UI prikaže
  *     zavihek Napitnine samo z 'reports.labour' (TAB_PERM.napitnine), zato backend
- *     uveljavlja isto kanonično dovoljenje (prej: requireAuth).
+ *     uveljavja isto kanonično dovoljenje (prej: requireAuth).
+ *     PRIMERJAVA §40 (v1.266.0): opcijski points=<JSON mapa employeeId→točke>
+ *     (sanitiziran) — predogled točkovne delitve odraža VNEŠENE točke (prej je
+ *     GET trdo klical methodWeights z {} — »po točkah« je v UI tiho delil
+ *     enakovredno!). Dodatno per zaposleni: jobId/jobName/jobTipPoints —
+ *     VLOGA tega dne (TimeEntry.jobId z največ minutami → primarna EmployeeJob)
+ *     + privzete točke vloge (DDL-gated, pre-DDL 0) za predpolnitev vnosa;
+ *     odgovor nosi tipPointsDdlActive.
  *
  * POST /api/tips  { date, locationId?, method, points?, shiftId? }
  *   → zaključi dan: ustvari TipPool + TipDistribution (hash-veriga), audit TIP_POOL_CLOSE.
  *     Pravica: employees.manage. Idempotentna zaščita: EN bazen na dan+lokacijo (409).
+ *     §40: body.points gre skozi sanitizeTipPointsRecord (končni celi 0..999; prej
+ *     je Infinity šel skozi do splitTips → neobdelan 500) + revizija nosi pointsSum
+ *     (iskren zapis vnešenih uteži pri točkovni delitvi).
  *
  * Kanonični tok: Payment.tipAmount (vnos pri plačilu) → bazen → distribucija → izplačilo.
  * Payment/Order/Receipt tok ni spremenjen (§18: brez odstranjevanja obstoječega).
  */
 
-interface BasisRow { employeeId: string; employeeName: string; minutes: number; points: number }
+interface BasisRow {
+  employeeId: string
+  employeeName: string
+  minutes: number
+  points: number
+  /** §40: vloga tega dne (TimeEntry jobId z največ minutami → primarna EmployeeJob; null = brez) */
+  jobId: string | null
+  jobName: string | null
+  /** §40: privzete točke vloge (DDL-gated; pre-DDL 0 — predpolnitev prazna) */
+  jobTipPoints: number
+}
 
 function decToCents(v: unknown): number {
   return Math.round(Number(v) * 100)
@@ -49,27 +70,78 @@ async function dayPayments(from: Date, to: Date, locationId: string) {
 async function dayBasisRows(from: Date, to: Date, locationId: string, tipEmployees: { id: string; name: string }[]): Promise<BasisRow[]> {
   const entries = await db.timeEntry.findMany({
     where: { clockIn: { gte: from, lt: to } },
-    select: { clockIn: true, clockOut: true, breakMinutes: true, Employee: { select: { id: true, name: true, locationId: true } } },
+    select: { clockIn: true, clockOut: true, breakMinutes: true, jobId: true, Employee: { select: { id: true, name: true, locationId: true } } },
   })
   const map = new Map<string, BasisRow>()
+  // §40: akumulacija minut per (employee, job) — vloga dneva = delovno mesto z NAJVEČ minutami
+  const jobMinutes = new Map<string, Map<string, number>>()
   const push = (id: string, name: string) => {
-    if (!map.has(id)) map.set(id, { employeeId: id, employeeName: name, minutes: 0, points: 0 })
+    if (!map.has(id)) map.set(id, { employeeId: id, employeeName: name, minutes: 0, points: 0, jobId: null, jobName: null, jobTipPoints: 0 })
     return map.get(id)!
   }
   for (const e of entries) {
     // šteje izmena na lokaciji zaposlenega (TimeEntry nima lokacije; Employee.locationId je sidro)
     if (e.Employee.locationId && e.Employee.locationId !== locationId) continue
     const row = push(e.Employee.id, e.Employee.name)
-    row.minutes += entryMinutesInRange(
+    const mins = entryMinutesInRange(
       e.clockIn.getTime(),
       e.clockOut ? e.clockOut.getTime() : null,
       e.breakMinutes,
       from.getTime(),
       to.getTime()
     )
+    row.minutes += mins
+    if (e.jobId) {
+      const per = jobMinutes.get(e.Employee.id) ?? new Map<string, number>()
+      per.set(e.jobId, (per.get(e.jobId) ?? 0) + mins)
+      jobMinutes.set(e.Employee.id, per)
+    }
   }
   for (const t of tipEmployees) push(t.id, t.name)
-  return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+  const rows = Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+
+  // §40: brez TimeEntry jobId → primarna EmployeeJob (issue #22 dodelitev; 0 minut —
+  // samo izhodišče predpolnitve, ne utež)
+  const needPrimary = rows.filter((r) => !jobMinutes.has(r.employeeId)).map((r) => r.employeeId)
+  if (needPrimary.length > 0) {
+    const primaries = await db.employeeJob.findMany({
+      where: { employeeId: { in: needPrimary }, isPrimary: true },
+      select: { employeeId: true, jobId: true },
+    })
+    const primaryByEmp = new Map(primaries.map((p) => [p.employeeId, p.jobId]))
+    for (const empId of needPrimary) {
+      const j = primaryByEmp.get(empId)
+      jobMinutes.set(empId, j ? new Map([[j, 0]]) : new Map())
+    }
+  }
+  // vloga dneva = jobId z največ minuti; izenačeno → prvi po jobId (deterministično)
+  for (const r of rows) {
+    const per = jobMinutes.get(r.employeeId)
+    if (!per || per.size === 0) continue
+    let best: { jobId: string; mins: number } | null = null
+    for (const [jobId, mins] of per) {
+      if (!best || mins > best.mins || (mins === best.mins && jobId < best.jobId)) best = { jobId, mins }
+    }
+    if (best) r.jobId = best.jobId
+  }
+
+  // §40: imena + privzete točke vlog (DDL-gated — pre-DDL ostanejo 0/null, vnos ročen)
+  const jobIds = Array.from(new Set(rows.map((r) => r.jobId).filter((x): x is string => !!x)))
+  if (jobIds.length > 0) {
+    const jobs = await db.job.findMany({ where: { id: { in: jobIds } }, select: { id: true, name: true } })
+    const nameById = new Map(jobs.map((j) => [j.id, j.name]))
+    const ddlActive = await jobTipPointsAvailable()
+    const pointsByJob = ddlActive ? await jobTipPointsFor(jobIds) : {}
+    for (const r of rows) {
+      if (r.jobId && nameById.has(r.jobId)) {
+        r.jobName = nameById.get(r.jobId) ?? null
+        r.jobTipPoints = pointsByJob[r.jobId] ?? 0
+      } else {
+        r.jobId = null
+      }
+    }
+  }
+  return rows
 }
 
 function methodWeights(method: TipMethod, rows: BasisRow[], points: Record<string, number>): { weights: number[]; basisCents: number[]; fallbackEqual: boolean } {
@@ -116,6 +188,17 @@ export async function GET(req: NextRequest) {
     locationId = user.loc
   }
   const method = parseTipMethod(url.searchParams.get('method')) || 'hours'
+  // §40: opcijsen points=<JSON> — sanitiziran vnos točk per oseba za PREDOGLED
+  // (prej trdo {} — »po točkah« bi v predogledu tiho pokazal enakovredno delitev)
+  let enteredPoints: Record<string, number> = {}
+  const rawPoints = url.searchParams.get('points')
+  if (rawPoints) {
+    try {
+      enteredPoints = sanitizeTipPointsRecord(JSON.parse(rawPoints))
+    } catch {
+      return fail('points mora biti veljaven JSON ({employeeId: točke}).', 400)
+    }
+  }
 
   const payments = await dayPayments(range.from, range.to, locationId)
   const cashCents = payments.filter((p) => p.type === 'cash').reduce((a, p) => a + decToCents(p.tipAmount), 0)
@@ -127,7 +210,14 @@ export async function GET(req: NextRequest) {
     ? (await db.employee.findMany({ where: { id: { in: empIds } }, select: { id: true, name: true } }))
     : []
   const rows = await dayBasisRows(range.from, range.to, locationId, tipEmployees)
-  const { weights, basisCents, fallbackEqual } = methodWeights(method, rows, {})
+  // §40: učinkovite točke predogleda = vnešene ?? predpolnitev vloge — predogled
+  // je tako SINHRON z tistim, kar bo UI poslal ob zaključku dneva (UI vedno pošlje
+  // svoj stanj vnosov, ki se inicializira iz predpolnitve; POST pa uporabi IZKLJUČNO
+  // prejete vrednosti — brez tihega vpliva vloge na denarno pot).
+  const previewPoints: Record<string, number> = Object.fromEntries(
+    rows.map((r) => [r.employeeId, enteredPoints[r.employeeId] ?? r.jobTipPoints]),
+  )
+  const { weights, basisCents, fallbackEqual } = methodWeights(method, rows, previewPoints)
   const previewCents = splitTips(totalCents, weights)
 
   const pool = await db.tipPool.findFirst({
@@ -167,8 +257,15 @@ export async function GET(req: NextRequest) {
     locationId,
     method,
     fallbackEqual,
+    // §40: vloga dneva + privzete točke per zaposleni + DDL stanje (UI vir predpolnitve)
+    tipPointsDdlActive: await jobTipPointsAvailable(),
     totals: { totalCents, cashCents, nonCashCents, payments: payments.length },
-    employees: rows.map((r, i) => ({ ...r, previewCents: previewCents[i] ?? 0 })),
+    employees: rows.map((r, i) => ({
+      ...r,
+      // vnešene točke (sanitizirane) imajo prednost pred predpolnitvijo vloge
+      enteredPoints: enteredPoints[r.employeeId] ?? r.jobTipPoints,
+      previewCents: previewCents[i] ?? 0,
+    })),
     pool: poolNormalized,
     history: history.map((p) => ({
       id: p.id,
@@ -216,8 +313,10 @@ export async function POST(req: NextRequest) {
     if (!user.loc) return fail('Uporabnik nima dodeljene lokacije.', 403)
     locationId = user.loc
   }
-  const points: Record<string, number> =
-    body?.points && typeof body.points === 'object' && !Array.isArray(body.points) ? (body.points as Record<string, number>) : {}
+  // §40: sanitizacija na VHODU — končni celi 0..999 ostanejo, ostalo izpade (0);
+  // prej je surova mapa šla v methodWeights, kjer je Math.max(0, Number(x) || 0)
+  // spustil Infinity do splitTips → neobdelan 500.
+  const points: Record<string, number> = sanitizeTipPointsRecord(body?.points)
   const shiftId = body?.shiftId ? String(body.shiftId) : null
 
   let range: { from: Date; to: Date }
@@ -325,6 +424,9 @@ export async function POST(req: NextRequest) {
           payments: payments.length,
           employees: distributions.length,
           sumOfParts: distributions.reduce((a, d) => a + d.amount * 100, 0),
+          // §40: iskren zapis vnešenih točk pri točkovni delitvi (uteži = dokaz
+          // kaj je DEJANSKO delilo; 0 točk = vsi enakovredno po splitTips fallback)
+          ...(method === 'points' ? { pointsSum: Object.values(points).reduce((a, b) => a + b, 0), pointsEntered: Object.keys(points).length } : {}),
         }) })
       return created
     })

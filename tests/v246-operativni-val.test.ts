@@ -553,11 +553,11 @@ describe('v1.246.0 E · DDL gate (haccp-plans vzorec)', () => {
 
 describe('v1.246.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.246.0', () => {
-    expect(APP_VERSION).toBe('1.265.0')
+    expect(APP_VERSION).toBe('1.266.0')
   })
 
   test('Ž2: SCHEMA_MIGRATIONS 40 vnosov — checklist-runs z endpointom + desc ključem', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(43)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(44)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'checklist-runs')
     expect(m).toBeDefined()
     expect(m!.endpoint).toBe('/api/admin/migrate-checklist-runs')
@@ -568,8 +568,8 @@ describe('v1.246.0 Ž · verzija in dokumenti', () => {
   })
 
   test('Ž3: KNOWN_DRIFTS 32 vnosov — checklist-runs matcher (CREATE da, DROP ne)', () => {
-    expect(KNOWN_DRIFTS).toHaveLength(35)
-    expect(new Set(KNOWN_DRIFTS.map((k) => k.id)).size).toBe(35) // v1.263.0 §37: +receipt-display-policy
+    expect(KNOWN_DRIFTS).toHaveLength(36)
+    expect(new Set(KNOWN_DRIFTS.map((k) => k.id)).size).toBe(36) // v1.263.0 §37: +receipt-display-policy
     const k = KNOWN_DRIFTS.find((x) => x.id === 'checklist-runs')
     expect(k).toBeDefined()
     expect(k!.reason).toContain('/api/admin/migrate-checklist-runs')
@@ -583,8 +583,8 @@ describe('v1.246.0 Ž · verzija in dokumenti', () => {
   })
 
   test('Ž4: i18n števci 3968 v SL in HR (3889 + 47; pariteta) + vzorčni opv ključi', () => {
-    expect(Object.keys(sl).length).toBe(4142)
-    expect(Object.keys(hr).length).toBe(4142)
+    expect(Object.keys(sl).length).toBe(4157)
+    expect(Object.keys(hr).length).toBe(4157)
     for (const key of ['tabs.opravila', 'opv.board', 'opv.state.overdue', 'opv.cat.opening', 'opv.rep.semiannual', 'opv.resp.count', 'opv.anchorDate', 'opv.itemLabel']) {
       expect(sl[key]).toBeTruthy()
       expect(hr[key]).toBeTruthy()
