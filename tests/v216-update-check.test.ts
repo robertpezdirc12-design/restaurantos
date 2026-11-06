@@ -500,7 +500,7 @@ describe('v1.216.0 — Č3: registri', () => {
   it('worklog nosi vnos tega vala na vrhu', () => {
     const wl = read('worklog.md')
     expect(wl.indexOf('Task ID: v1.216.0-update-check')).toBeLessThan(wl.indexOf('Task ID: v1.215.0-ci-alarm-lifecycle'))
-    // v1.263.0 §37: okno povečano (novejši vnosi glave potiskajo R4b globlje)
-    expect(wl.slice(0, 9000)).toContain('R4b')
+    // v1.263.0 §37 finalna-verifikacija: okno povečano (novejši vnosi glave potiskajo R4b globlje)
+    expect(wl.slice(0, 12000)).toContain('R4b')
   })
 })

@@ -489,7 +489,7 @@ describe('v1.230.0 Ž — verzija + registri', () => {
     const prd = readFileSync('docs/PRD-LOKALNA-BAZA.md', 'utf8')
     expect(prd).toContain('BENCHMARK-VAL v1.230.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-skritje-nicelnih-postavk-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-finalna-verifikacija')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.229.0'))
   })
 

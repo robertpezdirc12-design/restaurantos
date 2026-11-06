@@ -456,6 +456,6 @@ describe('v1.245.0 Ž · verzija in dokumenti', () => {
 
   test('Ž6: worklog vrhnji vnos nosi Task ID v1.245.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-skritje-nicelnih-postavk-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-finalna-verifikacija')
   })
 })

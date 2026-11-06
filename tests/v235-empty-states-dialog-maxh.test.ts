@@ -149,7 +149,7 @@ describe('v1.235.0 Ž — registri', () => {
   })
 
   test('Ž2: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-skritje-nicelnih-postavk-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-finalna-verifikacija')
     expect(wl.indexOf('v1.235.0')).toBeLessThan(wl.indexOf('v1.234.0'))
   })
 })
