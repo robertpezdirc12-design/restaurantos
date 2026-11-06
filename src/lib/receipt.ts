@@ -18,6 +18,14 @@ export interface ReceiptItemT {
   price: number
   vatRate: number
   amount: number
+  /**
+   * PRIMERJAVA §37 (v1.263.0) — žig spremembe cene na VRSTICI (§23
+   * priceOverride from → to), strukturno aditivno: API (/api/furs/[id])
+   * ga na posnetkovih in legacy vrsticah nosi od v1.249.0/§37; tip je
+   * neznan, ker ga izris ne bere — samo filter ničelnih postavk ga
+   * preverja za PRISOTNOST (poseg natakarja = comp → vrstica PIŠE).
+   */
+  priceOverride?: unknown
 }
 
 export interface ReceiptDetailT {
@@ -56,6 +64,15 @@ export interface ReceiptDetailT {
   jir?: string
   /** Uradna potrditvena povezava (QR vsebina) za HR račune */
   qr?: string
+  /**
+   * PRIMERJAVA §37 (v1.263.0) — SKRIVANJE NIČELNIH POSTAVK (Square
+   * Vol 16 »Hide $0 items from printed customer receipts«): strežnik
+   * prebere politiko (RestaurantSettings.hideZeroReceiptItems,
+   * DDL-gated) in jo prilepi na račun — tiskalni kliki so tako
+   * neodvisni od pravic nad nastavitvami (nauk §30/§31). Odsotno /
+   * undefined = false = byte-identičen izpis dosedanjega stanja.
+   */
+  hideZeroItems?: boolean
 }
 
 const esc = (s: string | null | undefined) =>
@@ -65,13 +82,51 @@ const money = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 const pct = (n: number) => `${n.toFixed(1).replace('.', ',')} %`
 const SEP = '· · · · · · · · · · · · · · · · · · ·'
 
+/**
+ * PRIMERJAVA §37 (v1.263.0) — ali je vrstica računa DODANA PO NIČELNI ceni
+ * (Square Vol 16: »items added at $0, like a complimentary basket of bread
+ * or a glass of water«)? Posnetek nosi amount = unitPrice × qty, kjer je
+ * unitPrice ZAMRZNJENA menijska cena + vsota cen opcij (ops.ts price +
+ * modsTotal) in popusti hodijo LOČENO (skupna vrstica) — zato so Square
+ * izjeme AVTOMATSKE: plačana postavka (> 0), popust-do-0 (price ostane > 0)
+ * in 0-postavka s plačano opcijo (price > 0) imajo amount > 0 in PIŠEJO.
+ * Edini kandidat: amount === 0. Četrta (naša) izjema: §23 priceOverride
+ * (from → to) je IZRECNI poseg natakarja (comp) — žig prisoten → PIŠE,
+ * ne glede na znesek. Defenzivno: ne-končen amount (NaN/undefined) NIKOLI
+ * ni skrit — kar ne znamo izmeriti, izpišemo.
+ */
+export function isZeroAddedReceiptItem(it: ReceiptItemT): boolean {
+  if (!Number.isFinite(it.amount)) return false
+  if (it.amount !== 0) return false
+  return it.priceOverride === undefined || it.priceOverride === null
+}
+
+/**
+ * PRIMERJAVA §37 (v1.263.0) — postavke za IZRIS odjemalskega računa.
+ * Ob d.hideZeroItems === true se 0-dodane vrstice (isZeroAddedReceiptItem)
+ * izpustijo — SAMO v izrisu: posnetek (itemsJson) in kuhanjski listki
+ * ostanejo popolni (Square: »transaction records … include $0 items
+ * either way«). Prag poštenosti: če filter pošteni CEL seznam (izjemen
+ * rob — račun s SAMO ničelnimi postavkami), izpis pade na poln seznam —
+ * natisnjen fiskalni dokument NIKOLI ne sme imeti prazne tabele postavk.
+ * Filter izklopljen (undefined/false) → ISTA referenca (brez kopije).
+ */
+export function receiptDisplayItems(d: ReceiptDetailT): ReceiptItemT[] {
+  if (!d.hideZeroItems) return d.items
+  const visible = d.items.filter((it) => !isZeroAddedReceiptItem(it))
+  return visible.length > 0 ? visible : d.items
+}
+
 export function buildReceiptHTML(d: ReceiptDetailT, footer?: string | null, locale: Locale = 'sl'): string {
   const tr = (key: string, vars?: Record<string, string | number>) => t(locale, key, vars)
   const country = (d.country || 'SI').toUpperCase()
   const isHr = country === 'HR'
   const bcp = isHr ? 'hr-HR' : 'sl-SI'
 
-  const items = d.items
+  // PRIMERJAVA §37 (v1.263.0): izris teče čez receiptDisplayItems —
+  // 0-dodane vrstice (kruh na hišni račun, voda) se ob vklopu politike
+  // izpustijo SAMO tukaj; posnetek/kuhinja/poročila ostanejo popolni.
+  const items = receiptDisplayItems(d)
     .map(
       (i) => `<tr>
         <td class="q">${i.qty}×</td>

@@ -461,9 +461,9 @@ describe('v1.240.0 E · tables PATCH: occupied varovalec + force', () => {
 
 describe('v1.240.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.240.0', () => {
-    expect(APP_VERSION).toBe('1.262.0')
-    expect(read('src/lib/version.ts')).toContain("'1.262.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.262.0')
+    expect(APP_VERSION).toBe('1.263.0')
+    expect(read('src/lib/version.ts')).toContain("'1.263.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.263.0')
   })
 
   test('Ž2: PRIMERJAVA §16 G dokumentira rezervacijsko celico', () => {

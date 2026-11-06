@@ -32,10 +32,10 @@ describe('issue73 audit-19: nastavitve — neshranjene spremembe niso več tihe'
     expect(nast).toContain('const revert = () => { setForm(settings)')
     expect(nast).toContain("set.reverted")
   })
-  test('Shrani na koncu vsakega razdelka (4 sectionSave vložki)', () => {
+  test('Shrani na koncu vsakega razdelka (5 sectionSave vložkov)', () => {
     expect(nast).toContain('const sectionSave = (')
     const n = (nast.match(/\{sectionSave\}/g) || []).length
-    expect(n).toBe(4)
+    expect(n).toBe(5) // v1.263.0 §37: +razdelek prikazovne politike računa (skrivanje ničelnih postavk)
   })
 })
 

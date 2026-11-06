@@ -43,6 +43,7 @@ import { POST as couponsWaitlistPOST } from '../migrate-coupons-waitlist/route'
 import { POST as receiptSnapshotPOST } from '../migrate-receipt-snapshot/route'
 import { POST as reservationComboPOST } from '../migrate-reservation-combo/route'
 import { POST as checklistRunsPOST } from '../migrate-checklist-runs/route'
+import { POST as receiptDisplayPolicyPOST } from '../migrate-receipt-display-policy/route'
 
 /**
  * Task 65 (v1.63.0) — Migracijska konzola: status + en klik za vse DDL korake.
@@ -99,6 +100,7 @@ const HANDLERS: Record<string, (req: NextRequest) => Promise<Response>> = {
   'receipt-snapshot': receiptSnapshotPOST,
   'reservation-combo': reservationComboPOST,
   'checklist-runs': checklistRunsPOST,
+  'receipt-display-policy': receiptDisplayPolicyPOST,
 }
 
 interface ConsoleResult {

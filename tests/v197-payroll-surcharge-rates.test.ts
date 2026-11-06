@@ -604,7 +604,7 @@ describe('Č4 UI statika + registri', () => {
   })
 
   it('register SCHEMA_MIGRATIONS: 33. vnos payroll-surcharge-rates (descKey/endpoint/probe)', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(40) // v1.200.0: +equipment-maintenance (OSS-1)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(41) // v1.200.0: +equipment-maintenance (OSS-1)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'payroll-surcharge-rates')
     expect(m).toBeDefined()
     expect(m?.descKey).toBe('mig.payrollSurchargeRates.desc')
@@ -613,7 +613,7 @@ describe('Č4 UI statika + registri', () => {
   })
 
   it('drift allowlist: 25 vnosov; CREATE TABLE PayrollSurchargeRate je znan drift', () => {
-    expect(KNOWN_DRIFTS).toHaveLength(32) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1)
+    expect(KNOWN_DRIFTS).toHaveLength(33) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1)
     const cls = classifyDrift(
       'CREATE TABLE "PayrollSurchargeRate" ("id" TEXT NOT NULL, "locationId" TEXT, CONSTRAINT "PayrollSurchargeRate_pkey" PRIMARY KEY ("id"));\n' +
         'CREATE UNIQUE INDEX "PayrollSurchargeRate_locationId_key" ON "PayrollSurchargeRate"("locationId");',
@@ -630,6 +630,6 @@ describe('Č4 UI statika + registri', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.262.0')
+    expect(APP_VERSION).toBe('1.263.0')
   })
 })

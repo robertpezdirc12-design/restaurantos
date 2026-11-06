@@ -606,6 +606,17 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-checklist-runs',
     probe: async () => tableExists('ChecklistRun'),
   },
+  {
+    // PRIMERJAVA §37 (v1.263.0): prikazovna politika računa — 1 stolpec na
+    // RestaurantSettings (hideZeroReceiptItems; skrivanje ničelnih postavk
+    // na natisnjenem odjemalskem računu, Square Vol 16). Privzeto
+    // IZKLOPLJENO — izpisi byte-identični. Do DDL: politika bere varni
+    // privzetek (graceful), pisanje prek PUT /api/settings → 503.
+    id: 'receipt-display-policy',
+    descKey: 'mig.receiptDisplayPolicy.desc',
+    endpoint: '/api/admin/migrate-receipt-display-policy',
+    probe: () => columnsAll([['RestaurantSettings', 'hideZeroReceiptItems']]),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */

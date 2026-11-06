@@ -3113,3 +3113,187 @@ POSNETEK OB PISANJU (0 DDL, 0 novih rut, 0 novih odvisnosti):
   (oba pisalca pokličeta urejanje, 5 select mest, 0 DDL dokaz,
   verzija 1.262.0, dokument §36, AUDIT 0 ključev, worklog
   Task ID).
+
+## 37. Raziskava november 2026 (nadaljevanje 11) — SKRIVANJE NIČELNIH POSTAVK NA RAČUNU v1.263.0 (Square Vol 16 »Hide $0 items from printed customer receipts«)
+
+Sveža raziskava 6. 11. 2026 (dan po zaključku §36): release-notes
+vozlišče nosi NOVO objavo — **Square Vol 16 | 5. 11. 2026 | v7.32**
+»Draggable ticket reordering, Expo course firing, faster account
+switching, and more« (objavljeno PO zadnji raziskavi 5. 11. zjutraj
+ob 4:30 ET — zadetek v pričakovano okno 5.–12. 11.). Devet postavk,
+ocena vseh; tok izbere postavko, ki jo naš model nosi z najmanjšim
+obsegom in natančno izmerljivo semantiko.
+
+### A) Izmere (spletna raziskava + lastno stanje)
+
+- **Square Vol 16 (5. 11. 2026, v7.32) — 9 postavk, ocena:**
+  - *Draggable ticket reordering on KDS* (Prep + Expo zasloni,
+    vrstni red »Manual« per naprava, sekvenca se shrani in sinhronizira
+    na druge KDS naprave iste lokacije z istim načinom) — PRAVA vrzel,
+    a zahteva DELJENO stanje vrstnega reda listkov med zasloni →
+    nosilec, ki ga Order nima (ticketSequence) = DDL + vlečenje +
+    sinhronizacija. SREDNJE-VELIKO; odkljukano za naslednji val (danes
+    izmerjena semantika: per-naprava način Manual/Default je vzorec
+    localStorage saleCartSide §31, deljena sekvenca pa strežniški
+    stolpec).
+  - *Fire held courses from an Expo KDS* (tap glave tečaja na Expo
+    KDS → odštevanje → drugi tap prekliče; nastavitev per lokacija
+    »Allow Firing from Expo KDS«) — naša koda ŽE ima: skupno jedro
+    `fireOrderCore` + `POST /api/orders/[id]/fire {courseId}` (OSS-7
+    coursing) + KDS glave tečajev (`groupKdsItemsByCourse`,
+    kds-course-group regija od §32 obdobja). Vrzel: požig tečaja teče
+    SAMO iz POS urejevalnika (fireCourse v NaročiloSheet), KDS glava
+    je pasiven napis; pravice: fire zahteva orders.create (natakar),
+    KDS nosi kitchen.update (kuhinja) — požig s KDS je ODLOČITEV o
+    pristojnosti (ekspeditor je vloga kuhinje pri Square, pri nas
+    natakarja). SREDNJE; kandidat naslednjega vala (danes izmerjena
+    semantika: countdown-potrditev + per-lokacija nastavitev).
+  - *Switch faster between Square accounts* — podjetniška
+    multi-account identiteta; naš POS je eno-najemniški z vpisno kodo.
+    IZHOD.
+  - *Sync reservations, guests, and checks with Resy Powered by Tock*
+    — zunanja integracija (C-razred mreža/partnerji, US, Premium).
+    IZHOD.
+  - *Accept bank payments on Payment Links* — ACH/Plaid, US-only;
+    ponudnik plačil = B-odločitev. IZHOD.
+  - *Set item option colors from the item page* — maloprodajna barvna
+    paleta opcij; naši modifikatorji so restavratorski (velikost/
+    dodatek/stopnja) brez barvnih opcij. IZHOD (brez izmere — model
+    nosilca sploh ne obstaja in ni vrzel za gostilno).
+  - *Split pooled tips by points assigned to each role* — naše stanje:
+    `/api/tips` ŽE podpira `method=hours|equal|points` z vnosom
+    točk PER OSEBA (methodWeights points veja, POST body `points`) —
+    MATEMATIKA točkovne delitve je IZVEDENA. Preostala delta: Square
+    dodeli točke VLOGI (enkrat nastavljeno, član sledi svoji vlogi),
+    pri nas se točke vnesejo per oseba per dan. Iskrena ocena: jedro
+    pokrito, delta je priročnostna predpolnitev (role → točke) —
+    kandidat NIZKE prioritetе, ne vrzel.
+  - *Hide $0 items from printed customer receipts* — **IZBRANO** (spodaj).
+  - *Treasury Tipped Occupation Code* — zvezni davčni obrazci ZDA.
+    IZHOD.
+- **Square »Hide $0 items« — izmerjena semantika (dobesedno):** »Sellers
+  choose whether items added at $0, like a complimentary basket of
+  bread or a glass of water, print on customer receipts. Printed
+  receipts list $0 items unless a seller turns this off. **Paid items,
+  items discounted or comped to $0, and $0 items with a paid modifier
+  still print.** Kitchen tickets, merchant copies, transaction records,
+  reports, exports, and email and text receipts include $0 items either
+  way.« Nastavitev je RAČUNOVODSKA (Account & Settings > Payments >
+  Receipts) — nad poslovanjem, ne per naprava.
+- **Lastno stanje (izmere po kodi):** posnetek računa (itemsJson,
+  v1.239.0 §16 C) nosi `amount = unitPrice × quantity`, kjer je
+  unitPrice = OrderItem.price = ZAMRZNJENA menijska cena + vsota cen
+  opcij (ops.ts: `price: price + modsTotal`) — popusti so LOČENO
+  (skupna vrstica popusta, vatBreakdownAfterDiscount). POSLEDICA
+  (vse tri Square izjeme so pri nas AVTOMATSKE): jed dodana po ceni 0
+  brez plačanih opcij → amount 0 (edini kandidat za skrivanje); jed
+  zplačano opcijo (npr. voda 0 + sirup 0,50) → price 0,50 → PIŠE;
+  jed z dinarskim popustom do 0 → price ostane > 0, popust v skupni
+  vrstici → PIŠE; jed s §23 spremembo cene from → to 0 → priceOverride
+  žig prisoten → POSED natakarja (comp) → PIŠE. Storno (predznak −1):
+  amount 0 ostane 0 v obeh smereh — filter je simetričen (zrcalo
+  istega dokumenta). Voided postavke na računu NIKOLI niso bile
+  (filtrirane pred posnetkom) — pred-postavka, ne vrzel.
+  IZRIS: buildReceiptHTML izriše VSE d.items brez pogoja; ESC-POS
+  agent pot v printInvoice preslika r.items 1:1. Kuhanjski listki
+  (buildKitchenTicketLines) niso dotaknjeni — pravilno po Square.
+- **Odloženi kandidati Vol 16 (pošteno naštet):** draggable ticket
+  reordering (deljena sekvenca → DDL + vlečenje; naslednji kandidat,
+  semantika dana zgoraj), Expo fire held courses (pristojnostne
+  pravice + countdown + per-lokacija nastavitev; KDS glave tečajev
+  že obstajajo), tips by ROLE points (jedro pokrito, delta =
+  predpolnitev per vloga), ostali IZHOD (zunaj/integracija/ZDA).
+
+### B) Odločitev
+
+VAL Ž8 — skrivanje ničelnih postavk na natisnjenem računu, kot
+PRIKAZOVNA plast nad popolnim posnetkom (1 aditivna DDL stolpec,
+politika-vzorec exception-policy):
+
+1. **Posnetek ostane POPOLN.** itemsJson je transakcijski zapis
+   (Square: »transaction records … include $0 items either way«) —
+   filter ŽIVI SAMO v izrisu odjemalskega računa (browser HTML +
+   ESC-POS agent), ne v bazi, ne v API odgovoru postavk.
+2. **Edini predikat skrivanja: `amount === 0 && brez priceOverride`.**
+   »Dodano po 0« = menijska cena 0, brez plačanih opcij (price
+   vsebuje opcije), brez §23 posega. Vse tri Square izjeme (plačano /
+   popust-do-0 / plačana opcija na 0-postavki) + naša četrta
+   (priceOverride-do-0 = comp natakarja) so AVTOMATSKO izpisane —
+   matematika posnetka jih že nosi. Defenzivno: ne-končni amount
+   (NaN/undefined) NIKOLI ni skrit (kar ne znamo izmeriti, izpišemo).
+3. **Prag vseh skritih → izpis vseh.** Če bi filter poštenil CEL
+   seznam (izjemen rob: račun s SAMO ničelnimi postavkami), izris
+   pade na poln seznam — natisnjen fiskalni dokument NIKOLI ne sme
+   imeti prazne tabele postavk.
+4. **Zastavica teče z RAČUNOM, ne z nastavitvami odjemalca.**
+   `/api/furs/[id]` odgovor nosi aditivni `hideZeroItems` (prebrano iz
+   politike) — vsak tiskalni klic (POS, ponatis, seznam računov) ga
+   dobi, neodvisno od pravic (nauk §30/§31: nastavitveno stanje
+   dashboarda se naloži samo z settings.manage — tisk ni sme biti
+   pogojen na njega).
+5. **Nastavitev: RestaurantSettings.hideZeroReceiptItems BOOLEAN
+   DEFAULT FALSE** — globalna poslovna nastavitev (Square jo ima na
+   računu, ne per naprava). Politika-vzorec (exception-policy/ap-
+   tolerance/cash-policy precedens): stolpec IZVEN main sheme do
+   produkcijskega DDL klika (P2022 zastrupitev), raw dostop + probe
+   (60 s TTL), graceful: do DDL → false → računi byte-identični
+   sedanjim; pisanje → 503 s potjo konszole. Dev (SQLite mirror)
+   dobi stolpec z db:push.
+6. **Pravice pisanja: settings.manage, NE central-only.** Razlika
+   proti POLICY_COLUMNS (tolerance/izjeme/blagajna = DENARNA politika,
+   Issue #72 C3): to je PRIKAZOVNA preferenca računa, ista družina
+   kot receiptFooter (EDITABLE, settings.manage). Pošteno zapisano
+   odločitev.
+7. **1 aditivna DDL** (BOOLEAN NOT NULL DEFAULT FALSE na obeh
+   dialektih), 0 novih odvisnosti, 0 strežniških sprememb poti.
+   UI: preklop v Nastavitvah ob receiptFooter, do DDL onemogočen z
+   opombo (migrBox vzorec v1.197); ESC-POS pot uporabi SKUPNI čisti
+   pomočnik (receiptDisplayItems) — ena resnica obeh tiskalnih ciljev.
+
+### C) Implementacija
+
+- **Čisti sloj** (src/lib/receipt.ts): ReceiptItemT dobi aditivni
+  `priceOverride?: unknown` (strukturno — API ga že nosi na vrsticah);
+  ReceiptDetailT dobi aditivni `hideZeroItems?: boolean`; NOVA čista
+  fn `isZeroAddedReceiptItem(it)` (Number.isFinite(amount) &&
+  amount === 0 && !priceOverride) + `receiptDisplayItems(d)` (filter
+  samo ob d.hideZeroItems; prazen izhod → poln seznam — prag točke 3);
+  buildReceiptHTML izrisuje receiptDisplayItems(d) namesto d.items.
+- **Politika** (src/lib/receipt-display-policy.ts, NOVA — 0 uvozov
+  razen db/prisma-missing, vzorec exception-policy):
+  RECEIPT_DISPLAY_POLICY_COLUMNS = ['hideZeroReceiptItems'];
+  receiptDisplayPolicyAvailable() + resetReceiptDisplayPolicyProbe();
+  receiptDisplayPolicy() → { hideZeroItems }; writeReceiptDisplayPolicy
+  (raw UPDATE, pre-DDL → napaka 503 s potjo konzole).
+- **API**: furs/[id] — odgovor nosi `hideZeroItems` iz politike +
+  legacy izpeljava (brez posnetka) dodaja priceOverride iz
+  modifiersJson (parsePriceOverrideMeta) — oblika vrstic IZENAČENA s
+  posnetkom; settings GET (settings.manage veja) +
+  receiptDisplayPolicy/receiptDisplayPolicyDdlActive, PUT sprejme
+  hideZeroReceiptItems (validacija boolean → writeReceiptDisplayPolicy,
+  503 pre-DDL) — ne v POLICY_COLUMNS (točka B6).
+- **UI**: nastavitve-tab — preklop (Switch) v razdelku računa ob
+  receiptFooter, disabled + opomba do DDL (prop receiptPolicyDdlActive);
+  SettingsT + hideZeroReceiptItems; dashboard load preslika politiko
+  v stanje; printInvoice ESC-POS pot → receiptDisplayItems(r).
+- **DDL infrastruktura**: mirror schema.sqlite.prisma + stolpec;
+  /api/admin/migrate-receipt-display-policy (idempotentno, IF NOT
+  EXISTS, obeh dialektov BOOLEAN, requireCentralRole, audit
+  SCHEMA_MIGRATION_RECEIPT_DISPLAY_POLICY); register
+  SCHEMA_MIGRATIONS 40 → 41 (id receipt-display-policy, probe
+  columnExists); konzola HANDLERS +1; KNOWN_DRIFTS +1
+  (isReceiptDisplayPolicyStatement — strogo ADD/DROP COLUMN samo
+  tega stolpca, dvosmerno kot exception-policy).
+- **i18n:** set.hideZeroItems + set.hideZeroItemsDesc +
+  set.hideZeroItemsDdl + mig.receiptDisplayPolicy.desc (SL + HR,
+  4121 → 4125).
+- **Testi:** tests/v263-skritje-nicelnih-postavk.test.ts — Č1 čisti
+  sloj (0-dodano skrito, popust-do-0 piše, opcija-na-0 piše,
+  priceOverride-do-0 piše, NaN/undefined defenzivno piše, qty > 1 po
+  ceni 0, storno −0 simetrično, filter izklopljen = ista vsebina,
+  prag vseh skritih → poln seznam), Č2 izris + montaža (HTML brez
+  vrstice 0-postavke ob vklopu, z vrstico ob izklopu; ESC-OS pot
+  uporablja receiptDisplayItems; furs/[id] nosi zastavico; PUT
+  validacija; UI preklop + DDL opomba), Ž registri (verzija 1.263.0,
+  DDL stavek, register 41, drift matcher, konzola, mirror stolpec,
+  i18n pariteta 4125/4125, dokument §37, AUDIT, worklog Task ID).

@@ -7,6 +7,7 @@ import { safeSettingsDto } from '@/lib/secret-dto'
 import { apToleranceConfig, apToleranceAvailable, writeApTolerance, AP_TOLERANCE_COLUMNS } from '@/lib/ap-tolerance'
 import { exceptionPolicy, exceptionPolicyAvailable, writeExceptionPolicy, EXCEPTION_POLICY_COLUMNS, type ExceptionPolicyColumn } from '@/lib/exception-policy'
 import { cashPolicy, cashPolicyAvailable, writeCashPolicy, CASH_POLICY_COLUMNS, type CashPolicyColumn } from '@/lib/cash-movements'
+import { receiptDisplayPolicy, receiptDisplayPolicyAvailable, writeReceiptDisplayPolicy } from '@/lib/receipt-display-policy'
 
 const EDITABLE = [
   'name', 'address', 'city', 'postCode', 'phone', 'email', 'web', 'businessId', 'taxId',
@@ -35,7 +36,12 @@ export async function GET(req: NextRequest) {
     // Issue #18: tolerance ujemanja so del globalne računovodske politike (DDL-gated)
     // Issue #19: politika finančnih izjem (pragovi odobritve + obveznost razloga)
     const tolerance = await apToleranceConfig()
-    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable(), exceptionPolicy: await exceptionPolicy(), exceptionPolicyDdlActive: await exceptionPolicyAvailable(), cashPolicy: await cashPolicy(), cashPolicyDdlActive: await cashPolicyAvailable() })
+    // PRIMERJAVA §37 (v1.263.0): prikazovna politika računa (skrivanje
+    // ničelnih postavk) — ista disciplina kot ostale politike (DDL-gated
+    // raw, ločeno od settings DTO), a brez central-only vrata (B6: ni
+    // denarna politika — družina receiptFooter).
+    const rdp = await receiptDisplayPolicy()
+    return ok({ settings: safeSettingsDto(s), apMatchTolerance: tolerance, apToleranceDdlActive: await apToleranceAvailable(), exceptionPolicy: await exceptionPolicy(), exceptionPolicyDdlActive: await exceptionPolicyAvailable(), cashPolicy: await cashPolicy(), cashPolicyDdlActive: await cashPolicyAvailable(), receiptDisplayPolicy: rdp, receiptDisplayPolicyDdlActive: await receiptDisplayPolicyAvailable() })
   }
   const minimal: Record<string, unknown> = {}
   for (const key of EDITABLE) {
@@ -119,6 +125,21 @@ export async function PUT(req: NextRequest) {
       }
     }
   }
+  // PRIMERJAVA §37 (v1.263.0): prikazovna politika računa — skrivanje
+  // ničelnih postavk na natisnjenem računu (Square Vol 16). Ista
+  // disciplina kot izjeme (DDL-gated raw UPDATE, ne odmeva v settings
+  // DTO ampak ločeno pod receiptDisplayPolicy); NAMERNO IZVEN
+  // POLICY_COLUMNS — prikazovna preferenca (družina receiptFooter,
+  // settings.manage), ne denarna politika (§37 B6).
+  const rdpValues: { hideZeroReceiptItems: boolean } | null = (() => {
+    if (body?.hideZeroReceiptItems === undefined) return null
+    const raw = body.hideZeroReceiptItems
+    if (typeof raw !== 'boolean' && raw !== 'true' && raw !== 'false') return null
+    return { hideZeroReceiptItems: raw === true || raw === 'true' }
+  })()
+  if (body?.hideZeroReceiptItems !== undefined && rdpValues === null) {
+    return ok({ error: 'hideZeroReceiptItems mora biti true/false.' }, 400)
+  }
   const existing = await db.restaurantSettings.findFirst()
   const settings = existing
     ? await db.restaurantSettings.update({ where: { id: existing.id }, data })
@@ -135,6 +156,10 @@ export async function PUT(req: NextRequest) {
     const err = await writeCashPolicy(cashValues)
     if (err) return ok({ error: err }, 503)
   }
+  if (rdpValues) {
+    const err = await writeReceiptDisplayPolicy(rdpValues)
+    if (err) return ok({ error: err }, 503)
+  }
   // 33-c (audit §6): spremembe nastavitev so zdaj revidirane — SAMO ključi (NI vrednosti,
   // ker so med njimi poslovni podatki; pin/skrivnosti v Editable sploh niso)
   // Issue #19: ključi politike izjem (pragovi odobritve/razlogi) so finančno
@@ -142,11 +167,15 @@ export async function PUT(req: NextRequest) {
   const changedKeys = Object.keys(data)
   const excChanged = Object.keys(excValues)
   const cashChanged = Object.keys(cashValues)
-  if (changedKeys.length > 0 || excChanged.length > 0 || cashChanged.length > 0) {
-    await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys, exceptionPolicyChanged: excChanged, exceptionPolicyValues: excValues, cashPolicyChanged: cashChanged, cashPolicyValues: cashValues }), locationId: user.loc })
+  // §37: prikazovna politika računa — ključ + bool vrednost (ista revizijska
+  // disciplina kot izjeme/blagajna: KAJ se je spremenilo).
+  const rdpChanged = rdpValues ? ['hideZeroReceiptItems'] : []
+  if (changedKeys.length > 0 || excChanged.length > 0 || cashChanged.length > 0 || rdpChanged.length > 0) {
+    await writeAudit(db, { userId: user.sub, action: 'SETTINGS_UPDATE', entityType: 'RestaurantSettings', entityId: settings.id, details: jstr({ changed: changedKeys, exceptionPolicyChanged: excChanged, exceptionPolicyValues: excValues, cashPolicyChanged: cashChanged, cashPolicyValues: cashValues, receiptDisplayPolicyChanged: rdpChanged, receiptDisplayPolicyValues: rdpValues ?? {} }), locationId: user.loc })
   }
   // #23 §1: PUT odgovor vrača varni DTO — ne odmeva obstoječih skrivnosti
   // Issue #18: + trenutne tolerance (pri prisotnosti v telesu se odražajo takoj)
   // Issue #19: + trenutna politika izjem
-  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig(), exceptionPolicy: await exceptionPolicy(), cashPolicy: await cashPolicy() })
+  // §37: + trenutna prikazovna politika računa (takojšnji odraz preklopa)
+  return ok({ settings: safeSettingsDto(settings), apMatchTolerance: await apToleranceConfig(), exceptionPolicy: await exceptionPolicy(), cashPolicy: await cashPolicy(), receiptDisplayPolicy: await receiptDisplayPolicy(), receiptDisplayPolicyDdlActive: await receiptDisplayPolicyAvailable() })
 }

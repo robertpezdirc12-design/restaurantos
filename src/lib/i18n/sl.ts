@@ -1202,6 +1202,10 @@ export const sl: Record<string, string> = {
   'set.fursWarning': 'Produkcijsko okolje izdaja prave FURS račune — preklapljajte previdno.',
   'set.receiptFooter': 'Noga računa',
   'set.receiptFooterPlaceholder': 'npr. Hvala za obisk!',
+  /* PRIMERJAVA §37 (v1.263.0) — skrivanje ničelnih postavk (Square Vol 16) */
+  'set.hideZeroItems': 'Skrij ničelne postavke na računu',
+  'set.hideZeroItemsDesc': 'Brezplačne postavke (kruh, voda) gredo v kuhinjo, a se ne natisnejo na računu gostu; plačane postavke, popusti in spremembe cene se vedno natisnejo.',
+  'set.hideZeroItemsDdl': 'Čaka shemsko migracijo (Enterprise → Shema migracije → receipt-display-policy).',
   'set.vatBasic': 'Osnovni DDV (%)',
   'set.vatReduced': 'Znižani DDV (%)',
   'set.currency': 'Valuta',
@@ -4388,6 +4392,7 @@ export const sl: Record<string, string> = {
   'opv.saved': 'Shranjeno',
   'opv.deleted': 'Izbrisano',
   'mig.checklistRuns.desc': 'Digitalni checklisti (v1.246.0) — nova tabela ChecklistRun (izvedbe po postavki: kdo, kdaj, vrednost); brez vroče poti: plošča vrne prazno do DDL',
+  'mig.receiptDisplayPolicy.desc': 'Prikazovna politika računa (v1.263.0) — skrivanje ničelnih postavk na natisnjenem računu (Square Vol 16): 1 stolpec na nastavitvah; do DDL je filter izklopljen in preklop onemogočen',
 
   /* ── v1.247.0 (PRIMERJAVA §21) — shranjeni pogledi poročil (rv.*) ── */
   'rv.title': 'Shranjeni pogledi poročil',

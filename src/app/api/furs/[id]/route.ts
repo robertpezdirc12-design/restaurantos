@@ -5,6 +5,8 @@ import { guardResource } from '@/lib/tenant'
 import { num } from '@/lib/map'
 import { vatFromGross } from '@/lib/billing'
 import { fiscalAdapterFor } from '@/lib/fiscal'
+import { parsePriceOverrideMeta } from '@/lib/price-override'
+import { receiptDisplayPolicy } from '@/lib/receipt-display-policy'
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await requireAuth(req)
@@ -82,6 +84,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         vatRate: num(i.vatRate, 22),
         vatAmount: num(i.vatAmount) * sign,
         amount: num(i.price) * (i.quantity || 1) * sign,
+        // PRIMERJAVA §37 (v1.263.0): žig spremembe cene tudi na LEGACY
+        // izpeljavi (iz modifiersJson) — oblika vrstic IZENAČENA s
+        // posnetkom, da filter ničelnih postavk (priceOverride = comp
+        // natakarja → vrstica PIŠE) deluje enako na računih pred in
+        // po v1.239.0.
+        ...(parsePriceOverrideMeta(i.modifiersJson)
+          ? { priceOverride: parsePriceOverrideMeta(i.modifiersJson) }
+          : {}),
       }))
 
   if (breakdown.length === 0 && items.length > 0) {
@@ -99,6 +109,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     breakdown = [...m.values()].map((v) => ({ rate: v.rate, base: Math.round(v.base * 100) / 100, vat: Math.round(v.vat * 100) / 100 }))
   }
 
+  // PRIMERJAVA §37 (v1.263.0): zastavica politike SKRIVANJA NIČELNIH
+  // postavk potuje Z RAČUNOM — vsak tiskalni klic (POS/ponatis/seznam)
+  // jo dobi, neodvisno od pravic nad nastavitvami (dashboard nastavitve
+  // se naložijo samo z settings.manage — tisk NE sme biti pogojen na
+  // njih). Politika je DDL-gated; pre-DDL → false → byte-identičen izpis.
+  const displayPolicy = await receiptDisplayPolicy()
+
   return ok({ receipt: {
     id: r.id, invoiceNumber: r.receiptNumber, createdAt: r.createdAt, printedAt: r.printedAt,
     businessName: r.businessName || r.Location?.name || company?.name || '',
@@ -114,6 +131,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     operator: r.Order?.Employee_Order_employeeIdToEmployee?.name || null, items,
     // Triage SI/HR fiskalizacija: država določa pot na izpisu (ZOI/EOR vs ZKI/JIR + QR)
     country: r.Location?.country || 'SI',
+    // §37: prikazovna politika na računu (aditivno — odjemalci brez
+    // podpore jo prezrejo; receiptDisplayItems jo upošteva).
+    hideZeroItems: displayPolicy.hideZeroItems,
     zki: r.cisZki || undefined,
     jir: r.cisJir || undefined,
     qr: (() => {

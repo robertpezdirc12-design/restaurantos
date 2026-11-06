@@ -234,7 +234,8 @@ describe('§C Nastavitve — razdelki s naslovi (vsebina kartic nedotaknjena)', 
     const d = dash()
     for (const pin of [
       // issue #72 A3: UI ≡ backend — settings kartico ureja nosilec settings.manage
-      "<SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} />",
+      // v1.263.0 §37: +receiptPolicyDdlActive (prikazovna politika računa, DDL-gated preklop)
+      "<SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} receiptPolicyDdlActive={receiptPolicyDdlActive} />",
       '<ReservationWidgetCard />',
       '<ManagerCallSettingsCard />',
       '<LabelRulesCard />',
@@ -328,7 +329,7 @@ describe('§E i18n — novi ključi #69 obstajajo v OBEH slovarjih', () => {
 
 describe('§F 0 DDL — vizualna sprememba brez sheme', () => {
   it('SCHEMA_MIGRATIONS.length (34 — dvignil equipment-maintenance v1.200.0; #69/#189 vali sami 0 DDL)', () => {
-    expect(SCHEMA_MIGRATIONS.length).toBe(40) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.125.0: +einvoice-outbox (#4) — #69 val dodal 0
+    expect(SCHEMA_MIGRATIONS.length).toBe(41) // v1.202.0: +inventory-ean (OSS-9) // v1.200.0: +equipment-maintenance (OSS-1) // v1.197.0: +payroll-surcharge-rates (noge doplačil N-27-3) // v1.193.0: +order-item-seats (sedeži #20) // v1.125.0: +einvoice-outbox (#4) — #69 val dodal 0
   })
 
   it('prisma/migrations ima samo init migracijo (ni novih SQL datotek)', () => {

@@ -108,7 +108,7 @@ import { DashboardSidebar, MobileBottomNav, MobileNavDrawer } from '@/components
 import { ThemeToggle } from '@/components/theme-toggle'
 import { I18nProvider, LanguageToggle, useI18n } from '@/components/i18n'
 import { downloadCSV } from '@/lib/client'
-import { printReceipt, type ReceiptDetailT } from '@/lib/receipt'
+import { printReceipt, receiptDisplayItems, type ReceiptDetailT } from '@/lib/receipt'
 import {
   flushQueue, getQueue, getDeviceId, isNetworkError, newOperationId, subscribeQueue, tryEnqueueOp,
   clearDeadOps, resetDeadOp,
@@ -468,6 +468,10 @@ function DashboardInner() {
   const [errLog, setErrLog] = useState<ErrLogT[]>([])
   const [auditLog, setAuditLog] = useState<AuditT[]>([])
   const [settings, setSettings] = useState<SettingsT | null>(null)
+  // §37: ali je DDL stolpca prikazovne politike računa že apliciran
+  // (preklop v Nastavitvah je do tedaj onemogočen; politika se bere
+  // prek raw+probe — false pomeni izklopljeno tudi v izrisu).
+  const [receiptPolicyDdlActive, setReceiptPolicyDdlActive] = useState(false)
   const [devices, setDevices] = useState<DeviceT[]>([])
   const [newOrderTable, setNewOrderTable] = useState<TableT | null>(null)
   const [cart, setCart] = useState<Record<string, number>>({})
@@ -1105,7 +1109,11 @@ function DashboardInner() {
           defaultVatRate: String(num(s.defaultVatRate, 22)), reducedVatRate: String(num(s.reducedVatRate, 9.5)),
           loyaltyEnabled: !!s.loyaltyEnabled, receiptFooter: str(s.receiptFooter), currency: str(s.currency) || 'EUR',
           locale: str(s.locale) || 'sl-SI', country: str(s.country) || 'SI', emailEnabled: !!s.emailEnabled,
+          // §37: prikazovna politika (policy objekt ločeno od settings DTO;
+          // pre-DDL → undefined → false — preklop v UI onemogočen)
+          hideZeroReceiptItems: !!(se as { receiptDisplayPolicy?: { hideZeroItems?: boolean } }).receiptDisplayPolicy?.hideZeroItems,
         } : null)
+        setReceiptPolicyDdlActive(!!(se as { receiptDisplayPolicyDdlActive?: boolean }).receiptDisplayPolicyDdlActive)
       }
       if (dv) setDevices(dv.devices)
       if (au) setAuditLog(au.entries)
@@ -2114,14 +2122,18 @@ function DashboardInner() {
         return
       }
       const money = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
+      // §37: ESC-POS/agent pot teče čez ISTI čisti pomočnik kot browser
+      // izris (receiptDisplayItems) — ena resnica obeh tiskalnih ciljev;
+      // posnetek/kuhinja ostanejo popolni (Square: transaction records).
+      const displayItems = receiptDisplayItems(r)
       const lines: PrintLine[] = [
         { text: r.businessAddress || '' },
         ...(r.taxId ? [{ text: t('print.taxIdLine', { tax: r.taxId }) } as PrintLine] : []),
         { text: '· · · · · · · · · · · · · · · · · ·' },
         ...(r.tableName ? [{ text: t('print.tableLine', { name: r.tableName }) } as PrintLine] : []),
         { text: '--------------------------------' },
-        ...r.items.map((it) => ({ text: `${it.qty}x ${it.name}` } as PrintLine)),
-        ...r.items.map((it) => ({ text: `   ${money(it.amount)}`, align: 'right' } as PrintLine)),
+        ...displayItems.map((it) => ({ text: `${it.qty}x ${it.name}` } as PrintLine)),
+        ...displayItems.map((it) => ({ text: `   ${money(it.amount)}`, align: 'right' } as PrintLine)),
         { text: '--------------------------------' },
         { text: t('print.vatLine', { amount: money(r.totalVat) }), align: 'right' },
         { text: t('print.totalLine', { amount: money(r.total) }), align: 'right', bold: true, size: 'large' },
@@ -6328,7 +6340,7 @@ function DashboardInner() {
               </div>
             </nav>
             <SettingsSection id="general" title={t('settings.secGeneral')}>
-              <SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} />
+              <SettingsEditor settings={settings} canManage={hasPerm('settings.manage')} onReload={load} receiptPolicyDdlActive={receiptPolicyDdlActive} />
               {/* Issue #13 (v1.110.0) — javni rezervacijski widget (povezava /r/<token>) */}
               <ReservationWidgetCard />
               {/* v1.244.0 (PRIMERJAVA §18 A) — ritem prihodov (arrival pacing) */}

@@ -2697,6 +2697,12 @@ model RestaurantSettings {
   // slepi popis (blagajnik NE vidi pričakovanega pred oddajo štetja).
   cashVarianceThresholdCents    Int     @default(0)
   cashBlindCount                Boolean @default(false)
+  // PRIMERJAVA §37 (v1.263.0): prikazovna politika računa — skrivanje
+  // ničelnih postavk na natisnjenem odjemalskem računu (Square Vol 16
+  // »Hide $0 items from printed customer receipts«). MIRROR-ONLY do DDL
+  // (migrate-receipt-display-policy); dostop prek raw + probe (vzorec
+  // exception-policy); privzeto IZKLOPLJENO — izpisi byte-identični.
+  hideZeroReceiptItems          Boolean @default(false)
 }
 
 model RevenueCenter {

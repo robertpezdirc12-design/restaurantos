@@ -362,6 +362,9 @@ const SETTINGS_PENDING_MERGED_COLUMNS = new Set<string>([
   'apMatchVatTolerancePct', 'apMatchAmountToleranceCents',
   ...CASH_POLICY_COLS,
   ...EXCEPTION_POLICY_COLUMNS,
+  // PRIMERJAVA §37 (v1.263.0): prikazovna politika računa (posamični
+  // fazni vnos spodaj; tu samo za ZDRUŽENE stavke več pending valov)
+  'hideZeroReceiptItems',
 ])
 
 export function isRestaurantSettingsPendingMergedStatement(stmt: string): boolean {
@@ -372,6 +375,24 @@ export function isRestaurantSettingsPendingMergedStatement(stmt: string): boolea
   return clauses.every((c) => {
     const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
     return !!mm && SETTINGS_PENDING_MERGED_COLUMNS.has(mm[2])
+  })
+}
+
+/**
+ * PRIMERJAVA §37 (v1.263.0) — prikazovna politika računa (receipt-display-
+ * policy): 1 stolpec na RestaurantSettings (hideZeroReceiptItems — skrivanje
+ * ničelnih postavk na natisnjenem odjemalskem računu, Square Vol 16).
+ * Dvosmerna faza kot exception-policy: pred DDL ADD COLUMN, po DDL in pred
+ * uskladitvijo main sheme DROP COLUMN — oba strogo SAMO tega stolpca.
+ */
+export function isReceiptDisplayPolicyStatement(stmt: string): boolean {
+  const m = /^ALTER\s+TABLE\s+"RestaurantSettings"\s+([\s\S]+)$/i.exec(stmt)
+  if (!m) return false
+  const clauses = splitTopLevelClauses(m[1])
+  if (clauses.length === 0) return false
+  return clauses.every((c) => {
+    const mm = /^(ADD|DROP)\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"(\w+)"(\s|$)/i.exec(c)
+    return !!mm && mm[2] === 'hideZeroReceiptItems'
   })
 }
 
@@ -1073,6 +1094,20 @@ export const KNOWN_DRIFTS: KnownDrift[] = [
       'prevzela v isti verziji — DROP faza ne obstaja). Ko je DDL apliciran, drift izgine ' +
       'in vnos postane mrtva koda.',
     matches: isChecklistRunsStatement,
+  },
+  {
+    id: 'receipt-display-policy',
+    reason:
+      'Prikazovna politika računa (PRIMERJAVA §37, v1.263.0, Square Vol 16 ' +
+      '»Hide $0 items from printed customer receipts«) — 1 stolpec na RestaurantSettings ' +
+      '(hideZeroReceiptItems BOOLEAN NOT NULL DEFAULT FALSE): produkcija čaka DDL korak — ' +
+      'admin ruta /api/admin/migrate-receipt-display-policy (konzola Enterprise → Shema ' +
+      'migracije → en klik). Dvosmerna faza (kot exception-policy): po DDL in pred ' +
+      'uskladitvijo main sheme diff generira DROP COLUMN. Do DDL rute tečejo na varnem ' +
+      'privzetku (graceful — filter izklopljen, računi byte-identični), pisanje politike ' +
+      'prek PUT /api/settings vrne 503. Nobena tipizirana poizvedba stolpca ne uporablja ' +
+      '(raw SQL + probe, vzorec exception-policy).',
+    matches: isReceiptDisplayPolicyStatement,
   },
 ]
 

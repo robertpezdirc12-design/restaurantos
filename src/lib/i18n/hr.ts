@@ -1198,6 +1198,10 @@ export const hr: Record<string, string> = {
   'set.fursWarning': 'Produkcijsko okruženje izdaje prave FURS račune — prebacujte pažljivo.',
   'set.receiptFooter': 'Podnožje računa',
   'set.receiptFooterPlaceholder': 'npr. Hvala na posjeti!',
+  /* PRIMERJAVA §37 (v1.263.0) — skrivanje ničelnih postavki (Square Vol 16) */
+  'set.hideZeroItems': 'Sakrij ničtune stavke na računu',
+  'set.hideZeroItemsDesc': 'Besplatne stavke (kruh, voda) idu u kuhinju, ali se ne ispisuju na računu gosta; plaćene stavke, popusti i izmjene cijene se uvijek ispisuju.',
+  'set.hideZeroItemsDdl': 'Čeka shemsku migraciju (Enterprise → Shemske migracije → receipt-display-policy).',
   'set.vatBasic': 'Osnovni PDV (%)',
   'set.vatReduced': 'Sniženi PDV (%)',
   'set.currency': 'Valuta',
@@ -4383,6 +4387,7 @@ export const hr: Record<string, string> = {
   'opv.saved': 'Spremljeno',
   'opv.deleted': 'Izbrisano',
   'mig.checklistRuns.desc': 'Digitalni popisi (v1.246.0) — nova tablica ChecklistRun (izvedbe po stavki: tko, kada, vrijednost); bez vrućeg puta: ploča vraća prazno do DDL',
+  'mig.receiptDisplayPolicy.desc': 'Prikazna politika računa (v1.263.0) — sakrivanje ničtunih stavki na ispisanom računu (Square Vol 16): 1 stupac na postavkama; do DDL je filter isključen i preklop onemogućen',
 
   /* ── v1.247.0 (PRIMERJAVA §21) — spremljeni prikazi izvješća (rv.*) ── */
   'rv.title': 'Spremljeni prikazi izvješća',

@@ -265,9 +265,14 @@ export interface SettingsT {
   businessId: string; taxId: string; registerNumber: string; fursEnvironment: string
   defaultVatRate: string; reducedVatRate: string; loyaltyEnabled: boolean
   receiptFooter: string; currency: string; locale: string; country: string; emailEnabled: boolean
+  /** PRIMERJAVA §37 (v1.263.0): prikazovna politika računa — skrivanje
+   * ničelnih postavk na natisnjenem računu (Square Vol 16). Policy stolpec
+   * (DDL-gated raw) — potuje SKUPAJ z obrazcem, a se pošlje SAMO ob
+   * aktivnem DDL (pre-DDL shranjevanje ostane čisto). */
+  hideZeroReceiptItems: boolean
 }
 
-export function SettingsEditor({ settings, canManage, onReload }: { settings: SettingsT | null; canManage: boolean; onReload: () => Promise<void> }) {
+export function SettingsEditor({ settings, canManage, onReload, receiptPolicyDdlActive = false }: { settings: SettingsT | null; canManage: boolean; onReload: () => Promise<void>; receiptPolicyDdlActive?: boolean }) {
   const { t } = useI18n()
   const [form, setForm] = useState<SettingsT | null>(settings)
   const [saving, setSaving] = useState(false)
@@ -320,13 +325,19 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
     if (!form) return
     setSaving(true)
     try {
+      // §37: prikazovna politika se pošlje SAMO ob aktivnem DDL — pre-DDL
+      // je preklop onemogočen in vrednost ne potuje (shranjevanje
+      // ostalih nastavitev ostane čisto, brez 503).
+      const { hideZeroReceiptItems, ...rest } = form
+      const payload: Record<string, unknown> = {
+        ...rest,
+        defaultVatRate: Number(form.defaultVatRate.replace(',', '.')),
+        reducedVatRate: Number(form.reducedVatRate.replace(',', '.')),
+        ...(receiptPolicyDdlActive ? { hideZeroReceiptItems } : {}),
+      }
       await api('/api/settings', {
         method: 'PUT',
-        body: JSON.stringify({
-          ...form,
-          defaultVatRate: Number(form.defaultVatRate.replace(',', '.')),
-          reducedVatRate: Number(form.reducedVatRate.replace(',', '.')),
-        }),
+        body: JSON.stringify(payload),
       })
       setNotice(t('set.saved'))
       await onReload()
@@ -410,6 +421,26 @@ export function SettingsEditor({ settings, canManage, onReload }: { settings: Se
             <p className="text-xs text-amber-600">{t('set.fursWarning')}</p>
           </div>
           {txt('receiptFooter', t('set.receiptFooter'), t('set.receiptFooterPlaceholder'))}
+        </div>
+        {sectionSave}
+
+        {/* PRIMERJAVA §37 (v1.263.0): SKRIVANJE NIČELNIH POSTAVK (Square Vol 16
+            »Hide $0 items from printed customer receipts«) — prikazovna
+            politika družine receiptFooter. Pre-DDL: onemogočen preklop + pot
+            do konzole (migrBox vzorec v1.197); posnetek/kuhinja/poročila
+            ostanejo popolni NE glede na položaj. */}
+        <div className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2.5">
+          <div>
+            <p className="text-sm font-medium">{t('set.hideZeroItems')}</p>
+            <p className="text-xs text-stone-500">{t('set.hideZeroItemsDesc')}</p>
+            {!receiptPolicyDdlActive && <p className="text-xs text-amber-600">{t('set.hideZeroItemsDdl')}</p>}
+          </div>
+          <Switch
+            checked={!!form.hideZeroReceiptItems}
+            disabled={!receiptPolicyDdlActive}
+            onCheckedChange={(v) => set('hideZeroReceiptItems', v)}
+            aria-label={t('set.hideZeroItems')}
+          />
         </div>
         {sectionSave}
 
