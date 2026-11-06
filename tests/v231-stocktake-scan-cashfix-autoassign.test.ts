@@ -177,7 +177,7 @@ describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.231.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-qa-množine-ploščica-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-finalna-verifikacija')
     expect(wl.indexOf('Task ID: v1.231.0')).toBeLessThan(wl.indexOf('Task ID: v1.230.0'))
   })
 })

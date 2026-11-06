@@ -441,6 +441,6 @@ describe('v1.247.0 Ž — registri in pini', () => {
 
   test('Ž7: worklog vrhnji vnos nosi Task ID v1.247.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-qa-množine-ploščica-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-finalna-verifikacija')
   })
 })
