@@ -93,7 +93,7 @@ function subscribeOnline(onChange: () => void) {
 }
 
 function HandheldInner() {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [me, setMe] = useState<{ name?: string; role?: string } | null>(null)
@@ -490,7 +490,7 @@ function HandheldInner() {
                   className={`relative w-full rounded-2xl p-4 text-left shadow min-h-24 transition ${TAB_COLORS[tb.status] ?? 'bg-stone-500 text-white'}`}
                 >
                   <p className="font-bold text-lg leading-tight">{tb.name}</p>
-                  <p className="text-xs opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
+                  <p className="text-xs opacity-90 mt-0.5">{tb.zone} · {tN('tables.seats', 'mesto', tb.seats)}</p>
                   {tb.activeOrder && <p className="text-sm font-bold mt-1">{fmtEUR(tb.activeOrder.total)}</p>}
                   <p className="text-xs mt-1 opacity-80">
                     {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —
@@ -521,7 +521,7 @@ function HandheldInner() {
             <button aria-label={t('hh.backTables')} onClick={backToTables} className="p-2 rounded-lg hover:bg-stone-100 min-h-11 min-w-11 flex items-center justify-center"><ChevronLeft className="w-6 h-6" /></button>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-base leading-tight truncate">{openOrder ? t('hh.orderMeta', { n: openOrder.orderNumber ?? '—' }) : t('hh.newOrderFor', { name: selTable.name })}</p>
-              <p className="text-xs text-stone-500 truncate">{selTable.name} · {selTable.zone} · {t('tables.seats', { n: selTable.seats })}</p>
+              <p className="text-xs text-stone-500 truncate">{selTable.name} · {selTable.zone} · {tN('tables.seats', 'mesto', selTable.seats)}</p>
             </div>
             {openOrder && <Badge className="bg-amber-600 shrink-0">{fmtEUR(openOrder.total)}</Badge>}
           </div>

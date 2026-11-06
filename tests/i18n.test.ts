@@ -11,7 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DEFAULT_LOCALE, LOCALES, dictionaryGaps, emptyValues, fiscalStatusLabel,
-  isLocale, normalizeLocale, t,
+  isLocale, normalizeLocale, nounKey, t,
 } from '../src/lib/i18n'
 import { sl } from '../src/lib/i18n/sl'
 import { hr } from '../src/lib/i18n/hr'
@@ -76,8 +76,10 @@ describe('i18n — t() in normalizacija', () => {
   })
 
   test('interpolacija spremenljivk', () => {
-    expect(t('sl', 'tables.seats', { n: 4 })).toBe('4 mest')
-    expect(t('hr', 'tables.seats', { n: 4 })).toBe('4 mjesta')
+    // QA-val v1.268.0: tables.seats je zdaj predloga »{n} {w}« — množinska oblika
+    // samostalnika se sestavi prek nounKey (vzorec tN v I18nProviderju).
+    expect(t('sl', 'tables.seats', { n: 4, w: t('sl', nounKey('mesto', 4)) })).toBe('4 mesta')
+    expect(t('hr', 'tables.seats', { n: 4, w: t('hr', nounKey('mesto', 4)) })).toBe('4 mjesta')
     expect(t('sl', 'dash.viewLabel', { name: 'Maribor' })).toBe('Pogled: Maribor')
     expect(t('hr', 'header.queued', { n: 3 })).toBe('3 u redu')
   })

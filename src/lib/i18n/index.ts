@@ -128,6 +128,32 @@ export function dictionaryGaps(): { missingInHr: string[]; missingInSl: string[]
 }
 
 /**
+ * QA-val v1.268.0 — pravilna množinska oblika samostalnika za števnike.
+ *
+ * Slovenščina pozna štiri oblike (ednina / dvojina / množina / rodilnik množine):
+ *   1 mesto · 2 mesti · 3–4 mesta · 5+ mest.
+ * Hrvaščina nima dvojine — paucal pokrije 2–4 (vrednosti .2 in .34 sta v HR
+ * slovarju enaki, .n pa je rodilnik množine):
+ *   1 mjesto · 2 mjesta · 3–4 mjesta · 5+ mjesta.
+ *
+ * Vzorec wlParty (gostinske-ops-tab / waitlist.ts) — sedaj skupen za vse
+ * predloge oblike »{n} {w}«. Samostalnik živi v slovarjih kot noun.<id>.<oblika>:
+ *   noun.mesto.1 / .2 / .34 / .n  ×  SL + HR (popolna pariteta).
+ *
+ * Predloga se kliče prek konteksta:  tN('tables.seats', 'mesto', n)  (src/components/i18n)
+ * ali neposredno:  t('tables.seats', { n, w: t(nounKey('mesto', n)) })
+ * Vrne ključ oblike; besede SAME nikoli ne živijo v kodi (doc-truth + pariteta).
+ */
+export function nounKey(noun: string, n: number): string {
+  const v = Math.abs(Math.trunc(n))
+  if (!Number.isFinite(v)) return `noun.${noun}.n`
+  if (v === 1) return `noun.${noun}.1`
+  if (v === 2) return `noun.${noun}.2`
+  if (v === 3 || v === 4) return `noun.${noun}.34`
+  return `noun.${noun}.n`
+}
+
+/**
  * Pokritost delnih gostovskih slovarjev (P1-5 EN, P3-21 DE/IT): KLJUČI predpon
  * EN_GUEST_PREFIXES iz SL, ki manjkajo v danem slovarju. Prazno = polna
  * pokritost gostovskih površin v tem jeziku.

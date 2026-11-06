@@ -185,7 +185,8 @@ describe('§B Meni — segmentacija dolge strani (statična sidra, brez stanja)'
   it('čipi hitrega skoka: cilj na dotik 44 px + števec postavk kategorije', () => {
     const d = dash()
     expect(d).toContain('shrink-0 min-h-11 inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700')
-    expect(d).toContain('{t(\'menu.catCount\', { n: g.items.length })}')
+    // QA-val v1.268.0: števec teče prek tN (množinska oblika — »4 artikli«, ne »4 artiklov«)
+    expect(d).toContain('{tN(\'menu.catCount\', \'artikel\', g.items.length)}')
   })
 
   it('razdelki: id sidra + scroll-mt + lepljiva glava kategorije', () => {

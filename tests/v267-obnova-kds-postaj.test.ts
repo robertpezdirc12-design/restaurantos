@@ -24,7 +24,7 @@
  *    naprava snapshot; nalaganje perms-gated; samodejna obnova pogojni
  *    efekt; touched zastavici; applyKdsProfile; Popover sekcija; save
  *    handler.
- *  Ž · REGISTRI: verzija 1.267.0, i18n pariteta 4168/4168 (+11 ključev),
+ *  Ž · REGISTRI: verzija 1.267.0, i18n pariteta 4188/4188 (+11 ključev),
  *    dokument §41 + AUDIT POSODOBITEV, worklog Task ID.
  */
 import { describe, test, expect } from 'bun:test'
@@ -302,12 +302,12 @@ describe('v1.267.0 Č2 — API + UI montaža', () => {
 
 describe('v1.267.0 Ž — registri', () => {
   test('Ž1: verzija 1.267.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.267.0')
-    expect(read('src/lib/version.ts')).toContain("'1.267.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.267.0')
+    expect(APP_VERSION).toBe('1.268.0')
+    expect(read('src/lib/version.ts')).toContain("'1.268.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.268.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4168/4168 (+11 klju\u010dev vala)', () => {
+  test('Ž2: i18n pariteta SL/HR 4188/4188 (+11 klju\u010dev vala)', () => {
     for (const k of [
       'kds.profileTitle', 'kds.profileHint', 'kds.profileExisting', 'kds.profileSave',
       'kds.profileRestore', 'kds.profileSaveAria', 'kds.profileRestoreAria',
@@ -316,8 +316,8 @@ describe('v1.267.0 Ž — registri', () => {
       expect(sl[k]).toBeTruthy()
       expect(hr[k]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4168)
-    expect(Object.keys(hr).length).toBe(4168)
+    expect(Object.keys(sl).length).toBe(4188)
+    expect(Object.keys(hr).length).toBe(4188)
   })
 
   test('Ž3: dokument §41 + AUDIT POSODOBITEV v1.267.0', () => {
@@ -330,6 +330,6 @@ describe('v1.267.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.267.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-qa-množine-ploščica-val')
   })
 })

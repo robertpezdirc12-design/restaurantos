@@ -256,13 +256,13 @@ export const hr: Record<string, string> = {
   'dash.vsYesterday': 'vs jučer',
   'dash.vsYesterdayNoData': 'jučer bez prometa',
   'dash.paidToday': 'Plaćeno danas',
-  'dash.paidTodayInfo': '{n} računa · {sum}',
+  'dash.paidTodayInfo': '{n} {w} · {sum}',
   'dash.kpiAria': 'Otvori {label}',
   'dash.noGuestData': '—',
   'dash.footer': 'RestaurantOS · EUR',
 
   // ── Stolovi ──
-  'tables.seats': '{n} mjesta',
+  'tables.seats': '{n} {w}',
   // v1.129.0 (Toast uzorak): vrijeme zauzetosti + faza narudžbe na pločici stola
   'tables.elapsedMin': '{m} min',
   'tables.sinceOrder': 'Od narudžbe: {m} min',
@@ -501,7 +501,7 @@ export const hr: Record<string, string> = {
   'payment.noDiscount': 'Bez popusta',
   'payment.redeem': 'Unovči:',
   'payment.pointsSuffix': 'bodova',
-  'payment.pointsOf': '{n} bodova',
+  'payment.pointsOf': '{n} {w}',
   'payment.guestSearch': 'Gost (ime ili telefon)…',
   'payment.guestSearchAria': 'Pretraga gosta programa vjernosti',
   'payment.remove': 'Ukloni',
@@ -711,7 +711,7 @@ export const hr: Record<string, string> = {
   'shifts.profitMonth': 'Dobit (mjesec)',
   'shifts.invoicesMonth': 'Računa (mjesec)',
   'shifts.revenueToday': 'Prihodi (danas)',
-  'shifts.todayDetail': '{n} računa · porez {tax}',
+  'shifts.todayDetail': '{n} {w} · porez {tax}',
   'shifts.taxBreakdown': 'Promet po poreznim stopama (mjesec)',
   'shifts.noTraffic': 'Nema prometa.',
   'shifts.vatBadge': 'PDV {rate} % · {qty} stavki',
@@ -1012,7 +1012,7 @@ export const hr: Record<string, string> = {
   'loy.newMember': 'Novi član',
   'loy.accounts': 'Računi vjernosti',
   'loy.none': 'Nema članova programa vjernosti.',
-  'loy.visitsSuffix': '{n} posjeta ukupno',
+  'loy.visitsSuffix': '{n} {w} ukupno',
   'loy.newMemberTitle': 'Novi član vjernosti',
   'loy.guestName': 'Ime gosta *',
   'loy.namePlaceholder': 'npr. Ana Kovač',
@@ -1053,7 +1053,7 @@ export const hr: Record<string, string> = {
   'crm.guests.suppressed': 'odjavljeni: {n}',
   'crm.guests.export': 'Izvoz (CSV)',
   'crm.guests.none': 'Nema gostiju u opsegu.',
-  'crm.guests.visits': '{n} posjeta',
+  'crm.guests.visits': '{n} {w}',
   'crm.guests.email': 'E-pošta',
   'crm.guests.sms': 'SMS',
   // OSS-7 (v1.205.0): treći kanal — marka se ne prevodi
@@ -1281,7 +1281,7 @@ export const hr: Record<string, string> = {
   'dost.recipient': 'Primatelj:',
   'dost.address': 'Adresa:',
   'dost.note': 'Napomena: {note}',
-  'dost.itemsCount': '{n} artikala',
+  'dost.itemsCount': '{n} {w}',
   'dost.deliveryFeeShort': 'dostava {fee}',
   'dost.cancelConfirm': 'Otkazati dostavu #{n}?',
   'dost.cancelNote': 'Otkaz operatera',
@@ -1851,7 +1851,7 @@ export const hr: Record<string, string> = {
   'menu.other': 'Drugo',
   // Issue #69 (2. val) — segmentacija menija: brzi skok po kategorijama (statička sidra)
   'menu.jumpAria': 'Brzi skok po kategorijama menija',
-  'menu.catCount': '{n} artikala',
+  'menu.catCount': '{n} {w}',
   // Issue #69 (2. val) — segmentacija postavki: naslovi odjeljaka + brzi skok
   'settings.jumpAria': 'Brzi skok po odjeljcima postavki',
   'settings.secGeneral': 'Opće postavke',
@@ -4513,6 +4513,31 @@ export const hr: Record<string, string> = {
   'rc.empty': 'U odabranom razdoblju nema plaćenih narudžbi.',
   'rc.loadErr': 'Izvješće nije bilo moguće dohvatiti.',
   'rc.ariaShare': 'Udio neto prodaje: {p} %',
+
+  /* ── QA-val v1.268.0 — množinske oblike samostalnikova (nounKey v i18n/index) ──
+     Hrvaščina nima dvojine: .2 in .34 sta paucal (enaka oblika), .n je rodilnik
+     množine. Ključi so enaki SL slovarju (popolna pariteta); ID-ji ostajajo
+     slovenski, vrednosti sledijo hrvatski terminologiji (posjet/bod). */
+  'noun.mesto.1': 'mjesto',
+  'noun.mesto.2': 'mjesta',
+  'noun.mesto.34': 'mjesta',
+  'noun.mesto.n': 'mjesta',
+  'noun.artikel.1': 'artikl',
+  'noun.artikel.2': 'artikla',
+  'noun.artikel.34': 'artikla',
+  'noun.artikel.n': 'artikala',
+  'noun.racun.1': 'račun',
+  'noun.racun.2': 'računa',
+  'noun.racun.34': 'računa',
+  'noun.racun.n': 'računa',
+  'noun.obisk.1': 'posjet',
+  'noun.obisk.2': 'posjeta',
+  'noun.obisk.34': 'posjeta',
+  'noun.obisk.n': 'posjeta',
+  'noun.tocka.1': 'bod',
+  'noun.tocka.2': 'boda',
+  'noun.tocka.34': 'boda',
+  'noun.tocka.n': 'bodova',
 }
 
 export type DictionaryHr = typeof hr

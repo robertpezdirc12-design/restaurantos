@@ -259,13 +259,13 @@ export const sl: Record<string, string> = {
   'dash.vsYesterday': 'vs včeraj',
   'dash.vsYesterdayNoData': 'včeraj brez prometa',
   'dash.paidToday': 'Plačano danes',
-  'dash.paidTodayInfo': '{n} računov · {sum}',
+  'dash.paidTodayInfo': '{n} {w} · {sum}',
   'dash.kpiAria': 'Odpri {label}',
   'dash.noGuestData': '—',
   'dash.footer': 'RestaurantOS · EUR',
 
   // ── Mize ──
-  'tables.seats': '{n} mest',
+  'tables.seats': '{n} {w}',
   // v1.129.0 (Toast vzorec): čas zasedenosti + faza naročila na ploščici mize
   'tables.elapsedMin': '{m} min',
   'tables.sinceOrder': 'Od naročila: {m} min',
@@ -505,7 +505,7 @@ export const sl: Record<string, string> = {
   'payment.noDiscount': 'Brez popusta',
   'payment.redeem': 'Unovči:',
   'payment.pointsSuffix': 'točk',
-  'payment.pointsOf': '{n} točk',
+  'payment.pointsOf': '{n} {w}',
   'payment.guestSearch': 'Gost (ime ali telefon)…',
   'payment.guestSearchAria': 'Iskanje gosta zvestobe',
   'payment.remove': 'Odstrani',
@@ -715,7 +715,7 @@ export const sl: Record<string, string> = {
   'shifts.profitMonth': 'Dobiček (mesec)',
   'shifts.invoicesMonth': 'Računov (mesec)',
   'shifts.revenueToday': 'Prihodki (danes)',
-  'shifts.todayDetail': '{n} računov · davek {tax}',
+  'shifts.todayDetail': '{n} {w} · davek {tax}',
   'shifts.taxBreakdown': 'Promet po davčnih stopnjah (mesec)',
   'shifts.noTraffic': 'Ni prometa.',
   'shifts.vatBadge': 'DDV {rate} % · {qty} postavk',
@@ -1016,7 +1016,7 @@ export const sl: Record<string, string> = {
   'loy.newMember': 'Nov član',
   'loy.accounts': 'Zvestobni računi',
   'loy.none': 'Ni članov programa zvestobe.',
-  'loy.visitsSuffix': '{n} točk skupaj',
+  'loy.visitsSuffix': '{n} {w} skupaj',
   'loy.newMemberTitle': 'Nov član zvestobe',
   'loy.guestName': 'Ime gosta *',
   'loy.namePlaceholder': 'npr. Ana Kovač',
@@ -1057,7 +1057,7 @@ export const sl: Record<string, string> = {
   'crm.guests.suppressed': 'odjavljeni: {n}',
   'crm.guests.export': 'Izvozi (CSV)',
   'crm.guests.none': 'Ni gostov v obsegu.',
-  'crm.guests.visits': '{n} obiskov',
+  'crm.guests.visits': '{n} {w}',
   'crm.guests.email': 'E-pošta',
   'crm.guests.sms': 'SMS',
   // OSS-7 (v1.205.0): tretji kanal — znamka se ne prevaja
@@ -1285,7 +1285,7 @@ export const sl: Record<string, string> = {
   'dost.recipient': 'Prejemnik:',
   'dost.address': 'Naslov:',
   'dost.note': 'Opomba: {note}',
-  'dost.itemsCount': '{n} artiklov',
+  'dost.itemsCount': '{n} {w}',
   'dost.deliveryFeeShort': 'dostava {fee}',
   'dost.cancelConfirm': 'Preklicati dostavo #{n}?',
   'dost.cancelNote': 'Preklic operaterja',
@@ -1855,7 +1855,7 @@ export const sl: Record<string, string> = {
   'menu.other': 'Ostalo',
   // Issue #69 (2. val) — segmentacija menija: hitri skok po kategorijah (statična sidra)
   'menu.jumpAria': 'Hitri skok po kategorijah menija',
-  'menu.catCount': '{n} artiklov',
+  'menu.catCount': '{n} {w}',
   // Issue #69 (2. val) — segmentacija nastavitev: naslovi razdelkov + hitri skok
   'settings.jumpAria': 'Hitri skok po razdelkih nastavitev',
   'settings.secGeneral': 'Splošne nastavitve',
@@ -4518,6 +4518,33 @@ export const sl: Record<string, string> = {
   'rc.empty': 'V izbranem obdobju ni plačanih naročil.',
   'rc.loadErr': 'Poročila ni bilo mogoče pridobiti.',
   'rc.ariaShare': 'Delež neto prodaje: {p} %',
+
+  /* ── QA-val v1.268.0 — množinske oblike samostalnikov (nounKey v i18n/index) ──
+     Štiri oblike po števniku: .1 ednina · .2 dvojina · .34 množina · .n rodilnik
+     množine. Uporabljajo jih predloge »{n} {w}« (tables.seats, menu.catCount,
+     dash.paidTodayInfo, shifts.todayDetail, dost.itemsCount, crm.guests.visits,
+     payment.pointsOf, loy.visitsSuffix). ID-ji so namerno slovenski (ključi so
+     enaki v HR; vrednosti so prilagojene hrvaški paucalni slovnici). */
+  'noun.mesto.1': 'mesto',
+  'noun.mesto.2': 'mesti',
+  'noun.mesto.34': 'mesta',
+  'noun.mesto.n': 'mest',
+  'noun.artikel.1': 'artikel',
+  'noun.artikel.2': 'artikla',
+  'noun.artikel.34': 'artikli',
+  'noun.artikel.n': 'artiklov',
+  'noun.racun.1': 'račun',
+  'noun.racun.2': 'računa',
+  'noun.racun.34': 'računi',
+  'noun.racun.n': 'računov',
+  'noun.obisk.1': 'obisk',
+  'noun.obisk.2': 'obiska',
+  'noun.obisk.34': 'obiski',
+  'noun.obisk.n': 'obiskov',
+  'noun.tocka.1': 'točka',
+  'noun.tocka.2': 'točki',
+  'noun.tocka.34': 'točke',
+  'noun.tocka.n': 'točk',
 }
 
 export type Dictionary = typeof sl

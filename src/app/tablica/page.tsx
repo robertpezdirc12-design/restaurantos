@@ -46,7 +46,7 @@ const TAB_COLORS: Record<string, string> = {
 }
 
 function TablicaInner() {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [me, setMe] = useState<{ name?: string; role?: string } | null>(null)
@@ -228,7 +228,7 @@ function TablicaInner() {
               className={`w-full rounded-2xl p-4 text-left shadow min-h-24 transition ${TAB_COLORS[tb.status] ?? 'bg-stone-500 text-white'}`}
             >
               <p className="font-bold text-lg leading-tight">{tb.name}</p>
-              <p className="text-xs opacity-90 mt-0.5">{tb.zone} · {t('tables.seats', { n: tb.seats })}</p>
+              <p className="text-xs opacity-90 mt-0.5">{tb.zone} · {tN('tables.seats', 'mesto', tb.seats)}</p>
               {tb.activeOrder && <p className="text-sm font-bold mt-1">{fmtEUR(tb.activeOrder.total)}</p>}
               <p className="text-xs mt-1 opacity-80">
                 {/* Issue #70 §1: oznaka IZKLJUČNO iz kanonskega statusa (/api/tables) —

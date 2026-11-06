@@ -135,7 +135,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
   platformIntegrations: PlatformIntegrationT[]
   onReload: () => Promise<void>
 }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [busy, setBusy] = useState<string | null>(null)
   const [driverFor, setDriverFor] = useState<DeliveryOrderT | null>(null)
   // OPS-8 val 3 (v1.73.0): driver as Employee — 'MANUAL' sentinel keeps the free-text fallback
@@ -223,7 +223,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <p className="text-xs text-stone-500">{t('dost.itemsCount', { n: o.items.length })} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span></p>
+                    <p className="text-xs text-stone-500">{tN('dost.itemsCount', 'artikel', o.items.length)} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span></p>
                     <p className="rounded-sm border border-stone-300 bg-stone-100 px-2 py-1 text-xs text-stone-600">{t('dost.noInfo')}</p>
                   </CardContent>
                 </Card>
@@ -243,7 +243,7 @@ export function DeliveryTab({ orders, zones, platformIntegrations, onReload }: {
                   <p className="text-sm"><span className="text-stone-500">{t('dost.recipient')}</span> {d.recipientName || '—'} {d.recipientPhone && <span className="text-stone-500">· {d.recipientPhone}</span>}</p>
                   <p className="text-sm"><span className="text-stone-500">{t('dost.address')}</span> {[d.address, d.postCode, d.city].filter(Boolean).join(', ') || '—'}</p>
                   {d.instructions && <p className="text-xs text-amber-700">{t('dost.note', { note: d.instructions })}</p>}
-                  <p className="text-xs text-stone-500">{t('dost.itemsCount', { n: o.items.length })} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span> ({t('dost.deliveryFeeShort', { fee: fmtEUR(d.deliveryFee) })})</p>
+                  <p className="text-xs text-stone-500">{tN('dost.itemsCount', 'artikel', o.items.length)} · <span className="font-semibold text-stone-900">{fmtEUR(o.total)}</span> ({t('dost.deliveryFeeShort', { fee: fmtEUR(d.deliveryFee) })})</p>
                   {/* OPS-9 val 3: provider ETA — shown while the delivery is not yet completed */}
                   {d.estimatedTime && !['DELIVERED', 'CANCELLED'].includes(d.status) && (
                     <p className="text-xs font-medium text-stone-700">🚚 {t('dost.eta', { time: fmtEta(d.estimatedTime) })}</p>
@@ -956,7 +956,7 @@ interface TipPreviewT {
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
 
 export function NapitnineTab({ locations, canManage }: { locations: { id: string; name: string }[]; canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [locId, setLocId] = useState('')
   const [method, setMethod] = useState<'hours' | 'equal' | 'points'>('hours')
@@ -1136,7 +1136,7 @@ export function NapitnineTab({ locations, canManage }: { locations: { id: string
                             prej toFixed(2) pika (»0.08 h«) ob fmtEUR vejici v sosednji celici;
                             hkrati obramba pred nizom iz Decimal serializacije (Number toleranca —
                             num() živi v server-only map.ts). */}
-                        {pool.distributionMethod === 'hours' && Number(d.hoursWorked) > 0 ? fmtNumSI(Number(d.hoursWorked), { max: 2, unit: ' h' }) : pool.distributionMethod === 'points' && Number(d.points) > 0 ? t('payment.pointsOf', { n: Number(d.points) }) : t('tips.equalShort')}
+                        {pool.distributionMethod === 'hours' && Number(d.hoursWorked) > 0 ? fmtNumSI(Number(d.hoursWorked), { max: 2, unit: ' h' }) : pool.distributionMethod === 'points' && Number(d.points) > 0 ? tN('payment.pointsOf', 'tocka', Number(d.points)) : t('tips.equalShort')}
                       </td>
                       <td className="p-2 text-right font-semibold">{fmtEUR(d.amount)}</td>
                       <td className="p-2">

@@ -22,7 +22,7 @@ export interface ShiftT { id: string; employeeId?: string | null; employee?: { n
 export interface FinancialT { today: { revenue: number; tax: number; invoices: number }; month: { revenue: number; tax: number; invoices: number; expenses: number; profit: number }; taxBreakdown: { taxRate: number; qty: number }[] }
 
 export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: ShiftT[]; financial: FinancialT | null; canManage: boolean; onReload: () => Promise<void> }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [cash, setCash] = useState('')
   const [busy, setBusy] = useState(false)
   /* v1.231.0 — QA-val #10 P4 popravek: negativen vnos (−10) se je TIHO sprejel
@@ -99,7 +99,7 @@ export function ShiftsTab({ shifts, financial, canManage, onReload }: { shifts: 
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> {t('shifts.revenueToday')}</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.today.revenue) : '—'}</p><p className="text-xs text-stone-400">{t('shifts.todayDetail', { n: financial?.today.invoices ?? '—', tax: financial ? fmtEUR(financial.today.tax) : '—' })}</p></CardContent></Card>
+        <Card><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> {t('shifts.revenueToday')}</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{financial ? fmtEUR(financial.today.revenue) : '—'}</p><p className="text-xs text-stone-400">{/* QA-val v1.268.0: množinska oblika »računov« po števniku (tN); brez podatkov iskreno »—« (prej »— računov · davek —«) */}{financial ? tN('shifts.todayDetail', 'racun', financial.today.invoices, { tax: fmtEUR(financial.today.tax) }) : '—'}</p></CardContent></Card>
         <Card className="col-span-2 lg:col-span-3"><CardHeader className="pb-1"><CardTitle className="text-sm font-medium text-stone-500">{t('shifts.taxBreakdown')}</CardTitle></CardHeader><CardContent>
           {!financial || financial.taxBreakdown.length === 0 ? <p className="text-sm text-stone-500">{t('shifts.noTraffic')}</p> : (
             <div className="flex flex-wrap gap-2">

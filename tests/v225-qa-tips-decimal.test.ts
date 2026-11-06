@@ -177,7 +177,9 @@ describe('v225 Č2 · ure v distribucijah nosijo sl-SI vejico kot sosednji znesk
   test('točke v isti celici gredo čez Number() toleranco (ne raw Primerja niza)', () => {
     const src = read('src/components/tabs/backoffice-tab.tsx')
     expect(src).toContain('Number(d.points) > 0')
-    expect(src).toContain('n: Number(d.points)')
+    // QA-val v1.268.0: predloga payment.pointsOf je zdaj »{n} {w}« — klic teče
+    // prek tN (množinska oblika po števniku), Number() toleranca OHRANJENA.
+    expect(src).toContain("tN('payment.pointsOf', 'tocka', Number(d.points))")
   })
 })
 
@@ -185,12 +187,12 @@ describe('v225 Č2 · ure v distribucijah nosijo sl-SI vejico kot sosednji znesk
 
 describe('v225 Č · verzija + dokumentacija', () => {
   test('verzija je dvignjena na 1.238.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.267.0')
-    expect(read('src/lib/version.ts')).toContain("'1.267.0'")
+    expect(APP_VERSION).toBe('1.268.0')
+    expect(read('src/lib/version.ts')).toContain("'1.268.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.267.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.268.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
@@ -199,7 +201,7 @@ describe('v225 Č · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.267.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-qa-množine-ploščica-val')
     expect(wl.indexOf('Task ID: v1.227.0')).toBeLessThan(wl.indexOf('Task ID: v1.224.0'))
   })
 })

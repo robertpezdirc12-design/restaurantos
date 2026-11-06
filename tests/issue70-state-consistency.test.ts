@@ -225,7 +225,11 @@ describe('§1 Mize — kanonični status iz /api/tables (mapTable)', () => {
     // v1.204.0 (OSS-4): oznaka teče prek tileStatusL — osnovni primer je ŠE VEDNO
     // kanonični tb.status (stL(tb.status)); edini izjemi sta DIRTY-clickClean in
     // zadržana miza (stL('HOLD') — server-izpeljano polje iz ISTEGA kanona)
-    expect(dash).toContain("{tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb)}")
+    // QA-val v1.268.0: nogica nosi status SAMO za FREE/DIRTY (unikatna vsebina) —
+    // zasedena/rezervirana ga imata v telesu; dvojnik je obrezoval 👤/⏱ vrstici
+    // (fiksna višina h-32 premalo za polno ploščico → h-36 + dedup noge).
+    expect(dash).toContain("{(tb.status === 'FREE' || tb.status === 'DIRTY') &&")
+    expect(dash).toContain("(tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb))}")
     expect(dash).toContain("tb.heldOrderId && !tb.activeOrder ? stL('HOLD') : stL(tb.status)")
     expect(dash).not.toContain("{tb.activeOrder ? stL('OCCUPIED')")
   })
@@ -482,7 +486,7 @@ describe('§4 Tloris — detekcija enote nabora pozicij', () => {
 
 describe('§R Registri — verzija / sweep predpona', () => {
   it('APP_VERSION je 1.137.0', () => {
-    expect(APP_VERSION).toBe('1.267.0')
+    expect(APP_VERSION).toBe('1.268.0')
   })
 
   it("TEST_PREFIXES vsebuje 'i70-'", () => {

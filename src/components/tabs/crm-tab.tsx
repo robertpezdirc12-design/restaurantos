@@ -84,7 +84,7 @@ function channelLabel(channel: string): string {
 }
 
 export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boolean; centralLocationId?: string }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [periodDays, setPeriodDays] = useState(90)
   const [segments, setSegments] = useState<SegmentT[]>([])
   const [guests, setGuests] = useState<GuestT[]>([])
@@ -271,7 +271,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                       {g.loyaltyMember && <Badge variant="secondary">{t('crm.guests.loyalty')}</Badge>}
                     </p>
                     <p className="text-xs text-stone-500 break-words">
-                      {g.email || '—'} · {g.phone || '—'} · {t('crm.guests.visits', { n: g.totalVisits })}
+                      {g.email || '—'} · {g.phone || '—'} · {tN('crm.guests.visits', 'obisk', g.totalVisits)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">

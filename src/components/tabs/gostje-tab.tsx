@@ -22,7 +22,7 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = '' }: { accounts: LoyaltyT[]; canManage: boolean; onReload: () => Promise<void>; centralLocationId?: string }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const totalPoints = accounts.reduce((s, a) => s + a.points, 0)
   const [member, setMember] = useState<{ guestName: string; phone: string } | null>(null)
   const [mBusy, setMBusy] = useState(false)
@@ -71,11 +71,11 @@ export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = 
               <div key={a.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-medium truncate">{a.guestName}</p>
-                  <p className="text-xs text-stone-500">{a.phone || '—'} · {t('loy.visitsSuffix', { n: a.visits })}</p>
+                  <p className="text-xs text-stone-500">{a.phone || '—'} · {tN('loy.visitsSuffix', 'tocka', a.visits)}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="text-right">
-                    <p className="font-bold">{t('payment.pointsOf', { n: a.points })}</p>
+                    <p className="font-bold">{tN('payment.pointsOf', 'tocka', a.points)}</p>
                     {a.tier && <Badge className={`mt-0.5 ${TIER_COLORS[a.tier] || 'bg-stone-500 text-white'}`}>{a.tier}</Badge>}
                   </div>
                   {canManage && (
@@ -117,7 +117,7 @@ export function LoyaltyTab({ accounts, canManage, onReload, centralLocationId = 
           <DialogHeader><DialogTitle>{t('loy.pointsTitle', { name: pts?.guestName ?? '' })}</DialogTitle></DialogHeader>
           {pts && (
             <div className="space-y-3">
-              <p className="text-xs text-stone-500">{t('inv.currentStock')} <b>{t('payment.pointsOf', { n: pts.points })}</b> · {t('loy.tierLabel')} {pts.tier || 'bronze'}</p>
+              <p className="text-xs text-stone-500">{t('inv.currentStock')} <b>{tN('payment.pointsOf', 'tocka', pts.points)}</b> · {t('loy.tierLabel')} {pts.tier || 'bronze'}</p>
               <div className="space-y-1.5">
                 <Label htmlFor="pt-delta">{t('loy.pointsDelta')}</Label>
                 <Input id="pt-delta" inputMode="numeric" value={pForm.delta} onChange={(e) => setPForm({ ...pForm, delta: e.target.value.replace(/[^\d-]/g, '') })} placeholder={t('loy.deltaPlaceholder')} />

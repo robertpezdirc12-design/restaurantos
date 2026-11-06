@@ -424,7 +424,7 @@ export default function DashboardPage() {
 
 function DashboardInner() {
   const router = useRouter()
-  const { t, locale } = useI18n()
+  const { t, tN, locale } = useI18n()
   // Hydration-safe (Task 41): localStorage ni dosegljiv na strežniku, zato se uporabnik
   // prebere šele po mountu — sicer SSR naredi null, klient ime → hydration mismatch
   // (span z imenom uporabnika v headerju). Varen, ker ta komponenta nima redirecta na !user.
@@ -4179,7 +4179,13 @@ function DashboardInner() {
                       2–10 sedežev) + višina odvisna od stanja (97 proti 115–119 px) →
                       nazobčane vrstice, gumb je padal iz kartice. Zdaj: FLEX vrstice s
                       širino ∝ sedežem (tableTileWidthCls: w-44/w-52/w-60) + FIKSNA
-                      višina h-32 vseh stanj — QR/⋮ ostane VZNOTRIJ kartice. */}
+                      višina h-40 vseh stanj — QR/⋮ ostane VZNOTRIJ kartice.
+                      QA-val v1.268.0: h-32 → h-40 — polna ploščica je s h-32 obrezovala
+                      NOGO (mt-auto spodaj; izmera scrollHeight 144 > clientHeight 128 +
+                      VLM potrditev). h-36 je zalegel za 👤+⏱, a NE za 🕒 rezervacijski znak
+                      v nogi (v1.232 — aktivno naročilo + prihajajoča rezervacija = 160 px;
+                      E2E izmera Miza 3: sh 160 > 144). Usajeni gost izključuje aktivno
+                      naročilo → najslabši primer je 158 px, h-40 ga pokrije z rezervo. */}
                   <div className="flex flex-wrap gap-3">
                     {zt.map((tb) => (
                       <div key={tb.id} className={`relative ${tableTileWidthCls(tb.seats)}`}>
@@ -4191,13 +4197,13 @@ function DashboardInner() {
                             if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
                             if (!tb.activeOrder) { setCart({}); setCartVariants([]); setCartNotes({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
-                          className={`flex h-32 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
+                          className={`flex h-40 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
                         >
                           <p className="font-bold text-lg flex items-center gap-2">
                             {tb.name}
                             {tb.status === 'DIRTY' && <SprayCan className="w-5 h-5 shrink-0 opacity-90" aria-hidden />}
                           </p>
-                          <p className="text-xs opacity-90">{t('tables.seats', { n: tb.seats })}</p>
+                          <p className="text-xs opacity-90">{tN('tables.seats', 'mesto', tb.seats)}</p>
                           {/* Issue #71 audit-21: status je BESEDILO, ne samo barva (barvna slepota,\n                              sončna svetloba na tablici) */}
                           {tb.status !== 'FREE' && (
                             /* OSS-4 (v1.204.0): enotno besedilo prek tileStatusL — zadržana
@@ -4213,7 +4219,7 @@ function DashboardInner() {
                               floor plan«): NASLEDNJA REZERVACIJA na ploščici — prosta miza
                               z rezervacijo je informativna (ne zasedaj!), zasedena pa
                               opozarja na obrat do ure. Celotna vrstica samo brez naročila
-                              (fiksna višina h-32 — polna ploščica dobi kompakt znak v nogi). */}
+                              (fiksna višina h-40 — polna ploščica dobi kompakt znak v nogi). */}
                           {(() => {
                             const rv = nextResvByTable.get(tb.id)
                             if (!rv || tb.activeOrder) return null
@@ -4267,13 +4273,18 @@ function DashboardInner() {
                                 OCCUPIED iz statusa pomeni isto kot activeOrder (mapTable), zato sta
                                 plosci (grid) in handheld/tablica vedno usklajena.
                                 v1.129.0: oznaka ostaja na kanoničnem statusu (faza naročila
-                                je že vidna v vrstici zneska/časa zgoraj) — Toast order-stage vzorec. */}
-                            {tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb)}
-                            {/* QA-val v1.220.0: usajeni gost s čakalne liste — identiteta na ploščici */}
-                            {seatedGuestL(tb) && <span className="block normal-case tracking-normal opacity-95">{seatedGuestL(tb)}</span>}
+                                je že vidna v vrstici zneska/časa zgoraj) — Toast order-stage vzorec.
+                                QA-val v1.268.0: noga nosi status SAMO kjer je UNIKATEN — prosta
+                                miza (edini status na ploščici) in za pospravit (navodilo klika);
+                                zasedena/rezervirana ga ŽE ima v telesu (tileStatusL zgoraj) —
+                                dvojnik je polnil fiksno višino in obrezoval 👤/⏱ vrstici. Usajeni
+                                gost je prav tako že v telesu (QA-val v1.220.0) — nogova kopija
+                                umaknjena. */}
+                            {(tb.status === 'FREE' || tb.status === 'DIRTY') &&
+                              (tb.status === 'DIRTY' ? t('tables.clickClean') : tileStatusL(tb))}
                             {/* v1.232.0: zasedena miza s prihajajočo rezervacijo — kompakt znak
                                 🕒 ura v nogi (miza se mora obrniti do te ure; podrobnosti v
-                                tooltipu — polna vrstica ne gre več v fiksno višino h-32). */}
+                                tooltipu — polna vrstica ne gre več v fiksno višino h-40). */}
                             {tb.activeOrder && (() => {
                               const rv = nextResvByTable.get(tb.id)
                               if (!rv) return null
@@ -4524,7 +4535,7 @@ function DashboardInner() {
                   <SelectTrigger aria-label={t('mmv.targetPlaceholder')}><SelectValue placeholder={t('mmv.targetPlaceholder')} /></SelectTrigger>
                   <SelectContent className="max-h-64">
                     {freeTablesFor(moveOrder).map((tb) => (
-                      <SelectItem key={tb.id} value={tb.id}>{tb.name} · {t('tables.seats', { n: tb.seats })}</SelectItem>
+                      <SelectItem key={tb.id} value={tb.id}>{tb.name} · {tN('tables.seats', 'mesto', tb.seats)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -6154,7 +6165,7 @@ function DashboardInner() {
                 <div data-region="menu-category-header" className="sticky top-[7.125rem] z-10 py-1.5 border-b border-stone-200 bg-stone-50/95 backdrop-blur">
                   <h2 className="font-semibold text-stone-700 flex items-baseline gap-2 min-w-0">
                     <span className="truncate">{g.cat.name}</span>
-                    <span className="text-xs font-normal text-stone-500 shrink-0">{t('menu.catCount', { n: g.items.length })}</span>
+                    <span className="text-xs font-normal text-stone-500 shrink-0">{tN('menu.catCount', 'artikel', g.items.length)}</span>
                   </h2>
                 </div>
                 <div data-region="menu-category-items" className="grid grid-cols-1 gap-2 md:gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -8039,7 +8050,7 @@ function DashboardInner() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold truncate">{loyaltySel.customerName}</p>
-                            <p className="text-xs text-stone-500">{t('payment.pointsOf', { n: loyaltySel.pointsBalance })} · {loyaltySel.tier}</p>
+                            <p className="text-xs text-stone-500">{tN('payment.pointsOf', 'tocka', loyaltySel.pointsBalance)} · {loyaltySel.tier}</p>
                           </div>
                           <Button variant="outline" size="sm" className="h-8" onClick={() => { setLoyaltySel(null); setRedeemPoints(0) }}>{t('payment.remove')}</Button>
                         </div>
@@ -8064,7 +8075,7 @@ function DashboardInner() {
                                   onClick={() => { setLoyaltySel(a); setLoyaltyResults([]) }}
                                 >
                                   <p className="font-medium">{a.customerName}</p>
-                                  <p className="text-xs text-stone-500">{a.customerPhone || '—'} · {t('payment.pointsOf', { n: a.pointsBalance })} · {a.tier}</p>
+                                  <p className="text-xs text-stone-500">{a.customerPhone || '—'} · {tN('payment.pointsOf', 'tocka', a.pointsBalance)} · {a.tier}</p>
                                 </button>
                               ))}
                             </div>
@@ -8332,7 +8343,7 @@ function DashboardInner() {
                       <SelectContent className="max-h-64 overflow-y-auto">
                         <SelectItem value="NONE">{t('resv.tableNone')}</SelectItem>
                         {viewTables.map((tb) => (
-                          <SelectItem key={tb.id} value={tb.id}>{tb.name} · {t('tables.seats', { n: tb.seats })}</SelectItem>
+                          <SelectItem key={tb.id} value={tb.id}>{tb.name} · {tN('tables.seats', 'mesto', tb.seats)}</SelectItem>
                         ))}
                         {/* v1.245.0 (§19): registrirane kombinacije miz za velike
                             družbe — vrednost 'combo:<id>' se ob oddaji razplete

@@ -15,7 +15,7 @@
  */
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
-import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, applyDocumentLang, isLocale, normalizeLocale, t as coreT, type Locale } from '@/lib/i18n'
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, applyDocumentLang, isLocale, normalizeLocale, nounKey, t as coreT, type Locale } from '@/lib/i18n'
 
 // ── Mikro-store okoli localStorage (isti vzorec kot offline queue) ──
 let currentLocale: Locale = DEFAULT_LOCALE
@@ -76,12 +76,17 @@ interface I18nContextValue {
   locale: Locale
   setLocale: (l: Locale) => void
   t: (key: string, vars?: Record<string, string | number>) => string
+  /** QA-val v1.268.0 — prevod predloge »{n} {w}« s pravilno množinsko obliko
+   *  samostalnika (SL dvojina/množina, HR paucal): tN('tables.seats', 'mesto', 3)
+   *  → »3 mesta«. Samostalnik živi v slovarjih (noun.<id>.<oblika>). */
+  tN: (key: string, noun: string, n: number, vars?: Record<string, string | number>) => string
 }
 
 const I18nContext = createContext<I18nContextValue>({
   locale: DEFAULT_LOCALE,
   setLocale: () => {},
   t: (key, vars) => coreT(DEFAULT_LOCALE, key, vars),
+  tN: (key, noun, n, vars) => coreT(DEFAULT_LOCALE, key, { n, w: coreT(DEFAULT_LOCALE, nounKey(noun, n)), ...vars }),
 })
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -90,7 +95,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const setLocale = useCallback((l: Locale) => setStoredLocale(l), [])
 
   const value = useMemo<I18nContextValue>(
-    () => ({ locale, setLocale, t: (key, vars) => coreT(locale, key, vars) }),
+    () => ({
+      locale,
+      setLocale,
+      t: (key, vars) => coreT(locale, key, vars),
+      tN: (key, noun, n, vars) => coreT(locale, key, { n, w: coreT(locale, nounKey(noun, n)), ...vars }),
+    }),
     [locale, setLocale],
   )
 

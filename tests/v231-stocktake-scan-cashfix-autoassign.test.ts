@@ -108,7 +108,8 @@ describe('v1.231.0 B — samodejna dodelitev mize (dashboard)', () => {
   })
 
   test('B5: mize v izbirniku kažejo število sedežev (podatek za odločitev)', () => {
-    expect(dash).toContain("{tb.name} · {t('tables.seats', { n: tb.seats })}")
+    // QA-val v1.268.0: sedeži tečejo prek tN (množinska oblika po števniku — »2 mesti«, ne »2 mest«)
+    expect(dash).toContain("{tb.name} · {tN('tables.seats', 'mesto', tb.seats)}")
   })
 
   test('B6: i18n SL/HR — vsi novi resv.autoAssign* ključi', () => {
@@ -155,8 +156,8 @@ describe('v1.231.0 C — P4 popravek vnosa blagajne (finance-tab)', () => {
 
 describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.267.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.267.0')
+    expect(APP_VERSION).toBe('1.268.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.268.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi val v1.231.0 (zaloge 22/22, restavracija 20/22)', () => {
@@ -176,7 +177,7 @@ describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.231.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.267.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.268.0-qa-množine-ploščica-val')
     expect(wl.indexOf('Task ID: v1.231.0')).toBeLessThan(wl.indexOf('Task ID: v1.230.0'))
   })
 })

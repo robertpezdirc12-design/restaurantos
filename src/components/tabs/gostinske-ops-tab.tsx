@@ -811,7 +811,7 @@ const smsOutcomeMsg = (notifyStatus: string, tx: (key: string) => string): strin
 /** Issue #1 (triage ⑤): čakalna lista — prijava → obvestilo → usaditev (zaklene mizo) / odhod + statistika. */
 
 export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [active, setActive] = useState<WaitlistEntryT[]>([])
   const [finished, setFinished] = useState<WaitlistEntryT[]>([])
   const [stats, setStats] = useState<WaitlistStatsT | null>(null)
@@ -1216,7 +1216,7 @@ export function CakalnaListaTab({ canManage }: { canManage: boolean }) {
                 <SelectContent>
                   {freeTables.map((tbl) => (
                     <SelectItem key={tbl.id} value={tbl.id}>
-                      {tbl.name} ({t('tables.seats', { n: tbl.seats })} · {tbl.zone}{tbl.status !== 'FREE' ? ` · ${tbl.status === 'RESERVED' ? t('wl.tblReserved') : tbl.status === 'DIRTY' ? t('wl.tblDirty') : ''}` : ''})
+                      {tbl.name} ({tN('tables.seats', 'mesto', tbl.seats)} · {tbl.zone}{tbl.status !== 'FREE' ? ` · ${tbl.status === 'RESERVED' ? t('wl.tblReserved') : tbl.status === 'DIRTY' ? t('wl.tblDirty') : ''}` : ''})
                     </SelectItem>
                   ))}
                 </SelectContent>
