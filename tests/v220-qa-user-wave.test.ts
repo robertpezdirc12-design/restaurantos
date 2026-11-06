@@ -266,6 +266,6 @@ describe('v220 Č6 · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-množine-ii-unifikacija-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-finalna-verifikacija')
   })
 })

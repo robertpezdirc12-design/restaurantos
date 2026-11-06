@@ -628,7 +628,7 @@ describe('v1.249.0 Ž — registri in pini', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.249.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-množine-ii-unifikacija-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-finalna-verifikacija')
   })
 
   test('Ž6: ruta pošilja dogodev + push (osvežitev plošč PO commitu)', () => {

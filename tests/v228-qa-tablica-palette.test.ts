@@ -118,7 +118,7 @@ describe('QA-val #10 Č — verzija + registri (doc-truth)', () => {
 
   test('Č3: worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-množine-ii-unifikacija-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.269.0-finalna-verifikacija')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.227.0'))
   })
 
