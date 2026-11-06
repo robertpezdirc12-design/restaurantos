@@ -15,7 +15,7 @@
  */
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
-import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, applyDocumentLang, isLocale, normalizeLocale, nounKey, t as coreT, type Locale } from '@/lib/i18n'
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, applyDocumentLang, isLocale, normalizeLocale, nounKey, t as coreT, tForm as coreTForm, type Locale } from '@/lib/i18n'
 
 // ── Mikro-store okoli localStorage (isti vzorec kot offline queue) ──
 let currentLocale: Locale = DEFAULT_LOCALE
@@ -80,6 +80,14 @@ interface I18nContextValue {
    *  samostalnika (SL dvojina/množina, HR paucal): tN('tables.seats', 'mesto', 3)
    *  → »3 mesta«. Samostalnik živi v slovarjih (noun.<id>.<oblika>). */
   tN: (key: string, noun: string, n: number, vars?: Record<string, string | number>) => string
+  /** QA-val v1.270.0 — CELO-predložne množinske variante (glagolska soglasnost!):
+   *  tF('hh.unpaidWarn', 2) → »2 postavki nista poslani v kuhinjo!« — oblika
+   *  se ne da sestaviti iz {w} delov, zato živi kot <key>.1/.2/.34/.n v slovarjih. */
+  tF: (key: string, n: number, vars?: Record<string, string | number>) => string
+  /** QA-val v1.270.0 — DVOJEZIČNA predloga z dvema samostalnikoma in dvema številoma:
+   *  tN2('ent.rcCount', 'prihodCent', 2, 'postaja', 3) → »2 prihodkovna centra · 3 postaje«
+   *  ({n}+{w} iz prvega para, {m}+{x} iz drugega; vars povozi nazadnje). */
+  tN2: (key: string, nounN: string, n: number, nounM: string, m: number, vars?: Record<string, string | number>) => string
 }
 
 const I18nContext = createContext<I18nContextValue>({
@@ -87,6 +95,8 @@ const I18nContext = createContext<I18nContextValue>({
   setLocale: () => {},
   t: (key, vars) => coreT(DEFAULT_LOCALE, key, vars),
   tN: (key, noun, n, vars) => coreT(DEFAULT_LOCALE, key, { n, w: coreT(DEFAULT_LOCALE, nounKey(noun, n)), ...vars }),
+  tF: (key, n, vars) => coreTForm(DEFAULT_LOCALE, key, n, vars),
+  tN2: (key, nounN, n, nounM, m, vars) => coreT(DEFAULT_LOCALE, key, { n, w: coreT(DEFAULT_LOCALE, nounKey(nounN, n)), m, x: coreT(DEFAULT_LOCALE, nounKey(nounM, m)), ...vars }),
 })
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -100,6 +110,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       setLocale,
       t: (key, vars) => coreT(locale, key, vars),
       tN: (key, noun, n, vars) => coreT(locale, key, { n, w: coreT(locale, nounKey(noun, n)), ...vars }),
+      tF: (key, n, vars) => coreTForm(locale, key, n, vars),
+      tN2: (key, nounN, n, nounM, m, vars) => coreT(locale, key, { n, w: coreT(locale, nounKey(nounN, n)), m, x: coreT(locale, nounKey(nounM, m)), ...vars }),
     }),
     [locale, setLocale],
   )

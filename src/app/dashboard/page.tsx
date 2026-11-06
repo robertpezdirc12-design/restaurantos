@@ -420,7 +420,7 @@ export default function DashboardPage() {
 
 function DashboardInner() {
   const router = useRouter()
-  const { t, tN, locale } = useI18n()
+  const { t, tN, tN2, locale } = useI18n()
   // Hydration-safe (Task 41): localStorage ni dosegljiv na strežniku, zato se uporabnik
   // prebere šele po mountu — sicer SSR naredi null, klient ime → hydration mismatch
   // (span z imenom uporabnika v headerju). Varen, ker ta komponenta nima redirecta na !user.
@@ -5617,7 +5617,9 @@ function DashboardInner() {
                         <div data-region="kds-ticket-allergen-unconfirmed" role="alert" className="rounded-sm border-l-4 border-red-600 bg-red-50 px-2.5 py-1.5">
                           <p className="flex items-center gap-1.5 text-xs font-bold text-red-800">
                             <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-red-300 bg-red-100 text-xs font-extrabold text-red-700" aria-hidden>?</span>
-                            {t('kds.unconfirmedAllergens', { n: unconfirmedCount, m: items.length })}
+                            {/* v1.270.0 — n-od-m (tN2): {x} = postavkaGen kaže rodilnik po m;
+                                besedna zveza »1 od 2 postavk« z rodilniško paradigmo v noun.* */}
+                            {tN2('kds.unconfirmedAllergens', 'postavkaGen', unconfirmedCount, 'postavkaGen', items.length)}
                           </p>
                         </div>
                       )}

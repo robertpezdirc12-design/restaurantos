@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
       whatsappEligible,
       missingContact,
       criterionKey: def.criterionKey,
+      // v1.270.0 — noun.<id> za »{n} {w}« kriterije (frequent); ostali segmenti brez
+      criterionNoun: def.criterionNoun,
       criterionParams: { n: FREQUENT_MIN_VISITS, days: periodDays },
       periodDays,
     })

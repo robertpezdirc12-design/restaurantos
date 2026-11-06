@@ -93,7 +93,7 @@ function subscribeOnline(onChange: () => void) {
 }
 
 function HandheldInner() {
-  const { t, tN } = useI18n()
+  const { t, tN, tF } = useI18n()
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [me, setMe] = useState<{ name?: string; role?: string } | null>(null)
@@ -739,7 +739,9 @@ function HandheldInner() {
             {pendingCount > 0 && (
               <p className="rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold px-3 py-2 flex items-center gap-2">
                 <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                {t('hh.unpaidWarn', { n: pendingCount })}
+                {/* v1.270.0 — glagolska soglasnost (tF): nagib se preobrača z obliko
+                    (1 postavka ni poslana · 2 postavki nista poslani · 5 postavk ni poslanih) */}
+                {tF('hh.unpaidWarn', pendingCount)}
               </p>
             )}
             <div className="space-y-1.5 bg-white rounded-xl border border-stone-200 p-3">

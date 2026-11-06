@@ -397,7 +397,7 @@ export function BrandThemesSection({ orgs, canWriteOrg }: { orgs: EntOrgRow[]; c
 }
 
 export function EnterpriseTab({ canManage }: { canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN2 } = useI18n()
   const [data, setData] = useState<EntData | null>(null)
   const [locs, setLocs] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
@@ -528,7 +528,9 @@ export function EnterpriseTab({ canManage }: { canManage: boolean }) {
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
                           <span>{t('ent.locCount', { n: p.locations.length })}</span>
-                          <span>{t('ent.rcCount', { n: p.revenueCenters.length, m: p.workstations.length })}</span>
+                          {/* v1.270.0 — dvojni samostalnik (tN2): {w} prihodCent + {x} postaja,
+                              pridevnik+oblika preobračata skupaj (»2 prihodkovna centra · 2 postaji«) */}
+                          <span>{tN2('ent.rcCount', 'prihodCent', p.revenueCenters.length, 'postaja', p.workstations.length)}</span>
                           {p.locations.map((l) => (
                             <Badge key={l.id} variant="secondary" className="font-normal">{l.name}</Badge>
                           ))}

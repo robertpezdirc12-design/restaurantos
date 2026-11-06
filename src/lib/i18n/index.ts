@@ -145,12 +145,38 @@ export function dictionaryGaps(): { missingInHr: string[]; missingInSl: string[]
  * Vrne ključ oblike; besede SAME nikoli ne živijo v kodi (doc-truth + pariteta).
  */
 export function nounKey(noun: string, n: number): string {
+  return `noun.${noun}.${pluralForm(n)}`
+}
+
+/**
+ * QA-val v1.270.0 — oblika za števnik kot samostojna funkcija (eno samo mesto
+ * resnice). nounKey jo deli za noun.* ključe; tForm() pa za CELO-predložne
+ * variante (hh.unpaidWarn.1/.2/.34/.n — kjer se z besedo preobrača tudi
+ * GLAGOL: »1 postavka ni poslana · 2 postavki nista poslani · 3 postavke
+ * niso poslane · 5 postavk ni poslanih«; nagiba se ne da sestaviti iz delov).
+ */
+export function pluralForm(n: number): '1' | '2' | '34' | 'n' {
   const v = Math.abs(Math.trunc(n))
-  if (!Number.isFinite(v)) return `noun.${noun}.n`
-  if (v === 1) return `noun.${noun}.1`
-  if (v === 2) return `noun.${noun}.2`
-  if (v === 3 || v === 4) return `noun.${noun}.34`
-  return `noun.${noun}.n`
+  if (!Number.isFinite(v)) return 'n'
+  if (v === 1) return '1'
+  if (v === 2) return '2'
+  if (v === 3 || v === 4) return '34'
+  return 'n'
+}
+
+/**
+ * QA-val v1.270.0 — CELO-predložne množinske variante: izbere ključ
+ * `<key>.<oblika>` (npr. hh.unpaidWarn.2) po številu. Mila degradacija:
+ * manjkajoča oblika → generična `.n` → osnovni ključ (vidljivo, nikoli
+ * razbito). Kliče se prek konteksta: tF('hh.unpaidWarn', n) (src/components/i18n).
+ */
+export function tForm(locale: Locale, key: string, n: number, vars?: Record<string, string | number>): string {
+  const dict = DICTS[locale] ?? DICTS[DEFAULT_LOCALE]
+  const form = pluralForm(n)
+  const full = `${key}.${form}`
+  if (dict[full] !== undefined || DICTS[DEFAULT_LOCALE][full] !== undefined) return t(locale, full, vars)
+  if (dict[`${key}.n`] !== undefined || DICTS[DEFAULT_LOCALE][`${key}.n`] !== undefined) return t(locale, `${key}.n`, vars)
+  return t(locale, key, vars)
 }
 
 /**

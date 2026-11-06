@@ -31,7 +31,9 @@ import { CouponsCard } from '@/components/tabs/coupons-card'
 /* ── tipi (strežniški odgovori) ── */
 interface SegmentT {
   type: string; total: number; emailEligible: number; smsEligible: number; whatsappEligible?: number
-  missingContact: number; criterionKey: string; criterionParams: Record<string, number>; periodDays: number
+  missingContact: number; criterionKey: string; criterionParams: Record<string, number>; periodDays: number;
+  /** v1.270.0 — noun.<id> za tN kriterija (samo pri »{n} {w}« predlogah, npr. frequent) */
+  criterionNoun?: string
 }
 interface GuestT {
   id: string; name: string; email: string | null; phone: string | null; isVip: boolean
@@ -228,9 +230,11 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
             {segments.map((s) => (
               <div key={s.type} className="rounded-lg border border-stone-200 bg-white p-3">
-                <p className="text-xs font-medium text-stone-500">{t(s.criterionKey, { n: String(s.criterionParams.n ?? 0), days: String(s.criterionParams.days ?? periodDays) })}</p>
+                <p className="text-xs font-medium text-stone-500">{s.criterionNoun
+                  ? tN(s.criterionKey, s.criterionNoun, s.criterionParams.n ?? 0, { days: String(s.criterionParams.days ?? periodDays) })
+                  : t(s.criterionKey, { n: String(s.criterionParams.n ?? 0), days: String(s.criterionParams.days ?? periodDays) })}</p>
                 <p className="text-2xl font-bold">{s.total}</p>
-                <p className="text-xs text-emerald-700">{t('crm.segments.eligible', { n: s.emailEligible })}</p>
+                <p className="text-xs text-emerald-700">{tN('crm.segments.eligible', 'upravicen', s.emailEligible)}</p>
                 <p className="sr-only">{t('crm.segments.period', { days: periodDays })}</p>
               </div>
             ))}

@@ -188,6 +188,9 @@ export interface SegmentDef {
   type: SegmentType
   /** i18n ključ razložljivega kriterija (UI prikaže kriterij + obdobje + št. gostov). */
   criterionKey: string
+  /** v1.270.0 — noun.<id> ID, kadar je kriterij predloga »{n} {w}« (frequent:
+   *  »vsaj 3 obiski« — beseda živi v slovarju, konfig nosi SAMO identifikator). */
+  criterionNoun?: string
   minVisits?: number
 }
 
@@ -195,7 +198,7 @@ export const SEGMENT_DEFS: SegmentDef[] = [
   { type: 'all', criterionKey: 'crm.seg.all' },
   { type: 'vip', criterionKey: 'crm.seg.vip' },
   { type: 'loyalty', criterionKey: 'crm.seg.loyalty' },
-  { type: 'frequent', criterionKey: 'crm.seg.frequent', minVisits: FREQUENT_MIN_VISITS },
+  { type: 'frequent', criterionKey: 'crm.seg.frequent', criterionNoun: 'obisk', minVisits: FREQUENT_MIN_VISITS },
   { type: 'new', criterionKey: 'crm.seg.new' },
   { type: 'inactive', criterionKey: 'crm.seg.inactive' },
 ]

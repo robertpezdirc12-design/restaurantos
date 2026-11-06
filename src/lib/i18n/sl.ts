@@ -132,7 +132,8 @@ export const sl: Record<string, string> = {
   'ent.noBrands': 'Brez blagovnih znamk.',
   'ent.noProperties': 'Brez objektov.',
   'ent.locCount': 'Lokacij: {n}',
-  'ent.rcCount': '{n} blagajniških centrov · {m} postaj',
+  // v1.270.0 — dvojni samostalnik (tN2): {w} = prihodCent, {x} = postaja; besede v noun.*
+  'ent.rcCount': '{n} {w} · {m} {x}',
   'ent.themeTitle': 'Teme po znamki',
   'ent.themeDesc': 'Akcentna barva in logotip za gostovske površine (QR meni, kiosk, spletna trgovina, plačilo, rezervacije). Brez nastavljene teme izgled ostane privzet.',
   'ent.themeAccent': 'Akcentna barva',
@@ -337,7 +338,11 @@ export const sl: Record<string, string> = {
   'hh.cleanTable': 'Počisti mizo',
   'hh.backTables': 'Nazaj na mize',
   'hh.backOrder': 'Nazaj na naročilo',
-  'hh.unpaidWarn': '{n} postavk ni poslanih v kuhinjo!',
+  // v1.270.0 — glagolska soglasnost (tF): nagib se preobrača z obliko, zato CELE predloge .1/.2/.34/.n
+  'hh.unpaidWarn.1': '{n} postavka ni poslana v kuhinjo!',
+  'hh.unpaidWarn.2': '{n} postavki nista poslani v kuhinjo!',
+  'hh.unpaidWarn.34': '{n} postavke niso poslane v kuhinjo!',
+  'hh.unpaidWarn.n': '{n} postavk ni poslanih v kuhinjo!',
   'hh.soldOut': 'Razprodano',
   // P0-2 (v1.85.0): plačilna povezava — natakar (handheld, pogled RAČUN)
   'hh.plink': 'Plačilna povezava',
@@ -1043,12 +1048,14 @@ export const sl: Record<string, string> = {
   'crm.seg.all': 'Vsi gosti',
   'crm.seg.vip': 'VIP gostje',
   'crm.seg.loyalty': 'Člani zvestobe',
-  'crm.seg.frequent': 'Pogostni gostje (≥ {n} obiskov)',
+  // v1.270.0 — »vsaj {n} {w}« (imenovalnik; ≥ z rodilnikom je bil dvoumen — v269 iskrena meja)
+  'crm.seg.frequent': 'Pogostni gostje (vsaj {n} {w})',
   'crm.seg.new': 'Novi gostje (prvi obisk v {days} dneh)',
   'crm.seg.inactive': 'Neaktivni gostje (zadnji obisk pred {days} dnevi)',
   'crm.segments.title': 'Segmenti gostov',
   'crm.segments.days': 'dni',
-  'crm.segments.eligible': '{n} upravičenih (soglasje + kontakt)',
+  // v1.270.0 — pridevniška oblika (tN): {w} = upravičen (moško, mešane skupine)
+  'crm.segments.eligible': '{n} {w} (soglasje + kontakt)',
   'crm.segments.period': 'Obdobje: {days} dni',
   'crm.segments.note': 'Segmenti so izključno iz poslovnih podatkov (obiski, poraba, VIP, zvestoba). Alergeni in prehranjevalne preference se za trženje NE uporabljajo.',
   'crm.guests.title': 'Gostje in soglasje',
@@ -2245,7 +2252,8 @@ export const sl: Record<string, string> = {
   'kds.staleCount': '{n} {w}',
   // Issue #71 audit-14: alergeni — resnični alarm = rdeč pas, manjkajoči = EN zbirnik na listku
   'kds.allergyBand': 'ALERGIJE — živilska varnost gostov',
-  'kds.unconfirmedAllergens': '{n} od {m} postavic brez potrjenih alergenskih podatkov',
+  // v1.270.0 — n-od-m konstrukcija (tN2): {x} = postavkaGen (rodilniška paradigma, kaže jo m)
+  'kds.unconfirmedAllergens': '{n} od {m} {x} brez potrjenih alergenskih podatkov',
   'kds.guestsShort': '{n} {w}',
   'kds.markAvailable': 'Vrni na voljo',
   // P0-3 (v1.83.0) — 86 plošča na KDS: proaktivni 86 + nadomestki (TRZNA-VRZELI-2026 §4)
@@ -4592,6 +4600,29 @@ export const sl: Record<string, string> = {
   'noun.odhod.2': 'odhoda',
   'noun.odhod.34': 'odhodi',
   'noun.odhod.n': 'odhodov',
+  /* v1.270.0 — TVORNI PRIMERI (množinske oblike III):
+     prihodCent = prihodkovni center (SESTAVLJENA zveza — preganja se celota;
+     terminologija usklajena z rc.title v1.260, prej »blagajniški center« izven besednjaka);
+     postaja = delovna postaja (ent.rcCount {x});
+     upravicen = PRIDEVNIK kot števni samostalnik (crm.segments.eligible {w});
+     postavkaGen = RODILNIŠKA paradigma postavke za n-od-m (kds.unconfirmedAllergens —
+     po »od {m}«: 1 od 1 postavke · 2 od 3 postavk · 5 od 8 postavk). */
+  'noun.prihodCent.1': 'prihodkovni center',
+  'noun.prihodCent.2': 'prihodkovna centra',
+  'noun.prihodCent.34': 'prihodkovni centri',
+  'noun.prihodCent.n': 'prihodkovnih centrov',
+  'noun.postaja.1': 'postaja',
+  'noun.postaja.2': 'postaji',
+  'noun.postaja.34': 'postaje',
+  'noun.postaja.n': 'postaj',
+  'noun.upravicen.1': 'upravičen',
+  'noun.upravicen.2': 'upravičena',
+  'noun.upravicen.34': 'upravičeni',
+  'noun.upravicen.n': 'upravičenih',
+  'noun.postavkaGen.1': 'postavke',
+  'noun.postavkaGen.2': 'postavk',
+  'noun.postavkaGen.34': 'postavk',
+  'noun.postavkaGen.n': 'postavk',
 }
 
 export type Dictionary = typeof sl

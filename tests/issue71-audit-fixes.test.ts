@@ -42,7 +42,8 @@ describe('issue #71 audit-14 — alergenska hierarhija resnosti', () => {
   test('manjkajoči alergenski podatki = EN sivi zbirnik na listek (ne 24+ rumenih čipov)', () => {
     const d = dash()
     expect(d).toContain('data-region="kds-ticket-allergen-unconfirmed"')
-    expect(d).toContain("t('kds.unconfirmedAllergens'")
+    // v1.270.0 prevez: t → tN2 (n-od-m rodilniška paradigma postavkaGen)
+    expect(d).toContain("tN2('kds.unconfirmedAllergens'")
     // per-item rumeni »niso potrjeni« čip je ODSTRANJEN (utišal je pravi alarm)
     expect(d).not.toMatch(/allergenStatus.*allergenUnconfirmed/)
   })
