@@ -80,6 +80,6 @@ describe('v223 Č3 · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.266.0-napitninske-tocke-vloga-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.266.0-finalna-verifikacija')
   })
 })
