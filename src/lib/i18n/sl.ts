@@ -4308,6 +4308,15 @@ export const sl: Record<string, string> = {
   'kds.viewOnly': 'Samo ogled',
   'kds.viewOnlyOn': 'Zaklep zaslona',
   'kds.viewOnlyHint': 'Zaklenjeno — dejanja (zagon, izdaja, bump) so onemogočena. Lightspeed »Lock prep station displays« (november 2026).',
+  // §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«): ročno
+  // zaporedje listkov — način per naprava, sekvenca deljena med Manual napravami.
+  'kds.orderModeDefault': 'Samodejno',
+  'kds.orderModeManual': 'Ročno',
+  'kds.orderModeTitle': 'Zaporedje listkov — ročno zaporedje se shrani in sinhronizira na druge KDS naprave lokacije z enakim načinom',
+  'kds.dragHandle': 'Povleci za premik listka',
+  'kds.moveUp': 'Premakni listek višje',
+  'kds.moveDown': 'Premakni listek niže',
+  'kds.reorderPending': 'Ročno zaporedje čaka shemsko migracijo (Enterprise → Shema migracije → kds-ticket-sequence).',
   // v1.244.0 (§18 C) — tloris: natakar + trajanje zasedenosti
   'tables.seatedFor': 'Zasedeno {min} min',
   'tables.waiterAria': 'Natakar: {name}',
@@ -4393,6 +4402,7 @@ export const sl: Record<string, string> = {
   'opv.deleted': 'Izbrisano',
   'mig.checklistRuns.desc': 'Digitalni checklisti (v1.246.0) — nova tabela ChecklistRun (izvedbe po postavki: kdo, kdaj, vrednost); brez vroče poti: plošča vrne prazno do DDL',
   'mig.receiptDisplayPolicy.desc': 'Prikazovna politika računa (v1.263.0) — skrivanje ničelnih postavk na natisnjenem računu (Square Vol 16): 1 stolpec na nastavitvah; do DDL je filter izklopljen in preklop onemogočen',
+  'mig.kdsTicketSequence.desc': 'Ročno zaporedje listkov na KDS (v1.264.0) — vlečenje/tipke v Manual načinu, sekvenca deljena med KDS naprave lokacije (Square Vol 16): 1 stolpec na naročilih; do DDL je vrsta enaka samodejni in premiki onemogočeni',
 
   /* ── v1.247.0 (PRIMERJAVA §21) — shranjeni pogledi poročil (rv.*) ── */
   'rv.title': 'Shranjeni pogledi poročil',

@@ -3297,3 +3297,147 @@ politika-vzorec exception-policy):
   validacija; UI preklop + DDL opomba), Ž registri (verzija 1.263.0,
   DDL stavek, register 41, drift matcher, konzola, mirror stolpec,
   i18n pariteta 4125/4125, dokument §37, AUDIT, worklog Task ID).
+
+## 38. Raziskava november 2026 (nadaljevanje 12) — ROČNO ZAPOREDJE LISTKOV NA KDS v1.264.0 (Square Vol 16 »Draggable ticket reordering on KDS«)
+
+Prvi odkljukani kandidat §37 (»naslednji kandidat, semantika dana
+zgoraj«) — prvi SREDNJE-VELIK val od §32: nosilec, ki ga Order nima
+(ticketSequence) = DDL + vlečenje + sinhronizacija. Vse izmere so bile
+dane že v §37 (raziskava 6. 11.); tok jih pretvori v implementacijo.
+
+### A) Izmere (§37 semantika + lastno stanje po kodni preverbi)
+
+- **Square Vol 16 dobesedno (izmerjeno §37):** vlečenje listkov na
+  Prep + Expo zaslonih; vrstni red »Manual« je način PER NAPRAVA
+  (naprava izbere Manual/Default); sekvenca se SHRANI in sinhronizira
+  na druge KDS naprave ISTIH lokacij z istim načinom Manual.
+- **Lastno stanje (izmere po kodi):**
+  - Glavni KDS (zavihek Kuhinja, legacy ALL/KITCHEN/BAR) izrisuje
+    LINEARNO VRSTO listkov: osnutki (zložljiv oddelek, §32) →
+    »Aktivna izmena« (`kdsActiveLive`, server vrstni red createdAt
+    ASC; Issue #70 §2 zastareli na konec) → zastareli (zložljiv
+    oddelek). Vrstni red je STROGO izpeljan (stale, createdAt) —
+    ročnih mest ni in nosilca zanje ni.
+  - `Order` nima stolpca zaporedja (izmerjeno po prisma/schema.prisma)
+    → 1 aditivni DDL (vzorec seat/§37 exception-policy disciplina:
+    mirror DA, main NE do produkcijskega DDL klika, raw + probe).
+  - Per-naprava nastavitev ima domači vzorec: Issue #74 V-3/V-8/V-9
+    (ro_kds_view, ro_kds_font_size, ro_kds_view_only — localStorage,
+    hidracija v mikrotaski, SSR privzeto) — Manual/Default preklop
+    je ISTA družina (ro_kds_ticket_order).
+  - Vlečenje ima domači vzorec: tloris miz (OPS-4 v1.67) — pointer
+    events (ročaj → dragIdRef → move → drop → optimistično stanje +
+    PATCH persist). HTML5 draggable je izločen NAMERNO: na tablicah
+    (primarni KDS naprave) touch ne sproži native DnD.
+  - SSE pretok (v1.236) dviguje podpis na MAX(updatedAt) treh tabel;
+    reorder bo namerno podpisa NE dvignil (raw UPDATE ne piše
+    updatedAt) — listkova VSEBINA se ni spremenila, utrip »NOV«
+    (kdsFlash) bi bil lažni alarm. Sinhronizacija: 15 s poll (isti
+    ritem kot vsa KDS stanja pred SSE).
+  - KdsStationBoard (poimenovane postaje, Issue #14) sortira skupine
+    po oldest firedAt — FIFO požiga je NJIHOVA disciplina (prepara
+    tok), ne linearna vrsta; vlečenje tam ostaja IZVEN tega vala
+    (iskrena meja, ne tiha odločitev).
+
+### B) Odločitev (Ž9)
+
+VAL Ž9 — ročno zaporedje listkov na GLAVNEM KDS seznamu kot
+PREZENTACIJSKA plast nad strežniškim vrstnim redom (1 aditivna DDL
+stolpec, exception-policy disciplina):
+
+1. **Nosilec: `Order.ticketSequence INTEGER NULL`** — ničen = listka
+   ni ročno razvrstil (novi listki padejo na konec po createdAt;
+   Square isto: obstoječa razvrstitev ostane, novi prihajajo za
+   njo). Sekvenca je GLOBALNA per lokacija (Square: »syncs to other
+   KDS devices of the same location«) — ne per postaja, ne per
+   naprava.
+2. **Način vrstnega reda je PER NAPRAVA** (ro_kds_ticket_order:
+   'default' | 'manual', privzeto 'default' — Issue #74 družina).
+   Default = sedanji izpeljani vrstni red (byte-identična zgodovina);
+   Manual = sekvenca ASC, NULL na konec po createdAt. Naprave z
+   Default načinom sekvence IGNORIRAJO (Square: sync velja samo za
+   naprave »with the same mode«).
+3. **Vrstni red velja SAMO na »Aktivni izmeni«.** Osnutki (§32) so
+   prihodnji tok, zastareli (Issue #70 §2) so revizijska veja —
+   oba oddelka obdržita svoj obstoječi red (stale-last sort ostane
+   najbolj zunanja disciplina aktivne množice).
+4. **Polna zamenjava sekvence ob vsakem vlečenju** (POST
+   {orderIds: [...]} — celoten novi vrstni red aktivnih listkov, kar
+   jih naprava vidi): podani dobi 0..n−1, AKTIVNI listki iste
+   lokacije IZVEN seznama padejo ZA podane po obstoječem redu
+   (filtrirana BAR naprava premakne svoj listek na vrh, ne pa da
+   ponesreči preusmeri kuhinjske vrste) — sekvenca ostane ena
+   globalna resnica. Izginuli (plačani/preklicani) listki pustijo
+   luknje — asc sort jih preskoči, naslednje vlečenje zgosti.
+5. **Dve interakciji, isti rezultat** (POŠTENO do naprav): ROČAJ
+   (GripVertical v glavi listka) — pointer vlečenje po tloris
+   vzorcu (miška + dotik); tipki ↑/↓ v glavi — premik za eno mesto
+   (tipkovnica + dotik alternativa, a11y). HTML5 draggable NE
+   (touch ne deluje). Oba pota pošljeta ISTI PATCH.
+6. **Pravice: kitchen.update** (ista pravica kot vsi PATCH /api/kitchen
+   dejanji — naprava kuhinje). Zaklep zaslona (viewOnly, §18 B)
+   blokira tudi vlečenje — dosledno z bumpi. Pre-DDL: vlečenje/
+   tipke onemogočene z nasvetom s potjo konzole (vzorec v1.197
+   migrBox / §37 nastavitve-tab), način preklop je vedno na voljo
+   (lokalna preferenca brez strežniškega pisanja).
+7. **SSE podpis se NE dvigne ob reorderju** (iskrena meja, točka A):
+   sinhronizacija teče po 15 s pollu; reorder ni vsebinska sprememba
+   listka in ne sme utripati »NOV« na drugih napravah.
+8. **1 aditivna DDL** (INTEGER NULL na Order, brez defaulta), 0 novih
+   odvisnosti, 0 novih rut (reorder je veja obstoječega PATCH
+   /api/kitchen), 0 novih UI datotek (dashboard obstoječi KDS).
+
+### C) Implementacija
+
+- **Čisti sloj** (src/lib/kds-ticket-order.ts, NOVA — 0 uvozov):
+  `applyManualTicketOrder(orders, seqOf, createdAtOf)` (stabilna
+  ureditev: Number.isFinite sekvenca ASC → izpeljani vrstni red;
+  NULL/NaN/undefined na konec po createdAt — defenzivno kot §36);
+  `parseReorderPayload(body)` (array string id-jev, prazna → napaka,
+  duplikat → napaka; čista validacija brez db).
+- **DB sloj** (src/lib/kds-ticket-sequence.ts, NOVA — vzorec
+  receipt-display-policy): probe `kdsTicketSequenceAvailable()` +
+  `resetKdsTicketSequenceProbe()` (60 s TTL, isMissingSchemaError);
+  `readTicketSequences(orderIds)` (raw SELECT, pre-DDL → {} graceful);
+  `writeTicketSequences(entries)` (raw UPDATE v interaktivni
+  transakciji, pre-DDL → napaka s potjo konzole; STROGO id + celo
+  število ≥ 0 ali NULL — brez SQL interpolacije vrednosti).
+- **DDL**: mirror schema.sqlite.prisma + `ticketSequence Int?` (dev
+  db:push); main schema NE (P2022 disciplina do DDL klika);
+  /api/admin/migrate-kds-ticket-sequence (idempotentno, IF NOT
+  EXISTS, obeh dialektov INTEGER, requireCentralRole, audit
+  SCHEMA_MIGRATION_KDS_TICKET_SEQUENCE); register
+  SCHEMA_MIGRATIONS 41 → 42 (id kds-ticket-sequence, probe
+  columnExists('Order', 'ticketSequence')); konzola HANDLERS +1;
+  KNOWN_DRIFTS +1 (isKdsTicketSequenceStatement — dvosmerno strogo
+  SAMO Order.ticketSequence).
+- **API**: GET /api/kitchen — po mapped queue ADITIVNI
+  `ticketSequences: Record<string, number>` (samo definirane, iz raw
+  za queue id-je) + `ticketSequenceDdlActive: boolean` (probe);
+  PATCH /api/kitchen — nova veja `reorder: string[]`: kitchen.update
+  (nadzorna plast PATCH), validacija (parseReorderPayload + vsi
+  obstoječi + lokacija scope + status v ORDER_ACTIVE_DB), transakcija
+  writeTicketSequences (0..n−1 podani, NE-podani aktivni NULL za
+  njimi), audit KDS_TICKET_REORDER (counts + before/after podpis),
+  pre-DDL → 503 s potjo konzole; SSE changed se NE objavi (točka B7).
+- **UI** (dashboard KDS): OrderT + `ticketSequence?: number | null`;
+  stanje ro_kds_ticket_order (default/manual, hidracija mikrotaska —
+  Issue #74 vzorec) + kdsSequences/kdsSeqDdlActive iz GET; preklop
+  Default/Manual v KDS orodni vrstici (ob pogledih, aria-pressed);
+  kdsActiveLive manualno sortiran (samo kadar manual && neprazna
+  sekvenca mapa); ROČAJ pointer-drag (dragIdRef vzorec tlorisa,
+  drop indeks iz rect-ov vrstnih listkov, indikator vrstice, optimo
+  + PATCH) + tipki ↑/↓ (isti PATCH, disabled na robovih); disabled:
+  viewOnly ali !kdsSeqDdlActive (nasvet kds.reorderPending).
+- **i18n:** kds.orderModeDefault/Manual/Title, kds.dragHandle,
+  kds.moveUp/Down, kds.reorderPending + mig.kdsTicketSequence.desc
+  (SL + HR, 4125 → 4133).
+- **Testi:** tests/v264-rocno-zaporedje-listkov.test.ts — Č1 čisti
+  sloj (sekvenca ASC, NULL konec po createdAt, NaN/undefined
+  defenzivno, stabilnost izenačenih, prazna sekvenca = ista
+  vsebina/vrstni red, payload prazna/duplikat/ne-string/tuj tip),
+  Č2 API + DDL (GET polji pre-DDL, PATCH validacija + pravice +
+  503 pre-DDL, DDL stavek + register 42 + konzola handler, mirror
+  DA / main NE), Ž registri (verzija 1.264.0, drift matcher
+  dvosmerno + drug stolpec fail, i18n pariteta 4133/4133 + 8
+  ključev, dokument §38, AUDIT, worklog Task ID).

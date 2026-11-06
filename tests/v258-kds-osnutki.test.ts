@@ -84,7 +84,8 @@ describe('v1.258.0 A2 — zloženo = pilule v1.233.0 (ničelna regresija gostote
 
 describe('v1.258.0 A3 — draft veja listka (značka, brez lažnega časovnika)', () => {
   test('A3a: podpis renderKdsTicket nosi draft zastavico (privzeto false)', () => {
-    expect(pageSrc).toContain('const renderKdsTicket = (o: (typeof viewKitchen)[number], draft = false) => {')
+    // v1.264.0 §38: podpis aditivno razširjen s manualIdx (ročno zaporedje — ročaj/tipke)
+    expect(pageSrc).toContain('const renderKdsTicket = (o: (typeof viewKitchen)[number], draft = false, manualIdx = -1) => {')
   })
 
   test('A3b: amber ČRTKAN obroč + bledlo (ločeno od zastarelega kamna in žive starosti)', () => {
@@ -140,7 +141,10 @@ describe('v1.258.0 A4 — izločitve + deljeni predikat (en vir resnice)', () =>
 
   test('A4c: aktivna vrsta šteje SAMO kuhanje — kdsActiveLive izloči osnutke', () => {
     expect(pageSrc).toContain('const kdsActiveLive = kdsActive.filter((o) => !kdsDraftIdSet.has(o.id))')
-    expect(pageSrc).toContain('kdsActiveLive.map((o) => renderKdsTicket(o, false))')
+    // v1.264.0 §38: izris teče iz kdsManualList (default način = kdsActiveLive ISTA referenca;
+    //    manual = applyManualTicketOrder nad ISTO množico — osnutki ostanejo izločeni)
+    expect(pageSrc).toContain('const kdsManualList = kdsTicketOrder === \'manual\'')
+    expect(pageSrc).toContain('renderKdsTicket(o, false, i)')
   })
 
   test('A4d: prazno stanje »kuhinja čista« ne šteje osnutkov', () => {
@@ -156,9 +160,9 @@ describe('v1.258.0 A4 — izločitve + deljeni predikat (en vir resnice)', () =>
 
 describe('v1.258.0 Ž — registri', () => {
   test('Ž1: verzija 1.258.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.263.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.263.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.263.0')
+    expect(APP_VERSION).toBe('1.264.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.264.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.264.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4099/4099 (+6 kds.draft*)', () => {
@@ -171,8 +175,8 @@ describe('v1.258.0 Ž — registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4125)
-    expect(hrCount).toBe(4125)
+    expect(slCount).toBe(4133)
+    expect(hrCount).toBe(4133)
   })
 
   test('Ž3: dokumenta — PRIMERJAVA §32 + AUDIT POSODOBITEV + števci', () => {
@@ -182,7 +186,7 @@ describe('v1.258.0 Ž — registri', () => {
     expect(doc).toContain('draft tickets')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.258.0')
-    expect(auditDoc).toContain('- 4125 ključev SL in 4125 HR')
+    expect(auditDoc).toContain('- 4133 ključev SL in 4133 HR')
   })
 
   test('Ž4: 0 DDL + 0 strežniških sprememb — čista klientna plast nad obstoječo cevjo', () => {
@@ -205,6 +209,6 @@ describe('v1.258.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-rocno-zaporedje-listkov-val')
   })
 })

@@ -15,6 +15,7 @@ import {
   isLatePrep, isStaleKdsTicket, kdsAgeBorderCls, kdsAgeClass, kdsAgePillCls, kdsLateThreshold,
   normalizeKdsAgeThresholds, staleTicketHours, type KdsAgeThresholds,
 } from '@/lib/kds-delays'
+import { applyManualTicketOrder } from '@/lib/kds-ticket-order'
 import { FLOOR_PLAN_W, FLOOR_PLAN_H, floorPlanUnitIsPercent, planPositionOf } from '@/lib/floor-plan'
 import { tabHasPerm, TAB_PERM } from '@/lib/tab-permissions'
 import { normItemName } from '@/lib/menu-dup'
@@ -150,7 +151,7 @@ import { stationViewKey } from '@/lib/kds-station-routing'
    po tečajih — čista preslikava (lib/kds-courses), izris v renderKdsTicket. */
 import { groupKdsItemsByCourse } from '@/lib/kds-courses'
 import { getPaymentCueEnabled, playPaymentCue, setPaymentCueEnabled } from '@/lib/audio-cue'
-import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode, PanelLeft, PanelRight } from 'lucide-react'
+import { PackageSearch, Clock, Thermometer, ClipboardCheck, Wallet, HeartHandshake, Briefcase, MapPin, Plug, Webhook, Bug, Truck, Coins, Ban, Percent, Building2, Zap, EyeOff, Volume2, VolumeX, Maximize2, Ship, Lock, LockOpen, Check, Megaphone, ChevronUp, CreditCard, Settings2, Columns3, List, Play, LayoutGrid, Rows3, TimerReset, Wand2, ScanBarcode, PanelLeft, PanelRight, GripVertical, ListOrdered } from 'lucide-react'
 
 const DASHBOARD_TABS: [string, typeof LayoutDashboard | null][] = [
   ['pregled', LayoutDashboard], ['mize', Utensils], ['narocila', ClipboardList],
@@ -1028,7 +1029,7 @@ function DashboardInner() {
         // svojo postajo (kdsStationRef mirror za poll closure). Issue #14: custom
         // station ids are ADDITIVE (server ignores unknown values for the legacy
         // queue filter — the task board does its own client-side filtering).
-        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[] }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
+        soft(api<{ queue: OrderT[]; stationTargets?: Record<string, number | null>; stations?: KdsStationT[]; tasks?: KdsTaskT[]; stationStats?: KdsStationStatT[]; ticketSequences?: Record<string, number>; ticketSequenceDdlActive?: boolean }>(`/api/kitchen${kdsStationRef.current && kdsStationRef.current !== 'ALL' ? `?station=${kdsStationRef.current}` : ''}`)),
         // v1.164.0 (Neon egress): počasni viri samo v polnem 60-sekundnem ciklu
         // v1.164.0 (Neon egress): počasni viri samo v polnem 60-sekundnem ciklu
         dashboardPollIncludes(scope, 'menus') ? soft(api<{ items: MenuT[]; categories: CategoryT[] }>(`/api/menus${viewLocRef.current ? `?locationId=${viewLocRef.current}` : ''}`)) : undefined,
@@ -1077,6 +1078,10 @@ function DashboardInner() {
         setKdsStations(k.stations ?? [])
         setKdsTasks(k.tasks ?? [])
         setKdsStationStats(k.stationStats ?? [])
+        // §38 (v1.264.0): ročna zaporedja listkov — mapa samo ZA VPISANA mesta
+        // (pre-DDL → prazna → vrsta enaka default, graceful) + DDL zastavica
+        setKdsSequences(k.ticketSequences ?? {})
+        setKdsSeqDdlActive(k.ticketSequenceDdlActive === true)
       }
       if (m) { setMenu(m.items); setCategories(m.categories) }
       if (e) setEmployees(e.employees)
@@ -2814,6 +2819,101 @@ function DashboardInner() {
   /** V-8/V-9: persist pomočnik za preproste izbire. */
   const kdsPersist = (key: string, value: string) => {
     try { localStorage.setItem(key, value) } catch { /* brez shramve */ }
+  }
+  /* ── §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«):
+     ROČNO ZAPOREDJE LISTKOV. Način vrstnega reda je PER NAPRAVA
+     (ro_kds_ticket_order — Issue #74 družina, hidracija v mikrotaski);
+     ročna mesta pa so STREŽNIŠKA (mapa aktivnih listkov + DDL zastavica iz
+     GET /api/kitchen; pre-DDL → prazna mapa → vrsta enaka default, vlečenje
+     onemogočeno z nasvetom — migrBox vzorec v1.197/§37). Zaklep zaslona
+     (viewOnly, §18 B) blokira tudi reorder — dosledno z bumpi. ── */
+  const [kdsTicketOrder, setKdsTicketOrder] = useState<'default' | 'manual'>('default')
+  const [kdsSequences, setKdsSequences] = useState<Record<string, number>>({})
+  const [kdsSeqDdlActive, setKdsSeqDdlActive] = useState(false)
+  useEffect(() => {
+    // mikrotaska — obnova iz localStorage brez sinhronnega setState v telesu efekta
+    queueMicrotask(() => {
+      try {
+        const m = localStorage.getItem('ro_kds_ticket_order')
+        if (m === 'manual') setKdsTicketOrder('manual')
+      } catch { /* zasebni način — privzeti default ostane */ }
+    })
+  }, [])
+  const kdsTicketDragAllowed = !kdsViewOnly && kdsSeqDdlActive
+  /** Optimistični persist novega vrstnega reda (napaka → toast + resnica s strežnika). */
+  const kdsPersistTicketOrder = async (newIds: string[]) => {
+    const next: Record<string, number> = {}
+    newIds.forEach((id, i) => { next[id] = i })
+    setKdsSequences(next)
+    try {
+      await api('/api/kitchen', { method: 'PATCH', body: JSON.stringify({ reorder: newIds }) })
+    } catch (e) {
+      toast({ variant: 'destructive', description: String((e as Error).message || e) })
+      void load('hot')
+    }
+  }
+  /** Premik listka za eno mesto (tipki ↑/↓ — tipkovnica/dotik alternativa vlečenju). */
+  const kdsTicketMove = (ids: string[], id: string, dir: -1 | 1) => {
+    if (!kdsTicketDragAllowed) return
+    const i = ids.indexOf(id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ids.length) return
+    const next = [...ids]
+    next.splice(j, 0, next.splice(i, 1)[0])
+    void kdsPersistTicketOrder(next)
+  }
+  /* Vlečenje POIINTER dogodki (miška + dotik — HTML5 draggable na tablicah
+     NE deluje; tloris OPS-4 v1.67 vzorec: ročaj → window move/up → drop).
+     State je SAMO za izris (zarisani listek + drop indikator); odločitve
+     ob spustu berejo ref-e (brez zaprtja nad stale state). */
+  const [kdsDragUi, setKdsDragUi] = useState<{ id: string; dropIndex: number | null } | null>(null)
+  const kdsDragStartYRef = useRef(0)
+  const kdsDragIdRef = useRef<string | null>(null)
+  const kdsDropIndexRef = useRef<number | null>(null)
+  const kdsComputeDropIndex = (y: number): number | null => {
+    if (typeof document === 'undefined') return null
+    const wrap = document.querySelector('[data-region="kds-active-list"]')
+    if (!wrap) return null
+    const els = Array.from(wrap.querySelectorAll('[data-order-id]'))
+    for (let i = 0; i < els.length; i++) {
+      const r = els[i].getBoundingClientRect()
+      if (y < r.top + r.height / 2) return i
+    }
+    return els.length
+  }
+  const kdsTicketPointerDown = (e: React.PointerEvent, id: string, ids: string[]) => {
+    if (!kdsTicketDragAllowed) return
+    e.preventDefault()
+    kdsDragStartYRef.current = e.clientY
+    kdsDragIdRef.current = null
+    kdsDropIndexRef.current = null
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientY - kdsDragStartYRef.current) > 8) {
+        kdsDragIdRef.current = id
+        const di = kdsComputeDropIndex(ev.clientY)
+        kdsDropIndexRef.current = di
+        setKdsDragUi({ id, dropIndex: di })
+      }
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      const did = kdsDragIdRef.current
+      const di = kdsDropIndexRef.current
+      kdsDragIdRef.current = null
+      kdsDropIndexRef.current = null
+      setKdsDragUi(null)
+      if (!did || di === null) return
+      // vstavi PRED di-ti element (kot viden med vlečenjem); konec → push
+      const targetEl = ids[di]
+      const rest = ids.filter((x) => x !== did)
+      const at = targetEl && targetEl !== did ? Math.max(0, rest.indexOf(targetEl)) : rest.length
+      const next = [...rest]
+      next.splice(at, 0, did)
+      if (next.join('|') !== ids.join('|')) void kdsPersistTicketOrder(next)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
   }
   // izpeljenke (SSR-varne privzete vrednosti izračunamo tik pred izrisom)
   const kdsFont = KDS_FONT_CLS[kdsFontSize] ?? KDS_FONT_CLS.M
@@ -4844,6 +4944,33 @@ function DashboardInner() {
                   ))}
                 </div>
               )}
+              {/* §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«):
+                  NAČIN ZAPOREDJA — Default (izpeljani časovni red) ali Manual (ročno
+                  razvrščeni listki po strežniški sekvenci; na listkih se pokažeta ročaj
+                  + tipki premika). PER NAPRAVA (ro_kds_ticket_order, Issue #74 družina);
+                  sekvenca se deli z ostalimi Manual napravami lokacije (Square: sync
+                  »with the same mode«). Pre-DDL: preklop deluje (lokalna preferenca),
+                  vlečenje/tipke pa onemogočene z nasvetom kds.reorderPending. */}
+              {!kdsCustomView && (
+                <div className="inline-flex rounded-lg border border-stone-300 bg-white p-0.5" role="group" aria-label={t('kds.orderModeTitle')}>
+                  {(['default', 'manual'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={kdsTicketOrder === m}
+                      aria-label={m === 'default' ? t('kds.orderModeDefault') : t('kds.orderModeManual')}
+                      title={m === 'default' ? t('kds.orderModeDefault') : `${t('kds.orderModeManual')} — ${t('kds.orderModeTitle')}`}
+                      onClick={() => { setKdsTicketOrder(m); kdsPersist('ro_kds_ticket_order', m) }}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition ${
+                        kdsTicketOrder === m ? 'bg-emerald-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      {m === 'default' ? <Clock className="w-3.5 h-3.5" aria-hidden /> : <ListOrdered className="w-3.5 h-3.5" aria-hidden />}
+                      <span className="hidden sm:inline">{m === 'default' ? t('kds.orderModeDefault') : t('kds.orderModeManual')}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* ISSUE #74 V-3/V-8: ⚙ NASTAVITVE ZASLONA (popover) — starostni pragovi
                   (siva→emerald→amber→utrip→rdeča), velikost pisave S/M/L/XL, gostota,
                   stolpci seznama. Toast/Square/Lightspeed reference: operater nastavi
@@ -5023,7 +5150,20 @@ function DashboardInner() {
                  na ravni komponente — en vir resnice za oddelek/prazno stanje/all-day;
                  zastareli osnutki ostanejo v ZASTARELO revizijski veji). */
               const kdsActiveLive = kdsActive.filter((o) => !kdsDraftIdSet.has(o.id))
-              const renderKdsTicket = (o: (typeof viewKitchen)[number], draft = false) => {
+              /* §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«):
+                 ROČNO ZAPOREDJE — Manual način (per naprava) sortira aktivno
+                 izmeno po strežniški sekvenci (ASC; brez mesta → konec po
+                 createdAt — novi listki prihajajo ZA ročno razvrščenimi,
+                 luknje po izginulih asc sort preskoči). Default = sedanji
+                 izpeljani red (byte-identična zgodovina — sekvenca obstaja,
+                 a je naprava ne upošteva, Square: »same mode«). Osnutki (§32)
+                 in zastareli (Issue #70 §2) obdržijo svoj red — prihodnji
+                 tok / revizijska veja, ne ročna vrsta. */
+              const kdsManualList = kdsTicketOrder === 'manual'
+                ? applyManualTicketOrder(kdsActiveLive, (o) => kdsSequences[o.id], (o) => o.createdAt)
+                : kdsActiveLive
+              const kdsManualIds = kdsManualList.map((o) => o.id)
+              const renderKdsTicket = (o: (typeof viewKitchen)[number], draft = false, manualIdx = -1) => {
                 const items = o.items.filter((it) => !it.voided && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket))
                 const ageMin = kdsMinutes(o.createdAt)
                 const stale = isStaleKdsTicket(ageMin)
@@ -5072,6 +5212,46 @@ function DashboardInner() {
                     )}
                     <CardHeader data-region="kds-ticket-header" className="gap-2 px-4 pt-0 pb-0 sm:px-6">
                       <CardTitle className="text-base flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                        {/* §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on
+                            KDS«): ROČAJ + tipki premika — SAMO v Manual načinu in samo na
+                            ŽIVIH (ne-osnutkih, ne-zastarelih) listkih. Ročaj = pointer
+                            vlečenje (miška + dotik; aria-hidden — tipkovnična pot sta
+                            tipki ↑/↓, a11y); ob zaklepu zaslona ali pre-DDL onemogočeno
+                            z nasvetom (migrBox vzorec v1.197/§37). */}
+                        {kdsTicketOrder === 'manual' && !draft && !stale && (
+                          <span data-region="kds-ticket-reorder" className="inline-flex items-center gap-0.5 shrink-0">
+                            <span
+                              aria-hidden
+                              title={kdsTicketDragAllowed ? t('kds.dragHandle') : kdsViewOnly ? t('kds.viewOnlyHint') : t('kds.reorderPending')}
+                              onPointerDown={(e) => kdsTicketPointerDown(e, o.id, kdsManualIds)}
+                              className={`-ml-1 inline-flex h-9 w-7 items-center justify-center rounded ${kdsTicketDragAllowed ? 'cursor-grab touch-none text-stone-400 hover:bg-stone-100 hover:text-stone-700 active:cursor-grabbing' : 'cursor-not-allowed text-stone-300'}`}
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={!kdsTicketDragAllowed || manualIdx <= 0}
+                              onClick={() => kdsTicketMove(kdsManualIds, o.id, -1)}
+                              aria-label={t('kds.moveUp')}
+                              title={t('kds.moveUp')}
+                            >
+                              <ChevronUp className="h-4 w-4" aria-hidden />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={!kdsTicketDragAllowed || manualIdx < 0 || manualIdx >= kdsManualIds.length - 1}
+                              onClick={() => kdsTicketMove(kdsManualIds, o.id, 1)}
+                              aria-label={t('kds.moveDown')}
+                              title={t('kds.moveDown')}
+                            >
+                              <ChevronDown className="h-4 w-4" aria-hidden />
+                            </Button>
+                          </span>
+                        )}
                         {/* ISSUE #74 V-8: nazivna vrstica sledi velikosti pisave (S=13 → XL=22 px) */}
                         <span className={`font-bold truncate max-w-full min-w-0 ${kdsFont.title}`}>{o.table?.name || orderTypeL(o.type)}</span>
                         {/* Issue #71 audit-2: tip naročila je ZNAČKA ob naslovu (miza = identiteta),
@@ -5475,7 +5655,28 @@ function DashboardInner() {
                       <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 tabular-nums font-semibold">{t('kds.staleCount', { n: kdsActiveLive.length })}</span>
                     </p>
                   )}
-                  {kdsActiveLive.map((o) => renderKdsTicket(o, false))}
+                  {/* §38 (v1.264.0): wrapper aktivne vrste — drop tarče ([data-order-id]
+                      elementi berejo kdsComputeDropIndex) + drop indikator (emerald črta
+                      pred i-tim listkom / na koncu) + zarisani (opacity) vlečeni listek.
+                      space-y-4 = razmak TabsContent (byte-identična gostota brez vlečenja). */}
+                  <div data-region="kds-active-list" className="space-y-4">
+                    {kdsManualList.map((o, i) => (
+                      <div
+                        key={o.id}
+                        data-order-id={o.id}
+                        className={`relative ${kdsDragUi?.id === o.id ? 'opacity-40' : ''} ${
+                          kdsDragUi && kdsDragUi.dropIndex === i && kdsDragUi.id !== o.id
+                            ? "before:absolute before:-top-2 before:left-2 before:right-2 before:h-1 before:rounded-full before:bg-emerald-600 before:content-['']"
+                            : ''
+                        }`}
+                      >
+                        {renderKdsTicket(o, false, i)}
+                      </div>
+                    ))}
+                    {kdsDragUi && kdsDragUi.dropIndex === kdsManualList.length && kdsDragUi.id !== kdsManualList[kdsManualList.length - 1]?.id && (
+                      <div aria-hidden className="mx-2 h-1 rounded-full bg-emerald-600" />
+                    )}
+                  </div>
                   {kdsStale.length > 0 && (
                     <section data-region="kds-section-stale" className="space-y-2 rounded-xl border border-dashed border-stone-300 bg-stone-50/60 p-2.5" aria-label={t('kds.staleSection')}>
                       <button

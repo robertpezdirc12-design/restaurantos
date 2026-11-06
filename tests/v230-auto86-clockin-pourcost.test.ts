@@ -468,9 +468,9 @@ describe('v1.230.0 E — žičenje v plačilni tok in prilive', () => {
 
 describe('v1.230.0 Ž — verzija + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.263.0')
-    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.263.0'")
-    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.263.0')
+    expect(APP_VERSION).toBe('1.264.0')
+    expect(readFileSync('src/lib/version.ts', 'utf8')).toContain("'1.264.0'")
+    expect(readFileSync('deploy/docker-compose.yml', 'utf8')).toContain('restaurantos:1.264.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi v1.230.0 val (C-seznam zaprt)', () => {
@@ -489,20 +489,20 @@ describe('v1.230.0 Ž — verzija + registri', () => {
     const prd = readFileSync('docs/PRD-LOKALNA-BAZA.md', 'utf8')
     expect(prd).toContain('BENCHMARK-VAL v1.230.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-rocno-zaporedje-listkov-val')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.229.0'))
   })
 
   test('Ž4: i18n števci + novi ključi SL/HR (3853/3853)', () => {
-    expect(Object.keys(sl).length).toBe(4125)
-    expect(Object.keys(hr).length).toBe(4125)
+    expect(Object.keys(sl).length).toBe(4133)
+    expect(Object.keys(hr).length).toBe(4133)
     for (const k of ['tc.lowStockTitle', 'tc.lowStockOut', 'tc.lowStockMore', 'inv.auto86Title', 'inv.auto86Desc', 'inv.auto86On', 'inv.auto86Off', 'inv.auto86Mode', 'inv.auto86ModeDirect', 'inv.auto86ModeRecipe', 'inv.auto86RecipeHint', 'inv.auto86Saved']) {
       expect(typeof (sl as Record<string, string>)[k]).toBe('string')
       expect(typeof (hr as Record<string, string>)[k]).toBe('string')
     }
     // RESTAURANTOS-AUDIT števec usklajen
     const audit = readFileSync('docs/RESTAURANTOS-AUDIT.md', 'utf8')
-    expect(audit).toContain('4125 ključev SL in 4125 HR')
+    expect(audit).toContain('4133 ključev SL in 4133 HR')
     expect(audit).toContain('POSODOBITEV (v1.230.0')
   })
 })

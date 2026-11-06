@@ -14,6 +14,8 @@ import { KDS_DELAY_ACTION, computePrepMin, delayThresholdForTarget, isLatePrep, 
 import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { taskTransitionFrom, stationViewKey } from '@/lib/kds-station-routing'
 import { rollupItemStatusFromTasks, completeTasksForItem, tasksForItem } from '@/lib/station-task-service'
+import { parseReorderPayload } from '@/lib/kds-ticket-order'
+import { kdsTicketSequenceAvailable, readTicketSequences, writeTicketSequences, type TicketSequenceWrite } from '@/lib/kds-ticket-sequence'
 
 const ITEM_ACTIVE_PRISMA = ITEM_ACTIVE_DB as OrderItemStatus[]
 
@@ -228,7 +230,23 @@ export async function GET(req: NextRequest) {
     // DDL pending (produkcija pred migrate-kds-stations) — additive polja izpraznjena,
     // queue + stationTargets ostaneta nespremenjena (graceful degradacija)
   }
-  return ok({ queue, stationTargets, stations, tasks, stationStats })
+  // ── §38 (v1.264.0, Square Vol 16 »Draggable ticket reordering on KDS«):
+  //    ROČNA ZAPOREDJA LISTKOV — additivni polji odgovora. Mapa samo ZA VPISANA
+  //    mesta (NULL = ni mesta → klient pade na izpeljani vrstni red); pre-DDL →
+  //    prazna mapa + DDL zastavica false (vrsta enaka default, GRACEFUL —
+  //    nikoli nevarna odpoved). Sekvenca je ena globalna resnica per lokacija;
+  //    način Manual/Default ostaja per NAPRAVA (localStorage, Issue #74). ──
+  let ticketSequences: Record<string, number> = {}
+  let ticketSequenceDdlActive = false
+  try {
+    ticketSequenceDdlActive = await kdsTicketSequenceAvailable()
+    if (ticketSequenceDdlActive && queue.length > 0) {
+      ticketSequences = await readTicketSequences(queue.map((o) => o.id))
+    }
+  } catch (e) {
+    if (!isMissingSchemaError(e)) throw e
+  }
+  return ok({ queue, stationTargets, stations, tasks, stationStats, ticketSequences, ticketSequenceDdlActive })
 }
 
 /** Skupni order-rollup po spremembi statusa postavke (legacy + postajni tok). */
@@ -279,7 +297,10 @@ type TaskOutcome = {
 }
 
 /**
- * PATCH /api/kitchen — dve poti (issue #14):
+ * PATCH /api/kitchen — trije vhodi (issue #14, §38):
+ *  C) ROČNO ZAPOREDJE LISTKOV (§38, v1.264.0): {reorder: [orderId, …]} —
+ *     polna zamenjava ročnih mest aktivnih listkov lokacije (kitchen.update;
+ *     pre-DDL 503, SSE se ne objavi namerno — v telesu veje)
  *  A) POSTAJNA NALOGA: {taskId, action: 'start'|'ready'|'issue', delayReason?}
  *     - start: waiting/blocked → 409 (z blokirniki); pending → preparing (CAS)
  *     - ready: pending/preparing → ready + žigi (CAS; replay istega stanja → 200)
@@ -295,6 +316,69 @@ export async function PATCH(req: NextRequest) {
   const user = await requirePermission(req, 'kitchen.update')
   if (isResponse(user)) return user
   const body = await req.json().catch(() => null)
+
+  /* ── C) §38 (v1.264.0): ROČNO ZAPOREDJE LISTKOV — {reorder: [orderId, …]} ──
+   *    Polna zamenjava ročnih mest aktivnih listkov lokacije (ista pravica
+   *    kot vsi PATCH dejanji — kitchen.update, naprava kuhinje). Podani
+   *    dobi 0..n−1 v podani vrsti; AKTIVNI listki IZVEN seznama padejo ZA
+   *    njimi po obstoječem (createdAt) redu — filtrirana postaja (BAR) ne
+   *    ponesreči preusmeri kuhinjskih vrst: sekvenca ostane ENA globalna
+   *    resnica per lokacija (Square: »syncs to other KDS devices of the
+   *    same location with the same mode«). Novi listki (NULL) padejo na
+   *    konec po createdAt — luknje po izginulih listkih asc sort preskoči.
+   *    Pre-DDL → 503 s potjo konzole. SSE changed se NAMERNO ne objavi:
+   *    reorder ni vsebinska sprememba listka, utrip »NOV« (kdsFlash) bi
+   *    bil lažni alarm (§38 B7) — sinhronizacija teče po 15 s pollu. */
+  if (body && Array.isArray((body as { reorder?: unknown }).reorder)) {
+    const parsed = parseReorderPayload(body)
+    if ('error' in parsed) return fail(parsed.error, 400)
+    const scope = await locationScope(user)
+    const active = await db.order.findMany({
+      where: { ...scope, status: { in: ORDER_ACTIVE_DB } },
+      select: { id: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    const activeIds = new Set(active.map((o) => o.id))
+    for (const id of parsed.orderIds) {
+      if (!activeIds.has(id)) {
+        return fail('Listka ni v aktivni vrsti te lokacije (zaprt, preklican ali tuja lokacija).', 409)
+      }
+    }
+    // predhodna mesta (za idempotenco + čiščenje ne-podanih) — SAMO ob
+    // aktivnem DDL; pre-DDL ostane {} in writeTicketSequences odgovori 503
+    const ddlActive = await kdsTicketSequenceAvailable()
+    const before = ddlActive ? await readTicketSequences(active.map((o) => o.id)) : {}
+    // novo stanje: podani 0..n−1; ne-podani aktivni ZA njimi (mesto počistimo
+    // SAMO če so ga prej imeli — brez slepih NULL pisanj)
+    const afterMap: Record<string, number> = {}
+    parsed.orderIds.forEach((id, i) => { afterMap[id] = i })
+    const entries: TicketSequenceWrite[] = parsed.orderIds.map((id, i) => ({ orderId: id, sequence: i }))
+    let cleared = 0
+    for (const o of active) {
+      if (afterMap[o.id] === undefined && before[o.id] !== undefined) {
+        entries.push({ orderId: o.id, sequence: null })
+        cleared += 1
+      }
+    }
+    // idempotenca (replay istega vrstnega reda) → 200 brez pisanja in audita
+    const unchanged = active.every((o) => (before[o.id] ?? undefined) === (afterMap[o.id] ?? undefined))
+    if (unchanged) return ok({ reordered: 0, already: true })
+    const writeErr = await writeTicketSequences(entries)
+    if (writeErr) return fail(writeErr, 503)
+    await db.auditLog
+      .create({
+        data: {
+          id: nid(),
+          userId: user.sub,
+          action: 'KDS_TICKET_REORDER',
+          entityType: 'Order',
+          entityId: 'kds_ticket_sequence',
+          details: jstr({ count: parsed.orderIds.length, cleared, by: user.name }),
+        },
+      })
+      .catch(() => null)
+    return ok({ reordered: parsed.orderIds.length, cleared })
+  }
 
   /* ── A) postajna naloga ── */
   if (body?.taskId) {

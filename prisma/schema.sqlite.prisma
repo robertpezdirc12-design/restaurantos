@@ -1933,6 +1933,14 @@ model Order {
   idempotencyKey                         String?            @unique
   // Issue #3: izvor naročila (pos | qr | kiosk) — isti kanonični Order pipeline
   orderSource                            String             @default("pos")
+  // PRIMERJAVA §38 (v1.264.0) — ROČNO ZAPOREDJE LISTKOV NA KDS (Square Vol 16
+  // »Draggable ticket reordering on KDS«): strežniško mesto listka v ročni
+  // (Manual) vrsti kuhinje — ena globalna sekvenca per lokacija, deljena med
+  // KDS napravami z istim načinom. Ničen = listka nihče ni ročno razvrstil
+  // (novi listki padejo na konec po createdAt). MAIN schema stolpca NIMA
+  // (P2022 disciplina do produkcijskega DDL klika — vzorec receipt-display-
+  // policy §37; dostop izključno raw SQL s probo, src/lib/kds-ticket-sequence.ts).
+  ticketSequence                         Int?
   Check                                  Check[]
   Course                                 Course[]
   KotDocument                            KotDocument[]

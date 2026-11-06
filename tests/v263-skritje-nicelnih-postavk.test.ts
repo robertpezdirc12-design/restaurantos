@@ -25,7 +25,7 @@
  *    PUT politika veja; UI preklop DDL-pogojen.
  *  Ž · REGISTRI: verzija 1.263.0, DDL stavek + register 41 + konzola,
  *    drift matcher dvosmernen + združena množica, mirror DA / main NE,
- *    i18n pariteta 4125/4125 (+4 ključi), dokument §37 + AUDIT,
+ *    i18n pariteta 4133/4133 (+4 ključi), dokument §37 + AUDIT,
  *    worklog Task ID.
  */
 import { describe, test, expect } from 'bun:test'
@@ -209,18 +209,18 @@ describe('v1.263.0 Č2 — izris HTML + montaža virov', () => {
 
 describe('v1.263.0 Ž — registri', () => {
   test('Ž1: verzija 1.263.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.263.0')
-    expect(read('src/lib/version.ts')).toContain("'1.263.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.263.0')
+    expect(APP_VERSION).toBe('1.264.0')
+    expect(read('src/lib/version.ts')).toContain("'1.264.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.264.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4125/4125 (+4 ključi vala)', () => {
+  test('Ž2: i18n pariteta SL/HR 4133/4133 (+4 ključi vala)', () => {
     for (const k of ['set.hideZeroItems', 'set.hideZeroItemsDesc', 'set.hideZeroItemsDdl', 'mig.receiptDisplayPolicy.desc']) {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4125)
-    expect(Object.keys(hr).length).toBe(4125)
+    expect(Object.keys(sl).length).toBe(4133)
+    expect(Object.keys(hr).length).toBe(4133)
   })
 
   test('Ž3: DDL ruta — natančen stavek, idempotenca, centralna vloga, audit', () => {
@@ -232,7 +232,7 @@ describe('v1.263.0 Ž — registri', () => {
   })
 
   test('Ž4: register SCHEMA_MIGRATIONS 40 → 41 (receipt-display-policy)', () => {
-    expect(SCHEMA_MIGRATIONS).toHaveLength(41)
+    expect(SCHEMA_MIGRATIONS).toHaveLength(42)
     const m = SCHEMA_MIGRATIONS.find((x) => x.id === 'receipt-display-policy')
     expect(m).toBeTruthy()
     expect(m!.endpoint).toBe('/api/admin/migrate-receipt-display-policy')
@@ -274,11 +274,11 @@ describe('v1.263.0 Ž — registri', () => {
     expect(doc).toContain('SKRIVANJE NIČELNIH POSTAVK NA RAČUNU v1.263.0')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('POSODOBITEV (v1.263.0, PRIMERJAVA-VMESNIKOV-2026 §37)')
-    expect(auditDoc).toContain('- 4125 ključev SL in 4125 HR')
+    expect(auditDoc).toContain('- 4133 ključev SL in 4133 HR')
   })
 
   test('Ž10: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.263.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.264.0-rocno-zaporedje-listkov-val')
   })
 })

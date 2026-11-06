@@ -617,6 +617,18 @@ export const SCHEMA_MIGRATIONS: SchemaMigration[] = [
     endpoint: '/api/admin/migrate-receipt-display-policy',
     probe: () => columnsAll([['RestaurantSettings', 'hideZeroReceiptItems']]),
   },
+  {
+    // PRIMERJAVA §38 (v1.264.0): ROČNO ZAPOREDJE LISTKOV NA KDS (Square
+    // Vol 16 »Draggable ticket reordering on KDS«) — 1 stolpec na Order
+    // (ticketSequence INTEGER NULL; ena globalna sekvenca per lokacija,
+    // način Manual/Default pa per naprava). Do DDL: GET /api/kitchen
+    // vrača prazno mapo + DDL false (vrsta = default, graceful), PATCH
+    // reorder → 503. Raw SQL + probe (vzorec receipt-display-policy).
+    id: 'kds-ticket-sequence',
+    descKey: 'mig.kdsTicketSequence.desc',
+    endpoint: '/api/admin/migrate-kds-ticket-sequence',
+    probe: () => columnExists('Order', 'ticketSequence'),
+  },
 ]
 
 /* ───────────────────────── status ───────────────────────── */
