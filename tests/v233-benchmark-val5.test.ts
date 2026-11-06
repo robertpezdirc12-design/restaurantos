@@ -192,7 +192,7 @@ describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.267.0-obnova-kds-postaj-val')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.267.0-finalna-verifikacija')
     expect(wl.indexOf('Task ID: v1.239.0')).toBeLessThan(wl.indexOf('Task ID: v1.232.0'))
   })
 
