@@ -202,7 +202,7 @@ export async function GET(req: NextRequest) {
     if (format === 'json') return ok({ section: 'zz', generatedAt: new Date().toISOString(), ...report })
     // CSV — same conventions as the other sections (UTF-8 BOM, `;` separator, SL literals)
     const L4: string[] = []
-    L4.push(`X/Z POSLOVNO POROCILO - RestaurantOS`)
+    L4.push(`X/Z POSLOVNO POROČILO - RestaurantOS`)
     L4.push(`Obdobje;${report.from};${report.to}`)
     L4.push(`Ustvarjeno;${new Date().toISOString()}`)
     L4.push('')
@@ -212,17 +212,17 @@ export async function GET(req: NextRequest) {
     L4.push(`DDV skupaj;${p2(report.vatTotal)}`)
     L4.push(`Popusti;${p2(report.discountsTotal)}`)
     L4.push(`Napitnine;${p2(report.tipsTotal)}`)
-    L4.push(`Storno - stevilo;${report.voidedCount}`)
+    L4.push(`Storno - število;${report.voidedCount}`)
     L4.push(`Storno - znesek;${p2(report.voidedTotal)}`)
     L4.push(`Kalo (odpad);${p2(report.wasteTotal)}`)
     // PRIMERJAVA §27 (v1.253.0) — blok ODPRTI RAČUNI (aditivno; obstoječe vrstice
     // ostanejo izključno poravnane — računovodska disciplina). Banner = vrstica
-    // »Vkljuceni v dnevni promet;DA« (Square: »a banner on the report says so«).
+    // »Vključeni v dnevni promet;DA« (Square: »a banner on the report says so«).
     if (report.openChecks.included) {
       L4.push('')
-      L4.push(`ODPRTI RACUNI (se odprta narocila, neplacano)`)
-      L4.push(`Vkljuceni v dnevni promet;DA`)
-      L4.push(`Stevilo odprtih;${report.openChecks.count}`)
+      L4.push(`ODPRTI RAČUNI (še odprta naročila, neplačano)`)
+      L4.push(`Vključeni v dnevni promet;DA`)
+      L4.push(`Število odprtih;${report.openChecks.count}`)
       L4.push(`Odprti - bruto (z DDV);${p2(report.openChecks.gross)}`)
       L4.push(`Odprti - neto (brez DDV);${p2(report.openChecks.net)}`)
       L4.push(`Odprti - DDV;${p2(report.openChecks.vat)}`)
@@ -230,26 +230,26 @@ export async function GET(req: NextRequest) {
       L4.push(`Skupaj z odprtimi - neto;${p2(report.netWithOpen)}`)
     } else {
       L4.push('')
-      L4.push(`ODPRTI RACUNI;IZKLOPLJENO`)
+      L4.push(`ODPRTI RAČUNI;IZKLOPLJENO`)
     }
     L4.push('')
     L4.push(`DDV PO STOPNJAH`)
     L4.push(`Stopnja (%);Osnova;DDV (EUR)`)
     for (const v of report.vatByRate) L4.push(`${v.rate};${p2(v.base)};${p2(v.amount)}`)
     L4.push('')
-    L4.push(`PLACILA PO NACINIH`)
-    L4.push(`Nacin;Znesek (EUR)`)
+    L4.push(`PLAČILA PO NAČINIH`)
+    L4.push(`Način;Znesek (EUR)`)
     for (const p of report.paymentsByMethod) L4.push(`${p.method};${p2(p.amount)}`)
     L4.push('')
     L4.push(`GOSTJE`)
-    L4.push(`St. racunov (covers);${report.covers}`)
-    L4.push(`Povprecni racun;${p2(report.avgCheck)}`)
-    L4.push(`Povprecna velikost druzbe;${report.avgPartySize}`)
+    L4.push(`St. računov (covers);${report.covers}`)
+    L4.push(`Povprečni račun;${p2(report.avgCheck)}`)
+    L4.push(`Povprečna velikost družbe;${report.avgPartySize}`)
     L4.push('')
-    L4.push(`PRIMERJAVA S PREJSNJIM OBDOBJEM (${report.comparison.prevFrom} - ${report.comparison.prevTo})`)
-    L4.push(`Neto prodaja prejsnje obdobje;${p2(report.comparison.prevNetSales)}`)
+    L4.push(`PRIMERJAVA S PREJŠNJIM OBDOBJEM (${report.comparison.prevFrom} - ${report.comparison.prevTo})`)
+    L4.push(`Neto prodaja prejšnje obdobje;${p2(report.comparison.prevNetSales)}`)
     L4.push(`Sprememba neto (%);${report.comparison.deltaNetPct === null ? '' : report.comparison.deltaNetPct}`)
-    L4.push(`St. racunov prejsnje obdobje;${report.comparison.prevCovers}`)
+    L4.push(`St. računov prejšnje obdobje;${report.comparison.prevCovers}`)
     L4.push(`Sprememba covers (%);${report.comparison.deltaCoversPct === null ? '' : report.comparison.deltaCoversPct}`)
     const csv4 = '\uFEFF' + L4.join('\r\n')
     return new NextResponse(csv4, {
@@ -283,13 +283,13 @@ export async function GET(req: NextRequest) {
     const Ls: string[] = []
     Ls.push(`PRODAJA PO URAH - RestaurantOS`)
     Ls.push(`Obdobje;${day(from)};${day(to)}`)
-    Ls.push(`Ura;Prodaja;Narocila;Povprecni racun`)
+    Ls.push(`Ura;Prodaja;Naročila;Povprečni račun`)
     for (const t of totals) Ls.push(`${hourLabel(t.hour)};${p2(t.revenue)};${t.orders};${p2(t.avgCheck)}`)
     Ls.push(`SKUPAJ;${p2(totals.reduce((a, t) => a + t.revenue, 0))};${totals.reduce((a, t) => a + t.orders, 0)}`)
     for (const d of byDay) {
       Ls.push('')
       Ls.push(`DAN;${d.date}`)
-      Ls.push(`Ura;Prodaja;Narocila;Povprecni racun`)
+      Ls.push(`Ura;Prodaja;Naročila;Povprečni račun`)
       for (const b of d.dayBuckets) Ls.push(`${hourLabel(b.hour)};${p2(b.revenue)};${b.orders};${p2(b.avgCheck)}`)
     }
     const csvS = '\uFEFF' + Ls.join('\r\n')
@@ -350,14 +350,14 @@ export async function GET(req: NextRequest) {
       return ok({ section: 'labor', from: day(from), to: day(to), days: dayRows, roles: roleRows })
     }
     const Ll: string[] = []
-    Ll.push(`LABOR STROSKI - RestaurantOS`)
+    Ll.push(`LABOR STROŠKI - RestaurantOS`)
     Ll.push(`Obdobje;${day(from)};${day(to)}`)
-    Ll.push(`Datum;Minute;Strosek (EUR);Neto prodaja (EUR);Labor %`)
+    Ll.push(`Datum;Minute;Strošek (EUR);Neto prodaja (EUR);Labor %`)
     for (const d of dayRows) Ll.push(`${d.date};${d.minutes};${p2(d.cost)};${p2(d.net)};${d.pct === null ? '' : d.pct}`)
     Ll.push(`SKUPAJ;${Math.round(dayRows.reduce((a, d) => a + d.minutes, 0) * 100) / 100};${p2(dayRows.reduce((a, d) => a + d.cost, 0))};${p2([...netByDay.values()].reduce((a, v) => a + v, 0))}`)
     Ll.push('')
     Ll.push(`PO VLOGAH`)
-    Ll.push(`Vloga;Minute;Strosek (EUR)`)
+    Ll.push(`Vloga;Minute;Strošek (EUR)`)
     for (const r of roleRows) Ll.push(`${r.roleName};${r.minutes};${p2(r.cost)}`)
     const csvL = '\uFEFF' + Ll.join('\r\n')
     return new NextResponse(csvL, {
@@ -710,7 +710,7 @@ export async function GET(req: NextRequest) {
     const L2: string[] = []
     L2.push(`DNEVNIK PRODAJE - RestaurantOS`)
     L2.push(`Obdobje;${day(from)};${day(to)}`)
-    L2.push(`Stevilka racuna;Datum/cas;Storno;Storno od;Nacin placila;Neto;DDV;Popust;Skupaj;Napitnina;Skupaj z napitnino;EOR`)
+    L2.push(`Številka računa;Datum/čas;Storno;Storno od;Način plačila;Neto;DDV;Popust;Skupaj;Napitnina;Skupaj z napitnino;EOR`)
     for (const d of docs) {
       L2.push([d.receiptNumber, d.createdAt.toISOString(), d.isStorno ? 'DA' : '', d.stornoOf || '', d.paymentMethod, p2(num(d.subtotal)), p2(num(d.totalVat)), p2(num(d.discount)), p2(num(d.total)), p2(num(d.tip)), p2(num(d.totalWithTip)), d.eor].join(';'))
     }
@@ -742,7 +742,7 @@ export async function GET(req: NextRequest) {
     L3.push(`SKUPAJ;${p2(tBase)};${p2(tVat)};${p2(tBase + tVat)}`)
     L3.push('')
     L3.push(`PO DNEVIH`)
-    L3.push(`Datum;St. racunov;Neto;DDV;Bruto (EUR)`)
+    L3.push(`Datum;St. računov;Neto;DDV;Bruto (EUR)`)
     for (const s of dayRows) L3.push(`${s.date};${s.count};${p2(s.net)};${p2(s.vat)};${p2(s.gross)}`)
     const csv3 = '\uFEFF' + L3.join('\r\n')
     return new NextResponse(csv3, {
@@ -773,12 +773,12 @@ export async function GET(req: NextRequest) {
 
   // ── CSV (BOM + `;`) ──
   const L: string[] = []
-  L.push(`RACUNOVODSKI IZVOZ - RestaurantOS`)
+  L.push(`RAČUNOVODSKI IZVOZ - RestaurantOS`)
   L.push(`Obdobje;${payload.from};${payload.to}`)
   L.push(`Ustvarjeno;${payload.generatedAt}`)
   L.push('')
   L.push(`PRODAJA PO DNEVIH`)
-  L.push(`Datum;St. racunov;Neto (brez DDV);DDV;Popusti;Bruto;Napitnine;Bruto z napitnino (EUR)`)
+  L.push(`Datum;St. računov;Neto (brez DDV);DDV;Popusti;Bruto;Napitnine;Bruto z napitnino (EUR)`)
   for (const s of payload.salesByDay) L.push(`${s.date};${s.count};${p2(s.net)};${p2(s.vat)};${p2(s.discount)};${p2(s.gross)};${p2(s.tip)};${p2(s.grossWithTip)}`)
   const sum = (f: (s: DayRow & { date: string }) => number) => p2(payload.salesByDay.reduce((a, s) => a + f(s), 0))
   L.push(`SKUPAJ;${payload.salesByDay.reduce((a, s) => a + s.count, 0)};${sum((s) => s.net)};${sum((s) => s.vat)};${sum((s) => s.discount)};${sum((s) => s.gross)};${sum((s) => s.tip)};${sum((s) => s.grossWithTip)}`)

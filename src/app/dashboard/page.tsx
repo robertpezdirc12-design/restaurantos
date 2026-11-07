@@ -873,7 +873,7 @@ function DashboardInner() {
       const o = d.order
       // iskrenost: samo produkcija, ki je nastala (preklicane/umaknjene izpustimo)
       const live = filterTicketItems(o.items)
-      const res = await printLines(`Narocilo #${o.orderNumber ?? '?'}`, buildKitchenTicketLines({
+      const res = await printLines(`Naročilo #${o.orderNumber ?? '?'}`, buildKitchenTicketLines({
         orderNumber: o.orderNumber ?? undefined,
         tableName: o.table?.name || null,
         type: o.type,
@@ -2169,7 +2169,7 @@ function DashboardInner() {
         { text: r.fiscalVerified ? t('print.fursOk') : t('print.fursColon', { status: r.fiscalStatus }) },
         ...(settings?.receiptFooter ? [{ text: settings.receiptFooter, align: 'center' } as PrintLine] : []),
       ]
-      const res = await printLines(`Racun ${r.invoiceNumber}`, lines)
+      const res = await printLines(`Račun ${r.invoiceNumber}`, lines)
       if (!res.ok) toast({ title: t('print.failed', { error: res.error ?? '' }), variant: 'destructive' })
       else if (res.simulated) toast({ title: t('print.simInvoice') })
     } catch (err) { toast({ title: t('print.prepareError', { error: (err as Error).message }), variant: 'destructive' }) } finally { setPrinting(false) }
@@ -2346,7 +2346,7 @@ function DashboardInner() {
 
   /** Kuhinjski/bar list prek naprave (issue #1: kuhinjski tisk) */
   async function printKitchenTicket(o: OrderT, station: 'KITCHEN' | 'BAR') {
-    const res = await printLines(`Narocilo #${o.orderNumber ?? '?'}`, buildKitchenTicketLines({
+    const res = await printLines(`Naročilo #${o.orderNumber ?? '?'}`, buildKitchenTicketLines({
       orderNumber: o.orderNumber ?? undefined,
       tableName: o.table?.name || null,
       type: o.type,

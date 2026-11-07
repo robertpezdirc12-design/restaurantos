@@ -209,9 +209,9 @@ describe('v1.263.0 Č2 — izris HTML + montaža virov', () => {
 
 describe('v1.263.0 Ž — registri', () => {
   test('Ž1: verzija 1.263.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.272.0')
-    expect(read('src/lib/version.ts')).toContain("'1.272.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.272.0')
+    expect(APP_VERSION).toBe('1.273.0')
+    expect(read('src/lib/version.ts')).toContain("'1.273.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.273.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4133/4133 (+4 ključi vala)', () => {
@@ -279,6 +279,6 @@ describe('v1.263.0 Ž — registri', () => {
 
   test('Ž10: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.272.0-diakritike-csv')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.273.0-diakritike-izvoz-api')
   })
 })

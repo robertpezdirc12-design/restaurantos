@@ -316,19 +316,19 @@ describe('v1.253.0 B — GET /api/reports/export?section=zz (živo)', () => {
     expect((j.openChecks as { included: boolean }).included).toBe(false)
   })
 
-  test('B4: CSV — banner vrstica »Vkljuceni v dnevni promet;DA« + blok; open=0 → IZKLOPLJENO', async () => {
+  test('B4: CSV — banner vrstica »Vključeni v dnevni promet;DA« + blok; open=0 → IZKLOPLJENO', async () => {
     const resOn = await exportGET(req(`/api/reports/export?from=${FROM}&to=${TO}&format=csv&section=zz`))
     expect(resOn.status).toBe(200)
     const csvOn = await resOn.text()
-    expect(csvOn).toContain('ODPRTI RACUNI')
-    expect(csvOn).toContain('Vkljuceni v dnevni promet;DA')
-    expect(csvOn).toContain('Stevilo odprtih;2')
+    expect(csvOn).toContain('ODPRTI RAČUNI')
+    expect(csvOn).toContain('Vključeni v dnevni promet;DA')
+    expect(csvOn).toContain('Število odprtih;2')
     expect(csvOn).toContain('Skupaj z odprtimi - bruto;86.60')
 
     const resOff = await exportGET(req(`/api/reports/export?from=${FROM}&to=${TO}&format=csv&section=zz&open=0`))
     const csvOff = await resOff.text()
-    expect(csvOff).toContain('ODPRTI RACUNI;IZKLOPLJENO')
-    expect(csvOff).not.toContain('Vkljuceni v dnevni promet;DA')
+    expect(csvOff).toContain('ODPRTI RAČUNI;IZKLOPLJENO')
+    expect(csvOff).not.toContain('Vključeni v dnevni promet;DA')
   })
 
   test('B5: pravice — natakar brez reports.sales → 403', async () => {
@@ -368,9 +368,9 @@ describe('v1.253.0 Ž — registri', () => {
   const uiSrc = read('src/components/tabs/backoffice-tab.tsx')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.272.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.272.0'")
-    expect(compose).toContain('restaurantos:1.272.0')
+    expect(APP_VERSION).toBe('1.273.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.273.0'")
+    expect(compose).toContain('restaurantos:1.273.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+15 acct.xzOpen*)', () => {
@@ -395,7 +395,7 @@ describe('v1.253.0 Ž — registri', () => {
     expect(routeSrc).toContain('take: 50')
     expect(routeSrc).toContain("openParam !== '0' && openParam !== 'false'")
     // CSV banner
-    expect(routeSrc).toContain('Vkljuceni v dnevni promet;DA')
+    expect(routeSrc).toContain('Vključeni v dnevni promet;DA')
     // UI: preklop + predogled s parametrom + seznam z drsenjem
     expect(uiSrc).toContain('xz-open-checks')
     expect(uiSrc).toContain("open=${xzOpen ? '1' : '0'}")
@@ -416,6 +416,6 @@ describe('v1.253.0 Ž — registri', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.272.0-diakritike-csv')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.273.0-diakritike-izvoz-api')
   })
 })
