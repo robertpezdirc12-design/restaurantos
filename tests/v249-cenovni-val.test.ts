@@ -546,7 +546,9 @@ describe('v1.249.0 D — UI montaža (NaročiloSheet)', () => {
 
   test('D3: ✱ oznaka na vrstici s tooltipom (prejšnja cena + kdo)', () => {
     expect(dash).toContain('it.priceOverride &&')
-    expect(dash).toContain("title={`${t('prc.mark')}: ${it.priceOverride.from.toFixed(2)} € → ${it.priceOverride.to.toFixed(2)} € · ${it.priceOverride.by}`}")
+    // v1.276.0 CI-fix: tooltip cene gre skozi fmtEUR (centralni formatir,
+    // sl-SI vejica) — prevez pina iz toFixed(2) oblike
+    expect(dash).toContain("title={`${t('prc.mark')}: ${fmtEUR(it.priceOverride.from)} → ${fmtEUR(it.priceOverride.to)} · ${it.priceOverride.by}`}")
   })
 
   test('D4: OrderItemT nosi priceOverride; i18n ključi prc.* v SL/HR', () => {
