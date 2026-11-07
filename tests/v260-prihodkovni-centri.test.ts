@@ -177,9 +177,9 @@ describe('v1.260.0 A2 — kartica: tabela centrov z deleži v zavihku Računi', 
 
 describe('v1.260.0 Ž — registri', () => {
   test('Ž1: verzija 1.260.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.279.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
+    expect(APP_VERSION).toBe('1.280.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.280.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.280.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4121/4121 (+16 rc.*)', () => {
@@ -226,6 +226,6 @@ describe('v1.260.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.280.0-bun-veriga')
   })
 })

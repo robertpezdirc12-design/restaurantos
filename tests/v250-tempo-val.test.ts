@@ -597,9 +597,9 @@ describe('v1.250.0 Č3 — UI montaža (Analitika/Pregled + i18n)', () => {
 
 describe('v1.250.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.250.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.279.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
-    expect(compose).toContain('restaurantos:1.279.0')
+    expect(APP_VERSION).toBe('1.280.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.280.0'")
+    expect(compose).toContain('restaurantos:1.280.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+26 tempo.*)', () => {
@@ -634,6 +634,6 @@ describe('v1.250.0 Ž — registri in pini', () => {
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.250.0', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.280.0-bun-veriga')
   })
 })

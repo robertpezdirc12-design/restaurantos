@@ -11,7 +11,12 @@ izhodni pogoj R2b2 na tablici še ni preizkušen).
 ## 1. Kaj potrebujete
 
 - Računalnik, ki bo stal v obratu (Windows 10/11 prvi; Linux/macOS podprta pot).
-- [Bun](https://bun.sh) 1.3 ali novejši.
+- [Bun](https://bun.sh) 1.4 ali novejši (**veriga bun, v1.280.0**: bun 1.3.14
+  nima vgrajenega `node:sqlite` in ne podaja runtime nastavljenih spremenljivk
+  `process.env` otrokom pri `spawnSync` — obe okvari podrejeta preizkuševalno
+  suitito (`tests/v165*`, `tests/v180*`, `tests/v184*` F/E družine) brez napake
+  v kodi. CI teče pinirano 1.4.4, Docker slika `oven/bun:1.4`; na starejšem
+  bunu aplikacija deluje, a lokalni `bun test` lažno rdeči).
 - OpenSSL samo, če želite `--https` (izdaja lastnega CA-ja). Klic je preprosto
   `openssl`, torej mora biti na `PATH` — na Windows ga dobiš z Git for Windows
   (izmerjeno 24. 10. 2026: `C:\Program Files\Git\ucrt64\bin\openssl.exe`, najdejo

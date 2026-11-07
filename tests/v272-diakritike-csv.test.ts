@@ -250,9 +250,9 @@ describe('v1.272.0 Č3 — montaža izvoznih poti', () => {
 // ── Ž) REGISTRI ──
 describe('v1.272.0 Ž — registri', () => {
   test('verzija 1.272.0 (version.ts + compose + APP_VERSION vsebina)', () => {
-    expect(APP_VERSION).toBe('1.279.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
+    expect(APP_VERSION).toBe('1.280.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.280.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.280.0')
   })
 
   test('i18n pariteta 4320/4320 nespremenjena (0 novih ključev — samo vrednosti)', () => {
@@ -274,6 +274,6 @@ describe('v1.272.0 Ž — registri', () => {
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.280.0-bun-veriga')
   })
 })
