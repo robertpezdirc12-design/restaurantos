@@ -1,3 +1,21 @@
+Task ID: v1.279.0-zakljucek-push
+Agent: glavni agent (Z.ai Code)
+Task: ZAKLJUČEK PUSHA v1.279.0 po vzorcu prejšnjih valov (push → CI → sync-check → produkcija + PRODUKCIJSKI živi dokaz popravkov).
+
+Work Log:
+- PUSH IZVRŠEN (žeton seje ghp_NjZX…RVSxO, remote URL očiščen v anonimno obliko po pushu): `4b2ce5f..1d46912 main -> main` (110 datotek, 692 vst./374 izbr.).
+- CI NA 1d46912 VSE ZELENO BREZ CI-FIX KORAKA: quality gate (neon-smoke + suita 5662) SUCCESS · pages build SUCCESS · GitLab sinhronizacija SUCCESS.
+- PRODUKCIJA: https://restaurantos-theta.vercel.app/api/health → **1.279.0 @ 1d46912, database connected, schema ok**.
+- SYNC-CHECK (izhod 0): local = mirror = prod = 1d46912fe16da85286db4b129b28d8ee11a81ebb — **SYNCED, vse tri pike** (+ GitLab main = main prek sync workflow) → štiristranska sinhronizacija.
+- PRODUKCIJSKI ŽIVI DOKAZ POPRAVKOV (agent-browser na produkciji 1.279.0): (1) Mize: Miza 1 #716 (6,6 dni staro demo naročilo) zdaj **»⏱ 158 h« + title »Zastarelo — Od naročila: 9514 min« + črtkani sivi rob** (prej zavajajoči živi števec »⏱ 9450 min«); (2) Naročila: **»#716 · 01. 11. 07:28«** z datumom (prej samo »07:28«), #707/#706 prav tako z datumi »17. 10. …« — obe najdbi vala potrjeni ŽIVO na produkciji, ne samo na dev.
+- AKCIJA ZA LASTNIKA: PREKLIČI žeton seje (stalna točka — izmenjan v klepetu, vzorec B-7). Demo zastarela naročila so sedaj VIDNO označena (kuhinja jih lahko zaključi — čiščenje demo podatkov po istih navodilih kot prej).
+
+Stage Summary:
+- VAL v1.279.0 POPOLNOMA ZAKLJUČEN: revizija produkcije (metoda #71) → 2 A-najdbi → popravki → vrata → push → CI/produkcija/sync ZELENO → produkcija živo potrjena. Štiristranska sinhronizacija @ 1d46912.
+- Naslednji val: kandidati so (a) ponovna raziskovalna kontrola (Square Vol 17 okno pomlad 2027 — preveriti Toast/Lightspeed nove objave), (b) morebitne nove najdbre naslednje revizije (kadro 2–4 tedna), (c) B-razred odločitve lastnika (SMTP transport, WhatsApp, Scan to Pay, Reserve with Google, OSS-12 mreža) — kadar prinese odločitve/ključe.
+
+---
+
 Task ID: v1.279.0-revizija-produkcije
 Agent: glavni agent (Z.ai Code)
 Task: OSVEŽENA UX REVIZIJA PRODUKCIJE v1.278.0 (metoda issue #71: samo-branje, edini zapis = demo prijava DEMO_LOGIN, 12+ zaslonov, agent-browser, Nielsen/odgovornost dimenzije) — zadnja revizija je bila 17. 10. 2026 @ v1.130.0 (issue #71, 34 najdb); ~148 verzij kasneje produkcija zori v 1.278.0. Predrevizijski rekonos: doktrina #71 (množine/diakritike/ločila/datumi/%) po družinah IZČRPANA (v1.268–278), raziskovalno okno izkopano včeraj (§41 @ v1.267.0 — Square Vol 17 šele pomladi 2027, odklopljeni kandidati Vol 16 vsi izvedeni v1.264–266), B-razred čaka lastnika → revizija je edini odkriti A-vir.
