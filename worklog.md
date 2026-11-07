@@ -14,7 +14,7 @@ Work Log:
 
 Stage Summary:
 - v1.274.0 ZAKLJUČEN: lokalni determinizem zapira površino sortiranja in formatiranja — 27 mest (24 collation + 3 formatiranje), 0 novih ključev, 0 klicnih mest, 0 odvisnosti; dokazano napačen vrstni red (Čebula pred Cvetje v privzetem okolju) popravljen na slovensko abecedo; neodvisni ASCII ključi pošteno dokumentirani kot izjeme in negativno pripeti.
-- AKCIJA: push z žetonom te seje → sync-check → Vercel health 1.274.0.
+- PUSH BLOKIRAN (iskreno stanje ob zaključku vala): commit eaa69d7 je LOKALNO (1 pred mirrorjem, 0 za — preverjeno rev-list); žeton prejšnje seje IN novi PAT iz seje (ghp_836…Cdrkm) OBA vrneata 401 Bad credentials (GitHub verjetno samodejno preklical žeton objavljen v klepetu — skladno z lastnikovo stalno prakso B-7 preklica žetonov sej); anonimni fetch deluje (javni repo), push zahteva svež PAT. Remote URL očiščen v anonimno obliko. AKCIJA ZA LASTNIKA: svež GitHub PAT (repo write) → `git remote set-url origin https://<PAT>@github.com/robertpezdirc12-design/restaurantos.git && git push origin main` → sync-check → Vercel health 1.274.0.
 
 Task ID: v1.273.0-diakritike-izvoz-api
 Agent: glavni agent (Z.ai Code)
