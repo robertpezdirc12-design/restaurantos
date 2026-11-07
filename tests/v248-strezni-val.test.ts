@@ -52,6 +52,14 @@ import { GET as notesGET, PUT as notesPUT } from '../src/app/api/preset-notes/ro
 import { POST as publicPOST } from '../src/app/api/public/reservations/route'
 import { GET as widgetGET, PUT as widgetPUT } from '../src/app/api/reservations/widget/route'
 import { zonedDateParts, localDateKey, type LocalDate } from '../src/lib/haccp-ops'
+// v1.270.0 CI flaky fix: loadTaskSummaryForDigest gradi dayKey prek cron-daily
+// localDateKey (SISTEMSKA časovna cona). Test je predpostavil LJ-cono
+// (zonedDateParts + TZ) — med 00:00 in 01:00 LJ se UTC-datum razlikuje od
+// LJ-datuma (CI runner je UTC), occurrenceKey se razide z dayKey implementacije
+// in G1 pade ČISTO ČASOVNO (v1.269 CI 22:48 = zeleno, v1.270 CI 00:41 = rdeče;
+// 4.58ms fail brez dotaknjene kode). Fikstura MORA nositi isti vir resnice
+// »danes« kot implementacija — sistemski ključ, deterministično v vseh okoljih.
+import { localDateKey as systemLocalDateKey } from '../src/lib/cron-daily'
 import type { DayHoursInput } from '../src/lib/reservation-slots'
 import { APP_VERSION } from '../src/lib/version'
 import { sl } from '../src/lib/i18n/sl'
@@ -530,8 +538,9 @@ describe('Č6 — javna rezervacija z avtododelitvijo mize (živa ruta)', () => 
 
 describe('Č7 — povzetki opravil nad pravo bazo (nalagalca)', () => {
   test('G1: loadTaskSummaryForDigest — predloga s terminom + izvedba → vrstica s pokritostjo', async () => {
-    // dnevna predloga z današnjim terminom
-    const todayKey = localDateKey(zonedDateParts(new Date(), TZ))
+    // dnevna predloga z današnjim terminom (SISTEMSKI datum — isto definicijo
+    // »danes« kot loadTaskSummaryForDigest; glej import opombo zgoraj)
+    const todayKey = systemLocalDateKey(new Date())
     const tpl = {
       id: `${P}tpl-digest`, name: `${P}Odpiranje digest`, category: 'opening', repeat: 'daily',
       weekday: null, monthDay: null, anchorDate: '', validUntil: null, dueTime: '09:00', active: true,
