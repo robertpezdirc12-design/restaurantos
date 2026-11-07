@@ -174,9 +174,9 @@ describe('v1.233.0 C — KDS vrsta / Start Queue (Toast julij 2026)', () => {
 
 describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.275.0')
-    expect(read('src/lib/version.ts')).toContain("'1.275.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.275.0')
+    expect(APP_VERSION).toBe('1.276.0')
+    expect(read('src/lib/version.ts')).toContain("'1.276.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.276.0')
   })
 
   test('Ž2: dokument PRIMERJAVA — §4 cona v1.233, presoja 22/22, NOVA §11 z valom', () => {
@@ -192,7 +192,7 @@ describe('v1.233.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.275.0-diakritike-payroll-izvoz')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.276.0-decimalna-locila')
     expect(wl.indexOf('Task ID: v1.239.0')).toBeLessThan(wl.indexOf('Task ID: v1.232.0'))
   })
 

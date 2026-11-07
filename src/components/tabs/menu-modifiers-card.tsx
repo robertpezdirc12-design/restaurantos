@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '@/lib/client'
+import { api, fmtFixedSI } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -207,7 +207,7 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
                     <div key={m.id} className="flex items-center justify-between gap-2 rounded border border-stone-100 bg-stone-50 px-2 py-1">
                       <span className={`min-w-0 truncate text-sm ${m.isAvailable ? '' : 'text-stone-400 line-through'}`}>{m.name}</span>
                       <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-xs tabular-nums text-stone-500">{m.price > 0 ? `+${m.price.toFixed(2)} EUR` : '0.00 EUR'}</span>
+                        <span className="text-xs tabular-nums text-stone-500">{m.price > 0 ? `+${fmtFixedSI(m.price, 2)} EUR` : '0,00 EUR'}</span>
                         {canManage && (
                           <>
                             <Button size="sm" variant={m.isAvailable ? 'outline' : 'secondary'} className="h-7 px-2 text-xs" onClick={() => void toggleOption(m)}>{m.isAvailable ? t('menu.inStock') : t('menu.outOfStock')}</Button>

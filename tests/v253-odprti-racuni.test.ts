@@ -368,9 +368,9 @@ describe('v1.253.0 Ž — registri', () => {
   const uiSrc = read('src/components/tabs/backoffice-tab.tsx')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.275.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.275.0'")
-    expect(compose).toContain('restaurantos:1.275.0')
+    expect(APP_VERSION).toBe('1.276.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.276.0'")
+    expect(compose).toContain('restaurantos:1.276.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+15 acct.xzOpen*)', () => {
@@ -416,6 +416,6 @@ describe('v1.253.0 Ž — registri', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.275.0-diakritike-payroll-izvoz')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.276.0-decimalna-locila')
   })
 })

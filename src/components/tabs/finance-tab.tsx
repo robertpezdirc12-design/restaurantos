@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, fmtEUR, downloadCSV, getUser } from '@/lib/client'
+import { api, fmtEUR, fmtFixedSI, downloadCSV, getUser } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -433,8 +433,8 @@ export function ExpensesTab({ expenses, canManage, onReload, categoriesEnabled }
   const fmtSize = (b: number) => {
     if (!Number.isFinite(b) || b <= 0) return '0 B'
     if (b < 1024) return `${b} B`
-    if (b < 1024 * 1024) return `${(Math.round((b / 1024) * 10) / 10).toFixed(1)} KB`
-    return `${(Math.round((b / (1024 * 1024)) * 10) / 10).toFixed(1)} MB`
+    if (b < 1024 * 1024) return `${fmtFixedSI(Math.round((b / 1024) * 10) / 10, 1)} KB`
+    return `${fmtFixedSI(Math.round((b / (1024 * 1024)) * 10) / 10, 1)} MB`
   }
   const attUri = (a: ApAttT) => `data:${a.mimeCode || 'application/octet-stream'};base64,${a.dataBase64 || ''}`
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { api, fmtEUR, downloadCSV, getToken, getUser } from '@/lib/client'
+import { api, fmtEUR, fmtFixedSI, downloadCSV, getToken, getUser } from '@/lib/client'
 import { newOperationId } from '@/lib/offline-queue'
 import { useI18n } from '@/components/i18n'
 import { EmptyStat } from '@/components/empty-stat'
@@ -390,7 +390,7 @@ export function LaborCostCard() {
                       <td className="px-3 py-2 text-right">{fmtEUR(d.netSales)}</td>
                       <td className="px-3 py-2 text-right">
                         <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-xs font-medium ${laborPctCls(d.pct)}`}>
-                          {d.pct === null ? '—' : `${d.pct.toFixed(2)} %`}
+                          {d.pct === null ? '—' : `${fmtFixedSI(d.pct, 2)} %`}
                         </span>
                       </td>
                     </tr>
@@ -403,7 +403,7 @@ export function LaborCostCard() {
             </div>
             <div className="grid gap-2 text-xs text-stone-600 sm:grid-cols-2">
               <p>
-                {t('labor.target', { n: s.targetPct })} · <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${laborPctCls(s.avgPct)}`}>{s.avgPct === null ? '—' : `${s.avgPct.toFixed(2)} %`}</span>
+                {t('labor.target', { n: s.targetPct })} · <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${laborPctCls(s.avgPct)}`}>{s.avgPct === null ? '—' : `${fmtFixedSI(s.avgPct, 2)} %`}</span>
                 <span className="ml-1">{t('labor.avgHint')}</span>
               </p>
               <p>{t('labor.overtime')}: <span className="font-semibold">{durationLabel(s.totalOvertimeMinutes)}</span> · {t('labor.totalCost')}: <span className="font-semibold">{fmtEUR(s.totalCost)}</span></p>
@@ -695,7 +695,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                   <p className="text-xs text-stone-500">{t('lcov.kpiLabor')}</p>
                   {tt.laborPct === null ? <EmptyStat kind="not-computed" /> : (
                     <span className={`mt-0.5 inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${lcovBandCls(tt.laborPct)}`}>
-                      {`${tt.laborPct.toFixed(2)} %`}
+                      {`${fmtFixedSI(tt.laborPct, 2)} %`}
                     </span>
                   )}
                   <p className="mt-0.5 text-xs text-stone-400">{t('lcov.kpiLaborHint')}</p>
@@ -750,7 +750,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                         <td className={`px-3 py-2 text-right whitespace-nowrap ${lcovVarCls(d.varianceMinutes)}`}>{lcovVarLabel(d.varianceMinutes)}</td>
                         <td className="px-3 py-2 text-right">
                           <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(d.laborPct)}`}>
-                            {d.laborPct === null ? '—' : `${d.laborPct.toFixed(2)} %`}
+                            {d.laborPct === null ? '—' : `${fmtFixedSI(d.laborPct, 2)} %`}
                           </span>
                         </td>
                         <td className="px-2 py-2 text-center whitespace-nowrap">
@@ -772,7 +772,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                       <td className={`px-3 py-2 text-right whitespace-nowrap ${lcovVarCls(data.totals.varianceMinutes)}`}>{lcovVarLabel(data.totals.varianceMinutes)}</td>
                       <td className="px-3 py-2 text-right">
                         <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-semibold ${lcovBandCls(data.totals.laborPct)}`}>
-                          {data.totals.laborPct === null ? '—' : `${data.totals.laborPct.toFixed(2)} %`}
+                          {data.totals.laborPct === null ? '—' : `${fmtFixedSI(data.totals.laborPct, 2)} %`}
                         </span>
                       </td>
                       <td />
@@ -787,7 +787,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium whitespace-nowrap">{shortDay(d.date)} <span className="text-xs font-normal text-stone-500">{t(ohDay(d.dow))}</span></span>
                       <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(d.laborPct)}`}>
-                        {d.laborPct === null ? '—' : `${d.laborPct.toFixed(2)} %`}
+                        {d.laborPct === null ? '—' : `${fmtFixedSI(d.laborPct, 2)} %`}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-stone-600">
@@ -847,7 +847,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                           <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.net > 0 ? fmtEUR(r.net / 100) : '—'}</td>
                           <td className="px-2.5 py-1.5 text-right">{r.orders || '—'}</td>
                           <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.minutes > 0 ? `${Math.round(r.minutes)} min` : '—'}</td>
-                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.staff > 0 ? (r.staff % 1 === 0 ? String(Math.round(r.staff)) : r.staff.toFixed(1)) : '—'}</td>
+                          <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{r.staff > 0 ? (r.staff % 1 === 0 ? String(Math.round(r.staff)) : fmtFixedSI(r.staff, 1)) : '—'}</td>
                         </tr>
                       ))}
                       <tr className="border-t-2 border-stone-200 bg-stone-50/60 font-medium">
@@ -939,7 +939,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                               <td className="px-2.5 py-1.5 text-right whitespace-nowrap">{c.expectedNetSalesCents === null ? '—' : fmtEUR(c.expectedNetSalesCents / 100)}</td>
                               <td className="px-2.5 py-1.5 text-right">
                                 <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(c.expectedPct)}`} title={c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}>
-                                  {c.flag === null ? t('lcov.covNoVerdict') : `${c.expectedPct === null ? '—' : `${c.expectedPct.toFixed(2)} %`} · ${t(`lcov.flag.${c.flag}`)}`}
+                                  {c.flag === null ? t('lcov.covNoVerdict') : `${c.expectedPct === null ? '—' : `${fmtFixedSI(c.expectedPct, 2)} %`} · ${t(`lcov.flag.${c.flag}`)}`}
                                 </span>
                               </td>
                               <td className="px-2 py-1.5 text-center whitespace-nowrap">
@@ -959,7 +959,7 @@ export function LaborCoverageCard({ locations }: { locations?: { id: string; nam
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium whitespace-nowrap">{shortDay(c.date)} <span className="text-xs font-normal text-stone-500">{t(ohDay(c.dow))}</span></span>
                             <span className={`inline-block min-w-16 rounded-full px-2 py-0.5 text-xs font-medium ${lcovBandCls(c.expectedPct)}`}>
-                              {c.expectedPct === null ? '—' : `${c.expectedPct.toFixed(2)} %`} · {c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}
+                              {c.expectedPct === null ? '—' : `${fmtFixedSI(c.expectedPct, 2)} %`} · {c.flag === null ? t('lcov.covNoVerdict') : t(`lcov.flag.${c.flag}`)}
                             </span>
                           </div>
                           <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-stone-600">
@@ -2444,7 +2444,7 @@ export function LaborForecastCard() {
   const withForecast = days.filter((d) => d.forecastNetCents !== null)
   const gaps = data?.gaps ?? []
   const fmtEur = (cents: number | null) => (cents === null ? '—' : fmtEUR(cents / 100))
-  const fmtH = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(2)} ${t('lf.hoursShort')}`
+  const fmtH = (h: number) => `${Number.isInteger(h) ? h : fmtFixedSI(h, 2)} ${t('lf.hoursShort')}`
 
   return (
     <Card ref={ref}>
@@ -2506,8 +2506,8 @@ export function LaborForecastCard() {
                         <td className="px-3 py-2">
                           {under > 0 || over > 0 ? (
                             <span className="flex flex-wrap gap-1">
-                              {under > 0 && <Badge className="bg-red-100 text-red-800 text-[10px]">−{under.toFixed(2)} {t('lf.gapUnder')}</Badge>}
-                              {over > 0 && <Badge className="bg-amber-100 text-amber-800 text-[10px]">+{over.toFixed(2)} {t('lf.gapOver')}</Badge>}
+                              {under > 0 && <Badge className="bg-red-100 text-red-800 text-[10px]">−{fmtFixedSI(under, 2)} {t('lf.gapUnder')}</Badge>}
+                              {over > 0 && <Badge className="bg-amber-100 text-amber-800 text-[10px]">+{fmtFixedSI(over, 2)} {t('lf.gapOver')}</Badge>}
                             </span>
                           ) : (
                             <span className="text-xs text-stone-400">{t('lf.gapOk')}</span>

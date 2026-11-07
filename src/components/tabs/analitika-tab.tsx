@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, fmtEUR, downloadCSV, getToken } from '@/lib/client'
+import { api, fmtEUR, fmtFixedSI, downloadCSV, getToken } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -51,7 +51,7 @@ function MeScatterTooltip({ active, payload, tx }: { active?: boolean; payload?:
       <p className="font-semibold truncate">{p.name}</p>
       <p className="text-stone-500">{p.category}</p>
       <p className="mt-1">{tx('me.q.' + p.quadrant)}</p>
-      <p className="mt-1">{tx('me.th.pop')}: {p.x.toFixed(1)} %</p>
+      <p className="mt-1">{tx('me.th.pop')}: {fmtFixedSI(p.x, 1)} %</p>
       <p>{tx('me.th.cm')}: {fmtEUR(p.y)}</p>
       <p>{tx('me.th.revenue')}: {fmtEUR(p.revenue)} · {tx('me.th.sold')}: {p.qtySold}</p>
       <p className="text-stone-500">{tx('me.th.cost')}: {fmtEUR(p.cost)} / {fmtEUR(p.price)}</p>
@@ -181,7 +181,7 @@ export function MenuEngineeringTab() {
                       <RTooltip content={<MeScatterTooltip tx={t} />} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <ReferenceLine x={meanQtyThr} stroke="#78716c" strokeDasharray="5 5"
-                        label={{ value: `${meanQtyThr.toFixed(1)} %`, position: 'top', fontSize: 10, fill: '#78716c' }} />
+                        label={{ value: `${fmtFixedSI(meanQtyThr, 1)} %`, position: 'top', fontSize: 10, fill: '#78716c' }} />
                       <ReferenceLine y={meanCmThr} stroke="#78716c" strokeDasharray="5 5"
                         label={{ value: fmtEUR(meanCmThr), position: 'right', fontSize: 10, fill: '#78716c' }} />
                       {(['stars', 'plowhorses', 'puzzles', 'dogs'] as const).map((q) => (
@@ -232,8 +232,8 @@ export function MenuEngineeringTab() {
                       <td className="px-3 py-2 text-right">{fmtEUR(i.revenue)}</td>
                       <td className="px-3 py-2 text-right">{i.costKnown ? fmtEUR(i.cost) : '—'}</td>
                       <td className="px-3 py-2 text-right font-semibold">{i.costKnown ? fmtEUR(i.cm) : '—'}</td>
-                      <td className="px-3 py-2 text-right">{i.costKnown ? `${i.foodCostPct.toFixed(1)} %` : '—'}</td>
-                      <td className="px-3 py-2 text-right">{i.popShare.toFixed(1)} %</td>
+                      <td className="px-3 py-2 text-right">{i.costKnown ? `${fmtFixedSI(i.foodCostPct, 1)} %` : '—'}</td>
+                      <td className="px-3 py-2 text-right">{fmtFixedSI(i.popShare, 1)} %</td>
                       <td className="px-3 py-2"><Badge variant="outline" className={`whitespace-nowrap ${ME_QUADRANT_STYLE[i.quadrant].badge}`}>{t('me.q.' + i.quadrant)}</Badge></td>
                       <td className="px-3 py-2 text-xs text-stone-600 max-w-56">{t('me.act.' + i.quadrant)}</td>
                     </tr>
@@ -426,11 +426,11 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
                   <p className="text-xs text-stone-500">{t('kds.stats.onTime')}</p>
-                  <p className="text-2xl font-bold">{kpi.onTimePct.toFixed(1)} %</p>
+                  <p className="text-2xl font-bold">{fmtFixedSI(kpi.onTimePct, 1)} %</p>
                   <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-stone-500">
-                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {kpi.okPct.toFixed(1)} % {t('kds.stats.ok')}</span>
-                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {kpi.warnPct.toFixed(1)} % {t('kds.stats.warn')}</span>
-                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {kpi.latePct.toFixed(1)} % {t('kds.stats.late')}</span>
+                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {fmtFixedSI(kpi.okPct, 1)} % {t('kds.stats.ok')}</span>
+                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {fmtFixedSI(kpi.warnPct, 1)} % {t('kds.stats.warn')}</span>
+                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {fmtFixedSI(kpi.latePct, 1)} % {t('kds.stats.late')}</span>
                   </p>
                 </CardContent></Card>
               </div>
@@ -445,7 +445,7 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                       key={`${c.hour}:${c.half}`}
                       className={`h-5 rounded-sm ${kdsHeatClass(c.avg, c.count)}`}
                       style={{ opacity: c.count ? 0.4 + 0.6 * Math.min(1, c.count / maxCount) : 1 }}
-                      title={`${String(c.hour).padStart(2, '0')}:${c.half === 0 ? '00' : '30'} — ${c.avg.toFixed(1)} min · ${c.count}×`}
+                      title={`${String(c.hour).padStart(2, '0')}:${c.half === 0 ? '00' : '30'} — ${fmtFixedSI(c.avg, 1)} min · ${c.count}×`}
                     />
                   ))}
                 </div>
@@ -482,7 +482,7 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                         <td className="px-3 py-2 text-right">{fmtMin(i.max)}</td>
                         <td className="px-3 py-2 text-right">
                           <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${i.latePct > 25 ? 'bg-rose-100 text-rose-800' : i.latePct > 10 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                            {i.latePct.toFixed(1)} %
+                            {fmtFixedSI(i.latePct, 1)} %
                           </span>
                         </td>
                       </tr>
@@ -531,7 +531,7 @@ export function KdsStatsSection({ canEditTargets = false }: { canEditTargets?: b
                             <td className="px-3 py-2 text-right font-semibold">{sRow.count > 0 ? fmtMin(sRow.avg) : '—'}</td>
                             <td className="px-3 py-2 text-right">
                               <span className={`inline-block min-w-14 rounded-full px-2 py-0.5 text-xs font-medium ${sRow.latePct > 25 ? 'bg-rose-100 text-rose-800' : sRow.latePct > 10 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {sRow.latePct.toFixed(1)} %
+                                {fmtFixedSI(sRow.latePct, 1)} %
                               </span>
                             </td>
                             <td className="px-3 py-2 text-right">
@@ -678,11 +678,11 @@ const FC_BASIS_LABEL: Record<string, string> = {
 
 function fcQty(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—'
-  return Math.abs(n) >= 100 ? n.toFixed(1) : String(n)
+  return Math.abs(n) >= 100 ? fmtFixedSI(n, 1) : String(n)
 }
 
 function fcPct(n: number | null | undefined): string {
-  return n == null ? '—' : `${n.toFixed(1)} %`
+  return n == null ? '—' : `${fmtFixedSI(n, 1)} %`
 }
 
 /** Small component chips for non-zero variance components. */
@@ -1131,7 +1131,7 @@ export function PourCostCard() {
               <div className="rounded-lg border border-stone-200 p-3">
                 <p className="text-xs text-stone-500">{t('pc.kpi')}</p>
                 <p className={`text-2xl font-bold ${bevBand === 'good' ? 'text-emerald-700' : bevBand === 'ok' ? 'text-amber-700' : bevBand === 'warn' ? 'text-rose-700' : ''}`}>
-                  {bevPct == null ? '—' : `${bevPct.toFixed(1)} %`}
+                  {bevPct == null ? '—' : `${fmtFixedSI(bevPct, 1)} %`}
                 </p>
                 {bevRows.length === 0 && <p className="text-xs text-stone-400">{t('pc.noBeverage')}</p>}
               </div>
@@ -1176,7 +1176,7 @@ export function PourCostCard() {
                         <td className="py-2 pr-2 text-right tabular-nums">{r.known ? fmtEUR(r.cogs) : '—'}</td>
                         <td className="py-2 pr-2 text-right">
                           {r.pct != null
-                            ? <Badge variant="outline" className={PC_BAND_STYLE[band]}>{r.pct.toFixed(1)} %</Badge>
+                            ? <Badge variant="outline" className={PC_BAND_STYLE[band]}>{fmtFixedSI(r.pct, 1)} %</Badge>
                             : <span className="text-stone-400">—</span>}
                         </td>
                       </tr>
@@ -1297,7 +1297,7 @@ export function StaffPerformanceCard() {
                       </td>
                       <td className="py-2 pr-2 text-right tabular-nums">{fmtEUR(r.avgTicket)}</td>
                       <td className="py-2 pr-2 text-right tabular-nums">{r.tips > 0 ? fmtEUR(r.tips) : '—'}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{(r.share * 100).toFixed(0)} %</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{fmtFixedSI(r.share * 100, 0)} %</td>
                     </tr>
                   ))}
                   <tr className="border-t-2 border-stone-200 font-semibold">

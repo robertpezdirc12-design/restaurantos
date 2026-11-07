@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api } from '@/lib/client'
+import { api, fmtEUR } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -153,7 +153,7 @@ export function CouponsCard({ canManage, centralLocationId = '' }: { canManage: 
           <div className="grid gap-1.5">
             {rows.map((c) => {
               const st = displayStatus(c, nowMs)
-              const value = c.percent != null ? `${c.percent} %` : `${Number(c.fixedAmount).toFixed(2)} €`
+              const value = c.percent != null ? `${c.percent} %` : fmtEUR(Number(c.fixedAmount))
               return (
                 <div key={c.id} className="rounded-md border border-stone-200 bg-white p-2.5 text-xs flex items-center justify-between gap-2 flex-wrap">
                   <span className="flex items-center gap-2 min-w-0">

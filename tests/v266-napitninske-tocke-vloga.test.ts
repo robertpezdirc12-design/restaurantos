@@ -276,9 +276,9 @@ describe('v1.266.0 Č2 — API točk + DDL + UI montaža', () => {
 
 describe('v1.266.0 Ž — registri', () => {
   test('Ž1: verzija 1.267.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.275.0')
-    expect(read('src/lib/version.ts')).toContain("'1.275.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.275.0')
+    expect(APP_VERSION).toBe('1.276.0')
+    expect(read('src/lib/version.ts')).toContain("'1.276.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.276.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (+15 ključev vala)', () => {
@@ -327,6 +327,6 @@ describe('v1.266.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.275.0-diakritike-payroll-izvoz')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.276.0-decimalna-locila')
   })
 })

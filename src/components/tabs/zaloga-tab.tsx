@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
-import { api, fmtEUR, fmtNumSI } from '@/lib/client'
+import { api, fmtEUR, fmtNumSI, fmtFixedSI } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -530,7 +530,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="text-xs text-stone-500">{s.counted}/{s.total}</span>
-                    {s.varianceValue !== 0 && <span className={`text-xs font-medium ${s.varianceValue > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{s.varianceValue > 0 ? '+' : ''}{s.varianceValue.toFixed(2)} €</span>}
+                    {s.varianceValue !== 0 && <span className={`text-xs font-medium ${s.varianceValue > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{s.varianceValue > 0 ? '+' : ''}{fmtEUR(s.varianceValue)}</span>}
                     <Badge variant="outline" className="text-xs">{t(`st.status.${s.status}`)}</Badge>
                   </div>
                 </div>

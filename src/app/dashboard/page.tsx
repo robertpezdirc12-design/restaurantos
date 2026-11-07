@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { api, fmtEUR, fmtPctSigned, getUser } from '@/lib/client'
+import { api, fmtEUR, fmtFixedSI, fmtPctSigned, getUser } from '@/lib/client'
 import { vatFromGross, isHappyActive } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
@@ -1531,7 +1531,7 @@ function DashboardInner() {
       })
       setPriceItem(null)
       if (d.order) setOrderSheet(d.order)
-      toast({ title: t('prc.done'), description: `${d.overridden.oldPrice.toFixed(2)} € → ${d.overridden.newPrice.toFixed(2)} €` })
+      toast({ title: t('prc.done'), description: `${fmtEUR(d.overridden.oldPrice)} → ${fmtEUR(d.overridden.newPrice)}` })
       void load()
     } catch (e) {
       toast({ title: (e as Error).message, variant: 'destructive' })
@@ -7453,7 +7453,7 @@ function DashboardInner() {
                             spremenjena na POS (tooltip nosi prejšnjo ceno + izvajalca) */}
                         {it.priceOverride && (
                           <span
-                            title={`${t('prc.mark')}: ${it.priceOverride.from.toFixed(2)} € → ${it.priceOverride.to.toFixed(2)} € · ${it.priceOverride.by}`}
+                            title={`${t('prc.mark')}: ${fmtEUR(it.priceOverride.from)} → ${fmtEUR(it.priceOverride.to)} · ${it.priceOverride.by}`}
                             aria-label={t('prc.mark')}
                             className="shrink-0 inline-flex h-4 w-4 items-center justify-center rounded-full border border-orange-300 bg-orange-50 text-[10px] font-bold text-orange-800"
                           >✱</span>
@@ -7470,7 +7470,7 @@ function DashboardInner() {
                             isti trije varovali kot preklic (pravica + naročilo ni
                             plačano + postavka ni na plačanem izstavku §16 D). */}
                         {hasPerm('orders.priceOverride') && orderSheet.paymentStatus !== 'paid' && !it.checkPaid && (
-                          <Button size="icon" variant="outline" className="h-6 w-6 text-orange-700 hover:bg-orange-50 hover:text-orange-800" disabled={sending} onClick={() => { setPriceItem(it); setPriceNew(it.unitPrice.toFixed(2)); setPriceReason('') }} title={t('prc.button')} aria-label={t('prc.button')}>
+                          <Button size="icon" variant="outline" className="h-6 w-6 text-orange-700 hover:bg-orange-50 hover:text-orange-800" disabled={sending} onClick={() => { setPriceItem(it); setPriceNew(fmtFixedSI(it.unitPrice, 2)); setPriceReason('') }} title={t('prc.button')} aria-label={t('prc.button')}>
                             <Coins className="w-3 h-3" />
                           </Button>
                         )}
@@ -7706,7 +7706,7 @@ function DashboardInner() {
               <p className="rounded-lg border border-stone-200 px-3 py-2">{priceItem?.qty}× {priceItem?.name}</p>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-current">{t('prc.current')}</label>
-                <p id="prc-current" className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-semibold tabular-nums">{priceItem?.unitPrice?.toFixed(2)} €</p>
+                <p id="prc-current" className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 font-semibold tabular-nums">{priceItem?.unitPrice != null ? fmtEUR(priceItem.unitPrice) : '—'}</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase text-stone-400" htmlFor="prc-new">{t('prc.new')}</label>

@@ -9,7 +9,7 @@
  * goes through t().
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, getToken, getUser } from '@/lib/client'
+import { api, fmtFixedSI, getToken, getUser } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { FileText, AlertTriangle, RefreshCw, Plus, Download } from 'lucide-react'
@@ -57,8 +57,10 @@ function day(s: string | null): string {
 
 function humanSizeUI(bytes: number): string {
   if (bytes < 1000) return `${bytes} B`
-  if (bytes < 1_000_000) return `${(bytes / 1000).toFixed(1).replace(/\.0$/, '')} kB`
-  return `${(bytes / 1_000_000).toFixed(1).replace(/\.0$/, '')} MB`
+  // v1.276.0: decimalna vejica (fmtFixedSI); cela vrednost brez decimalke kot prej
+  if (bytes < 1_000_000) { const kb = bytes / 1000; return `${Number.isInteger(kb) ? kb : fmtFixedSI(kb, 1)} kB` }
+  const mb = bytes / 1_000_000
+  return `${Number.isInteger(mb) ? mb : fmtFixedSI(mb, 1)} MB`
 }
 
 export function DocumentsCard() {

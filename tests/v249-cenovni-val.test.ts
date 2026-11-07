@@ -597,11 +597,11 @@ describe('v1.249.0 E — pravice orders.priceOverride', () => {
 
 describe('v1.249.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.249.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.275.0')
+    expect(APP_VERSION).toBe('1.276.0')
     const versionFile = read('src/lib/version.ts')
-    expect(versionFile).toContain("'1.275.0'")
+    expect(versionFile).toContain("'1.276.0'")
     const compose = read('deploy/docker-compose.yml')
-    expect(compose).toContain('restaurantos:1.275.0')
+    expect(compose).toContain('restaurantos:1.276.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4002/4002 (+13: prc×12 + exc.report.kind.price_override)', () => {
@@ -628,7 +628,7 @@ describe('v1.249.0 Ž — registri in pini', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.249.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.275.0-diakritike-payroll-izvoz')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.276.0-decimalna-locila')
   })
 
   test('Ž6: ruta pošilja dogodev + push (osvežitev plošč PO commitu)', () => {

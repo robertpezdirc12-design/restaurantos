@@ -10,7 +10,7 @@
  * pošteno označene (brez razloga) — revizijska sled je append-only.
  */
 import { useEffect, useState } from 'react'
-import { api, getToken } from '@/lib/client'
+import { api, fmtEUR, getToken } from '@/lib/client'
 import { useI18n } from '@/components/i18n'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -149,7 +149,7 @@ export function ExceptionsReportCard() {
                   <p className="text-xs text-stone-500 truncate">{kindLabel(k)}</p>
                   <p className="text-lg font-bold">{data.byKind[k].count}</p>
                   {data.byKind[k].amount !== null && (
-                    <p className="text-xs text-stone-400">{data.byKind[k].amount?.toFixed(2)} €</p>
+                    <p className="text-xs text-stone-400">{fmtEUR(data.byKind[k].amount)}</p>
                   )}
                 </div>
               ))}
@@ -168,7 +168,7 @@ export function ExceptionsReportCard() {
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 flex-wrap">
                       <Badge variant="outline" className={KIND_STYLE[e.kind] || ''}>{kindLabel(e.kind)}</Badge>
-                      {e.amount !== null && <span className="font-semibold">{e.amount.toFixed(2)} €</span>}
+                      {e.amount !== null && <span className="font-semibold">{fmtEUR(e.amount)}</span>}
                       {e.orderNumber !== null && <span className="text-xs text-stone-400">#{e.orderNumber}</span>}
                       {e.receiptNumber && <span className="text-xs text-stone-400 font-mono">{e.receiptNumber}</span>}
                     </p>
