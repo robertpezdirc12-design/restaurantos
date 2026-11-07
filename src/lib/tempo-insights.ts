@@ -338,7 +338,7 @@ export function aggregateTableTempo(
         revenue: r1(paidRows.reduce((sum, s) => sum + (Number.isFinite(s.revenue) ? s.revenue : 0), 0)),
       }
     })
-    .sort((a, b) => b.emptyMin - a.emptyMin || a.orders - b.orders || a.label.localeCompare(b.label))
+    .sort((a, b) => b.emptyMin - a.emptyMin || a.orders - b.orders || a.label.localeCompare(b.label, 'sl'))
 }
 
 /* ═══════════════ 5) SERVISNE LUKNJE (po naročilu) ═══════════════ */

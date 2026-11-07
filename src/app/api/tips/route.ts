@@ -98,7 +98,7 @@ async function dayBasisRows(from: Date, to: Date, locationId: string, tipEmploye
     }
   }
   for (const t of tipEmployees) push(t.id, t.name)
-  const rows = Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+  const rows = Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'sl'))
 
   // §40: brez TimeEntry jobId → primarna EmployeeJob (issue #22 dodelitev; 0 minut —
   // samo izhodišče predpolnitve, ne utež)
@@ -349,7 +349,7 @@ export async function POST(req: NextRequest) {
 
   const ordered = rows
     .map((r, i) => ({ row: r, basis: basisCents[i], amount: amounts[i] }))
-    .sort((a, b) => a.row.employeeName.localeCompare(b.row.employeeName) || a.row.employeeId.localeCompare(b.row.employeeId))
+    .sort((a, b) => a.row.employeeName.localeCompare(b.row.employeeName, 'sl') || a.row.employeeId.localeCompare(b.row.employeeId))
 
   const poolId = nid()
   // hash-veriga po abecedi zaposlenega — nespremenljivo zaporedje (tamper-evident)

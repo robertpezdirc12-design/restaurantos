@@ -121,7 +121,7 @@ export function buildTaskPlan(input: TaskPlanInput): TaskPlanItem[] {
   if (itemStationIds.length === 0) {
     const fallback = input.stations
       .filter((s) => s.isActive && s.type?.toLowerCase() === 'kitchen')
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))[0]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'sl'))[0]
     if (fallback) itemStationIds.push(fallback.id)
   }
 

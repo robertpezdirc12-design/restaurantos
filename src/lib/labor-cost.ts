@@ -147,5 +147,5 @@ export function laborByRole(
   }
   return [...map.entries()]
     .map(([roleName, row]) => ({ roleName, ...row }))
-    .sort((a, b) => b.cost - a.cost || a.roleName.localeCompare(b.roleName))
+    .sort((a, b) => b.cost - a.cost || a.roleName.localeCompare(b.roleName, 'sl'))
 }

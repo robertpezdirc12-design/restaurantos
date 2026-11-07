@@ -504,6 +504,6 @@ describe('Č3 registri (map, UI statika, i18n, GAP, shema, verzija)', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.273.0')
+    expect(APP_VERSION).toBe('1.274.0')
   })
 })

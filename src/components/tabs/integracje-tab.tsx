@@ -219,7 +219,7 @@ export function IntegracijeTab({ canManage }: { canManage: boolean }) {
               </CardHeader>
               <CardContent className="space-y-2">
                 <p className="text-xs text-stone-500">
-                  {t('integ.lastSyncLabel')}: {d.lastSyncAt ? new Date(d.lastSyncAt).toLocaleString() : t('integ.never')}
+                  {t('integ.lastSyncLabel')}: {d.lastSyncAt ? new Date(d.lastSyncAt).toLocaleString('sl-SI') : t('integ.never')}
                   {' · '}{t('integ.intervalSec', { n: d.syncInterval })}
                 </p>
                 {d.maskedFields && d.maskedFields.length > 0 && (

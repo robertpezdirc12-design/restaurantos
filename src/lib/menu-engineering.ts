@@ -114,7 +114,7 @@ export function computeThresholds(items: MeItemInput[]): MeCategoryThresholds[] 
       known.length > 0 ? known.reduce((s, it) => s + contributionMargin(it.price, it.cost), 0) / known.length : 0
     out.push({ name, qtyThreshold: r2(qtyThreshold), cmThreshold: r2(cmThreshold) })
   }
-  out.sort((a, b) => a.name.localeCompare(b.name))
+  out.sort((a, b) => a.name.localeCompare(b.name, 'sl'))
   return out
 }
 
@@ -154,7 +154,7 @@ export function buildMenuEngineering(items: MeItemInput[]): MeOutput {
     }
   })
 
-  outItems.sort((a, b) => a.category.localeCompare(b.category) || b.qtySold - a.qtySold || a.name.localeCompare(b.name))
+  outItems.sort((a, b) => a.category.localeCompare(b.category, 'sl') || b.qtySold - a.qtySold || a.name.localeCompare(b.name, 'sl'))
   return { categories: thresholds, items: outItems }
 }
 

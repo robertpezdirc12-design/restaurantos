@@ -83,7 +83,7 @@ export function kdsItemStats(samples: KdsSample[]): KdsItemStat[] {
       latePct: r1((late / count) * 100),
     })
   }
-  out.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  out.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'sl'))
   return out
 }
 
@@ -238,5 +238,5 @@ export function kdsDelayCounts(rows: { details?: string | null }[]): KdsDelayCou
   }
   return [...counts.entries()]
     .map(([reason, count]) => ({ reason, count }))
-    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason, 'sl'))
 }

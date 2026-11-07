@@ -384,9 +384,9 @@ describe('v1.247.0 D — zagon pogleda poteče obstoječe rute (en klik, isti va
 
 describe('v1.247.0 Ž — registri in pini', () => {
   test('Ž1: APP_VERSION dvignjena na 1.247.0', () => {
-    expect(APP_VERSION).toBe('1.273.0')
-    expect(read('src/lib/version.ts')).toContain("'1.273.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.273.0')
+    expect(APP_VERSION).toBe('1.274.0')
+    expect(read('src/lib/version.ts')).toContain("'1.274.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.274.0')
   })
 
   test('Ž2: i18n — 3968 ključev SL in HR, popolna pariteta', () => {
@@ -441,6 +441,6 @@ describe('v1.247.0 Ž — registri in pini', () => {
 
   test('Ž7: worklog vrhnji vnos nosi Task ID v1.247.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.273.0-diakritike-izvoz-api')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.274.0-lokalni-determinizem')
   })
 })

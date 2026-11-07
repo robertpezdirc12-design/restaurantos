@@ -212,9 +212,9 @@ describe('v1.265.0 Č2 — dvojna avtorizacija + DDL + UI montaža', () => {
 
 describe('v1.265.0 Ž — registri', () => {
   test('Ž1: verzija 1.265.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.273.0')
-    expect(read('src/lib/version.ts')).toContain("'1.273.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.273.0')
+    expect(APP_VERSION).toBe('1.274.0')
+    expect(read('src/lib/version.ts')).toContain("'1.274.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.274.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (+9 ključev vala)', () => {
@@ -258,6 +258,6 @@ describe('v1.265.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.273.0-diakritike-izvoz-api')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.274.0-lokalni-determinizem')
   })
 })

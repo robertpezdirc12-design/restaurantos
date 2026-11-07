@@ -1028,7 +1028,7 @@ export function laborCoverageReport(input: LaborCoverageInput): LaborCoverageRep
       actualMinutes: r2(r.actualMinutes),
       actualCostCents: r.actualCostCents,
     }))
-    .sort((a, b) => b.plannedCostCents + b.actualCostCents - (a.plannedCostCents + a.actualCostCents) || a.name.localeCompare(b.name))
+    .sort((a, b) => b.plannedCostCents + b.actualCostCents - (a.plannedCostCents + a.actualCostCents) || a.name.localeCompare(b.name, 'sl'))
 
   /* ——— 7) Skupaj ——— */
   let netSalesCents = 0

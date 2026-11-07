@@ -300,7 +300,7 @@ export function surchargeBasisRows(
   }
 
   const perEmployeeJob = [...map.values()].sort(
-    (a, b) => a.employeeName.localeCompare(b.employeeName) || a.jobName.localeCompare(b.jobName),
+    (a, b) => a.employeeName.localeCompare(b.employeeName, 'sl') || a.jobName.localeCompare(b.jobName, 'sl'),
   )
 
   if (rates) {
@@ -316,7 +316,7 @@ export function surchargeBasisRows(
   const nameOf = new Map<string, string>()
   for (const r of rows) if (r.employeeName) nameOf.set(r.employeeId, r.employeeName)
   const overtime: OvertimeBasisRow[] = []
-  for (const [employeeId, days] of [...otDays.entries()].sort((a, b) => (nameOf.get(a[0]) || a[0]).localeCompare(nameOf.get(b[0]) || b[0]))) {
+  for (const [employeeId, days] of [...otDays.entries()].sort((a, b) => (nameOf.get(a[0]) || a[0]).localeCompare(nameOf.get(b[0]) || b[0], 'sl'))) {
     let over = 0
     let daysOver = 0
     for (const minutes of days.values()) {

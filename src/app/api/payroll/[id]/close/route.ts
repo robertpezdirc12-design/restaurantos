@@ -140,7 +140,7 @@ async function loadPeriodData(period: PayrollPeriodRow): Promise<{
     }
   }
   tips.sort(
-    (a, b) => a.poolDate.localeCompare(b.poolDate) || a.employeeName.localeCompare(b.employeeName) || a.distributionId.localeCompare(b.distributionId),
+    (a, b) => a.poolDate.localeCompare(b.poolDate) || a.employeeName.localeCompare(b.employeeName, 'sl') || a.distributionId.localeCompare(b.distributionId),
   )
 
   return {

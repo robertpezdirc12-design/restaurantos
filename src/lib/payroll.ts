@@ -461,7 +461,7 @@ export function aggregateByEmployeeJob(rows: PayrollEntryRow[]): EmployeeJobAggr
     map.set(key, agg)
   }
   return [...map.values()].sort(
-    (a, b) => a.employeeName.localeCompare(b.employeeName) || a.jobName.localeCompare(b.jobName),
+    (a, b) => a.employeeName.localeCompare(b.employeeName, 'sl') || a.jobName.localeCompare(b.jobName, 'sl'),
   )
 }
 
@@ -506,7 +506,7 @@ export function plannedMinutesFromShifts(shifts: ShiftInput[], _tz = 'Europe/Lju
     agg.plannedMinutes += duration
     map.set(s.employeeId, agg)
   }
-  return [...map.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+  return [...map.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'sl'))
 }
 
 /* ─────────────────── 6) Izvozi (CSV / kanonični JSON / digesti) ─────────────────── */
@@ -640,7 +640,7 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   L.push(`ZaposleniID;Zaposleni;DeloID;Delo;Datum;Prihod;Odhod;OdmorMin;NetoMin;PostavkaEUR;BrutoEUR;Tip;Status;VnosID`)
   const sortedRows = [...rows].sort(
     (a, b) =>
-      a.employeeName.localeCompare(b.employeeName) ||
+      a.employeeName.localeCompare(b.employeeName, 'sl') ||
       a.date.localeCompare(b.date) ||
       a.entryId.localeCompare(b.entryId),
   )
@@ -688,7 +688,7 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   // ── 4) napitnine (distribucije po zaposlenih + bazeni po dnevih) ──
   L.push(`NAPITNINE`)
   L.push(`ZaposleniID;Zaposleni;NapitnineEUR;Status`)
-  for (const t of [...tips].sort((a, b) => a.employeeName.localeCompare(b.employeeName) || a.distributionId.localeCompare(b.distributionId))) {
+  for (const t of [...tips].sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'sl') || a.distributionId.localeCompare(b.distributionId))) {
     L.push([csvField(t.employeeId), csvField(t.employeeName), eurCsv(t.amountCents), csvField(t.status)].join(';'))
   }
   L.push('')

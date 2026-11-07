@@ -525,7 +525,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
               {stList.slice(0, 5).map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 p-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm">{s.createdByName} · {new Date(s.createdAt).toLocaleDateString()}</p>
+                    <p className="truncate text-sm">{s.createdByName} · {new Date(s.createdAt).toLocaleDateString('sl-SI')}</p>
                     {s.note && <p className="truncate text-xs text-stone-500">{s.note}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">

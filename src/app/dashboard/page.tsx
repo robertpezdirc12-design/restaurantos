@@ -3409,7 +3409,7 @@ function DashboardInner() {
   const kdsSubstitutesFor = (mi: MenuT): MenuT[] =>
     kdsBoardMenu
       .filter((x) => x.available && x.id !== mi.id && !!mi.categoryId && x.categoryId === mi.categoryId)
-      .sort((a, b) => (a.station === mi.station ? 0 : 1) - (b.station === mi.station ? 0 : 1) || a.name.localeCompare(b.name))
+      .sort((a, b) => (a.station === mi.station ? 0 : 1) - (b.station === mi.station ? 0 : 1) || a.name.localeCompare(b.name, 'sl'))
       .slice(0, 3)
   const kds86Candidates = kds86Search.trim()
     ? kdsBoardMenu.filter((mi) =>
@@ -3644,7 +3644,7 @@ function DashboardInner() {
       agg.tables.push(tb.name)
       m.set(z, agg)
     }
-    return [...m.values()].sort((a, b) => b.count - a.count || a.zone.localeCompare(b.zone))
+    return [...m.values()].sort((a, b) => b.count - a.count || a.zone.localeCompare(b.zone, 'sl'))
   }
   /** Ena operacija nad vsemi mizami cone (preimenuj ALI združi — za DB ista
       sprememba area). Lokacijska disciplina enaka teAdd: locationId iz pogleda. */
@@ -3749,7 +3749,7 @@ function DashboardInner() {
       if (saleIsMobile()) setSaleCartOpen(true)
     } finally { setSaleSending(false) }
   }
-  const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b))
+  const zones = [...new Set(viewTables.map((t) => t.zone))].sort((a, b) => a.localeCompare(b, 'sl'))
 
   // OPS-8 val 3 (v1.73.0): status filter chips — client-side filtering via lib/reservation-filters
   const filteredRes = filterReservations(reservations, resFilter, Date.now())
@@ -4353,7 +4353,7 @@ function DashboardInner() {
                       </Button>
                     </div>
                     <div className="text-xs text-stone-600">
-                      {t('sync.deadAttempts', { n: o.attempts })} · {new Date(o.createdAt).toLocaleString()}
+                      {t('sync.deadAttempts', { n: o.attempts })} · {new Date(o.createdAt).toLocaleString('sl-SI')}
                     </div>
                     {o.lastError && <div className="text-xs text-red-700 break-all">{t('sync.deadLast', { err: o.lastError })}</div>}
                   </div>
@@ -5985,7 +5985,7 @@ function DashboardInner() {
                 .flatMap((o) => o.items.filter((it) => !it.voided && (it.status === 'PENDING' || it.status === 'PREPARING') && (kdsLegacyBucket === 'ALL' || (it.station || 'KITCHEN') === kdsLegacyBucket)))
               const byName = new Map<string, number>()
               for (const it of openItems) byName.set(it.name, (byName.get(it.name) ?? 0) + it.qty)
-              const rows = [...byName.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+              const rows = [...byName.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'sl'))
               if (rows.length === 0) return null
               return (
                 <div data-region="kds-allday" className="sticky bottom-0 z-10 rounded-xl border border-amber-300 bg-amber-50/95 dark:border-amber-700/60 dark:bg-stone-950/95 backdrop-blur px-3 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_12px_rgba(0,0,0,0.4)]" role="status" aria-label={t('kds.allDayTitle')}>

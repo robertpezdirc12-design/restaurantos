@@ -72,7 +72,7 @@ export function aggregateStaffPerformance(samples: StaffPerfSample[]): StaffPerf
       tips: v.tips,
       share: totalRevenue > 0 ? v.revenue / totalRevenue : 0,
     }))
-    .sort((a, b) => b.revenue - a.revenue || b.orders - a.orders || a.name.localeCompare(b.name))
+    .sort((a, b) => b.revenue - a.revenue || b.orders - a.orders || a.name.localeCompare(b.name, 'sl'))
   const orders = rows.reduce((s, r) => s + r.orders, 0)
   const revenue = rows.reduce((s, r) => s + r.revenue, 0)
   const tips = rows.reduce((s, r) => s + r.tips, 0)
