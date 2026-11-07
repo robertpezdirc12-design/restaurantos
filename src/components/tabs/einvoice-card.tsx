@@ -294,8 +294,11 @@ export function EInvoiceCard({ canManage }: { canManage: boolean }) {
             <Label className="text-xs" htmlFor="ei-f-q">{t('ei.filter.q')}</Label>
             <Input id="ei-f-q" className="h-9 text-sm" value={fQ} onChange={(e) => setFQ(e.target.value)} />
           </div>
-          <Button size="sm" variant="outline" className="h-9 text-xs" disabled={loading} onClick={load}>
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+          {/* v1.279.0 (revizija v1.278.0, najdba 1): ikonski gumb osvežitve seznama
+              e-računov je bil brek imena (38×36, WCAG 4.1.2) — dejanska produkcija
+              najdba na nabava zavihku (kartica živi tukaj, ne v nabava-tab.tsx). */}
+          <Button size="sm" variant="outline" className="h-9 text-xs" disabled={loading} onClick={load} aria-label={t('common.refresh')}>
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" aria-hidden />}
           </Button>
         </div>
 

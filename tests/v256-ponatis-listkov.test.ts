@@ -199,9 +199,9 @@ describe('v1.256.0 B — POST /api/orders/[id]/reprint-ticket', () => {
 
 describe('v1.256.0 Ž — montaža + registri', () => {
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.278.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+13 rcpt.reprint* + print.simAll)', () => {
@@ -216,8 +216,8 @@ describe('v1.256.0 Ž — montaža + registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4320)
-    expect(hrCount).toBe(4320)
+    expect(slCount).toBe(4324)
+    expect(hrCount).toBe(4324)
   })
 
   test('Ž3: montaža — gumb na OBEH površinah računov, dialog središč, POST → tisk', () => {
@@ -252,7 +252,7 @@ describe('v1.256.0 Ž — montaža + registri', () => {
     expect(doc).toContain('ORDER_TICKET_REPRINT')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.256.0')
-    expect(auditDoc).toContain('- 4320 ključev SL in 4320 HR')
+    expect(auditDoc).toContain('- 4324 ključev SL in 4324 HR')
   })
 
   test('Ž5: 0 DDL dokaz — print lib brez db; schema brez novih modelov/ stolpcev tega vala', () => {
@@ -266,6 +266,6 @@ describe('v1.256.0 Ž — montaža + registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

@@ -920,8 +920,8 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
                       {canManage && (
                         <div className="flex items-center gap-2">
                           <Switch checked={rule.active} disabled={recBusy} onCheckedChange={() => toggleRule(rule)} aria-label={t('recurring.active')} />
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={recBusy} onClick={() => deleteRule(rule.id)}>
-                            <Trash2 className="w-3 h-3" />
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50" disabled={recBusy} onClick={() => deleteRule(rule.id)} aria-label={t('recurring.deleteAria', { name: sup?.name || rule.supplierId })}>
+                            <Trash2 className="w-3 h-3" aria-hidden />
                           </Button>
                         </div>
                       )}

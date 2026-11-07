@@ -381,20 +381,20 @@ describe('v1.271.0 Č3 — montaža klicnih mest (8 datotek)', () => {
 
 describe('v1.271.0 Ž — registri', () => {
   test('Ž1: verzija 1.271.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("'1.278.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("'1.279.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (noun 148 = 37 skupkov × 4; neto +70)', () => {
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
     expect(Object.keys(sl).filter((k) => k.startsWith('noun.')).length).toBe(148)
   })
 
   test('Ž3: AUDIT doc-truth — veriga stanj 4231 → 4250 → 4320', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4320 ključev SL in 4320 HR')
+    expect(audit).toContain('4324 ključev SL in 4324 HR')
     expect(audit).toContain('POSODOBITEV (v1.271.0, množinske oblike IV')
     expect(audit).toContain('4250 → 4320')
     // zgodovinski vnosi nosijo SVOJE stanje (doc-truth od v1.270)
@@ -404,6 +404,6 @@ describe('v1.271.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

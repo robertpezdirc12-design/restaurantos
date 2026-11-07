@@ -447,14 +447,14 @@ describe('v1.251.0 Č4 — UI: kartica skeniranja v zavihku Računi', () => {
 
 describe('v1.251.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.278.0'")
-    expect(compose).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
+    expect(compose).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+6 rcpt.scan*)', () => {
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
   })
 
   test('Ž3: ruta — pravica, obseg, variante, 0 DDL dokaz, 0 novih odvisnosti', () => {
@@ -476,10 +476,10 @@ describe('v1.251.0 Ž — registri in pini', () => {
     expect(doc).toContain('## 25.')
     expect(doc).toContain('Look up checks by scanning the receipt barcode')
     expect(auditDoc).toContain('v1.251.0')
-    expect(auditDoc).toContain('- 4320 ključev SL in 4320 HR')
+    expect(auditDoc).toContain('- 4324 ključev SL in 4324 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

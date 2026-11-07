@@ -196,8 +196,8 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
                   {canManage && (
                     <div className="flex shrink-0 gap-1">
                       <Button size="sm" variant="outline" className="h-11 sm:h-7 px-2 text-xs" onClick={() => void openAttach(g)}><Link2 className="mr-1 h-3.5 w-3.5" />{t('modifiers.items.attach')}</Button>
-                      <Button size="sm" variant="outline" className="h-11 sm:h-7 px-2 text-xs" onClick={() => openEdit(g)}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button size="sm" variant="outline" className="h-11 sm:h-7 px-2 text-xs text-red-700 hover:text-red-800" onClick={() => void deleteGroup(g)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button size="sm" variant="outline" className="h-11 sm:h-7 px-2 text-xs" onClick={() => openEdit(g)} aria-label={t('modifiers.group.editAria', { name: g.name })}><Pencil className="h-3.5 w-3.5" aria-hidden /></Button>
+                      <Button size="sm" variant="outline" className="h-11 sm:h-7 px-2 text-xs text-red-700 hover:text-red-800" onClick={() => void deleteGroup(g)} aria-label={t('modifiers.group.deleteAria', { name: g.name })}><Trash2 className="h-3.5 w-3.5" aria-hidden /></Button>
                     </div>
                   )}
                 </div>
@@ -211,7 +211,7 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
                         {canManage && (
                           <>
                             <Button size="sm" variant={m.isAvailable ? 'outline' : 'secondary'} className="h-7 px-2 text-xs" onClick={() => void toggleOption(m)}>{m.isAvailable ? t('menu.inStock') : t('menu.outOfStock')}</Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-700 hover:text-red-800" onClick={() => void deleteOption(m)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-700 hover:text-red-800" onClick={() => void deleteOption(m)} aria-label={t('modifiers.option.deleteAria', { name: m.name })}><Trash2 className="h-3.5 w-3.5" aria-hidden /></Button>
                           </>
                         )}
                       </div>
@@ -325,8 +325,9 @@ function OptionAddRow({ busy, onAdd, t }: { busy: boolean; onAdd: (name: string,
         className="h-11 sm:h-8 shrink-0"
         disabled={busy || !name.trim()}
         onClick={() => { onAdd(name, price); setName(''); setPrice('') }}
+        aria-label={t('modifiers.option.add')}
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-4 w-4" aria-hidden />
       </Button>
     </div>
   )

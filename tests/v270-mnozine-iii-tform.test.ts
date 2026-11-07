@@ -282,20 +282,20 @@ describe('v1.270.0 Č4 — montaža: tF/tN2/criterionNoun na klicnih mestih', ()
 
 describe('v1.270.0 Ž — registri', () => {
   test('Ž1: verzija 1.270.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("'1.278.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("'1.279.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (noun 148 = 37 skupkov × 4)', () => {
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
     expect(Object.keys(sl).filter((k) => k.startsWith('noun.')).length).toBe(148)
   })
 
   test('Ž3: AUDIT doc-truth — veriga stanj 4157 → 4168 → 4188 → 4231 → 4250', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4320 ključev SL in 4320 HR')
+    expect(audit).toContain('4324 ključev SL in 4324 HR')
     expect(audit).toContain('POSODOBITEV (v1.270.0, množinske oblike III')
     expect(audit).toContain('4231 → 4250')
     // zgodovinski vnosi nosijo SVOJE stanje (popravki doc-truth v1.270.0 —
@@ -307,6 +307,6 @@ describe('v1.270.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

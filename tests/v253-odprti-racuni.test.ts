@@ -368,14 +368,14 @@ describe('v1.253.0 Ž — registri', () => {
   const uiSrc = read('src/components/tabs/backoffice-tab.tsx')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.278.0'")
-    expect(compose).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
+    expect(compose).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+15 acct.xzOpen*)', () => {
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
     for (const k of [
       'acct.xzOpenToggle', 'acct.xzOpenHint', 'acct.xzOpenBanner', 'acct.xzOpenCount',
       'acct.xzOpenGross', 'acct.xzOpenNet', 'acct.xzOpenVat', 'acct.xzOpenTotalGross',
@@ -411,11 +411,11 @@ describe('v1.253.0 Ž — registri', () => {
     expect(doc).toContain('## 27.')
     expect(doc).toContain('See open checks')
     expect(auditDoc).toContain('v1.253.0')
-    expect(auditDoc).toContain('- 4320 ključev SL in 4320 HR')
+    expect(auditDoc).toContain('- 4324 ključev SL in 4324 HR')
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

@@ -176,9 +176,9 @@ describe('v1.255.0 Ž — registri', () => {
   const libSrc = read('src/lib/confirm-banner.ts')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.278.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+11 cb.*)', () => {
@@ -192,8 +192,8 @@ describe('v1.255.0 Ž — registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4320)
-    expect(hrCount).toBe(4320)
+    expect(slCount).toBe(4324)
+    expect(hrCount).toBe(4324)
   })
 
   test('Ž3: montaža — pet dejanj postavi banner + oba pogleda ga izrišeta + 0 DDL dokaz', () => {
@@ -229,11 +229,11 @@ describe('v1.255.0 Ž — registri', () => {
     expect(doc).toContain('manage their shifts with confidence')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.256.0')
-    expect(auditDoc).toContain('- 4320 ključev SL in 4320 HR')
+    expect(auditDoc).toContain('- 4324 ključev SL in 4324 HR')
   })
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

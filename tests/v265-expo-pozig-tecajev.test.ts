@@ -212,12 +212,12 @@ describe('v1.265.0 Č2 — dvojna avtorizacija + DDL + UI montaža', () => {
 
 describe('v1.265.0 Ž — registri', () => {
   test('Ž1: verzija 1.265.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("'1.278.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("'1.279.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4320/4320 (+9 ključev vala)', () => {
+  test('Ž2: i18n pariteta SL/HR 4324/4324 (+4 ključi v1.279.0)', () => {
     for (const k of [
       'kds.expoFireArm', 'kds.expoFireHint', 'kds.expoFireArmed',
       'kds.expoFireCancel', 'kds.expoFireDone',
@@ -227,8 +227,8 @@ describe('v1.265.0 Ž — registri', () => {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
   })
 
   test('Ž3: SQLite mirror nosi stolpec, MAIN shema GA NE (P2022 disciplina)', () => {
@@ -258,6 +258,6 @@ describe('v1.265.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 })

@@ -298,14 +298,14 @@ describe('v1.277.0 Č3 — negativni sken api/ + poštene izjeme', () => {
 
 describe('v1.277.0 Ž — registri', () => {
   test('Ž1: verzija 1.277.0 (version.ts + compose + APP_VERSION)', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.278.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.278.0')
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.279.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.279.0')
   })
 
   test('Ž2: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.279.0-revizija-produkcije')
   })
 
   test('Ž3: AUDIT doc-truth: POSODOBITEV (v1.277.0) + zgodovinska veriga (v1.276 pin ostaja)', () => {
@@ -317,8 +317,8 @@ describe('v1.277.0 Ž — registri', () => {
   test('Ž4: i18n števci NESPREMENJENI 4320/4320 — SL_NOUNS je kodna tabela, 0 novih ključev', async () => {
     const { sl } = await import('../src/lib/i18n/sl')
     const { hr } = await import('../src/lib/i18n/hr')
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
   })
 
   test('Ž5: 0 DDL — shema nedotaknjena (čisti formatirni val, brez novih modelov)', () => {
@@ -331,7 +331,7 @@ describe('v1.277.0 Ž — registri', () => {
     const fmt = read('src/lib/fmt.ts')
     expect(fmt).not.toMatch(/^import /m)
     expect(fmt).not.toMatch(/^} from /m)
-    expect(read('src/lib/client.ts')).toContain("export { fmtEUR, fmtNumSI, fmtFixedSI } from './fmt'")
+    expect(read('src/lib/client.ts')).toContain("export { fmtEUR, fmtNumSI, fmtFixedSI, fmtStampSI } from './fmt'") // v1.279.0: pogodba razširjena (fmtStampSI — časovni žig, ista družina formatirnikov)
     expect(read('src/lib/i18n/index.ts')).toContain("export { pluralForm } from '../fmt'")
   })
 })

@@ -47,7 +47,7 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
  * da VSI obstoječi uvozi (25 datotek) in testni pini (v276/issue71) ostanejo
  * zeleni. Ena funkcija = ena oblika (doktrina issue #71) — en sam vir resnice.
  */
-export { fmtEUR, fmtNumSI, fmtFixedSI } from './fmt'
+export { fmtEUR, fmtNumSI, fmtFixedSI, fmtStampSI } from './fmt'
 
 /** v1.129.0 (Toast/Square benchmark): podpisana rast v % za Δ na KPI karticah (+12,3 % / −4,5 %) */
 export const fmtPctSigned = (ratio: number) => {

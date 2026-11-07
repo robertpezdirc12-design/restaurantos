@@ -107,3 +107,23 @@ export function slNoun(n: number, noun: SlNounId): string {
 export function slCount(n: number, noun: SlNounId): string {
   return `${new Intl.NumberFormat('sl-SI', { maximumFractionDigits: 0 }).format(n)} ${slNoun(n, noun)}`
 }
+
+/**
+ * Časovni žig kartice naročila (v1.279.0, revizija produkcije v1.278.0 — najdba 2):
+ * naročila, ustvarjena DANES, nosijo samo uro (»07:28«); naročila iz prejšnjih
+ * dni nosijo DATUM pred uro (»31. 10. 07:28«) — brez datuma je več dni staro
+ * demo/zastarelo naročilo na seznamu videti kot današnje (doktrina issue #70 §2:
+ * zastarelo NE izgine, a mora biti prepoznavno; KDS ima ločo od v1.121.0).
+ *
+ * Ročna konstrukcija DD. MM. HH:MM (ne toLocaleString) — DETERMINISTIČNO v vseh
+ * okoljih (lekcija v1.276 CI-fix: ICU runnerjev se razlikujejo v groupanju
+ * tisočic; datum ima enako past). Sl in HR oblika sta identični.
+ * `now` parameter je namenjen testom (deterministični »danes«).
+ */
+export function fmtStampSI(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}`
+  if (d.toDateString() === now.toDateString()) return time
+  return `${p(d.getDate())}. ${p(d.getMonth() + 1)}. ${time}`
+}

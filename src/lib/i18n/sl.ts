@@ -3261,6 +3261,7 @@ export const sl: Record<string, string> = {
   'recurring.every3': 'Vsake 3 tedne',
   'recurring.every4': 'Vsake 4 tedne',
   'recurring.active': 'Aktivno',
+  'recurring.deleteAria': 'Izbriši pravilo {name}',
   'recurring.next': 'Naslednji tek',
   'recurring.lastRun': 'Zadnji tek',
   'recurring.never': 'še ni',
@@ -4262,6 +4263,11 @@ export const sl: Record<string, string> = {
   'modifiers.group.min': 'Najmanj izbir',
   'modifiers.group.max': 'Največ izbir (prazno = neomejeno)',
   'modifiers.option.add': 'Dodaj opcijo',
+  /* v1.279.0 (revizija produkcije v1.278.0, najdba 1): aria-labeli ikonskih gumbov
+     skupin/opcij (WCAG 4.1.2 — 61 mest brek imena, isti razred kot v1.177 kiosk). */
+  'modifiers.group.editAria': 'Uredi skupino {name}',
+  'modifiers.group.deleteAria': 'Izbriši skupino {name}',
+  'modifiers.option.deleteAria': 'Izbriši opcijo {name}',
   'modifiers.option.name': 'Opcija',
   'modifiers.option.price': 'Doplačilo (EUR)',
   'modifiers.items.attach': 'Pripni na artikle',

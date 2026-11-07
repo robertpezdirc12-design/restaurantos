@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { api, fmtEUR, fmtFixedSI, fmtPctSigned, getUser } from '@/lib/client'
+import { api, fmtEUR, fmtFixedSI, fmtPctSigned, fmtStampSI, getUser } from '@/lib/client'
 import { vatFromGross, isHappyActive } from '@/lib/billing'
 import { toast } from '@/hooks/use-toast'
 import { APP_VERSION } from '@/lib/version'
@@ -4183,7 +4183,15 @@ function DashboardInner() {
                       E2E izmera Miza 3: sh 160 > 144). Usajeni gost izključuje aktivno
                       naročilo → najslabši primer je 158 px, h-40 ga pokrije z rezervo. */}
                   <div className="flex flex-wrap gap-3">
-                    {zt.map((tb) => (
+                    {zt.map((tb) => {
+                      /* v1.279.0 (revizija v1.278.0, najdba 2): ZASTARELO naročilo na mizi —
+                         doktrina issue #70 §2 (KDS loča od v1.121.0) razširjena na ploščico
+                         mize. Živi števec ⏱ na 6 dni starem demo naročilu je lagal, da je
+                         naročilo sveže (»⏱ 9450 min«). Nad 8 h: starost v URAH + sivi črtkani
+                         rob + title z razlago — naročilo NE izgine, ostane operabilno. */
+                      const aoTile = tb.activeOrder ? orders.find((x) => x.id === tb.activeOrder!.id) : undefined
+                      const tileStale = aoTile ? isStaleKdsTicket(kdsMinutes(aoTile.createdAt)) : false
+                      return (
                       <div key={tb.id} className={`relative ${tableTileWidthCls(tb.seats)}`}>
                         <button
                           onClick={() => {
@@ -4193,7 +4201,7 @@ function DashboardInner() {
                             if (!tb.activeOrder && tb.heldOrderId) { setOrderFilter('HOLD'); setActiveTab('narocila'); return }
                             if (!tb.activeOrder) { setCart({}); setCartVariants([]); setCartNotes({}); setNewOrderTable(tb) } else { const o = orders.find((x) => x.id === tb.activeOrder!.id); if (o) void openOrderSheet(o) }
                           }}
-                          className={`flex h-40 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden`}
+                          className={`flex h-40 w-full flex-col rounded-xl p-3 text-left shadow transition ${statusColors[tb.status]} overflow-hidden${tileStale ? ' opacity-80 outline-2 outline-dashed outline-stone-500/70' : ''}`}
                         >
                           <p className="font-bold text-lg flex items-center gap-2">
                             {tb.name}
@@ -4254,9 +4262,17 @@ function DashboardInner() {
                                   </p>
                                 )}
                                 <div className="flex items-baseline justify-between gap-2 mt-0.5 min-w-0">
-                                  {elapsed !== null && (
+                                  {elapsed !== null && !tileStale && (
                                     <span className="text-sm font-extrabold tabular-nums shrink-0" title={t('tables.sinceOrder', { m: elapsed })}>
                                     ⏱ {t('tables.elapsedMin', { m: elapsed })}
+                                  </span>
+                                )}
+                                  {/* v1.279.0 (najdba 2): nad 8 h starost v URAH + title z oznako
+                                      ZASTARELO (vzorec KDS pila — kds.stale/kds.staleHours,
+                                      doktrina issue #70 §2; »⏱ 9450 min« je zavajalo). */}
+                                  {elapsed !== null && tileStale && (
+                                    <span className="text-sm font-extrabold tabular-nums shrink-0" title={`${t('kds.stale')} — ${t('tables.sinceOrder', { m: elapsed })}`}>
+                                    ⏱ {t('kds.staleHours', { h: staleTicketHours(elapsed) })}
                                   </span>
                                 )}
                                 <span className="text-sm font-bold tabular-nums ml-auto">{fmtEUR(tb.activeOrder.total)}</span>
@@ -4327,7 +4343,8 @@ function DashboardInner() {
                           </DropdownMenu>
                         )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </section>
               )
@@ -4433,7 +4450,11 @@ function DashboardInner() {
                             naslovu, tu pa številka naročila, ura in natakar (prej sta se
                             obe karti glasili enako »Na mesto · 1 osebi« brez razlike). */}
                         <p className="text-xs text-stone-500 truncate">
-                          #{o.orderNumber ?? '?'} · {new Date(o.createdAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}
+                          {/* v1.279.0 (revizija v1.278.0, najdba 2): naročila iz PREJŠNJIH dni
+                              nosijo datum pred uro (»#716 · 31. 10. 07:28«) — sama ura je pri
+                              več dni starem demo naročilu lagala, da je današnje (fmtStampSI,
+                              doktrina issue #70 §2; današnja ostanejo »#707 · 20:24«). */}
+                          #{o.orderNumber ?? '?'} · {fmtStampSI(o.createdAt)}
                           {o.employee?.name ? ` · ${o.employee.name}` : ''}
                         </p>
                       </div>

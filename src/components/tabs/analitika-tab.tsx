@@ -1115,7 +1115,7 @@ export function PourCostCard() {
                 <SelectItem value="90">{t('me.days90')}</SelectItem>
               </SelectContent>
             </Select>
-            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)}>
+            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)} aria-label={t('common.refresh')}>
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             </Button>
           </div>
@@ -1258,7 +1258,7 @@ export function StaffPerformanceCard() {
                 <SelectItem value="90">{t('me.days90')}</SelectItem>
               </SelectContent>
             </Select>
-            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)}>
+            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)} aria-label={t('common.refresh')}>
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             </Button>
           </div>
@@ -1452,7 +1452,7 @@ export function TempoInsightsCard() {
                 <SelectItem value="90">{t('me.days90')}</SelectItem>
               </SelectContent>
             </Select>
-            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)}>
+            <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => setReload((x) => x + 1)} aria-label={t('common.refresh')}>
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             </Button>
             {data && gapRows.length > 0 && (

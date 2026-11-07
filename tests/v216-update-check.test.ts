@@ -432,8 +432,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
       expect(hr[k]).toBeTruthy()
     }
     // števca slovarjev: 3731 → 3737 (6 novih v vsakem)
-    expect(Object.keys(sl).length).toBe(4320)
-    expect(Object.keys(hr).length).toBe(4320)
+    expect(Object.keys(sl).length).toBe(4324)
+    expect(Object.keys(hr).length).toBe(4324)
   })
 
   it('.env.example dokumentira UPDATE_CHECK_URL (privzeto/izklopljeno/napačno)', () => {
@@ -481,8 +481,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 
 describe('v1.216.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.278.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.278\.0'/)
+    expect(APP_VERSION).toBe('1.279.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.279\.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
@@ -492,7 +492,7 @@ describe('v1.216.0 — Č3: registri', () => {
 
   it('AUDIT §8: števec 3738 + POSODOBITEV nota', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4320 ključev SL in 4320 HR')
+    expect(audit).toContain('4324 ključev SL in 4324 HR')
     expect(audit).toContain('**POSODOBITEV (v1.216.0):**')
     expect(audit).toContain('sys.upd*')
   })
@@ -501,6 +501,6 @@ describe('v1.216.0 — Č3: registri', () => {
     const wl = read('worklog.md')
     expect(wl.indexOf('Task ID: v1.216.0-update-check')).toBeLessThan(wl.indexOf('Task ID: v1.215.0-ci-alarm-lifecycle'))
     // v1.263.0 §37 finalna-verifikacija: okno povečano (novejši vnosi glave potiskajo R4b globlje)
-    expect(wl.slice(0, 62000)).toContain('R4b') // v1.278.0 lib-nizi: okno povečano 54000 → 62000 (vnos vala ~7,3 kB je potisnil R4b z 51962 na ~59300; vzorec v263/v264/v265/v267/v268/v272/v277)
+    expect(wl.slice(0, 62000)).toContain('R4b') // v1.279.0 revizija: okno NESPREMENJENO (vnos ~5,9 kB, prvi R4b v verigi pri 3611 — prevez komentarji držijo pin; vzorec v263→v278)
   })
 })
