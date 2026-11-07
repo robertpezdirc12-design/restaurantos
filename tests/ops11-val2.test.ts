@@ -192,12 +192,13 @@ describe('ops11/2: AP_NEW push event', () => {
   test('apNewPushPayload: AP_NEW shape {apNumber, supplierName, amount, dueDate} → notification text', () => {
     const p = apNewPushPayload({ apNumber: 'AP-2025-0042', supplierName: 'Mercator d.o.o.', amount: 244, dueDate: '2026-10-20T00:00:00.000Z' })
     expect(p.title).toBe('Nov dobaviteljev račun')
-    expect(p.body).toBe('AP-2025-0042 · Mercator d.o.o. · 244.00 € · zapade 2026-10-20')
+    // v1.278.0 prevez: fmtEUR (vejica + NBSP) namesto surove pike (doktrina issue #71, lib nizi)
+    expect(p.body).toBe('AP-2025-0042 · Mercator d.o.o. · 244,00 € · zapade 2026-10-20')
     expect(p.url).toBe('/dashboard?tab=stroski')
     expect(p.tag).toBe('ap-new-AP-2025-0042')
   })
   test('apNewPushPayload: dueDate null tolerated (no "zapade" suffix)', () => {
     const p = apNewPushPayload({ apNumber: 'AP-2025-0007', supplierName: 'Razno', amount: 10, dueDate: null })
-    expect(p.body).toBe('AP-2025-0007 · Razno · 10.00 €')
+    expect(p.body).toBe('AP-2025-0007 · Razno · 10,00 €')
   })
 })

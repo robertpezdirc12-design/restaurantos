@@ -57,8 +57,8 @@ describe('giftcards — canRedeem', () => {
   test('premalo salda — razlog vsebuje manjkajoči znesek', () => {
     const r = canRedeem(card, 3000, NOW)
     expect(r.ok).toBe(false)
-    // strežniška sporočila dosledno uporabljajo točko (isti vzorec kot vsota delov plačila v /api/furs)
-    expect(r.reason).toContain('5.00')
+    // v1.278.0 prevez: fmtEUR vejica (doktrina issue #71 — lib nizi; isto kot vsota delov plačila v furs/issue po v1.277/v1.278)
+    expect(r.reason).toContain('5,00')
   })
   test('deaktivirana / pretekla / izčrpana', () => {
     expect(canRedeem({ ...card, status: 'inactive' }, 100, NOW).status).toBe('inactive')

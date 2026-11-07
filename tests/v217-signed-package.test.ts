@@ -581,9 +581,9 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
   })
 
   test('verzija je dvignjena na 1.238.0 (version.ts + compose oznaka + selfhost-check vir)', () => {
-    expect(APP_VERSION).toBe('1.277.0')
-    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.277\.0'/)
-    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.277.0')
+    expect(APP_VERSION).toBe('1.278.0')
+    expect(readFileSync(join(ROOT, 'src/lib/version.ts'), 'utf8')).toMatch(/APP_VERSION = '1\.278\.0'/)
+    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.278.0')
   })
 
   test('DOKUMENTI: LOKALNI-ZAGON §7 pozna paketno pot; PRD R4b vrstica nosi dokaz', () => {
@@ -600,7 +600,7 @@ describe('v217 Č6 — statika (skripte, registri, 0 DDL)', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = readFileSync(join(ROOT, 'worklog.md'), 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.277.0-backend-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
   })
 
   test('meje paketa so izmerjene in zapisane (623 datotek / ~10,2 MB osnova @ v1.217.0)', () => {

@@ -18,6 +18,8 @@
  * so the pure sanitizers are unit-testable without a database connection.
  */
 
+import { fmtFixedSI } from '@/lib/fmt'
+
 export const AP_ATTACHMENTS_MARKER = 'ap-attachments'
 
 /** Max attachments kept per AP document (first ones win after dedupe). */
@@ -77,7 +79,7 @@ export function base64ByteSize(b64: unknown): number {
 /** Human note appended to AP.notes when a payload did not fit the archive budget. */
 export function oversizeNote(droppedBytes: number): string {
   const mb = Math.round((droppedBytes / (1024 * 1024)) * 10) / 10
-  return `(priloga ${mb.toFixed(1)} MB prevelika za arhiv v nastavitvah)`
+  return `(priloga ${fmtFixedSI(mb, 1, ' MB')} prevelika za arhiv v nastavitvah)`
 }
 
 function str(v: unknown): string {

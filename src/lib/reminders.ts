@@ -2,6 +2,7 @@ import nodemailer, { type Transporter } from 'nodemailer'
 import { db } from '@/lib/db'
 import { jparse } from '@/lib/map'
 import { ssrfSafeRequest } from '@/lib/ssrf-guard'
+import { slCount } from '@/lib/fmt'
 
 /**
  * OPS-7 (v1.69.0) — OPOMNIKI REZERVACIJ (e-mail + SMS).
@@ -57,7 +58,7 @@ export function bookingConfirmationText(t: ReminderTarget, locale: 'sl' | 'hr'):
   return {
     subject: `Potrditev: rezervacija v ${t.restaurantName} — ${when}`,
     body: `Spoštovani/a ${t.guestName},\n\nvaša rezervacija je potrjena:\n\n  ${when}\n  Št. oseb: ${t.partySize}\n  Lokal: ${t.restaurantName}\n\nČe ne morete priti, nas prosim obvestite.\n\nSe vidimo!\n${t.restaurantName}`,
-    sms: `Potrditev: rezervacija ${t.restaurantName}, ${when} za ${t.partySize} oseb.`,
+    sms: `Potrditev: rezervacija ${t.restaurantName}, ${when} (${slCount(t.partySize, 'oseba')}).`,
   }
 }
 
@@ -73,7 +74,7 @@ export function reminderText(t: ReminderTarget, locale: 'sl' | 'hr'): { subject:
   return {
     subject: `Opomnik: rezervacija v ${t.restaurantName} — ${when}`,
     body: `Spoštovani/a ${t.guestName},\n\nopominjamo Vas na rezervacijo:\n\n  ${when}\n  Št. oseb: ${t.partySize}\n  Lokal: ${t.restaurantName}\n\nSe vidimo!\n${t.restaurantName}`,
-    sms: `Opomnik: rezervacija ${t.restaurantName}, ${when} za ${t.partySize} oseb.`,
+    sms: `Opomnik: rezervacija ${t.restaurantName}, ${when} (${slCount(t.partySize, 'oseba')}).`,
   }
 }
 

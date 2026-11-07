@@ -1,6 +1,7 @@
 import webpush from 'web-push'
 import { db } from '@/lib/db'
 import { jparse } from '@/lib/map'
+import { fmtEUR } from '@/lib/fmt'
 
 /**
  * OPS-7 (v1.70.0) — WEB PUSH obvestila (nova naročila → kuhinja/bar; pripravljeno → natakar).
@@ -175,7 +176,7 @@ export function apNewPushPayload(data: ApNewPushData): PushPayload {
   const due = data.dueDate ? ` · zapade ${String(data.dueDate).slice(0, 10)}` : ''
   return {
     title: 'Nov dobaviteljev račun',
-    body: `${data.apNumber} · ${data.supplierName} · ${data.amount.toFixed(2)} €${due}`,
+    body: `${data.apNumber} · ${data.supplierName} · ${fmtEUR(data.amount)}${due}`,
     url: '/dashboard?tab=stroski',
     tag: `ap-new-${data.apNumber}`,
   }
@@ -202,7 +203,7 @@ export function apOverduePushPayload(data: ApOverduePushData): PushPayload {
   const dayWord = days === 1 ? 'dan' : days === 2 ? 'dneva' : 'dni'
   return {
     title: 'Zapadli račun dobavitelja',
-    body: `${data.apNumber} · ${data.supplierName} · ${data.amount.toFixed(2)} € · zapadlo ${days} ${dayWord}`,
+    body: `${data.apNumber} · ${data.supplierName} · ${fmtEUR(data.amount)} · zapadlo ${days} ${dayWord}`,
     url: '/dashboard?tab=stroski',
     tag: `ap-overdue-${data.apNumber}`,
   }

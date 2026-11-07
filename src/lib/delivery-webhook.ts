@@ -22,6 +22,7 @@ import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
 import { db } from '@/lib/db'
 import { nid, jstr, num } from '@/lib/map'
+import { fmtEUR, slCount } from '@/lib/fmt'
 import { createOrderCore, OrderError, claimMutableOrder } from '@/lib/ops'
 import {
   rateLimit, verifyWebhookSignature, deliveryEnvSecret, maskPhone,
@@ -369,7 +370,7 @@ export async function handleDeliveryWebhook(
     // (via notification matrix; fire-and-forget — webhook stays a critical path)
     void pushEvent('DELIVERY_NEW', {
       title: 'Novo dostavno naročilo',
-      body: `${p === 'glovo' ? 'Glovo' : 'Wolt'}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${mapped.items.length} postavk · ${order.total ?? ''} €`,
+      body: `${p === 'glovo' ? 'Glovo' : 'Wolt'}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${slCount(mapped.items.length, 'postavka')} · ${order.total != null ? fmtEUR(Number(order.total)) : ''}`,
       url: '/dashboard?tab=dostava',
       tag: `delivery-${order.id}`,
     }, { roles: ['waiter', 'staff', 'manager'], locationId })

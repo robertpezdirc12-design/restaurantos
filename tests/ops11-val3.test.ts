@@ -209,7 +209,8 @@ describe('ops11/3: AP_OVERDUE push event', () => {
   test('apOverduePushPayload: shape {apNumber, supplierName, amount, daysOverdue} → notification text', () => {
     const p = apOverduePushPayload({ apNumber: 'AP-202506-000009', supplierName: 'Mercator d.o.o.', amount: 244, daysOverdue: 3 })
     expect(p.title).toBe('Zapadli račun dobavitelja')
-    expect(p.body).toBe('AP-202506-000009 · Mercator d.o.o. · 244.00 € · zapadlo 3 dni')
+    // v1.278.0 prevez: fmtEUR (vejica + NBSP) namesto surove pike (doktrina issue #71, lib nizi)
+    expect(p.body).toBe('AP-202506-000009 · Mercator d.o.o. · 244,00 € · zapadlo 3 dni')
     expect(p.url).toBe('/dashboard?tab=stroski')
     expect(p.tag).toBe('ap-overdue-AP-202506-000009')
   })

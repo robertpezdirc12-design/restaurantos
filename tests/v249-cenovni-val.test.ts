@@ -227,9 +227,9 @@ describe('v1.249.0 A — čisti sloj: parse/compose/validate (mrtva shramba modi
     if (long.ok) expect(long.reason.length).toBe(200)
   })
 
-  test('A8: čisti sloj — 0 uvozov (vzorec v248 čistih slojev)', () => {
-    expect(libSrc).not.toContain("from '")
-    expect(libSrc).not.toContain('require(')
+  test('A8: čisti sloj — 0 uvozov RAZEN fmt (v1.278.0 prevez: fmtEUR za sporočilo meje — doktrina issue #71; fmt.ts je sam 0-uvozni čisti sloj, vzorec v277)', () => {
+    const imports = libSrc.split('\n').filter((l) => l.startsWith('import ') || l.includes('require('))
+    expect(imports).toEqual(["import { fmtEUR } from '@/lib/fmt'"])
   })
 })
 
@@ -599,11 +599,11 @@ describe('v1.249.0 E — pravice orders.priceOverride', () => {
 
 describe('v1.249.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.249.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.277.0')
+    expect(APP_VERSION).toBe('1.278.0')
     const versionFile = read('src/lib/version.ts')
-    expect(versionFile).toContain("'1.277.0'")
+    expect(versionFile).toContain("'1.278.0'")
     const compose = read('deploy/docker-compose.yml')
-    expect(compose).toContain('restaurantos:1.277.0')
+    expect(compose).toContain('restaurantos:1.278.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4002/4002 (+13: prc×12 + exc.report.kind.price_override)', () => {
@@ -630,7 +630,7 @@ describe('v1.249.0 Ž — registri in pini', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.249.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.277.0-backend-nizi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.278.0-lib-nizi')
   })
 
   test('Ž6: ruta pošilja dogodev + push (osvežitev plošč PO commitu)', () => {

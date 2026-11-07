@@ -68,8 +68,9 @@ export function pluralForm(n: number): '1' | '2' | '34' | 'n' {
  * backend besedila so SL literali, ne slovarski ključi — kot orderWord v
  * hourly-email.ts, v1.206, le posplošen). Besede za racun/vrstica/postavka/
  * oseba so IDENTIČNE slovarskim noun.<id>.* vrednostim (src/lib/i18n/sl.ts)
- * in se morajo z njimi usklajevati; kos v slovarjih ne obstaja (backend
- * specifičen). HR push telesa so izven obsega (današnja stanja: vsa push
+ * in se morajo z njimi usklajevati; kos in dan v slovarjih ne obstajata
+ * (backend specifična; v1.278.0 dan za reservation-slots maxAdvanceDays).
+ * HR push telesa so izven obsega (današnja stanja: vsa push
  * telesa so SL literali).
  *
  *   1 račun · 2 računa · 3 računi · 5 računov
@@ -77,6 +78,7 @@ export function pluralForm(n: number): '1' | '2' | '34' | 'n' {
  *   1 postavka · 2 postavki · 3 postavke · 5 postavk
  *   1 kos · 2 kosa · 3 kosi · 5 kosov
  *   1 oseba · 2 osebi · 3 osebe · 5 oseb
+ *   1 dan · 2 dneva · 3 dni · 5 dni   (3/4 in 5+ oblika sta isti »dni«)
  */
 export const SL_NOUNS = {
   racun: ['račun', 'računa', 'računi', 'računov'],
@@ -84,6 +86,7 @@ export const SL_NOUNS = {
   postavka: ['postavka', 'postavki', 'postavke', 'postavk'],
   kos: ['kos', 'kosa', 'kosi', 'kosov'],
   oseba: ['oseba', 'osebi', 'osebe', 'oseb'],
+  dan: ['dan', 'dneva', 'dni', 'dni'],
 } as const
 
 export type SlNounId = keyof typeof SL_NOUNS

@@ -39,6 +39,7 @@ import { db } from '@/lib/db'
 import { jstr } from '@/lib/map'
 import { writeAudit } from '@/lib/audit-chain'
 import { apToleranceConfig, DEFAULT_AP_TOLERANCE, type ApMatchTolerance } from '@/lib/ap-tolerance'
+import { fmtNumSI, fmtFixedSI } from '@/lib/fmt'
 
 /* ───────────── statusi ───────────── */
 
@@ -194,24 +195,24 @@ export async function evaluateApMatch(
     const qtyTolOrdered = (ordered * tolerance.qtyTolerancePct) / 100
     const qtyTolReceived = (received * tolerance.qtyTolerancePct) / 100
     if (cum > ordered + qtyTolOrdered + qtyEps) {
-      reasons.push(`Kumulativno fakturirano (${cum.toFixed(3)}) presega naročeno (${ordered}) več kot dovoljena toleranca.`)
+      reasons.push(`Kumulativno fakturirano (${fmtNumSI(cum, { max: 3 })}) presega naročeno (${fmtNumSI(ordered, { max: 3 })}) več kot dovoljena toleranca.`)
     }
     if (cum - received > qtyTolReceived + qtyEps) {
-      reasons.push(`Fakturirano (${cum.toFixed(3)}) presega dejansko sprejeto količino (${received}) — blago še ni prevzeto.`)
+      reasons.push(`Fakturirano (${fmtNumSI(cum, { max: 3 })}) presega dejansko sprejeto količino (${fmtNumSI(received, { max: 3 })}) — blago še ni prevzeto.`)
     }
     // 2. cena na enoto
     if (unitPrice > 0 || poPrice > 0) {
       const priceDiff = Math.abs(unitPrice - poPrice)
       const priceTol = (Math.abs(poPrice) * tolerance.priceTolerancePct) / 100
       if (priceDiff > priceTol + 1e-9) {
-        reasons.push(`Cena na enoto (${unitPrice.toFixed(4)}) odstopa od dogovorjene (${poPrice.toFixed(4)}).`)
+        reasons.push(`Cena na enoto (${fmtNumSI(unitPrice, { max: 4 })}) odstopa od dogovorjene (${fmtNumSI(poPrice, { max: 4 })}).`)
       }
     }
     // 3. DDV stopnja (absolutna razlika v odstotnih točkah)
     if (vatRate != null) {
       const vatDiff = Math.abs(vatRate - poVat)
       if (vatDiff > tolerance.vatTolerancePct + 1e-9) {
-        reasons.push(`DDV stopnja (${vatRate} %) se ne ujema z dogovorjeno (${poVat} %).`)
+        reasons.push(`DDV stopnja (${fmtNumSI(vatRate, { max: 1 })} %) se ne ujema z dogovorjeno (${fmtNumSI(poVat, { max: 1 })} %).`)
       }
     }
     // 4. skladnost zneska vrstice (količina × fakturirana cena × DDV)
@@ -224,7 +225,7 @@ export async function evaluateApMatch(
     // vrstica dobropisa ne odstopa sama od sebe.
     const lineAmountDiff = Math.abs(Math.abs(lineTotal) - recomputed)
     if (lineAmountDiff > tolerance.amountToleranceCents / 100 + 1e-9) {
-      reasons.push(`Znesek vrstice (${lineTotal.toFixed(2)}) ne ustreza količini × ceni × DDV (${recomputed.toFixed(2)}).`)
+      reasons.push(`Znesek vrstice (${fmtFixedSI(lineTotal, 2)}) ne ustreza količini × ceni × DDV (${fmtFixedSI(recomputed, 2)}).`)
     }
     // 5. pričakovani znesek po PO (varianca v centih)
     const expected = Math.abs(qty) * poPrice * (1 + poVat / 100)
@@ -257,7 +258,7 @@ export async function evaluateApMatch(
   const totalsOk = Math.abs(linesGrossSum - Math.abs(headTotal)) <= amountTolEur + 1e-9
     && Math.abs(Math.abs(headNet) - Math.abs(headTotal)) <= amountTolEur + 1e-9
   if (!totalsOk) {
-    globalReasons.push(`Vsota vrstic (${linesGrossSum.toFixed(2)}) se ne ujema z glavo računa (${Math.abs(headTotal).toFixed(2)}).`)
+    globalReasons.push(`Vsota vrstic (${fmtFixedSI(linesGrossSum, 2)}) se ne ujema z glavo računa (${fmtFixedSI(Math.abs(headTotal), 2)}).`)
   }
 
   let matchStatus: ApMatchStatus

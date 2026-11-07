@@ -32,6 +32,7 @@
 import { zonedDateParts, zonedTimeToUtc, localDateKey, type LocalDate } from './haccp-ops'
 import type { OpeningRow, SpecialDay, ValidatedRow } from './openinghours'
 import { DAY_NAMES_SL, parseHHMM } from './openinghours'
+import { slCount } from '@/lib/fmt'
 
 /** Privzete vrednosti politike (poravnane z DDL defaulti ReservationWidget). */
 export const WIDGET_POLICY_DEFAULTS = {
@@ -248,7 +249,7 @@ export function validateSlot(
   if (dateKey < todayKey) return { ok: false, code: 'date_in_past', message: 'Datum je v preteklosti.' }
   const maxDate = new Date(Date.UTC(today.y, today.m - 1, today.d + Math.max(0, Math.floor(policy.maxAdvanceDays))))
   if (dateKey > localDateKey({ y: maxDate.getUTCFullYear(), m: maxDate.getUTCMonth() + 1, d: maxDate.getUTCDate() })) {
-    return { ok: false, code: 'date_out_of_range', message: `Rezervacije so možne največ ${policy.maxAdvanceDays} dni vnaprej.` }
+    return { ok: false, code: 'date_out_of_range', message: `Rezervacije so možne največ ${slCount(Math.max(0, Math.floor(policy.maxAdvanceDays)), 'dan')} vnaprej.` }
   }
 
   const result = slotsForDate(policy, hours, dateKey, now, reservations, tableSeatsTotal, timeZone)

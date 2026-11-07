@@ -19,6 +19,7 @@
  *  - ledger ≡ DB: previousQty/newQty izračunata ruti iz svežih branj v TX.
  */
 import { num, r2 } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 
 /** Tip StockTransaction ob odpremi (izvorna lokacija, podpisana NEGATIVNO). */
 export const TRF_TX_OUT = 'TRANSFER_OUT'
@@ -106,7 +107,7 @@ export function validateTransferInput(body: unknown): { value: TrfInput } | { er
     return { error: 'Prenos potrebuje vsaj eno postavko.' }
   }
   if (b.lines.length > TRF_MAX_LINES) {
-    return { error: `Prenos lahko vsebuje največ ${TRF_MAX_LINES} postavk.` }
+    return { error: `Prenos lahko vsebuje največ ${slCount(TRF_MAX_LINES, 'postavka')}.` }
   }
 
   const seen = new Set<string>()

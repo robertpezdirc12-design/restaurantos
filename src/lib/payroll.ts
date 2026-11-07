@@ -22,6 +22,7 @@
  */
 
 import { num } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 import { payRateToCents } from '@/lib/timeclock'
 import type { SurchargeBases } from './payroll-surcharges'
 import type { SurchargeRates } from './payroll-rates'
@@ -136,7 +137,7 @@ export function validatePeriodRange(
     return { ok: false, error: 'Začetek obdobja je za koncem obdobja.' }
   }
   if (daysBetweenISO(startISO, endISO) + 1 > MAX_PERIOD_DAYS) {
-    return { ok: false, error: `Obdobje je predolgo (največ ${MAX_PERIOD_DAYS} dni).` }
+    return { ok: false, error: `Obdobje je predolgo (največ ${slCount(MAX_PERIOD_DAYS, 'dan')}).` }
   }
   if (endISO > todayKey) {
     return { ok: false, error: 'Konec obdobja ne sme biti v prihodnosti — obračun zajame pretekle dneve.' }

@@ -19,6 +19,7 @@
 import type { EslogInvoice } from '@/lib/eslog'
 import type { OutgoingEInvoice } from '@/lib/eslog-export'
 import { lineNetAmountOf } from '@/lib/eslog-export'
+import { fmtFixedSI } from '@/lib/fmt'
 
 export interface ValidationIssue {
   field: string
@@ -153,7 +154,7 @@ export function validateOutgoing(
         if (Math.abs(declared - byRate) > 0.004) {
           warnings.push({
             field: `lines[${i}].lineVatAmount`,
-            message: `Vrstica ${n}: DDV ${declared.toFixed(2)} ne ustreza osnova × stopnja (${byRate.toFixed(2)}).`,
+            message: `Vrstica ${n}: DDV ${fmtFixedSI(declared, 2)} ne ustreza osnova × stopnja (${fmtFixedSI(byRate, 2)}).`,
           })
         }
       }
@@ -188,10 +189,10 @@ export function validateOutgoing(
       ),
     )
     if (Math.abs(linesNet - Number(header.subtotal)) > 0.02) {
-      errors.push({ field: 'subtotal', message: `Vsota vrstic (neto ${r2(linesNet).toFixed(2)}) se ne ujema z glavo (${r2(Number(header.subtotal)).toFixed(2)}).` })
+      errors.push({ field: 'subtotal', message: `Vsota vrstic (neto ${fmtFixedSI(linesNet, 2)}) se ne ujema z glavo (${fmtFixedSI(r2(Number(header.subtotal)), 2)}).` })
     }
     if (Math.abs(linesVat - Number(header.vatAmount)) > 0.02) {
-      errors.push({ field: 'vatAmount', message: `Vsota DDV vrstic (${r2(linesVat).toFixed(2)}) se ne ujema z glavo (${r2(Number(header.vatAmount)).toFixed(2)}).` })
+      errors.push({ field: 'vatAmount', message: `Vsota DDV vrstic (${fmtFixedSI(linesVat, 2)}) se ne ujema z glavo (${fmtFixedSI(r2(Number(header.vatAmount)), 2)}).` })
     }
     if (Math.abs(r2(linesNet + linesVat) - Number(header.totalAmount)) > 0.02) {
       errors.push({ field: 'totalAmount', message: 'Skupni znesek vrstic se ne ujema z glavo računa.' })

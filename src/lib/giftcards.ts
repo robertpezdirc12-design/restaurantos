@@ -14,6 +14,7 @@
  * Izdaja kartice: determinističen id kartice `gc-<sha256(clientOperationId)[:24]>`.
  */
 import { createHash } from 'crypto'
+import { fmtEUR } from '@/lib/fmt'
 
 /** Determinističen id NOVE kartice pri izdaji (idempotenca izdaje prek clientOperationId) */
 export function giftCardIssueId(clientOperationId: string): string {
@@ -76,7 +77,7 @@ export function canRedeem(
   if (amountCents > card.balanceCents) {
     return {
       ok: false,
-      reason: `Na kartici je samo ${(card.balanceCents / 100).toFixed(2)} € — manjka ${((amountCents - card.balanceCents) / 100).toFixed(2)} €.`,
+      reason: `Na kartici je samo ${fmtEUR(card.balanceCents / 100)} — manjka ${fmtEUR((amountCents - card.balanceCents) / 100)}.`,
       status: st,
     }
   }
@@ -105,7 +106,7 @@ export const GC_TOPUP_MAX_CENTS = 500_000
 export function validateTopUpCents(amountCents: number): string | null {
   if (!Number.isFinite(amountCents) || Math.round(amountCents) !== amountCents) return 'Znesek polnjenja mora biti celo število centov.'
   if (amountCents <= 0) return 'Znesek polnjenja mora biti večji od 0.'
-  if (amountCents > GC_TOPUP_MAX_CENTS) return `Največje polnjenje je ${(GC_TOPUP_MAX_CENTS / 100).toFixed(2)} €.`
+  if (amountCents > GC_TOPUP_MAX_CENTS) return `Največje polnjenje je ${fmtEUR(GC_TOPUP_MAX_CENTS / 100)}.`
   return null
 }
 
@@ -113,7 +114,7 @@ export function validateTopUpCents(amountCents: number): string | null {
 export function validateIssueCents(initialCents: number, expiresAt: Date | string | null, now: Date = new Date()): string | null {
   if (!Number.isFinite(initialCents) || Math.round(initialCents) !== initialCents) return 'Začetni saldo mora biti celo število centov.'
   if (initialCents < 0) return 'Začetni saldo ne sme biti negativen.'
-  if (initialCents > GC_TOPUP_MAX_CENTS) return `Največji začetni saldo je ${(GC_TOPUP_MAX_CENTS / 100).toFixed(2)} €.`
+  if (initialCents > GC_TOPUP_MAX_CENTS) return `Največji začetni saldo je ${fmtEUR(GC_TOPUP_MAX_CENTS / 100)}.`
   if (expiresAt && new Date(expiresAt).getTime() <= now.getTime()) return 'Datum veljavnosti mora biti v prihodnosti.'
   return null
 }

@@ -17,6 +17,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource, isCrossTenantLocations, isBootstrapAdmin } from '@/lib/tenant'
+import { fmtEUR } from '@/lib/fmt'
 import { mapReceipt, nid, num, r2, jstr, PAYMENT_TYPES_DB } from '@/lib/map'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
 import { publishEvent } from '@/lib/events'
@@ -445,7 +446,7 @@ export async function issueFursReceipt(req: NextRequest) {
   const expected = r2(redeemValue + partsSum)
   if (Math.abs(expected - total) > 0.004) {
     return fail(
-      `Vsota delov plačila (${partsSum.toFixed(2)} €)${redeemValue ? ` + točke (${redeemValue.toFixed(2)} €)` : ''} mora biti enaka znesku za plačanje (${total.toFixed(2)} €)${linkPaidTotal > 0 ? ` — prek plačilnih povezav je že bilo pobranih ${linkPaidTotal.toFixed(2)} € (plačajte le preostanek)` : ''}.`,
+      `Vsota delov plačila (${fmtEUR(partsSum)})${redeemValue ? ` + točke (${fmtEUR(redeemValue)})` : ''} mora biti enaka znesku za plačanje (${fmtEUR(total)})${linkPaidTotal > 0 ? ` — prek plačilnih povezav je že bilo pobranih ${fmtEUR(linkPaidTotal)} (plačajte le preostanek)` : ''}.`,
       400,
     )
   }

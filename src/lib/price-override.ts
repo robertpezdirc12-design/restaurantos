@@ -27,6 +27,8 @@
  * Zgornja meja nove cene (EUR) — varovalo pred tipkarsko napako (1000× preveč
  * ni »višja cena«, ampak nesreča; 99.999,99 pokrije vsak jedilnik).
  */
+import { fmtEUR } from '@/lib/fmt'
+
 export const MAX_PRICE_OVERRIDE_EUR = 99999.99
 
 /** Najdaljši razlog spremembe cene (kuhar/kasa dvig, ne esej). */
@@ -108,7 +110,7 @@ export function validatePriceOverrideInput(raw: unknown): PriceOverrideInput {
   if (!Number.isFinite(priceNum)) return { ok: false, error: 'Cena ni veljavno število.' }
   if (priceNum < 0) return { ok: false, error: 'Cena ne more biti negativna (0 = gostišče; preklic = storno postavke).' }
   if (priceNum > MAX_PRICE_OVERRIDE_EUR) {
-    return { ok: false, error: `Cena presega zgornjo mejo ${MAX_PRICE_OVERRIDE_EUR.toFixed(2)} EUR.` }
+    return { ok: false, error: `Cena presega zgornjo mejo ${fmtEUR(MAX_PRICE_OVERRIDE_EUR)}.` }
   }
   const price = Math.round(priceNum * 100) / 100
   const reason = String(body.reason ?? '').trim()

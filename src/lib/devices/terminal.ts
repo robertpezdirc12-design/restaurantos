@@ -1,5 +1,7 @@
 'use client'
 
+import { fmtEUR } from '@/lib/fmt'
+
 /**
  * Plačilni terminal adapter (issue #1, naloga 2 — POS/plačilni terminal).
  * Načini (per-device localStorage):
@@ -57,7 +59,7 @@ export async function processTerminalPayment(amount: number): Promise<TerminalRe
   }
   // manual: operater potrdi na fizičnem terminalu in prepiše kodo odobritve
   const code = window.prompt(
-    `Terminal: AVTORIZACIJA ${amount.toFixed(2)} EUR\n\nPotrdite na plačilnem terminalu in vnesite kodo odobritve (approval code):`
+    `Terminal: AVTORIZACIJA ${fmtEUR(amount)}\n\nPotrdite na plačilnem terminalu in vnesite kodo odobritve (approval code):`
   )
   const trimmed = (code || '').trim()
   if (!trimmed) {

@@ -169,8 +169,9 @@ describe('ap-attachments: sanitizeAttachments', () => {
   })
 
   test('oversizeNote formats MB with 1 decimal', () => {
-    expect(oversizeNote(2 * 1024 * 1024)).toBe('(priloga 2.0 MB prevelika za arhiv v nastavitvah)')
-    expect(oversizeNote(0)).toContain('0.0 MB')
+    // v1.278.0 prevez: fmtFixedSI (vejica) namesto surove pike (doktrina issue #71, lib nizi)
+    expect(oversizeNote(2 * 1024 * 1024)).toBe('(priloga 2,0 MB prevelika za arhiv v nastavitvah)')
+    expect(oversizeNote(0)).toContain('0,0 MB')
   })
 
   test('default budget constant is 1.5 MB', () => {
