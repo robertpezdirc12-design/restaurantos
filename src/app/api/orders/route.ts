@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAnyPermission, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { assertOrgScope } from '@/lib/tenant'
+import { slCount } from '@/lib/fmt'
 import { mapOrder, ORDER_ACTIVE_DB } from '@/lib/map'
 import { createOrderCore, orderInclude, normalizeOrder, OrderError } from '@/lib/ops'
 import { pushEvent } from '@/lib/push'
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
     if (!replayed) {
       void pushEvent('ORDER_NEW', {
         title: 'Novo naročilo',
-        body: `${order.orderNumber ? `#${order.orderNumber} · ` : ''}${order.items?.length ?? 0} postavk`,
+        body: `${order.orderNumber ? `#${order.orderNumber} · ` : ''}${slCount(order.items?.length ?? 0, 'postavka')}`,
         url: '/dashboard?tab=kuhinja',
         tag: `order-${order.id}`,
       }, { roles: ['bar', 'kitchen', 'chef'], locationId: loc })

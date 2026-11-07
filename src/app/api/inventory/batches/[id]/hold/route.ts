@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { nid, num } from '@/lib/map'
+import { fmtNumSI } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { lotGovernanceColumnsReady, BATCH_STATUS } from '@/lib/lot-governance'
 import { publishEvent } from '@/lib/events'
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     'LOT_BLOCKED',
     {
       title: 'Serija v karanteni',
-      body: `${batch.InventoryItem?.name || batch.lotNumber} · serija ${batch.lotNumber} · ${num(batch.quantityRemaining)} ${batch.InventoryItem?.unit || ''}`,
+      body: `${batch.InventoryItem?.name || batch.lotNumber} · serija ${batch.lotNumber} · ${fmtNumSI(num(batch.quantityRemaining), { unit: batch.InventoryItem?.unit ? ` ${batch.InventoryItem.unit}` : undefined })}`,
       url: '/dashboard?tab=zaloga',
       tag: `lot-quarantine-${id}`,
     },

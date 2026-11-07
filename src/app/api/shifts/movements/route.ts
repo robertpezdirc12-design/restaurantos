@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, forbidden, isCentralRole } from '@/lib/api'
 import { nid, num, jstr } from '@/lib/map'
+import { fmtEUR } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 /* v1.239.0 §16 A: vedra plačil po vrsticah Payment (živi pregled gotovine) */
@@ -393,7 +394,7 @@ export async function POST(req: NextRequest) {
     if (direction === 'out' && !result.idempotentReplay) {
       void pushEvent('CASH_MOVEMENT', {
         title: 'Odliv gotovine iz predala',
-        body: `${type} · ${amount.toFixed(2)} € · ${user.name}${reasonName || reasonText ? ` · ${reasonName || reasonText}` : ''}`,
+        body: `${type} · ${fmtEUR(amount)} · ${user.name}${reasonName || reasonText ? ` · ${reasonName || reasonText}` : ''}`,
         url: '/dashboard?tab=izmene',
         tag: `cash-movement-${result.movement.id}`,
       }, { roles: ['manager', 'admin'], locationId: shift.locationId })

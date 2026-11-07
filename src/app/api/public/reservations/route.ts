@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { ok, fail } from '@/lib/api'
 import { db } from '@/lib/db'
 import { jstr, nid } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 import { clientIp, rateLimitPublic } from '@/lib/guest'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
@@ -252,7 +253,7 @@ export async function POST(req: NextRequest) {
   // push natakarjem/vodstvu (obstoječi tip RESERVATION_NEW — isti vizual kot interni)
   void pushEvent('RESERVATION_NEW', {
     title: 'Nova spletna rezervacija',
-    body: `${name} · ${start.toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${partySize} oseb`,
+    body: `${name} · ${start.toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${slCount(partySize, 'oseba')}`,
     url: '/dashboard?tab=rezervacije',
     tag: `reservation-${row.id}`,
   }, { roles: ['waiter', 'manager'], locationId: widget.locationId }).catch(() => {})

@@ -13,6 +13,7 @@ import {
   deviceAlive,
   GUEST_VISIBLE_ORDER_STATUS,
 } from '@/lib/guest'
+import { slCount } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { fireOrderCore } from '@/lib/order-fire'
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
       // pristalo — osebje je izvedelo šele iz polling vrste KDS.
       void pushEvent('ORDER_NEW', {
         title: 'Novo naročilo',
-        body: `${notePrefix}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${items.length} postavk`,
+        body: `${notePrefix}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${slCount(items.length, 'postavka')}`,
         url: '/dashboard?tab=kuhinja',
         tag: `order-${order.id}`,
       }, { roles: ['bar', 'kitchen', 'chef'], locationId })

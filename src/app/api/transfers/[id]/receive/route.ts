@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr, r2 } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 import { publishEvent } from '@/lib/events'
 import { pushEvent } from '@/lib/push'
 import { writeAudit } from '@/lib/audit-chain'
@@ -361,7 +362,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       'TRANSFER_RECEIVED',
       {
         title: 'Prenos prevzet',
-        body: `${transfer.transferNumber} · ${transfer.items.length} postavk`,
+        body: `${transfer.transferNumber} · ${slCount(transfer.items.length, 'postavka')}`,
         url: '/dashboard?tab=prenosi',
         tag: `transfer-received-${transfer.id}`,
       },

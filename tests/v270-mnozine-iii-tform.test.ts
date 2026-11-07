@@ -266,10 +266,15 @@ describe('v1.270.0 Č4 — montaža: tF/tN2/criterionNoun na klicnih mestih', ()
     expect(tab).toContain("tN('crm.segments.eligible', 'upravicen'")
   })
 
-  test('index.ts: pluralForm + tForm javna izvoza (izvleček iz nounKey)', () => {
+  test('index.ts: pluralForm + tForm javna izvoza (izvleček iz nounKey; PREVEZ v1.277 — pluralForm živi v čistem sloju fmt.ts, i18n re-izvozi)', () => {
     const s = read('src/lib/i18n/index.ts')
-    expect(s).toContain('export function pluralForm(')
+    // v1.277.0 prevez: pluralForm preseljena v čisti sloj '../fmt' (0 uvozov,
+    // strežniško varna — API rute za backend množine, ne da bi vlekle slovarje);
+    // javni API '../src/lib/i18n' ohranjen prek re-izvoza (to pogodbo pini ta test).
+    expect(s).toContain("export { pluralForm } from '../fmt'")
     expect(s).toContain('export function tForm(')
+    // definicija pripeta na novem mestu resnice:
+    expect(read('src/lib/fmt.ts')).toContain('export function pluralForm(')
   })
 })
 
@@ -277,9 +282,9 @@ describe('v1.270.0 Č4 — montaža: tF/tN2/criterionNoun na klicnih mestih', ()
 
 describe('v1.270.0 Ž — registri', () => {
   test('Ž1: verzija 1.270.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.276.0')
-    expect(read('src/lib/version.ts')).toContain("'1.276.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.276.0')
+    expect(APP_VERSION).toBe('1.277.0')
+    expect(read('src/lib/version.ts')).toContain("'1.277.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.277.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (noun 148 = 37 skupkov × 4)', () => {
@@ -302,6 +307,6 @@ describe('v1.270.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.276.0-decimalna-locila')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.277.0-backend-nizi')
   })
 })

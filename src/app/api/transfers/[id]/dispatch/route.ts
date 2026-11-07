@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, jstr, r2 } from '@/lib/map'
+import { slCount, fmtNumSI } from '@/lib/fmt'
 import { publishEvent } from '@/lib/events'
 import { pushEvent } from '@/lib/push'
 import { writeAudit } from '@/lib/audit-chain'
@@ -271,7 +272,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       'TRANSFER_DISPATCHED',
       {
         title: 'Prenos odpremljen',
-        body: `${transfer.transferNumber} · ${transfer.items.length} postavk · skupaj ${totalQty}`,
+        body: `${transfer.transferNumber} · ${slCount(transfer.items.length, 'postavka')} · skupaj ${fmtNumSI(totalQty, { max: 3 })}`,
         url: '/dashboard?tab=prenosi',
         tag: `transfer-dispatched-${transfer.id}`,
       },

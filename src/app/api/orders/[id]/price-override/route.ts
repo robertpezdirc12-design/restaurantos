@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
+import { fmtEUR } from '@/lib/fmt'
 import { mapOrder, num, r2, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
 import { recalcOrderTotals } from '@/lib/ops'
 import { vatFromGross } from '@/lib/billing'
@@ -227,7 +228,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   pushToLocationRoles(order.locationId, ['manager'], {
     tag: 'ORDER_ITEM_PRICE_OVERRIDE',
     title: `Sprememba cene · naročilo ${order.orderNumber}`,
-    body: `${item.menuItemName} (${Number(item.quantity)}×): ${result.oldPrice.toFixed(2)} € → ${result.newPrice.toFixed(2)} € · ${input.reason}`,
+    body: `${item.menuItemName} (${Number(item.quantity)}×): ${fmtEUR(result.oldPrice)} → ${fmtEUR(result.newPrice)} · ${input.reason}`,
   })
 
   const fresh = await db.order.findUnique({

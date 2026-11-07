@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAnyPermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
+import { slCount } from '@/lib/fmt'
 import { mapOrder } from '@/lib/map'
 import { orderInclude, normalizeOrder } from '@/lib/ops'
 import { pushEvent } from '@/lib/push'
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (result.firedCount > 0) {
     void pushEvent('ORDER_FIRE', {
       title: 'Tečaj poslan',
-      body: `${result.courseName || 'Postavke'}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${result.firedCount} kos`,
+      body: `${result.courseName || 'Postavke'}${order.orderNumber ? ` · #${order.orderNumber}` : ''} · ${slCount(result.firedCount, 'kos')}`,
       url: '/dashboard?tab=kuhinja',
       tag: `fire-${id}`,
     }, { roles: ['kitchen', 'bar', 'chef'], locationId: order.locationId })

@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope } from '@/lib/api'
 import { nid, num, r2 } from '@/lib/map'
+import { fmtEUR } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { buildOrderLines, grossOfOrderItems, type EinvoiceOrderLineInput } from '@/lib/einvoice-lines'
 import { generateEslogXml, computeOutgoingTotals, type OutgoingEInvoice, type OutgoingEInvoiceLine } from '@/lib/eslog-export'
@@ -133,7 +134,7 @@ export async function POST(req: NextRequest) {
       // sestaviti računa, ki bi znašal toliko, kot stranka dolguje. Bolje
       // zavrniti (fail-closed) kot izstaviti račun po domnevi.
       return fail(
-        `Znesek naročila (${expectedGross.toFixed(2)} €) presega vrednost postavk (${built.grossBefore.toFixed(2)} €) — izdaja e-računa je zavrnjena, uskladite naročilo.`,
+        `Znesek naročila (${fmtEUR(expectedGross)}) presega vrednost postavk (${fmtEUR(built.grossBefore)}) — izdaja e-računa je zavrnjena, uskladite naročilo.`,
         409,
       )
     }

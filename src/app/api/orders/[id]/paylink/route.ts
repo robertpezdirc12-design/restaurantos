@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
+import { fmtEUR } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { nid, r2, ORDER_ACTIVE_DB } from '@/lib/map'
 import { sendSms, smsConfigForLocation } from '@/lib/reminders'
@@ -205,7 +206,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (arr.some((a) => !Number.isFinite(a) || a < 0.01)) return fail('Vsak delež mora biti vsaj 0,01 €.', 400)
       const sum = r2(arr.reduce((s, a) => s + a, 0))
       if (Math.abs(sum - remaining) > 0.004) {
-        return fail(`Vsota deležev (${sum.toFixed(2)} €) mora biti enaka preostanku za plačilo (${remaining.toFixed(2)} €).`, 400)
+        return fail(`Vsota deležev (${fmtEUR(sum)}) mora biti enaka preostanku za plačilo (${fmtEUR(remaining)}).`, 400)
       }
       amounts = arr
     } else {

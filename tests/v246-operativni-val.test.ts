@@ -553,7 +553,7 @@ describe('v1.246.0 E · DDL gate (haccp-plans vzorec)', () => {
 
 describe('v1.246.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.246.0', () => {
-    expect(APP_VERSION).toBe('1.276.0')
+    expect(APP_VERSION).toBe('1.277.0')
   })
 
   test('Ž2: SCHEMA_MIGRATIONS 40 vnosov — checklist-runs z endpointom + desc ključem', () => {

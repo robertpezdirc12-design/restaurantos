@@ -20,6 +20,7 @@ import {
   portalPolicyOf,
   trackKeyOf,
 } from '@/lib/web-portal'
+import { fmtEUR, slCount } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { num } from '@/lib/map'
@@ -212,7 +213,7 @@ export async function POST(req: NextRequest) {
       // push osebju (fail-soft — ORDER_NEW obstoječi tip v matrici obveščanja)
       void pushEvent('ORDER_NEW', {
         title: 'Novo spletno naročilo',
-        body: `${isDelivery ? 'Dostava' : 'Prevzem'} · #${order.orderNumber} · ${items.length} postavk · ${num(order.total)} €`,
+        body: `${isDelivery ? 'Dostava' : 'Prevzem'} · #${order.orderNumber} · ${slCount(items.length, 'postavka')} · ${fmtEUR(num(order.total))}`,
         url: '/dashboard?tab=narocila',
         tag: `weborder-${order.id}`,
       }, { roles: ['waiter', 'staff', 'manager'], locationId: portal.locationId })

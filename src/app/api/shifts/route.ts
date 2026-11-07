@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { mapShift, nid, num, r2, jparse, jstr } from '@/lib/map'
+import { fmtEUR, slCount } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import { sendShiftDailySummary } from '@/lib/daily-email'
@@ -520,7 +521,7 @@ export async function POST(req: NextRequest) {
       // notification matrix; fire-and-forget)
       void pushEvent('Z_CLOSED', {
         title: 'Izmena zaključena (Z-poročilo)',
-        body: `${result.totalSales.toFixed(2)} € · ${result.receipts} računov · gotovina ${result.cash.toFixed(2)} €`,
+        body: `${fmtEUR(result.totalSales)} · ${slCount(result.receipts, 'racun')} · gotovina ${fmtEUR(result.cash)}`,
         url: '/dashboard?tab=izmene',
         tag: `z-closed-${result.zreport.id}`,
       }, { roles: ['manager', 'admin'], locationId: result.shift.locationId })

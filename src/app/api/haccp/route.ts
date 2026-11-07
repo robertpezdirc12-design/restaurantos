@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuthWithPerms, requirePermission, isResponse, ok, fail, locationScope, requireUserLocation } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { num, nid, jstr } from '@/lib/map'
+import { fmtNumSI } from '@/lib/fmt'
 import { auditChainFields } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
 import {
@@ -198,7 +199,7 @@ export async function POST(req: NextRequest) {
 
     // takojšen push ob KRITIČNEM odstopanju (warning ni dogodek — šum)
     if (severity === 'critical') {
-      const valueTxt = numericValue !== null ? `${numericValue} ${rule.unit}`.trim() : 'izid NE V REDU'
+      const valueTxt = numericValue !== null ? fmtNumSI(numericValue, { unit: rule.unit ? ` ${rule.unit}` : undefined }) : 'izid NE V REDU'
       void pushEvent(
         'HACCP_DEVIATION',
         {

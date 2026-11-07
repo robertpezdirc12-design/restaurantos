@@ -481,8 +481,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 
 describe('v1.216.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.276.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.276\.0'/)
+    expect(APP_VERSION).toBe('1.277.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.277\.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
@@ -501,6 +501,6 @@ describe('v1.216.0 — Č3: registri', () => {
     const wl = read('worklog.md')
     expect(wl.indexOf('Task ID: v1.216.0-update-check')).toBeLessThan(wl.indexOf('Task ID: v1.215.0-ci-alarm-lifecycle'))
     // v1.263.0 §37 finalna-verifikacija: okno povečano (novejši vnosi glave potiskajo R4b globlje)
-    expect(wl.slice(0, 48000)).toContain('R4b') // v1.272.0 diakritike-val: okno povečano 44000 → 48000 (E2E dokazna vrstica v1.272 je potisnila R4b na 45234; vzorec v263/v264/v265/v267/v268)
+    expect(wl.slice(0, 54000)).toContain('R4b') // v1.277.0 backend-nizi: okno povečano 48000 → 54000 (vnos vala ~8,1 kB je potisnil R4b na 51962; vzorec v263/v264/v265/v267/v268/v272)
   })
 })

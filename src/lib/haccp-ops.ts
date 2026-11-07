@@ -16,6 +16,7 @@
 import { db } from '@/lib/db'
 import { jparse } from '@/lib/map'
 import { isMissingSchemaError } from '@/lib/prisma-missing'
+import { fmtNumSI } from '@/lib/fmt'
 
 /* ═══════════════ 1. ČASOVNI PAS (Intl, DST-varen) ═══════════════ */
 
@@ -177,23 +178,26 @@ export function evalConfirm(rule: PlanRule, outcome: 'pass' | 'fail'): HaccpSeve
   return rule.critical ? 'critical' : 'warning'
 }
 
-/** Človeku berljiv opis pragu (posnetek za UI + izvoz). */
+/** Človeku berljiv opis pragu (posnetek za UI + izvoz).
+ *  v1.277.0: meje skozi fmtNumSI — sl-SI VEJICA (»≤ 4,5 °C«), ne surova
+ *  interpolacija s PIKO (doktrina issue #71 audit-12: HACCP temperature). */
 export function thresholdText(rule: PlanRule): string {
   if (rule.measureKind === 'confirm') return rule.critical ? 'izid: OK/neOK (kritično)' : 'izid: OK/neOK'
   const u = rule.unit ? ` ${rule.unit}` : ''
+  const lim = (n: number | null) => (n === null ? '' : fmtNumSI(n))
   switch (rule.direction) {
     case 'below':
       return rule.okLimit === null
         ? `beleženje${u}`
-        : `≤ ${rule.okLimit}${u}${rule.warnLimit !== null ? ` · opozorilo ≤ ${rule.warnLimit}${u}` : ''}`
+        : `≤ ${lim(rule.okLimit)}${u}${rule.warnLimit !== null ? ` · opozorilo ≤ ${lim(rule.warnLimit)}${u}` : ''}`
     case 'above':
       return rule.okLimit === null
         ? `beleženje${u}`
-        : `≥ ${rule.okLimit}${u}${rule.warnLimit !== null ? ` · opozorilo ≥ ${rule.warnLimit}${u}` : ''}`
+        : `≥ ${lim(rule.okLimit)}${u}${rule.warnLimit !== null ? ` · opozorilo ≥ ${lim(rule.warnLimit)}${u}` : ''}`
     case 'between':
       return rule.rangeMin === null || rule.rangeMax === null
         ? `beleženje${u}`
-        : `${rule.rangeMin}–${rule.rangeMax}${u}`
+        : `${lim(rule.rangeMin)}–${lim(rule.rangeMax)}${u}`
     default:
       return `beleženje${u}`
   }

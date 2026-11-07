@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth, requirePermission, isResponse, ok, locationScope, requireUserLocation, isCentralRole } from '@/lib/api'
 import { guardResource, assertOrgScope } from '@/lib/tenant'
 import { mapReservation, reservationStatusToDB, reservationSourceToDB, nid, jstr, ORDER_ACTIVE_DB } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 import { outsideHoursFor, validateOpeningHoursRowsPartial, type ValidatedRow } from '@/lib/openinghours'
 import { writeAudit } from '@/lib/audit-chain'
 import { pushEvent } from '@/lib/push'
@@ -283,7 +284,7 @@ export async function POST(req: NextRequest) {
   // matrix; fire-and-forget — reservation is a critical path)
   void pushEvent('RESERVATION_NEW', {
     title: 'Nova rezervacija',
-    body: `${String(body.guestName)} · ${new Date(body.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${Number(body.guests) || 2} oseb`,
+    body: `${String(body.guestName)} · ${new Date(body.reservedAt).toLocaleString('sl-SI', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${slCount(Number(body.guests) || 2, 'oseba')}`,
     url: '/dashboard?tab=rezervacije',
     tag: `reservation-${resvRow.id}`,
   }, { roles: ['waiter', 'manager'], locationId })

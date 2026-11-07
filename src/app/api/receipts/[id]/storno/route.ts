@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, num, r2, jparse, jstr, mapReceipt } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 import { publishEvent } from '@/lib/events'
 import { OrderError } from '@/lib/ops'
 import { fiscalAdapterFor } from '@/lib/fiscal'
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     ])
     if (saleTotal > 0 && stamped === 0) {
       return fail(
-        `Naročilo ima ${siblingReceipts + 1} računov (plačilo po izstavkih) — storno enega računa bi povrnilo zalogo vseh izstavkov. Računi, izdani pred v1.238.0, nimajo povezave odjema→račun: izvedite popravek zaloge ročno (inventura) ali stornirajte od zadnjega računa naprej.`,
+        `Računi na naročilu: ${slCount(siblingReceipts + 1, 'racun')} (plačilo po izstavkih) — storno enega računa bi povrnilo zalogo vseh izstavkov. Računi, izdani pred v1.238.0, nimajo povezave odjema→račun: izvedite popravek zaloge ročno (inventura) ali stornirajte od zadnjega računa naprej.`,
         409,
       )
     }

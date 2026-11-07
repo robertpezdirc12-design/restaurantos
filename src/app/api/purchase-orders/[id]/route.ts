@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
+import { fmtEUR, slCount } from '@/lib/fmt'
 import { jstr } from '@/lib/map'
 import { canTransition, type PoStatus } from '@/lib/procurement'
 import { writeAudit } from '@/lib/audit-chain'
@@ -185,7 +186,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (target === 'approved') {
     void pushEvent('PO_APPROVED', {
       title: 'Nabavno naročilo odobreno',
-      body: `${po.poNumber} · ${Number(po.totalAmount).toFixed(2)} € · ${po.PurchaseOrderItem.length} vrst`,
+      body: `${po.poNumber} · ${fmtEUR(Number(po.totalAmount))} · ${slCount(po.PurchaseOrderItem.length, 'vrstica')}`,
       url: '/dashboard?tab=nabava',
       tag: `po-approved-${id}`,
     }, { roles: ['warehouse', 'manager'], locationId: po.locationId })

@@ -20,6 +20,7 @@ import { hr } from './hr'
 import { en } from './en'
 import { de } from './de'
 import { it } from './it'
+import { pluralForm } from '../fmt'
 
 export type Locale = 'sl' | 'hr' | 'en' | 'de' | 'it'
 
@@ -148,21 +149,13 @@ export function nounKey(noun: string, n: number): string {
   return `noun.${noun}.${pluralForm(n)}`
 }
 
-/**
- * QA-val v1.270.0 — oblika za števnik kot samostojna funkcija (eno samo mesto
- * resnice). nounKey jo deli za noun.* ključe; tForm() pa za CELO-predložne
- * variante (hh.unpaidWarn.1/.2/.34/.n — kjer se z besedo preobrača tudi
- * GLAGOL: »1 postavka ni poslana · 2 postavki nista poslani · 3 postavke
- * niso poslane · 5 postavk ni poslanih«; nagiba se ne da sestaviti iz delov).
- */
-export function pluralForm(n: number): '1' | '2' | '34' | 'n' {
-  const v = Math.abs(Math.trunc(n))
-  if (!Number.isFinite(v)) return 'n'
-  if (v === 1) return '1'
-  if (v === 2) return '2'
-  if (v === 3 || v === 4) return '34'
-  return 'n'
-}
+// v1.277.0: pluralForm je preseljena v čisti sloj './fmt' (0 uvozov, strežniško
+// varen — API rute jo lahko uporabljajo za backend množine, ne da bi vlekle
+// slovarje SL/HR/EN/DE/IT v strežniški modul). Ta re-izvoz ohranja javni
+// API '../src/lib/i18n' nespremenjen (v270 pini + vsi klici tN/tForm zeleni).
+// (QA-val v1.270.0 — oblika za števnik kot samostojna funkcija; nounKey jo
+// deli za noun.* ključe, tForm() pa za CELO-predložne variante.)
+export { pluralForm } from '../fmt'
 
 /**
  * QA-val v1.270.0 — CELO-predložne množinske variante: izbere ključ

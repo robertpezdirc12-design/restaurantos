@@ -40,28 +40,14 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
   return data as T
 }
 
-export const fmtEUR = (n: number) =>
-  new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR' }).format(n)
-
 /**
- * Issue #71 audit-12: ENOTNO oblikovanje števil za vse izpise meritev/vrednosti
- * (HACCP temperature, DDV stopnje, recepture …) — sl-SI decimalna VEJICA
- * (»4,2 °C«, »9,5 %«), ne pika. Ena sama funkcija = ena sama oblika.
+ * v1.277.0: centralni formatirniki fmtEUR/fmtNumSI/fmtFixedSI so preseljeni v
+ * čisti sloj '@/lib/fmt' (0 uvozov, strežniško varen — API rute jih zdaj lahko
+ * uporabljajo za potisna televa in fail() napake). Ta modul jih le re-izvozi,
+ * da VSI obstoječi uvozi (25 datotek) in testni pini (v276/issue71) ostanejo
+ * zeleni. Ena funkcija = ena oblika (doktrina issue #71) — en sam vir resnice.
  */
-export const fmtNumSI = (n: number, opts?: { min?: number; max?: number; unit?: string }) =>
-  `${new Intl.NumberFormat('sl-SI', {
-    ...(opts?.min != null ? { minimumFractionDigits: opts.min } : {}),
-    maximumFractionDigits: opts?.max ?? 2,
-  }).format(n)}${opts?.unit ?? ''}`
-
-/**
- * v1.276.0: fiksno število decimalnk po vzorcu toFixed(N), a v sl-SI obliki
- * (vejica + ločilo tisočic) — »12,50«, ne »12.50«. min === max === N nadomesti
- * surove `${n.toFixed(N)}` izpise v render poteh (ista doktrina issue #71:
- * ena funkcija = ena oblika; surovi toFixed izpiše PIKO ob sosednjih vejicah).
- */
-export const fmtFixedSI = (n: number, digits: number, unit?: string) =>
-  `${new Intl.NumberFormat('sl-SI', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n)}${unit ?? ''}`
+export { fmtEUR, fmtNumSI, fmtFixedSI } from './fmt'
 
 /** v1.129.0 (Toast/Square benchmark): podpisana rast v % za Δ na KPI karticah (+12,3 % / −4,5 %) */
 export const fmtPctSigned = (ratio: number) => {

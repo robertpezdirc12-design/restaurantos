@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requirePermission, isResponse, ok, fail } from '@/lib/api'
 import { guardResource } from '@/lib/tenant'
 import { nid, jstr, num, r2 } from '@/lib/map'
+import { slCount } from '@/lib/fmt'
 import { writeAudit } from '@/lib/audit-chain'
 
 /**
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const movable = order.OrderItem.filter((it) => !it.voided)
   if (movable.length === 0) return fail('Naročilo nima razdeljivih postavk.', 400)
   if (movable.length < nRaw) {
-    return fail(`Na ${nRaw} gostov ni mogoče razdeliti ${movable.length} postavk — vsak gost mora dobiti vsaj eno.`, 409)
+    return fail(`Razdelitev ni mogoča: ${slCount(nRaw, 'oseba')} — ${slCount(movable.length, 'postavka')}; vsak gost mora dobiti vsaj eno.`, 409)
   }
 
   // LPT (longest processing time first): najdražje postavke najprej, vsaka v
