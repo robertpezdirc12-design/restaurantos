@@ -15,9 +15,11 @@ Work Log:
 
 - ISKRENO ODKRITJE VALA (ista lekcija v1.271/v1.274, tretja oblika izpuščenega pina): v184-cloud-typecheck:503 E5 pin ubežne oblike /'1\.274\.0'/ BREZ APP_VERSION predpone — python prevezni vzorec je pokrival SAMO obliko z APP_VERSION predpono; pošteni pregled po prevezu je iskal ubežne oblike, AMPAK z head -8 omejitvijo izpisa, ki je zadetek v184 ODREZAL (napaka orodja, ne klasifikacije); E5 je padel TUDI v lokalni suiti (34. fail — napačno klasificiran kot flaky), CI pa ga je odkril kot deterministicnega: typecheck-prod ✓ + neon-smoke ✓ + tests ✗. CI-FIX KORAK 1: prevez v184:503 na /'1\.275\.0'/ + celovit ponoven pregled vseh ubežnih oblik BREZ omejitve (0 ostalih izpuščenih — v184 je bil edini); v184 lokalno po popravku: 39 pass / 5 fail (SAMO F1-F5 okoljski, E5 zelen); suite profil po CI-fix: 33 fail + 4 errors (identično v1.274, 0 ne-okoljskih).
 
+- CI/PRODUKCIJA/SYNC: ZELENO PO 1 CI-FIX KORAKU (vzorec v1.272) @ 0077b4d: prvi tek @ f866532 — typecheck-prod ✓ + neon-smoke ✓ + tests ✗ (E5 izpuščen pin, odkritje zgoraj) + GitLab dvostrana sinhronizacija ✓ + pages ✓ + produkcija 1.275.0 ✓ (Vercel neodvisen); CI-FIX @ 0077b4d — CI quality gate (neon-smoke + tests) SUCCESS + GitLab SUCCESS + pages SUCCESS; produkcija 1.275.0 @ 0077b4d (cloud/postgresql, db connected, schema ok, latency ~280 ms — neposreden health fetch); sync-check SYNCED (0077b4d vse tri pike: lokalno = GitHub = produkcija).
+
 Stage Summary:
 - v1.275.0 ZAKLJUČEN: diakritike III zaključujejo izvozno površino — 15 uporabniško vidnih mest v payroll CSV izvozu (glava, napitnine, doplačilne osnove, nadure, noga), 0 novih ključev, 0 klicnih mest, 0 odvisnosti; contentHash dokazano neodvisen od besedil (že izvoženi obračuni nespremenjeni); BOM ×1 dokazan; prevez 18 zgodovinskih pinov v 3 testih; poštene izjeme (imena datotek ASCII, statusni enumi, ID kolone, zgodovinski komentarji) negativno pripeti.
-- AKCIJA: push z žetonom te seje → sync-check → Vercel health 1.275.0.
+- AKCIJA IZVEDENA: push z žetonom te seje (ghp_5uXq…3OVJb) ✓ → CI po 1 CI-fix koraku ZELENO ✓ → sync-check SYNCED vse tri pike ✓ → Vercel health 1.275.0 db connected schema ok ✓ — VAL POPOLNOMA ZAKLJUČEN.
 
 Task ID: v1.274.0-lokalni-determinizem
 Agent: glavni agent (Z.ai Code)
