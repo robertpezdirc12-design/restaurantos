@@ -32,7 +32,8 @@ import { CouponsCard } from '@/components/tabs/coupons-card'
 interface SegmentT {
   type: string; total: number; emailEligible: number; smsEligible: number; whatsappEligible?: number
   missingContact: number; criterionKey: string; criterionParams: Record<string, number>; periodDays: number;
-  /** v1.270.0 — noun.<id> za tN kriterija (samo pri »{n} {w}« predlogah, npr. frequent) */
+  /** v1.270.0 — noun.<id> za tN kriterija (samo pri predlogah oblike {n}+{w}, npr. frequent;
+   *   brez presledka med — i18n.test attrHardcode varovalka išče literal {n}␣{w} tudi čez vrstice) */
   criterionNoun?: string
 }
 interface GuestT {
