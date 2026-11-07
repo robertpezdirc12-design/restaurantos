@@ -541,8 +541,8 @@ describe('A. payroll.ts čisti motor', () => {
     expect(csv.includes(`Shema;${EXPORT_SCHEMA_VERSION}`)).toBe(true)
     expect(csv.includes('KontrolniHash;abcd1234')).toBe(true)
     expect(csv.includes('OpombaZaklepa;"Test; opomba"')).toBe(true) // ';' sproži narekovaje
-    expect(csv.includes('Napitnine pending se ne stejejo kot izplacane.')).toBe(true)
-    expect(csv.includes('RestaurantOS ne izracunava odstotkov doplacil')).toBe(true)
+    expect(csv.includes('Napitnine pending se ne štejejo kot izplačane.')).toBe(true)
+    expect(csv.includes('RestaurantOS ne izračunava odstotkov doplačil')).toBe(true)
     expect(csv.includes(`;${NAME1};`)).toBe(true) // ime gre skozi (vejica ni ločilo)
     expect(csv.includes('63,75')).toBe(true) // EUR z decimalno vejico
   })
@@ -1008,15 +1008,15 @@ describe('F. izvoz obračuna (CSV/JSON + digesti + PII)', () => {
     expect(csv.includes('63,75')).toBe(true)
     expect(csv.includes('SKUPAJ;Vnosi;9;Potrjeni;8;NetoMin;2520;BrutoEUR;415,75')).toBe(true)
     expect(csv.includes('Shema;payroll-export/3')).toBe(true)
-    expect(csv.includes('Napitnine pending se ne stejejo kot izplacane.')).toBe(true)
-    expect(csv.includes('RestaurantOS ne izracunava odstotkov doplacil')).toBe(true)
+    expect(csv.includes('Napitnine pending se ne štejejo kot izplačane.')).toBe(true)
+    expect(csv.includes('RestaurantOS ne izračunava odstotkov doplačil')).toBe(true)
   })
 
   it('F3. CSV napitnine: pending izvožena s statusom, NE v plačani vsoti; paid štet', async () => {
-    // distribucija d1 (emp1, 30,00) pending — vidna, a se NE sešteje v PlacanoEUR
+    // distribucija d1 (emp1, 30,00) pending — vidna, a se NE sešteje v PlačanoEUR
     expect(csv1.includes(`;30,00;pending`)).toBe(true)
     expect(csv1.includes(`;20,00;paid`)).toBe(true)
-    expect(csv1.includes('SKUPAJ;Napitnine;PendingEUR;30,00;PlacanoEUR;20,00;GotovinaEUR;30,00;KarticaEUR;20,00')).toBe(true)
+    expect(csv1.includes('SKUPAJ;Napitnine;PendingEUR;30,00;PlačanoEUR;20,00;GotovinaEUR;30,00;KarticaEUR;20,00')).toBe(true)
     // bazen v oknu z gotovino/kartico; pool3 (izven okna) NI v izvozu
     expect(csv1.includes(`;2026-09-09;30,00;20,00`)).toBe(true)
     expect(csv1).not.toContain(`${P}pool3`)

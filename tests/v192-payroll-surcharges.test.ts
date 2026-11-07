@@ -15,7 +15,7 @@
  *     kategorija (Prešernov dan 2026-02-08 je nedelja), odprt vnos → 0,
  *     nadure = dnevni presežek neto nad pragom (480; prag NE je presežen pri
  *     =), samo approved, clamp politike.
- *  Č3 IZVOZNI GRADNIKI (src/lib/payroll.ts, pure): CSV sekcija DOPLACILNE
+ *  Č3 IZVOZNI GRADNIKI (src/lib/payroll.ts, pure): CSV sekcija DOPLAČILNE
  *     OSNOVE + SKUPAJ + noga (odstotki ostajajo zunanji), Shema
  *     payroll-export/3, canonicalExportJson pokriva osnove (contentHash).
  *     N-27-3 (v1.197.0): zneski ob minutah, ko so noge nastavljene (Eur kolone).
@@ -330,17 +330,17 @@ describe('Č3 izvoz: CSV sekcija + kanonični JSON pokriva osnove (pure)', () =>
     expect(EXPORT_SCHEMA_VERSION).toBe('payroll-export/3')
   })
 
-  it('CSV: DOPLACILNE OSNOVE sekcija z vrednostmi + SKUPAJ + iskrena noga', () => {
+  it('CSV: DOPLAČILNE OSNOVE sekcija z vrednostmi + SKUPAJ + iskrena noga', () => {
     const csv = buildPayrollCsv(baseInput())
-    expect(csv.includes('DOPLACILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)')).toBe(true)
+    expect(csv.includes('DOPLAČILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)')).toBe(true)
     // N-27-3: Eur kolone VEDNO prisotne, vrednost PRAZNA, kadar noge ne obstajajo
-    expect(csv.includes('ZaposleniID;Zaposleni;DeloID;Delo;NocMin;NocEur;NedeljaMin;NedeljaEur;PraznikMin;PraznikEur;PotrjenoNetoMin')).toBe(true)
+    expect(csv.includes('ZaposleniID;Zaposleni;DeloID;Delo;NočMin;NočEur;NedeljaMin;NedeljaEur;PraznikMin;PraznikEur;PotrjenoNetoMin')).toBe(true)
     // vnos 690 neto na prazniško nedeljo: noč 420, nedelja 660, praznik 660 (brez nog → brez zneskov)
     expect(csv.includes(';420;;660;;660;;690')).toBe(true)
-    expect(csv.includes('SKUPAJ;NocMin;420;NocEur;;NedeljaMin;660;NedeljaEur;;PraznikMin;660;PraznikEur;')).toBe(true)
-    expect(csv.includes('Nadure po zaposlenem (dnevni presezek NETO minut nad pragom; po dnevu prijave)')).toBe(true)
+    expect(csv.includes('SKUPAJ;NočMin;420;NočEur;;NedeljaMin;660;NedeljaEur;;PraznikMin;660;PraznikEur;')).toBe(true)
+    expect(csv.includes('Nadure po zaposlenem (dnevni presežek NETO minut nad pragom; po dnevu prijave)')).toBe(true)
     expect(csv.includes(';210;;1')).toBe(true) // 690 − 480 = 210, 1 dan nad pragom (NadureEur prazna brez nog)
-    expect(csv.includes('RestaurantOS ne izracunava odstotkov doplacil')).toBe(true)
+    expect(csv.includes('RestaurantOS ne izračunava odstotkov doplačil')).toBe(true)
     expect(csv.includes('Shema;payroll-export/3')).toBe(true)
     expect(csv.includes('KontrolniHash;abcd1234')).toBe(true)
   })
@@ -359,7 +359,7 @@ describe('Č3 izvoz: CSV sekcija + kanonični JSON pokriva osnove (pure)', () =>
     expect(csv.includes('VNOSI DELAVNEGA ČASA')).toBe(true)
     expect(csv.includes('POVPZETEK PO ZAPOSLENEM IN DELOVNEM MESTU (samo potrjeno)')).toBe(true)
     expect(csv.includes('NAPITNINE')).toBe(true)
-    expect(csv.includes('Napitnine pending se ne stejejo kot izplacane.')).toBe(true)
+    expect(csv.includes('Napitnine pending se ne štejejo kot izplačane.')).toBe(true)
   })
 })
 
@@ -395,9 +395,9 @@ describe('Č4 rute: detail + close + export nosijo doplačilne osnove', () => {
     const re = await payrollExportGET(req('GET', `/api/payroll/${periodId}/export?format=csv`, tok), params(periodId))
     expect(re.status).toBe(200)
     csv = await re.text()
-    expect(csv.includes('DOPLACILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)')).toBe(true)
+    expect(csv.includes('DOPLAČILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)')).toBe(true)
     expect(csv.includes(';420;;660;;660;;1140')).toBe(true) // kategorije + potrjena neto osnova (Eur prazne brez nog)
-    expect(csv.includes('SKUPAJ;NocMin;420;NocEur;;NedeljaMin;660;NedeljaEur;;PraznikMin;660;PraznikEur;')).toBe(true)
+    expect(csv.includes('SKUPAJ;NočMin;420;NočEur;;NedeljaMin;660;NedeljaEur;;PraznikMin;660;PraznikEur;')).toBe(true)
     expect(csv.includes(';210;;1')).toBe(true) // nadure po zaposlenem
     expect(csv.includes('Shema;payroll-export/3')).toBe(true)
 

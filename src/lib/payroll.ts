@@ -629,7 +629,7 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   L.push(`OBRAČUN PLAČ - RestaurantOS`)
   L.push(`Obdobje;${period.startISO};${period.endISO}`)
   L.push(`Lokacija;${csvField(period.locationId)}`)
-  L.push(`ObdobjeID;${period.id};Razlicica;${period.version}`)
+  L.push(`ObdobjeID;${period.id};Različica;${period.version}`)
   L.push(`Izvoz;${exportMeta.seq};Ustvarjeno;${exportMeta.generatedISO};Shema;${EXPORT_SCHEMA_VERSION}`)
   L.push(`SpremenjeneVrstice;${exportMeta.changedEntries};EnakoKotPrej;${exportMeta.identicalToPrevious ? 'DA' : 'NE'}`)
   if (period.closeNote) L.push(`OpombaZaklepa;${csvField(period.closeNote)}`)
@@ -700,7 +700,7 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
     poolSeen.add(t.poolId)
     L.push([t.poolId, t.poolDate, eurCsv(t.poolCashCents), eurCsv(t.poolCardCents)].join(';'))
   }
-  L.push(`SKUPAJ;Napitnine;PendingEUR;${eurCsv(totals.tipsPendingCents)};PlacanoEUR;${eurCsv(totals.tipsPaidCents)};GotovinaEUR;${eurCsv(totals.cashTipsCents)};KarticaEUR;${eurCsv(totals.cardTipsCents)}`)
+  L.push(`SKUPAJ;Napitnine;PendingEUR;${eurCsv(totals.tipsPendingCents)};PlačanoEUR;${eurCsv(totals.tipsPaidCents)};GotovinaEUR;${eurCsv(totals.cashTipsCents)};KarticaEUR;${eurCsv(totals.cardTipsCents)}`)
   L.push('')
 
   // ── 5) SKUPAJ ──
@@ -708,15 +708,15 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   L.push(`NetoMin (potrjeno);${totals.netMinutesApproved}`)
   L.push(`BrutoEUR (potrjeno);${eurCsv(totals.grossPayCents)}`)
   L.push(`NapitninePendingEUR;${eurCsv(totals.tipsPendingCents)}`)
-  L.push(`NapitninePlacanoEUR;${eurCsv(totals.tipsPaidCents)}`)
+  L.push(`NapitninePlačanoEUR;${eurCsv(totals.tipsPaidCents)}`)
   L.push('')
 
   // ── 5.5) doplačilne osnove (P3 #19 v1.192.0 minute; N-27-3 v1.197.0 zneski
   //    ob minutah, ko so noge nastavljene — kolone VEDNO prisotne, vrednost
   //    prazna kadar noge ne obstajajo) ──
-  L.push(`DOPLACILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)`)
-  L.push(`Noc/Nedelja/Praznik po zaposlenem in delovnem mestu (pred odmorom)`)
-  L.push(`ZaposleniID;Zaposleni;DeloID;Delo;NocMin;NocEur;NedeljaMin;NedeljaEur;PraznikMin;PraznikEur;PotrjenoNetoMin`)
+  L.push(`DOPLAČILNE OSNOVE (minute + zneski, ko so noge nastavljene - odstotek potrdi zunanji payroll sistem)`)
+  L.push(`Noč/Nedelja/Praznik po zaposlenem in delovnem mestu (pred odmorom)`)
+  L.push(`ZaposleniID;Zaposleni;DeloID;Delo;NočMin;NočEur;NedeljaMin;NedeljaEur;PraznikMin;PraznikEur;PotrjenoNetoMin`)
   for (const b of surchargeBases.perEmployeeJob) {
     L.push(
       [
@@ -738,9 +738,9 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   const totS = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.sundayMinutes, 0)
   const totH = surchargeBases.perEmployeeJob.reduce((a, b) => a + b.holidayMinutes, 0)
   L.push(
-    `SKUPAJ;NocMin;${totN};NocEur;${eurCell(sumOf((b) => b.nightAmtCents))};NedeljaMin;${totS};NedeljaEur;${eurCell(sumOf((b) => b.sundayAmtCents))};PraznikMin;${totH};PraznikEur;${eurCell(sumOf((b) => b.holidayAmtCents))}`,
+    `SKUPAJ;NočMin;${totN};NočEur;${eurCell(sumOf((b) => b.nightAmtCents))};NedeljaMin;${totS};NedeljaEur;${eurCell(sumOf((b) => b.sundayAmtCents))};PraznikMin;${totH};PraznikEur;${eurCell(sumOf((b) => b.holidayAmtCents))}`,
   )
-  L.push(`Nadure po zaposlenem (dnevni presezek NETO minut nad pragom; po dnevu prijave)`)
+  L.push(`Nadure po zaposlenem (dnevni presežek NETO minut nad pragom; po dnevu prijave)`)
   L.push(`ZaposleniID;Zaposleni;NadureMin;NadureEur;DneviNadPragom`)
   for (const o of surchargeBases.overtime) {
     L.push([csvField(o.employeeId), csvField(o.employeeName), o.overtimeBasisMinutes, eurCell(o.overtimeAmtCents), o.daysOverThreshold].join(';'))
@@ -748,13 +748,13 @@ export function buildPayrollCsv(input: PayrollCsvInput): string {
   L.push('')
 
   // ── 6) noga (meje odgovornosti + kontrolni hash) ──
-  L.push(`Napitnine pending se ne stejejo kot izplacane.`)
+  L.push(`Napitnine pending se ne štejejo kot izplačane.`)
   if (ratesOn) {
     L.push(
-      `Noge (uporabniski vhod po kolektivni pogodbi);Noc=${pctCsv(surchargeRates.nightPct)};Nedelja=${pctCsv(surchargeRates.sundayPct)};Praznik=${pctCsv(surchargeRates.holidayPct)};Nadure=${pctCsv(surchargeRates.overtimePct)};Zakonitost nog potrdi zunanji payroll sistem.`,
+      `Noge (uporabniški vhod po kolektivni pogodbi);Noč=${pctCsv(surchargeRates.nightPct)};Nedelja=${pctCsv(surchargeRates.sundayPct)};Praznik=${pctCsv(surchargeRates.holidayPct)};Nadure=${pctCsv(surchargeRates.overtimePct)};Zakonitost nog potrdi zunanji payroll sistem.`,
     )
   } else {
-    L.push(`RestaurantOS ne izracunava odstotkov doplacil (noge niso nastavljene) - izvaza samo osnovne minute; odstotek potrdi zunanji payroll sistem.`)
+    L.push(`RestaurantOS ne izračunava odstotkov doplačil (noge niso nastavljene) - izvaža samo osnovne minute; odstotek potrdi zunanji payroll sistem.`)
   }
   L.push(`KontrolniHash;${exportMeta.contentHash8}`)
 

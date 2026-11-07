@@ -403,7 +403,7 @@ describe('v1.244.0 D · libreservation-pacing (čiste funkcije)', () => {
 
 describe('v1.244.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.244.0', () => {
-    expect(APP_VERSION).toBe('1.274.0')
+    expect(APP_VERSION).toBe('1.275.0')
   })
 
   test('Ž2: PRIMERJAVA §18 dokumentira ritem val', () => {
