@@ -187,12 +187,12 @@ describe('v225 Č2 · ure v distribucijah nosijo sl-SI vejico kot sosednji znesk
 
 describe('v225 Č · verzija + dokumentacija', () => {
   test('verzija je dvignjena na 1.238.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.270.0')
-    expect(read('src/lib/version.ts')).toContain("'1.270.0'")
+    expect(APP_VERSION).toBe('1.271.0')
+    expect(read('src/lib/version.ts')).toContain("'1.271.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.270.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.271.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
@@ -201,7 +201,7 @@ describe('v225 Č · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.270.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.271.0-finalna-verifikacija')
     expect(wl.indexOf('Task ID: v1.227.0')).toBeLessThan(wl.indexOf('Task ID: v1.224.0'))
   })
 })

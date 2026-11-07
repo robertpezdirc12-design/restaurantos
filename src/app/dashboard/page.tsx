@@ -4450,7 +4450,7 @@ function DashboardInner() {
                           <ul className="space-y-1">{shown.map((it) => <li key={it.id} className="flex justify-between"><span>{it.qty}× {it.name}</span><span>{fmtEUR(it.qty * it.unitPrice)}</span></li>)}</ul>
                           {rest > 0 && (
                             <button type="button" onClick={() => setExpandedOrderItems((pr) => ({ ...pr, [o.id]: true }))} className="mt-1 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 text-xs font-semibold text-stone-600 hover:bg-stone-100 hover:text-stone-800 transition-colors">
-                              {t('orders.moreItems', { n: rest })}
+                              {tN('orders.moreItems', 'ostal', rest)}
                             </button>
                           )}
                           {expanded && o.items.length > 3 && (

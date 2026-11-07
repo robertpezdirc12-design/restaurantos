@@ -209,9 +209,9 @@ describe('v1.263.0 Č2 — izris HTML + montaža virov', () => {
 
 describe('v1.263.0 Ž — registri', () => {
   test('Ž1: verzija 1.263.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.270.0')
-    expect(read('src/lib/version.ts')).toContain("'1.270.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.270.0')
+    expect(APP_VERSION).toBe('1.271.0')
+    expect(read('src/lib/version.ts')).toContain("'1.271.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.271.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4133/4133 (+4 ključi vala)', () => {
@@ -219,8 +219,8 @@ describe('v1.263.0 Ž — registri', () => {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4250)
-    expect(Object.keys(hr).length).toBe(4250)
+    expect(Object.keys(sl).length).toBe(4320)
+    expect(Object.keys(hr).length).toBe(4320)
   })
 
   test('Ž3: DDL ruta — natančen stavek, idempotenca, centralna vloga, audit', () => {
@@ -274,11 +274,11 @@ describe('v1.263.0 Ž — registri', () => {
     expect(doc).toContain('SKRIVANJE NIČELNIH POSTAVK NA RAČUNU v1.263.0')
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('POSODOBITEV (v1.263.0, PRIMERJAVA-VMESNIKOV-2026 §37)')
-    expect(auditDoc).toContain('- 4250 ključev SL in 4250 HR')
+    expect(auditDoc).toContain('- 4320 ključev SL in 4320 HR')
   })
 
   test('Ž10: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.270.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.271.0-finalna-verifikacija')
   })
 })

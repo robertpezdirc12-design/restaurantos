@@ -664,7 +664,7 @@ describe('i18n — regresija hardcodiranih besedil (glavna UI območja)', () => 
       ['Poseben dan dodan.', 'oh.okSpecialAdded'],
       ['Izbrišem posebni dan?', 'oh.confirmDeleteSpecial'],
       ['Poseben dan izbrisan.', 'oh.okSpecialDeleted'],
-      ['Dodam {n} slovenskih praznikov za {year} (zaprti dnevi)? Obstojeci datumi se preskocijo.', 'oh.confirmHolidays'],
+      ['Dodam {n} {w} za {year} (zaprti dnevi)? Obstoječi datumi se preskočijo.', 'oh.confirmHolidays'],
       ['Prazniki: dodanih {added}, obstoječih preskočenih {skipped}.', 'oh.okHolidays'],
       ['Nalaganje statusa …', 'oh.loadingStatus'],
       ['Privzeti urnik organizacije — lokacija nima svojega', 'oh.inheritedBadge'],

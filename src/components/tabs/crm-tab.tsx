@@ -180,13 +180,17 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
         body: JSON.stringify({ action, ...extra }),
       })
       if (action === 'preview' && res.audience) {
-        toast({ title: t('crm.toast.preview'), description: t('crm.toast.previewDetail', {
-          n: String(res.audience.eligible ?? 0), s: String(res.audience.suppressed ?? 0), m: String(res.audience.missingContact ?? 0),
-        }) })
+        toast({ title: t('crm.toast.preview'), description: [
+          tN('crm.toast.previewEligible', 'upravicen', res.audience.eligible ?? 0),
+          tN('crm.toast.previewUnsub', 'odjavljen', res.audience.suppressed ?? 0),
+          t('crm.toast.previewNoContact', { m: res.audience.missingContact ?? 0 }),
+        ].join(' · ') })
       } else if (action === 'dispatch' && res.dispatch) {
-        toast({ title: t('crm.toast.dispatched'), description: t('crm.toast.dispatchDetail', {
-          n: String(res.dispatch.sent ?? 0), f: String(res.dispatch.failed ?? 0), k: String(res.dispatch.skipped ?? 0),
-        }) })
+        toast({ title: t('crm.toast.dispatched'), description: [
+          tN('crm.toast.dispatchSent', 'poslan', res.dispatch.sent ?? 0),
+          tN('crm.toast.dispatchFailed', 'neuspesen', res.dispatch.failed ?? 0),
+          tN('crm.toast.dispatchSkipped', 'izpuscen', res.dispatch.skipped ?? 0),
+        ].join(' · ') })
       } else if (action === 'send-test') {
         toast({ title: t('crm.toast.testSent') })
       } else {
@@ -373,7 +377,7 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
                     <Badge variant="outline">{t(`crm.seg.${c.segmentType}`) === `crm.seg.${c.segmentType}` ? c.segmentType : t(`crm.seg.${c.segmentType}`)}</Badge>
                   </p>
                   <p className="text-xs text-stone-500 break-words">
-                    {t('crm.campaigns.stats', { e: c.eligibleCount, n: c.sentCount, f: c.failedCount, u: c.unsubscribedCount })}
+                    {tN('crm.campaigns.statsEligible', 'upravicen', c.eligibleCount)} · {tN('crm.campaigns.statsSent', 'poslan', c.sentCount)} · {tN('crm.campaigns.statsFailed', 'neuspesen', c.failedCount)} · {tN('crm.campaigns.statsUnsub', 'odjava', c.unsubscribedCount)}
                     {c.lastError ? ` · ${c.lastError}` : ''}
                   </p>
                 </div>
@@ -513,15 +517,15 @@ export function CrmTab({ canManage, centralLocationId = '' }: { canManage: boole
               <div className="flex flex-wrap gap-1.5">
                 <Badge className={STATUS_BADGE[detail.campaign.status] ?? 'bg-stone-100'}>{statusLabel(t, detail.campaign.status)}</Badge>
                 <Badge variant="secondary">{channelLabel(detail.campaign.channel)}</Badge>
-                <Badge variant="outline">{t('crm.detail.eligible', { n: detail.performance.sentToProvider + detail.performance.failed + detail.performance.skipped + detail.performance.unsubscribed + detail.performance.queued || detail.campaign.eligibleCount })}</Badge>
-                <Badge className="bg-emerald-100 text-emerald-800">{t('crm.detail.sent', { n: detail.performance.sentToProvider })}</Badge>
-                <Badge className="bg-red-100 text-red-800">{t('crm.detail.failed', { n: detail.performance.failed })}</Badge>
-                <Badge className="bg-stone-200 text-stone-700">{t('crm.detail.skipped', { n: detail.performance.skipped })}</Badge>
-                <Badge className="bg-amber-100 text-amber-800">{t('crm.detail.unsub', { n: detail.performance.unsubscribed })}</Badge>
+                <Badge variant="outline">{tN('crm.detail.eligible', 'redak', detail.performance.sentToProvider + detail.performance.failed + detail.performance.skipped + detail.performance.unsubscribed + detail.performance.queued || detail.campaign.eligibleCount)}</Badge>
+                <Badge className="bg-emerald-100 text-emerald-800">{tN('crm.detail.sent', 'poslan', detail.performance.sentToProvider)}</Badge>
+                <Badge className="bg-red-100 text-red-800">{tN('crm.detail.failed', 'neuspesen', detail.performance.failed)}</Badge>
+                <Badge className="bg-stone-200 text-stone-700">{tN('crm.detail.skipped', 'izpuscen', detail.performance.skipped)}</Badge>
+                <Badge className="bg-amber-100 text-amber-800">{tN('crm.detail.unsub', 'odjava', detail.performance.unsubscribed)}</Badge>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50/50 p-3 text-sm">
                 <p className="font-medium">{t('crm.detail.performance')}</p>
-                <p className="text-sm text-stone-600">{t('crm.detail.repeat', { n: detail.performance.repeatOrders, days: detail.performance.windowDays })}</p>
+                <p className="text-sm text-stone-600">{tN('crm.detail.repeat', 'ponovenNakup', detail.performance.repeatOrders, { days: detail.performance.windowDays })}</p>
                 <p className="mt-1 text-xs text-stone-500">{t('crm.detail.evidenceNote')}</p>
               </div>
               {canManage && (

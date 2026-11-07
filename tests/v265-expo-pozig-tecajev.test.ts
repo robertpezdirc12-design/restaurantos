@@ -30,7 +30,7 @@
  *    požiga (iskrena meja).
  *  Ž · REGISTRI: verzija 1.265.0, mirror DA / main NE, drift matcher
  *    dvosmerno strogo SAMO Location.kdsExpoFireEnabled, i18n pariteta
- *    4250/4250 (+9 ključev), dokument §39 + AUDIT POSODOBITEV,
+ *    4320/4320 (+9 ključev), dokument §39 + AUDIT POSODOBITEV,
  *    worklog Task ID.
  */
 import { describe, test, expect } from 'bun:test'
@@ -212,12 +212,12 @@ describe('v1.265.0 Č2 — dvojna avtorizacija + DDL + UI montaža', () => {
 
 describe('v1.265.0 Ž — registri', () => {
   test('Ž1: verzija 1.265.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.270.0')
-    expect(read('src/lib/version.ts')).toContain("'1.270.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.270.0')
+    expect(APP_VERSION).toBe('1.271.0')
+    expect(read('src/lib/version.ts')).toContain("'1.271.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.271.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4250/4250 (+9 ključev vala)', () => {
+  test('Ž2: i18n pariteta SL/HR 4320/4320 (+9 ključev vala)', () => {
     for (const k of [
       'kds.expoFireArm', 'kds.expoFireHint', 'kds.expoFireArmed',
       'kds.expoFireCancel', 'kds.expoFireDone',
@@ -227,8 +227,8 @@ describe('v1.265.0 Ž — registri', () => {
       expect(sl[k as keyof typeof sl]).toBeTruthy()
       expect(hr[k as keyof typeof hr]).toBeTruthy()
     }
-    expect(Object.keys(sl).length).toBe(4250)
-    expect(Object.keys(hr).length).toBe(4250)
+    expect(Object.keys(sl).length).toBe(4320)
+    expect(Object.keys(hr).length).toBe(4320)
   })
 
   test('Ž3: SQLite mirror nosi stolpec, MAIN shema GA NE (P2022 disciplina)', () => {
@@ -258,6 +258,6 @@ describe('v1.265.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.270.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.271.0-finalna-verifikacija')
   })
 })

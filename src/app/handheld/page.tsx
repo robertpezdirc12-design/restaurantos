@@ -499,7 +499,7 @@ function HandheldInner() {
                   </p>
                   {pend > 0 && (
                     <span className="absolute top-2 right-2 rounded-full bg-white/95 text-amber-700 text-xs font-bold px-2 py-0.5 border border-amber-300">
-                      {t('hh.unfired', { n: pend })}
+                      {tN('hh.unfired', 'neposlan', pend)}
                     </span>
                   )}
                 </button>
@@ -567,7 +567,7 @@ function HandheldInner() {
                     <span className="rounded-full border border-amber-300 bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-semibold shrink-0">{t('hh.orderBarPrep', { n: prepCount })}</span>
                   )}
                   {prepCount === 0 && readyCount > 0 && (
-                    <span className="rounded-full border border-emerald-300 bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs font-semibold shrink-0">{t('hh.orderBarReady', { n: readyCount })}</span>
+                    <span className="rounded-full border border-emerald-300 bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs font-semibold shrink-0">{tN('hh.orderBarReady', 'pripravljen', readyCount)}</span>
                   )}
                   <span className="text-sm font-bold tabular-nums ml-auto shrink-0">{fmtEUR(openOrder?.total ?? 0)}</span>
                   <ChevronDown className={`w-5 h-5 shrink-0 text-stone-400 transition-transform ${orderBarOpen ? 'rotate-180' : ''}`} aria-hidden />

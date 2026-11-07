@@ -52,7 +52,7 @@ interface MigApplyResult { id: string; ok: boolean; status: number; detail?: str
  * vloge — 403 → sekcija se skrije (backend je vir resnice).
  */
 export function MigrationsConsoleSection() {
-  const { t } = useI18n()
+  const { t, tN, tF } = useI18n()
   const [items, setItems] = useState<MigItem[] | null>(null)
   const [hidden, setHidden] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -87,7 +87,7 @@ export function MigrationsConsoleSection() {
           variant: 'destructive',
         })
       } else if (okN > 0) {
-        toast({ title: t('mig.appliedToast', { n: okN }) })
+        toast({ title: tN('mig.appliedToast', 'apliciranaMigracija', okN) })
       } else {
         toast({ title: t('mig.nothingPending') })
       }
@@ -112,7 +112,7 @@ export function MigrationsConsoleSection() {
             {err && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{err}</p>}
             {pending.length > 0 && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 flex items-center justify-between gap-3 flex-wrap">
-                <span>{t('mig.pendingBanner', { n: pending.length })}</span>
+                <span>{tF('mig.pendingBanner', pending.length)}</span>
                 <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0" disabled={busy} onClick={() => void apply()}>
                   {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mig.applyAll')}
                 </Button>

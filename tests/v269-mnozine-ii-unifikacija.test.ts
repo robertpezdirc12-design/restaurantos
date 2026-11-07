@@ -42,7 +42,7 @@
  *  Č3 · MONTAŽA: vsa klicna mesta (8 datotek) uporabljajo tN; mrtva koda
  *    (listekCountKey, wlParty, partySizeLabel, proc.veriga, .replace hack)
  *    je ODŠLA iz virov.
- *  Ž · REGISTRI: verzija 1.269.0, i18n 4250/4250 (+52 −9), AUDIT doc-truth,
+ *  Ž · REGISTRI: verzija 1.269.0, i18n 4320/4320 (+52 −9), AUDIT doc-truth,
  *    worklog Task ID.
  */
 import { describe, test, expect } from 'bun:test'
@@ -240,27 +240,27 @@ describe('v1.269.0 Č3 — montaža: tN na vseh klicnih mestih, mrtva koda odšl
 
 describe('v1.269.0 Ž — registri', () => {
   test('Ž1: verzija 1.269.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.270.0')
-    expect(read('src/lib/version.ts')).toContain("'1.270.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.270.0')
+    expect(APP_VERSION).toBe('1.271.0')
+    expect(read('src/lib/version.ts')).toContain("'1.271.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.271.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4250/4250 (+52 novih −9 upokojenih)', () => {
-    expect(Object.keys(sl).length).toBe(4250)
-    expect(Object.keys(hr).length).toBe(4250)
+  test('Ž2: i18n pariteta SL/HR 4320/4320 (+52 novih −9 upokojenih)', () => {
+    expect(Object.keys(sl).length).toBe(4320)
+    expect(Object.keys(hr).length).toBe(4320)
     // noun blok: 18 noun (do v1.269) + 4 (v1.270: prihodCent, postaja, upravicen,
-    // postavkaGen) = 22 noun × 4 oblike = 88 (števci sledejo trenutnemu stanju — prevez)
-    expect(Object.keys(sl).filter((k) => k.startsWith('noun.')).length).toBe(88)
+    // postavkaGen) = 22 noun × 4 oblike = 88; v1.271 +15 skupkov = 37 × 4 = 148 (števci sledejo trenutnemu stanju — prevez)
+    expect(Object.keys(sl).filter((k) => k.startsWith('noun.')).length).toBe(148)
   })
 
   test('Ž3: AUDIT števci usklajeni (doc-truth) + POSODOBITEV vnosi', () => {
     const audit = read('docs/RESTAURANTOS-AUDIT.md')
-    expect(audit).toContain('4250 ključev SL in 4250 HR')
+    expect(audit).toContain('4320 ključev SL in 4320 HR')
     expect(audit).toContain('POSODOBITEV (v1.269.0, množinske oblike II')
   })
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.270.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.271.0-finalna-verifikacija')
   })
 })

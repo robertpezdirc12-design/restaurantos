@@ -45,7 +45,7 @@
  *    starih klicev.
  *  Č3 · PLOŠČICA (FIX A): h-36 vseh stanj, nogov pogojni status, gost
  *    samo v telesu, 🔒 izraz pinned (issue70 nosi izrazni pin).
- *  Ž · REGISTRI: verzija 1.268.0, i18n 4250/4250 (+20 ključev),
+ *  Ž · REGISTRI: verzija 1.268.0, i18n 4320/4320 (+20 ključev),
  *    worklog Task ID.
  */
 import { describe, test, expect } from 'bun:test'
@@ -209,28 +209,28 @@ describe('v1.268.0 Č3 — ploščica mize: višina + dedup noge', () => {
 
 describe('v1.268.0 Ž — registri', () => {
   test('Ž1: verzija 1.268.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.270.0')
-    expect(read('src/lib/version.ts')).toContain("'1.270.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.270.0')
+    expect(APP_VERSION).toBe('1.271.0')
+    expect(read('src/lib/version.ts')).toContain("'1.271.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.271.0')
   })
 
-  test('Ž2: i18n pariteta SL/HR 4250/4250 (+20 ključev vala)', () => {
+  test('Ž2: i18n pariteta SL/HR 4320/4320 (+20 ključev vala)', () => {
     for (const noun of ['mesto', 'artikel', 'racun', 'obisk', 'tocka']) {
       for (const form of ['1', '2', '34', 'n']) {
         expect(sl[`noun.${noun}.${form}`]).toBeTruthy()
         expect(hr[`noun.${noun}.${form}`]).toBeTruthy()
       }
     }
-    expect(Object.keys(sl).length).toBe(4250)
-    expect(Object.keys(hr).length).toBe(4250)
+    expect(Object.keys(sl).length).toBe(4320)
+    expect(Object.keys(hr).length).toBe(4320)
   })
 
   test('Ž3: AUDIT števci usklajeni (doc-truth)', () => {
-    expect(read('docs/RESTAURANTOS-AUDIT.md')).toContain('4250 ključev SL in 4250 HR')
+    expect(read('docs/RESTAURANTOS-AUDIT.md')).toContain('4320 ključev SL in 4320 HR')
   })
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.270.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.271.0-finalna-verifikacija')
   })
 })

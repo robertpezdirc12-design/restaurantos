@@ -89,7 +89,7 @@ const NOTE_REQUIRED = new Set(['supplier_payment', 'safe_drop', 'guest_refund'])
 const REASON_REQUIRED = new Set(['supplier_payment', 'guest_refund'])
 
 export function CashMovementsCard({ shiftId, isManager }: { shiftId: string; isManager: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [data, setData] = useState<MovementsResp | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -431,7 +431,7 @@ export function CashMovementsCard({ shiftId, isManager }: { shiftId: string; isM
             </ScrollArea>
           )}
           {data.summary.voidedCount > 0 && (
-            <p className="text-xs text-stone-400 mt-1">{t('cmv.voidedCount', { n: data.summary.voidedCount })}</p>
+            <p className="text-xs text-stone-400 mt-1">{tN('cmv.voidedCount', 'razveljavitvenPremik', data.summary.voidedCount)}</p>
           )}
         </div>
 

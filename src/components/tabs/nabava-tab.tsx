@@ -871,7 +871,7 @@ export function NabavaTab({ locations, canManage }: { locations: { id: string; n
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 space-y-1">
               <p className="font-semibold">{t('eslog.summary')}: {eslogResult.apNumber}</p>
               <p>
-                {t('eslog.colSupplier')}: <strong>{eslogResult.supplierName}</strong> · {t('eslog.colAmount')}: <strong>{fmtEUR(eslogResult.totalAmount)}</strong> · {t('eslog.colDue')}: {eslogResult.dueDate} · {t('eslog.lines', { n: eslogResult.lines })}
+                {t('eslog.colSupplier')}: <strong>{eslogResult.supplierName}</strong> · {t('eslog.colAmount')}: <strong>{fmtEUR(eslogResult.totalAmount)}</strong> · {t('eslog.colDue')}: {eslogResult.dueDate} · {tN('eslog.lines', 'vrstica', eslogResult.lines)}
               </p>
             </div>
           )}

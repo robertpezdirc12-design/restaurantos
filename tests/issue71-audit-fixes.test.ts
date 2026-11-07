@@ -200,7 +200,7 @@ describe('issue #71 audit-23 — 3 postavke + »＋ N ostalih«', () => {
   test('privzeto 3 + razširitveni gumb (44 px)', () => {
     const d = dash()
     expect(d).toContain('o.items.slice(0, 3)')
-    expect(d).toContain("t('orders.moreItems', { n: rest })")
+    expect(d).toContain("tN('orders.moreItems', 'ostal', rest)")
     expect(d).toContain('expandedOrderItems')
   })
 })

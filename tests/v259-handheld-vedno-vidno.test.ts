@@ -90,12 +90,12 @@ describe('v1.259.0 A1 — handheld: zložljiva lepljiva vrstica naročila', () =
 
   test('A1e: najbolj relevantna faza v povzetku — priprava (amber) ima prednost pred pripravljenim (emerald)', () => {
     expect(hhSrc).toContain("t('hh.orderBarPrep', { n: prepCount })")
-    expect(hhSrc).toContain("t('hh.orderBarReady', { n: readyCount })")
+    expect(hhSrc).toContain("tN('hh.orderBarReady', 'pripravljen', readyCount)")
     // fazi sta izpeljani iz ISTEGA activeItems (eni resnici — memo ob istem viru)
     expect(hhSrc).toContain("activeItems.filter((it) => it.status === 'PREPARING').length")
     expect(hhSrc).toContain("activeItems.filter((it) => it.status === 'READY').length")
     // emerald veja samo, ko NI priprave (pogoj v izrisu)
-    const idx = hhSrc.indexOf("t('hh.orderBarReady', { n: readyCount })")
+    const idx = hhSrc.indexOf("tN('hh.orderBarReady', 'pripravljen', readyCount)")
     const before = hhSrc.slice(Math.max(0, idx - 260), idx)
     expect(before).toContain('prepCount === 0 && readyCount > 0')
   })
@@ -181,9 +181,9 @@ describe('v1.259.0 A2 — tablica: enak vzorec v listku (hiter način)', () => {
 
 describe('v1.259.0 Ž — registri', () => {
   test('Ž1: verzija 1.259.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.270.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.270.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.270.0')
+    expect(APP_VERSION).toBe('1.271.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.271.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.271.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4105/4105 (+4 hh.orderBar* +2 tlb.orderBar*)', () => {
@@ -196,8 +196,8 @@ describe('v1.259.0 Ž — registri', () => {
     }
     const slCount = Object.keys(sl).length
     const hrCount = Object.keys(hr).length
-    expect(slCount).toBe(4250)
-    expect(hrCount).toBe(4250)
+    expect(slCount).toBe(4320)
+    expect(hrCount).toBe(4320)
   })
 
   test('Ž3: dokumenta — PRIMERJAVA §33 + AUDIT POSODOBITEV + števci', () => {
@@ -208,7 +208,7 @@ describe('v1.259.0 Ž — registri', () => {
     expect(doc).toMatch(/Keep\s+active\s+orders\s+visible\s+while\s+browsing\s+menus/)
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('v1.259.0')
-    expect(auditDoc).toContain('- 4250 ključev SL in 4250 HR')
+    expect(auditDoc).toContain('- 4320 ključev SL in 4320 HR')
   })
 
   test('Ž4: 0 DDL + 0 strežniških sprememb — čista klientna plast nad obstoječo cevjo', () => {
@@ -230,6 +230,6 @@ describe('v1.259.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.270.0-finalna-verifikacija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.271.0-finalna-verifikacija')
   })
 })

@@ -104,7 +104,7 @@ function tcPay(eur: number): string {
 }
 
 export function DelovniCasTab({ canManage }: { canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [mine, setMine] = useState<TimeEntryT[]>([])
   const [activeEntry, setActiveEntry] = useState<TimeEntryT | null>(null)
   const [myStats, setMyStats] = useState<{ totalMinutes: number; approvedMinutes: number } | null>(null)
@@ -240,7 +240,7 @@ export function DelovniCasTab({ canManage }: { canManage: boolean }) {
             </ul>
           )}
           {clockInStock.count > clockInStock.items.length && (
-            <p className="mt-1 text-xs text-amber-700">{t('tc.lowStockMore', { n: String(clockInStock.count - clockInStock.items.length) })}</p>
+            <p className="mt-1 text-xs text-amber-700">{tN('tc.lowStockMore', 'drug', clockInStock.count - clockInStock.items.length)}</p>
           )}
         </div>
       )}
@@ -488,7 +488,7 @@ function fmtDateSL(dateKey: string): string {
 }
 
 export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [data, setData] = useState<OpeningHoursDataT | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -561,7 +561,7 @@ export function OdpiralniCasTab({ canManage }: { canManage: boolean }) {
 
   async function addHolidays() {
     if (!data?.holidays?.length) return
-    if (!confirm(t('oh.confirmHolidays', { n: data.holidays.length, year: data.holidaysYear }))) return
+    if (!confirm(tN('oh.confirmHolidays', 'praznikSL', data.holidays.length, { year: data.holidaysYear }))) return
     setBusy(true); setMsg('')
     try {
       const res = await api<{ added: number; skipped: string[] }>('/api/opening-hours/special', {
@@ -813,7 +813,7 @@ const formPayload = (f: DiscForm) => ({
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i))
 
 export function DiscountsTab({ canManage }: { canManage: boolean }) {
-  const { t } = useI18n()
+  const { t, tN } = useI18n()
   const [rows, setRows] = useState<DiscountRowT[]>([])
   const [cats, setCats] = useState<CatLiteT[]>([])
   const [loading, setLoading] = useState(true)
@@ -913,7 +913,7 @@ export function DiscountsTab({ canManage }: { canManage: boolean }) {
                       <p className="text-xs text-stone-500 mt-1">
                         {d.appliesTo === 'item' ? t('disc.appliesItems') : t('disc.appliesCheck')}
                         {d.promoCode ? ` · ${t('disc.promo')}: ${d.promoCode}` : ''}
-                        {d.maxUses != null ? ` · ${t('disc.uses', { n: d.currentUses, m: d.maxUses })}` : ` · ${t('disc.unlimited', { n: d.currentUses })}`}
+                        {d.maxUses != null ? ` · ${tN('disc.uses', 'uporaba', d.currentUses, { m: d.maxUses })}` : ` · ${tN('disc.unlimited', 'uporaba', d.currentUses)}`}
                         {hw ? ` · ${hw}` : ''}
                       </p>
                     </div>
