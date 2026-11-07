@@ -1,3 +1,21 @@
+Task ID: v1.278.0-zakljucek-push
+Agent: glavni agent (Z.ai Code)
+Task: ZAKLJUČEK PUSHA v1.277.0 + v1.278.0 po vzorcu prejšnjih valov (AKCIJA iz 8ba3a62 izvršena v celoti: svež PAT iz klepeta → set-url → push → CI → sync-check → produkcija 1.278.0).
+
+Work Log:
+- PUSH IZVRŠEN (žeton ghp_NjZX…RVSxO iz tega sporočila lastnika): `a6e5c29..8ba3a62 main -> main` — 4 commiti (9c69f22 v1.277.0 val + 8d75525 v1.277.0 worklog + f6b2463 v1.278.0 val + 8ba3a62 v1.278.0 worklog stanje). `git fetch origin` pred pushom OK (žeton veljaven, za razliko od prejšnje seje).
+- CI NA 8ba3a62 VSE ZELENO: quality gate (neon-smoke + suita 5634 testov) SUCCESS · pages build and deployment SUCCESS · Dvosmerna sinhronizacija GitLab <-> GitHub SUCCESS (korak »Preveri zakasnitev zrcala (main = main)« SUCCESS — GitLab main = 8ba3a62, zakasnitev 0). Brez CI-fix koraka — prvi tek zelen.
+- PRODUKCIJA: https://restaurantos-theta.vercel.app/api/health → **1.278.0 @ 8ba3a62, database connected, schema ok** (različica in commit potisnjena takoj po pages buildu; `restaurantos.app` prek curl javlja Cloudflare WAF izziv — znano vedenje za skriptne odjemalce, ne vpliva na produkcijo; primarni vir resnice je vercel.app sonda).
+- SYNC-CHECK (bun scripts/sync-check.ts, izhod 0): local = mirror = prod = 8ba3a62230b23905ef6adb7139231ee08042cc28, stanje **SYNCED — vse tri pike na istem commitu**. Skupaj z GitLab zrcalom (main = main prek sync workflow): **LOKALNO = GITHUB = GITLAB = PRODUKCIJA, štiristranska sinhronizacija potrjena.**
+- Remote URL očiščen v anonimno obliko po pushu (javni repo, fetch deluje).
+- AKCIJA ZA LASTNIKA: PREKLIČI žeton te seje (ghp_NjZX…RVSxO — stalna točka: žeton je bil izmenjan v klepetu, vzorec B-7 samodejne razveljavitve izpostavljenih žetonov). Produkcija: DDL kliki (payroll-surcharge-rates + equipment-maintenance + inventory-ean + documents) so bili že usklajeni v prejšnjih valih — če konzola Enterprise → Shema migracije še kaže čakajoče DDL, potrditi; v1.277.0 + v1.278.0 sta 0 DDL (pojavita se samodejno z deployem).
+
+Stage Summary:
+- VALOVA v1.277.0 (backend nizi — čisti sloj fmt.ts + SL_NOUNS) in v1.278.0 (lib nizi — slepa pega src/lib) POPOLNOMA ZAKLJUČENA po vzorcu valov: lokalna vrata so bila že zelena (tsc 0/lint 0/suita 5634 pass + E2E živi dokazi), push blokada (401 razveljavljeni žeton) rešena z svežim PAT iz klepeta; CI/produkcija/sync VSE ZELENO brez CI-fix koraka.
+- Naslednji val: izbiro povedej iz registrov — kandidati po zadnjih delovnih dnevnikih: OSS-10 (A — potreba preveriti z uporabo), OSS-11 (B oblikovna), OSS-12 (C mreža), B-ostanki SMTP/WhatsApp transport (odvisni od odločitev lastnika); alternativno QA/POLISH doktrina issue #71 (nadaljevanje na preostalih površinah — e-poštni sloj je dokumentirana namera, CSV/xsd strojne oblike izven).
+
+---
+
 Task ID: v1.278.0-lib-nizi-push-stanje (dopolnitev istega vala)
 Agent: glavni agent (Z.ai Code)
 Task: ISKRENO STANJE PUSHA po zaključku v1.278.0 (vzorec 8d75525 iz v1.277.0).
