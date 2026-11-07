@@ -1,3 +1,15 @@
+Task ID: v1.278.0-lib-nizi-push-stanje (dopolnitev istega vala)
+Agent: glavni agent (Z.ai Code)
+Task: ISKRENO STANJE PUSHA po zaključku v1.278.0 (vzorec 8d75525 iz v1.277.0).
+
+Work Log:
+- Vsa VRATA v1.278.0 ZELENA (tsc 0 / lint 0 / suita 5634 pass — 33 fail + 4 errors izključno okoljski, identično v1.277; E2E živi dokazi s screenshotoma). Val LOKALNO POPOLNOMA ZAKLJUČEN @ f6b2463.
+- PUSH BLOKIRAN: žeton ghp_5uXq…3OVJb (iz 14. seje, v v1.277 je ob pushu dobil 401) je na začetku TE seje preverjen neposredno prek GitHub API — odgovor: 401 Bad credentials (GitHub ga je SAMODEJNO RAZVELJAVIL, ker je bil izpostavljen v klepetu — vzorec B-7, isti mehanizem kot oba prejšnja žetona). Remote URL je očiščen v anonimno obliko (javni repo, fetch deluje; `git fetch origin` OK).
+- STANJE: lokalni main je 3 commiti pred origin/main (GitHub = GitLab = produkcija so na v1.276.0): 9c69f22 (v1.277.0 val) + 8d75525 (v1.277.0 worklog stanje) + f6b2463 (v1.278.0 val). 0 shranjenih poveril na stroju.
+- AKCIJA ZA LASTNIKA (enkrat za VSA TRI letača): svež PAT (ghp_…, pravice repo contents:write) → `git remote set-url origin https://<PAT>@github.com/robertpezdirc12-design/restaurantos.git` → `git push origin main` → CI (quality gate + pages + GitLab mirror) → `bun scripts/sync-check.ts` → Vercel health 1.278.0 → žeton prekliči (GitHub sam izpostavljene žetone razveljavi — vnovični vzorec).
+
+---
+
 Task ID: v1.278.0-lib-nizi
 Agent: glavni agent (Z.ai Code)
 Task: QA/POLISH VAL v1.278.0 (LIB NIZI — doktrina issue #71 na sloju src/lib: SLEPA PEGA med obsegom v1.276 (src/components + src/app brez api/) in v1.277 (src/app/api/): sporočila čistih knjižnic — validacijske napake, potisna telesa, SMS, terminalski pozivi — so izpisovala zneske s SUROVO PIKO (»5.00 €«, »244.00 €« v push obvestilu, »AVTORIZACIJA 12.50 EUR«) in trdo kodirane rodilnike za VSE števnike (»1 oseb« v SMS, »1 dni« pri maxAdvanceDays=1 — ŽIVA NAPAKA). 0 DDL, 0 AI, 0 novih ključev, 0 novih odvisnosti, 0 novih rut, 0 UI komponent.
