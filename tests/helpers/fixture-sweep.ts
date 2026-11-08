@@ -123,6 +123,8 @@ export const TEST_PREFIXES = [
   'v245-', // kombinacijski val (v1.245.0 — kombinacije miz + walk-in rezerva)
   'v246-', // operativni val (v1.246.0 — digitalni checklisti: predloge + izvedbe)
   'v225-', // qa-tips-decimal (v1.225.0 — izmerjeno v živi dev bazi 3. 11. 2026: v225-Admin je ukradel demo-vstop)
+  'v248-', // strežni val (v1.248.0 — izmerjeno v1.282.0: osirotele ChecklistRun/ScheduledEmailLog vrstice po zelenih tekih; registracija omogoča centralni samoceljiv sweep)
+  'v282-', // email determinizem + sweep pokritje (v1.282.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -227,6 +229,17 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'supplierPriceHistory' },
   { model: 'supplier' },
   { model: 'integration' },
+  // v1.282.0: izvedbe digitalnih checklistov (v1.246.0) — id-predponske fiksture
+  // (vzorec v248 G1) so ostajale v dev bazi po ZELENIH tekih (ChecklistRun ni bil
+  // na seznamu; izmerjeno v1.282.0: 2 osiroteli vrstici na tek). templateId je
+  // skalar BREZ FK (predloge živijo v config JSON Integration vrstice) → lahko
+  // takoj za logičnim staršem; nid() otroke testnih lokacij pokriva spodnji
+  // lokacijski prehod.
+  { model: 'checklistRun' },
+  // v1.282.0: e-poštni dnevnik — id-predponske fiksture (vzorec v167); vrstice,
+  // ki jih piše PRODUKCIJSKA koda (nid() id, prejemnik = testna e-pošta), čista
+  // FIELD_SWEEP po prejemniku spodaj.
+  { model: 'scheduledEmailLog' },
   { model: 'job' },
   { model: 'restaurantSettings' },
   { model: 'accountsPayable' },
@@ -279,6 +292,10 @@ const LOCATION_CHILD_SWEEP = [
   'loyaltyAccount',
   'integration',
   'printJob',
+  // v1.282.0: izvedbe checklistov, ki jih piše APLIKACIJA (cron/opravila) z
+  // nid() id-jem BREZ predpone — predpona živi v locationId (skalar) → ta
+  // prehod jih počisti pred brisanjem testne lokacije.
+  'checklistRun',
   // v1.95.0 (issue #54): nabavna pot (POST/receive) ustvari PurchaseOrder/GoodsReceipt/
   // AccountsPayable/SupplierPriceHistory z nid() id-ji BREZ predpone (poNumber/grnNumber/
   // apNumber/invoiceNumber prav tako brez nje) — testna predpona živi SAMO v locationId.
@@ -355,6 +372,14 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // vrstice. Izbris je v dev SQLite tudi sicer samoceljiv: nextSequence in
   // allocateReceiptNumber Counter ustvarita znova.
   { model: 'counter', fields: ['name'], contains: true },
+  // v1.282.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
+  // (sendDailyDigest/sendShiftDailySummary/sendWeeklyTaskSummary) — id je
+  // nid() BREZ predpone, prejemnik pa je e-pošta testne nastavitvene vrstice
+  // (izmerjeno: osirotela TASK_WEEKLY vrstica 'v248-digest@test.local' po
+  // zelenem teku v248 G3). startsWith po prejemniku ujame natanko testne
+  // vrstice — realni prejemniki ne morejo nositi testne predpone v lokalnem
+  // delu naslova. List brez FK → varno v fazi 0.
+  { model: 'scheduledEmailLog', fields: ['recipient'] },
   // v1.147.0 (release audit #8/#9): Employee.pin je @unique, testi pa v njega
   // napišejo dobesedno vrednost s predpono (`pin: 'pi49-a'`), id pa je nid() BREZ
   // predpone. Če tek crashne, ostane tak zaposlen; ko kasneje izbrisan njegova

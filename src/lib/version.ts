@@ -14,5 +14,5 @@
  * client komponente MORAJO uvažati izključno iz '@/lib/version'.
  * Regresijsko varovano s tests/client-bundle-hygiene.test.ts (sk68-).
  */
-export const APP_VERSION = '1.281.0'
+export const APP_VERSION = '1.282.0'
 export const APP_COMMIT = 'reconstruction-1.0.0'

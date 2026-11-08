@@ -27,7 +27,7 @@
  */
 import { db } from '@/lib/db'
 import { nid, num } from '@/lib/map'
-import { smtpTransportForLocation } from '@/lib/reminders'
+import { smtpTransportForLocation, findEmailSettings } from '@/lib/reminders'
 import { dueTodayRules, parseRecurringConfig } from '@/lib/recurring-po'
 import { daysOverdue, localDateKey, startOfDay } from '@/lib/cron-daily'
 import { hourlyReportSection, type HourlyEmailBucket } from '@/lib/hourly-email'
@@ -263,8 +263,8 @@ export async function sendDailyDigest(
       select: { id: true },
     })
     if (alreadySent) return { sent: false, reason: 'already_sent' }
-    const settings = await db.restaurantSettings.findFirst()
-    if (!settings?.emailEnabled || !settings.email) return { sent: false, reason: 'email_not_configured' }
+    const settings = await findEmailSettings()
+    if (!settings?.email) return { sent: false, reason: 'email_not_configured' }
     const transport = await (args.transportFactory ?? smtpTransportForLocation)(args.locationId ?? null)
     if (!transport) return { sent: false, reason: 'smtp_not_configured' }
 
@@ -429,8 +429,8 @@ async function loadRecurringToday(): Promise<RecurringTodayEntry[]> {
  */
 export async function sendShiftDailySummary(d: ShiftSummaryData): Promise<void> {
   try {
-    const settings = await db.restaurantSettings.findFirst()
-    if (!settings?.emailEnabled || !settings.email) return
+    const settings = await findEmailSettings()
+    if (!settings?.email) return
     const transport = await smtpTransportForLocation(d.locationId)
     if (!transport) return
     // OPS-10 val 3: digest section is best-effort — a failure never blocks the e-mail
@@ -555,8 +555,8 @@ export async function sendWeeklyTaskSummary(args: { now?: Date; transportFactory
       select: { id: true },
     })
     if (already) return { sent: false, reason: 'already_sent' }
-    const settings = await db.restaurantSettings.findFirst()
-    if (!settings?.emailEnabled || !settings.email) return { sent: false, reason: 'email_not_configured' }
+    const settings = await findEmailSettings()
+    if (!settings?.email) return { sent: false, reason: 'email_not_configured' }
     const transport = await (args.transportFactory ?? smtpTransportForLocation)(null)
     if (!transport) return { sent: false, reason: 'smtp_not_configured' }
 

@@ -78,10 +78,32 @@ export function reminderText(t: ReminderTarget, locale: 'sl' | 'hr'): { subject:
   }
 }
 
+/**
+ * v1.282.0 — deterministični iskalnik e-poštnih nastavitev (družina 6 mest,
+ * 2 modula: daily-email.ts ×3 + reminders.ts ×3).
+ *
+ * PREJ: goli klic `findFirst()` na db.restaurantSettings — brez pogoja, brez
+ * orderinga: zmagala je PRVA VSTAVLJENA vrstica, ne „prava“. Izmerjena okvara
+ * (v1.281.0, v248 G3): vrstica iz `db:seed` (emailEnabled=0) je preglasila
+ * omogočeno vrstico testa → email_not_configured, kljub temu da je omogočena
+ * obstajala.
+ *
+ * ZDAJ: samo vrstice z emailEnabled=true, najstarejša po createdAt (id kot
+ * deterministični razreševalnik izenačenj) zmaga — vsa klicna mesta dobijo
+ * ISTO vrstico neodvisno od vrstnega reda vstavljanja. Regresijsko varovano
+ * s tests/v282-email-determinizem-sweep.test.ts (Č1a–Č1d + Č2 pini).
+ */
+export async function findEmailSettings() {
+  return db.restaurantSettings.findFirst({
+    where: { emailEnabled: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+}
+
 /** SMTP transport iz nastavitev (null = e-mail ni konfiguriran). Nastavitve so globalna vrstica. */
 export async function smtpTransportForLocation(_locationId: string | null): Promise<Transporter | null> {
-  const settings = await db.restaurantSettings.findFirst()
-  if (!settings?.emailEnabled || !settings.emailSmtpHost || !settings.emailFromAddress) return null
+  const settings = await findEmailSettings()
+  if (!settings?.emailSmtpHost || !settings.emailFromAddress) return null
   return nodemailer.createTransport({
     host: settings.emailSmtpHost,
     port: settings.emailSmtpPort || 587,
@@ -169,7 +191,7 @@ export async function sendReminder(t: ReminderTarget, locale: 'sl' | 'hr', locat
     const transport = await smtpTransportForLocation(locationId)
     if (transport) {
       try {
-        const settings = await db.restaurantSettings.findFirst()
+        const settings = await findEmailSettings()
         await transport.sendMail({ from: settings?.emailFromAddress || undefined, to: t.email, subject: texts.subject, text: texts.body })
         result.email = { ok: true, detail: 'OK' }
       } catch (e) {
@@ -205,7 +227,7 @@ export async function sendBookingConfirmation(t: ReminderTarget, localeTag: stri
     const transport = await smtpTransportForLocation(locationId)
     if (transport) {
       try {
-        const settings = await db.restaurantSettings.findFirst()
+        const settings = await findEmailSettings()
         await transport.sendMail({ from: settings?.emailFromAddress || undefined, to: t.email, subject: texts.subject, text: texts.body })
         result.email = { ok: true, detail: 'OK' }
       } catch (e) {
