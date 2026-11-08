@@ -20,10 +20,12 @@ import type { Prisma, PrismaClient } from '@prisma/client'
  * datoteki (DATABASE_URL se začne z "file:"). Oddaljena baza (npr. Neon Postgres
  * v produkciji) zavrnjena z napako — tudi če kdo pomotoma preusmeri env.
  *
- * BRISANJE je omejeno na vrstice, katerih id (oziroma znano alternativno polje)
- * se začne s testno predpono — realni (ne-testni) podatki so nedotaknjeni.
+ * BRISANJE je omejeno na vrstice, katerih id (oziroma znano alternativno
+ * polje oziroma IME — v1.284.0) se začne s testno predpono — realni
+ * (ne-testni) podatki so nedotaknjeni.
  * Vrstni red: otroci → starši (FK), prehodi:
  *  0. FIELD_SWEEP po besedilnih poljih (strežniški nid() id-ji brez predpone),
+ *  0a. zbiralni prehod: id-ji nid()-id lokacij s predponskim IMENOM (v1.284.0),
  *  1. blok prehod po id (+ znana alternativna polja entityId/inventoryItemId),
  *  2. odkleni prehod po locationId (aplikacijsko ustvarjeni otroci testnih
  *     lokacij, npr. Receipt/Payment, ki imajo samodejne id-je brez predpone),
@@ -123,8 +125,9 @@ export const TEST_PREFIXES = [
   'v245-', // kombinacijski val (v1.245.0 — kombinacije miz + walk-in rezerva)
   'v246-', // operativni val (v1.246.0 — digitalni checklisti: predloge + izvedbe)
   'v225-', // qa-tips-decimal (v1.225.0 — izmerjeno v živi dev bazi 3. 11. 2026: v225-Admin je ukradel demo-vstop)
-  'v248-', // strežni val (v1.248.0 — izmerjeno v1.283.0: osirotele ChecklistRun/ScheduledEmailLog vrstice po zelenih tekih; registracija omogoča centralni samoceljiv sweep)
-  'v282-', // email determinizem + sweep pokritje (v1.283.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
+  'v248-', // strežni val (v1.248.0 — izmerjeno v1.282.0: osirotele ChecklistRun/ScheduledEmailLog vrstice po zelenih tekih; registracija omogoča centralni samoceljiv sweep)
+  'v282-', // email determinizem + sweep pokritje (v1.282.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
+  'v284-', // sweep lokacij po imenu (v1.284.0 — nid()-id lokacije s predponskim imenom, vzorec i23-Nova)
   // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
   // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
   // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred
@@ -287,14 +290,14 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'l
   { model: 'supplierPriceHistory' },
   { model: 'supplier' },
   { model: 'integration' },
-  // v1.283.0: izvedbe digitalnih checklistov (v1.246.0) — id-predponske fiksture
+  // v1.282.0: izvedbe digitalnih checklistov (v1.246.0) — id-predponske fiksture
   // (vzorec v248 G1) so ostajale v dev bazi po ZELENIH tekih (ChecklistRun ni bil
-  // na seznamu; izmerjeno v1.283.0: 2 osiroteli vrstici na tek). templateId je
+  // na seznamu; izmerjeno v1.282.0: 2 osiroteli vrstici na tek). templateId je
   // skalar BREZ FK (predloge živijo v config JSON Integration vrstice) → lahko
   // takoj za logičnim staršem; nid() otroke testnih lokacij pokriva spodnji
   // lokacijski prehod.
   { model: 'checklistRun' },
-  // v1.283.0: e-poštni dnevnik — id-predponske fiksture (vzorec v167); vrstice,
+  // v1.282.0: e-poštni dnevnik — id-predponske fiksture (vzorec v167); vrstice,
   // ki jih piše PRODUKCIJSKA koda (nid() id, prejemnik = testna e-pošta), čista
   // FIELD_SWEEP po prejemniku spodaj.
   { model: 'scheduledEmailLog' },
@@ -359,7 +362,7 @@ const LOCATION_CHILD_SWEEP = [
   'loyaltyAccount',
   'integration',
   'printJob',
-  // v1.283.0: izvedbe checklistov, ki jih piše APLIKACIJA (cron/opravila) z
+  // v1.282.0: izvedbe checklistov, ki jih piše APLIKACIJA (cron/opravila) z
   // nid() id-jem BREZ predpone — predpona živi v locationId (skalar) → ta
   // prehod jih počisti pred brisanjem testne lokacije.
   'checklistRun',
@@ -445,7 +448,7 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // vrstice. Izbris je v dev SQLite tudi sicer samoceljiv: nextSequence in
   // allocateReceiptNumber Counter ustvarita znova.
   { model: 'counter', fields: ['name'], contains: true },
-  // v1.283.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
+  // v1.282.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
   // (sendDailyDigest/sendShiftDailySummary/sendWeeklyTaskSummary) — id je
   // nid() BREZ predpone, prejemnik pa je e-pošta testne nastavitvene vrstice
   // (izmerjeno: osirotela TASK_WEEKLY vrstica 'v248-digest@test.local' po
@@ -496,7 +499,7 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   }
 
   /* ZDRUŽENE predpone, NE zanka po predponi.
-   * Zakaj: TEST_PREFIXES ima 135 vnosov, faz pa je ~190 deleteMany na pregled.
+   * Zakaj: TEST_PREFIXES ima 136 vnosov, faz pa je ~190 deleteMany na pregled.
    * Zanko po predponi smo merili: 64 × 190 × 2 pregleda (beforeAll + afterAll v
    * vsakem DB testu) ≈ 24.000 krožnih poklicev do baze; tests/fixture-sweep.test.ts
    * je zato počil na lastnem timeoutu (60 s) čeprav so bile poslovne tabele
@@ -520,6 +523,30 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     const mode = spec.contains ? 'contains' : 'startsWith'
     await dele(spec.model, { OR: spec.fields.flatMap((f) => forField(f, mode)) })
   }
+  // 0a. zbiralni prehod — nid()-id lokacije s predponskim IMENOM (v1.284.0).
+  //     POST /api/locations dodeli nid() id, testna predpona pa živi SAMO v
+  //     imenu (tests/issue23-42: »i23-Nova« — izmerjeno v1.283.0 kot živa
+  //     vrstica po ZELENIH tekih, ker se issue23 afterAll zanaša IZKLJUČNO na
+  //     ta sweep; tests/unique-collision čisti po imenu ročno → njegove
+  //     preživijo samo crash pred afterAll). Fazam 1/3/4 (id) in 2/5
+  //     (locationId otrok) so takšne lokacije in njihovi nid() otroci
+  //     NEVIDNI. Zberemo id-je po imenu — varnost je ista kot pri enterprise
+  //     FIELD_SWEEP po name: realna imena ne nosijo testnih predpon (demo
+  //     seed »RestaurantOS Ljubljana«; pin Č3 before=after v v284 testih).
+  const orphanLocIds = (
+    await db.location.findMany({
+      where: { OR: forField('name', 'startsWith') } as unknown as Prisma.LocationWhereInput,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+  /** OR-pogoji za prehoda 2/5 (locationId): predponski startsWith + IN-seznam
+   *  znanih nid() id-jev sirot (njihovi otroci nosijo nid() locationId →
+   *  startsWith jih ne vidi; Employee→Location je SetNull → brez tega bi
+   *  ostali sirote z NULL locationId za vedno). */
+  const locChildOr = (): Record<string, unknown>[] =>
+    orphanLocIds.length > 0
+      ? [...forField('locationId', 'startsWith'), { locationId: { in: orphanLocIds } }]
+      : forField('locationId', 'startsWith')
   // 0b. otroci naročil testnih lokacij, ki jih id-predpona ne vidi: Payment
   //    (Payment → Check je OBAVEZEN FK z Restrict) in OrderItem (FK na MenuItem
   //    je Restrict; API-ustvarjene postavke imajo nid() id in le orderId).
@@ -535,7 +562,14 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   try {
     const testOrders = await db.order.findMany({
       where: {
-        OR: [...forField('id', 'startsWith'), ...forField('locationId', 'startsWith')],
+        OR: [
+          ...forField('id', 'startsWith'),
+          ...forField('locationId', 'startsWith'),
+          // v1.284.0: naročila nid()-id lokacij s predponskim imenom (locationId
+          // = nid → startsWith ne vidi). Brez tega bi plačilo (Restrict→kupon)
+          // blokiralo kupon, kupon naročilo, naročilo pa lokacijo (faza 2/4).
+          ...(orphanLocIds.length > 0 ? [{ locationId: { in: orphanLocIds } }] : []),
+        ],
       } as unknown as Prisma.OrderWhereInput,
       select: { id: true },
     })
@@ -565,20 +599,26 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   // 1b. (premaknjeno v 0b: otroci naročil morajo pasti pred ID_SWEEP, da
   //    menuItem deleteMany ne zadene Restrict FK-ja.)
   // 2. odkleni prehod po locationId — aplikacijsko ustvarjeni otroci testnih
-  //    lokacij (samodejni id-ji brez predpone); lokacija ŠE obstaja
+  //    lokacij (samodejni id-ji brez predpone); lokacija ŠE obstaja.
+  //    v1.284.0: locChildOr() dodaja IN-seznam id-jev sirot po imenu (0a).
   for (const model of LOCATION_CHILD_SWEEP) {
-    await dele(model, { OR: forField('locationId', 'startsWith') })
+    await dele(model, { OR: locChildOr() })
   }
   // 3. ponovni prehod po id (BREZ location) — ovire so zdaj odstranjene
   for (const spec of ID_SWEEP) {
     if (spec.model === 'location') continue
     await dele(spec.model, { OR: forField('id', 'startsWith') })
   }
-  // 4. lokacija ZADNJA — uspeh pomeni, da ni več FK ovir
-  await dele('location', { OR: forField('id', 'startsWith') })
+  // 4. lokacija ZADNJA — uspeh pomeni, da ni več FK ovir. v1.284.0: tudi
+  //    id-ji sirot s predponskim IMENOM (0a) — njihovi otroci so padli v 2.
+  await dele('location', {
+    OR: orphanLocIds.length > 0
+      ? [...forField('id', 'startsWith'), { id: { in: orphanLocIds } }]
+      : forField('id', 'startsWith'),
+  })
   // 5. varovalka: morebitni SetNull sirote ponovno po locationId, potem končni id prehod
   for (const model of LOCATION_CHILD_SWEEP) {
-    await dele(model, { OR: forField('locationId', 'startsWith') })
+    await dele(model, { OR: locChildOr() })
   }
   // 6. late FIELD_SWEEP — besedilno poimenske sirote, ki so FK-ovirane (npr.
   //    Employee.pin s predpono in locationId NULL): šele zdaj so vsi otroci
@@ -594,8 +634,16 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     // `forField` vrne Record<string, unknown> (primeren je samo za brisanje prek
     // delegata); count potrebuje tipiziran WHERE, zato je oblika ročna — ZDRUŽENA
     // čez vse predpone
+    // v1.284.0: šteje se tudi po IMENU — sirota s predponskim imenom JE
+    // testna lokacija (poštena merilna točka; prej je takšen ostanek števec
+    // prijavljal 0, čeprav je vrstica preživela).
     remainingLocations = await db.location.count({
-      where: { OR: prefixes.map((p) => ({ id: { startsWith: p } })) },
+      where: {
+        OR: [
+          ...prefixes.map((p) => ({ id: { startsWith: p } })),
+          ...prefixes.map((p) => ({ name: { startsWith: p } })),
+        ],
+      },
     })
   } catch {
     /* števec je informativen; napaka brisanja je že v errors */

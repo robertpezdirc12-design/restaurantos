@@ -9,7 +9,7 @@ import { sweepTestFixtures, TEST_PREFIXES, type SweepResult } from './helpers/fi
 /**
  * v1.283.0 — REGISTRACIJA TESTNIH PREDPON + SWEEP POKRITJE (AUDIT + ENTERPRISE).
  *
- * Izveden A-kandidat iz zaključka v1.283.0 (»registracija 50 preostalih
+ * Izveden A-kandidat iz zaključka v1.282.0 (»registracija 50 preostalih
  * neregistriranih testnih predpon v TEST_PREFIXES z merjeno presojo učinka«).
  * Poštena meritev na živi post-suite bazi je razkrila TRISLOJNO sliko:
  *
@@ -115,7 +115,7 @@ describe('v283 Č1: sweep pobira tri izmerjene vrzeli', () => {
   })
 
   test('Č1a AuditLog: nid() id + predponski locationId (REGISTRIRANA v248-) → lokacijski prehod', async () => {
-    // IZOLACIJA VRZELI TABELE (ne registracije): v248- je registriran od v1.283.0,
+    // IZOLACIJA VRZELI TABELE (ne registracije): v248- je registriran od v1.282.0,
     // a AuditLog ni bil v LOCATION_CHILD_SWEEP — izmerjeno na živi bazi: vrstice
     // v248-/i20-/v242- so preživele zelene teke (eventLog pokrit, auditLog ne).
     const locId = `v248-loc-v283sim-${RUN}`
@@ -133,7 +133,7 @@ describe('v283 Č1: sweep pobira tri izmerjene vrzeli', () => {
   }, 60_000)
 
   test('Č1b enterprise: id-predponski org/brand/property z imeni BREZ predpone (REGISTRIRANA v282-) → ID_SWEEP', async () => {
-    // IZOLACIJA VRZELI TABELE: v282- je registriran od v1.283.0, a drevo ni bilo
+    // IZOLACIJA VRZELI TABELE: v282- je registriran od v1.282.0, a drevo ni bilo
     // v ID_SWEEP — FIELD_SWEEP po name vidi samo vrstice s predpono v imenu;
     // testi i5/i38/i52 pišejo id-predpono in ime BREZ nje (»I38 Org A«, »PA«).
     const orgId = `v282-org-v283sim-${RUN}`
@@ -194,8 +194,10 @@ describe('v283 Č2: pini registracije + pokritja', () => {
     for (const p of NOVE) expect(TEST_PREFIXES, p).toContain(p)
   })
 
-  test('TEST_PREFIXES = 135 vnosov (90 pred valom + 45)', () => {
-    expect(TEST_PREFIXES.length).toBe(135)
+  test('TEST_PREFIXES = 136 vnosov (90 pred v1.283.0 + 45 tja + v284- lokacije po imenu)', () => {
+    // v1.284.0: registracija v284- (sweep nid()-id lokacij s predponskim imenom)
+    // dvigne register na 136 — pin sledi TRENUTNEMU stanju (vzorec worklog-vrh).
+    expect(TEST_PREFIXES.length).toBe(136)
   })
 
   test('hex-varnost: predpona BREZ pomišljaja mora vsebovati znak izven [0-9a-f] (nid() = samo hex → ne more biti predpona realnega id-ja)', () => {
@@ -266,17 +268,17 @@ describe('v283 Č3: centralni sweep z 135 predponami (proračun + varnost realni
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v283 Ž: registri', () => {
-  test('verzija 1.283.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.283.0')
+  test('verzija 1.284.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.284.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.283.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.284.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.283.0-sweep-registracija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.284.0-sweep-lokacije-po-imenu')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

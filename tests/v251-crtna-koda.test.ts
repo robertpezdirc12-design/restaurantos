@@ -447,9 +447,9 @@ describe('v1.251.0 Č4 — UI: kartica skeniranja v zavihku Računi', () => {
 
 describe('v1.251.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.283.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.283.0'")
-    expect(compose).toContain('restaurantos:1.283.0')
+    expect(APP_VERSION).toBe('1.284.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.284.0'")
+    expect(compose).toContain('restaurantos:1.284.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+6 rcpt.scan*)', () => {
@@ -480,6 +480,6 @@ describe('v1.251.0 Ž — registri in pini', () => {
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.283.0-sweep-registracija')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.284.0-sweep-lokacije-po-imenu')
   })
 })
