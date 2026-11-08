@@ -1,3 +1,15 @@
+Task ID: v1.287.0-ci-sveza-baza-zakljucek-pusha (dopolnitev istega vala — dopolnilna najdba po pushu)
+Agent: glavni agent (Z.ai Code)
+Task: Dopolnitev zaključnega vnosa: prvi živi zagon WORKLOG-ONLY pusha razkril atribucijo check-runov.
+
+Work Log:
+- PRVI ŽIVI DOKAZ PATHS-IGNORE: commit 217a8ac (samo worklog.md, 1 datoteka +19 vrstic) je bil prvi worklog-only push v zgodovini repozitorija (dae654a iz v1.282.0 ni bil nikoli porinjen — trditev »CI ga bo po načrtu preskočil« je bila doslej NEREŠENA predpostavka). Živi izid: ci.yml (neon-smoke/tests/typecheck-prod) SE NI ZAGANJAL (paths-ignore: worklog.md + **.md + docs/** + .zscripts/** — predpostavka POTRJENA); sync.yml (brez filtra) je tekel in uspel (GitLab mirror posodobljen tudi z worklogom).
+- ATRIBUCIJSKA KOREKTURA (pomembno za prihodnje verifikacije): check-runi build / deploy / report-build-status NISO jobs ci.yml — to je GitHub Pages DYNAMIC workflow (»pages build and deployment«, path: dynamic/pages/pages-build-deployment, event: dynamic), ki se sproži ob vsakem pushu in poroča trio check-runov na commitu. Pravi quality-gate jobs so 4: tests + neon-smoke + typecheck-prod (ci.yml) + sync (sync.yml). Zgodovinsko »7/7« štetje vseh prejšnjih verifikacij ostaja FAKTIČNO pravilno (vseh 7 check-runov na commitu je zelenih), a je atribucija do sedaj implicirala, da so vsi ci.yml — odkrito zdaj. Na 217a8ac: Pages trio 3/3 success, sync success, ci.yml preskočen → worklog-only push ZELEN brez gates tveganja (paths-ignore preprečuje zagon tests na stanju, ki ni plno preverjeno — varovalka drži).
+- VERIFIKACIJA PINOV PO DOPOLNITVI: worklog-težke datoteke (v230/v260/v1.249/v184) 93/93 zelenih proti zaključnemu vnosu na vrhu (vrh-pini iščejo predpono Task ID — vzorec dopolnitvenih vnosov, dokazano čez 286 valov).
+
+Stage Summary:
+- Val v1.287.0 ostaja popolnoma zaključen (CI 7/7 + produkcija 1.287.0 + SYNCED na ccca4ff; 217a8ac je čista worklog dopolnitev brez gates tveganja). NASLEDNJI A-KANDIDAT nespremenjen; AKCIJA ZA LASTNIKA nespremenjena (žeton ghp_gRsp… preklic najnujneje).
+
 Task ID: v1.287.0-ci-sveza-baza-zakljucek-pusha (dopolnitev istega vala)
 Agent: glavni agent (Z.ai Code)
 Task: Pospushna verifikacija vala CI sveže baze — dokaz sledi v CI/deployment teku (obvezni dokaz implementacijskega vnosa).
