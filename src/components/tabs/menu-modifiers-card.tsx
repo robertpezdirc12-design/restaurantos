@@ -273,7 +273,19 @@ export function MenuModifiersCard({ canManage }: { canManage: boolean }) {
       </Dialog>
 
       {/* dialog: pripni/odpni artikle */}
-      <Dialog open={attGroup !== null} onOpenChange={(o) => { if (!o) setAttGroup(null) }}>
+      <Dialog open={attGroup !== null} onOpenChange={(o) => {
+        // v281 najdba UX-1 (potrditev z uporabo): ob zaprtju dialoga prenesi
+        // (sicer zastareli) števec pripetih artiklov IN predizbor nazaj v
+        // kartico — prej je vrstica »Pripeto artiklov: N« ostala stara do
+        // ročne osvežitve strani, ponovno odprtje dialoga pa je kazalo odpete
+        // artikle še kot pripete (attSet je živo stanje potrditvenih polj).
+        if (!o) {
+          const updated = attGroup
+          const finalSet = attSet
+          setAttGroup(null)
+          if (updated) setGroups((prev) => (prev ? prev.map((g) => (g.id === updated.id ? { ...g, links: updated.links, linkedMenuItemIds: [...finalSet] } : g)) : prev))
+        }
+      }}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('modifiers.items.attach')} — {attGroup?.name}</DialogTitle>

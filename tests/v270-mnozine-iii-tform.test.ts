@@ -282,9 +282,9 @@ describe('v1.270.0 Č4 — montaža: tF/tN2/criterionNoun na klicnih mestih', ()
 
 describe('v1.270.0 Ž — registri', () => {
   test('Ž1: verzija 1.270.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.280.0')
-    expect(read('src/lib/version.ts')).toContain("'1.280.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.280.0')
+    expect(APP_VERSION).toBe('1.281.0')
+    expect(read('src/lib/version.ts')).toContain("'1.281.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.281.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (noun 148 = 37 skupkov × 4)', () => {
@@ -307,6 +307,6 @@ describe('v1.270.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.280.0-bun-veriga')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.281.0-oss-potrditev')
   })
 })

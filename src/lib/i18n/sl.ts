@@ -4272,7 +4272,7 @@ export const sl: Record<string, string> = {
   'modifiers.option.price': 'Doplačilo (EUR)',
   'modifiers.items.attach': 'Pripni na artikle',
   'modifiers.links.count': 'Pripeto artiklov: {n}',
-  'modifiers.variant.badge': 'Varijanta',
+  'modifiers.variant.badge': 'Varianta', /* v281: tipkarska napaka »Varijanta« → »Varianta« (SSKJ; ista datoteka ima že »Izberi varianto« + »Varianta — velikost/nivo«; hr.ts »Varijanta« je pravilna hrvaška oblika in ostaja) */
   /* v1.233.0 (PRIMERJAVA-VMESNIKOV-2026 §4 + §11): urejevalnik con (Toast/TouchBistro),
      učinkovitost natakarjev (Lightspeed nov 2025), KDS vrsta (Toast julij 2026). */
   'zones.edit': 'Uredi cone',
