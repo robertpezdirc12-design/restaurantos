@@ -119,8 +119,5 @@
   "overrides": {
     "js-yaml": "4.3.2",
     "eslint-plugin-react-hooks": "7.1.1"
-  },
-  "engines": {
-    "bun": ">=1.4.0"
   }
 }

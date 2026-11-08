@@ -27,8 +27,13 @@ import { hr } from '../src/lib/i18n/hr'
  *    gresta zeleno na 1.4.4 (to JE dokaz verige, ista dva vzorca kot okvari)
  *  · Č2 — pini verige: ci.yml 3× bun-version 1.4.4 (0× latest — bili smo na
  *    nedeterminističnem latest, peskovnik/CI divergenca je bila koren vzroka),
- *    package.json engines bun >=1.4.0, Dockerfile oven/bun:1.4,
- *    LOKALNI-ZAGON veriga vrstica
+ *    package.json BREZ engines.bun (POPRAVEK 8. 11. 2026: semver range >=1.4.0
+ *    je lomil Vercel build — edina build-relevantna sprememba med zadnjim
+ *    zelenim Git deployem 3d8d330 in padlim 3e2d7a8 dpl_GoP7EzVMFo…;
+ *    Vercel docs runtimes/bun: veljavni sta SAMO dobesedni "1.4.x"/"1.x",
+ *    range ni podprt; bun engines pri installu tudi lokalno NE enforca —
+ *    preizkušeno na rezervi 1.3.14, install zelen — torej ni bil zaščita,
+ *    ampak tiha past), Dockerfile oven/bun:1.4, LOKALNI-ZAGON veriga vrstica
  *  · Ž · REGISTRI: verzija 1.280.0, worklog vrh Task ID, i18n 4324/4324
  *    (0 sprememb — val brez UI), 0 DDL (shema nedotaknjena), AUDIT števec
  */
@@ -86,9 +91,9 @@ describe('v280 Č2: pini verige bun po vseh nosilcih', () => {
     expect(ci).not.toContain('bun-version: latest')
   })
 
-  test('package.json: engines bun >=1.4.0 (bun install OPOZORI na starejšem — viden signal, ne tiha okvara)', () => {
+  test('package.json: BREZ engines.bun (8. 11. 2026: semver range >=1.4.0 je lomil Vercel build — Vercel sprejme samo dobesedne "1.4.x"/"1.x"; bun engines lokalno ne enforca, torej ni bil zaščita ampak past)', () => {
     const pkg = JSON.parse(read('package.json'))
-    expect(pkg.engines?.bun).toBe('>=1.4.0')
+    expect(pkg.engines?.bun).toBeUndefined()
   })
 
   test('deploy/Dockerfile: oven/bun:1.4 pod (NESPREMENJENO od v1.207 — paket je bil na verigi prej kot peskovnik)', () => {
