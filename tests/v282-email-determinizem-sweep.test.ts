@@ -10,7 +10,7 @@ import { smtpTransportForLocation } from '../src/lib/reminders'
 import { OPS_CHECKLISTS_MARKER } from '../src/lib/ops-checklists'
 
 /**
- * v1.282.0 — DETERMINIZEM E-POŠTNIH NASTAVITEV + SWEEP POKRITJE.
+ * v1.283.0 — DETERMINIZEM E-POŠTNIH NASTAVITEV + SWEEP POKRITJE.
  *
  * Dve zavestno odloženi A-najdbi zaključnega vnosa v1.281.0, izvedeni:
  *
@@ -228,17 +228,17 @@ describe('v282 Č3: sweep pobira vse štiri oblike novih vrstic', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v282 Ž: registri', () => {
-  test('verzija 1.282.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.282.0')
+  test('verzija 1.283.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.283.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.282.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.283.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.282.0-email-determinizem')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.283.0-sweep-registracija')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

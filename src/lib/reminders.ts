@@ -79,7 +79,7 @@ export function reminderText(t: ReminderTarget, locale: 'sl' | 'hr'): { subject:
 }
 
 /**
- * v1.282.0 — deterministični iskalnik e-poštnih nastavitev (družina 6 mest,
+ * v1.283.0 — deterministični iskalnik e-poštnih nastavitev (družina 6 mest,
  * 2 modula: daily-email.ts ×3 + reminders.ts ×3).
  *
  * PREJ: goli klic `findFirst()` na db.restaurantSettings — brez pogoja, brez

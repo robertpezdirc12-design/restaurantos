@@ -402,7 +402,7 @@ describe('v1.245.0 B · walk-in rezerva (onlineSeatsFor)', () => {
 
 describe('v1.245.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.245.0', () => {
-    expect(APP_VERSION).toBe('1.282.0')
+    expect(APP_VERSION).toBe('1.283.0')
   })
 
   test('Ž2: PRIMERJAVA §19 dokumentira kombinacijski val', () => {
@@ -456,6 +456,6 @@ describe('v1.245.0 Ž · verzija in dokumenti', () => {
 
   test('Ž6: worklog vrhnji vnos nosi Task ID v1.245.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.282.0-email-determinizem')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.283.0-sweep-registracija')
   })
 })

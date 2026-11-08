@@ -209,9 +209,9 @@ describe('v1.263.0 Č2 — izris HTML + montaža virov', () => {
 
 describe('v1.263.0 Ž — registri', () => {
   test('Ž1: verzija 1.263.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.282.0')
-    expect(read('src/lib/version.ts')).toContain("'1.282.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.282.0')
+    expect(APP_VERSION).toBe('1.283.0')
+    expect(read('src/lib/version.ts')).toContain("'1.283.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.283.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4133/4133 (+4 ključi vala)', () => {
@@ -279,6 +279,6 @@ describe('v1.263.0 Ž — registri', () => {
 
   test('Ž10: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.282.0-email-determinizem')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.283.0-sweep-registracija')
   })
 })

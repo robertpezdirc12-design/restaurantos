@@ -123,8 +123,60 @@ export const TEST_PREFIXES = [
   'v245-', // kombinacijski val (v1.245.0 — kombinacije miz + walk-in rezerva)
   'v246-', // operativni val (v1.246.0 — digitalni checklisti: predloge + izvedbe)
   'v225-', // qa-tips-decimal (v1.225.0 — izmerjeno v živi dev bazi 3. 11. 2026: v225-Admin je ukradel demo-vstop)
-  'v248-', // strežni val (v1.248.0 — izmerjeno v1.282.0: osirotele ChecklistRun/ScheduledEmailLog vrstice po zelenih tekih; registracija omogoča centralni samoceljiv sweep)
-  'v282-', // email determinizem + sweep pokritje (v1.282.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
+  'v248-', // strežni val (v1.248.0 — izmerjeno v1.283.0: osirotele ChecklistRun/ScheduledEmailLog vrstice po zelenih tekih; registracija omogoča centralni samoceljiv sweep)
+  'v282-', // email determinizem + sweep pokritje (v1.283.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
+  // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
+  // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
+  // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred
+  // afterAll ostanejo → centralni sweep jih počisti na naslednjem teku suite.
+  // Zavestno VEN: c15-/c23-/v168-/v215- (0 db uvoza — mrtva teža v OR-seznamih)
+  // in zst63 (vrstice nosijo 'zst63-…', ki je že registriran). 'v206' je brez
+  // pomišljaja — varno, ker nid() izdeluje SAMO hex [0-9a-f], 'v' ni hex) ──
+  'afx-', // audit-fixes — izmerjeno: EventLog/InventoryItem/StockTransaction ostanki po zelenih tekih (ročni afterAll zamudi eventLog, FK .catch(()=>null) pogoltne napako)
+  'clnfx-', // cleaner-role — izmerjeno: AuditLog ostanek
+  'i26-', // issue26-giftcard-tenant — izmerjeno: AuditLog ostanek
+  'i29-', // issue29-device-enroll — self-sweep; centralna varovalka ob crashu
+  'i30-', // issue30-37-ssrf — izmerjeno: EventLog+AuditLog ostanki (ročni afterAll brez lastnega sweepa)
+  'i31-', // issue31-36-mfa — self-sweep; centralna varovalka
+  'i38-', // issue38-event-tenant — izmerjeno: enterprise drevo ostanki
+  'i5-', // issue5-authorization — izmerjeno: enterprise drevo ostanki
+  'i52-', // issue52-55-58-59-inventory — izmerjeno: enterprise drevo ostanki
+  'i73a-', // issue73-audit15 — izmerjeno: AuditLog ostanek
+  'i75fx-', // issue75-security — self-sweep; centralna varovalka
+  'p086fx-', // menu-86-board — self-sweep; centralna varovalka
+  'sweep58-', // fixture-sweep lastna fiksturna — samočistilna datoteka, registracija za konsistentnost
+  'v161-', // v161-cron-marker — izmerjeno: cela lokacija ostane (afterAll je ne briše)
+  'v167-', // v167-digest-dedupe — ročni afterAll brez sweepa; ScheduledEmailLog id-vzorec
+  'v185-', // v185-split-guests — self-sweep; centralna varovalka
+  'v192ps-', // v192-payroll-surcharges — self-sweep; centralna varovalka
+  'v193-', // v193-seats — self-sweep; centralna varovalka
+  'v195-', // v195-order-seats — self-sweep; centralna varovalka
+  'v196ec-', // v196-expense-category — self-sweep; centralna varovalka
+  'v197ps-', // v197-payroll-rates — self-sweep; centralna varovalka
+  'v200eq-', // v200-equipment — self-sweep; centralna varovalka
+  'v202ean-', // v202-ean-receiving — self-sweep; centralna varovalka
+  'v203doc-', // v203-documents — self-sweep; centralna varovalka
+  'v204h-', // v204-order-hold — self-sweep; centralna varovalka
+  'v205c-', // v205-crm-whatsapp — self-sweep; centralna varovalka
+  'v206', // v206-hourly-email — vrstice: v206loc-/v206ord-/v206rc-; nid() je samo hex, 'v' ni hex → ne more biti predpona realnega id-ja
+  'v210v-', // v210-pos-variants — self-sweep; centralna varovalka
+  'v219-', // v219-qa-hardening — self-sweep; centralna varovalka
+  'v220-', // v220-qa-user-wave — izmerjeno: AuditLog ostanek
+  'v221-', // v221-qa-loyalty-gc — izmerjeno: LoyaltyAccount ostanek
+  'v224-', // v224-qa-promo — izmerjeno: AuditLog ostanek
+  'v226-', // v226-qa-coupon — self-sweep; centralna varovalka
+  'v230fx-', // v230-auto86 — self-sweep; centralna varovalka
+  'v237-', // v237-kds-modifiers — self-sweep; centralna varovalka
+  'v238-', // v238-money-integrity — self-sweep; centralna varovalka
+  'v239-', // v239-receipt-cell — self-sweep; centralna varovalka
+  'v2391-', // v239-1-receipt-snapshot — self-sweep; centralna varovalka
+  'v240-', // v240-reservation-cell — izmerjeno: EventLog+AuditLog ostanki
+  'v247-', // v247-pogledi — izmerjeno: AuditLog ostanek
+  'v249-', // v249-cenovni — self-sweep; centralna varovalka
+  'v250-', // v250-tempo — self-sweep; centralna varovalka
+  'v251-', // v251-crtna-koda — self-sweep; centralna varovalka
+  'v252-', // v252-avtododelitev — izmerjeno: AuditLog ostanek
+  'v253-', // v253-odprti-racuni — self-sweep; centralna varovalka
 ] as const
 
 /** Zaustavi izvajanje, če DATABASE_URL ni lokalna SQLite datoteka. */
@@ -151,7 +203,7 @@ export interface SweepResult {
  * Tabele brisane po id-predponi (oziroma `alt` polju), urejene otroci → starši.
  * `alt`: znano alternativno polje, ki nosi testno predpono namesto id-ja.
  */
-const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> = [
+const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'loyaltyAccountId' }> = [
   // — evidence/revizija najprej (referencirajo vse druge) —
   { model: 'eventLog', alt: 'entityId' },
   { model: 'auditLog', alt: 'entityId' },
@@ -163,7 +215,13 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'tipPool' },
   { model: 'giftCardTransaction' },
   { model: 'giftCard' },
-  { model: 'loyaltyTransaction' },
+  // v1.283.0: LoyaltyTransaction → LoyaltyAccount je OBAVEZEN FK (privzeti Restrict).
+  // Aplikacijska pot zvestobe (pridobitev točk ob plačilu) piše nid() id BREZ
+  // predpone — predpona živi SAMO v loyaltyAccountId (izmerjeno v živi bazi:
+  // v221 osirotela LoyaltyAccount + nid transakcija, ki je blokirala izbris).
+  // alt prehod po loyaltyAccountId počisti transakcijo PRED računom (vrstni red
+  // spodaj), sicer račun ostane zaklenjen (vzorec stockTransaction/inventoryItemId).
+  { model: 'loyaltyTransaction', alt: 'loyaltyAccountId' },
   { model: 'loyaltyAccount' },
   { model: 'payment' },
   { model: 'receipt' },
@@ -229,14 +287,14 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'supplierPriceHistory' },
   { model: 'supplier' },
   { model: 'integration' },
-  // v1.282.0: izvedbe digitalnih checklistov (v1.246.0) — id-predponske fiksture
+  // v1.283.0: izvedbe digitalnih checklistov (v1.246.0) — id-predponske fiksture
   // (vzorec v248 G1) so ostajale v dev bazi po ZELENIH tekih (ChecklistRun ni bil
-  // na seznamu; izmerjeno v1.282.0: 2 osiroteli vrstici na tek). templateId je
+  // na seznamu; izmerjeno v1.283.0: 2 osiroteli vrstici na tek). templateId je
   // skalar BREZ FK (predloge živijo v config JSON Integration vrstice) → lahko
   // takoj za logičnim staršem; nid() otroke testnih lokacij pokriva spodnji
   // lokacijski prehod.
   { model: 'checklistRun' },
-  // v1.282.0: e-poštni dnevnik — id-predponske fiksture (vzorec v167); vrstice,
+  // v1.283.0: e-poštni dnevnik — id-predponske fiksture (vzorec v167); vrstice,
   // ki jih piše PRODUKCIJSKA koda (nid() id, prejemnik = testna e-pošta), čista
   // FIELD_SWEEP po prejemniku spodaj.
   { model: 'scheduledEmailLog' },
@@ -244,6 +302,15 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' }> =
   { model: 'restaurantSettings' },
   { model: 'accountsPayable' },
   { model: 'employee' },
+  // v1.283.0: enterprise drevo — testi (i5/i38/i52) ustvarjajo org/brand/property
+  // z id-predpono in imeni BREZ nje (»I38 Org A«, »PA«) → FIELD_SWEEP po name
+  // jih ne vidi (izmerjeno v živi bazi: 18 osirotelih vrstic po zelenih tekih).
+  // Vrstni red otroci→starši po Restrict FK: Property→Brand→Organization.
+  // Workstation→Property je prav tako Restrict, a je izmerjeno 0 vrstic v dev
+  // bazi — če ga prihodnji val zapiše, gre PRED property (zavestno odloženo).
+  { model: 'property' },
+  { model: 'brand' },
+  { model: 'organization' },
   // lokacija se briše ZADNJA (uspešnost = preverjena spodaj)
   { model: 'location' },
 ]
@@ -292,7 +359,7 @@ const LOCATION_CHILD_SWEEP = [
   'loyaltyAccount',
   'integration',
   'printJob',
-  // v1.282.0: izvedbe checklistov, ki jih piše APLIKACIJA (cron/opravila) z
+  // v1.283.0: izvedbe checklistov, ki jih piše APLIKACIJA (cron/opravila) z
   // nid() id-jem BREZ predpone — predpona živi v locationId (skalar) → ta
   // prehod jih počisti pred brisanjem testne lokacije.
   'checklistRun',
@@ -337,6 +404,12 @@ const LOCATION_CHILD_SWEEP = [
   // dispatch drugih testov (dokaz: tests/issue38-event-tenant-scope.test.ts:268 je
   // v celotnem teku dobil 15 namesto 5 — samoceljivost sweep-a, ne napaka izdelka).
   'eventLog',
+  // v1.283.0: AuditLog.locationId je SKALAR brez FK — brisanje testne lokacije
+  // ga ne počisti (asimetrija: eventLog je bil pokrit tu, auditLog ne). Izmerjeno
+  // v živi bazi: vrstice z ŽE REGISTRIRANIMI predponami (v248-/i20-/v242-) so
+  // preživele zelene teke. nid() id + predponski locationId → ta prehod
+  // (vzorec managerCall/stationTask: skalar locationId brez FK).
+  'auditLog',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }
@@ -372,7 +445,7 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // vrstice. Izbris je v dev SQLite tudi sicer samoceljiv: nextSequence in
   // allocateReceiptNumber Counter ustvarita znova.
   { model: 'counter', fields: ['name'], contains: true },
-  // v1.282.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
+  // v1.283.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
   // (sendDailyDigest/sendShiftDailySummary/sendWeeklyTaskSummary) — id je
   // nid() BREZ predpone, prejemnik pa je e-pošta testne nastavitvene vrstice
   // (izmerjeno: osirotela TASK_WEEKLY vrstica 'v248-digest@test.local' po
@@ -423,7 +496,7 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   }
 
   /* ZDRUŽENE predpone, NE zanka po predponi.
-   * Zakaj: TEST_PREFIXES ima 64 vnosev, faz pa je ~190 deleteMany na pregled.
+   * Zakaj: TEST_PREFIXES ima 135 vnosov, faz pa je ~190 deleteMany na pregled.
    * Zanko po predponi smo merili: 64 × 190 × 2 pregleda (beforeAll + afterAll v
    * vsakem DB testu) ≈ 24.000 krožnih poklicev do baze; tests/fixture-sweep.test.ts
    * je zato počil na lastnem timeoutu (60 s) čeprav so bile poslovne tabele

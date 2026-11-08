@@ -257,7 +257,7 @@ describe('fixture-sweep — Task 58 (higiena testnih fiksur)', () => {
 
   test('oblika počistnika: število izjav NE sme rasti s številom predpon (v1.148.0)', async () => {
     // Dokazan povratek: prejšnja oblika je zankala PO PREDPONI (`for (const p of prefixes)`).
-    // TEST_PREFIXES ima 64 vnosev × ~190 faznih deleteMany × 2 pregleda na test
+    // TEST_PREFIXES ima 135 vnosov × ~190 faznih deleteMany × 2 pregleda na test
     // ≈ 24.000 krožnih poklicev do baze, zato je test zgoraj počil na 60 s timeoutu —
     // VIDNO rdeč, čeprav so bile poslovne tabele prazne. Predpone se morajo združiti
     // v OR-seznam (en stavek na polje/fazo), vrstni red faz pa mora ostati identičen:
