@@ -128,6 +128,7 @@ export const TEST_PREFIXES = [
   'v248-', // strežni val (v1.248.0 — izmerjeno v1.282.0: osirotele ChecklistRun/ScheduledEmailLog vrstice po zelenih tekih; registracija omogoča centralni samoceljiv sweep)
   'v282-', // email determinizem + sweep pokritje (v1.282.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
   'v284-', // sweep lokacij po imenu (v1.284.0 — nid()-id lokacije s predponskim imenom, vzorec i23-Nova)
+  'v285-', // sweep gotovina + gostje (v1.285.0 — CashMovement/Guest/GuestVisit vpisi spodaj; i16-/v187cp- sta bili registrirani ŽE PREJ, vrzel je bila v SEZNAMIH modelov)
   // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
   // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
   // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred
@@ -206,7 +207,7 @@ export interface SweepResult {
  * Tabele brisane po id-predponi (oziroma `alt` polju), urejene otroci → starši.
  * `alt`: znano alternativno polje, ki nosi testno predpono namesto id-ja.
  */
-const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'loyaltyAccountId' }> = [
+const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'loyaltyAccountId' | 'guestId' | 'employeeId' }> = [
   // — evidence/revizija najprej (referencirajo vse druge) —
   { model: 'eventLog', alt: 'entityId' },
   { model: 'auditLog', alt: 'entityId' },
@@ -214,7 +215,13 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'l
   { model: 'integrationLog' },
   { model: 'deviceSyncOperation' },
   { model: 'webhook' },
-  { model: 'tipDistribution' },
+  // v1.285.0 (najdba med valom — REŠITEV UGANKE »2 P2003« iz v1.284.0):
+  // API-ustvarjene distribucije napitnin (nid() id iz POST /api/shifts/tips)
+  // nosijo predponski employeeId (OBAVEZEN FK Restrict) → ena blokirana vrstica
+  // povrne CELO employee deleteMany (SQLite atomarnost) → VSI id-predponski
+  // zaposleni ostanejo (izmerjeno 36 živih: 28 i60- + 8 v225- čez 4 teke).
+  // alt prehod PRED employee (vrstni red otrok → starši).
+  { model: 'tipDistribution', alt: 'employeeId' },
   { model: 'tipPool' },
   { model: 'giftCardTransaction' },
   { model: 'giftCard' },
@@ -250,6 +257,18 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'l
   { model: 'deliveryTracking' },
   { model: 'deliveryInfo' },
   { model: 'guestFeedback' },
+  // v1.285.0: gost — id-predponske fiksature (vzorec v187cp-×32 v živi bazi: tests/
+  // v187-coupons seje goste s predponskim id-jem IN locationId; faza 4 izbriše
+  // lokacijo → Guest.locationId je SetNull FK → NULL → NEVIDEN lokacijskim
+  // prehodom; izmerjeno nalaganje 24→32 čez val). GuestVisit PRED gostom:
+  // GuestVisit.guestId je OBAVEZEN FK z Restrict (edini ne-kaskadni otrok —
+  // Coupon CASCADE, Order SetNull; CampaignSend/GuestConsent skalarja brez
+  // FK). Brez alt prehoda bi crash i11 teka (edina zapisovalca GuestVisit
+  // ročno čistita — 0 vrstic v živi bazi) pustil PAR gost+obisk, ki ga NOBEN
+  // naslednji tek ne more pobrati (P2003 zanka). Vzorec: loyaltyTransaction/
+  // alt loyaltyAccountId iz v1.283.0.
+  { model: 'guestVisit', alt: 'guestId' },
+  { model: 'guest' },
   { model: 'reservation' },
   { model: 'waitlistEntry' },
   // v1.85.0 P0-2: javna plačilna povezava (FK → Order, briši PRED naročilom)
@@ -285,6 +304,13 @@ const ID_SWEEP: Array<{ model: string; alt?: 'entityId' | 'inventoryItemId' | 'l
   { model: 'staffShift' },
   { model: 'employeeJob' },
   { model: 'zReport' },
+  // v1.285.0: gotovinska gibanja — izmerjeno 68 živih vrstic (36 z id-predpono
+  // i16-mv-… iz tests/issue16 db.create + 32 z nid() id-jem iz PRODUKCIJSKE
+  // route POST /api/shifts/movements z predponskim locationId/userId/shiftId —
+  // skalarji BREZ FK, zato jih nič ne zaklene in nič ne čisti; nalaganje
+  // 27→68 čez en val). PRED cashRegisterShift (semantični otrok izmene,
+  // shiftId skalar); brez lastnih FK → čist list.
+  { model: 'cashMovement' },
   { model: 'cashRegisterShift' },
   // — organizacijsko drevo + preostali starši —
   { model: 'supplierPriceHistory' },
@@ -334,6 +360,15 @@ const LOCATION_CHILD_SWEEP = [
   // (račun + plačilo z nid() id-jem, predpona samo v locationId).
   'receipt',
   'order',
+  // v1.285.0: gotovinska gibanja, ki jih piše APLIKACIJA (POST /api/shifts/
+  // movements) z nid() id-jem BREZ testne predpone — predponski locationId
+  // (skalar brez FK) jih odda temu prehodu (izmerjeno 32 živih vrstic; vzorec
+  // deviceSyncOperation). PRED cashRegisterShift (otrok izmene).
+  // guest je ZAVESTNO VEN: 0 nid() zapisovalcev — produkcija ne ustvarja gostov
+  // (rg '\.guest\.(create|upsert)' src/ = 0 zadetkov); vsi testi sejejo goste z
+  // id-predpono direktno → ID_SWEEP jih vidi v fazi 1 ŠE PRED izbrisom
+  // lokacije. Vzorec Workstation iz v1.284.0; pin v285 Č2 varuje.
+  'cashMovement',
   'cashRegisterShift',
   'zReport',
   'inventoryItem',
@@ -456,6 +491,13 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // vrstice — realni prejemniki ne morejo nositi testne predpone v lokalnem
   // delu naslova. List brez FK → varno v fazi 0.
   { model: 'scheduledEmailLog', fields: ['recipient'] },
+  // v1.285.0 (najdba med valom): AuditLog vrstice, ki jih piše PRODUKCIJSKA koda
+  // (TIP_POOL_CLOSE/TIMECLOCK_MANUAL iz APIjev) — id je nid() BREZ predpone,
+  // predponski je SAMO userId (skalar — zaposleni testnega teka; izmerjeno 16
+  // živih vrstic po zelenih tekih i60/v225). Vzorec scheduledEmailLog/
+  // recipient iz v1.282.0: realni userId je nid() hex — predpona z ne-hex
+  // znakom ne more biti predpona realnega id-ja. List brez FK otrok → varno v fazi 0.
+  { model: 'auditLog', fields: ['userId'] },
   // v1.147.0 (release audit #8/#9): Employee.pin je @unique, testi pa v njega
   // napišejo dobesedno vrednost s predpono (`pin: 'pi49-a'`), id pa je nid() BREZ
   // predpone. Če tek crashne, ostane tak zaposlen; ko kasneje izbrisan njegova

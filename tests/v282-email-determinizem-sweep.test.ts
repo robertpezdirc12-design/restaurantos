@@ -228,17 +228,17 @@ describe('v282 Č3: sweep pobira vse štiri oblike novih vrstic', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v282 Ž: registri', () => {
-  test('verzija 1.284.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.284.0')
+  test('verzija 1.285.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.285.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.284.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.285.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.284.0-sweep-lokacije-po-imenu')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.285.0-sweep-gotovina-gostje')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {
