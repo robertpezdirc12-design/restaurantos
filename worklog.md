@@ -1,3 +1,22 @@
+Task ID: v1.287.0-ci-sveza-baza-zakljucek-pusha (dopolnitev istega vala)
+Agent: glavni agent (Z.ai Code)
+Task: Pospushna verifikacija vala CI sveže baze — dokaz sledi v CI/deployment teku (obvezni dokaz implementacijskega vnosa).
+
+Work Log:
+- PUSH: ccca4ff porinjen (e837e04..ccca4ff, žeton seje izključno inline v push ukazu, remote ostaja anonimen; worklog-only vidik: N/A — commit nosi cel val).
+- CI (živo, GA — avtoritativna vrata): 7/7 check-runov SUCCESS na ccca4ff — build / tests / neon-smoke / typecheck-prod / deploy / report-build-status / sync. KLJUČNI DOKAZ: tests job ZELEN na sveži ci-fresh.db (6019 testov) — popravek Ç1d before/after invarianta živo potrjen v PRAVEM CI okolju, ne samo lokalni repliki (dokaz vala je bil izveden na identičnem stanju 142 tabel/0 vrstic PRED pushom — CI ponovitev se sklada).
+- BUILDKITE (informativno, NE naša infrastruktura): tests ✅ + typecheck-prod ✅ na ccca4ff (popravek deluje tudi tam); neon-smoke ❌ + sync ❌ ostajata OBSTOJEČI stanji (enaka padca na a2f3c28 in e837e04 — prehitri za prava testa, Buildkite-stran konfiguracija; GA neposredno prizadet). Lastnik obveščen v AKCIJA ZA LASTNIKA.
+- ALARM ŽIVLJENJSKI CIIKEL ŽIVO: issue #124 (odprt 20:49:25Z ob padcu e837e04) se je SAMODEJNO ZAPRL 21:27:33Z ob zelenem tests jobu ccca4ff (v1.215.0 cikel — tretja živa potrditev po #120/#122). #123 (Vercel OPS, VERCEL_TOKEN_B64 smrt) ostaja odprt — B-razred za lastnika.
+- PRODUKCIJA: Vercel Git deployment → /api/health → 1.287.0 @ ccca4ff, mode cloud, postgresql, database connected, schema ok, latencyMs 266 (21:29:30Z).
+- SYNC-CHECK: SYNCED — local = mirror = prod = ccca4ff264d9bbe26f9fa65b9f84e9bf8e03826a (GitLab mirror prek GA sync joba, uspeh v 7/7).
+- PESKOVNIK PO VALU: dev strežnik zdrav na 1.287.0 (hot-reload APP_VERSION), 0 napak v dev.log; bun 1.4.4 + rezerva 1.3.14 na sistemu; baza seedana (semenska RestaurantSettings vrstica kot živi dokaz v1.282.0); demo prijava admin@restaurantos.app / PIN 1234.
+- VRATA POSPUSHNA: brez ponovnega teka (vrata vala so tekla PRED pushom: tsc 0 / lint 0 / secrets OK / SUITA 6016/3/0 / pini 189/189; CI jih je neodvisno potrdil 7/7).
+
+Stage Summary:
+- Val v1.287.0 popolnoma zaključen: prvi CI padec po v1.282.0 odpravljen na korenu in dokazan v obeh okoljih (lokalna replika sveže baze + pravi CI job), alarm cikel zaprt, produkcija in vse tri pike sinhronizirane na ccca4ff.
+- NASLEDNJI A-KANDIDAT (nespremenjen, odložen): globji pregled preostalih FIELD_SWEEP razlik (AuditLog 738 / EventLog 308 / Counter 78 demo-realni) + demo-history semena — naslednji val zapiše s številkami.
+- AKCIJA ZA LASTNIKA (B-razred, po prioriteti): (1) PREKLIČI žeton seje ghp_gRsp… (uporabljen izključno za 2 pusha + bralne API klice te seje — push a2f3c28..e837e04, push e837e04..ccca4ff, check-runs/issues branje; nič zapisanega v repo/remote konfiguracijo); (2) VERCEL_TOKEN_B64 v GitHub secrets je MRTEV (odprt alarm #123 — rezervna CLI pot neoperabilna, GLAVNA Git pot deluje pravkar dokazano dvakrat); (3) OSS-11: vnos pravih vrednosti teme v produkciji (#B91C1C + 96×48 PNG sta demo); (4) Buildkite: neon-smoke + sync nogi odpovedujeta na vseh treh zadnjih HEAD-ih (a2f3c28 / e837e04 / ccca4ff) — če je Buildkite v verigi namenjen, preveri njegovo konfiguracijo (GA CI ni prizadet in ostaja avtoriteta).
+
 Task ID: v1.287.0-ci-sveza-baza
 Agent: glavni agent (Z.ai Code)
 Task: CI-FIX VAL (prvi po v1.282.0, ki je šel skozi CI): kumulativni push petih commitov (dae654a worklog v1.282.0 + e8efbb7 v1.283.0 + 01f8422 v1.284.0 + 0556c33 v1.285.0 + e837e04 v1.286.0; remote prej na a2f3c28) je prvič izpostavil štiri valove CI-ju — tests job je padel na ENEM testu od 6010, ostalih 6 GA jobov zelenih. Vzrok odstranjen na korenu, dokazan na identičnih CI pogojih (sveža baza, 0 vrstic), prevez 1.286.0→1.287.0 čist po vseh štirih oblikah.
