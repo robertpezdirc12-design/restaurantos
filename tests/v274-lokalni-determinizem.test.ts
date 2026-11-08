@@ -268,14 +268,14 @@ describe('v1.274.0 Č3 — formatiranje: 3 gola toLocale* pripeta na sl-SI', () 
 // ── Ž) REGISTRI ──
 describe('v1.274.0 Ž — registri', () => {
   test('verzija 1.274.0 (version.ts + compose + APP_VERSION vsebina)', () => {
-    expect(APP_VERSION).toBe('1.286.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.286.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.286.0')
+    expect(APP_VERSION).toBe('1.287.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.287.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.286.0-sweep-napitnine')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
   })
 
   test('AUDIT doc-truth: POSODOBITEV (v1.274.0, lokalni determinizem)', () => {

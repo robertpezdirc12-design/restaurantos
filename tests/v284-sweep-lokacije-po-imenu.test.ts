@@ -127,16 +127,27 @@ describe('v284 Č1: sweep pobira nid()-id lokacije s predponskim imenom', () => 
     // zlomiti obstoječe id-poti (id-predponska lokacija z imenom BREZ
     // predpone se pobere kot prej).
     const realId = nid()
-    await db.location.create({ data: { id: realId, name: `Restavracija Demo V284 ${RUN}`, code: `RDV284${RUN.toUpperCase()}` } })
     const prefId = `${P}id-lok-${RUN}`
-    await db.location.create({ data: { id: prefId, name: `Ime brez predpone ${RUN}`, code: `IBP284${RUN.toUpperCase()}` } })
-    const res = await sweepTestFixtures(db, [P])
-    expect(res.errors.filter((e) => NASI_MODELI.test(e))).toEqual([])
-    expect(await db.location.count({ where: { id: realId } })).toBe(1) // preživi — ni testna
-    expect(await db.location.count({ where: { id: prefId } })).toBe(0) // id pot nespremenjena
-    // demo seed lokacija prav tako preživi (isti varnostni razred kot Č3)
-    expect(await db.location.count({ where: { name: 'RestaurantOS Ljubljana' } })).toBe(1)
-    await db.location.deleteMany({ where: { id: realId } }) // higiena lastne fiksture
+    // CI teče na SVEŽI bazi brez semena (ci.yml: db push BREZ db:seed —
+    // »testi so samozadostni — potrjeno lokalno na prazni bazi«); demo seed
+    // lokacija obstaja le na seedanih razvojnih bazah. Invarianta before=after
+    // velja v obeh okoljih: lokalno 1→1 (polna preverba), v CI 0→0 (trivialno)
+    // — vzorec sweep58 iz fixture-sweep.test.ts. Prvi CI zagon tega testa
+    // (kumulativni push v1.283.0–v1.286.0) je padel ravno tu: strogi toBe(1)
+    // je zahteval semensko vrstico, ki je v CI ne more biti.
+    const demoSeedBefore = await db.location.count({ where: { name: 'RestaurantOS Ljubljana' } })
+    try {
+      await db.location.create({ data: { id: realId, name: `Restavracija Demo V284 ${RUN}`, code: `RDV284${RUN.toUpperCase()}` } })
+      await db.location.create({ data: { id: prefId, name: `Ime brez predpone ${RUN}`, code: `IBP284${RUN.toUpperCase()}` } })
+      const res = await sweepTestFixtures(db, [P])
+      expect(res.errors.filter((e) => NASI_MODELI.test(e))).toEqual([])
+      expect(await db.location.count({ where: { id: realId } })).toBe(1) // preživi — ni testna
+      expect(await db.location.count({ where: { id: prefId } })).toBe(0) // id pot nespremenjena
+      // demo seed lokacija prav tako preživi (isti varnostni razred kot Č3)
+      expect(await db.location.count({ where: { name: 'RestaurantOS Ljubljana' } })).toBe(demoSeedBefore)
+    } finally {
+      await db.location.deleteMany({ where: { id: realId } }) // higiena lastne fiksture (vzorec v1.286.0: padec asercije ne sme puščati nid vrstic)
+    }
   }, 60_000)
 })
 
@@ -203,17 +214,17 @@ describe('v284 Č3: centralni sweep z 136 predponami (proračun + varnost realni
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v284 Ž: registri', () => {
-  test('verzija 1.286.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.286.0')
+  test('verzija 1.287.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.287.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.286.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.286.0-sweep-napitnine')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

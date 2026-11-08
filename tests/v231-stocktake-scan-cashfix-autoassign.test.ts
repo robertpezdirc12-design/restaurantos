@@ -156,8 +156,8 @@ describe('v1.231.0 C — P4 popravek vnosa blagajne (finance-tab)', () => {
 
 describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.286.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.286.0')
+    expect(APP_VERSION).toBe('1.287.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi val v1.231.0 (zaloge 22/22, restavracija 20/22)', () => {
@@ -177,7 +177,7 @@ describe('v1.231.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.231.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.286.0-sweep-napitnine')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
     expect(wl.indexOf('Task ID: v1.231.0')).toBeLessThan(wl.indexOf('Task ID: v1.230.0'))
   })
 })
