@@ -129,6 +129,7 @@ export const TEST_PREFIXES = [
   'v282-', // email determinizem + sweep pokritje (v1.282.0 — ChecklistRun/ScheduledEmailLog vpisi spodaj)
   'v284-', // sweep lokacij po imenu (v1.284.0 — nid()-id lokacije s predponskim imenom, vzorec i23-Nova)
   'v285-', // sweep gotovina + gostje (v1.285.0 — CashMovement/Guest/GuestVisit vpisi spodaj; i16-/v187cp- sta bili registrirani ŽE PREJ, vrzel je bila v SEZNAMIH modelov)
+  'v286-', // sweep napitnine (v1.286.0 — TipPool zbirni prehod 0c + lokacijski vpis spodaj)
   // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
   // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
   // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred
@@ -370,6 +371,14 @@ const LOCATION_CHILD_SWEEP = [
   // lokacije. Vzorec Workstation iz v1.284.0; pin v285 Č2 varuje.
   'cashMovement',
   'cashRegisterShift',
+  // v1.286.0: bazeni napitnin, ki jih piše APLIKACIJA (POST /api/tips) z
+  // nid() id-jem BREZ testne predpone — predponski locationId jih odda temu
+  // prehodu PRED izbrisom lokacije (SET NULL bi jih sicer naredil nevidne;
+  // vzorec cashMovement zgoraj). Pokrije bazene, katerih distribucije NE
+  // nosijo predpone (npr. demo zaposleni); ostale pobere zbirni prehod 0c
+  // skupaj s predponskimi distribucijami. CASCADE vzame tudi nepredponske
+  // otroke testnega bazena (otroci testnega bazena so testni odpadek).
+  'tipPool',
   'zReport',
   'inventoryItem',
   'inventoryBatch',
@@ -630,13 +639,45 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
     const raw = e instanceof Error ? e.message : String(e)
     errors.push(`otroci naročil (po naročilih): ${raw.trim().split('\n')[0] || String(e)}`)
   }
+  // 0c. zbiralni prehod — nid()-id bazeni napitnin predponskih distribucij
+  //     (v1.286.0). POST /api/tips (src/app/api/tips/route.ts:354 — poolId =
+  //     nid()) ustvari bazen z nid() id-jem; testna predpona živi SAMO v
+  //     locationId bazena ter id/employeeId distribucij. Distribucije pobere
+  //     ID_SWEEP (alt employeeId, v1.285.0), bazen pa je ostal: ni bil v
+  //     NOBENEM seznamu, faza 4 pa izbriše testno lokacijo → TipPool.locationId
+  //     SET NULL → neviden VSEM prehodom (izmerjeno 13 živih v1.285.0 → 25 v
+  //     v1.286.0). Zberemo tipPoolId PRED fazo 1 — dokaz je VRSTICA
+  //     distribucije; ko pade, je sled izbrisana. Varnost ista kot pri 0a:
+  //     bazen, na katerega kaže predponska distribucija, JE testna fikstura
+  //     (produkcija ne piše testnih predpon); CASCADE pobere tudi morebitne
+  //     nepredponske otroke bazena (otroci testnega bazena so testni odpadek).
+  //     OBSTOJEČE sirote (dokaz že izbrisan) pobere enkratni remedy vala —
+  //     po njem 0c + lokacijski vpis preprečujeta nastanek novih.
+  const orphanTipPoolIds = Array.from(
+    new Set(
+      (
+        await db.tipDistribution.findMany({
+          where: {
+            OR: [...forField('id', 'startsWith'), ...forField('employeeId', 'startsWith')],
+          } as unknown as Prisma.TipDistributionWhereInput,
+          select: { tipPoolId: true },
+        })
+      ).map((r) => r.tipPoolId),
+    ),
+  )
   // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
   //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
   //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil
   //    locationId na NULL in jih prehod 2 ne bi več našel.
   for (const spec of ID_SWEEP) {
     if (spec.model === 'location') continue
-    await dele(spec.model, { OR: forField('id', 'startsWith').concat(spec.alt ? forField(spec.alt, 'startsWith') : []) })
+    // v1.286.0: tipPool dobi tudi IN-seznam zbranih nid()-id bazenov (0c) —
+    // vzorec orphanLocIds iz faz 2/4/5 (v1.284.0).
+    await dele(spec.model, {
+      OR: forField('id', 'startsWith')
+        .concat(spec.alt ? forField(spec.alt, 'startsWith') : [])
+        .concat(spec.model === 'tipPool' && orphanTipPoolIds.length > 0 ? [{ id: { in: orphanTipPoolIds } }] : []),
+    })
   }
   // 1b. (premaknjeno v 0b: otroci naročil morajo pasti pred ID_SWEEP, da
   //    menuItem deleteMany ne zadene Restrict FK-ja.)
@@ -649,7 +690,12 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
   // 3. ponovni prehod po id (BREZ location) — ovire so zdaj odstranjene
   for (const spec of ID_SWEEP) {
     if (spec.model === 'location') continue
-    await dele(spec.model, { OR: forField('id', 'startsWith') })
+    // v1.286.0: tudi ponovni prehod vračuna zbrane bazene (idempotentna
+    // varovalka — faza 1 jih je že pobrala, to je varuh vrstnega reda faz)
+    await dele(spec.model, {
+      OR: forField('id', 'startsWith')
+        .concat(spec.model === 'tipPool' && orphanTipPoolIds.length > 0 ? [{ id: { in: orphanTipPoolIds } }] : []),
+    })
   }
   // 4. lokacija ZADNJA — uspeh pomeni, da ni več FK ovir. v1.284.0: tudi
   //    id-ji sirot s predponskim IMENOM (0a) — njihovi otroci so padli v 2.

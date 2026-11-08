@@ -209,9 +209,9 @@ describe('v1.268.0 Č3 — ploščica mize: višina + dedup noge', () => {
 
 describe('v1.268.0 Ž — registri', () => {
   test('Ž1: verzija 1.268.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.285.0')
-    expect(read('src/lib/version.ts')).toContain("'1.285.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.285.0')
+    expect(APP_VERSION).toBe('1.286.0')
+    expect(read('src/lib/version.ts')).toContain("'1.286.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.286.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (+20 ključev vala)', () => {
@@ -231,6 +231,6 @@ describe('v1.268.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.285.0-sweep-gotovina-gostje')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.286.0-sweep-napitnine')
   })
 })

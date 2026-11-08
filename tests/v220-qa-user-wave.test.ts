@@ -260,12 +260,12 @@ describe('v220 Č5 · #1 demo-start runtime', () => {
 
 describe('v220 Č6 · verzija + dokumentacija', () => {
   test('verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.285.0')
-    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.285.0')
+    expect(APP_VERSION).toBe('1.286.0')
+    expect(readFileSync(join(ROOT, 'deploy/docker-compose.yml'), 'utf8')).toContain('restaurantos:1.286.0')
   })
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.285.0-sweep-gotovina-gostje')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.286.0-sweep-napitnine')
   })
 })

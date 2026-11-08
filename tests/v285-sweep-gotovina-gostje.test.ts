@@ -145,16 +145,22 @@ describe('v285 Č1: sweep pobira gotovinska gibanja in goste', () => {
     })
     const prefGuestId = `${P}id-gost-${RUN}`
     await db.guest.create({ data: { id: prefGuestId, firstName: 'Ime brez predpone', lastName: 'Test' } })
-    const res = await sweepTestFixtures(db, [P])
-    expect(res.errors.filter((e) => NASI_MODELI.test(e))).toEqual([])
-    expect(await db.guest.count({ where: { id: realGuestId } })).toBe(1) // preživi — ni testna
-    expect(await db.cashMovement.count({ where: { id: realMvId } })).toBe(1) // preživi — lokacija ni testna
-    expect(await db.location.count({ where: { id: realLocId } })).toBe(1) // preživi — ni testna
-    expect(await db.guest.count({ where: { id: prefGuestId } })).toBe(0) // id pot nespremenjena
-    // higiena lastnih fiksur (vzorec Č1d v284)
-    await db.cashMovement.deleteMany({ where: { id: realMvId } })
-    await db.location.deleteMany({ where: { id: realLocId } })
-    await db.guest.deleteMany({ where: { id: realGuestId } })
+    try {
+      const res = await sweepTestFixtures(db, [P])
+      expect(res.errors.filter((e) => NASI_MODELI.test(e))).toEqual([])
+      expect(await db.guest.count({ where: { id: realGuestId } })).toBe(1) // preživi — ni testna
+      expect(await db.cashMovement.count({ where: { id: realMvId } })).toBe(1) // preživi — lokacija ni testna
+      expect(await db.location.count({ where: { id: realLocId } })).toBe(1) // preživi — ni testna
+      expect(await db.guest.count({ where: { id: prefGuestId } })).toBe(0) // id pot nespremenjena
+    } finally {
+      // higija lastnih fiksur — try/finally (v1.286.0 NAJDBA: ročni izbris PO
+      // asercijah je v rdečih tekih pustil 5× (lokacija+gost+gibanje) v živi
+      // bazi — nid BREZ predponskega signala, NOBEN sweep jih ne vidi)
+      await db.cashMovement.deleteMany({ where: { id: realMvId } }).catch(() => null)
+      await db.location.deleteMany({ where: { id: realLocId } }).catch(() => null)
+      await db.guest.deleteMany({ where: { id: realGuestId } }).catch(() => null)
+      await db.guest.deleteMany({ where: { id: prefGuestId } }).catch(() => null)
+    }
   }, 60_000)
 
   test('Č1e i60/v225 vzorec (NAJDBA MED VALOM): TipDistribution (nid id, predponski employeeId RESTRICT) ne blokira več zaposlenih', async () => {
@@ -164,18 +170,23 @@ describe('v285 Č1: sweep pobira gotovinska gibanja in goste', () => {
     // atomarnost izjave) → VSI id-predponski zaposleni ostanejo skupaj (izmerjeno
     // 36 živih: 28 i60- + 8 v225- čez 4 teke). Brez alt prehoda se nalaga VEČNO.
     const empId = `${P}empX-${RUN}`
-    await db.employee.create({ data: { id: empId, name: `Natakar ${RUN}`, email: `${P}empX-${RUN}@test.local` } })
+    await db.employee.create({ data: { id: empId, name: `Natakar ${RUN}`, email: `${P}empX-${RUN}@test.local`, pin: `${RUN}x` } })
     const poolId = nid()
     await db.tipPool.create({ data: { id: poolId, date: new Date() } })
     const distId = nid()
     await db.tipDistribution.create({ data: { id: distId, tipPoolId: poolId, employeeId: empId, employeeName: `${P}Natakar`, amount: 5 } })
-    const res = await sweepTestFixtures(db, [P])
-    expect(res.errors.filter((e) => NASI_MODELI.test(e))).toEqual([])
-    expect(await db.tipDistribution.count({ where: { id: distId } })).toBe(0) // alt employeeId prehod
-    expect(await db.employee.count({ where: { id: empId } })).toBe(0) // P2003 veriga prekinjena
-    // TipPool nid() sirota BREZ predponskega polja je ZAVESTNO ODLOŽENA (zbirni
-    // prehod po tipPoolId — naslednji A-kandidat); higiena lastne fiksture:
-    await db.tipPool.deleteMany({ where: { id: poolId } })
+    try {
+      const res = await sweepTestFixtures(db, [P])
+      expect(res.errors.filter((e) => NASI_MODELI.test(e))).toEqual([])
+      expect(await db.tipDistribution.count({ where: { id: distId } })).toBe(0) // alt employeeId prehod
+      expect(await db.employee.count({ where: { id: empId } })).toBe(0) // P2003 veriga prekinjena
+    } finally {
+      // TipPool nid() sirota BREZ predponskega polja: zbirni prehod 0c (v1.286.0)
+      // jo pobere če distribucija še živi; try/finally higiena varuje rdeče teke
+      await db.tipDistribution.deleteMany({ where: { id: distId } }).catch(() => null)
+      await db.tipPool.deleteMany({ where: { id: poolId } }).catch(() => null)
+      await db.employee.deleteMany({ where: { id: empId } }).catch(() => null)
+    }
   }, 60_000)
 
 
@@ -217,7 +228,7 @@ describe('v285 Č2: pini pokritja (gibanja + gostje + registracija)', () => {
 
   test('v285- registriran v TEST_PREFIXES; skupaj 137 vnosov (136 + ta val)', () => {
     expect(TEST_PREFIXES, P).toContain(P)
-    expect(TEST_PREFIXES.length).toBe(137)
+    expect(TEST_PREFIXES.length).toBe(138)
   })
 
   test('i16- in v187cp- sta bili registrirani ŽE PREJ — vrzel vala je v SEZNAMIH modelov, ne v registraciji', () => {
@@ -302,17 +313,17 @@ describe('v285 Č3: centralni sweep s 137 predponami (živi ostanki → 0 + varn
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v285 Ž: registri', () => {
-  test('verzija 1.285.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.285.0')
+  test('verzija 1.286.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.286.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.285.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.286.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.285.0-sweep-gotovina-gostje')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.286.0-sweep-napitnine')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {
