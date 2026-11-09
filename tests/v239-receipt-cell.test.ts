@@ -108,7 +108,8 @@ async function cleanupFixtures() {
     await db.category.deleteMany({ where: { id: { in: cats.map((c) => c.id) } } }).catch(() => null)
     await db.menu.deleteMany({ where: { id: { in: menus.map((m) => m.id) } } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: locId } }).catch(() => null)
-    await db.counter.deleteMany({ where: { name: { startsWith: `receipt:${locId}` } } }).catch(() => null)
+    // v1.288.0: tudi števec naročil (nextSequence ga ustvari za vsako lokacijo z API-naročili; izmerjeno 49 mrtvih 'order:<nid>' — lokacijski dokaz za 0a izteg je bil izbrisan prej)
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${locId}`, `order:${locId}`] } } }).catch(() => null)
     await db.location.deleteMany({ where: { id: locId } }).catch(() => null)
   }
 }
@@ -533,7 +534,7 @@ describe('v1.239.0 D — void postavke na plačanem izstavku', () => {
 
 describe('v1.239.0 Ž — registri', () => {
   test('Ž1: APP_VERSION = 1.240.0 (hotfix veriga: DDL pot + FK sonda)', () => {
-    expect(APP_VERSION).toBe('1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
   })
 
   test('Ž2: raziskava dokumentirana v PRIMERJAVA §16', () => {

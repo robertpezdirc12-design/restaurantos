@@ -142,7 +142,7 @@ async function cleanupFixtures() {
     await db.category.deleteMany({ where: { id: { in: cats.map((c) => c.id) } } }).catch(() => null)
     await db.menu.deleteMany({ where: { id: { in: menus.map((m) => m.id) } } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: loc.id } }).catch(() => null)
-    await db.counter.deleteMany({ where: { name: `receipt:${loc.id}` } }).catch(() => null)
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${loc.id}`, `order:${loc.id}`] } } }).catch(() => null) // v1.288.0: tudi order števec (izteg 0a ne vidi izbrisane lokacije)
     await db.location.deleteMany({ where: { id: loc.id } }).catch(() => null)
   }
 }

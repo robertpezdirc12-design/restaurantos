@@ -264,14 +264,14 @@ describe('v1.273.0 Č3 — montaža in varnost stiš', () => {
 // ── Ž) REGISTRI ──
 describe('v1.273.0 Ž — registri', () => {
   test('verzija 1.273.0 (version.ts + compose + APP_VERSION vsebina)', () => {
-    expect(APP_VERSION).toBe('1.287.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.287.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.288.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.288.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.288.0-sweep-globji-pregled')
   })
 
   test('AUDIT doc-truth: POSODOBITEV (v1.273.0, diakritike II — izvozni API + tisk)', () => {

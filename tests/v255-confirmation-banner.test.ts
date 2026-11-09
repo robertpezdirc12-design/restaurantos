@@ -176,9 +176,9 @@ describe('v1.255.0 Ž — registri', () => {
   const libSrc = read('src/lib/confirm-banner.ts')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.287.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.287.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.288.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.288.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+11 cb.*)', () => {
@@ -234,6 +234,6 @@ describe('v1.255.0 Ž — registri', () => {
 
   test('Ž5: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.288.0-sweep-globji-pregled')
   })
 })

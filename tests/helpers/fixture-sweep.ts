@@ -130,6 +130,7 @@ export const TEST_PREFIXES = [
   'v284-', // sweep lokacij po imenu (v1.284.0 — nid()-id lokacije s predponskim imenom, vzorec i23-Nova)
   'v285-', // sweep gotovina + gostje (v1.285.0 — CashMovement/Guest/GuestVisit vpisi spodaj; i16-/v187cp- sta bili registrirani ŽE PREJ, vrzel je bila v SEZNAMIH modelov)
   'v286-', // sweep napitnine (v1.286.0 — TipPool zbirni prehod 0c + lokacijski vpis spodaj)
+  'v288-', // sweep globji pregled (v1.288.0 — 9 novih FIELD_SWEEP razredov + GL prehod 0d + Counter izteg 0a; meritve v tests/v288-sweep-globji-pregled.test.ts)
   // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
   // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
   // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred
@@ -396,6 +397,14 @@ const LOCATION_CHILD_SWEEP = [
   'wasteRecord',
   'reservation',
   'waitlistEntry',
+  // v1.288.0: revizijski dogodki HACCP zapisa — locationId je SKALAR (shema:
+  // brez @relation) z @@index, vendar doslej NI bil v tem seznamu (dokumentirana
+  // nakana v1.109.0 »lokacijski prehod PRED haccpEntry« pri ID_SWEEP vnosu
+  // haccpAction nikoli izvedena v TEM seznamu). Izmerjeno: 9/tek nid()-id
+  // vrstic z predponskim locationId (i20-locA-…) preživi zelene teke — brisanje
+  // testne lokacije jih ne počisti (skalar), id-predpona jih ne vidi (nid).
+  // PRED haccpEntry po izvirni nakani (sicer dosledno vzorcu otrok-pred-starši).
+  'haccpAction',
   'haccpEntry',
   'prepStation',
   'openingHours',
@@ -457,6 +466,13 @@ const LOCATION_CHILD_SWEEP = [
   // preživele zelene teke. nid() id + predponski locationId → ta prehod
   // (vzorec managerCall/stationTask: skalar locationId brez FK).
   'auditLog',
+  // v1.288.0: GL vrstice dnevnega obračuna — JournalLine.locationId je SKALAR
+  // (brez @relation; nosi user.loc uporabnika, ki je sprožil obračun). Vrstice
+  // z nid()-id lokacijo pobere IN-seznam locChildOr(); predponske pobere
+  // startsWith. Vnosi (JournalEntry) čisti zbirni prehod 0d, ki teče PRED fazo 1
+  // — ta vpis je plastena varovalka za vrstice, ki bi nastopile kasneje v teku
+  // (idempotenten deleteMany).
+  'journalLine',
 ] as const
 
 type Delegate = { deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }> }
@@ -507,6 +523,72 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // recipient iz v1.282.0: realni userId je nid() hex — predpona z ne-hex
   // znakom ne more biti predpona realnega id-ja. List brez FK otrok → varno v fazi 0.
   { model: 'auditLog', fields: ['userId'] },
+  // ── v1.288.0: globji pregled preostalih FIELD_SWEEP razlik (A-kandidat iz
+  // v1.286.0/v1.287.0 — izmerjeno po 2 zelenih tekih na svežem semenu:
+  // akumulacija ~69 predponskih sirot na tek v 10 razredih, ki so uidele
+  // VSEM trem prehodom: nid() id + locationId NULL ali odmrli + predpona v
+  // besedilnem polju, ki ga doslej nihče ni pometal). Vrstni red bloka je
+  // FK-diktiran: StockTransaction → InventoryItem je OBAVEZEN Restrict FK,
+  // zato transakcije (po employeeName) padejo PREJ kot artikli (po name) —
+  // sicer bi brisanje artikla padlo na P2003 (šum v errors, vrstice ostanejo). ──
+  { model: 'stockTransaction', fields: ['employeeName'] },
+  // i52- (issue52-55-58-59-inventory): artikli ustvarjeni prek enterprise API
+  // z nid() id-jem in predponskim IMENOM; po izbrisu drevesa locationId padne
+  // na NULL (SetNull) → nevidni id- in lokacijskemu prehodu (izmerjeno 9/tek).
+  { model: 'inventoryItem', fields: ['name'] },
+  // i30- (issue30-37-ssrf): integracije z nid() id-jem + predponskim imenom +
+  // locationId NULL (izmerjeno 4/tek). IntegrationLog → Integration je CASCADE
+  // → z integracijo pade tudi dnevnik (izmerjeno +1/tek, prav tako uide
+  // id-prehodu: integrationId je nid).
+  { model: 'integration', fields: ['name'] },
+  // v240- (v240-reservation-cell): javni widget piše rezervacijo z nid() id-jem,
+  // predpona živi v customerName; locationId je skalar, ki ga test poči → NULL
+  // (izmerjeno 19/tek). Table.reservationId je SetNull → brisanje rezervacije
+  // sprosti mize brez FK ovir. V245 kombinacije (comboTableIds ',v245-tbl-a,…,')
+  // so sred-niz — te vrstice pokrije customerName (iste vrstice, ista predpona
+  // v drugem polju).
+  { model: 'reservation', fields: ['customerName'] },
+  // gfb- (guest-feedback): QR povratne informacije gostov z nid() id-jem —
+  // predpona v guestName/comment/tableId, locationId NULL (izmerjeno 7/tek).
+  // List brez FK otrok → varen vhod v fazo 0.
+  { model: 'guestFeedback', fields: ['guestName', 'comment', 'tableId'] },
+  // v186ai- (v186-ai-insights): vpogledi AI z nid() id-jem — predpona v
+  // employeeId (izmerjeno 3/tek). List brez FK otrok.
+  { model: 'aIConversation', fields: ['employeeId'] },
+  // v190wp- (v190-web-portal): dostavni podatki spletnega portala z nid() id-jem
+  // — predpona v deliveryInstructions (naslov/telefon sta predmet asercij
+  // testa, zato je nosilec navodilo; izmerjeno 1/tek). Order → DeliveryInfo
+  // ne blokira (otrok).
+  { model: 'deliveryInfo', fields: ['deliveryInstructions'] },
+  // furspost (furs-post): dogodki StockChanged ob fiskalnem stornu — id/entityId/
+  // locationId so VSI nid() (lokacijo počisti reverse-FK afterAll testa SAM,
+  // preden bi kateri koli kasnejši sweep lahko uporabil njen id za IN-seznam;
+  // entityId = artikel, ne račun → lastnični deleteMany po entityId ne zadene).
+  // Edini trajen predponski sled je "by":"furspost-…" SRED JSON payloada
+  // (izmerjeno 6/tek). `contains` po vzorcu Counter: realni payloadi
+  // referencirajo realne nid() entitete — testna predpona z ne-hex znaki ne
+  // more biti del realnega zapisa.
+  { model: 'eventLog', fields: ['payload'], contains: true },
+  // v1.288.0 (drugi auditLog vnos poleg userId): produkcija piše audit vrstice
+  // z nid() id-jem, kjer je predpona SAMO SRED details JSON (poNumber
+  // 'PO-V156R-mw8vz6…', grnNumber, entityId — izmerjeno 26/tek: v156r-/disc59-/
+  // hcp64-/i53-/i4-). userId vrstice pomete obstoječi vnos (v1.285.0) na
+  // naslednjem teku lastnika predpone; details vrstice brez predponskega
+  // userId niso pokrite z NOBENIM naslednjim tekom (beforeAll lastnika predpone
+  // pomete samo userId zadetke — details polja ne vidi).
+  // `contains` po istem varnostnem argumentu kot eventLog/payload.
+  { model: 'auditLog', fields: ['details'], contains: true },
+  // ── v1.288.0 najdba #2 med valom (živa verifikacija po teku 7 datotek):
+  // instrumenti vračil iz tests/v243-povracilna-celica — 5 stale darilnih
+  // kartic + 6 računov zvestobe z nid() id-jem, katerih lokacija je bila že
+  // izbrisana (SetNull) → lastni cleanup po locationId jih ne vidi več; polna
+  // suite jih pobere SAMO zato, ker v243 afterAll teče z živo lokacijo —
+  // crash teka bi jih pustil za vedno. Kupon (code) in gost (lastName/email)
+  // sta čista lista (Coupon→Guest je Cascade — obrambna globina za sirote);
+  // kartice in računi zvestobe imajo Restrict otroke brez predpone → zbirni
+  // prehod 0e spodaj. ──
+  { model: 'coupon', fields: ['code'] },
+  { model: 'guest', fields: ['lastName', 'email'] },
   // v1.147.0 (release audit #8/#9): Employee.pin je @unique, testi pa v njega
   // napišejo dobesedno vrednost s predpono (`pin: 'pi49-a'`), id pa je nid() BREZ
   // predpone. Če tek crashne, ostane tak zaposlen; ko kasneje izbrisan njegova
@@ -590,6 +672,20 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
       select: { id: true },
     })
   ).map((r) => r.id)
+  // v1.288.0: števci zaporedij pobranih sirot — 'receipt:<locId>'/'order:<locId>'
+  // Counter vrstice referencirajo lokacijo SRED imena; ko faza 4 pobere nid()-id
+  // lokacijo s predponskim imenom (0a zgoraj), njen števec OSTANE (izmerjeno po
+  // 2 zelenih tekih: 14 'order:<nid>' vrstic — vsi lokacijski deli so mrtvi id-ji;
+  // vrednosti se več ne pomikajo, vrstice pa se nabirajo +7/tek). Predponske-id
+  // lokacije ('order:v245-loc-…') že pokriva obstoječi Counter contains prehod —
+  // ta izteg pokriva nid()-id sirote. Exact-match po CELEM imenu: demo števci
+  // živih lokacij in 'grn:' dnevni števec ostanejo nedotaknjeni (id žive lokacije
+  // nikoli ni v orphanLocIds — 0a zbira SAMO predponsko poimenovane).
+  if (orphanLocIds.length > 0) {
+    await dele('counter', {
+      name: { in: orphanLocIds.flatMap((id) => [`receipt:${id}`, `order:${id}`]) },
+    })
+  }
   /** OR-pogoji za prehoda 2/5 (locationId): predponski startsWith + IN-seznam
    *  znanih nid() id-jev sirot (njihovi otroci nosijo nid() locationId →
    *  startsWith jih ne vidi; Employee→Location je SetNull → brez tega bi
@@ -665,6 +761,75 @@ export async function sweepTestFixtures(db: PrismaClient, prefixes: readonly str
       ).map((r) => r.tipPoolId),
     ),
   )
+  // 0d. zbiralni prehod — GL vnosi testnih lokacij (v1.288.0). POST /api/reports/gl
+  //     (source 'auto') piše JournalEntry z nid() id-jem BREZ predpone — vnos sam
+  //     nima NOBENEGA predponskega polja (entryNumber/reference/description so
+  //     generirane, locationId je NULL ker refresh pot v route ne osvežuje vnosa,
+  //     ampak samo vrstice). Predponski je SAMO JournalLine.locationId (user.loc
+  //     uporabnika, ki je sprožil obračun; izmerjeno 6 vrstic + 2 vnosa na tek —
+  //     i5-locA1/i5-locB1 iz tests/issue5-authorization). GL koda nastavi
+  //     locationId na VSE vrstice vnosa iz ISTEGA user.loc (create + refresh poti
+  //     v route) → vnos s predponsko vrstico JE testni odpadek; demo vnosi
+  //     (demo lokacija = nid hex brez predpone v imenu) ostanejo. JournalLine →
+  //     JournalEntry je Restrict FK → vrstice PRED vnosi (vzorec 0c: dokaz za
+  //     vnos je VRSTICA s predponskim locationId; ko pade, je sled izbrisana).
+  //     IN-seznam po locChildOr logiki: tudi vrstice, ki kažejo na nid()-id
+  //     lokacijo s predponskim IMENOM (0a), vdajo svoj vnos.
+  const orphanJournalEntryIds = Array.from(
+    new Set(
+      (
+        await db.journalLine.findMany({
+          where: {
+            OR: [
+              ...forField('locationId', 'startsWith'),
+              ...(orphanLocIds.length > 0 ? [{ locationId: { in: orphanLocIds } }] : []),
+            ],
+          } as unknown as Prisma.JournalLineWhereInput,
+          select: { journalEntryId: true },
+        })
+      ).map((r) => r.journalEntryId),
+    ),
+  )
+  if (orphanJournalEntryIds.length > 0) {
+    await dele('journalLine', {
+      OR: [
+        ...forField('locationId', 'startsWith'),
+        ...(orphanLocIds.length > 0 ? [{ locationId: { in: orphanLocIds } }] : []),
+      ],
+    })
+    await dele('journalEntry', { id: { in: orphanJournalEntryIds } })
+  }
+  // 0e. zbiralni prehod — instrumenti vračil (v1.288.0 najdba #2 med valom).
+  //     Darilne kartice in računi zvestobe iz tests/v243-povracilna-celica
+  //     (POST /api/* z nid() id-jem): predpona živi v ownerName oziroma
+  //     customerName; lokacija je bila izbrisana (SetNull) → lastni v243
+  //     cleanup po locationId jih ne najde več (izmerjeno 5 GC + 6 LA po
+  //     samostojnem teku; polna suite jih počisti z lastnim afterAll — crash
+  //     teka pa bi jih pustil za vedno). Transakcije otroci: issue vrstice
+  //     nosijo predpono v note, REDEEM/REFUND pa so BREZ predpone → Restrict
+  //     FK blokira brisanje starša → zbirni prehod (vzorec 0c/0d): otroci
+  //     starša s predponskim imenom SO testni odpadek (produkcija ne piše
+  //     testnih predpon v ownerName/customerName).
+  const orphanGiftCardIds = (
+    await db.giftCard.findMany({
+      where: { OR: forField('ownerName', 'startsWith') } as unknown as Prisma.GiftCardWhereInput,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+  if (orphanGiftCardIds.length > 0) {
+    await dele('giftCardTransaction', { giftCardId: { in: orphanGiftCardIds } })
+    await dele('giftCard', { id: { in: orphanGiftCardIds } })
+  }
+  const orphanLoyaltyIds = (
+    await db.loyaltyAccount.findMany({
+      where: { OR: [...forField('customerName', 'startsWith'), ...forField('customerEmail', 'startsWith')] } as unknown as Prisma.LoyaltyAccountWhereInput,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+  if (orphanLoyaltyIds.length > 0) {
+    await dele('loyaltyTransaction', { loyaltyAccountId: { in: orphanLoyaltyIds } })
+    await dele('loyaltyAccount', { id: { in: orphanLoyaltyIds } })
+  }
   // 1. blok prehod po id — otroci → starši, ŠE BREZ location:
   //    opciona relacija na Location je onDelete: SetNull — če bi lokacijo brisali
   //    prej, bi otrokom (npr. DeliveryZone z aplikacijskim id-jem) postavil

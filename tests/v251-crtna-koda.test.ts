@@ -109,6 +109,10 @@ async function cleanupFixtures() {
     }
     await db.table.deleteMany({ where: { locationId: locId } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: locId } }).catch(() => null)
+    // v1.288.0: števca zaporedij lokacije (receipt + order — nextSequence ju
+    // ustvari za API-naročila; izmerjeno: brez tega ostane 'order:<nid>' mrtev
+    // za vedno, ker lokacijski dokaz za 0a izteg izgine z lokacijo)
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${locId}`, `order:${locId}`] } } }).catch(() => null)
   }
   await db.receipt.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
   await db.order.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
@@ -447,9 +451,9 @@ describe('v1.251.0 Č4 — UI: kartica skeniranja v zavihku Računi', () => {
 
 describe('v1.251.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.287.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.287.0'")
-    expect(compose).toContain('restaurantos:1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.288.0'")
+    expect(compose).toContain('restaurantos:1.288.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+6 rcpt.scan*)', () => {
@@ -480,6 +484,6 @@ describe('v1.251.0 Ž — registri in pini', () => {
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.288.0-sweep-globji-pregled')
   })
 })

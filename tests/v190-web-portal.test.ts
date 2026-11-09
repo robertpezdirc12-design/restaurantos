@@ -373,7 +373,12 @@ describe('Č2 — POST /api/public/web-portal (naročilo v kanonično jedro)', (
       address: 'Slovenska 1',
       city: 'Ljubljana',
       postCode: '1000',
-      instructions: 'Zvonec na dvorišče',
+      // v1.288.0: nosilec predpone je navodilo (naslov/telefon sta predmet
+      // asercij spodaj) — DeliveryInfo nastane z nid() id-jem prek javne rute,
+      // zato ga id-prehod ne vidi; FIELD_SWEEP deliveryInfo/deliveryInstructions
+      // (tests/helpers/fixture-sweep.ts) ga pobere na naslednjem pometanju
+      // (izmerjeno prej: +1 osirotela vrstica na tek).
+      instructions: `${PREFIX} Zvonec na dvorišče`,
       deliveryFee: 99, // napadalec pošlje svojo ceno
       items: [{ menuItemId: itemAId, qty: 2 }],
     })))

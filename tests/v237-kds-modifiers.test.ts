@@ -98,7 +98,7 @@ async function cleanupFixtures() {
     await db.modifier.deleteMany({ where: { modifierGroupId: { in: grps.map((g) => g.id) } } }).catch(() => null)
     await db.modifierGroup.deleteMany({ where: { id: { in: grps.map((g) => g.id) } } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: locId } }).catch(() => null)
-    await db.counter.deleteMany({ where: { name: `receipt:${locId}` } }).catch(() => null)
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${locId}`, `order:${locId}`] } } }).catch(() => null) // v1.288.0: tudi order števec (izteg 0a ne vidi izbrisane lokacije)
     await db.location.deleteMany({ where: { id: locId } }).catch(() => null)
   }
 }
@@ -281,9 +281,9 @@ describe('v1.237.0 D — i18n (SL + HR pariteta, 3857 → 3858)', () => {
 
 describe('v1.237.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.287.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.287.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.288.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.288.0')
   })
 
   test('Ž2: PRIMERJAVA §14 (kako ima Toast / kako ima RestaurantOS z datotečnimi potmi)', () => {

@@ -124,7 +124,8 @@ async function cleanupFixtures() {
     await db.inventoryItem.deleteMany({ where: { locationId: locId } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: locId } }).catch(() => null)
     await db.supplier.deleteMany({ where: { name: { startsWith: PREFIX } } }).catch(() => null)
-    await db.counter.deleteMany({ where: { name: { startsWith: `receipt:${locId}` } } }).catch(() => null)
+    // v1.288.0: tudi števec naročil (nextSequence ga ustvari za vsako lokacijo z API-naročili; izmerjeno 49 mrtvih 'order:<nid>' — lokacijski dokaz za 0a izteg je bil izbrisan prej)
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${locId}`, `order:${locId}`] } } }).catch(() => null)
     await db.location.deleteMany({ where: { id: locId } }).catch(() => null)
   }
 }
@@ -618,9 +619,9 @@ describe('v1.238.0 I — predlogi nabave: zavrnjena količina ni incoming', () =
 
 describe('v1.238.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.287.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.287.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.288.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.288.0')
   })
 
   test('Ž2: PRIMERJAVA §15 — denarni val z raziskavo in dokazi', () => {

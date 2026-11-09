@@ -117,7 +117,7 @@ async function cleanupFixtures() {
     await db.zReport.deleteMany({ where: { locationId: id } })
     await db.auditLog.deleteMany({ where: { locationId: id } })
     await db.cashRegisterShift.deleteMany({ where: { id: { in: shiftIds } } })
-    await db.counter.deleteMany({ where: { name: `receipt:${id}` } })
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${id}`, `order:${id}`] } } }) // v1.288.0: tudi order števec (izteg 0a ne vidi izbrisane lokacije)
     const orders = await db.order.findMany({ where: { locationId: id }, select: { id: true } })
     for (const o of orders) {
       await db.receipt.deleteMany({ where: { orderId: o.id } })

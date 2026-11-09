@@ -112,7 +112,8 @@ async function cleanupFixtures() {
     await db.category.deleteMany({ where: { id: { in: cats.map((c) => c.id) } } }).catch(() => null)
     await db.menu.deleteMany({ where: { id: { in: menus.map((m) => m.id) } } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: locId } }).catch(() => null)
-    await db.counter.deleteMany({ where: { name: { startsWith: `receipt:${locId}` } } }).catch(() => null)
+    // v1.288.0: tudi števec naročil (nextSequence ga ustvari za vsako lokacijo z API-naročili; izmerjeno 49 mrtvih 'order:<nid>' — lokacijski dokaz za 0a izteg je bil izbrisan prej)
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${locId}`, `order:${locId}`] } } }).catch(() => null)
     await db.location.deleteMany({ where: { id: locId } }).catch(() => null)
   }
 }
@@ -599,11 +600,11 @@ describe('v1.249.0 E — pravice orders.priceOverride', () => {
 
 describe('v1.249.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.249.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.287.0')
+    expect(APP_VERSION).toBe('1.288.0')
     const versionFile = read('src/lib/version.ts')
-    expect(versionFile).toContain("'1.287.0'")
+    expect(versionFile).toContain("'1.288.0'")
     const compose = read('deploy/docker-compose.yml')
-    expect(compose).toContain('restaurantos:1.287.0')
+    expect(compose).toContain('restaurantos:1.288.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4002/4002 (+13: prc×12 + exc.report.kind.price_override)', () => {
@@ -630,7 +631,7 @@ describe('v1.249.0 Ž — registri in pini', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.249.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.287.0-ci-sveza-baza')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.288.0-sweep-globji-pregled')
   })
 
   test('Ž6: ruta pošilja dogodev + push (osvežitev plošč PO commitu)', () => {
