@@ -293,14 +293,14 @@ describe('v1.276.0 Č3 — nevdni ostanki (CSV/pisak/gosti/vnos) + sken 0 surovi
 // ── Ž) REGISTRI ──
 describe('v1.276.0 Ž — registri', () => {
   test('verzija 1.276.0 (version.ts + compose + APP_VERSION vsebina)', () => {
-    expect(APP_VERSION).toBe('1.288.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.288.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.288.0')
+    expect(APP_VERSION).toBe('1.289.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.289.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.288.0-sweep-globji-pregled')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
   })
 
   test('AUDIT doc-truth: POSODOBITEV (v1.276.0, decimalna ločila — surovi toFixed v render poteh)', () => {

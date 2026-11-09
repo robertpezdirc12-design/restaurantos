@@ -169,7 +169,13 @@ afterAll(async () => {
     await db.category.deleteMany({ where: { id: { in: cats.map((c) => c.id) } } }).catch(() => null)
     await db.menu.deleteMany({ where: { id: { in: menus.map((m) => m.id) } } }).catch(() => null)
     await db.employee.deleteMany({ where: { locationId: loc.id } }).catch(() => null)
-    await db.counter.deleteMany({ where: { name: `receipt:${loc.id}` } }).catch(() => null)
+    // v1.289.0: razširitev na order števec (vzorec 10 datotek iz v1.288.0 najdbe
+    // #1) — datoteka ustvari naročila prek API-ja na lastni lokaciji (izmerjeno
+    // 'order:i30-loc-a-<run>' value 8), dosedanji receipt-only izbris je pustil
+    // mrtev števec do naslednjega teka (samozdravljenje prek Counter contains
+    // prehoda — predponski id lokacije; a pogodba »0 mrtvih števcev po teku«
+    // zdaj neodvisna od razporejanja datotek).
+    await db.counter.deleteMany({ where: { name: { in: [`receipt:${loc.id}`, `order:${loc.id}`] } } }).catch(() => null)
     await db.location.deleteMany({ where: { id: loc.id } }).catch(() => null)
   }
   await db.integrationLog.deleteMany({ where: { integrationId: { startsWith: PREFIX } } }).catch(() => null)

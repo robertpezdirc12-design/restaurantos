@@ -302,9 +302,9 @@ describe('v1.267.0 Č2 — API + UI montaža', () => {
 
 describe('v1.267.0 Ž — registri', () => {
   test('Ž1: verzija 1.267.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.288.0')
-    expect(read('src/lib/version.ts')).toContain("'1.288.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.288.0')
+    expect(APP_VERSION).toBe('1.289.0')
+    expect(read('src/lib/version.ts')).toContain("'1.289.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (+11 klju\u010dev vala)', () => {
@@ -330,6 +330,6 @@ describe('v1.267.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.288.0-sweep-globji-pregled')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
   })
 })

@@ -597,7 +597,7 @@ describe('v1.243.0 E — zrcalne vrstice nosijo identifikacijo instrumenta', () 
 
 describe('v1.243.0 Ž — registri', () => {
   test('Ž1: verzija je dvignjena na 1.243.0', () => {
-    expect(APP_VERSION).toBe('1.288.0')
+    expect(APP_VERSION).toBe('1.289.0')
   })
 
   test('Ž2: raziskava §17 je dokumentirana (PRIMERJAVA-VMESNIKOV-2026)', () => {
