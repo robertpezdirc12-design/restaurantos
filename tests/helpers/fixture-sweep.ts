@@ -508,6 +508,16 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // vezaje odstrani (src/lib/map.ts:29), zato `contains` zadene samo testne
   // vrstice. Izbris je v dev SQLite tudi sicer samoceljiv: nextSequence in
   // allocateReceiptNumber Counter ustvarita znova.
+  // v1.289.0 dopolnitev (readdir dokaz, 283/283): bun test izvaja datoteke v
+  // READDIR (datotečno-sistemskem, NE abecednem) redu — VRSTNI RED TEKA je
+  // zato odvisen od stanja datotečnega sistema (reset peskovnika/git checkout
+  // ga spremeni; osnovni val je zapisal »workerje« — atribucija popravljena:
+  // poskusi z 3/10 majhnimi datotekami namigujejo abecedni red, pri 283
+  // datotekah je dokaz 283/283 readdir). Vrstice, ki jih ustvarijo datoteke
+  // za zadnjim širokim klicem sweepa (TEST_PREFIXES), ostanejo kot PREHODNI
+  // rep; naslednji tek jih poberejo zgodnji široki klici — ta contains prehod
+  // je mehanizem samoceljenja mrtvih števcev s predponskim lokacijskim id-jem.
+  // INVARIANTA neodvisna od reda: 0 AKUMULACIJE čez teke.
   { model: 'counter', fields: ['name'], contains: true },
   // v1.282.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
   // (sendDailyDigest/sendShiftDailySummary/sendWeeklyTaskSummary) — id je

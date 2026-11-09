@@ -195,6 +195,7 @@ afterAll(async () => {
   await db.inventoryItem.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.menu.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.employee.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
+  await db.counter.deleteMany({ where: { name: { in: [`receipt:${locA}`, `order:${locA}`, `receipt:${locB}`, `order:${locB}`] } } }).catch(() => null) // v1.289.0: števca računov/naročil (ročni izbris lokacij pred sweepom — izteg 0a ne vidi izbrisanih lokacij; vzorec issue30/paylink-flow)
   await db.location.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.auditLog.deleteMany({ where: { locationId: { in: [locA, locB] } } }).catch(() => null)
 })

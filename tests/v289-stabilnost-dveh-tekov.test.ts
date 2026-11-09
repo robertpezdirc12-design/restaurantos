@@ -47,6 +47,23 @@ import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
  * id. RDEČI DOKAZ: samoten tek na stari kodi pusti mrtev števec (25/25
  * zelenih, 1 mrtev), na novi kodi 0 mrtvih števcev (25/25 zelenih) — pogodba
  * »0 mrtvih števcev po teku« zdaj neodvisna od razporejanja datotek.
+ *
+ * DOPLONITEV (nadaljevalna seja po 8. resetu peskovnika — vzorec dopolnitve
+ * v1.287.0, ista verzija 1.289.0):
+ *  - READDIR ATRIBUCIJSKA KOREKTURA: vrstni red datotek NE določajo
+ *    »vzporedni workerji« (zapis zgoraj) ampak READDIR red datotečnega
+ *    sistema — dokaz 283/283 pozicijsko ujemanje vrstnega reda teka
+ *    (izluščenega iz izhoda bun test) z os.listdir na svežem peskovniku;
+ *    majhni poskusi (3/10 datotek) namigujejo abecedni red in so zavajajoči.
+ *    Posledica: sestava prehodnega repa se spremeni ob vsakem resetu
+ *    (8. reset: rep ~48 vrstic + 2 števca i30+i7 namesto ~93 + 1 i30 —
+ *    DRUGAČEN readdir red, ista invarianta 0 akumulacije čez teke).
+ *  - 12. DATOTEKA vzorca: tests/issue7-allergen-truth.test.ts — afterAll NI
+ *    čistil števcev nobene od dveh ročno izbrisanih lokacij (locA/locB) →
+ *    »order:i7-locA-<run>« je ostal prehodno mrtev (na 7. resetu ni bil v
+ *    repu — readdir ga je postavil pred zadnjim širokim klicem; na 8. je za
+ *    njim). POPRAVEK: counter izbris za vse štiri imena (receipt/order ×
+ *    locA/locB), vzorec issue30/paylink-flow.
  */
 
 const P = 'v289-'
@@ -138,18 +155,42 @@ describe('v289 Ç2: popravek i30 — števci naročil (receipt+order)', () => {
 
 describe('v289 Ç3: merilne pogodbe (2 teka, DMMF klasifikacija)', () => {
   test('Ç3a DEMO_LOGIN 11/tek — popravek dokumentacije v1.288.0 (»2/tek« je bila napačna)', () => {
-    const wl = read('worklog.md').slice(0, 5000)
+    // dopolnitev v1.289.0: okno 5000 → 15000 — dopolnitveni vnos na vrhu workloga
+    // (vzorec v1.287.0 dopolnitve) potisne osnovni vnes čez 5000; okno zdaj
+    // zajema osnovni vnos + dopolnitev, pini pa ostajajo na ISTIH nizih.
+    const wl = read('worklog.md').slice(0, 15000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
   })
 
   test('Ç3b prehodno ravnotežje ~93 predponskih vrstic/tek zapisano z merjenimi številkami', () => {
-    const wl = read('worklog.md').slice(0, 5000)
+    const wl = read('worklog.md').slice(0, 15000)
     expect(wl).toContain('93 predponskih')
   })
 
   test('Ç3c pogodba 0 trajno mrtvih števcev + prehoden i30 zapisana', () => {
-    const wl = read('worklog.md').slice(0, 5000)
+    const wl = read('worklog.md').slice(0, 15000)
     expect(wl).toContain('0 TRAJNO mrtvih števcev')
+  })
+})
+
+// ── Ç4) DOPLONITEV — 12. datoteka vzorca + readdir atribucija ─────────────
+
+describe('v289 Ç4: dopolnitev (8. reset peskovnika — ista verzija, isti val)', () => {
+  test('Ç4a issue7-allergen-truth: counter izbris za OBE lokaciji (receipt+order × locA+locB)', () => {
+    // 12. datoteka vzorca najdbe #1: afterAll prej NI čistil števcev nobene
+    // od dveh ročno izbrisanih lokacij → 'order:i7-locA-<run>' je ostal
+    // prehodno mrtev (v repu teka na 8. resetu — na 7. ga readdir ni izpostavil).
+    // Vzorec issue30 (Ç2a) / paylink-flow iz v1.288.0.
+    expect(read('tests/issue7-allergen-truth.test.ts')).toContain(
+      'name: { in: [`receipt:${locA}`, `order:${locA}`, `receipt:${locB}`, `order:${locB}`] }',
+    )
+  })
+
+  test('Ç4b readdir atribucija dokumentirana v fixture-sweep (283/283 dokaz, ne »workerji«)', () => {
+    const src = read('tests/helpers/fixture-sweep.ts')
+    expect(src).toContain('v1.289.0 dopolnitev (readdir dokaz, 283/283)')
+    expect(src).toContain('READDIR (datotečno-sistemskem, NE abecednem) redu')
+    expect(src).toContain('0 AKUMULACIJE čez teke')
   })
 })
 
