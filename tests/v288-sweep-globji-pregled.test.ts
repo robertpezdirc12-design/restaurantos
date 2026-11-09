@@ -547,7 +547,7 @@ describe('v288 Ç2: pini popritja (9 FIELD_SWEEP vnosov + lokacijska vpisa + 0d 
 
   test('v288- registriran v TEST_PREFIXES; skupaj 139 vnosov (138 + ta val)', () => {
     expect(TEST_PREFIXES, P).toContain(P)
-    expect(TEST_PREFIXES.length).toBe(141)
+    expect(TEST_PREFIXES.length).toBe(142)
   })
 
   test('kontinuiteta registracije: v282-/v284-/v285-/v286- ostanejo (migracija sledi trenutnemu stanju)', () => {
@@ -635,17 +635,17 @@ describe('v288 Ç3: centralni sweep s 139 predponami (živi ostanki → 0 + varn
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v288 Ž: registri', () => {
-  test('verzija 1.290.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.290.0')
+  test('verzija 1.291.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.291.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.291.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.291.0-demo-login-nicla-rast')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

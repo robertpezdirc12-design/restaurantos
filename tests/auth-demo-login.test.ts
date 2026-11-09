@@ -20,6 +20,14 @@ import { POST as demoLoginPOST, GET as demoLoginGET, demoGate } from '../src/app
  * DEMO_LOGIN_EXPIRES_AT=<ISO>. Blok "zapora" pokriva obe zavori, fail-closed
  * vedenje ob neveljavnem datumu, GET stanja (samo stanje, brez računov) in
  * vrstni red (zapora se preveri PREJ kot rate limit).
+ *
+ * v1.291.0 (A-kandidat iz v1.290.0 — DEMO_LOGIN 0-rast): ZASTAVLJENA predponska
+ * fikstura za samodejno izbiro. Brez DEMO_LOGIN_EMAIL prijavita dva testa
+ * (samodejna izbira + rate-limit 11 klicev) SEMENSKI admin → 11 audit vrstic
+ * DEMO_LOGIN/tek brez predpone (izmerjeno: 77 = 7×11 pred valom). Zastavljeni
+ * createdAt (2020) je starejši od vsakega semenskega admina → izbira pade na
+ * LASTNEGA predponskega admina → vsi trije nosilci zapisa (userId/entityId/
+ * locationId) so predponski → afterAll sweep jih pobriše (0-rast).
  */
 
 const P = 'adl-'
@@ -27,7 +35,7 @@ const RUN = String(Date.now()).slice(-8)
 const PIN_BASE = String(Date.now()).slice(-6)
 
 let org: string, brand: string, prop: string, loc: string
-let ownerId: string, waiterId: string, mfaAdminId: string
+let ownerId: string, waiterId: string, mfaAdminId: string, autoAdminId: string
 
 function req(ip: string): NextRequest {
   return new NextRequest('http://localhost:3000/api/auth/demo-login', {
@@ -45,13 +53,22 @@ async function cleanup() {
   await sweepTestFixtures(db, [P])
 }
 
-async function seedEmployee(id: string, name: string, role: string, seq: number): Promise<string> {
+async function seedEmployee(
+  id: string,
+  name: string,
+  role: string,
+  seq: number,
+  opts?: { createdAt?: Date },
+): Promise<string> {
   const email = `${id}@test.local`
   const f = employeePinFields(`${PIN_BASE}${seq}`, email)
   await db.employee.create({
     data: {
       id, name, email, role, status: 'active', sessionVersion: 0, locationId: loc,
       pin: f.pin, pinLookup: f.pinLookup,
+      // v1.291.0: ZASTAVLJEN createdAt — samodejna izbira (orderBy createdAt asc)
+      // pade deterministično na PREDPONSKI račun tudi na semeščeni bazi.
+      ...(opts?.createdAt ? { createdAt: opts.createdAt } : {}),
     },
   })
   return id
@@ -68,6 +85,16 @@ beforeAll(async () => {
   ownerId = await seedEmployee(`${P}owner-${RUN}`, `${P}Vodja`, 'owner', 1)
   waiterId = await seedEmployee(`${P}waiter-${RUN}`, `${P}Natakar`, 'waiter', 2)
   mfaAdminId = await seedEmployee(`${P}mfaadmin-${RUN}`, `${P}MFA Admin`, 'admin', 3)
+  // v1.291.0: ZASTAVLJENI predponski admin za samodejno izbiro — route izbere
+  // NAJSTAREJŠEGA aktivnega owner/admina brez MFA (orderBy createdAt asc);
+  // brez fiksture je to semenski admin → 11 DEMO_LOGIN vrstic/tek brez predpone
+  // (izmerjeno: 77 = 7×11 pred valom). Backdate 2020-01-01 je starejši od
+  // vsakega semenskega admina (seme teče v sedanjosti; rezerva 6+ let) → izbira
+  // pade nanj tudi na semeščeni bazi, na prazni CI bazi (ci-fresh.db brez
+  // semena) pa je edini kandidat. PIN 4 / e-pošta enolična kot pri ostalih.
+  autoAdminId = await seedEmployee(`${P}auto-${RUN}`, `${P}Samodejni Admin`, 'owner', 4, {
+    createdAt: new Date('2020-01-01T00:00:00Z'),
+  })
   await db.employee.update({ where: { id: mfaAdminId }, data: { mfaEnabled: true } })
 })
 
@@ -169,6 +196,12 @@ describe('demo-login — samodejna izbira + rate limit', () => {
     expect(['OWNER', 'ADMIN']).toContain(d.employee?.role)
     expect(d.employee?.id).not.toBe(waiterId)
     expect(d.employee?.id).not.toBe(mfaAdminId)
+    // v1.291.0: deterministična izbira — zastavljena fikstura (createdAt 2020)
+    // je NAJSTAREJŠI kandidat → izbira pade nanjo, ne na semenskega admina.
+    // Pin je NAMENOMO glasen: če okolje ima starejšega realnega owner/admina
+    // brez MFA, bi samodejna izbira pisala ČISTE (nepredponske) vrstice —
+    // tiho puščanje je hujše od padca (pogodba 0-rasti DEMO_LOGIN vrstic).
+    expect(d.employee?.id).toBe(autoAdminId)
   })
 
   it('rate limit: 11. klic z istim IP v minuti → 429', async () => {

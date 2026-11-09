@@ -202,22 +202,22 @@ describe('v289 Ç4: dopolnitev (8. reset peskovnika — ista verzija, isti val)'
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v289 Ž: registri', () => {
-  test('verzija 1.290.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.290.0')
+  test('verzija 1.291.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.291.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.291.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.291.0-demo-login-nicla-rast')
   })
 
-  test('TEST_PREFIXES: 141 z v289- registrirano (v1.290.0 dodal v290-)', () => {
+  test('TEST_PREFIXES: 142 z v289- registrirano (v1.290.0 dodal v290-, v1.291.0 dodal v291-)', () => {
     expect(TEST_PREFIXES.includes(P)).toBe(true)
-    expect(TEST_PREFIXES.length).toBe(141)
+    expect(TEST_PREFIXES.length).toBe(142)
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

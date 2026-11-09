@@ -133,6 +133,7 @@ export const TEST_PREFIXES = [
   'v288-', // sweep globji pregled (v1.288.0 — 9 novih FIELD_SWEEP razredov + GL prehod 0d + Counter izteg 0a; meritve v tests/v288-sweep-globji-pregled.test.ts)
   'v289-', // stabilnost dveh tekov (v1.289.0 — merilni val: prehodno ravnotežje + popravek i30 receipt+order; meritve v tests/v289-stabilnost-dveh-tekov.test.ts)
   'v290-', // repni široki klici (v1.290.0 — vhod+izhod široki klic v 9 repnih datotekah: rep suite 107 → 0; meritve v tests/v290-repni-siroki-klici.test.ts)
+  'v291-', // demo-login ničelna rast (v1.291.0 — zastavljena predponska fikstura v tests/auth-demo-login: DEMO_LOGIN 11/tek → 0; meritve v tests/v291-demo-login-nicla-rast.test.ts)
   // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
   // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
   // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred

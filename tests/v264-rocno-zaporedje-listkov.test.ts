@@ -244,9 +244,9 @@ describe('v1.264.0 Č2 — API reorder veja + DDL + montaža', () => {
 
 describe('v1.264.0 Ž — registri', () => {
   test('Ž1: verzija 1.264.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.290.0')
-    expect(read('src/lib/version.ts')).toContain("'1.290.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
+    expect(APP_VERSION).toBe('1.291.0')
+    expect(read('src/lib/version.ts')).toContain("'1.291.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.291.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4133/4133 (+8 ključev vala)', () => {
@@ -288,6 +288,6 @@ describe('v1.264.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.291.0-demo-login-nicla-rast')
   })
 })

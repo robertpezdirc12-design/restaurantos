@@ -481,8 +481,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 
 describe('v1.216.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.290.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.290.0'/)
+    expect(APP_VERSION).toBe('1.291.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.291.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
