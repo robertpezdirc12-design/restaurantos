@@ -1,3 +1,23 @@
+Task ID: v1.288.0-sweep-globji-pregled-zakljucek-pusha
+Agent: glavni agent (Z.ai Code)
+Task: Pospushna verifikacija vala globjega pregleda FIELD_SWEEP razlik — dokaz sledi v CI/deployment teku (obvezni dokaz implementacijskega vnosa).
+
+Work Log:
+- PUSH: 0be21c3 porinjen (70cc768..0be21c3, žeton seje izključno inline v push ukazu, remote ostaja anonimen; commit nosi cel val, worklog-only vidik: N/A).
+- CI (živo, GA — avtoritativna vrata): 7/7 check-runov SUCCESS na 0be21c3 — build / tests / neon-smoke / typecheck-prod / deploy / report-build-status / sync. KLJUČNI DOKAZ: tests job ZELEN V PRVEM POSKUSU na sveži ci-fresh.db — izhod »Ran 6051 tests across 283 files. [131.95s]« + »6051 pass / 0 fail / 137074 expect() calls« (job 09:09:50–09:13:53Z); CI-ekvivalentni dokaz vala (v288 na ci-v288-proof.db, 142 tabel 0 vrstic, 26/27 pred pushom) živo ponovljen v PRAVEM CI okolju; podrobnost: 3 lokalno preskočeni testi so v CI stekli in zeleno pretekli (lokalno 6048/3/0 na seedani bazi, CI 6051/0/0 na sveži — preskoki so pogojeni s peskovniškim stanjem baze, ne s kodo). PRVI ČIST PRVI POSKUS po v1.282.0 (v1.283.0–v1.286.0 so bile izpostavljene CI-ju šele kumulativno v v1.287.0 s CI-fix pod-valom).
+- BUILDKITE (informativno, NE naša infrastruktura): tests ✅ + typecheck-prod ✅ na 0be21c3; neon-smoke ❌ + sync ❌ ostajata OBSTOJEČI stanji — isti vzorec na a2f3c28 / e837e04 / ccca4ff / 0be21c3 (4. zaporedni HEAD; prehitri za prava testa, Buildkite-stran konfiguracija; GA neposredno prizadet).
+- ALARM CIKEL: NOV issue SE NI odprl — tests zelen v prvem poskusu (v1.215.0 cikel odpira issue izključno ob padcu tests joba); #123 (Vercel OPS, VERCEL_TOKEN_B64 smrt) ostaja edini odprti — B-razred za lastnika.
+- PRODUKCIJA: Vercel Git deployment → /api/health → 1.288.0 @ 0be21c3, mode cloud, postgresql, database connected, schema ok, latencyMs 1321 (09:17:07Z).
+- SYNC-CHECK: SYNCED — local = GitHub = prod = 0be21c32888306a2018f9d30044ef92d587118ec (GitLab mirror posodobljen prek GA sync joba, success v 7/7).
+- PESKOVNIK PO VALU: dev strežnik zdrav (GET / 200, 0 napak v dev.log — zagon prek node, swap buna ga ne moti); baza seedana. NAJDBA OB VERIFIKACIJI PINOV: peskovnik je bil med sejama resetiran SEDMIČ — bun spet 1.3.14 (izvorna slika), nadgradnja 1.4.4 IN rezerva izbrisani; prvi tek pin-verifikacije je padel na 5 v184 F-testih (spawn-otrok ne vidi V184_* env spremenljivk — razlika vedenja 1.3.14 vs 1.4.4, ne koda; CI 1.4.4 istega commita zelen 6051/0/0) → bun 1.4.4 obnovljen prek npm registry tarballa (@oven/bun-linux-x64-1.4.4.tgz, 52,4 MB — dokumentirana rezervna pot) + rezerva ponovno na /usr/local/bin/bun-1.3.14-rezerva → ponovni tek 189/189 zelenih (v184/v230/v260/v249/v279/v288 — worklog-vrh pini); ~/.bun/install/global (z-ai, agent-browser) je reset preživel.
+- VRATA POSPUSHNA: brez ponovnega teka (vrata vala so tekla PRED pushom: tsc 0 / lint 0 / SUITA 6048/3/0 / pini 221/221; CI jih je neodvisno potrdil 7/7 z 6051/0/0).
+
+Stage Summary:
+- Val v1.288.0 popolnoma zaključen: 9 razredov FIELD_SWEEP vrzeli popravljeno v 5 mestih helperja + najdbi med valom (#1 števci naročil — 10 datotek receipt+order; #2 instrumenti vračil — nov 0e prehod) rdeče dokazani in popravljeni; CI zelen v prvem poskusu, produkcija in vse tri pike sinhronizirane na 0be21c3.
+- NASLEDNJI A-KANDIDAT (nespremenjen iz implementacijskega vnosa): živa potrditev stabilnosti po naslednjih 2 tekih suite na novi kodi (DMMF pregled — pričakovano: 0 mrtvih števcev, 0 predponskih stalnih ostanov, edina rast demo-realna meja ~63/tek + 2/tek DEMO_LOGIN + 1/dan grn); eventuelno predponska fikstura v tests/auth-demo-login, če lastnik želi 0-rast tudi na DEMO_LOGIN vrsticah (danes demo-realne po zasnovi — test se prijavi kot SEMENSKI admin).
+- AKCIJA ZA LASTNIKA (B-razred, po prioriteti): (1) PREKLIČI žeton seje ghp_O5gi… (uporabljen izključno za 1 push + bralne API klice te seje — push 70cc768..0be21c3, check-runs/issues branje; nič zapisanega v repo/remote konfiguracijo); prejšnji ghp_gRsp… iz v1.287.0 naj bo prav tako preklican, če še ni bil; (2) VERCEL_TOKEN_B64 v GitHub secrets je MRTEV (odprt alarm #123 — rezervna CLI pot neoperabilna, GLAVNA Git pot deluje pravkar dokazano); (3) OSS-11: vnos pravih vrednosti teme v produkciji (#B91C1C + 96×48 PNG sta demo); (4) Buildkite: neon-smoke + sync odpovedujeta na vseh štirih zadnjih HEAD-ih — preveri njegovo konfiguracijo, če je v verigi namenjen (GA CI ostaja avtoriteta).
+
+---
 Task ID: v1.288.0-sweep-globji-pregled
 Agent: glavni agent (Z.ai Code)
 Task: Izvedba A-kandidata iz zaključka v1.286.0/v1.287.0: globji pregled preostalih FIELD_SWEEP razlik + demo-history semena — zapisano z številkami.
