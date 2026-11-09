@@ -18,7 +18,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { PATCH as waitlistPATCH } from '../src/app/api/waitlist/route'
 
@@ -75,7 +75,10 @@ async function entry(status: string, tableId: string | null, seatedMinutesAgo?: 
 }
 
 beforeAll(async () => {
-  await sweepTestFixtures(db, [P])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // repna datoteka počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastno predpono — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
 
   const a = await db.location.create({ data: { id: `${P}locA-${RUN}`, name: `${P}Lokacija A`, code: `V162A-${RUN.toUpperCase()}`, premisesId: `v162-premA-${RUN}` } })
   const b = await db.location.create({ data: { id: `${P}locB-${RUN}`, name: `${P}Lokacija B`, code: `V162B-${RUN.toUpperCase()}`, premisesId: `v162-premB-${RUN}` } })
@@ -133,6 +136,10 @@ afterAll(async () => {
   await db.table.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.employee.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog/… s predponskimi polji), ki jih zgornji
+  // afterAll ne vidi; rep suite po teku = 0 neodvisno od readdir reda.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 describe('v1.162.0 — sprostitev mize iz čakalne vrste', () => {

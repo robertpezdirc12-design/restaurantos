@@ -46,7 +46,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import {
   ALLERGEN_CODES,
@@ -135,7 +135,10 @@ function params(id: string): { params: Promise<{ id: string }> } {
 }
 
 beforeAll(async () => {
-  await sweepTestFixtures(db, [P])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // repna datoteka počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastno predpono — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const la = await db.location.create({ data: { id: `${P}locA-${RUN}`, name: `${P}Ljubljana`, code: `I7A-${RUN.toUpperCase()}` } })
   const lb = await db.location.create({ data: { id: `${P}locB-${RUN}`, name: `${P}Maribor`, code: `I7B-${RUN.toUpperCase()}` } })
   locA = la.id
@@ -198,6 +201,11 @@ afterAll(async () => {
   await db.counter.deleteMany({ where: { name: { in: [`receipt:${locA}`, `order:${locA}`, `receipt:${locB}`, `order:${locB}`] } } }).catch(() => null) // v1.289.0: števca računov/naročil (ročni izbris lokacij pred sweepom — izteg 0a ne vidi izbrisanih lokacij; vzorec issue30/paylink-flow)
   await db.location.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.auditLog.deleteMany({ where: { locationId: { in: [locA, locB] } } }).catch(() => null)
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog/InventoryItem/Menu… s predponskimi polji),
+  // ki jih zgornji afterAll ne vidi; rep suite po teku = 0 neodvisno od
+  // readdir reda.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 /* ─────────────── A. katalog (čisti unit brez DB) ─────────────── */

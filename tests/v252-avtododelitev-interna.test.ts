@@ -318,9 +318,9 @@ describe('v1.252.0 Ž — registri', () => {
   const routeSrc = read('src/app/api/reservations/route.ts')
 
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.289.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.289.0'")
-    expect(compose).toContain('restaurantos:1.289.0')
+    expect(APP_VERSION).toBe('1.290.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.290.0'")
+    expect(compose).toContain('restaurantos:1.290.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+4 resv.autoServer*)', () => {
@@ -359,6 +359,6 @@ describe('v1.252.0 Ž — registri', () => {
   })
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.252.0-finalna-verifikacija', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
   })
 })

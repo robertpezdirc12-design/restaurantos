@@ -8,7 +8,7 @@ import { PATCH as planPATCH, DELETE as planDELETE } from '../src/app/api/haccp/p
 import { POST as migratePOST } from '../src/app/api/admin/migrate-haccp-plans/route'
 import { resetHaccpPlansProbe } from '../src/lib/haccp-plans'
 import { classifyDrift } from '../scripts/drift-check'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 
 /**
  * Task 64 — HACCP načrti kontrol (audit §7 vrstica 125 PARTIAL→DONE, v1.62.0):
@@ -61,7 +61,12 @@ async function seedEmployee(name: string, role: string, pin: string, locationId:
 }
 
 async function setup() {
-  await sweepTestFixtures(db, [PREFIX])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // POZOR: klic je ZNOTRAJ setup(), ne v novem beforeAll — setupP teče ob
+  // uvozu modula (PRED beforeAll), nov beforeAll-sweep bi pobrisal LASTNE
+  // fiksture; tu počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastno predpono — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const la = await db.location.create({
     data: { id: `${PREFIX}loc-a-${RUN}`, name: `${PREFIX}Lokacija A`, code: `H64A-${RUN.toUpperCase()}` },
   })
@@ -129,6 +134,10 @@ afterAll(async () => {
   await db.location.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
   // zagotovi čisto probe stanje za morebitne naslednje teke
   resetHaccpPlansProbe()
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog … s predponskimi polji), ki jih zgornji
+  // afterAll ne vidi; rep suite po teku = 0 neodvisno od readdir reda.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 describe('Task 64 — HACCP načrti kontrol (API)', () => {

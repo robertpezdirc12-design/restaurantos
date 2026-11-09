@@ -197,7 +197,7 @@ describe('v283 Č2: pini registracije + pokritja', () => {
   test('TEST_PREFIXES = 136 vnosov (90 pred v1.283.0 + 45 tja + v284- lokacije po imenu)', () => {
     // v1.284.0: registracija v284- (sweep nid()-id lokacij s predponskim imenom)
     // dvigne register na 136 — pin sledi TRENUTNEMU stanju (vzorec worklog-vrh).
-    expect(TEST_PREFIXES.length).toBe(140)
+    expect(TEST_PREFIXES.length).toBe(141)
   })
 
   test('hex-varnost: predpona BREZ pomišljaja mora vsebovati znak izven [0-9a-f] (nid() = samo hex → ne more biti predpona realnega id-ja)', () => {
@@ -268,17 +268,17 @@ describe('v283 Č3: centralni sweep z 135 predponami (proračun + varnost realni
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v283 Ž: registri', () => {
-  test('verzija 1.289.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.289.0')
+  test('verzija 1.290.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.290.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

@@ -37,7 +37,7 @@ import { AddressInfo } from 'node:net'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { db } from '../src/lib/db'
 import { nid } from '../src/lib/map'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import {
   validateTargetUrl,
   isBlockedHostname,
@@ -119,7 +119,10 @@ async function mkLink(orderId: string): Promise<{ token: string; id: string }> {
 }
 
 beforeAll(async () => {
-  await sweepTestFixtures(db, [PREFIX, P37])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // repna datoteka počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastni predponi — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
   process.env.FURS_ENVIRONMENT = 'simulation'
   delete process.env.STRIPE_SECRET_KEY
   locA = (await db.location.create({
@@ -181,6 +184,11 @@ afterAll(async () => {
   await db.integrationLog.deleteMany({ where: { integrationId: { startsWith: PREFIX } } }).catch(() => null)
   await db.integration.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
   await db.employee.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => null)
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog/IntegrationLog … s predponskimi polji),
+  // ki jih zgornji afterAll ne vidi; rep suite po teku = 0 neodvisno od
+  // readdir reda (izhodišče: auditLog 61 + eventLog 20 + integration 4 vrstic).
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 /* ════════════════ Issue #30 — SSRF varovalo ════════════════ */

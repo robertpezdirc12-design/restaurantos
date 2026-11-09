@@ -1,7 +1,7 @@
 import { describe, expect, test, afterAll, beforeAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { POST as feedbackPOST } from '../src/app/api/public/feedback/route'
 
 /**
@@ -31,8 +31,10 @@ function post(body: unknown, ip = '10.7.7.7'): NextRequest {
 }
 
 beforeAll(async () => {
-  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
-  await sweepTestFixtures(db, [PREFIX])
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi) —
+  // v1.290.0 repni vhod: NADGRADNJA na široki klic (TEST_PREFIXES ⊇ lastna
+  // predpona): počisti tudi ostanke datotek pred sabo + rep prejšnjega teka.
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const loc = await db.location.create({
     data: {
       id: `${PREFIX}loc-${RUN}`,
@@ -52,6 +54,11 @@ afterAll(async () => {
   await db.guestFeedback.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
   await db.table.deleteMany({ where: { id: { startsWith: `${PREFIX}tbl` } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: locId || '__x__' } }).catch(() => null)
+  // v1.290.0 repni izhod: široki klic — javni POST /api/public/feedback piše
+  // GuestFeedback z nid() id-jem (predpona v guestName/comment/tableId), ki
+  // ga zgornji afterAll ne vidi; rep suite po teku = 0 neodvisno od readdir reda
+  // (izhodišče: 7 vrstic gfb v repu).
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 describe('POST /api/public/feedback — javni vnos mnenja', () => {

@@ -17,7 +17,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { POST as resvPOST, PATCH as resvPATCH } from '../src/app/api/reservations/route'
 import { PATCH as waitlistPATCH } from '../src/app/api/waitlist/route'
@@ -110,7 +110,10 @@ async function mkResv(opts: {
 }
 
 beforeAll(async () => {
-  await sweepTestFixtures(db, [P])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // repna datoteka počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastno predpono — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
 
   const a = await db.location.create({ data: { id: `${P}locA-${RUN}`, name: `${P}Lokacija A`, code: `V240A-${RUN.toUpperCase()}`, premisesId: `v240-premA-${RUN}` } })
   locA = a.id
@@ -162,6 +165,11 @@ afterAll(async () => {
   await db.employee.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: P } } }).catch(() => null)
   await db.counter.deleteMany({ where: { name: { startsWith: `resvslot:` } } }).catch(() => null)
+  // v1.290.0 repni izhod: široki klic — javni widget POST /api/reservations
+  // piše Reservation z nid() id-jem (predpona v customerName; izhodišče: 6
+  // vrstic v repu), ki ga zgornji afterAll ne vidi; rep suite po teku = 0
+  // neodvisno od readdir reda.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 /* ── A · strežniški prekrivni pogoj terminov (POST) ─────────────────────── */
@@ -461,9 +469,9 @@ describe('v1.240.0 E · tables PATCH: occupied varovalec + force', () => {
 
 describe('v1.240.0 Ž · verzija in dokumenti', () => {
   test('Ž1: APP_VERSION dvignjena na 1.240.0', () => {
-    expect(APP_VERSION).toBe('1.289.0')
-    expect(read('src/lib/version.ts')).toContain("'1.289.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
+    expect(APP_VERSION).toBe('1.290.0')
+    expect(read('src/lib/version.ts')).toContain("'1.290.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
   })
 
   test('Ž2: PRIMERJAVA §16 G dokumentira rezervacijsko celico', () => {

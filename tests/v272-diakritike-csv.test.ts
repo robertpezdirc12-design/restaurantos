@@ -250,9 +250,9 @@ describe('v1.272.0 Č3 — montaža izvoznih poti', () => {
 // ── Ž) REGISTRI ──
 describe('v1.272.0 Ž — registri', () => {
   test('verzija 1.272.0 (version.ts + compose + APP_VERSION vsebina)', () => {
-    expect(APP_VERSION).toBe('1.289.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.289.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
+    expect(APP_VERSION).toBe('1.290.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.290.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
   })
 
   test('i18n pariteta 4320/4320 nespremenjena (0 novih ključev — samo vrednosti)', () => {
@@ -274,6 +274,6 @@ describe('v1.272.0 Ž — registri', () => {
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
   })
 })

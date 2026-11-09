@@ -15,7 +15,7 @@ import { NextRequest } from 'next/server'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { APP_VERSION } from '../src/lib/version'
 import {
@@ -155,7 +155,10 @@ async function grant(guestId: string, channel: 'email' | 'sms' = 'email', proof 
 }
 
 beforeAll(async () => {
-  await sweepTestFixtures(db, [P])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // repna datoteka počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastno predpono — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
   // org drevo: A (locA + locC) vs B (locB) — za cross-tenant preverbe
   orgA = `${P}orgA-${RUN}`; orgB = `${P}orgB-${RUN}`
   brandA = `${P}brandA-${RUN}`; brandB = `${P}brandB-${RUN}`
@@ -208,6 +211,10 @@ afterAll(async () => {
   await db.property.deleteMany({ where: { id: { in: [propA, propB] } } })
   await db.brand.deleteMany({ where: { id: { in: [brandA, brandB] } } })
   await db.organization.deleteMany({ where: { id: { in: [orgA, orgB] } } })
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog/… s predponskimi polji), ki jih zgornji
+  // afterAll ne vidi; rep suite po teku = 0 neodvisno od readdir reda.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 /* ═══════════════════ A — SOGLASJE (§1, na locA) ═══════════════════ */
@@ -735,6 +742,6 @@ describe('H — Vsebina: [TEST] prefix, noga odjave, subject', () => {
   })
 
   it('verzija aplikacije je dvignjena na 1.141.0', () => {
-    expect(APP_VERSION).toBe('1.289.0')
+    expect(APP_VERSION).toBe('1.290.0')
   })
 })

@@ -132,6 +132,7 @@ export const TEST_PREFIXES = [
   'v286-', // sweep napitnine (v1.286.0 — TipPool zbirni prehod 0c + lokacijski vpis spodaj)
   'v288-', // sweep globji pregled (v1.288.0 — 9 novih FIELD_SWEEP razredov + GL prehod 0d + Counter izteg 0a; meritve v tests/v288-sweep-globji-pregled.test.ts)
   'v289-', // stabilnost dveh tekov (v1.289.0 — merilni val: prehodno ravnotežje + popravek i30 receipt+order; meritve v tests/v289-stabilnost-dveh-tekov.test.ts)
+  'v290-', // repni široki klici (v1.290.0 — vhod+izhod široki klic v 9 repnih datotekah: rep suite 107 → 0; meritve v tests/v290-repni-siroki-klici.test.ts)
   // ── v1.283.0: registracija 45 preostalih neregistriranih predpon (izmerjeno:
   // 137 definiranih, 90 registriranih pred valom; 16 od 50 je puščalo ostanke
   // PO ZELENIH tekih — ne le ob crashu; 29 se samočisti, a ob crashu pred
@@ -518,6 +519,12 @@ const FIELD_SWEEP: ReadonlyArray<{ model: string; fields: readonly string[]; con
   // rep; naslednji tek jih poberejo zgodnji široki klici — ta contains prehod
   // je mehanizem samoceljenja mrtvih števcev s predponskim lokacijskim id-jem.
   // INVARIANTA neodvisna od reda: 0 AKUMULACIJE čez teke.
+  // v1.290.0 (repni široki klici): VSEH 9 izmerjenih repnih datotek (issue30,
+  // issue11-crm-core/admin, v162, guest-feedback, stocktake, haccp-plans,
+  // issue7, v240) zdaj nosi VHODNI široki klic (beforeAll oz. setup pri
+  // haccp-plans — setupP teče ob uvozu modula) in IZHODNI široki klic (konec
+  // afterAll) — rep suite po teku je 0 neodvisno od readdir reda (izhodišče
+  // izmere: 107 predponskih vrstic).
   { model: 'counter', fields: ['name'], contains: true },
   // v1.282.0: ScheduledEmailLog vrstice, ki jih piše PRODUKCIJSKA koda
   // (sendDailyDigest/sendShiftDailySummary/sendWeeklyTaskSummary) — id je

@@ -132,10 +132,13 @@ describe('v289 Ç2: popravek i30 — števci naročil (receipt+order)', () => {
   })
 
   test('Ç2b mehanizem menjave: beforeAll sweep lastnika pobere prehodne vrstice prejšnjega teka', () => {
-    // To je razlog, zakaj prehodni ostanki NISO akumulacija: datoteka začne z
-    // sweepom svojih predpon (i30-/p37-) preden ustvari nove fiksture.
+    // To je razlog, zakaj prehodni ostanki NISO akumulacija: datoteka začne s
+    // sweepom (i30-/p37- sta v TEST_PREFIXES) preden ustvari nove fiksture.
+    // v1.290.0: ozek klic [PREFIX, P37] je NADGRAJEN na široki klic
+    // (TEST_PREFIXES ⊇ i30-/p37-) — repni vhodni široki klic (ena od 9 repnih
+    // datotek vala v1.290.0); pin sledi trenutnemu stanju (vzorec worklog-vrh).
     expect(read('tests/issue30-37-ssrf-paylink-binding.test.ts')).toContain(
-      'sweepTestFixtures(db, [PREFIX, P37])',
+      'sweepTestFixtures(db, TEST_PREFIXES)',
     )
   })
 
@@ -158,17 +161,19 @@ describe('v289 Ç3: merilne pogodbe (2 teka, DMMF klasifikacija)', () => {
     // dopolnitev v1.289.0: okno 5000 → 15000 — dopolnitveni vnos na vrhu workloga
     // (vzorec v1.287.0 dopolnitve) potisne osnovni vnes čez 5000; okno zdaj
     // zajema osnovni vnos + dopolnitev, pini pa ostajajo na ISTIH nizih.
-    const wl = read('worklog.md').slice(0, 15000)
+    // v1.290.0: okno 15000 → 20000 — vnos vala v1.290.0 (6017 znakov) na vrhu
+    // potisne DEMO_LOGIN pin čez 15000; pini ostajajo na istih nizih (vzorec).
+    const wl = read('worklog.md').slice(0, 20000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
   })
 
   test('Ç3b prehodno ravnotežje ~93 predponskih vrstic/tek zapisano z merjenimi številkami', () => {
-    const wl = read('worklog.md').slice(0, 15000)
+    const wl = read('worklog.md').slice(0, 20000)
     expect(wl).toContain('93 predponskih')
   })
 
   test('Ç3c pogodba 0 trajno mrtvih števcev + prehoden i30 zapisana', () => {
-    const wl = read('worklog.md').slice(0, 15000)
+    const wl = read('worklog.md').slice(0, 20000)
     expect(wl).toContain('0 TRAJNO mrtvih števcev')
   })
 })
@@ -197,22 +202,22 @@ describe('v289 Ç4: dopolnitev (8. reset peskovnika — ista verzija, isti val)'
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v289 Ž: registri', () => {
-  test('verzija 1.289.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.289.0')
+  test('verzija 1.290.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.290.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
   })
 
-  test('TEST_PREFIXES: 140 z v289- registrirano', () => {
+  test('TEST_PREFIXES: 141 z v289- registrirano (v1.290.0 dodal v290-)', () => {
     expect(TEST_PREFIXES.includes(P)).toBe(true)
-    expect(TEST_PREFIXES.length).toBe(140)
+    expect(TEST_PREFIXES.length).toBe(141)
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

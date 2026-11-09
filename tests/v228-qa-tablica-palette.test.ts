@@ -107,9 +107,9 @@ describe('QA-val #10 B — ukazna paleta = stranski steber (en vir)', () => {
 
 describe('QA-val #10 Č — verzija + registri (doc-truth)', () => {
   test('Č1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.289.0')
-    expect(read('src/lib/version.ts')).toContain("'1.289.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.289.0')
+    expect(APP_VERSION).toBe('1.290.0')
+    expect(read('src/lib/version.ts')).toContain("'1.290.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.290.0')
   })
 
   test('Č2: PRD nosi zapis QA-vala v1.228.0 (doc-truth)', () => {
@@ -118,7 +118,7 @@ describe('QA-val #10 Č — verzija + registri (doc-truth)', () => {
 
   test('Č3: worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.289.0-stabilnost-dveh-tekov')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.290.0-repni-siroki-klici')
     expect(wl.indexOf('Task ID: v1.230.0')).toBeLessThan(wl.indexOf('Task ID: v1.227.0'))
   })
 

@@ -10,7 +10,7 @@ import { NextRequest } from 'next/server'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { SCHEMA_MIGRATIONS } from '../src/lib/schema-migrations'
 import { sl } from '../src/lib/i18n/sl'
@@ -60,7 +60,10 @@ function params(id: string): { params: Promise<{ id: string }> } {
 }
 
 beforeAll(async () => {
-  await sweepTestFixtures(db, [P])
+  // v1.290.0 repni vhod: široki klic (po vzorcu centralnih klicev v283–v288) —
+  // repna datoteka počisti ostanke datotek pred sabo + rep prejšnjega teka
+  // (TEST_PREFIXES vsebuje tudi lastno predpono — ozek klic je podmnožica).
+  await sweepTestFixtures(db, TEST_PREFIXES)
   locA = `${P}locA-${RUN}`
   await db.location.create({ data: { id: locA, code: `${P}LA`, name: `${P}Lokacija A`, premisesId: `${P}prem-${RUN}` } })
   const mgr = `${P}mgr-${RUN}`
@@ -97,6 +100,10 @@ afterAll(async () => {
   await db.integration.deleteMany({ where: { name: 'crm-dup-dismissed' } })
   await db.employee.deleteMany({ where: { id: { startsWith: P } } })
   await db.location.deleteMany({ where: { id: locA } })
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog/… s predponskimi polji), ki jih zgornji
+  // afterAll ne vidi; rep suite po teku = 0 neodvisno od readdir reda.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 async function seedGuest(opts: { suffix: string; email: string; phone?: string; visits?: number; spent?: number; lastDaysAgo?: number }): Promise<string> {

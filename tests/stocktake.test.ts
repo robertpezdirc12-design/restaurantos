@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields } from '../src/lib/auth'
 import { GET as listGET, POST as openPOST } from '../src/app/api/stocktakes/route'
 import { GET as detailGET, PATCH as itemsPATCH } from '../src/app/api/stocktakes/[id]/route'
@@ -55,8 +55,10 @@ async function seedEmployee(name: string, role: string, loc: string | null, seq:
 }
 
 beforeAll(async () => {
-  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi)
-  await sweepTestFixtures(db, [P])
+  // Task 58: počisti ostanke prejšnjih crashanih tekov (isti predponi) —
+  // v1.290.0 repni vhod: NADGRADNJA na široki klic (TEST_PREFIXES ⊇ lastna
+  // predpona): počisti tudi ostanke datotek pred sabo + rep prejšnjega teka.
+  await sweepTestFixtures(db, TEST_PREFIXES)
   locA = `${P}locA-${RUN}`
   locB = `${P}locB-${RUN}`
   await db.location.create({ data: { id: locA, code: `${P}LA`, name: `${P}Lokacija A` } })
@@ -85,6 +87,11 @@ afterAll(async () => {
   await db.inventoryItem.deleteMany({ where: { id: { in: [it1, it2, it3] } } })
   await db.employee.deleteMany({ where: { id: { startsWith: P } } })
   await db.location.deleteMany({ where: { id: { in: [locA, locB] } } })
+  // v1.290.0 repni izhod: široki klic — počisti stranske učinke API-jev z
+  // nid() id-ji (AuditLog/EventLog/StockTransaction … s predponskimi polji),
+  // ki jih zgornji afterAll ne vidi; rep suite po teku = 0 neodvisno od
+  // readdir reda (izhodišče: inventoryItem 6 vrstic v repu).
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 describe('Task 57 — inventurni protokol', () => {
