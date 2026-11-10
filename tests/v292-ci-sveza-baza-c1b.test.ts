@@ -144,17 +144,17 @@ describe('v292 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v292 Ž: registri', () => {
-  test('verzija 1.300.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.300.0')
+  test('verzija 1.301.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.301.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.300.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.301.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.300.0-nadzorni-val-stabilnosti-ii')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.301.0-nadzorni-val-odlocitveni-paket')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (v292 je statični varuh — 0 fikstur, 0 predpon, vzorec v287)', () => {
