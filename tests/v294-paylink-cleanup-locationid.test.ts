@@ -129,20 +129,20 @@ describe('v294 Ç3: merilne pogodbe', () => {
   // naslednji val doda OBA vnosa (~12k) NAD temi pini (@~2,4k–11k globoko v
   // lastnem vnosu) → ~23k skupaj
   test('Ç3a osnova po 10. resetu: baza izpraznjena + reseed pred tekom (AuditLog 0)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('10. reset')
     expect(wl).toContain('reseed')
     expect(wl).toContain('AuditLog 0')
   })
 
   test('Ç3b popravek zapisan: paylink osamljenost 13/tek → 0 (rast 27 → 14 čistih/tek)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('13 osamljenih')
     expect(wl).toContain('27 → 14')
   })
 
   test('Ç3c dokazi zapisani: TEK #1 številke + klasifikacija (0 predponskih + 0 mrtvih)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('TEK #1')
     expect(wl).toContain('0 predponskih')
     expect(wl).toContain('0 mrtvih')
@@ -152,17 +152,17 @@ describe('v294 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v294 Ž: registri', () => {
-  test('verzija 1.305.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.305.0')
+  test('verzija 1.306.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.306.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.305.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.306.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.305.0-nadzorni-val-stabilnosti-vi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.306.0-nadzorni-val-stabilnosti-vii')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (v294 je testni cleanup obstoječe fiksture plnk-, 0 novih predpon)', () => {

@@ -171,17 +171,17 @@ describe('v290 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
     // zaključni vnosi naslednjih valov bi ga potisnili čez; 3. pojavev
     // družine v v289/v291 istega dne) — proračun: OBA vnosa TEGA IN
     // NASLEDNJEGA vala (~25k skupaj) + rezervo (≈80k skupaj).
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('107 predponskih vrstic')
   })
 
   test('Ç3b pogodba rep suite po teku = 0 (vhod+izhod v 9 repnih datotekah)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('rep suite po teku = 0')
   })
 
   test('Ç3c pogodba 0 mrtvih števcev po teku (nadaljevanje v1.289.0) zapisana', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('0 mrtvih števcev')
   })
 })
@@ -189,17 +189,17 @@ describe('v290 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v290 Ž: registri', () => {
-  test('verzija 1.305.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.305.0')
+  test('verzija 1.306.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.306.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.305.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.306.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.305.0-nadzorni-val-stabilnosti-vi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.306.0-nadzorni-val-stabilnosti-vii')
   })
 
   test('TEST_PREFIXES: 142 z v290- registrirano (v1.291.0 dodal v291-)', () => {

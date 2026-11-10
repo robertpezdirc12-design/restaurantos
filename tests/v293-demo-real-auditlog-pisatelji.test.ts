@@ -132,7 +132,7 @@ describe('v293 Ç1: pini atribucije (produkcjski pisatelji)', () => {
 
 describe('v293 Ç2: odločitev lastnika (meja ven)', () => {
   test('Ç2a meja ZAVESTNO ven + Task 58 (analiza dostavi podatke, poseg je lastnikova odločitev)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('meja ZAVESTNO ven')
     expect(wl).toContain('Task 58')
   })
@@ -159,13 +159,13 @@ describe('v293 Ç3: merilne pogodbe', () => {
   // istega dne — zaključni vnos, dodan PO vratih vala, je potisnil pine čez;
   // proračun: OBA vnosa TEGA IN NASLEDNJEGA vala ~25k + rezervo ≈ 80k)
   test('Ç3a osnova zapisana: 189 čistih / 0 predponskih po 7 tekih (27 × 7)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('189 čistih')
     expect(wl).toContain('0 predponskih')
   })
 
   test('Ç3b delta zapisana: +27 točno (189 → 216) s sestavo po tipih', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('189 → 216')
     expect(wl).toContain('PAY_LINK_CREATED 10')
     expect(wl).toContain('CRON_DAILY_RAN 3')
@@ -173,7 +173,7 @@ describe('v293 Ç3: merilne pogodbe', () => {
   })
 
   test('Ç3c dokazi zapisani: TEK #1 6113 + 0 mrtvih + 104/104 osamljenih nosilcev linka', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('6113')
     expect(wl).toContain('0 mrtvih')
     expect(wl).toContain('104/104')
@@ -183,17 +183,17 @@ describe('v293 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v293 Ž: registri', () => {
-  test('verzija 1.305.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.305.0')
+  test('verzija 1.306.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.306.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.305.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.306.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.305.0-nadzorni-val-stabilnosti-vi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.306.0-nadzorni-val-stabilnosti-vii')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (v293 je analiza — 0 fikstur, 0 predpon, 0 posegov)', () => {

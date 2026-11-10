@@ -107,7 +107,7 @@ describe('v295 Ç1: pini repnega popravka (integrations-admin)', () => {
 // ── Ç2) OKENSKA VZDRŽBA — 3. pojavev družine ───────────────────────────────
 
 describe('v295 Ç2: okenska vzdržba (3. pojavev družine)', () => {
-  test('Ç2a dvig 80000 → 160000 v šestih varuhih (18 pinov, v1.298.0 4. pojav; v295 SE NE preverja — negacija ne sme biti samo-referenčna, lastna okna varujejo Ç3 pini)', () => {
+  test('Ç2a dvig 160000 → 320000 v šestih varuhih (19 pinov, v1.306.0 6. pojav; prej 80000 → 160000 4. pojav v1.298.0; v295 SE NE preverja — negacija ne sme biti samo-referenčna, lastna okna varujejo Ç3 pini)', () => {
     const files = [
       'v289-stabilnost-dveh-tekov',
       'v290-repni-siroki-klici',
@@ -118,8 +118,8 @@ describe('v295 Ç2: okenska vzdržba (3. pojavev družine)', () => {
     ]
     for (const f of files) {
       const src = read(`tests/${f}.test.ts`)
-      expect(src).toContain('slice(0, 160000)')
-      expect(src).not.toContain('slice(0, 80000)')
+      expect(src).toContain('slice(0, 320000)')
+      expect(src).not.toContain('slice(0, 160000)')
     }
   })
 
@@ -147,7 +147,7 @@ describe('v295 Ç2: okenska vzdržba (3. pojavev družine)', () => {
 
 describe('v295 Ç3: merilne pogodbe vala', () => {
   test('Ç3a obnova 11. reseta zapisana: bun 1.4.4 npm tarball + reseed 1/4/12/14/4', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('11. reset')
     expect(wl).toContain('npm registry tarballa')
     expect(wl).toContain('reseed')
@@ -155,14 +155,14 @@ describe('v295 Ç3: merilne pogodbe vala', () => {
   })
 
   test('Ç3b TEK #0 zelen v prvem poskusu na obnovljenem okolju: 6147/3/0 (289 datotek)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('TEK #0')
     expect(wl).toContain('6147/3/0')
     expect(wl).toContain('ZELEN V PRVEM POSKUSU')
   })
 
   test('Ç3c klasifikacija: 18 PREDPONSKIH (9+9 integ60) + 0 mrtvih + čistih +14/tek (28 = 2 × 14)', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('18 PREDPONSKIH')
     expect(wl).toContain('9+9')
     expect(wl).toContain('integ60')
@@ -171,7 +171,7 @@ describe('v295 Ç3: merilne pogodbe vala', () => {
   })
 
   test('Ç3d rdeče→zelen dokaz popravka: samostojni tek 10/10 → 0 integ60 vrstic', () => {
-    const wl = read('worklog.md').slice(0, 160000)
+    const wl = read('worklog.md').slice(0, 320000)
     expect(wl).toContain('10/10')
     expect(wl).toContain('0 integ60')
   })
@@ -180,17 +180,17 @@ describe('v295 Ç3: merilne pogodbe vala', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v295 Ž: registri', () => {
-  test('verzija 1.305.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.305.0')
+  test('verzija 1.306.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.306.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.305.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.306.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.305.0-nadzorni-val-stabilnosti-vi')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.306.0-nadzorni-val-stabilnosti-vii')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (integ60- ŽE registriran od Taska 60 — 0 novih predpon)', () => {

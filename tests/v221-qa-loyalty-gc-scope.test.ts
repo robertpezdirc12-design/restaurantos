@@ -164,12 +164,12 @@ describe('v221 B · #B zvestoba — zaslužek točk za novega člana (brez unov�
 
 describe('v221 Č · verzija + dokumentacija', () => {
   test('verzija je dvignjena na 1.238.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.305.0')
-    expect(read('src/lib/version.ts')).toContain("'1.305.0'")
+    expect(APP_VERSION).toBe('1.306.0')
+    expect(read('src/lib/version.ts')).toContain("'1.306.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.305.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.306.0')
   })
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
