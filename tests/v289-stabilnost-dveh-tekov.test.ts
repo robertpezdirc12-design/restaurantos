@@ -211,17 +211,17 @@ describe('v289 Ç4: dopolnitev (8. reset peskovnika — ista verzija, isti val)'
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v289 Ž: registri', () => {
-  test('verzija 1.295.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.295.0')
+  test('verzija 1.296.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.296.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.295.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.296.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.295.0-obnova-11-reset-rep-integ60')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.296.0-nadzorni-val-stabilnosti')
   })
 
   test('TEST_PREFIXES: 142 z v289- registrirano (v1.290.0 dodal v290-, v1.291.0 dodal v291-)', () => {

@@ -187,14 +187,14 @@ describe('v1.275.0 Č2 — negativni kontroli (nevdni ostanejo ravninski)', () =
 
 describe('v1.275.0 Ž — registri', () => {
   test('verzija 1.275.0 (version.ts + compose + APP_VERSION vsebina)', () => {
-    expect(APP_VERSION).toBe('1.295.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.295.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.295.0')
+    expect(APP_VERSION).toBe('1.296.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.296.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.296.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.295.0-obnova-11-reset-rep-integ60')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.296.0-nadzorni-val-stabilnosti')
   })
 
   test('AUDIT doc-truth: POSODOBITEV (v1.275.0, diakritike III — payroll izvoz)', () => {
