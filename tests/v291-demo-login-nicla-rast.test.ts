@@ -155,21 +155,23 @@ describe('v291 Ç2: pini posega (tests/auth-demo-login.test.ts)', () => {
 
 describe('v291 Ç3: merilne pogodbe', () => {
   test('Ç3a rdeče izhodišče +11/tek zapisano z merjenimi številkami (77 = 7×11 pred valom)', () => {
-    // v1.293.0: okno 20000 → 30000 — vnos vala v1.293.0 (analiza demo-realnih
-    // pisateljev AuditLog, ~8000 znakov) na vrhu potisne Ç3 pine (najgloblji
-    // @19203) čez 20000; pini ostajajo na ISTIH nizih (vzorec v263→v278→v285).
-    const wl = read('worklog.md').slice(0, 30000)
+    // v1.293.0: okno 20000 → 40000 — vnosa vala v1.293.0 (osnovni ~7,5k +
+    // zaključek pusha ~3,9k = ~11,4k skupaj) potisneta Ç3 pine (najgloblji
+    // @19203 + 11,4k ≈ 30,5k) čez 30000, ki je bil izračunan SAMO za osnovni
+    // vnos — LEKCIJA: okenski proračun vala zajema OBA vnosa. Pini na ISTIH
+    // nizih (vzorec v263→v278→v285).
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
     expect(wl).toContain('77 = 7×11')
   })
 
   test('Ç3b pogodba 0-rast: tek nove kode pušča 0 novih DEMO_LOGIN vrstic', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('DEMO_LOGIN 0/tek')
   })
 
   test('Ç3c enkratni remedy 88 legacy vrstic + dvojna verifikacija zapisana', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('88 legacy DEMO_LOGIN')
     expect(wl).toContain('0 → 0')
   })

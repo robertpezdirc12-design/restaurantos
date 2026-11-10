@@ -163,20 +163,22 @@ describe('v289 Ç3: merilne pogodbe (2 teka, DMMF klasifikacija)', () => {
     // zajema osnovni vnos + dopolnitev, pini pa ostajajo na ISTIH nizih.
     // v1.290.0: okno 15000 → 20000 — vnos vala v1.290.0 (6017 znakov) na vrhu
     // potisne DEMO_LOGIN pin čez 15000; pini ostajajo na istih nizih (vzorec).
-    // v1.293.0: okno 20000 → 30000 — vnos vala v1.293.0 (analiza demo-realnih
-    // pisateljev AuditLog, ~8000 znakov) na vrhu potisne Ç3 pine (najgloblji
-    // @19203) čez 20000; pini ostajajo na ISTIH nizih (vzorec v263→v278→v285).
-    const wl = read('worklog.md').slice(0, 30000)
+    // v1.293.0: okno 20000 → 40000 — vnosa vala v1.293.0 (osnovni ~7,5k +
+    // zaključek pusha ~3,9k = ~11,4k skupaj) potisneta Ç3 pine (najgloblji
+    // @19203 + 11,4k ≈ 30,5k) čez 30000, ki je bil izračunan SAMO za osnovni
+    // vnos — LEKCIJA: okenski proračun vala zajema OBA vnosa. Pini na ISTIH
+    // nizih (vzorec v263→v278→v285).
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
   })
 
   test('Ç3b prehodno ravnotežje ~93 predponskih vrstic/tek zapisano z merjenimi številkami', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('93 predponskih')
   })
 
   test('Ç3c pogodba 0 trajno mrtvih števcev + prehoden i30 zapisana', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('0 TRAJNO mrtvih števcev')
   })
 })

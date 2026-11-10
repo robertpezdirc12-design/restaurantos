@@ -129,7 +129,7 @@ describe('v293 Ç1: pini atribucije (produkcjski pisatelji)', () => {
 
 describe('v293 Ç2: odločitev lastnika (meja ven)', () => {
   test('Ç2a meja ZAVESTNO ven + Task 58 (analiza dostavi podatke, poseg je lastnikova odločitev)', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('meja ZAVESTNO ven')
     expect(wl).toContain('Task 58')
   })
@@ -148,14 +148,18 @@ describe('v293 Ç2: odločitev lastnika (meja ven)', () => {
 // ── Ç3) MERILNE POGODBE VALA (osnova → delta → klasifikacija) ──────────────
 
 describe('v293 Ç3: merilne pogodbe', () => {
+  // okno 30000 (NE 20000): lastni pini sedijo v osnovnem vnosu (@2,3k–11,3k),
+  // naslednji val pa doda OBA vnosa (~11,4k) — rezerva za zamik je obvezna
+  // (LEKCIJA tega vala: zaključni vnos ~3,9k je podrl v289/v290 pine, ki so
+  // imele proračun samo za osnovni vnos).
   test('Ç3a osnova zapisana: 189 čistih / 0 predponskih po 7 tekih (27 × 7)', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('189 čistih')
     expect(wl).toContain('0 predponskih')
   })
 
   test('Ç3b delta zapisana: +27 točno (189 → 216) s sestavo po tipih', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('189 → 216')
     expect(wl).toContain('PAY_LINK_CREATED 10')
     expect(wl).toContain('CRON_DAILY_RAN 3')
@@ -163,7 +167,7 @@ describe('v293 Ç3: merilne pogodbe', () => {
   })
 
   test('Ç3c dokazi zapisani: TEK #1 6113 + 0 mrtvih + 104/104 osamljenih nosilcev linka', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('6113')
     expect(wl).toContain('0 mrtvih')
     expect(wl).toContain('104/104')

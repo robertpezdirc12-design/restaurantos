@@ -115,20 +115,24 @@ describe('v292 Ç2: okoljska pogodba (CI sveža baza)', () => {
 // ── Ç3) MERILNE POGODBE VALA (rdeče izhodišče → zeleni dokaz) ─────────────
 
 describe('v292 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
+  // v1.293.0: okno 20000 → 40000 — vnosa vala v1.293.0 (~11,4k skupaj: osnovni
+  // + zaključek pusha) potisneta najgloblji v292 pin (@9541 + 11,4k ≈ 20,9k)
+  // čez 20000; LEKCIJA v1.293.0: okenski proračun zajema OBA vnosa vala. Pini
+  // na ISTIH nizih (vzorec v263→v278→v285).
   test('Ç3a rdeče izhodišče zapisano: CI padec 6097/1/6098 @ f07c393 + alarm #125', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('6097/1/6098')
     expect(wl).toContain('#125')
   })
 
   test('Ç3b zeleni dokaz zapisan: 15/15 na sveži (CI pogoj) IN 15/15 na sejani (dev pogoj)', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('15/15')
     expect(wl).toContain('0 → 1')
   })
 
   test('Ç3c samo-zdravljenje baze zapisano (higijena po teku — seme nedotaknjeno)', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('higijena')
   })
 })

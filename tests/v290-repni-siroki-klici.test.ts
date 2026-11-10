@@ -162,20 +162,22 @@ describe('v290 Ç2: pini posega (9 repnih datotek)', () => {
 
 describe('v290 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
   test('Ç3a rdeče izhodišče 107 predponskih vrstic zapisano z merjenimi številkami', () => {
-    // v1.293.0: okno 20000 → 30000 — vnos vala v1.293.0 (analiza demo-realnih
-    // pisateljev AuditLog, ~8000 znakov) na vrhu potisne Ç3 pine (najgloblji
-    // @19203) čez 20000; pini ostajajo na ISTIH nizih (vzorec v263→v278→v285).
-    const wl = read('worklog.md').slice(0, 30000)
+    // v1.293.0: okno 20000 → 40000 — vnosa vala v1.293.0 (osnovni ~7,5k +
+    // zaključek pusha ~3,9k = ~11,4k skupaj) potisneta Ç3 pine (najgloblji
+    // @19203 + 11,4k ≈ 30,5k) čez 30000, ki je bil izračunan SAMO za osnovni
+    // vnos — LEKCIJA: okenski proračun vala zajema OBA vnosa. Pini na ISTIH
+    // nizih (vzorec v263→v278→v285).
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('107 predponskih vrstic')
   })
 
   test('Ç3b pogodba rep suite po teku = 0 (vhod+izhod v 9 repnih datotekah)', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('rep suite po teku = 0')
   })
 
   test('Ç3c pogodba 0 mrtvih števcev po teku (nadaljevanje v1.289.0) zapisana', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('0 mrtvih števcev')
   })
 })
