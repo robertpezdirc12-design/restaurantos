@@ -145,11 +145,11 @@ describe('v1.235.0 E — dokumenti (doc-truth)', () => {
 
 describe('v1.235.0 Ž — registri', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.298.0')
+    expect(APP_VERSION).toBe('1.299.0')
   })
 
   test('Ž2: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.299.0-obnova-13-reset-v243-sirote')
     // vrstni red VNOSOV (glave Task ID), ne proze — omenjanje starih valov v novih vnosih sme biti (v1.297.0)
     expect(wl.indexOf('Task ID: v1.235.0-')).toBeLessThan(wl.indexOf('Task ID: v1.234.0-'))
   })

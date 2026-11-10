@@ -98,6 +98,15 @@ async function cleanupFixtures() {
     const tables = await db.table.findMany({ where: { locationId: locId }, select: { id: true } })
     await db.eventLog.deleteMany({ where: { entityId: { in: tables.map((t) => t.id) } } }).catch(() => null)
     await db.auditLog.deleteMany({ where: { entityId: { in: tables.map((t) => t.id) } } }).catch(() => null)
+    // v1.299.0 (izteg v243 apliciran sem): INVOICE_ISSUE piše entityId = RECEIPT id
+    // (ne orderId) in details brez predpone; publishEvent piše EventLog (InvoiceCreated)
+    // z nid() id-jem in predpono SAMO v locationId. Po izbrisu lokacije spodaj ju
+    // široki sweep ne vidi več (AuditLog sicer naključno ujame case-insensitive
+    // LIKE 'stockded' ↔ "stockDeduction" v details — a le, če sweep teče ZA tem
+    // testom; EventLog payload brez tega ključa ni ujet NIKOLI). Briši po
+    // locationId DOKLER lokacija še živi.
+    await db.auditLog.deleteMany({ where: { locationId: locId } }).catch(() => null)
+    await db.eventLog.deleteMany({ where: { locationId: locId } }).catch(() => null)
     await db.table.deleteMany({ where: { locationId: locId } }).catch(() => null)
     const menus = await db.menu.findMany({ where: { locationId: locId }, select: { id: true } })
     const cats = await db.category.findMany({ where: { menuId: { in: menus.map((m) => m.id) } }, select: { id: true } })
@@ -534,7 +543,7 @@ describe('v1.239.0 D — void postavke na plačanem izstavku', () => {
 
 describe('v1.239.0 Ž — registri', () => {
   test('Ž1: APP_VERSION = 1.240.0 (hotfix veriga: DDL pot + FK sonda)', () => {
-    expect(APP_VERSION).toBe('1.298.0')
+    expect(APP_VERSION).toBe('1.299.0')
   })
 
   test('Ž2: raziskava dokumentirana v PRIMERJAVA §16', () => {

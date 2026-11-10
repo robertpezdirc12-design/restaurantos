@@ -188,17 +188,17 @@ describe('v291 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v291 Ž: registri', () => {
-  test('verzija 1.298.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.298.0')
+  test('verzija 1.299.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.299.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.298.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.299.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.299.0-obnova-13-reset-v243-sirote')
   })
 
   test('TEST_PREFIXES: 142 z v291- registrirano', () => {

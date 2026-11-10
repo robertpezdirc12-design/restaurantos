@@ -298,14 +298,14 @@ describe('v1.277.0 Č3 — negativni sken api/ + poštene izjeme', () => {
 
 describe('v1.277.0 Ž — registri', () => {
   test('Ž1: verzija 1.277.0 (version.ts + compose + APP_VERSION)', () => {
-    expect(APP_VERSION).toBe('1.298.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.298.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.298.0')
+    expect(APP_VERSION).toBe('1.299.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.299.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.299.0')
   })
 
   test('Ž2: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.299.0-obnova-13-reset-v243-sirote')
   })
 
   test('Ž3: AUDIT doc-truth: POSODOBITEV (v1.277.0) + zgodovinska veriga (v1.276 pin ostaja)', () => {

@@ -573,11 +573,11 @@ describe('v242 E · Food-cost — pokritost receptur', () => {
 
 describe('v242 Ž · Registri in verzija', () => {
   it('Ž1: APP_VERSION je 1.243.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.298.0')
+    expect(APP_VERSION).toBe('1.299.0')
     const versionFile = readFileSync('src/lib/version.ts', 'utf8')
-    expect(versionFile).toContain("'1.298.0'")
+    expect(versionFile).toContain("'1.299.0'")
     const compose = readFileSync('deploy/docker-compose.yml', 'utf8')
-    expect(compose).toContain('restaurantos:1.298.0')
+    expect(compose).toContain('restaurantos:1.299.0')
   })
 
   it('Ž2: TEST_PREFIXES vsebuje v242-; lib batch-allocate na disku', () => {
@@ -591,6 +591,6 @@ describe('v242 Ž · Registri in verzija', () => {
     const doc = readFileSync('docs/PRIMERJAVA-VMESNIKOV-2026.md', 'utf8')
     expect(doc).toContain('ZALOŽNI VAL v1.242.0')
     const wl = readFileSync('worklog.md', 'utf8')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.299.0-obnova-13-reset-v243-sirote')
   })
 })

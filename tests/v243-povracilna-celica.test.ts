@@ -90,6 +90,23 @@ async function cleanupFixtures() {
     const tables = await db.table.findMany({ where: { locationId: locId }, select: { id: true } })
     await db.eventLog.deleteMany({ where: { entityId: { in: tables.map((t) => t.id) } } }).catch(() => null)
     await db.auditLog.deleteMany({ where: { entityId: { in: tables.map((t) => t.id) } } }).catch(() => null)
+    // v1.299.0 (13. reset — najdba klasifikacije): INVOICE_ISSUE piše AuditLog z
+    // entityId = RECEIPT id (ne orderId) in details BREZ predpone (maskirana GC
+    // številka) → ozki per-order filter ({entityId: o.id} / {details: PREFIX})
+    // ju ne vidi; publishEvent piše EventLog (InvoiceCreated) z nid() id-jem in
+    // predpono SAMO v locationId. Ker spodaj lokacijo izbrišemo, ju kasnejši
+    // široki sweep ne more ujeti več (kaskada locationId v sweepu potrebuje ŽIVO
+    // vrstico Location s predponskim imenom — izteg v1.283.0, tu apliciran na
+    // ozki čistilec). NAKLJUČNA VAROSTNA MREŽA (razkrita v1.299.0): AuditLog
+    // details vsebujejo ključ "stockDeduction" — Prisma SQLite contains se
+    // prevaja v CASE-INSENSITIVE LIKE, zato predpona 'stockded' (stock-deduction)
+    // UJAME te vrstice, A LE če široki sweep teče ZA tem testom (readdir red);
+    // EventLog payload nima tega ključa → ni ujet NIKOLI (kumulacija +22/tek
+    // v243+v249+v239, prej napačno pripisana kot »demo-realna rast«). Zato
+    // briši po locationId DOKLER lokacija še živi — deterministično, brez
+    // odvisnosti od vrstnega reda datotek.
+    await db.auditLog.deleteMany({ where: { locationId: locId } }).catch(() => null)
+    await db.eventLog.deleteMany({ where: { locationId: locId } }).catch(() => null)
     await db.table.deleteMany({ where: { locationId: locId } }).catch(() => null)
     const menus = await db.menu.findMany({ where: { locationId: locId }, select: { id: true } })
     const cats = await db.category.findMany({ where: { menuId: { in: menus.map((m) => m.id) } }, select: { id: true } })
@@ -597,7 +614,7 @@ describe('v1.243.0 E — zrcalne vrstice nosijo identifikacijo instrumenta', () 
 
 describe('v1.243.0 Ž — registri', () => {
   test('Ž1: verzija je dvignjena na 1.243.0', () => {
-    expect(APP_VERSION).toBe('1.298.0')
+    expect(APP_VERSION).toBe('1.299.0')
   })
 
   test('Ž2: raziskava §17 je dokumentirana (PRIMERJAVA-VMESNIKOV-2026)', () => {

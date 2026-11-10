@@ -102,6 +102,15 @@ async function cleanupFixtures() {
     const tables = await db.table.findMany({ where: { locationId: locId }, select: { id: true } })
     await db.eventLog.deleteMany({ where: { entityId: { in: tables.map((t) => t.id) } } }).catch(() => null)
     await db.auditLog.deleteMany({ where: { entityId: { in: tables.map((t) => t.id) } } }).catch(() => null)
+    // v1.299.0 (izteg v243 apliciran sem): INVOICE_ISSUE piše entityId = RECEIPT id
+    // (ne orderId) in details brez predpone; publishEvent piše EventLog (InvoiceCreated)
+    // z nid() id-jem in predpono SAMO v locationId. Po izbrisu lokacije spodaj ju
+    // široki sweep ne vidi več (AuditLog sicer naključno ujame case-insensitive
+    // LIKE 'stockded' ↔ "stockDeduction" v details — a le, če sweep teče ZA tem
+    // testom; EventLog payload brez tega ključa ni ujet NIKOLI). Briši po
+    // locationId DOKLER lokacija še živi.
+    await db.auditLog.deleteMany({ where: { locationId: locId } }).catch(() => null)
+    await db.eventLog.deleteMany({ where: { locationId: locId } }).catch(() => null)
     await db.table.deleteMany({ where: { locationId: locId } }).catch(() => null)
     const menus = await db.menu.findMany({ where: { locationId: locId }, select: { id: true } })
     const cats = await db.category.findMany({ where: { menuId: { in: menus.map((m) => m.id) } }, select: { id: true } })
@@ -600,11 +609,11 @@ describe('v1.249.0 E — pravice orders.priceOverride', () => {
 
 describe('v1.249.0 Ž — registri in pini', () => {
   test('Ž1: verzija 1.249.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.298.0')
+    expect(APP_VERSION).toBe('1.299.0')
     const versionFile = read('src/lib/version.ts')
-    expect(versionFile).toContain("'1.298.0'")
+    expect(versionFile).toContain("'1.299.0'")
     const compose = read('deploy/docker-compose.yml')
-    expect(compose).toContain('restaurantos:1.298.0')
+    expect(compose).toContain('restaurantos:1.299.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4002/4002 (+13: prc×12 + exc.report.kind.price_override)', () => {
@@ -631,7 +640,7 @@ describe('v1.249.0 Ž — registri in pini', () => {
 
   test('Ž5: worklog vrhnji vnos nosi Task ID v1.249.0', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.299.0-obnova-13-reset-v243-sirote')
   })
 
   test('Ž6: ruta pošilja dogodev + push (osvežitev plošč PO commitu)', () => {
