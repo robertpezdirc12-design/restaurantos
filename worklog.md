@@ -1,3 +1,25 @@
+Task ID: v1.296.0-nadzorni-val-stabilnosti-zakljucek-pusha
+Agent: glavni agent (Z.ai Code)
+Task: Pospushna verifikacija vala v živo — dokaz sledi v CI/deployment/sync teku (obvezni dokaz implementacijskega vnosa).
+
+Work Log:
+- PUSH: e5fcf4b porinjen (ed3e522..e5fcf4b, žeton seje izključno inline v push ukazu, remote ostaja anonimen; commit nosi cel val vključno z worklog vnosom — 108 datotek, 329 vstavkov, 307 brisanj, 0 novih datotek — čist prevez + worklog, 0 funkcionalnih sprememb; prikaz commit vrstice v lupini je pokazal artefakt »ain e5fcf4b« — znan PRIKAZNI artefakt sekvence [m po LEKCIJI O PRIKAZU v1.295.0, sporočilo je po bajtih celo).
+- CI (živo, GA — avtoritativna vrata) @ e5fcf4b: 7/7 check-runov SUCCESS — build / tests / neon-smoke / typecheck-prod / sync / deploy / report-build-status. KLJUČNI DOKAZ: tests job ZELEN V PRVEM POSKUSU na sveži ci-fresh.db — izhod »Ran 6168 tests across 290 files. [123.94s]« + »6168 pass« + »0 fail« + »137355 expect() calls«; lokalno 6165/3/0 → CI 6168/0/0 (3 diskovno-pogojeni preskoki so v CI stekli zeleno — peskovniški pogoji, ne koda; vzorec v1.292.0–v1.295.0); expect() odmik CI vs lokalno (137355 vs 137361, −6) in vs CI v1.295.0 (137379, −24) — DIAGNOSTIKA, ne vrata: števec se premika z okoljsko pogojenimi testnimi vejami (disk CI/lokalno + neon veje), števili testov/datotek sta IDENTIČNI (6168/290) pri 0 fail; determinizem lokalno dokazan (TEK #1 = TEK #3 = 137361 točno).
+- PRODUKCIJA: Vercel Git deployment → /api/health → 1.296.0 @ e5fcf4b (status ok, mode cloud, postgresql, database connected, schema ok, latencyMs 257, 12:02:46Z).
+- SYNC: GA sync job (Dvosmerna sinhronizacija GitLab <-> GitHub) SUCCESS — log dokazuje »GitHub main: e5fcf4b2d3…« = »GitLab main: e5fcf4b2d3…« (identična SHA; štiristranska sinhronizacija ŽIVA: lokalno = GitHub = produkcija = GitLab mirror).
+- BUILDKITE (informativno, NE naša infrastruktura): tests (push) ✓ ZELEN + typecheck-prod ✓; neon-smoke ❌ + sync ❌ ostajata OBSTOJEČI stanji (10. zaporedni HEAD, isti vzorec — prehitri za prava testa, Buildkite-stran konfiguracija; GA neposredno prizadet).
+- ALARM CIKEL: tiho — CI zelen v prvem poskusu, alarm se ni odprl (cikel v1.215.0 miren); #123 (Vercel OPS) ostaja edini odprti issue — B-razred za lastnika.
+- VRATA POSPUSHNA: brez ponovnega teka (vrata vala so tekla PRED pushom: tsc 0 / lint 0 / ciljani 136/136 / URADNI TEK #3 6165/3/0 ZELEN / klasifikacija končna 0 predponskih + 0 mrtvih + seme + AuditLog 98 = 7 × 14; CI jih je neodvisno potrdil 7/7 s 6168/0/0).
+- ŽETON SEJE ghp_2Di4… ŠE VELJAVEN ob pushu tega vala (6. push tega žetona: f07c393, d78815f, 47ccfed, 50caa58, 355a38e, e5fcf4b) — AKCIJA ZA LASTNIKA ostaja: prekliči žeton po zaključku seje.
+
+Stage Summary:
+- Val v1.296.0 popolnoma zaključen po verigi: (oba A-kandidata iz v1.295.0 pogojna → nadzorni val kot čez-sejanski dokaz) živo štiristransko @ ed3e522 → potrjen NI 12. reset → TEK #1 6165/3/0 zelen v prvem poskusu (4. zaporedni) → klasifikacija 0/0 + AuditLog 56 = 4 × 14 → čez-sejanski dokaz repa → prevez v dveh pasovih 307 zamenjav (TEK #2 je ulovil 15 zamujenih mešanih ubežnih oblik — LEKCIJA O MEŠANI UBEŽNI OBLIKI; 12 namernih citatov preživelo) → vrata (tsc 0 / lint 0 / ciljani 136/136 / TEK #3 6165/3/0) → končna klasifikacija 98 = 7 × 14 z dokazom enotnosti (deljivost vseh akcij s 7) → push e5fcf4b → CI 7/7 zeleno v prvem poskusu (6168/0/0, 123,94 s) → produkcija 1.296.0 @ e5fcf4b živa → sync zelen (GitLab = e5fcf4b).
+- NASLEDNJI A-KANDIDAT: (a) lastnikova odločitev o preostanku (sprejeti 14 čistih/tek / meja Task 58 — dokazna osnova 7 × +14 čez 2 seji z enotno sestavo cron 3 + login 5 + DDL 6); (b) readdir klasifikacija po morebitnem 12. resetu (vzorec 12. repne datoteke); (c) morebitna nova lastnikova navodila (B-razred / issue-tracker / neposredno).
+- AKCIJA ZA LASTNIKA (B-razred, po prioriteti): (1) PREKLIČI sejni žeton ghp_2Di4… (6 pushov: f07c393, d78815f, 47ccfed, 50caa58, 355a38e, e5fcf4b + bralni API klici; nič zapisanega v repo/remote konfiguracijo), (2) VERCEL_TOKEN_B64 #123, (3) OSS-11 prave vrednosti teme v produkciji, (4) Buildkite neon-smoke+sync konfiguracija (10. zaporedni HEAD).
+- 0 kode — samo worklog (zaključni vnos).
+
+---
+
 Task ID: v1.296.0-nadzorni-val-stabilnosti
 Agent: glavni agent (Z.ai Code)
 Task: Nadzorni val — izvedba »nadaljuj«, ko sta oba A-kandidata iz v1.295.0 pogojna in nezadoljena: (a) zahteva lastnikovo odločitev o preostanku (sprejeti 14 čistih/tek / meja Task 58 — »nadaljuj« NE Tolmačim kot odločitev, (a) ostaja lastnikova), (b) zahteva 12. reset peskovnika, ki se NI zgodil. Namen vala: čez-sejanski dokaz stabilnosti na novo sejo (4. zaporedni zeleni tek v prvem poskusu na okolju 11. reseta + klasifikacija 0/0 + četrti zaporedni +14) kot sveža dokazna osnova za lastnikovo odločitev (a). 0 produkcjske kode, 0 testnih sprememb — samo prevez 1.296.0 + worklog.
