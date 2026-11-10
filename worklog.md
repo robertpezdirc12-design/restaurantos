@@ -1,3 +1,22 @@
+Task ID: v1.292.0-ci-sveza-baza-c1b-zakljucek-pusha
+Agent: glavni agent (Z.ai Code)
+Task: Pospushna verifikacija CI-fix vala v živo — dokaz sledi v CI/deployment teku (obvezni dokaz implementacijskega vnosa).
+
+Work Log:
+- PUSH: d78815f porinjen (f07c393..d78815f, žeton seje izključno inline v push ukazu, remote ostaja anonimen; commit nosi cel val vključno z worklog vnosom).
+- CI (živo, GA — avtoritativna vrata) @ d78815f: 7/7 check-runov SUCCESS — build / tests / neon-smoke / typecheck-prod / sync / deploy / report-build-status. KLJUČNI DOKAZ: tests job ZELEN V PRVEM POSKUSU na sveži ci-fresh.db — izhod »Ran 6116 tests across 287 files. [122.29s]« + »6116 pass / 0 fail / 137202 expect() calls« (job 00:19:41–00:23:06Z) — CI-fix val dokazan v PRAVEM CI okolju, kjer je bil vzrok (v290 Ç1b) odkrit; 3 lokalno preskočeni testi so v CI stekli in zeleno pretekli (lokalno 6113/3/0, CI 6116/0/0 — preskoki pogojeni s peskovniškim stanjem baze, ne s kodo).
+- ALARM CIKEL: #125 SE JE SAMODEJNO ZAPRL (00:23:03Z, ci-alarm-close po zelenem tests teku — točno po zasnovi v1.215.0 cikla); #123 (Vercel OPS) ostaja edini odprti — B-razred za lastnika.
+- PRODUKCIJA: Vercel Git deployment → /api/health → 1.292.0 @ d78815f (mode cloud, postgresql, database connected, schema ok, latencyMs 306, 00:23:56Z).
+- SYNC: GA sync job (Dvosmerna sinhronizacija GitLab <-> GitHub) SUCCESS — GitLab mirror posodobljen na d78815f (pot prek secrets, vzorec prejšnjih valov).
+- BUILDKITE (informativno, NE naša infrastruktura): typecheck-prod ✅; neon-smoke ❌ + sync ❌ ostajata OBSTOJEČI stanji (6. zaporedni HEAD, isti vzorec — prehitri za prava testa, Buildkite-stran konfiguracija; GA neposredno prizadet); tests (push) je ob zaključku verifikacije še tekel — ista koda, ki je v GA 6116/0/0.
+- VRATA POSPUSHNA: brez ponovnega teka (vrata vala so tekla PRED pushom: tsc 0 / lint 0 / KONČNI TEK #3 6113/3/0 / klasifikacija 0 predponskih + 0 mrtvih + seme 1/4/12/14/4; CI jih je neodvisno potrdil 7/7 s 6116/0/0).
+
+Stage Summary:
+- Val v1.292.0 popolnoma zaključen po verigi: push 3 založenih valov → CI rdeče (6097/1, #125 odprt) → vzrok iz dnevnika (Ç1b dev-seme privpomnja) → rdeči dokaz lokalno (14/1 sveža) → popravek 1 (lastna realna fikstura, močnejši od v287) → statični varuh v292 → popravek 2 med valom (10. repna datoteka audit-fixes po 9. resetu — klasifikacija 5 → 0) → prevez 1.292.0 → KONČNI TEK 6113/3/0 → push → CI 7/7 zeleno v prvem poskusu (6116/0/0) → #125 samozaprt → produkcija 1.292.0 @ d78815f živa.
+- NASLEDNJI A-KANDIDAT (nespremenjen iz v1.291.0/v1.292.0): (a) demo-realna meja AuditLog (~45 čistih/tek, izmerjena sestava: PAY_LINK_CREATED 100, CRON_DAILY_RAN 30, LOGIN_FAILED 30, SCHEMA_MIGRATION_* 60 …) — analiza pisateljev po vzorcu v291; meja ZAVESTNO ven (pogodba Task 58), poseg zahteva lastnikovo odločitev po analizi; (b) naslednji svež reset peskovnika bo znova pomešal readdir red — klasifikacija po prvem teku (pričakovano 0; če rep, vzorec tega vala: 11. repna datoteka).
+- AKCIJA ZA LASTNIKA (B-razred, po prioriteti): (1) PREKLIČI sejni žeton ghp_2Di4… (uporabljen izključno za 2 pusha + bralne API klice te seje — f07c393 in d78815f; nič zapisanega v repo/remote konfiguracijo; prejšnji ghp_O5gi… že mrtev), (2) VERCEL_TOKEN_B64 #123 (rezervna CLI pot neoperabilna, glavna Git pot deluje), (3) OSS-11 vnos pravih vrednosti teme v produkciji, (4) Buildkite neon-smoke+sync konfiguracija (6. zaporedni HEAD).
+
+---
 Task ID: v1.292.0-ci-sveza-baza-c1b
 Agent: glavni agent (Z.ai Code)
 Task: CI-fix pod-val (vzorec v1.287.0 ci-sveza-baza za isti razred hrošča): push treh založenih valov po dobavi novega žetona je padel na ENEM testu od 6098 — v290 Ç1b okoljska odvisnost (privpomnja na dev seme, CI pa teče na sveži bazi); popravek z lastno realno fiksturo + statični varuh v292 + prevez 1.292.0.
