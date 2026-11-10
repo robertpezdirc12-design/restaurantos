@@ -78,12 +78,15 @@ describe('v293 Ç1: pini atribucije (produkcjski pisatelji)', () => {
     expect(read('tests/paylink-flow.test.ts')).toContain('PAY_LINK_CREATED')
   })
 
-  test('Ç1b mehanizem preživetja paylink osamljenosti: DROP TABLE "PayLink" v 503 testu', () => {
+  test('Ç1b mehanizem paylink osamljenosti: odklonjen v1.294.0 (cleanup po locationId)', () => {
     const src = read('tests/paylink-flow.test.ts')
-    // drop uniči povezave → cleanup po entityId IN linkIds pade (osamljene vrstice)
+    // vzrok ostaja: drop uniči povezave → entityId IN linkIds pobriše NIČ
     expect(src).toContain('DROP TABLE "PayLink"')
-    // cleanup je žeton-baziran (reverse-FK prek najdenih linkov)
+    // zgodovinski žeton-baziran cleanup (reverse-FK prek najdenih linkov) ostaja
     expect(src).toContain('entityId: { in: links.map((l) => l.id) }')
+    // v1.294.0 POPRAVEK (opcija (ii) te analize): PAY_LINK_* po locationId —
+    // NEODVISNO od tabele PayLink (osamljene vrstice 13/tek → 0)
+    expect(src).toContain("locationId: loc.id, action: { startsWith: 'PAY_LINK_' }")
   })
 
   test('Ç1c cron pisatelj: userId literal \'cron\' + datumski entityId cron-daily-<ključ>', () => {
@@ -129,7 +132,7 @@ describe('v293 Ç1: pini atribucije (produkcjski pisatelji)', () => {
 
 describe('v293 Ç2: odločitev lastnika (meja ven)', () => {
   test('Ç2a meja ZAVESTNO ven + Task 58 (analiza dostavi podatke, poseg je lastnikova odločitev)', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('meja ZAVESTNO ven')
     expect(wl).toContain('Task 58')
   })
@@ -148,18 +151,18 @@ describe('v293 Ç2: odločitev lastnika (meja ven)', () => {
 // ── Ç3) MERILNE POGODBE VALA (osnova → delta → klasifikacija) ──────────────
 
 describe('v293 Ç3: merilne pogodbe', () => {
-  // okno 30000 (NE 20000): lastni pini sedijo v osnovnem vnosu (@2,3k–11,3k),
-  // naslednji val pa doda OBA vnosa (~11,4k) — rezerva za zamik je obvezna
-  // (LEKCIJA tega vala: zaključni vnos ~3,9k je podrl v289/v290 pine, ki so
-  // imele proračun samo za osnovni vnos).
+  // okno 40000 (NE 30000): v1.294.0 dodaja NOV vnos (~12k) NAD tem — pini tega
+  // vala sedijo @~2,3k–11,3k globoko v lastnem vnosu → ~23,3k skupaj; dvig je
+  // PREPREČEN (lekcija v1.293.0: okenski proračun zajema OBA vnosa naslednjega
+  // vala; vzorec v289–v292 dvigov 30000→40000)
   test('Ç3a osnova zapisana: 189 čistih / 0 predponskih po 7 tekih (27 × 7)', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('189 čistih')
     expect(wl).toContain('0 predponskih')
   })
 
   test('Ç3b delta zapisana: +27 točno (189 → 216) s sestavo po tipih', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('189 → 216')
     expect(wl).toContain('PAY_LINK_CREATED 10')
     expect(wl).toContain('CRON_DAILY_RAN 3')
@@ -167,7 +170,7 @@ describe('v293 Ç3: merilne pogodbe', () => {
   })
 
   test('Ç3c dokazi zapisani: TEK #1 6113 + 0 mrtvih + 104/104 osamljenih nosilcev linka', () => {
-    const wl = read('worklog.md').slice(0, 30000)
+    const wl = read('worklog.md').slice(0, 40000)
     expect(wl).toContain('6113')
     expect(wl).toContain('0 mrtvih')
     expect(wl).toContain('104/104')
@@ -177,17 +180,17 @@ describe('v293 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v293 Ž: registri', () => {
-  test('verzija 1.293.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.293.0')
+  test('verzija 1.294.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.294.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.293.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.294.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.293.0-demo-real-auditlog-pisatelji')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.294.0-paylink-cleanup-locationid')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (v293 je analiza — 0 fikstur, 0 predpon, 0 posegov)', () => {

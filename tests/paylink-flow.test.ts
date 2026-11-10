@@ -26,6 +26,8 @@
  *
  * Fixture predpona: plnk-; FURS simulacija prek FURS_ENVIRONMENT=simulation.
  * Čiščenje reverse-FK v afterAll + pred-čiščenje v beforeAll (trdoživost).
+ * v1.294.0: PAY_LINK_* audit čiščenje po locationId (neodvisno od tabele
+ * PayLink — odklon osamljenosti iz analize v1.293.0; glej cleanupFixtures).
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { NextRequest } from 'next/server'
@@ -113,6 +115,18 @@ async function mkLink(orderId: string, extra?: Record<string, unknown>): Promise
 async function cleanupFixtures() {
   const locs = await db.location.findMany({ where: { code: { startsWith: `${PREFIX}-` } } })
   for (const loc of locs) {
+    // v1.294.0 — PAYLINK OSAMJENOST ODKLONJENA (opcija (ii) iz analize v1.293.0):
+    // 503 degradacijski test sredi suite dela DROP TABLE "PayLink" → vsi do-tedaj
+    // ustvarjeni linki so uničeni → spodnji `payLink.findMany` vrne PRAZNO →
+    // `entityId IN linkIds` pobriše NIČ → 13 osamljenih PAY_LINK_* vrstic/tek
+    // (izmerjeno v1.293.0: 104/104 mrtvih nosilcev linka). POPRAVEK: PAY_LINK_*
+    // vrstice te FIKSTURNE lokacije pobrišemo po `locationId` (stolpec AuditLog,
+    // vsi produkcjski pisatelji — CREATED/SPLIT_CREATED/REVOKED/PAID/SHARE_PAID/
+    // STRIPE_REVIEW — ga zapisujejo) NEODVISNO od tabele PayLink in njenih id-jev.
+    // Varnostno (doktrina v291 Ç1c): filter je OMEJEN na lokacijo lastne fiksture
+    // (loc.id iz findMany po predponi) + akcije z začetkom 'PAY_LINK_' — tuje in
+    // čiste vrstice ostanejo NEDOTAKNJENE.
+    await db.auditLog.deleteMany({ where: { locationId: loc.id, action: { startsWith: 'PAY_LINK_' } } }).catch(() => null)
     const links = await db.payLink.findMany({ where: { locationId: loc.id }, select: { id: true } })
     const orders = await db.order.findMany({ where: { locationId: loc.id }, select: { id: true } })
     const orderIds = orders.map((o) => o.id)
