@@ -462,8 +462,8 @@ describe('v219 Č8 · #93 demo oznaka', () => {
 describe('v219 Č9 · verzija + registri', () => {
   it('verzija je dvignjena na 1.219.0 (version.ts + compose oznaka)', async () => {
     const { APP_VERSION } = await import('../src/lib/version')
-    expect(APP_VERSION).toBe('1.296.0')
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.296.0')
+    expect(APP_VERSION).toBe('1.297.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.297.0')
   })
 
   it('PRD nosi zapis QA-vala v1.219.0 (doc-truth)', () => {

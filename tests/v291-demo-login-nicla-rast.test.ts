@@ -184,17 +184,17 @@ describe('v291 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v291 Ž: registri', () => {
-  test('verzija 1.296.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.296.0')
+  test('verzija 1.297.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.297.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.296.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.297.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.296.0-nadzorni-val-stabilnosti')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.297.0-obnova-12-reset-bun144-artefakti')
   })
 
   test('TEST_PREFIXES: 142 z v291- registrirano', () => {

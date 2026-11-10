@@ -240,9 +240,9 @@ describe('v1.269.0 Č3 — montaža: tN na vseh klicnih mestih, mrtva koda odšl
 
 describe('v1.269.0 Ž — registri', () => {
   test('Ž1: verzija 1.269.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.296.0')
-    expect(read('src/lib/version.ts')).toContain("'1.296.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.296.0')
+    expect(APP_VERSION).toBe('1.297.0')
+    expect(read('src/lib/version.ts')).toContain("'1.297.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.297.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (+52 novih −9 upokojenih)', () => {
@@ -261,6 +261,6 @@ describe('v1.269.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.296.0-nadzorni-val-stabilnosti')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.297.0-obnova-12-reset-bun144-artefakti')
   })
 })

@@ -119,16 +119,16 @@ describe('v280 Č2: pini verige bun po vseh nosilcih', () => {
 
 describe('v280 Ž: registri', () => {
   test('verzija 1.280.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.296.0')
+    expect(APP_VERSION).toBe('1.297.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.296.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.297.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.296.0-nadzorni-val-stabilnosti')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.297.0-obnova-12-reset-bun144-artefakti')
   })
 
   test('i18n 4324/4324 nespremenjeno (val brez UI — 0 novih ključev)', () => {
