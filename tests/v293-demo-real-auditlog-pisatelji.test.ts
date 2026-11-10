@@ -183,17 +183,17 @@ describe('v293 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v293 Ž: registri', () => {
-  test('verzija 1.301.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.301.0')
+  test('verzija 1.302.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.302.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.301.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.302.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.301.0-nadzorni-val-odlocitveni-paket')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.302.0-nadzorni-val-stabilnosti-iii')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (v293 je analiza — 0 fikstur, 0 predpon, 0 posegov)', () => {

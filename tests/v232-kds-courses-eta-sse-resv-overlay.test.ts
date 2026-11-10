@@ -231,9 +231,9 @@ describe('v1.232.0 E — P2 popravek Selecta tečaja (NaročiloSheet)', () => {
 
 describe('v1.232.0 Ž — verzija + dokumenti + registri', () => {
   test('Ž1: verzija je dvignjena na 1.238.0 (version.ts + compose oznaka)', () => {
-    expect(APP_VERSION).toBe('1.301.0')
-    expect(read('src/lib/version.ts')).toContain("'1.301.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.301.0')
+    expect(APP_VERSION).toBe('1.302.0')
+    expect(read('src/lib/version.ts')).toContain("'1.302.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.302.0')
   })
 
   test('Ž2: dokument PRIMERJAVA nosi val v1.233.0 (KDS 17/18, restavracija 22/22)', () => {
@@ -253,7 +253,7 @@ describe('v1.232.0 Ž — verzija + dokumenti + registri', () => {
   })
 
   test('Ž4: worklog vrh nosi Task ID v1.235.0 nad prejšnjim valom', () => {
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.301.0-nadzorni-val-odlocitveni-paket')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.302.0-nadzorni-val-stabilnosti-iii')
     expect(wl.indexOf('Task ID: v1.239.0')).toBeLessThan(wl.indexOf('Task ID: v1.231.0'))
   })
 
