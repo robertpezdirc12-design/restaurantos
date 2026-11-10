@@ -481,8 +481,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 
 describe('v1.216.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.303.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.303.0'/)
+    expect(APP_VERSION).toBe('1.304.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.304.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
@@ -505,6 +505,9 @@ describe('v1.216.0 — Č3: registri', () => {
     //   tek vala je imel 1 padec točno tu, ista družina kot LEKCIJA v1.272.0; vzorec v263→v278→v285)
     // v1.292.0: okno 76000 → 90000 (vnos 7375 znakov je potisnil prvi R4b na 81706 — KONČNI TEK
     //   je imel 1 padec točno tu, ista družina; vzorec v263→v278→v285→v292)
-    expect(wl.slice(0, 90000)).toContain('R4b')
+    // v1.304.0: okno 90000 → 180000 (vnosa v1.303.0 zaključek + v1.304.0 implementacija sta potisnila
+    //   prvi R4b na 98338 — 5. pojavev družine v263→v278→v285→v292→v304; dvig po lekciji v295 Ç2b:
+    //   pokriva vnosa tega IN naslednjega vala + rezerva)
+    expect(wl.slice(0, 180000)).toContain('R4b')
   })
 })

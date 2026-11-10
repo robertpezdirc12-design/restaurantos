@@ -264,13 +264,13 @@ describe('v1.262.0 Ž — montaža + registri', () => {
     const auditDoc = read('docs/RESTAURANTOS-AUDIT.md')
     expect(auditDoc).toContain('POSODOBITEV (v1.262.0, PRIMERJAVA-VMESNIKOV-2026 §36)')
     expect(auditDoc).toContain('števci nespremenjeni (4121)')
-    expect(APP_VERSION).toBe('1.303.0')
-    expect(read('src/lib/version.ts')).toContain("'1.303.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.303.0')
+    expect(APP_VERSION).toBe('1.304.0')
+    expect(read('src/lib/version.ts')).toContain("'1.304.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.304.0')
   })
 
   test('Ž8: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.303.0-nadzorni-val-stabilnosti-iv')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.304.0-nadzorni-val-stabilnosti-v')
   })
 })
