@@ -1,3 +1,26 @@
+Task ID: v1.294.0-paylink-cleanup-locationid-zakljucek-pusha
+Agent: glavni agent (Z.ai Code)
+Task: Pospushna verifikacija vala v živo — dokaz sledi v CI/deployment/sync teku (obvezni dokaz implementacijskega vnosa).
+
+Work Log:
+- PUSH: 50caa58 porinjen (b8ccd1b..50caa58, žeton seje izključno inline v push ukazu, remote ostaja anonimen; commit nosi cel val vključno z worklog vnosom — 108 datotek, 531 vstavkov, 323 brisanj, +1 nova datoteka tests/v294-paylink-cleanup-locationid.test.ts).
+- CI (živo, GA — avtoritativna vrata) @ 50caa58: 7/7 check-runov SUCCESS — build / tests / neon-smoke / typecheck-prod / sync / deploy / report-build-status. KLJUČNI DOKAZ: tests job ZELEN V PRVEM POSKUSU na sveži ci-fresh.db — izhod »Ran 6150 tests across 289 files. [228.64s]« + »6150 pass« + »137307 expect() calls« (job 09:16:49–09:22:24Z) — popravljen cleanup + nov varuh v294 (17 testov) dokazana v CI; 3 lokalno preskočeni testi so v CI stekli zeleno (lokalno 6147/3/0, CI 6150/0/0 — preskoki pogojeni s peskovniškim stanjem baze, ne s kodo; vzorec v1.292.0/v1.293.0).
+- PRODUKCIJA: Vercel Git deployment → /api/health → 1.294.0 @ 50caa58 (mode cloud, postgresql, database connected, schema ok, latencyMs 811, 09:23:58Z).
+- SYNC: GA sync job (Dvosmerna sinhronizacija GitLab <-> GitHub) SUCCESS — GitLab mirror posodobljen na 50caa58 (pot prek secrets, vzorec prejšnjih valov).
+- BUILDKITE (informativno, NE naša infrastruktura): tests (push) ✓ ZELEN + typecheck-prod ✓; neon-smoke ❌ + sync ❌ ostajata OBSTOJEČI stanji (8. zaporedni HEAD, isti vzorec — prehitri za prava testa, Buildkite-stran konfiguracija; GA neposredno prizadet).
+- ALARM CIKEL: tiho — CI zelen v prvem poskusu, alarm se ni odprl (cikel v1.215.0 miren); #123 (Vercel OPS) ostaja edini odprti issue — B-razred za lastnika.
+- VRATA POSPUSHNA: brez ponovnega teka (vrata vala so tekla PRED pushom: tsc 0 / lint 0 / ciljani 69/69 / URADNI TEK #1 6130/3/0 / KONČNI TEK 6147/3/0 / klasifikacija 0 predponskih + 0 mrtvih + seme 1/4/12/14/4 + delte +14 trikrat zapored 0 → 14 → 28 → 42; CI jih je neodvisno potrdil 7/7 s 6150/0/0).
+- ŽETON SEJE ghp_2Di4… ŠE VEDNO VELJAVEN ob pushu tega vala (ls-remote 200 pred valom in ob CI spremljanju; 4. push tega žetona: f07c393, d78815f, 47ccfed, 50caa58) — AKCIJA ZA LASTNIKA ostaja: prekliči žeton po zaključku seje.
+
+Stage Summary:
+- Val v1.294.0 popolnoma zaključen po verigi: obnova po 10. resetu (bun 1.4.4 prek npm tarballa + reseed 1/4/12/14/4 + demo 4) → popravek cleanupFixtures (PAY_LINK_* po locationId, drop-safe pred payLink.findMany) → vzdržba v293 (Ç1b odklon + okna 30000→40000) → statični varuh v294 17 testov → prevez 1.294.0 (299 zamenjav v 103 datotekah, vključno 15 ubežnih mešanih — lekcija zapisana) → vrata (tsc 0 / lint 0 / ciljani 69/69 / TEK #1 6130/3/0 / KONČNI TEK 6147/3/0) → push 50caa58 → CI 7/7 zeleno v prvem poskusu (6150/0/0) → produkcija 1.294.0 @ 50caa58 živa → sync zelen.
+- DOKAZ POPRAVKA: demo-realna AuditLog rast suite 27 → 14 čistih/tek (PAY_LINK_* 13 → 0; potrjeno na treh zaporednih tekih 0 → 14 → 28 → 42, vsakič +14 točno, sestava cron 3 + login 5 + DDL 6); preostanek 14 čistih/tek ostaja po pogodbi Task 58 lastnikova odločitev (opciji (i) sprejeti neškodljivo / (iii) meja po lastnikovi definiciji).
+- NASLEDNJI A-KANDIDAT: (a) lastnikova odločitev o preostanku (sprejeti 14/tek / meja Task 58); (b) morebitni naslednji reset peskovnika → readdir klasifikacija po prvem teku (pričakovano 0/0; vzorec 11. repne datoteke).
+- AKCIJA ZA LASTNIKA (B-razred, po prioriteti): (1) PREKLIČI sejni žeton ghp_2Di4… (4 pushi: f07c393, d78815f, 47ccfed, 50caa58 + bralni API klici; nič zapisanega v repo/remote konfiguracijo; prejšnji ghp_O5gi… že mrtev), (2) VERCEL_TOKEN_B64 #123, (3) OSS-11 prave vrednosti teme v produkciji, (4) Buildkite neon-smoke+sync konfiguracija (8. zaporedni HEAD).
+- 0 kode — samo worklog (zaključni vnos).
+
+---
+
 Task ID: v1.294.0-paylink-cleanup-locationid
 Agent: glavni agent (Z.ai Code)
 Task: Izvedba A-kandidata (ii) iz zaključka v1.293.0 — POPRAVEK PAYLINK OSAMJENOSTI AuditLog vrstic: afterAll cleanup v tests/paylink-flow.test.ts briše PAY_LINK_* vrstice FIKSTURNE lokacije po locationId (stolpec AuditLog) NEODVISNO od tabele PayLink in njenih id-jev — odklon 13 osamljenih vrstic/tek (dokaz 104/104 mrtvih nosilcev linka iz v1.293.0); pričakovana rast suite 27 → 14 čistih/tek (paylink del 13 → 0; cron 3 + login 5 + DDL 6 ostanejo — meja preostanka ZAVESTNO ven, pogodba Task 58). 0 produkcjske kode, 0 novih testnih fikstur, 0 DDL (samo testni cleanup popravek + statični varuh + prevez + worklog).
