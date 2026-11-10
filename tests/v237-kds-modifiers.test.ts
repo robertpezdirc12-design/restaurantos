@@ -281,9 +281,9 @@ describe('v1.237.0 D — i18n (SL + HR pariteta, 3857 → 3858)', () => {
 
 describe('v1.237.0 Ž — registri (doc-truth + verzija)', () => {
   test('Ž1: verzija', () => {
-    expect(APP_VERSION).toBe('1.299.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.299.0'/)
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.299.0')
+    expect(APP_VERSION).toBe('1.300.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.300.0'/)
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.300.0')
   })
 
   test('Ž2: PRIMERJAVA §14 (kako ima Toast / kako ima RestaurantOS z datotečnimi potmi)', () => {
