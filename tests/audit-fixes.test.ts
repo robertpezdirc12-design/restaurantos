@@ -15,7 +15,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { NextRequest } from 'next/server'
 import { db } from '../src/lib/db'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 import { createToken, employeePinFields, timingSafeEqualStr } from '../src/lib/auth'
 import { POST as wastePOST } from '../src/app/api/waste/route'
 import { GET as setupStatusGET } from '../src/app/api/setup/status/route'
@@ -41,10 +41,21 @@ afterAll(async () => {
   await db.inventoryItem.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
   await db.employee.deleteMany({ where: { email: { contains: `${PREFIX}` } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: `${PREFIX}loc-` } } }).catch(() => null)
+  // v1.292.0 repni izhod: 10. repna datoteka (izmerjeno po 9. resetu peskovnika —
+  // readdir red se s resetom spremeni in ta datoteka je stekla ZA zadnjim centralnim
+  // širokim klicem): ročni afterAll zamuja EventLog (StockChanged entityId),
+  // AuditLog prek userId (WASTE_RECORD ima entityId = wasteRecord id = nid, brez
+  // predpone) in FK .catch(()=>null) pogoltne napako zavrnitve (StockTransaction
+  // drži inventoryItem) — široki klic počisti vse tri družine + FK vrstni red.
+  await sweepTestFixtures(db, TEST_PREFIXES)
 })
 
 const setupP = (async () => {
-  await sweepTestFixtures(db, [PREFIX])
+  // v1.292.0 repni vhod: nadgradnja ozkega klica na ŠIROKEGA (TEST_PREFIXES ⊇ afx-)
+  // — počisti ostanke datotek pred sabo tudi, kadar readdir red da to datoteko
+  // za zadnjim centralnim širokim klicem (vzorec v290; klic je PRED lastnimi
+  // fiksturami, zato široka oblika ne more pobrisati lastnih vrstic).
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const loc = await db.location.create({
     data: {
       id: `${PREFIX}loc-${RUN}`,

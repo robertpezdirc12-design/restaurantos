@@ -481,8 +481,8 @@ describe('v1.216.0 — Č2: i18n + dokumenti + 0 DDL', () => {
 
 describe('v1.216.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.291.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.291.0'/)
+    expect(APP_VERSION).toBe('1.292.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.292.0'/)
   })
 
   it('compose oznaka slike ↔ APP_VERSION (selfhost pogodba)', () => {
@@ -502,7 +502,9 @@ describe('v1.216.0 — Č3: registri', () => {
     expect(wl.indexOf('Task ID: v1.216.0-update-check')).toBeLessThan(wl.indexOf('Task ID: v1.215.0-ci-alarm-lifecycle'))
     // v1.263.0 §37 finalna-verifikacija: okno povečano (novejši vnosi glave potiskajo R4b globlje)
     // v1.285.0: okno 62000 → 76000 (vnos ~7,6 kB je potisnil prvi R4b na 67203 — prvi končni
-    // tek vala je imel 1 padec točno tu, ista družina kot LEKCIJA v1.272.0; vzorec v263→v278→v285)
-    expect(wl.slice(0, 76000)).toContain('R4b')
+    //   tek vala je imel 1 padec točno tu, ista družina kot LEKCIJA v1.272.0; vzorec v263→v278→v285)
+    // v1.292.0: okno 76000 → 90000 (vnos 7375 znakov je potisnil prvi R4b na 81706 — KONČNI TEK
+    //   je imel 1 padec točno tu, ista družina; vzorec v263→v278→v285→v292)
+    expect(wl.slice(0, 90000)).toContain('R4b')
   })
 })

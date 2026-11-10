@@ -92,13 +92,31 @@ describe('v290 Ç1: mehanizem — široki klic počisti tudi lastno predpono', (
     }
   })
 
-  test('Ç1b varnost: realne (nepredponske) lokacije preživijo široki klic (seme nedotaknjeno)', async () => {
+  test('Ç1b varnost: realne (nepredponske) lokacije preživijo široki klic (lastna realna fikstura — okoljsko neodvisno)', async () => {
+    // v1.292.0 CI-fix (vzorec v287 Č1d + sweep58): CI tests job teče na SVEŽI
+    // bazi (ci.yml: prisma db push na ci-fresh.db BREZ db:seed — 0 semenskih
+    // vrstic), zato je bil prvotni »toBeGreaterThan(0) // dev seme« okoljsko
+    // odvisen: rdeče @ f07c393 (6097/1/6098, alarm #125). Popravek: LASTNA
+    // realna lokacija (id BREZ predpone — čisti pogoj »realnosti«, nobena od
+    // 142 predpon se ne začne z 'real-') naredi pogodbo preživetja dokazljivo
+    // na KATERI KOLI bazi (sveža CI 0→1, dev seme zraven lastne); invarianta
+    // after = before + 1 dokaže hkrati: lastna PREŽIVI (+1) IN seme/ostale
+    // realne ostanejo nedotaknjene (izguba katere koli → padec). Try/finally
+    // higijena (LEKCIJA v1.286.0: padec asercije ne pušča vrstic) + začetni
+    // deleteMany samo-zdravljenje (ubit tek ne zastrupi naslednjega).
     const isReal = (id: string) => !TEST_PREFIXES.some((p) => id.startsWith(p))
+    const realId = 'real-loc-c1b-v290' // namerno BREZ predpone — to JE pogoj realnosti
+    await db.location.deleteMany({ where: { id: realId } }).catch(() => null) // samo-zdravljenje
     const before = (await db.location.findMany({ select: { id: true } })).filter((l) => isReal(l.id)).length
-    await sweepTestFixtures(db, TEST_PREFIXES)
-    const after = (await db.location.findMany({ select: { id: true } })).filter((l) => isReal(l.id)).length
-    expect(after).toBe(before)
-    expect(after).toBeGreaterThan(0) // dev seme: "RestaurantOS Ljubljana"
+    await db.location.create({ data: { id: realId, name: 'Realna lokacija Ç1b', code: 'REAL-C1B-V290' } })
+    try {
+      await sweepTestFixtures(db, TEST_PREFIXES)
+      const after = (await db.location.findMany({ select: { id: true } })).filter((l) => isReal(l.id)).length
+      expect(after).toBe(before + 1) // lastna realna lokacija PREŽIVI široki klic; seme nedotaknjeno
+      expect(await db.location.findUnique({ where: { id: realId } })).toBeTruthy() // pozitiven dokaz na vsaki bazi
+    } finally {
+      await db.location.deleteMany({ where: { id: realId } }).catch(() => null) // higiena lastne fiksture
+    }
   })
 })
 
@@ -138,20 +156,23 @@ describe('v290 Ç2: pini posega (9 repnih datotek)', () => {
 })
 
 // ── Ç3) MERILNE POGODBE VALA (rdeče izhodišče 107 → zeleni rep 0) ──────────
+// v1.292.0: okno 15000→20000 (vzorec v289/v290) — vnos v1.292.0 (7088 znakov)
+// je najzgodnejše pojave potisnil na ~13,9k; rezerva 1,1k je premajhna za
+// naslednji vnos (~7k). Pini ostajajo na ISTEH nizih.
 
 describe('v290 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
   test('Ç3a rdeče izhodišče 107 predponskih vrstic zapisano z merjenimi številkami', () => {
-    const wl = read('worklog.md').slice(0, 15000)
+    const wl = read('worklog.md').slice(0, 20000)
     expect(wl).toContain('107 predponskih vrstic')
   })
 
   test('Ç3b pogodba rep suite po teku = 0 (vhod+izhod v 9 repnih datotekah)', () => {
-    const wl = read('worklog.md').slice(0, 15000)
+    const wl = read('worklog.md').slice(0, 20000)
     expect(wl).toContain('rep suite po teku = 0')
   })
 
   test('Ç3c pogodba 0 mrtvih števcev po teku (nadaljevanje v1.289.0) zapisana', () => {
-    const wl = read('worklog.md').slice(0, 15000)
+    const wl = read('worklog.md').slice(0, 20000)
     expect(wl).toContain('0 mrtvih števcev')
   })
 })
@@ -159,17 +180,17 @@ describe('v290 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v290 Ž: registri', () => {
-  test('verzija 1.291.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.291.0')
+  test('verzija 1.292.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.292.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.291.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.292.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.291.0-demo-login-nicla-rast')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.292.0-ci-sveza-baza-c1b')
   })
 
   test('TEST_PREFIXES: 142 z v290- registrirano (v1.291.0 dodal v291-)', () => {

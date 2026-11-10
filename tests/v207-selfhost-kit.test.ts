@@ -230,7 +230,7 @@ describe('Č2 — kit na disku', () => {
 
 describe('Č3 — registri v1.207.0', () => {
   test('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.291.0')
+    expect(APP_VERSION).toBe('1.292.0')
   })
 
   test('oznaka slike v compose sledi APP_VERSION (enkratna resnica)', () => {

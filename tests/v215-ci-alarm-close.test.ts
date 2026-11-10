@@ -405,8 +405,8 @@ describe('v1.215.0 — Č3: registri', () => {
 
   test('verzija 1.238.0 (toBe + ubežen regex)', async () => {
     const { APP_VERSION } = await import('../src/lib/version')
-    expect(APP_VERSION).toBe('1.291.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.291.0'/)
+    expect(APP_VERSION).toBe('1.292.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.292.0'/)
   })
 
   test('oznaka slike ↔ APP_VERSION (docker-compose.yml)', async () => {
