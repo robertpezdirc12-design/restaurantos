@@ -1,3 +1,19 @@
+Task ID: v1.304.0-nadzorni-val-stabilnosti-v-zakljucek-pusha
+Agent: glavni agent (Z.ai Code)
+Task: Pospushna verifikacija vala v živo — dokaz sledi v CI/deployment/sync teku (obvezni dokaz implementacijskega vnosa).
+
+Work Log:
+- PUSH: 59d4322 porinjen (e295409..59d4322, žeton seje izključno inline v push ukazu, remote ostaja anonimen; commit nosi cel val — 108 datotek, 326 vstavkov, 308 brisanj, 0 novih datotek; prikaz commit vrstice je pokazal artefakt »ain 59d4322« — znan PRIKAZNI artefakt po LEKCIJI O PRIKAZU v1.295.0, sporočilo po bajtih celo).
+- CI (živo, GA — avtoritativna vrata) @ 59d4322: 7/7 check-runov SUCCESS — build / tests / neon-smoke / typecheck-prod / sync / deploy / report-build-status. KLJUČNI DOKAZ: tests job ZELEN V PRVEM POSKUSU na sveži ci-fresh.db — »Ran 6168 tests across 290 files. [171.83s]« + 6168 pass + 0 fail + 137373 expect() calls; DETERMINIZEM: CI 137373 = lokalni TEK #1 137367 + 14 diskovna − 8 readdir — 4. vrednost znotraj dokumentiranega pasu ±readdir [137367–137379] (v1.300.0 137379 / v1.301.0 137367 / v1.302.0 137379 / v1.303.0 137379 / v1.304.0 137373; diskovna +14 konstantna; readdir/inode veja okoljska, gibanje brez sprememb expect-kode; testov/datotek identični 6168/290). BUILDKITE informativno, NE naša infrastruktura: typecheck-prod (push) uspešna, tests (push) uspešna, neon-smoke (push) ❌ + sync (push) ❌ obstoječa padca (18. zaporedni HEAD, isti vzorec; GA neposredno prizadet).
+- PRODUKCIJA: Vercel Git deployment → /api/health → 1.304.0 @ 59d4322 (status ok, mode cloud, postgresql, database connected, schema ok, latencyMs 263, 20:12:29Z).
+- SYNC: GA sync job SUCCESS — log dokazuje »GitHub main: 59d432274fe70cbf16f1e0aa654e12f13462b0a2« = »GitLab main: 59d432274fe70cbf16f1e0aa654e12f13462b0a2« (identična SHA; štiristranska sinhronizacija ŽIVA: lokalno = GitHub = produkcija = GitLab mirror).
+- ALARM CIKEL: tiho — CI zelen v prvem poskusu; #123 (Vercel OPS) ostaja edini odprti issue — B-razred za lastnika.
+- VRATA POSPUSHNA: brez ponovnega teka (vrata vala so tekla PRED pushom: tsc 0 / lint 0 / ciljani 532/532 po okenski vzdržbi / URADNI TEK #1 6165/3/0 ZELEN V PRVEM POSKUSU / klasifikacija končna AuditLog 112 = 8 × 14 ČIST profil + EventLog 0 (družina v243/v249/v239 ostaja ustavljena — šesti zaporedni tek z 0) + 0 mrtvih števcev + seme celo; CI jih je neodvisno potrdil 7/7 s 6168/0/0).
+- ŽETON ghp_2Di4 še veljaven (19. push: 59d4322; ta zaključni = 20.) — lastnik naj ga prekliče po seji.
+- AKCIJA ZA LASTNIKA (B-razred): (1) preklic žetona ghp_2Di4, (2) VERCEL_TOKEN_B64 #123, (3) OSS-11, (4) Buildkite neon-smoke+sync, (5) odločitev o preostanku (i)/(iii) po ODLOČITVENEM PAKETU (v1.301.0, posodobljen v1.302.0/v1.303.0/v1.304.0 — dokazna osnova 8 × 14 + EventLog 0 na ŠESTIH zaporednih tekih); odločitev ostaja LASTNIKOVA.
+- NASLEDNJI A-KANDIDAT: (a) lastnikova odločitev (i)/(iii) — paket pripravljen in posodobljen (8 × 14 + EventLog 0 na šestih zaporednih tekih), (b) readdir po morebitnem 19. resetu (trije indikatorji, štirje profili baze; R4b okno zdaj 180000 — naslednja održava šele pri ~278 kB), (c) nova lastnikova navodila.
+- 0 produkcjske kode — samo prevez + okenska vzdržba (1 vrstica) + worklog.
+
 Task ID: v1.304.0-nadzorni-val-stabilnosti-v
 Agent: glavni agent (Z.ai Code)
 Task: Izvedba »nadaljuj kjer si ostal« — vsi trije A-kandidati iz v1.303.0 spet pogojni: (a) lastnikova odločitev (i)/(iii) — »nadaljuj kjer si ostal« je nadaljevalni ukaz, NE odločitev (pogodba Task 58: opciji (i)/(iii) ostajata LASTNIKOVI, odločitev NE sme biti tolmačena iz nadaljevalnega ukaza); (b) 18. reset NI — vsi trije indikatorji zeleni; (c) brez novih lastnikovih navodil → NADZORNI VAL VI (vzorec v1.296.0/v1.298.0/v1.300.0/v1.301.0/v1.302.0/v1.303.0) + OKENSKA VZDRŽBA (5. pojavev družine v263→v278→v285→v292→v304, mehanični popravek po lekciji v295 Ç2b). 0 produkcjske kode — samo prevez 1.304.0 + okenska vzdržba (1 vrstica okna + komentar) + worklog.
