@@ -635,17 +635,17 @@ describe('v288 Ç3: centralni sweep s 139 predponami (živi ostanki → 0 + varn
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v288 Ž: registri', () => {
-  test('verzija 1.307.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.307.0')
+  test('verzija 1.308.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.308.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.307.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.308.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.307.0-nadzorni-val-stabilnosti-viii')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.308.0-nadzorni-val-stabilnosti-ix')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

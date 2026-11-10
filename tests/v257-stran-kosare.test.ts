@@ -110,9 +110,9 @@ describe('v1.257.0 A3 — zrcaljenje postavitve (obe veji statično v viru)', ()
 
 describe('v1.257.0 Ž — registri', () => {
   test('Ž1: verzija 1.257.0 + compose oznaka', () => {
-    expect(APP_VERSION).toBe('1.307.0')
-    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.307.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.307.0')
+    expect(APP_VERSION).toBe('1.308.0')
+    expect(read('src/lib/version.ts')).toContain("APP_VERSION = '1.308.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.308.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4093/4093 (+5 sale.cartSide*)', () => {
@@ -159,6 +159,6 @@ describe('v1.257.0 Ž — registri', () => {
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.307.0-nadzorni-val-stabilnosti-viii')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.308.0-nadzorni-val-stabilnosti-ix')
   })
 })
