@@ -244,12 +244,12 @@ describe('v224 C2 · loyalty — isti telefon na isti lokaciji = en račun', () 
 
 describe('v224 Č · verzija + dokumentacija', () => {
   test('verzija je dvignjena na 1.238.0 (version.ts)', () => {
-    expect(APP_VERSION).toBe('1.294.0')
-    expect(read('src/lib/version.ts')).toContain("'1.294.0'")
+    expect(APP_VERSION).toBe('1.295.0')
+    expect(read('src/lib/version.ts')).toContain("'1.295.0'")
   })
 
   test('compose oznaka slike sledi verziji (selfhost pogodba)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.294.0')
+    expect(read('deploy/docker-compose.yml')).toContain('image: restaurantos:1.295.0')
   })
 
   test('PRD nosi zapis QA-vala v1.227.0 (doc-truth)', () => {
@@ -258,7 +258,7 @@ describe('v224 Č · verzija + dokumentacija', () => {
 
   test('worklog vnos na vrhu (Task ID: v1.228.0)', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.294.0-paylink-cleanup-locationid')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.295.0-obnova-11-reset-rep-integ60')
     expect(wl.indexOf('Task ID: v1.227.0')).toBeLessThan(wl.indexOf('Task ID: v1.224.0'))
   })
 })

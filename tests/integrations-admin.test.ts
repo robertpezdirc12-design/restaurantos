@@ -5,7 +5,7 @@ import { createToken, employeePinFields } from '../src/lib/auth'
 import { GET as integrationsGET, POST as integrationsPOST } from '../src/app/api/integrations/route'
 import { PATCH as integrationPATCH, DELETE as integrationDELETE } from '../src/app/api/integrations/[id]/route'
 import { POST as testConnectionPOST } from '../src/app/api/integrations/[id]/test/route'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 
 /**
  * Task 60 — admin integracije (audit §7 Integracije PARTIAL→DONE):
@@ -57,7 +57,12 @@ async function seedEmployee(name: string, role: string, pin: string, locationId:
 }
 
 async function setup() {
-  await sweepTestFixtures(db, [PREFIX])
+  // v1.295.0 repni vhod (vzorec v290/v292): readdir red se s 11. resetom
+  // peskovnika spremeni — ta datoteka je stekla ZA zadnjim centralnim širokim
+  // klicem in njen OZKI afterAll filter (id/entityId) je zamudil nosilca
+  // userId (AuditLog) + payload/by (EventLog) → 9+9 predponskih vrstic/tek.
+  // Široka oblika PRED lastnimi fiksturami ne more pobrisati lastnih vrstic.
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const loc = await db.location.create({
     data: { id: `${PREFIX}loc-a-${RUN}`, name: `${PREFIX}Lokacija A`, code: `I60A-${RUN.toUpperCase()}` },
   })
@@ -90,6 +95,11 @@ afterAll(async () => {
   }
   await db.employee.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
+  // v1.295.0 repni izhod (vzorec v290/v292): ZADNJA vrstica afterAll — pobere
+  // vse predponske nosilce (userId/by/payload), ki jih ozki filtri zgoraj
+  // namenoma ne poznajo; pokriva tudi morebitne ostanke prejšnjih datotek,
+  // če readdir red rep pomakne to datoteko na konec suite.
+  await sweepTestFixtures(db, TEST_PREFIXES).catch(() => null)
 })
 
 const isErr = async (p: Promise<Response>, status: number) => {

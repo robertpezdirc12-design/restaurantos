@@ -119,20 +119,24 @@ describe('v292 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
   // + zaključek pusha) potisneta najgloblji v292 pin (@9541 + 11,4k ≈ 20,9k)
   // čez 20000; LEKCIJA v1.293.0: okenski proračun zajema OBA vnosa vala. Pini
   // na ISTIH nizih (vzorec v263→v278→v285).
+  // v1.295.0: okno 40000 → 80000 preprečno (najgloblji v292 pin @29939 —
+  // ZAKLJUČNI vnos tega vala bi ga potisnil čez 40000, točno vzorec
+  // v289/v291 istega dne) — proračun: OBA vnosa TEGA IN NASLEDNJEGA vala
+  // (~25k skupaj) + rezervo (≈80k skupaj).
   test('Ç3a rdeče izhodišče zapisano: CI padec 6097/1/6098 @ f07c393 + alarm #125', () => {
-    const wl = read('worklog.md').slice(0, 40000)
+    const wl = read('worklog.md').slice(0, 80000)
     expect(wl).toContain('6097/1/6098')
     expect(wl).toContain('#125')
   })
 
   test('Ç3b zeleni dokaz zapisan: 15/15 na sveži (CI pogoj) IN 15/15 na sejani (dev pogoj)', () => {
-    const wl = read('worklog.md').slice(0, 40000)
+    const wl = read('worklog.md').slice(0, 80000)
     expect(wl).toContain('15/15')
     expect(wl).toContain('0 → 1')
   })
 
   test('Ç3c samo-zdravljenje baze zapisano (higijena po teku — seme nedotaknjeno)', () => {
-    const wl = read('worklog.md').slice(0, 40000)
+    const wl = read('worklog.md').slice(0, 80000)
     expect(wl).toContain('higijena')
   })
 })
@@ -140,17 +144,17 @@ describe('v292 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v292 Ž: registri', () => {
-  test('verzija 1.294.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.294.0')
+  test('verzija 1.295.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.295.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.294.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.295.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.294.0-paylink-cleanup-locationid')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.295.0-obnova-11-reset-rep-integ60')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (v292 je statični varuh — 0 fikstur, 0 predpon, vzorec v287)', () => {

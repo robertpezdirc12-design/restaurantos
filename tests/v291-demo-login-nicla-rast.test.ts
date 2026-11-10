@@ -160,18 +160,22 @@ describe('v291 Ç3: merilne pogodbe', () => {
     // @19203 + 11,4k ≈ 30,5k) čez 30000, ki je bil izračunan SAMO za osnovni
     // vnos — LEKCIJA: okenski proračun vala zajema OBA vnosa. Pini na ISTIH
     // nizih (vzorec v263→v278→v285).
-    const wl = read('worklog.md').slice(0, 40000)
+    // v1.295.0: okno 40000 → 80000 — ZAKLJUČNI vnos v1.294.0 (~3,9k, dodan
+    // PO vratih vala) je potisnil Ç3 pine (@40228–41138) čez 40000 — 3.
+    // pojavev družine; LEKCIJA (razširitev): proračun zajema OBA vnosa TEGA
+    // IN NASLEDNJEGA vala (~25k skupaj) + rezervo (≈80k skupaj).
+    const wl = read('worklog.md').slice(0, 80000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
     expect(wl).toContain('77 = 7×11')
   })
 
   test('Ç3b pogodba 0-rast: tek nove kode pušča 0 novih DEMO_LOGIN vrstic', () => {
-    const wl = read('worklog.md').slice(0, 40000)
+    const wl = read('worklog.md').slice(0, 80000)
     expect(wl).toContain('DEMO_LOGIN 0/tek')
   })
 
   test('Ç3c enkratni remedy 88 legacy vrstic + dvojna verifikacija zapisana', () => {
-    const wl = read('worklog.md').slice(0, 40000)
+    const wl = read('worklog.md').slice(0, 80000)
     expect(wl).toContain('88 legacy DEMO_LOGIN')
     expect(wl).toContain('0 → 0')
   })
@@ -180,17 +184,17 @@ describe('v291 Ç3: merilne pogodbe', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v291 Ž: registri', () => {
-  test('verzija 1.294.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.294.0')
+  test('verzija 1.295.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.295.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.294.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.295.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.294.0-paylink-cleanup-locationid')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.295.0-obnova-11-reset-rep-integ60')
   })
 
   test('TEST_PREFIXES: 142 z v291- registrirano', () => {
