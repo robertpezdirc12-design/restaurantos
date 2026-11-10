@@ -363,8 +363,8 @@ describe('v1.213.0 — Č2: dokumentacija + poštene meje (negativne trditve)', 
 /* ── Č3 — registri (verzija + oznaka slike) ───────────────────────────────── */
 describe('v1.213.0 — Č3: registri', () => {
   it('verzija 1.238.0 (toBe + ubežen regex)', () => {
-    expect(APP_VERSION).toBe('1.308.0')
-    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.308.0'/)
+    expect(APP_VERSION).toBe('1.309.0')
+    expect(read('src/lib/version.ts')).toMatch(/APP_VERSION = '1\.309.0'/)
   })
 
   it('oznaka slike ↔ APP_VERSION (docker-compose.yml)', () => {

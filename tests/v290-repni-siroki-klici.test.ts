@@ -189,17 +189,17 @@ describe('v290 Ç3: merilne pogodbe (klasifikacija po teku)', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v290 Ž: registri', () => {
-  test('verzija 1.308.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.308.0')
+  test('verzija 1.309.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.309.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.308.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.309.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.308.0-nadzorni-val-stabilnosti-ix')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.309.0-nadzorni-val-stabilnosti-x')
   })
 
   test('TEST_PREFIXES: 142 z v290- registrirano (v1.291.0 dodal v291-)', () => {

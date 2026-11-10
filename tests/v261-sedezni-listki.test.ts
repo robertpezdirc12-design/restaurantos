@@ -262,13 +262,13 @@ describe('v1.261.0 Ž — montaža + registri', () => {
     const doc = read('docs/PRIMERJAVA-VMESNIKOV-2026.md')
     expect(doc).toContain('## 35.')
     expect(doc).toContain('SEDEŽI NA KUHINJSKEM LISTKU v1.261.0')
-    expect(APP_VERSION).toBe('1.308.0')
-    expect(read('src/lib/version.ts')).toContain("'1.308.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.308.0')
+    expect(APP_VERSION).toBe('1.309.0')
+    expect(read('src/lib/version.ts')).toContain("'1.309.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.309.0')
   })
 
   test('Ž6: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.308.0-nadzorni-val-stabilnosti-ix')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.309.0-nadzorni-val-stabilnosti-x')
   })
 })
