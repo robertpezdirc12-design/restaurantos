@@ -172,17 +172,25 @@ describe('v289 Ç3: merilne pogodbe (2 teka, DMMF klasifikacija)', () => {
     // PO vratih vala) je potisnil Ç3a/Ç3c (@41099/@42966) čez 40000 — 3.
     // pojavev družine; LEKCIJA (razširitev): proračun zajema OBA vnosa TEGA
     // IN NASLEDNJEGA vala (~25k skupaj) + rezervo (≈80k skupaj).
-    const wl = read('worklog.md').slice(0, 80000)
+    // v1.298.0: okno 80000 → 160000 — KUMULATIVA dveh zaporednih valov po
+    // v1.295.0 (v1.296.0 nadzorni + v1.297.0 obnova ≈ 23k skupaj) je potisnila
+    // Ç3c pin v291 ('88 legacy DEMO_LOGIN' @81554) čez 80000 — 4. pojav
+    // družine; LEKCIJA (razširitev 2): proračun NE sme računati samo "tega +
+    // naslednjega" vala — sedemdnevni tok lahko prinese VEČ valov (vsak z dvema
+    // vnosoma ~12k), zato konvencija ostaja PODVAJANJE meje (80000 → 160000
+    // ≈ 6+ prihodnjih valov) namesto ad-hoc prištevanja. Pini na ISTIH nizih
+    // (vzorec v263→v278→v285→v1.295.0→v1.298.0).
+    const wl = read('worklog.md').slice(0, 160000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
   })
 
   test('Ç3b prehodno ravnotežje ~93 predponskih vrstic/tek zapisano z merjenimi številkami', () => {
-    const wl = read('worklog.md').slice(0, 80000)
+    const wl = read('worklog.md').slice(0, 160000)
     expect(wl).toContain('93 predponskih')
   })
 
   test('Ç3c pogodba 0 trajno mrtvih števcev + prehoden i30 zapisana', () => {
-    const wl = read('worklog.md').slice(0, 80000)
+    const wl = read('worklog.md').slice(0, 160000)
     expect(wl).toContain('0 TRAJNO mrtvih števcev')
   })
 })
@@ -211,17 +219,17 @@ describe('v289 Ç4: dopolnitev (8. reset peskovnika — ista verzija, isti val)'
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v289 Ž: registri', () => {
-  test('verzija 1.297.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.297.0')
+  test('verzija 1.298.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.298.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.297.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.298.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.297.0-obnova-12-reset-bun144-artefakti')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
   })
 
   test('TEST_PREFIXES: 142 z v289- registrirano (v1.290.0 dodal v290-, v1.291.0 dodal v291-)', () => {

@@ -200,7 +200,7 @@ describe('v279 Č3: negativni sken — 0 ikonskih gumbov brek imena v popravljen
 
 describe('v279 Ž: registri', () => {
   test('verzija 1.279.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.297.0')
+    expect(APP_VERSION).toBe('1.298.0')
   })
 
   test('i18n števci 4324/4324 (+4 ključi v1.279.0) in pariteta novih ključev SL/HR', () => {
@@ -218,7 +218,7 @@ describe('v279 Ž: registri', () => {
 
   test('worklog vrh nosi Task ID vala (prevez 44 vrh-pinov)', () => {
     const wl = read('worklog.md').slice(0, 400)
-    expect(wl).toContain('Task ID: v1.297.0-obnova-12-reset-bun144-artefakti')
+    expect(wl).toContain('Task ID: v1.298.0-nadzorni-val-okenski-dvig')
   })
 
   test('AUDIT doc-truth: živi števec 4324 + POSODOBITEV v1.279.0', () => {

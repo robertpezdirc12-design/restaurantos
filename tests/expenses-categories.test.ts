@@ -6,7 +6,7 @@ import { createToken, employeePinFields } from '../src/lib/auth'
 import { GET as expensesGET, POST as expensesPOST } from '../src/app/api/expenses/route'
 import { PATCH as expensesPATCH } from '../src/app/api/expenses/[id]/route'
 import { resetExpenseCategoriesProbe } from '../src/lib/expenses-categories'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 
 /**
  * Task 67 — kategorije stroškov, runtime-gated (v1.65.0).
@@ -73,7 +73,8 @@ async function seedEmployee(name: string, role: string, pin: string, locationId:
 }
 
 async function setup() {
-  await sweepTestFixtures(db, [PREFIX])
+  // v1.298.0 repni vhod: široka oblika (vzorec v295 Ç1a) — PRED lastnimi fiksturami
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const loc = await db.location.create({
     data: { id: `${PREFIX}loc-a-${RUN}`, name: `${PREFIX}Lokacija A`, code: `S67A-${RUN.toUpperCase()}` },
   })
@@ -110,6 +111,9 @@ afterAll(async () => {
   }).catch(() => null)
   await db.employee.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
+  // v1.298.0 repni izhod: široki klic kot ZADNJA vrstica afterAll (vzorec v295 Ç1b) —
+  // EXPENSE_* audit vrstice nosijo predpono v userId/locationId, ne id/entityId
+  await sweepTestFixtures(db, TEST_PREFIXES).catch(() => null)
 })
 
 describe('sk67: dev probe true — vnos + enrichment + audit', () => {

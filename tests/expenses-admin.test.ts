@@ -5,7 +5,7 @@ import { createToken, employeePinFields } from '../src/lib/auth'
 import { num } from '../src/lib/map'
 import { GET as expensesGET, POST as expensesPOST } from '../src/app/api/expenses/route'
 import { PATCH as expensesPATCH, DELETE as expensesDELETE } from '../src/app/api/expenses/[id]/route'
-import { sweepTestFixtures } from './helpers/fixture-sweep'
+import { sweepTestFixtures, TEST_PREFIXES } from './helpers/fixture-sweep'
 
 /**
  * Task 61 — admin stroški (revizija §7 vrstica 122: PARTIAL → DONE).
@@ -60,7 +60,10 @@ async function seedEmployee(name: string, role: string, pin: string, locationId:
 }
 
 async function setup() {
-  await sweepTestFixtures(db, [PREFIX])
+  // v1.298.0 repni vhod: široka oblika (vzorec v295 Ç1a) — PRED lastnimi fiksturami,
+  // zato ne more pobrisati lastnih vrstic; počisti tudi puščene audit vrstice
+  // prejšnjih tekov (nosilec userId/locationId, ki ga ozki afterAll ne vidi)
+  await sweepTestFixtures(db, TEST_PREFIXES)
   const loc = await db.location.create({
     data: { id: `${PREFIX}loc-a-${RUN}`, name: `${PREFIX}Lokacija A`, code: `E61A-${RUN.toUpperCase()}` },
   })
@@ -108,6 +111,10 @@ afterAll(async () => {
   await db.supplier.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
   await db.employee.deleteMany({ where: { email: { contains: PREFIX } } }).catch(() => null)
   await db.location.deleteMany({ where: { id: { startsWith: PREFIX } } }).catch(() => null)
+  // v1.298.0 repni izhod: široki klic kot ZADNJA vrstica afterAll (vzorec v295 Ç1b) —
+  // EXPENSE_* audit vrstice nosijo predpono v userId (user.sub) in locationId,
+  // ne v id/entityId (nid) → ozki filter jih je spustil (razred integ60)
+  await sweepTestFixtures(db, TEST_PREFIXES).catch(() => null)
 })
 
 const isErr = async (p: Promise<Response>, status: number) => {
