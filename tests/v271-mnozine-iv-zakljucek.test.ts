@@ -381,9 +381,9 @@ describe('v1.271.0 Č3 — montaža klicnih mest (8 datotek)', () => {
 
 describe('v1.271.0 Ž — registri', () => {
   test('Ž1: verzija 1.271.0 (version.ts + compose)', () => {
-    expect(APP_VERSION).toBe('1.292.0')
-    expect(read('src/lib/version.ts')).toContain("'1.292.0'")
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.292.0')
+    expect(APP_VERSION).toBe('1.293.0')
+    expect(read('src/lib/version.ts')).toContain("'1.293.0'")
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.293.0')
   })
 
   test('Ž2: i18n pariteta SL/HR 4320/4320 (noun 148 = 37 skupkov × 4; neto +70)', () => {
@@ -404,6 +404,6 @@ describe('v1.271.0 Ž — registri', () => {
 
   test('Ž4: worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.292.0-ci-sveza-baza-c1b')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.293.0-demo-real-auditlog-pisatelji')
   })
 })

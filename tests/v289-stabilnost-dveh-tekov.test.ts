@@ -163,17 +163,20 @@ describe('v289 Ç3: merilne pogodbe (2 teka, DMMF klasifikacija)', () => {
     // zajema osnovni vnos + dopolnitev, pini pa ostajajo na ISTIH nizih.
     // v1.290.0: okno 15000 → 20000 — vnos vala v1.290.0 (6017 znakov) na vrhu
     // potisne DEMO_LOGIN pin čez 15000; pini ostajajo na istih nizih (vzorec).
-    const wl = read('worklog.md').slice(0, 20000)
+    // v1.293.0: okno 20000 → 30000 — vnos vala v1.293.0 (analiza demo-realnih
+    // pisateljev AuditLog, ~8000 znakov) na vrhu potisne Ç3 pine (najgloblji
+    // @19203) čez 20000; pini ostajajo na ISTIH nizih (vzorec v263→v278→v285).
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('DEMO_LOGIN 11/tek')
   })
 
   test('Ç3b prehodno ravnotežje ~93 predponskih vrstic/tek zapisano z merjenimi številkami', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('93 predponskih')
   })
 
   test('Ç3c pogodba 0 trajno mrtvih števcev + prehoden i30 zapisana', () => {
-    const wl = read('worklog.md').slice(0, 20000)
+    const wl = read('worklog.md').slice(0, 30000)
     expect(wl).toContain('0 TRAJNO mrtvih števcev')
   })
 })
@@ -202,17 +205,17 @@ describe('v289 Ç4: dopolnitev (8. reset peskovnika — ista verzija, isti val)'
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v289 Ž: registri', () => {
-  test('verzija 1.292.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.292.0')
+  test('verzija 1.293.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.293.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.292.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.293.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.292.0-ci-sveza-baza-c1b')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.293.0-demo-real-auditlog-pisatelji')
   })
 
   test('TEST_PREFIXES: 142 z v289- registrirano (v1.290.0 dodal v290-, v1.291.0 dodal v291-)', () => {

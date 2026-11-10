@@ -268,17 +268,17 @@ describe('v283 Č3: centralni sweep z 135 predponami (proračun + varnost realni
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v283 Ž: registri', () => {
-  test('verzija 1.292.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.292.0')
+  test('verzija 1.293.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.293.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.292.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.293.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.292.0-ci-sveza-baza-c1b')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.293.0-demo-real-auditlog-pisatelji')
   })
 
   test('i18n nedotaknjen: 4324/4324 (0 novih ključev — val brez UI)', () => {

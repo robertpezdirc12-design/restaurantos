@@ -251,16 +251,16 @@ describe('v281 Č3: OSS-11 — tema po znamki (E2E: #B91C1C + PNG logotip živo 
 
 describe('v281 Ž: registri', () => {
   test('verzija 1.281.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.292.0')
+    expect(APP_VERSION).toBe('1.293.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.292.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.293.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.292.0-ci-sveza-baza-c1b')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.293.0-demo-real-auditlog-pisatelji')
   })
 
   test('i18n števci 4324/4324 — vrednostni popravek tipke, 0 novih ključev (popolna pariteta)', () => {
