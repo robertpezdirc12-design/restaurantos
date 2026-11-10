@@ -452,6 +452,6 @@ describe('Č3 registri v1.205.0', () => {
   })
 
   it('verzija 1.212.0', () => {
-    expect(APP_VERSION).toBe('1.306.0')
+    expect(APP_VERSION).toBe('1.307.0')
   })
 })

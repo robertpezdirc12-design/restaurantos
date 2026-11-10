@@ -180,17 +180,17 @@ describe('v295 Ç3: merilne pogodbe vala', () => {
 // ── Ž) REGISTRI ──────────────────────────────────────────────────────────
 
 describe('v295 Ž: registri', () => {
-  test('verzija 1.306.0 (version.ts ena resnica)', () => {
-    expect(APP_VERSION).toBe('1.306.0')
+  test('verzija 1.307.0 (version.ts ena resnica)', () => {
+    expect(APP_VERSION).toBe('1.307.0')
   })
 
   test('compose oznaka sledi verziji (selfhost-check pogodba: oznaka ↔ APP_VERSION)', () => {
-    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.306.0')
+    expect(read('deploy/docker-compose.yml')).toContain('restaurantos:1.307.0')
   })
 
   test('worklog vrh nosi Task ID tega vala', () => {
     const wl = read('worklog.md')
-    expect(wl.slice(0, 400)).toContain('Task ID: v1.306.0-nadzorni-val-stabilnosti-vii')
+    expect(wl.slice(0, 400)).toContain('Task ID: v1.307.0-nadzorni-val-stabilnosti-viii')
   })
 
   test('TEST_PREFIXES: 142 NESPREMJENJENO (integ60- ŽE registriran od Taska 60 — 0 novih predpon)', () => {
