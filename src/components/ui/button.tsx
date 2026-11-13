@@ -73,10 +73,18 @@ function Button({
       onClick={loading ? (e) => { e.preventDefault(); e.stopPropagation() } : onClick}
       {...props}
     >
-      {loading && !asChild && (
-        <Loader2 data-slot="button-spinner" className="size-4 animate-spin" aria-hidden="true" />
+      {/* Vsebina je VEDNO en sam vozel: pri asChild Radix Slot klone
+          natanko enega otroka (React.Children.only) — boolean false ali več
+          siblingov bi vrglo React error #143. Fragment ohrani en vozel tudi
+          ko je loading aktiven na navadnem gumbu. */}
+      {loading && !asChild ? (
+        <>
+          <Loader2 data-slot="button-spinner" className="size-4 animate-spin" aria-hidden="true" />
+          {children}
+        </>
+      ) : (
+        children
       )}
-      {children}
     </Comp>
   )
 }
