@@ -4264,7 +4264,7 @@ export const hr: Record<string, string> = {
   'modifiers.group.deleteAria': 'Izbriši grupu {name}',
   'modifiers.option.deleteAria': 'Izbriši opciju {name}',
   'modifiers.option.name': 'Opcija',
-  'modifiers.option.price': 'Doplata (EUR)',
+  'modifiers.option.price': 'Doplata €',
   'modifiers.items.attach': 'Poveži s artiklima',
   'modifiers.links.count': 'Povezano artikala: {n}',
   'modifiers.variant.badge': 'Varijanta',

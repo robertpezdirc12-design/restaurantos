@@ -45,7 +45,9 @@ function routeFiles(dir: string): string[] {
 
 /** Datoteka route.ts → OpenAPI pot (/api/…, [token] → {token}). */
 function fileToPath(f: string): string {
-  const rel = f.replace(/^src\/app/, '').replace(/\/route\.ts$/, '')
+  // normalizacija ločil (Windows '\' → '/'): regex-i '/app' in '/route.ts'
+  // sicer nikoli ne zadenejo, PATHS lookup pa odpove za vsako javno reto
+  const rel = f.replace(/\\/g, '/').replace(/^src\/app/, '').replace(/\/route\.ts$/, '')
   return rel.replace(/\[([^\]]+)\]/g, '{$1}')
 }
 

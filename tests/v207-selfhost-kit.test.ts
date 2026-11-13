@@ -16,7 +16,7 @@
  * vzorec iz local-setup.ts / local-start.ts (dokazano v vsakdanjem teku).
  */
 import { describe, test, expect } from 'bun:test'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   SELFHOST_IDENTITY_ENV,
@@ -195,8 +195,11 @@ describe('Č2 — kit na disku', () => {
 
   test('deploy/docker-entrypoint.sh ustreza kontraktu in je izvršljiv', () => {
     expect(validateEntrypointContract(readRepo('deploy/docker-entrypoint.sh'))).toEqual([])
-    const mode = statSync(join(ROOT, 'deploy/docker-entrypoint.sh')).mode
-    expect((mode & 0o111) !== 0).toBe(true)
+    // Na Windows/NTFS statSync().mode NE nosi x bitov — edina resnica je git
+    // indeks (100755), ki velja tudi na Linux/CI (ali kjer je bil chmod +x).
+    const ls = Bun.spawnSync(['git', 'ls-files', '-s', 'deploy/docker-entrypoint.sh'], { cwd: ROOT, stdout: 'pipe' })
+    const gitMode = ls.stdout.toString().trim().split(/\s+/)[0] ?? ''
+    expect(gitMode).toBe('100755')
   })
 
   test('deploy/.env.example ustreza pogodbi o identiteti', () => {

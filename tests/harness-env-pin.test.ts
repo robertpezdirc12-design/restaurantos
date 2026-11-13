@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { resolve } from 'node:path'
+import { resolve, sep } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { resolveTestDatabaseUrl } from './preload-env'
 
@@ -101,7 +101,9 @@ describe('harness — testni preload okolja (DATABASE_URL pin)', () => {
     const url = process.env.DATABASE_URL ?? ''
     expect(url.startsWith('file:')).toBe(true)
     const dbPath = resolve(CWD, url.slice(5).split('?')[0])
-    const inside = dbPath === REPO_ROOT || dbPath.startsWith(REPO_ROOT + '/')
+    // normalizacija ločil (Windows '\' vs POSIX '/'): sicer primerjava z
+    // REPO_ROOT + '/' odpove tudi za ZAKONITO pripeto bazo znotraj repozitorija
+    const inside = dbPath === REPO_ROOT || dbPath.startsWith(REPO_ROOT + sep)
     expect(inside).toBe(true)
   })
 })

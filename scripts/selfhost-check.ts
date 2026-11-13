@@ -11,8 +11,9 @@
  *   bun scripts/selfhost-check.ts   # exit 0 = paket skladen, 1 = prekrški
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import {
   SELFHOST_KIT_FILES,
   composeImageTag,
@@ -66,9 +67,11 @@ function main(): number {
   const entry = read('deploy/docker-entrypoint.sh')
   if (entry) {
     for (const v of validateEntrypointContract(entry)) checks.push({ ok: false, message: v })
-    const p = join(ROOT, 'deploy/docker-entrypoint.sh')
-    const execBit = (statSync(p).mode & 0o111) !== 0
-    checks.push({ ok: execBit, message: 'entrypoint ima izvršilni bit (chmod +x)' })
+    // Izvršilni bit: na Windows/NTFS statSync().mode NE nosi x bitov — edina
+    // resnica je git indeks (100755), ki velja tudi na Linux/CI.
+    const ls = spawnSync('git', ['ls-files', '-s', 'deploy/docker-entrypoint.sh'], { cwd: ROOT, encoding: 'utf8' })
+    const gitMode = (ls.stdout?.toString() ?? '').trim().split(/\s+/)[0] ?? ''
+    checks.push({ ok: gitMode === '100755', message: 'entrypoint ima izvršilni bit (chmod +x)' })
   }
 
   const envExample = read('deploy/.env.example')

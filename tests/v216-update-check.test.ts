@@ -103,6 +103,11 @@ let envBackup: string | undefined
 
 beforeEach(() => {
   envBackup = process.env.UPDATE_CHECK_URL
+  // Hermetičnost (ista družina kot DATABASE_URL pin v preload-env.ts): lokalni
+  // .env ima UPDATE_CHECK_URL="" (operater izklopljen), bun pa .env naloži tudi
+  // v testni proces — preostali testi bi sicer vsi dobili 'off' namesto poti
+  // privzetega vira. Vsak test, ki želi izklop/invalid/env, ga nastavi SAM.
+  delete process.env.UPDATE_CHECK_URL
   __resetUpdateCheckCacheForTests()
 })
 

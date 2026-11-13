@@ -258,7 +258,9 @@ describe('v1.278.0 Č3 — negativni sken src/lib + poštene izjeme', () => {
   test('0 surovih toFixed v predložnih nizih src/lib (allowlist = 10 datotek dokumentiranih izjem)', () => {
     const offenders: string[] = []
     for (const file of walkTs(LIB)) {
-      const rel = file.replace(ROOT + '/', '')
+      // normalizacija ločil (Windows '\' → '/'): sicer base = celotna pot in
+      // allowlist nikoli ne zadene (lekcija — ista družina kot v274 skeni)
+      const rel = file.replace(ROOT + '/', '').replace(/\\/g, '/')
       const base = rel.split('/').pop() ?? ''
       const src = readFileSync(file, 'utf8')
       for (const [i, line] of src.split('\n').entries()) {

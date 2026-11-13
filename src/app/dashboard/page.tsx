@@ -43,6 +43,7 @@ import {
   withLineUpdate,
 } from '@/lib/live-check'
 import { ConfirmBannerView } from '@/components/confirm-banner'
+import { EmptyState } from '@/components/empty-state'
 import {
   addItemsBanner,
   courseAssignBanner,
@@ -3959,7 +3960,8 @@ function DashboardInner() {
                     {viewOrders.slice(0, 6).map((o) => (
                       <div key={o.id} className="rounded-lg border border-stone-200 bg-white p-3 flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-semibold truncate">{o.table?.name || orderTypeL(o.type)}</p>
+                          {/* title: kartica je ozka (2 stolpca) — ime mize se odreže; hover pokaže celoto */}
+                          <p className="font-semibold truncate" title={o.table?.name || orderTypeL(o.type)}>{o.table?.name || orderTypeL(o.type)}</p>
                           <p className="text-xs text-stone-500">{tN('dash.itemsCount', 'artikel', o.items.length, { name: o.employee?.name || '—' })}</p>
                         </div>
                         <div className="text-right shrink-0">
@@ -3968,7 +3970,7 @@ function DashboardInner() {
                         </div>
                       </div>
                     ))}
-                    {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
+                    {viewOrders.length === 0 && <EmptyState size="inline" icon={ReceiptText} title={t('orders.none')} region="dash-active-empty" className="col-span-full" />}
                   </div>
                 </CardContent>
               </Card>
@@ -4534,7 +4536,10 @@ function DashboardInner() {
                     )}
                   </div>
                 ))}
-                {viewOrders.length === 0 && <p className="text-sm text-stone-500">{t('orders.none')}</p>}
+                {/* v1.300.0: spodnji `orders.none` odstranjen — DVOJNIK nad v235
+                    orders-empty blokom (isti pogoj, isto sporočilo dvakrat na zaslonu;
+                    vizualna QA qa-narocila.png). Pregled kartica (dash-active-empty)
+                    ohranja orders.none — tam ni kontekstnega bloka. */}
                 </div>
               </CardContent>
             </Card>
@@ -4560,8 +4565,8 @@ function DashboardInner() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setMoveOrder(null); setMoveTableId('') }}>{t('common.cancel')}</Button>
-                <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mmvBusy || !moveTableId} onClick={() => void moveOrderToTable()}>
-                  {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mmv.moveConfirm')}
+                <Button className="bg-emerald-700 hover:bg-emerald-800" loading={mmvBusy} disabled={!moveTableId} onClick={() => void moveOrderToTable()}>
+                  {t('mmv.moveConfirm')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -4587,8 +4592,8 @@ function DashboardInner() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setMergeOrder(null); setMergeTargetId('') }}>{t('common.cancel')}</Button>
-                <Button className="bg-emerald-700 hover:bg-emerald-800" disabled={mmvBusy || !mergeTargetId} onClick={() => void mergeOrderInto()}>
-                  {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('mmv.mergeConfirm')}
+                <Button className="bg-emerald-700 hover:bg-emerald-800" loading={mmvBusy} disabled={!mergeTargetId} onClick={() => void mergeOrderInto()}>
+                  {t('mmv.mergeConfirm')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -4612,8 +4617,8 @@ function DashboardInner() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setHoldTarget(null); setHoldTargetReason('') }}>{t('common.cancel')}</Button>
-                <Button className="bg-stone-600 hover:bg-stone-700" disabled={mmvBusy} onClick={() => void holdOrderConfirm()}>
-                  {mmvBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('order.holdConfirm')}
+                <Button className="bg-stone-600 hover:bg-stone-700" loading={mmvBusy} onClick={() => void holdOrderConfirm()}>
+                  {t('order.holdConfirm')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -4829,7 +4834,7 @@ function DashboardInner() {
                         {!mi.available && (
                           <span className="absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wider text-red-800 shadow-sm">86</span>
                         )}
-                        <span className="flex min-h-14 flex-1 flex-col">
+                        <span className={`flex min-h-14 flex-1 flex-col ${inCart > 0 ? 'pl-7' : ''}`}>
                           {/* ISSUE #73 audit-15: ploščica »jed · različica · velikost« —
                               overline (kategorija/jed) loči isto ime dveh različnih jedi
                               (»Bolognese« testenina/pica) in da starša golim imenom
@@ -4838,7 +4843,7 @@ function DashboardInner() {
                           {catOverline && (
                             <span className="mb-0.5 truncate text-[10px] font-semibold uppercase leading-tight tracking-wider text-stone-400" aria-hidden="true">{catOverline}</span>
                           )}
-                          <p className={`min-w-0 self-stretch pr-12 text-sm font-semibold leading-tight line-clamp-2 break-words ${mi.available ? 'text-stone-900 dark:text-stone-100' : 'text-red-700/60 dark:text-red-400/70 line-through'}`}>{mi.name}</p>
+                          <p className={`min-w-0 self-stretch pr-12 text-sm font-semibold leading-tight line-clamp-2 break-words ${mi.available ? 'text-stone-900' : 'text-red-700/60 dark:text-red-400/70 line-through'}`}>{mi.name}</p>
                           {hh ? (
                             <span className="mt-auto flex items-baseline justify-end gap-1 pt-1">
                               <Zap className="w-3.5 h-3.5 self-center text-amber-500" aria-hidden />
@@ -4846,7 +4851,7 @@ function DashboardInner() {
                               <span className={`text-xs font-medium tabular-nums line-through ${mi.available ? 'text-stone-400' : 'text-red-700/70'}`}>{fmtEUR(mi.price)}</span>
                             </span>
                           ) : (
-                            <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900 dark:text-stone-100' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
+                            <p className={`mt-auto self-end pt-1 text-sm font-bold tabular-nums ${mi.available ? 'text-stone-900' : 'text-red-700/70 line-through'}`}>{fmtEUR(mi.price)}</p>
                           )}
                         </span>
                       </button>
@@ -4942,8 +4947,8 @@ function DashboardInner() {
                       <span>{t('sale.total')}</span>
                       <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
                     </div>
-                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200 dark:disabled:bg-stone-800 dark:disabled:text-stone-400 dark:disabled:hover:bg-stone-800" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
-                      {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200 dark:disabled:bg-stone-800 dark:disabled:text-stone-400 dark:disabled:hover:bg-stone-800" loading={saleSending} disabled={saleCartCount === 0} onClick={() => void submitSale()}>
+                      {t('sale.payNow')}
                     </Button>
                     {saleErr && (
                       <p role="alert" className="rounded-lg bg-red-50 dark:bg-red-950/40 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300">
@@ -4978,8 +4983,8 @@ function DashboardInner() {
                           <ChevronUp className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
                         </button>
                       </DrawerTrigger>
-                      <Button className="h-12 shrink-0 gap-1.5 rounded-xl bg-emerald-700 px-4 text-sm font-bold hover:bg-emerald-800" disabled={saleSending} onClick={() => void submitSale()} aria-label={`${t('sale.pay')} ${fmtEUR(saleTotal)}`}>
-                        {saleSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" aria-hidden />}
+                      <Button className="h-12 shrink-0 gap-1.5 rounded-xl bg-emerald-700 px-4 text-sm font-bold hover:bg-emerald-800" loading={saleSending} onClick={() => void submitSale()} aria-label={`${t('sale.pay')} ${fmtEUR(saleTotal)}`}>
+                        {!saleSending && <CreditCard className="h-4 w-4" aria-hidden />}
                         {t('sale.pay')}
                       </Button>
                     </div>
@@ -5052,8 +5057,8 @@ function DashboardInner() {
                       <span>{t('sale.total')}</span>
                       <span className="tabular-nums">{fmtEUR(saleTotal)}</span>
                     </div>
-                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200" disabled={saleSending || saleCartCount === 0} onClick={() => void submitSale()}>
-                      {saleSending ? <Loader2 className="h-5 w-5 animate-spin" /> : t('sale.payNow')}
+                    <Button className="min-h-12 w-full bg-emerald-700 text-base font-bold hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:font-medium disabled:hover:bg-stone-200" loading={saleSending} disabled={saleCartCount === 0} onClick={() => void submitSale()}>
+                      {t('sale.payNow')}
                     </Button>
                     {saleErr && (
                       <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
@@ -7177,8 +7182,8 @@ function DashboardInner() {
           <DialogFooter className="items-center gap-2 sm:gap-0">
             <span className="mr-auto font-bold">{t('orders.total', { amount: fmtEUR(cartTotal) })}</span>
             <Button variant="outline" onClick={() => setNewOrderTable(null)}>{t('common.cancel')}</Button>
-            <Button className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:hover:bg-stone-200" disabled={sending || cartTotal === 0} onClick={createOrder}>
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('orders.submit')}
+            <Button className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-stone-200 disabled:text-stone-500 disabled:hover:bg-stone-200" loading={sending} disabled={cartTotal === 0} onClick={createOrder}>
+              {t('orders.submit')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7614,8 +7619,8 @@ function DashboardInner() {
           <DialogFooter className="items-center gap-2 sm:gap-0 flex-wrap">
             <span className="mr-auto font-bold">{t('orders.total', { amount: fmtEUR(sheetCartTotal) })}</span>
             {sheetHasItems && (
-              <Button className="bg-emerald-700 hover:bg-emerald-800 h-9" disabled={sending} onClick={() => void sendSheetItems()}>
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : t('sheet.sendItems')}
+              <Button className="bg-emerald-700 hover:bg-emerald-800 h-9" loading={sending} onClick={() => void sendSheetItems()}>
+                {t('sheet.sendItems')}
               </Button>
             )}
             {/* Issue #21 (v1.111.0) — klic vodje s kontekstom tega naročila (mizo izpelje strežnik) */}
@@ -7702,8 +7707,8 @@ function DashboardInner() {
           </div>
           <DialogFooter>
             <Button variant="outline" className="h-9" onClick={() => setVoidItem(null)}>{t('common.cancel')}</Button>
-            <Button variant="destructive" className="h-9" disabled={sending} onClick={() => void confirmVoidItem()}>
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />} {t('void.confirm')}
+            <Button variant="destructive" className="h-9" loading={sending} onClick={() => void confirmVoidItem()}>
+              {!sending && <Ban className="w-4 h-4" />} {t('void.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7756,8 +7761,8 @@ function DashboardInner() {
           </div>
           <DialogFooter>
             <Button variant="outline" className="h-9" onClick={() => setPriceItem(null)}>{t('common.cancel')}</Button>
-            <Button variant="outline" className="h-9 border-orange-300 text-orange-800 hover:bg-orange-50 hover:text-orange-900" disabled={sending} onClick={() => void confirmPriceOverride()}>
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />} {t('prc.confirm')}
+            <Button variant="outline" className="h-9 border-orange-300 text-orange-800 hover:bg-orange-50 hover:text-orange-900" loading={sending} onClick={() => void confirmPriceOverride()}>
+              {!sending && <Coins className="w-4 h-4" />} {t('prc.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7833,8 +7838,8 @@ function DashboardInner() {
           </div>
           <DialogFooter>
             <Button variant="outline" className="h-9" onClick={() => setExcAction(null)}>{t('common.cancel')}</Button>
-            <Button variant="destructive" className="h-9 bg-amber-700 hover:bg-amber-800" disabled={sending} onClick={() => void confirmException()}>
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />} {t('exc.approve')}
+            <Button variant="destructive" className="h-9 bg-amber-700 hover:bg-amber-800" loading={sending} onClick={() => void confirmException()}>
+              {!sending && <ShieldCheck className="w-4 h-4" />} {t('exc.approve')}
             </Button>
           </DialogFooter>
         </DialogContent>

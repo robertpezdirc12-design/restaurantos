@@ -55,8 +55,13 @@ describe('v227 A · seed.ts idempotenca po OBEH ključih create', () => {
       )
       expect(push.status).toBe(0)
 
+      // process.execPath namesto golega 'bun': na Windows bun razreši na npm
+      // .cmd shim, Node pa zavrača args s posebnimi znaki (ERR_INVALID_ARG_VALUE
+      // → status null). execPath = pravi bun binarnik (pod bun test), velja tudi CI.
+      const bun = process.execPath
+
       const mk = spawnSync(
-        'bun',
+        bun,
         [
           '-e',
           `const {PrismaClient}=require('@prisma/client');` +
@@ -68,7 +73,7 @@ describe('v227 A · seed.ts idempotenca po OBEH ključih create', () => {
       )
       expect(mk.status).toBe(0)
 
-      const seed = spawnSync('bun', ['prisma/seed.ts'], { cwd: ROOT, env, encoding: 'utf8', timeout: 120_000 })
+      const seed = spawnSync(bun, ['prisma/seed.ts'], { cwd: ROOT, env, encoding: 'utf8', timeout: 120_000 })
       // Pred popravkom: P2002 Unique constraint failed on the fields: (`premisesId`) + izhod 1.
       expect(seed.status).toBe(0)
       expect(seed.stdout).toContain('preskok')
@@ -76,7 +81,7 @@ describe('v227 A · seed.ts idempotenca po OBEH ključih create', () => {
 
       // Tuja lokacija ostaja edina — seed NI ustvaril svoje (RestaurantOS Ljubljana).
       const cnt = spawnSync(
-        'bun',
+        bun,
         [
           '-e',
           `const {PrismaClient}=require('@prisma/client');` +

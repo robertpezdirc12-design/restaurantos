@@ -421,7 +421,11 @@ describe('v219 Č7 · #89/#95 a11y vnosov', () => {
       const p = join(dir, f)
       return statSync(p).isDirectory() ? collect(p) : (p.endsWith('.tsx') ? [p] : [])
     })
-    const files = [...collect('src/app'), ...collect('src/components')].filter((f: string) => !f.includes('/ui/'))
+    // normalizacija ločil (Windows '\' → '/'): sicer izključitev knjižničnih
+    // komponent (ui/) odpove in sidebar.tsx (id prejema od klicočih) pade
+    const files = [...collect('src/app'), ...collect('src/components')]
+      .map((f: string) => f.replace(/\\/g, '/'))
+      .filter((f: string) => !f.includes('/ui/'))
     const pat = /<(Input|Textarea|SelectTrigger)\b[\s\S]*?\/>/g
     let violations = 0
     for (const f of files) {

@@ -329,7 +329,9 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
     <div className="space-y-4">
       {/* v1.129.0 (MarketMan/Square Inventory benchmark): AKCIJSKE bližnjice nad statistiko —
           skladiščnik pristane na »kaj moram narediti« (nabava/prejem, prenosi, odpad),
-          ne samo na pasivni seznam. Klik vodi v pripadajoči zavihek. */}
+          ne samo na pasivni seznam.
+          Mobilna različica ploščic je navpična (ikona nad besedilom): 3 stolpci na
+          390px obrežejo oznako do »N…«; na sm+ ostane vodoravna postavitev. */}
       {onNavigate && (
         <div data-region="inv-actions" className="grid grid-cols-3 gap-3">
           {([
@@ -345,7 +347,7 @@ export function InventoryTab({ items, suppliers, recipes, menuItems = [], canMan
                 onClick={() => { onNavigate(a.tab); history.replaceState(null, '', `/dashboard?tab=${a.tab}`) }}
                 aria-label={a.label}
                 title={a.desc}
-                className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4 text-left shadow-sm hover:border-emerald-400 hover:shadow transition flex items-center gap-3 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4 text-left shadow-sm hover:border-emerald-400 hover:shadow transition flex flex-col items-start sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 <span className="rounded-lg bg-emerald-50 text-emerald-700 p-2 shrink-0"><Ic className="w-5 h-5" aria-hidden /></span>
                 <span className="min-w-0">

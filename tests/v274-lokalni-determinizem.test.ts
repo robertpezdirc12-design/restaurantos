@@ -143,9 +143,11 @@ describe('v1.274.0 Č1 — collation: 24 golih localeCompare nad SL/HR besedilom
     const sl = [...names].sort((a, b) => a.localeCompare(b, 'sl'))
     // slovenska abeceda: C Č D ... S Š T ... Z Ž — Č ZA C, Ž ZA Z
     expect(sl).toEqual(['Cvetje', 'Čebula', 'Drobnjak', 'Špinaka', 'Zelišče', 'Žagar'])
-    // gol klic v privzetem (en-US) okolju da Čebula PRED Cvetje — dokaz
-    // da je bil gol vrstni red napačen VES ČAS, ne le med napravami
-    const bare = [...names].sort((a, b) => a.localeCompare(b))
+    // eksplicitni NE-SL locale ('en') da Čebula PRED Cvetje — dokaz, da je
+    // nepripet klic napačen vsakokrat, ko privzeti locale hosta ni slovenski
+    // (en-US). Hermetično: privzeti locale gostitelja (Windows sl-SI!) NE sme
+    // odločiti o izidu — pripet 'sl' je edini determinističen način.
+    const bare = [...names].sort((a, b) => a.localeCompare(b, 'en'))
     expect(bare.indexOf('Čebula')).toBeLessThan(bare.indexOf('Cvetje'))
     // 'sl' popravi ravno to
     expect(sl.indexOf('Čebula')).toBeGreaterThan(sl.indexOf('Cvetje'))
@@ -197,7 +199,8 @@ describe('v1.274.0 Č2 — negativni kontroli (neodvisni ključi + knjižnica)',
         if (st.isDirectory()) { if (e !== 'node_modules' && e !== '.next') walk(p) }
         else if (p.endsWith('.ts') || p.endsWith('.tsx')) {
           const s = read(p)
-          if (p.includes('/components/ui/')) return // sami sebi ne štejeta
+          // normalizacija ločil: na Windows je p vseboval '\' — check '/components/ui/' je odpovedal
+          if (p.replace(/\\/g, '/').includes('/components/ui/')) return // sami sebi ne štejeta
           if (s.includes('ui/chart') || s.includes('ui/calendar')) imports += 1
         }
       }
@@ -232,7 +235,7 @@ describe('v1.274.0 Č3 — formatiranje: 3 gola toLocale* pripeta na sl-SI', () 
         const st = statSync(join(ROOT, p))
         if (st.isDirectory()) { if (e !== 'node_modules' && e !== '.next') walk(p) }
         else if (p.endsWith('.ts') || p.endsWith('.tsx')) {
-          if (p.includes('/components/ui/')) continue // vendored knjižnica (neuporabljena)
+          if (p.replace(/\\/g, '/').includes('/components/ui/')) continue // vendored knjižnica (neuporabljena)
           read(p).split('\n').forEach((line, i) => {
             if (bare.test(line)) hits.push(`${p}:${i + 1}`)
           })
@@ -252,7 +255,7 @@ describe('v1.274.0 Č3 — formatiranje: 3 gola toLocale* pripeta na sl-SI', () 
         const st = statSync(join(ROOT, p))
         if (st.isDirectory()) { if (e !== 'node_modules' && e !== '.next') walk(p) }
         else if (p.endsWith('.ts') || p.endsWith('.tsx')) {
-          if (p.includes('/components/ui/')) continue
+          if (p.replace(/\\/g, '/').includes('/components/ui/')) continue
           read(p).split('\n').forEach((line, i) => {
             const m = sensitive.exec(line)
             if (m && !m[1].includes("'sl'") && !m[1].includes("'sl-SI'") && !m[1].includes("'hr'")) hits.push(`${p}:${i + 1}`)

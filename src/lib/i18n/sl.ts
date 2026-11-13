@@ -4269,7 +4269,7 @@ export const sl: Record<string, string> = {
   'modifiers.group.deleteAria': 'Izbriši skupino {name}',
   'modifiers.option.deleteAria': 'Izbriši opcijo {name}',
   'modifiers.option.name': 'Opcija',
-  'modifiers.option.price': 'Doplačilo (EUR)',
+  'modifiers.option.price': 'Doplačilo €',
   'modifiers.items.attach': 'Pripni na artikle',
   'modifiers.links.count': 'Pripeto artiklov: {n}',
   'modifiers.variant.badge': 'Varianta', /* v281: tipkarska napaka »Varijanta« → »Varianta« (SSKJ; ista datoteka ima že »Izberi varianto« + »Varianta — velikost/nivo«; hr.ts »Varijanta« je pravilna hrvaška oblika in ostaja) */
