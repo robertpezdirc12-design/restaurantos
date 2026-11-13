@@ -32,6 +32,17 @@ const toastVariants = cva(
         default: "border bg-background text-foreground",
         destructive:
           "destructive group border-destructive bg-destructive text-destructive-foreground",
+        /* Statusne variante (POS jezik obvestil — Toast/Square vzorec):
+           emerald/amber žetone temna plast v globals.css že preslikava
+           (.dark .bg-emerald-50 / .text-emerald-800), zato so vidne v obeh
+           načinih brez ločenih dark: razredov. sky preslikave NI — info ima
+           izrecne dark: razrede. Ikone dodaja Toaster. */
+        success:
+          "border-emerald-200 bg-emerald-50 text-emerald-800",
+        warning:
+          "border-amber-200 bg-amber-50 text-amber-800",
+        info:
+          "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200",
       },
     },
     defaultVariants: {
@@ -77,7 +88,10 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-1 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      // Viden zaporni gumb tudi BREZ miške (POS tablice): opacity-0 do hoverja
+      // je na dotik pomenil nedosegljiv gumb. Na grobih kazalcih (prst) je
+      // vedno viden z zmanjšano izraznostjo, na namizju ostane subtilen.
+      "absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-60 transition-opacity hover:text-foreground hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
       className
     )}
     toast-close=""

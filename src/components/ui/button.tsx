@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -40,19 +41,43 @@ function Button({
   variant,
   size,
   asChild = false,
+  loading = false,
+  disabled,
+  children,
+  onClick,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /**
+     * Zakasnilno stanje (Toast/Square vzorec): vrteč se indikator ZNOTRAJ gumba,
+     * `aria-busy` za bralce zaslona in `cursor: progress` prek `[data-loading]`
+     * v globals.css. Gumb ostane v tlorisu in V SVOJI BARVI (nisena `disabled`
+     * atributa — le-ta bi sprožil `disabled:` barvne variante in gumb bi med
+     * čakanjem posivel namesto da kaže napredek). Interakcija je blokirana z
+     * `aria-disabled` + požarnico v onClick (miška IN tipkovnica).
+     */
+    loading?: boolean
   }) {
   const Comp = asChild ? Slot : "button"
+  const inactive = loading || disabled === true
 
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      data-loading={loading ? "" : undefined}
+      aria-busy={loading || undefined}
+      aria-disabled={inactive || undefined}
+      disabled={disabled}
+      className={cn(buttonVariants({ variant, size, className }), loading && "cursor-progress")}
+      onClick={loading ? (e) => { e.preventDefault(); e.stopPropagation() } : onClick}
       {...props}
-    />
+    >
+      {loading && !asChild && (
+        <Loader2 data-slot="button-spinner" className="size-4 animate-spin" aria-hidden="true" />
+      )}
+      {children}
+    </Comp>
   )
 }
 

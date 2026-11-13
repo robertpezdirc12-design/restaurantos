@@ -17,6 +17,18 @@ const badgeVariants = cva(
           "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
           "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        /* Statusne variante (POS jezik stanj — Toast/Square vzorec): mehke
+           pastelne ploskve z nasičenim besedilom. emerald/amber žetone temna
+           plast v globals.css ŽE preslikava (.dark .bg-emerald-50 …) — badge
+           je zato avtomatsko pravilen v obeh načinih. sky preslikave NI,
+           zato ima info izrecne dark: razrede (samozadosten, brez posega v
+           skupno plast — ta je pod gate-i v179). */
+        success:
+          "border-emerald-200 bg-emerald-50 text-emerald-800 [a&]:hover:bg-emerald-100",
+        warning:
+          "border-amber-200 bg-amber-50 text-amber-800 [a&]:hover:bg-amber-100",
+        info:
+          "border-sky-200 bg-sky-50 text-sky-800 [a&]:hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300 dark:[a&]:hover:bg-sky-900",
       },
     },
     defaultVariants: {

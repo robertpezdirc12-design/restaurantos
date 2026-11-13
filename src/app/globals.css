@@ -978,3 +978,52 @@ main[data-screen="login"] button {
 [data-region="pos-floor-plan"] {
   box-shadow: 0 1px 2px oklch(0.25 0.03 155 / 4%), 0 10px 28px oklch(0.25 0.03 155 / 5%);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   PROFESIONALNI UI SLOJ — loading, skeleton shimmer, tipografija (v1.300.0)
+   Predstavitvena plast brez sprememb vedenja (isti vzorec kot vizualni polish
+   2026-10): stanja čakanja so vidna, skeleti mirno dihajo, naslovi se
+   uravnoteženo lomijo. Vse animacije padejo pod OBSTOJEČI varovalni blok
+   prefers-reduced-motion zgoraj (univerzalna požarnica).
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Zakasnilo (Button loading): kazalec pove, da se nekaj dogaja — brez
+   zavajajočega zatičnega kazalca med čakanjem na API. */
+[data-loading] {
+  cursor: progress;
+}
+
+/* Skeleton — mehak posnetek namesto pulziranja: gradientni pomet čez nevtralno
+   ploskev (Toast/Square vzorec). Končno stanje animacije je ČISTO (pomet je
+   izven okvirja), zato reduced-motion varovalka pusti miren skelet. */
+[data-slot="skeleton"] {
+  background-image: linear-gradient(100deg, transparent 20%, oklch(1 0 0 / 45%) 50%, transparent 80%);
+  background-size: 200% 100%;
+  background-position: 150% 0;
+  animation: os-shimmer 1.6s ease-in-out infinite;
+}
+.dark [data-slot="skeleton"] {
+  background-image: linear-gradient(100deg, transparent 20%, oklch(1 0 0 / 8%) 50%, transparent 80%);
+}
+@keyframes os-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+
+/* Tipografija: naslovi se lomijo uravnoteženo (brez sirot), odstavki bolj
+   naravno („pretty" poravna zadnjo vrstico). Podprto v sodobnih brskalnikih,
+   starejši pravilo tiho ignorirajo. */
+h1, h2, h3, h4 {
+  text-wrap: balance;
+}
+p, li {
+  text-wrap: pretty;
+}
+
+/* Tipkovniške bližnjice (kbd) — dosledna drobna tipografija v celotni aplikaciji. */
+kbd {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
